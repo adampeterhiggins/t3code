@@ -48,7 +48,15 @@ const PROVIDER_KIND = ProviderDriverKind.make("devin");
 const DEVIN_PRESENTATION = {
   displayName: "Devin",
   showInteractionModeToggle: true,
+  reportsContextWindow: true,
 } as const;
+
+/**
+ * Inventory-shape version persisted with cached snapshots. Bump when the
+ * meaning of the model list changes (flat variant rows → grouped family rows)
+ * so stale caches hydrate as fallback instead of resurrecting old rows.
+ */
+const DEVIN_MODEL_CATALOG_VERSION = "grouped-1";
 const EMPTY_CAPABILITIES: ModelCapabilities = { optionDescriptors: [] };
 
 const ABOUT_TIMEOUT_MS = 10_000;
@@ -227,6 +235,8 @@ export function buildDevinProviderSnapshot(input: {
     presentation: DEVIN_PRESENTATION,
     enabled: input.devinSettings.enabled,
     checkedAt: input.checkedAt,
+    modelCatalogVersion: DEVIN_MODEL_CATALOG_VERSION,
+    supportsConversationRollback: false,
     models: providerModelsFromSettings(
       input.discoveredModels ?? [],
       input.devinSettings.customModels,
@@ -259,6 +269,8 @@ export const checkDevinProviderStatus = Effect.fn("checkDevinProviderStatus")(fu
       presentation: DEVIN_PRESENTATION,
       enabled: false,
       checkedAt,
+      modelCatalogVersion: DEVIN_MODEL_CATALOG_VERSION,
+      supportsConversationRollback: false,
       models: fallbackModels,
       probe: {
         installed: false,
@@ -275,6 +287,8 @@ export const checkDevinProviderStatus = Effect.fn("checkDevinProviderStatus")(fu
       presentation: DEVIN_PRESENTATION,
       enabled: devinSettings.enabled,
       checkedAt,
+      modelCatalogVersion: DEVIN_MODEL_CATALOG_VERSION,
+      supportsConversationRollback: false,
       models: fallbackModels,
       probe: {
         installed,
@@ -386,6 +400,8 @@ export const buildInitialDevinProviderSnapshot = (
         presentation: DEVIN_PRESENTATION,
         enabled: false,
         checkedAt,
+        modelCatalogVersion: DEVIN_MODEL_CATALOG_VERSION,
+        supportsConversationRollback: false,
         models,
         probe: {
           installed: false,
@@ -401,6 +417,8 @@ export const buildInitialDevinProviderSnapshot = (
       presentation: DEVIN_PRESENTATION,
       enabled: true,
       checkedAt,
+      modelCatalogVersion: DEVIN_MODEL_CATALOG_VERSION,
+      supportsConversationRollback: false,
       models,
       probe: {
         installed: true,

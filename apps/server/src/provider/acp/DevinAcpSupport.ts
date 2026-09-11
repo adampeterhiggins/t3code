@@ -67,10 +67,16 @@ export interface DevinAcpModelSelectionErrorContext {
 }
 
 // Devin reads and writes the workspace itself; T3 does not proxy fs or
-// terminal I/O for it.
+// terminal I/O for it. The `_meta` flags advertise support for Devin's
+// private MCP extension (see DevinMcp.ts) — session/new.mcpServers is
+// ignored by the agent, so T3's tools connect through that channel instead.
 export const DEVIN_ACP_CLIENT_CAPABILITIES = {
   fs: { readTextFile: false, writeTextFile: false },
   terminal: false,
+  _meta: {
+    "cognition.ai/mcp": true,
+    "cognition.ai/mcpWorkspaceDirs": true,
+  },
 } satisfies NonNullable<EffectAcpSchema.InitializeRequest["clientCapabilities"]>;
 
 export function buildDevinAcpSpawnInput(

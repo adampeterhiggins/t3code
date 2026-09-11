@@ -214,13 +214,22 @@ export const mergeProviderSnapshot = (
     return nextProvider;
   }
   const savedAccount = carrySavedAntigravityAccount(previousProvider, nextProvider);
+  // A provider-owned catalog version marks the meaning of its model list;
+  // when it changes, the previous inventory belongs to a different shape and
+  // must not be merged into the new one.
+  const catalogCompatible =
+    previousProvider.modelCatalogVersion === undefined ||
+    nextProvider.modelCatalogVersion === undefined ||
+    previousProvider.modelCatalogVersion === nextProvider.modelCatalogVersion;
   // "Google account access is not checked yet" describes the probe, not the
   // account; it must not outlive the state it explained.
   const { message: _uncheckedMessage, ...nextWithoutMessage } = nextProvider;
   return {
     ...(savedAccount?.status === "ready" ? nextWithoutMessage : nextProvider),
     ...savedAccount,
-    models: mergeProviderModels(nextProvider, previousProvider.models, nextProvider.models),
+    models: catalogCompatible
+      ? mergeProviderModels(nextProvider, previousProvider.models, nextProvider.models)
+      : nextProvider.models,
     ...(nextProvider.workspaceSnapshots !== undefined
       ? { workspaceSnapshots: nextProvider.workspaceSnapshots }
       : previousProvider.workspaceSnapshots !== undefined

@@ -19,6 +19,7 @@ import {
   RuntimeRequestId,
   type RuntimeMode,
   type ThreadId,
+  type ThreadTokenUsageSnapshot,
   TurnId,
   type UserInputQuestion,
 } from "@t3tools/contracts";
@@ -59,15 +60,24 @@ import {
   makeAcpPlanUpdatedEvent,
   makeAcpRequestOpenedEvent,
   makeAcpRequestResolvedEvent,
+  makeAcpTokenUsageEvent,
   makeAcpToolCallEvent,
 } from "../acp/AcpCoreRuntimeEvents.ts";
-import { parsePermissionRequest } from "../acp/AcpRuntimeModel.ts";
+import { parsePermissionRequest, type AcpToolCallState } from "../acp/AcpRuntimeModel.ts";
+import {
+  DEVIN_RESOURCE_TEXT_MAX_CHARS,
+  normalizeDevinResourceContent,
+} from "../acp/DevinResourceSupport.ts";
 import { makeAcpNativeLoggerFactory } from "../acp/AcpNativeLogging.ts";
+import { inferDevinContextWindowTokens } from "../devinModelCatalog.ts";
 import {
   applyDevinAcpModelSelection,
   makeDevinAcpRuntime,
   resolveDevinModeId,
 } from "../acp/DevinAcpSupport.ts";
+import { prepareDevinMcp } from "../acp/DevinMcp.ts";
+import { hasCandidateSkillMention, planDevinSkillDispatch } from "../Drivers/DevinSkillDispatch.ts";
+import { discoverDevinSkills } from "../Drivers/DevinSkills.ts";
 import { type DevinAdapterShape } from "../Services/DevinAdapter.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
 
@@ -79,6 +89,127 @@ const DEVIN_RESUME_VERSION = 1 as const;
 function encodeJsonStringForDiagnostics(input: unknown): string | undefined {
   const result = encodeUnknownJsonStringExit(input);
   return Exit.isSuccess(result) ? result.value : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isDevinResourceContent(value: unknown): boolean {
+  if (!isRecord(value) || value.type !== "content" || !isRecord(value.content)) {
+    return false;
+  }
+  return value.content.type === "resource_link" || value.content.type === "resource";
+}
+
+function boundedDevinMetadata(value: unknown): string | undefined {
+  return typeof value === "string" && value.length <= DEVIN_RESOURCE_TEXT_MAX_CHARS
+    ? value
+    : undefined;
+}
+
+const DEVIN_TOOL_CALL_RAW_METADATA_FIELDS = [
+  "sessionUpdate",
+  "toolCallId",
+  "title",
+  "kind",
+  "status",
+] as const;
+
+function sanitizeDevinToolCall(toolCall: AcpToolCallState): AcpToolCallState {
+  const content = toolCall.data.content;
+  if (!Array.isArray(content)) {
+    return toolCall;
+  }
+  let changed = false;
+  let resource = toolCall.data.resource;
+  const retainedContent: Array<unknown> = [];
+  for (const entry of content) {
+    if (!isDevinResourceContent(entry)) {
+      retainedContent.push(entry);
+      continue;
+    }
+    changed = true;
+    if (resource !== undefined) continue;
+    const normalized = normalizeDevinResourceContent(entry);
+    if (normalized.kind === "resource") {
+      resource = normalized.resource;
+    }
+  }
+  if (!changed) {
+    return toolCall;
+  }
+  const data: Record<string, unknown> = { ...toolCall.data };
+  if (retainedContent.length > 0) {
+    data.content = retainedContent;
+  } else {
+    delete data.content;
+  }
+  if (resource !== undefined) {
+    data.resource = resource;
+  } else {
+    delete data.resource;
+  }
+  return { ...toolCall, data };
+}
+
+function sanitizeDevinToolCallRawPayload(rawPayload: unknown, toolCall: AcpToolCallState): unknown {
+  if (!isRecord(rawPayload) || !isRecord(rawPayload.update)) {
+    return rawPayload;
+  }
+  const rawUpdate = rawPayload.update;
+  const hasRawResource =
+    Array.isArray(rawUpdate.content) && rawUpdate.content.some(isDevinResourceContent);
+  if (!hasRawResource && toolCall.data.resource === undefined) {
+    return rawPayload;
+  }
+  const update: Record<string, unknown> = {};
+  for (const field of DEVIN_TOOL_CALL_RAW_METADATA_FIELDS) {
+    const value = boundedDevinMetadata(rawUpdate[field]);
+    if (value !== undefined) {
+      update[field] = value;
+    }
+  }
+  if (toolCall.data.resource !== undefined) {
+    update.resource = toolCall.data.resource;
+  }
+  const sessionId = boundedDevinMetadata(rawPayload.sessionId);
+  return {
+    ...(sessionId !== undefined ? { sessionId } : {}),
+    update,
+  };
+}
+
+function sanitizeDevinPermissionRequest(params: EffectAcpSchema.RequestPermissionRequest) {
+  const permissionRequest = parsePermissionRequest(params);
+  if (!params.toolCall.content?.some(isDevinResourceContent)) {
+    return { permissionRequest, payload: params };
+  }
+  const toolCall = permissionRequest.toolCall
+    ? sanitizeDevinToolCall(permissionRequest.toolCall)
+    : undefined;
+  const metadata: Record<string, unknown> = {};
+  for (const field of DEVIN_TOOL_CALL_RAW_METADATA_FIELDS) {
+    const value = boundedDevinMetadata(Reflect.get(params.toolCall, field));
+    if (value !== undefined) metadata[field] = value;
+  }
+  if (toolCall?.data.resource !== undefined) metadata.resource = toolCall.data.resource;
+  const detail = boundedDevinMetadata(permissionRequest.detail);
+  return {
+    permissionRequest: {
+      kind: permissionRequest.kind,
+      ...(detail !== undefined ? { detail } : {}),
+    },
+    payload: {
+      sessionId: boundedDevinMetadata(params.sessionId),
+      toolCall: metadata,
+      options: params.options.map(({ optionId, name, kind }) => ({
+        optionId: boundedDevinMetadata(optionId),
+        name: boundedDevinMetadata(name),
+        kind,
+      })),
+    },
+  };
 }
 
 export interface DevinAdapterLiveOptions {
@@ -107,6 +238,58 @@ interface PendingUserInput {
   readonly answers: Deferred.Deferred<ProviderUserInputAnswers>;
 }
 
+interface DevinAcpUsageTotals {
+  readonly inputTokens: number;
+  readonly cachedReadTokens: number;
+  readonly cachedWriteTokens: number;
+  readonly outputTokens: number;
+  readonly thoughtTokens: number;
+  readonly totalTokens: number;
+}
+
+function nonNegativeInteger(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.trunc(value) : 0;
+}
+
+function normalizeDevinAcpUsage(usage: EffectAcpSchema.Usage): DevinAcpUsageTotals {
+  const inputTokens = nonNegativeInteger(usage.inputTokens);
+  const outputTokens = nonNegativeInteger(usage.outputTokens);
+  const cachedReadTokens = nonNegativeInteger(usage.cachedReadTokens);
+  const cachedWriteTokens = nonNegativeInteger(usage.cachedWriteTokens);
+  const thoughtTokens = nonNegativeInteger(usage.thoughtTokens);
+  const reportedTotal = nonNegativeInteger(usage.totalTokens);
+  const calculatedTotal = inputTokens + outputTokens + thoughtTokens;
+  return {
+    inputTokens,
+    cachedReadTokens,
+    cachedWriteTokens,
+    outputTokens,
+    thoughtTokens,
+    totalTokens: Math.max(reportedTotal, calculatedTotal),
+  };
+}
+
+function subtractDevinAcpUsage(
+  current: DevinAcpUsageTotals,
+  previous: DevinAcpUsageTotals | undefined,
+): DevinAcpUsageTotals {
+  const delta = (value: number, before: number | undefined) =>
+    before === undefined || value < before ? value : value - before;
+  return {
+    inputTokens: delta(current.inputTokens, previous?.inputTokens),
+    cachedReadTokens: delta(current.cachedReadTokens, previous?.cachedReadTokens),
+    cachedWriteTokens: delta(current.cachedWriteTokens, previous?.cachedWriteTokens),
+    outputTokens: delta(current.outputTokens, previous?.outputTokens),
+    thoughtTokens: delta(current.thoughtTokens, previous?.thoughtTokens),
+    totalTokens: delta(current.totalTokens, previous?.totalTokens),
+  };
+}
+
+function acpCostAmountUsd(cost: EffectAcpSchema.Cost | null | undefined): number | undefined {
+  if (!cost || !Number.isFinite(cost.amount) || cost.amount < 0) return undefined;
+  return cost.currency.trim().toUpperCase() === "USD" ? cost.amount : undefined;
+}
+
 interface DevinSessionContext {
   readonly threadId: ThreadId;
   session: ProviderSession;
@@ -118,6 +301,19 @@ interface DevinSessionContext {
   readonly turns: Array<{ id: TurnId; items: Array<unknown> }>;
   lastPlanFingerprint: string | undefined;
   activeTurnId: TurnId | undefined;
+  /** Context meter state from the last `usage_update` session notification. */
+  lastContextWindowUsed: number | undefined;
+  lastContextWindowSize: number | undefined;
+  /** Cumulative prompt usage last reported by ACP prompt responses. */
+  lastAcpUsage: DevinAcpUsageTotals | undefined;
+  /** Cumulative USD cost last reported on a `usage_update`. */
+  lastAcpCostUsd: number | undefined;
+  /** Cost delta accrued since the last prompt-usage event consumed it. */
+  pendingCostDeltaUsd: number | undefined;
+  /** Processed-token total derived from cumulative ACP usage. */
+  totalProcessedTokens: number;
+  /** The concrete uid applied to the session, for usage attribution. */
+  activeModelUid: string | undefined;
   /** Number of sendTurn prompts currently in flight or being prepared.
    * >0 means a turn is actively running, so a new sendTurn is a steer that
    * continues it, and only the last remaining prompt settles the turn. */
@@ -149,10 +345,6 @@ function settlePendingUserInputsAsEmptyAnswers(
       discard: true,
     },
   );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function parseDevinResume(raw: unknown): { sessionId: string } | undefined {
@@ -390,6 +582,189 @@ export function makeDevinAdapter(devinSettings: DevinSettings, options?: DevinAd
         );
       });
 
+    const providerSessionIdFor = (ctx: DevinSessionContext): string | undefined =>
+      parseDevinResume(ctx.session.resumeCursor)?.sessionId;
+
+    /** The concrete uid currently applied to the session, when advertised. */
+    const readActiveModelUid = (
+      runtime: Pick<AcpSessionRuntime.AcpSessionRuntime["Service"], "getConfigOptions">,
+    ) =>
+      runtime.getConfigOptions.pipe(
+        Effect.map((configOptions) => {
+          const option = configOptions.find(
+            (entry) => entry.category === "model" || entry.id === "model",
+          );
+          const currentValue =
+            option && "currentValue" in option && typeof option.currentValue === "string"
+              ? option.currentValue.trim()
+              : "";
+          return currentValue.length > 0 ? currentValue : undefined;
+        }),
+        Effect.catch(() => Effect.succeed(undefined)),
+      );
+
+    /** Emits the ACP context-window update used by the composer meter. */
+    const emitDevinContextUsage = (
+      ctx: DevinSessionContext,
+      update: EffectAcpSchema.UsageUpdate,
+      rawPayload: unknown,
+    ) =>
+      Effect.gen(function* () {
+        const usedTokens = nonNegativeInteger(update.used);
+        const reportedMaxTokens = nonNegativeInteger(update.size);
+        const maxTokens =
+          reportedMaxTokens > 0
+            ? reportedMaxTokens
+            : (inferDevinContextWindowTokens(ctx.activeModelUid ?? ctx.session.model) ?? 0);
+        ctx.lastContextWindowUsed = usedTokens;
+        ctx.lastContextWindowSize = maxTokens > 0 ? maxTokens : undefined;
+
+        const sessionCostUsd = acpCostAmountUsd(update.cost);
+        if (sessionCostUsd !== undefined) {
+          const previousCost = ctx.lastAcpCostUsd;
+          const costDelta =
+            previousCost === undefined
+              ? sessionCostUsd
+              : Math.max(0, sessionCostUsd - previousCost);
+          ctx.pendingCostDeltaUsd = (ctx.pendingCostDeltaUsd ?? 0) + costDelta;
+          ctx.lastAcpCostUsd = sessionCostUsd;
+        }
+
+        const usage: ThreadTokenUsageSnapshot = {
+          usedTokens,
+          ...(ctx.totalProcessedTokens > 0
+            ? { totalProcessedTokens: ctx.totalProcessedTokens }
+            : {}),
+          ...(maxTokens > 0 ? { maxTokens } : {}),
+          ...((ctx.activeModelUid ?? ctx.session.model)
+            ? { model: ctx.activeModelUid ?? ctx.session.model }
+            : {}),
+          ...(providerSessionIdFor(ctx) ? { providerSessionId: providerSessionIdFor(ctx) } : {}),
+          ...(sessionCostUsd !== undefined ? { sessionCostUsd } : {}),
+          ...(update.cost?.currency?.trim() ? { costCurrency: update.cost.currency.trim() } : {}),
+        };
+
+        yield* offerRuntimeEvent(
+          makeAcpTokenUsageEvent({
+            stamp: yield* makeEventStamp(),
+            provider: PROVIDER,
+            threadId: ctx.threadId,
+            turnId: ctx.activeTurnId,
+            usage,
+            rawPayload,
+          }),
+        );
+      });
+
+    /** Emits turn token deltas and preserves cumulative ACP context data. */
+    const emitDevinPromptUsage = (
+      ctx: DevinSessionContext,
+      usageInput: EffectAcpSchema.Usage | null | undefined,
+      rawPayload: unknown,
+    ) =>
+      Effect.gen(function* () {
+        if (!usageInput) return;
+
+        const current = normalizeDevinAcpUsage(usageInput);
+        const delta = subtractDevinAcpUsage(current, ctx.lastAcpUsage);
+        const previousTotal = ctx.totalProcessedTokens;
+        const reportedCumulative =
+          ctx.lastAcpUsage !== undefined && current.totalTokens >= ctx.lastAcpUsage.totalTokens;
+        const totalProcessedTokens = reportedCumulative
+          ? Math.max(previousTotal, current.totalTokens)
+          : previousTotal + delta.totalTokens;
+        ctx.totalProcessedTokens = totalProcessedTokens;
+        ctx.lastAcpUsage = current;
+
+        const usedTokens = ctx.lastContextWindowUsed ?? 0;
+        const maxTokens = ctx.lastContextWindowSize;
+        const usage: ThreadTokenUsageSnapshot = {
+          usedTokens,
+          ...(totalProcessedTokens > 0 ? { totalProcessedTokens } : {}),
+          ...(maxTokens !== undefined ? { maxTokens } : {}),
+          ...((ctx.activeModelUid ?? ctx.session.model)
+            ? { model: ctx.activeModelUid ?? ctx.session.model }
+            : {}),
+          ...(providerSessionIdFor(ctx) ? { providerSessionId: providerSessionIdFor(ctx) } : {}),
+          inputTokens: current.inputTokens,
+          cachedInputTokens: current.cachedReadTokens,
+          cacheCreationTokens: current.cachedWriteTokens,
+          outputTokens: current.outputTokens,
+          reasoningOutputTokens: current.thoughtTokens,
+          lastUsedTokens: delta.totalTokens,
+          lastInputTokens: delta.inputTokens,
+          lastCachedInputTokens: delta.cachedReadTokens,
+          lastCacheCreationTokens: delta.cachedWriteTokens,
+          lastOutputTokens: delta.outputTokens,
+          lastReasoningOutputTokens: delta.thoughtTokens,
+          ...(ctx.pendingCostDeltaUsd !== undefined
+            ? { lastCostUsd: ctx.pendingCostDeltaUsd }
+            : {}),
+          ...(ctx.lastAcpCostUsd !== undefined ? { sessionCostUsd: ctx.lastAcpCostUsd } : {}),
+        };
+        ctx.pendingCostDeltaUsd = undefined;
+
+        yield* offerRuntimeEvent(
+          makeAcpTokenUsageEvent({
+            stamp: yield* makeEventStamp(),
+            provider: PROVIDER,
+            threadId: ctx.threadId,
+            turnId: ctx.activeTurnId,
+            method: "session/prompt",
+            usage,
+            rawPayload,
+          }),
+        );
+      });
+
+    const skillNamesByCwd = new Map<string, ReadonlySet<string>>();
+
+    /**
+     * Skill names eligible for dispatch, cached per workspace. Discovery is a
+     * CLI probe, so it only runs once per cwd and failures degrade to "no
+     * skills" rather than blocking the prompt.
+     */
+    const resolveSkillNamesForCwd = (cwd: string, settings: DevinSettings) => {
+      const cached = skillNamesByCwd.get(cwd);
+      if (cached) {
+        return Effect.succeed(cached);
+      }
+      return discoverDevinSkills(settings, options?.environment ?? process.env, cwd).pipe(
+        Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, childProcessSpawner),
+        Effect.provideService(Path.Path, path),
+        Effect.map((skills) => {
+          const names = new Set(
+            skills
+              .filter((skill) => skill.enabled && skill.userInvocable !== false)
+              .map((skill) => skill.name),
+          );
+          skillNamesByCwd.set(cwd, names);
+          return names;
+        }),
+        Effect.tapError((cause) =>
+          Effect.logDebug("devin skill discovery failed; sending prompt unchanged", {
+            stage: cause.stage,
+          }),
+        ),
+        Effect.catch(() => Effect.succeed(new Set<string>() as ReadonlySet<string>)),
+      );
+    };
+
+    /**
+     * Translate known `$skill` mentions into Devin's native `@skills:name`
+     * syntax. Discovery runs lazily — only when the prompt carries a candidate
+     * token — and a failure leaves the prompt unchanged so the turn still goes
+     * out.
+     */
+    const dispatchDevinSkills = (prompt: string, cwd: string, settings: DevinSettings) =>
+      hasCandidateSkillMention(prompt)
+        ? resolveSkillNamesForCwd(cwd, settings).pipe(
+            Effect.map(
+              (skillNames) => planDevinSkillDispatch(prompt, skillNames)?.prompt ?? prompt,
+            ),
+          )
+        : Effect.succeed(prompt);
+
     const requireSession = (
       threadId: ThreadId,
     ): Effect.Effect<DevinSessionContext, ProviderAdapterSessionNotFoundError> => {
@@ -470,6 +845,24 @@ export function makeDevinAdapter(devinSettings: DevinSettings, options?: DevinAd
             : devinSettings;
 
           const mcpSession = McpProviderSession.readMcpProviderSession(input.threadId);
+          // Devin ignores session/new.mcpServers; T3's tools connect through
+          // its private MCP extension with a per-session config directory.
+          const connectMcp = mcpSession
+            ? yield* prepareDevinMcp(mcpSession).pipe(
+                Effect.provideService(Scope.Scope, sessionScope),
+                Effect.provideService(FileSystem.FileSystem, fileSystem),
+                Effect.provideService(Path.Path, path),
+                Effect.mapError(
+                  (cause) =>
+                    new ProviderAdapterProcessError({
+                      provider: PROVIDER,
+                      threadId: input.threadId,
+                      detail: "Failed to prepare Devin's T3 Code tool connection.",
+                      cause,
+                    }),
+                ),
+              )
+            : undefined;
           const acp = yield* makeDevinAcpRuntime({
             devinSettings: effectiveDevinSettings,
             ...(options?.environment || mcpSession?.agentDeviceEnvironment
@@ -484,24 +877,8 @@ export function makeDevinAdapter(devinSettings: DevinSettings, options?: DevinAd
             cwd,
             runtimeMode: input.runtimeMode,
             ...(resumeSessionId ? { resumeSessionId } : {}),
+            ...(connectMcp ? { additionalDirectories: [connectMcp.directory] } : {}),
             clientInfo: { name: "t3-code", version: "0.0.0" },
-            ...(mcpSession
-              ? {
-                  mcpServers: [
-                    {
-                      type: "http" as const,
-                      name: "t3-code",
-                      url: mcpSession.endpoint,
-                      headers: [
-                        {
-                          name: "Authorization",
-                          value: mcpSession.authorizationHeader,
-                        },
-                      ],
-                    },
-                  ],
-                }
-              : {}),
             ...acpNativeLoggers,
           }).pipe(
             Effect.provideService(Crypto.Crypto, crypto),
@@ -592,7 +969,7 @@ export function makeDevinAdapter(devinSettings: DevinSettings, options?: DevinAd
                       };
                     }
                   }
-                  const permissionRequest = parsePermissionRequest(params);
+                  const { permissionRequest, payload } = sanitizeDevinPermissionRequest(params);
                   const requestId = ApprovalRequestId.make(yield* randomUUIDv4);
                   const runtimeRequestId = RuntimeRequestId.make(requestId);
                   const decision = yield* Deferred.make<ProviderApprovalDecision>();
@@ -610,12 +987,12 @@ export function makeDevinAdapter(devinSettings: DevinSettings, options?: DevinAd
                       permissionRequest,
                       detail:
                         permissionRequest.detail ??
-                        encodeJsonStringForDiagnostics(params)?.slice(0, 2000) ??
+                        encodeJsonStringForDiagnostics(payload)?.slice(0, 2000) ??
                         "[unserializable params]",
-                      args: params,
+                      args: payload,
                       source: "acp.jsonrpc",
                       method: "session/request_permission",
-                      rawPayload: params,
+                      rawPayload: payload,
                     }),
                   );
                   const resolved = yield* Deferred.await(decision);
@@ -643,7 +1020,9 @@ export function makeDevinAdapter(devinSettings: DevinSettings, options?: DevinAd
                 }),
               ),
             );
-            return yield* acp.start();
+            const result = yield* acp.start();
+            if (connectMcp) yield* connectMcp.connect(acp);
+            return result;
           }).pipe(
             Effect.mapError((error) =>
               mapAcpToAdapterError(PROVIDER, input.threadId, "session/start", error),
@@ -688,6 +1067,13 @@ export function makeDevinAdapter(devinSettings: DevinSettings, options?: DevinAd
             lastPlanFingerprint: undefined,
             activeTurnId: undefined,
             promptsInFlight: 0,
+            lastContextWindowUsed: undefined,
+            lastContextWindowSize: undefined,
+            lastAcpUsage: undefined,
+            lastAcpCostUsd: undefined,
+            pendingCostDeltaUsd: undefined,
+            totalProcessedTokens: 0,
+            activeModelUid: yield* readActiveModelUid(acp),
             stopped: false,
           };
 
@@ -729,17 +1115,24 @@ export function makeDevinAdapter(devinSettings: DevinSettings, options?: DevinAd
                     yield* emitPlanUpdate(ctx, event.payload, event.rawPayload);
                     return;
                   case "ToolCallUpdated":
-                    yield* logNative(ctx.threadId, "session/update", event.rawPayload);
-                    yield* offerRuntimeEvent(
-                      makeAcpToolCallEvent({
-                        stamp: yield* makeEventStamp(),
-                        provider: PROVIDER,
-                        threadId: ctx.threadId,
-                        turnId: ctx.activeTurnId,
-                        toolCall: event.toolCall,
-                        rawPayload: event.rawPayload,
-                      }),
-                    );
+                    {
+                      const toolCall = sanitizeDevinToolCall(event.toolCall);
+                      const rawPayload = sanitizeDevinToolCallRawPayload(
+                        event.rawPayload,
+                        toolCall,
+                      );
+                      yield* logNative(ctx.threadId, "session/update", rawPayload);
+                      yield* offerRuntimeEvent(
+                        makeAcpToolCallEvent({
+                          stamp: yield* makeEventStamp(),
+                          provider: PROVIDER,
+                          threadId: ctx.threadId,
+                          turnId: ctx.activeTurnId,
+                          toolCall,
+                          rawPayload,
+                        }),
+                      );
+                    }
                     return;
                   case "ContentDelta":
                     yield* logNative(ctx.threadId, "session/update", event.rawPayload);
@@ -754,6 +1147,10 @@ export function makeDevinAdapter(devinSettings: DevinSettings, options?: DevinAd
                         rawPayload: event.rawPayload,
                       }),
                     );
+                    return;
+                  case "UsageUpdated":
+                    yield* logNative(ctx.threadId, "session/update", event.rawPayload);
+                    yield* emitDevinContextUsage(ctx, event.usage, event.rawPayload);
                     return;
                 }
               }),
@@ -829,6 +1226,7 @@ export function makeDevinAdapter(devinSettings: DevinSettings, options?: DevinAd
             mapError: ({ cause, method }) =>
               mapAcpToAdapterError(PROVIDER, input.threadId, method, cause),
           });
+          ctx.activeModelUid = (yield* readActiveModelUid(ctx.acp)) ?? ctx.activeModelUid;
           ctx.activeTurnId = turnId;
           if (steeringTurnId === undefined) {
             ctx.lastPlanFingerprint = undefined;
@@ -852,8 +1250,16 @@ export function makeDevinAdapter(devinSettings: DevinSettings, options?: DevinAd
 
           const promptParts: Array<EffectAcpSchema.ContentBlock> = [];
           const rawPrompt = input.input?.trim() ?? "";
-          if (rawPrompt) {
-            promptParts.push({ type: "text", text: rawPrompt });
+          // Known `$skill` mentions become Devin's native `@skills:name`.
+          const effectiveDevinSettings = options?.resolveSettings
+            ? yield* options.resolveSettings
+            : devinSettings;
+          const dispatchedPrompt =
+            rawPrompt && ctx.session.cwd
+              ? yield* dispatchDevinSkills(rawPrompt, ctx.session.cwd, effectiveDevinSettings)
+              : rawPrompt;
+          if (dispatchedPrompt) {
+            promptParts.push({ type: "text", text: dispatchedPrompt });
           }
           if (input.attachments && input.attachments.length > 0) {
             for (const attachment of input.attachments) {
@@ -918,6 +1324,8 @@ export function makeDevinAdapter(devinSettings: DevinSettings, options?: DevinAd
             );
 
           yield* ctx.acp.drainEvents;
+          // ACP prompt responses may carry cumulative token usage.
+          yield* emitDevinPromptUsage(ctx, result?.usage, result);
 
           const turnRecord = ctx.turns.find((turn) => turn.id === turnId);
           if (turnRecord) {
@@ -1019,20 +1427,14 @@ export function makeDevinAdapter(devinSettings: DevinSettings, options?: DevinAd
         return { threadId, turns: ctx.turns };
       });
 
-    const rollbackThread: DevinAdapterShape["rollbackThread"] = (threadId, numTurns) =>
-      Effect.gen(function* () {
-        const ctx = yield* requireSession(threadId);
-        if (!Number.isInteger(numTurns) || numTurns < 1) {
-          return yield* new ProviderAdapterValidationError({
-            provider: PROVIDER,
-            operation: "rollbackThread",
-            issue: "numTurns must be an integer >= 1.",
-          });
-        }
-        const nextLength = Math.max(0, ctx.turns.length - numTurns);
-        ctx.turns.splice(nextLength);
-        return { threadId, turns: ctx.turns };
-      });
+    const rollbackThread: DevinAdapterShape["rollbackThread"] = () =>
+      Effect.fail(
+        new ProviderAdapterValidationError({
+          provider: PROVIDER,
+          operation: "rollbackThread",
+          issue: "Devin does not support conversation rewind. Start a new thread instead.",
+        }),
+      );
 
     const stopSession: DevinAdapterShape["stopSession"] = (threadId) =>
       withThreadLock(
@@ -1069,7 +1471,7 @@ export function makeDevinAdapter(devinSettings: DevinSettings, options?: DevinAd
 
     return {
       provider: PROVIDER,
-      capabilities: { sessionModelSwitch: "in-session" },
+      capabilities: { sessionModelSwitch: "in-session", supportsConversationRollback: false },
       startSession,
       sendTurn,
       interruptTurn,

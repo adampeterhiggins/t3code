@@ -15,6 +15,7 @@
  * @module devinModelCatalog
  */
 import type {
+  ModelPricing,
   ProviderOptionChoice,
   ProviderOptionSelection,
   ServerProviderModel,
@@ -129,6 +130,11 @@ interface DevinModelVariant {
   readonly label?: string;
   readonly is_new?: boolean;
   readonly is_beta?: boolean;
+  readonly max_context_tokens?: number;
+  readonly max_output_tokens?: number;
+  /** e.g. "$5 / 1M Input · $0.5 / 1M Cached input · $25 / 1M Output". */
+  readonly cost_summary?: string;
+  readonly cost_tier?: string;
 }
 
 interface DevinModelFamily {
@@ -146,11 +152,112 @@ export interface DevinModelsListJson {
 /** `adaptive` is Devin's recommended auto-router and the picker default. */
 const DEVIN_DEFAULT_MODEL_SLUG = "adaptive";
 
+const DEVIN_PRICING_SOURCE = "devin-cli models list";
+
+/**
+ * Parses `cost_summary` strings like
+ * `$5 / 1M Input · $0.5 / 1M Cached input · $25 / 1M Output` into per-million
+ * USD rates. Unrecognized segments are skipped; the record is only emitted
+ * when both input and output rates are present.
+ */
+export function parseDevinCostSummary(costSummary: string | undefined): ModelPricing | undefined {
+  if (!costSummary) return undefined;
+  let input: number | undefined;
+  let cachedInput: number | undefined;
+  let cacheCreation: number | undefined;
+  let output: number | undefined;
+  for (const segment of costSummary.split("·")) {
+    const match = /\$(\d+(?:\.\d+)?)\s*\/\s*1M\s+(.+)$/i.exec(segment.trim());
+    if (!match) continue;
+    const rate = Number(match[1]);
+    if (!Number.isFinite(rate) || rate < 0) continue;
+    const field = match[2]!.trim().toLowerCase();
+    if (field === "input") input = rate;
+    else if (field === "cached input") cachedInput = rate;
+    else if (field === "cache creation" || field === "cache write") cacheCreation = rate;
+    else if (field === "output") output = rate;
+  }
+  if (input === undefined || output === undefined) return undefined;
+  return {
+    inputPerMillion: input,
+    ...(cachedInput !== undefined ? { cachedInputPerMillion: cachedInput } : {}),
+    ...(cacheCreation !== undefined ? { cacheCreationPerMillion: cacheCreation } : {}),
+    outputPerMillion: output,
+    currency: "USD",
+    source: DEVIN_PRICING_SOURCE,
+  };
+}
+
+/**
+ * Fallback context sizes used when a catalog omits `max_context_tokens`.
+ * Keyed by normalized uid base (`parseDevinModelUid().base`).
+ */
+const DEVIN_CONTEXT_WINDOWS: Readonly<Record<string, number>> = {
+  adaptive: 1_000_000,
+  "claude-opus-5": 1_000_000,
+  "claude-5-fable": 1_000_000,
+  "claude-fable-5": 1_000_000,
+  "claude-sonnet-5": 1_000_000,
+  "claude-opus-4-8": 1_000_000,
+  "claude-opus-4-7": 1_000_000,
+  "claude-opus-4-6": 200_000,
+  "claude-opus-4-5": 200_000,
+  "claude-haiku-4-5": 200_000,
+  "claude-sonnet-4-6": 200_000,
+  "claude-sonnet-4-5": 200_000,
+  "deepseek-v4-flash": 1_048_576,
+  "deepseek-v4-pro": 1_048_576,
+  "gemini-3-flash": 1_048_576,
+  "gemini-3-1-pro": 1_048_576,
+  "gemini-3-5-flash": 1_048_576,
+  "gemini-3-6-flash": 1_048_576,
+  "gemini-3-7-flash": 1_048_576,
+  "glm-5-2": 200_000,
+  "gpt-4-1": 1_047_576,
+  "gpt-5-1": 272_000,
+  "gpt-5-2": 384_000,
+  "gpt-5-3-codex": 400_000,
+  "gpt-5-4": 272_000,
+  "gpt-5-4-mini": 400_000,
+  "gpt-5-5": 272_000,
+  "gpt-5-6-sol": 1_000_000,
+  "gpt-5-6-luna": 1_000_000,
+  "gpt-5-6-terra": 1_000_000,
+  "grok-4-5": 500_000,
+  "grok-4-6": 500_000,
+  inkling: 1_048_576,
+  "kimi-k2-6": 262_144,
+  "kimi-k2-7": 262_144,
+  "kimi-k3": 1_048_576,
+  "nemotron-3-ultra": 1_000_000,
+  "swe-1-6": 200_000,
+  "swe-1-6-fast": 200_000,
+  "swe-1-7": 262_000,
+  "swe-1-7-lightning": 202_752,
+};
+
+/**
+ * Context-window tokens for a concrete Devin uid. An explicit context suffix
+ * wins (`glm-5-2-max-1m` → 1M); otherwise falls back to the per-base map so
+ * the composer meter still has a denominator before the first usage update.
+ */
+export function inferDevinContextWindowTokens(
+  modelUid: string | null | undefined,
+): number | undefined {
+  const trimmed = modelUid?.trim();
+  if (!trimmed) return undefined;
+  const parsed = parseDevinModelUid(trimmed);
+  if (parsed.context === "1m") return 1_000_000;
+  return DEVIN_CONTEXT_WINDOWS[parsed.base];
+}
+
 interface ParsedVariant {
   readonly uid: string;
   readonly label: string | undefined;
   readonly dims: DevinModelDims;
   readonly isNew: boolean;
+  readonly pricing: ModelPricing | undefined;
+  readonly contextWindowTokens: number | undefined;
 }
 
 function effortRank(effort: string): number {
@@ -255,7 +362,20 @@ export function devinModelsFromCatalog(
         typeof variant.label === "string" && variant.label.trim()
           ? variant.label.trim()
           : undefined;
-      variants.push({ uid, label, dims: parseDevinModelUid(uid), isNew: variant.is_new === true });
+      const rawContextTokens =
+        typeof variant.max_context_tokens === "number" &&
+        Number.isFinite(variant.max_context_tokens) &&
+        variant.max_context_tokens >= 1
+          ? Math.trunc(variant.max_context_tokens)
+          : undefined;
+      variants.push({
+        uid,
+        label,
+        dims: parseDevinModelUid(uid),
+        isNew: variant.is_new === true,
+        pricing: parseDevinCostSummary(variant.cost_summary),
+        contextWindowTokens: rawContextTokens,
+      });
     }
     if (variants.length === 0) continue;
 
@@ -416,6 +536,20 @@ export function devinModelsFromCatalog(
     const aliases = [...familyAliases, ...variants.map((variant) => variant.uid)].filter(
       (alias) => alias !== slug,
     );
+    const pricingByVariant = Object.fromEntries(
+      variants
+        .filter((variant) => variant.pricing !== undefined)
+        .map((variant) => [variant.uid, variant.pricing!]),
+    );
+    const rowPricing = variants.find((variant) => variant.uid === slug)?.pricing;
+    const contextWindowTokens = variants.reduce<number | undefined>(
+      (max, variant) =>
+        variant.contextWindowTokens !== undefined &&
+        (max === undefined || variant.contextWindowTokens > max)
+          ? variant.contextWindowTokens
+          : max,
+      undefined,
+    );
     models.push({
       slug,
       name: familyLabel ?? slug,
@@ -426,6 +560,9 @@ export function devinModelsFromCatalog(
         slug === DEVIN_DEFAULT_MODEL_SLUG ||
         variants.some((v) => v.uid === DEVIN_DEFAULT_MODEL_SLUG),
       capabilities: optionDescriptors.length > 0 ? { optionDescriptors } : null,
+      ...(rowPricing ? { pricing: rowPricing } : {}),
+      ...(Object.keys(pricingByVariant).length > 0 ? { pricingByVariant } : {}),
+      ...(contextWindowTokens !== undefined ? { contextWindowTokens } : {}),
     });
   }
   return models;

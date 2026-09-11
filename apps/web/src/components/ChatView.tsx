@@ -364,7 +364,11 @@ import {
   hasDismissedResumeCompaction,
   shouldOfferResumeCompaction,
 } from "./chat/ContextWindowMeter.logic";
-import { deriveLatestContextWindowSnapshot, formatContextWindowTokens } from "../lib/contextWindow";
+import {
+  deriveKnownContextWindowSnapshot,
+  deriveLatestContextWindowSnapshot,
+  formatContextWindowTokens,
+} from "../lib/contextWindow";
 import {
   DRAFT_HERO_TRANSITION_ANIMATION_ID,
   DRAFT_HERO_TRANSITION_DURATION_MS,
@@ -449,6 +453,7 @@ import { previewEnvironment } from "../state/preview";
 import { clampFileAttachmentUploadBytes } from "@t3tools/client-runtime/state/attachments";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { fileAttachmentCapabilityBlockReason } from "./chat/composerAttachmentFiles";
+import { preserveCompatibleOptions } from "./ChatView.modelOptions";
 import { assetEnvironment } from "../state/assets";
 import { readPreparedConnection } from "../state/session";
 import { useAtomCommand } from "../state/use-atom-command";
@@ -2642,8 +2647,16 @@ export default function ChatView(props: ChatViewProps) {
       : JSON.stringify([activityId, latestCheckpointCompletedAt]);
   }, [latestCheckpointCompletedAt, threadActivities]);
   const activeContextWindow = useMemo(
-    () => deriveLatestContextWindowSnapshot(threadActivities),
-    [threadActivities],
+    () =>
+      deriveLatestContextWindowSnapshot(threadActivities) ??
+      (activeThread
+        ? deriveKnownContextWindowSnapshot({
+            selection: activeThread?.modelSelection,
+            providers: providerStatuses,
+            updatedAt: activeThread.updatedAt,
+          })
+        : null),
+    [activeThread, providerStatuses, threadActivities],
   );
   const workLogEntries = useMemo(() => deriveWorkLogEntries(threadActivities), [threadActivities]);
   // Native subagent fold: memoized by activity-list identity, shared by the
@@ -7995,9 +8008,20 @@ export default function ChatView(props: ChatViewProps) {
         scheduleComposerFocus();
         return;
       }
+      // Preserve compatible options across model switches. Carry over any
+      // stored option whose descriptor id also exists on the new model's
+      // capabilities, so a reasoning-effort choice survives switching from one
+      // model to another in the same family. Options the new model does not
+      // expose are dropped rather than sent blindly.
+      const currentOptions = activeThread.modelSelection?.options;
+      const nextCaps = entry
+        ? getProviderModelCapabilities(entry.models, resolvedModel, entry.driver)
+        : null;
+      const preservedOptions = preserveCompatibleOptions(currentOptions, nextCaps);
       const nextModelSelection: ModelSelection = {
         instanceId,
         model: resolvedModel,
+        ...(preservedOptions ? { options: preservedOptions } : {}),
       };
       const modelChangeBlockReason = getStartedThreadModelChangeBlockReason({
         providers: providerStatuses,

@@ -124,8 +124,37 @@ function canonicalSelectionsToLegacyObject(
 
 export const ModelCapabilities = Schema.Struct({
   optionDescriptors: Schema.optional(Schema.Array(ProviderOptionDescriptor)),
+  /**
+   * Per-model input modalities. All default to `true` when absent so providers
+   * that do not populate them keep their existing attachment behavior. Text is
+   * always supported and has no field. A provider sets a field to `false` only
+   * to signal that the model rejects that modality, so the composer can disable
+   * or warn about the corresponding attachment.
+   */
+  inputImages: Schema.optional(Schema.Boolean),
+  inputAudio: Schema.optional(Schema.Boolean),
+  inputFiles: Schema.optional(Schema.Boolean),
 });
 export type ModelCapabilities = typeof ModelCapabilities.Type;
+
+/**
+ * Provider-reported model pricing, expressed in USD per one million tokens.
+ *
+ * This is deliberately metadata rather than a billing record: it describes
+ * the rate advertised by a provider at probe time and is used to calculate a
+ * transparent local estimate when a transcript does not include a cost.
+ */
+export const ModelPricing = Schema.Struct({
+  inputPerMillion: Schema.Number.check(Schema.isGreaterThanOrEqualTo(0)),
+  cachedInputPerMillion: Schema.optional(Schema.Number.check(Schema.isGreaterThanOrEqualTo(0))),
+  cacheCreationPerMillion: Schema.optional(Schema.Number.check(Schema.isGreaterThanOrEqualTo(0))),
+  outputPerMillion: Schema.Number.check(Schema.isGreaterThanOrEqualTo(0)),
+  /** The context advertised alongside the rate, when the provider supplies it. */
+  contextWindowTokens: Schema.optional(Schema.Number.check(Schema.isGreaterThanOrEqualTo(1))),
+  currency: Schema.optional(TrimmedNonEmptyString),
+  source: Schema.optional(TrimmedNonEmptyString),
+});
+export type ModelPricing = typeof ModelPricing.Type;
 
 /**
  * A user-authored custom model. `name` and `capabilities` are optional so a

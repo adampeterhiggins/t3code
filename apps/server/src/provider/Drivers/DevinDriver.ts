@@ -17,6 +17,7 @@ import { ServerConfig } from "../../config.ts";
 import * as ServerSettingsService from "../../serverSettings.ts";
 import { ProviderDriverError } from "../Errors.ts";
 import { makeDevinAdapter } from "../Layers/DevinAdapter.ts";
+import { discoverDevinSkills } from "./DevinSkills.ts";
 import {
   buildInitialDevinProviderSnapshot,
   checkDevinProviderStatus,
@@ -171,6 +172,31 @@ export const DevinDriver: ProviderDriver<DevinSettings, DevinDriverEnv> = {
         ),
       );
 
+      // Per-workspace skill discovery mirrors Claude: `devin skills list`
+      // runs in the project cwd so project-scoped skills resolve correctly.
+      // A discovery failure fails the snapshot so the registry keeps the last
+      // valid workspace entry instead of republishing an empty skill list.
+      const snapshotForCwd = (cwd: string) =>
+        !effectiveConfig.enabled
+          ? snapshot.getSnapshot
+          : Effect.all([
+              snapshot.getSnapshot,
+              discoverDevinSkills(effectiveConfig, processEnv, cwd),
+            ]).pipe(
+              Effect.map(([machineSnapshot, skills]) => ({ ...machineSnapshot, skills })),
+              Effect.mapError(
+                (cause) =>
+                  new ProviderDriverError({
+                    driver: DRIVER_KIND,
+                    instanceId,
+                    detail: `Failed to discover Devin skills for ${cwd}: ${cause.stage}`,
+                    cause,
+                  }),
+              ),
+              Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+              Effect.provideService(Path.Path, path),
+            );
+
       return {
         instanceId,
         driverKind: DRIVER_KIND,
@@ -179,6 +205,7 @@ export const DevinDriver: ProviderDriver<DevinSettings, DevinDriverEnv> = {
         accentColor,
         enabled,
         snapshot,
+        snapshotForCwd,
         adapter,
         textGeneration,
       } satisfies ProviderInstance;
