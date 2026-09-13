@@ -21,7 +21,7 @@
  *
  * @module provider/Drivers/CodexDriver
  */
-import { CodexSettings, ProviderDriverKind } from "@t3tools/contracts";
+import { CodexSettings, ProviderDriverKind, type ServerProvider } from "@t3tools/contracts";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -50,6 +50,12 @@ import {
 import { resolveCodexLaunchArgs } from "../Layers/codexLaunchArgs.ts";
 import { ProviderEventLoggers } from "../Layers/ProviderEventLoggers.ts";
 import { makeManagedServerProvider } from "../makeManagedServerProvider.ts";
+import {
+  authMethodDescriptors,
+  type CliAuthMethodSpec,
+  makeCliProviderAuth,
+  stdinCredentialApply,
+} from "../CliProviderAuth.ts";
 import * as ModelManifest from "../ModelManifest.ts";
 import type { ProviderDriver, ProviderInstance } from "../ProviderDriver.ts";
 import { withInstanceIdentity } from "./instanceIdentity.ts";
@@ -188,6 +194,67 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
       });
       const textGeneration = yield* makeCodexTextGeneration(effectiveConfig, processEnv);
 
+      const apiKeyApply = stdinCredentialApply({
+        spawner,
+        instanceId,
+        providerLabel: "Codex",
+        command: effectiveConfig.binaryPath || "codex",
+        args: ["login", "--with-api-key"],
+        processEnv,
+      });
+      const authMethods: ReadonlyArray<CliAuthMethodSpec> = [
+        {
+          kind: "cli",
+          id: "device",
+          label: "Sign in with device code",
+          description:
+            "Runs `codex login --device-auth` — sign in at the shown URL with a one-time code. Works on remote and headless environments.",
+          args: ["login", "--device-auth"],
+          urlPattern: /https:\/\/auth\.openai\.com\/codex\/device\S*/,
+          codePattern:
+            /one-time code[^A-Z0-9]*(?:\([^)]*\))?[^A-Z0-9]*([A-Z0-9]{4}-[A-Z0-9]{4,6})/i,
+          waitingMessage: "Open the URL and enter the device code to finish signing in.",
+        },
+        {
+          kind: "cli",
+          id: "browser",
+          label: "Sign in with browser",
+          description:
+            "Runs `codex login` and opens a ChatGPT sign-in page on this environment. Only works when a browser can reach this environment's localhost — use the device code on remote machines.",
+          args: ["login"],
+          urlPattern: /https:\/\/auth\.openai\.com\/oauth\/authorize\?\S+/,
+          waitingMessage:
+            "Open the ChatGPT sign-in URL in a browser on this environment to finish signing in.",
+        },
+        {
+          kind: "saved-credentials",
+          id: "saved",
+          label: "Use saved Codex login",
+          description: "Reuses the credentials `codex login` stored on this environment.",
+          missingMessage: "No Codex login found on this environment. Sign in or paste an API key.",
+        },
+        {
+          kind: "paste-credential",
+          id: "api-key",
+          label: "Paste an API key",
+          description:
+            "Passed to `codex login --with-api-key`, which stores it in Codex's own credentials.",
+          credentialLabel: "OpenAI API key",
+          credentialPlaceholder: "sk-…",
+          appliedMessage: "OpenAI API key saved to Codex.",
+          apply: apiKeyApply,
+        },
+      ];
+      const providerSetup: ServerProvider["setup"] = {
+        canAuthenticate: true,
+        canInstall: false,
+        authMethods: authMethodDescriptors(authMethods),
+      };
+      const stampSetup = <T extends { setup?: ServerProvider["setup"] }>(draft: T) => ({
+        ...draft,
+        setup: providerSetup,
+      });
+
       // Build a managed snapshot whose settings never change — mutations come
       // in as instance rebuilds from the registry rather than in-place
       // updates. Pre-provide `ChildProcessSpawner` so the check fits
@@ -201,7 +268,9 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
             checkCodexProviderStatus(effectiveConfig, undefined, processEnv),
             modelManifest.current,
             (draft, manifest) =>
-              stampIdentity(ModelManifest.applyModelManifest(draft, manifest, DRIVER_KIND)),
+              stampIdentity(
+                stampSetup(ModelManifest.applyModelManifest(draft, manifest, DRIVER_KIND)),
+              ),
             { concurrent: true },
           ),
         ),
@@ -218,7 +287,9 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
             makePendingCodexProvider(settings.provider),
             modelManifest.current,
             (draft, manifest) =>
-              stampIdentity(ModelManifest.applyModelManifest(draft, manifest, DRIVER_KIND)),
+              stampIdentity(
+                stampSetup(ModelManifest.applyModelManifest(draft, manifest, DRIVER_KIND)),
+              ),
           ),
         checkProvider,
         enrichSnapshot: ({ settings, snapshot, publishSnapshot }) =>
@@ -345,6 +416,15 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
         consumeResetCredit,
         adapter,
         textGeneration,
+        auth: yield* makeCliProviderAuth({
+          instanceId,
+          providerLabel: "Codex",
+          command: effectiveConfig.binaryPath || "codex",
+          processEnv,
+          methods: authMethods,
+          probeAuth: snapshot.refresh.pipe(Effect.map((provider) => provider.auth)),
+          logoutCommand: ["logout"],
+        }),
       } satisfies ProviderInstance;
     }),
 };

@@ -5,6 +5,7 @@ import { NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import {
   ProviderAuthCancelInput,
   ProviderAuthCompleteInput,
+  ProviderAuthStartInput,
   ProviderAuthState,
   ProviderInstallCancelInput,
   ProviderInstallState,
@@ -467,7 +468,7 @@ const WsProviderConsumeResetCreditRpc = Rpc.make(WS_METHODS.providerConsumeReset
 });
 
 const WsProviderAuthStartRpc = Rpc.make(WS_METHODS.providerAuthStart, {
-  payload: ProviderSetupInput,
+  payload: ProviderAuthStartInput,
   success: ProviderAuthState,
   error: ProviderSetupRpcError,
 });

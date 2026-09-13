@@ -1,4 +1,4 @@
-import { GrokSettings, ProviderDriverKind } from "@t3tools/contracts";
+import { GrokSettings, ProviderDriverKind, type ServerProvider } from "@t3tools/contracts";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -20,6 +20,12 @@ import {
 } from "../Layers/GrokProvider.ts";
 import { ProviderEventLoggers } from "../Layers/ProviderEventLoggers.ts";
 import { makeManagedServerProvider } from "../makeManagedServerProvider.ts";
+import {
+  authMethodDescriptors,
+  type CliAuthMethodSpec,
+  makeCliProviderAuth,
+  providerEnvVarCredential,
+} from "../CliProviderAuth.ts";
 import {
   defaultProviderContinuationIdentity,
   type ProviderDriver,
@@ -89,7 +95,66 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
       });
       const textGeneration = yield* makeGrokTextGeneration(effectiveConfig, processEnv);
 
+      const apiKeyCredential = providerEnvVarCredential({
+        serverSettings,
+        instanceId,
+        driverKind: DRIVER_KIND,
+        envName: "XAI_API_KEY",
+      });
+      const authMethods: ReadonlyArray<CliAuthMethodSpec> = [
+        {
+          kind: "cli",
+          id: "oauth",
+          label: "Sign in with browser",
+          description:
+            "Runs `grok login --oauth` and opens a Grok sign-in page on this environment.",
+          args: ["login", "--oauth"],
+          env: { NO_OPEN_BROWSER: "1" },
+          urlPattern: /https:\/\/\S*\.?x\.ai\/\S+/,
+          waitingMessage: "Open the Grok sign-in URL in your browser to finish signing in.",
+        },
+        {
+          kind: "cli",
+          id: "device",
+          label: "Sign in with device code",
+          description:
+            "Runs `grok login --device-auth` — sign in at the shown URL with a one-time code. Works on remote and headless environments.",
+          args: ["login", "--device-auth"],
+          urlPattern: /https:\/\/\S*\.?x\.ai\/\S+/,
+          codePattern: /code[^A-Z0-9]*([A-Z0-9]{4}-[A-Z0-9]{4})/i,
+          waitingMessage: "Open the URL and enter the device code to finish signing in.",
+        },
+        {
+          kind: "saved-credentials",
+          id: "saved",
+          label: "Use saved Grok login",
+          description: "Reuses the credentials `grok login` stored on this environment.",
+          missingMessage: "No Grok login found on this environment. Sign in or paste an API key.",
+        },
+        {
+          kind: "paste-credential",
+          id: "api-key",
+          label: "Paste an API key",
+          description: "Stored as a sensitive XAI_API_KEY variable on this instance.",
+          credentialLabel: "xAI API key",
+          credentialPlaceholder: "xai-…",
+          probeAfterApply: false,
+          appliedMessage: "xAI API key saved.",
+          apply: apiKeyCredential.apply,
+        },
+      ];
+      const providerSetup: ServerProvider["setup"] = {
+        canAuthenticate: true,
+        canInstall: false,
+        authMethods: authMethodDescriptors(authMethods),
+      };
+      const stampSetup = <T extends { setup?: ServerProvider["setup"] }>(draft: T) => ({
+        ...draft,
+        setup: providerSetup,
+      });
+
       const checkProvider = checkGrokProviderStatus(effectiveConfig, processEnv, cwd).pipe(
+        Effect.map(stampSetup),
         Effect.map(stampIdentity),
         Effect.provideService(Crypto.Crypto, crypto),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
@@ -102,7 +167,10 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
         streamSettings: snapshotSettings.streamSettings,
         haveSettingsChanged: haveProviderSnapshotSettingsChanged,
         initialSnapshot: (settings) =>
-          buildInitialGrokProviderSnapshot(settings.provider).pipe(Effect.map(stampIdentity)),
+          buildInitialGrokProviderSnapshot(settings.provider).pipe(
+            Effect.map(stampSetup),
+            Effect.map(stampIdentity),
+          ),
         checkProvider,
         enrichSnapshot: ({ settings, snapshot: currentSnapshot, publishSnapshot }) =>
           enrichGrokSnapshot({
@@ -153,6 +221,16 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
         snapshotForCwd,
         adapter,
         textGeneration,
+        auth: yield* makeCliProviderAuth({
+          instanceId,
+          providerLabel: "Grok",
+          command: effectiveConfig.binaryPath || "grok",
+          processEnv,
+          methods: authMethods,
+          probeAuth: snapshot.refresh.pipe(Effect.map((provider) => provider.auth)),
+          logoutCommand: ["logout"],
+          onLogout: apiKeyCredential.remove,
+        }),
       } satisfies ProviderInstance;
     }),
 };

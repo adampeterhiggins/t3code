@@ -24,6 +24,7 @@ import {
 import { EditorId, FileManagerRevealKind, RemoteOpenTarget } from "./editor.ts";
 import { ModelCapabilities, ModelPricing } from "./model.ts";
 import { ProviderDriverKind, ProviderInstanceId } from "./providerInstance.ts";
+import { ProviderAuthMethod } from "./providerSetup.ts";
 import { ServerProviderUsageLimits, UsageLimitSourceSnapshots } from "./providerUsageLimits.ts";
 import { ServerSettings } from "./settings.ts";
 
@@ -213,6 +214,8 @@ export const ServerProvider = Schema.Struct({
     Schema.Struct({
       canAuthenticate: Schema.Boolean,
       canInstall: Schema.Boolean,
+      /** Ways the user can authenticate this instance. Empty/absent means no choice is offered. */
+      authMethods: Schema.optionalKey(Schema.Array(ProviderAuthMethod)),
     }),
   ),
   enabled: Schema.Boolean,

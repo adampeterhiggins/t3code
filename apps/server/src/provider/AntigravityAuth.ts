@@ -338,7 +338,7 @@ export const makeAntigravityAuth = Effect.fn("makeAntigravityAuth")(function* <
     });
 
   const controller: ProviderAuthController = {
-    start: (ownerSessionId, stopSessions = Effect.void) =>
+    start: (ownerSessionId, startOptions) =>
       lock.withPermits(1)(
         Effect.uninterruptible(
           Effect.gen(function* () {
@@ -374,7 +374,7 @@ export const makeAntigravityAuth = Effect.fn("makeAntigravityAuth")(function* <
             activeFlow = flow;
             operation = "auth";
             yield* publishFlow(flow, state);
-            flow.fiber = yield* runSignIn(flow, stopSessions).pipe(
+            flow.fiber = yield* runSignIn(flow, startOptions?.stopSessions ?? Effect.void).pipe(
               Effect.interruptible,
               Effect.forkIn(instanceScope),
             );

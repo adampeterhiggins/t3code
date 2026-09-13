@@ -1077,7 +1077,19 @@ export const checkCursorProviderStatus = Effect.fn("checkCursorProviderStatus")(
     });
   }
 
-  const parsed = parseCursorAboutOutput(aboutProbe.success.value);
+  const about = parseCursorAboutOutput(aboutProbe.success.value);
+  // `CURSOR_API_KEY` bypasses account login entirely but `agent about` still
+  // reports "Not logged in", so the env key wins when present.
+  const envApiKey = (environment ?? process.env).CURSOR_API_KEY?.trim();
+  const { message: _authMessage, ...aboutWithoutMessage } = about;
+  const parsed: CursorAboutResult =
+    envApiKey && about.auth.status !== "authenticated"
+      ? {
+          ...aboutWithoutMessage,
+          status: "ready",
+          auth: { status: "authenticated", type: "apiKey", label: "Cursor API key" },
+        }
+      : about;
   const cursorCliConfigChannel = yield* readCursorCliConfigChannel();
   const parameterizedModelPickerUnsupportedMessage =
     getCursorParameterizedModelPickerUnsupportedMessage({

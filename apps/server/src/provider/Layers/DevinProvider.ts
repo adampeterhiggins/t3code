@@ -322,14 +322,28 @@ export const checkDevinProviderStatus = Effect.fn("checkDevinProviderStatus")(fu
     `${versionProbe.success.value.stdout}\n${versionProbe.success.value.stderr}`,
   );
 
-  // Auth probe.
-  const authProbe = yield* runDevinCommand(devinSettings, ["auth", "status"], environment).pipe(
-    Effect.timeoutOption(ABOUT_TIMEOUT_MS),
-    Effect.result,
-  );
+  // `WINDSURF_API_KEY` outranks the credentials file (the ACP server reads it
+  // first), and `devin auth status` does not report it, so check the env
+  // before probing the CLI.
+  const envApiKey = (environment ?? process.env).WINDSURF_API_KEY?.trim();
+
+  // Auth probe — skipped when the env key carries auth.
+  const authProbe = envApiKey
+    ? undefined
+    : yield* runDevinCommand(devinSettings, ["auth", "status"], environment).pipe(
+        Effect.timeoutOption(ABOUT_TIMEOUT_MS),
+        Effect.result,
+      );
 
   const parsed: DevinProbeResult = (() => {
-    if (Result.isFailure(authProbe)) {
+    if (envApiKey) {
+      return {
+        version,
+        status: "ready",
+        auth: { status: "authenticated", type: "apiKey", label: "Devin API key" },
+      };
+    }
+    if (authProbe === undefined || Result.isFailure(authProbe)) {
       return {
         version,
         status: "warning",

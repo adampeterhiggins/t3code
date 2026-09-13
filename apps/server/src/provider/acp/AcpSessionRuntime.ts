@@ -221,6 +221,17 @@ export class AcpSessionRuntime extends Context.Service<
       EffectAcpErrors.AcpError
     >;
     /**
+     * Initializes the ACP connection and sends `authenticate` for the given method, without
+     * opening a session. Settings-driven sign-in flows use this so the agent performs its
+     * interactive login exactly once, on user request — `start()` only authenticates when
+     * `options.authMethodId` is set, which session spawns leave unset for agents that read
+     * their own CLI credentials.
+     * @see https://agentclientprotocol.com/protocol/schema#authenticate
+     */
+    readonly authenticate: (
+      methodId: string,
+    ) => Effect.Effect<EffectAcpSchema.AuthenticateResponse, EffectAcpErrors.AcpError>;
+    /**
      * Initializes the ACP connection, authenticates, and loads, resumes, or creates the session.
      * Concurrent calls share the same in-flight startup and a failed startup may be retried.
      */
@@ -979,6 +990,17 @@ export const make = (
       handleExtRequest: acp.handleExtRequest,
       handleExtNotification: acp.handleExtNotification,
       initialize: () => ensureConnected.pipe(Effect.andThen(sendInitialize)),
+      authenticate: (methodId) =>
+        ensureConnected.pipe(
+          Effect.andThen(sendInitialize),
+          Effect.andThen(
+            runLoggedRequest(
+              "authenticate",
+              { methodId } satisfies EffectAcpSchema.AuthenticateRequest,
+              acp.agent.authenticate({ methodId }),
+            ),
+          ),
+        ),
       start: () => start,
       getEvents: () => Stream.fromQueue(eventQueue),
       drainEvents,
