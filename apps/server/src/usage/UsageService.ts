@@ -16,7 +16,9 @@ import * as NodeOS from "node:os";
 
 import {
   USAGE_CONTRACT_VERSION,
+  resolveProviderInstanceEnabled,
   type ServerSettings as ServerSettingsValue,
+  type UsageAccountConsumption,
   type UsageProviderKind,
   type UsageSource,
   type UsagePricing,
@@ -35,18 +37,27 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
-import { HttpClient, HttpClientResponse } from "effect/unstable/http";
+import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http";
 
 import { ServerConfig } from "../config.ts";
 import { expandHomePath } from "../pathExpansion.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { resolveClaudeHomePath } from "../provider/Drivers/ClaudeHome.ts";
 import { resolveCodexHomeLayout } from "../provider/Drivers/CodexHomeLayout.ts";
+import { parseDevinAccountConsumptionPayload } from "./devinAccountUsage.ts";
 import { UsageAggregator } from "./usageAggregation.ts";
-import { createOverrideRateTable, parseRateTable, type RateTable } from "./usagePricing.ts";
 import {
+  createOverrideRateTable,
+  type ModelRate,
+  parseProviderModelRateTable,
+  parseRateTable,
+  type RateTable,
+} from "./usagePricing.ts";
+import {
+  listProviderEventLogFiles,
   listTranscriptFiles,
   readDirectoryVolumeId,
   readTranscriptRecords,
@@ -62,6 +73,97 @@ import type { UsageRecord } from "./usageTranscripts.ts";
 
 const LITELLM_RATES_URL =
   "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json";
+
+const DEVIN_RATES_SOURCE = "Devin provider snapshot pricing";
+const DEVIN_ACCOUNT_API_BASE = "https://api.devin.ai/v3";
+const DEVIN_ACCOUNT_SOURCE = "Devin organization consumption API (ACUs)";
+const DEVIN_ACCOUNT_API_KEY_ENV_NAMES = ["DEVIN_API_KEY", "DEVIN_PERSONAL_ACCESS_TOKEN"] as const;
+const DEVIN_ACCOUNT_ORG_ENV_NAMES = ["DEVIN_ORG_ID", "DEVIN_ORGANIZATION_ID"] as const;
+const DEVIN_ACCOUNT_REQUEST_TIMEOUT_MS = 10_000;
+const DEVIN_ACCOUNT_CACHE_TTL_MS = 5 * 60 * 1_000;
+
+function nonEmptyString(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : undefined;
+}
+
+function findEnvironmentValue(
+  environment: NodeJS.ProcessEnv,
+  names: readonly string[],
+): string | undefined {
+  const wanted = new Set(names.map((name) => name.toUpperCase()));
+  for (const [name, value] of Object.entries(environment)) {
+    if (wanted.has(name.toUpperCase())) {
+      const resolved = nonEmptyString(value);
+      if (resolved !== undefined) return resolved;
+    }
+  }
+  return undefined;
+}
+
+function findDevinProviderEnvironmentValue(
+  settings: ServerSettingsValue,
+  names: readonly string[],
+): string | undefined {
+  const wanted = new Set(names.map((name) => name.toUpperCase()));
+  for (const instance of Object.values(settings.providerInstances)) {
+    if (String(instance.driver).toLowerCase() !== "devin") continue;
+    for (const variable of instance.environment ?? []) {
+      if (!wanted.has(variable.name.toUpperCase())) continue;
+      const resolved = nonEmptyString(variable.value);
+      if (resolved !== undefined) return resolved;
+    }
+  }
+  return undefined;
+}
+
+function isDevinEnabled(settings: ServerSettingsValue): boolean {
+  if (settings.providers.devin.enabled === true) return true;
+  return Object.values(settings.providerInstances).some(
+    (instance) =>
+      String(instance.driver).toLowerCase() === "devin" && resolveProviderInstanceEnabled(instance),
+  );
+}
+
+function accountConsumptionStatus(input: {
+  readonly status: UsageAccountConsumption["status"];
+  readonly message: string | null;
+  readonly fetchedAt?: string | null;
+  readonly totalAcus?: number;
+  readonly days?: UsageAccountConsumption["days"];
+}): UsageAccountConsumption {
+  return {
+    provider: "devin",
+    status: input.status,
+    source: DEVIN_ACCOUNT_SOURCE,
+    fetchedAt: input.fetchedAt ?? null,
+    totalAcus: input.totalAcus ?? 0,
+    days: input.days ?? [],
+    message: input.message,
+  };
+}
+
+function epochSecondsForDay(day: string, offsetDays: number): number | null {
+  const milliseconds = Date.parse(`${day}T00:00:00.000Z`);
+  if (!Number.isFinite(milliseconds)) return null;
+  return Math.floor((milliseconds + offsetDays * 24 * 60 * 60 * 1_000) / 1_000);
+}
+
+function selectAccountWindow(
+  parsed: ReturnType<typeof parseDevinAccountConsumptionPayload>,
+  input: UsageSummaryInput,
+): { readonly totalAcus: number; readonly days: UsageAccountConsumption["days"] } | null {
+  if (parsed === null) return null;
+  const days = parsed.days.filter((day) => day.day >= input.sinceDay && day.day <= input.untilDay);
+  return {
+    // If the endpoint returned no date rows, retain its required total. When
+    // rows are present, summing the selected rows avoids leaking an adjacent
+    // day from the one-day query padding used for Devin's PST billing boundary.
+    totalAcus:
+      parsed.days.length === 0 ? parsed.totalAcus : days.reduce((sum, day) => sum + day.acus, 0),
+    days,
+  };
+}
 
 /** Rates move rarely; a day-old table keeps the page working offline. */
 const RATES_TTL_MS = 24 * 60 * 60 * 1000;
@@ -95,6 +197,11 @@ const encodeRatesCache = Schema.encodeEffect(
 const ScanCacheJson = Schema.fromJsonString(Schema.Unknown as unknown as Schema.Codec<unknown>);
 const decodeScanCacheFile = Schema.decodeUnknownEffect(ScanCacheJson);
 const encodeScanCacheFile = Schema.encodeEffect(ScanCacheJson);
+const decodeProviderSnapshotJson = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(
+    Schema.Struct({ driver: Schema.Literal("devin"), models: Schema.Array(Schema.Unknown) }),
+  ),
+);
 
 export class UsageService extends Context.Service<
   UsageService,
@@ -145,7 +252,8 @@ export const make = Effect.gen(function* () {
 
   const ratesCachePath = path.join(config.stateDir, "usage-model-rates.json");
   const scanCachePath = path.join(config.stateDir, "usage-scan-cache.json");
-  let rates: RateTable = new Map();
+  let liteLlmRates: RateTable = new Map();
+  let devinRates: RateTable = new Map();
   let ratesFetchedAtMs: number | null = null;
   let ratesStatus: UsagePricing["status"] = "unavailable";
   // One fetch at a time. A burst of refreshes from several clients waits on
@@ -154,11 +262,16 @@ export const make = Effect.gen(function* () {
 
   const pricing = (): UsagePricing => ({
     status: ratesStatus,
-    source: LITELLM_RATES_URL,
+    source:
+      devinRates.size > 0 ? `${LITELLM_RATES_URL} + ${DEVIN_RATES_SOURCE}` : LITELLM_RATES_URL,
     fetchedAt:
       ratesFetchedAtMs === null ? null : DateTime.formatIso(DateTime.makeUnsafe(ratesFetchedAtMs)),
-    knownModels: rates.size,
+    knownModels: liteLlmRates.size + devinRates.size,
   });
+  const devinAccountCache = new Map<
+    string,
+    { readonly fetchedAtMs: number; readonly value: UsageAccountConsumption }
+  >();
 
   /**
    * Loads the LiteLLM rate table, preferring a fresh copy and falling back to
@@ -179,7 +292,7 @@ export const make = Effect.gen(function* () {
       if (fromDisk !== null) {
         const parsed = parseRateTable(fromDisk.document);
         if (parsed.size > 0) {
-          rates = parsed;
+          liteLlmRates = parsed;
           ratesFetchedAtMs = fromDisk.fetchedAtMs;
           ratesStatus = "cached";
           if (now - fromDisk.fetchedAtMs < maxAgeMs) return;
@@ -196,14 +309,14 @@ export const make = Effect.gen(function* () {
     if (fetched === null) {
       // The refresh failed; whatever we are serving is now past its TTL and
       // must not keep claiming to be fresh.
-      if (rates.size > 0) ratesStatus = "cached";
+      if (liteLlmRates.size > 0) ratesStatus = "cached";
       return;
     }
 
     const parsed = parseRateTable(fetched);
     if (parsed.size === 0) return;
 
-    rates = parsed;
+    liteLlmRates = parsed;
     ratesFetchedAtMs = now;
     ratesStatus = "fresh";
 
@@ -219,6 +332,153 @@ export const make = Effect.gen(function* () {
     Effect.map(pricing),
     Effect.withSpan("UsageService.refreshRates"),
   );
+
+  /**
+   * Provider probes persist their model catalog in the status-cache directory.
+   * Retain Devin's advertised per-million prices for Devin records so
+   * canonical ACP records can be priced even when the public LiteLLM table
+   * does not yet contain a newly launched Devin model.
+   */
+  const ensureDevinRates = Effect.fn("UsageService.ensureDevinRates")(function* () {
+    const entries = yield* fileSystem
+      .readDirectory(config.providerStatusCacheDir)
+      .pipe(Effect.catchCause(() => Effect.succeed([] as ReadonlyArray<string>)));
+    const merged = new Map<string, ModelRate>();
+    for (const entry of entries) {
+      if (!entry.toLowerCase().endsWith(".json")) continue;
+      const raw = yield* fileSystem
+        .readFileString(path.join(config.providerStatusCacheDir, entry))
+        .pipe(Effect.catchCause(() => Effect.succeed(null)));
+      if (raw === null) continue;
+      const document = yield* decodeProviderSnapshotJson(raw).pipe(Effect.option);
+      if (Option.isNone(document)) continue;
+      for (const [model, rate] of parseProviderModelRateTable(document.value)) {
+        merged.set(model, rate);
+      }
+    }
+    devinRates = merged;
+  });
+
+  /**
+   * Optionally reads official account-level Devin ACUs. The normal CLI login
+   * token is intentionally not inspected or reused: Devin's organization
+   * consumption endpoint requires a separately provisioned service credential
+   * with billing permission. Missing credentials simply produce an explicit
+   * not-configured state and never make the usage scan fail.
+   */
+  const readDevinAccountUsage = Effect.fn("UsageService.readDevinAccountUsage")(function* (
+    input: UsageSummaryInput,
+    settings: ServerSettingsValue,
+  ) {
+    if (!isDevinEnabled(settings)) return undefined;
+
+    const apiKey =
+      findDevinProviderEnvironmentValue(settings, DEVIN_ACCOUNT_API_KEY_ENV_NAMES) ??
+      findEnvironmentValue(hostEnvironment, DEVIN_ACCOUNT_API_KEY_ENV_NAMES);
+    const organizationId =
+      findDevinProviderEnvironmentValue(settings, DEVIN_ACCOUNT_ORG_ENV_NAMES) ??
+      findEnvironmentValue(hostEnvironment, DEVIN_ACCOUNT_ORG_ENV_NAMES);
+    if (apiKey === undefined || organizationId === undefined) {
+      const missing = [
+        apiKey === undefined ? "DEVIN_API_KEY" : null,
+        organizationId === undefined ? "DEVIN_ORG_ID" : null,
+      ].filter((name): name is string => name !== null);
+      return accountConsumptionStatus({
+        status: "notConfigured",
+        message: `Optional account ACU data needs ${missing.join(" and ")} as Devin provider environment variables.`,
+      });
+    }
+
+    const timeAfter = epochSecondsForDay(input.sinceDay, -1);
+    const timeBefore = epochSecondsForDay(input.untilDay, 2);
+    if (timeAfter === null || timeBefore === null) {
+      return accountConsumptionStatus({
+        status: "failed",
+        message: "The requested usage window is not a valid date range.",
+      });
+    }
+
+    const cacheKey = `${organizationId} ${input.sinceDay} ${input.untilDay}`;
+    const now = yield* Clock.currentTimeMillis;
+    const cached = devinAccountCache.get(cacheKey);
+    if (cached !== undefined && now - cached.fetchedAtMs < DEVIN_ACCOUNT_CACHE_TTL_MS) {
+      return cached.value;
+    }
+
+    const endpoint = new URL(
+      `${DEVIN_ACCOUNT_API_BASE}/organizations/${encodeURIComponent(organizationId)}/consumption/daily`,
+    );
+    endpoint.searchParams.set("time_after", String(timeAfter));
+    endpoint.searchParams.set("time_before", String(timeBefore));
+    const request = HttpClientRequest.get(endpoint.toString()).pipe(
+      HttpClientRequest.acceptJson,
+      HttpClientRequest.bearerToken(apiKey),
+    );
+    const responseResult = yield* httpClient
+      .execute(request)
+      .pipe(Effect.timeout(DEVIN_ACCOUNT_REQUEST_TIMEOUT_MS), Effect.result);
+    if (Result.isFailure(responseResult)) {
+      const value = accountConsumptionStatus({
+        status: "failed",
+        message: "Devin account consumption could not be reached.",
+      });
+      devinAccountCache.set(cacheKey, { fetchedAtMs: now, value });
+      return value;
+    }
+
+    const response = responseResult.success;
+    if (response.status === 401 || response.status === 403) {
+      const value = accountConsumptionStatus({
+        status: "forbidden",
+        message: "The Devin API key lacks organization consumption permission.",
+      });
+      devinAccountCache.set(cacheKey, { fetchedAtMs: now, value });
+      return value;
+    }
+    if (response.status < 200 || response.status >= 300) {
+      const value = accountConsumptionStatus({
+        status: "failed",
+        message:
+          response.status === 404
+            ? "Devin organization consumption is unavailable for this account."
+            : `Devin account consumption returned HTTP ${response.status}.`,
+      });
+      devinAccountCache.set(cacheKey, { fetchedAtMs: now, value });
+      return value;
+    }
+
+    const payloadResult = yield* response.json.pipe(Effect.result);
+    if (Result.isFailure(payloadResult)) {
+      const value = accountConsumptionStatus({
+        status: "failed",
+        message: "Devin returned an unreadable account consumption response.",
+      });
+      devinAccountCache.set(cacheKey, { fetchedAtMs: now, value });
+      return value;
+    }
+    const parsed = selectAccountWindow(
+      parseDevinAccountConsumptionPayload(payloadResult.success),
+      input,
+    );
+    if (parsed === null) {
+      const value = accountConsumptionStatus({
+        status: "failed",
+        message: "Devin returned an invalid account consumption response.",
+      });
+      devinAccountCache.set(cacheKey, { fetchedAtMs: now, value });
+      return value;
+    }
+
+    const value = accountConsumptionStatus({
+      status: "available",
+      message: null,
+      fetchedAt: DateTime.formatIso(DateTime.makeUnsafe(now)),
+      totalAcus: parsed.totalAcus,
+      days: parsed.days,
+    });
+    devinAccountCache.set(cacheKey, { fetchedAtMs: now, value });
+    return value;
+  });
 
   /**
    * Claude's config dir is the home itself when overridden, but a default
@@ -267,6 +527,11 @@ export const make = Effect.gen(function* () {
         provider: "grok" as const,
         dir: path.join(grokHome, "sessions"),
         fileName: "updates.jsonl",
+      },
+      {
+        provider: "devin" as const,
+        dir: config.providerLogsDir,
+        eventLog: true as const,
       },
     ];
   });
@@ -388,7 +653,7 @@ export const make = Effect.gen(function* () {
       Effect.provideService(Path.Path, path),
     );
     const scanned: ScannedDir[] = [];
-    for (const { provider, dir, fileName } of dirs) {
+    for (const { provider, dir, fileName, eventLog } of dirs) {
       const volumeId = yield* Effect.promise(() => readDirectoryVolumeId(dir));
       const exists = yield* fileSystem
         .exists(dir)
@@ -398,7 +663,13 @@ export const make = Effect.gen(function* () {
         continue;
       }
       const files = yield* Effect.promise(() =>
-        listTranscriptFiles(dir, windowStartMs, fileName === undefined ? undefined : { fileName }),
+        eventLog
+          ? listProviderEventLogFiles(dir, "events", windowStartMs)
+          : listTranscriptFiles(
+              dir,
+              windowStartMs,
+              fileName === undefined ? undefined : { fileName },
+            ),
       );
       const parsedFiles: { path: string; records: readonly UsageRecord[] }[] = [];
       for (const file of files) {
@@ -449,6 +720,14 @@ export const make = Effect.gen(function* () {
     yield* ensureScanCacheLoaded;
 
     const hostId = NodeOS.hostname();
+    yield* ensureDevinRates();
+    const settingsForAccount = yield* settingsService.getSettings.pipe(
+      Effect.catchCause(() => Effect.succeed(null)),
+    );
+    const accountUsage =
+      settingsForAccount === null
+        ? undefined
+        : yield* readDevinAccountUsage(input, settingsForAccount);
     const windowStart = DateTime.make(`${input.sinceDay}T00:00:00Z`);
     if (Option.isNone(windowStart)) {
       return yield* new UsageReadError({
@@ -473,7 +752,8 @@ export const make = Effect.gen(function* () {
       untilDay: input.untilDay,
       resolution: input.resolution ?? "day",
       ...hourlyWindow,
-      rates,
+      rates: liteLlmRates,
+      providerRates: { devin: new Map([...liteLlmRates, ...devinRates]) },
       priceOverrides: createOverrideRateTable(settings.usagePriceOverrides),
     });
 
@@ -525,7 +805,10 @@ export const make = Effect.gen(function* () {
         skippedFiles,
         malformedRecords: 0,
         distinctSessions: sessionIds.size,
-        message: null,
+        message:
+          provider === "devin"
+            ? "Devin ACP usage is captured from this T3 server's local event logs."
+            : null,
       });
     }
 
@@ -551,6 +834,7 @@ export const make = Effect.gen(function* () {
       buckets: aggregated.buckets,
       sources,
       pricing: pricing(),
+      ...(accountUsage === undefined ? {} : { accountUsage }),
       scanDurationMs: Math.max(0, finishedAtMs - startedAtMs),
     } satisfies UsageSummary;
   });

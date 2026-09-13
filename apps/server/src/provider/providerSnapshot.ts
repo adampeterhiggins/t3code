@@ -198,6 +198,8 @@ export function buildServerProvider(input: {
   models: ReadonlyArray<ServerProviderModel>;
   slashCommands?: ReadonlyArray<ServerProviderSlashCommand>;
   skills?: ReadonlyArray<ServerProviderSkill>;
+  modelCatalogVersion?: string;
+  supportsConversationRollback?: boolean;
   probe: ProviderProbeResult;
 }): ServerProviderDraft {
   const versionAdvisory = input.driver
@@ -226,6 +228,12 @@ export function buildServerProvider(input: {
     auth: input.probe.auth,
     checkedAt: input.checkedAt,
     ...(input.probe.message ? { message: input.probe.message } : {}),
+    ...(input.modelCatalogVersion !== undefined
+      ? { modelCatalogVersion: input.modelCatalogVersion }
+      : {}),
+    ...(input.supportsConversationRollback !== undefined
+      ? { supportsConversationRollback: input.supportsConversationRollback }
+      : {}),
     models: input.models,
     slashCommands: [...(input.slashCommands ?? [])],
     skills: [...(input.skills ?? [])],

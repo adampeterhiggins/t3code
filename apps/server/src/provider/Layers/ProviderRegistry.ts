@@ -103,12 +103,18 @@ export function upsertProviderWorkspaceSnapshot(
 const shouldRetainMissingProviderModels = (provider: ServerProvider): boolean => {
   const isAntigravity = provider.driver === ProviderDriverKind.make("antigravity");
   const isCodex = provider.driver === ProviderDriverKind.make("codex");
-  if (!isAntigravity && !isCodex && provider.driver !== ProviderDriverKind.make("opencode")) {
+  const isDevin = provider.driver === ProviderDriverKind.make("devin");
+  if (
+    !isAntigravity &&
+    !isCodex &&
+    !isDevin &&
+    provider.driver !== ProviderDriverKind.make("opencode")
+  ) {
     return true;
   }
 
   if (
-    (isAntigravity || isCodex) &&
+    (isAntigravity || isCodex || isDevin) &&
     (!provider.enabled || provider.auth.status === "unauthenticated")
   ) {
     return false;
@@ -121,8 +127,14 @@ const shouldRetainMissingProviderModels = (provider: ServerProvider): boolean =>
   const isPendingInitialProbe =
     provider.enabled && !provider.installed && provider.status === "warning";
   const didInstalledProviderProbeFail = provider.installed && provider.status === "error";
+  // Devin reports a failed `models list` as a warning on an installed CLI —
+  // keep the last good catalog until discovery succeeds again.
+  const isDevinDiscoveryDegraded = isDevin && provider.installed && provider.status === "warning";
   return (
-    isPendingAntigravityAuthentication || isPendingInitialProbe || didInstalledProviderProbeFail
+    isPendingAntigravityAuthentication ||
+    isPendingInitialProbe ||
+    didInstalledProviderProbeFail ||
+    isDevinDiscoveryDegraded
   );
 };
 
@@ -202,13 +214,22 @@ export const mergeProviderSnapshot = (
     return nextProvider;
   }
   const savedAccount = carrySavedAntigravityAccount(previousProvider, nextProvider);
+  // A provider-owned catalog version marks the meaning of its model list;
+  // when it changes, the previous inventory belongs to a different shape and
+  // must not be merged into the new one.
+  const catalogCompatible =
+    previousProvider.modelCatalogVersion === undefined ||
+    nextProvider.modelCatalogVersion === undefined ||
+    previousProvider.modelCatalogVersion === nextProvider.modelCatalogVersion;
   // "Google account access is not checked yet" describes the probe, not the
   // account; it must not outlive the state it explained.
   const { message: _uncheckedMessage, ...nextWithoutMessage } = nextProvider;
   return {
     ...(savedAccount?.status === "ready" ? nextWithoutMessage : nextProvider),
     ...savedAccount,
-    models: mergeProviderModels(nextProvider, previousProvider.models, nextProvider.models),
+    models: catalogCompatible
+      ? mergeProviderModels(nextProvider, previousProvider.models, nextProvider.models)
+      : nextProvider.models,
     ...(nextProvider.workspaceSnapshots !== undefined
       ? { workspaceSnapshots: nextProvider.workspaceSnapshots }
       : previousProvider.workspaceSnapshots !== undefined

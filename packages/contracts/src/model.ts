@@ -124,8 +124,37 @@ function canonicalSelectionsToLegacyObject(
 
 export const ModelCapabilities = Schema.Struct({
   optionDescriptors: Schema.optional(Schema.Array(ProviderOptionDescriptor)),
+  /**
+   * Per-model input modalities. All default to `true` when absent so providers
+   * that do not populate them keep their existing attachment behavior. Text is
+   * always supported and has no field. A provider sets a field to `false` only
+   * to signal that the model rejects that modality, so the composer can disable
+   * or warn about the corresponding attachment.
+   */
+  inputImages: Schema.optional(Schema.Boolean),
+  inputAudio: Schema.optional(Schema.Boolean),
+  inputFiles: Schema.optional(Schema.Boolean),
 });
 export type ModelCapabilities = typeof ModelCapabilities.Type;
+
+/**
+ * Provider-reported model pricing, expressed in USD per one million tokens.
+ *
+ * This is deliberately metadata rather than a billing record: it describes
+ * the rate advertised by a provider at probe time and is used to calculate a
+ * transparent local estimate when a transcript does not include a cost.
+ */
+export const ModelPricing = Schema.Struct({
+  inputPerMillion: Schema.Number.check(Schema.isGreaterThanOrEqualTo(0)),
+  cachedInputPerMillion: Schema.optional(Schema.Number.check(Schema.isGreaterThanOrEqualTo(0))),
+  cacheCreationPerMillion: Schema.optional(Schema.Number.check(Schema.isGreaterThanOrEqualTo(0))),
+  outputPerMillion: Schema.Number.check(Schema.isGreaterThanOrEqualTo(0)),
+  /** The context advertised alongside the rate, when the provider supplies it. */
+  contextWindowTokens: Schema.optional(Schema.Number.check(Schema.isGreaterThanOrEqualTo(1))),
+  currency: Schema.optional(TrimmedNonEmptyString),
+  source: Schema.optional(TrimmedNonEmptyString),
+});
+export type ModelPricing = typeof ModelPricing.Type;
 
 /**
  * A user-authored custom model. `name` and `capabilities` are optional so a
@@ -148,6 +177,7 @@ const CLAUDE_DRIVER_KIND = ProviderDriverKind.make("claudeAgent");
 const CURSOR_DRIVER_KIND = ProviderDriverKind.make("cursor");
 const GROK_DRIVER_KIND = ProviderDriverKind.make("grok");
 const OPENCODE_DRIVER_KIND = ProviderDriverKind.make("opencode");
+const DEVIN_DRIVER_KIND = ProviderDriverKind.make("devin");
 
 export const DEFAULT_MODEL = "gpt-5.6-sol";
 
@@ -173,6 +203,8 @@ export const DEFAULT_MODEL_BY_PROVIDER: Partial<Record<ProviderDriverKind, strin
   [GROK_DRIVER_KIND]: "grok-build",
   [OPENCODE_DRIVER_KIND]: "openai/gpt-5",
   [ProviderDriverKind.make("antigravity")]: ANTIGRAVITY_DEFAULT_MODEL,
+  // Devin's auto-router; the ACP model picker lists it as `adaptive`.
+  [DEVIN_DRIVER_KIND]: "adaptive",
 };
 
 /** Per-provider text generation model defaults. */
@@ -184,6 +216,7 @@ export const DEFAULT_TEXT_GENERATION_MODEL_BY_PROVIDER: Partial<
   [CLAUDE_DRIVER_KIND]: "claude-haiku-4-5",
   [CURSOR_DRIVER_KIND]: "composer-2",
   [OPENCODE_DRIVER_KIND]: "openai/gpt-5",
+  [DEVIN_DRIVER_KIND]: "swe-1-6-fast",
 };
 
 export const MODEL_SLUG_ALIASES_BY_PROVIDER: Partial<
@@ -221,4 +254,5 @@ export const PROVIDER_DISPLAY_NAMES: Partial<Record<ProviderDriverKind, string>>
   [CURSOR_DRIVER_KIND]: "Cursor",
   [GROK_DRIVER_KIND]: "Grok",
   [OPENCODE_DRIVER_KIND]: "OpenCode",
+  [DEVIN_DRIVER_KIND]: "Devin",
 };

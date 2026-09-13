@@ -27,6 +27,7 @@ const CUSTOM_MODEL_PLACEHOLDER_BY_KIND: Partial<Record<ProviderDriverKind, strin
   [ProviderDriverKind.make("codex")]: "gpt-6.7-codex-ultra-preview",
   [ProviderDriverKind.make("claudeAgent")]: "claude-sonnet-5",
   [ProviderDriverKind.make("cursor")]: "claude-sonnet-4-6",
+  [ProviderDriverKind.make("devin")]: "swe-2-high",
   [ProviderDriverKind.make("opencode")]: "openai/gpt-5",
 };
 
@@ -47,7 +48,10 @@ function describeModelCapabilities(model: ServerProviderModel): string[] {
       descriptor.id === "fastMode" ||
       (descriptor.id === "serviceTier" &&
         descriptor.type === "select" &&
-        descriptor.options.some((option) => option.id === "fast" || option.label === "Fast")),
+        descriptor.options.some((option) => option.id === "fast" || option.label === "Fast")) ||
+      (descriptor.id === "speed" &&
+        descriptor.type === "select" &&
+        descriptor.options.some((option) => option.id === "fast" || option.id === "priority")),
   );
   if (hasFastMode) labels.push("Fast mode");
   if (descriptors.some((descriptor) => descriptor.id === "thinking")) labels.push("Thinking");
