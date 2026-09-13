@@ -12,6 +12,7 @@ import {
 } from "@t3tools/contracts";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
@@ -41,26 +42,23 @@ const makeScript = (body: string) =>
       NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "cli-auth-test-")),
     );
     const scriptPath = NodePath.join(dir, "fake-provider.sh");
-    yield* Effect.promise(() =>
-      NodeFSP.writeFile(scriptPath, `#!/bin/sh\n${body}\n`, "utf8"),
-    );
+    yield* Effect.promise(() => NodeFSP.writeFile(scriptPath, `#!/bin/sh\n${body}\n`, "utf8"));
     yield* Effect.promise(() => NodeFSP.chmod(scriptPath, 0o755));
     return scriptPath;
   });
 
+// The returned controller's flows fork into the ambient scope — `it.effect`
+// supplies one that outlives the test, so this must not be `Effect.scoped`.
 const makeAuth = (options: Partial<CliProviderAuthOptions>) =>
-  Effect.gen(function* () {
-    const controller = yield* makeCliProviderAuth({
-      instanceId,
-      providerLabel: "Test",
-      command: "unused-provider",
-      processEnv: {},
-      methods: [],
-      probeAuth: Effect.succeed(unauthenticated),
-      ...options,
-    });
-    return controller;
-  }).pipe(Effect.scoped);
+  makeCliProviderAuth({
+    instanceId,
+    providerLabel: "Test",
+    command: "unused-provider",
+    processEnv: {},
+    methods: [],
+    probeAuth: Effect.succeed(unauthenticated),
+    ...options,
+  });
 
 /** First state matching `phase`, or dies on stream end. */
 const awaitPhase = (
@@ -68,31 +66,27 @@ const awaitPhase = (
   owner: string,
   phases: ReadonlyArray<ProviderAuthState["phase"]>,
 ) =>
-  controller
-    .subscribe(owner)
-    .pipe(
-      Stream.filter((state) => phases.includes(state.phase)),
-      Stream.runHead,
-      Effect.flatMap((state) =>
-        Option.match(state, {
-          onNone: () => Effect.die("auth stream ended before reaching the phase"),
-          onSome: Effect.succeed,
-        }),
-      ),
-    );
+  controller.subscribe(owner).pipe(
+    Stream.filter((state) => phases.includes(state.phase)),
+    Stream.runHead,
+    Effect.flatMap((state) =>
+      Option.match(state, {
+        onNone: () => Effect.die("auth stream ended before reaching the phase"),
+        onSome: Effect.succeed,
+      }),
+    ),
+  );
 
 const collectUntil = (
   controller: { subscribe: (owner: string) => Stream.Stream<ProviderAuthState> },
   owner: string,
   terminal: ReadonlyArray<ProviderAuthState["phase"]>,
 ) =>
-  controller
-    .subscribe(owner)
-    .pipe(
-      Stream.takeUntil((state) => terminal.includes(state.phase)),
-      Stream.runCollect,
-      Effect.map((chunk) => Array.from(chunk)),
-    );
+  controller.subscribe(owner).pipe(
+    Stream.takeUntil((state) => terminal.includes(state.phase)),
+    Stream.runCollect,
+    Effect.map((chunk) => Array.from(chunk)),
+  );
 
 it.layer(testLayer)("CliProviderAuth", (it) => {
   it.effect("saved-credentials succeeds when the probe reports authentication", () =>
@@ -108,13 +102,12 @@ it.layer(testLayer)("CliProviderAuth", (it) => {
         ],
         probeAuth: Effect.succeed(authenticated),
       });
-      const collector = yield* collectUntil(controller, "owner", [
-        "succeeded",
-        "failed",
-      ]).pipe(Effect.forkChild);
+      const collector = yield* collectUntil(controller, "owner", ["succeeded", "failed"]).pipe(
+        Effect.forkChild,
+      );
       const started = yield* controller.start("owner", { methodId: "saved" });
       expect(started.phase).toBe("starting");
-      const done = yield* collector;
+      const done = yield* Fiber.join(collector);
       expect(done.at(-1)?.phase).toBe("succeeded");
     }),
   );
@@ -136,7 +129,7 @@ it.layer(testLayer)("CliProviderAuth", (it) => {
         Effect.forkChild,
       );
       yield* controller.start("owner", { methodId: "saved" });
-      const state = yield* final;
+      const state = yield* Fiber.join(final);
       expect(state.phase).toBe("failed");
       expect(state.message).toBe("No saved login on this machine.");
     }),
@@ -165,50 +158,57 @@ it.layer(testLayer)("CliProviderAuth", (it) => {
         Effect.forkChild,
       );
       yield* controller.start("owner", { methodId: "api-key" });
-      const state = yield* final;
+      const state = yield* Fiber.join(final);
       expect(state.phase).toBe("failed");
       expect(applied).toEqual([]);
 
-      const final2 = yield* awaitPhase(controller, "owner", ["succeeded", "failed"]).pipe(
-        Effect.forkChild,
+      const started2 = yield* controller.start("owner", {
+        methodId: "api-key",
+        credential: " sk-secret ",
+      });
+      // Skip the previous flow's terminal state — `subscribe` replays it first.
+      const state2 = yield* controller.subscribe("owner").pipe(
+        Stream.filter(
+          (state) =>
+            state.flowId === started2.flowId &&
+            (state.phase === "succeeded" || state.phase === "failed"),
+        ),
+        Stream.runHead,
+        Effect.map(Option.getOrThrow),
       );
-      yield* controller.start("owner", { methodId: "api-key", credential: " sk-secret " });
-      const state2 = yield* final2;
       expect(state2.phase).toBe("succeeded");
       expect(state2.message).toBe("Key saved.");
       expect(applied).toEqual([" sk-secret "]);
     }),
   );
 
-  it.effect.skipIf(windowsHost)(
-    "cli flow publishes the sign-in URL, then verifies on exit",
-    () =>
-      Effect.gen(function* () {
-        const script = yield* makeScript(
-          `echo "Visit https://auth.example.com/device to sign in"\nexit 0`,
-        );
-        const controller = yield* makeAuth({
-          command: script,
-          methods: [
-            {
-              kind: "cli",
-              id: "device",
-              label: "Sign in with device code",
-              args: [],
-              urlPattern: /(https:\/\/auth\.example\.com\/\S+)/,
-            },
-          ],
-          probeAuth: Effect.succeed(authenticated),
-        });
-        const states = yield* collectUntil(controller, "owner", ["succeeded", "failed"]).pipe(
-          Effect.forkChild,
-        );
-        yield* controller.start("owner", { methodId: "device" });
-        const seen = yield* states;
-        const waiting = seen.find((state) => state.phase === "waiting");
-        expect(waiting?.authorizationUrl).toBe("https://auth.example.com/device");
-        expect(seen.at(-1)?.phase).toBe("succeeded");
-      }),
+  it.effect.skipIf(windowsHost)("cli flow publishes the sign-in URL, then verifies on exit", () =>
+    Effect.gen(function* () {
+      const script = yield* makeScript(
+        `echo "Visit https://auth.example.com/device to sign in"\nexit 0`,
+      );
+      const controller = yield* makeAuth({
+        command: script,
+        methods: [
+          {
+            kind: "cli",
+            id: "device",
+            label: "Sign in with device code",
+            args: [],
+            urlPattern: /(https:\/\/auth\.example\.com\/\S+)/,
+          },
+        ],
+        probeAuth: Effect.succeed(authenticated),
+      });
+      const states = yield* collectUntil(controller, "owner", ["succeeded", "failed"]).pipe(
+        Effect.forkChild,
+      );
+      yield* controller.start("owner", { methodId: "device" });
+      const seen = yield* Fiber.join(states);
+      const waiting = seen.find((state) => state.phase === "waiting");
+      expect(waiting?.authorizationUrl).toBe("https://auth.example.com/device");
+      expect(seen.at(-1)?.phase).toBe("succeeded");
+    }),
   );
 
   it.effect.skipIf(windowsHost)(
@@ -232,7 +232,7 @@ it.layer(testLayer)("CliProviderAuth", (it) => {
           Effect.forkChild,
         );
         yield* controller.start("owner", { methodId: "browser" });
-        const state = yield* final;
+        const state = yield* Fiber.join(final);
         expect(state.phase).toBe("failed");
         expect(state.message).toContain("login exploded");
       }),
@@ -274,7 +274,7 @@ it.layer(testLayer)("CliProviderAuth", (it) => {
           callbackUrl: "pasted-code-123",
         });
         expect(accepted.phase).toBe("verifying");
-        const done = yield* final;
+        const done = yield* Fiber.join(final);
         expect(done.phase).toBe("succeeded");
         const received = yield* Effect.promise(() => NodeFSP.readFile(outPath, "utf8"));
         expect(received).toBe("pasted-code-123");
@@ -371,18 +371,14 @@ it.layer(testLayer)("CliProviderAuth", (it) => {
 
       yield* credential.remove;
       const cleared = yield* serverSettings.getSettings;
-      expect(
-        cleared.providerInstances[instanceId]?.environment ?? [],
-      ).toEqual([]);
+      expect(cleared.providerInstances[instanceId]?.environment ?? []).toEqual([]);
     }),
   );
 
   it.effect.skipIf(windowsHost)("cliOutputProbe matches stored-credential listings", () =>
     Effect.gen(function* () {
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-      const withCreds = yield* makeScript(
-        `echo "1 credentials"\necho "1 environment variable"`,
-      );
+      const withCreds = yield* makeScript(`echo "1 credentials"\necho "1 environment variable"`);
       const withoutCreds = yield* makeScript(`echo "no credentials found"`);
       const match = /\d+\s+(credentials?|environment variables?)/i;
 
