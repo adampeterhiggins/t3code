@@ -205,6 +205,17 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
       const authMethods: ReadonlyArray<CliAuthMethodSpec> = [
         {
           kind: "cli",
+          id: "browser",
+          label: "Sign in with browser",
+          description:
+            "Runs `codex login` and opens a ChatGPT sign-in page on this environment. Only works when a browser can reach this environment's localhost — use the device code on remote machines.",
+          args: ["login"],
+          urlPattern: /https:\/\/auth\.openai\.com\/oauth\/authorize\?\S+/,
+          waitingMessage:
+            "Open the ChatGPT sign-in URL in a browser on this environment to finish signing in.",
+        },
+        {
+          kind: "cli",
           id: "device",
           label: "Sign in with device code",
           description:
@@ -214,17 +225,6 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
           codePattern:
             /one-time code[^A-Z0-9]*(?:\([^)]*\))?[^A-Z0-9]*([A-Z0-9]{4}-[A-Z0-9]{4,6})/i,
           waitingMessage: "Open the URL and enter the device code to finish signing in.",
-        },
-        {
-          kind: "cli",
-          id: "browser",
-          label: "Sign in with browser",
-          description:
-            "Runs `codex login` and opens a ChatGPT sign-in page on this environment. Only works when a browser can reach this environment's localhost — use the device code on remote machines.",
-          args: ["login"],
-          urlPattern: /https:\/\/auth\.openai\.com\/oauth\/authorize\?\S+/,
-          waitingMessage:
-            "Open the ChatGPT sign-in URL in a browser on this environment to finish signing in.",
         },
         {
           kind: "saved-credentials",
