@@ -19,6 +19,7 @@ import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 
 interface ProviderAuthSectionProps {
   readonly environmentId: EnvironmentId;
@@ -102,6 +103,7 @@ function ProviderAuthActions({
   const pendingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [credentialDrafts, setCredentialDrafts] = useState<Record<string, string>>({});
+  const [selectedMethodId, setSelectedMethodId] = useState<string | null>(null);
   const [callbackDraft, setCallbackDraft] = useState({ flowId: null as string | null, value: "" });
   const [copiedFlowId, setCopiedFlowId] = useState<string | null>(null);
   const callbackValue = callbackDraft.flowId === auth?.flowId ? callbackDraft.value : "";
@@ -121,6 +123,10 @@ function ProviderAuthActions({
             : "Signed in."
           : (auth.message ?? PHASE_LABELS.idle);
   const actionsDisabled = pendingLabel !== null || authQuery.error !== null;
+  // Same default as the server: the first sign-in flow, else the first method.
+  const defaultMethod =
+    methods.find((method) => method.kind === "sign-in-flow") ?? methods[0] ?? null;
+  const selectedMethod = methods.find((method) => method.id === selectedMethodId) ?? defaultMethod;
 
   async function runCommand<A, E>(
     label: string,
@@ -277,73 +283,85 @@ function ProviderAuthActions({
         </form>
       ) : null}
 
-      {!authActive && (
-        <div className="grid gap-3">
-          {methods.map((method) =>
-            method.kind === "paste-credential" ? (
-              <div key={method.id} className="grid gap-2">
-                {method.description ? (
-                  <p className="text-muted-foreground">{method.description}</p>
-                ) : null}
-                <form
-                  className="grid gap-2"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void startMethod(method);
-                  }}
-                >
-                  <label htmlFor={`provider-credential-${instanceId}-${method.id}`}>
-                    {method.credentialLabel ?? method.label}
-                  </label>
-                  <Input
-                    id={`provider-credential-${instanceId}-${method.id}`}
-                    size="sm"
-                    type="password"
-                    autoComplete="off"
-                    spellCheck={false}
-                    placeholder={method.credentialPlaceholder ?? "Paste key"}
-                    value={credentialDrafts[method.id] ?? ""}
-                    maxLength={16_384}
-                    disabled={actionsDisabled || !enabled}
-                    onChange={(event) =>
-                      setCredentialDrafts((drafts) => ({
-                        ...drafts,
-                        [method.id]: event.target.value,
-                      }))
-                    }
-                  />
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    type="submit"
-                    className="w-fit"
-                    disabled={
-                      actionsDisabled || !enabled || !(credentialDrafts[method.id] ?? "").trim()
-                    }
-                  >
-                    {method.label}
-                  </Button>
-                </form>
-              </div>
-            ) : (
-              <div key={method.id} className="grid gap-1">
-                {method.description ? (
-                  <p className="text-muted-foreground">{method.description}</p>
-                ) : null}
-                <Button
-                  size="xs"
-                  variant="outline"
-                  className="w-fit"
-                  disabled={actionsDisabled || !enabled || auth === null}
-                  onClick={() => void startMethod(method)}
-                >
-                  {method.label}
-                </Button>
-              </div>
-            ),
+      {!authActive && selectedMethod ? (
+        <div className="grid gap-2">
+          {methods.length > 1 ? (
+            <>
+              <span>Sign-in method</span>
+              <Select
+                value={selectedMethod.id}
+                onValueChange={(value) => setSelectedMethodId(value)}
+                disabled={actionsDisabled || !enabled}
+              >
+                <SelectTrigger size="sm" className="w-fit min-w-48" aria-label="Sign-in method">
+                  <SelectValue>{selectedMethod.label}</SelectValue>
+                </SelectTrigger>
+                <SelectPopup alignItemWithTrigger={false}>
+                  {methods.map((method) => (
+                    <SelectItem key={method.id} value={method.id}>
+                      {method.label}
+                    </SelectItem>
+                  ))}
+                </SelectPopup>
+              </Select>
+            </>
+          ) : null}
+          {selectedMethod.description ? (
+            <p className="text-muted-foreground">{selectedMethod.description}</p>
+          ) : null}
+          {selectedMethod.kind === "paste-credential" ? (
+            <form
+              className="grid gap-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void startMethod(selectedMethod);
+              }}
+            >
+              <label htmlFor={`provider-credential-${instanceId}-${selectedMethod.id}`}>
+                {selectedMethod.credentialLabel ?? selectedMethod.label}
+              </label>
+              <Input
+                id={`provider-credential-${instanceId}-${selectedMethod.id}`}
+                size="sm"
+                type="password"
+                autoComplete="off"
+                spellCheck={false}
+                placeholder={selectedMethod.credentialPlaceholder ?? "Paste key"}
+                value={credentialDrafts[selectedMethod.id] ?? ""}
+                maxLength={16_384}
+                disabled={actionsDisabled || !enabled}
+                onChange={(event) =>
+                  setCredentialDrafts((drafts) => ({
+                    ...drafts,
+                    [selectedMethod.id]: event.target.value,
+                  }))
+                }
+              />
+              <Button
+                size="xs"
+                variant="outline"
+                type="submit"
+                className="w-fit"
+                disabled={
+                  actionsDisabled || !enabled || !(credentialDrafts[selectedMethod.id] ?? "").trim()
+                }
+              >
+                {selectedMethod.label}
+              </Button>
+            </form>
+          ) : (
+            <Button
+              size="xs"
+              variant="outline"
+              className="w-fit"
+              disabled={actionsDisabled || !enabled || auth === null}
+              onClick={() => void startMethod(selectedMethod)}
+            >
+              {selectedMethod.label}
+            </Button>
           )}
         </div>
-      )}
+      ) : null}
 
       <div className="flex flex-wrap gap-2">
         {authActive && auth?.flowId ? (
