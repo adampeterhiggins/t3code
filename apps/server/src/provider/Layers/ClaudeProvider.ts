@@ -10,6 +10,7 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
 import * as Result from "effect/Result";
+import * as Schema from "effect/Schema";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { createModelCapabilities } from "@t3tools/shared/model";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
@@ -33,7 +34,7 @@ import {
   type ServerProviderDraft,
 } from "../providerSnapshot.ts";
 import { resolveClaudeSdkExecutablePath } from "../Drivers/ClaudeExecutable.ts";
-import { makeClaudeEnvironment } from "../Drivers/ClaudeHome.ts";
+import { makeClaudeEnvironment, resolveClaudeHomePath } from "../Drivers/ClaudeHome.ts";
 import { discoverClaudeSkills } from "../Drivers/ClaudeSkills.ts";
 import { makeUnavailableUsageLimits } from "../providerUsageLimits.ts";
 import {
@@ -229,6 +230,13 @@ type ClaudeCapabilitiesProbe = {
   readonly subscriptionType: string | undefined;
   readonly tokenSource: string | undefined;
   /**
+   * Where the API key in use came from (e.g. `"ANTHROPIC_API_KEY"`). The SDK
+   * reports `tokenSource: "none"` for API-key auth, so both fields are needed
+   * to tell "signed out" apart from "authenticated without a claude.ai
+   * session".
+   */
+  readonly apiKeySource: string | undefined;
+  /**
    * Active API backend reported by the SDK's `AccountInfo`. Anthropic OAuth
    * login only applies when `"firstParty"`; for Amazon Bedrock (`"bedrock"`)
    * the subscription/token fields are absent and auth is external AWS creds.
@@ -306,6 +314,33 @@ function dedupeSlashCommands(
   return [...commandsByName.values()];
 }
 
+const CLAUDE_ACCOUNT_FILE = Schema.fromJsonString(
+  Schema.Struct({
+    oauthAccount: Schema.optional(Schema.Struct({ emailAddress: Schema.optional(Schema.String) })),
+  }),
+);
+const decodeClaudeAccountFile = Schema.decodeSync(CLAUDE_ACCOUNT_FILE);
+
+/**
+ * `claude auth login` stores the signed-in profile in
+ * `<claude home>/.claude.json`, but the SDK init omits `account.email` when an
+ * environment credential such as `CLAUDE_CODE_OAUTH_TOKEN` shadows that login.
+ * Read the stored profile so the signed-in account still shows in provider
+ * status.
+ */
+const readStoredClaudeAccountEmail = (
+  claudeSettings: ClaudeSettings,
+): Effect.Effect<string | undefined, never, FileSystem.FileSystem | Path.Path> =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const homePath = yield* resolveClaudeHomePath(claudeSettings);
+    const contents = yield* fileSystem.readFileString(path.join(homePath, ".claude.json"));
+    const parsed = yield* Effect.try(() => decodeClaudeAccountFile(contents));
+    const email = parsed.oauthAccount?.emailAddress;
+    return email === undefined ? undefined : nonEmptyProbeString(email);
+  }).pipe(Effect.orElseSucceed(() => undefined));
+
 function waitForAbortSignal(signal: AbortSignal): Promise<void> {
   if (signal.aborted) {
     return Promise.resolve();
@@ -377,13 +412,19 @@ const probeClaudeCapabilities = (
               readonly email?: string;
               readonly subscriptionType?: string;
               readonly tokenSource?: string;
+              readonly apiKeySource?: string;
               readonly apiProvider?: string;
             }
           | undefined;
+        const storedEmail =
+          account?.email === undefined
+            ? yield* readStoredClaudeAccountEmail(claudeSettings)
+            : undefined;
         return {
-          email: account?.email,
+          email: account?.email ?? storedEmail,
           subscriptionType: account?.subscriptionType,
           tokenSource: account?.tokenSource,
+          apiKeySource: account?.apiKeySource,
           apiProvider: account?.apiProvider,
           slashCommands: parseClaudeInitializationCommands(init.commands),
           ...(usage ? { usage } : {}),
@@ -555,10 +596,37 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     });
   }
 
+  // The SDK init resolves even with no credentials — `tokenSource: "none"`
+  // with no `apiKeySource` means the CLI is signed out, and probe success
+  // alone cannot stand in for authentication.
+  const authenticated =
+    capabilities.tokenSource !== "none" ||
+    (capabilities.apiKeySource !== undefined && capabilities.apiKeySource !== "none");
+
+  if (!authenticated) {
+    return buildServerProvider({
+      presentation: CLAUDE_PRESENTATION,
+      enabled: claudeSettings.enabled,
+      checkedAt,
+      models,
+      slashCommands: dedupedSlashCommands,
+      skills,
+      probe: {
+        installed: true,
+        version: parsedVersion,
+        status: "error",
+        auth: { status: "unauthenticated" },
+        message:
+          "Claude Agent CLI is not authenticated. Sign in from the Setup section or run `claude auth login` on this environment.",
+      },
+    });
+  }
+
   const authMetadata =
     claudeAuthMetadata({
       subscriptionType: capabilities.subscriptionType,
-      authMethod: capabilities.tokenSource,
+      authMethod:
+        capabilities.tokenSource !== "none" ? capabilities.tokenSource : capabilities.apiKeySource,
     }) ?? apiProviderAuthMetadata(capabilities.apiProvider);
   const usageLimits = !capabilities.usage
     ? makeUnavailableUsageLimits({ checkedAt, reason: "probeFailed" })

@@ -218,7 +218,7 @@ function ProviderAuthActions({
   }
 
   return (
-    <div className="grid gap-2 border-t border-border/60 pt-3">
+    <div className="grid gap-2">
       <p className="font-medium">{providerName} sign-in</p>
       <p role="status" className="text-muted-foreground [overflow-wrap:anywhere]">
         {authStatusMessage}

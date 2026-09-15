@@ -175,6 +175,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
         lookup: () =>
           probeClaudeCapabilities(effectiveConfig, processEnv, cwd).pipe(
             Effect.provideService(Path.Path, path),
+            Effect.provideService(FileSystem.FileSystem, fileSystem),
           ),
       });
       const capabilitiesCacheKey = yield* makeClaudeCapabilitiesCacheKey(effectiveConfig, cwd);
@@ -317,7 +318,13 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
           command: effectiveConfig.binaryPath || "claude",
           processEnv,
           methods: authMethods,
-          probeAuth: snapshot.refresh.pipe(Effect.map((provider) => provider.auth)),
+          // Drop the TTL'd capabilities probe first: sign-in and sign-out
+          // change the account metadata, and a cached pre-auth result would
+          // otherwise be republished for up to CAPABILITIES_PROBE_TTL.
+          probeAuth: Cache.invalidate(capabilitiesProbeCache, capabilitiesCacheKey).pipe(
+            Effect.andThen(snapshot.refresh),
+            Effect.map((provider) => provider.auth),
+          ),
           logoutCommand: ["auth", "logout"],
           onLogout: apiKeyCredential.remove,
         }),
