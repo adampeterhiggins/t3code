@@ -43,6 +43,7 @@ import {
   authMethodDescriptors,
   type CliAuthMethodSpec,
   makeCliProviderAuth,
+  providerAuthMethodPersistence,
   providerEnvVarCredential,
 } from "../CliProviderAuth.ts";
 import * as ModelManifest from "../ModelManifest.ts";
@@ -221,6 +222,11 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
         canInstall: false,
         authMethods: authMethodDescriptors(authMethods),
       };
+      const authMethodPersistence = providerAuthMethodPersistence({
+        serverSettings,
+        instanceId,
+        methods: authMethods,
+      });
       const stampSetup = <T extends { setup?: ServerProvider["setup"] }>(draft: T) => ({
         ...draft,
         setup: providerSetup,
@@ -243,6 +249,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
             ),
             Effect.map(stampSetup),
             Effect.map(stampIdentity),
+            Effect.flatMap(authMethodPersistence.stamp),
           ),
         ),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
@@ -325,6 +332,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
             Effect.andThen(snapshot.refresh),
             Effect.map((provider) => provider.auth),
           ),
+          recordAuthMethod: authMethodPersistence.record,
           logoutCommand: ["auth", "logout"],
           onLogout: apiKeyCredential.remove,
         }),

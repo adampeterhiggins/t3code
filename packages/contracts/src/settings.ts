@@ -1105,6 +1105,13 @@ export const ServerSettings = Schema.Struct({
   providerInstances: Schema.Record(ProviderInstanceId, ProviderInstanceConfig).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
+  // Runtime sign-in provenance, not user config: which `setup.authMethods`
+  // entry produced each instance's current credential. Written on sign-in
+  // success, removed on sign-out. Deliberately outside `providerInstances`
+  // so recording it never triggers an instance rebuild.
+  providerAuthMethods: Schema.Record(ProviderInstanceId, TrimmedNonEmptyString).pipe(
+    Schema.withDecodingDefault(Effect.succeed({})),
+  ),
   observability: ObservabilitySettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   // Keyed by a user-chosen id so a source keeps its rows across edits. Entries
   // this build cannot decode round-trip untouched, as provider instances do.
@@ -1344,6 +1351,11 @@ export const ServerSettingsPatch = Schema.Struct({
   // patches risk leaving driver-specific config in a half-merged state.
   // The web UI sends a fully-formed map every time it edits this field.
   providerInstances: Schema.optionalKey(Schema.Record(ProviderInstanceId, ProviderInstanceConfig)),
+  // Per-entry, like `usageLimitSources`: `null` removes the record so
+  // sign-in and sign-out writes never race a stale read-modify-write.
+  providerAuthMethods: Schema.optionalKey(
+    Schema.Record(ProviderInstanceId, Schema.NullOr(TrimmedNonEmptyString)),
+  ),
   // Per-entry, unlike `providerInstances`: a client only ever adds or removes
   // one source, and sending the whole map races another edit that has not
   // echoed back yet. `null` removes; the server merges into its current map.

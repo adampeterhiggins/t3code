@@ -75,6 +75,8 @@ export const ProviderAuthState = Schema.Struct({
    * (as `callbackUrl`) — e.g. a one-time code or device-auth confirmation.
    */
   inputPrompt: Schema.optional(TrimmedNonEmptyString),
+  /** `setup.authMethods` id the current (or last) flow ran. */
+  methodId: Schema.optional(TrimmedNonEmptyString),
 });
 export type ProviderAuthState = typeof ProviderAuthState.Type;
 

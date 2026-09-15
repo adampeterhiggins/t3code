@@ -127,6 +127,26 @@ function ProviderAuthActions({
   const defaultMethod =
     methods.find((method) => method.kind === "sign-in-flow") ?? methods[0] ?? null;
   const selectedMethod = methods.find((method) => method.id === selectedMethodId) ?? defaultMethod;
+  // The server records which method produced the current credential
+  // (`auth.methodId`, persisted across restarts) and drops it when an
+  // out-of-band login replaces the credential. A just-finished flow carries
+  // the id until the next probe stamps it. Without either, fall back to
+  // the credential kind.
+  const recordedMethodId =
+    provider.auth.methodId ?? (auth?.phase === "succeeded" ? auth.methodId : undefined);
+  const recordedMethod = recordedMethodId
+    ? methods.find((method) => method.id === recordedMethodId)
+    : undefined;
+  const signedInMethodLabel =
+    recordedMethod?.kind === "paste-credential"
+      ? (recordedMethod.credentialLabel ?? recordedMethod.label)
+      : (recordedMethod?.label ??
+        (provider.auth.type === "apiKey" || provider.auth.type === "api_key"
+          ? (methods.find((method) => method.kind === "paste-credential")?.credentialLabel ??
+            "API key")
+          : provider.auth.type === "bedrock" || provider.auth.type === "amazonBedrock"
+            ? (provider.auth.label ?? "External sign-in")
+            : "Account sign-in"));
 
   async function runCommand<A, E>(
     label: string,
@@ -283,7 +303,14 @@ function ProviderAuthActions({
         </form>
       ) : null}
 
-      {!authActive && selectedMethod ? (
+      {!authActive && authenticated ? (
+        <div className="grid gap-1">
+          <span>Sign-in method</span>
+          <p className="text-muted-foreground">{signedInMethodLabel}</p>
+        </div>
+      ) : null}
+
+      {!authActive && !authenticated && selectedMethod ? (
         <div className="grid gap-2">
           {methods.length > 1 ? (
             <>

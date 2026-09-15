@@ -145,6 +145,7 @@ interface CliAuthFlow {
   readonly id: string;
   readonly ownerSessionId: string;
   readonly expiresAtMillis: number;
+  readonly method: CliAuthMethodSpec;
   state: ProviderAuthState;
   child: ChildProcessSpawner.ChildProcessHandle | undefined;
   acceptsInput: boolean;
@@ -182,6 +183,16 @@ export interface CliProviderAuthOptions {
   readonly methods: ReadonlyArray<CliAuthMethodSpec>;
   /** Re-probe the provider and return the auth block it will publish. */
   readonly probeAuth: Effect.Effect<ServerProviderAuth>;
+  /**
+   * Records which method produced the current credential (the method id on
+   * success, `undefined` on sign-out) so probes can stamp
+   * `auth.methodId`. Drivers wire this to
+   * `providerAuthMethodPersistence.record`. Best-effort: a failure is
+   * logged, it never fails the flow.
+   */
+  readonly recordAuthMethod?: (
+    methodId: string | undefined,
+  ) => Effect.Effect<void, ProviderSetupError>;
   /** Args appended to `command` for sign-out (e.g. `["auth", "logout"]`). */
   readonly logoutCommand?: ReadonlyArray<string>;
   /** Extra teardown on sign-out — e.g. removing a stored API-key env var. */
@@ -227,6 +238,11 @@ export const makeCliProviderAuth = Effect.fn("makeCliProviderAuth")(function* (
       ),
     );
 
+  const recordAuthMethod = (methodId: string | undefined) =>
+    options.recordAuthMethod === undefined
+      ? Effect.void
+      : options.recordAuthMethod(methodId).pipe(Effect.ignoreCause({ log: true }));
+
   const defaultDetect = options.probeAuth.pipe(
     Effect.map((auth) => auth.status === "authenticated"),
     Effect.orElseSucceed(() => false),
@@ -240,6 +256,7 @@ export const makeCliProviderAuth = Effect.fn("makeCliProviderAuth")(function* (
         message: `Checking ${options.providerLabel} credentials.`,
       });
       if (yield* detect) {
+        yield* recordAuthMethod(flow.method.id);
         yield* publishUpdate(flow, {
           phase: "succeeded",
           expiresAt: null,
@@ -361,6 +378,7 @@ export const makeCliProviderAuth = Effect.fn("makeCliProviderAuth")(function* (
           });
           yield* method.apply(credential);
           if (method.probeAfterApply === false) {
+            yield* recordAuthMethod(method.id);
             yield* publishUpdate(flow, {
               phase: "succeeded",
               expiresAt: null,
@@ -507,6 +525,7 @@ export const makeCliProviderAuth = Effect.fn("makeCliProviderAuth")(function* (
               ...emptyState,
               phase: "starting",
               flowId,
+              methodId: method.id,
               expiresAt: DateTime.formatIso(DateTime.makeUnsafe(expiresAtMillis)),
               message: `${method.label}…`,
             };
@@ -514,6 +533,7 @@ export const makeCliProviderAuth = Effect.fn("makeCliProviderAuth")(function* (
               id: flowId,
               ownerSessionId,
               expiresAtMillis,
+              method,
               state,
               child: undefined,
               acceptsInput: false,
@@ -616,6 +636,7 @@ export const makeCliProviderAuth = Effect.fn("makeCliProviderAuth")(function* (
               if (options.onLogout !== undefined) {
                 yield* options.onLogout;
               }
+              yield* recordAuthMethod(undefined);
               yield* options.probeAuth;
             }).pipe(Effect.scoped),
           ).pipe(Effect.exit);
@@ -751,6 +772,85 @@ export function stdinCredentialApply(input: {
             }),
       ),
     );
+}
+
+// Credential kinds no sign-in method can produce — Bedrock credentials
+// arrive from the environment, not from a T3 flow.
+const EXTERNAL_CREDENTIAL_TYPES = new Set(["bedrock", "amazonBedrock"]);
+const isApiKeyCredentialType = (type: string) => /^api[-_]?key$/i.test(type);
+
+/**
+ * Whether a recorded method could have produced a credential the probe now
+ * reports as `type`. `paste-credential` only ever produces an API key, and
+ * `cli`/`saved-credentials` flows surface account credentials — only
+ * `effect` may mint a key (Devin's browser sign-in provisions one). When
+ * they disagree, the credential was replaced out-of-band (e.g.
+ * `cursor-agent login` in a terminal) and the record is dropped rather
+ * than republished stale.
+ */
+const recordedMethodMatchesAuthType = (
+  method: CliAuthMethodSpec,
+  type: string | undefined,
+): boolean => {
+  if (type !== undefined && EXTERNAL_CREDENTIAL_TYPES.has(type)) return false;
+  if (type !== undefined && isApiKeyCredentialType(type)) {
+    return method.kind === "paste-credential" || method.kind === "effect";
+  }
+  return method.kind !== "paste-credential";
+};
+
+/**
+ * ServerSettings-backed provenance for which sign-in method produced an
+ * instance's current credential. The controller calls `record` with the
+ * method id on sign-in success and `undefined` on sign-out; drivers apply
+ * `stamp` inside `checkProvider` so published snapshots carry
+ * `auth.methodId` while the record still matches the probed credential.
+ */
+export function providerAuthMethodPersistence(input: {
+  readonly serverSettings: ServerSettingsService["Service"];
+  readonly instanceId: ProviderInstanceId;
+  readonly methods: ReadonlyArray<CliAuthMethodSpec>;
+}): {
+  readonly record: (methodId: string | undefined) => Effect.Effect<void, ProviderSetupError>;
+  readonly stamp: <T extends { readonly auth: ServerProviderAuth }>(
+    provider: T,
+  ) => Effect.Effect<T>;
+} {
+  const record = (methodId: string | undefined) =>
+    Effect.gen(function* () {
+      const settings = yield* input.serverSettings.getSettings;
+      if (settings.providerAuthMethods[input.instanceId] === methodId) return;
+      yield* input.serverSettings.updateSettings({
+        providerAuthMethods: { [input.instanceId]: methodId ?? null },
+      });
+    }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new ProviderSetupError({
+            instanceId: input.instanceId,
+            operation: "record",
+            detail: "Could not record the sign-in method for this provider instance.",
+            cause: cause as Error,
+          }),
+      ),
+    );
+
+  const stamp = <T extends { readonly auth: ServerProviderAuth }>(provider: T) =>
+    Effect.gen(function* () {
+      if (provider.auth.status !== "authenticated") return provider;
+      const settings = yield* input.serverSettings.getSettings.pipe(
+        Effect.orElseSucceed(() => undefined),
+      );
+      const methodId = settings?.providerAuthMethods[input.instanceId];
+      if (methodId === undefined) return provider;
+      const method = input.methods.find((candidate) => candidate.id === methodId);
+      if (method === undefined || !recordedMethodMatchesAuthType(method, provider.auth.type)) {
+        return provider;
+      }
+      return { ...provider, auth: { ...provider.auth, methodId } };
+    });
+
+  return { record, stamp };
 }
 
 /**

@@ -22,6 +22,7 @@ import { ServerSettingsService } from "../serverSettings.ts";
 import {
   cliOutputProbe,
   makeCliProviderAuth,
+  providerAuthMethodPersistence,
   providerEnvVarCredential,
   type CliAuthMethodSpec,
   type CliProviderAuthOptions,
@@ -320,6 +321,107 @@ it.layer(testLayer)("CliProviderAuth", (it) => {
         const cancelled = yield* controller.cancel("owner", waiting.flowId!);
         expect(cancelled.phase).toBe("cancelled");
       }),
+  );
+
+  it.effect("records the sign-in method on success and clears it on sign-out", () =>
+    Effect.gen(function* () {
+      const recorded: Array<string | undefined> = [];
+      const controller = yield* makeAuth({
+        methods: [
+          {
+            kind: "saved-credentials",
+            id: "saved",
+            label: "Use saved login",
+            missingMessage: "No saved login.",
+          },
+        ],
+        probeAuth: Effect.succeed(authenticated),
+        recordAuthMethod: (methodId) =>
+          Effect.sync(() => {
+            recorded.push(methodId);
+          }),
+      });
+      const final = yield* awaitPhase(controller, "owner", ["succeeded", "failed"]).pipe(
+        Effect.forkChild,
+      );
+      yield* controller.start("owner", { methodId: "saved" });
+      yield* Fiber.join(final);
+      expect(recorded).toEqual(["saved"]);
+
+      yield* controller.logout(Effect.void);
+      expect(recorded).toEqual(["saved", undefined]);
+    }),
+  );
+
+  it.effect("does not record the sign-in method when verification fails", () =>
+    Effect.gen(function* () {
+      const recorded: Array<string | undefined> = [];
+      const controller = yield* makeAuth({
+        methods: [
+          {
+            kind: "saved-credentials",
+            id: "saved",
+            label: "Use saved login",
+            missingMessage: "No saved login.",
+          },
+        ],
+        probeAuth: Effect.succeed(unauthenticated),
+        recordAuthMethod: (methodId) =>
+          Effect.sync(() => {
+            recorded.push(methodId);
+          }),
+      });
+      const final = yield* awaitPhase(controller, "owner", ["succeeded", "failed"]).pipe(
+        Effect.forkChild,
+      );
+      yield* controller.start("owner", { methodId: "saved" });
+      yield* Fiber.join(final);
+      expect(recorded).toEqual([]);
+    }),
+  );
+
+  it.effect("providerAuthMethodPersistence stamps the method while it matches the credential", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsService;
+      const methods: ReadonlyArray<CliAuthMethodSpec> = [
+        {
+          kind: "saved-credentials",
+          id: "saved",
+          label: "Use saved login",
+          missingMessage: "none",
+        },
+        {
+          kind: "paste-credential",
+          id: "api-key",
+          label: "Paste a key",
+          credentialLabel: "API key",
+          apply: () => Effect.void,
+        },
+      ];
+      const persistence = providerAuthMethodPersistence({
+        serverSettings,
+        instanceId,
+        methods,
+      });
+      const provider = (auth: ServerProviderAuth) => ({ auth });
+      const stampedMethodId = (auth: ServerProviderAuth) =>
+        persistence.stamp(provider(auth)).pipe(Effect.map((next) => next.auth.methodId));
+
+      yield* persistence.record("saved");
+      expect(yield* stampedMethodId(authenticated)).toBe("saved");
+      // An API-key credential cannot come from an account sign-in — the
+      // credential was replaced out-of-band, so the record is dropped.
+      expect(yield* stampedMethodId({ status: "authenticated", type: "apiKey" })).toBeUndefined();
+      expect(yield* stampedMethodId(unauthenticated)).toBeUndefined();
+
+      yield* persistence.record("api-key");
+      expect(yield* stampedMethodId({ status: "authenticated", type: "apiKey" })).toBe("api-key");
+      // An out-of-band account login discards the key record.
+      expect(yield* stampedMethodId({ status: "authenticated", type: "chatgpt" })).toBeUndefined();
+
+      yield* persistence.record(undefined);
+      expect(yield* stampedMethodId(authenticated)).toBeUndefined();
+    }),
   );
 
   it.effect.skipIf(windowsHost)("logout runs the logout command and the extra teardown", () =>

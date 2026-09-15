@@ -64,6 +64,10 @@ export const ServerProviderAuth = Schema.Struct({
   type: Schema.optional(TrimmedNonEmptyString),
   label: Schema.optional(TrimmedNonEmptyString),
   email: Schema.optional(TrimmedNonEmptyString),
+  // `setup.authMethods` id of the sign-in method that produced the current
+  // credential, when the server recorded one. Absent for credentials the
+  // CLI acquired outside T3.
+  methodId: Schema.optional(TrimmedNonEmptyString),
 });
 export type ServerProviderAuth = typeof ServerProviderAuth.Type;
 

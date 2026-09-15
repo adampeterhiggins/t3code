@@ -39,6 +39,7 @@ import {
   cliOutputProbe,
   type CliAuthMethodSpec,
   makeCliProviderAuth,
+  providerAuthMethodPersistence,
 } from "../CliProviderAuth.ts";
 import { OpenCodeRuntime } from "../opencodeRuntime.ts";
 import * as OpenCodeServerOwner from "../OpenCodeServerOwner.ts";
@@ -180,6 +181,11 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeSettings, OpenCodeDriverEnv>
         canInstall: false,
         authMethods: authMethodDescriptors(authMethods),
       };
+      const authMethodPersistence = providerAuthMethodPersistence({
+        serverSettings,
+        instanceId,
+        methods: authMethods,
+      });
       const stampSetup = <T extends { setup?: ServerProvider["setup"] }>(draft: T) => ({
         ...draft,
         setup: providerSetup,
@@ -192,6 +198,7 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeSettings, OpenCodeDriverEnv>
       ).pipe(
         Effect.map(stampSetup),
         Effect.map(stampIdentity),
+        Effect.flatMap(authMethodPersistence.stamp),
         Effect.provideService(OpenCodeServerOwner.OpenCodeServerOwner, serverOwner),
         Effect.provideService(OpenCodeRuntime, openCodeRuntime),
       );
@@ -314,6 +321,7 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeSettings, OpenCodeDriverEnv>
           processEnv,
           methods: authMethods,
           probeAuth: snapshot.refresh.pipe(Effect.map((provider) => provider.auth)),
+          recordAuthMethod: authMethodPersistence.record,
         }),
       } satisfies ProviderInstance;
     }),

@@ -54,6 +54,7 @@ import {
   authMethodDescriptors,
   type CliAuthMethodSpec,
   makeCliProviderAuth,
+  providerAuthMethodPersistence,
   stdinCredentialApply,
 } from "../CliProviderAuth.ts";
 import * as ModelManifest from "../ModelManifest.ts";
@@ -250,6 +251,11 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
         canInstall: false,
         authMethods: authMethodDescriptors(authMethods),
       };
+      const authMethodPersistence = providerAuthMethodPersistence({
+        serverSettings,
+        instanceId,
+        methods: authMethods,
+      });
       const stampSetup = <T extends { setup?: ServerProvider["setup"] }>(draft: T) => ({
         ...draft,
         setup: providerSetup,
@@ -272,7 +278,7 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
                 stampSetup(ModelManifest.applyModelManifest(draft, manifest, DRIVER_KIND)),
               ),
             { concurrent: true },
-          ),
+          ).pipe(Effect.flatMap(authMethodPersistence.stamp)),
         ),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
       );
@@ -423,6 +429,7 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
           processEnv,
           methods: authMethods,
           probeAuth: snapshot.refresh.pipe(Effect.map((provider) => provider.auth)),
+          recordAuthMethod: authMethodPersistence.record,
           logoutCommand: ["logout"],
         }),
       } satisfies ProviderInstance;
