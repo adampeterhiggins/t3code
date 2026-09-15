@@ -11,7 +11,7 @@
  *
  * @module provider/Drivers/CursorDriver
  */
-import { CursorSettings, ProviderDriverKind } from "@t3tools/contracts";
+import { CursorSettings, ProviderDriverKind, type ServerProvider } from "@t3tools/contracts";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -34,6 +34,13 @@ import {
 } from "../Layers/CursorProvider.ts";
 import { ProviderEventLoggers } from "../Layers/ProviderEventLoggers.ts";
 import { makeManagedServerProvider } from "../makeManagedServerProvider.ts";
+import {
+  authMethodDescriptors,
+  type CliAuthMethodSpec,
+  makeCliProviderAuth,
+  providerAuthMethodPersistence,
+  providerEnvVarCredential,
+} from "../CliProviderAuth.ts";
 import {
   defaultProviderContinuationIdentity,
   type ProviderDriver,
@@ -138,12 +145,68 @@ export const CursorDriver: ProviderDriver<CursorSettings, CursorDriverEnv> = {
       const textGeneration = yield* makeCursorTextGeneration(effectiveConfig, processEnv);
 
       const discoverModels = yield* makeCursorModelDiscovery(effectiveConfig, processEnv);
+
+      const apiKeyCredential = providerEnvVarCredential({
+        serverSettings,
+        instanceId,
+        driverKind: DRIVER_KIND,
+        envName: "CURSOR_API_KEY",
+      });
+      const authMethods: ReadonlyArray<CliAuthMethodSpec> = [
+        {
+          kind: "cli",
+          id: "browser",
+          label: "Sign in with browser",
+          description:
+            "Runs `cursor-agent login` and shows a Cursor sign-in URL to open in your browser.",
+          args: ["login"],
+          env: { NO_OPEN_BROWSER: "1" },
+          urlPattern: /https:\/\/cursor\.com\/\S+/,
+          waitingMessage: "Open the Cursor sign-in URL in your browser to finish signing in.",
+        },
+        {
+          kind: "saved-credentials",
+          id: "saved",
+          label: "Use saved Cursor login",
+          description: "Reuses the credentials `cursor-agent login` stored on this environment.",
+          missingMessage:
+            "No Cursor login found on this environment. Sign in with a browser or paste an API key.",
+        },
+        {
+          kind: "paste-credential",
+          id: "api-key",
+          label: "Paste an API key",
+          description: "Stored as a sensitive CURSOR_API_KEY variable on this instance.",
+          credentialLabel: "Cursor API key",
+          credentialPlaceholder: "key_…",
+          probeAfterApply: false,
+          appliedMessage: "Cursor API key saved.",
+          apply: apiKeyCredential.apply,
+        },
+      ];
+      const providerSetup: ServerProvider["setup"] = {
+        canAuthenticate: true,
+        canInstall: false,
+        authMethods: authMethodDescriptors(authMethods),
+      };
+      const authMethodPersistence = providerAuthMethodPersistence({
+        serverSettings,
+        instanceId,
+        methods: authMethods,
+      });
+      const stampSetup = <T extends { setup?: ServerProvider["setup"] }>(draft: T) => ({
+        ...draft,
+        setup: providerSetup,
+      });
+
       const checkProvider = checkCursorProviderStatus(
         effectiveConfig,
         processEnv,
         discoverModels,
       ).pipe(
+        Effect.map(stampSetup),
         Effect.map(stampIdentity),
+        Effect.flatMap(authMethodPersistence.stamp),
         Effect.provideService(Crypto.Crypto, crypto),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
         Effect.provideService(FileSystem.FileSystem, fileSystem),
@@ -157,7 +220,10 @@ export const CursorDriver: ProviderDriver<CursorSettings, CursorDriverEnv> = {
         streamSettings: snapshotSettings.streamSettings,
         haveSettingsChanged: haveProviderSnapshotSettingsChanged,
         initialSnapshot: (settings) =>
-          buildInitialCursorProviderSnapshot(settings.provider).pipe(Effect.map(stampIdentity)),
+          buildInitialCursorProviderSnapshot(settings.provider).pipe(
+            Effect.map(stampSetup),
+            Effect.map(stampIdentity),
+          ),
         checkProvider,
         // Model catalog and capabilities come exclusively from Cursor's
         // list_available_models extension method during provider checks.
@@ -217,6 +283,17 @@ export const CursorDriver: ProviderDriver<CursorSettings, CursorDriverEnv> = {
               ]).pipe(Effect.map(([machineSnapshot, skills]) => ({ ...machineSnapshot, skills }))),
         adapter,
         textGeneration,
+        auth: yield* makeCliProviderAuth({
+          instanceId,
+          providerLabel: "Cursor",
+          command: effectiveConfig.binaryPath || "cursor-agent",
+          processEnv,
+          methods: authMethods,
+          probeAuth: snapshot.refresh.pipe(Effect.map((provider) => provider.auth)),
+          recordAuthMethod: authMethodPersistence.record,
+          logoutCommand: ["logout"],
+          onLogout: apiKeyCredential.remove,
+        }),
       } satisfies ProviderInstance;
     }),
 };

@@ -138,10 +138,10 @@ const makeHarness = Effect.fn("ProviderAuthService.test.makeHarness")(function* 
   });
 
   const auth: ProviderAuthController = {
-    start: Effect.fn(function* (ownerSessionId, stopSessions) {
+    start: Effect.fn(function* (ownerSessionId, startOptions) {
       gateClosed = true;
       actions.push("close-gate");
-      yield* stopSessions ?? Effect.void;
+      yield* startOptions?.stopSessions ?? Effect.void;
       flowOwner = ownerSessionId;
       state = waitingAuthState;
       actions.push("start-sign-in");

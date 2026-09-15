@@ -12,7 +12,7 @@
  *
  * @module provider/Drivers/OpenCodeDriver
  */
-import { OpenCodeSettings, ProviderDriverKind } from "@t3tools/contracts";
+import { OpenCodeSettings, ProviderDriverKind, type ServerProvider } from "@t3tools/contracts";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -34,6 +34,13 @@ import {
 } from "../Layers/OpenCodeProvider.ts";
 import { ProviderEventLoggers } from "../Layers/ProviderEventLoggers.ts";
 import { makeManagedServerProvider } from "../makeManagedServerProvider.ts";
+import {
+  authMethodDescriptors,
+  cliOutputProbe,
+  type CliAuthMethodSpec,
+  makeCliProviderAuth,
+  providerAuthMethodPersistence,
+} from "../CliProviderAuth.ts";
 import { OpenCodeRuntime } from "../opencodeRuntime.ts";
 import * as OpenCodeServerOwner from "../OpenCodeServerOwner.ts";
 import {
@@ -147,12 +154,51 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeSettings, OpenCodeDriverEnv>
         Effect.provideService(OpenCodeServerOwner.OpenCodeServerOwner, serverOwner),
       );
 
+      // `opencode auth login` is an interactive TUI — it cannot be driven
+      // from a pipe — so the only auth method is detecting credentials the
+      // CLI already holds (`auth.json` OAuth entries or env-var providers).
+      const opencodeCommand = effectiveConfig.binaryPath || "opencode";
+      const authMethods: ReadonlyArray<CliAuthMethodSpec> = [
+        {
+          kind: "saved-credentials",
+          id: "saved",
+          label: "Use saved OpenCode credentials",
+          description:
+            "Detects credentials stored by `opencode auth login` or provider API keys in the environment.",
+          missingMessage:
+            "No OpenCode credentials found on this environment. Run `opencode auth login` there first.",
+          probe: cliOutputProbe({
+            spawner,
+            command: opencodeCommand,
+            args: ["auth", "list"],
+            processEnv,
+            match: /\d+\s+(credentials?|environment variables?)/i,
+          }),
+        },
+      ];
+      const providerSetup: ServerProvider["setup"] = {
+        canAuthenticate: true,
+        canInstall: false,
+        authMethods: authMethodDescriptors(authMethods),
+      };
+      const authMethodPersistence = providerAuthMethodPersistence({
+        serverSettings,
+        instanceId,
+        methods: authMethods,
+      });
+      const stampSetup = <T extends { setup?: ServerProvider["setup"] }>(draft: T) => ({
+        ...draft,
+        setup: providerSetup,
+      });
+
       const checkProvider = checkOpenCodeProviderStatus(
         effectiveConfig,
         serverConfig.cwd,
         processEnv,
       ).pipe(
+        Effect.map(stampSetup),
         Effect.map(stampIdentity),
+        Effect.flatMap(authMethodPersistence.stamp),
         Effect.provideService(OpenCodeServerOwner.OpenCodeServerOwner, serverOwner),
         Effect.provideService(OpenCodeRuntime, openCodeRuntime),
       );
@@ -209,7 +255,10 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeSettings, OpenCodeDriverEnv>
           checkProviderOnSettingsChange: () => false,
           refreshOnInterval: false,
           initialSnapshot: (settings) =>
-            makePendingOpenCodeProvider(settings.provider).pipe(Effect.map(stampIdentity)),
+            makePendingOpenCodeProvider(settings.provider).pipe(
+              Effect.map(stampSetup),
+              Effect.map(stampIdentity),
+            ),
           checkProvider,
           enrichSnapshot: ({ settings, snapshot, publishSnapshot }) =>
             resolveMaintenance().pipe(
@@ -265,6 +314,15 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeSettings, OpenCodeDriverEnv>
               ),
         adapter,
         textGeneration,
+        auth: yield* makeCliProviderAuth({
+          instanceId,
+          providerLabel: "OpenCode",
+          command: opencodeCommand,
+          processEnv,
+          methods: authMethods,
+          probeAuth: snapshot.refresh.pipe(Effect.map((provider) => provider.auth)),
+          recordAuthMethod: authMethodPersistence.record,
+        }),
       } satisfies ProviderInstance;
     }),
 };

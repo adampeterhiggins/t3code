@@ -200,6 +200,7 @@ export function buildServerProvider(input: {
   skills?: ReadonlyArray<ServerProviderSkill>;
   modelCatalogVersion?: string;
   supportsConversationRollback?: boolean;
+  setup?: ServerProvider["setup"];
   probe: ProviderProbeResult;
 }): ServerProviderDraft {
   const versionAdvisory = input.driver
@@ -239,6 +240,7 @@ export function buildServerProvider(input: {
     skills: [...(input.skills ?? [])],
     ...(input.probe.usageLimits ? { usageLimits: input.probe.usageLimits } : {}),
     ...(versionAdvisory ? { versionAdvisory } : {}),
+    ...(input.setup !== undefined ? { setup: input.setup } : {}),
   };
 }
 

@@ -12,7 +12,7 @@
  *
  * @module provider/Drivers/ClaudeDriver
  */
-import { ClaudeSettings, ProviderDriverKind } from "@t3tools/contracts";
+import { ClaudeSettings, ProviderDriverKind, type ServerProvider } from "@t3tools/contracts";
 import * as Cache from "effect/Cache";
 import * as Duration from "effect/Duration";
 import * as Crypto from "effect/Crypto";
@@ -39,6 +39,13 @@ import {
 import { ProviderEventLoggers } from "../Layers/ProviderEventLoggers.ts";
 import { resolveClaudeModelCatalog } from "../ClaudeModelCatalog.ts";
 import { makeManagedServerProvider } from "../makeManagedServerProvider.ts";
+import {
+  authMethodDescriptors,
+  type CliAuthMethodSpec,
+  makeCliProviderAuth,
+  providerAuthMethodPersistence,
+  providerEnvVarCredential,
+} from "../CliProviderAuth.ts";
 import * as ModelManifest from "../ModelManifest.ts";
 import {
   defaultProviderContinuationIdentity,
@@ -169,9 +176,64 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
         lookup: () =>
           probeClaudeCapabilities(effectiveConfig, processEnv, cwd).pipe(
             Effect.provideService(Path.Path, path),
+            Effect.provideService(FileSystem.FileSystem, fileSystem),
           ),
       });
       const capabilitiesCacheKey = yield* makeClaudeCapabilitiesCacheKey(effectiveConfig, cwd);
+
+      const apiKeyCredential = providerEnvVarCredential({
+        serverSettings,
+        instanceId,
+        driverKind: DRIVER_KIND,
+        envName: "ANTHROPIC_API_KEY",
+      });
+      const authMethods: ReadonlyArray<CliAuthMethodSpec> = [
+        {
+          kind: "cli",
+          id: "browser",
+          label: "Sign in with browser",
+          description:
+            "Runs `claude auth login` — open the shown URL, sign in, then paste the code it displays.",
+          args: ["auth", "login"],
+          // Suppresses `claude auth login`'s automatic browser open; the URL is
+          // surfaced in the UI for the user to open instead.
+          env: { BROWSER: "false" },
+          urlPattern: /https:\/\/claude\.(?:com|ai)\/\S+/,
+          inputPrompt: "Paste the code shown after signing in",
+        },
+        {
+          kind: "saved-credentials",
+          id: "saved",
+          label: "Use saved Claude login",
+          description: "Reuses the credentials `claude auth login` stored on this environment.",
+          missingMessage: "No Claude login found on this environment. Sign in or paste an API key.",
+        },
+        {
+          kind: "paste-credential",
+          id: "api-key",
+          label: "Paste an API key",
+          description: "Stored as a sensitive ANTHROPIC_API_KEY variable on this instance.",
+          credentialLabel: "Anthropic API key",
+          credentialPlaceholder: "sk-ant-…",
+          probeAfterApply: false,
+          appliedMessage: "Anthropic API key saved.",
+          apply: apiKeyCredential.apply,
+        },
+      ];
+      const providerSetup: ServerProvider["setup"] = {
+        canAuthenticate: true,
+        canInstall: false,
+        authMethods: authMethodDescriptors(authMethods),
+      };
+      const authMethodPersistence = providerAuthMethodPersistence({
+        serverSettings,
+        instanceId,
+        methods: authMethods,
+      });
+      const stampSetup = <T extends { setup?: ServerProvider["setup"] }>(draft: T) => ({
+        ...draft,
+        setup: providerSetup,
+      });
 
       // Start the TTL-gated refresh without delaying provider readiness. The
       // next check observes a remote manifest after the background fetch lands.
@@ -188,7 +250,9 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
                 scopedLimitNames,
               ),
             ),
+            Effect.map(stampSetup),
             Effect.map(stampIdentity),
+            Effect.flatMap(authMethodPersistence.stamp),
           ),
         ),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
@@ -207,6 +271,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
             Effect.flatMap((manifest) =>
               makePendingClaudeProvider(settings.provider, resolveClaudeModelCatalog(manifest)),
             ),
+            Effect.map(stampSetup),
             Effect.map(stampIdentity),
           ),
         checkProvider,
@@ -257,6 +322,23 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
         snapshotForCwd,
         adapter,
         textGeneration,
+        auth: yield* makeCliProviderAuth({
+          instanceId,
+          providerLabel: "Claude",
+          command: effectiveConfig.binaryPath || "claude",
+          processEnv,
+          methods: authMethods,
+          // Drop the TTL'd capabilities probe first: sign-in and sign-out
+          // change the account metadata, and a cached pre-auth result would
+          // otherwise be republished for up to CAPABILITIES_PROBE_TTL.
+          probeAuth: Cache.invalidate(capabilitiesProbeCache, capabilitiesCacheKey).pipe(
+            Effect.andThen(snapshot.refresh),
+            Effect.map((provider) => provider.auth),
+          ),
+          recordAuthMethod: authMethodPersistence.record,
+          logoutCommand: ["auth", "logout"],
+          onLogout: apiKeyCredential.remove,
+        }),
       } satisfies ProviderInstance;
     }),
 };

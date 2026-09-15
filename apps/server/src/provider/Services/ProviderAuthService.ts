@@ -3,10 +3,24 @@ import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
 import type * as Stream from "effect/Stream";
 
+/**
+ * Optional choices for `start`. `methodId` picks one of the provider's
+ * advertised `setup.authMethods`; `credential` carries a pasted secret for
+ * `paste-credential` methods. `stopSessions` stops this instance's running
+ * sessions — only providers that share one process across threads (e.g.
+ * Antigravity) use it; CLI providers keep sessions running since each
+ * process owns its credentials.
+ */
+export interface ProviderAuthStartOptions {
+  readonly methodId?: string | undefined;
+  readonly credential?: string | undefined;
+  readonly stopSessions?: Effect.Effect<void, ProviderSetupError> | undefined;
+}
+
 export interface ProviderAuthController {
   readonly start: (
     ownerSessionId: string,
-    stopSessions?: Effect.Effect<void, ProviderSetupError>,
+    options?: ProviderAuthStartOptions,
   ) => Effect.Effect<ProviderAuthState, ProviderSetupError>;
   readonly complete: (
     ownerSessionId: string,
@@ -30,7 +44,10 @@ interface ProviderAuthTarget {
 
 export interface ProviderAuthServiceShape {
   readonly start: (
-    input: ProviderAuthTarget,
+    input: ProviderAuthTarget & {
+      readonly methodId?: string | undefined;
+      readonly credential?: string | undefined;
+    },
     ownerSessionId: string,
   ) => Effect.Effect<ProviderAuthState, ProviderSetupError>;
   readonly complete: (

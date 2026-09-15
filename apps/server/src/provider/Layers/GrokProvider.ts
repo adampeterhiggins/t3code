@@ -447,8 +447,15 @@ export const checkGrokProviderStatus = Effect.fn("checkGrokProviderStatus")(func
     });
   }
 
+  // An ambient `XAI_API_KEY` survives sign-out — only an instance-stored
+  // one is removed by `onLogout`.
   const auth: ServerProviderAuth = environment[GROK_API_KEY_ENV]?.trim()
-    ? { status: "authenticated", type: "api_key", label: "xAI API key" }
+    ? {
+        status: "authenticated",
+        type: "api_key",
+        label: "xAI API key",
+        ...(process.env[GROK_API_KEY_ENV]?.trim() ? { external: true } : {}),
+      }
     : cliModels.authenticated === true
       ? { status: "authenticated", type: "cached_token", label: "Grok account" }
       : cliModels.authenticated === false

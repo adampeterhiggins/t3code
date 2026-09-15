@@ -11,18 +11,15 @@ import { normalizeModelSlug } from "@t3tools/shared/model";
 import * as AcpSessionRuntime from "./AcpSessionRuntime.ts";
 import { makeXAiPromptCompletionRuntime } from "./XAiAcpExtension.ts";
 
-const GROK_API_KEY_ENV = "XAI_API_KEY";
 const GROK_OAUTH2_REFERRER_ENV = "GROK_OAUTH2_REFERRER";
 const T3_CODE_OAUTH_REFERRER = "t3code";
-const GROK_AUTH_METHOD_API_KEY = "xai.api_key";
-const GROK_AUTH_METHOD_CACHED_TOKEN = "cached_token";
 const GROK_DRIVER_KIND = ProviderDriverKind.make("grok");
 
 type GrokAcpRuntimeGrokSettings = Pick<GrokSettings, "binaryPath">;
 
 interface GrokAcpRuntimeInput extends Omit<
   AcpSessionRuntime.AcpSessionRuntimeOptions,
-  "authMethodId" | "clientCapabilities" | "spawn"
+  "clientCapabilities" | "spawn"
 > {
   readonly childProcessSpawner: ChildProcessSpawner.ChildProcessSpawner["Service"];
   readonly grokSettings: GrokAcpRuntimeGrokSettings | null | undefined;
@@ -62,12 +59,6 @@ export function buildGrokAcpSpawnInput(
   };
 }
 
-function resolveGrokAuthMethodId(environment: NodeJS.ProcessEnv | undefined): string {
-  return environment?.[GROK_API_KEY_ENV]?.trim()
-    ? GROK_AUTH_METHOD_API_KEY
-    : GROK_AUTH_METHOD_CACHED_TOKEN;
-}
-
 export const makeGrokAcpRuntime = (
   input: GrokAcpRuntimeInput,
 ): Effect.Effect<
@@ -85,7 +76,6 @@ export const makeGrokAcpRuntime = (
           input.environment,
           input.runtimeMode,
         ),
-        authMethodId: resolveGrokAuthMethodId(input.environment),
       }).pipe(
         Layer.provide(
           Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, input.childProcessSpawner),

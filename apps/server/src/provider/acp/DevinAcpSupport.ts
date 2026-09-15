@@ -52,7 +52,7 @@ function devinAcpPermissionArgs(runtimeMode?: RuntimeMode): ReadonlyArray<string
 
 export interface DevinAcpRuntimeInput extends Omit<
   AcpSessionRuntime.AcpSessionRuntimeOptions,
-  "authMethodId" | "clientCapabilities" | "spawn"
+  "clientCapabilities" | "spawn"
 > {
   readonly childProcessSpawner: ChildProcessSpawner.ChildProcessSpawner["Service"];
   readonly devinSettings: DevinAcpRuntimeDevinSettings | null | undefined;
@@ -110,7 +110,6 @@ export const makeDevinAcpRuntime = (
           input.environment,
           input.runtimeMode,
         ),
-        authMethodId: "devin-browser",
         clientCapabilities: DEVIN_ACP_CLIENT_CAPABILITIES,
       }).pipe(
         Layer.provide(

@@ -173,6 +173,7 @@ export function applyServerSettingsPatch(
     // Merged per entry below; its `null` removals must not reach deepMerge.
     usageLimitSources: usageLimitSourcesPatch,
     usagePriceOverrides: usagePriceOverridesPatch,
+    providerAuthMethods: providerAuthMethodsPatch,
     projectAgentBrowserAccessOverrides: projectAgentBrowserAccessOverridesPatch,
     projectAutoPullOverrides: projectAutoPullOverridesPatch,
     ...patchForMerge
@@ -266,6 +267,14 @@ export function applyServerSettingsPatch(
           usageLimitSources: mergeSettingsEntries(
             current.usageLimitSources,
             usageLimitSourcesPatch,
+          ),
+        }
+      : {}),
+    ...(providerAuthMethodsPatch !== undefined
+      ? {
+          providerAuthMethods: mergeSettingsEntries(
+            current.providerAuthMethods,
+            providerAuthMethodsPatch,
           ),
         }
       : {}),

@@ -3,7 +3,13 @@
  *
  * @module DevinDriver
  */
-import { DevinSettings, ProviderDriverKind } from "@t3tools/contracts";
+import {
+  DevinSettings,
+  ProviderDriverKind,
+  ProviderSetupError,
+  type ServerProvider,
+} from "@t3tools/contracts";
+import { HostProcessWorkingDirectory } from "@t3tools/shared/hostProcess";
 import * as Schema from "effect/Schema";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
@@ -25,6 +31,14 @@ import {
 } from "../Layers/DevinProvider.ts";
 import { ProviderEventLoggers } from "../Layers/ProviderEventLoggers.ts";
 import { makeManagedServerProvider } from "../makeManagedServerProvider.ts";
+import {
+  authMethodDescriptors,
+  type CliAuthMethodSpec,
+  makeCliProviderAuth,
+  providerAuthMethodPersistence,
+  providerEnvVarCredential,
+} from "../CliProviderAuth.ts";
+import { makeDevinAcpRuntime } from "../acp/DevinAcpSupport.ts";
 import {
   defaultProviderContinuationIdentity,
   type ProviderDriver,
@@ -129,8 +143,91 @@ export const DevinDriver: ProviderDriver<DevinSettings, DevinDriverEnv> = {
       });
       const textGeneration = yield* makeDevinTextGeneration(effectiveConfig, processEnv);
 
+      const apiKeyCredential = providerEnvVarCredential({
+        serverSettings,
+        instanceId,
+        driverKind: DRIVER_KIND,
+        envName: "WINDSURF_API_KEY",
+      });
+      const authCwd = yield* HostProcessWorkingDirectory;
+      const authMethods: ReadonlyArray<CliAuthMethodSpec> = [
+        {
+          kind: "effect",
+          id: "browser",
+          label: "Sign in with browser",
+          description:
+            "Runs Devin's browser sign-in and shows a Devin sign-in URL to open in your browser.",
+          waitingMessage: "Open the Devin sign-in URL in your browser to finish signing in.",
+          run: ({ publishAuthorizationUrl }) => {
+            let stderrTail = "";
+            let publishedUrl: string | undefined;
+            return makeDevinAcpRuntime({
+              devinSettings: effectiveConfig,
+              environment: processEnv,
+              childProcessSpawner: spawner,
+              cwd: authCwd,
+              clientInfo: { name: "t3-code", version: "0.0.0" },
+              onStderr: (text) => {
+                stderrTail = (stderrTail + text).slice(-4096);
+                const url = /https:\/\/[^\s"'\\]+/.exec(stderrTail)?.[0];
+                if (url === undefined || url === publishedUrl) return Effect.void;
+                publishedUrl = url;
+                return publishAuthorizationUrl(url);
+              },
+            }).pipe(
+              Effect.flatMap((runtime) => runtime.authenticate("devin-browser")),
+              Effect.provideService(Crypto.Crypto, crypto),
+              Effect.mapError(
+                (cause) =>
+                  new ProviderSetupError({
+                    instanceId,
+                    operation: "start",
+                    detail: `Devin browser sign-in did not complete: ${cause.message}`,
+                    cause: cause as Error,
+                  }),
+              ),
+            );
+          },
+        },
+        {
+          kind: "saved-credentials",
+          id: "saved",
+          label: "Use saved Devin login",
+          description: "Reuses the credentials `devin auth login` stored on this environment.",
+          missingMessage:
+            "No Devin login found on this environment. Sign in with a browser or paste an API key.",
+        },
+        {
+          kind: "paste-credential",
+          id: "api-key",
+          label: "Paste an API key",
+          description: "Stored as a sensitive WINDSURF_API_KEY variable on this instance.",
+          credentialLabel: "Devin API key",
+          credentialPlaceholder: "devin-se…",
+          probeAfterApply: false,
+          appliedMessage: "Devin API key saved.",
+          apply: apiKeyCredential.apply,
+        },
+      ];
+      const providerSetup: ServerProvider["setup"] = {
+        canAuthenticate: true,
+        canInstall: false,
+        authMethods: authMethodDescriptors(authMethods),
+      };
+      const authMethodPersistence = providerAuthMethodPersistence({
+        serverSettings,
+        instanceId,
+        methods: authMethods,
+      });
+      const stampSetup = <T extends { setup?: ServerProvider["setup"] }>(draft: T) => ({
+        ...draft,
+        setup: providerSetup,
+      });
+
       const checkProvider = checkDevinProviderStatus(effectiveConfig, processEnv).pipe(
+        Effect.map(stampSetup),
         Effect.map(stampIdentity),
+        Effect.flatMap(authMethodPersistence.stamp),
         Effect.provideService(Crypto.Crypto, crypto),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
       );
@@ -142,7 +239,10 @@ export const DevinDriver: ProviderDriver<DevinSettings, DevinDriverEnv> = {
         streamSettings: snapshotSettings.streamSettings,
         haveSettingsChanged: haveProviderSnapshotSettingsChanged,
         initialSnapshot: (settings) =>
-          buildInitialDevinProviderSnapshot(settings.provider).pipe(Effect.map(stampIdentity)),
+          buildInitialDevinProviderSnapshot(settings.provider).pipe(
+            Effect.map(stampSetup),
+            Effect.map(stampIdentity),
+          ),
         checkProvider,
         // Model catalog comes from `devin models list --format json` during
         // provider checks; enrichment only republishes version advisories.
@@ -197,6 +297,18 @@ export const DevinDriver: ProviderDriver<DevinSettings, DevinDriverEnv> = {
               Effect.provideService(Path.Path, path),
             );
 
+      const auth = yield* makeCliProviderAuth({
+        instanceId,
+        providerLabel: "Devin",
+        command: effectiveConfig.binaryPath || "devin",
+        processEnv,
+        methods: authMethods,
+        probeAuth: snapshot.refresh.pipe(Effect.map((provider) => provider.auth)),
+        recordAuthMethod: authMethodPersistence.record,
+        logoutCommand: ["auth", "logout"],
+        onLogout: apiKeyCredential.remove,
+      });
+
       return {
         instanceId,
         driverKind: DRIVER_KIND,
@@ -208,6 +320,7 @@ export const DevinDriver: ProviderDriver<DevinSettings, DevinDriverEnv> = {
         snapshotForCwd,
         adapter,
         textGeneration,
+        auth,
       } satisfies ProviderInstance;
     }),
 };

@@ -32,7 +32,7 @@ function cursorAcpPermissionArgs(runtimeMode?: RuntimeMode): ReadonlyArray<strin
 
 export interface CursorAcpRuntimeInput extends Omit<
   AcpSessionRuntime.AcpSessionRuntimeOptions,
-  "authMethodId" | "clientCapabilities" | "spawn"
+  "clientCapabilities" | "spawn"
 > {
   readonly childProcessSpawner: ChildProcessSpawner.ChildProcessSpawner["Service"];
   readonly cursorSettings: CursorAcpRuntimeCursorSettings | null | undefined;
@@ -81,7 +81,6 @@ export const makeCursorAcpRuntime = (
           input.environment,
           input.runtimeMode,
         ),
-        authMethodId: "cursor_login",
         clientCapabilities: CURSOR_PARAMETERIZED_MODEL_PICKER_CAPABILITIES,
       }).pipe(
         Layer.provide(

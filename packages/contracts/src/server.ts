@@ -24,6 +24,7 @@ import {
 import { EditorId, FileManagerRevealKind, RemoteOpenTarget } from "./editor.ts";
 import { ModelCapabilities, ModelPricing } from "./model.ts";
 import { ProviderDriverKind, ProviderInstanceId } from "./providerInstance.ts";
+import { ProviderAuthMethod } from "./providerSetup.ts";
 import { ServerProviderUsageLimits, UsageLimitSourceSnapshots } from "./providerUsageLimits.ts";
 import { ServerSettings } from "./settings.ts";
 
@@ -63,6 +64,14 @@ export const ServerProviderAuth = Schema.Struct({
   type: Schema.optional(TrimmedNonEmptyString),
   label: Schema.optional(TrimmedNonEmptyString),
   email: Schema.optional(TrimmedNonEmptyString),
+  // `setup.authMethods` id of the sign-in method that produced the current
+  // credential, when the server recorded one. Absent for credentials the
+  // CLI acquired outside T3.
+  methodId: Schema.optional(TrimmedNonEmptyString),
+  // The credential is supplied by something sign-out cannot remove — an
+  // environment variable, a configured helper, cloud-provider creds — so
+  // clients must not offer a sign-out that could never take effect.
+  external: Schema.optional(Schema.Boolean),
 });
 export type ServerProviderAuth = typeof ServerProviderAuth.Type;
 
@@ -213,6 +222,8 @@ export const ServerProvider = Schema.Struct({
     Schema.Struct({
       canAuthenticate: Schema.Boolean,
       canInstall: Schema.Boolean,
+      /** Ways the user can authenticate this instance. Empty/absent means no choice is offered. */
+      authMethods: Schema.optionalKey(Schema.Array(ProviderAuthMethod)),
     }),
   ),
   enabled: Schema.Boolean,
