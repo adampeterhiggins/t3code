@@ -2692,6 +2692,11 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
     ],
   };
   const updateChannel = resolveDesktopUpdateChannel(version);
+  // Local escape hatch: T3CODE_DESKTOP_IDENTITY=<keychain identity> signs with
+  // any available cert (for example a self-signed one) so macOS updates pass
+  // Squirrel's seal/requirement validation without the full --signed Apple
+  // stack. Ignored when --signed is set.
+  const macSignIdentity = yield* Config.string("T3CODE_DESKTOP_IDENTITY").pipe(Config.option);
   if (!isDesktopPreviewVersion(version)) {
     const publishConfig = yield* resolveGitHubPublishConfig(updateChannel);
     if (publishConfig) {
@@ -2723,7 +2728,11 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
           schemes: ["t3code", "t3code-dev"],
         },
       ],
-      ...(signed ? { sign: path.join(repoRoot, "scripts/sign-macos.ts") } : {}),
+      ...(signed
+        ? { sign: path.join(repoRoot, "scripts/sign-macos.ts") }
+        : Option.isSome(macSignIdentity)
+          ? { identity: macSignIdentity.value }
+          : {}),
       ...(macPasskeySigning
         ? {
             entitlements: macPasskeySigning.entitlementsPath,
