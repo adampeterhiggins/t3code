@@ -107,7 +107,7 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
           id: "oauth",
           label: "Sign in with browser",
           description:
-            "Runs `grok login --oauth` and opens a Grok sign-in page on this environment.",
+            "Runs `grok login --oauth` and shows a Grok sign-in URL to open in your browser.",
           args: ["login", "--oauth"],
           env: { NO_OPEN_BROWSER: "1" },
           urlPattern: /https:\/\/\S*\.?x\.ai\/\S+/,

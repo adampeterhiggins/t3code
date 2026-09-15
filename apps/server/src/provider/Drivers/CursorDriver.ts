@@ -157,7 +157,7 @@ export const CursorDriver: ProviderDriver<CursorSettings, CursorDriverEnv> = {
           id: "browser",
           label: "Sign in with browser",
           description:
-            "Runs `cursor-agent login` and opens a Cursor sign-in page on this environment.",
+            "Runs `cursor-agent login` and shows a Cursor sign-in URL to open in your browser.",
           args: ["login"],
           env: { NO_OPEN_BROWSER: "1" },
           urlPattern: /https:\/\/cursor\.com\/\S+/,
