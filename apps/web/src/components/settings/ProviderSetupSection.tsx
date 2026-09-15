@@ -444,7 +444,10 @@ function ProviderSetupActions({
                   : "Connect"}
             </Button>
           ) : null}
-          {!authActive && provider.setup?.canAuthenticate ? (
+          {!authActive &&
+          provider.auth.status !== "unauthenticated" &&
+          provider.setup?.canAuthenticate &&
+          provider.auth.external !== true ? (
             <Button
               size="xs"
               variant={authenticated ? "outline" : "ghost"}

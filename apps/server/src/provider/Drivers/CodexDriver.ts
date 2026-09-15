@@ -209,11 +209,14 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
           id: "browser",
           label: "Sign in with browser",
           description:
-            "Runs `codex login` and opens a ChatGPT sign-in page on this environment. Only works when a browser can reach this environment's localhost — use the device code on remote machines.",
+            "Runs `codex login` and shows a ChatGPT sign-in URL to open in your browser. Only works when a browser can reach this environment's localhost — use the device code on remote machines.",
           args: ["login"],
+          // Suppresses `codex login`'s automatic browser open where the
+          // webbrowser crate honors $BROWSER; the URL is surfaced in the UI
+          // for the user to open instead.
+          env: { BROWSER: "false" },
           urlPattern: /https:\/\/auth\.openai\.com\/oauth\/authorize\?\S+/,
-          waitingMessage:
-            "Open the ChatGPT sign-in URL in a browser on this environment to finish signing in.",
+          waitingMessage: "Open the ChatGPT sign-in URL in your browser to finish signing in.",
         },
         {
           kind: "cli",

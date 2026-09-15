@@ -156,27 +156,38 @@ export const DevinDriver: ProviderDriver<DevinSettings, DevinDriverEnv> = {
           id: "browser",
           label: "Sign in with browser",
           description:
-            "Runs Devin's browser sign-in. The page opens on this environment — on a remote or headless machine, paste an API key instead.",
-          waitingMessage: "Finish signing in on the Devin page that opened on this environment.",
-          run: makeDevinAcpRuntime({
-            devinSettings: effectiveConfig,
-            environment: processEnv,
-            childProcessSpawner: spawner,
-            cwd: authCwd,
-            clientInfo: { name: "t3-code", version: "0.0.0" },
-          }).pipe(
-            Effect.flatMap((runtime) => runtime.authenticate("devin-browser")),
-            Effect.provideService(Crypto.Crypto, crypto),
-            Effect.mapError(
-              (cause) =>
-                new ProviderSetupError({
-                  instanceId,
-                  operation: "start",
-                  detail: `Devin browser sign-in did not complete: ${cause.message}`,
-                  cause: cause as Error,
-                }),
-            ),
-          ),
+            "Runs Devin's browser sign-in and shows a Devin sign-in URL to open in your browser.",
+          waitingMessage: "Open the Devin sign-in URL in your browser to finish signing in.",
+          run: ({ publishAuthorizationUrl }) => {
+            let stderrTail = "";
+            let publishedUrl: string | undefined;
+            return makeDevinAcpRuntime({
+              devinSettings: effectiveConfig,
+              environment: processEnv,
+              childProcessSpawner: spawner,
+              cwd: authCwd,
+              clientInfo: { name: "t3-code", version: "0.0.0" },
+              onStderr: (text) => {
+                stderrTail = (stderrTail + text).slice(-4096);
+                const url = /https:\/\/[^\s"'\\]+/.exec(stderrTail)?.[0];
+                if (url === undefined || url === publishedUrl) return Effect.void;
+                publishedUrl = url;
+                return publishAuthorizationUrl(url);
+              },
+            }).pipe(
+              Effect.flatMap((runtime) => runtime.authenticate("devin-browser")),
+              Effect.provideService(Crypto.Crypto, crypto),
+              Effect.mapError(
+                (cause) =>
+                  new ProviderSetupError({
+                    instanceId,
+                    operation: "start",
+                    detail: `Devin browser sign-in did not complete: ${cause.message}`,
+                    cause: cause as Error,
+                  }),
+              ),
+            );
+          },
         },
         {
           kind: "saved-credentials",

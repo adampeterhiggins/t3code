@@ -117,7 +117,10 @@ export type CliAuthMethodSpec =
       readonly kind: "effect";
       /** Shown while the effect runs (e.g. "Complete the sign-in in the opened browser."). */
       readonly waitingMessage?: string;
-      readonly run: Effect.Effect<void, ProviderSetupError, Scope.Scope>;
+      readonly run: (flow: {
+        /** Publishes a sign-in URL the effect surfaced (e.g. from agent stderr). */
+        readonly publishAuthorizationUrl: (url: string) => Effect.Effect<void>;
+      }) => Effect.Effect<void, ProviderSetupError, Scope.Scope>;
     });
 
 /** The wire `ProviderAuthMethod` list stamped onto `ServerProvider.setup.authMethods`. */
@@ -403,7 +406,12 @@ export const makeCliProviderAuth = Effect.fn("makeCliProviderAuth")(function* (
               method.description ??
               `Complete the ${options.providerLabel} sign-in.`,
           });
-          yield* Effect.scoped(method.run);
+          yield* Effect.scoped(
+            method.run({
+              publishAuthorizationUrl: (url) =>
+                publishUpdate(flow, { phase: "waiting", authorizationUrl: url }),
+            }),
+          );
           yield* verifyNow(flow);
           return;
       }
@@ -776,7 +784,7 @@ export function stdinCredentialApply(input: {
 
 // Credential kinds no sign-in method can produce — Bedrock credentials
 // arrive from the environment, not from a T3 flow.
-const EXTERNAL_CREDENTIAL_TYPES = new Set(["bedrock", "amazonBedrock"]);
+const EXTERNAL_CREDENTIAL_TYPES = new Set(["bedrock", "amazonBedrock", "environment"]);
 const isApiKeyCredentialType = (type: string) => /^api[-_]?key$/i.test(type);
 
 /**
@@ -837,7 +845,8 @@ export function providerAuthMethodPersistence(input: {
 
   const stamp = <T extends { readonly auth: ServerProviderAuth }>(provider: T) =>
     Effect.gen(function* () {
-      if (provider.auth.status !== "authenticated") return provider;
+      if (provider.auth.status !== "authenticated" || provider.auth.external === true)
+        return provider;
       const settings = yield* input.serverSettings.getSettings.pipe(
         Effect.orElseSucceed(() => undefined),
       );

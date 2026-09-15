@@ -2858,6 +2858,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
           assert.strictEqual(status.auth.status, "authenticated");
           assert.strictEqual(status.auth.type, "bedrock");
           assert.strictEqual(status.auth.label, "Amazon Bedrock");
+          assert.strictEqual(status.auth.external, true);
         }).pipe(
           Effect.provide(
             mockSpawnerLayer((args) => {
@@ -3081,16 +3082,19 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
         ),
       );
 
-      it.effect("returns an api key label for claude api key auth", () =>
+      it.effect("reports an environment-token source as external", () =>
         Effect.gen(function* () {
+          // The SDK names the env variable as the token source. `claude
+          // auth logout` cannot remove it, so it reports as external.
           const status = yield* checkClaudeProviderStatus(
             defaultClaudeSettings,
             claudeCapabilities({ tokenSource: "ANTHROPIC_AUTH_TOKEN" }),
           );
           assert.strictEqual(status.status, "ready");
           assert.strictEqual(status.auth.status, "authenticated");
-          assert.strictEqual(status.auth.type, "apiKey");
-          assert.strictEqual(status.auth.label, "Claude API Key");
+          assert.strictEqual(status.auth.type, "environment");
+          assert.strictEqual(status.auth.label, "ANTHROPIC_AUTH_TOKEN");
+          assert.strictEqual(status.auth.external, true);
         }).pipe(
           Effect.provide(
             mockSpawnerLayer((args) => {
@@ -3102,6 +3106,37 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
                   stderr: "",
                   code: 0,
                 };
+              throw new Error(`Unexpected args: ${joined}`);
+            }),
+          ),
+        ),
+      );
+
+      it.effect("reports an ambient ANTHROPIC_API_KEY as external", () =>
+        Effect.gen(function* () {
+          const previous = process.env.ANTHROPIC_API_KEY;
+          process.env.ANTHROPIC_API_KEY = "test-key";
+          try {
+            const status = yield* checkClaudeProviderStatus(
+              defaultClaudeSettings,
+              claudeCapabilities({ tokenSource: "none", apiKeySource: "ANTHROPIC_API_KEY" }),
+            );
+            assert.strictEqual(status.auth.status, "authenticated");
+            assert.strictEqual(status.auth.type, "environment");
+            assert.strictEqual(status.auth.label, "ANTHROPIC_API_KEY");
+            assert.strictEqual(status.auth.external, true);
+          } finally {
+            if (previous === undefined) {
+              delete process.env.ANTHROPIC_API_KEY;
+            } else {
+              process.env.ANTHROPIC_API_KEY = previous;
+            }
+          }
+        }).pipe(
+          Effect.provide(
+            mockSpawnerLayer((args) => {
+              const joined = args.join(" ");
+              if (joined === "--version") return { stdout: "1.0.0\n", stderr: "", code: 0 };
               throw new Error(`Unexpected args: ${joined}`);
             }),
           ),
@@ -3128,18 +3163,49 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
         ),
       );
 
-      it.effect("treats an apiKeySource credential as authenticated api-key auth", () =>
+      it.effect("treats an instance-stored apiKeySource credential as removable api-key auth", () =>
         Effect.gen(function* () {
           // API-key auth reports `tokenSource: "none"`; the key source is what
-          // distinguishes it from a signed-out init.
+          // distinguishes it from a signed-out init. With no ambient
+          // `ANTHROPIC_API_KEY` the key lives on the instance and `onLogout`
+          // can remove it, so it is not external.
+          const previous = process.env.ANTHROPIC_API_KEY;
+          delete process.env.ANTHROPIC_API_KEY;
+          try {
+            const status = yield* checkClaudeProviderStatus(
+              defaultClaudeSettings,
+              claudeCapabilities({ tokenSource: "none", apiKeySource: "ANTHROPIC_API_KEY" }),
+            );
+            assert.strictEqual(status.status, "ready");
+            assert.strictEqual(status.auth.status, "authenticated");
+            assert.strictEqual(status.auth.type, "apiKey");
+            assert.strictEqual(status.auth.label, "Claude API Key");
+            assert.strictEqual(status.auth.external, undefined);
+          } finally {
+            if (previous !== undefined) process.env.ANTHROPIC_API_KEY = previous;
+          }
+        }).pipe(
+          Effect.provide(
+            mockSpawnerLayer((args) => {
+              const joined = args.join(" ");
+              if (joined === "--version") return { stdout: "1.0.0\n", stderr: "", code: 0 };
+              throw new Error(`Unexpected args: ${joined}`);
+            }),
+          ),
+        ),
+      );
+
+      it.effect("reports an apiKeyHelper credential as external", () =>
+        Effect.gen(function* () {
           const status = yield* checkClaudeProviderStatus(
             defaultClaudeSettings,
-            claudeCapabilities({ tokenSource: "none", apiKeySource: "ANTHROPIC_API_KEY" }),
+            claudeCapabilities({ tokenSource: "none", apiKeySource: "apiKeyHelper" }),
           );
           assert.strictEqual(status.status, "ready");
           assert.strictEqual(status.auth.status, "authenticated");
-          assert.strictEqual(status.auth.type, "apiKey");
-          assert.strictEqual(status.auth.label, "Claude API Key");
+          assert.strictEqual(status.auth.type, "environment");
+          assert.strictEqual(status.auth.label, "apiKeyHelper");
+          assert.strictEqual(status.auth.external, true);
         }).pipe(
           Effect.provide(
             mockSpawnerLayer((args) => {

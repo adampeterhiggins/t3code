@@ -418,6 +418,11 @@ it.layer(testLayer)("CliProviderAuth", (it) => {
       expect(yield* stampedMethodId({ status: "authenticated", type: "apiKey" })).toBe("api-key");
       // An out-of-band account login discards the key record.
       expect(yield* stampedMethodId({ status: "authenticated", type: "chatgpt" })).toBeUndefined();
+      // An environment-supplied credential never came from a T3 method —
+      // the record is dropped even when the key record would otherwise fit.
+      expect(
+        yield* stampedMethodId({ status: "authenticated", type: "apiKey", external: true }),
+      ).toBeUndefined();
 
       yield* persistence.record(undefined);
       expect(yield* stampedMethodId(authenticated)).toBeUndefined();

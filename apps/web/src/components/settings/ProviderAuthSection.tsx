@@ -141,12 +141,14 @@ function ProviderAuthActions({
     recordedMethod?.kind === "paste-credential"
       ? (recordedMethod.credentialLabel ?? recordedMethod.label)
       : (recordedMethod?.label ??
-        (provider.auth.type === "apiKey" || provider.auth.type === "api_key"
-          ? (methods.find((method) => method.kind === "paste-credential")?.credentialLabel ??
-            "API key")
-          : provider.auth.type === "bedrock" || provider.auth.type === "amazonBedrock"
-            ? (provider.auth.label ?? "External sign-in")
-            : "Account sign-in"));
+        (provider.auth.external === true
+          ? (provider.auth.label ?? "External credential")
+          : provider.auth.type === "apiKey" || provider.auth.type === "api_key"
+            ? (methods.find((method) => method.kind === "paste-credential")?.credentialLabel ??
+              "API key")
+            : provider.auth.type === "bedrock" || provider.auth.type === "amazonBedrock"
+              ? (provider.auth.label ?? "External sign-in")
+              : "Account sign-in"));
 
   async function runCommand<A, E>(
     label: string,
@@ -307,6 +309,11 @@ function ProviderAuthActions({
         <div className="grid gap-1">
           <span>Sign-in method</span>
           <p className="text-muted-foreground">{signedInMethodLabel}</p>
+          {provider.auth.external === true ? (
+            <p className="text-muted-foreground text-xs">
+              This credential is managed outside T3 Code — remove it there to sign out.
+            </p>
+          ) : null}
         </div>
       ) : null}
 
@@ -407,7 +414,10 @@ function ProviderAuthActions({
             Cancel sign-in
           </Button>
         ) : null}
-        {!authActive && authenticated && provider.setup?.canAuthenticate ? (
+        {!authActive &&
+        authenticated &&
+        provider.setup?.canAuthenticate &&
+        provider.auth.external !== true ? (
           <Button
             size="xs"
             variant="outline"

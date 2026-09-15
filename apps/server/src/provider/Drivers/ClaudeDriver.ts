@@ -195,6 +195,9 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
           description:
             "Runs `claude auth login` — open the shown URL, sign in, then paste the code it displays.",
           args: ["auth", "login"],
+          // Suppresses `claude auth login`'s automatic browser open; the URL is
+          // surfaced in the UI for the user to open instead.
+          env: { BROWSER: "false" },
           urlPattern: /https:\/\/claude\.(?:com|ai)\/\S+/,
           inputPrompt: "Paste the code shown after signing in",
         },

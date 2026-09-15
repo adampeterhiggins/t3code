@@ -68,6 +68,10 @@ export const ServerProviderAuth = Schema.Struct({
   // credential, when the server recorded one. Absent for credentials the
   // CLI acquired outside T3.
   methodId: Schema.optional(TrimmedNonEmptyString),
+  // The credential is supplied by something sign-out cannot remove — an
+  // environment variable, a configured helper, cloud-provider creds — so
+  // clients must not offer a sign-out that could never take effect.
+  external: Schema.optional(Schema.Boolean),
 });
 export type ServerProviderAuth = typeof ServerProviderAuth.Type;
 

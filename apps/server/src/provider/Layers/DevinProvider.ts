@@ -340,7 +340,14 @@ export const checkDevinProviderStatus = Effect.fn("checkDevinProviderStatus")(fu
       return {
         version,
         status: "ready",
-        auth: { status: "authenticated", type: "apiKey", label: "Devin API key" },
+        // An ambient `WINDSURF_API_KEY` survives sign-out — only an
+        // instance-stored one is removed by `onLogout`.
+        auth: {
+          status: "authenticated",
+          type: "apiKey",
+          label: "Devin API key",
+          ...(process.env.WINDSURF_API_KEY?.trim() ? { external: true } : {}),
+        },
       };
     }
     if (authProbe === undefined || Result.isFailure(authProbe)) {

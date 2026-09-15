@@ -1087,7 +1087,14 @@ export const checkCursorProviderStatus = Effect.fn("checkCursorProviderStatus")(
       ? {
           ...aboutWithoutMessage,
           status: "ready",
-          auth: { status: "authenticated", type: "apiKey", label: "Cursor API key" },
+          // An ambient `CURSOR_API_KEY` survives sign-out — only an
+          // instance-stored one is removed by `onLogout`.
+          auth: {
+            status: "authenticated",
+            type: "apiKey",
+            label: "Cursor API key",
+            ...(process.env.CURSOR_API_KEY?.trim() ? { external: true } : {}),
+          },
         }
       : about;
   const cursorCliConfigChannel = yield* readCursorCliConfigChannel();

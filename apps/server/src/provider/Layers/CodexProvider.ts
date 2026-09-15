@@ -536,6 +536,9 @@ function accountProbeStatus(account: CodexAppServerProviderSnapshot["account"]):
     ...(account.account?.type ? { type: account.account?.type } : {}),
     ...(authLabel ? { label: authLabel } : {}),
     ...(authEmail ? { email: authEmail } : {}),
+    // Bedrock creds come from AWS configuration, not Codex's auth store —
+    // `codex logout` cannot remove them.
+    ...(account.account?.type === "amazonBedrock" ? { external: true } : {}),
   } satisfies ServerProvider["auth"];
 
   if (account.account) {

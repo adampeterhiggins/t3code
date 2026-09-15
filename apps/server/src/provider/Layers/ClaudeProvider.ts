@@ -622,12 +622,34 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     });
   }
 
+  // `claude auth logout` only clears the stored login — a credential
+  // supplied another way keeps the CLI signed in no matter how many times
+  // logout runs. The SDK names the env variable as its source
+  // (`tokenSource: "CLAUDE_CODE_OAUTH_TOKEN"`), and a configured
+  // `apiKeyHelper` or non-first-party provider creds are equally out of
+  // reach. The exception is an instance-stored `ANTHROPIC_API_KEY`, which
+  // the paste-credential `onLogout` removes.
+  const externalAuthSource = [capabilities.tokenSource, capabilities.apiKeySource].find(
+    (source) =>
+      source !== undefined &&
+      source !== "none" &&
+      (source === "apiKeyHelper" ||
+        (/^[A-Z][A-Z0-9_]*$/.test(source) &&
+          (process.env[source] !== undefined || source !== "ANTHROPIC_API_KEY"))),
+  );
+  const external =
+    externalAuthSource !== undefined ||
+    (capabilities.apiProvider !== undefined && capabilities.apiProvider !== "firstParty");
   const authMetadata =
-    claudeAuthMetadata({
-      subscriptionType: capabilities.subscriptionType,
-      authMethod:
-        capabilities.tokenSource !== "none" ? capabilities.tokenSource : capabilities.apiKeySource,
-    }) ?? apiProviderAuthMetadata(capabilities.apiProvider);
+    externalAuthSource !== undefined
+      ? { type: "environment", label: externalAuthSource }
+      : (claudeAuthMetadata({
+          subscriptionType: capabilities.subscriptionType,
+          authMethod:
+            capabilities.tokenSource !== "none"
+              ? capabilities.tokenSource
+              : capabilities.apiKeySource,
+        }) ?? apiProviderAuthMetadata(capabilities.apiProvider));
   const usageLimits = !capabilities.usage
     ? makeUnavailableUsageLimits({ checkedAt, reason: "probeFailed" })
     : scopedLimitNames
@@ -651,6 +673,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
         status: "authenticated",
         ...(capabilities.email ? { email: capabilities.email } : {}),
         ...(authMetadata ? authMetadata : {}),
+        ...(external ? { external: true } : {}),
       },
       ...(versionUpgradeMessage ? { message: versionUpgradeMessage } : {}),
       usageLimits,
