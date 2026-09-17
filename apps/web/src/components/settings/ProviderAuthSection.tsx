@@ -20,6 +20,7 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
+import { SettingsRow } from "./settingsLayout";
 
 interface ProviderAuthSectionProps {
   readonly environmentId: EnvironmentId;
@@ -51,19 +52,24 @@ const PHASE_LABELS: Record<ProviderAuthState["phase"], string> = {
 export function ProviderAuthSection(props: ProviderAuthSectionProps) {
   const providerName = props.provider?.displayName ?? "This provider";
   return (
-    <section aria-label={`${providerName} sign-in`} className="grid gap-3 text-xs">
+    <section
+      aria-label={`${providerName} sign-in`}
+      className="@container/setup divide-y divide-border/50 text-xs"
+    >
       {!props.enabled ? (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 px-3 py-3 sm:px-4">
           <span className="text-muted-foreground">Enable it to use it in threads.</span>
           {!props.readOnly ? (
-            <Button size="xs" variant="outline" onClick={props.onEnable}>
+            <Button size="sm" variant="outline" onClick={props.onEnable}>
               Enable {providerName}
             </Button>
           ) : null}
         </div>
       ) : null}
       {props.readOnly ? (
-        <p className="text-muted-foreground">This connection cannot change provider setup.</p>
+        <div className="px-3 py-3 sm:px-4">
+          <p className="text-muted-foreground">This connection cannot change provider setup.</p>
+        </div>
       ) : props.provider === undefined ||
         (props.provider.setup?.authMethods?.length ?? 0) === 0 ? null : (
         <ProviderAuthActions
@@ -149,6 +155,11 @@ function ProviderAuthActions({
             : provider.auth.type === "bedrock" || provider.auth.type === "amazonBedrock"
               ? (provider.auth.label ?? "External sign-in")
               : "Account sign-in"));
+  const showSignOut =
+    !authActive &&
+    authenticated &&
+    provider.setup?.canAuthenticate === true &&
+    provider.auth.external !== true;
 
   async function runCommand<A, E>(
     label: string,
@@ -240,204 +251,226 @@ function ProviderAuthActions({
   }
 
   return (
-    <div className="grid gap-2">
-      <p className="font-medium">{providerName} sign-in</p>
-      <p role="status" className="text-muted-foreground [overflow-wrap:anywhere]">
-        {authStatusMessage}
-      </p>
-
-      {authorizationUrl ? (
-        <div className="grid gap-2">
-          <div className="flex flex-wrap gap-2">
-            <Button size="xs" variant="outline" onClick={() => void openSignInPage()}>
-              Open sign-in page
-            </Button>
-            <Button size="xs" variant="ghost" onClick={() => void copySignInLink()}>
-              {copiedFlowId === auth?.flowId ? "Link copied" : "Copy sign-in link"}
-            </Button>
-          </div>
-          {auth?.expiresAt ? (
-            <p className="text-muted-foreground">
-              Link expires at{" "}
-              <time dateTime={auth.expiresAt}>
-                {new Date(auth.expiresAt).toLocaleTimeString([], {
-                  hour: "numeric",
-                  minute: "2-digit",
-                })}
-              </time>
-              .
+    <div className="divide-y divide-border/50">
+      <SettingsRow
+        title={`${providerName} sign-in`}
+        className="@max-lg/setup:[&>div:first-child]:flex @max-lg/setup:[&>div:first-child]:items-stretch @max-lg/setup:[&>div:first-child]:gap-3"
+        status={
+          <>
+            <p role="status" className="[overflow-wrap:anywhere]">
+              {authStatusMessage}
             </p>
-          ) : null}
-        </div>
-      ) : null}
+            {pendingLabel ? <p role="status">{pendingLabel}.</p> : null}
+          </>
+        }
+        control={
+          authorizationUrl || (authActive && auth?.flowId) || showSignOut ? (
+            <div className="flex min-w-0 flex-col gap-2 sm:max-w-56 sm:items-end sm:text-right xl:max-w-72">
+              {authorizationUrl ? (
+                <div className="flex flex-wrap gap-2 sm:justify-end">
+                  <Button size="sm" variant="outline" onClick={() => void openSignInPage()}>
+                    Open sign-in page
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => void copySignInLink()}>
+                    {copiedFlowId === auth?.flowId ? "Link copied" : "Copy sign-in link"}
+                  </Button>
+                </div>
+              ) : null}
+              {authActive && auth?.flowId ? (
+                <div className="flex flex-wrap gap-2 sm:justify-end">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={actionsDisabled}
+                    onClick={() => {
+                      const flowId = auth.flowId;
+                      if (!flowId) return;
+                      void runCommand("Cancelling sign-in", () =>
+                        cancelAuth({ environmentId, input: { instanceId, flowId } }),
+                      );
+                    }}
+                  >
+                    Cancel sign-in
+                  </Button>
+                </div>
+              ) : null}
+              {showSignOut ? (
+                <div className="flex flex-wrap gap-2 sm:justify-end">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={actionsDisabled || auth === null}
+                    onClick={() => void signOut()}
+                  >
+                    Sign out
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+          ) : undefined
+        }
+      >
+        {authorizationUrl || inputPrompt ? (
+          <div className="space-y-2 pb-2">
+            {authorizationUrl && auth?.expiresAt ? (
+              <p className="text-muted-foreground">
+                Link expires at{" "}
+                <time dateTime={auth.expiresAt}>
+                  {new Date(auth.expiresAt).toLocaleTimeString([], {
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}
+                </time>
+                .
+              </p>
+            ) : null}
+            {inputPrompt ? (
+              <form
+                className="grid gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void submitInput();
+                }}
+              >
+                <label htmlFor={`provider-auth-input-${instanceId}`}>{inputPrompt}</label>
+                <Input
+                  id={`provider-auth-input-${instanceId}`}
+                  size="sm"
+                  type="text"
+                  autoComplete="off"
+                  spellCheck={false}
+                  value={callbackValue}
+                  maxLength={16_384}
+                  disabled={actionsDisabled}
+                  onChange={(event) =>
+                    setCallbackDraft({ flowId: auth?.flowId ?? null, value: event.target.value })
+                  }
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  type="submit"
+                  className="w-fit"
+                  disabled={actionsDisabled || !callbackValue.trim()}
+                >
+                  Continue
+                </Button>
+              </form>
+            ) : null}
+          </div>
+        ) : null}
+      </SettingsRow>
 
-      {inputPrompt ? (
-        <form
-          className="grid gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void submitInput();
-          }}
+      {!authActive && !authenticated && selectedMethod ? (
+        <SettingsRow
+          title={methods.length > 1 ? "Sign-in method" : selectedMethod.label}
+          className="@max-lg/setup:[&>div:first-child]:flex @max-lg/setup:[&>div:first-child]:items-stretch @max-lg/setup:[&>div:first-child]:gap-3"
+          description={selectedMethod.description}
+          control={
+            methods.length > 1 || selectedMethod.kind !== "paste-credential" ? (
+              <div className="flex min-w-0 flex-col gap-2 sm:max-w-56 sm:items-end sm:text-right xl:max-w-72">
+                {methods.length > 1 ? (
+                  <Select
+                    value={selectedMethod.id}
+                    onValueChange={(value) => setSelectedMethodId(value)}
+                    disabled={actionsDisabled || !enabled}
+                  >
+                    <SelectTrigger size="sm" className="w-fit min-w-48" aria-label="Sign-in method">
+                      <SelectValue>{selectedMethod.label}</SelectValue>
+                    </SelectTrigger>
+                    <SelectPopup alignItemWithTrigger={false}>
+                      {methods.map((method) => (
+                        <SelectItem key={method.id} value={method.id}>
+                          {method.label}
+                        </SelectItem>
+                      ))}
+                    </SelectPopup>
+                  </Select>
+                ) : null}
+                {selectedMethod.kind !== "paste-credential" ? (
+                  <div className="flex flex-wrap gap-2 sm:justify-end">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={actionsDisabled || !enabled || auth === null}
+                      onClick={() => void startMethod(selectedMethod)}
+                    >
+                      {selectedMethod.label}
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+            ) : undefined
+          }
         >
-          <label htmlFor={`provider-auth-input-${instanceId}`}>{inputPrompt}</label>
-          <Input
-            id={`provider-auth-input-${instanceId}`}
-            size="sm"
-            type="text"
-            autoComplete="off"
-            spellCheck={false}
-            value={callbackValue}
-            maxLength={16_384}
-            disabled={actionsDisabled}
-            onChange={(event) =>
-              setCallbackDraft({ flowId: auth?.flowId ?? null, value: event.target.value })
-            }
-          />
-          <Button
-            size="xs"
-            variant="outline"
-            type="submit"
-            className="w-fit"
-            disabled={actionsDisabled || !callbackValue.trim()}
-          >
-            Continue
-          </Button>
-        </form>
+          {selectedMethod.kind === "paste-credential" ? (
+            <div className="space-y-2 pb-2">
+              <form
+                className="grid gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void startMethod(selectedMethod);
+                }}
+              >
+                <label htmlFor={`provider-credential-${instanceId}-${selectedMethod.id}`}>
+                  {selectedMethod.credentialLabel ?? selectedMethod.label}
+                </label>
+                <Input
+                  id={`provider-credential-${instanceId}-${selectedMethod.id}`}
+                  size="sm"
+                  type="password"
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder={selectedMethod.credentialPlaceholder ?? "Paste key"}
+                  value={credentialDrafts[selectedMethod.id] ?? ""}
+                  maxLength={16_384}
+                  disabled={actionsDisabled || !enabled}
+                  onChange={(event) =>
+                    setCredentialDrafts((drafts) => ({
+                      ...drafts,
+                      [selectedMethod.id]: event.target.value,
+                    }))
+                  }
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  type="submit"
+                  className="w-fit"
+                  disabled={
+                    actionsDisabled ||
+                    !enabled ||
+                    !(credentialDrafts[selectedMethod.id] ?? "").trim()
+                  }
+                >
+                  {selectedMethod.label}
+                </Button>
+              </form>
+            </div>
+          ) : null}
+        </SettingsRow>
       ) : null}
 
       {!authActive && authenticated ? (
-        <div className="grid gap-1">
-          <span>Sign-in method</span>
-          <p className="text-muted-foreground">{signedInMethodLabel}</p>
-          {provider.auth.external === true ? (
-            <p className="text-muted-foreground text-xs">
-              This credential is managed outside T3 Code — remove it there to sign out.
-            </p>
-          ) : null}
-        </div>
+        <SettingsRow
+          title="Sign-in method"
+          description={signedInMethodLabel}
+          status={
+            provider.auth.external === true
+              ? "This credential is managed outside T3 Code — remove it there to sign out."
+              : undefined
+          }
+        />
       ) : null}
 
-      {!authActive && !authenticated && selectedMethod ? (
-        <div className="grid gap-2">
-          {methods.length > 1 ? (
-            <>
-              <span>Sign-in method</span>
-              <Select
-                value={selectedMethod.id}
-                onValueChange={(value) => setSelectedMethodId(value)}
-                disabled={actionsDisabled || !enabled}
-              >
-                <SelectTrigger size="sm" className="w-fit min-w-48" aria-label="Sign-in method">
-                  <SelectValue>{selectedMethod.label}</SelectValue>
-                </SelectTrigger>
-                <SelectPopup alignItemWithTrigger={false}>
-                  {methods.map((method) => (
-                    <SelectItem key={method.id} value={method.id}>
-                      {method.label}
-                    </SelectItem>
-                  ))}
-                </SelectPopup>
-              </Select>
-            </>
-          ) : null}
-          {selectedMethod.description ? (
-            <p className="text-muted-foreground">{selectedMethod.description}</p>
-          ) : null}
-          {selectedMethod.kind === "paste-credential" ? (
-            <form
-              className="grid gap-2"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void startMethod(selectedMethod);
-              }}
-            >
-              <label htmlFor={`provider-credential-${instanceId}-${selectedMethod.id}`}>
-                {selectedMethod.credentialLabel ?? selectedMethod.label}
-              </label>
-              <Input
-                id={`provider-credential-${instanceId}-${selectedMethod.id}`}
-                size="sm"
-                type="password"
-                autoComplete="off"
-                spellCheck={false}
-                placeholder={selectedMethod.credentialPlaceholder ?? "Paste key"}
-                value={credentialDrafts[selectedMethod.id] ?? ""}
-                maxLength={16_384}
-                disabled={actionsDisabled || !enabled}
-                onChange={(event) =>
-                  setCredentialDrafts((drafts) => ({
-                    ...drafts,
-                    [selectedMethod.id]: event.target.value,
-                  }))
-                }
-              />
-              <Button
-                size="xs"
-                variant="outline"
-                type="submit"
-                className="w-fit"
-                disabled={
-                  actionsDisabled || !enabled || !(credentialDrafts[selectedMethod.id] ?? "").trim()
-                }
-              >
-                {selectedMethod.label}
-              </Button>
-            </form>
-          ) : (
-            <Button
-              size="xs"
-              variant="outline"
-              className="w-fit"
-              disabled={actionsDisabled || !enabled || auth === null}
-              onClick={() => void startMethod(selectedMethod)}
-            >
-              {selectedMethod.label}
-            </Button>
-          )}
-        </div>
-      ) : null}
-
-      <div className="flex flex-wrap gap-2">
-        {authActive && auth?.flowId ? (
-          <Button
-            size="xs"
-            variant="ghost"
-            disabled={actionsDisabled}
-            onClick={() => {
-              const flowId = auth.flowId;
-              if (!flowId) return;
-              void runCommand("Cancelling sign-in", () =>
-                cancelAuth({ environmentId, input: { instanceId, flowId } }),
-              );
-            }}
-          >
-            Cancel sign-in
-          </Button>
-        ) : null}
-        {!authActive &&
-        authenticated &&
-        provider.setup?.canAuthenticate &&
-        provider.auth.external !== true ? (
-          <Button
-            size="xs"
-            variant="outline"
-            disabled={actionsDisabled || auth === null}
-            onClick={() => void signOut()}
-          >
-            Sign out
-          </Button>
-        ) : null}
-      </div>
-
-      {pendingLabel ? <p role="status">{pendingLabel}.</p> : null}
       {error || authQuery.error ? (
-        <div className="grid gap-2">
+        <div className="grid gap-2 px-3 py-3 sm:px-4">
           <p role="alert" className="text-destructive [overflow-wrap:anywhere]">
             {error ?? authQuery.error}
           </p>
           {authQuery.error ? (
             <Button
-              size="xs"
+              size="sm"
               variant="outline"
               className="w-fit"
               onClick={() => authQuery.refresh()}
