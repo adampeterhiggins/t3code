@@ -193,7 +193,6 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
         environment: processEnv,
         ...(eventLoggers.native ? { nativeEventLogger: eventLoggers.native } : {}),
       });
-      const textGeneration = yield* makeCodexTextGeneration(effectiveConfig, processEnv);
 
       const apiKeyApply = stdinCredentialApply({
         spawner,
@@ -321,6 +320,11 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
               cause,
             }),
         ),
+      );
+      const textGeneration = yield* makeCodexTextGeneration(
+        effectiveConfig,
+        processEnv,
+        snapshot.getSnapshot.pipe(Effect.map((value) => value.models)),
       );
       const snapshotForCwd = (cwd: string) =>
         !effectiveConfig.enabled
