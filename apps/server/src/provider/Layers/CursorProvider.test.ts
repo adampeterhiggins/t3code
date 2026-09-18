@@ -304,6 +304,7 @@ const parameterizedClaudeModelOptionConfigOptions = [
 const baseCursorSettings: CursorSettings = {
   enabled: true,
   binaryPath: "cursor-agent",
+  homePath: "",
   apiEndpoint: "",
   customModels: [],
 };
@@ -689,6 +690,7 @@ describe("checkCursorProviderStatus", () => {
       checkCursorProviderStatus({
         enabled: true,
         binaryPath: missingCursorBinaryPath,
+        homePath: "",
         apiEndpoint: "",
         customModels: [],
       }),
@@ -710,6 +712,7 @@ describe("checkCursorProviderStatus", () => {
         {
           enabled: true,
           binaryPath: wrapperPath,
+          homePath: "",
           apiEndpoint: "",
           customModels: [],
         },
@@ -739,6 +742,7 @@ describe("discoverCursorModelsViaAcp", () => {
         const settings = {
           enabled: true,
           binaryPath: wrapperPath,
+          homePath: "",
           apiEndpoint: "",
           customModels: [],
         };
@@ -774,6 +778,7 @@ describe("discoverCursorModelsViaAcp", () => {
       discoverCursorModelsViaAcp({
         enabled: true,
         binaryPath: wrapperPath,
+        homePath: "",
         apiEndpoint: "",
         customModels: [],
       }).pipe(Effect.scoped),
@@ -796,6 +801,7 @@ describe("discoverCursorModelsViaAcp", () => {
       discoverCursorModelsViaAcp({
         enabled: true,
         binaryPath: wrapperPath,
+        homePath: "",
         apiEndpoint: "",
         customModels: [],
       }),
@@ -1060,6 +1066,55 @@ describe("Cursor usage limits", () => {
             Effect.provideService(HttpClient.HttpClient, client),
           );
           expect(limits.windows[0]?.usedPercent).toBe(42);
+        }
+      }).pipe(Effect.scoped),
+    );
+  });
+
+  it("reads credentials from the instance HOME instead of the default home", async () => {
+    await runNode(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const defaultHome = yield* fs.makeTempDirectoryScoped();
+        const instanceHome = yield* fs.makeTempDirectoryScoped();
+        yield* fs.makeDirectory(path.join(defaultHome, ".cursor"));
+        yield* fs.writeFileString(
+          path.join(defaultHome, ".cursor", "auth.json"),
+          '{"accessToken":"default-token"}',
+        );
+        yield* fs.makeDirectory(path.join(instanceHome, ".cursor"));
+        yield* fs.writeFileString(
+          path.join(instanceHome, ".cursor", "auth.json"),
+          '{"accessToken":"instance-token"}',
+        );
+        yield* fs.makeDirectory(path.join(instanceHome, "cursor"), { recursive: true });
+        yield* fs.writeFileString(
+          path.join(instanceHome, "cursor", "auth.json"),
+          '{"accessToken":"instance-token"}',
+        );
+        const client = HttpClient.make((request) => {
+          expect(request.headers.authorization).toBe("Bearer instance-token");
+          return Effect.succeed(
+            HttpClientResponse.fromWeb(
+              request,
+              Response.json({ enabled: true, planUsage: { totalPercentUsed: 7 } }),
+            ),
+          );
+        });
+        for (const platform of ["linux", "darwin"] as const) {
+          const limits = yield* readCursorUsageLimits(
+            { apiEndpoint: "" },
+            {
+              HOME: instanceHome,
+              XDG_CONFIG_HOME: instanceHome,
+              AGENT_CLI_CREDENTIAL_STORE: "file",
+            },
+          ).pipe(
+            Effect.provideService(HostProcessPlatform, platform),
+            Effect.provideService(HttpClient.HttpClient, client),
+          );
+          expect(limits.windows[0]?.usedPercent).toBe(7);
         }
       }).pipe(Effect.scoped),
     );

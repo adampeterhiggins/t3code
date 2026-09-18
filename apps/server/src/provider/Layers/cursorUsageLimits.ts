@@ -89,6 +89,8 @@ export const readCursorUsageLimits = Effect.fn("readCursorUsageLimits")(function
     if (!token) {
       const home =
         (platform === "win32" ? environment.USERPROFILE : environment.HOME) || NodeOS.homedir();
+      // auth.json is home-anchored (CURSOR_CONFIG_DIR never relocates it), so a
+      // per-instance HOME already points this lookup at the right credentials.
       const directory =
         platform === "win32"
           ? path.join(environment.APPDATA || path.join(home, "AppData", "Roaming"), "Cursor")

@@ -5,6 +5,31 @@ enable it in **Settings > Providers**. See [provider setup](./install.md#provide
 T3 Code requires OpenCode 1.14.19 or newer, including when you connect an existing
 OpenCode server.
 
+## Separate accounts or configurations
+
+Use a separate data directory for each set of OpenCode credentials. OpenCode
+stores `auth.json` under the XDG data directory, so a custom
+**XDG_DATA_HOME path** keeps instances signed in side by side.
+
+`opencode auth login` is an interactive prompt, so create the second login in
+a terminal on the environment's machine:
+
+```bash
+mkdir -p ~/.local/share-opencode-personal
+XDG_DATA_HOME=~/.local/share-opencode-personal opencode auth login
+```
+
+Add another OpenCode instance in **Settings > Providers**:
+
+| Instance          | Binary path | XDG_DATA_HOME path                 |
+| ----------------- | ----------- | ---------------------------------- |
+| OpenCode Work     | `opencode`  | Leave empty                        |
+| OpenCode Personal | `opencode`  | `~/.local/share-opencode-personal` |
+
+An empty setting uses the CLI's normal data directory (`~/.local/share`).
+Each instance's **Use saved OpenCode credentials** action detects the login in
+its own directory.
+
 ## Local or external server
 
 Leave **Server URL** empty to let T3 Code start OpenCode locally. A password in
