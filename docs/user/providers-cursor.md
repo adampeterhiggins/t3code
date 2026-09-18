@@ -7,7 +7,8 @@ Cursor provider instances wrap the `cursor-agent` CLI and ACP adapter.
 ### Cursor binary
 
 Path to the `cursor-agent` executable. Leave empty to use the `cursor-agent`
-found on `PATH`.
+found on `PATH`. Instances can share a single install — separate accounts do
+not need separate binaries; isolate them with the config directory below.
 
 ### CURSOR_CONFIG_DIR path
 
