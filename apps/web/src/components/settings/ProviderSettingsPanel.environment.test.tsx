@@ -382,5 +382,36 @@ describe("EnvironmentProviderSettings routing", () => {
     expect(Object.keys(resetPatch ?? {}).sort()).toEqual(["providerInstances", "providers"]);
     expect(resetPatch).not.toHaveProperty("favorites");
     expect(resetPatch).not.toHaveProperty("providerModelPreferences");
+    // The slot resets to factory defaults with enabled cleared — the resulting
+    // unconfigured, disabled row is what drops it out of the provider list.
+    const providers = resetPatch?.providers as Record<string, { enabled?: boolean } | undefined>;
+    expect(providers.codex?.enabled).toBe(false);
+    expect(resetPatch?.providerInstances).not.toHaveProperty("codex");
+  });
+
+  it("deletes an enabled built-in provider that has no explicit instance", () => {
+    // Codex and Claude ship enabled at factory defaults: a fresh install shows
+    // them with no providerInstances entry, and deleting must hide them too.
+    settingsState.value = DEFAULT_UNIFIED_SETTINGS;
+    const panel = renderPanel();
+    const codexRow = visitElements(
+      panel,
+      (element) => element.props.instanceId === codexId && element.props.mode === "list",
+    );
+    expect(codexRow).not.toBeNull();
+    (codexRow?.props.onSelect as (() => void) | undefined)?.();
+    const card = visitElements(
+      renderPanel(),
+      (element) => element.props.instanceId === codexId && element.props.mode === "editor",
+    );
+    expect(card?.props.onDelete).toBeTypeOf("function");
+    (card?.props.onDelete as (() => void) | undefined)?.();
+
+    const patch = settingsState.updateSettings.mock.lastCall?.[0] as
+      | Record<string, unknown>
+      | undefined;
+    const providers = patch?.providers as Record<string, { enabled?: boolean } | undefined>;
+    expect(providers.codex?.enabled).toBe(false);
+    expect(patch?.providerInstances).not.toHaveProperty("codex");
   });
 });

@@ -759,13 +759,19 @@ export function EnvironmentProviderSettings({
     // Only the default slot depends on the legacy blob; custom instances for
     // the driver must still render even when the slot has nothing to show.
     if (effectiveInstance !== undefined) {
-      const isDirty =
-        explicitInstance !== undefined || !Equal.equals(legacyConfig, defaultLegacyConfig);
-      // A pristine, disabled default slot is a provider type the user has
-      // never configured — keep it out of the list; the + dialog adds it
-      // back. Enabled defaults (e.g. Codex and Claude ship on) stay visible
+      // `enabled` is excluded from the "configured" comparison so a slot that
+      // is otherwise at factory defaults counts as unconfigured — that is
+      // what deleting a built-in provider writes (defaults + disabled), and
+      // it is also the untouched state of default-off drivers.
+      const { enabled: _legacyEnabled, ...legacyConfigRest } = legacyConfig ?? {};
+      const { enabled: _defaultEnabled, ...defaultLegacyRest } = defaultLegacyConfig ?? {};
+      const isConfigured =
+        explicitInstance !== undefined || !Equal.equals(legacyConfigRest, defaultLegacyRest);
+      // An unconfigured, disabled default slot is a provider type the user
+      // has never set up — keep it out of the list; the + dialog adds it
+      // back. Enabled defaults (Codex and Claude ship on) stay visible
       // because they are live even when untouched.
-      if (isDirty || resolveProviderInstanceEnabled(effectiveInstance)) {
+      if (isConfigured || resolveProviderInstanceEnabled(effectiveInstance)) {
         rows.push({
           instanceId: defaultInstanceId,
           instance: effectiveInstance,
@@ -870,7 +876,10 @@ export function EnvironmentProviderSettings({
     });
   };
 
-  const resetDefaultInstance = (driverKind: ProviderDriverKind) => {
+  // Deleting a built-in default slot restores its config to factory defaults
+  // and disables it — the resulting unconfigured, disabled slot drops out of
+  // the provider list. It can be re-added from the + dialog like any provider.
+  const deleteDefaultInstance = (driverKind: ProviderDriverKind) => {
     type LegacyProviderSettings = (typeof settings.providers)[keyof typeof settings.providers];
     const defaultLegacyProviders = DEFAULT_UNIFIED_SETTINGS.providers as Record<
       string,
@@ -882,7 +891,7 @@ export function EnvironmentProviderSettings({
     updateSettings({
       providers: {
         ...settings.providers,
-        [driverKind]: defaultLegacyProvider,
+        [driverKind]: { ...defaultLegacyProvider, enabled: false },
       } as typeof settings.providers,
       providerInstances: withoutProviderInstanceKey(settings.providerInstances, defaultInstanceId),
     });
@@ -962,9 +971,7 @@ export function EnvironmentProviderSettings({
         onDelete={
           mode === "editor"
             ? row.isDefault
-              ? // Deleting a built-in default slot restores its unconfigured
-                // state, which drops it back out of the list.
-                () => resetDefaultInstance(row.driver)
+              ? () => deleteDefaultInstance(row.driver)
               : () => deleteProviderInstance(row.instanceId)
             : undefined
         }
