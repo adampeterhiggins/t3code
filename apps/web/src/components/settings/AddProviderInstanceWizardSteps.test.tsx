@@ -21,8 +21,11 @@ function renderStepButtons(
 ): ReactElement<StepButtonProps>[] {
   const header = AddProviderInstanceWizardSteps({
     currentStep,
-    summaries: ["Codex", "Codex Workspace", null],
+    summaries: ["Codex", "Codex Workspace", null, null],
     instanceIdError,
+    // Pre-creation bounds: the sign-in step is not yet reachable.
+    navigableStepCount: ADD_PROVIDER_WIZARD_STEPS.length - 1,
+    minStep: 0,
     onNavigation,
   });
 

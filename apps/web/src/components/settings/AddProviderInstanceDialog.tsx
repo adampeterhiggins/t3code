@@ -1,6 +1,7 @@
 "use client";
 
 import { Radio as RadioPrimitive } from "@base-ui/react/radio";
+import { useAtomValue } from "@effect/atom-react";
 import { CheckIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import {
@@ -13,6 +14,8 @@ import {
 import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";
 import { normalizeProviderAccentColor } from "../../providerInstances";
+import { EMPTY_SERVER_PROVIDERS, serverEnvironment } from "../../state/server";
+import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
 import { ACPRegistryIcon, Gemini, GithubCopilotIcon, PiAgentIcon, type Icon } from "../Icons";
 import { Dialog } from "../ui/dialog";
@@ -21,6 +24,8 @@ import { Input } from "../ui/input";
 import { RadioGroup } from "../ui/radio-group";
 import { toastManager } from "../ui/toast";
 import { DRIVER_OPTION_BY_VALUE, DRIVER_OPTIONS } from "./providerDriverMeta";
+import { ProviderAuthSection } from "./ProviderAuthSection";
+import { ProviderSetupSection, readAntigravityAuthMethod } from "./ProviderSetupSection";
 import { ProviderSettingsForm, deriveProviderSettingsFields } from "./ProviderSettingsForm";
 import { WizardPanel, WizardPopup, WizardHeader, WizardFooter } from "../ui/wizard";
 import {
@@ -61,6 +66,7 @@ function deriveInstanceId(driver: ProviderDriverKind, label: string): string {
 }
 
 const INSTANCE_ID_PATTERN = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
+const SIGN_IN_STEP = ADD_PROVIDER_WIZARD_STEPS.length - 1;
 const DEFAULT_DRIVER_KIND = ProviderDriverKind.make("codex");
 const DEFAULT_DRIVER_OPTION = DRIVER_OPTIONS[0]!;
 const EMPTY_CONFIG_DRAFT: Record<string, unknown> = {};
@@ -123,12 +129,24 @@ export function AddProviderInstanceDialog({
 }: AddProviderInstanceDialogProps) {
   const settings = useEnvironmentSettings(environmentId);
   const updateSettings = useUpdateEnvironmentSettings(environmentId);
+  const serverProviders =
+    useAtomValue(serverEnvironment.providersValueAtom(environmentId)) ?? EMPTY_SERVER_PROVIDERS;
+  const refreshServerProviders = useAtomCommand(serverEnvironment.refreshProviders, {
+    reportFailure: false,
+    reportDefect: false,
+  });
 
   const [wizardStep, setWizardStep] = useState(0);
   const [driver, setDriver] = useState<ProviderDriverKind>(DEFAULT_DRIVER_KIND);
   const [label, setLabel] = useState("");
   const [accentColor, setAccentColor] = useState<string>("");
   const [instanceIdOverride, setInstanceIdOverride] = useState<string | null>(null);
+  // Once the instance exists the wizard stays on the sign-in step; further
+  // edits happen on the provider card.
+  const [createdInstance, setCreatedInstance] = useState<{
+    readonly id: ProviderInstanceId;
+    readonly instance: ProviderInstanceConfig;
+  } | null>(null);
   // Driver-specific config drafts keyed by driver so toggling between drivers
   // during the same dialog session does not lose in-progress input.
   const [configByDriver, setConfigByDriver] = useState<Record<string, Record<string, unknown>>>({});
@@ -147,10 +165,33 @@ export function AddProviderInstanceDialog({
     () => deriveProviderSettingsFields(driverOption),
     [driverOption],
   );
-  const instanceIdError = validateInstanceId(instanceId, existingIds);
+  const createdInstanceId = createdInstance?.id ?? null;
+  // The id collides with itself once the instance exists — that is not an
+  // error, the wizard has simply moved past Identity.
+  const instanceIdError =
+    createdInstanceId === null ? validateInstanceId(instanceId, existingIds) : null;
   const showInstanceIdError = hasAttemptedSubmit && instanceIdError !== null;
   const previewLabel = label.trim() || `${driverOption.label} Workspace`;
-  const wizardStepSummaries = [driverOption.label, previewLabel, null] as const;
+  const wizardStepSummaries = [driverOption.label, previewLabel, null, null] as const;
+  const createdProvider =
+    createdInstanceId === null
+      ? undefined
+      : serverProviders.find((candidate) => candidate.instanceId === createdInstanceId);
+  const createdConfig = createdInstance?.instance.config;
+  const createdBinaryPath =
+    createdConfig !== null &&
+    createdConfig !== undefined &&
+    typeof createdConfig === "object" &&
+    "binaryPath" in createdConfig &&
+    typeof createdConfig.binaryPath === "string"
+      ? createdConfig.binaryPath
+      : undefined;
+  // The sign-in step is unreachable before the instance exists and the only
+  // reachable step afterwards — cap forward navigation at Config, then floor
+  // it at Sign in.
+  const navigableStepCount =
+    createdInstanceId === null ? SIGN_IN_STEP : ADD_PROVIDER_WIZARD_STEPS.length;
+  const minStep = createdInstanceId === null ? 0 : SIGN_IN_STEP;
 
   const configDraft = configByDriver[driver] ?? EMPTY_CONFIG_DRAFT;
   const setConfigDraft = (config: Record<string, unknown> | undefined) => {
@@ -174,9 +215,15 @@ export function AddProviderInstanceDialog({
 
   const navigateToStep = (requestedStep: number) => {
     applyWizardNavigation(
-      resolveWizardNavigation(wizardStep, requestedStep, ADD_PROVIDER_WIZARD_STEPS.length, {
-        instanceIdError,
-      }),
+      resolveWizardNavigation(
+        wizardStep,
+        requestedStep,
+        navigableStepCount,
+        {
+          instanceIdError,
+        },
+        minStep,
+      ),
     );
   };
 
@@ -206,12 +253,16 @@ export function AddProviderInstanceDialog({
     };
     try {
       updateSettings({ providerInstances: nextMap });
+      setCreatedInstance({ id: brandedId, instance: nextInstance });
+      setWizardStep(SIGN_IN_STEP);
+      // The settings watcher re-probes on its own; a targeted refresh makes
+      // the sign-in methods show up promptly.
+      void refreshServerProviders({ environmentId, input: { instanceId: brandedId } });
       toastManager.add({
         type: "success",
         title: "Provider instance added",
         description: `${driverOption.label} instance '${instanceId}' was added.`,
       });
-      onOpenChange(false);
     } catch (error) {
       toastManager.add({
         type: "error",
@@ -237,6 +288,8 @@ export function AddProviderInstanceDialog({
             currentStep={wizardStep}
             summaries={wizardStepSummaries}
             instanceIdError={instanceIdError}
+            navigableStepCount={navigableStepCount}
+            minStep={minStep}
             onNavigation={applyWizardNavigation}
           />
         </WizardHeader>
@@ -399,25 +452,67 @@ export function AddProviderInstanceDialog({
               </p>
             </div>
           ) : null}
+
+          {createdInstance !== null ? (
+            <div className={cn("grid gap-3", wizardStep !== SIGN_IN_STEP && "hidden")}>
+              {createdInstance.instance.driver === "antigravity" ? (
+                <ProviderSetupSection
+                  environmentId={environmentId}
+                  environmentLabel={environmentLabel}
+                  instanceId={createdInstance.id}
+                  provider={createdProvider}
+                  binaryPath={createdBinaryPath}
+                  authMethod={readAntigravityAuthMethod(createdInstance.instance.config)}
+                  enabled
+                  readOnly={false}
+                  onEnable={() => {}}
+                />
+              ) : (
+                <>
+                  <ProviderAuthSection
+                    environmentId={environmentId}
+                    environmentLabel={environmentLabel}
+                    instanceId={createdInstance.id}
+                    provider={createdProvider}
+                    enabled
+                    readOnly={false}
+                    onEnable={() => {}}
+                  />
+                  {(createdProvider?.setup?.authMethods?.length ?? 0) === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Sign-in options appear here once the provider is detected — you can also
+                      finish setup later from the provider card.
+                    </p>
+                  ) : null}
+                </>
+              )}
+            </div>
+          ) : null}
         </WizardPanel>
 
         <WizardFooter>
-          <Button
-            variant="outline"
-            onClick={() => {
-              if (wizardStep === 0) {
-                onOpenChange(false);
-                return;
-              }
-              setWizardStep((step) => Math.max(0, step - 1));
-            }}
-          >
-            {wizardStep === 0 ? "Cancel" : "Back"}
-          </Button>
-          {wizardStep < ADD_PROVIDER_WIZARD_STEPS.length - 1 ? (
-            <Button onClick={() => navigateToStep(wizardStep + 1)}>Next</Button>
+          {wizardStep === SIGN_IN_STEP ? (
+            <Button onClick={() => onOpenChange(false)}>Done</Button>
           ) : (
-            <Button onClick={handleSave}>Add instance</Button>
+            <>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (wizardStep === 0) {
+                    onOpenChange(false);
+                    return;
+                  }
+                  setWizardStep((step) => Math.max(0, step - 1));
+                }}
+              >
+                {wizardStep === 0 ? "Cancel" : "Back"}
+              </Button>
+              {wizardStep < SIGN_IN_STEP - 1 ? (
+                <Button onClick={() => navigateToStep(wizardStep + 1)}>Next</Button>
+              ) : (
+                <Button onClick={handleSave}>Add instance</Button>
+              )}
+            </>
           )}
         </WizardFooter>
       </WizardPopup>
