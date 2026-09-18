@@ -690,6 +690,15 @@ export const CursorSettings = makeProviderSettingsSchema(
         providerSettingsForm: { placeholder: "cursor-agent", clearWhenEmpty: "omit" },
       }),
     ),
+    homePath: TrimmedString.pipe(
+      Schema.withDecodingDefault(Effect.succeed("")),
+      Schema.annotateKey({
+        title: "CURSOR_CONFIG_DIR path",
+        description:
+          "Custom Cursor config directory. Keeps the login and CLI settings separate per instance.",
+        providerSettingsForm: { placeholder: "~/.cursor", clearWhenEmpty: "omit" },
+      }),
+    ),
     apiEndpoint: TrimmedString.pipe(
       Schema.withDecodingDefault(Effect.succeed("")),
       Schema.annotateKey({
@@ -707,7 +716,7 @@ export const CursorSettings = makeProviderSettingsSchema(
     ),
   },
   {
-    order: ["binaryPath", "apiEndpoint"],
+    order: ["binaryPath", "homePath", "apiEndpoint"],
   },
 );
 export type CursorSettings = typeof CursorSettings.Type;
@@ -1399,6 +1408,7 @@ const ClaudeSettingsPatch = Schema.Struct({
 const CursorSettingsPatch = Schema.Struct({
   enabled: Schema.optionalKey(Schema.Boolean),
   binaryPath: Schema.optionalKey(TrimmedString),
+  homePath: Schema.optionalKey(TrimmedString),
   apiEndpoint: Schema.optionalKey(TrimmedString),
   customModels: Schema.optionalKey(Schema.Array(CustomModelSetting)),
 });
