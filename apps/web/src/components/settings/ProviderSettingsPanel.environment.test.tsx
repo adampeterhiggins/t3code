@@ -373,13 +373,8 @@ describe("EnvironmentProviderSettings routing", () => {
       panel,
       (element) => element.props.instanceId === codexId && element.props.mode === "editor",
     );
-    const resetAction = defaultCard?.props.headerAction;
-    const resetButton = visitElements(
-      resetAction,
-      (element) => typeof element.props.onClick === "function",
-    );
-    expect(resetButton).not.toBeNull();
-    (resetButton?.props.onClick as (() => void) | undefined)?.();
+    expect(defaultCard?.props.onDelete).toBeTypeOf("function");
+    (defaultCard?.props.onDelete as (() => void) | undefined)?.();
 
     const resetPatch = settingsState.updateSettings.mock.lastCall?.[0] as
       | Record<string, unknown>

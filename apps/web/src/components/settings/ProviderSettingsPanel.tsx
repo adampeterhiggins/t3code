@@ -700,7 +700,6 @@ export function EnvironmentProviderSettings({
     readonly instance: ProviderInstanceConfig;
     readonly driver: ProviderDriverKind;
     readonly isDefault: boolean;
-    readonly isDirty?: boolean;
   }
 
   const instancesByDriver = new Map<
@@ -762,13 +761,18 @@ export function EnvironmentProviderSettings({
     if (effectiveInstance !== undefined) {
       const isDirty =
         explicitInstance !== undefined || !Equal.equals(legacyConfig, defaultLegacyConfig);
-      rows.push({
-        instanceId: defaultInstanceId,
-        instance: effectiveInstance,
-        driver,
-        isDefault: true,
-        isDirty,
-      });
+      // A pristine, disabled default slot is a provider type the user has
+      // never configured — keep it out of the list; the + dialog adds it
+      // back. Enabled defaults (e.g. Codex and Claude ship on) stay visible
+      // because they are live even when untouched.
+      if (isDirty || resolveProviderInstanceEnabled(effectiveInstance)) {
+        rows.push({
+          instanceId: defaultInstanceId,
+          instance: effectiveInstance,
+          driver,
+          isDefault: true,
+        });
+      }
     }
     for (const [id, instance] of instancesByDriver.get(providerSettings.provider) ?? []) {
       if (id === defaultInstanceId) continue;
@@ -903,7 +907,6 @@ export function EnvironmentProviderSettings({
     const favoriteModels = Arr.filterMap(settings.favorites ?? [], (favorite) =>
       favorite.provider === row.instanceId ? Result.succeed(favorite.model) : Result.failVoid,
     );
-    const resetLabel = driverOption?.label ?? String(row.driver);
 
     return (
       <ProviderInstanceCard
@@ -957,17 +960,13 @@ export function EnvironmentProviderSettings({
           );
         }}
         onDelete={
-          mode === "editor" && !row.isDefault
-            ? () => deleteProviderInstance(row.instanceId)
+          mode === "editor"
+            ? row.isDefault
+              ? // Deleting a built-in default slot restores its unconfigured
+                // state, which drops it back out of the list.
+                () => resetDefaultInstance(row.driver)
+              : () => deleteProviderInstance(row.instanceId)
             : undefined
-        }
-        headerAction={
-          mode === "editor" && row.isDefault && row.isDirty ? (
-            <SettingResetButton
-              label={`${resetLabel} provider settings`}
-              onClick={() => resetDefaultInstance(row.driver)}
-            />
-          ) : null
         }
         hiddenModels={modelPreferences.hiddenModels}
         favoriteModels={favoriteModels}
@@ -1086,11 +1085,23 @@ export function EnvironmentProviderSettings({
               <ScrollArea scrollFade chainVerticalScroll className="@min-[48rem]/providers:h-full">
                 <div className="space-y-6 p-4">{renderProviderInstance(selectedRow, "editor")}</div>
               </ScrollArea>
-            ) : (
+            ) : targetInstanceMissing ? (
               <div className="p-6 text-sm text-muted-foreground">
-                {targetInstanceMissing
-                  ? "This provider instance is no longer available on this device."
-                  : "No providers configured."}
+                This provider instance is no longer available on this device.
+              </div>
+            ) : (
+              <div className="flex h-full min-h-48 flex-col items-center justify-center gap-3 p-6">
+                <p className="text-sm text-muted-foreground">No providers configured.</p>
+                {!readOnly ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setIsAddInstanceDialogOpen(true)}
+                  >
+                    <PlusIcon />
+                    Add provider
+                  </Button>
+                ) : null}
               </div>
             )}
           </div>
