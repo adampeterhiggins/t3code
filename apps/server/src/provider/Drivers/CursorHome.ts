@@ -2,20 +2,7 @@ import type { CursorSettings } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Path from "effect/Path";
 
-import { expandHomePath } from "../../pathExpansion.ts";
-
-/**
- * Resolve the instance's `homePath` to an absolute `CURSOR_CONFIG_DIR` value,
- * or `undefined` when the instance uses Cursor's default config directory.
- */
-export const resolveCursorConfigDir = Effect.fn("resolveCursorConfigDir")(function* (
-  config: Pick<CursorSettings, "homePath">,
-): Effect.fn.Return<string | undefined, never, Path.Path> {
-  const path = yield* Path.Path;
-  const homePath = config.homePath.trim();
-  if (homePath.length === 0) return undefined;
-  return path.resolve(expandHomePath(homePath));
-});
+import { resolveProviderHomePath } from "../ProviderInstanceEnvironment.ts";
 
 /**
  * Merge the instance's `homePath` into the spawned environment as
@@ -33,7 +20,7 @@ export const makeCursorEnvironment = Effect.fn("makeCursorEnvironment")(function
   baseEnv?: NodeJS.ProcessEnv,
 ): Effect.fn.Return<NodeJS.ProcessEnv, never, Path.Path> {
   const resolvedBaseEnv = baseEnv ?? process.env;
-  const configDir = yield* resolveCursorConfigDir(config);
+  const configDir = yield* resolveProviderHomePath(config.homePath);
   if (configDir === undefined) return resolvedBaseEnv;
   return {
     AGENT_CLI_CREDENTIAL_STORE: "file",

@@ -5,13 +5,14 @@ import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Path from "effect/Path";
 
-import { makeCursorEnvironment, resolveCursorConfigDir } from "./CursorHome.ts";
+import { resolveProviderHomePath } from "../ProviderInstanceEnvironment.ts";
+import { makeCursorEnvironment } from "./CursorHome.ts";
 
 it.layer(NodeServices.layer)("CursorHome", (it) => {
   describe("Cursor config dir resolution", () => {
     it.effect("leaves the environment untouched when no home override is configured", () =>
       Effect.gen(function* () {
-        expect(yield* resolveCursorConfigDir({ homePath: "" })).toBeUndefined();
+        expect(yield* resolveProviderHomePath("")).toBeUndefined();
         expect(yield* makeCursorEnvironment({ homePath: "" })).toBe(process.env);
 
         const baseEnv = { KEEP: "1" };
@@ -29,7 +30,7 @@ it.layer(NodeServices.layer)("CursorHome", (it) => {
           { KEEP: "1" },
         );
 
-        expect(yield* resolveCursorConfigDir({ homePath: "~/.cursor-work" })).toBe(resolved);
+        expect(yield* resolveProviderHomePath("~/.cursor-work")).toBe(resolved);
         expect(environment.CURSOR_CONFIG_DIR).toBe(resolved);
         expect(environment.AGENT_CLI_CREDENTIAL_STORE).toBe("file");
         expect(environment.KEEP).toBe("1");

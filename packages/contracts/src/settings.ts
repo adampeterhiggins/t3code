@@ -736,13 +736,22 @@ export const GrokSettings = makeProviderSettingsSchema(
         providerSettingsForm: { placeholder: "grok", clearWhenEmpty: "omit" },
       }),
     ),
+    homePath: TrimmedString.pipe(
+      Schema.withDecodingDefault(Effect.succeed("")),
+      Schema.annotateKey({
+        title: "GROK_HOME path",
+        description:
+          "Custom Grok home directory. Keeps the login and CLI settings separate per instance.",
+        providerSettingsForm: { placeholder: "~/.grok", clearWhenEmpty: "omit" },
+      }),
+    ),
     customModels: Schema.Array(CustomModelSetting).pipe(
       Schema.withDecodingDefault(Effect.succeed([])),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
   },
   {
-    order: ["binaryPath"],
+    order: ["binaryPath", "homePath"],
   },
 );
 export type GrokSettings = typeof GrokSettings.Type;
@@ -846,6 +855,15 @@ export const OpenCodeSettings = makeProviderSettingsSchema(
         },
       }),
     ),
+    homePath: TrimmedString.pipe(
+      Schema.withDecodingDefault(Effect.succeed("")),
+      Schema.annotateKey({
+        title: "XDG_DATA_HOME path",
+        description:
+          "Custom data directory. Keeps stored credentials (auth.json) separate per instance.",
+        providerSettingsForm: { placeholder: "~/.local/share", clearWhenEmpty: "omit" },
+      }),
+    ),
     serverUrl: TrimmedString.pipe(
       Schema.withDecodingDefault(Effect.succeed("")),
       Schema.annotateKey({
@@ -875,7 +893,7 @@ export const OpenCodeSettings = makeProviderSettingsSchema(
     ),
   },
   {
-    order: ["binaryPath", "serverUrl", "serverPassword"],
+    order: ["binaryPath", "homePath", "serverUrl", "serverPassword"],
   },
 );
 export type OpenCodeSettings = typeof OpenCodeSettings.Type;
@@ -897,13 +915,22 @@ export const DevinSettings = makeProviderSettingsSchema(
         },
       }),
     ),
+    homePath: TrimmedString.pipe(
+      Schema.withDecodingDefault(Effect.succeed("")),
+      Schema.annotateKey({
+        title: "XDG_DATA_HOME path",
+        description:
+          "Custom data directory. Keeps the stored login (credentials.toml) separate per instance.",
+        providerSettingsForm: { placeholder: "~/.local/share", clearWhenEmpty: "omit" },
+      }),
+    ),
     customModels: Schema.Array(CustomModelSetting).pipe(
       Schema.withDecodingDefault(Effect.succeed([])),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
   },
   {
-    order: ["binaryPath"],
+    order: ["binaryPath", "homePath"],
   },
 );
 export type DevinSettings = typeof DevinSettings.Type;
@@ -1416,6 +1443,7 @@ const CursorSettingsPatch = Schema.Struct({
 const GrokSettingsPatch = Schema.Struct({
   enabled: Schema.optionalKey(Schema.Boolean),
   binaryPath: Schema.optionalKey(TrimmedString),
+  homePath: Schema.optionalKey(TrimmedString),
   customModels: Schema.optionalKey(Schema.Array(CustomModelSetting)),
 });
 
@@ -1432,6 +1460,7 @@ const AntigravitySettingsPatch = Schema.Struct({
 const OpenCodeSettingsPatch = Schema.Struct({
   enabled: Schema.optionalKey(Schema.Boolean),
   binaryPath: Schema.optionalKey(TrimmedString),
+  homePath: Schema.optionalKey(TrimmedString),
   serverUrl: Schema.optionalKey(TrimmedString),
   serverPassword: Schema.optionalKey(TrimmedString),
   customModels: Schema.optionalKey(Schema.Array(CustomModelSetting)),
@@ -1440,6 +1469,7 @@ const OpenCodeSettingsPatch = Schema.Struct({
 const DevinSettingsPatch = Schema.Struct({
   enabled: Schema.optionalKey(Schema.Boolean),
   binaryPath: Schema.optionalKey(TrimmedString),
+  homePath: Schema.optionalKey(TrimmedString),
   customModels: Schema.optionalKey(Schema.Array(CustomModelSetting)),
 });
 

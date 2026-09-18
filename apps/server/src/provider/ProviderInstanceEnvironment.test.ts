@@ -5,7 +5,10 @@ import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Path from "effect/Path";
 
-import { mergeProviderInstanceEnvironment } from "./ProviderInstanceEnvironment.ts";
+import {
+  mergeProviderHomePathEnvironment,
+  mergeProviderInstanceEnvironment,
+} from "./ProviderInstanceEnvironment.ts";
 
 describe("mergeProviderInstanceEnvironment", () => {
   it.effect.each([
@@ -23,6 +26,9 @@ describe("mergeProviderInstanceEnvironment", () => {
           { name: "CODEX_HOME", value, sensitive: false },
           { name: "CLAUDE_CONFIG_DIR", value, sensitive: false },
           { name: "CURSOR_CONFIG_DIR", value, sensitive: false },
+          { name: "GROK_HOME", value, sensitive: false },
+          { name: "XDG_DATA_HOME", value, sensitive: false },
+          { name: "XDG_CONFIG_HOME", value, sensitive: false },
           { name: "CUSTOM_VALUE", value, sensitive: false },
         ],
         baseEnv,
@@ -32,6 +38,9 @@ describe("mergeProviderInstanceEnvironment", () => {
         CODEX_HOME: path.join(NodeOS.homedir(), tail),
         CLAUDE_CONFIG_DIR: path.join(NodeOS.homedir(), tail),
         CURSOR_CONFIG_DIR: path.join(NodeOS.homedir(), tail),
+        GROK_HOME: path.join(NodeOS.homedir(), tail),
+        XDG_DATA_HOME: path.join(NodeOS.homedir(), tail),
+        XDG_CONFIG_HOME: path.join(NodeOS.homedir(), tail),
         CUSTOM_VALUE: value,
       });
       expect(baseEnv).toEqual({
@@ -67,4 +76,41 @@ describe("mergeProviderInstanceEnvironment", () => {
       PATH: "/bin",
     });
   });
+});
+
+describe("mergeProviderHomePathEnvironment", () => {
+  it.effect("leaves the environment untouched when homePath is empty", () =>
+    Effect.gen(function* () {
+      const baseEnv = { KEEP: "1" };
+      expect(yield* mergeProviderHomePathEnvironment("", ["GROK_HOME"], baseEnv)).toBe(baseEnv);
+      expect(yield* mergeProviderHomePathEnvironment("   ", ["GROK_HOME"], baseEnv)).toBe(baseEnv);
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("points each variable at the resolved homePath", () =>
+    Effect.gen(function* () {
+      const path = yield* Path.Path;
+      const resolved = path.join(NodeOS.homedir(), ".xdg-work");
+
+      const environment = yield* mergeProviderHomePathEnvironment(
+        "~/.xdg-work",
+        ["XDG_DATA_HOME", "XDG_CONFIG_HOME"],
+        { KEEP: "1" },
+      );
+
+      expect(environment.XDG_DATA_HOME).toBe(resolved);
+      expect(environment.XDG_CONFIG_HOME).toBe(resolved);
+      expect(environment.KEEP).toBe("1");
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("prefers the configured homePath over an inherited variable", () =>
+    Effect.gen(function* () {
+      const environment = yield* mergeProviderHomePathEnvironment("~/.grok-work", ["GROK_HOME"], {
+        GROK_HOME: "/elsewhere/grok",
+      });
+
+      expect(environment.GROK_HOME).toBe((yield* Path.Path).join(NodeOS.homedir(), ".grok-work"));
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
 });

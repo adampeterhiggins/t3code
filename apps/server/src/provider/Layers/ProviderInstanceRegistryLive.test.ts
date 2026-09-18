@@ -130,6 +130,7 @@ const makeCursorConfig = (overrides: Partial<CursorSettings>): CursorSettings =>
 const makeGrokConfig = (overrides: Partial<GrokSettings>): GrokSettings => ({
   enabled: false,
   binaryPath: "grok",
+  homePath: "",
   customModels: [],
   ...overrides,
 });
@@ -137,6 +138,7 @@ const makeGrokConfig = (overrides: Partial<GrokSettings>): GrokSettings => ({
 const makeOpenCodeConfig = (overrides: Partial<OpenCodeSettings>): OpenCodeSettings => ({
   enabled: false,
   binaryPath: "opencode",
+  homePath: "",
   serverUrl: "",
   serverPassword: "",
   customModels: [],
