@@ -1071,20 +1071,26 @@ describe("Cursor usage limits", () => {
     );
   });
 
-  it("reads credentials from CURSOR_CONFIG_DIR instead of the default config directory", async () => {
+  it("reads credentials from the instance HOME instead of the default home", async () => {
     await runNode(
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
-        const home = yield* fs.makeTempDirectoryScoped();
-        const configDir = yield* fs.makeTempDirectoryScoped();
-        yield* fs.makeDirectory(path.join(home, ".cursor"));
+        const defaultHome = yield* fs.makeTempDirectoryScoped();
+        const instanceHome = yield* fs.makeTempDirectoryScoped();
+        yield* fs.makeDirectory(path.join(defaultHome, ".cursor"));
         yield* fs.writeFileString(
-          path.join(home, ".cursor", "auth.json"),
+          path.join(defaultHome, ".cursor", "auth.json"),
           '{"accessToken":"default-token"}',
         );
+        yield* fs.makeDirectory(path.join(instanceHome, ".cursor"));
         yield* fs.writeFileString(
-          path.join(configDir, "auth.json"),
+          path.join(instanceHome, ".cursor", "auth.json"),
+          '{"accessToken":"instance-token"}',
+        );
+        yield* fs.makeDirectory(path.join(instanceHome, "cursor"), { recursive: true });
+        yield* fs.writeFileString(
+          path.join(instanceHome, "cursor", "auth.json"),
           '{"accessToken":"instance-token"}',
         );
         const client = HttpClient.make((request) => {
@@ -1100,9 +1106,8 @@ describe("Cursor usage limits", () => {
           const limits = yield* readCursorUsageLimits(
             { apiEndpoint: "" },
             {
-              HOME: home,
-              XDG_CONFIG_HOME: home,
-              CURSOR_CONFIG_DIR: configDir,
+              HOME: instanceHome,
+              XDG_CONFIG_HOME: instanceHome,
               AGENT_CLI_CREDENTIAL_STORE: "file",
             },
           ).pipe(

@@ -8,27 +8,28 @@ Cursor provider instances wrap the `cursor-agent` CLI and ACP adapter.
 
 Path to the `cursor-agent` executable. Leave empty to use the `cursor-agent`
 found on `PATH`. Instances can share a single install — separate accounts do
-not need separate binaries; isolate them with the config directory below.
+not need separate binaries; isolate them with the home directory below.
 
-### CURSOR_CONFIG_DIR path
+### Home directory
 
-A custom Cursor config directory for the instance — the value is exported to
-`cursor-agent` as `CURSOR_CONFIG_DIR`. This keeps the instance's sign-in,
-`auth.json` credentials, and CLI settings isolated from the default
-`~/.cursor` directory and from other Cursor instances.
+A private home directory for the instance. `cursor-agent` stores its login at
+`~/.cursor` (and `~/.config/cursor` on Linux) regardless of
+`CURSOR_CONFIG_DIR`, so T3 Code runs the instance with this directory as its
+`HOME` to keep sign-ins separate. Everything outside `.cursor` and
+`.config/cursor` is symlinked back to your real home, so agent tools such as
+`git` and `ssh` keep working with your normal configuration.
 
 Set a different directory per instance to run multiple Cursor accounts side
-by side (for example `~/.cursor-work` and `~/.cursor-personal`). On macOS the
-instance automatically uses file-based credential storage
-(`AGENT_CLI_CREDENTIAL_STORE=file`) so the login lands in that directory
-instead of the shared keychain. Then use each instance's own
+by side (for example `~/.cursor-work` and `~/.cursor-personal`). The instance
+automatically uses file-based credential storage
+(`AGENT_CLI_CREDENTIAL_STORE=file`) so the login lands in the instance
+directory instead of the shared macOS keychain. Then use each instance's own
 **Sign in with browser** action — whichever account you authenticate in the
-browser is stored under that instance's directory, and its model list,
-threads, and usage-limit probe all run under that account.
+browser is stored under that instance's home, and its model list, threads,
+and usage-limit probe all run under that account.
 
-You can also set `CURSOR_CONFIG_DIR` directly in the instance's
-**Environment variables** (leading `~` expands to your home directory) or set
-`CURSOR_API_KEY` to authenticate with an API key instead of an account login.
+You can also set `CURSOR_API_KEY` in the instance's **Environment variables**
+to authenticate with an API key instead of an account login.
 
 ### API endpoint
 

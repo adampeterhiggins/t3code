@@ -8,7 +8,6 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http";
-import { expandHomePath } from "../../pathExpansion.ts";
 import {
   clampPercent,
   makeUnavailableUsageLimits,
@@ -90,17 +89,14 @@ export const readCursorUsageLimits = Effect.fn("readCursorUsageLimits")(function
     if (!token) {
       const home =
         (platform === "win32" ? environment.USERPROFILE : environment.HOME) || NodeOS.homedir();
-      // A configured CURSOR_CONFIG_DIR (per-instance `homePath`) relocates
-      // auth.json alongside the rest of the instance's CLI state.
-      const configuredDir = environment.CURSOR_CONFIG_DIR?.trim();
+      // auth.json is home-anchored (CURSOR_CONFIG_DIR never relocates it), so a
+      // per-instance HOME already points this lookup at the right credentials.
       const directory =
-        configuredDir !== undefined && configuredDir.length > 0
-          ? expandHomePath(configuredDir)
-          : platform === "win32"
-            ? path.join(environment.APPDATA || path.join(home, "AppData", "Roaming"), "Cursor")
-            : platform === "darwin"
-              ? path.join(home, ".cursor")
-              : path.join(environment.XDG_CONFIG_HOME || path.join(home, ".config"), "cursor");
+        platform === "win32"
+          ? path.join(environment.APPDATA || path.join(home, "AppData", "Roaming"), "Cursor")
+          : platform === "darwin"
+            ? path.join(home, ".cursor")
+            : path.join(environment.XDG_CONFIG_HOME || path.join(home, ".config"), "cursor");
       const credentials = yield* fs.readFileString(path.join(directory, "auth.json")).pipe(
         Effect.catchTags({
           PlatformError: (error) =>

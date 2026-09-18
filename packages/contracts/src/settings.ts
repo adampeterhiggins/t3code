@@ -693,9 +693,9 @@ export const CursorSettings = makeProviderSettingsSchema(
     homePath: TrimmedString.pipe(
       Schema.withDecodingDefault(Effect.succeed("")),
       Schema.annotateKey({
-        title: "CURSOR_CONFIG_DIR path",
+        title: "Home directory",
         description:
-          "Custom Cursor config directory. Keeps the login and CLI settings separate per instance.",
+          "Instance home directory for this account. Keeps the sign-in, CLI settings, and session history separate per instance.",
         providerSettingsForm: { placeholder: "~/.cursor", clearWhenEmpty: "omit" },
       }),
     ),
