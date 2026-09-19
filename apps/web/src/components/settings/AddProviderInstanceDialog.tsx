@@ -466,6 +466,7 @@ export function AddProviderInstanceDialog({
                   enabled
                   readOnly={false}
                   onEnable={() => {}}
+                  variant="dialog"
                 />
               ) : (
                 <>
@@ -477,6 +478,7 @@ export function AddProviderInstanceDialog({
                     enabled
                     readOnly={false}
                     onEnable={() => {}}
+                    variant="dialog"
                   />
                   {(createdProvider?.setup?.authMethods?.length ?? 0) === 0 ? (
                     <p className="text-sm text-muted-foreground">

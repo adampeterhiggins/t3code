@@ -14,6 +14,7 @@ import { useRef, useState } from "react";
 
 import { writeTextToClipboard } from "../../hooks/useCopyToClipboard";
 import { ensureLocalApi } from "../../localApi";
+import { cn } from "../../lib/utils";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -30,6 +31,8 @@ interface ProviderAuthSectionProps {
   readonly enabled: boolean;
   readonly readOnly: boolean;
   readonly onEnable: () => void;
+  /** `dialog` drops the two-column settings rows for a stacked layout that fits inside a wizard popup. */
+  readonly variant?: "panel" | "dialog";
 }
 
 const PHASE_LABELS: Record<ProviderAuthState["phase"], string> = {
@@ -79,6 +82,7 @@ export function ProviderAuthSection(props: ProviderAuthSectionProps) {
           instanceId={props.instanceId}
           provider={props.provider}
           enabled={props.enabled}
+          variant={props.variant ?? "panel"}
         />
       )}
     </section>
@@ -91,9 +95,10 @@ function ProviderAuthActions({
   instanceId,
   provider,
   enabled,
+  variant,
 }: Pick<
   ProviderAuthSectionProps,
-  "environmentId" | "environmentLabel" | "instanceId" | "enabled"
+  "environmentId" | "environmentLabel" | "instanceId" | "enabled" | "variant"
 > & { readonly provider: ServerProvider }) {
   const providerName = provider.displayName ?? "This provider";
   const methods = provider.setup?.authMethods ?? [];
@@ -250,115 +255,251 @@ function ProviderAuthActions({
     }
   }
 
+  const isDialog = variant === "dialog";
+  const buttonRowClass = cn("flex flex-wrap gap-2", !isDialog && "sm:justify-end");
+  const controlColumnClass = cn(
+    "flex min-w-0 flex-col gap-2",
+    !isDialog && "sm:max-w-56 sm:items-end sm:text-right xl:max-w-72",
+  );
+
+  const statusContent = (
+    <>
+      <p role="status" className="[overflow-wrap:anywhere]">
+        {authStatusMessage}
+      </p>
+      {pendingLabel ? <p role="status">{pendingLabel}.</p> : null}
+    </>
+  );
+
+  const flowControls =
+    authorizationUrl || (authActive && auth?.flowId) || showSignOut ? (
+      <div className={controlColumnClass}>
+        {authorizationUrl ? (
+          <div className={buttonRowClass}>
+            <Button size="sm" variant="outline" onClick={() => void openSignInPage()}>
+              Open sign-in page
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => void copySignInLink()}>
+              {copiedFlowId === auth?.flowId ? "Link copied" : "Copy sign-in link"}
+            </Button>
+          </div>
+        ) : null}
+        {authActive && auth?.flowId ? (
+          <div className={buttonRowClass}>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={actionsDisabled}
+              onClick={() => {
+                const flowId = auth.flowId;
+                if (!flowId) return;
+                void runCommand("Cancelling sign-in", () =>
+                  cancelAuth({ environmentId, input: { instanceId, flowId } }),
+                );
+              }}
+            >
+              Cancel sign-in
+            </Button>
+          </div>
+        ) : null}
+        {showSignOut ? (
+          <div className={buttonRowClass}>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={actionsDisabled || auth === null}
+              onClick={() => void signOut()}
+            >
+              Sign out
+            </Button>
+          </div>
+        ) : null}
+      </div>
+    ) : null;
+
+  const waitingDetails =
+    authorizationUrl || inputPrompt ? (
+      <div className={cn("space-y-2", !isDialog && "pb-2")}>
+        {authorizationUrl && auth?.expiresAt ? (
+          <p className="text-muted-foreground">
+            Link expires at{" "}
+            <time dateTime={auth.expiresAt}>
+              {new Date(auth.expiresAt).toLocaleTimeString([], {
+                hour: "numeric",
+                minute: "2-digit",
+              })}
+            </time>
+            .
+          </p>
+        ) : null}
+        {inputPrompt ? (
+          <form
+            className="grid gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submitInput();
+            }}
+          >
+            <label htmlFor={`provider-auth-input-${instanceId}`}>{inputPrompt}</label>
+            <Input
+              id={`provider-auth-input-${instanceId}`}
+              size="sm"
+              type="text"
+              autoComplete="off"
+              spellCheck={false}
+              value={callbackValue}
+              maxLength={16_384}
+              disabled={actionsDisabled}
+              onChange={(event) =>
+                setCallbackDraft({ flowId: auth?.flowId ?? null, value: event.target.value })
+              }
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              type="submit"
+              className="w-fit"
+              disabled={actionsDisabled || !callbackValue.trim()}
+            >
+              Continue
+            </Button>
+          </form>
+        ) : null}
+      </div>
+    ) : null;
+
+  const methodSelect =
+    selectedMethod !== null && methods.length > 1 ? (
+      <Select
+        value={selectedMethod.id}
+        onValueChange={(value) => setSelectedMethodId(value)}
+        disabled={actionsDisabled || !enabled}
+      >
+        <SelectTrigger size="sm" className="w-fit min-w-48" aria-label="Sign-in method">
+          <SelectValue>{selectedMethod.label}</SelectValue>
+        </SelectTrigger>
+        <SelectPopup alignItemWithTrigger={false}>
+          {methods.map((method) => (
+            <SelectItem key={method.id} value={method.id}>
+              {method.label}
+            </SelectItem>
+          ))}
+        </SelectPopup>
+      </Select>
+    ) : null;
+
+  const startMethodControl =
+    selectedMethod !== null && selectedMethod.kind !== "paste-credential" ? (
+      <div className={buttonRowClass}>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={actionsDisabled || !enabled || auth === null}
+          onClick={() => void startMethod(selectedMethod)}
+        >
+          {selectedMethod.label}
+        </Button>
+      </div>
+    ) : null;
+
+  const pasteCredentialForm =
+    selectedMethod !== null && selectedMethod.kind === "paste-credential" ? (
+      <div className={cn("space-y-2", !isDialog && "pb-2")}>
+        <form
+          className="grid gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void startMethod(selectedMethod);
+          }}
+        >
+          <label htmlFor={`provider-credential-${instanceId}-${selectedMethod.id}`}>
+            {selectedMethod.credentialLabel ?? selectedMethod.label}
+          </label>
+          <Input
+            id={`provider-credential-${instanceId}-${selectedMethod.id}`}
+            size="sm"
+            type="password"
+            autoComplete="off"
+            spellCheck={false}
+            placeholder={selectedMethod.credentialPlaceholder ?? "Paste key"}
+            value={credentialDrafts[selectedMethod.id] ?? ""}
+            maxLength={16_384}
+            disabled={actionsDisabled || !enabled}
+            onChange={(event) =>
+              setCredentialDrafts((drafts) => ({
+                ...drafts,
+                [selectedMethod.id]: event.target.value,
+              }))
+            }
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            type="submit"
+            className="w-fit"
+            disabled={
+              actionsDisabled || !enabled || !(credentialDrafts[selectedMethod.id] ?? "").trim()
+            }
+          >
+            {selectedMethod.label}
+          </Button>
+        </form>
+      </div>
+    ) : null;
+
+  const errorBlock =
+    error || authQuery.error ? (
+      <div className={cn("grid gap-2", !isDialog && "px-3 py-3 sm:px-4")}>
+        <p role="alert" className="text-destructive [overflow-wrap:anywhere]">
+          {error ?? authQuery.error}
+        </p>
+        {authQuery.error ? (
+          <Button size="sm" variant="outline" className="w-fit" onClick={() => authQuery.refresh()}>
+            Retry setup status
+          </Button>
+        ) : null}
+      </div>
+    ) : null;
+
+  if (isDialog) {
+    return (
+      <div className="grid gap-3">
+        <div className="grid gap-1">{statusContent}</div>
+        {waitingDetails}
+        {!authActive && !authenticated && selectedMethod ? (
+          <div className="grid gap-2">
+            {selectedMethod.description ? (
+              <p className="text-muted-foreground">{selectedMethod.description}</p>
+            ) : null}
+            {methodSelect}
+            {pasteCredentialForm ?? startMethodControl}
+          </div>
+        ) : null}
+        {flowControls}
+        {!authActive && authenticated ? (
+          <div className="grid gap-1">
+            <p className="font-medium text-foreground">{signedInMethodLabel}</p>
+            {provider.auth.external === true ? (
+              <p className="text-muted-foreground">
+                This credential is managed outside T3 Code — remove it there to sign out.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+        {errorBlock}
+      </div>
+    );
+  }
+
   return (
     <div className="divide-y divide-border/50">
       <SettingsRow
         title={`${providerName} sign-in`}
         className="@max-lg/setup:[&>div:first-child]:flex @max-lg/setup:[&>div:first-child]:items-stretch @max-lg/setup:[&>div:first-child]:gap-3"
-        status={
-          <>
-            <p role="status" className="[overflow-wrap:anywhere]">
-              {authStatusMessage}
-            </p>
-            {pendingLabel ? <p role="status">{pendingLabel}.</p> : null}
-          </>
-        }
-        control={
-          authorizationUrl || (authActive && auth?.flowId) || showSignOut ? (
-            <div className="flex min-w-0 flex-col gap-2 sm:max-w-56 sm:items-end sm:text-right xl:max-w-72">
-              {authorizationUrl ? (
-                <div className="flex flex-wrap gap-2 sm:justify-end">
-                  <Button size="sm" variant="outline" onClick={() => void openSignInPage()}>
-                    Open sign-in page
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => void copySignInLink()}>
-                    {copiedFlowId === auth?.flowId ? "Link copied" : "Copy sign-in link"}
-                  </Button>
-                </div>
-              ) : null}
-              {authActive && auth?.flowId ? (
-                <div className="flex flex-wrap gap-2 sm:justify-end">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={actionsDisabled}
-                    onClick={() => {
-                      const flowId = auth.flowId;
-                      if (!flowId) return;
-                      void runCommand("Cancelling sign-in", () =>
-                        cancelAuth({ environmentId, input: { instanceId, flowId } }),
-                      );
-                    }}
-                  >
-                    Cancel sign-in
-                  </Button>
-                </div>
-              ) : null}
-              {showSignOut ? (
-                <div className="flex flex-wrap gap-2 sm:justify-end">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={actionsDisabled || auth === null}
-                    onClick={() => void signOut()}
-                  >
-                    Sign out
-                  </Button>
-                </div>
-              ) : null}
-            </div>
-          ) : undefined
-        }
+        status={statusContent}
+        control={flowControls ?? undefined}
       >
-        {authorizationUrl || inputPrompt ? (
-          <div className="space-y-2 pb-2">
-            {authorizationUrl && auth?.expiresAt ? (
-              <p className="text-muted-foreground">
-                Link expires at{" "}
-                <time dateTime={auth.expiresAt}>
-                  {new Date(auth.expiresAt).toLocaleTimeString([], {
-                    hour: "numeric",
-                    minute: "2-digit",
-                  })}
-                </time>
-                .
-              </p>
-            ) : null}
-            {inputPrompt ? (
-              <form
-                className="grid gap-2"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void submitInput();
-                }}
-              >
-                <label htmlFor={`provider-auth-input-${instanceId}`}>{inputPrompt}</label>
-                <Input
-                  id={`provider-auth-input-${instanceId}`}
-                  size="sm"
-                  type="text"
-                  autoComplete="off"
-                  spellCheck={false}
-                  value={callbackValue}
-                  maxLength={16_384}
-                  disabled={actionsDisabled}
-                  onChange={(event) =>
-                    setCallbackDraft({ flowId: auth?.flowId ?? null, value: event.target.value })
-                  }
-                />
-                <Button
-                  size="sm"
-                  variant="outline"
-                  type="submit"
-                  className="w-fit"
-                  disabled={actionsDisabled || !callbackValue.trim()}
-                >
-                  Continue
-                </Button>
-              </form>
-            ) : null}
-          </div>
-        ) : null}
+        {waitingDetails}
       </SettingsRow>
 
       {!authActive && !authenticated && selectedMethod ? (
@@ -368,86 +509,14 @@ function ProviderAuthActions({
           description={selectedMethod.description}
           control={
             methods.length > 1 || selectedMethod.kind !== "paste-credential" ? (
-              <div className="flex min-w-0 flex-col gap-2 sm:max-w-56 sm:items-end sm:text-right xl:max-w-72">
-                {methods.length > 1 ? (
-                  <Select
-                    value={selectedMethod.id}
-                    onValueChange={(value) => setSelectedMethodId(value)}
-                    disabled={actionsDisabled || !enabled}
-                  >
-                    <SelectTrigger size="sm" className="w-fit min-w-48" aria-label="Sign-in method">
-                      <SelectValue>{selectedMethod.label}</SelectValue>
-                    </SelectTrigger>
-                    <SelectPopup alignItemWithTrigger={false}>
-                      {methods.map((method) => (
-                        <SelectItem key={method.id} value={method.id}>
-                          {method.label}
-                        </SelectItem>
-                      ))}
-                    </SelectPopup>
-                  </Select>
-                ) : null}
-                {selectedMethod.kind !== "paste-credential" ? (
-                  <div className="flex flex-wrap gap-2 sm:justify-end">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={actionsDisabled || !enabled || auth === null}
-                      onClick={() => void startMethod(selectedMethod)}
-                    >
-                      {selectedMethod.label}
-                    </Button>
-                  </div>
-                ) : null}
+              <div className={controlColumnClass}>
+                {methodSelect}
+                {startMethodControl}
               </div>
             ) : undefined
           }
         >
-          {selectedMethod.kind === "paste-credential" ? (
-            <div className="space-y-2 pb-2">
-              <form
-                className="grid gap-2"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void startMethod(selectedMethod);
-                }}
-              >
-                <label htmlFor={`provider-credential-${instanceId}-${selectedMethod.id}`}>
-                  {selectedMethod.credentialLabel ?? selectedMethod.label}
-                </label>
-                <Input
-                  id={`provider-credential-${instanceId}-${selectedMethod.id}`}
-                  size="sm"
-                  type="password"
-                  autoComplete="off"
-                  spellCheck={false}
-                  placeholder={selectedMethod.credentialPlaceholder ?? "Paste key"}
-                  value={credentialDrafts[selectedMethod.id] ?? ""}
-                  maxLength={16_384}
-                  disabled={actionsDisabled || !enabled}
-                  onChange={(event) =>
-                    setCredentialDrafts((drafts) => ({
-                      ...drafts,
-                      [selectedMethod.id]: event.target.value,
-                    }))
-                  }
-                />
-                <Button
-                  size="sm"
-                  variant="outline"
-                  type="submit"
-                  className="w-fit"
-                  disabled={
-                    actionsDisabled ||
-                    !enabled ||
-                    !(credentialDrafts[selectedMethod.id] ?? "").trim()
-                  }
-                >
-                  {selectedMethod.label}
-                </Button>
-              </form>
-            </div>
-          ) : null}
+          {pasteCredentialForm}
         </SettingsRow>
       ) : null}
 
@@ -463,23 +532,7 @@ function ProviderAuthActions({
         />
       ) : null}
 
-      {error || authQuery.error ? (
-        <div className="grid gap-2 px-3 py-3 sm:px-4">
-          <p role="alert" className="text-destructive [overflow-wrap:anywhere]">
-            {error ?? authQuery.error}
-          </p>
-          {authQuery.error ? (
-            <Button
-              size="sm"
-              variant="outline"
-              className="w-fit"
-              onClick={() => authQuery.refresh()}
-            >
-              Retry setup status
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
+      {errorBlock}
     </div>
   );
 }

@@ -16,6 +16,7 @@ import { Trash2Icon } from "lucide-react";
 
 import { writeTextToClipboard } from "../../hooks/useCopyToClipboard";
 import { ensureLocalApi } from "../../localApi";
+import { cn } from "../../lib/utils";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -34,6 +35,8 @@ interface ProviderSetupSectionProps {
   readonly enabled: boolean;
   readonly readOnly: boolean;
   readonly onEnable: () => void;
+  /** `dialog` drops the two-column settings rows for a stacked layout that fits inside a wizard popup. */
+  readonly variant?: "panel" | "dialog";
 }
 
 const AUTH_PHASE_LABELS: Record<ProviderAuthState["phase"], string> = {
@@ -70,28 +73,31 @@ export function readAntigravityAuthMethod(config: unknown): AntigravityAuthMetho
 
 /** Setup state belongs to the selected environment and is never saved in client settings. */
 export function ProviderSetupSection(props: ProviderSetupSectionProps) {
+  const isDialog = props.variant === "dialog";
   return (
     <section
       aria-label="Antigravity setup"
-      className="@container/setup divide-y divide-border/50 text-xs"
+      className={cn("@container/setup text-xs", !isDialog && "divide-y divide-border/50")}
     >
-      <SettingsRow
-        className="@max-lg/setup:[&>div:first-child]:flex @max-lg/setup:[&>div:first-child]:items-stretch @max-lg/setup:[&>div:first-child]:gap-3"
-        title="Environment"
-        description="Device that runs this provider."
-        control={
-          <div className="flex min-w-0 flex-col gap-2 sm:items-end">
-            <span className="text-muted-foreground [overflow-wrap:anywhere]">
-              {props.environmentLabel}
-            </span>
-            {!props.enabled && !props.readOnly ? (
-              <Button size="sm" variant="outline" onClick={props.onEnable}>
-                Enable Antigravity
-              </Button>
-            ) : null}
-          </div>
-        }
-      />
+      {!isDialog ? (
+        <SettingsRow
+          className="@max-lg/setup:[&>div:first-child]:flex @max-lg/setup:[&>div:first-child]:items-stretch @max-lg/setup:[&>div:first-child]:gap-3"
+          title="Environment"
+          description="Device that runs this provider."
+          control={
+            <div className="flex min-w-0 flex-col gap-2 sm:items-end">
+              <span className="text-muted-foreground [overflow-wrap:anywhere]">
+                {props.environmentLabel}
+              </span>
+              {!props.enabled && !props.readOnly ? (
+                <Button size="sm" variant="outline" onClick={props.onEnable}>
+                  Enable Antigravity
+                </Button>
+              ) : null}
+            </div>
+          }
+        />
+      ) : null}
       {props.readOnly ? (
         <SettingsRow title="Setup unavailable" description="Provider setup is read-only." />
       ) : props.provider?.setup === undefined ? (
@@ -109,6 +115,7 @@ export function ProviderSetupSection(props: ProviderSetupSectionProps) {
           binaryPath={props.binaryPath}
           authMethod={props.authMethod ?? "oauth-personal"}
           enabled={props.enabled}
+          variant={props.variant ?? "panel"}
         />
       )}
     </section>
@@ -123,9 +130,10 @@ function ProviderSetupActions({
   enabled,
   binaryPath,
   authMethod,
+  variant,
 }: Pick<
   ProviderSetupSectionProps,
-  "environmentId" | "environmentLabel" | "instanceId" | "enabled" | "binaryPath"
+  "environmentId" | "environmentLabel" | "instanceId" | "enabled" | "binaryPath" | "variant"
 > & {
   readonly provider: ServerProvider;
   readonly authMethod: AntigravityAuthMethod;
@@ -276,107 +284,309 @@ function ProviderSetupActions({
     }
   }
 
+  const isDialog = variant === "dialog";
+  const buttonRowClass = cn("flex flex-wrap gap-2", !isDialog && "sm:justify-end");
+  const controlColumnClass = cn(
+    "flex min-w-0 flex-col gap-2",
+    !isDialog && "sm:max-w-56 sm:items-end sm:text-right xl:max-w-72",
+  );
+
+  const runtimeNotes = (
+    <>
+      {usesCustomBinary ? (
+        <p className="text-muted-foreground">
+          Uses the custom binary path below. Installation keeps that path.
+        </p>
+      ) : null}
+      {!installed && !provider.setup?.canInstall ? (
+        <p className="text-muted-foreground">
+          Automatic installation unavailable. Set a binary path or use another environment.
+        </p>
+      ) : null}
+    </>
+  );
+
+  const installButton =
+    installActive && installation?.operationId ? (
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={actionsDisabled}
+        onClick={() => {
+          const operationId = installation.operationId;
+          if (!operationId) return;
+          void runCommand("Cancelling installation", () =>
+            cancelInstall({ environmentId, input: { instanceId, operationId } }),
+          );
+        }}
+      >
+        Cancel installation
+      </Button>
+    ) : !installActive && provider.setup?.canInstall ? (
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={actionsDisabled || installation === null || authActive}
+        onClick={() => void runCommand("Starting installation", () => startInstall(target))}
+      >
+        {installation?.installedVersion
+          ? installation.version && installation.version !== installation.installedVersion
+            ? "Update Antigravity"
+            : "Reinstall Antigravity"
+          : installation?.phase === "failed" || installation?.phase === "cancelled"
+            ? "Retry installation"
+            : installed
+              ? "Install managed runtime"
+              : "Install Antigravity"}
+      </Button>
+    ) : null;
+
+  const removeRuntimeButton =
+    installation?.canRemove && !installActive ? (
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              aria-label="Remove downloaded runtime"
+              disabled={actionsDisabled || authActive}
+              onClick={() => void removeRuntime()}
+            />
+          }
+        >
+          <Trash2Icon className="size-3.5" />
+        </TooltipTrigger>
+        <TooltipPopup>Remove downloaded runtime</TooltipPopup>
+      </Tooltip>
+    ) : null;
+
+  const runtimeStatusContent = (
+    <>
+      <p role="status" className="min-h-4 text-muted-foreground tabular-nums">
+        {installationStatusMessage}
+      </p>
+      <div className="h-1">
+        {installation?.phase === "downloading" &&
+        installation.totalBytes !== null &&
+        installation.totalBytes > 0 ? (
+          <progress
+            aria-label="Antigravity download"
+            className="block h-1 w-full accent-foreground"
+            value={installation.downloadedBytes}
+            max={installation.totalBytes}
+          />
+        ) : null}
+      </div>
+      {!installActive &&
+      installation?.message &&
+      installation.message !== installationStatusMessage ? (
+        <p className="text-muted-foreground [overflow-wrap:anywhere]">{installation.message}</p>
+      ) : null}
+    </>
+  );
+
+  const authStatusContent = (
+    <p
+      role="status"
+      className={
+        authStatusMessage === phaseLabels.idle
+          ? "sr-only"
+          : "text-muted-foreground [overflow-wrap:anywhere]"
+      }
+    >
+      {authStatusMessage}
+    </p>
+  );
+
+  const urlButtons = authorizationUrl ? (
+    <div className={buttonRowClass}>
+      <Button size="sm" variant="outline" onClick={() => void openSignInPage()}>
+        Open sign-in page
+      </Button>
+      <Button size="sm" variant="ghost" onClick={() => void copySignInLink()}>
+        {copiedFlowId === auth?.flowId ? "Link copied" : "Copy sign-in link"}
+      </Button>
+    </div>
+  ) : null;
+
+  const authActionButtons = (
+    <div className={buttonRowClass}>
+      {authActive && auth?.flowId ? (
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={actionsDisabled}
+          onClick={() => {
+            const flowId = auth.flowId;
+            if (!flowId) return;
+            void runCommand("Cancelling sign-in", () =>
+              cancelAuth({ environmentId, input: { instanceId, flowId } }),
+            );
+          }}
+        >
+          Cancel sign-in
+        </Button>
+      ) : !authActive && !authenticated && provider.setup?.canAuthenticate ? (
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={actionsDisabled || !installed || auth === null || installActive}
+          onClick={() => void runCommand("Starting sign-in", () => startAuth(target))}
+        >
+          {usesBrowser
+            ? auth?.phase === "failed" || auth?.phase === "cancelled"
+              ? "Retry Google sign-in"
+              : "Sign in with Google"
+            : auth?.phase === "failed" || auth?.phase === "cancelled"
+              ? "Retry connection"
+              : "Connect"}
+        </Button>
+      ) : null}
+      {!authActive &&
+      provider.auth.status !== "unauthenticated" &&
+      provider.setup?.canAuthenticate &&
+      provider.auth.external !== true ? (
+        <Button
+          size="sm"
+          variant={authenticated ? "outline" : "ghost"}
+          disabled={actionsDisabled || auth === null}
+          onClick={() => void signOut()}
+        >
+          {usesBrowser ? "Sign out of Google" : "Disconnect"}
+        </Button>
+      ) : null}
+    </div>
+  );
+
+  const waitingDetails =
+    authorizationUrl || auth?.phase === "waiting" ? (
+      <div className={cn("space-y-2", !isDialog && "pb-2")}>
+        {authorizationUrl ? (
+          <>
+            {auth?.expiresAt ? (
+              <p className="text-muted-foreground">
+                Link expires at{" "}
+                <time dateTime={auth.expiresAt}>
+                  {new Date(auth.expiresAt).toLocaleTimeString([], {
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}
+                </time>
+                .
+              </p>
+            ) : null}
+            <form
+              className="grid gap-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void submitCallback();
+              }}
+            >
+              <label htmlFor={`provider-callback-${instanceId}`}>
+                If the final localhost page does not load, paste its full URL here.
+              </label>
+              <Input
+                id={`provider-callback-${instanceId}`}
+                size="sm"
+                type="url"
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="http://127.0.0.1:..."
+                value={callbackUrl}
+                maxLength={16_384}
+                disabled={actionsDisabled}
+                onChange={(event) =>
+                  setCallbackDraft({ flowId: auth?.flowId ?? null, value: event.target.value })
+                }
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                type="submit"
+                className="w-fit"
+                disabled={actionsDisabled || !callbackUrl.trim()}
+              >
+                Continue
+              </Button>
+            </form>
+          </>
+        ) : auth?.phase === "waiting" ? (
+          <p className="text-muted-foreground">
+            Sign-in is open in another client. Complete or cancel it there.
+          </p>
+        ) : null}
+      </div>
+    ) : null;
+
+  const errorBlock =
+    error || queryError ? (
+      <div className={cn("grid gap-2", !isDialog && "px-3 py-3 sm:px-4")}>
+        <p role="alert" className="text-destructive [overflow-wrap:anywhere]">
+          {error ?? queryError}
+        </p>
+        {queryError ? (
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-fit"
+            onClick={() => {
+              authQuery.refresh();
+              installQuery.refresh();
+            }}
+          >
+            Retry setup status
+          </Button>
+        ) : null}
+      </div>
+    ) : null;
+
+  if (isDialog) {
+    return (
+      <div className="grid gap-4">
+        <div className="grid gap-1.5">
+          <p className="font-medium text-foreground">Runtime</p>
+          {runtimeNotes}
+          {runtimeStatusContent}
+          {installButton !== null || removeRuntimeButton !== null ? (
+            <div className="flex flex-wrap items-center gap-2">
+              {installButton}
+              {removeRuntimeButton}
+            </div>
+          ) : null}
+        </div>
+        <div className="grid gap-1.5">
+          <p className="font-medium text-foreground">{methodLabel}</p>
+          <p className="text-muted-foreground">
+            {usesBrowser ? "Connect your Google account." : "Connect with the credentials below."}
+          </p>
+          {authStatusContent}
+          {waitingDetails}
+          {urlButtons}
+          {authActionButtons}
+        </div>
+        <p className="sr-only" role="status">
+          {pendingLabel ? `${pendingLabel}.` : null}
+        </p>
+        {errorBlock}
+      </div>
+    );
+  }
+
   return (
     <div className="divide-y divide-border/50">
       <SettingsRow
         title="Runtime"
         className="@max-lg/setup:[&>div:first-child]:flex @max-lg/setup:[&>div:first-child]:items-stretch @max-lg/setup:[&>div:first-child]:gap-3"
         description="Install and manage Antigravity."
-        status={
-          <div className="space-y-2">
-            {usesCustomBinary ? (
-              <p className="text-muted-foreground">
-                Uses the custom binary path below. Installation keeps that path.
-              </p>
-            ) : null}
-            {!installed && !provider.setup?.canInstall ? (
-              <p className="text-muted-foreground">
-                Automatic installation unavailable. Set a binary path or use another environment.
-              </p>
-            ) : null}
-          </div>
-        }
+        status={<div className="space-y-2">{runtimeNotes}</div>}
         control={
           <div className="flex w-full min-w-0 flex-col gap-2 sm:w-56 sm:text-right">
-            <p role="status" className="min-h-4 text-muted-foreground tabular-nums">
-              {installationStatusMessage}
-            </p>
-            <div className="h-1">
-              {installation?.phase === "downloading" &&
-              installation.totalBytes !== null &&
-              installation.totalBytes > 0 ? (
-                <progress
-                  aria-label="Antigravity download"
-                  className="block h-1 w-full accent-foreground"
-                  value={installation.downloadedBytes}
-                  max={installation.totalBytes}
-                />
-              ) : null}
-            </div>
-            {!installActive &&
-            installation?.message &&
-            installation.message !== installationStatusMessage ? (
-              <p className="text-muted-foreground [overflow-wrap:anywhere]">
-                {installation.message}
-              </p>
-            ) : null}
+            {runtimeStatusContent}
             <div className="grid min-h-7 grid-cols-[1.75rem_minmax(0,1fr)] gap-2">
-              <div className="col-start-2 row-start-1 grid">
-                {installActive && installation.operationId ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={actionsDisabled}
-                    onClick={() => {
-                      const operationId = installation.operationId;
-                      if (!operationId) return;
-                      void runCommand("Cancelling installation", () =>
-                        cancelInstall({ environmentId, input: { instanceId, operationId } }),
-                      );
-                    }}
-                  >
-                    Cancel installation
-                  </Button>
-                ) : !installActive && provider.setup?.canInstall ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={actionsDisabled || installation === null || authActive}
-                    onClick={() =>
-                      void runCommand("Starting installation", () => startInstall(target))
-                    }
-                  >
-                    {installation?.installedVersion
-                      ? installation.version &&
-                        installation.version !== installation.installedVersion
-                        ? "Update Antigravity"
-                        : "Reinstall Antigravity"
-                      : installation?.phase === "failed" || installation?.phase === "cancelled"
-                        ? "Retry installation"
-                        : installed
-                          ? "Install managed runtime"
-                          : "Install Antigravity"}
-                  </Button>
-                ) : null}
-              </div>
-              {installation?.canRemove && !installActive ? (
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        size="icon-sm"
-                        variant="ghost"
-                        className="col-start-1 row-start-1"
-                        aria-label="Remove downloaded runtime"
-                        disabled={actionsDisabled || authActive}
-                        onClick={() => void removeRuntime()}
-                      />
-                    }
-                  >
-                    <Trash2Icon className="size-3.5" />
-                  </TooltipTrigger>
-                  <TooltipPopup>Remove downloaded runtime</TooltipPopup>
-                </Tooltip>
+              <div className="col-start-2 row-start-1 grid">{installButton}</div>
+              {removeRuntimeButton !== null ? (
+                <div className="col-start-1 row-start-1">{removeRuntimeButton}</div>
               ) : null}
             </div>
           </div>
@@ -390,159 +600,20 @@ function ProviderSetupActions({
           usesBrowser ? "Connect your Google account." : "Connect with the credentials below."
         }
         control={
-          <div className="flex min-w-0 flex-col gap-2 sm:max-w-56 sm:items-end sm:text-right xl:max-w-72">
-            <p
-              role="status"
-              className={
-                authStatusMessage === phaseLabels.idle
-                  ? "sr-only"
-                  : "text-muted-foreground [overflow-wrap:anywhere]"
-              }
-            >
-              {authStatusMessage}
-            </p>
-            {authorizationUrl ? (
-              <div className="flex flex-wrap gap-2 sm:justify-end">
-                <Button size="sm" variant="outline" onClick={() => void openSignInPage()}>
-                  Open sign-in page
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => void copySignInLink()}>
-                  {copiedFlowId === auth?.flowId ? "Link copied" : "Copy sign-in link"}
-                </Button>
-              </div>
-            ) : null}
-            <div className="flex flex-wrap gap-2 sm:justify-end">
-              {authActive && auth?.flowId ? (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={actionsDisabled}
-                  onClick={() => {
-                    const flowId = auth.flowId;
-                    if (!flowId) return;
-                    void runCommand("Cancelling sign-in", () =>
-                      cancelAuth({ environmentId, input: { instanceId, flowId } }),
-                    );
-                  }}
-                >
-                  Cancel sign-in
-                </Button>
-              ) : !authActive && !authenticated && provider.setup?.canAuthenticate ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={actionsDisabled || !installed || auth === null || installActive}
-                  onClick={() => void runCommand("Starting sign-in", () => startAuth(target))}
-                >
-                  {usesBrowser
-                    ? auth?.phase === "failed" || auth?.phase === "cancelled"
-                      ? "Retry Google sign-in"
-                      : "Sign in with Google"
-                    : auth?.phase === "failed" || auth?.phase === "cancelled"
-                      ? "Retry connection"
-                      : "Connect"}
-                </Button>
-              ) : null}
-              {!authActive &&
-              provider.auth.status !== "unauthenticated" &&
-              provider.setup?.canAuthenticate &&
-              provider.auth.external !== true ? (
-                <Button
-                  size="sm"
-                  variant={authenticated ? "outline" : "ghost"}
-                  disabled={actionsDisabled || auth === null}
-                  onClick={() => void signOut()}
-                >
-                  {usesBrowser ? "Sign out of Google" : "Disconnect"}
-                </Button>
-              ) : null}
-            </div>
+          <div className={controlColumnClass}>
+            {authStatusContent}
+            {urlButtons}
+            {authActionButtons}
           </div>
         }
       >
-        {authorizationUrl || auth?.phase === "waiting" ? (
-          <div className="space-y-2 pb-2">
-            {authorizationUrl ? (
-              <>
-                {auth?.expiresAt ? (
-                  <p className="text-muted-foreground">
-                    Link expires at{" "}
-                    <time dateTime={auth.expiresAt}>
-                      {new Date(auth.expiresAt).toLocaleTimeString([], {
-                        hour: "numeric",
-                        minute: "2-digit",
-                      })}
-                    </time>
-                    .
-                  </p>
-                ) : null}
-                <form
-                  className="grid gap-2"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void submitCallback();
-                  }}
-                >
-                  <label htmlFor={`provider-callback-${instanceId}`}>
-                    If the final localhost page does not load, paste its full URL here.
-                  </label>
-                  <Input
-                    id={`provider-callback-${instanceId}`}
-                    size="sm"
-                    type="url"
-                    autoComplete="off"
-                    spellCheck={false}
-                    placeholder="http://127.0.0.1:..."
-                    value={callbackUrl}
-                    maxLength={16_384}
-                    disabled={actionsDisabled}
-                    onChange={(event) =>
-                      setCallbackDraft({ flowId: auth?.flowId ?? null, value: event.target.value })
-                    }
-                  />
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    type="submit"
-                    className="w-fit"
-                    disabled={actionsDisabled || !callbackUrl.trim()}
-                  >
-                    Continue
-                  </Button>
-                </form>
-              </>
-            ) : auth?.phase === "waiting" ? (
-              <p className="text-muted-foreground">
-                Sign-in is open in another client. Complete or cancel it there.
-              </p>
-            ) : null}
-          </div>
-        ) : null}
+        {waitingDetails}
       </SettingsRow>
 
       <p className="sr-only" role="status">
         {pendingLabel ? `${pendingLabel}.` : null}
       </p>
-      {error || queryError ? (
-        <div className="grid gap-2 px-3 py-3 sm:px-4">
-          <p role="alert" className="text-destructive [overflow-wrap:anywhere]">
-            {error ?? queryError}
-          </p>
-          {queryError ? (
-            <Button
-              size="sm"
-              variant="outline"
-              className="w-fit"
-              onClick={() => {
-                authQuery.refresh();
-                installQuery.refresh();
-              }}
-            >
-              Retry setup status
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
+      {errorBlock}
     </div>
   );
 }
