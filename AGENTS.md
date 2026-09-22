@@ -168,3 +168,7 @@ Full glossary with file links: `docs/internals/glossary.md`
 
 - Don't verify with browsers or computer use unless the user explicitly agrees or requests it.
 - Security is important, but should not be over-indexed on, especially for dev mode/maintainer-only features.
+
+## Fork workflow (adampeterhiggins/t3code)
+
+This checkout is a fork of `pingdotgg/t3code`; `upstream` points at the parent repo. `gh` resolves the base repo via the fork network, so bare `gh pr create` targets **upstream**, not this fork. Always pass `--repo adampeterhiggins/t3code` (or run `gh repo set-default adampeterhiggins/t3code` once per clone) before creating PRs. Never open pull requests against `pingdotgg/t3code` unless explicitly asked.
