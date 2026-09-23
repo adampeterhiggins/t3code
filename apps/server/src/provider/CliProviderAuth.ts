@@ -25,7 +25,7 @@
  * @module provider/CliProviderAuth
  */
 import {
-  type ProviderAuthMethod,
+  type ProviderSetupAuthMethod,
   type ProviderAuthState,
   ProviderDriverKind,
   type ProviderInstanceEnvironmentVariable,
@@ -123,10 +123,10 @@ export type CliAuthMethodSpec =
       }) => Effect.Effect<void, ProviderSetupError, Scope.Scope>;
     });
 
-/** The wire `ProviderAuthMethod` list stamped onto `ServerProvider.setup.authMethods`. */
+/** The wire `ProviderSetupAuthMethod` list stamped onto `ServerProvider.setup.authMethods`. */
 export function authMethodDescriptors(
   methods: ReadonlyArray<CliAuthMethodSpec>,
-): ReadonlyArray<ProviderAuthMethod> {
+): ReadonlyArray<ProviderSetupAuthMethod> {
   return methods.map((method) => ({
     id: method.id,
     kind:

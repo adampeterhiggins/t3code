@@ -41,7 +41,7 @@ import {
   formatUsd,
   makeWindow,
 } from "@t3tools/shared/usageFormat";
-import { Button } from "../ui/button";
+import { Button, InlineButton } from "../ui/button";
 import {
   Menu,
   MenuCheckboxItem,
@@ -65,6 +65,7 @@ import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { UsageLimitsSection } from "./UsageLimits";
 import { UsagePriceOverrides } from "./UsagePriceOverrides";
 import { UsageProviderChart, type UsageChartMetric } from "./UsageProviderChart";
+import { sortModelsByTokens } from "./usageBreakdown";
 import { PROVIDER_ORDER, PROVIDER_PRESENTATION, providersWithUsage } from "./usageProviders";
 import {
   readUsagePagePreferences,
@@ -176,19 +177,12 @@ export function UsagePage() {
     () => (isPast24Hours ? visibleHourly : visibleDaily).toReversed(),
     [isPast24Hours, visibleDaily, visibleHourly],
   );
-  const breakdownModels = useMemo(
-    () =>
-      breakdown === "model" && metric === "tokens"
-        ? merged.models
-            .filter((model) => providerFilter === "all" || model.provider === providerFilter)
-            .toSorted(
-              (left, right) => right.totalTokens - left.totalTokens || right.costUsd - left.costUsd,
-            )
-        : merged.models.filter(
-            (model) => providerFilter === "all" || model.provider === providerFilter,
-          ),
-    [breakdown, merged.models, metric, providerFilter],
-  );
+  const breakdownModels = useMemo(() => {
+    const filtered = merged.models.filter(
+      (model) => providerFilter === "all" || model.provider === providerFilter,
+    );
+    return breakdown === "model" && metric === "tokens" ? sortModelsByTokens(filtered) : filtered;
+  }, [breakdown, merged.models, metric, providerFilter]);
   const timeValueColumnWidth = `${60 / (visibleProviders.length + 2)}%`;
 
   const downloadExport = (format: "csv" | "json") => {
@@ -938,7 +932,10 @@ function UsageEnvironmentFilter({
   return (
     <>
       <Menu>
-        <MenuTrigger className="group/usage-environment inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
+        <MenuTrigger
+          render={<InlineButton />}
+          className="group/usage-environment min-w-0 max-w-full"
+        >
           <span className="min-w-0 truncate">{label}</span>
           <span className="flex size-3.5 shrink-0 items-center justify-center text-muted-foreground">
             {showUsageStatus && pendingCount > 0 ? (
@@ -963,7 +960,7 @@ function UsageEnvironmentFilter({
             )}
           </span>
         </MenuTrigger>
-        <MenuPopup align="start" className="w-80 max-w-[calc(100vw-2rem)]">
+        <MenuPopup align="start">
           <MenuCheckboxItem
             checked={allSelected}
             closeOnClick={false}
@@ -995,7 +992,6 @@ function UsageEnvironmentFilter({
                 key={environment.environmentId}
                 checked={checked}
                 closeOnClick={false}
-                className="grid-cols-[1rem_minmax(0,1fr)]"
                 onCheckedChange={(nextChecked) => {
                   const next = new Set(selectedEnvironments.map((entry) => entry.environmentId));
                   if (nextChecked) next.add(environment.environmentId);
@@ -1071,8 +1067,8 @@ function UsageSkeleton() {
             <div key={provider} className="flex flex-col gap-1">
               <div className="flex min-h-5 items-center justify-between gap-4">
                 <span className="flex items-center gap-2">
-                  <Skeleton className="size-2 shrink-0 rounded-full" />
-                  <Skeleton className="size-4 shrink-0 rounded-full" />
+                  <Skeleton shape="pill" className="size-2 shrink-0" />
+                  <Skeleton shape="pill" className="size-4 shrink-0" />
                   <Skeleton className="h-3.5 w-20" />
                 </span>
                 <Skeleton className="h-3.5 w-14" />
@@ -1085,8 +1081,8 @@ function UsageSkeleton() {
         <div className="flex flex-col gap-3">
           <Skeleton className="h-5 w-24" />
           <div className="flex flex-col gap-1">
-            <Skeleton className="ml-16 h-56 bg-muted-foreground/10" />
-            <Skeleton className="ml-16 h-4 bg-muted-foreground/10" />
+            <Skeleton className="ml-16 h-56" />
+            <Skeleton className="ml-16 h-4" />
           </div>
         </div>
       </section>
@@ -1108,9 +1104,9 @@ function UsageSkeleton() {
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-sm font-medium text-foreground">Breakdown</h2>
-          <Skeleton className="h-7 w-28 rounded-lg" />
+          <Skeleton shape="card" className="h-7 w-28" />
         </div>
-        <Skeleton className="h-44 bg-muted-foreground/10" />
+        <Skeleton className="h-44" />
       </section>
     </>
   );
