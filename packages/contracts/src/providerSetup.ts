@@ -1,6 +1,11 @@
 import * as Schema from "effect/Schema";
 
-import { IsoDateTime, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import {
+  ForwardCompatibleArray,
+  ForwardCompatibleOptional,
+  IsoDateTime,
+  TrimmedNonEmptyString,
+} from "./baseSchemas.ts";
 import { ProviderDriverKind, ProviderInstanceId } from "./providerInstance.ts";
 
 export const ProviderSetupInput = Schema.Struct({
@@ -29,7 +34,7 @@ export const ProviderAuthMethodKind = Schema.Literals([
 export type ProviderAuthMethodKind = typeof ProviderAuthMethodKind.Type;
 
 /** One selectable way to authenticate a provider instance, advertised on `ServerProvider.setup`. */
-export const ProviderAuthMethod = Schema.Struct({
+export const ProviderSetupAuthMethod = Schema.Struct({
   id: TrimmedNonEmptyString.check(Schema.isMaxLength(64)),
   kind: ProviderAuthMethodKind,
   label: TrimmedNonEmptyString,
@@ -38,21 +43,97 @@ export const ProviderAuthMethod = Schema.Struct({
   credentialLabel: Schema.optional(TrimmedNonEmptyString),
   credentialPlaceholder: Schema.optional(TrimmedNonEmptyString),
 });
+export type ProviderSetupAuthMethod = typeof ProviderSetupAuthMethod.Type;
+
+const SetupOperationId = TrimmedNonEmptyString.check(Schema.isMaxLength(128));
+
+export const ProviderAuthMethod = Schema.Struct({
+  id: SetupOperationId,
+  name: TrimmedNonEmptyString,
+  description: Schema.NullOr(Schema.String),
+  type: Schema.Literals(["agent", "terminal", "credentials"]),
+});
 export type ProviderAuthMethod = typeof ProviderAuthMethod.Type;
+
+// These describe client interactions, not OAuth grant types. The provider
+// adapter remains responsible for credentials, callbacks, and refresh.
+export const ProviderAuthInteraction = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal("browser"),
+    id: SetupOperationId,
+    url: TrimmedNonEmptyString.check(Schema.isMaxLength(16_384)),
+    requiresConsent: Schema.Boolean,
+    acceptsCallback: Schema.optionalKey(Schema.Boolean),
+  }),
+  Schema.Struct({
+    type: Schema.Literal("deviceCode"),
+    id: SetupOperationId,
+    url: TrimmedNonEmptyString.check(Schema.isMaxLength(16_384)),
+    userCode: TrimmedNonEmptyString.check(Schema.isMaxLength(256)),
+  }),
+  Schema.Struct({
+    type: Schema.Literal("terminal"),
+    id: SetupOperationId,
+    output: Schema.String.check(Schema.isMaxLength(16_384)),
+    outputOffset: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
+  }),
+  Schema.Struct({
+    type: Schema.Literal("credentials"),
+    id: SetupOperationId,
+    fields: Schema.Array(
+      Schema.Struct({
+        name: SetupOperationId,
+        label: TrimmedNonEmptyString,
+        secret: Schema.Boolean,
+      }),
+    ).check(Schema.isMaxLength(16)),
+  }),
+]);
+export type ProviderAuthInteraction = typeof ProviderAuthInteraction.Type;
+
+export const ProviderAuthResponse = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal("browser"),
+    action: Schema.Literals(["accept", "decline"]),
+  }),
+  Schema.Struct({
+    type: Schema.Literal("terminal"),
+    data: Schema.String.check(Schema.isMaxLength(4_096)),
+    size: Schema.optionalKey(
+      Schema.Struct({
+        cols: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 500 })),
+        rows: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 200 })),
+      }),
+    ),
+  }),
+  Schema.Struct({
+    type: Schema.Literal("credentials"),
+    values: Schema.Record(SetupOperationId, Schema.String.check(Schema.isMaxLength(16_384))).check(
+      Schema.isMaxProperties(16),
+    ),
+  }),
+]);
+export type ProviderAuthResponse = typeof ProviderAuthResponse.Type;
 
 /**
  * `provider.auth.start` payload. `methodId` picks one of the advertised
- * `setup.authMethods`; when omitted the provider runs its default method.
+ * auth methods; when omitted the provider runs its default method.
  * `credential` carries the pasted secret for `paste-credential` methods.
  */
 export const ProviderAuthStartInput = Schema.Struct({
   instanceId: ProviderInstanceId,
-  methodId: Schema.optional(TrimmedNonEmptyString.check(Schema.isMaxLength(64))),
+  methodId: Schema.optional(SetupOperationId),
   credential: Schema.optional(TrimmedNonEmptyString.check(Schema.isMaxLength(16_384))),
 });
 export type ProviderAuthStartInput = typeof ProviderAuthStartInput.Type;
 
-const SetupOperationId = TrimmedNonEmptyString.check(Schema.isMaxLength(128));
+export const ProviderAuthRespondInput = Schema.Struct({
+  instanceId: ProviderInstanceId,
+  flowId: SetupOperationId,
+  interactionId: SetupOperationId,
+  response: ProviderAuthResponse,
+});
+export type ProviderAuthRespondInput = typeof ProviderAuthRespondInput.Type;
 
 export const ProviderAuthState = Schema.Struct({
   instanceId: ProviderInstanceId,
@@ -77,6 +158,13 @@ export const ProviderAuthState = Schema.Struct({
   inputPrompt: Schema.optional(TrimmedNonEmptyString),
   /** `setup.authMethods` id the current (or last) flow ran. */
   methodId: Schema.optional(TrimmedNonEmptyString),
+  // Newer servers may add method types, interactions, or owners; older
+  // clients drop what they cannot decode instead of rejecting the state.
+  methods: Schema.optionalKey(
+    ForwardCompatibleArray(ProviderAuthMethod).check(Schema.isMaxLength(32)),
+  ),
+  interaction: ForwardCompatibleOptional(Schema.NullOr(ProviderAuthInteraction)),
+  credentialOwner: ForwardCompatibleOptional(Schema.Literals(["provider", "t3"])),
 });
 export type ProviderAuthState = typeof ProviderAuthState.Type;
 
