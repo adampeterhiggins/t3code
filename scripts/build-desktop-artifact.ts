@@ -2672,7 +2672,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   // any available cert (for example a self-signed one) so macOS updates pass
   // Squirrel's seal/requirement validation without the full --signed Apple
   // stack. Ignored when --signed is set.
-  const macSignIdentity = yield* Config.string("T3CODE_DESKTOP_IDENTITY").pipe(Config.option);
+  const macSignIdentity = yield* Config.String("T3CODE_DESKTOP_IDENTITY").pipe(Config.option);
   if (!isDesktopPreviewVersion(version)) {
     const publishConfig = yield* resolveGitHubPublishConfig(updateChannel);
     if (publishConfig) {
