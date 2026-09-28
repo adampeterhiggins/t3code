@@ -37,6 +37,7 @@ import { withInstanceIdentity } from "./instanceIdentity.ts";
 import {
   mergeProviderHomePathEnvironment,
   mergeProviderInstanceEnvironment,
+  resolveInstanceHomePath,
 } from "../ProviderInstanceEnvironment.ts";
 import { discoverGrokSkills } from "./GrokSkills.ts";
 import {
@@ -100,8 +101,19 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
   },
   configSchema: GrokSettings,
   defaultConfig: (): GrokSettings => decodeGrokSettings({}),
-  create: ({ instanceId, displayName, accentColor, environment, enabled, config }) =>
+  create: ({ instanceId, displayName, accentColor, environment, enabled, config: configured }) =>
     Effect.gen(function* () {
+      const config = {
+        ...configured,
+        homePath: yield* resolveInstanceHomePath({
+          homePath: configured.homePath,
+          stateDir: (yield* ServerConfig).stateDir,
+          driver: DRIVER_KIND,
+          instanceId,
+          environment,
+          homeVariables: ["GROK_HOME"],
+        }),
+      };
       const crypto = yield* Crypto.Crypto;
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
       const httpClient = yield* HttpClient.HttpClient;

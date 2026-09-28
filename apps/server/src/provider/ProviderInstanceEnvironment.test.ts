@@ -2,12 +2,15 @@ import * as NodeOS from "node:os";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
+import { ProviderDriverKind, ProviderInstanceId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 
 import {
   mergeProviderHomePathEnvironment,
   mergeProviderInstanceEnvironment,
+  resolveInstanceHomePath,
 } from "./ProviderInstanceEnvironment.ts";
 
 describe("mergeProviderInstanceEnvironment", () => {
@@ -111,6 +114,50 @@ describe("mergeProviderHomePathEnvironment", () => {
       });
 
       expect(environment.GROK_HOME).toBe((yield* Path.Path).join(NodeOS.homedir(), ".grok-work"));
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+});
+
+describe("resolveInstanceHomePath", () => {
+  const cursor = ProviderDriverKind.make("cursor");
+  const resolve = (
+    stateDir: string,
+    instanceId: string,
+    options: { homePath?: string; environment?: { name: string; value: string }[] } = {},
+  ) =>
+    resolveInstanceHomePath({
+      homePath: options.homePath ?? "",
+      stateDir,
+      driver: cursor,
+      instanceId: ProviderInstanceId.make(instanceId),
+      environment: options.environment?.map((variable) => ({ ...variable, sensitive: false })),
+      homeVariables: ["HOME"],
+    });
+
+  it.effect("gives each added instance its own home and leaves the default instance alone", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const stateDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "instance-home-" });
+
+      expect(yield* resolve(stateDir, "cursor")).toBe("");
+      const work = yield* resolve(stateDir, "cursor_work");
+      const personal = yield* resolve(stateDir, "cursor_personal");
+      expect(work).not.toBe(personal);
+      expect(work.startsWith(stateDir)).toBe(true);
+      expect((yield* fileSystem.stat(work)).type).toBe("Directory");
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("keeps a configured home or an environment variable that picks one", () =>
+    Effect.gen(function* () {
+      expect(yield* resolve("/state", "cursor_work", { homePath: "~/.cursor-work" })).toBe(
+        "~/.cursor-work",
+      );
+      expect(
+        yield* resolve("/state", "cursor_work", {
+          environment: [{ name: "HOME", value: "/elsewhere" }],
+        }),
+      ).toBe("");
     }).pipe(Effect.provide(NodeServices.layer)),
   );
 });

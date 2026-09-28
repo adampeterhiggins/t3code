@@ -1,5 +1,11 @@
-import type { ProviderInstanceEnvironment } from "@t3tools/contracts";
+import {
+  defaultInstanceIdForDriver,
+  type ProviderDriverKind,
+  type ProviderInstanceEnvironment,
+  type ProviderInstanceId,
+} from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 
 import { expandHomePath } from "../pathExpansion.ts";
@@ -43,6 +49,48 @@ export const resolveProviderHomePath = Effect.fn("resolveProviderHomePath")(func
   const trimmed = homePath.trim();
   if (trimmed.length === 0) return undefined;
   return path.resolve(expandHomePath(trimmed));
+});
+
+/**
+ * Private home an added instance uses when its `homePath` is blank, so a
+ * second account never signs in over the first. The default instance keeps
+ * the CLI's own location (the user's existing login) and gets `""`.
+ */
+export function defaultInstanceHomePath(
+  path: Path.Path,
+  stateDir: string,
+  driver: ProviderDriverKind,
+  instanceId: ProviderInstanceId,
+): string {
+  return instanceId === defaultInstanceIdForDriver(driver)
+    ? ""
+    : path.join(stateDir, "provider-homes", driver, instanceId);
+}
+
+/**
+ * The instance's configured `homePath`, or its private default home (created
+ * on demand) when blank. An instance environment variable that already picks
+ * the home (`homeVariables`, e.g. `XDG_DATA_HOME`) keeps working, so no default
+ * is applied then. Drivers pass the result wherever they read `homePath`.
+ */
+export const resolveInstanceHomePath = Effect.fn("resolveInstanceHomePath")(function* (input: {
+  readonly homePath: string;
+  readonly stateDir: string;
+  readonly driver: ProviderDriverKind;
+  readonly instanceId: ProviderInstanceId;
+  readonly environment: ProviderInstanceEnvironment | undefined;
+  readonly homeVariables: ReadonlyArray<string>;
+}): Effect.fn.Return<string, never, FileSystem.FileSystem | Path.Path> {
+  if (input.homePath.trim()) return input.homePath;
+  if (input.environment?.some((variable) => input.homeVariables.includes(variable.name))) return "";
+  const path = yield* Path.Path;
+  const home = defaultInstanceHomePath(path, input.stateDir, input.driver, input.instanceId);
+  if (home) {
+    const fileSystem = yield* FileSystem.FileSystem;
+    // A home that cannot be created surfaces as the CLI's own error on first use.
+    yield* fileSystem.makeDirectory(home, { recursive: true }).pipe(Effect.ignore);
+  }
+  return home;
 });
 
 /**

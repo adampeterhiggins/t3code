@@ -26,7 +26,10 @@ Add another OpenCode instance in **Settings > Providers**:
 | OpenCode Work     | `opencode`  | Leave empty                        |
 | OpenCode Personal | `opencode`  | `~/.local/share-opencode-personal` |
 
-An empty setting uses the CLI's normal data directory (`~/.local/share`).
+An empty setting uses the CLI's normal data directory (`~/.local/share`) for
+the default instance. An added instance with an empty setting gets its own
+private directory in T3 Code's data folder instead, so it never shares the
+default login.
 Each instance's **Use saved OpenCode credentials** action detects the login in
 its own directory.
 

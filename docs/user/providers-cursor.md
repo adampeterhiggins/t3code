@@ -19,8 +19,11 @@ A private home directory for the instance. `cursor-agent` stores its login at
 `.config/cursor` is symlinked back to your real home, so agent tools such as
 `git` and `ssh` keep working with your normal configuration.
 
-Set a different directory per instance to run multiple Cursor accounts side
-by side (for example `~/.cursor-work` and `~/.cursor-personal`). The instance
+Leave it empty and each Cursor instance you add gets its own private home in
+T3 Code's data directory, so a second account never signs in over the first.
+The default Cursor instance keeps using your existing `~/.cursor` login. Set a
+directory yourself to choose where an account lives (for example
+`~/.cursor-work` and `~/.cursor-personal`). The instance
 automatically uses file-based credential storage
 (`AGENT_CLI_CREDENTIAL_STORE=file`) so the login lands in the instance
 directory instead of the shared macOS keychain. Then use each instance's own

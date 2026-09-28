@@ -710,7 +710,7 @@ export const CursorSettings = makeProviderSettingsSchema(
       Schema.annotateKey({
         title: "Home directory",
         description:
-          "Instance home directory for this account. Keeps the sign-in, CLI settings, and session history separate per instance.",
+          "Instance home directory for this account. Keeps the sign-in, CLI settings, and session history separate per instance. When blank, added accounts get their own private directory.",
         providerSettingsForm: { placeholder: "~/.cursor", clearWhenEmpty: "omit" },
       }),
     ),
@@ -756,7 +756,7 @@ export const GrokSettings = makeProviderSettingsSchema(
       Schema.annotateKey({
         title: "GROK_HOME path",
         description:
-          "Custom Grok home directory. Keeps the login and CLI settings separate per instance.",
+          "Custom Grok home directory. Keeps the login and CLI settings separate per instance. When blank, added accounts get their own private directory.",
         providerSettingsForm: { placeholder: "~/.grok", clearWhenEmpty: "omit" },
       }),
     ),
@@ -875,7 +875,7 @@ export const OpenCodeSettings = makeProviderSettingsSchema(
       Schema.annotateKey({
         title: "XDG_DATA_HOME path",
         description:
-          "Custom data directory. Keeps stored credentials (auth.json) separate per instance.",
+          "Custom data directory. Keeps stored credentials (auth.json) separate per instance. When blank, added accounts get their own private directory.",
         providerSettingsForm: { placeholder: "~/.local/share", clearWhenEmpty: "omit" },
       }),
     ),
@@ -935,7 +935,7 @@ export const DevinSettings = makeProviderSettingsSchema(
       Schema.annotateKey({
         title: "XDG_DATA_HOME path",
         description:
-          "Custom data directory. Keeps the stored login (credentials.toml) separate per instance.",
+          "Custom data directory. Keeps the stored login (credentials.toml) separate per instance. When blank, added accounts get their own private directory.",
         providerSettingsForm: { placeholder: "~/.local/share", clearWhenEmpty: "omit" },
       }),
     ),

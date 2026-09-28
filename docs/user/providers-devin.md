@@ -29,7 +29,10 @@ Add another Devin instance in **Settings > Providers**:
 | Devin Work     | `devin`     | Leave empty                     |
 | Devin Personal | `devin`     | `~/.local/share-devin-personal` |
 
-An empty setting uses the CLI's normal data directory (`~/.local/share`). The
+An empty setting uses the CLI's normal data directory (`~/.local/share`) for
+the default instance. An added instance with an empty setting gets its own
+private directory in T3 Code's data folder instead, so it never shares the
+default login. The
 same variable works as an instance **Environment variable** entry.
 
 ## Models
