@@ -1,29 +1,30 @@
-import { createThreadTab, listThreadTabs } from "@t3tools/client-runtime/thread-tabs";
 import {
+  createThreadTab,
+  listThreadTabs,
+  prepareThreadTabHandoff,
+} from "@t3tools/client-runtime/thread-tabs";
+import {
+  COMPOSER_CONTEXT_THREAD_TAB_SUMMARY_MAX_CHARS,
   type EnvironmentId,
   type ModelSelection,
-  ThreadId,
+  type ThreadId,
   type ThreadTabGroup,
 } from "@t3tools/contracts";
+import { sanitizeComposerContextLabel } from "@t3tools/shared/composerContextReferences";
 import * as Option from "effect/Option";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
+import {
+  type ComposerContextReference,
+  toKindScopedComposerContextId,
+} from "../../lib/composerContextReferences";
 import { runtime } from "../../lib/runtime";
 import { newThreadId } from "../../lib/utils";
 import { usePreparedConnection } from "../../state/session";
+import { useThreadTabContextStore } from "../../threadTabContextStore";
 import { Button } from "../ui/button";
 import { Toggle } from "../ui/toggle";
-
-const selectedSources = new Map<string, ReadonlyArray<ThreadId>>();
-
-export function selectedThreadTabSources(threadId: ThreadId): ReadonlyArray<ThreadId> {
-  return selectedSources.get(threadId) ?? [];
-}
-
-export function clearSelectedThreadTabSources(threadId: ThreadId): void {
-  selectedSources.delete(threadId);
-}
 
 /** Tab group for a server thread; null until loaded or when it belongs to another thread. */
 export function useThreadTabGroup(environmentId: EnvironmentId, threadId: ThreadId | null) {
@@ -120,30 +121,52 @@ export function ThreadTabs({
   );
 }
 
-/** Sibling tabs the first message of an empty tab can pull context from. */
+/**
+ * Sibling tabs an empty tab can pull context from. Clicking one captures that tab's transcript
+ * summary and hands back a chip reference for the composer to place at the caret.
+ */
 export function ThreadTabContextPills({
+  environmentId,
   threadId,
   group,
+  onInsert,
 }: {
+  environmentId: EnvironmentId;
   threadId: ThreadId;
   group: ThreadTabGroup;
+  onInsert: (reference: ComposerContextReference) => void;
 }) {
-  const [selected, setSelected] = useState<ReadonlyArray<ThreadId>>(() =>
-    selectedThreadTabSources(threadId),
-  );
+  const prepared = usePreparedConnection(environmentId);
+  const upsertRecord = useThreadTabContextStore((state) => state.upsert);
+  const [loadingId, setLoadingId] = useState<ThreadId | null>(null);
   const [error, setError] = useState<string | null>(null);
   const siblings = group.tabs.filter((tab) => tab.threadId !== threadId);
-  if (siblings.length === 0) return null;
+  if (siblings.length === 0 || Option.isNone(prepared)) return null;
 
-  const toggle = (sourceId: ThreadId, pressed: boolean) => {
-    if (pressed && selected.length >= 8) {
-      setError("Select up to eight chats for context.");
-      return;
-    }
+  const insert = async (tab: ThreadTabGroup["tabs"][number]) => {
+    setLoadingId(tab.threadId);
     setError(null);
-    const next = pressed ? [...selected, sourceId] : selected.filter((id) => id !== sourceId);
-    setSelected(next);
-    selectedSources.set(threadId, next);
+    try {
+      const handoff = await runtime.runPromise(
+        prepareThreadTabHandoff(prepared.value, threadId, { sourceThreadIds: [tab.threadId] }),
+      );
+      const contextId = toKindScopedComposerContextId("thread-tab", tab.threadId);
+      const label = sanitizeComposerContextLabel(tab.title, "thread-tab");
+      upsertRecord(threadId, {
+        version: 1,
+        kind: "thread-tab",
+        contextId,
+        label,
+        threadId: tab.threadId,
+        title: tab.title.slice(0, 2_048),
+        summary: handoff.text.slice(0, COMPOSER_CONTEXT_THREAD_TAB_SUMMARY_MAX_CHARS),
+      });
+      onInsert({ kind: "thread-tab", contextId, label });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not summarize that tab.");
+    } finally {
+      setLoadingId(null);
+    }
   };
 
   return (
@@ -155,8 +178,9 @@ export function ThreadTabContextPills({
             key={tab.threadId}
             size="compact"
             variant="pill"
-            pressed={selected.includes(tab.threadId)}
-            onPressedChange={(pressed) => toggle(tab.threadId, pressed)}
+            pressed={false}
+            disabled={loadingId !== null}
+            onClick={() => void insert(tab)}
           >
             {tab.title}
           </Toggle>

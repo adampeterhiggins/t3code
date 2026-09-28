@@ -201,6 +201,7 @@ import {
   uploadedContextRecordFromDraft,
 } from "../composerContextPresentation";
 import { useOpenPrLink } from "~/lib/openPullRequestLink";
+import { useThreadTabContextRecords } from "~/threadTabContextStore";
 import {
   collectInlineContextIds,
   stripInlineContextReferences,
@@ -1289,6 +1290,8 @@ export interface ChatComposerHandle {
   }) => void;
   /** Insert a terminal context from the terminal drawer. */
   addTerminalContext: (selection: TerminalContextSelection) => void;
+  /** Insert a chip at the caret for a record the caller already holds the payload for. */
+  insertContextReference: (reference: ComposerContextReference) => void;
   /** Get the current prompt/effort/model state for use in send. */
   getSendContext: () => {
     prompt: string;
@@ -1695,12 +1698,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     }),
     [composerFiles, composerImages, environmentId, onExpandImage, openPrLink, routeThreadRef],
   );
+  const composerThreadTabContexts = useThreadTabContextRecords(routeThreadRef?.threadId);
   const composerContextRecords = useMemo(
     () =>
       composerContextRecordsFromDraft({
         terminalContexts: composerTerminalContexts,
         reviewComments: composerReviewComments,
         previewAnnotations: composerPreviewAnnotations,
+        threadTabs: composerThreadTabContexts,
         images: composerImages,
         files: composerFiles,
         uploadsByImageId,
@@ -1711,6 +1716,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       composerPreviewAnnotations,
       composerReviewComments,
       composerTerminalContexts,
+      composerThreadTabContexts,
       uploadsByImageId,
     ],
   );
@@ -6005,6 +6011,25 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         promptRef.current = insertion.prompt;
         setComposerCursor(nextCollapsedCursor);
         setComposerTrigger(detectComposerTrigger(insertion.prompt, insertion.cursor));
+        window.requestAnimationFrame(() => {
+          composerEditorRef.current?.focusAt(nextCollapsedCursor);
+        });
+      },
+      insertContextReference: (reference: ComposerContextReference) => {
+        const snapshot = readComposerSnapshot();
+        const insertion = insertInlineContextReference(
+          snapshot.value,
+          snapshot.expandedCursor,
+          reference,
+        );
+        const nextCollapsedCursor = collapseExpandedComposerCursor(
+          insertion.prompt,
+          insertion.cursor,
+        );
+        promptRef.current = insertion.prompt;
+        setPrompt(insertion.prompt);
+        setComposerCursor(nextCollapsedCursor);
+        setComposerTrigger(null);
         window.requestAnimationFrame(() => {
           composerEditorRef.current?.focusAt(nextCollapsedCursor);
         });

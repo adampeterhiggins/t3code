@@ -1,9 +1,9 @@
 import ChatMarkdown from "./ChatMarkdown";
 import { ReadOnlySourcePreview } from "./files/AttachmentFilePreview";
-import type { PreviewAnnotationPayload } from "@t3tools/contracts";
+import type { PreviewAnnotationPayload, ThreadTabContextRecord } from "@t3tools/contracts";
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
 import { videoMimeType } from "@t3tools/shared/video";
-import { MessageCircleIcon, MousePointerClickIcon } from "lucide-react";
+import { MessageCircleIcon, MessagesSquareIcon, MousePointerClickIcon } from "lucide-react";
 import { createContext, type MouseEvent, type ReactElement, type ReactNode, use } from "react";
 import type { EnvironmentId } from "@t3tools/contracts";
 
@@ -44,6 +44,7 @@ import {
   ImageChipButton,
   PULL_REQUEST_CHIP_KINDS,
   PullRequestChip,
+  ThreadTabSummaryDetails,
   UnresolvedChip,
 } from "./contextChipParts";
 
@@ -55,6 +56,7 @@ export type ComposerDraftContextRecord =
   | { kind: "terminal"; record: TerminalContextDraft }
   | { kind: "review-comment"; record: ReviewCommentContext }
   | { kind: "preview-annotation"; record: PreviewAnnotationPayload }
+  | { kind: "thread-tab"; record: ThreadTabContextRecord }
   | { kind: "image"; record: ComposerImageAttachment; upload?: AttachmentUploadState | undefined }
   | { kind: "file"; record: ComposerFileAttachment; upload?: AttachmentUploadState | undefined };
 
@@ -94,6 +96,7 @@ export function composerContextRecordsFromDraft(input: {
   terminalContexts: ReadonlyArray<TerminalContextDraft>;
   reviewComments?: ReadonlyArray<ReviewCommentContext>;
   previewAnnotations?: ReadonlyArray<PreviewAnnotationPayload>;
+  threadTabs?: ReadonlyArray<ThreadTabContextRecord>;
   images?: ReadonlyArray<ComposerImageAttachment>;
   files?: ReadonlyArray<ComposerFileAttachment>;
   uploadsByImageId?: Readonly<Record<string, AttachmentUploadState>>;
@@ -121,6 +124,9 @@ export function composerContextRecordsFromDraft(input: {
   }
   for (const record of input.previewAnnotations ?? []) {
     records.set(previewAnnotationContextId(record.id), { kind: "preview-annotation", record });
+  }
+  for (const record of input.threadTabs ?? []) {
+    records.set(record.contextId, { kind: "thread-tab", record });
   }
   return records;
 }
@@ -403,6 +409,23 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
             details={<ComposerPreviewAnnotationDetails annotation={entry.record} />}
             detailsMode={definition.capabilities.details}
             kind="preview-annotation"
+          />
+        ) : (
+          <UnresolvedContextChip label={context.label} />
+        ),
+    },
+    {
+      kind: "thread-tab",
+      canRender: (entry) => entry.kind === "thread-tab",
+      render: (entry, context, definition) =>
+        entry.kind === "thread-tab" ? (
+          <ContextChip
+            icon={<MessagesSquareIcon />}
+            label={entry.record.label}
+            kindLabel="Chat tab summary"
+            details={<ThreadTabSummaryDetails summary={entry.record.summary} />}
+            detailsMode={definition.capabilities.details}
+            kind="thread-tab"
           />
         ) : (
           <UnresolvedContextChip label={context.label} />

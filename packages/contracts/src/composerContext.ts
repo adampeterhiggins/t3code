@@ -25,6 +25,7 @@ export const COMPOSER_CONTEXT_KINDS = [
   "review-comment",
   "mention",
   "skill",
+  "thread-tab",
 ] as const;
 export type KnownComposerContextKind = (typeof COMPOSER_CONTEXT_KINDS)[number];
 
@@ -215,6 +216,18 @@ export const SkillContextRecord = Schema.Struct({
 });
 export type SkillContextRecord = typeof SkillContextRecord.Type;
 
+export const COMPOSER_CONTEXT_THREAD_TAB_SUMMARY_MAX_CHARS = 32_000;
+
+/** A sibling chat tab's transcript summary, captured when the chip was inserted. */
+export const ThreadTabContextRecord = Schema.Struct({
+  ...recordBase,
+  kind: Schema.Literal("thread-tab"),
+  threadId: TrimmedNonEmptyString.check(Schema.isMaxLength(CONTEXT_ID_MAX_CHARS)),
+  title: ShortString,
+  summary: BoundedString(COMPOSER_CONTEXT_THREAD_TAB_SUMMARY_MAX_CHARS),
+});
+export type ThreadTabContextRecord = typeof ThreadTabContextRecord.Type;
+
 /**
  * Catch-all for kinds this build does not know. Known discriminators are excluded so a
  * malformed known record fails its own schema instead of sliding through unchecked.
@@ -245,6 +258,7 @@ export const KnownComposerContextRecord = Schema.Union([
   ReviewCommentContextRecord,
   MentionContextRecord,
   SkillContextRecord,
+  ThreadTabContextRecord,
 ]);
 export type KnownComposerContextRecord = typeof KnownComposerContextRecord.Type;
 

@@ -290,6 +290,15 @@ function FileChipContent(props: {
   );
 }
 
+/** Popover body for a chat-tab summary chip, shared by the composer and sent messages. */
+export function ThreadTabSummaryDetails({ summary }: { summary: string }) {
+  return (
+    <div className="max-h-80 overflow-y-auto whitespace-pre-wrap wrap-break-word rounded-lg border border-border/70 bg-background/70 px-3 py-2.5 text-xs text-foreground">
+      {summary}
+    </div>
+  );
+}
+
 export function UnresolvedChip(props: { label: string; tooltip: string; copyMarkdown?: string }) {
   return (
     <ContextChipShell

@@ -311,10 +311,12 @@ import {
   type TerminalContextSelection,
 } from "../lib/terminalContext";
 import {
+  collectInlineContextIds,
   ensureInlineContextReferences,
   removeInlineContextReference,
   stripInlineContextReferences,
 } from "../lib/composerContextReferences";
+import { readThreadTabContextRecords, useThreadTabContextStore } from "../threadTabContextStore";
 import { serializeLegacyContextMessage } from "@t3tools/shared/composerContextLegacySend";
 import {
   buildMessageContext,
@@ -379,10 +381,7 @@ import {
   ThreadTabContextPills,
   ThreadTabs,
   useThreadTabGroup,
-  selectedThreadTabSources,
-  clearSelectedThreadTabSources,
 } from "./chat/ThreadTabs";
-import { prepareThreadTabHandoff } from "@t3tools/client-runtime/thread-tabs";
 import { runtime } from "../lib/runtime";
 import { PanelLayoutControls, RightPanelMaximizeControl } from "./chat/PanelLayoutControls";
 import { expandedImageKey, type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
@@ -1821,7 +1820,6 @@ export default function ChatView(props: ChatViewProps) {
   const fanoutStateAtom = draftFanoutStateAtom(routeThreadKey);
   const fanoutState = useAtomValue(fanoutStateAtom);
   const sendInFlightRef = fanoutState.sendInFlight;
-  const tabHandoffInFlightRef = useRef(false);
   const composerSendGenerationRef = useRef(0);
   const multipleModelSelections = fanoutState.selections;
   const setMultipleModelSelections = useCallback(
@@ -7382,7 +7380,6 @@ export default function ChatView(props: ChatViewProps) {
       !clientSettingsHydrated ||
       threadDetailLoading ||
       sendInFlightRef.current ||
-      tabHandoffInFlightRef.current ||
       feedbackUploadsInFlightRef.current.has(routeThreadKey)
     ) {
       notifyDirectAnnotationAttached();
@@ -7746,6 +7743,12 @@ export default function ChatView(props: ChatViewProps) {
     const composerTerminalContextsSnapshot = [...sendableComposerTerminalContexts];
     const composerPreviewAnnotationsSnapshot = [...composerPreviewAnnotations];
     const composerReviewCommentsSnapshot: ReviewCommentContext[] = [...composerReviewComments];
+    const referencedContextIds = new Set(collectInlineContextIds(promptForSend));
+    const composerThreadTabsSnapshot = isServerThread
+      ? readThreadTabContextRecords(threadIdForSend).filter((record) =>
+          referencedContextIds.has(record.contextId),
+        )
+      : [];
     // Expired terminal excerpts are not sent; their chips leave the text with them.
     const messageTextForSend = composerTerminalContexts
       .filter((context) => !composerTerminalContextsSnapshot.includes(context))
@@ -7763,6 +7766,7 @@ export default function ChatView(props: ChatViewProps) {
         terminalContexts: composerTerminalContextsSnapshot,
         reviewComments: composerReviewCommentsSnapshot,
         previewAnnotations: composerPreviewAnnotationsSnapshot,
+        threadTabs: composerThreadTabsSnapshot,
         attachments: composerAttachmentsSnapshot.map((attachment, index) => ({
           attachment,
           attachmentId: attachmentIds[index] ?? attachment.id,
@@ -7771,41 +7775,13 @@ export default function ChatView(props: ChatViewProps) {
     const outgoingMessageContext = buildOutgoingMessageContext(
       composerAttachmentsSnapshot.map((attachment) => attachment.id),
     );
-    let outgoingMessageText = formatOutgoingPrompt({
+    const outgoingMessageText = formatOutgoingPrompt({
       provider: ctxSelectedProvider,
       model: ctxSelectedModel,
       models: ctxSelectedProviderModels,
       effort: ctxSelectedPromptEffort,
       text: messageTextForSend || ATTACHMENT_ONLY_BOOTSTRAP_PROMPT,
     });
-    const tabSources =
-      isFirstMessage && isServerThread ? selectedThreadTabSources(threadIdForSend) : [];
-    if (tabSources.length > 0) {
-      const prepared = readPreparedConnection(environmentId);
-      if (!prepared) {
-        setThreadError(threadIdForSend, "Reconnect before including context from another tab.");
-        return;
-      }
-      try {
-        tabHandoffInFlightRef.current = true;
-        const handoff = await runtime.runPromise(
-          prepareThreadTabHandoff(prepared, threadIdForSend, {
-            sourceThreadIds: [...tabSources],
-          }),
-        );
-        if (handoff.text) {
-          outgoingMessageText = `${outgoingMessageText}\n\n<related_chats>\n${handoff.text}\n</related_chats>`;
-        }
-      } catch (cause) {
-        setThreadError(
-          threadIdForSend,
-          cause instanceof Error ? cause.message : "Could not prepare tab context.",
-        );
-        return;
-      } finally {
-        tabHandoffInFlightRef.current = false;
-      }
-    }
     if (composerRef.current?.validateProviderInput(outgoingMessageText) === false) {
       return;
     }
@@ -8496,7 +8472,7 @@ export default function ChatView(props: ChatViewProps) {
         failure = startResult;
       } else {
         turnStartSucceeded = true;
-        if (tabSources.length > 0) clearSelectedThreadTabSources(threadIdForSend);
+        if (isServerThread) useThreadTabContextStore.getState().clear(threadIdForSend);
         // The turn is under way and will spend quota, so that thread's limits
         // snapshot is stale. Uploads may have outlasted a navigation, so only
         // the sending thread's panel clears.
@@ -10045,8 +10021,12 @@ export default function ChatView(props: ChatViewProps) {
                   {threadTabGroup && activeThread.messages.length === 0 ? (
                     <ThreadTabContextPills
                       key={activeThread.id}
+                      environmentId={activeThread.environmentId}
                       threadId={activeThread.id}
                       group={threadTabGroup}
+                      onInsert={(reference) =>
+                        composerRef.current?.insertContextReference(reference)
+                      }
                     />
                   ) : null}
                   <div

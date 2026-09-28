@@ -16,6 +16,7 @@ import type {
   ReviewCommentContextRecord,
   TerminalContextRecord,
   ThreadId,
+  ThreadTabContextRecord,
 } from "@t3tools/contracts";
 import { upgradeLegacyContextMessage } from "@t3tools/shared/composerContextLegacy";
 import { encodeComposerContextFragment } from "@t3tools/shared/composerContextClipboard";
@@ -295,6 +296,7 @@ export function buildMessageContext(input: {
   terminalContexts: ReadonlyArray<TerminalContextDraft>;
   reviewComments: ReadonlyArray<ReviewCommentContext>;
   previewAnnotations: ReadonlyArray<PreviewAnnotationPayload>;
+  threadTabs?: ReadonlyArray<ThreadTabContextRecord>;
   attachments?: ReadonlyArray<BoundComposerAttachment>;
 }): OrchestrationMessageContext | undefined {
   // An annotation's screenshot travels as the image attachment that reuses its id.
@@ -311,6 +313,7 @@ export function buildMessageContext(input: {
         screenshotContextId: screenshotAttachmentIds.has(annotation.id) ? annotation.id : undefined,
       }),
     ),
+    ...(input.threadTabs ?? []),
     ...(input.attachments ?? []).map(attachmentContextRecord),
   ];
   return records.length === 0 ? undefined : { version: 1, records };

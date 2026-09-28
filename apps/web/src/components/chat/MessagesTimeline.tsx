@@ -123,6 +123,7 @@ import {
   GlobeIcon,
   HammerIcon,
   MessageCircleIcon,
+  MessagesSquareIcon,
   Minimize2Icon,
   MousePointerClickIcon,
   PaintbrushIcon,
@@ -220,6 +221,7 @@ import {
   ImageChipButton,
   PULL_REQUEST_CHIP_KINDS,
   PullRequestChip,
+  ThreadTabSummaryDetails,
   UnresolvedChip,
 } from "../contextChipParts";
 import {
@@ -3887,6 +3889,24 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
             label={record.label}
           >
             <UserMessagePreviewAnnotationDetails record={record} image={context.annotationImage} />
+          </UserMessageContextPopover>
+        ) : (
+          <UnavailableUserMessageContextChip {...context} />
+        ),
+    },
+    {
+      kind: "thread-tab",
+      canRender: (record) => record.kind === "thread-tab",
+      render: (record, context) =>
+        record.kind === "thread-tab" ? (
+          <UserMessageContextPopover
+            copyMarkdown={context.copyMarkdown}
+            accessibleLabel={`Chat tab summary, ${record.label}`}
+            kind="thread-tab"
+            icon={<MessagesSquareIcon />}
+            label={record.label}
+          >
+            <ThreadTabSummaryDetails summary={record.summary} />
           </UserMessageContextPopover>
         ) : (
           <UnavailableUserMessageContextChip {...context} />

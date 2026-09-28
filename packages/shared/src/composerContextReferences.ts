@@ -233,6 +233,10 @@ function formatComposerContextProviderPayload(record: KnownComposerContextRecord
       return `path: ${record.path}`;
     case "skill":
       return `name: ${record.name}`;
+    case "thread-tab":
+      return [`chat tab: ${record.title}`, `threadId: ${record.threadId}`, record.summary].join(
+        "\n",
+      );
   }
 }
 
