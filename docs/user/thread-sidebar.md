@@ -15,11 +15,15 @@ if that project exists there. Otherwise it selects an environment that has it.
 
 ### Continue in another tab
 
-Choose **+ Tab** above a thread to open a separate chat in the same workspace. Each tab has its
-own provider and conversation. In the new tab, select any sibling chats under **Include context
-from** before sending your first message. T3 Code includes a bounded summary of the selected
-chats with that message. Later changes in those chats do not change the sent context. Tabs in the
-same workspace can edit the same files, so review the current checkout before restoring changes.
+Click the tab name at the end of the header breadcrumb (`project / thread / tab`) and choose
+**New tab** to open a separate chat in the same workspace. The same menu switches between tabs.
+Each tab has its own provider and conversation, and the sidebar shows only the original thread.
+
+Before the first message in a new tab, click a sibling under **Include context from** to insert a
+summary of that chat as a chip at the cursor. Move or delete the chip like any other context.
+The summary is captured when you click, so later changes in that chat do not change it. Tabs in
+the same workspace can edit the same files, so review the current checkout before restoring
+changes.
 
 ### Start in the background
 

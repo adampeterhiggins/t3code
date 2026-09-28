@@ -1,5 +1,7 @@
 # T3 Code docs
 
+This is a fork of upstream T3 Code. See [Fork differences](./fork-differences.md).
+
 ## Using T3 Code
 
 - [Install T3 Code](./user/install.md)
