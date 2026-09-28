@@ -79,12 +79,15 @@ export function useThreadTabGroup(environmentId: EnvironmentId, threadId: Thread
 
   return useMemo(() => {
     if (!group?.tabs.some((tab) => tab.threadId === threadId)) return null;
-    const archived = new Set(
-      projectShells.filter((thread) => thread.archivedAt !== null).map((thread) => thread.id),
+    // Archiving removes a thread's shell from the store, so a tab without one has been closed.
+    // Until the open thread's shell loads, the project's shells are not known yet.
+    if (!shell) return group;
+    const open = new Set(
+      projectShells.filter((thread) => thread.archivedAt === null).map((thread) => thread.id),
     );
-    if (!group.tabs.some((tab) => archived.has(tab.threadId))) return group;
-    return { ...group, tabs: group.tabs.filter((tab) => !archived.has(tab.threadId)) };
-  }, [group, projectShells, threadId]);
+    if (group.tabs.every((tab) => open.has(tab.threadId))) return group;
+    return { ...group, tabs: group.tabs.filter((tab) => open.has(tab.threadId)) };
+  }, [group, projectShells, shell, threadId]);
 }
 
 /** A tab's name everywhere it appears: the live thread title, so renames show up immediately. */
