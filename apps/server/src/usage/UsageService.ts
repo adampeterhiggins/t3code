@@ -54,7 +54,10 @@ import * as ServerSettings from "../serverSettings.ts";
 import { resolveCodexHomeLayout } from "../provider/Drivers/CodexHomeLayout.ts";
 import { makeCursorEnvironment } from "../provider/Drivers/CursorHome.ts";
 import { resolveAntigravityInstanceDirectories } from "../provider/antigravityAuthSupport.ts";
-import { mergeProviderInstanceEnvironment } from "../provider/ProviderInstanceEnvironment.ts";
+import {
+  defaultInstanceHomePath,
+  mergeProviderInstanceEnvironment,
+} from "../provider/ProviderInstanceEnvironment.ts";
 import { parseDevinAccountConsumptionPayload } from "./devinAccountUsage.ts";
 import { readDevinUsage } from "./devinUsageReader.ts";
 import { readOpenCodeUsage } from "./opencodeUsageReader.ts";
@@ -875,16 +878,29 @@ export const make = Effect.gen(function* () {
         ...(failed ? { message: "Some Antigravity history could not be read." } : {}),
       });
     }
-    // The host's own Cursor login, plus one per instance whose `homePath`
-    // gives it a private login. Disabled instances still have history.
+    // The host's own Cursor login, plus each instance's, resolved the way the
+    // driver spawns it. Disabled instances still have history.
     const cursorEnvironments: NodeJS.ProcessEnv[] = [hostEnvironment];
-    for (const instance of Object.values(settings.providerInstances)) {
+    for (const [instanceId, instance] of Object.entries(settings.providerInstances)) {
       if (instance.driver !== "cursor") continue;
       const decoded = decodeCursorSettings(instance.config ?? {});
-      if (Option.isNone(decoded) || !decoded.value.homePath) continue;
+      if (Option.isNone(decoded)) continue;
+      const pickedByEnvironment = instance.environment?.some(
+        (variable) => variable.name === "HOME",
+      );
+      const homePath =
+        decoded.value.homePath ||
+        (pickedByEnvironment
+          ? ""
+          : defaultInstanceHomePath(
+              path,
+              config.stateDir,
+              instance.driver,
+              ProviderInstanceId.make(instanceId),
+            ));
       cursorEnvironments.push(
         yield* makeCursorEnvironment(
-          decoded.value,
+          { homePath },
           mergeProviderInstanceEnvironment(instance.environment, hostEnvironment),
         ).pipe(Effect.provideService(Path.Path, path)),
       );

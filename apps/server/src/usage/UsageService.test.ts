@@ -258,19 +258,44 @@ describe("UsageService", () => {
     Effect.gen(function* () {
       const { settings, home } = yield* setup;
       const workHome = NodePath.join(home, "cursor-work");
-      const personalHome = NodePath.join(home, "cursor-personal");
-      yield* Effect.promise(async () => {
-        for (const instanceHome of [workHome, personalHome]) {
-          await NodeFSP.mkdir(NodePath.join(instanceHome, ".cursor"), { recursive: true });
-          await NodeFSP.writeFile(NodePath.join(instanceHome, ".cursor", "auth.json"), "invalid");
-        }
-      });
       const cursorInstance = (homePath: string) => ({
         driver: ProviderDriverKind.make("cursor"),
         enabled: false,
         config: { homePath },
       });
-      const service = yield* UsageService.make.pipe(
+      yield* Effect.gen(function* () {
+        // `cursor-personal` leaves its home blank, so it signs in under T3's state dir.
+        const { stateDir } = yield* ServerConfig.ServerConfig;
+        const personalHome = NodePath.join(stateDir, "provider-homes", "cursor", "cursor-personal");
+        yield* Effect.promise(async () => {
+          for (const instanceHome of [workHome, personalHome]) {
+            await NodeFSP.mkdir(NodePath.join(instanceHome, ".cursor"), { recursive: true });
+            await NodeFSP.writeFile(NodePath.join(instanceHome, ".cursor", "auth.json"), "invalid");
+          }
+        });
+        const service = yield* UsageService.make;
+        const summary = yield* service.readSummary(WINDOW);
+        const cursor = summary.sources.filter((source) => source.fingerprint.provider === "cursor");
+        // The host's Keychain login stays gated; instance homes use file logins,
+        // and two instances sharing a home are one login.
+        assert.deepStrictEqual(
+          cursor.map((source) => source.action ?? source.message),
+          [
+            "enableCursorKeychain",
+            "Cursor credentials could not be read.",
+            "Cursor credentials could not be read.",
+          ],
+        );
+        for (const instanceHome of [workHome, personalHome]) {
+          assert.isTrue(
+            cursor.some((source) =>
+              source.fingerprint.resolvedHomePath.endsWith(
+                NodePath.join(NodePath.basename(instanceHome), ".cursor", "auth.json"),
+              ),
+            ),
+          );
+        }
+      }).pipe(
         Effect.provide(
           serviceLayers({
             prefix: "usage-service-cursor-instances",
@@ -280,7 +305,7 @@ describe("UsageService", () => {
               providerInstances: {
                 [ProviderInstanceId.make("cursor-work")]: cursorInstance(workHome),
                 [ProviderInstanceId.make("cursor-work-copy")]: cursorInstance(workHome),
-                [ProviderInstanceId.make("cursor-personal")]: cursorInstance(personalHome),
+                [ProviderInstanceId.make("cursor-personal")]: cursorInstance(""),
               },
             },
             platform: "darwin",
@@ -288,27 +313,6 @@ describe("UsageService", () => {
           }),
         ),
       );
-      const summary = yield* service.readSummary(WINDOW);
-      const cursor = summary.sources.filter((source) => source.fingerprint.provider === "cursor");
-      // The host's Keychain login stays gated; instance homes use file logins,
-      // and two instances sharing a home are one login.
-      assert.deepStrictEqual(
-        cursor.map((source) => source.action ?? source.message),
-        [
-          "enableCursorKeychain",
-          "Cursor credentials could not be read.",
-          "Cursor credentials could not be read.",
-        ],
-      );
-      for (const instanceHome of [workHome, personalHome]) {
-        assert.isTrue(
-          cursor.some((source) =>
-            source.fingerprint.resolvedHomePath.endsWith(
-              NodePath.join(NodePath.basename(instanceHome), ".cursor", "auth.json"),
-            ),
-          ),
-        );
-      }
     }).pipe(Effect.scoped),
   );
 
