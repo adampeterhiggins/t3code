@@ -81,6 +81,23 @@ export function isModelSelectionProviderEnabled(
   );
 }
 
+export function resolveWorktreeCleanupModelSelection(
+  settings: ServerSettings,
+  providers?: ReadonlyArray<ServerProvider>,
+): ModelSelection {
+  const selection = settings.worktreeCleanupModelSelection;
+  if (!selection || !isModelSelectionProviderEnabled(settings, selection)) {
+    return settings.textGenerationModelSelection;
+  }
+  if (providers === undefined) {
+    return selection;
+  }
+  const provider = providers.find((candidate) => candidate.instanceId === selection.instanceId);
+  return provider?.enabled === true && isProviderAvailable(provider)
+    ? selection
+    : settings.textGenerationModelSelection;
+}
+
 export function resolveSourceControlWriterModelSelection(
   settings: ServerSettings,
   providers?: ReadonlyArray<ServerProvider>,
@@ -274,6 +291,8 @@ export function applyServerSettingsPatch(
     backgroundActivityProfile,
     backgroundActivity,
     worktreeCleanup: worktreeCleanupPatch,
+    // The name list replaces wholesale. deepMerge would treat the array as an object.
+    storageCleanup: storageCleanupPatch,
     // Merged per entry below; its `null` removals must not reach deepMerge.
     usageLimitSources: usageLimitSourcesPatch,
     usagePriceOverrides: usagePriceOverridesPatch,
@@ -285,6 +304,7 @@ export function applyServerSettingsPatch(
     projectAgentBrowserAccessOverrides: _legacyBrowserAccess,
     projectAutoPullOverrides: _legacyAutoPull,
     projectScriptOverrides: _legacyScripts,
+    worktreeCleanupModelSelection: worktreeCleanupModelSelectionPatch,
     ...patchForMerge
   } = patch;
   const currentBackgroundActivity = normalizeServerBackgroundActivitySettings(current);
@@ -322,7 +342,25 @@ export function applyServerSettingsPatch(
             },
           }
         : undefined;
-  const next = deepMerge(current, patchForMerge);
+  const merged = deepMerge(current, patchForMerge);
+  const storageCleanupRules =
+    storageCleanupPatch === undefined
+      ? undefined
+      : (({ worktreeCleanupIgnoredNames: _ignoredNames, ...rules }) => rules)(storageCleanupPatch);
+  const next =
+    storageCleanupPatch === undefined
+      ? merged
+      : {
+          ...merged,
+          storageCleanup: {
+            ...deepMerge(current.storageCleanup, storageCleanupRules ?? {}),
+            ...(storageCleanupPatch.worktreeCleanupIgnoredNames === undefined
+              ? {}
+              : {
+                  worktreeCleanupIgnoredNames: storageCleanupPatch.worktreeCleanupIgnoredNames,
+                }),
+          },
+        };
   const nextWithReplacementsBase = {
     ...next,
     ...(worktreeCleanupPatch === undefined
@@ -402,6 +440,9 @@ export function applyServerSettingsPatch(
       : {}),
     ...(patch.sourceControlWriterModelSelection !== undefined
       ? { sourceControlWriterModelSelection: patch.sourceControlWriterModelSelection }
+      : {}),
+    ...(worktreeCleanupModelSelectionPatch !== undefined
+      ? { worktreeCleanupModelSelection: worktreeCleanupModelSelectionPatch }
       : {}),
     ...(automaticGitFetchInterval !== undefined ? { automaticGitFetchInterval } : {}),
     ...(providerHealthRefreshInterval !== undefined ? { providerHealthRefreshInterval } : {}),

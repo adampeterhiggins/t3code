@@ -18,6 +18,7 @@ import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
+  buildIgnoredNamesPrompt,
   buildThreadTitlePrompt,
 } from "./TextGenerationPrompts.ts";
 import * as TextGeneration from "./TextGeneration.ts";
@@ -34,6 +35,7 @@ const OpenCodeTextGenerationOperation = Schema.Literals([
   "generatePrContent",
   "generateBranchName",
   "generateThreadTitle",
+  "generateIgnoredNames",
 ]);
 
 type OpenCodeTextGenerationOperation = typeof OpenCodeTextGenerationOperation.Type;
@@ -453,10 +455,26 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
       };
     });
 
+  const generateIgnoredNames: TextGeneration.TextGeneration["Service"]["generateIgnoredNames"] =
+    Effect.fn("OpenCodeTextGeneration.generateIgnoredNames")(function* (input) {
+      const { prompt, outputSchema } = buildIgnoredNamesPrompt({
+        directories: input.directories,
+      });
+      const generated = yield* runOpenCodeJson({
+        operation: "generateIgnoredNames",
+        cwd: input.cwd,
+        prompt,
+        outputSchemaJson: outputSchema,
+        modelSelection: input.modelSelection,
+      });
+      return { names: generated.names };
+    });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateIgnoredNames,
   } satisfies TextGeneration.TextGeneration["Service"];
 });

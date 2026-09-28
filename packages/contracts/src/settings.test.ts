@@ -7,9 +7,11 @@ import {
   ClientSettingsPatch,
   ClaudeSettings,
   DEFAULT_SERVER_SETTINGS,
+  parseWorktreeCleanupIgnoredNames,
   resolveProviderInstanceEnabled,
   ServerSettings,
   ServerSettingsPatch,
+  WORKTREE_CLEANUP_IGNORED_NAME_MAX_COUNT,
 } from "./settings.ts";
 
 const decodeClientSettings = Schema.decodeUnknownSync(ClientSettingsSchema);
@@ -30,6 +32,7 @@ describe("storage cleanup settings", () => {
       worktreeUnchanged: false,
       browserArtifactsAfterDays: null,
       logsAfterDays: null,
+      worktreeCleanupIgnoredNames: [],
     });
   });
 
@@ -55,6 +58,36 @@ describe("storage cleanup settings", () => {
         },
       }),
     ).toThrow();
+  });
+
+  it("accepts extra ignored names and rejects globs, paths, and lists that are too long", () => {
+    expect(
+      decodeServerSettingsPatch({
+        storageCleanup: { worktreeCleanupIgnoredNames: ["target", "dist"] },
+      }),
+    ).toEqual({ storageCleanup: { worktreeCleanupIgnoredNames: ["target", "dist"] } });
+    expect(parseWorktreeCleanupIgnoredNames("target\n\ndist\ntarget\n")).toEqual([
+      "target",
+      "dist",
+    ]);
+    expect(parseWorktreeCleanupIgnoredNames("")).toEqual([]);
+    for (const name of ["*", "a/b", "a\\b", ".", "..", "has space"]) {
+      expect(() =>
+        decodeServerSettingsPatch({ storageCleanup: { worktreeCleanupIgnoredNames: [name] } }),
+      ).toThrow();
+      expect(parseWorktreeCleanupIgnoredNames(name)).toBeNull();
+    }
+    expect(() =>
+      decodeServerSettingsPatch({ storageCleanup: { worktreeCleanupIgnoredNames: [""] } }),
+    ).toThrow();
+    expect(
+      parseWorktreeCleanupIgnoredNames(
+        Array.from(
+          { length: WORKTREE_CLEANUP_IGNORED_NAME_MAX_COUNT + 1 },
+          (_, index) => `name-${index}`,
+        ).join("\n"),
+      ),
+    ).toBeNull();
   });
 
   it.each([0, -1, 1.5, 3651])("rejects invalid retention %s", (days) => {

@@ -25,6 +25,7 @@ import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
+  buildIgnoredNamesPrompt,
   buildThreadTitlePrompt,
 } from "./TextGenerationPrompts.ts";
 import {
@@ -405,10 +406,21 @@ export const makeAntigravityTextGeneration = Effect.fn("makeAntigravityTextGener
       };
     });
 
+  const generateIgnoredNames: TextGeneration.TextGeneration["Service"]["generateIgnoredNames"] =
+    Effect.fn("AntigravityTextGeneration.generateIgnoredNames")(function* (input) {
+      const generated = yield* runAntigravityJson({
+        operation: "generateIgnoredNames",
+        ...buildIgnoredNamesPrompt({ directories: input.directories }),
+        modelSelection: input.modelSelection,
+      });
+      return { names: generated.names };
+    });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateIgnoredNames,
   } satisfies TextGeneration.TextGeneration["Service"];
 });

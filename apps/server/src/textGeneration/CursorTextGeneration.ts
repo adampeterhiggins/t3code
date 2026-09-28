@@ -15,6 +15,7 @@ import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
+  buildIgnoredNamesPrompt,
   buildThreadTitlePrompt,
 } from "./TextGenerationPrompts.ts";
 import {
@@ -54,7 +55,8 @@ export const makeCursorTextGeneration = Effect.fn("makeCursorTextGeneration")(fu
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle";
+      | "generateThreadTitle"
+      | "generateIgnoredNames";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -261,10 +263,26 @@ export const makeCursorTextGeneration = Effect.fn("makeCursorTextGeneration")(fu
       } satisfies TextGeneration.ThreadTitleGenerationResult;
     });
 
+  const generateIgnoredNames: TextGeneration.TextGeneration["Service"]["generateIgnoredNames"] =
+    Effect.fn("CursorTextGeneration.generateIgnoredNames")(function* (input) {
+      const { prompt, outputSchema } = buildIgnoredNamesPrompt({
+        directories: input.directories,
+      });
+      const generated = yield* runCursorJson({
+        operation: "generateIgnoredNames",
+        cwd: input.cwd,
+        prompt,
+        outputSchemaJson: outputSchema,
+        modelSelection: input.modelSelection,
+      });
+      return { names: generated.names };
+    });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateIgnoredNames,
   } satisfies TextGeneration.TextGeneration["Service"];
 });

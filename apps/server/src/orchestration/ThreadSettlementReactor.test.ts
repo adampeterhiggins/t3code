@@ -1559,6 +1559,7 @@ describe("storage cleanup", () => {
     "dirty",
     "ignored",
     "ignored-directory",
+    "disposable-cache",
     "shared",
     "project-root",
     "nested-project",
@@ -1903,7 +1904,9 @@ describe("storage cleanup", () => {
                           ? ".env\0"
                           : protection === "ignored-directory"
                             ? ".cache/\0"
-                            : "",
+                            : protection === "disposable-cache"
+                              ? "node_modules/\0.venv/\0src/pkg/__pycache__/\0.DS_Store\0"
+                              : "",
                       stderr: "",
                       stdoutTruncated: false,
                       stderrTruncated: false,
@@ -2001,6 +2004,7 @@ describe("storage cleanup", () => {
             protection === "project-custom" ||
             protection === "deleted-project-custom" ||
             protection === "none" ||
+            protection === "disposable-cache" ||
             protection === "deleted" ||
             protection === "deleted-event" ||
             protection === "deleted-owner" ||

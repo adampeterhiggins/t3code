@@ -171,6 +171,8 @@ import * as GitHubCli from "./sourceControl/GitHubCli.ts";
 import * as GitLabCli from "./sourceControl/GitLabCli.ts";
 import * as ForgejoCli from "./sourceControl/ForgejoCli.ts";
 import * as SourceControlProviderRegistry from "./sourceControl/SourceControlProviderRegistry.ts";
+import { suggestWorktreeCleanupIgnoredNames } from "./storageCleanup.ts";
+import * as TextGeneration from "./textGeneration/TextGeneration.ts";
 import * as GitVcsDriver from "./vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "./vcs/VcsDriverRegistry.ts";
 import * as VcsProjectConfig from "./vcs/VcsProjectConfig.ts";
@@ -2626,6 +2628,28 @@ const makeWsRpcLayer = (
               "rpc.aggregate": "server",
             },
           ),
+        [WS_METHODS.serverSuggestWorktreeCleanupIgnoredNames]: () =>
+          observeRpcEffect(
+            WS_METHODS.serverSuggestWorktreeCleanupIgnoredNames,
+            Effect.gen(function* () {
+              const git = yield* GitVcsDriver.GitVcsDriver;
+              const fs = yield* FileSystem.FileSystem;
+              const path = yield* Path.Path;
+              return yield* suggestWorktreeCleanupIgnoredNames({
+                snapshots: projectionSnapshotQuery,
+                git,
+                fs,
+                path,
+              });
+            }).pipe(
+              Effect.catch((error) =>
+                Effect.logWarning("could not suggest ignored names", { error }).pipe(
+                  Effect.as({ names: [] }),
+                ),
+              ),
+            ),
+            { "rpc.aggregate": "server" },
+          ),
         [WS_METHODS.serverDiscoverSourceControl]: (_input) =>
           observeRpcEffect(
             WS_METHODS.serverDiscoverSourceControl,
@@ -3856,6 +3880,23 @@ export const websocketRpcRouteLayer = Layer.unwrap(
               clientAnalyticsProps,
               previewAutomationBroker,
             ).pipe(
+              Layer.provide(
+                TextGeneration.layer.pipe(
+                  Layer.provide(
+                    SourceControlProviderRegistry.layer.pipe(
+                      Layer.provide(
+                        Layer.mergeAll(
+                          AzureDevOpsCli.layer,
+                          BitbucketApi.layer,
+                          GitHubCli.layer,
+                          GitLabCli.layer,
+                          ForgejoCli.layer,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
               Layer.provideMerge(RpcSerialization.layerJson),
               Layer.provide(Layer.succeed(SqlClient.SqlClient, sql)),
               Layer.provide(AgentSessionScanner.layer),

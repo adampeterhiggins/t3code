@@ -39,7 +39,31 @@ describe("serverSettings helpers", () => {
       worktreeUnchanged: false,
       browserArtifactsAfterDays: null,
       logsAfterDays: 30,
+      worktreeCleanupIgnoredNames: [],
     });
+  });
+
+  it("replaces extra ignored names without changing other cleanup rules", () => {
+    const named = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, {
+      storageCleanup: { worktreeAfterDays: 8, worktreeCleanupIgnoredNames: ["target"] },
+    });
+    expect(named.storageCleanup.worktreeCleanupIgnoredNames).toEqual(["target"]);
+    expect(
+      applyServerSettingsPatch(named, {
+        storageCleanup: { worktreeCleanupIgnoredNames: ["dist", "target"] },
+      }).storageCleanup,
+    ).toEqual({
+      ...named.storageCleanup,
+      worktreeCleanupIgnoredNames: ["dist", "target"],
+    });
+    expect(
+      applyServerSettingsPatch(named, { storageCleanup: { worktreeOnMerge: true } }).storageCleanup
+        .worktreeCleanupIgnoredNames,
+    ).toEqual(["target"]);
+    expect(
+      applyServerSettingsPatch(named, { storageCleanup: { worktreeCleanupIgnoredNames: [] } })
+        .storageCleanup.worktreeCleanupIgnoredNames,
+    ).toEqual([]);
   });
   it("replaces SSH host lists when saving, editing, and removing hosts", () => {
     const host = { id: "mini", label: "Mac mini", target: "mini" };

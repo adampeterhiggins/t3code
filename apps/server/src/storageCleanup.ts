@@ -1,10 +1,13 @@
-import type {
-  OrchestrationThreadShell,
-  ProjectId,
-  ServerSettings,
-  ServerSettingsError,
-  TerminalSummary,
-  WorktreeCleanupRules,
+import {
+  parseWorktreeCleanupIgnoredNames,
+  TextGenerationError,
+  WORKTREE_CLEANUP_IGNORED_NAME_MAX_COUNT,
+  type OrchestrationThreadShell,
+  type ProjectId,
+  type ServerSettings,
+  type ServerSettingsError,
+  type TerminalSummary,
+  type WorktreeCleanupRules,
 } from "@t3tools/contracts";
 import { resolveWorktreeCleanup } from "@t3tools/shared/projectSettings";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
@@ -13,6 +16,7 @@ import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
 import * as Equal from "effect/Equal";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -33,6 +37,10 @@ import { threadHasQueuedTurnStart } from "./orchestration/ThreadSettlementPolicy
 import { forkParked } from "./serverActivation.ts";
 import * as Settings from "./serverSettings.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
+import { resolveWorktreeCleanupModelSelection } from "@t3tools/shared/serverSettings";
+
+import * as ProviderRegistry from "./provider/Services/ProviderRegistry.ts";
+import * as TextGeneration from "./textGeneration/TextGeneration.ts";
 import * as GitVcsDriver from "./vcs/GitVcsDriver.ts";
 import { withWorkspaceLease } from "./workspace/workspaceLease.ts";
 
@@ -45,6 +53,248 @@ export class StorageCleanup extends Context.Service<
 >()("t3/storageCleanup") {}
 
 const DAY_MS = 86_400_000;
+const isTextGenerationError = Schema.is(TextGenerationError);
+
+/**
+ * Directory names git may list as ignored that are dependency installs or tool
+ * caches. Anything else ignored — secrets, datasets, generic build folders —
+ * still blocks automatic removal.
+ */
+const DISPOSABLE_IGNORED_DIRECTORIES = new Set([
+  "node_modules",
+  ".venv",
+  "venv",
+  "__pycache__",
+  "__pypackages__",
+  ".pytest_cache",
+  ".mypy_cache",
+  ".ruff_cache",
+  ".pytype",
+  ".pyre",
+  ".tox",
+  ".nox",
+  ".hypothesis",
+  ".eggs",
+  "htmlcov",
+  ".next",
+  ".nuxt",
+  ".turbo",
+  ".vite",
+  ".parcel-cache",
+  ".svelte-kit",
+  ".astro",
+  ".angular",
+  ".gradle",
+  ".sass-cache",
+  ".nyc_output",
+  "bower_components",
+  "playwright-report",
+  "test-results",
+]);
+
+const DISPOSABLE_IGNORED_FILES = new Set([
+  ".DS_Store",
+  "Thumbs.db",
+  "desktop.ini",
+  ".eslintcache",
+  ".stylelintcache",
+  ".coverage",
+  ".dmypy.json",
+  "dmypy.json",
+]);
+
+const NO_EXTRA_IGNORED_NAMES: ReadonlySet<string> = new Set();
+
+/** `git ls-files --others --ignored --exclude-standard --directory -z` output. */
+export function ignoredPathsBlockWorktreeRemoval(
+  stdout: string,
+  truncated: boolean,
+  extraNames: ReadonlySet<string> = NO_EXTRA_IGNORED_NAMES,
+): boolean {
+  if (truncated) return true;
+  return stdout.split("\0").some((entry) => {
+    if (entry === "") return false;
+    const directory = entry.endsWith("/");
+    const trimmed = directory ? entry.slice(0, -1) : entry;
+    const slash = trimmed.lastIndexOf("/");
+    const name = slash === -1 ? trimmed : trimmed.slice(slash + 1);
+    if (extraNames.has(name)) return false;
+    if (directory) {
+      return !DISPOSABLE_IGNORED_DIRECTORIES.has(name) && !name.endsWith(".egg-info");
+    }
+    return (
+      !DISPOSABLE_IGNORED_FILES.has(name) &&
+      !name.endsWith(".pyc") &&
+      !name.endsWith(".pyo") &&
+      !name.endsWith(".tsbuildinfo")
+    );
+  });
+}
+
+function worktreeCleanupIgnoredNameSet(settings: ServerSettings): ReadonlySet<string> {
+  return new Set(settings.storageCleanup.worktreeCleanupIgnoredNames);
+}
+
+/** Credential stores stay blockers even when a project gitignores them. */
+const SECRET_IGNORED_DIRECTORY_NAMES = new Set([
+  ".aws",
+  ".gnupg",
+  ".netrc",
+  ".npmrc",
+  ".pypirc",
+  ".secrets",
+  ".ssh",
+  "credentials",
+  "secrets",
+]);
+
+const SUGGEST_CHECKOUT_LIMIT = 32;
+
+function ignoredDirectoryBasename(entry: string): string | null {
+  if (!entry.endsWith("/")) return null;
+  const trimmed = entry.slice(0, -1);
+  const slash = trimmed.lastIndexOf("/");
+  const name = slash === -1 ? trimmed : trimmed.slice(slash + 1);
+  if (
+    name.length === 0 ||
+    DISPOSABLE_IGNORED_DIRECTORIES.has(name) ||
+    name.endsWith(".egg-info") ||
+    SECRET_IGNORED_DIRECTORY_NAMES.has(name) ||
+    name.startsWith(".env") ||
+    parseWorktreeCleanupIgnoredNames(name)?.length !== 1
+  ) {
+    return null;
+  }
+  return name;
+}
+
+function countedIgnoredDirectories(
+  listings: ReadonlyArray<string>,
+  limit: number,
+  minimumCount: number,
+): ReadonlyArray<{ readonly name: string; readonly count: number }> {
+  const counts = new Map<string, number>();
+  for (const listing of listings) {
+    const seen = new Set<string>();
+    for (const entry of listing.split("\0")) {
+      const name = ignoredDirectoryBasename(entry);
+      if (name === null || seen.has(name) || name.length < 2) continue;
+      seen.add(name);
+      counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .filter(([, count]) => count >= minimumCount)
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .slice(0, Math.max(0, limit))
+    .map(([name, count]) => ({ name, count }));
+}
+
+/** Ignored directory names from `git ls-files --others --ignored --directory -z` listings. */
+export function suggestedIgnoredDirectoryNames(
+  listings: ReadonlyArray<string>,
+  limit: number,
+  minimumCount = 2,
+): ReadonlyArray<string> {
+  return countedIgnoredDirectories(listings, limit, minimumCount).map((entry) => entry.name);
+}
+
+/** Keeps model output that was actually present in the project scan. */
+export function acceptedModelIgnoredNames(
+  candidates: ReadonlyArray<string>,
+  generated: ReadonlyArray<string>,
+): ReadonlyArray<string> {
+  const allowed = new Set(candidates);
+  const names: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of generated) {
+    const name = raw.trim();
+    if (!allowed.has(name) || seen.has(name)) continue;
+    if (parseWorktreeCleanupIgnoredNames(name)?.length !== 1) continue;
+    seen.add(name);
+    names.push(name);
+    if (names.length >= WORKTREE_CLEANUP_IGNORED_NAME_MAX_COUNT) break;
+  }
+  return names;
+}
+
+export const suggestWorktreeCleanupIgnoredNames = (input: {
+  readonly snapshots: ProjectionSnapshotQuery.ProjectionSnapshotQuery["Service"];
+  readonly git: GitVcsDriver.GitVcsDriver["Service"];
+  readonly fs: FileSystem.FileSystem;
+  readonly path: Path.Path;
+}) =>
+  Effect.gen(function* () {
+    const { snapshots, git, fs, path } = input;
+    const active = yield* snapshots.getShellSnapshot();
+    const archived = yield* snapshots.getArchivedShellSnapshot();
+    const deleted = yield* snapshots.getDeletedWorktreeThreads();
+    const roots: string[] = [];
+    const seen = new Set<string>();
+    const add = (value: string | null | undefined) => {
+      const trimmed = value?.trim();
+      if (!trimmed) return;
+      const resolved = path.resolve(trimmed);
+      if (seen.has(resolved) || roots.length >= SUGGEST_CHECKOUT_LIMIT) return;
+      seen.add(resolved);
+      roots.push(resolved);
+    };
+    for (const thread of [...active.threads, ...archived.threads]) add(thread.worktreePath);
+    for (const thread of deleted) add(thread.worktreePath);
+    for (const project of [...active.projects, ...archived.projects]) add(project.workspaceRoot);
+
+    const listings = yield* Effect.forEach(
+      roots,
+      (cwd) =>
+        Effect.gen(function* () {
+          if (!(yield* fs.exists(cwd))) return "";
+          const result = yield* git
+            .execute({
+              operation: "StorageCleanup.suggestIgnoredNames",
+              cwd,
+              args: [
+                "ls-files",
+                "--others",
+                "--ignored",
+                "--exclude-standard",
+                "--directory",
+                "-z",
+              ],
+              allowNonZeroExit: true,
+              timeoutMs: 10_000,
+              maxOutputBytes: 64 * 1024,
+            })
+            .pipe(Effect.orElseSucceed(() => null));
+          return result !== null && result.exitCode === 0 ? result.stdout : "";
+        }),
+      { concurrency: 8 },
+    );
+    const directories = countedIgnoredDirectories(listings, 200, 1);
+    if (directories.length === 0) return { names: [] };
+    const settings = yield* (yield* Settings.ServerSettingsService).getSettings;
+    const providers = yield* (yield* ProviderRegistry.ProviderRegistry).getProviders;
+    const generated = yield* (yield* TextGeneration.TextGeneration).generateIgnoredNames({
+      cwd: roots[0] ?? path.resolve("."),
+      directories,
+      modelSelection: resolveWorktreeCleanupModelSelection(settings, providers),
+    });
+    return {
+      names: acceptedModelIgnoredNames(
+        directories.map((entry) => entry.name),
+        generated.names,
+      ),
+    };
+  }).pipe(
+    Effect.mapError((cause) =>
+      isTextGenerationError(cause)
+        ? cause
+        : new TextGenerationError({
+            operation: "generateIgnoredNames",
+            detail: "Could not choose ignored directories.",
+            cause,
+          }),
+    ),
+  );
 
 const worktreeCleanupEnabled = (rules: WorktreeCleanupRules) =>
   rules.worktreeAfterDays !== null ||
@@ -230,12 +480,13 @@ export const make = Effect.gen(function* () {
           maxOutputBytes: 64 * 1024,
         });
         // Ignored files can contain secrets or local datasets. Dependency installs
-        // are reproducible; every other ignored path prevents automatic removal.
+        // and regenerable tool caches do not; every other ignored path does.
         if (
-          ignored.stdoutTruncated ||
-          ignored.stdout
-            .split("\0")
-            .some((entry) => entry !== "" && !/(^|\/)node_modules\/$/.test(entry))
+          ignoredPathsBlockWorktreeRemoval(
+            ignored.stdout,
+            ignored.stdoutTruncated,
+            worktreeCleanupIgnoredNameSet(serverSettings),
+          )
         )
           return;
         const old =
@@ -334,17 +585,16 @@ export const make = Effect.gen(function* () {
           args: ["ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"],
           maxOutputBytes: 64 * 1024,
         });
+        const latestSettings = yield* settingsService.getSettings;
         if (
-          finalIgnored.stdoutTruncated ||
-          finalIgnored.stdout
-            .split("\0")
-            .some((entry) => entry !== "" && !/(^|\/)node_modules\/$/.test(entry))
+          ignoredPathsBlockWorktreeRemoval(
+            finalIgnored.stdout,
+            finalIgnored.stdoutTruncated,
+            worktreeCleanupIgnoredNameSet(latestSettings),
+          )
         )
           return;
-        const current = resolveWorktreeCleanup(
-          yield* settingsService.getSettings,
-          thread.projectId,
-        );
+        const current = resolveWorktreeCleanup(latestSettings, thread.projectId);
         if (
           Object.keys(settings).some(
             (key) =>

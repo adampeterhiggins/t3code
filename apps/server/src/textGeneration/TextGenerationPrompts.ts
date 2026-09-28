@@ -327,3 +327,23 @@ export function buildThreadTitlePrompt(input: ThreadTitlePromptInput) {
 
   return { prompt, outputSchema };
 }
+
+export function buildIgnoredNamesPrompt(input: {
+  readonly directories: ReadonlyArray<{ readonly name: string; readonly count: number }>;
+}) {
+  const lines = input.directories.map((entry) => `${entry.count}\t${entry.name}`).join("\n");
+  const prompt = `You choose gitignored directory names that are safe to delete when a coding-agent worktree is cleaned up.
+
+Each line is a count, then a directory name found in local projects. The count is how many checkouts contain that directory.
+
+Keep names that are regenerable caches, build output, or dependency installs.
+Drop secrets, credentials, local datasets, editor state someone may want to keep, and anything you are unsure about.
+Return only names from the list. Do not invent names.
+
+Directories:
+${lines}`;
+  const outputSchema = Schema.Struct({
+    names: Schema.Array(Schema.String),
+  });
+  return { prompt, outputSchema };
+}

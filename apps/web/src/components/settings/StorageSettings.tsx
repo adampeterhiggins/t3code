@@ -1,6 +1,32 @@
-import type { StorageCleanupSettings, WorktreeCleanupRules } from "@t3tools/contracts";
+import { useNavigate } from "@tanstack/react-router";
+import { createEnvironmentRpcCommand } from "@t3tools/client-runtime/state/runtime";
+import {
+  parseWorktreeCleanupIgnoredNames,
+  WORKTREE_CLEANUP_IGNORED_NAME_MAX_COUNT,
+  WS_METHODS,
+  type EnvironmentId,
+  type ProviderInstanceId,
+  type StorageCleanupSettings,
+  type WorktreeCleanupRules,
+} from "@t3tools/contracts";
+import { createModelSelection } from "@t3tools/shared/model";
 import { resolveWorktreeCleanup } from "@t3tools/shared/projectSettings";
+import { resolveWorktreeCleanupModelSelection } from "@t3tools/shared/serverSettings";
 import { useState } from "react";
+
+import { ProviderModelPicker } from "../chat/ProviderModelPicker";
+import { connectionAtomRuntime } from "../../connection/runtime";
+import {
+  getCustomModelOptionsByInstance,
+  resolveAppModelSelectionState,
+} from "../../modelSelection";
+import {
+  applyProviderInstanceSettings,
+  deriveProviderInstanceEntries,
+  sortProviderInstanceEntries,
+} from "../../providerInstances";
+import { EMPTY_SERVER_PROVIDERS } from "../../state/server";
+import { useAtomCommand } from "../../state/use-atom-command";
 
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
@@ -11,7 +37,16 @@ import {
   NumberFieldIncrement,
   NumberFieldInput,
 } from "../ui/number-field";
-import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
+import { Button } from "../ui/button";
+import { Textarea } from "../ui/textarea";
+import { toastManager } from "../ui/toast";
+import {
+  SETTINGS_PICKER_TRIGGER_CLASSNAME,
+  SettingsPageContainer,
+  SettingsRow,
+  SettingsSection,
+} from "./settingsLayout";
+import { useScopedModelDisabledReason } from "./useScopedModelAvailability";
 import { SettingsScopeNotice } from "./SettingsScopeNotice";
 import type { ScopedSettingsTarget } from "./scopedSettings";
 import { useSettingsScope } from "./SettingsScopeContext";
@@ -20,6 +55,110 @@ import {
   useScopedSettings,
   useUpdateScopedSettings,
 } from "./useScopedSettings";
+
+const IGNORED_NAME_ERROR =
+  "Enter one file or directory name per line, up to 50. Names cannot include *, ?, or a path.";
+
+const suggestIgnoredNames = createEnvironmentRpcCommand(connectionAtomRuntime, {
+  label: "settings:suggest-worktree-cleanup-ignored-names",
+  tag: WS_METHODS.serverSuggestWorktreeCleanupIgnoredNames,
+});
+
+function IgnoredNamesField({
+  names,
+  mixed,
+  environments,
+  onCommit,
+}: {
+  names: readonly string[];
+  mixed: boolean;
+  environments: ReadonlyArray<{ readonly environmentId: EnvironmentId }>;
+  onCommit: (names: readonly string[]) => void;
+}) {
+  const savedText = mixed ? "" : names.join("\n");
+  const [draft, setDraft] = useState(savedText);
+  const [error, setError] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestStatus, setSuggestStatus] = useState<string | null>(null);
+  const suggest = useAtomCommand(suggestIgnoredNames, { reportFailure: false });
+
+  const suggestFromProjects = async () => {
+    setSuggesting(true);
+    setSuggestStatus(null);
+    const found = new Set<string>();
+    let failed = 0;
+    for (const environment of environments) {
+      const result = await suggest({ environmentId: environment.environmentId, input: {} });
+      if (result._tag !== "Success") {
+        failed += 1;
+        continue;
+      }
+      for (const name of result.value.names) found.add(name);
+    }
+    setSuggesting(false);
+    if (found.size === 0) {
+      setSuggestStatus(
+        failed > 0
+          ? "Could not look through projects."
+          : "No extra ignored directories in your projects.",
+      );
+      return;
+    }
+    const suggested = [...found].slice(0, WORKTREE_CLEANUP_IGNORED_NAME_MAX_COUNT);
+    setDraft(suggested.join("\n"));
+    setDirty(false);
+    setError(null);
+    onCommit(suggested);
+    setSuggestStatus(
+      suggested.length === 1
+        ? "Found 1 ignored directory that shows up in more than one project."
+        : `Found ${suggested.length} ignored directories that show up in more than one project.`,
+    );
+  };
+
+  return (
+    <div className="max-w-md pb-3">
+      <Textarea
+        size="sm"
+        value={draft}
+        rows={3}
+        aria-label="Ignored names that do not block worktree cleanup"
+        aria-invalid={error !== null}
+        placeholder={mixed ? "Mixed across selected machines" : "target"}
+        onChange={(event) => {
+          setDirty(true);
+          setDraft(event.target.value);
+          setError(null);
+        }}
+        onBlur={() => {
+          if (!dirty) return;
+          const parsed = parseWorktreeCleanupIgnoredNames(draft);
+          if (parsed === null) {
+            setError(IGNORED_NAME_ERROR);
+            return;
+          }
+          setDirty(false);
+          if (!mixed && parsed.join("\n") === names.join("\n")) return;
+          onCommit(parsed);
+        }}
+      />
+      {error ? <p className="pt-1 text-xs text-destructive">{error}</p> : null}
+      <div className="flex flex-wrap items-center gap-2 pt-2">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={suggesting || environments.length === 0}
+          onClick={() => void suggestFromProjects()}
+        >
+          {suggesting ? "Asking the model…" : "Suggest from projects"}
+        </Button>
+        {suggestStatus ? <p className="text-xs text-muted-foreground">{suggestStatus}</p> : null}
+      </div>
+    </div>
+  );
+}
 
 function RetentionControl({
   label,
@@ -82,6 +221,106 @@ function RetentionControl({
   );
 }
 
+function IgnoredNamesModelControl() {
+  const settings = useScopedSettings();
+  const updateSettings = useUpdateScopedSettings();
+  const navigate = useNavigate();
+  const { environment, connectedEnvironments } = useSettingsScope();
+  const environmentId = environment?.environmentId ?? null;
+  const serverProviders = environment?.serverConfig?.providers ?? EMPTY_SERVER_PROVIDERS;
+  const textGenerationProviders = serverProviders.filter(
+    (provider) => provider.supportsTextGeneration !== false,
+  );
+  const defaultModelSelection = resolveAppModelSelectionState(settings, textGenerationProviders);
+  const usesDedicatedModel = settings.worktreeCleanupModelSelection !== null;
+  const activeSelection = resolveAppModelSelectionState(
+    {
+      ...settings,
+      textGenerationModelSelection: resolveWorktreeCleanupModelSelection(
+        settings,
+        textGenerationProviders,
+      ),
+    },
+    textGenerationProviders,
+  );
+  const instanceEntries = sortProviderInstanceEntries(
+    applyProviderInstanceSettings(deriveProviderInstanceEntries(textGenerationProviders), settings),
+  );
+  const canEnableDedicatedModel = instanceEntries.some(
+    (entry) =>
+      entry.instanceId === defaultModelSelection.instanceId && entry.enabled && entry.isAvailable,
+  );
+  const modelOptionsByInstance = getCustomModelOptionsByInstance(
+    settings,
+    textGenerationProviders,
+    activeSelection.instanceId,
+    activeSelection.model,
+  );
+  const modelDisabledReason = useScopedModelDisabledReason(settings, instanceEntries);
+  if (connectedEnvironments.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center justify-end gap-2">
+      {usesDedicatedModel && !canEnableDedicatedModel ? (
+        <span className="text-sm text-muted-foreground">
+          No text generation providers available.
+        </span>
+      ) : null}
+      {usesDedicatedModel && canEnableDedicatedModel ? (
+        <ProviderModelPicker
+          activeInstanceId={activeSelection.instanceId}
+          model={activeSelection.model}
+          lockedProvider={null}
+          instanceEntries={instanceEntries}
+          modelOptionsByInstance={modelOptionsByInstance}
+          triggerClassName={SETTINGS_PICKER_TRIGGER_CLASSNAME}
+          triggerAriaLabel="Model for ignored-name suggestions"
+          {...(environmentId
+            ? {
+                onOpenProviderSetup: (instanceId: ProviderInstanceId) => {
+                  void navigate({
+                    to: "/settings/providers",
+                    search: { environmentId, instanceId },
+                  });
+                },
+              }
+            : {})}
+          getModelDisabledReason={modelDisabledReason}
+          onInstanceModelChange={(instanceId, model) => {
+            const reason = modelDisabledReason(instanceId, model);
+            if (reason) {
+              toastManager.add({
+                type: "error",
+                title: "Suggestion model not saved",
+                description: reason,
+              });
+              return;
+            }
+            updateSettings({
+              worktreeCleanupModelSelection: createModelSelection(instanceId, model),
+            });
+          }}
+        />
+      ) : null}
+      <Switch
+        checked={usesDedicatedModel}
+        disabled={!usesDedicatedModel && !canEnableDedicatedModel}
+        onCheckedChange={(checked) =>
+          updateSettings({
+            worktreeCleanupModelSelection: checked
+              ? createModelSelection(
+                  defaultModelSelection.instanceId,
+                  defaultModelSelection.model,
+                  defaultModelSelection.options,
+                )
+              : null,
+          })
+        }
+        aria-label="Use a separate model for ignored-name suggestions"
+      />
+    </div>
+  );
+}
+
 export function StorageSettingsPanel() {
   const { scope, connectedEnvironments, targets, target } = useSettingsScope();
   const scopedSettings = useScopedSettings();
@@ -109,6 +348,20 @@ export function StorageSettingsPanel() {
       : undefined;
   const update = (patch: Partial<StorageCleanupSettings>) =>
     updateSettings({ storageCleanup: patch });
+  const ignoredNamesSupported =
+    !isProjectScope &&
+    connectedEnvironments.length > 0 &&
+    connectedEnvironments.every(
+      (environment) =>
+        environment.serverConfig?.environment.capabilities.worktreeCleanupIgnoredNames === true,
+    );
+  const ignoredNamesText = settings.worktreeCleanupIgnoredNames.join("\n");
+  const ignoredNamesMixed =
+    ignoredNamesSupported &&
+    targets.some(
+      (entry) =>
+        entry.settings.storageCleanup.worktreeCleanupIgnoredNames.join("\n") !== ignoredNamesText,
+    );
   const updateWorktree = (patch: Partial<WorktreeCleanupRules>) =>
     isProjectScope
       ? updateSettings({ worktreeCleanup: { mode: "custom", rules: patch } })
@@ -249,6 +502,32 @@ export function StorageSettingsPanel() {
                 />
               }
             />
+            {ignoredNamesSupported && (
+              <SettingsRow
+                title="Model for suggestions"
+                description="Chooses ignored directories from your projects. Off uses the environment's text generation model."
+                serverScoped
+                settingKeys={["worktreeCleanupModelSelection"]}
+                control={<IgnoredNamesModelControl />}
+              />
+            )}
+            {ignoredNamesSupported && (
+              <SettingsRow
+                title="Ignored names that do not block cleanup"
+                status={ignoredNamesMixed ? "Mixed across selected machines" : undefined}
+                description="Ignored files and directories with these names are removed with the worktree. Built-in caches, such as node_modules and __pycache__, always apply."
+                serverScoped
+              >
+                <IgnoredNamesField
+                  names={settings.worktreeCleanupIgnoredNames}
+                  mixed={ignoredNamesMixed}
+                  environments={connectedEnvironments}
+                  onCommit={(worktreeCleanupIgnoredNames) =>
+                    update({ worktreeCleanupIgnoredNames })
+                  }
+                />
+              </SettingsRow>
+            )}
           </>
         )}
       </SettingsSection>

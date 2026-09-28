@@ -310,6 +310,7 @@ function createTextGeneration(
       Effect.succeed({
         title: "Update workflow",
       }),
+    generateIgnoredNames: () => Effect.succeed({ names: [] }),
     ...overrides,
   };
 
@@ -353,6 +354,17 @@ function createTextGeneration(
           (cause) =>
             new TextGenerationError({
               operation: "generateThreadTitle",
+              detail: "fake text generation failed",
+              ...(cause !== undefined ? { cause } : {}),
+            }),
+        ),
+      ),
+    generateIgnoredNames: (input) =>
+      implementation.generateIgnoredNames(input).pipe(
+        Effect.mapError(
+          (cause) =>
+            new TextGenerationError({
+              operation: "generateIgnoredNames",
               detail: "fake text generation failed",
               ...(cause !== undefined ? { cause } : {}),
             }),
