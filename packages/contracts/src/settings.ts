@@ -1051,6 +1051,36 @@ const StorageRetentionDays = Schema.NullOr(
   Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 3650 })),
 );
 
+/** One ignored file or directory name. Globs and paths would let a typo delete secrets. */
+export const WORKTREE_CLEANUP_IGNORED_NAME_MAX_COUNT = 50;
+const WORKTREE_CLEANUP_IGNORED_NAME_PATTERN = /^(?!\.{1,2}$)[^/*?\\\s]{1,255}$/;
+const WorktreeCleanupIgnoredName = Schema.String.check(
+  Schema.isPattern(WORKTREE_CLEANUP_IGNORED_NAME_PATTERN),
+);
+const WorktreeCleanupIgnoredNames = Schema.Array(WorktreeCleanupIgnoredName).check(
+  Schema.isMaxLength(WORKTREE_CLEANUP_IGNORED_NAME_MAX_COUNT),
+);
+
+/** Blank lines are dropped. `null` means a line is not a single file or directory name. */
+export function parseWorktreeCleanupIgnoredNames(text: string): ReadonlyArray<string> | null {
+  const names: Array<string> = [];
+  const seen = new Set<string>();
+  for (const line of text.split(/\r?\n/)) {
+    const name = line.trim();
+    if (name.length === 0) continue;
+    if (
+      !WORKTREE_CLEANUP_IGNORED_NAME_PATTERN.test(name) ||
+      names.length >= WORKTREE_CLEANUP_IGNORED_NAME_MAX_COUNT
+    ) {
+      return null;
+    }
+    if (seen.has(name)) continue;
+    seen.add(name);
+    names.push(name);
+  }
+  return names;
+}
+
 export const WorktreeCleanupRules = Schema.Struct({
   worktreeAfterDays: StorageRetentionDays,
   worktreeOnMerge: Schema.Boolean,
@@ -1145,6 +1175,9 @@ export const StorageCleanupSettings = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed(null)),
   ),
   logsAfterDays: StorageRetentionDays.pipe(Schema.withDecodingDefault(Effect.succeed(null))),
+  worktreeCleanupIgnoredNames: WorktreeCleanupIgnoredNames.pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
 });
 export type StorageCleanupSettings = typeof StorageCleanupSettings.Type;
 
@@ -1551,6 +1584,7 @@ export const ServerSettingsPatch = Schema.Struct({
       worktreeUnchanged: Schema.optionalKey(Schema.Boolean),
       browserArtifactsAfterDays: Schema.optionalKey(StorageRetentionDays),
       logsAfterDays: Schema.optionalKey(StorageRetentionDays),
+      worktreeCleanupIgnoredNames: Schema.optionalKey(WorktreeCleanupIgnoredNames),
     }),
   ),
   // Server settings

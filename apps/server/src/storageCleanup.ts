@@ -46,6 +46,86 @@ export class StorageCleanup extends Context.Service<
 
 const DAY_MS = 86_400_000;
 
+/**
+ * Directory names git may list as ignored that are dependency installs or tool
+ * caches. Anything else ignored — secrets, datasets, generic build folders —
+ * still blocks automatic removal.
+ */
+const DISPOSABLE_IGNORED_DIRECTORIES = new Set([
+  "node_modules",
+  ".venv",
+  "venv",
+  "__pycache__",
+  "__pypackages__",
+  ".pytest_cache",
+  ".mypy_cache",
+  ".ruff_cache",
+  ".pytype",
+  ".pyre",
+  ".tox",
+  ".nox",
+  ".hypothesis",
+  ".eggs",
+  "htmlcov",
+  ".next",
+  ".nuxt",
+  ".turbo",
+  ".vite",
+  ".parcel-cache",
+  ".svelte-kit",
+  ".astro",
+  ".angular",
+  ".gradle",
+  ".sass-cache",
+  ".nyc_output",
+  "bower_components",
+  "playwright-report",
+  "test-results",
+]);
+
+const DISPOSABLE_IGNORED_FILES = new Set([
+  ".DS_Store",
+  "Thumbs.db",
+  "desktop.ini",
+  ".eslintcache",
+  ".stylelintcache",
+  ".coverage",
+  ".dmypy.json",
+  "dmypy.json",
+]);
+
+const NO_EXTRA_IGNORED_NAMES: ReadonlySet<string> = new Set();
+
+/** `git ls-files --others --ignored --exclude-standard --directory -z` output. */
+export function ignoredPathsBlockWorktreeRemoval(
+  stdout: string,
+  truncated: boolean,
+  extraNames: ReadonlySet<string> = NO_EXTRA_IGNORED_NAMES,
+): boolean {
+  if (truncated) return true;
+  return stdout.split("\0").some((entry) => {
+    if (entry === "") return false;
+    const directory = entry.endsWith("/");
+    const trimmed = directory ? entry.slice(0, -1) : entry;
+    const slash = trimmed.lastIndexOf("/");
+    const name = slash === -1 ? trimmed : trimmed.slice(slash + 1);
+    if (extraNames.has(name)) return false;
+    if (directory) {
+      return !DISPOSABLE_IGNORED_DIRECTORIES.has(name) && !name.endsWith(".egg-info");
+    }
+    return (
+      !DISPOSABLE_IGNORED_FILES.has(name) &&
+      !name.endsWith(".pyc") &&
+      !name.endsWith(".pyo") &&
+      !name.endsWith(".tsbuildinfo")
+    );
+  });
+}
+
+function worktreeCleanupIgnoredNameSet(settings: ServerSettings): ReadonlySet<string> {
+  return new Set(settings.storageCleanup.worktreeCleanupIgnoredNames);
+}
+
 const worktreeCleanupEnabled = (rules: WorktreeCleanupRules) =>
   rules.worktreeAfterDays !== null ||
   rules.worktreeOnMerge ||
@@ -230,12 +310,13 @@ export const make = Effect.gen(function* () {
           maxOutputBytes: 64 * 1024,
         });
         // Ignored files can contain secrets or local datasets. Dependency installs
-        // are reproducible; every other ignored path prevents automatic removal.
+        // and regenerable tool caches do not; every other ignored path does.
         if (
-          ignored.stdoutTruncated ||
-          ignored.stdout
-            .split("\0")
-            .some((entry) => entry !== "" && !/(^|\/)node_modules\/$/.test(entry))
+          ignoredPathsBlockWorktreeRemoval(
+            ignored.stdout,
+            ignored.stdoutTruncated,
+            worktreeCleanupIgnoredNameSet(serverSettings),
+          )
         )
           return;
         const old =
@@ -334,17 +415,16 @@ export const make = Effect.gen(function* () {
           args: ["ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"],
           maxOutputBytes: 64 * 1024,
         });
+        const latestSettings = yield* settingsService.getSettings;
         if (
-          finalIgnored.stdoutTruncated ||
-          finalIgnored.stdout
-            .split("\0")
-            .some((entry) => entry !== "" && !/(^|\/)node_modules\/$/.test(entry))
+          ignoredPathsBlockWorktreeRemoval(
+            finalIgnored.stdout,
+            finalIgnored.stdoutTruncated,
+            worktreeCleanupIgnoredNameSet(latestSettings),
+          )
         )
           return;
-        const current = resolveWorktreeCleanup(
-          yield* settingsService.getSettings,
-          thread.projectId,
-        );
+        const current = resolveWorktreeCleanup(latestSettings, thread.projectId);
         if (
           Object.keys(settings).some(
             (key) =>

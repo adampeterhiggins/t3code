@@ -1,4 +1,8 @@
-import type { StorageCleanupSettings, WorktreeCleanupRules } from "@t3tools/contracts";
+import {
+  parseWorktreeCleanupIgnoredNames,
+  type StorageCleanupSettings,
+  type WorktreeCleanupRules,
+} from "@t3tools/contracts";
 import { resolveWorktreeCleanup } from "@t3tools/shared/projectSettings";
 import { useState } from "react";
 
@@ -11,6 +15,7 @@ import {
   NumberFieldIncrement,
   NumberFieldInput,
 } from "../ui/number-field";
+import { Textarea } from "../ui/textarea";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { SettingsScopeNotice } from "./SettingsScopeNotice";
 import type { ScopedSettingsTarget } from "./scopedSettings";
@@ -20,6 +25,54 @@ import {
   useScopedSettings,
   useUpdateScopedSettings,
 } from "./useScopedSettings";
+
+const IGNORED_NAME_ERROR =
+  "Enter one file or directory name per line, up to 50. Names cannot include *, ?, or a path.";
+
+function IgnoredNamesField({
+  names,
+  mixed,
+  onCommit,
+}: {
+  names: readonly string[];
+  mixed: boolean;
+  onCommit: (names: readonly string[]) => void;
+}) {
+  const savedText = mixed ? "" : names.join("\n");
+  const [draft, setDraft] = useState(savedText);
+  const [error, setError] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
+
+  return (
+    <div className="max-w-md pb-3">
+      <Textarea
+        size="sm"
+        value={draft}
+        rows={3}
+        aria-label="Ignored names that do not block worktree cleanup"
+        aria-invalid={error !== null}
+        placeholder={mixed ? "Mixed across selected machines" : "target"}
+        onChange={(event) => {
+          setDirty(true);
+          setDraft(event.target.value);
+          setError(null);
+        }}
+        onBlur={() => {
+          if (!dirty) return;
+          const parsed = parseWorktreeCleanupIgnoredNames(draft);
+          if (parsed === null) {
+            setError(IGNORED_NAME_ERROR);
+            return;
+          }
+          setDirty(false);
+          if (!mixed && parsed.join("\n") === names.join("\n")) return;
+          onCommit(parsed);
+        }}
+      />
+      {error ? <p className="pt-1 text-xs text-destructive">{error}</p> : null}
+    </div>
+  );
+}
 
 function RetentionControl({
   label,
@@ -109,6 +162,20 @@ export function StorageSettingsPanel() {
       : undefined;
   const update = (patch: Partial<StorageCleanupSettings>) =>
     updateSettings({ storageCleanup: patch });
+  const ignoredNamesSupported =
+    !isProjectScope &&
+    connectedEnvironments.length > 0 &&
+    connectedEnvironments.every(
+      (environment) =>
+        environment.serverConfig?.environment.capabilities.worktreeCleanupIgnoredNames === true,
+    );
+  const ignoredNamesText = settings.worktreeCleanupIgnoredNames.join("\n");
+  const ignoredNamesMixed =
+    ignoredNamesSupported &&
+    targets.some(
+      (entry) =>
+        entry.settings.storageCleanup.worktreeCleanupIgnoredNames.join("\n") !== ignoredNamesText,
+    );
   const updateWorktree = (patch: Partial<WorktreeCleanupRules>) =>
     isProjectScope
       ? updateSettings({ worktreeCleanup: { mode: "custom", rules: patch } })
@@ -249,6 +316,23 @@ export function StorageSettingsPanel() {
                 />
               }
             />
+            {ignoredNamesSupported && (
+              <SettingsRow
+                title="Ignored names that do not block cleanup"
+                status={ignoredNamesMixed ? "Mixed across selected machines" : undefined}
+                description="Ignored files and directories with these names are removed with the worktree. Built-in caches, such as node_modules and __pycache__, always apply."
+                serverScoped
+              >
+                <IgnoredNamesField
+                  key={ignoredNamesMixed ? "mixed" : ignoredNamesText}
+                  names={settings.worktreeCleanupIgnoredNames}
+                  mixed={ignoredNamesMixed}
+                  onCommit={(worktreeCleanupIgnoredNames) =>
+                    update({ worktreeCleanupIgnoredNames })
+                  }
+                />
+              </SettingsRow>
+            )}
           </>
         )}
       </SettingsSection>
