@@ -34,6 +34,9 @@ Internal notes preserve architectural decisions, constraints, and implementation
 source alone does not explain. Most code changes do not need an internal documentation update. Follow the
 [documentation rules](../AGENTS.md#documentation) before adding one.
 
+Fork-only behavior is listed in [Fork differences](./fork-differences.md). Update that page in the
+same change. The rule is in [AGENTS.md](../AGENTS.md#fork-differences).
+
 - [Architecture overview](./internals/overview.md)
 - [Glossary](./internals/glossary.md)
 - [Connection runtime](./internals/connection-runtime.md)
