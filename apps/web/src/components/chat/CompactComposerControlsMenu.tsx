@@ -1,4 +1,4 @@
-import { ProviderInteractionMode, RuntimeMode } from "@t3tools/contracts";
+import { ProviderInteractionMode, RuntimeMode, type ProviderInstanceId } from "@t3tools/contracts";
 import { memo, type ReactNode } from "react";
 import { EllipsisIcon } from "lucide-react";
 import {
@@ -12,12 +12,18 @@ import {
 import { ComposerControl, ComposerControlIcon } from "./ComposerControl";
 import { useComposerMenuProps } from "./composerEventScope";
 import { useComposerMenuState } from "./useComposerMenuState";
+import type { ProviderInstanceEntry } from "../../providerInstances";
 
 export const CompactComposerControlsMenu = memo(function CompactComposerControlsMenu(props: {
   interactionMode: ProviderInteractionMode;
   runtimeMode: RuntimeMode;
   showInteractionModeToggle: boolean;
   traitsMenuContent?: ReactNode;
+  accountMenu?: {
+    activeInstanceId: ProviderInstanceId;
+    accounts: ReadonlyArray<ProviderInstanceEntry>;
+    onAccountChange: (instanceId: ProviderInstanceId) => void;
+  };
   size?: "sm" | "xs";
   /**
    * The resting strip keeps this menu mounted out of flow while every block
@@ -84,6 +90,25 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
           <MenuRadioItem value="auto">Auto</MenuRadioItem>
           <MenuRadioItem value="full-access">Full access</MenuRadioItem>
         </MenuRadioGroup>
+        {props.accountMenu && props.accountMenu.accounts.length > 1 ? (
+          <>
+            <MenuDivider />
+            <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">Account</div>
+            <MenuRadioGroup
+              value={props.accountMenu.activeInstanceId}
+              onValueChange={(value) => {
+                if (!value || value === props.accountMenu?.activeInstanceId) return;
+                props.accountMenu?.onAccountChange(value as ProviderInstanceId);
+              }}
+            >
+              {props.accountMenu.accounts.map((account) => (
+                <MenuRadioItem key={account.instanceId} value={account.instanceId}>
+                  {account.displayName}
+                </MenuRadioItem>
+              ))}
+            </MenuRadioGroup>
+          </>
+        ) : null}
       </MenuPopup>
     </Menu>
   );

@@ -39,8 +39,9 @@ from the other home.
 
 ## Switch accounts in an existing thread
 
-Choose the other account from the thread's model picker. T3 Code offers compatible
-Codex instances that share the thread's **CODEX_HOME path**. Changing accounts does
+Choose the other account from the thread's account picker in the composer (shown
+when more than one Codex account is enabled). T3 Code offers compatible Codex
+instances that share the thread's **CODEX_HOME path**. Changing accounts does
 not move the conversation into a separate Codex home.
 
 If the account is missing from the picker, compare the home paths in provider

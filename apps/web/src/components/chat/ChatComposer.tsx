@@ -246,6 +246,12 @@ import {
 import { useEnvironmentQuery } from "~/state/query";
 import { useDebouncedValue } from "~/state/queries";
 import { ProviderModelPicker } from "./ProviderModelPicker";
+import { ProviderAccountPicker } from "./ProviderAccountPicker";
+import {
+  accountsForProvider,
+  resolveModelForAccountSwitch,
+  shouldShowProviderAccountPicker,
+} from "./providerAccountSelection";
 import { resolveModelPickerSelectedModel } from "./ModelPickerContent";
 import { type ComposerCommandItem, ComposerCommandMenu } from "./ComposerCommandMenu";
 import { useCaptureThreadTabContext } from "./ThreadTabs";
@@ -5023,6 +5029,35 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     size: composerControlsInStrip ? "xs" : "sm",
     hidden: composerControlsHidden || restingHiddenBlockCount > 1,
   });
+  const providerAccounts = useMemo(
+    () =>
+      accountsForProvider({
+        entries: providerInstanceEntries,
+        driverKind: selectedProvider,
+        ...(lockedContinuationGroupKey != null ? { lockedContinuationGroupKey } : {}),
+      }),
+    [lockedContinuationGroupKey, providerInstanceEntries, selectedProvider],
+  );
+  const showProviderAccountPicker = shouldShowProviderAccountPicker(providerAccounts);
+  const restingProviderAccountPicker = showProviderAccountPicker ? (
+    <ProviderAccountPicker
+      isComposerOwned
+      activeInstanceId={selectedInstanceId}
+      accounts={providerAccounts}
+      size={composerControlsInStrip ? "xs" : "sm"}
+      disabled={providerCatalogPending || isSendBusy}
+      hidden={composerControlsHidden || restingHiddenBlockCount > 2}
+      onAccountChange={(instanceId) => {
+        const destinationModels = modelOptionsByInstance.get(instanceId) ?? [];
+        const nextModel = resolveModelForAccountSwitch({
+          currentModel: selectedModelForPickerWithCustomFallback,
+          destinationModels,
+        });
+        setMultipleModelSelections(null);
+        onProviderModelSelect(instanceId, nextModel);
+      }}
+    />
+  ) : null;
   const restingBlockDefs = [
     ...(providerTraitsPicker
       ? [
@@ -5051,6 +5086,19 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         />
       ),
     },
+    ...(restingProviderAccountPicker
+      ? [
+          {
+            id: "account",
+            content: (
+              <>
+                <ComposerControlSeparator size={composerControlsInStrip ? "xs" : "sm"} />
+                {restingProviderAccountPicker}
+              </>
+            ),
+          },
+        ]
+      : []),
   ];
   const hiddenRestingBlockIds = restingBlockDefs
     .slice(restingBlockDefs.length - restingHiddenBlockCount)
@@ -5204,6 +5252,23 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             traitsMenuContent={
               hiddenRestingBlockIds.includes("traits") ? providerTraitsMenuContent : undefined
             }
+            {...(hiddenRestingBlockIds.includes("account") && showProviderAccountPicker
+              ? {
+                  accountMenu: {
+                    activeInstanceId: selectedInstanceId,
+                    accounts: providerAccounts,
+                    onAccountChange: (instanceId: ProviderInstanceId) => {
+                      const destinationModels = modelOptionsByInstance.get(instanceId) ?? [];
+                      const nextModel = resolveModelForAccountSwitch({
+                        currentModel: selectedModelForPickerWithCustomFallback,
+                        destinationModels,
+                      });
+                      setMultipleModelSelections(null);
+                      onProviderModelSelect(instanceId, nextModel);
+                    },
+                  },
+                }
+              : {})}
             onToggleInteractionMode={toggleInteractionMode}
             onRuntimeModeChange={handleRuntimeModeChange}
           />

@@ -16,7 +16,7 @@ import {
   getTriggerDisplayModelLabel,
   getTriggerDisplayModelName,
 } from "./providerIconUtils";
-import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../providerInstances";
+import { type ProviderInstanceEntry } from "../../providerInstances";
 import {
   ComposerControl,
   ComposerControlChevron,
@@ -90,8 +90,6 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   const triggerLabel = selectedModel
     ? `${getTriggerDisplayModelLabel(selectedModel)}${selectedModel.isUnavailable ? " (Unavailable)" : ""}`
     : triggerTitle;
-  const showInstanceBadge =
-    activeEntry !== null && shouldShowInstanceBadge(activeEntry, props.instanceEntries);
 
   const setIsMenuOpen = (open: boolean) => {
     props.onOpenChange?.(open);
@@ -245,14 +243,10 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
               driverKind={activeEntry.driverKind}
               displayName={activeEntry.displayName}
               accentColor={activeEntry.accentColor}
-              showBadge={showInstanceBadge}
+              showBadge={false}
               className="size-4"
               iconClassName={cn("size-4", props.activeProviderIconClassName)}
               indicatorBackground={props.instanceIndicatorBackground ?? "var(--contrast-input)"}
-              badgeClassName={cn(
-                "right-[-0.125rem] bottom-[-0.125rem] h-3 min-w-3 px-0.5 text-5xs",
-                size === "xs" && "shadow-none",
-              )}
             />
           ) : null}
           <Tooltip>
