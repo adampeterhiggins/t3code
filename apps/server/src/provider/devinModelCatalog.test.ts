@@ -276,3 +276,117 @@ describe("resolveDevinModelUid", () => {
     ).toBe("swe-1-7-lightning");
   });
 });
+
+describe("Devin Fusion", () => {
+  const fusionVariant = (lead: string, sidekick: string, label: string) => ({
+    model_uid: `fusion-${lead}-sidekick-${sidekick}`,
+    label: `Fusion (${label})`,
+    cost_summary: "$10 / 1M Input · $0.25 / 1M Cached input · $50 / 1M Output · Sidekick: Free",
+    max_context_tokens: 1_000_000,
+  });
+
+  it("collapses lead/sidekick permutations into Lead and Sidekick selects", () => {
+    const models = devinModelsFromCatalog({
+      families: [
+        {
+          family_label: "Claude Fable 5.1",
+          variants: [{ model_uid: "claude-fable-5-1-medium" }],
+        },
+        {
+          family_label: "Fusion",
+          slug: "fusion",
+          variants: [
+            fusionVariant(
+              "claude-fable-5-1-medium",
+              "swe-2-medium",
+              "Claude Fable 5.1 Medium + SWE-2 Medium",
+            ),
+            fusionVariant(
+              "claude-fable-5-1-high-fast",
+              "swe-2-medium",
+              "Claude Fable 5.1 High Fast + SWE-2 Medium",
+            ),
+            fusionVariant(
+              "gpt-6-sol-high",
+              "gpt-6-luna-high-priority",
+              "GPT-6 Sol High Thinking + GPT-6 Luna High Thinking Priority",
+            ),
+            fusionVariant(
+              "gpt-6-sol-high",
+              "gpt-6-luna-high",
+              "GPT-6 Sol High Thinking + GPT-6 Luna High Thinking",
+            ),
+          ],
+        },
+      ],
+    });
+    const fusion = models.find((model) => model.slug === "fusion")!;
+    expect(fusion.aliases).toBeUndefined();
+    expect(fusion.pricingByVariant).toBeUndefined();
+    expect(fusion.pricing?.inputPerMillion).toBe(10);
+    expect(fusion.contextWindowTokens).toBe(1_000_000);
+    const [lead, sidekick] = fusion.capabilities?.optionDescriptors ?? [];
+    expect(lead?.type === "select" ? lead.options : []).toEqual([
+      { id: "claude-fable-5-1", label: "Claude Fable 5.1", isDefault: true },
+      { id: "gpt-6-sol", label: "GPT-6 Sol High Thinking" },
+    ]);
+    expect(sidekick?.type === "select" ? sidekick.options : []).toEqual([
+      { id: "swe-2-medium", label: "SWE-2 Medium", isDefault: true },
+      { id: "gpt-6-luna-high", label: "GPT-6 Luna High Thinking" },
+    ]);
+  });
+
+  // ACP advertises only a subset of `models list`: one effort per lead.
+  const advertised = [
+    "swe-2-high",
+    "fusion-claude-fable-5-1-medium-sidekick-swe-2-medium",
+    "fusion-claude-fable-5-1-medium-sidekick-gpt-6-luna-high",
+    "fusion-gpt-6-sol-high-sidekick-swe-2-medium",
+    "fusion-gpt-6-sol-high-sidekick-gpt-6-luna-high",
+  ];
+
+  it("resolves a lead and sidekick to the advertised pair", () => {
+    expect(
+      resolveDevinModelUid({
+        model: "fusion",
+        selections: [
+          { id: "lead", value: "gpt-6-sol" },
+          { id: "sidekick", value: "gpt-6-luna-high" },
+        ],
+        advertisedValues: advertised,
+      }),
+    ).toBe("fusion-gpt-6-sol-high-sidekick-gpt-6-luna-high");
+  });
+
+  it("keeps the lead when the sidekick pairing is not advertised", () => {
+    expect(
+      resolveDevinModelUid({
+        model: "fusion",
+        selections: [
+          { id: "lead", value: "gpt-6-sol" },
+          { id: "sidekick", value: "claude-sonnet-5-5-medium" },
+        ],
+        advertisedValues: advertised,
+      }),
+    ).toBe("fusion-gpt-6-sol-high-sidekick-swe-2-medium");
+  });
+
+  it("defaults to the current pair, then the first advertised pair", () => {
+    expect(
+      resolveDevinModelUid({
+        model: "fusion",
+        advertisedValues: advertised,
+        currentValue: "fusion-gpt-6-sol-high-sidekick-swe-2-medium",
+      }),
+    ).toBe("fusion-gpt-6-sol-high-sidekick-swe-2-medium");
+    expect(resolveDevinModelUid({ model: "fusion", advertisedValues: advertised })).toBe(
+      "fusion-claude-fable-5-1-medium-sidekick-swe-2-medium",
+    );
+  });
+
+  it("passes fusion through when the session advertises no pairs", () => {
+    expect(resolveDevinModelUid({ model: "fusion", advertisedValues: ["swe-2-high"] })).toBe(
+      "fusion",
+    );
+  });
+});
