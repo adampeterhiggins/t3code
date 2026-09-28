@@ -47,6 +47,7 @@ import {
   FileSearchIcon,
   FolderIcon,
   FolderPlusIcon,
+  LayersIcon,
   LinkIcon,
   MessageSquareIcon,
   MonitorIcon,
@@ -76,7 +77,7 @@ import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstra
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { useOpenPanelPullRequestUrl } from "../hooks/useOpenPanelPullRequestUrl";
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
-import { useClientSettings } from "../hooks/useSettings";
+import { useClientSettings, useUpdateClientSettings } from "../hooks/useSettings";
 import { useTheme } from "../hooks/useTheme";
 import { useCustomThemes } from "../hooks/useCustomThemes";
 import { useEnvironmentThemeDefinitions } from "../hooks/useEnvironmentTheme";
@@ -705,6 +706,7 @@ function OpenCommandPaletteDialog(props: {
   const isActionsOnly = deferredQuery.startsWith(">");
   const [highlightedItemValue, setHighlightedItemValue] = useState<string | null>(null);
   const clientSettings = useClientSettings();
+  const updateClientSettings = useUpdateClientSettings();
   const createProject = useAtomCommand(projectEnvironment.create, {
     reportFailure: false,
   });
@@ -2009,6 +2011,20 @@ function OpenCommandPaletteDialog(props: {
       });
     },
   });
+
+  if (!clientSettings.legacySidebarEnabled) {
+    actionItems.push({
+      kind: "action",
+      value: "action:sidebar-tabs",
+      searchTerms: ["tabs", "sidebar", "chat tabs", "group", "show", "hide"],
+      title: clientSettings.sidebarShowTabs ? "Hide tabs in sidebar" : "Show tabs in sidebar",
+      icon: <LayersIcon className={ITEM_ICON_CLASS} />,
+      shortcutCommand: "sidebar.toggleTabs",
+      run: async () => {
+        await updateClientSettings({ sidebarShowTabs: !clientSettings.sidebarShowTabs });
+      },
+    });
+  }
 
   if (
     environments.some(

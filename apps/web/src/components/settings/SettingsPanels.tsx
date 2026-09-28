@@ -563,6 +563,9 @@ export function useSettingsRestore(onRestored?: () => void) {
       DEFAULT_UNIFIED_SETTINGS.sidebarProjectGroupingMode
         ? ["Project Grouping"]
         : []),
+      ...(settings.sidebarShowTabs !== DEFAULT_UNIFIED_SETTINGS.sidebarShowTabs
+        ? ["Show tabs in sidebar"]
+        : []),
       ...(settings.sidebarAutoSettleAfterDays !==
       DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays
         ? ["Auto-settle inactive threads"]
@@ -684,6 +687,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.sidebarAutoSettleAfterDays,
       settings.sidebarAutoSettleOnMerge,
       settings.sidebarProjectGroupingMode,
+      settings.sidebarShowTabs,
       settings.sidebarThreadPreviewCount,
       settings.showSkillsInSlashMenu,
       settings.timestampFormat,
@@ -781,6 +785,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       panelAnimationDurationMs: DEFAULT_UNIFIED_SETTINGS.panelAnimationDurationMs,
       sidebarThreadPreviewCount: DEFAULT_UNIFIED_SETTINGS.sidebarThreadPreviewCount,
       sidebarProjectGroupingMode: DEFAULT_UNIFIED_SETTINGS.sidebarProjectGroupingMode,
+      sidebarShowTabs: DEFAULT_UNIFIED_SETTINGS.sidebarShowTabs,
       sidebarAutoSettleAfterDays: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays,
       sidebarAutoSettleOnMerge: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleOnMerge,
       responseStreamingMode: DEFAULT_UNIFIED_SETTINGS.responseStreamingMode,
@@ -2268,6 +2273,30 @@ export function GeneralSettingsPanel() {
             />
           }
         />
+
+        {settings.legacySidebarEnabled ? null : (
+          <SettingsRow
+            {...searchableSetting("sidebar-tabs")}
+            description="List each tab under its chat in the sidebar instead of one row per chat."
+            resetAction={
+              settings.sidebarShowTabs !== DEFAULT_UNIFIED_SETTINGS.sidebarShowTabs ? (
+                <SettingResetButton
+                  label="sidebar tabs"
+                  onClick={() =>
+                    updateSettings({ sidebarShowTabs: DEFAULT_UNIFIED_SETTINGS.sidebarShowTabs })
+                  }
+                />
+              ) : null
+            }
+            control={
+              <Switch
+                checked={settings.sidebarShowTabs}
+                onCheckedChange={(checked) => updateSettings({ sidebarShowTabs: Boolean(checked) })}
+                aria-label="Show tabs in sidebar"
+              />
+            }
+          />
+        )}
 
         {supportsAutoSettlement ? (
           <>

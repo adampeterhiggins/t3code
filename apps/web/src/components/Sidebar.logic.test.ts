@@ -13,6 +13,7 @@ import {
   deleteSelectedThreadEntries,
   filterSidebarProjectScopeItems,
   getSidebarThreadIdsToPrewarm,
+  groupSidebarTabThreads,
   resolveAdjacentThreadId,
   reduceSidebarProjectScopeMenuState,
   getFallbackThreadIdAfterDelete,
@@ -45,6 +46,7 @@ import {
   shouldCreateNewThreadInCurrentProject,
   shouldNavigateAfterThreadPark,
   THREAD_JUMP_HINT_SHOW_DELAY_MS,
+  withSidebarTabThreads,
   type SidebarListItem,
   type SidebarListMarker,
   type SidebarSection,
@@ -595,6 +597,38 @@ describe("shouldCreateNewThreadInCurrentProject", () => {
   it("creates directly on any click with a single project", () => {
     expect(shouldCreateNewThreadInCurrentProject(false, 1)).toBe(true);
     expect(shouldCreateNewThreadInCurrentProject(true, 1)).toBe(true);
+  });
+});
+
+describe("sidebar tab rows", () => {
+  const threadByKey = new Map(
+    ["local:a", "local:a2", "local:a3", "local:b", "local:c", "local:c2"].map((key) => [key, key]),
+  );
+  const hiddenTabThreads = new Map([
+    ["local:a3", "local:a"],
+    ["local:c2", "local:c"],
+    ["local:a2", "local:a"],
+    ["local:gone", "local:c"],
+  ]);
+
+  it("lists each group's tabs under its row in tab order, skipping unknown threads", () => {
+    const tabsByRowKey = groupSidebarTabThreads(threadByKey, hiddenTabThreads);
+    expect([...tabsByRowKey]).toEqual([
+      ["local:a", ["local:a3", "local:a2"]],
+      ["local:c", ["local:c2"]],
+    ]);
+    expect(
+      withSidebarTabThreads(["local:b", "local:a", "local:c"], (key) => key, tabsByRowKey),
+    ).toEqual(["local:b", "local:a", "local:a3", "local:a2", "local:c", "local:c2"]);
+  });
+
+  it("leaves tabs out when their group's row is not listed", () => {
+    const tabsByRowKey = groupSidebarTabThreads(threadByKey, hiddenTabThreads);
+    expect(withSidebarTabThreads(["local:b", "local:c"], (key) => key, tabsByRowKey)).toEqual([
+      "local:b",
+      "local:c",
+      "local:c2",
+    ]);
   });
 });
 

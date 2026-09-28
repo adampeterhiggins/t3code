@@ -274,6 +274,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["combine matching repositories environments sidebar"],
   },
   {
+    id: "sidebar-tabs",
+    title: "Show tabs in sidebar",
+    to: "/settings/general",
+    searchTerms: ["chat tabs group threads sidebar list"],
+  },
+  {
     id: "auto-settle-inactive-threads",
     title: "Auto-settle inactive threads",
     to: "/settings/general",
