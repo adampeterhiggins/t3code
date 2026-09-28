@@ -124,7 +124,9 @@ export function ThreadTabMenu({
 
   return (
     <Menu>
+      {/* Themed headers fill every menu-trigger slot as a toolbar control; this is a breadcrumb. */}
       <MenuTrigger
+        data-slot="thread-tab-crumb"
         render={
           <button
             type="button"
