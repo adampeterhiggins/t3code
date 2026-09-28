@@ -145,12 +145,45 @@ export function getProviderOptionDescriptors(input: {
   const { caps, selections } = input;
   const baseDescriptors = (caps.optionDescriptors ?? []).map(cloneDescriptor);
 
-  return baseDescriptors.map((descriptor) =>
+  const resolved = baseDescriptors.map((descriptor) =>
     withDescriptorCurrentValue(
       descriptor,
       getRawSelectionValueById(selections, descriptor.id) ?? descriptor.currentValue,
     ),
   );
+  return narrowToSatisfiedChoices(resolved);
+}
+
+/**
+ * Drops choices whose `requires` do not hold against the other options'
+ * resolved values (requirements do not chain), snapping a dropped current
+ * value to the remaining default or first choice. A select left with no
+ * choices disappears.
+ */
+function narrowToSatisfiedChoices(
+  descriptors: ReadonlyArray<ProviderOptionDescriptor>,
+): ReadonlyArray<ProviderOptionDescriptor> {
+  const hasRequirements = (descriptor: ProviderOptionDescriptor) =>
+    descriptor.type === "select" && descriptor.options.some((option) => option.requires);
+  if (!descriptors.some(hasRequirements)) return descriptors;
+
+  const values = new Map(
+    descriptors.map((descriptor) => [descriptor.id, getProviderOptionCurrentValue(descriptor)]),
+  );
+  return descriptors.flatMap((descriptor) => {
+    if (descriptor.type !== "select" || !hasRequirements(descriptor)) return [descriptor];
+    const options = descriptor.options.filter((option) =>
+      (option.requires ?? []).every((requirement) => {
+        const value = values.get(requirement.id);
+        return typeof value === "string" && requirement.values.includes(value);
+      }),
+    );
+    if (options.length === 0) return [];
+    const currentValue = options.some((option) => option.id === descriptor.currentValue)
+      ? descriptor.currentValue!
+      : (options.find((option) => option.isDefault) ?? options[0]!).id;
+    return [{ ...descriptor, options, currentValue }];
+  });
 }
 
 export function getProviderOptionCurrentValue(

@@ -334,12 +334,23 @@ describe("Devin Fusion", () => {
     expect(fusion.pricingByVariant).toBeUndefined();
     expect(fusion.pricing?.inputPerMillion).toBe(10);
     expect(fusion.contextWindowTokens).toBe(1_000_000);
-    const [lead, sidekick, sidekickEffort] = fusion.capabilities?.optionDescriptors ?? [];
-    // Lead and Sidekick are model pickers of their own; effort stays in traits.
-    expect([lead?.standalone, sidekick?.standalone, sidekickEffort?.standalone]).toEqual([
+    const [lead, sidekick, leadEffort, sidekickEffort] =
+      fusion.capabilities?.optionDescriptors ?? [];
+    // Lead and Sidekick are model pickers of their own; efforts stay in traits.
+    expect([lead, sidekick, leadEffort, sidekickEffort].map((d) => d?.standalone)).toEqual([
       true,
       true,
       undefined,
+      undefined,
+    ]);
+    // Each lead's first standard-speed variant is its session effort.
+    expect(leadEffort?.type === "select" ? leadEffort.options : []).toEqual([
+      {
+        id: "medium",
+        label: "Medium",
+        requires: [{ id: "lead", values: ["claude-fable-5-1"] }],
+      },
+      { id: "high", label: "High", requires: [{ id: "lead", values: ["gpt-6-sol"] }] },
     ]);
     expect(lead?.type === "select" ? lead.options : []).toEqual([
       { id: "claude-fable-5-1", label: "Claude Fable 5.1", isDefault: true },
@@ -350,8 +361,17 @@ describe("Devin Fusion", () => {
       { id: "gpt-6-luna", label: "GPT-6 Luna" },
     ]);
     expect(sidekickEffort?.type === "select" ? sidekickEffort.options : []).toEqual([
-      { id: "medium", label: "Medium", isDefault: true },
-      { id: "high", label: "High" },
+      {
+        id: "medium",
+        label: "Medium",
+        isDefault: true,
+        requires: [{ id: "sidekick", values: ["swe-2"] }],
+      },
+      {
+        id: "high",
+        label: "High",
+        requires: [{ id: "sidekick", values: ["swe-2", "gpt-6-luna"] }],
+      },
     ]);
   });
 

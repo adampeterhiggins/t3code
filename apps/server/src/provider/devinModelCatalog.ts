@@ -333,13 +333,14 @@ function effortChoice(effort: string, isDefault: boolean): ProviderOptionChoice 
 // `fusion-<lead uid>-sidekick-<sidekick uid>`. `models list` enumerates every
 // effort/speed permutation (hundreds), but an ACP session only accepts a
 // small advertised subset: each lead at one Devin-chosen effort. The picker
-// therefore offers Lead and Sidekick by family plus the sidekick's effort as
-// its own select (like any other model row), and resolution picks whichever
-// advertised uid matches.
+// therefore offers Lead and Sidekick by family, a read-only lead effort, and
+// the sidekick's effort, with each effort choice `requires`-bound to the
+// models that offer it. Resolution picks whichever advertised uid matches.
 
 export const DEVIN_FUSION_SLUG = "fusion";
 export const DEVIN_FUSION_LEAD_OPTION_ID = "lead";
 export const DEVIN_FUSION_SIDEKICK_OPTION_ID = "sidekick";
+export const DEVIN_FUSION_LEAD_EFFORT_OPTION_ID = "leadEffort";
 export const DEVIN_FUSION_SIDEKICK_EFFORT_OPTION_ID = "sidekickEffort";
 
 const FUSION_UID_PATTERN = /^fusion-(.+)-sidekick-(.+)$/;
@@ -347,6 +348,9 @@ const FUSION_UID_PATTERN = /^fusion-(.+)-sidekick-(.+)$/;
 interface FusionPair {
   /** Lead family base, e.g. `claude-fable-5-1`. */
   readonly lead: string;
+  readonly leadEffort: string | undefined;
+  /** Whether the lead uid carried a speed tier (`-fast`). */
+  readonly leadHasSpeed: boolean;
   /** Sidekick family base, e.g. `swe-2`. */
   readonly sidekick: string;
   /** Sidekick effort, e.g. `medium`; `undefined` for effortless uids (`glm-5-2`). */
@@ -358,9 +362,12 @@ interface FusionPair {
 export function parseDevinFusionUid(uid: string): FusionPair | undefined {
   const match = FUSION_UID_PATTERN.exec(normalizeDevinModelId(uid));
   if (!match) return undefined;
+  const lead = parseDevinModelUid(match[1]!);
   const sidekick = parseDevinModelUid(match[2]!);
   return {
-    lead: parseDevinModelUid(match[1]!).base,
+    lead: lead.base,
+    leadEffort: lead.effort,
+    leadHasSpeed: lead.speed !== undefined,
     sidekick: sidekick.base,
     sidekickEffort: sidekick.effort,
     sidekickHasSpeed: sidekick.speed !== undefined,
@@ -381,7 +388,8 @@ function fusionModelFromFamily(
 ): ServerProviderModel | undefined {
   const leads = new Map<string, string>();
   const sidekicks = new Map<string, string>();
-  const sidekickEfforts = new Set<string>();
+  const leadEfforts = new Map<string, Set<string>>();
+  const sidekickEfforts = new Map<string, Set<string>>();
   let defaultPair: FusionPair | undefined;
   let defaultPricing: ModelPricing | undefined;
   let isNew = false;
@@ -404,7 +412,16 @@ function fusionModelFromFamily(
         familyLabelsByBase.get(pair.sidekick) ?? labels?.sidekick ?? pair.sidekick,
       );
     }
-    if (pair.sidekickEffort) sidekickEfforts.add(pair.sidekickEffort);
+    // Devin lists each lead's session effort first (Fable Medium, the rest
+    // High), so the first standard-speed variant is the one a session runs.
+    if (pair.leadEffort && !pair.leadHasSpeed && !leadEfforts.has(pair.lead)) {
+      leadEfforts.set(pair.lead, new Set([pair.leadEffort]));
+    }
+    if (pair.sidekickEffort) {
+      const efforts = sidekickEfforts.get(pair.sidekick) ?? new Set<string>();
+      efforts.add(pair.sidekickEffort);
+      sidekickEfforts.set(pair.sidekick, efforts);
+    }
     if (variant.is_new === true) isNew = true;
     const tokens = variant.max_context_tokens;
     if (
@@ -437,14 +454,31 @@ function fusionModelFromFamily(
       })),
     };
   };
-  // Efforts are the union across sidekicks; resolution relaxes the effort
-  // when the chosen sidekick lacks it (GPT-6 Luna only runs High).
-  const effortChoices = new Map(
-    EFFORT_ORDER.filter((effort) => sidekickEfforts.has(effort)).map((effort) => [
-      effort as string,
-      EFFORT_LABELS[effort]!,
-    ]),
-  );
+  // One choice per effort, offered only while `modelOptionId` names a model
+  // that runs it, so the client shows just the chosen model's efforts.
+  const effortSelect = (
+    id: string,
+    label: string,
+    modelOptionId: string,
+    effortsByModel: ReadonlyMap<string, ReadonlySet<string>>,
+    defaultEffort: string | undefined,
+  ) => {
+    const options = EFFORT_ORDER.flatMap((effort): Array<ProviderOptionChoice> => {
+      const models = [...effortsByModel]
+        .filter(([, efforts]) => efforts.has(effort))
+        .map(([model]) => model);
+      if (models.length === 0) return [];
+      return [
+        {
+          id: effort,
+          label: EFFORT_LABELS[effort]!,
+          ...(effort === defaultEffort ? { isDefault: true } : {}),
+          requires: [{ id: modelOptionId, values: models }],
+        },
+      ];
+    });
+    return options.length > 0 ? [{ id, label, type: "select" as const, options }] : [];
+  };
 
   return {
     slug: DEVIN_FUSION_SLUG,
@@ -455,7 +489,8 @@ function fusionModelFromFamily(
     capabilities: {
       optionDescriptors: [
         // Lead and Sidekick pick models, so each gets its own composer control;
-        // the sidekick effort stays in the traits menu like any model's effort.
+        // their efforts share the traits menu like any model's effort. The lead
+        // effort has one choice per lead: shown for context, not changeable.
         {
           ...select(DEVIN_FUSION_LEAD_OPTION_ID, "Lead", leads, defaultPair.lead),
           standalone: true,
@@ -464,16 +499,20 @@ function fusionModelFromFamily(
           ...select(DEVIN_FUSION_SIDEKICK_OPTION_ID, "Sidekick", sidekicks, defaultPair.sidekick),
           standalone: true,
         },
-        ...(effortChoices.size > 1
-          ? [
-              select(
-                DEVIN_FUSION_SIDEKICK_EFFORT_OPTION_ID,
-                "Sidekick reasoning",
-                effortChoices,
-                defaultPair.sidekickEffort,
-              ),
-            ]
-          : []),
+        ...effortSelect(
+          DEVIN_FUSION_LEAD_EFFORT_OPTION_ID,
+          "Lead reasoning",
+          DEVIN_FUSION_LEAD_OPTION_ID,
+          leadEfforts,
+          undefined,
+        ),
+        ...effortSelect(
+          DEVIN_FUSION_SIDEKICK_EFFORT_OPTION_ID,
+          "Sidekick reasoning",
+          DEVIN_FUSION_SIDEKICK_OPTION_ID,
+          sidekickEfforts,
+          defaultPair.sidekickEffort,
+        ),
       ],
     },
     // Sidekick rates vary by pair; the lead rate is what the row advertises.
@@ -755,6 +794,7 @@ const DEVIN_DIM_OPTION_IDS = new Set([
   DEVIN_CONTEXT_OPTION_ID,
   DEVIN_FUSION_LEAD_OPTION_ID,
   DEVIN_FUSION_SIDEKICK_OPTION_ID,
+  DEVIN_FUSION_LEAD_EFFORT_OPTION_ID,
   DEVIN_FUSION_SIDEKICK_EFFORT_OPTION_ID,
 ]);
 
