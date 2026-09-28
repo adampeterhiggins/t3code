@@ -221,21 +221,25 @@ describe("adjacentModelPickerProvider", () => {
   const unavailable = entry("error");
   const input = {
     entries: [codex, unavailable, claude],
-    disabledInstanceIds: undefined,
-    selectableUnavailableInstanceIds: undefined,
+    disabledDriverKinds: undefined,
+    selectableUnavailableDriverKinds: undefined,
   };
 
-  it("wraps through favorites and ready instances, skipping unavailable providers", () => {
-    expect(
-      adjacentModelPickerProvider({ ...input, selectedInstanceId: codex.instanceId, direction: 1 }),
-    ).toBe(claude.instanceId);
-    expect(
-      adjacentModelPickerProvider({ ...input, selectedInstanceId: "favorites", direction: -1 }),
-    ).toBe(claude.instanceId);
+  it("wraps through favorites and ready providers, skipping unavailable providers", () => {
     expect(
       adjacentModelPickerProvider({
         ...input,
-        selectedInstanceId: claude.instanceId,
+        selectedDriverKind: codex.driverKind,
+        direction: 1,
+      }),
+    ).toBe(claude.driverKind);
+    expect(
+      adjacentModelPickerProvider({ ...input, selectedDriverKind: "favorites", direction: -1 }),
+    ).toBe(claude.driverKind);
+    expect(
+      adjacentModelPickerProvider({
+        ...input,
+        selectedDriverKind: claude.driverKind,
         direction: 1,
       }),
     ).toBe("favorites");
@@ -245,19 +249,19 @@ describe("adjacentModelPickerProvider", () => {
     expect(
       adjacentModelPickerProvider({
         ...input,
-        disabledInstanceIds: new Set([claude.instanceId]),
-        selectedInstanceId: codex.instanceId,
+        disabledDriverKinds: new Set([claude.driverKind]),
+        selectedDriverKind: codex.driverKind,
         direction: 1,
       }),
     ).toBe("favorites");
     expect(
       adjacentModelPickerProvider({
         ...input,
-        selectableUnavailableInstanceIds: new Set([unavailable.instanceId]),
-        selectedInstanceId: codex.instanceId,
+        selectableUnavailableDriverKinds: new Set([unavailable.driverKind]),
+        selectedDriverKind: codex.driverKind,
         direction: 1,
       }),
-    ).toBe(unavailable.instanceId);
+    ).toBe(unavailable.driverKind);
   });
 
   it("handles an empty catalog and a removed selection in either direction", () => {
@@ -265,23 +269,51 @@ describe("adjacentModelPickerProvider", () => {
       adjacentModelPickerProvider({
         ...input,
         entries: [],
-        selectedInstanceId: codex.instanceId,
+        selectedDriverKind: codex.driverKind,
         direction: -1,
       }),
     ).toBe("favorites");
     expect(
       adjacentModelPickerProvider({
         ...input,
-        selectedInstanceId: unavailable.instanceId,
+        selectedDriverKind: unavailable.driverKind,
         direction: 1,
       }),
     ).toBe("favorites");
     expect(
       adjacentModelPickerProvider({
         ...input,
-        selectedInstanceId: unavailable.instanceId,
+        selectedDriverKind: unavailable.driverKind,
         direction: -1,
       }),
-    ).toBe(claude.instanceId);
+    ).toBe(claude.driverKind);
+  });
+
+  it("collapses multiple accounts of one driver to a single rail step", () => {
+    const personal = entry("ready", "codex");
+    const work = deriveProviderInstanceEntries([
+      {
+        instanceId: ProviderInstanceId.make("codex_work"),
+        driver: ProviderDriverKind.make("codex"),
+        enabled: true,
+        installed: true,
+        version: null,
+        status: "ready",
+        auth: { status: "authenticated" },
+        checkedAt: "2026-08-28T00:00:00.000Z",
+        models: [],
+        slashCommands: [],
+        skills: [],
+      },
+    ])[0]!;
+    expect(
+      adjacentModelPickerProvider({
+        entries: [personal, work, claude],
+        selectedDriverKind: personal.driverKind,
+        direction: 1,
+        disabledDriverKinds: undefined,
+        selectableUnavailableDriverKinds: undefined,
+      }),
+    ).toBe(claude.driverKind);
   });
 });

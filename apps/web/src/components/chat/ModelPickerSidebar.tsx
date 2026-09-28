@@ -1,23 +1,19 @@
 import { Toolbar } from "@base-ui/react/toolbar";
-import { type ProviderInstanceId } from "@t3tools/contracts";
+import { type ProviderDriverKind } from "@t3tools/contracts";
 import { memo, useLayoutEffect, useRef, useState } from "react";
 import { SparklesIcon, StarIcon } from "lucide-react";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "~/lib/utils";
-import {
-  isProviderInstancePickerReady,
-  shouldShowInstanceBadge,
-  type ProviderInstanceEntry,
-} from "../../providerInstances";
+import { isProviderInstancePickerReady, type ProviderInstanceEntry } from "../../providerInstances";
+import { providerBrandLabel } from "./providerAccountSelection";
 
 /**
- * Build the hover tooltip for an instance button. Mirrors the old
- * kind-based copy but uses the entry's configured `displayName` so custom
- * instances get their user-authored name (e.g. "Codex Personal — Unavailable.").
+ * Rail tooltip for a provider (one icon per driver). Account names live in the
+ * composer account picker, so this uses the brand label.
  */
-function describeUnavailableInstance(entry: ProviderInstanceEntry): string {
-  const label = entry.displayName;
+function describeUnavailableProvider(entry: ProviderInstanceEntry): string {
+  const label = providerBrandLabel(entry.driverKind);
   if (!entry.enabled || entry.status === "disabled") {
     return `${label} — Disabled in settings.`;
   }
@@ -41,35 +37,31 @@ const PICKER_TOOLTIP_SIDE = "left" as const;
 const PICKER_TOOLTIP_SIDE_OFFSET = 8;
 
 export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
-  selectedInstanceId: ProviderInstanceId | "favorites";
-  onSelectInstance: (instanceId: ProviderInstanceId | "favorites") => void;
+  selectedDriverKind: ProviderDriverKind | "favorites";
+  onSelectDriver: (driverKind: ProviderDriverKind | "favorites") => void;
   onFocusSearch: () => void;
   /**
-   * Instance entries to render as rail buttons. Each entry becomes one icon
-   * keyed by `instanceId`, so the default built-in Codex and a user-authored
-   * `codex_personal` appear as two distinct rail items, each routing to
-   * their own model list.
+   * One entry per provider driver (already deduped by the caller). Account
+   * switching is a separate composer control.
    */
   instanceEntries: ReadonlyArray<ProviderInstanceEntry>;
   /** Render the favorites rail entry. Hidden for locked-provider instance switching. */
   showFavorites?: boolean;
-  /** Instance ids shown in the rail but unavailable for the current picker context. */
-  disabledInstanceIds?: ReadonlySet<ProviderInstanceId>;
-  /** Non-ready instances whose selected unavailable model remains reachable. */
-  selectableUnavailableInstanceIds?: ReadonlySet<ProviderInstanceId>;
-  getDisabledInstanceTooltip?: (entry: ProviderInstanceEntry) => string;
+  /** Drivers shown in the rail but unavailable for the current picker context. */
+  disabledDriverKinds?: ReadonlySet<ProviderDriverKind>;
+  /** Non-ready drivers whose selected unavailable model remains reachable. */
+  selectableUnavailableDriverKinds?: ReadonlySet<ProviderDriverKind>;
+  getDisabledProviderTooltip?: (entry: ProviderInstanceEntry) => string;
   /**
-   * Instance id values that should render the "new" sparkle badge. Callers
-   * pass the subset of default built-in ids they want flagged (custom
-   * instances are never flagged — the user just made them).
+   * Driver kinds that should render the "new" sparkle badge.
    */
-  newBadgeInstanceIds?: ReadonlySet<ProviderInstanceId>;
+  newBadgeDriverKinds?: ReadonlySet<ProviderDriverKind>;
 }) {
-  const handleSelect = (instanceId: ProviderInstanceId | "favorites") => {
-    props.onSelectInstance(instanceId);
+  const handleSelect = (driverKind: ProviderDriverKind | "favorites") => {
+    props.onSelectDriver(driverKind);
   };
   const showFavorites = props.showFavorites ?? true;
-  const [hoveredInstanceId, setHoveredInstanceId] = useState<ProviderInstanceId | null>(null);
+  const [hoveredDriverKind, setHoveredDriverKind] = useState<ProviderDriverKind | null>(null);
   const sidebarContentRef = useRef<HTMLDivElement>(null);
   const [selectedIndicatorTop, setSelectedIndicatorTop] = useState<number | null>(null);
   useLayoutEffect(() => {
@@ -79,13 +71,13 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
     }
     const selectedItem = Array.from(
       content.querySelectorAll<HTMLElement>("[data-model-picker-provider]"),
-    ).find((item) => item.dataset.modelPickerProvider === props.selectedInstanceId);
+    ).find((item) => item.dataset.modelPickerProvider === props.selectedDriverKind);
     if (!selectedItem) {
       setSelectedIndicatorTop(null);
       return;
     }
     setSelectedIndicatorTop(selectedItem.offsetTop + selectedItem.offsetHeight / 2 - 10);
-  }, [props.instanceEntries, props.selectedInstanceId, showFavorites]);
+  }, [props.instanceEntries, props.selectedDriverKind, showFavorites]);
 
   return (
     <Toolbar.Root
@@ -128,7 +120,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                         onClick={() => handleSelect("favorites")}
                         type="button"
                         aria-label="Favorites"
-                        aria-pressed={props.selectedInstanceId === "favorites"}
+                        aria-pressed={props.selectedDriverKind === "favorites"}
                       >
                         <StarIcon className="size-5 fill-current shrink-0" aria-hidden />
                       </Toolbar.Button>
@@ -147,26 +139,26 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
             </>
           ) : null}
 
-          {/* Instance buttons (one per configured instance — built-in + custom) */}
+          {/* One rail button per provider driver */}
           {props.instanceEntries.map((entry) => {
+            const brandLabel = providerBrandLabel(entry.driverKind);
             const isUnavailable = !isProviderInstancePickerReady(entry);
-            const isContextDisabled = props.disabledInstanceIds?.has(entry.instanceId) ?? false;
+            const isContextDisabled = props.disabledDriverKinds?.has(entry.driverKind) ?? false;
             const unavailableSelectionIsReachable =
-              props.selectableUnavailableInstanceIds?.has(entry.instanceId) ?? false;
+              props.selectableUnavailableDriverKinds?.has(entry.driverKind) ?? false;
             const isDisabled =
               (isUnavailable && !unavailableSelectionIsReachable) || isContextDisabled;
-            const isSelected = props.selectedInstanceId === entry.instanceId;
-            const isHovered = hoveredInstanceId === entry.instanceId;
-            const showNewBadge = props.newBadgeInstanceIds?.has(entry.instanceId) ?? false;
-            const showInstanceBadge = shouldShowInstanceBadge(entry, props.instanceEntries);
+            const isSelected = props.selectedDriverKind === entry.driverKind;
+            const isHovered = hoveredDriverKind === entry.driverKind;
+            const showNewBadge = props.newBadgeDriverKinds?.has(entry.driverKind) ?? false;
 
             const tooltip = isUnavailable
-              ? describeUnavailableInstance(entry)
+              ? describeUnavailableProvider(entry)
               : isContextDisabled
-                ? (props.getDisabledInstanceTooltip?.(entry) ?? entry.displayName)
+                ? (props.getDisabledProviderTooltip?.(entry) ?? brandLabel)
                 : showNewBadge
-                  ? `${entry.displayName} — New`
-                  : entry.displayName;
+                  ? `${brandLabel} — New`
+                  : brandLabel;
 
             const button = (
               <Toolbar.Button
@@ -174,15 +166,14 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                   "relative isolate flex w-full cursor-pointer aspect-square items-center justify-center rounded-md transition-colors hover:bg-foreground/10 focus-visible:bg-foreground/10 focus-visible:outline-none",
                   isDisabled && "opacity-50 cursor-not-allowed hover:bg-transparent",
                 )}
-                data-provider-accent-color={entry.accentColor}
-                onClick={() => !isDisabled && handleSelect(entry.instanceId)}
-                onMouseEnter={() => setHoveredInstanceId(entry.instanceId)}
+                onClick={() => !isDisabled && handleSelect(entry.driverKind)}
+                onMouseEnter={() => setHoveredDriverKind(entry.driverKind)}
                 onMouseLeave={() =>
-                  setHoveredInstanceId((current) => (current === entry.instanceId ? null : current))
+                  setHoveredDriverKind((current) => (current === entry.driverKind ? null : current))
                 }
-                onFocus={() => setHoveredInstanceId(entry.instanceId)}
+                onFocus={() => setHoveredDriverKind(entry.driverKind)}
                 onBlur={() =>
-                  setHoveredInstanceId((current) => (current === entry.instanceId ? null : current))
+                  setHoveredDriverKind((current) => (current === entry.driverKind ? null : current))
                 }
                 disabled={isDisabled}
                 focusableWhenDisabled={!isDisabled}
@@ -192,15 +183,13 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                   isUnavailable || isContextDisabled
                     ? tooltip
                     : showNewBadge
-                      ? `${entry.displayName}, new`
-                      : entry.displayName
+                      ? `${brandLabel}, new`
+                      : brandLabel
                 }
               >
                 <ProviderInstanceIcon
                   driverKind={entry.driverKind}
-                  displayName={entry.displayName}
-                  accentColor={entry.accentColor}
-                  showBadge={showInstanceBadge}
+                  displayName={brandLabel}
                   className="size-6 z-30"
                   iconClassName="size-5"
                   indicatorBackground={
@@ -210,7 +199,6 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                         ? "var(--background)"
                         : "color-mix(in oklab, var(--muted) 30%, transparent)"
                   }
-                  {...(entry.accentColor ? { badgeClassName: "h-3 min-w-3 px-0.5 text-5xs" } : {})}
                 />
                 {showNewBadge ? (
                   <span className={NEW_BADGE_CLASS} aria-hidden>
@@ -228,9 +216,9 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
 
             return (
               <div
-                key={entry.instanceId}
+                key={entry.driverKind}
                 className="relative w-full"
-                data-model-picker-provider={entry.instanceId}
+                data-model-picker-provider={entry.driverKind}
               >
                 <Tooltip>
                   <TooltipTrigger render={trigger} />
