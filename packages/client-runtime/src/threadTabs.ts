@@ -30,6 +30,10 @@ export const listThreadTabMemberships = Effect.fn("clientRuntime.threadTabs.memb
   },
 );
 
+/**
+ * Sidebar keys to hide, each mapped to the row that stands for its tab group: the first open
+ * tab in membership order, so closing the first tab promotes the next one.
+ */
 export function hiddenTabThreadKeys<
   T extends {
     readonly id: ThreadId;
@@ -43,12 +47,13 @@ export function hiddenTabThreadKeys<
   const shells = new Map(threads.map((thread) => [`${thread.environmentId}:${thread.id}`, thread]));
   const hidden = new Map<string, string>();
   for (const [environmentId, memberships] of membershipsByEnvironment) {
+    const representatives = new Map<string, string>();
     for (const membership of memberships) {
-      if (membership.threadId === membership.groupId) continue;
-      const rootKey = `${environmentId}:${membership.groupId}`;
-      if (shells.get(rootKey)?.archivedAt === null) {
-        hidden.set(`${environmentId}:${membership.threadId}`, rootKey);
-      }
+      const key = `${environmentId}:${membership.threadId}`;
+      if (shells.get(key)?.archivedAt !== null) continue;
+      const representative = representatives.get(membership.groupId);
+      if (representative === undefined) representatives.set(membership.groupId, key);
+      else hidden.set(key, representative);
     }
   }
   return hidden;

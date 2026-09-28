@@ -79,6 +79,7 @@ export const threadTabsHttpApiLayer = HttpApiBuilder.group(
           yield* requireEnvironmentScope(AuthOrchestrationReadScope);
           return yield* sql<{ readonly threadId: ThreadId; readonly groupId: ThreadId }>`
             SELECT thread_id AS "threadId", group_id AS "groupId" FROM fork_thread_tabs
+            ORDER BY group_id, position, created_at
           `.pipe(Effect.catch((cause) => failEnvironmentInternal("internal_error", cause)));
         }),
       )
