@@ -12,6 +12,9 @@ git fetch upstream
 git log --oneline --no-merges upstream/main..HEAD
 ```
 
+Agents update this page in the same change that adds, changes, or removes a difference. The rule
+is in [AGENTS.md](../AGENTS.md#fork-differences).
+
 ## Devin provider
 
 Adds Devin as a provider, driven through the local `devin` CLI's ACP server (`devin acp`).
@@ -20,15 +23,22 @@ Adds Devin as a provider, driven through the local `devin` CLI's ACP server (`de
   shared ACP runtime. T3 runtime modes map onto Devin's session modes.
 - Models come from `devin models list`. Devin encodes effort, speed, and context in each model id,
   so the catalog groups variants into one picker row per model with effort/speed/context options.
+  Fusion is one row: lead and sidekick are chosen by model family, lead effort is the one Devin
+  advertises for that lead, and sidekick effort is selectable.
 - T3's MCP endpoint, `devin skills list` (`$skill` dispatch), token usage, and pricing are wired
-  in, so the context meter and the usage page cover Devin. Conversation rewind is not supported.
+  in, so the context meter and the usage page cover Devin. The page can export the current window
+  as CSV. Conversation rewind is not supported. Usage prefers the CLI's `sessions.db`, which
+  includes sessions run outside T3. When that history is missing, T3 falls back to its own event
+  logs for sessions it drove. A `cog_...` service key with `ViewOrgConsumption` and `DEVIN_ORG_ID`
+  can show organization ACUs in a separate section; those are not mixed into token-cost estimates.
 - Devin also generates commit messages, PR content, branch names, and thread titles.
 - The welcome wizard lists Devin with an **Enable** action, since the provider is opt-in.
 
 Code: `apps/server/src/provider/**/Devin*`, `apps/server/src/provider/devinModelCatalog.ts`,
 `apps/server/src/textGeneration/DevinTextGeneration.ts`, `apps/server/src/usage/devinAccountUsage.ts`,
-and `DevinSettings` in `packages/contracts/src/settings.ts`. User guide:
-[providers-devin.md](./user/providers-devin.md).
+`apps/server/src/usage/devinUsageReader.ts`, `apps/web/src/components/usage/usageExport.ts`, and
+`DevinSettings` in `packages/contracts/src/settings.ts`. User guides:
+[providers-devin.md](./user/providers-devin.md) and [usage.md](./user/usage.md).
 
 ## Provider sign-in methods
 
@@ -36,9 +46,30 @@ Each provider's **Settings > Providers** card gets a sign-in section with a meth
 provider's CLI login flow, saved credentials, or a pasted key. The chosen method is persisted.
 Codex defaults to the browser flow.
 
+An added instance with a blank home gets a private directory under T3's data (`provider-homes`),
+so a second login does not replace the default. The default instance keeps the CLI's normal home.
+Cursor ignores `CURSOR_CONFIG_DIR` for its login, so its private home is a shadow `HOME`:
+`.cursor` (and `.config/cursor` on Linux) stays private, and everything else is symlinked back to
+the real home. Devin and OpenCode use `XDG_DATA_HOME`. Cursor usage reads each instance's own CLI
+login; the same account still counts once.
+
 Code: `apps/web/src/components/settings/ProviderAuthSection.tsx`,
-`apps/server/src/provider/Services/ProviderAuthService.ts`, and
-`packages/contracts/src/providerSetup.ts`.
+`apps/server/src/provider/Services/ProviderAuthService.ts`,
+`apps/server/src/provider/ProviderInstanceEnvironment.ts`,
+`apps/server/src/provider/Drivers/CursorHome.ts`, and
+`packages/contracts/src/providerSetup.ts`. User guides:
+[providers-cursor.md](./user/providers-cursor.md), [providers-devin.md](./user/providers-devin.md),
+and [providers-opencode.md](./user/providers-opencode.md).
+
+## Provider account picker
+
+When more than one enabled instance of a provider can serve the thread, the composer has an
+account picker separate from the model picker. The model list stays one row per provider and
+model. Codex only offers instances that share the thread's home. This is web and desktop.
+
+Code: `apps/web/src/components/chat/ProviderAccountPicker.tsx` and
+`apps/web/src/components/chat/providerAccountSelection.ts`. User guide:
+[providers-codex.md](./user/providers-codex.md#switch-accounts-in-an-existing-thread).
 
 ## Chat tabs
 
@@ -57,23 +88,53 @@ is its own conversation and provider.
   unsettle in any tab wakes the group, and a settle in any tab settles the rest. A settle is undone
   while another tab is working, or, for an automatic settle, while another tab has an open pull
   request.
-- **Sidebars.** Child tabs are hidden from the thread lists; only the original thread's row shows,
-  and it stays highlighted while any of its tabs is open. This applies to the web sidebar, the
-  legacy project sidebar, and both mobile thread lists (`useHiddenTabThreads`).
+- **Sidebars.** By default child tabs are hidden from the web sidebar, the legacy project sidebar,
+  and both mobile thread lists (`useHiddenTabThreads`). The group's row stays highlighted while any
+  of its tabs is open, and opening it returns to the tab last left open
+  (`apps/web/src/threadTabRecencyStore.ts`). On web and desktop, **Settings → General → Show tabs
+  in sidebar** — also the sidebar button, the command palette, and `Cmd+Option+T` on macOS or
+  `Ctrl+Alt+T` on Windows and Linux — lists each tab under that row.
 - **Web header.** The breadcrumb reads `project / thread / tab`. The thread crumb keeps the thread
-  action menu and acts on the original thread; the tab crumb opens a menu to switch tabs or create
-  one (`apps/web/src/components/chat/ThreadTabs.tsx`, `ChatHeader.tsx`).
-- **Context from other tabs.** In an empty tab, pills above the composer list sibling tabs.
-  Clicking one captures that tab's summary as a `thread-tab` context chip at the caret, which can
-  be moved like any other chip. It is a new known kind in
-  `packages/contracts/src/composerContext.ts`, formatted for providers in
-  `packages/shared/src/composerContextReferences.ts`, and rendered in the composer and in sent
-  messages.
-- **Mobile.** Mobile has the older tab bar and send-time context selection
-  (`apps/mobile/src/features/threads/ThreadTabs.tsx`); it does not yet have the header crumb or
-  context chips.
+  action menu and acts on the original thread. The tab crumb switches, creates, and closes tabs. A
+  chat with one tab shows a **New tab** button instead of repeating the title. A tab can also be
+  closed from the hover control on its menu row (`apps/web/src/components/chat/ThreadTabs.tsx`,
+  `ChatHeader.tsx`).
+- **Context from other tabs.** Type `@` in the composer and pick a sibling tab, or, before the
+  first message, click one under **Include context from**. Either path inserts a `thread-tab`
+  context chip at the caret, which can be moved like any other chip. The kind lives in
+  `packages/contracts/src/composerContext.ts` and is formatted for providers in
+  `packages/shared/src/composerContextReferences.ts`. The summary covers the recent conversation,
+  tools, reasoning, errors, changed files, and the latest plan (`apps/server/src/threadTabs/summary.ts`).
+  It is captured when chosen, so later changes in that chat do not change it.
+- **Mobile.** A switcher menu switches, creates, and closes tabs
+  (`apps/mobile/src/features/threads/ThreadTabs.tsx`). An empty tab can attach sibling context when
+  sending. Mobile does not have the header crumb, the `@` chip, or the sidebar tab list.
 
 User guide: [thread-sidebar.md](./user/thread-sidebar.md#continue-in-another-tab).
+
+## View an open pull request
+
+The git toolbar's primary action becomes **View PR** when the branch already has an open pull
+request, on web and mobile. On web and desktop, **Settings → General → Open pull requests in**
+chooses the side panel (the default) or the browser. The other destination stays in the actions
+menu.
+
+Code: `packages/client-runtime/src/state/gitActions.ts`,
+`apps/web/src/components/GitActionsControl.tsx`, and `pullRequestOpenTarget` in
+`packages/contracts/src/settings.ts`.
+
+## Worktree cleanup ignored names
+
+Automatic worktree cleanup still refuses to delete a checkout that has uncommitted work.
+Regenerable caches such as `node_modules`, virtualenvs, and `__pycache__` no longer count as that
+work. **Settings → Storage → Ignored names that do not block cleanup** adds more file and directory
+names, applied to every project on that machine. **Suggest from projects** asks the selected model,
+or the environment's text-generation model when that control is off, to propose ignored directories
+that appear in more than one project. Credential paths such as `.env` and `.ssh` stay blocking.
+
+Code: `apps/server/src/storageCleanup.ts` and
+`apps/web/src/components/settings/StorageSettings.tsx`. User guide:
+[project-settings.md](./user/project-settings.md#storage-cleanup).
 
 ## Desktop mock-update loop
 
@@ -86,5 +147,13 @@ install ad hoc–signed builds. Run `make` targets from the repository root, sta
 
 ## Keeping this page current
 
-Add a section when the fork gains a user-visible difference, and remove it when upstream adopts the
-change or the fork drops it. Link to the code rather than describing it line by line.
+Update this page in the same change that adds, changes, or removes a user-visible fork-only
+behavior. Rewrite the affected section so it describes the behavior as it is now. Link the code,
+and the user guide when one exists. Do not append a changelog entry or describe the implementation
+line by line.
+
+Remove a section when upstream adopts the change or the fork drops it. An upstream sync includes
+this check. A bugfix or refactor that leaves the described behavior the same does not need an
+entry.
+
+`README.md` only points here. Do not add a second feature list there.
