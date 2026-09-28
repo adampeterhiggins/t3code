@@ -23,7 +23,7 @@ import {
 } from "../../lib/composerContextReferences";
 import { runtime } from "../../lib/runtime";
 import { newThreadId } from "../../lib/utils";
-import { useThreadShell } from "../../state/entities";
+import { useThreadShell, waitForThreadShell } from "../../state/entities";
 import { usePreparedConnection } from "../../state/session";
 import { useThreadTabContextStore } from "../../threadTabContextStore";
 import { WorkspaceBreadcrumbText } from "../WorkspaceBreadcrumb";
@@ -108,6 +108,8 @@ export function ThreadTabMenu({
       await runtime.runPromise(
         createThreadTab(prepared.value, threadId, { threadId: nextThreadId, modelSelection }),
       );
+      // The thread route redirects away from threads the client store has not heard of yet.
+      await waitForThreadShell(scopeThreadRef(environmentId, nextThreadId));
       open(nextThreadId);
     } catch (cause) {
       toastManager.add({
