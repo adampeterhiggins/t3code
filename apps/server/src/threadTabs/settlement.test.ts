@@ -1,4 +1,5 @@
 import {
+  CommandId,
   EventId,
   MessageId,
   ProjectId,
@@ -29,6 +30,7 @@ const NOW = "2026-09-28T12:00:00.000Z";
 function makeThread(
   id: string,
   settledOverride: OrchestrationThreadShell["settledOverride"],
+  overrides: Partial<OrchestrationThreadShell> = {},
 ): OrchestrationThreadShell {
   return {
     id: ThreadId.make(id),
@@ -51,20 +53,25 @@ function makeThread(
     hasPendingApprovals: false,
     hasPendingUserInput: false,
     hasActionableProposedPlan: false,
+    ...overrides,
   };
 }
 
+const eventBase = (threadId: string, commandId: string | null = null) => ({
+  sequence: 1,
+  eventId: EventId.make(`event-${threadId}`),
+  aggregateKind: "thread" as const,
+  aggregateId: ThreadId.make(threadId),
+  occurredAt: NOW,
+  commandId: commandId === null ? null : CommandId.make(commandId),
+  causationEventId: null,
+  correlationId: null,
+  metadata: {},
+});
+
 function turnStartRequested(threadId: string): OrchestrationEvent {
   return {
-    sequence: 1,
-    eventId: EventId.make(`turn-start-${threadId}`),
-    aggregateKind: "thread",
-    aggregateId: ThreadId.make(threadId),
-    occurredAt: NOW,
-    commandId: null,
-    causationEventId: null,
-    correlationId: null,
-    metadata: {},
+    ...eventBase(threadId),
     type: "thread.turn-start-requested",
     payload: {
       threadId: ThreadId.make(threadId),
@@ -76,16 +83,52 @@ function turnStartRequested(threadId: string): OrchestrationEvent {
   };
 }
 
-it.effect("a turn in any tab wakes the settled tabs of its group", () =>
+function unsettled(threadId: string): OrchestrationEvent {
+  return {
+    ...eventBase(threadId),
+    type: "thread.unsettled",
+    payload: { threadId: ThreadId.make(threadId), reason: "user", updatedAt: NOW },
+  };
+}
+
+function settled(threadId: string, commandId: string): OrchestrationEvent {
+  return {
+    ...eventBase(threadId, commandId),
+    type: "thread.settled",
+    payload: { threadId: ThreadId.make(threadId), settledAt: NOW, updatedAt: NOW },
+  };
+}
+
+const openPullRequest: OrchestrationThreadShell["pullRequests"][number] = {
+  host: "github.com",
+  repository: "owner/repo",
+  number: 1,
+  url: "https://github.com/owner/repo/pull/1",
+  source: "agent",
+  linkedAt: NOW,
+  snapshot: {
+    state: "open",
+    title: "Open work",
+    headBranch: "feature",
+    baseBranch: "main",
+    isDraft: false,
+    updatedAt: NOW,
+    syncedAt: NOW,
+  },
+  stack: null,
+};
+
+/**
+ * Publishes events for a group of every thread except `standalone`, then asserts the reactor
+ * dispatches exactly the expected `[type, threadId]` commands, in any order.
+ */
+const expectDispatches = (
+  threads: ReadonlyArray<OrchestrationThreadShell>,
+  events: ReadonlyArray<OrchestrationEvent>,
+  expected: ReadonlyArray<readonly [string, string]>,
+) =>
   Effect.scoped(
     Effect.gen(function* () {
-      const threads = [
-        makeThread("primary", "settled"),
-        makeThread("sent-tab", null),
-        makeThread("pinned-tab", "active"),
-        makeThread("settled-tab", "settled"),
-        makeThread("standalone", "settled"),
-      ];
       const domainEvents = yield* PubSub.unbounded<OrchestrationEvent>();
       const dispatched = yield* Queue.unbounded<OrchestrationCommand>();
 
@@ -106,36 +149,117 @@ it.effect("a turn in any tab wakes the settled tabs of its group", () =>
       yield* Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
         yield* ensureThreadTabsSchema();
-        yield* sql`
-          INSERT INTO fork_thread_tabs (thread_id, group_id, position, created_at) VALUES
-            ('primary', 'primary', 0, ${NOW}),
-            ('sent-tab', 'primary', 1, ${NOW}),
-            ('pinned-tab', 'primary', 2, ${NOW}),
-            ('settled-tab', 'primary', 3, ${NOW})
-        `;
+        yield* Effect.forEach(
+          threads.filter((thread) => thread.id !== "standalone"),
+          (thread, position) =>
+            sql`
+              INSERT INTO fork_thread_tabs (thread_id, group_id, position, created_at)
+              VALUES (${thread.id}, 'primary', ${position}, ${NOW})
+            `,
+          { discard: true },
+        );
 
         const reactor = yield* ThreadTabSettlementReactor.ThreadTabSettlementReactor;
         yield* reactor.start();
-        yield* PubSub.publish(domainEvents, turnStartRequested("standalone"));
-        yield* PubSub.publish(domainEvents, turnStartRequested("sent-tab"));
-
-        const woken = [yield* Queue.take(dispatched), yield* Queue.take(dispatched)];
+        yield* PubSub.publishAll(domainEvents, events);
+        const commands = yield* Effect.forEach(expected, () => Queue.take(dispatched));
         yield* reactor.drain;
         assert.deepStrictEqual(
-          woken
+          commands
             .map((command) =>
-              command.type === "thread.unsettle" ? [command.threadId, command.reason] : [],
+              command.type === "thread.settle" || command.type === "thread.unsettle"
+                ? [command.type, command.threadId]
+                : [command.type],
             )
             .sort(),
-          [
-            ["primary", "user"],
-            ["settled-tab", "user"],
-          ],
+          [...expected].map((pair) => [...pair]).sort(),
         );
         assert.strictEqual(yield* Queue.size(dispatched), 0);
       }).pipe(
         Effect.provide(ThreadTabSettlementReactor.layer.pipe(Layer.provideMerge(dependencies))),
       );
     }),
-  ).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
+  ).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" })));
+
+it.effect("a turn or unsettle in any tab wakes the settled tabs of its group", () =>
+  Effect.gen(function* () {
+    const threads = [
+      makeThread("primary", "settled"),
+      makeThread("sent-tab", null),
+      makeThread("pinned-tab", "active"),
+      makeThread("settled-tab", "settled"),
+      makeThread("standalone", "settled"),
+    ];
+    const woken = [
+      ["thread.unsettle", "primary"],
+      ["thread.unsettle", "settled-tab"],
+    ] as const;
+    yield* expectDispatches(
+      threads,
+      [turnStartRequested("standalone"), turnStartRequested("sent-tab")],
+      woken,
+    );
+    yield* expectDispatches(threads, [unsettled("standalone"), unsettled("sent-tab")], woken);
+  }),
+);
+
+it.effect("settling any tab settles the rest of its group", () =>
+  expectDispatches(
+    [
+      makeThread("primary", "active"),
+      makeThread("neutral-tab", null),
+      makeThread("settled-tab", "settled"),
+      makeThread("merged-tab", "settled"),
+      makeThread("standalone", null),
+    ],
+    [
+      settled("standalone", "server:auto-settle:standalone:1"),
+      settled("merged-tab", "server:auto-settle:merged-tab:1"),
+    ],
+    [
+      ["thread.settle", "neutral-tab"],
+      ["thread.settle", "primary"],
+    ],
+  ),
+);
+
+it.effect("a settle is undone while another tab in the group is working", () =>
+  expectDispatches(
+    [
+      makeThread("primary", "settled"),
+      makeThread("running-tab", null, {
+        session: {
+          threadId: ThreadId.make("running-tab"),
+          status: "running",
+          providerName: "codex",
+          runtimeMode: "full-access",
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: NOW,
+        },
+      }),
+      makeThread("idle-tab", null),
+    ],
+    [settled("primary", "client:settle:1")],
+    [["thread.unsettle", "primary"]],
+  ),
+);
+
+it.effect("only an automatic settle waits on another tab's open pull request", () =>
+  Effect.gen(function* () {
+    const threads = [
+      makeThread("primary", "settled"),
+      makeThread("open-pr-tab", null, { pullRequests: [openPullRequest] }),
+    ];
+    yield* expectDispatches(
+      threads,
+      [settled("primary", "server:auto-settle:primary:1")],
+      [["thread.unsettle", "primary"]],
+    );
+    yield* expectDispatches(
+      threads,
+      [settled("primary", "client:settle:1")],
+      [["thread.settle", "open-pr-tab"]],
+    );
+  }),
 );
