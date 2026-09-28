@@ -31,6 +31,7 @@ import {
 } from "@t3tools/client-runtime/state/thread-search";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import { useHiddenTabThreads } from "./sidebar/useHiddenTabThreads";
+import { resolveThreadTabTarget } from "../threadTabRecencyStore";
 import {
   parseScopedThreadKey,
   scopeProjectRef,
@@ -2903,10 +2904,10 @@ export default function Sidebar() {
       }
       return router.navigate({
         to: "/$environmentId/$threadId",
-        params: buildThreadRouteParams(threadRef),
+        params: buildThreadRouteParams(resolveThreadTabTarget(threadRef, hiddenTabThreads)),
       });
     },
-    [clearSelection, isMobile, router, setOpenMobile, setSelectionAnchor],
+    [clearSelection, hiddenTabThreads, isMobile, router, setOpenMobile, setSelectionAnchor],
   );
 
   // Dropping files on a row opens that thread and attaches the files there.
@@ -2917,7 +2918,8 @@ export default function Sidebar() {
   const queuePendingFileDrop = useSidebarPendingFileDropStore((s) => s.queuePendingFileDrop);
   const clearPendingFileDrop = useSidebarPendingFileDropStore((s) => s.clearPendingFileDrop);
   const handleThreadFileDrop = useCallback(
-    async (threadRef: ScopedThreadRef, files: File[]) => {
+    async (rowThreadRef: ScopedThreadRef, files: File[]) => {
+      const threadRef = resolveThreadTabTarget(rowThreadRef, hiddenTabThreads);
       // Queued, not replaced: a second drop before the thread opens keeps
       // both files, and the id lets cleanup below touch only this drop.
       const dropId = queuePendingFileDrop({ threadRef, files });
@@ -2948,7 +2950,7 @@ export default function Sidebar() {
         clearPendingFileDrop(dropId);
       }
     },
-    [clearPendingFileDrop, navigateToThread, queuePendingFileDrop, router],
+    [clearPendingFileDrop, hiddenTabThreads, navigateToThread, queuePendingFileDrop, router],
   );
 
   const navigateToDraft = useCallback(
