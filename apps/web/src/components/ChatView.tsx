@@ -379,7 +379,6 @@ import { resolveComposerTimelineInset, resolveScrollToEndClearance } from "./com
 import { ChatHeader } from "./chat/ChatHeader";
 import {
   ThreadTabContextPills,
-  ThreadTabs,
   useThreadTabGroup,
 } from "./chat/ThreadTabs";
 import { runtime } from "../lib/runtime";
@@ -9795,6 +9794,8 @@ export default function ChatView(props: ChatViewProps) {
             {...(routeKind === "draft" && draftId ? { draftId } : {})}
             activeThreadTitle={activeThread.title}
             isServerThread={isServerThread}
+            threadTabGroup={threadTabGroup}
+            activeModelSelection={activeThread.modelSelection}
             activeProject={activeProject}
             openInCwd={gitCwd}
             activeProjectScripts={activeProjectScripts}
@@ -9815,16 +9816,6 @@ export default function ChatView(props: ChatViewProps) {
             onDeleteProjectScript={deleteProjectScript}
           />
         </WorkspacePageHeader>
-        {threadTabGroup ? (
-          <ThreadTabs
-            key={activeThread.id}
-            environmentId={activeThread.environmentId}
-            threadId={activeThread.id}
-            modelSelection={activeThread.modelSelection}
-            group={threadTabGroup}
-          />
-        ) : null}
-
         {/* Main content area with optional plan sidebar */}
         <div className="flex min-h-0 min-w-0 flex-1">
           {/* Chat column */}

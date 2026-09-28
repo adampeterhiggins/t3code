@@ -10,9 +10,11 @@ import {
   type ThreadId,
   type ThreadTabGroup,
 } from "@t3tools/contracts";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { sanitizeComposerContextLabel } from "@t3tools/shared/composerContextReferences";
 import * as Option from "effect/Option";
 import { useNavigate } from "@tanstack/react-router";
+import { PlusIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import {
@@ -21,9 +23,20 @@ import {
 } from "../../lib/composerContextReferences";
 import { runtime } from "../../lib/runtime";
 import { newThreadId } from "../../lib/utils";
+import { useThreadShell } from "../../state/entities";
 import { usePreparedConnection } from "../../state/session";
 import { useThreadTabContextStore } from "../../threadTabContextStore";
-import { Button } from "../ui/button";
+import { WorkspaceBreadcrumbText } from "../WorkspaceBreadcrumb";
+import {
+  Menu,
+  MenuItem,
+  MenuPopup,
+  MenuRadioGroup,
+  MenuRadioItem,
+  MenuSeparator,
+  MenuTrigger,
+} from "../ui/menu";
+import { toastManager } from "../ui/toast";
 import { Toggle } from "../ui/toggle";
 
 /** Tab group for a server thread; null until loaded or when it belongs to another thread. */
@@ -50,7 +63,22 @@ export function useThreadTabGroup(environmentId: EnvironmentId, threadId: Thread
   return group?.tabs.some((tab) => tab.threadId === threadId) ? group : null;
 }
 
-export function ThreadTabs({
+/** A tab's name everywhere it appears: the live thread title, so renames show up immediately. */
+function useTabLabel(environmentId: EnvironmentId, group: ThreadTabGroup, threadId: ThreadId) {
+  const shell = useThreadShell(scopeThreadRef(environmentId, threadId));
+  return shell?.title ?? group.tabs.find((tab) => tab.threadId === threadId)?.title ?? "Tab";
+}
+
+function TabMenuLabel(props: {
+  environmentId: EnvironmentId;
+  group: ThreadTabGroup;
+  threadId: ThreadId;
+}) {
+  return <>{useTabLabel(props.environmentId, props.group, props.threadId)}</>;
+}
+
+/** Breadcrumb segment naming the open tab; its menu switches tabs or opens a new one. */
+export function ThreadTabMenu({
   environmentId,
   threadId,
   modelSelection,
@@ -64,60 +92,83 @@ export function ThreadTabs({
   const prepared = usePreparedConnection(environmentId);
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const currentLabel = useTabLabel(environmentId, group, threadId);
 
-  if (Option.isNone(prepared)) return null;
+  const open = (nextThreadId: ThreadId) =>
+    void navigate({
+      to: "/$environmentId/$threadId",
+      params: { environmentId, threadId: nextThreadId },
+    });
 
   const create = async () => {
+    if (Option.isNone(prepared)) return;
     setBusy(true);
-    setError(null);
     const nextThreadId = newThreadId();
     try {
       await runtime.runPromise(
-        createThreadTab(prepared.value, threadId, {
-          threadId: nextThreadId,
-          modelSelection,
-        }),
+        createThreadTab(prepared.value, threadId, { threadId: nextThreadId, modelSelection }),
       );
-      await navigate({
-        to: "/$environmentId/$threadId",
-        params: { environmentId, threadId: nextThreadId },
-      });
+      open(nextThreadId);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not create tab.");
+      toastManager.add({
+        type: "error",
+        title: "Could not create tab",
+        description: cause instanceof Error ? cause.message : undefined,
+      });
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <div className="border-b px-3 py-1">
-      <div className="flex items-center gap-1 overflow-x-auto">
-        {group.tabs.map((tab) => (
-          <Button
-            key={tab.threadId}
-            size="sm"
-            variant={tab.threadId === threadId ? "secondary" : "ghost"}
-            onClick={() =>
-              void navigate({
-                to: "/$environmentId/$threadId",
-                params: { environmentId, threadId: tab.threadId },
-              })
-            }
-          >
-            {tab.title}
-          </Button>
-        ))}
-        <Button size="sm" variant="ghost" disabled={busy} onClick={() => void create()}>
-          + Tab
-        </Button>
-      </div>
-      {error ? (
-        <p role="alert" className="text-xs text-destructive">
-          {error}
-        </p>
-      ) : null}
-    </div>
+    <Menu>
+      <MenuTrigger
+        render={
+          <button
+            type="button"
+            aria-label={`Chat tab: ${currentLabel}`}
+            className="group/tab-crumb inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+          />
+        }
+      >
+        <WorkspaceBreadcrumbText>{currentLabel}</WorkspaceBreadcrumbText>
+      </MenuTrigger>
+      <MenuPopup align="start" side="bottom">
+        <MenuRadioGroup value={threadId} onValueChange={(value) => open(value as ThreadId)}>
+          {group.tabs.map((tab) => (
+            <MenuRadioItem key={tab.threadId} value={tab.threadId}>
+              <TabMenuLabel environmentId={environmentId} group={group} threadId={tab.threadId} />
+            </MenuRadioItem>
+          ))}
+        </MenuRadioGroup>
+        <MenuSeparator />
+        <MenuItem disabled={busy || Option.isNone(prepared)} onClick={() => void create()}>
+          <PlusIcon />
+          New tab
+        </MenuItem>
+      </MenuPopup>
+    </Menu>
+  );
+}
+
+function ThreadTabContextPill(props: {
+  environmentId: EnvironmentId;
+  group: ThreadTabGroup;
+  threadId: ThreadId;
+  disabled: boolean;
+  onSelect: (title: string) => void;
+}) {
+  const label = useTabLabel(props.environmentId, props.group, props.threadId);
+  return (
+    <Toggle
+      size="compact"
+      variant="pill"
+      pressed={false}
+      disabled={props.disabled}
+      onClick={() => props.onSelect(label)}
+    >
+      {label}
+    </Toggle>
   );
 }
 
@@ -143,22 +194,22 @@ export function ThreadTabContextPills({
   const siblings = group.tabs.filter((tab) => tab.threadId !== threadId);
   if (siblings.length === 0 || Option.isNone(prepared)) return null;
 
-  const insert = async (tab: ThreadTabGroup["tabs"][number]) => {
-    setLoadingId(tab.threadId);
+  const insert = async (sourceThreadId: ThreadId, title: string) => {
+    setLoadingId(sourceThreadId);
     setError(null);
     try {
       const handoff = await runtime.runPromise(
-        prepareThreadTabHandoff(prepared.value, threadId, { sourceThreadIds: [tab.threadId] }),
+        prepareThreadTabHandoff(prepared.value, threadId, { sourceThreadIds: [sourceThreadId] }),
       );
-      const contextId = toKindScopedComposerContextId("thread-tab", tab.threadId);
-      const label = sanitizeComposerContextLabel(tab.title, "thread-tab");
+      const contextId = toKindScopedComposerContextId("thread-tab", sourceThreadId);
+      const label = sanitizeComposerContextLabel(title, "thread-tab");
       upsertRecord(threadId, {
         version: 1,
         kind: "thread-tab",
         contextId,
         label,
-        threadId: tab.threadId,
-        title: tab.title.slice(0, 2_048),
+        threadId: sourceThreadId,
+        title: title.slice(0, 2_048),
         summary: handoff.text.slice(0, COMPOSER_CONTEXT_THREAD_TAB_SUMMARY_MAX_CHARS),
       });
       onInsert({ kind: "thread-tab", contextId, label });
@@ -174,16 +225,14 @@ export function ThreadTabContextPills({
       <div className="flex items-center gap-1.5 overflow-x-auto">
         <span className="shrink-0 text-xs text-muted-foreground">Include context from</span>
         {siblings.map((tab) => (
-          <Toggle
+          <ThreadTabContextPill
             key={tab.threadId}
-            size="compact"
-            variant="pill"
-            pressed={false}
+            environmentId={environmentId}
+            group={group}
+            threadId={tab.threadId}
             disabled={loadingId !== null}
-            onClick={() => void insert(tab)}
-          >
-            {tab.title}
-          </Toggle>
+            onSelect={(title) => void insert(tab.threadId, title)}
+          />
         ))}
       </div>
       {error ? (
