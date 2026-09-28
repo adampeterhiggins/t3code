@@ -41,4 +41,22 @@ describe("resolveWizardNavigation", () => {
     expect(resolveWizardNavigation(2, 8, 3, validId)).toEqual({ kind: "navigate", step: 2 });
     expect(resolveWizardNavigation(0, -1, 3, invalidId)).toEqual({ kind: "navigate", step: 0 });
   });
+
+  it("keeps the sign-in step unreachable while navigation is capped at Config", () => {
+    // Before the instance exists the caller passes stepCount=3 even though the
+    // wizard shows four steps, so a "Sign in" header click lands on Config.
+    expect(resolveWizardNavigation(0, 3, 3, validId)).toEqual({ kind: "navigate", step: 2 });
+    expect(resolveWizardNavigation(1, 3, 3, invalidId)).toEqual({
+      kind: "blocked",
+      step: 1,
+      error: "Instance ID is required.",
+    });
+  });
+
+  it("locks navigation onto the sign-in step once the instance exists", () => {
+    // After creation the caller passes stepCount=4 and minStep=3: backward
+    // clicks resolve to the sign-in step instead of walking the wizard back.
+    expect(resolveWizardNavigation(3, 0, 4, validId, 3)).toEqual({ kind: "navigate", step: 3 });
+    expect(resolveWizardNavigation(3, 2, 4, validId, 3)).toEqual({ kind: "navigate", step: 3 });
+  });
 });

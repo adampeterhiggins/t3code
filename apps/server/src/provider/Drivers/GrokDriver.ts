@@ -34,7 +34,11 @@ import {
   type ProviderInstance,
 } from "../ProviderDriver.ts";
 import { withInstanceIdentity } from "./instanceIdentity.ts";
-import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
+import {
+  mergeProviderHomePathEnvironment,
+  mergeProviderInstanceEnvironment,
+  resolveInstanceHomePath,
+} from "../ProviderInstanceEnvironment.ts";
 import { discoverGrokSkills } from "./GrokSkills.ts";
 import {
   makeCachedProviderMaintenanceResolution,
@@ -97,8 +101,19 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
   },
   configSchema: GrokSettings,
   defaultConfig: (): GrokSettings => decodeGrokSettings({}),
-  create: ({ instanceId, displayName, accentColor, environment, enabled, config }) =>
+  create: ({ instanceId, displayName, accentColor, environment, enabled, config: configured }) =>
     Effect.gen(function* () {
+      const config = {
+        ...configured,
+        homePath: yield* resolveInstanceHomePath({
+          homePath: configured.homePath,
+          stateDir: (yield* ServerConfig).stateDir,
+          driver: DRIVER_KIND,
+          instanceId,
+          environment,
+          homeVariables: ["GROK_HOME"],
+        }),
+      };
       const crypto = yield* Crypto.Crypto;
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
       const httpClient = yield* HttpClient.HttpClient;
@@ -107,7 +122,11 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
       const serverSettings = yield* ServerSettingsService;
       const { cwd } = yield* ServerConfig;
       const eventLoggers = yield* ProviderEventLoggers;
-      const processEnv = mergeProviderInstanceEnvironment(environment);
+      const processEnv = yield* mergeProviderHomePathEnvironment(
+        config.homePath,
+        ["GROK_HOME"],
+        mergeProviderInstanceEnvironment(environment),
+      );
       const continuationIdentity = defaultProviderContinuationIdentity({
         driverKind: DRIVER_KIND,
         instanceId,

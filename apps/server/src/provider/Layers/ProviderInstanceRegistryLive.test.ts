@@ -121,6 +121,7 @@ const makeClaudeConfig = (overrides: Partial<ClaudeSettings>): ClaudeSettings =>
 const makeCursorConfig = (overrides: Partial<CursorSettings>): CursorSettings => ({
   enabled: false,
   binaryPath: "cursor-agent",
+  homePath: "",
   apiEndpoint: "",
   customModels: [],
   ...overrides,
@@ -129,6 +130,7 @@ const makeCursorConfig = (overrides: Partial<CursorSettings>): CursorSettings =>
 const makeGrokConfig = (overrides: Partial<GrokSettings>): GrokSettings => ({
   enabled: false,
   binaryPath: "grok",
+  homePath: "",
   customModels: [],
   ...overrides,
 });
@@ -136,6 +138,7 @@ const makeGrokConfig = (overrides: Partial<GrokSettings>): GrokSettings => ({
 const makeOpenCodeConfig = (overrides: Partial<OpenCodeSettings>): OpenCodeSettings => ({
   enabled: false,
   binaryPath: "opencode",
+  homePath: "",
   serverUrl: "",
   serverPassword: "",
   customModels: [],

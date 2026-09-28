@@ -49,7 +49,10 @@ import {
   type ProviderInstance,
 } from "../ProviderDriver.ts";
 import { withInstanceIdentity } from "./instanceIdentity.ts";
-import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
+import {
+  mergeProviderInstanceEnvironment,
+  resolveInstanceHomePath,
+} from "../ProviderInstanceEnvironment.ts";
 import {
   makeCachedProviderMaintenanceResolution,
   makeManualOnlyProviderMaintenanceCapabilities,
@@ -63,6 +66,7 @@ import {
   type ProviderSnapshotSettings,
 } from "../providerUpdateSettings.ts";
 import { discoverCursorSkills, probeCursorSkills } from "./CursorSkills.ts";
+import { makeCursorEnvironment, materializeCursorShadowHome } from "./CursorHome.ts";
 const decodeCursorSettings = Schema.decodeSync(CursorSettings);
 
 const DRIVER_KIND = ProviderDriverKind.make("cursor");
@@ -106,8 +110,19 @@ export const CursorDriver: ProviderDriver<CursorSettings, CursorDriverEnv> = {
   },
   configSchema: CursorSettings,
   defaultConfig: (): CursorSettings => decodeCursorSettings({}),
-  create: ({ instanceId, displayName, accentColor, environment, enabled, config }) =>
+  create: ({ instanceId, displayName, accentColor, environment, enabled, config: configured }) =>
     Effect.gen(function* () {
+      const config = {
+        ...configured,
+        homePath: yield* resolveInstanceHomePath({
+          homePath: configured.homePath,
+          stateDir: (yield* ServerConfig).stateDir,
+          driver: DRIVER_KIND,
+          instanceId,
+          environment,
+          homeVariables: ["HOME"],
+        }),
+      };
       const crypto = yield* Crypto.Crypto;
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
       const fileSystem = yield* FileSystem.FileSystem;
@@ -115,7 +130,21 @@ export const CursorDriver: ProviderDriver<CursorSettings, CursorDriverEnv> = {
       const httpClient = yield* HttpClient.HttpClient;
       const serverSettings = yield* ServerSettingsService;
       const eventLoggers = yield* ProviderEventLoggers;
-      const processEnv = mergeProviderInstanceEnvironment(environment);
+      yield* materializeCursorShadowHome(config).pipe(
+        Effect.mapError(
+          (cause) =>
+            new ProviderDriverError({
+              driver: DRIVER_KIND,
+              instanceId,
+              detail: cause.message,
+              cause,
+            }),
+        ),
+      );
+      const processEnv = yield* makeCursorEnvironment(
+        config,
+        mergeProviderInstanceEnvironment(environment),
+      );
       const continuationIdentity = defaultProviderContinuationIdentity({
         driverKind: DRIVER_KIND,
         instanceId,

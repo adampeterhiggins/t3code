@@ -45,7 +45,11 @@ import {
   type ProviderInstance,
 } from "../ProviderDriver.ts";
 import { withInstanceIdentity } from "./instanceIdentity.ts";
-import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
+import {
+  mergeProviderHomePathEnvironment,
+  mergeProviderInstanceEnvironment,
+  resolveInstanceHomePath,
+} from "../ProviderInstanceEnvironment.ts";
 import {
   makeCachedProviderMaintenanceResolution,
   makeManualOnlyProviderMaintenanceCapabilities,
@@ -103,8 +107,19 @@ export const DevinDriver: ProviderDriver<DevinSettings, DevinDriverEnv> = {
   },
   configSchema: DevinSettings,
   defaultConfig: (): DevinSettings => decodeDevinSettings({}),
-  create: ({ instanceId, displayName, accentColor, environment, enabled, config }) =>
+  create: ({ instanceId, displayName, accentColor, environment, enabled, config: configured }) =>
     Effect.gen(function* () {
+      const config = {
+        ...configured,
+        homePath: yield* resolveInstanceHomePath({
+          homePath: configured.homePath,
+          stateDir: (yield* ServerConfig).stateDir,
+          driver: DRIVER_KIND,
+          instanceId,
+          environment,
+          homeVariables: ["XDG_DATA_HOME"],
+        }),
+      };
       const crypto = yield* Crypto.Crypto;
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
       const fileSystem = yield* FileSystem.FileSystem;
@@ -112,7 +127,11 @@ export const DevinDriver: ProviderDriver<DevinSettings, DevinDriverEnv> = {
       const httpClient = yield* HttpClient.HttpClient;
       const serverSettings = yield* ServerSettingsService.ServerSettingsService;
       const eventLoggers = yield* ProviderEventLoggers;
-      const processEnv = mergeProviderInstanceEnvironment(environment);
+      const processEnv = yield* mergeProviderHomePathEnvironment(
+        config.homePath,
+        ["XDG_DATA_HOME"],
+        mergeProviderInstanceEnvironment(environment),
+      );
       const continuationIdentity = defaultProviderContinuationIdentity({
         driverKind: DRIVER_KIND,
         instanceId,

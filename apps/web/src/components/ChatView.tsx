@@ -377,10 +377,7 @@ import type { AssistantCitationRequest } from "./chat/AssistantCitationSource";
 import { resolveTimelineIsAtEnd, worktreeSetupAgentStarted } from "./chat/MessagesTimeline.logic";
 import { resolveComposerTimelineInset, resolveScrollToEndClearance } from "./composerFooterLayout";
 import { ChatHeader } from "./chat/ChatHeader";
-import {
-  ThreadTabContextPills,
-  useThreadTabGroup,
-} from "./chat/ThreadTabs";
+import { ThreadTabContextPills, useThreadTabGroup } from "./chat/ThreadTabs";
 import { runtime } from "../lib/runtime";
 import { PanelLayoutControls, RightPanelMaximizeControl } from "./chat/PanelLayoutControls";
 import { expandedImageKey, type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
