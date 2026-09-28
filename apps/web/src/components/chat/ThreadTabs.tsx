@@ -10,7 +10,7 @@ import {
   type ThreadId,
   type ThreadTabGroup,
 } from "@t3tools/contracts";
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -19,7 +19,7 @@ import { sanitizeComposerContextLabel } from "@t3tools/shared/composerContextRef
 import * as Option from "effect/Option";
 import { useNavigate } from "@tanstack/react-router";
 import { PlusIcon, XIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { useThreadActions } from "../../hooks/useThreadActions";
 import {
@@ -28,7 +28,11 @@ import {
 } from "../../lib/composerContextReferences";
 import { runtime } from "../../lib/runtime";
 import { newThreadId } from "../../lib/utils";
-import { useThreadShell, waitForThreadShell } from "../../state/entities";
+import {
+  useThreadShell,
+  useThreadShellsForProjectRefs,
+  waitForThreadShell,
+} from "../../state/entities";
 import { usePreparedConnection } from "../../state/session";
 import { useThreadTabContextStore } from "../../threadTabContextStore";
 import { WorkspaceBreadcrumbText } from "../WorkspaceBreadcrumb";
@@ -45,10 +49,17 @@ import { toastManager } from "../ui/toast";
 import { Toggle } from "../ui/toggle";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
-/** Tab group for a server thread; null until loaded or when it belongs to another thread. */
+/**
+ * Tab group for a server thread; null until loaded or when it belongs to another thread.
+ * Closed (archived) tabs drop out live, and come back if the archive is undone.
+ */
 export function useThreadTabGroup(environmentId: EnvironmentId, threadId: ThreadId | null) {
   const prepared = usePreparedConnection(environmentId);
   const [group, setGroup] = useState<ThreadTabGroup | null>(null);
+  const shell = useThreadShell(threadId === null ? null : scopeThreadRef(environmentId, threadId));
+  const projectShells = useThreadShellsForProjectRefs(
+    shell ? [scopeProjectRef(environmentId, shell.projectId)] : [],
+  );
 
   useEffect(() => {
     if (threadId === null || Option.isNone(prepared)) return;
@@ -66,7 +77,14 @@ export function useThreadTabGroup(environmentId: EnvironmentId, threadId: Thread
     };
   }, [prepared, threadId]);
 
-  return group?.tabs.some((tab) => tab.threadId === threadId) ? group : null;
+  return useMemo(() => {
+    if (!group?.tabs.some((tab) => tab.threadId === threadId)) return null;
+    const archived = new Set(
+      projectShells.filter((thread) => thread.archivedAt !== null).map((thread) => thread.id),
+    );
+    if (!group.tabs.some((tab) => archived.has(tab.threadId))) return group;
+    return { ...group, tabs: group.tabs.filter((tab) => !archived.has(tab.threadId)) };
+  }, [group, projectShells, threadId]);
 }
 
 /** A tab's name everywhere it appears: the live thread title, so renames show up immediately. */
@@ -111,13 +129,14 @@ export function ThreadTabMenu({
     });
 
   // Closing archives the tab's thread, so undo and the archived-threads list can reopen it.
-  const close = async () => {
-    const index = group.tabs.findIndex((tab) => tab.threadId === threadId);
+  // Closing the open tab lands on its neighbour.
+  const close = async (tabThreadId: ThreadId) => {
+    const index = group.tabs.findIndex((tab) => tab.threadId === tabThreadId);
     const next = group.tabs[index + 1] ?? group.tabs[index - 1];
     if (!next) return;
     setBusy(true);
     try {
-      const result = await archiveThread(scopeThreadRef(environmentId, threadId), {
+      const result = await archiveThread(scopeThreadRef(environmentId, tabThreadId), {
         next: scopeThreadRef(environmentId, next.threadId),
       });
       if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
@@ -196,7 +215,31 @@ export function ThreadTabMenu({
         <MenuRadioGroup value={threadId} onValueChange={(value) => open(value as ThreadId)}>
           {group.tabs.map((tab) => (
             <MenuRadioItem key={tab.threadId} value={tab.threadId}>
-              <TabMenuLabel environmentId={environmentId} group={group} threadId={tab.threadId} />
+              <span className="flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate">
+                  <TabMenuLabel
+                    environmentId={environmentId}
+                    group={group}
+                    threadId={tab.threadId}
+                  />
+                </span>
+                {/* Shown on the highlighted row; handlers stop the item from switching tabs. */}
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  aria-label="Close tab"
+                  disabled={busy}
+                  onMouseUp={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    event.preventDefault();
+                    void close(tab.threadId);
+                  }}
+                  className="-me-1 inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted-foreground opacity-0 transition-opacity hover:bg-foreground/10 hover:text-foreground in-data-highlighted:opacity-100 disabled:cursor-default disabled:opacity-0"
+                >
+                  <XIcon className="size-3.5" />
+                </button>
+              </span>
             </MenuRadioItem>
           ))}
         </MenuRadioGroup>
@@ -204,10 +247,6 @@ export function ThreadTabMenu({
         <MenuItem disabled={busy || Option.isNone(prepared)} onClick={() => void create()}>
           <PlusIcon />
           New tab
-        </MenuItem>
-        <MenuItem disabled={busy} onClick={() => void close()}>
-          <XIcon />
-          Close tab
         </MenuItem>
       </MenuPopup>
     </Menu>
