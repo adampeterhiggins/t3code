@@ -2,6 +2,7 @@ import { ScreenScrollView as ScrollView } from "../../components/ScreenScrollVie
 import { EnvironmentId, USAGE_CONTRACT_VERSION } from "@t3tools/contracts";
 import type { UsageAccountConsumption } from "@t3tools/contracts";
 import { type RouteProp, useIsFocused, useNavigation, useRoute } from "@react-navigation/native";
+import { cursorKeychainAccessEnvironments } from "@t3tools/client-runtime/state/usage";
 import {
   isCompatibleUsageContractVersion,
   isModelCostUnknown,
@@ -16,6 +17,7 @@ import {
   formatHourShort,
   formatPercent,
   formatTokens,
+  formatUsageContractMismatch,
   formatUsd,
   makeWindow,
 } from "@t3tools/shared/usageFormat";
@@ -102,9 +104,7 @@ export function UsageRouteScreen() {
   );
   const isFocused = useIsFocused();
   const limits = useRefreshLimits(selectedEnvironmentIds, isFocused && tab === "limits");
-  const cursorAccessEnvironments = selectedEnvironments.filter(
-    (environment) => environment.needsCursorKeychainAccess,
-  );
+  const cursorAccessEnvironments = cursorKeychainAccessEnvironments(selectedEnvironments);
   const refreshAfterCursorEnable = () => {
     void refresh();
     void limits.refreshAfterEnable();
@@ -757,7 +757,12 @@ function usageEnvironmentStatus(environment: EnvironmentUsageStatus): string {
     environment.summary &&
     !isCompatibleUsageContractVersion(environment.summary.contractVersion, USAGE_CONTRACT_VERSION)
   ) {
-    return "Older server · excluded from usage totals";
+    return formatUsageContractMismatch(environment.label, {
+      direction:
+        environment.summary.contractVersion < USAGE_CONTRACT_VERSION
+          ? "serverBehind"
+          : "clientBehind",
+    });
   }
   if (!environment.isConnected)
     return environment.summary ? "Disconnected · showing saved usage" : "Waiting for connection…";
@@ -814,13 +819,16 @@ function UsageCoverageNotice(props: {
   readonly isPartial: boolean;
 }) {
   const failed = props.environments.filter((environment) => environment.error !== null);
-  const stale = props.environments.filter((environment) =>
-    props.merged.staleEnvironments.includes(environment.environmentId),
+  const mismatchByEnvironment = new Map(
+    props.merged.contractMismatches.map((mismatch) => [mismatch.environmentId, mismatch]),
+  );
+  const mismatched = props.environments.filter((environment) =>
+    mismatchByEnvironment.has(environment.environmentId),
   );
   const duplicateSources = props.merged.duplicateSources;
   if (
     failed.length === 0 &&
-    stale.length === 0 &&
+    mismatched.length === 0 &&
     duplicateSources.length === 0 &&
     !props.isPartial
   ) {
@@ -839,9 +847,12 @@ function UsageCoverageNotice(props: {
           {environment.label} could not report usage.
         </Text>
       ))}
-      {stale.map((environment) => (
+      {mismatched.map((environment) => (
         <Text key={environment.environmentId} className="text-sm text-foreground-muted">
-          {environment.label} runs an older server version and is excluded from totals.
+          {formatUsageContractMismatch(
+            environment.label,
+            mismatchByEnvironment.get(environment.environmentId)!,
+          )}
         </Text>
       ))}
       {duplicateSources.length > 0 ? (
