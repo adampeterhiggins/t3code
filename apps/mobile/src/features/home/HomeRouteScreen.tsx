@@ -22,6 +22,7 @@ import { buildHomeProjectScopes } from "./homeThreadList";
 import { usePendingTaskListActions } from "./usePendingTaskListActions";
 import { useThreadListActions } from "./useThreadListActions";
 import { getConnectionAwareBrandHeaderOptions } from "./WorkspaceConnectionTitle";
+import { useHiddenTabThreads } from "../threads/useHiddenTabThreads";
 
 /* ─── Route screen ───────────────────────────────────────────────────── */
 
@@ -30,6 +31,11 @@ export function HomeRouteScreen() {
   const { layout, panes } = useAdaptiveWorkspaceLayout();
   const projects = useProjects();
   const threads = useThreadShells();
+  const hiddenTabThreads = useHiddenTabThreads(threads);
+  const visibleThreads = useMemo(
+    () => threads.filter((thread) => !hiddenTabThreads.has(`${thread.environmentId}:${thread.id}`)),
+    [hiddenTabThreads, threads],
+  );
   const { environments: workspaceEnvironments, state: catalogState } = useWorkspaceState();
   const { savedConnectionsById } = useSavedRemoteConnections();
   const navigation = useNavigation();
@@ -253,7 +259,7 @@ export function HomeRouteScreen() {
           searchQuery={searchQuery}
           selectedEnvironmentId={selectedEnvironmentId}
           selectedProjectKey={selectedProjectKey}
-          threads={threads}
+          threads={visibleThreads}
         />
       </>
     </AndroidHomeFabLayout>

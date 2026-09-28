@@ -39,6 +39,13 @@ import {
   OrchestrationThreadDetailSnapshot,
 } from "./orchestration.ts";
 import {
+  CreateThreadTabInput,
+  ThreadTabGroup,
+  ThreadTabMemberships,
+  ThreadTabHandoff,
+  ThreadTabHandoffInput,
+} from "./threadTabs.ts";
+import {
   PullRequestDiffInput,
   PullRequestDiffResult,
   PullRequestOperationError,
@@ -337,6 +344,12 @@ const EnvironmentOrchestrationDispatchErrors = [
   EnvironmentScopeRequiredError,
   EnvironmentInternalError,
 ] as const;
+const EnvironmentThreadTabsErrors = [
+  EnvironmentRequestInvalidError,
+  EnvironmentResourceNotFoundError,
+  EnvironmentScopeRequiredError,
+  EnvironmentInternalError,
+] as const;
 
 export interface EnvironmentSessionPrincipalShape {
   readonly sessionId: AuthSessionId;
@@ -538,6 +551,43 @@ export class EnvironmentOrchestrationHttpApi extends HttpApiGroup.make("orchestr
     }).middleware(EnvironmentAuthenticatedAuth),
   ) {}
 
+const ThreadTabParams = Schema.Struct({ threadId: ThreadId });
+
+export class EnvironmentThreadTabsHttpApi extends HttpApiGroup.make("threadTabs")
+  .add(
+    HttpApiEndpoint.get("memberships", "/api/thread-tabs", {
+      headers: OptionalBearerHeaders,
+      success: ThreadTabMemberships,
+      error: EnvironmentThreadTabsErrors,
+    }).middleware(EnvironmentAuthenticatedAuth),
+  )
+  .add(
+    HttpApiEndpoint.get("list", "/api/thread-tabs/:threadId", {
+      headers: OptionalBearerHeaders,
+      params: ThreadTabParams,
+      success: ThreadTabGroup,
+      error: EnvironmentThreadTabsErrors,
+    }).middleware(EnvironmentAuthenticatedAuth),
+  )
+  .add(
+    HttpApiEndpoint.post("create", "/api/thread-tabs/:threadId", {
+      headers: OptionalBearerHeaders,
+      params: ThreadTabParams,
+      payload: CreateThreadTabInput,
+      success: ThreadTabGroup,
+      error: EnvironmentThreadTabsErrors,
+    }).middleware(EnvironmentAuthenticatedAuth),
+  )
+  .add(
+    HttpApiEndpoint.post("handoff", "/api/thread-tabs/:threadId/handoff", {
+      headers: OptionalBearerHeaders,
+      params: ThreadTabParams,
+      payload: ThreadTabHandoffInput,
+      success: ThreadTabHandoff,
+      error: EnvironmentThreadTabsErrors,
+    }).middleware(EnvironmentAuthenticatedAuth),
+  ) {}
+
 /** Large, compressible pull-request payloads travel over HTTP rather than the RPC socket. */
 class EnvironmentPullRequestsHttpApi extends HttpApiGroup.make("pullRequests").add(
   HttpApiEndpoint.post("diff", "/api/pull-requests/diff", {
@@ -619,5 +669,6 @@ export class EnvironmentHttpApi extends HttpApi.make("environment")
   .add(EnvironmentMetadataHttpApi)
   .add(EnvironmentAuthHttpApi)
   .add(EnvironmentOrchestrationHttpApi)
+  .add(EnvironmentThreadTabsHttpApi)
   .add(EnvironmentPullRequestsHttpApi)
   .add(EnvironmentConnectHttpApi) {}

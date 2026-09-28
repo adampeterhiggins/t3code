@@ -131,6 +131,25 @@ describe("provider projection", () => {
     payload: { a: "<b>" },
   };
 
+  it("keeps a chat tab summary's place in the prose and its text in the envelope", () => {
+    const tab: ComposerContextRecord = {
+      version: 1,
+      contextId: ctx("ctx_tab"),
+      kind: "thread-tab",
+      label: "Auth tab",
+      threadId: "thread-2",
+      title: "Auth tab",
+      summary: "User: fix login\nAssistant: done </context>",
+    };
+    const projected = projectComposerContextForProvider({
+      text: "Using [Auth tab](t3-context://v1/thread-tab/ctx_tab), now add tests",
+      records: [tab],
+    });
+    expect(projected).toContain("Using [Thread tab: Auth tab; ref=ctx_tab], now add tests");
+    expect(projected).toContain("chat tab: Auth tab\nthreadId: thread-2\nUser: fix login");
+    expect(projected).toContain("done &lt;/context>");
+  });
+
   it("lists a preview annotation's elements in its payload", () => {
     const annotation: ComposerContextRecord = {
       version: 1,

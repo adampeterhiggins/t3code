@@ -311,10 +311,12 @@ import {
   type TerminalContextSelection,
 } from "../lib/terminalContext";
 import {
+  collectInlineContextIds,
   ensureInlineContextReferences,
   removeInlineContextReference,
   stripInlineContextReferences,
 } from "../lib/composerContextReferences";
+import { readThreadTabContextRecords, useThreadTabContextStore } from "../threadTabContextStore";
 import { serializeLegacyContextMessage } from "@t3tools/shared/composerContextLegacySend";
 import {
   buildMessageContext,
@@ -375,6 +377,11 @@ import type { AssistantCitationRequest } from "./chat/AssistantCitationSource";
 import { resolveTimelineIsAtEnd, worktreeSetupAgentStarted } from "./chat/MessagesTimeline.logic";
 import { resolveComposerTimelineInset, resolveScrollToEndClearance } from "./composerFooterLayout";
 import { ChatHeader } from "./chat/ChatHeader";
+import {
+  ThreadTabContextPills,
+  useThreadTabGroup,
+} from "./chat/ThreadTabs";
+import { runtime } from "../lib/runtime";
 import { PanelLayoutControls, RightPanelMaximizeControl } from "./chat/PanelLayoutControls";
 import { expandedImageKey, type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { NoActiveThreadState } from "./NoActiveThreadState";
@@ -1931,6 +1938,7 @@ export default function ChatView(props: ChatViewProps) {
   // depend on which route is mounted.
   const isServerThread = activeServerThread !== null;
   const activeThread = activeServerThread ?? localDraftThread;
+  const threadTabGroup = useThreadTabGroup(environmentId, activeServerThread?.id ?? null);
   const threadError = isServerThread
     ? (localServerError ?? activeServerThread?.session?.lastError ?? null)
     : localDraftError;
@@ -7734,6 +7742,12 @@ export default function ChatView(props: ChatViewProps) {
     const composerTerminalContextsSnapshot = [...sendableComposerTerminalContexts];
     const composerPreviewAnnotationsSnapshot = [...composerPreviewAnnotations];
     const composerReviewCommentsSnapshot: ReviewCommentContext[] = [...composerReviewComments];
+    const referencedContextIds = new Set(collectInlineContextIds(promptForSend));
+    const composerThreadTabsSnapshot = isServerThread
+      ? readThreadTabContextRecords(threadIdForSend).filter((record) =>
+          referencedContextIds.has(record.contextId),
+        )
+      : [];
     // Expired terminal excerpts are not sent; their chips leave the text with them.
     const messageTextForSend = composerTerminalContexts
       .filter((context) => !composerTerminalContextsSnapshot.includes(context))
@@ -7751,6 +7765,7 @@ export default function ChatView(props: ChatViewProps) {
         terminalContexts: composerTerminalContextsSnapshot,
         reviewComments: composerReviewCommentsSnapshot,
         previewAnnotations: composerPreviewAnnotationsSnapshot,
+        threadTabs: composerThreadTabsSnapshot,
         attachments: composerAttachmentsSnapshot.map((attachment, index) => ({
           attachment,
           attachmentId: attachmentIds[index] ?? attachment.id,
@@ -8456,6 +8471,7 @@ export default function ChatView(props: ChatViewProps) {
         failure = startResult;
       } else {
         turnStartSucceeded = true;
+        if (isServerThread) useThreadTabContextStore.getState().clear(threadIdForSend);
         // The turn is under way and will spend quota, so that thread's limits
         // snapshot is stale. Uploads may have outlasted a navigation, so only
         // the sending thread's panel clears.
@@ -9778,6 +9794,8 @@ export default function ChatView(props: ChatViewProps) {
             {...(routeKind === "draft" && draftId ? { draftId } : {})}
             activeThreadTitle={activeThread.title}
             isServerThread={isServerThread}
+            threadTabGroup={threadTabGroup}
+            activeModelSelection={activeThread.modelSelection}
             activeProject={activeProject}
             openInCwd={gitCwd}
             activeProjectScripts={activeProjectScripts}
@@ -9798,7 +9816,6 @@ export default function ChatView(props: ChatViewProps) {
             onDeleteProjectScript={deleteProjectScript}
           />
         </WorkspacePageHeader>
-
         {/* Main content area with optional plan sidebar */}
         <div className="flex min-h-0 min-w-0 flex-1">
           {/* Chat column */}
@@ -9991,6 +10008,17 @@ export default function ChatView(props: ChatViewProps) {
                         />
                       </div>
                     </div>
+                  ) : null}
+                  {threadTabGroup && activeThread.messages.length === 0 ? (
+                    <ThreadTabContextPills
+                      key={activeThread.id}
+                      environmentId={activeThread.environmentId}
+                      threadId={activeThread.id}
+                      group={threadTabGroup}
+                      onInsert={(reference) =>
+                        composerRef.current?.insertContextReference(reference)
+                      }
+                    />
                   ) : null}
                   <div
                     className="relative"
