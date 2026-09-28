@@ -629,6 +629,7 @@ describe("parseDevinCanonicalLogLine", () => {
         reasoningTokens: 20,
       },
       reportedCostUsd: 0.0125,
+      fast: false,
       dedupeKey: "event-prompt",
     });
   });
