@@ -21,7 +21,7 @@ import {
 } from "../auth/http.ts";
 import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
-import { summarizeSiblingMessages } from "./summary.ts";
+import { summarizeSiblingChat } from "./summary.ts";
 
 interface TabRow {
   readonly threadId: string;
@@ -197,9 +197,19 @@ export const threadTabsHttpApiLayer = HttpApiBuilder.group(
             snapshots.getThreadDetailSnapshot(sourceId, { turnLimit: 8 }).pipe(
               Effect.map((detail) => {
                 const tab = group.tabs.find((entry) => entry.threadId === sourceId);
-                return Option.isSome(detail) && tab
-                  ? `Source thread: ${sourceId} (snapshot ${detail.value.snapshotSequence})\n${summarizeSiblingMessages(tab.title, detail.value.thread.messages)}`
-                  : "";
+                if (Option.isNone(detail) || !tab) return "";
+                const { thread, snapshotSequence } = detail.value;
+                return `Source thread: ${sourceId} (snapshot ${snapshotSequence})\n${summarizeSiblingChat(
+                  {
+                    title: tab.title,
+                    worktreePath: thread.worktreePath,
+                    latestTurnState: thread.latestTurn?.state ?? null,
+                    messages: thread.messages,
+                    activities: thread.activities,
+                    checkpoints: thread.checkpoints,
+                    proposedPlans: thread.proposedPlans,
+                  },
+                )}`;
               }),
             ),
           ).pipe(Effect.catch((cause) => failEnvironmentInternal("internal_error", cause)));
