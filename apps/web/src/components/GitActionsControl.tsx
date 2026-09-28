@@ -32,6 +32,7 @@ import {
   ChevronDownIcon,
   CloudDownloadIcon,
   CloudUploadIcon,
+  ExternalLinkIcon,
   GitBranchPlusIcon,
   GitCommitIcon,
   InfoIcon,
@@ -1728,6 +1729,12 @@ export default function GitActionsControl({
           </MenuItem>
         );
       })}
+      {openPrUrl ? (
+        <MenuItem density={presentation === "menu" ? "touch" : "default"} onClick={openPrInBrowser}>
+          <ExternalLinkIcon />
+          <MenuItemLabel>Open in {sourceControlPresentation.providerName}</MenuItemLabel>
+        </MenuItem>
+      ) : null}
       {canPublishRepository ? (
         <MenuItem
           density={presentation === "menu" ? "touch" : "default"}
@@ -1846,28 +1853,6 @@ export default function GitActionsControl({
               </span>
             </Button>
           )}
-          {quickAction.kind === "open_pr" && openPrUrl ? (
-            <>
-              <GroupSeparator className="hidden @3xl/header-actions:block" />
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      aria-label={`Open in ${sourceControlPresentation.providerName}`}
-                      size="icon-xs"
-                      variant="outline"
-                      onClick={openPrInBrowser}
-                    />
-                  }
-                >
-                  <SourceControlIcon aria-hidden="true" className="size-3.5" />
-                </TooltipTrigger>
-                <TooltipPopup side="bottom">
-                  Open in {sourceControlPresentation.providerName}
-                </TooltipPopup>
-              </Tooltip>
-            </>
-          ) : null}
           <GroupSeparator className="hidden @3xl/header-actions:block" />
           <Menu
             onOpenChange={(open) => {
