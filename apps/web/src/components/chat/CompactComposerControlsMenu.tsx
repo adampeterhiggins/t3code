@@ -90,7 +90,7 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
           <MenuRadioItem value="auto">Auto</MenuRadioItem>
           <MenuRadioItem value="full-access">Full access</MenuRadioItem>
         </MenuRadioGroup>
-        {props.accountMenu && props.accountMenu.accounts.length > 1 ? (
+        {props.accountMenu && props.accountMenu.accounts.length > 0 ? (
           <>
             <MenuDivider />
             <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">Account</div>

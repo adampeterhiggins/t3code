@@ -43,6 +43,10 @@ export function accountsForProvider(input: {
   );
 }
 
+/**
+ * Pass the unlocked account list: a thread locked to one account still shows
+ * the picker (read-only) so it is clear which account the thread runs on.
+ */
 export function shouldShowProviderAccountPicker(
   accounts: ReadonlyArray<ProviderInstanceEntry>,
 ): boolean {
