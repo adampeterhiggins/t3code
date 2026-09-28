@@ -5038,7 +5038,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       }),
     [lockedContinuationGroupKey, providerInstanceEntries, selectedProvider],
   );
-  const showProviderAccountPicker = shouldShowProviderAccountPicker(providerAccounts);
+  const showProviderAccountPicker = useMemo(
+    () =>
+      shouldShowProviderAccountPicker(
+        accountsForProvider({ entries: providerInstanceEntries, driverKind: selectedProvider }),
+      ),
+    [providerInstanceEntries, selectedProvider],
+  );
   const restingProviderAccountPicker = showProviderAccountPicker ? (
     <ProviderAccountPicker
       isComposerOwned

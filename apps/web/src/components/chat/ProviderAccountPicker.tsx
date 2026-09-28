@@ -16,7 +16,9 @@ import { cn } from "~/lib/utils";
 
 /**
  * Composer control for switching accounts of the active provider.
- * Only rendered when that provider has more than one enabled account.
+ * Rendered when that provider has more than one enabled account. With fewer
+ * than two switchable `accounts` (a thread locked to one account's home) it
+ * becomes a static label so the thread still shows which account it runs on.
  */
 export const ProviderAccountPicker = memo(function ProviderAccountPicker(props: {
   activeInstanceId: ProviderInstanceId;
@@ -34,11 +36,55 @@ export const ProviderAccountPicker = memo(function ProviderAccountPicker(props: 
   const activeEntry =
     props.accounts.find((entry) => entry.instanceId === props.activeInstanceId) ??
     props.accounts[0];
-  if (!activeEntry || props.accounts.length < 2) {
+  if (!activeEntry) {
     return null;
   }
 
   const triggerLabel = activeEntry.displayName;
+  const triggerContent = (
+    <span className={cn("flex min-w-0 w-full items-center", size === "xs" ? "gap-1" : "gap-1.5")}>
+      <ProviderInstanceIcon
+        driverKind={activeEntry.driverKind}
+        displayName={activeEntry.displayName}
+        accentColor={activeEntry.accentColor}
+        showBadge
+        className="size-4"
+        iconClassName="size-4"
+        badgeClassName={cn(
+          "right-[-0.125rem] bottom-[-0.125rem] h-3 min-w-3 px-0.5 text-5xs",
+          size === "xs" && "shadow-none",
+        )}
+      />
+      <span data-composer-control-label className="min-w-0 truncate">
+        {triggerLabel}
+      </span>
+      {props.accounts.length > 1 ? <ComposerControlChevron size={size} /> : null}
+    </span>
+  );
+
+  if (props.accounts.length < 2) {
+    return (
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <ComposerControl
+              render={<span />}
+              aria-label={`Account: ${triggerLabel}`}
+              data-chat-provider-account-picker="true"
+              size={size}
+              className={cn(
+                "min-w-0 max-w-40 shrink cursor-default justify-start hover:bg-transparent",
+                props.triggerClassName,
+              )}
+            />
+          }
+        >
+          {triggerContent}
+        </TooltipTrigger>
+        <TooltipPopup side="top">{`Account: ${triggerLabel} (locked for this thread)`}</TooltipPopup>
+      </Tooltip>
+    );
+  }
 
   return (
     <Menu
@@ -67,26 +113,7 @@ export const ProviderAccountPicker = memo(function ProviderAccountPicker(props: 
             />
           }
         >
-          <span
-            className={cn("flex min-w-0 w-full items-center", size === "xs" ? "gap-1" : "gap-1.5")}
-          >
-            <ProviderInstanceIcon
-              driverKind={activeEntry.driverKind}
-              displayName={activeEntry.displayName}
-              accentColor={activeEntry.accentColor}
-              showBadge
-              className="size-4"
-              iconClassName="size-4"
-              badgeClassName={cn(
-                "right-[-0.125rem] bottom-[-0.125rem] h-3 min-w-3 px-0.5 text-5xs",
-                size === "xs" && "shadow-none",
-              )}
-            />
-            <span data-composer-control-label className="min-w-0 truncate">
-              {triggerLabel}
-            </span>
-            <ComposerControlChevron size={size} />
-          </span>
+          {triggerContent}
         </TooltipTrigger>
         <TooltipPopup side="top">{`Account: ${triggerLabel}`}</TooltipPopup>
       </Tooltip>
