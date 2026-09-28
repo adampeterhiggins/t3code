@@ -51,7 +51,8 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 /**
  * Tab group for a server thread; null until loaded or when it belongs to another thread.
- * Closed (archived) tabs drop out live, and come back if the archive is undone.
+ * Closed (archived) tabs drop out live, and come back if the archive is undone. Tab titles
+ * follow thread renames once the project's shells are loaded.
  */
 export function useThreadTabGroup(environmentId: EnvironmentId, threadId: ThreadId | null) {
   const prepared = usePreparedConnection(environmentId);
@@ -82,11 +83,19 @@ export function useThreadTabGroup(environmentId: EnvironmentId, threadId: Thread
     // Archiving removes a thread's shell from the store, so a tab without one has been closed.
     // Until the open thread's shell loads, the project's shells are not known yet.
     if (!shell) return group;
-    const open = new Set(
-      projectShells.filter((thread) => thread.archivedAt === null).map((thread) => thread.id),
+    const titles = new Map(
+      projectShells
+        .filter((thread) => thread.archivedAt === null)
+        .map((thread) => [thread.id, thread.title]),
     );
-    if (group.tabs.every((tab) => open.has(tab.threadId))) return group;
-    return { ...group, tabs: group.tabs.filter((tab) => open.has(tab.threadId)) };
+    if (group.tabs.every((tab) => titles.get(tab.threadId) === tab.title)) return group;
+    return {
+      ...group,
+      tabs: group.tabs.flatMap((tab) => {
+        const title = titles.get(tab.threadId);
+        return title === undefined ? [] : [{ ...tab, title }];
+      }),
+    };
   }, [group, projectShells, shell, threadId]);
 }
 
@@ -278,6 +287,39 @@ function ThreadTabContextPill(props: {
 }
 
 /**
+ * Captures a sibling tab's transcript summary into the draft of `threadId` and resolves to the
+ * chip reference for the composer to place. Null until the thread and connection are ready.
+ */
+export function useCaptureThreadTabContext(
+  environmentId: EnvironmentId,
+  threadId: ThreadId | null,
+) {
+  const prepared = usePreparedConnection(environmentId);
+  const upsertRecord = useThreadTabContextStore((state) => state.upsert);
+  return useMemo(() => {
+    if (threadId === null || Option.isNone(prepared)) return null;
+    const connection = prepared.value;
+    return async (sourceThreadId: ThreadId, title: string): Promise<ComposerContextReference> => {
+      const handoff = await runtime.runPromise(
+        prepareThreadTabHandoff(connection, threadId, { sourceThreadIds: [sourceThreadId] }),
+      );
+      const contextId = toKindScopedComposerContextId("thread-tab", sourceThreadId);
+      const label = sanitizeComposerContextLabel(title, "thread-tab");
+      upsertRecord(threadId, {
+        version: 1,
+        kind: "thread-tab",
+        contextId,
+        label,
+        threadId: sourceThreadId,
+        title: title.slice(0, 2_048),
+        summary: handoff.text.slice(0, COMPOSER_CONTEXT_THREAD_TAB_SUMMARY_MAX_CHARS),
+      });
+      return { kind: "thread-tab", contextId, label } satisfies ComposerContextReference;
+    };
+  }, [prepared, threadId, upsertRecord]);
+}
+
+/**
  * Sibling tabs an empty tab can pull context from. Clicking one captures that tab's transcript
  * summary and hands back a chip reference for the composer to place at the caret.
  */
@@ -292,32 +334,17 @@ export function ThreadTabContextPills({
   group: ThreadTabGroup;
   onInsert: (reference: ComposerContextReference) => void;
 }) {
-  const prepared = usePreparedConnection(environmentId);
-  const upsertRecord = useThreadTabContextStore((state) => state.upsert);
+  const capture = useCaptureThreadTabContext(environmentId, threadId);
   const [loadingId, setLoadingId] = useState<ThreadId | null>(null);
   const [error, setError] = useState<string | null>(null);
   const siblings = group.tabs.filter((tab) => tab.threadId !== threadId);
-  if (siblings.length === 0 || Option.isNone(prepared)) return null;
+  if (siblings.length === 0 || capture === null) return null;
 
   const insert = async (sourceThreadId: ThreadId, title: string) => {
     setLoadingId(sourceThreadId);
     setError(null);
     try {
-      const handoff = await runtime.runPromise(
-        prepareThreadTabHandoff(prepared.value, threadId, { sourceThreadIds: [sourceThreadId] }),
-      );
-      const contextId = toKindScopedComposerContextId("thread-tab", sourceThreadId);
-      const label = sanitizeComposerContextLabel(title, "thread-tab");
-      upsertRecord(threadId, {
-        version: 1,
-        kind: "thread-tab",
-        contextId,
-        label,
-        threadId: sourceThreadId,
-        title: title.slice(0, 2_048),
-        summary: handoff.text.slice(0, COMPOSER_CONTEXT_THREAD_TAB_SUMMARY_MAX_CHARS),
-      });
-      onInsert({ kind: "thread-tab", contextId, label });
+      onInsert(await capture(sourceThreadId, title));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not summarize that tab.");
     } finally {

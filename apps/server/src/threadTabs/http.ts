@@ -193,13 +193,6 @@ export const threadTabsHttpApiLayer = HttpApiBuilder.group(
           ) {
             return yield* failEnvironmentInvalidRequest("invalid_command");
           }
-          const target = yield* snapshots
-            .getThreadDetailSnapshot(args.params.threadId, { turnLimit: 1 })
-            .pipe(Effect.catch((cause) => failEnvironmentInternal("internal_error", cause)));
-          if (Option.isNone(target)) return yield* failEnvironmentNotFound("thread_not_found");
-          if (target.value.thread.messages.some((message) => message.role === "user")) {
-            return yield* failEnvironmentInvalidRequest("invalid_command");
-          }
           const sections = yield* Effect.forEach(sourceIds, (sourceId) =>
             snapshots.getThreadDetailSnapshot(sourceId, { turnLimit: 8 }).pipe(
               Effect.map((detail) => {

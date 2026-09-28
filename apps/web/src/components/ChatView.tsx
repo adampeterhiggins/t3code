@@ -10050,6 +10050,7 @@ export default function ChatView(props: ChatViewProps) {
                             activeThread={activeThread}
                             activeThreadShell={routeServerThreadShell}
                             promptHistoryMessages={timelineMessages}
+                            threadTabGroup={threadTabGroup}
                             isServerThread={isServerThread}
                             isLocalDraftThread={isLocalDraftThread}
                             forceExpandedOnMobile={forceExpandedMobileComposer && isDraftHeroState}
