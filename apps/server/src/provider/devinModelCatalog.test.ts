@@ -285,12 +285,20 @@ describe("Devin Fusion", () => {
     max_context_tokens: 1_000_000,
   });
 
-  it("collapses lead/sidekick permutations into Lead and Sidekick selects", () => {
+  it("collapses lead/sidekick permutations into Lead, Sidekick and effort selects", () => {
     const models = devinModelsFromCatalog({
       families: [
         {
           family_label: "Claude Fable 5.1",
           variants: [{ model_uid: "claude-fable-5-1-medium" }],
+        },
+        {
+          family_label: "GPT-6 Luna",
+          variants: [{ model_uid: "gpt-6-luna-high" }],
+        },
+        {
+          family_label: "SWE-2",
+          variants: [{ model_uid: "swe-2-medium" }, { model_uid: "swe-2-high" }],
         },
         {
           family_label: "Fusion",
@@ -316,6 +324,7 @@ describe("Devin Fusion", () => {
               "gpt-6-luna-high",
               "GPT-6 Sol High Thinking + GPT-6 Luna High Thinking",
             ),
+            fusionVariant("gpt-6-sol-high", "swe-2-high", "GPT-6 Sol High Thinking + SWE-2 High"),
           ],
         },
       ],
@@ -325,14 +334,18 @@ describe("Devin Fusion", () => {
     expect(fusion.pricingByVariant).toBeUndefined();
     expect(fusion.pricing?.inputPerMillion).toBe(10);
     expect(fusion.contextWindowTokens).toBe(1_000_000);
-    const [lead, sidekick] = fusion.capabilities?.optionDescriptors ?? [];
+    const [lead, sidekick, sidekickEffort] = fusion.capabilities?.optionDescriptors ?? [];
     expect(lead?.type === "select" ? lead.options : []).toEqual([
       { id: "claude-fable-5-1", label: "Claude Fable 5.1", isDefault: true },
       { id: "gpt-6-sol", label: "GPT-6 Sol High Thinking" },
     ]);
     expect(sidekick?.type === "select" ? sidekick.options : []).toEqual([
-      { id: "swe-2-medium", label: "SWE-2 Medium", isDefault: true },
-      { id: "gpt-6-luna-high", label: "GPT-6 Luna High Thinking" },
+      { id: "swe-2", label: "SWE-2", isDefault: true },
+      { id: "gpt-6-luna", label: "GPT-6 Luna" },
+    ]);
+    expect(sidekickEffort?.type === "select" ? sidekickEffort.options : []).toEqual([
+      { id: "medium", label: "Medium", isDefault: true },
+      { id: "high", label: "High" },
     ]);
   });
 
@@ -340,6 +353,7 @@ describe("Devin Fusion", () => {
   const advertised = [
     "swe-2-high",
     "fusion-claude-fable-5-1-medium-sidekick-swe-2-medium",
+    "fusion-claude-fable-5-1-medium-sidekick-swe-2-high",
     "fusion-claude-fable-5-1-medium-sidekick-gpt-6-luna-high",
     "fusion-gpt-6-sol-high-sidekick-swe-2-medium",
     "fusion-gpt-6-sol-high-sidekick-gpt-6-luna-high",
@@ -351,11 +365,51 @@ describe("Devin Fusion", () => {
         model: "fusion",
         selections: [
           { id: "lead", value: "gpt-6-sol" },
-          { id: "sidekick", value: "gpt-6-luna-high" },
+          { id: "sidekick", value: "gpt-6-luna" },
         ],
         advertisedValues: advertised,
       }),
     ).toBe("fusion-gpt-6-sol-high-sidekick-gpt-6-luna-high");
+  });
+
+  it("resolves the sidekick effort, relaxing it when the sidekick lacks it", () => {
+    const resolve = (sidekick: string, sidekickEffort: string) =>
+      resolveDevinModelUid({
+        model: "fusion",
+        selections: [
+          { id: "lead", value: "claude-fable-5-1" },
+          { id: "sidekick", value: sidekick },
+          { id: "sidekickEffort", value: sidekickEffort },
+        ],
+        advertisedValues: advertised,
+      });
+    expect(resolve("swe-2", "high")).toBe("fusion-claude-fable-5-1-medium-sidekick-swe-2-high");
+    expect(resolve("gpt-6-luna", "medium")).toBe(
+      "fusion-claude-fable-5-1-medium-sidekick-gpt-6-luna-high",
+    );
+  });
+
+  it("ignores sidekick effort when none is selected", () => {
+    expect(
+      resolveDevinModelUid({
+        model: "fusion",
+        selections: [{ id: "lead", value: "gpt-6-sol" }],
+        advertisedValues: [...advertised, "fusion-gpt-6-sol-high-sidekick-glm-5-2"],
+      }),
+    ).toBe("fusion-gpt-6-sol-high-sidekick-swe-2-medium");
+  });
+
+  it("still resolves a sidekick selection that carries its effort", () => {
+    expect(
+      resolveDevinModelUid({
+        model: "fusion",
+        selections: [
+          { id: "lead", value: "claude-fable-5-1" },
+          { id: "sidekick", value: "swe-2-high" },
+        ],
+        advertisedValues: advertised,
+      }),
+    ).toBe("fusion-claude-fable-5-1-medium-sidekick-swe-2-high");
   });
 
   it("keeps the lead when the sidekick pairing is not advertised", () => {
