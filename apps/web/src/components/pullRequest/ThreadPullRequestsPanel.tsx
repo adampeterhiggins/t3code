@@ -1,7 +1,8 @@
 import type { ScopedThreadRef, ThreadPullRequestLink } from "@t3tools/contracts";
 import {
-  resolveThreadPullRequestChains,
+  pullRequestListLines,
   visibleThreadPullRequests,
+  type PullRequestListLine,
 } from "@t3tools/shared/threadPullRequests";
 import { ArrowUpRightIcon, LinkIcon, MoreHorizontalIcon, PlusIcon } from "lucide-react";
 import { useCallback, useMemo } from "react";
@@ -20,7 +21,6 @@ import { MiddleTruncate } from "../ui/middle-truncate";
 import { ScrollArea } from "../ui/scroll-area";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { openLinkPullRequestDialog } from "./LinkPullRequestDialog";
-import { pullRequestListLines, type PullRequestListLine } from "./pullRequestListLines";
 import {
   PULL_REQUEST_ROW_CLASS,
   PULL_REQUEST_ROW_NUMBER_CLASS,
@@ -79,10 +79,9 @@ function LinkRow({
   return (
     <div
       className={cn(PULL_REQUEST_ROW_CLASS, "relative hover:bg-accent/60")}
-      // Each layer steps in under the one it targets. The step is capped: beyond a few layers
-      // the indent only says "still in the stack", which the connector line already does, and
-      // a sixteen-layer stack would otherwise stair-step off the right edge.
-      style={{ paddingLeft: `${0.5 + Math.min(depth, 3) * 1.25}rem` }}
+      // Each pull request steps in under the one it targets. The step is capped: past this the
+      // connector already says "still in the tree", and a deeper stair would push titles off.
+      style={{ paddingLeft: `${0.5 + Math.min(depth, 8) * 0.75}rem` }}
     >
       {depth > 0 ? <span aria-hidden className="-ml-2 h-6 w-px shrink-0 bg-border/70" /> : null}
       {snapshot === null ? (
@@ -249,7 +248,7 @@ function EnabledThreadPullRequestsPanel({ threadRef }: { threadRef: ScopedThread
   const openLinkDialog = useCallback(() => openLinkPullRequestDialog(threadRef), [threadRef]);
   const unlink = useAtomCommand(threadEnvironment.unlinkPullRequest, { reportFailure: true });
   const links = useMemo(() => visibleThreadPullRequests(thread?.pullRequests ?? []), [thread]);
-  const lines = useMemo(() => pullRequestListLines(resolveThreadPullRequestChains(links)), [links]);
+  const lines = useMemo(() => pullRequestListLines(links), [links]);
   const handleUnlink = useCallback(
     (link: ThreadPullRequestLink) => {
       void unlink({

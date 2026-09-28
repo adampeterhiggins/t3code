@@ -322,3 +322,190 @@ export function threadPullRequestSearchTerms(thread: {
   const legacy = thread.linkedPullRequest;
   return legacy ? [`#${legacy.number}`, `${legacy.repository}#${legacy.number}`, legacy.url] : [];
 }
+
+/** One row of a thread's pull-request list: a link plus how deep it sits under the PR it targets. */
+export interface PullRequestListLine {
+  readonly link: ThreadPullRequestLink;
+  /** 0 when nothing in the set is its base; each PR that builds on another steps in by one. */
+  readonly depth: number;
+  /** The root of this line's tree, so callers can tell one tree from another. */
+  readonly chainKey: string;
+  /**
+   * Set on the root of a linear stack (every PR has at most one child). A branch — two PRs
+   * targeting the same head — is a tree and carries no stack label.
+   */
+  readonly stack: { readonly kind: ThreadPullRequestChain["kind"]; readonly size: number } | null;
+}
+
+interface PullRequestTreeNode {
+  readonly link: ThreadPullRequestLink;
+  readonly kind: ThreadPullRequestChain["kind"];
+  readonly children: PullRequestTreeNode[];
+  activity: number;
+}
+
+function listActivityAt(link: ThreadPullRequestLink): number {
+  const ms = Date.parse(link.snapshot?.updatedAt ?? link.linkedAt);
+  return Number.isNaN(ms) ? 0 : ms;
+}
+
+function listBranchKey(link: ThreadPullRequestLink, branch: string): string {
+  const key = normalizeThreadPullRequestKey(link);
+  return `${key.host}/${key.repository}:${branch}`;
+}
+
+/** Nodes that sit on a cycle. Edges into the cycle from outside are kept. */
+function pullRequestCycleNodes(proposed: ReadonlyMap<string, string>): Set<string> {
+  const inCycle = new Set<string>();
+  for (const start of proposed.keys()) {
+    const seenAt = new Map<string, number>();
+    const seen: string[] = [];
+    let cursor: string | undefined = start;
+    while (cursor !== undefined && !seenAt.has(cursor)) {
+      seenAt.set(cursor, seen.length);
+      seen.push(cursor);
+      cursor = proposed.get(cursor);
+    }
+    if (cursor === undefined) continue;
+    const cycleStart = seenAt.get(cursor) ?? seen.length;
+    for (let index = cycleStart; index < seen.length; index += 1) {
+      const node = seen[index];
+      if (node !== undefined) inCycle.add(node);
+    }
+  }
+  return inCycle;
+}
+
+function comparePullRequestNodes(left: PullRequestTreeNode, right: PullRequestTreeNode): number {
+  if (left.activity !== right.activity) return right.activity - left.activity;
+  return right.link.number - left.link.number;
+}
+
+function stampPullRequestActivity(node: PullRequestTreeNode): number {
+  let activity = listActivityAt(node.link);
+  for (const child of node.children) {
+    const childActivity = stampPullRequestActivity(child);
+    if (childActivity > activity) activity = childActivity;
+  }
+  node.activity = activity;
+  return activity;
+}
+
+function sortPullRequestTree(nodes: PullRequestTreeNode[]) {
+  nodes.sort(comparePullRequestNodes);
+  for (const node of nodes) sortPullRequestTree(node.children);
+}
+
+/** Length of a single path, or null when any PR on it has more than one child. */
+function linearStackSize(node: PullRequestTreeNode): number | null {
+  let count = 0;
+  let cursor: PullRequestTreeNode | undefined = node;
+  while (cursor !== undefined) {
+    count += 1;
+    if (cursor.children.length > 1) return null;
+    cursor = cursor.children[0];
+  }
+  return count > 1 ? count : null;
+}
+
+/**
+ * Indented rows for a thread's linked pull requests. Children sit under the pull request whose
+ * head is their base, so a branch stays one tree instead of being sliced into whichever leaf was
+ * linked first. Native stacks keep the host's order and are not re-derived. A fresh update
+ * anywhere floats that whole tree, and within a tree the newer branch is listed first.
+ */
+export function pullRequestListLines(
+  links: ReadonlyArray<ThreadPullRequestLink>,
+): ReadonlyArray<PullRequestListLine> {
+  const visible = visibleThreadPullRequests(links);
+  const parentOf = new Map<string, string | null>();
+  const kindOf = new Map<string, ThreadPullRequestChain["kind"]>();
+  const placed = new Set<string>();
+
+  const nativeStacks = new Map<string, Array<ThreadPullRequestLink>>();
+  for (const link of visible) {
+    kindOf.set(threadPullRequestKeyOf(link), "derived");
+    if (link.stack === null) continue;
+    const key = normalizeThreadPullRequestKey(link);
+    const stackKey = `${key.host}/${key.repository}#stack:${link.stack.id}`;
+    const members = nativeStacks.get(stackKey) ?? [];
+    members.push(link);
+    nativeStacks.set(stackKey, members);
+  }
+  for (const members of nativeStacks.values()) {
+    const order = new Map(members[0]!.stack!.layers.map((layer, index) => [layer.number, index]));
+    members.sort((left, right) => (order.get(left.number) ?? 0) - (order.get(right.number) ?? 0));
+    let previous: string | null = null;
+    for (const member of members) {
+      const key = threadPullRequestKeyOf(member);
+      placed.add(key);
+      kindOf.set(key, "native");
+      parentOf.set(key, previous);
+      previous = key;
+    }
+  }
+
+  const remaining = visible.filter((link) => !placed.has(threadPullRequestKeyOf(link)));
+  const byHead = new Map<string, ThreadPullRequestLink | null>();
+  for (const link of remaining) {
+    if (link.snapshot === null) continue;
+    const key = listBranchKey(link, link.snapshot.headBranch);
+    byHead.set(key, byHead.has(key) ? null : link);
+  }
+  const proposed = new Map<string, string>();
+  for (const link of remaining) {
+    if (link.snapshot === null) continue;
+    const parent = byHead.get(listBranchKey(link, link.snapshot.baseBranch));
+    if (parent == null || parent === link) continue;
+    proposed.set(threadPullRequestKeyOf(link), threadPullRequestKeyOf(parent));
+  }
+  const inCycle = pullRequestCycleNodes(proposed);
+  for (const link of remaining) {
+    const key = threadPullRequestKeyOf(link);
+    const parent = proposed.get(key);
+    parentOf.set(key, parent === undefined || inCycle.has(key) ? null : parent);
+  }
+
+  const nodes = new Map<string, PullRequestTreeNode>();
+  for (const link of visible) {
+    const key = threadPullRequestKeyOf(link);
+    nodes.set(key, {
+      link,
+      kind: kindOf.get(key) ?? "derived",
+      children: [],
+      activity: 0,
+    });
+  }
+  const roots: PullRequestTreeNode[] = [];
+  for (const link of visible) {
+    const key = threadPullRequestKeyOf(link);
+    const node = nodes.get(key);
+    if (node === undefined) continue;
+    const parent = nodes.get(parentOf.get(key) ?? "");
+    if (parent === undefined) roots.push(node);
+    else parent.children.push(node);
+  }
+  for (const root of roots) stampPullRequestActivity(root);
+  sortPullRequestTree(roots);
+
+  const lines: PullRequestListLine[] = [];
+  const walk = (
+    node: PullRequestTreeNode,
+    depth: number,
+    chainKey: string,
+    stack: PullRequestListLine["stack"],
+  ) => {
+    lines.push({ link: node.link, depth, chainKey, stack });
+    for (const child of node.children) walk(child, depth + 1, chainKey, null);
+  };
+  for (const root of roots) {
+    const size = linearStackSize(root);
+    walk(
+      root,
+      0,
+      threadPullRequestKeyOf(root.link),
+      size === null ? null : { kind: root.kind, size },
+    );
+  }
+  return lines;
+}

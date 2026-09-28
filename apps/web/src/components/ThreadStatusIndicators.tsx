@@ -9,9 +9,9 @@ import {
   type VcsStatusResult,
 } from "@t3tools/contracts";
 import {
+  pullRequestListLines,
   resolveThreadCurrentPullRequestLink,
-  resolveThreadPullRequestChains,
-  visibleThreadPullRequests,
+  type PullRequestListLine,
   type ThreadPullRequestBadge,
 } from "@t3tools/shared/threadPullRequests";
 import { FolderGit2Icon, TerminalIcon } from "lucide-react";
@@ -30,7 +30,6 @@ import { resolveThreadStatusPill, type ThreadStatusPill } from "./Sidebar.logic"
 import type { SidebarThreadSummary } from "../types";
 import { formatWorktreePathForDisplay } from "../worktreeCleanup";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
-import { pullRequestListLines } from "./pullRequest/pullRequestListLines";
 import {
   PULL_REQUEST_STATE_PRESENTATION,
   PullRequestGlyph,
@@ -282,60 +281,89 @@ function PullRequestBadge({
 }
 
 /**
- * A miniature of the pull-requests panel for the thread tooltip: same order, same indentation,
- * so the hover answers "what is in here" without opening the surface.
+ * A miniature of the pull-requests panel for the thread tooltip: same tree, so the hover
+ * answers "what is in here" without opening the surface. Children sit under the pull request
+ * they target, with a guide along each branch.
  */
 export function ThreadPullRequestsMiniList({
   pullRequests,
 }: {
   pullRequests: ReadonlyArray<ThreadPullRequestLink>;
 }) {
-  const lines = useMemo(
-    () =>
-      pullRequestListLines(resolveThreadPullRequestChains(visibleThreadPullRequests(pullRequests))),
-    [pullRequests],
-  );
+  const lines = useMemo(() => pullRequestListLines(pullRequests), [pullRequests]);
   if (lines.length === 0) return null;
   return (
     <ul className="flex flex-col gap-1">
-      {lines.map((line) => {
-        const snapshot = line.link.snapshot;
-        const presentation =
-          snapshot === null
-            ? null
-            : resolvePullRequestState({ state: snapshot.state, isDraft: snapshot.isDraft });
-        return (
-          <li
-            key={`${line.link.host}/${line.link.repository}#${line.link.number}`}
-            className="flex min-w-0 items-center gap-2"
-            // Capped like the panel: past a few layers the indent only repeats "still in the
-            // stack", and sixteen of them would walk the titles off the popover.
-            style={{ paddingLeft: `${Math.min(line.depth, 3) * 0.75}rem` }}
-          >
-            {presentation ? (
-              <presentation.Icon
-                aria-hidden
-                className={cn("size-3 shrink-0", presentation.toneClassName)}
-              />
-            ) : (
-              <PullRequestGlyph.pullRequest
-                aria-hidden
-                className="size-3 shrink-0 stroke-muted-foreground"
-              />
-            )}
-            <span className="shrink-0 font-mono tabular-nums">#{line.link.number}</span>
-            <span className="min-w-0 truncate text-foreground/75">
-              {snapshot?.title ?? line.link.repository}
-            </span>
-            {line.stack ? (
-              <span className="ml-auto shrink-0 pl-1 text-3xs">
-                {line.stack.kind === "native" ? "stack" : "chain"} · {line.stack.size}
-              </span>
-            ) : null}
-          </li>
-        );
-      })}
+      <PullRequestTreeLines lines={lines} />
     </ul>
+  );
+}
+
+/** How deep a guide keeps stepping in before further layers share a column. */
+const PULL_REQUEST_TREE_GUIDE_CAP = 7;
+
+function PullRequestTreeLines({ lines }: { lines: ReadonlyArray<PullRequestListLine> }) {
+  const items: ReactElement[] = [];
+  for (let index = 0; index < lines.length;) {
+    const line = lines[index]!;
+    let end = index + 1;
+    while (end < lines.length && lines[end]!.depth > line.depth) end += 1;
+    const children = lines.slice(index + 1, end);
+    items.push(
+      <li key={`${line.link.host}/${line.link.repository}#${line.link.number}`} className="min-w-0">
+        <PullRequestTreeRow line={line} />
+        {children.length > 0 ? (
+          <ul
+            className={cn(
+              "flex flex-col gap-0.5",
+              line.depth < PULL_REQUEST_TREE_GUIDE_CAP &&
+                "mt-0.5 ml-1.5 border-l border-border/70 pl-1.5",
+            )}
+          >
+            <PullRequestTreeLines lines={children} />
+          </ul>
+        ) : null}
+      </li>,
+    );
+    index = end;
+  }
+  return items;
+}
+
+function PullRequestTreeRow({ line }: { line: PullRequestListLine }) {
+  const snapshot = line.link.snapshot;
+  const presentation =
+    snapshot === null
+      ? null
+      : resolvePullRequestState({ state: snapshot.state, isDraft: snapshot.isDraft });
+  return (
+    <div className="flex min-w-0 items-center gap-1.5">
+      {presentation ? (
+        <presentation.Icon
+          aria-hidden
+          className={cn("size-3 shrink-0", presentation.toneClassName)}
+        />
+      ) : (
+        <PullRequestGlyph.pullRequest
+          aria-hidden
+          className="size-3 shrink-0 stroke-muted-foreground"
+        />
+      )}
+      <span className="shrink-0 font-mono tabular-nums">#{line.link.number}</span>
+      <span
+        className={cn(
+          "min-w-0 flex-1 truncate",
+          line.depth === 0 ? "text-foreground/90" : "text-foreground/75",
+        )}
+      >
+        {snapshot?.title ?? line.link.repository}
+      </span>
+      {line.stack ? (
+        <span className="shrink-0 pl-1 text-3xs tabular-nums">
+          {line.stack.kind === "native" ? "stack" : "chain"} · {line.stack.size}
+        </span>
+      ) : null}
+    </div>
   );
 }
 
