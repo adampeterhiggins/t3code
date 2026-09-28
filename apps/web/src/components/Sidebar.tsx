@@ -1073,6 +1073,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   // the user visits the thread.
   wokeAt: string | null;
   isActive: boolean;
+  // A sibling tab is the open route. The header stays present, but the active
+  // pill belongs to that tab row.
+  groupFocused?: boolean;
   openPullRequestsInRightPanel: boolean;
   jumpLabel: string | null;
   currentEnvironmentId: string | null;
@@ -1210,7 +1213,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     status,
     isUnread,
     isWoke,
-    isActive: props.isActive,
+    isActive: props.isActive || props.groupFocused === true,
     isSelected,
   });
   const topStatus = resolveSidebarTopStatus(status, isWoke, isUnread);
@@ -1296,11 +1299,13 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       if (isRenaming || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
         return;
       }
+      // The title lives on the first tab row, which owns rename.
+      if (variant === "card" && props.tabs != null) return;
       if ((event.target as HTMLElement).closest("button, a, input")) return;
       event.preventDefault();
       onStartRename(threadRef, thread.title);
     },
-    [isRenaming, onStartRename, thread.title, threadRef],
+    [isRenaming, onStartRename, props.tabs, thread.title, threadRef, variant],
   );
   const [isFileDragOver, setIsFileDragOver] = useState(false);
   const fileDropHandlers = useMemo(
@@ -1407,10 +1412,14 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   // like elevated cards while settled threads were plain rows, leaving neither
   // a useful hierarchy nor a reliable hover cue. Status now lives in the row
   // content; surface is reserved for interaction (hover, multi-select, route).
+  // An open tab list includes this thread as its first row, so the card is only
+  // the group header. The active tab carries the highlight.
+  const unifyTabs = variant === "card" && props.tabs != null;
+  const rowActive = props.isActive && !unifyTabs;
   const rowSurfaceClassName = cn(
     "group/sidebar-row relative w-full cursor-pointer overflow-hidden rounded-md text-left outline-none select-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
     variantAction === "unsettle" && "[&:not(:hover):not(:focus-within)_*]:text-secondary-label/70",
-    props.isActive
+    rowActive
       ? "bg-sidebar-row-active text-sidebar-foreground"
       : isSelected
         ? "bg-sidebar-row-selected text-sidebar-foreground"
@@ -1426,7 +1435,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       "opacity-70 transition-opacity hover:opacity-100 focus-within:opacity-100 motion-reduce:transition-none",
     isFileDragOver && "ring-1 ring-inset ring-primary/70",
     // The hover tint must not clobber an active/selected row's own surface.
-    isFileDragOver && !props.isActive && !isSelected && "bg-sidebar-row-hover",
+    isFileDragOver && !rowActive && !isSelected && "bg-sidebar-row-hover",
     // The lifted row is an opaque card so the rows beneath it never show
     // through. The row tint is translucent in dark themes and the pointer
     // keeps the hover color applied, so both the tint and the solid sidebar
@@ -1467,7 +1476,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     title: thread.title,
     statusLabel: topStatus?.label ?? null,
     projectDisplayName: props.projectDisplayName,
-    isActive: props.isActive,
+    isActive: rowActive,
   });
 
   const title = isRenaming ? (
@@ -1760,8 +1769,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       data-thread-item
       {...sortableRootProps}
       className={cn(
-        // Matches the h-[4.875rem] content box; the py-0.5 padding is added on top.
-        "list-none py-0.5 [content-visibility:auto] [contain-intrinsic-size:auto_78px]",
+        // Matches the content box; the py-0.5 padding is added on top. An open
+        // tab list drops the title line, so the header is only project and branch.
+        "list-none py-0.5 [content-visibility:auto]",
+        unifyTabs
+          ? "[contain-intrinsic-size:auto_52px]"
+          : "[contain-intrinsic-size:auto_78px]",
         sortable?.isDragging && "relative z-20",
       )}
     >
@@ -1786,7 +1799,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
           }
         >
           {accessibleTitle}
-          <div className="relative z-10 h-[4.875rem] px-(--sidebar-row-content-inset) py-(--sidebar-content-inset)">
+          <div
+            className={cn(
+              "relative z-10 px-(--sidebar-row-content-inset) py-(--sidebar-content-inset)",
+              unifyTabs ? "h-auto" : "h-[4.875rem]",
+            )}
+          >
             <div className="flex h-5 min-w-0 items-center gap-1.5">
               {draftIndicator}
               {props.project ? (
@@ -1865,7 +1883,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                           ) : null}
                         </span>
                       )
-                    ) : (
+                    ) : unifyTabs ? null : (
                       threadTimeLabel(thread)
                     )}
                   </span>
@@ -1929,15 +1947,28 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                 </span>
               )}
             </div>
-            <div className="mt-1 flex min-w-0">
-              {title}
-              {isRegeneratingTitle ? (
+            {unifyTabs ? (
+              isRegeneratingTitle ? (
                 <span role="status" className="sr-only">
                   Regenerating title
                 </span>
-              ) : null}
-            </div>
-            <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-secondary-label text-xs">
+              ) : null
+            ) : (
+              <div className="mt-1 flex min-w-0">
+                {title}
+                {isRegeneratingTitle ? (
+                  <span role="status" className="sr-only">
+                    Regenerating title
+                  </span>
+                ) : null}
+              </div>
+            )}
+            <div
+              className={cn(
+                "flex min-w-0 items-center gap-1.5 text-secondary-label text-xs",
+                unifyTabs ? "mt-1" : "mt-0.5",
+              )}
+            >
               {/* Always the branch. The plan step used to take this slot while
                   working, but it truncated to a half-sentence and dropped the
                   branch, so the row lost its most stable identifier. */}
@@ -1952,7 +1983,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                 <span className="flex-1" />
               )}
               {tabCountBadge}
-              {terminalStatusIcon}
+              {unifyTabs ? null : terminalStatusIcon}
               {prBadge}
               {diff ? (
                 <span className="shrink-0 font-mono">
@@ -1973,7 +2004,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                     />
                   </span>
                 ) : null}
-                {driverKind ? (
+                {driverKind && !unifyTabs ? (
                   <span className="inline-flex shrink-0 items-center">
                     <ProviderInstanceIcon
                       driverKind={driverKind}
@@ -1993,7 +2024,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
               </span>
             </div>
           </div>
-          {props.jumpLabel ? <JumpHintBadge label={props.jumpLabel} /> : null}
+          {unifyTabs || !props.jumpLabel ? null : <JumpHintBadge label={props.jumpLabel} />}
         </TooltipTrigger>
         {detailsTooltip}
       </Tooltip>
@@ -2053,7 +2084,7 @@ function SidebarTabCountBadge(props: { count: number }) {
   );
 }
 
-/** A group's tabs under its row, hung off a line that starts below the project icon. */
+/** A group's tabs under its header, including the thread the row stands for. */
 function SidebarTabList(props: { children: ReactNode }) {
   return (
     <ul
@@ -2088,6 +2119,11 @@ const SidebarTabRow = memo(function SidebarTabRow(props: {
   onCancelRename: () => void;
   onContextMenu: (threadRef: ScopedThreadRef, position: { x: number; y: number }) => void;
   onFileDropThreads: (threadRef: ScopedThreadRef, files: File[]) => void;
+  /**
+   * False for the group's own thread: its status already sits on the header,
+   * and repeating it would make the first tab row unlike the others.
+   */
+  showStatus?: boolean;
 }) {
   const { thread, onFileDropThreads } = props;
   const threadRef = useMemo(
@@ -2221,7 +2257,7 @@ const SidebarTabRow = memo(function SidebarTabRow(props: {
               className={cn("size-3.5 shrink-0", terminalStatus.colorClass)}
             />
           ) : null}
-          {topStatus ? (
+          {props.showStatus !== false && topStatus ? (
             <span
               className={cn(
                 "inline-flex shrink-0 items-center gap-1 text-xs font-medium",
@@ -5100,6 +5136,13 @@ export default function Sidebar() {
                             // rows resolve to null on their own.
                             wokeAt={threadWokeAt(thread, { now: snoozeNow })}
                             isActive={highlightedRouteThreadKey === threadKey}
+                            groupFocused={
+                              showTabs &&
+                              isCard &&
+                              rowTabs?.some(
+                                (tab) => sidebarThreadKey(tab) === highlightedRouteThreadKey,
+                              ) === true
+                            }
                             openPullRequestsInRightPanel={routeThreadRef !== null}
                             jumpLabel={
                               showThreadJumpHints ? (jumpLabelByKey.get(threadKey) ?? null) : null
@@ -5145,7 +5188,7 @@ export default function Sidebar() {
                             tabs={
                               showTabs && rowTabs ? (
                                 <SidebarTabList>
-                                  {rowTabs.map((tab) => {
+                                  {(isCard ? [thread, ...rowTabs] : rowTabs).map((tab) => {
                                     const tabKey = sidebarThreadKey(tab);
                                     const tabProjectKey =
                                       `${tab.environmentId}:${tab.projectId}` as const;
@@ -5153,6 +5196,7 @@ export default function Sidebar() {
                                       <SidebarTabRow
                                         key={tabKey}
                                         thread={tab}
+                                        showStatus={tabKey !== threadKey}
                                         isActive={highlightedRouteThreadKey === tabKey}
                                         jumpLabel={
                                           showThreadJumpHints
