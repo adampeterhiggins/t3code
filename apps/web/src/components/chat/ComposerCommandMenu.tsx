@@ -9,10 +9,12 @@ import {
   type PullRequestContextMetadata,
   type ServerProviderSkill,
   type ServerProviderSlashCommand,
+  type ThreadId,
 } from "@t3tools/contracts";
 import {
   BlocksIcon,
   FolderIcon,
+  MessagesSquareIcon,
   PackageIcon,
   SettingsIcon,
   UserRoundIcon,
@@ -34,6 +36,13 @@ export type ComposerCommandItem =
       type: "path";
       path: string;
       pathKind: ProjectEntry["kind"];
+      label: string;
+      description: string;
+    }
+  | {
+      id: string;
+      type: "thread-tab";
+      threadId: ThreadId;
       label: string;
       description: string;
     }
@@ -178,6 +187,9 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
           kind={props.item.pathKind}
           theme={props.resolvedTheme}
         />
+      ) : null}
+      {props.item.type === "thread-tab" ? (
+        <MessagesSquareIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
       ) : null}
       {pullRequestPresentation ? (
         <pullRequestPresentation.Icon

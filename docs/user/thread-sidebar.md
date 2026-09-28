@@ -19,8 +19,9 @@ Click the tab name at the end of the header breadcrumb (`project / thread / tab`
 **New tab** to open a separate chat in the same workspace. The same menu switches between tabs.
 Each tab has its own provider and conversation, and the sidebar shows only the original thread.
 
-Before the first message in a new tab, click a sibling under **Include context from** to insert a
-summary of that chat as a chip at the cursor. Move or delete the chip like any other context.
+To bring in another tab's conversation, type `@` in the composer and pick the tab; its summary
+lands as a chip at the cursor. Before the first message in a new tab, you can also click a sibling
+under **Include context from**. Move or delete the chip like any other context.
 The summary is captured when you click, so later changes in that chat do not change it. Tabs in
 the same workspace can edit the same files, so review the current checkout before restoring
 changes.

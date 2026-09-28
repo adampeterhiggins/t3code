@@ -32,6 +32,7 @@ import type {
   ScopedThreadRef,
   ServerProvider,
   ThreadId,
+  ThreadTabGroup,
   SnapShotSource,
 } from "@t3tools/contracts";
 import {
@@ -247,6 +248,7 @@ import { useDebouncedValue } from "~/state/queries";
 import { ProviderModelPicker } from "./ProviderModelPicker";
 import { resolveModelPickerSelectedModel } from "./ModelPickerContent";
 import { type ComposerCommandItem, ComposerCommandMenu } from "./ComposerCommandMenu";
+import { useCaptureThreadTabContext } from "./ThreadTabs";
 import { ComposerPendingApprovalActions } from "./ComposerPendingApprovalActions";
 import { CompactComposerControlsMenu } from "./CompactComposerControlsMenu";
 import { ComposerImageThumbnail } from "./ComposerImageThumbnail";
@@ -1344,6 +1346,8 @@ export interface ChatComposerProps {
   activeThreadShell: ThreadShell | null;
   /** Timeline messages including optimistic sends, for ArrowUp prompt recall. */
   promptHistoryMessages: ReadonlyArray<ChatMessage>;
+  /** Tabs sharing this thread's workspace; siblings appear in the @ menu. */
+  threadTabGroup: ThreadTabGroup | null;
   isServerThread: boolean;
   isLocalDraftThread: boolean;
   forceExpandedOnMobile: boolean;
@@ -1503,6 +1507,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     activeThreadEnvironmentId: _activeThreadEnvironmentId,
     activeThread,
     promptHistoryMessages,
+    threadTabGroup,
     isServerThread: _isServerThread,
     isLocalDraftThread: _isLocalDraftThread,
     forceExpandedOnMobile,
@@ -2348,17 +2353,36 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         }),
   );
 
+  const captureThreadTabContext = useCaptureThreadTabContext(
+    environmentId,
+    threadTabGroup ? activeThreadId : null,
+  );
   const composerMenuItems = useMemo<ComposerCommandItem[]>(() => {
     if (!composerTrigger) return [];
     if (composerTrigger.kind === "path") {
-      return workspaceEntries.entries.map((entry) => ({
-        id: `path:${entry.kind}:${entry.path}`,
-        type: "path",
-        path: entry.path,
-        pathKind: entry.kind,
-        label: basenameOfPath(entry.path),
-        description: entry.path.slice(0, Math.max(0, entry.path.lastIndexOf("/"))),
-      }));
+      const tabQuery = composerTrigger.query.trim().toLowerCase();
+      const tabItems = (threadTabGroup?.tabs ?? [])
+        .filter(
+          (tab) => tab.threadId !== activeThreadId && tab.title.toLowerCase().includes(tabQuery),
+        )
+        .map((tab) => ({
+          id: `thread-tab:${tab.threadId}`,
+          type: "thread-tab" as const,
+          threadId: tab.threadId,
+          label: tab.title,
+          description: "Chat tab",
+        }));
+      return [
+        ...tabItems,
+        ...workspaceEntries.entries.map((entry) => ({
+          id: `path:${entry.kind}:${entry.path}`,
+          type: "path" as const,
+          path: entry.path,
+          pathKind: entry.kind,
+          label: basenameOfPath(entry.path),
+          description: entry.path.slice(0, Math.max(0, entry.path.lastIndexOf("/"))),
+        })),
+      ];
     }
     if (composerTrigger.kind === "slash-command") {
       const builtInSlashCommandItems = [
@@ -2503,6 +2527,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     selectedProviderSlashCommands,
     selectedProviderStatus,
     settings.showSkillsInSlashMenu,
+    threadTabGroup,
+    activeThreadId,
     workspaceEntries.entries,
   ]);
 
@@ -3611,6 +3637,35 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         }
         return;
       }
+      if (item.type === "thread-tab") {
+        if (!captureThreadTabContext) return;
+        const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
+          expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
+        });
+        if (!applied) return;
+        setComposerHighlightedItemId(null);
+        // The summary is fetched after the query text leaves, so the chip lands at the caret
+        // wherever it is by then.
+        captureThreadTabContext(item.threadId, item.label).then(
+          (reference) => {
+            const current = readComposerSnapshot();
+            const edit = inlineContextReferenceReplacement(
+              current.value,
+              { start: current.expandedCursor, end: current.expandedCursor },
+              [reference],
+            );
+            applyPromptReplacement(edit.start, edit.end, edit.text);
+          },
+          (cause: unknown) => {
+            toastManager.add({
+              type: "error",
+              title: "Could not include that tab",
+              description: cause instanceof Error ? cause.message : undefined,
+            });
+          },
+        );
+        return;
+      }
       if (item.type === "slash-command") {
         if (item.command === "model") {
           const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
@@ -3714,10 +3769,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     [
       addComposerDraftReviewComment,
       applyPromptReplacement,
+      captureThreadTabContext,
       composerDraftTarget,
       handleInteractionModeChange,
       planModeUiEnabled,
       onUsageLimitsCommand,
+      readComposerSnapshot,
       resolveActiveComposerTrigger,
     ],
   );
