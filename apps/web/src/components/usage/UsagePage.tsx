@@ -1082,8 +1082,8 @@ function UsageCoverageNotice({
       ) : null}
       {hasDevinSource ? (
         <span>
-          Devin ACP usage is read from this T3 server&apos;s local event logs. Devin account billing
-          is kept separate from the local token/cost estimate
+          Devin usage is read from local Devin CLI history on each server. Devin account billing is
+          kept separate from the local token/cost estimate
           {accountUsage?.status === "available" ? " and is shown below." : "."}
         </span>
       ) : null}

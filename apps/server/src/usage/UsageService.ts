@@ -54,6 +54,7 @@ import { resolveCodexHomeLayout } from "../provider/Drivers/CodexHomeLayout.ts";
 import { resolveAntigravityInstanceDirectories } from "../provider/antigravityAuthSupport.ts";
 import { mergeProviderInstanceEnvironment } from "../provider/ProviderInstanceEnvironment.ts";
 import { parseDevinAccountConsumptionPayload } from "./devinAccountUsage.ts";
+import { readDevinUsage } from "./devinUsageReader.ts";
 import { readOpenCodeUsage } from "./opencodeUsageReader.ts";
 import { readAntigravityUsage } from "./antigravityUsageReader.ts";
 import { readCursorAccountUsage } from "./cursorUsageReader.ts";
@@ -739,7 +740,33 @@ export const make = Effect.gen(function* () {
       Effect.provideService(Path.Path, path),
     );
     const scanned: ScannedDir[] = [];
+    const home = NodeOS.homedir();
+    const userHome =
+      (platform === "win32" ? hostEnvironment["USERPROFILE"] : hostEnvironment["HOME"]) || home;
+    const dataHome = hostEnvironment["XDG_DATA_HOME"]?.trim();
+    const dataRoot =
+      dataHome && path.isAbsolute(dataHome) ? dataHome : path.join(userHome, ".local", "share");
+    const devinCliDir = path.join(dataRoot, "devin", "cli");
+    const devinDir = yield* fileSystem
+      .realPath(devinCliDir)
+      .pipe(Effect.orElseSucceed(() => devinCliDir));
+    const devin = yield* Effect.promise(() => readDevinUsage(devinDir, windowStartMs));
+    if (!devin.missing) {
+      scanned.push({
+        provider: "devin",
+        dir: devinDir,
+        volumeId: yield* Effect.promise(() => readDirectoryVolumeId(devinDir)),
+        files: devin.files,
+        status: devin.error ? "partial" : "ok",
+        message: devin.error
+          ? "Some Devin CLI history could not be read."
+          : "Devin usage is read from the Devin CLI's local session history.",
+      });
+    }
     for (const { provider, dir, volumeId, fileName, eventLog } of dirs) {
+      // Devin's own history already includes the sessions T3 ran, so T3's
+      // event logs are only a fallback when that history is absent.
+      if (provider === "devin" && !devin.missing) continue;
       const exists = yield* fileSystem
         .exists(dir)
         .pipe(Effect.catchCause(() => Effect.succeed(false)));
@@ -764,7 +791,6 @@ export const make = Effect.gen(function* () {
       scanned.push({ provider, dir, volumeId, files: parsedFiles });
     }
 
-    const home = NodeOS.homedir();
     const envRoots = Effect.fnUntraced(function* (key: string, defaults: readonly string[]) {
       const roots = hostEnvironment[key]
         ?.split(",")
@@ -779,13 +805,7 @@ export const make = Effect.gen(function* () {
       }
       return [...canonical];
     });
-    const dataHome = hostEnvironment["XDG_DATA_HOME"]?.trim();
-    for (const dir of yield* envRoots("OPENCODE_DATA_DIR", [
-      path.join(
-        dataHome && path.isAbsolute(dataHome) ? dataHome : path.join(home, ".local", "share"),
-        "opencode",
-      ),
-    ])) {
+    for (const dir of yield* envRoots("OPENCODE_DATA_DIR", [path.join(dataRoot, "opencode")])) {
       const result = yield* Effect.promise(() => readOpenCodeUsage(dir, windowStartMs));
       scanned.push({
         provider: "opencode",
@@ -852,20 +872,18 @@ export const make = Effect.gen(function* () {
         ...(failed ? { message: "Some Antigravity history could not be read." } : {}),
       });
     }
-    const cursorUserHome =
-      (platform === "win32" ? hostEnvironment["USERPROFILE"] : hostEnvironment["HOME"]) || home;
     const configHome = hostEnvironment["XDG_CONFIG_HOME"]?.trim();
     const cursorHome =
       platform === "darwin"
-        ? path.join(cursorUserHome, "Library", "Application Support")
+        ? path.join(userHome, "Library", "Application Support")
         : platform === "win32"
-          ? hostEnvironment["APPDATA"] || path.join(cursorUserHome, "AppData", "Roaming")
+          ? hostEnvironment["APPDATA"] || path.join(userHome, "AppData", "Roaming")
           : configHome && path.isAbsolute(configHome)
             ? configHome
-            : path.join(cursorUserHome, ".config");
+            : path.join(userHome, ".config");
     const cursorAuthPath =
       platform === "darwin"
-        ? path.join(cursorUserHome, ".cursor", "auth.json")
+        ? path.join(userHome, ".cursor", "auth.json")
         : path.join(cursorHome, platform === "win32" ? "Cursor" : "cursor", "auth.json");
     const credentialStore = hostEnvironment["AGENT_CLI_CREDENTIAL_STORE"];
     const loginUnavailable =

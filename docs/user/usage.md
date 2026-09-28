@@ -10,8 +10,9 @@ desktop when the terminal is not focused. Customize `usage.open` in
 environments. It shows token use, cache savings, model breakdowns, and estimated API-equivalent
 cost. These estimates are not your subscription bill.
 
-Devin ACP records come from canonical T3 provider event logs and cover sessions driven through the
-selected T3 server. Use the provider filter above the breakdown to focus the chart and tables, and
+Devin records come from the Devin CLI's local session history, so they include sessions run
+outside T3. When that history is missing, T3 falls back to its own event logs, which only cover
+sessions driven through the selected T3 server. Use the provider filter above the breakdown to focus the chart and tables, and
 use the download button to export the current window as CSV. The page can optionally show official
 Devin organization ACUs in a separate section when a `cog_...` service key with
 `ViewOrgConsumption` permission and `DEVIN_ORG_ID` are configured on the server; ACUs are never
