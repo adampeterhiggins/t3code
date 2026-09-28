@@ -9,6 +9,7 @@ import {
   legacyLinkedPullRequestOf,
   legacyThreadPullRequestKey,
   threadPullRequestSearchTerms,
+  pullRequestListLines,
   resolveThreadCurrentPullRequest,
   resolveThreadPullRequestChains,
   resolveThreadPullRequestBadge,
@@ -461,4 +462,186 @@ it("searches the legacy projection when old environments decode to an empty link
   expect(
     threadPullRequestSearchTerms({ pullRequests: [link(34)], linkedPullRequest }),
   ).not.toContain("#12");
+});
+
+describe("pullRequestListLines", () => {
+  function row(number: number, depth: number, stack: number | "native" | null = null) {
+    return [number, depth, stack];
+  }
+
+  function listed(links: Parameters<typeof pullRequestListLines>[0]) {
+    return pullRequestListLines(links).map((line) => [
+      line.link.number,
+      line.depth,
+      line.stack === null ? null : line.stack.kind === "native" ? "native" : line.stack.size,
+    ]);
+  }
+
+  it("floats a linear stack by its newest layer and reads it base then tip", () => {
+    expect(
+      listed([
+        link(1, {
+          snapshot: snapshot({
+            headBranch: "a",
+            baseBranch: "main",
+            updatedAt: "2026-01-01T10:00:00Z",
+          }),
+        }),
+        link(2, {
+          snapshot: snapshot({
+            headBranch: "b",
+            baseBranch: "a",
+            updatedAt: "2026-01-01T12:00:00Z",
+          }),
+        }),
+        link(9, {
+          snapshot: snapshot({
+            headBranch: "solo",
+            baseBranch: "main",
+            updatedAt: "2026-01-01T11:00:00Z",
+          }),
+        }),
+        link(5, {
+          snapshot: snapshot({
+            headBranch: "old",
+            baseBranch: "main",
+            updatedAt: "2026-01-01T09:00:00Z",
+          }),
+        }),
+      ]),
+    ).toEqual([row(1, 0, 2), row(2, 1), row(9, 0), row(5, 0)]);
+  });
+
+  it("nests every child under the pull request it targets, newer branch first", () => {
+    expect(
+      listed([
+        link(1, {
+          snapshot: snapshot({
+            headBranch: "base",
+            baseBranch: "main",
+            updatedAt: "2026-01-01T09:00:00Z",
+          }),
+        }),
+        link(4, {
+          snapshot: snapshot({
+            headBranch: "early",
+            baseBranch: "base",
+            updatedAt: "2026-01-01T10:00:00Z",
+          }),
+        }),
+        link(5, {
+          snapshot: snapshot({
+            headBranch: "later",
+            baseBranch: "base",
+            updatedAt: "2026-01-01T12:00:00Z",
+          }),
+        }),
+        link(6, {
+          snapshot: snapshot({
+            headBranch: "leaf",
+            baseBranch: "later",
+            updatedAt: "2026-01-01T13:00:00Z",
+          }),
+        }),
+      ]),
+    ).toEqual([row(1, 0), row(5, 1), row(6, 2), row(4, 1)]);
+  });
+
+  it("marks a native stack on its base layer and keeps the host order", () => {
+    const stack = {
+      kind: "native" as const,
+      id: "1",
+      number: 1,
+      url: "https://github.com/pingdotgg/t3code/stacks/1",
+      base: "main",
+      layers: [
+        { number: 3, headBranch: "x", state: "open" as const },
+        { number: 4, headBranch: "y", state: "open" as const },
+      ],
+    };
+    expect(
+      listed([
+        link(4, { snapshot: snapshot({ headBranch: "y", baseBranch: "x" }), stack }),
+        link(3, { snapshot: snapshot({ headBranch: "x", baseBranch: "main" }), stack }),
+      ]),
+    ).toEqual([row(3, 0, "native"), row(4, 1)]);
+  });
+
+  it("does not nest under a head branch that more than one pull request uses", () => {
+    expect(
+      listed([
+        link(1, {
+          snapshot: snapshot({ headBranch: "reused", updatedAt: "2026-01-01T10:00:00Z" }),
+        }),
+        link(2, {
+          snapshot: snapshot({ headBranch: "reused", updatedAt: "2026-01-01T11:00:00Z" }),
+        }),
+        link(3, {
+          snapshot: snapshot({
+            headBranch: "top",
+            baseBranch: "reused",
+            updatedAt: "2026-01-01T12:00:00Z",
+          }),
+        }),
+      ]),
+    ).toEqual([row(3, 0), row(2, 0), row(1, 0)]);
+  });
+
+  it("does not invent an order for a cycle", () => {
+    expect(
+      listed([
+        link(1, {
+          snapshot: snapshot({
+            headBranch: "a",
+            baseBranch: "b",
+            updatedAt: "2026-01-01T10:00:00Z",
+          }),
+        }),
+        link(2, {
+          snapshot: snapshot({
+            headBranch: "b",
+            baseBranch: "a",
+            updatedAt: "2026-01-01T11:00:00Z",
+          }),
+        }),
+      ]),
+    ).toEqual([row(2, 0), row(1, 0)]);
+  });
+
+  it("attaches a pull request that targets one branch of a cycle", () => {
+    expect(
+      listed([
+        link(1, {
+          snapshot: snapshot({
+            headBranch: "a",
+            baseBranch: "b",
+            updatedAt: "2026-01-01T10:00:00Z",
+          }),
+        }),
+        link(2, {
+          snapshot: snapshot({
+            headBranch: "b",
+            baseBranch: "a",
+            updatedAt: "2026-01-01T11:00:00Z",
+          }),
+        }),
+        link(3, {
+          snapshot: snapshot({
+            headBranch: "c",
+            baseBranch: "b",
+            updatedAt: "2026-01-01T12:00:00Z",
+          }),
+        }),
+      ]),
+    ).toEqual([row(2, 0, 2), row(3, 1), row(1, 0)]);
+  });
+
+  it("omits dismissed links", () => {
+    expect(
+      listed([
+        link(1, { source: "stack-dismissed", snapshot: snapshot({ headBranch: "a" }) }),
+        link(2, { snapshot: snapshot({ headBranch: "b", baseBranch: "a" }) }),
+      ]),
+    ).toEqual([row(2, 0)]);
+  });
 });

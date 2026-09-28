@@ -4,10 +4,7 @@ import {
   getGitActionDisabledReason,
   requiresDefaultBranchConfirmation,
 } from "@t3tools/client-runtime/state/vcs";
-import {
-  resolveThreadPullRequestChains,
-  threadPullRequestKeyOf,
-} from "@t3tools/shared/threadPullRequests";
+import { pullRequestListLines, threadPullRequestKeyOf } from "@t3tools/shared/threadPullRequests";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import {
   CommonActions,
@@ -66,11 +63,9 @@ export function GitOverviewSheet(props: GitOverviewSheetProps) {
   const { selectedThreadCwd, selectedThreadWorktreePath } = useSelectedThreadWorktree();
   const supportsLinkedPrSnapshots =
     selectedEnvironmentRuntime?.serverConfig?.environment.capabilities.threadPullRequests === true;
-  const linkedPrChains = useMemo(
+  const linkedPrLines = useMemo(
     () =>
-      resolveThreadPullRequestChains(
-        supportsLinkedPrSnapshots ? (selectedThread?.pullRequests ?? []) : [],
-      ),
+      pullRequestListLines(supportsLinkedPrSnapshots ? (selectedThread?.pullRequests ?? []) : []),
     [selectedThread?.pullRequests, supportsLinkedPrSnapshots],
   );
   const gitState = useSelectedThreadGitState();
@@ -308,38 +303,42 @@ export function GitOverviewSheet(props: GitOverviewSheetProps) {
         />
       </View>
 
-      {linkedPrChains.length > 0 ? (
+      {linkedPrLines.length > 0 ? (
         <View className="gap-2">
           <Text className="px-1 text-xs font-t3-bold text-foreground-muted">
             Linked pull requests
           </Text>
-          {linkedPrChains.map((chain) => (
-            <View
-              key={threadPullRequestKeyOf(chain.layers[0]!)}
-              className="overflow-hidden bg-card android:rounded-[20px] ios:rounded-2xl ios:border ios:border-border ios:px-3 ios:py-1"
-            >
-              {chain.layers.length > 1 ? (
-                <View className="flex-row items-center gap-2 px-1 pt-2 pb-1">
-                  <SymbolView
-                    name="square.3.layers.3d"
-                    size={14}
-                    tintColorClassName="accent-foreground-muted"
-                  />
-                  <Text className="text-xs text-foreground-muted">
-                    {chain.kind === "native" ? "Stack" : "Branch stack"} · {chain.layers.length} PRs
-                    · bottom to top
-                  </Text>
-                </View>
-              ) : null}
-              {chain.layers.map((link, index) => (
-                <View key={threadPullRequestKeyOf(link)}>
+          <View className="overflow-hidden bg-card android:rounded-[20px] ios:rounded-2xl ios:border ios:border-border ios:px-3 ios:py-1">
+            {linkedPrLines.map((line, index) => {
+              const link = line.link;
+              const status =
+                link.snapshot === null
+                  ? "Status pending"
+                  : link.snapshot.isDraft && link.snapshot.state === "open"
+                    ? "Draft"
+                    : link.snapshot.state;
+              const stackLabel =
+                line.stack === null
+                  ? null
+                  : line.stack.kind === "native"
+                    ? `Stack of ${line.stack.size}`
+                    : `${line.stack.size} chained`;
+              return (
+                <View
+                  key={threadPullRequestKeyOf(link)}
+                  style={{ paddingLeft: Math.min(line.depth, 6) * 12 }}
+                >
                   {index > 0 && Platform.OS !== "android" ? (
                     <View className="ml-12 h-px bg-border" />
                   ) : null}
                   <SheetListRow
                     icon="arrow.triangle.pull"
                     title={`#${link.number} ${link.snapshot?.title ?? "Pull request"}`}
-                    subtitle={`${link.repository} · ${link.snapshot === null ? "Status pending" : link.snapshot.isDraft && link.snapshot.state === "open" ? "Draft" : link.snapshot.state}`}
+                    subtitle={
+                      stackLabel === null
+                        ? `${link.repository} · ${status}`
+                        : `${link.repository} · ${status} · ${stackLabel}`
+                    }
                     onPress={() => {
                       void tryOpenExternalUrl(link.url, "pull-request").then((opened) => {
                         if (!opened)
@@ -348,9 +347,9 @@ export function GitOverviewSheet(props: GitOverviewSheetProps) {
                     }}
                   />
                 </View>
-              ))}
-            </View>
-          ))}
+              );
+            })}
+          </View>
         </View>
       ) : null}
 
