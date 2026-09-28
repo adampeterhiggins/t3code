@@ -30,6 +30,7 @@ import {
   type EnvironmentThreadSearchMatch,
 } from "@t3tools/client-runtime/state/thread-search";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
+import { useHiddenTabThreads } from "./sidebar/useHiddenTabThreads";
 import {
   parseScopedThreadKey,
   scopeProjectRef,
@@ -2176,6 +2177,7 @@ export default function Sidebar() {
   const projects = useProjects();
   const projectOrder = useUiStateStore((store) => store.projectOrder);
   const threads = useThreadShells();
+  const hiddenTabThreads = useHiddenTabThreads(threads);
   const router = useRouter();
   const { isMobile, setOpenMobile } = useSidebar();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
@@ -2287,6 +2289,8 @@ export default function Sidebar() {
     [routeDraftThread, routeTarget],
   );
   const routeThreadKey = routeThreadRef ? scopedThreadKey(routeThreadRef) : null;
+  const sidebarRouteThreadKey =
+    routeThreadKey === null ? null : (hiddenTabThreads.get(routeThreadKey) ?? routeThreadKey);
   const routeTargetRef = useRef(routeTarget);
   routeTargetRef.current = routeTarget;
   // Post-settle navigation validates against the CURRENT route, not the one
@@ -2573,6 +2577,7 @@ export default function Sidebar() {
     const visible = threads.filter(
       (thread) =>
         thread.archivedAt === null &&
+        !hiddenTabThreads.has(`${thread.environmentId}:${thread.id}`) &&
         (scopedProjectKeys === null ||
           scopedProjectKeys.has(`${thread.environmentId}:${thread.projectId}`)),
     );
@@ -2660,7 +2665,15 @@ export default function Sidebar() {
       settledThreads: sortSettledThreads(settled),
       snoozeNow: preciseNow,
     };
-  }, [nowMinute, optimisticDrop, scopedProjectKeys, serverConfigs, snoozeWakeTick, threads]);
+  }, [
+    hiddenTabThreads,
+    nowMinute,
+    optimisticDrop,
+    scopedProjectKeys,
+    serverConfigs,
+    snoozeWakeTick,
+    threads,
+  ]);
 
   const threadSearchInputRef = useRef<HTMLInputElement>(null);
   const [threadSearchQuery, setThreadSearchQuery] = useState("");
@@ -2743,17 +2756,18 @@ export default function Sidebar() {
     // The open thread must never hide under "Show more": navigating into a
     // deep settled thread (search, deep link) pulls its row into the visible
     // tail so the highlight and the un-settle affordance stay reachable.
-    if (routeThreadKey !== null) {
+    if (sidebarRouteThreadKey !== null) {
       const routeThread = settledThreads
         .slice(settledVisibleCount)
         .find(
           (thread) =>
-            scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) === routeThreadKey,
+            scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) ===
+            sidebarRouteThreadKey,
         );
       if (routeThread !== undefined) visible.push(routeThread);
     }
     return visible;
-  }, [routeThreadKey, settledThreads, settledVisibleCount]);
+  }, [sidebarRouteThreadKey, settledThreads, settledVisibleCount]);
   const hiddenSettledCount = settledThreads.length - visibleSettledThreads.length;
   const showMoreSettled = useCallback(
     () => setSettledVisibleCount((count) => count + SETTLED_TAIL_PAGE_COUNT),
@@ -2770,13 +2784,13 @@ export default function Sidebar() {
   );
   const renderedSettledThreads = useMemo(() => {
     if (settledShelfExpanded) return visibleSettledThreads;
-    if (routeThreadKey === null) return EMPTY_THREADS;
+    if (sidebarRouteThreadKey === null) return EMPTY_THREADS;
     const routeThread = visibleSettledThreads.find(
       (thread) =>
-        scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) === routeThreadKey,
+        scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) === sidebarRouteThreadKey,
     );
     return routeThread === undefined ? EMPTY_THREADS : [routeThread];
-  }, [routeThreadKey, settledShelfExpanded, visibleSettledThreads]);
+  }, [sidebarRouteThreadKey, settledShelfExpanded, visibleSettledThreads]);
 
   // The snoozed shelf is collapsed by default: out of the way, never gone.
   // Collapsed threads don't render (and so don't participate in jump
@@ -2796,13 +2810,13 @@ export default function Sidebar() {
     // snoozed thread reached by route (deep link, open before snoozing
     // elsewhere) keeps its row — with highlight and wake affordance — same
     // exception the settled tail's "Show more" makes.
-    if (routeThreadKey === null) return EMPTY_THREADS;
+    if (sidebarRouteThreadKey === null) return EMPTY_THREADS;
     const routeThread = snoozedThreads.find(
       (thread) =>
-        scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) === routeThreadKey,
+        scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) === sidebarRouteThreadKey,
     );
     return routeThread === undefined ? EMPTY_THREADS : [routeThread];
-  }, [routeThreadKey, snoozedShelfExpanded, snoozedThreads]);
+  }, [sidebarRouteThreadKey, snoozedShelfExpanded, snoozedThreads]);
 
   const orderedThreads = useMemo(
     () => [...pinnedThreads, ...activeThreads, ...visibleSnoozedThreads, ...renderedSettledThreads],
@@ -3496,12 +3510,12 @@ export default function Sidebar() {
         settledOrder: draggedSettledOrder,
         settledExpanded: settledShelfExpanded,
         settledVisibleCount,
-        routeThreadKey,
+        routeThreadKey: sidebarRouteThreadKey,
         snoozedThreadCount: snoozedThreads.length,
       }),
     [
       draggedSettledOrder,
-      routeThreadKey,
+      sidebarRouteThreadKey,
       settledShelfExpanded,
       settledVisibleCount,
       sidebarListItems,
@@ -4642,7 +4656,7 @@ export default function Sidebar() {
                           EMPTY_PROVIDER_ENTRIES
                         }
                         isHighlighted={activeSearchResultIndex === index}
-                        isRouteActive={routeThreadKey === threadKey}
+                        isRouteActive={sidebarRouteThreadKey === threadKey}
                         resultId={`sidebar-thread-search-result-${index}`}
                         searchMatch={
                           threadSearchMatchByKey.get(
@@ -4767,7 +4781,7 @@ export default function Sidebar() {
                             // the wake signal must survive the trip. Still-snoozed
                             // rows resolve to null on their own.
                             wokeAt={threadWokeAt(thread, { now: snoozeNow })}
-                            isActive={routeThreadKey === threadKey}
+                            isActive={sidebarRouteThreadKey === threadKey}
                             openPullRequestsInRightPanel={routeThreadRef !== null}
                             jumpLabel={
                               showThreadJumpHints ? (jumpLabelByKey.get(threadKey) ?? null) : null

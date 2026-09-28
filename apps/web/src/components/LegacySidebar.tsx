@@ -78,6 +78,7 @@ import { isDesktopLocalConnectionTarget, isWslConnectionTarget } from "../connec
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
 import { isElectron } from "../env";
 import { useTerminalFocus } from "../hooks/useTerminalFocus";
+import { useHiddenTabThreads } from "./sidebar/useHiddenTabThreads";
 import { useOpenPrLink } from "../lib/openPullRequestLink";
 import { releaseProjectDraftUploads } from "../lib/composerDraftUploads";
 import { isTerminalFocused } from "../lib/terminalFocus";
@@ -229,6 +230,7 @@ const SIDEBAR_LIST_ANIMATION_OPTIONS = {
   easing: "ease-out",
 } as const;
 const EMPTY_THREAD_JUMP_LABELS = new Map<string, string>();
+const HiddenTabThreadsContext = React.createContext<ReadonlyMap<string, string>>(new Map());
 const PROJECT_GROUPING_MODE_LABELS: Record<SidebarProjectGroupingMode, string> = {
   repository: "Group by repository",
   repository_path: "Group by repository path",
@@ -1251,7 +1253,16 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     },
   });
   const openPrLink = useOpenPrLink();
-  const sidebarThreads = useThreadShellsForProjectRefs(project.memberProjectRefs);
+  const allProjectThreads = useThreadShellsForProjectRefs(project.memberProjectRefs);
+  const hiddenTabThreads = React.useContext(HiddenTabThreadsContext);
+  const sidebarThreads = useMemo(
+    () =>
+      allProjectThreads.filter(
+        (thread) => !hiddenTabThreads.has(`${thread.environmentId}:${thread.id}`),
+      ),
+    [allProjectThreads, hiddenTabThreads],
+  );
+  const projectThreads = sidebarThreads;
   const sidebarThreadByKey = useMemo(
     () =>
       new Map(
@@ -1267,7 +1278,6 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   // thread-list change).
   const sidebarThreadByKeyRef = useRef(sidebarThreadByKey);
   sidebarThreadByKeyRef.current = sidebarThreadByKey;
-  const projectThreads = sidebarThreads;
   const projectPreferenceKeys = useMemo(() => projectExpansionPreferenceKeys(project), [project]);
   const projectExpanded = useUiStateStore((state) =>
     resolveProjectExpanded(state.projectExpandedById, projectPreferenceKeys),
@@ -3126,7 +3136,15 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
 
 export default function LegacySidebar() {
   const projects = useProjects();
-  const sidebarThreads = useThreadShells();
+  const allSidebarThreads = useThreadShells();
+  const hiddenTabThreads = useHiddenTabThreads(allSidebarThreads);
+  const sidebarThreads = useMemo(
+    () =>
+      allSidebarThreads.filter(
+        (thread) => !hiddenTabThreads.has(`${thread.environmentId}:${thread.id}`),
+      ),
+    [allSidebarThreads, hiddenTabThreads],
+  );
   const projectExpandedById = useUiStateStore((store) => store.projectExpandedById);
   const projectOrder = useUiStateStore((store) => store.projectOrder);
   const reorderProjects = useUiStateStore((store) => store.reorderProjects);
@@ -3151,6 +3169,8 @@ export default function LegacySidebar() {
     [routeDraftThread, routeTarget],
   );
   const routeThreadKey = routeThreadRef ? scopedThreadKey(routeThreadRef) : null;
+  const sidebarRouteThreadKey =
+    routeThreadKey === null ? null : (hiddenTabThreads.get(routeThreadKey) ?? routeThreadKey);
   const routeTerminalOpen = useTerminalUiStateStore((state) =>
     routeThreadRef
       ? selectThreadTerminalUiState(state.terminalUiStateByThreadKey, routeThreadRef).terminalOpen
@@ -3270,17 +3290,22 @@ export default function LegacySidebar() {
   // Resolve the active route's project key to a logical key so it matches the
   // sidebar's grouped project entries.
   const activeRouteProjectKey = useMemo(() => {
-    if (!routeThreadKey) {
+    if (!sidebarRouteThreadKey) {
       return null;
     }
-    const activeThread = sidebarThreadByKey.get(routeThreadKey);
+    const activeThread = sidebarThreadByKey.get(sidebarRouteThreadKey ?? "");
     if (!activeThread) return null;
     const physicalKey =
       projectPhysicalKeyByScopedRef.get(
         scopedProjectKey(scopeProjectRef(activeThread.environmentId, activeThread.projectId)),
       ) ?? scopedProjectKey(scopeProjectRef(activeThread.environmentId, activeThread.projectId));
     return physicalToLogicalKey.get(physicalKey) ?? physicalKey;
-  }, [routeThreadKey, sidebarThreadByKey, physicalToLogicalKey, projectPhysicalKeyByScopedRef]);
+  }, [
+    sidebarRouteThreadKey,
+    sidebarThreadByKey,
+    physicalToLogicalKey,
+    projectPhysicalKeyByScopedRef,
+  ]);
 
   // Group threads by logical project key so all threads from grouped projects
   // are displayed together.
@@ -3457,7 +3482,7 @@ export default function LegacySidebar() {
           projectExpandedById,
           projectExpansionPreferenceKeys(project),
         );
-        const activeThreadKey = routeThreadKey ?? undefined;
+        const activeThreadKey = sidebarRouteThreadKey ?? undefined;
         const pinnedCollapsedThread =
           !projectExpanded && activeThreadKey
             ? (projectThreads.find(
@@ -3486,7 +3511,7 @@ export default function LegacySidebar() {
       sidebarThreadPreviewCount,
       expandedThreadListsByProject,
       projectExpandedById,
-      routeThreadKey,
+      sidebarRouteThreadKey,
       sortedProjects,
       threadsByProjectKey,
     ],
@@ -3762,7 +3787,7 @@ export default function LegacySidebar() {
   }, []);
 
   return (
-    <>
+    <HiddenTabThreadsContext.Provider value={hiddenTabThreads}>
       {prewarmedSidebarThreadRefs.map((threadRef) => (
         <SidebarThreadDetailPrewarmer key={scopedThreadKey(threadRef)} threadRef={threadRef} />
       ))}
@@ -3792,7 +3817,7 @@ export default function LegacySidebar() {
         sortedProjects={sortedProjects}
         expandedThreadListsByProject={expandedThreadListsByProject}
         activeRouteProjectKey={activeRouteProjectKey}
-        routeThreadKey={routeThreadKey}
+        routeThreadKey={sidebarRouteThreadKey}
         openPullRequestsInRightPanel={routeThreadRef !== null}
         newThreadShortcutLabel={newThreadShortcutLabel}
         commandPaletteShortcutLabel={commandPaletteShortcutLabel}
@@ -3807,6 +3832,6 @@ export default function LegacySidebar() {
         projectsLength={projects.length}
       />
       <SidebarChromeFooter />
-    </>
+    </HiddenTabThreadsContext.Provider>
   );
 }

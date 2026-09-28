@@ -29,6 +29,7 @@ import { NATIVE_LIQUID_GLASS_SUPPORTED } from "../../native/native-glass";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { scopedProjectKey, scopedThreadKey } from "../../lib/scopedEntities";
 import { useProjects, useThreadShells } from "../../state/entities";
+import { useHiddenTabThreads } from "./useHiddenTabThreads";
 import { useThreadSearch } from "../../state/queries";
 import { useThreadListV2ShelfPreferences } from "./use-thread-list-v2-shelf-preferences";
 import { usePendingThreadOrder } from "../../state/thread-order";
@@ -136,7 +137,17 @@ function ThreadNavigationSidebarPane(
   const insets = useSafeAreaInsets();
   const { fabClearance } = useAndroidControlSizing();
   const projects = useProjects();
-  const threads = useThreadShells();
+  const allThreads = useThreadShells();
+  const hiddenTabThreads = useHiddenTabThreads(allThreads);
+  const threads = useMemo(
+    () =>
+      allThreads.filter((thread) => !hiddenTabThreads.has(`${thread.environmentId}:${thread.id}`)),
+    [allThreads, hiddenTabThreads],
+  );
+  const sidebarSelectedThreadKey =
+    props.selectedThreadKey === null
+      ? null
+      : (hiddenTabThreads.get(props.selectedThreadKey) ?? props.selectedThreadKey);
   const { environments: workspaceEnvironments, state: catalogState } = useWorkspaceState();
   const { savedConnectionsById } = useSavedRemoteConnections();
   const searchInputRef = useRef<TextInput>(null);
@@ -441,7 +452,7 @@ function ThreadNavigationSidebarPane(
       now: new Date().toISOString(),
       snoozedShelfExpanded,
       settledShelfExpanded,
-      selectedThreadKey: props.selectedThreadKey ?? null,
+      selectedThreadKey: sidebarSelectedThreadKey,
     });
   }, [
     pendingOrder,
@@ -450,7 +461,7 @@ function ThreadNavigationSidebarPane(
     snoozeWakeTick,
     snoozedShelfExpanded,
     settledShelfExpanded,
-    props.selectedThreadKey,
+    sidebarSelectedThreadKey,
     options.selectedEnvironmentId,
     props.searchQuery,
     matchedThreadKeys,
@@ -652,7 +663,7 @@ function ThreadNavigationSidebarPane(
   // tick only re-renders rows whose displayed text actually moved.
   const listExtraData = useMemo(
     () => ({
-      selectedThreadKey: props.selectedThreadKey ?? "",
+      selectedThreadKey: sidebarSelectedThreadKey ?? "",
       projectByKey,
       projectTitleByProjectKey,
       savedConnectionsById,
@@ -660,7 +671,7 @@ function ThreadNavigationSidebarPane(
       threadSearchMatchByKey,
     }),
     [
-      props.selectedThreadKey,
+      sidebarSelectedThreadKey,
       projectByKey,
       projectTitleByProjectKey,
       savedConnectionsById,
@@ -765,7 +776,7 @@ function ThreadNavigationSidebarPane(
               searchQuery={props.searchQuery}
               pane="sidebar"
               selected={
-                scopedThreadKey(thread.environmentId, thread.id) === props.selectedThreadKey
+                scopedThreadKey(thread.environmentId, thread.id) === sidebarSelectedThreadKey
               }
               fullSwipeWidth={props.width - 20}
               onSelectThread={handleSelectThread}
@@ -853,7 +864,7 @@ function ThreadNavigationSidebarPane(
       props.onNewThreadInProject,
       props.onNewThreadOnBranch,
       props.searchQuery,
-      props.selectedThreadKey,
+      sidebarSelectedThreadKey,
       props.width,
       savedConnectionsById,
       titleRegenerationEnvironmentIds,

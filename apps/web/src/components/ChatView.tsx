@@ -376,7 +376,9 @@ import { resolveTimelineIsAtEnd, worktreeSetupAgentStarted } from "./chat/Messag
 import { resolveComposerTimelineInset, resolveScrollToEndClearance } from "./composerFooterLayout";
 import { ChatHeader } from "./chat/ChatHeader";
 import {
+  ThreadTabContextPills,
   ThreadTabs,
+  useThreadTabGroup,
   selectedThreadTabSources,
   clearSelectedThreadTabSources,
 } from "./chat/ThreadTabs";
@@ -1939,6 +1941,7 @@ export default function ChatView(props: ChatViewProps) {
   // depend on which route is mounted.
   const isServerThread = activeServerThread !== null;
   const activeThread = activeServerThread ?? localDraftThread;
+  const threadTabGroup = useThreadTabGroup(environmentId, activeServerThread?.id ?? null);
   const threadError = isServerThread
     ? (localServerError ?? activeServerThread?.session?.lastError ?? null)
     : localDraftError;
@@ -9836,13 +9839,13 @@ export default function ChatView(props: ChatViewProps) {
             onDeleteProjectScript={deleteProjectScript}
           />
         </WorkspacePageHeader>
-        {isServerThread ? (
+        {threadTabGroup ? (
           <ThreadTabs
             key={activeThread.id}
             environmentId={activeThread.environmentId}
             threadId={activeThread.id}
             modelSelection={activeThread.modelSelection}
-            empty={activeThread.messages.length === 0}
+            group={threadTabGroup}
           />
         ) : null}
 
@@ -10038,6 +10041,13 @@ export default function ChatView(props: ChatViewProps) {
                         />
                       </div>
                     </div>
+                  ) : null}
+                  {threadTabGroup && activeThread.messages.length === 0 ? (
+                    <ThreadTabContextPills
+                      key={activeThread.id}
+                      threadId={activeThread.id}
+                      group={threadTabGroup}
+                    />
                   ) : null}
                   <div
                     className="relative"

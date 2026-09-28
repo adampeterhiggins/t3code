@@ -41,6 +41,7 @@ import {
 import {
   CreateThreadTabInput,
   ThreadTabGroup,
+  ThreadTabMemberships,
   ThreadTabHandoff,
   ThreadTabHandoffInput,
 } from "./threadTabs.ts";
@@ -553,6 +554,13 @@ export class EnvironmentOrchestrationHttpApi extends HttpApiGroup.make("orchestr
 const ThreadTabParams = Schema.Struct({ threadId: ThreadId });
 
 export class EnvironmentThreadTabsHttpApi extends HttpApiGroup.make("threadTabs")
+  .add(
+    HttpApiEndpoint.get("memberships", "/api/thread-tabs", {
+      headers: OptionalBearerHeaders,
+      success: ThreadTabMemberships,
+      error: EnvironmentThreadTabsErrors,
+    }).middleware(EnvironmentAuthenticatedAuth),
+  )
   .add(
     HttpApiEndpoint.get("list", "/api/thread-tabs/:threadId", {
       headers: OptionalBearerHeaders,

@@ -13,6 +13,7 @@ import { runtime } from "../../lib/runtime";
 import { newThreadId } from "../../lib/utils";
 import { usePreparedConnection } from "../../state/session";
 import { Button } from "../ui/button";
+import { Toggle } from "../ui/toggle";
 
 const selectedSources = new Map<string, ReadonlyArray<ThreadId>>();
 
@@ -24,28 +25,13 @@ export function clearSelectedThreadTabSources(threadId: ThreadId): void {
   selectedSources.delete(threadId);
 }
 
-export function ThreadTabs({
-  environmentId,
-  threadId,
-  modelSelection,
-  empty,
-}: {
-  environmentId: EnvironmentId;
-  threadId: ThreadId;
-  modelSelection: ModelSelection;
-  empty: boolean;
-}) {
+/** Tab group for a server thread; null until loaded or when it belongs to another thread. */
+export function useThreadTabGroup(environmentId: EnvironmentId, threadId: ThreadId | null) {
   const prepared = usePreparedConnection(environmentId);
-  const navigate = useNavigate();
   const [group, setGroup] = useState<ThreadTabGroup | null>(null);
-  const [selected, setSelected] = useState<ReadonlyArray<ThreadId>>(() =>
-    selectedThreadTabSources(threadId),
-  );
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (Option.isNone(prepared)) return;
+    if (threadId === null || Option.isNone(prepared)) return;
     let active = true;
     void runtime.runPromise(listThreadTabs(prepared.value, threadId)).then(
       (next) => {
@@ -60,20 +46,26 @@ export function ThreadTabs({
     };
   }, [prepared, threadId]);
 
-  if (!group || Option.isNone(prepared)) return null;
+  return group?.tabs.some((tab) => tab.threadId === threadId) ? group : null;
+}
 
-  const toggle = (sourceId: ThreadId) => {
-    if (!selected.includes(sourceId) && selected.length >= 8) {
-      setError("Select up to eight chats for context.");
-      return;
-    }
-    setError(null);
-    const next = selected.includes(sourceId)
-      ? selected.filter((id) => id !== sourceId)
-      : [...selected, sourceId];
-    setSelected(next);
-    selectedSources.set(threadId, next);
-  };
+export function ThreadTabs({
+  environmentId,
+  threadId,
+  modelSelection,
+  group,
+}: {
+  environmentId: EnvironmentId;
+  threadId: ThreadId;
+  modelSelection: ModelSelection;
+  group: ThreadTabGroup;
+}) {
+  const prepared = usePreparedConnection(environmentId);
+  const navigate = useNavigate();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (Option.isNone(prepared)) return null;
 
   const create = async () => {
     setBusy(true);
@@ -119,26 +111,59 @@ export function ThreadTabs({
           + Tab
         </Button>
       </div>
-      {empty && group.tabs.length > 1 ? (
-        <div className="flex items-center gap-1 overflow-x-auto pt-1">
-          <span className="text-xs text-muted-foreground">Include context from:</span>
-          {group.tabs
-            .filter((tab) => tab.threadId !== threadId)
-            .map((tab) => (
-              <Button
-                key={tab.threadId}
-                size="sm"
-                variant={selected.includes(tab.threadId) ? "secondary" : "ghost"}
-                aria-pressed={selected.includes(tab.threadId)}
-                onClick={() => toggle(tab.threadId)}
-              >
-                {tab.title}
-              </Button>
-            ))}
-        </div>
-      ) : null}
       {error ? (
         <p role="alert" className="text-xs text-destructive">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/** Sibling tabs the first message of an empty tab can pull context from. */
+export function ThreadTabContextPills({
+  threadId,
+  group,
+}: {
+  threadId: ThreadId;
+  group: ThreadTabGroup;
+}) {
+  const [selected, setSelected] = useState<ReadonlyArray<ThreadId>>(() =>
+    selectedThreadTabSources(threadId),
+  );
+  const [error, setError] = useState<string | null>(null);
+  const siblings = group.tabs.filter((tab) => tab.threadId !== threadId);
+  if (siblings.length === 0) return null;
+
+  const toggle = (sourceId: ThreadId, pressed: boolean) => {
+    if (pressed && selected.length >= 8) {
+      setError("Select up to eight chats for context.");
+      return;
+    }
+    setError(null);
+    const next = pressed ? [...selected, sourceId] : selected.filter((id) => id !== sourceId);
+    setSelected(next);
+    selectedSources.set(threadId, next);
+  };
+
+  return (
+    <div className="pb-2">
+      <div className="flex items-center gap-1.5 overflow-x-auto">
+        <span className="shrink-0 text-xs text-muted-foreground">Include context from</span>
+        {siblings.map((tab) => (
+          <Toggle
+            key={tab.threadId}
+            size="compact"
+            variant="pill"
+            pressed={selected.includes(tab.threadId)}
+            onPressedChange={(pressed) => toggle(tab.threadId, pressed)}
+          >
+            {tab.title}
+          </Toggle>
+        ))}
+      </div>
+      {error ? (
+        <p role="alert" className="pt-1 text-xs text-destructive">
           {error}
         </p>
       ) : null}

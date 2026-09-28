@@ -15,6 +15,15 @@ export const ThreadTabGroup = Schema.Struct({
 });
 export type ThreadTabGroup = typeof ThreadTabGroup.Type;
 
+export const ThreadTabMembership = Schema.Struct({
+  threadId: ThreadId,
+  groupId: ThreadId,
+});
+export type ThreadTabMembership = typeof ThreadTabMembership.Type;
+
+export const ThreadTabMemberships = Schema.Array(ThreadTabMembership);
+export type ThreadTabMemberships = typeof ThreadTabMemberships.Type;
+
 export const CreateThreadTabInput = Schema.Struct({
   threadId: ThreadId,
   modelSelection: ModelSelection,
