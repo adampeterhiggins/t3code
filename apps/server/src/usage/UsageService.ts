@@ -17,6 +17,7 @@ import * as NodeOS from "node:os";
 import {
   ClaudeSettings,
   CodexSettings,
+  CursorSettings,
   type ProviderInstanceConfig,
   USAGE_CONTRACT_VERSION,
   resolveProviderInstanceEnabled,
@@ -51,6 +52,7 @@ import { ServerConfig } from "../config.ts";
 import { expandHomePath } from "../pathExpansion.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { resolveCodexHomeLayout } from "../provider/Drivers/CodexHomeLayout.ts";
+import { makeCursorEnvironment } from "../provider/Drivers/CursorHome.ts";
 import { resolveAntigravityInstanceDirectories } from "../provider/antigravityAuthSupport.ts";
 import { mergeProviderInstanceEnvironment } from "../provider/ProviderInstanceEnvironment.ts";
 import { parseDevinAccountConsumptionPayload } from "./devinAccountUsage.ts";
@@ -193,6 +195,7 @@ const CACHE_RETENTION_DAYS = 90;
 
 const decodeCodexSettings = Schema.decodeOption(CodexSettings);
 const decodeClaudeSettings = Schema.decodeOption(ClaudeSettings);
+const decodeCursorSettings = Schema.decodeOption(CursorSettings);
 
 /** On-disk shape of the rate snapshot. */
 const RatesCacheFile = Schema.Struct({
@@ -872,82 +875,102 @@ export const make = Effect.gen(function* () {
         ...(failed ? { message: "Some Antigravity history could not be read." } : {}),
       });
     }
-    const configHome = hostEnvironment["XDG_CONFIG_HOME"]?.trim();
-    const cursorHome =
-      platform === "darwin"
-        ? path.join(userHome, "Library", "Application Support")
-        : platform === "win32"
-          ? hostEnvironment["APPDATA"] || path.join(userHome, "AppData", "Roaming")
-          : configHome && path.isAbsolute(configHome)
-            ? configHome
-            : path.join(userHome, ".config");
-    const cursorAuthPath =
-      platform === "darwin"
-        ? path.join(userHome, ".cursor", "auth.json")
-        : path.join(cursorHome, platform === "win32" ? "Cursor" : "cursor", "auth.json");
-    const credentialStore = hostEnvironment["AGENT_CLI_CREDENTIAL_STORE"];
-    const loginUnavailable =
-      Boolean(hostEnvironment["CURSOR_AUTH_TOKEN"]?.trim()) ||
-      Boolean(hostEnvironment["CURSOR_API_KEY"]?.trim()) ||
-      credentialStore === "memory";
-    if (
-      platform === "darwin" &&
-      credentialStore !== "file" &&
-      !loginUnavailable &&
-      !settings.cursorKeychainUsageEnabled
-    ) {
+    // The host's own Cursor login, plus one per instance whose `homePath`
+    // gives it a private login. Disabled instances still have history.
+    const cursorEnvironments: NodeJS.ProcessEnv[] = [hostEnvironment];
+    for (const instance of Object.values(settings.providerInstances)) {
+      if (instance.driver !== "cursor") continue;
+      const decoded = decodeCursorSettings(instance.config ?? {});
+      if (Option.isNone(decoded) || !decoded.value.homePath) continue;
+      cursorEnvironments.push(
+        yield* makeCursorEnvironment(
+          decoded.value,
+          mergeProviderInstanceEnvironment(instance.environment, hostEnvironment),
+        ).pipe(Effect.provideService(Path.Path, path)),
+      );
+    }
+    const cursorUntilMs = yield* Clock.currentTimeMillis;
+    // Credential locations and accounts already reported, so instances sharing a
+    // login (or the Keychain) are counted once.
+    const cursorSeen = new Set<string>();
+    for (const environment of cursorEnvironments) {
+      const accountHome =
+        (platform === "win32" ? environment["USERPROFILE"] : environment["HOME"]) || home;
+      const configHome = environment["XDG_CONFIG_HOME"]?.trim();
+      const cursorHome =
+        platform === "darwin"
+          ? path.join(accountHome, "Library", "Application Support")
+          : platform === "win32"
+            ? environment["APPDATA"] || path.join(accountHome, "AppData", "Roaming")
+            : configHome && path.isAbsolute(configHome)
+              ? configHome
+              : path.join(accountHome, ".config");
+      const cursorAuthPath =
+        platform === "darwin"
+          ? path.join(accountHome, ".cursor", "auth.json")
+          : path.join(cursorHome, platform === "win32" ? "Cursor" : "cursor", "auth.json");
+      const credentialStore = environment["AGENT_CLI_CREDENTIAL_STORE"];
+      const useKeychain = platform === "darwin" && credentialStore !== "file";
+      const credentialKey = useKeychain ? "keychain" : `file:${cursorAuthPath}`;
+      if (cursorSeen.has(credentialKey)) continue;
+      cursorSeen.add(credentialKey);
+      const loginUnavailable =
+        Boolean(environment["CURSOR_AUTH_TOKEN"]?.trim()) ||
+        Boolean(environment["CURSOR_API_KEY"]?.trim()) ||
+        credentialStore === "memory";
+      if (useKeychain && !loginUnavailable && !settings.cursorKeychainUsageEnabled) {
+        scanned.push({
+          provider: "cursor",
+          dir: cursorAuthPath,
+          volumeId: "",
+          files: null,
+          message: "Cursor account usage is off on this environment.",
+          action: "enableCursorKeychain",
+        });
+        continue;
+      }
+      const account = loginUnavailable
+        ? {
+            accountKey: null,
+            records: [],
+            missing: true,
+            error: "Cursor account history needs a Cursor CLI login on this server.",
+          }
+        : yield* Effect.promise(() =>
+            readCursorAccountUsage(
+              useKeychain ? { kind: "keychain" } : cursorAuthPath,
+              windowStartMs,
+              cursorUntilMs,
+            ),
+          );
+      // No saved login means there is no account source to report, not a setup error.
+      if (account.missing && account.error === null) continue;
+      if (account.accountKey !== null && account.error === null && !account.missing) {
+        const source = `cursor-account:${account.accountKey}`;
+        if (cursorSeen.has(source)) continue;
+        cursorSeen.add(source);
+        // The same account includes CLI and desktop history from every machine.
+        // A stable remote fingerprint prevents connected environments counting it twice.
+        scanned.push({
+          provider: "cursor",
+          dir: source,
+          hostId: "cursor.com",
+          volumeId: account.accountKey,
+          files: [{ path: source, records: account.records }],
+          status: "ok",
+        });
+        continue;
+      }
       scanned.push({
         provider: "cursor",
         dir: cursorAuthPath,
-        volumeId: "",
+        volumeId: yield* Effect.promise(() => readDirectoryVolumeId(cursorAuthPath)),
+        // Never combine a local fallback with another server's account-wide history.
         files: null,
-        message: "Cursor account usage is off on this environment.",
-        action: "enableCursorKeychain",
+        message:
+          account.error ?? "Cursor account history needs a Cursor CLI login saved on this server.",
       });
-      return scanned;
     }
-    const cursorUntilMs = yield* Clock.currentTimeMillis;
-    const account = loginUnavailable
-      ? {
-          accountKey: null,
-          records: [],
-          missing: true,
-          error: "Cursor account history needs a Cursor CLI login on this server.",
-        }
-      : yield* Effect.promise(() =>
-          readCursorAccountUsage(
-            platform === "darwin" && credentialStore !== "file"
-              ? { kind: "keychain" }
-              : cursorAuthPath,
-            windowStartMs,
-            cursorUntilMs,
-          ),
-        );
-    // No saved login means there is no account source to report, not a setup error.
-    if (account.missing && account.error === null) return scanned;
-    if (account.accountKey !== null && account.error === null && !account.missing) {
-      // The same account includes CLI and desktop history from every machine.
-      // A stable remote fingerprint prevents connected environments counting it twice.
-      const source = `cursor-account:${account.accountKey}`;
-      scanned.push({
-        provider: "cursor",
-        dir: source,
-        hostId: "cursor.com",
-        volumeId: account.accountKey,
-        files: [{ path: source, records: account.records }],
-        status: "ok",
-      });
-      return scanned;
-    }
-    scanned.push({
-      provider: "cursor",
-      dir: cursorAuthPath,
-      volumeId: yield* Effect.promise(() => readDirectoryVolumeId(cursorAuthPath)),
-      // Never combine a local fallback with another server's account-wide history.
-      files: null,
-      message:
-        account.error ?? "Cursor account history needs a Cursor CLI login saved on this server.",
-    });
     return scanned;
   });
 
