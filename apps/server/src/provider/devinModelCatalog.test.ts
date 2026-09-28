@@ -335,6 +335,12 @@ describe("Devin Fusion", () => {
     expect(fusion.pricing?.inputPerMillion).toBe(10);
     expect(fusion.contextWindowTokens).toBe(1_000_000);
     const [lead, sidekick, sidekickEffort] = fusion.capabilities?.optionDescriptors ?? [];
+    // Lead and Sidekick are model pickers of their own; effort stays in traits.
+    expect([lead?.standalone, sidekick?.standalone, sidekickEffort?.standalone]).toEqual([
+      true,
+      true,
+      undefined,
+    ]);
     expect(lead?.type === "select" ? lead.options : []).toEqual([
       { id: "claude-fable-5-1", label: "Claude Fable 5.1", isDefault: true },
       { id: "gpt-6-sol", label: "GPT-6 Sol High Thinking" },

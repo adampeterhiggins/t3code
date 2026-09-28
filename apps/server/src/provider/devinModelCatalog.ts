@@ -454,8 +454,16 @@ function fusionModelFromFamily(
     isDefault: false,
     capabilities: {
       optionDescriptors: [
-        select(DEVIN_FUSION_LEAD_OPTION_ID, "Lead", leads, defaultPair.lead),
-        select(DEVIN_FUSION_SIDEKICK_OPTION_ID, "Sidekick", sidekicks, defaultPair.sidekick),
+        // Lead and Sidekick pick models, so each gets its own composer control;
+        // the sidekick effort stays in the traits menu like any model's effort.
+        {
+          ...select(DEVIN_FUSION_LEAD_OPTION_ID, "Lead", leads, defaultPair.lead),
+          standalone: true,
+        },
+        {
+          ...select(DEVIN_FUSION_SIDEKICK_OPTION_ID, "Sidekick", sidekicks, defaultPair.sidekick),
+          standalone: true,
+        },
         ...(effortChoices.size > 1
           ? [
               select(

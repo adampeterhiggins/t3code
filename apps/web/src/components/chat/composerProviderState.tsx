@@ -13,11 +13,11 @@ import {
   isClaudeUltrathinkPrompt,
   normalizeModelSlug,
 } from "@t3tools/shared/model";
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 
 import type { DraftId } from "../../composerDraftStore";
 import { getProviderModelCapabilities } from "../../providerModels";
-import type { ComposerControlSize } from "./ComposerControl";
+import { ComposerControlSeparator, type ComposerControlSize } from "./ComposerControl";
 import { shouldRenderTraitsControls, TraitsMenuContent, TraitsPicker } from "./TraitsPicker";
 
 export type ComposerProviderStateInput = {
@@ -133,7 +133,7 @@ export function getComposerProviderState(input: ComposerProviderStateInput): Com
   const descriptors = getProviderOptionDescriptors({ caps, selections });
   const primarySelectDescriptor = descriptors.find(
     (descriptor): descriptor is Extract<(typeof descriptors)[number], { type: "select" }> =>
-      descriptor.type === "select",
+      descriptor.type === "select" && descriptor.standalone !== true,
   );
   const primaryValue = getProviderOptionCurrentValue(primarySelectDescriptor ?? null);
   const promptEffort = typeof primaryValue === "string" ? primaryValue : null;
@@ -161,6 +161,7 @@ export function getComposerProviderState(input: ComposerProviderStateInput): Com
 function renderTraitsControl(
   Component: typeof TraitsMenuContent | typeof TraitsPicker,
   input: TraitsRenderInput,
+  descriptorIds?: ReadonlyArray<string>,
 ): ReactNode {
   const {
     provider,
@@ -195,6 +196,7 @@ function renderTraitsControl(
       modelOptions: resolvedModelOptions,
       prompt,
       planModeEnabled,
+      descriptorIds,
     })
   ) {
     return null;
@@ -211,6 +213,7 @@ function renderTraitsControl(
       prompt={prompt}
       onPromptChange={onPromptChange}
       planModeEnabled={planModeEnabled}
+      {...(descriptorIds ? { descriptorIds } : {})}
       {...(size !== undefined ? { size } : {})}
       {...(hidden !== undefined ? { hidden } : {})}
       {...(triggerClassName !== undefined ? { triggerClassName } : {})}
@@ -223,6 +226,35 @@ export function renderProviderTraitsMenuContent(input: TraitsRenderInput): React
   return renderTraitsControl(TraitsMenuContent, input);
 }
 
+/**
+ * The traits picker, preceded by one picker per `standalone` option (Devin
+ * Fusion's Lead and Sidekick). The compact overflow menu keeps every option
+ * in one list via `renderProviderTraitsMenuContent`.
+ */
 export function renderProviderTraitsPicker(input: TraitsRenderInput): ReactNode {
-  return renderTraitsControl(TraitsPicker, input);
+  const descriptors =
+    getProviderModelCapabilities(input.models, input.model, input.provider, input.planModeEnabled)
+      .optionDescriptors ?? [];
+  const standaloneIds = descriptors
+    .filter((descriptor) => descriptor.standalone === true)
+    .map((descriptor) => descriptor.id);
+  if (standaloneIds.length === 0) return renderTraitsControl(TraitsPicker, input);
+
+  const groups = [
+    ...standaloneIds.map((id) => [id]),
+    descriptors
+      .filter((descriptor) => descriptor.standalone !== true)
+      .map((descriptor) => descriptor.id),
+  ];
+  const controls = groups.flatMap((ids) => {
+    const control = ids.length > 0 ? renderTraitsControl(TraitsPicker, input, ids) : null;
+    return control ? [{ key: ids.join(","), control }] : [];
+  });
+  if (controls.length === 0) return null;
+  return controls.map(({ key, control }, index) => (
+    <Fragment key={key}>
+      {index > 0 ? <ComposerControlSeparator size={input.size ?? "sm"} /> : null}
+      {control}
+    </Fragment>
+  ));
 }

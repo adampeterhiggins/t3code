@@ -19,6 +19,8 @@ const ProviderOptionDescriptorBase = {
   id: TrimmedNonEmptyString,
   label: TrimmedNonEmptyString,
   description: Schema.optional(TrimmedNonEmptyString),
+  /** Render as its own composer control rather than inside the traits menu. */
+  standalone: Schema.optional(Schema.Boolean),
 } as const;
 
 export const SelectProviderOptionDescriptor = Schema.Struct({

@@ -179,6 +179,24 @@ describe("getComposerProviderState", () => {
     expect(state.modelOptionsForDispatch).toEqual(selections(["agent", "plan"]));
   });
 
+  it("skips standalone selects when deriving promptEffort", () => {
+    const state = getComposerProviderState({
+      provider: PROVIDER,
+      model: MODEL,
+      models: modelWith([
+        {
+          ...selectDescriptor("lead", [{ id: "fable", label: "Fable", isDefault: true }]),
+          standalone: true,
+        },
+        selectDescriptor("effort", [{ id: "medium", label: "Medium", isDefault: true }]),
+      ]),
+      modelOptions: undefined,
+      planModeEnabled: true,
+    });
+
+    expect(state.promptEffort).toBe("medium");
+  });
+
   it("drops the plan agent from dispatch when legacy plan mode is disabled", () => {
     const state = getComposerProviderState({
       provider: PROVIDER,
