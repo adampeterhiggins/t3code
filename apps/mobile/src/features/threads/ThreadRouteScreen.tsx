@@ -1007,8 +1007,13 @@ function ThreadRouteContent(
             key={selectedThread.id}
             environmentId={selectedThread.environmentId}
             threadId={selectedThread.id}
+            title={selectedThread.title}
             modelSelection={selectedThread.modelSelection}
             empty={selectedThreadDetail?.messages.length === 0}
+            working={
+              selectedThread.session?.status === "running" &&
+              selectedThread.session.activeTurnId != null
+            }
           />
         ) : null}
         <ThreadDetailScreen
