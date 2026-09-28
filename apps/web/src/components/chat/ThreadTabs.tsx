@@ -38,6 +38,7 @@ import {
 } from "../ui/menu";
 import { toastManager } from "../ui/toast";
 import { Toggle } from "../ui/toggle";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 /** Tab group for a server thread; null until loaded or when it belongs to another thread. */
 export function useThreadTabGroup(environmentId: EnvironmentId, threadId: ThreadId | null) {
@@ -77,7 +78,10 @@ function TabMenuLabel(props: {
   return <>{useTabLabel(props.environmentId, props.group, props.threadId)}</>;
 }
 
-/** Breadcrumb segment naming the open tab; its menu switches tabs or opens a new one. */
+/**
+ * Breadcrumb segment naming the open tab; its menu switches tabs or opens a new one.
+ * With a single tab it is just a "new tab" button.
+ */
 export function ThreadTabMenu({
   environmentId,
   threadId,
@@ -121,6 +125,28 @@ export function ThreadTabMenu({
       setBusy(false);
     }
   };
+
+  // A lone tab repeats the thread title, so the segment becomes a direct "new tab" action.
+  if (group.tabs.length <= 1) {
+    return (
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              type="button"
+              aria-label="New tab"
+              disabled={busy || Option.isNone(prepared)}
+              onClick={() => void create()}
+              className="inline-flex cursor-pointer items-center rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-50"
+            />
+          }
+        >
+          <PlusIcon className="size-3.5" />
+        </TooltipTrigger>
+        <TooltipPopup side="top">New tab</TooltipPopup>
+      </Tooltip>
+    );
+  }
 
   return (
     <Menu>
