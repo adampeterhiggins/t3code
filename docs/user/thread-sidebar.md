@@ -13,6 +13,14 @@ an existing worktree, use **New thread in this worktree** from the branch toolba
 When you change a new thread's project, T3 Code stays in the current environment
 if that project exists there. Otherwise it selects an environment that has it.
 
+### Continue in another tab
+
+Choose **+ Tab** above a thread to open a separate chat in the same workspace. Each tab has its
+own provider and conversation. In the new tab, select any sibling chats under **Include context
+from** before sending your first message. T3 Code includes a bounded summary of the selected
+chats with that message. Later changes in those chats do not change the sent context. Tabs in the
+same workspace can edit the same files, so review the current checkout before restoring changes.
+
 ### Start in the background
 
 In a desktop browser or the desktop app, press `Cmd+Enter` on macOS or `Ctrl+Enter`

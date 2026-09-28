@@ -3,7 +3,12 @@ import { enqueueThreadOutboxMessage } from "../../state/thread-outbox";
 import {
   getComposerDraftSnapshot,
   clearComposerDraftContent,
+  setComposerDraftText,
 } from "../../state/use-composer-drafts";
+import { prepareThreadTabHandoff } from "@t3tools/client-runtime/thread-tabs";
+import { runtime } from "../../lib/runtime";
+import { usePreparedConnection } from "../../state/session";
+import { ThreadTabs, selectedThreadTabSources, clearSelectedThreadTabSources } from "./ThreadTabs";
 import { useWorktreeSetup } from "./use-worktree-setup";
 import { worktreeSetupAgentStarted } from "@t3tools/client-runtime/worktree-setup";
 import { ScreenHeader } from "../../components/ScreenHeader";
@@ -336,6 +341,7 @@ function ThreadRouteContent(
   } = useThreadSelection();
   const selectedThreadDetailState = props.selectedThreadDetailState;
   const selectedThreadDetail = Option.getOrNull(selectedThreadDetailState.data);
+  const tabConnection = usePreparedConnection(selectedThread?.environmentId ?? null);
   // "Load earlier turns" header state for windowed (paginated) thread loads.
   const loadEarlierTurns = useMemo(() => {
     if (selectedThread === null || !threadHasOlderTurns(selectedThreadDetailState)) {
@@ -352,6 +358,45 @@ function ThreadRouteContent(
   }, [selectedThread, selectedThreadDetailState]);
   const { selectedThreadCwd } = useSelectedThreadWorktree();
   const composer = useThreadComposerState();
+  const tabHandoffInFlightRef = useRef(false);
+  const sendWithTabContext = useCallback(async () => {
+    if (tabHandoffInFlightRef.current) return null;
+    if (selectedThread && selectedThreadDetail?.messages.length === 0) {
+      const sources = selectedThreadTabSources(selectedThread.id);
+      if (sources.length > 0) {
+        if (Option.isNone(tabConnection)) {
+          Alert.alert("Reconnect before including context from another tab.");
+          return null;
+        }
+        try {
+          tabHandoffInFlightRef.current = true;
+          const handoff = await runtime.runPromise(
+            prepareThreadTabHandoff(tabConnection.value, selectedThread.id, {
+              sourceThreadIds: [...sources],
+            }),
+          );
+          if (handoff.text) {
+            const key = scopedThreadKey(selectedThread.environmentId, selectedThread.id);
+            const draft = getComposerDraftSnapshot(key);
+            setComposerDraftText(
+              key,
+              `${draft.text}\n\n<related_chats>\n${handoff.text}\n</related_chats>`,
+            );
+          }
+          clearSelectedThreadTabSources(selectedThread.id);
+        } catch (cause) {
+          Alert.alert(
+            "Could not prepare tab context",
+            cause instanceof Error ? cause.message : undefined,
+          );
+          return null;
+        } finally {
+          tabHandoffInFlightRef.current = false;
+        }
+      }
+    }
+    return composer.onSendMessage();
+  }, [composer.onSendMessage, selectedThread, selectedThreadDetail, tabConnection]);
   const gitState = useSelectedThreadGitState();
   const gitActions = useSelectedThreadGitActions();
   const requests = useSelectedThreadRequests();
@@ -957,6 +1002,15 @@ function ThreadRouteContent(
       <GitActionProgressOverlay progress={gitActionProgress} onDismiss={dismissGitActionResult} />
 
       <View className="flex-1 bg-screen android:overflow-hidden android:rounded-t-[28px] android:bg-thread-canvas">
+        {selectedThreadCreation === null ? (
+          <ThreadTabs
+            key={selectedThread.id}
+            environmentId={selectedThread.environmentId}
+            threadId={selectedThread.id}
+            modelSelection={selectedThread.modelSelection}
+            empty={selectedThreadDetail?.messages.length === 0}
+          />
+        ) : null}
         <ThreadDetailScreen
           selectedThread={selectedThreadWithDraftSettings ?? selectedThread}
           contentPresentation={contentPresentation}
@@ -1023,7 +1077,7 @@ function ThreadRouteContent(
           onRemoveDraftImage={composer.onRemoveDraftImage}
           serverConfig={serverConfig}
           onStopThread={awaitingBootstrapTurn ? handleCancelWorktreeSetup : handleStopThread}
-          onSendMessage={composer.onSendMessage}
+          onSendMessage={sendWithTabContext}
           onReconnectEnvironment={handleReconnectEnvironment}
           onUpdateThreadModelSelection={composer.onUpdateModelSelection}
           onUpdateThreadRuntimeMode={composer.onUpdateRuntimeMode}

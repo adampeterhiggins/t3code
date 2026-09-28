@@ -20,6 +20,7 @@ import * as Path from "effect/Path";
 import * as Option from "effect/Option";
 import type * as PlatformError from "effect/PlatformError";
 import * as Stream from "effect/Stream";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 import { isTemporaryWorktreeBranch } from "@t3tools/shared/git";
 
@@ -40,6 +41,7 @@ import type { OrchestrationDispatchError } from "../Errors.ts";
 import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
 import * as WorkspaceEntries from "../../workspace/WorkspaceEntries.ts";
 import * as PullRequestService from "../../pullRequest/PullRequestService.ts";
+import { areTabSiblings } from "../../threadTabs/sharedWorkspace.ts";
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 
@@ -85,6 +87,7 @@ const make = Effect.gen(function* () {
     randomUUID.pipe(Effect.map((uuid) => CommandId.make(`server:${tag}:${uuid}`)));
   const orchestrationEngine = yield* OrchestrationEngineService;
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
+  const sql = yield* Effect.serviceOption(SqlClient.SqlClient);
   const providerService = yield* ProviderService;
   const checkpointStore = yield* CheckpointStore.CheckpointStore;
   const receiptBus = yield* RuntimeReceiptBus;
@@ -572,9 +575,8 @@ const make = Effect.gen(function* () {
   // the user) bypasses T3's commands, so the thread's recorded branch goes
   // stale. Since #4460 the client only attributes PR state to a thread when
   // the checked-out branch equals the recorded one, so stale metadata silently
-  // orphans the thread's PR. Follow the drift here: adopt the checked-out
-  // branch as the thread's branch, but only when the worktree belongs to
-  // exactly this thread — for shared cwds the strict matching is the point.
+  // orphans the thread's PR. Follow the drift here: fork tab siblings adopt
+  // the checked-out branch together; unrelated shared cwds retain strict matching.
   const followWorktreeBranchDrift = Effect.fn("followWorktreeBranchDrift")(function* (input: {
     readonly threadId: ThreadId;
     readonly cwd: string;
@@ -594,7 +596,6 @@ const make = Effect.gen(function* () {
       if (
         !thread ||
         thread.branch === null ||
-        thread.branch === checkedOutBranch ||
         thread.worktreePath === null ||
         thread.worktreePath !== input.cwd
       ) {
@@ -602,28 +603,41 @@ const make = Effect.gen(function* () {
       }
 
       const shell = yield* projectionSnapshotQuery.getShellSnapshot();
-      const worktreeIsShared = shell.threads.some(
-        (other) => other.id !== thread.id && other.worktreePath === thread.worktreePath,
-      );
-      if (worktreeIsShared) {
-        return;
+      const sharing = shell.threads.filter((other) => other.worktreePath === thread.worktreePath);
+      if (sharing.length > 1) {
+        if (Option.isNone(sql)) return;
+        // Only fork tab siblings may share branch metadata. Other deliberately
+        // shared cwds retain the upstream rule of refusing automatic adoption.
+        const members = yield* sql.value<{ readonly threadId: string }>`
+          SELECT thread_id AS "threadId" FROM fork_thread_tabs
+          WHERE group_id = (SELECT group_id FROM fork_thread_tabs WHERE thread_id = ${thread.id})
+        `;
+        const memberIds = new Set(members.map((member) => member.threadId));
+        if (
+          !areTabSiblings(
+            sharing.map((other) => other.id),
+            memberIds,
+          )
+        )
+          return;
       }
 
-      // expectedBranch makes this a compare-and-swap in the decider: if the
-      // recorded branch moved between our read and the dispatch (rename,
-      // concurrent drift-follow), the stale update is dropped.
-      yield* orchestrationEngine.dispatch({
-        type: "thread.meta.update",
-        commandId: yield* serverCommandId("worktree-branch-drift"),
-        threadId: thread.id,
-        branch: checkedOutBranch,
-        expectedBranch: thread.branch,
-      });
-      yield* Effect.logInfo("thread branch followed worktree checkout", {
-        threadId: thread.id,
-        previousBranch: thread.branch,
-        branch: checkedOutBranch,
-      });
+      for (const sibling of sharing) {
+        if (sibling.branch === null || sibling.branch === checkedOutBranch) continue;
+        // expectedBranch makes each update a compare-and-swap in the decider.
+        yield* orchestrationEngine.dispatch({
+          type: "thread.meta.update",
+          commandId: yield* serverCommandId("worktree-branch-drift"),
+          threadId: sibling.id,
+          branch: checkedOutBranch,
+          expectedBranch: sibling.branch,
+        });
+        yield* Effect.logInfo("thread branch followed worktree checkout", {
+          threadId: sibling.id,
+          previousBranch: sibling.branch,
+          branch: checkedOutBranch,
+        });
+      }
     }).pipe(
       Effect.catchCauseIf(
         (cause) => !Cause.hasInterruptsOnly(cause),

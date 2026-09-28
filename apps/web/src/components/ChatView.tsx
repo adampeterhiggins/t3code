@@ -375,6 +375,13 @@ import type { AssistantCitationRequest } from "./chat/AssistantCitationSource";
 import { resolveTimelineIsAtEnd, worktreeSetupAgentStarted } from "./chat/MessagesTimeline.logic";
 import { resolveComposerTimelineInset, resolveScrollToEndClearance } from "./composerFooterLayout";
 import { ChatHeader } from "./chat/ChatHeader";
+import {
+  ThreadTabs,
+  selectedThreadTabSources,
+  clearSelectedThreadTabSources,
+} from "./chat/ThreadTabs";
+import { prepareThreadTabHandoff } from "@t3tools/client-runtime/thread-tabs";
+import { runtime } from "../lib/runtime";
 import { PanelLayoutControls, RightPanelMaximizeControl } from "./chat/PanelLayoutControls";
 import { expandedImageKey, type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { NoActiveThreadState } from "./NoActiveThreadState";
@@ -1812,6 +1819,7 @@ export default function ChatView(props: ChatViewProps) {
   const fanoutStateAtom = draftFanoutStateAtom(routeThreadKey);
   const fanoutState = useAtomValue(fanoutStateAtom);
   const sendInFlightRef = fanoutState.sendInFlight;
+  const tabHandoffInFlightRef = useRef(false);
   const composerSendGenerationRef = useRef(0);
   const multipleModelSelections = fanoutState.selections;
   const setMultipleModelSelections = useCallback(
@@ -7371,6 +7379,7 @@ export default function ChatView(props: ChatViewProps) {
       !clientSettingsHydrated ||
       threadDetailLoading ||
       sendInFlightRef.current ||
+      tabHandoffInFlightRef.current ||
       feedbackUploadsInFlightRef.current.has(routeThreadKey)
     ) {
       notifyDirectAnnotationAttached();
@@ -7759,13 +7768,41 @@ export default function ChatView(props: ChatViewProps) {
     const outgoingMessageContext = buildOutgoingMessageContext(
       composerAttachmentsSnapshot.map((attachment) => attachment.id),
     );
-    const outgoingMessageText = formatOutgoingPrompt({
+    let outgoingMessageText = formatOutgoingPrompt({
       provider: ctxSelectedProvider,
       model: ctxSelectedModel,
       models: ctxSelectedProviderModels,
       effort: ctxSelectedPromptEffort,
       text: messageTextForSend || ATTACHMENT_ONLY_BOOTSTRAP_PROMPT,
     });
+    const tabSources =
+      isFirstMessage && isServerThread ? selectedThreadTabSources(threadIdForSend) : [];
+    if (tabSources.length > 0) {
+      const prepared = readPreparedConnection(environmentId);
+      if (!prepared) {
+        setThreadError(threadIdForSend, "Reconnect before including context from another tab.");
+        return;
+      }
+      try {
+        tabHandoffInFlightRef.current = true;
+        const handoff = await runtime.runPromise(
+          prepareThreadTabHandoff(prepared, threadIdForSend, {
+            sourceThreadIds: [...tabSources],
+          }),
+        );
+        if (handoff.text) {
+          outgoingMessageText = `${outgoingMessageText}\n\n<related_chats>\n${handoff.text}\n</related_chats>`;
+        }
+      } catch (cause) {
+        setThreadError(
+          threadIdForSend,
+          cause instanceof Error ? cause.message : "Could not prepare tab context.",
+        );
+        return;
+      } finally {
+        tabHandoffInFlightRef.current = false;
+      }
+    }
     if (composerRef.current?.validateProviderInput(outgoingMessageText) === false) {
       return;
     }
@@ -8456,6 +8493,7 @@ export default function ChatView(props: ChatViewProps) {
         failure = startResult;
       } else {
         turnStartSucceeded = true;
+        if (tabSources.length > 0) clearSelectedThreadTabSources(threadIdForSend);
         // The turn is under way and will spend quota, so that thread's limits
         // snapshot is stale. Uploads may have outlasted a navigation, so only
         // the sending thread's panel clears.
@@ -9798,6 +9836,15 @@ export default function ChatView(props: ChatViewProps) {
             onDeleteProjectScript={deleteProjectScript}
           />
         </WorkspacePageHeader>
+        {isServerThread ? (
+          <ThreadTabs
+            key={activeThread.id}
+            environmentId={activeThread.environmentId}
+            threadId={activeThread.id}
+            modelSelection={activeThread.modelSelection}
+            empty={activeThread.messages.length === 0}
+          />
+        ) : null}
 
         {/* Main content area with optional plan sidebar */}
         <div className="flex min-h-0 min-w-0 flex-1">
