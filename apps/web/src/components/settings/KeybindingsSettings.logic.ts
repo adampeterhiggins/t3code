@@ -19,10 +19,14 @@ const usageCommandOrder = new Map<KeybindingCommand, number>(
   [...METRIC_OPTIONS, ...WINDOW_OPTIONS].map((option, index) => [option.command, index]),
 );
 
-function compareUsageCommands(left: KeybindingCommand, right: KeybindingCommand): number | null {
-  const leftIndex = usageCommandOrder.get(left);
-  const rightIndex = usageCommandOrder.get(right);
-  return leftIndex !== undefined && rightIndex !== undefined ? leftIndex - rightIndex : null;
+/**
+ * Sort text that keeps the Usage page's metric and period commands in page order under
+ * `usagePrefix`, while everything else sorts by `name`. One key per command keeps the sort a
+ * total order, so the result never depends on the order bindings arrive in.
+ */
+function commandSortName(command: KeybindingCommand, name: string, usagePrefix: string): string {
+  const index = usageCommandOrder.get(command);
+  return index === undefined ? name : `${usagePrefix}${String(index).padStart(2, "0")}`;
 }
 
 export type KeybindingSource = "Default" | "Custom" | "Project";
@@ -215,9 +219,9 @@ export function buildKeybindingRows(
   });
 
   rowsWithConflicts.sort((left, right) => {
-    const commandCompare =
-      compareUsageCommands(left.command, right.command) ??
-      left.command.localeCompare(right.command);
+    const commandCompare = commandSortName(left.command, left.command, "usage.").localeCompare(
+      commandSortName(right.command, right.command, "usage."),
+    );
     if (commandCompare !== 0) return commandCompare;
     return left.key.localeCompare(right.key);
   });
@@ -290,9 +294,10 @@ export function buildKeybindingCommandOptions(
   for (const binding of keybindings) {
     commands.add(binding.command);
   }
-  return [...commands].toSorted(
-    (left, right) =>
-      compareUsageCommands(left, right) ?? commandLabel(left).localeCompare(commandLabel(right)),
+  return [...commands].toSorted((left, right) =>
+    commandSortName(left, commandLabel(left), "Usage: ").localeCompare(
+      commandSortName(right, commandLabel(right), "Usage: "),
+    ),
   );
 }
 

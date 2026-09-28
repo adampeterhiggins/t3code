@@ -10,7 +10,7 @@
  * of the sidebar's scope logic. `searchFieldRef` lands on the search field so
  * the picker's popup can anchor to that width rather than to its 28px trigger.
  */
-import { FolderPlusIcon, SearchIcon, SquarePenIcon, XIcon } from "lucide-react";
+import { FolderPlusIcon, LayersIcon, SearchIcon, SquarePenIcon, XIcon } from "lucide-react";
 import {
   type ComponentProps,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -47,6 +47,12 @@ export interface SidebarThreadHeaderProps {
   searchResultCount: number;
   activeSearchResultIndex: number;
   onClearSearch: () => void;
+  /** Shows or hides chat tabs in the list; null while no chat has more than one tab. */
+  tabsToggle: {
+    shown: boolean;
+    shortcutLabel: string | null;
+    onToggle: () => void;
+  } | null;
 }
 
 export function SidebarThreadHeader({
@@ -67,6 +73,7 @@ export function SidebarThreadHeader({
   searchResultCount,
   activeSearchResultIndex,
   onClearSearch,
+  tabsToggle,
 }: SidebarThreadHeaderProps) {
   const resultsVisible = isSearching && searchResultCount > 0;
   // Results shrink as the query narrows, so the active index can outrun the
@@ -124,6 +131,21 @@ export function SidebarThreadHeader({
           hover states, and a background well reads far louder on themed
           palettes than on the base light and dark ones. */}
       <div className="flex shrink-0 items-center">
+        {tabsToggle ? (
+          <SidebarHeaderIconButton
+            label={tabsToggle.shown ? "Hide tabs" : "Show tabs"}
+            tooltip={
+              tabsToggle.shortcutLabel
+                ? `${tabsToggle.shown ? "Hide" : "Show"} tabs (${tabsToggle.shortcutLabel})`
+                : undefined
+            }
+            aria-pressed={tabsToggle.shown}
+            isActive={tabsToggle.shown}
+            onClick={tabsToggle.onToggle}
+          >
+            <LayersIcon />
+          </SidebarHeaderIconButton>
+        ) : null}
         {hasProjects ? (
           <>
             {projectScope}
@@ -176,7 +198,7 @@ export function SidebarHeaderIconButton({
   children?: ReactNode;
 } & Omit<
   ComponentProps<typeof SidebarMenuButton>,
-  "children" | "className" | "tooltip" | "isActive" | "aria-label"
+  "children" | "className" | "tooltip" | "aria-label"
 >) {
   return (
     <Tooltip>

@@ -738,6 +738,34 @@ export function orderItemsByPreferredIds<TItem, TId>(input: {
   return [...ordered, ...remaining];
 }
 
+/**
+ * The tabs listed under each tab group's sidebar row, in tab order. `hiddenTabThreads` maps a
+ * tab's thread key to the key of the row that stands for its group.
+ */
+export function groupSidebarTabThreads<T>(
+  threadByKey: ReadonlyMap<string, T>,
+  hiddenTabThreads: ReadonlyMap<string, string>,
+): ReadonlyMap<string, readonly T[]> {
+  const tabsByRowKey = new Map<string, T[]>();
+  for (const [threadKey, rowKey] of hiddenTabThreads) {
+    const thread = threadByKey.get(threadKey);
+    if (thread === undefined) continue;
+    const tabs = tabsByRowKey.get(rowKey);
+    if (tabs) tabs.push(thread);
+    else tabsByRowKey.set(rowKey, [thread]);
+  }
+  return tabsByRowKey;
+}
+
+/** Rows in the order the sidebar shows them: each group's row followed by its tabs. */
+export function withSidebarTabThreads<T>(
+  rows: readonly T[],
+  getKey: (row: T) => string,
+  tabsByRowKey: ReadonlyMap<string, readonly T[]>,
+): T[] {
+  return rows.flatMap((row) => [row, ...(tabsByRowKey.get(getKey(row)) ?? [])]);
+}
+
 export function getSidebarThreadIdsToPrewarm<TThreadId>(
   visibleThreadIds: readonly TThreadId[],
   limit = SIDEBAR_THREAD_PREWARM_LIMIT,
