@@ -51,9 +51,12 @@ is its own conversation and provider.
   table so upstream's numbered migrations are never touched.
 - **Server.** `apps/server/src/threadTabs/http.ts` serves the `threadTabs` HTTP group: list a
   group, list all memberships, create a tab, and summarize sibling tabs. Checkpointing lets tab
-  siblings share a worktree (`sharedWorkspace.ts`, `CheckpointReactor.ts`). A turn started in any
-  tab unsettles the group's settled tabs, since the group shows as one sidebar row
-  (`settlement.ts`).
+  siblings share a worktree (`sharedWorkspace.ts`, `CheckpointReactor.ts`).
+- **Settlement.** The group shows as one sidebar row, so it settles as a unit while upstream's
+  settle commands and auto-settle policy stay per thread. `settlement.ts` mirrors them: a turn or
+  unsettle in any tab wakes the group, and a settle in any tab settles the rest. A settle is undone
+  while another tab is working, or, for an automatic settle, while another tab has an open pull
+  request.
 - **Sidebars.** Child tabs are hidden from the thread lists; only the original thread's row shows,
   and it stays highlighted while any of its tabs is open. This applies to the web sidebar, the
   legacy project sidebar, and both mobile thread lists (`useHiddenTabThreads`).
