@@ -99,6 +99,58 @@ describe("descriptor helpers", () => {
     ]);
   });
 
+  it("offers only choices whose requirements hold, snapping the current value", () => {
+    const caps = createModelCapabilities({
+      optionDescriptors: [
+        {
+          id: "sidekick",
+          label: "Sidekick",
+          type: "select",
+          options: [
+            { id: "swe", label: "SWE", isDefault: true },
+            { id: "luna", label: "Luna" },
+            { id: "glm", label: "GLM" },
+          ],
+        },
+        {
+          id: "effort",
+          label: "Effort",
+          type: "select",
+          options: [
+            {
+              id: "medium",
+              label: "Medium",
+              isDefault: true,
+              requires: [{ id: "sidekick", values: ["swe"] }],
+            },
+            { id: "high", label: "High", requires: [{ id: "sidekick", values: ["swe", "luna"] }] },
+          ],
+        },
+      ],
+    });
+    const effortFor = (sidekick: string) =>
+      getProviderOptionDescriptors({
+        caps,
+        selections: [
+          { id: "sidekick", value: sidekick },
+          { id: "effort", value: "medium" },
+        ],
+      }).find((descriptor) => descriptor.id === "effort");
+
+    const swe = effortFor("swe");
+    expect(swe?.type === "select" ? swe.options.map((option) => option.id) : []).toEqual([
+      "medium",
+      "high",
+    ]);
+    expect(swe?.currentValue).toBe("medium");
+    const luna = effortFor("luna");
+    expect(luna?.type === "select" ? luna.options.map((option) => option.id) : []).toEqual([
+      "high",
+    ]);
+    expect(luna?.currentValue).toBe("high");
+    expect(effortFor("glm")).toBeUndefined();
+  });
+
   it("builds wire-format option selections from descriptors", () => {
     const descriptors = getProviderOptionDescriptors({
       caps: codexCaps,

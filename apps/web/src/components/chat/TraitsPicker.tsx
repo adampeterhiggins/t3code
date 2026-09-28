@@ -137,6 +137,7 @@ function getSelectedTraits(
   modelOptions: ProviderOptions | null | undefined,
   allowPromptInjectedEffort: boolean,
   planModeEnabled: boolean,
+  descriptorIds: ReadonlyArray<string> | undefined,
 ) {
   const caps = getProviderModelCapabilities(models, model, provider, planModeEnabled);
   const modelIsUnavailable =
@@ -152,11 +153,16 @@ function getSelectedTraits(
         caps,
         selections: modelOptions,
       });
-  const selectDescriptors = descriptors.filter(
+  // `descriptors` stays complete so picks rebuild every selection; only the
+  // visible subset renders in this control.
+  const visibleDescriptors = descriptorIds
+    ? descriptors.filter((descriptor) => descriptorIds.includes(descriptor.id))
+    : descriptors;
+  const selectDescriptors = visibleDescriptors.filter(
     (descriptor): descriptor is Extract<ProviderOptionDescriptor, { type: "select" }> =>
       descriptor.type === "select",
   );
-  const booleanDescriptors = descriptors.filter(
+  const booleanDescriptors = visibleDescriptors.filter(
     (descriptor): descriptor is Extract<ProviderOptionDescriptor, { type: "boolean" }> =>
       descriptor.type === "boolean",
   );
@@ -193,6 +199,7 @@ function getSelectedTraits(
   return {
     caps,
     descriptors,
+    visibleDescriptors,
     selectDescriptors,
     booleanDescriptors,
     primarySelectDescriptor,
@@ -219,6 +226,7 @@ function getTraitsSectionVisibility(input: {
   modelOptions: ProviderOptions | null | undefined;
   allowPromptInjectedEffort?: boolean;
   planModeEnabled: boolean;
+  descriptorIds?: ReadonlyArray<string> | undefined;
 }) {
   const selected = getSelectedTraits(
     input.provider,
@@ -228,6 +236,7 @@ function getTraitsSectionVisibility(input: {
     input.modelOptions,
     input.allowPromptInjectedEffort ?? true,
     input.planModeEnabled,
+    input.descriptorIds,
   );
 
   const showEffort = selected.primarySelectDescriptor !== null;
@@ -249,7 +258,7 @@ function getTraitsSectionVisibility(input: {
       showFastMode ||
       showContextWindow ||
       showAgent ||
-      (selected.modelIsUnavailable && selected.descriptors.length > 0),
+      (selected.modelIsUnavailable && selected.visibleDescriptors.length > 0),
   };
 }
 
@@ -261,6 +270,7 @@ export function shouldRenderTraitsControls(input: {
   modelOptions: ProviderOptions | null | undefined;
   allowPromptInjectedEffort?: boolean;
   planModeEnabled: boolean;
+  descriptorIds?: ReadonlyArray<string> | undefined;
 }): boolean {
   return getTraitsSectionVisibility(input).hasAnyControls;
 }
@@ -275,6 +285,8 @@ export interface TraitsMenuContentProps {
   modelOptions?: ProviderOptions | null | undefined;
   allowPromptInjectedEffort?: boolean;
   planModeEnabled: boolean;
+  /** Limit this control to these option ids; omitted shows every option. */
+  descriptorIds?: ReadonlyArray<string> | undefined;
   triggerClassName?: string;
   isComposerOwned?: boolean;
 }
@@ -289,6 +301,7 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
   modelOptions,
   allowPromptInjectedEffort = true,
   planModeEnabled,
+  descriptorIds,
   ...persistence
 }: TraitsMenuContentProps & TraitsPersistence) {
   const setProviderModelOptions = useComposerDraftStore((store) => store.setProviderModelOptions);
@@ -312,6 +325,7 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
   );
   const {
     descriptors,
+    visibleDescriptors,
     selectDescriptors,
     booleanDescriptors,
     primarySelectDescriptor,
@@ -327,6 +341,7 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
     modelOptions,
     allowPromptInjectedEffort,
     planModeEnabled,
+    descriptorIds,
   });
   const updateDescriptors = (nextDescriptors: ReadonlyArray<ProviderOptionDescriptor>) => {
     updateModelOptions(buildProviderOptionSelectionsFromDescriptors(nextDescriptors));
@@ -360,7 +375,7 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
   if (modelIsUnavailable) {
     return (
       <>
-        {descriptors.map((descriptor, index) => {
+        {visibleDescriptors.map((descriptor, index) => {
           const value = getProviderOptionCurrentLabel(descriptor);
           if (!value) return null;
           return (
@@ -541,6 +556,7 @@ export const TraitsPicker = memo(function TraitsPicker({
   modelOptions,
   allowPromptInjectedEffort = true,
   planModeEnabled,
+  descriptorIds,
   triggerClassName,
   isComposerOwned,
   size = "sm",
@@ -553,37 +569,37 @@ export const TraitsPicker = memo(function TraitsPicker({
   }) {
   const composerFloatingLayerProps = useComposerMenuProps();
   const [isMenuOpen, setIsMenuOpen] = useComposerMenuState(hidden);
-  const { descriptors, primarySelectDescriptor, ultrathinkPromptControlled } =
-    getTraitsSectionVisibility({
-      provider,
-      models,
-      model,
-      prompt,
-      modelOptions,
-      allowPromptInjectedEffort,
-      planModeEnabled,
-    });
-  if (
-    !shouldRenderTraitsControls({
-      provider,
-      models,
-      model,
-      prompt,
-      modelOptions,
-      allowPromptInjectedEffort,
-      planModeEnabled,
-    })
-  ) {
+  const {
+    visibleDescriptors,
+    primarySelectDescriptor,
+    ultrathinkPromptControlled,
+    hasAnyControls,
+  } = getTraitsSectionVisibility({
+    provider,
+    models,
+    model,
+    prompt,
+    modelOptions,
+    allowPromptInjectedEffort,
+    planModeEnabled,
+    descriptorIds,
+  });
+  if (!hasAnyControls) {
     return null;
   }
 
   const { label: triggerLabel, showFastModeIcon } = buildTraitsTriggerDisplay({
     provider,
-    descriptors,
+    descriptors: visibleDescriptors,
     primarySelectDescriptorId: primarySelectDescriptor?.id ?? null,
     ultrathinkPromptControlled,
   });
-  const accessibleLabel = showFastModeIcon ? `${triggerLabel}, Fast mode on` : triggerLabel;
+  // A standalone control shows just its value, so name the option for context.
+  const namedLabel =
+    primarySelectDescriptor?.standalone === true
+      ? `${primarySelectDescriptor.label}: ${triggerLabel}`
+      : triggerLabel;
+  const accessibleLabel = showFastModeIcon ? `${namedLabel}, Fast mode on` : namedLabel;
   const fastModeIcon = showFastModeIcon ? (
     <>
       <ComposerControlIcon
@@ -618,7 +634,11 @@ export const TraitsPicker = memo(function TraitsPicker({
               render={
                 <ComposerControl
                   aria-label={accessibleLabel}
-                  data-composer-shortcut={isComposerOwned ? "composer.effort" : undefined}
+                  data-composer-shortcut={
+                    isComposerOwned && primarySelectDescriptor?.standalone !== true
+                      ? "composer.effort"
+                      : undefined
+                  }
                   size={size}
                   className={cn(
                     isCodexStyle
@@ -681,6 +701,7 @@ export const TraitsPicker = memo(function TraitsPicker({
           modelOptions={modelOptions}
           allowPromptInjectedEffort={allowPromptInjectedEffort}
           planModeEnabled={planModeEnabled}
+          descriptorIds={descriptorIds}
           {...persistence}
         />
       </MenuPopup>

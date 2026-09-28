@@ -7,11 +7,20 @@ import { ProviderDriverKind } from "./providerInstance.ts";
 export const ProviderOptionDescriptorType = Schema.Literals(["select", "boolean"]);
 export type ProviderOptionDescriptorType = typeof ProviderOptionDescriptorType.Type;
 
+/** A choice condition: the named option's current value is one of `values`. */
+export const ProviderOptionChoiceRequirement = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  values: Schema.Array(TrimmedNonEmptyString),
+});
+export type ProviderOptionChoiceRequirement = typeof ProviderOptionChoiceRequirement.Type;
+
 export const ProviderOptionChoice = Schema.Struct({
   id: TrimmedNonEmptyString,
   label: TrimmedNonEmptyString,
   description: Schema.optional(TrimmedNonEmptyString),
   isDefault: Schema.optional(Schema.Boolean),
+  /** Offer this choice only while every requirement holds. */
+  requires: Schema.optional(Schema.Array(ProviderOptionChoiceRequirement)),
 });
 export type ProviderOptionChoice = typeof ProviderOptionChoice.Type;
 
@@ -19,6 +28,8 @@ const ProviderOptionDescriptorBase = {
   id: TrimmedNonEmptyString,
   label: TrimmedNonEmptyString,
   description: Schema.optional(TrimmedNonEmptyString),
+  /** Render as its own composer control rather than inside the traits menu. */
+  standalone: Schema.optional(Schema.Boolean),
 } as const;
 
 export const SelectProviderOptionDescriptor = Schema.Struct({
