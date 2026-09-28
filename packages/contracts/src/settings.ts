@@ -52,6 +52,11 @@ export const DiffLayout = Schema.Literals(["stacked", "split"]);
 export type DiffLayout = typeof DiffLayout.Type;
 const DEFAULT_DIFF_LAYOUT: DiffLayout = "stacked";
 
+/** Where the git toolbar's "View PR" button opens an existing pull request. */
+export const PullRequestOpenTarget = Schema.Literals(["panel", "browser"]);
+export type PullRequestOpenTarget = typeof PullRequestOpenTarget.Type;
+const DEFAULT_PULL_REQUEST_OPEN_TARGET: PullRequestOpenTarget = "panel";
+
 export const SidebarProjectSortOrder = Schema.Literals(["updated_at", "created_at", "manual"]);
 export type SidebarProjectSortOrder = typeof SidebarProjectSortOrder.Type;
 export const DEFAULT_SIDEBAR_PROJECT_SORT_ORDER: SidebarProjectSortOrder = "updated_at";
@@ -374,6 +379,9 @@ export const ClientSettingsSchema = Schema.Struct({
   diffFilesCollapsed: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   diffIgnoreWhitespace: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   diffLayout: DiffLayout.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_DIFF_LAYOUT))),
+  pullRequestOpenTarget: PullRequestOpenTarget.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_PULL_REQUEST_OPEN_TARGET)),
+  ),
   environmentIdentificationMode: EnvironmentIdentificationMode.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_ENVIRONMENT_IDENTIFICATION_MODE)),
   ),
@@ -1681,6 +1689,7 @@ export const ClientSettingsPatch = Schema.Struct({
   diffFilesCollapsed: Schema.optionalKey(Schema.Boolean),
   diffIgnoreWhitespace: Schema.optionalKey(Schema.Boolean),
   diffLayout: Schema.optionalKey(DiffLayout),
+  pullRequestOpenTarget: Schema.optionalKey(PullRequestOpenTarget),
   environmentIdentificationMode: Schema.optionalKey(EnvironmentIdentificationMode),
   glassOpacity: Schema.optionalKey(GlassOpacity),
   onboardingCompletedAt: Schema.optionalKey(Schema.NullOr(Schema.String)),

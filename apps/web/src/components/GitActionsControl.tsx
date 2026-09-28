@@ -117,6 +117,7 @@ import { getSourceControlPresentation } from "~/sourceControlPresentation";
 import { useOpenLink } from "~/browser/useOpenLink";
 import { readLocalApi } from "~/localApi";
 import { useOpenPrLink } from "~/lib/openPullRequestLink";
+import { useClientSettings } from "~/hooks/useSettings";
 
 interface GitActionsControlProps {
   presentation?: "toolbar" | "menu";
@@ -967,6 +968,7 @@ export default function GitActionsControl({
   );
   const openPrLink = useOpenPrLink(activeThreadRef ?? undefined);
   const openLink = useOpenLink(activeThreadRef);
+  const pullRequestOpenTarget = useClientSettings((settings) => settings.pullRequestOpenTarget);
   const activeDraftThread = useComposerDraftStore((store) =>
     draftId
       ? store.getDraftSession(draftId)
@@ -1528,7 +1530,11 @@ export default function GitActionsControl({
 
   const runQuickAction = () => {
     if (quickAction.kind === "open_pr") {
-      void openExistingPr();
+      if (pullRequestOpenTarget === "browser" && openPrUrl) {
+        openPrInBrowser();
+      } else {
+        void openExistingPr();
+      }
       return;
     }
     if (quickAction.kind === "open_publish") {

@@ -342,6 +342,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["stacked split side by side unified inline view"],
   },
   {
+    id: "pull-request-open-target",
+    title: "Open pull requests in",
+    to: "/settings/general",
+    searchTerms: ["pr view browser github gitlab side panel sidebar default button external"],
+  },
+  {
     id: "proactive-panels",
     title: "Proactive panels",
     to: "/settings/general",

@@ -25,6 +25,7 @@ import {
   type ChatWidth,
   type DiffLayout,
   type EnvironmentIdentificationMode,
+  type PullRequestOpenTarget,
   MAX_APPEARANCE_CONTRAST,
   MAX_CODE_FONT_SIZE,
   MAX_GLASS_OPACITY,
@@ -207,6 +208,11 @@ const CHAT_WIDTH_LABELS: Record<ChatWidth, string> = {
 const DIFF_LAYOUT_LABELS: Record<DiffLayout, string> = {
   stacked: "Stacked",
   split: "Split",
+};
+
+const PULL_REQUEST_OPEN_TARGET_LABELS: Record<PullRequestOpenTarget, string> = {
+  panel: "Side panel",
+  browser: "Browser",
 };
 
 const QUIT_CONFIRMATION_MODE_LABELS: Record<QuitConfirmationMode, string> = {
@@ -579,6 +585,9 @@ export function useSettingsRestore(onRestored?: () => void) {
         ? ["Diff whitespace changes"]
         : []),
       ...(settings.diffLayout !== DEFAULT_UNIFIED_SETTINGS.diffLayout ? ["Diff layout"] : []),
+      ...(settings.pullRequestOpenTarget !== DEFAULT_UNIFIED_SETTINGS.pullRequestOpenTarget
+        ? ["Open pull requests in"]
+        : []),
       ...(settings.proactivePanelsEnabled !== DEFAULT_UNIFIED_SETTINGS.proactivePanelsEnabled
         ? ["Proactive panels"]
         : []),
@@ -665,6 +674,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.diffFilesCollapsed,
       settings.diffIgnoreWhitespace,
       settings.diffLayout,
+      settings.pullRequestOpenTarget,
       settings.proactivePanelsEnabled,
       settings.environmentIdentificationMode,
       settings.contextWindowMeterEnabled,
@@ -769,6 +779,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       diffFilesCollapsed: DEFAULT_UNIFIED_SETTINGS.diffFilesCollapsed,
       diffIgnoreWhitespace: DEFAULT_UNIFIED_SETTINGS.diffIgnoreWhitespace,
       diffLayout: DEFAULT_UNIFIED_SETTINGS.diffLayout,
+      pullRequestOpenTarget: DEFAULT_UNIFIED_SETTINGS.pullRequestOpenTarget,
       proactivePanelsEnabled: DEFAULT_UNIFIED_SETTINGS.proactivePanelsEnabled,
       showSkillsInSlashMenu: DEFAULT_UNIFIED_SETTINGS.showSkillsInSlashMenu,
       composerCollapseOnScroll: DEFAULT_UNIFIED_SETTINGS.composerCollapseOnScroll,
@@ -2571,6 +2582,50 @@ export function GeneralSettingsPanel() {
                 </SelectItem>
                 <SelectItem hideIndicator value="split">
                   {DIFF_LAYOUT_LABELS.split}
+                </SelectItem>
+              </SelectPopup>
+            </Select>
+          }
+        />
+        <SettingsRow
+          {...searchableSetting("pull-request-open-target")}
+          description="Choose where the View PR button opens a pull request. The other option stays in its dropdown."
+          resetAction={
+            settings.pullRequestOpenTarget !== DEFAULT_UNIFIED_SETTINGS.pullRequestOpenTarget ? (
+              <SettingResetButton
+                label="pull request open target"
+                onClick={() =>
+                  updateSettings({
+                    pullRequestOpenTarget: DEFAULT_UNIFIED_SETTINGS.pullRequestOpenTarget,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Select
+              value={settings.pullRequestOpenTarget}
+              onValueChange={(value) => {
+                if (value === "panel" || value === "browser") {
+                  updateSettings({ pullRequestOpenTarget: value });
+                }
+              }}
+            >
+              <SelectTrigger
+                size="sm"
+                className="w-full sm:w-40"
+                aria-label="Open pull requests in"
+              >
+                <SelectValue>
+                  {PULL_REQUEST_OPEN_TARGET_LABELS[settings.pullRequestOpenTarget]}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectPopup align="end" alignItemWithTrigger={false}>
+                <SelectItem hideIndicator value="panel">
+                  {PULL_REQUEST_OPEN_TARGET_LABELS.panel}
+                </SelectItem>
+                <SelectItem hideIndicator value="browser">
+                  {PULL_REQUEST_OPEN_TARGET_LABELS.browser}
                 </SelectItem>
               </SelectPopup>
             </Select>
