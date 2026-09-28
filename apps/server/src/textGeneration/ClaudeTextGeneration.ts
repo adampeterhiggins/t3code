@@ -24,6 +24,7 @@ import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
+  buildIgnoredNamesPrompt,
   buildThreadTitlePrompt,
 } from "./TextGenerationPrompts.ts";
 import {
@@ -102,7 +103,8 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle",
+      | "generateThreadTitle"
+      | "generateIgnoredNames",
     value: unknown,
     detail: string,
   ): Effect.Effect<string, TextGenerationError> =>
@@ -132,7 +134,8 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle";
+      | "generateThreadTitle"
+      | "generateIgnoredNames";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -187,7 +190,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
     const runClaudeCommand = Effect.fn("runClaudeJson.runClaudeCommand")(function* () {
       // Titles need only the supplied prompt, not configuration from the checkout.
       const workingDirectory =
-        operation === "generateThreadTitle"
+        operation === "generateThreadTitle" || operation === "generateIgnoredNames"
           ? yield* fileSystem
               .makeTempDirectoryScoped({ prefix: "t3code-claude-title-" })
               .pipe(
@@ -410,10 +413,26 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       };
     });
 
+  const generateIgnoredNames: TextGeneration.TextGeneration["Service"]["generateIgnoredNames"] =
+    Effect.fn("ClaudeTextGeneration.generateIgnoredNames")(function* (input) {
+      const { prompt, outputSchema } = buildIgnoredNamesPrompt({
+        directories: input.directories,
+      });
+      const generated = yield* runClaudeJson({
+        operation: "generateIgnoredNames",
+        cwd: input.cwd,
+        prompt,
+        outputSchemaJson: outputSchema,
+        modelSelection: input.modelSelection,
+      });
+      return { names: generated.names };
+    });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateIgnoredNames,
   } satisfies TextGeneration.TextGeneration["Service"];
 });

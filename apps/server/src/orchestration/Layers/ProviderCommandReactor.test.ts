@@ -347,6 +347,9 @@ describe("ProviderCommandReactor", () => {
         }),
       ),
     );
+    const generateIgnoredNames = vi.fn<TextGeneration["Service"]["generateIgnoredNames"]>(() =>
+      Effect.succeed({ names: [] }),
+    );
     const providerSnapshots = [
       {
         instanceId: modelSelection.instanceId,
@@ -490,6 +493,7 @@ describe("ProviderCommandReactor", () => {
         Layer.mock(TextGeneration, {
           generateBranchName,
           generateThreadTitle,
+          generateIgnoredNames,
         }),
       ),
       Layer.provideMerge(Layer.mock(TerminalManager)({ closeIdle: closeIdleTerminals })),

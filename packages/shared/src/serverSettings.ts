@@ -81,6 +81,23 @@ export function isModelSelectionProviderEnabled(
   );
 }
 
+export function resolveWorktreeCleanupModelSelection(
+  settings: ServerSettings,
+  providers?: ReadonlyArray<ServerProvider>,
+): ModelSelection {
+  const selection = settings.worktreeCleanupModelSelection;
+  if (!selection || !isModelSelectionProviderEnabled(settings, selection)) {
+    return settings.textGenerationModelSelection;
+  }
+  if (providers === undefined) {
+    return selection;
+  }
+  const provider = providers.find((candidate) => candidate.instanceId === selection.instanceId);
+  return provider?.enabled === true && isProviderAvailable(provider)
+    ? selection
+    : settings.textGenerationModelSelection;
+}
+
 export function resolveSourceControlWriterModelSelection(
   settings: ServerSettings,
   providers?: ReadonlyArray<ServerProvider>,
@@ -287,6 +304,7 @@ export function applyServerSettingsPatch(
     projectAgentBrowserAccessOverrides: _legacyBrowserAccess,
     projectAutoPullOverrides: _legacyAutoPull,
     projectScriptOverrides: _legacyScripts,
+    worktreeCleanupModelSelection: worktreeCleanupModelSelectionPatch,
     ...patchForMerge
   } = patch;
   const currentBackgroundActivity = normalizeServerBackgroundActivitySettings(current);
@@ -422,6 +440,9 @@ export function applyServerSettingsPatch(
       : {}),
     ...(patch.sourceControlWriterModelSelection !== undefined
       ? { sourceControlWriterModelSelection: patch.sourceControlWriterModelSelection }
+      : {}),
+    ...(worktreeCleanupModelSelectionPatch !== undefined
+      ? { worktreeCleanupModelSelection: worktreeCleanupModelSelectionPatch }
       : {}),
     ...(automaticGitFetchInterval !== undefined ? { automaticGitFetchInterval } : {}),
     ...(providerHealthRefreshInterval !== undefined ? { providerHealthRefreshInterval } : {}),

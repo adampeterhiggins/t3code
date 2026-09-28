@@ -1,6 +1,10 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { ignoredPathsBlockWorktreeRemoval } from "./storageCleanup.ts";
+import {
+  acceptedModelIgnoredNames,
+  ignoredPathsBlockWorktreeRemoval,
+  suggestedIgnoredDirectoryNames,
+} from "./storageCleanup.ts";
 
 describe("ignoredPathsBlockWorktreeRemoval", () => {
   it("allows dependency installs and regenerable caches", () => {
@@ -36,6 +40,24 @@ describe("ignoredPathsBlockWorktreeRemoval", () => {
     expect(ignoredPathsBlockWorktreeRemoval("target/\0", false)).toBe(true);
     expect(ignoredPathsBlockWorktreeRemoval("node_modules/\0.env\0", false)).toBe(true);
     expect(ignoredPathsBlockWorktreeRemoval("__pycache__/\0", true)).toBe(true);
+  });
+
+  it("suggests ignored directories that are not built-in caches or credential stores", () => {
+    expect(
+      suggestedIgnoredDirectoryNames(
+        [
+          "node_modules/\0__pycache__/\0target/\0.env/\0.ssh/\0dist/\0",
+          "apps/web/dist/\0target/\0.cache/\0src/pkg.egg-info/\0",
+        ],
+        50,
+      ),
+    ).toEqual(["dist", "target"]);
+  });
+
+  it("keeps only model names that the project scan found", () => {
+    expect(
+      acceptedModelIgnoredNames(["target", "dist", ".cache"], ["dist", ".env", "made-up", "dist"]),
+    ).toEqual(["dist"]);
   });
 
   it("allows extra names from settings for files and directories", () => {

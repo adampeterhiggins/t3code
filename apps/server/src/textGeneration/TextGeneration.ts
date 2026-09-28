@@ -75,6 +75,17 @@ export interface ThreadTitleGenerationResult {
   needsRefinement?: boolean | undefined;
 }
 
+export interface IgnoredNamesGenerationInput {
+  cwd: string;
+  directories: ReadonlyArray<{ readonly name: string; readonly count: number }>;
+  /** What model and provider to use for generation. */
+  modelSelection: ModelSelection;
+}
+
+export interface IgnoredNamesGenerationResult {
+  names: ReadonlyArray<string>;
+}
+
 /**
  * TextGeneration - Service tag for commit and change request text generation.
  */
@@ -106,6 +117,11 @@ export class TextGeneration extends Context.Service<
     readonly generateThreadTitle: (
       input: ThreadTitleGenerationInput,
     ) => Effect.Effect<ThreadTitleGenerationResult, TextGenerationError>;
+
+    /** Choose ignored directory names that are safe to delete with a worktree. */
+    readonly generateIgnoredNames: (
+      input: IgnoredNamesGenerationInput,
+    ) => Effect.Effect<IgnoredNamesGenerationResult, TextGenerationError>;
   }
 >()("t3/textGeneration/TextGeneration") {}
 
@@ -113,7 +129,8 @@ type TextGenerationOp =
   | "generateCommitMessage"
   | "generatePrContent"
   | "generateBranchName"
-  | "generateThreadTitle";
+  | "generateThreadTitle"
+  | "generateIgnoredNames";
 
 const resolveInstance = (
   registry: ProviderInstanceRegistry.ProviderInstanceRegistry["Service"],
@@ -165,6 +182,10 @@ export const make = Effect.gen(function* () {
             return yield* textGeneration.generateThreadTitle({ ...input, linkedContext });
           }),
         ),
+      ),
+    generateIgnoredNames: (input) =>
+      resolveInstance(registry, "generateIgnoredNames", input.modelSelection.instanceId).pipe(
+        Effect.flatMap((textGeneration) => textGeneration.generateIgnoredNames(input)),
       ),
   });
 });

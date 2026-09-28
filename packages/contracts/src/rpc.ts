@@ -15,6 +15,7 @@ import {
 } from "./providerSetup.ts";
 
 import { ExternalLauncherError, LaunchEditorInput } from "./editor.ts";
+import { TextGenerationError } from "./git.ts";
 import {
   AuthAccessStreamError,
   AuthAccessStreamEvent,
@@ -372,6 +373,7 @@ export const WS_METHODS = {
   serverRemoveKeybinding: "server.removeKeybinding",
   serverGetSettings: "server.getSettings",
   serverUpdateSettings: "server.updateSettings",
+  serverSuggestWorktreeCleanupIgnoredNames: "server.suggestWorktreeCleanupIgnoredNames",
   serverDiscoverSourceControl: "server.discoverSourceControl",
   serverGetTraceDiagnostics: "server.getTraceDiagnostics",
   serverGetProcessDiagnostics: "server.getProcessDiagnostics",
@@ -593,6 +595,19 @@ const WsServerUpdateSettingsRpc = Rpc.make(WS_METHODS.serverUpdateSettings, {
   success: ServerSettings,
   error: Schema.Union([ServerSettingsError, EnvironmentAuthorizationError]),
 });
+
+const WsServerSuggestWorktreeCleanupIgnoredNamesRpc = Rpc.make(
+  WS_METHODS.serverSuggestWorktreeCleanupIgnoredNames,
+  {
+    payload: Schema.Struct({}),
+    success: Schema.Struct({
+      names: Schema.Array(Schema.String.check(Schema.isMaxLength(255))).check(
+        Schema.isMaxLength(50),
+      ),
+    }),
+    error: Schema.Union([EnvironmentAuthorizationError, TextGenerationError]),
+  },
+);
 
 const WsServerDiscoverSourceControlRpc = Rpc.make(WS_METHODS.serverDiscoverSourceControl, {
   payload: Schema.Struct({}),
@@ -1414,6 +1429,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerRemoveKeybindingRpc,
   WsServerGetSettingsRpc,
   WsServerUpdateSettingsRpc,
+  WsServerSuggestWorktreeCleanupIgnoredNamesRpc,
   WsServerDiscoverSourceControlRpc,
   WsServerGetTraceDiagnosticsRpc,
   WsServerGetProcessDiagnosticsRpc,

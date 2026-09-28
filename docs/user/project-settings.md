@@ -79,7 +79,10 @@ sessions, shared worktrees, uncommitted changes, and ignored files other than de
 installs and regenerable tool caches prevent removal. Caches such as `node_modules`,
 virtualenvs, and `__pycache__` do not; secrets and other local files, such as `.env`, still do.
 Add extra file or directory names on the environment's Storage page so those ignored paths do not
-keep a worktree. The names apply to every project on that machine.
+keep a worktree. **Suggest from projects** asks the selected model to choose ignored directories from your
+projects. Built-in caches and credential folders such as `.env` and `.ssh` stay out of that
+choice. Off on **Model for suggestions** uses the environment's text generation model. The
+names apply to every project on that machine.
 Branches and thread history stay; starting another turn recreates the checkout.
 Merge cleanup requires the commits to be included in the remote default branch, so squash merges
 may need the inactivity rule instead.

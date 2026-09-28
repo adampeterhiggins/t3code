@@ -15,6 +15,7 @@ import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
+  buildIgnoredNamesPrompt,
   buildThreadTitlePrompt,
 } from "./TextGenerationPrompts.ts";
 import {
@@ -55,7 +56,8 @@ export const makeDevinTextGeneration = Effect.fn("makeDevinTextGeneration")(func
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle";
+      | "generateThreadTitle"
+      | "generateIgnoredNames";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -262,10 +264,26 @@ export const makeDevinTextGeneration = Effect.fn("makeDevinTextGeneration")(func
       } satisfies TextGeneration.ThreadTitleGenerationResult;
     });
 
+  const generateIgnoredNames: TextGeneration.TextGeneration["Service"]["generateIgnoredNames"] =
+    Effect.fn("DevinTextGeneration.generateIgnoredNames")(function* (input) {
+      const { prompt, outputSchema } = buildIgnoredNamesPrompt({
+        directories: input.directories,
+      });
+      const generated = yield* runDevinJson({
+        operation: "generateIgnoredNames",
+        cwd: input.cwd,
+        prompt,
+        outputSchemaJson: outputSchema,
+        modelSelection: input.modelSelection,
+      });
+      return { names: generated.names };
+    });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateIgnoredNames,
   } satisfies TextGeneration.TextGeneration["Service"];
 });
