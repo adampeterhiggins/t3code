@@ -114,6 +114,7 @@ import { resolvePathLinkTarget } from "~/terminal-links";
 import { type DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { getSourceControlPresentation } from "~/sourceControlPresentation";
 import { useOpenLink } from "~/browser/useOpenLink";
+import { readLocalApi } from "~/localApi";
 import { useOpenPrLink } from "~/lib/openPullRequestLink";
 
 interface GitActionsControlProps {
@@ -1223,6 +1224,26 @@ export default function GitActionsControl({
     });
   }, [gitStatusForActions, onOpenPullRequest, openLink, threadToastData]);
 
+  const openPrUrl = gitStatusForActions?.pr?.state === "open" ? gitStatusForActions.pr.url : null;
+  const openPrInBrowser = useCallback(() => {
+    if (!openPrUrl) return;
+    void (async () => {
+      const api = readLocalApi();
+      if (!api) throw new Error("Link opening is unavailable.");
+      await api.shell.openExternal(openPrUrl);
+    })().catch((err: unknown) => {
+      console.error(err);
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "Unable to open pull request link",
+          description: err instanceof Error ? err.message : "An error occurred.",
+          ...(threadToastData !== undefined ? { data: threadToastData } : {}),
+        }),
+      );
+    });
+  }, [openPrUrl, threadToastData]);
+
   runGitActionWithToast = useEffectEvent(
     async ({
       action,
@@ -1825,6 +1846,28 @@ export default function GitActionsControl({
               </span>
             </Button>
           )}
+          {quickAction.kind === "open_pr" && openPrUrl ? (
+            <>
+              <GroupSeparator className="hidden @3xl/header-actions:block" />
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      aria-label={`Open in ${sourceControlPresentation.providerName}`}
+                      size="icon-xs"
+                      variant="outline"
+                      onClick={openPrInBrowser}
+                    />
+                  }
+                >
+                  <SourceControlIcon aria-hidden="true" className="size-3.5" />
+                </TooltipTrigger>
+                <TooltipPopup side="bottom">
+                  Open in {sourceControlPresentation.providerName}
+                </TooltipPopup>
+              </Tooltip>
+            </>
+          ) : null}
           <GroupSeparator className="hidden @3xl/header-actions:block" />
           <Menu
             onOpenChange={(open) => {
