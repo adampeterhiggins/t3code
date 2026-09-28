@@ -11,12 +11,17 @@ import {
   type ThreadTabGroup,
 } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import {
+  isAtomCommandInterrupted,
+  squashAtomCommandFailure,
+} from "@t3tools/client-runtime/state/runtime";
 import { sanitizeComposerContextLabel } from "@t3tools/shared/composerContextReferences";
 import * as Option from "effect/Option";
 import { useNavigate } from "@tanstack/react-router";
-import { PlusIcon } from "lucide-react";
+import { PlusIcon, XIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { useThreadActions } from "../../hooks/useThreadActions";
 import {
   type ComposerContextReference,
   toKindScopedComposerContextId,
@@ -79,7 +84,7 @@ function TabMenuLabel(props: {
 }
 
 /**
- * Breadcrumb segment naming the open tab; its menu switches tabs or opens a new one.
+ * Breadcrumb segment naming the open tab; its menu switches, opens, or closes tabs.
  * With a single tab it is just a "new tab" button.
  */
 export function ThreadTabMenu({
@@ -95,6 +100,7 @@ export function ThreadTabMenu({
 }) {
   const prepared = usePreparedConnection(environmentId);
   const navigate = useNavigate();
+  const { archiveThread } = useThreadActions();
   const [busy, setBusy] = useState(false);
   const currentLabel = useTabLabel(environmentId, group, threadId);
 
@@ -103,6 +109,29 @@ export function ThreadTabMenu({
       to: "/$environmentId/$threadId",
       params: { environmentId, threadId: nextThreadId },
     });
+
+  // Closing archives the tab's thread, so undo and the archived-threads list can reopen it.
+  const close = async () => {
+    const index = group.tabs.findIndex((tab) => tab.threadId === threadId);
+    const next = group.tabs[index + 1] ?? group.tabs[index - 1];
+    if (!next) return;
+    setBusy(true);
+    try {
+      const result = await archiveThread(scopeThreadRef(environmentId, threadId), {
+        next: scopeThreadRef(environmentId, next.threadId),
+      });
+      if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+        const error = squashAtomCommandFailure(result);
+        toastManager.add({
+          type: "error",
+          title: "Could not close tab",
+          description: error instanceof Error ? error.message : undefined,
+        });
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const create = async () => {
     if (Option.isNone(prepared)) return;
@@ -175,6 +204,10 @@ export function ThreadTabMenu({
         <MenuItem disabled={busy || Option.isNone(prepared)} onClick={() => void create()}>
           <PlusIcon />
           New tab
+        </MenuItem>
+        <MenuItem disabled={busy} onClick={() => void close()}>
+          <XIcon />
+          Close tab
         </MenuItem>
       </MenuPopup>
     </Menu>

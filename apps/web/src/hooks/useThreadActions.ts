@@ -293,7 +293,11 @@ export function useThreadActions() {
   );
 
   const archiveThread = useCallback(
-    async (target: ScopedThreadRef, opts: { onArchived?: () => void } = {}) => {
+    async (
+      target: ScopedThreadRef,
+      /** `next` is where to land when the open thread is archived; defaults to a new draft. */
+      opts: { onArchived?: () => void; next?: ScopedThreadRef } = {},
+    ) => {
       const resolved = resolveThreadTarget(target);
       if (!resolved) return AsyncResult.success(undefined);
       const { thread, threadRef } = resolved;
@@ -309,7 +313,7 @@ export function useThreadActions() {
       }
 
       const currentRouteThreadRef = getCurrentRouteThreadRef();
-      const shouldNavigateToDraft =
+      const shouldNavigateAway =
         currentRouteThreadRef?.threadId === threadRef.threadId &&
         currentRouteThreadRef.environmentId === threadRef.environmentId;
       const action = ThreadUndo.begin("archive", scopedThreadKey(threadRef));
@@ -330,15 +334,25 @@ export function useThreadActions() {
       showThreadUndoNotice({
         action: "Archived",
         claim: action,
-        // Undo also brings the reader back when archiving moved them to a draft.
-        undo: () => unarchiveThread(threadRef, { navigate: shouldNavigateToDraft }),
+        // Undo also brings the reader back when archiving navigated them away.
+        undo: () => unarchiveThread(threadRef, { navigate: shouldNavigateAway }),
         failureTitle: "Failed to undo archive",
       });
 
-      if (shouldNavigateToDraft) {
-        const navigationResult = await settlePromise(() =>
-          handleNewThreadRef.current(scopeProjectRef(thread.environmentId, thread.projectId)),
-        );
+      if (shouldNavigateAway) {
+        const next = opts.next;
+        const navigationResult = await settlePromise(async () => {
+          if (next) {
+            await router.navigate({
+              to: "/$environmentId/$threadId",
+              params: buildThreadRouteParams(next),
+            });
+          } else {
+            await handleNewThreadRef.current(
+              scopeProjectRef(thread.environmentId, thread.projectId),
+            );
+          }
+        });
         if (navigationResult._tag === "Failure") {
           return navigationResult;
         }
@@ -352,6 +366,7 @@ export function useThreadActions() {
       getCurrentRouteThreadRef,
       markThreadVisited,
       resolveThreadTarget,
+      router,
       unarchiveThread,
     ],
   );

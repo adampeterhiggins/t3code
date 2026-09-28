@@ -31,4 +31,23 @@ describe("sidebar tab groups", () => {
       ).size,
     ).toBe(0);
   });
+
+  it("promotes the next open tab when the first tab is closed", () => {
+    const local = EnvironmentId.make("local");
+    const root = ThreadId.make("root");
+    const second = ThreadId.make("second");
+    const third = ThreadId.make("third");
+    const memberships = new Map([
+      [local, [root, second, third].map((threadId) => ({ threadId, groupId: root }))],
+    ]);
+    const shells = [
+      { id: root, environmentId: local, archivedAt: "2026-01-01T00:00:00Z" },
+      { id: second, environmentId: local, archivedAt: null },
+      { id: third, environmentId: local, archivedAt: null },
+    ];
+
+    expect([...hiddenTabThreadKeys(shells, memberships)]).toEqual([
+      ["local:third", "local:second"],
+    ]);
+  });
 });
