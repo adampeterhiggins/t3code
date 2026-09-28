@@ -18,6 +18,7 @@ if that project exists there. Otherwise it selects an environment that has it.
 Click the tab name at the end of the header breadcrumb (`project / thread / tab`) and choose
 **New tab** to open a separate chat in the same workspace. The same menu switches between tabs.
 Each tab has its own provider and conversation, and the sidebar shows only the original thread.
+Opening it from the sidebar returns to the tab you last had open.
 
 To bring in another tab's conversation, type `@` in the composer and pick the tab; its summary
 lands as a chip at the cursor. Before the first message in a new tab, you can also click a sibling

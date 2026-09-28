@@ -1,6 +1,6 @@
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
-import { hiddenTabThreadKeys } from "./threadTabs.ts";
+import { hiddenTabThreadKeys, threadTabGroupTarget } from "./threadTabs.ts";
 
 describe("sidebar tab groups", () => {
   it("keeps the parent row and hides its children only in the matching environment", () => {
@@ -49,5 +49,27 @@ describe("sidebar tab groups", () => {
     expect([...hiddenTabThreadKeys(shells, memberships)]).toEqual([
       ["local:third", "local:second"],
     ]);
+  });
+
+  it("opens a group's row on its most recently opened tab", () => {
+    const hidden = new Map([
+      ["local:second", "local:root"],
+      ["local:third", "local:root"],
+      ["local:other-child", "local:other"],
+    ]);
+
+    expect(threadTabGroupTarget("local:root", hidden, {})).toBe("local:root");
+    expect(
+      threadTabGroupTarget("local:root", hidden, {
+        "local:root": 1,
+        "local:second": 3,
+        "local:third": 2,
+        "local:other-child": 4,
+      }),
+    ).toBe("local:second");
+    expect(threadTabGroupTarget("local:root", hidden, { "local:root": 5, "local:second": 3 })).toBe(
+      "local:root",
+    );
+    expect(threadTabGroupTarget("local:second", hidden, { "local:third": 9 })).toBe("local:second");
   });
 });

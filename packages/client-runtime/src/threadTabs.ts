@@ -59,6 +59,28 @@ export function hiddenTabThreadKeys<
   return hidden;
 }
 
+/**
+ * The thread a sidebar row opens: for a tab group's row, whichever of its tabs was opened most
+ * recently, so returning to the group lands on the tab left open. Other keys open themselves.
+ */
+export function threadTabGroupTarget(
+  rowKey: string,
+  hiddenTabThreads: ReadonlyMap<string, string>,
+  openedAtByThreadKey: Readonly<Record<string, number>>,
+): string {
+  let target = rowKey;
+  let targetOpenedAt = openedAtByThreadKey[rowKey] ?? Number.NEGATIVE_INFINITY;
+  for (const [key, representative] of hiddenTabThreads) {
+    if (representative !== rowKey) continue;
+    const openedAt = openedAtByThreadKey[key];
+    if (openedAt !== undefined && openedAt > targetOpenedAt) {
+      target = key;
+      targetOpenedAt = openedAt;
+    }
+  }
+  return target;
+}
+
 export const listThreadTabs = Effect.fn("clientRuntime.threadTabs.list")(function* (
   prepared: PreparedConnection,
   threadId: ThreadId,

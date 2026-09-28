@@ -79,6 +79,7 @@ import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstra
 import { isElectron } from "../env";
 import { useTerminalFocus } from "../hooks/useTerminalFocus";
 import { useHiddenTabThreads } from "./sidebar/useHiddenTabThreads";
+import { resolveThreadTabTarget } from "../threadTabRecencyStore";
 import { useOpenPrLink } from "../lib/openPullRequestLink";
 import { releaseProjectDraftUploads } from "../lib/composerDraftUploads";
 import { isTerminalFocused } from "../lib/terminalFocus";
@@ -1818,13 +1819,14 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       }
       return router.navigate({
         to: "/$environmentId/$threadId",
-        params: buildThreadRouteParams(threadRef),
+        params: buildThreadRouteParams(resolveThreadTabTarget(threadRef, hiddenTabThreads)),
       });
     },
-    [clearSelection, isMobile, router, setOpenMobile, setSelectionAnchor],
+    [clearSelection, hiddenTabThreads, isMobile, router, setOpenMobile, setSelectionAnchor],
   );
   const handleThreadFileDrop = useCallback(
-    async (threadRef: ScopedThreadRef, files: File[]) => {
+    async (rowThreadRef: ScopedThreadRef, files: File[]) => {
+      const threadRef = resolveThreadTabTarget(rowThreadRef, hiddenTabThreads);
       const dropId = queuePendingFileDrop({ threadRef, files });
       const targetPathname = router.buildLocation({
         to: "/$environmentId/$threadId",
@@ -1840,7 +1842,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         clearPendingFileDrop(dropId);
       }
     },
-    [clearPendingFileDrop, navigateToThread, queuePendingFileDrop, router],
+    [clearPendingFileDrop, hiddenTabThreads, navigateToThread, queuePendingFileDrop, router],
   );
 
   const handleThreadClick = useCallback(
@@ -1884,11 +1886,12 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       }
       void router.navigate({
         to: "/$environmentId/$threadId",
-        params: buildThreadRouteParams(threadRef),
+        params: buildThreadRouteParams(resolveThreadTabTarget(threadRef, hiddenTabThreads)),
       });
     },
     [
       clearSelection,
+      hiddenTabThreads,
       isMobile,
       rangeSelectTo,
       router,
@@ -3359,10 +3362,10 @@ export default function LegacySidebar() {
       }
       void navigate({
         to: "/$environmentId/$threadId",
-        params: buildThreadRouteParams(threadRef),
+        params: buildThreadRouteParams(resolveThreadTabTarget(threadRef, hiddenTabThreads)),
       });
     },
-    [clearSelection, isMobile, navigate, setOpenMobile, setSelectionAnchor],
+    [clearSelection, hiddenTabThreads, isMobile, navigate, setOpenMobile, setSelectionAnchor],
   );
 
   const projectDnDSensors = useSensors(

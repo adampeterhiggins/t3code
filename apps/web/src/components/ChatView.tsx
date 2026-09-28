@@ -317,6 +317,7 @@ import {
   stripInlineContextReferences,
 } from "../lib/composerContextReferences";
 import { readThreadTabContextRecords, useThreadTabContextStore } from "../threadTabContextStore";
+import { useThreadTabRecencyStore } from "../threadTabRecencyStore";
 import { serializeLegacyContextMessage } from "@t3tools/shared/composerContextLegacySend";
 import {
   buildMessageContext,
@@ -1936,6 +1937,11 @@ export default function ChatView(props: ChatViewProps) {
   const isServerThread = activeServerThread !== null;
   const activeThread = activeServerThread ?? localDraftThread;
   const threadTabGroup = useThreadTabGroup(environmentId, activeServerThread?.id ?? null);
+  const openThreadTabId = threadTabGroup ? (activeServerThread?.id ?? null) : null;
+  useEffect(() => {
+    if (openThreadTabId === null) return;
+    useThreadTabRecencyStore.getState().markOpened(scopeThreadRef(environmentId, openThreadTabId));
+  }, [environmentId, openThreadTabId]);
   const threadError = isServerThread
     ? (localServerError ?? activeServerThread?.session?.lastError ?? null)
     : localDraftError;
