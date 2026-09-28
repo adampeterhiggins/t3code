@@ -5,7 +5,7 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import {
   type EnvironmentId,
-  type ProviderAuthMethod,
+  type ProviderSetupAuthMethod,
   type ProviderAuthState,
   type ProviderInstanceId,
   type ServerProvider,
@@ -228,7 +228,7 @@ function ProviderAuthActions({
     }
   }
 
-  async function startMethod(method: ProviderAuthMethod) {
+  async function startMethod(method: ProviderSetupAuthMethod) {
     const credential = credentialDrafts[method.id]?.trim();
     if (method.kind === "paste-credential" && !credential) return;
     const accepted = await runCommand(method.label, () =>
