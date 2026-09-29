@@ -18,7 +18,11 @@ import * as HttpClient from "effect/unstable/http/HttpClient";
 import { LinearAuth } from "./LinearAuth.ts";
 import { linearGraphqlRequest } from "./linearGraphql.ts";
 import { parseLinearIssueRef, renderLinearIssueMarkdown } from "./linearIssueMarkdown.ts";
-import { toLinearIssueFilter, toLinearIssueSort } from "./linearIssueFilters.ts";
+import {
+  toLinearIdentifierPrefixFilter,
+  toLinearIssueFilter,
+  toLinearIssueSort,
+} from "./linearIssueFilters.ts";
 
 const SUMMARY_FIELDS =
   "id identifier title url priorityLabel updatedAt state { name type color } assignee { name }";
@@ -233,6 +237,19 @@ export const make = Effect.gen(function* () {
     }
     const filter = input.filters ? toLinearIssueFilter(input.filters) : undefined;
     const sort = input.sort ?? DEFAULT_SORT;
+    const identifierPrefix = text.length > 0 ? toLinearIdentifierPrefixFilter(text) : null;
+    if (identifierPrefix !== null) {
+      const data = yield* query(
+        FILTERED_ISSUES_QUERY,
+        {
+          filter: filter === undefined ? identifierPrefix : { and: [filter, identifierPrefix] },
+          sort: toLinearIssueSort(sort),
+        },
+        FilteredIssuesData,
+      );
+      // No team has that key: the text was a word, so search for it instead.
+      if (data.issues.nodes.length > 0) return { issues: data.issues.nodes.map(toSummary) };
+    }
     if (text.length > 0) {
       const orderBy =
         sort.field === "updated" ? "updatedAt" : sort.field === "created" ? "createdAt" : null;

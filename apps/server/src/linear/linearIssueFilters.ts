@@ -58,3 +58,28 @@ export function toLinearIssueSort(sort: LinearIssueSort): ReadonlyArray<Record<s
     { [SORT_KEYS[sort.field]]: { order: sort.direction === "asc" ? "Ascending" : "Descending" } },
   ];
 }
+
+const IDENTIFIER_PREFIX_PATTERN = /^([a-z][a-z0-9_]*)(?:-(\d{0,5}))?$/i;
+// Issue numbers this many digits long are covered when completing a numeric prefix.
+const MAX_ISSUE_NUMBER_DIGITS = 5;
+
+/**
+ * An `IssueFilter` for text that reads as the start of an identifier (`SYM`, `SYM-`, `SYM-19`):
+ * that team's issues, with numbers starting with the typed digits. Null for other text, and
+ * the caller falls back to search when no team has that key.
+ */
+export function toLinearIdentifierPrefixFilter(text: string): Record<string, unknown> | null {
+  const match = IDENTIFIER_PREFIX_PATTERN.exec(text.trim());
+  if (!match?.[1]) return null;
+  const team = { team: { key: { eqIgnoreCase: match[1] } } };
+  const digits = match[2] ?? "";
+  if (digits.length === 0) return team;
+  // Numbers starting with "19": 19 itself, then 190–199, 1900–1999, and so on.
+  const prefix = Number(digits);
+  const ranges: Array<Record<string, unknown>> = [{ number: { eq: prefix } }];
+  for (let extra = 1; digits.length + extra <= MAX_ISSUE_NUMBER_DIGITS; extra++) {
+    const low = prefix * 10 ** extra;
+    ranges.push({ number: { gte: low, lte: low + 10 ** extra - 1 } });
+  }
+  return { and: [team, { or: ranges }] };
+}

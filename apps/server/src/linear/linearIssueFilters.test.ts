@@ -1,6 +1,10 @@
 import { assert, describe, it } from "@effect/vitest";
 
-import { toLinearIssueFilter, toLinearIssueSort } from "./linearIssueFilters.ts";
+import {
+  toLinearIdentifierPrefixFilter,
+  toLinearIssueFilter,
+  toLinearIssueSort,
+} from "./linearIssueFilters.ts";
 
 const none = {
   assigneeIds: [],
@@ -63,5 +67,35 @@ describe("toLinearIssueSort", () => {
     assert.deepEqual(toLinearIssueSort({ field: "status", direction: "asc" }), [
       { workflowState: { order: "Ascending" } },
     ]);
+  });
+});
+
+describe("toLinearIdentifierPrefixFilter", () => {
+  it("scopes a bare team key or key with a dash to that team", () => {
+    const team = { team: { key: { eqIgnoreCase: "sym" } } };
+    assert.deepEqual(toLinearIdentifierPrefixFilter("sym"), team);
+    assert.deepEqual(toLinearIdentifierPrefixFilter("sym-"), team);
+  });
+
+  it("matches issue numbers that start with the typed digits", () => {
+    assert.deepEqual(toLinearIdentifierPrefixFilter("SYM-19"), {
+      and: [
+        { team: { key: { eqIgnoreCase: "SYM" } } },
+        {
+          or: [
+            { number: { eq: 19 } },
+            { number: { gte: 190, lte: 199 } },
+            { number: { gte: 1900, lte: 1999 } },
+            { number: { gte: 19000, lte: 19999 } },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("leaves text that cannot start an identifier to search", () => {
+    for (const text of ["login bug", "19", "SYM-19x", "-SYM"]) {
+      assert.isNull(toLinearIdentifierPrefixFilter(text), text);
+    }
   });
 });
