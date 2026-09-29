@@ -56,6 +56,9 @@ help: ## Show the available targets
 	@printf "  make update-next            bump the served version and build it\n"
 	@printf "  then click the rocket in the app\n\n"
 
+# CA:true + trustRoot are both required: find-identity -p codesigning runs a
+# policy eval that drops the cert unless it anchors code-signing trust, and
+# electron-builder falls back to adhoc when the identity isn't listed.
 update-cert: ## Create the self-signed code-signing cert (once)
 	@if security find-identity -v -p codesigning | grep -qF "$(IDENTITY)"; then \
 		printf "  ok    \"$(IDENTITY)\" already exists\n"; \
@@ -75,9 +78,6 @@ update-cert: ## Create the self-signed code-signing cert (once)
 	  -inkey "$$TMP/key.pem" -in "$$TMP/cert.pem" -password pass:t3code \
 	  -name "$(IDENTITY)" >/dev/null 2>&1; \
 	security import "$$TMP/cert.p12" -k login.keychain -P t3code -A; \
-	@# CA:true + trustRoot are both required: find-identity -p codesigning runs a
-	@# policy eval that drops the cert unless it anchors code-signing trust, and
-	@# electron-builder falls back to adhoc when the identity isn't listed.
 	security add-trusted-cert -r trustRoot -p codeSign -k login.keychain "$$TMP/cert.pem"; \
 	security find-identity -v -p codesigning | grep -F "$(IDENTITY)" && \
 	echo "--> Installed + trusted for code signing"
@@ -107,6 +107,8 @@ update-next: ## Bump the advertised patch version and build it
 	echo "--> $$CUR -> $$NEXT"; \
 	$(MAKE) --no-print-directory update-build-$$NEXT SKIP_BUILD=$(SKIP_BUILD)
 
+# The app holds its single-instance lock on the running process, so the new
+# bundle must be swapped in while it is not running; osascript quits cleanly.
 update-install-%: ## Install version % from release-mock into /Applications
 	@set -e; \
 	ZIP="$(MOCK_DIR)/T3-Code-$*-$(ARCH).zip"; \
@@ -114,8 +116,6 @@ update-install-%: ## Install version % from release-mock into /Applications
 		echo "No $$ZIP — run 'make update-build-$*' first."; \
 		exit 1; \
 	fi; \
-	@# The app holds its single-instance lock on the running process, so the new
-	@# bundle must be swapped in while it is not running; osascript quits cleanly.
 	if pgrep -f "$(APP_PATH)/Contents/MacOS" >/dev/null 2>&1; then \
 		echo "Quitting the running app…"; \
 		osascript -e 'quit app "$(APP_NAME)"' >/dev/null 2>&1 || true; sleep 2; \
