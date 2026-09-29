@@ -10,6 +10,7 @@ import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "~/lib/utils";
 import { ModelPickerContent, resolveModelPickerSelectedModel } from "./ModelPickerContent";
+import { ChatGptSharingControl } from "./ChatGptSharingControl";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 import {
   ModelEsque,
@@ -315,6 +316,9 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             : {})}
           {...(props.modelRequiresFork ? { modelRequiresFork: props.modelRequiresFork } : {})}
         />
+        {props.selectedModels === undefined ? (
+          <ChatGptSharingControl provider={activeEntry?.snapshot ?? null} />
+        ) : null}
       </PopoverPopup>
     </Popover>
   );

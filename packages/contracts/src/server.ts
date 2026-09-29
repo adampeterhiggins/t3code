@@ -72,6 +72,8 @@ export const ServerProviderAuth = Schema.Struct({
   // environment variable, a configured helper, cloud-provider creds — so
   // clients must not offer a sign-out that could never take effect.
   external: Schema.optional(Schema.Boolean),
+  subscriptionSharing: Schema.optional(Schema.Boolean),
+  profileId: Schema.optional(TrimmedNonEmptyString),
 });
 export type ServerProviderAuth = typeof ServerProviderAuth.Type;
 
@@ -241,6 +243,12 @@ export const ServerProvider = Schema.Struct({
       canInstall: Schema.Boolean,
       /** Ways the user can authenticate this instance. Empty/absent means no choice is offered. */
       authMethods: Schema.optionalKey(Schema.Array(ProviderSetupAuthMethod)),
+    }),
+  ),
+  runtimePaths: Schema.optionalKey(
+    Schema.Struct({
+      homePath: TrimmedNonEmptyString,
+      shadowHomePath: Schema.NullOr(TrimmedNonEmptyString),
     }),
   ),
   enabled: Schema.Boolean,
