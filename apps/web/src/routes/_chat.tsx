@@ -24,6 +24,7 @@ import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../termina
 import { isPreviewSupportedInRuntime } from "../previewStateStore";
 import { selectActiveRightPanel, useRightPanelStore } from "../rightPanelStore";
 import { useThreadSelectionStore } from "../threadSelectionStore";
+import { openStartFromPicker } from "~/components/chat/StartFromPicker";
 import { stackedThreadToast, toastManager } from "~/components/ui/toast";
 import { primaryServerKeybindingsAtom } from "~/state/server";
 
@@ -101,6 +102,21 @@ function ChatRouteGlobalShortcuts() {
           activeThread: activeThread ?? undefined,
           defaultProjectRef,
           handleNewThread,
+        });
+        return;
+      }
+
+      if (command === "chat.startFrom") {
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.repeat) return;
+        void startNewThreadFromContext({
+          activeDraftThread,
+          activeThread: activeThread ?? undefined,
+          defaultProjectRef,
+          handleNewThread,
+        }).then((started) => {
+          if (started) openStartFromPicker();
         });
         return;
       }

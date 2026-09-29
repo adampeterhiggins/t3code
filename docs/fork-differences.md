@@ -272,6 +272,27 @@ Code: `apps/server/src/linear/`, `packages/contracts/src/linear.ts`, `LinearIssu
 `apps/mobile/src/features/settings/SettingsLinearRouteScreen.tsx`. User guide:
 [linear.md](./user/linear.md).
 
+## Start a thread from a pull request, branch, or issue
+
+On web and desktop, a new thread's composer has a **⋯** button in its top-right corner. It opens a
+picker with PRs, Branches, and Issues tabs. The same picker opens from the command palette and from
+`chat.startFrom` (`mod+shift+b`); both of those start a new thread first.
+
+- A pull request goes through upstream's pull request checkout dialog, which offers the current
+  checkout or a new worktree.
+- A branch is worked on where it is already checked out. Any other branch becomes the base of a new
+  worktree.
+- An issue is attached as a Linear context chip (see [Linear integration](#linear-integration)).
+  Only Linear issues are offered.
+
+A pull request or branch that a live thread is already on is marked **In use**. Picking it asks
+whether to open that thread or start a second one. The default branch never counts as in use. Mobile
+does not have the picker.
+
+Code: `apps/web/src/components/chat/StartFromPicker.tsx` and `StartFromPicker.logic.ts`, the button
+in `ChatComposer.tsx`, and `chat.startFrom` in `packages/contracts/src/keybindings.ts`. User guide:
+[source-control.md](./user/source-control.md#start-a-thread-from-a-pull-request-branch-or-issue).
+
 ## Desktop mock-update loop
 
 A `Makefile` at the repository root drives a local auto-update test loop for the desktop app:

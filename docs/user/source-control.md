@@ -99,6 +99,21 @@ messages, review titles, and descriptions from your changes.
 Choose the writing style and model in **Settings → Source Control**. **Repository conventions**
 uses the project's instructions and recent commit subjects.
 
+## Start a thread from a pull request, branch, or issue
+
+In a new thread, click **⋯** in the top-right corner of the composer, press `mod+shift+b`, or
+run **New thread from PR, branch, or issue** from the command palette.
+
+- **PRs** lists the project's open pull requests. Picking one checks it out, in the current
+  checkout or a new worktree.
+- **Branches** works on a branch where it is already checked out. A branch that isn't checked out
+  anywhere becomes the base of a new worktree, so your main checkout is never switched.
+- **Issues** attaches a Linear issue to the message. This needs a connected Linear account (see
+  [Linear](./linear.md)).
+
+If a pull request or branch already has a thread, T3 Code asks whether to open it or start a
+second thread. This is web and desktop.
+
 ## Review and merge
 
 Open **Pull requests** to review changes and comments, request reviewers, check out a branch,
