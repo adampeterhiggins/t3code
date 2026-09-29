@@ -41,6 +41,7 @@ import { useCopyToClipboard } from "./useCopyToClipboard";
 import { useNewThreadHandler } from "./useHandleNewThread";
 import { useClientSettings } from "./useSettings";
 import { useThreadActions } from "./useThreadActions";
+import { useThreadTabActions } from "../components/chat/ThreadTabs";
 
 function failureToast(title: string, error: unknown) {
   toastManager.add(
@@ -67,8 +68,11 @@ export function useThreadActionMenu(input: {
   /** Fallback for "Copy path" when the thread has no worktree. */
   readonly projectCwd: string | null;
   readonly onStartRename: () => void;
+  /** True when the thread's environment serves chat tabs, which adds "New tab". */
+  readonly tabsSupported: boolean;
 }) {
-  const { threadRef, projectCwd, onStartRename } = input;
+  const { threadRef, projectCwd, onStartRename, tabsSupported } = input;
+  const { createTab } = useThreadTabActions();
   const router = useRouter();
   const projects = useProjects();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
@@ -146,6 +150,8 @@ export function useThreadActionMenu(input: {
           // The chat header has no project-scoped thread list behind the
           // menu, so the "Filter by project" affordance is sidebar-only.
           projectFilter: null,
+          // Closing tabs belongs to the tab crumb; this menu acts on the group's root thread.
+          tabs: tabsSupported ? { canClose: false } : null,
           isPinned: thread.pinnedAt != null,
           isSettled: supports.settlement && thread.settledOverride === "settled",
           autoSettleEnabled: thread.autoSettleDisabledAt == null,
@@ -181,6 +187,9 @@ export function useThreadActionMenu(input: {
           }
         };
         switch (action) {
+          case "new-tab":
+            await createTab(threadRef, thread.modelSelection);
+            return;
           case "project-settings": {
             const project = projects.find(
               (candidate) =>
@@ -333,6 +342,7 @@ export function useThreadActionMenu(input: {
       copyBranchToClipboard,
       copyPathToClipboard,
       copyThreadIdToClipboard,
+      createTab,
       deleteThread,
       handleNewThread,
       logicalProjectKeyByPhysicalKey,
@@ -346,6 +356,7 @@ export function useThreadActionMenu(input: {
       setThreadAutoSettle,
       settleThread,
       snoozeThread,
+      tabsSupported,
       threadRef,
       timestampFormat,
       unsettleThread,

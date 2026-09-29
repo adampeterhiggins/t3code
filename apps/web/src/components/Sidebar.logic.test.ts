@@ -14,6 +14,7 @@ import {
   filterSidebarProjectScopeItems,
   getSidebarThreadIdsToPrewarm,
   groupSidebarTabThreads,
+  sidebarTabNeighbourKey,
   resolveAdjacentThreadId,
   reduceSidebarProjectScopeMenuState,
   getFallbackThreadIdAfterDelete,
@@ -629,6 +630,17 @@ describe("sidebar tab rows", () => {
       "local:c",
       "local:c2",
     ]);
+  });
+
+  it("hands a closing tab's place to the next tab, else the previous one", () => {
+    const tabs = new Map([
+      ["local:a2", "local:a"],
+      ["local:a3", "local:a"],
+    ]);
+    expect(sidebarTabNeighbourKey("local:a", tabs)).toBe("local:a2");
+    expect(sidebarTabNeighbourKey("local:a2", tabs)).toBe("local:a3");
+    expect(sidebarTabNeighbourKey("local:a3", tabs)).toBe("local:a2");
+    expect(sidebarTabNeighbourKey("local:b", tabs)).toBeNull();
   });
 });
 

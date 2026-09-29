@@ -7,6 +7,10 @@ import { runtime } from "../../lib/runtime";
 import { useEnvironments } from "../../state/environments";
 import { readPreparedConnection } from "../../state/session";
 
+/**
+ * Sidebar keys hidden behind their tab group's row, plus the environments that serve chat tabs
+ * (the ones whose membership list loaded), so tab actions show only where they can succeed.
+ */
 export function useHiddenTabThreads(threads: ReadonlyArray<EnvironmentThreadShell>) {
   const { environments } = useEnvironments();
   const threadIds = threads.map((thread) => `${thread.environmentId}:${thread.id}`).join("|");
@@ -42,5 +46,17 @@ export function useHiddenTabThreads(threads: ReadonlyArray<EnvironmentThreadShel
     };
   }, [environments, threadIds]);
 
-  return useMemo(() => hiddenTabThreadKeys(threads, memberships), [threads, memberships]);
+  const hiddenTabThreads = useMemo(
+    () => hiddenTabThreadKeys(threads, memberships),
+    [threads, memberships],
+  );
+  // Keyed on memberships alone so thread updates do not hand the sidebar a new set.
+  const tabEnvironmentIds = useMemo(
+    (): ReadonlySet<EnvironmentId> => new Set(memberships.keys()),
+    [memberships],
+  );
+  return useMemo(
+    () => ({ hiddenTabThreads, tabEnvironmentIds }),
+    [hiddenTabThreads, tabEnvironmentIds],
+  );
 }

@@ -757,6 +757,23 @@ export function groupSidebarTabThreads<T>(
   return tabsByRowKey;
 }
 
+/**
+ * The tab that takes over when `threadKey`'s tab closes: the next tab in its group, else the
+ * previous one. Null when the thread has no sibling tab, where closing would just be archiving.
+ */
+export function sidebarTabNeighbourKey(
+  threadKey: string,
+  hiddenTabThreads: ReadonlyMap<string, string>,
+): string | null {
+  const rowKey = hiddenTabThreads.get(threadKey) ?? threadKey;
+  const keys = [rowKey];
+  for (const [key, representative] of hiddenTabThreads) {
+    if (representative === rowKey) keys.push(key);
+  }
+  const index = keys.indexOf(threadKey);
+  return keys[index + 1] ?? keys[index - 1] ?? null;
+}
+
 /** Rows in the order the sidebar shows them: each group's row followed by its tabs. */
 export function withSidebarTabThreads<T>(
   rows: readonly T[],

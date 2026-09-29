@@ -5,6 +5,7 @@ import { buildThreadActionMenuItems, type ThreadActionMenuState } from "./thread
 const baseState: ThreadActionMenuState = {
   branch: null,
   projectFilter: null,
+  tabs: null,
   isPinned: false,
   isSettled: false,
   autoSettleEnabled: true,
@@ -80,6 +81,15 @@ describe("buildThreadActionMenuItems", () => {
     expect(items[filterIndex]).toMatchObject({ label: "Show all projects", icon: "folder-tree" });
     expect(items[filterIndex - 1]?.id).toBe("mark-unread");
     expect(items[filterIndex + 1]?.id).toBe("auto-settle");
+  });
+
+  it("offers new tab where tabs exist, and close tab only beside a sibling tab", () => {
+    expect(ids({ ...baseState, tabs: null })).not.toContain("new-tab");
+    const lone = ids({ ...baseState, tabs: { canClose: false } });
+    expect(lone[0]).toBe("new-tab");
+    expect(lone).not.toContain("close-tab");
+    const grouped = ids({ ...baseState, tabs: { canClose: true } });
+    expect(grouped.slice(-3)).toEqual(["close-tab", "archive", "delete"]);
   });
 
   it("includes branch items only for threads with a branch", () => {

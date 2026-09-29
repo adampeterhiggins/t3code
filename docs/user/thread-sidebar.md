@@ -17,14 +17,16 @@ if that project exists there. Otherwise it selects an environment that has it.
 
 Click the tab name at the end of the header breadcrumb (`project / thread / tab`) and choose
 **New tab** to open a separate chat in the same workspace. The same menu switches between tabs.
-Each tab has its own provider and conversation. By default the sidebar shows one row per chat,
+You can also hover a chat's sidebar row and click **+**, or right-click it and choose **New tab**.
+Each tab has its own provider and conversation. Closing a tab archives it, so undo or
+**Settings → Archived threads** brings it back. By default the sidebar shows one row per chat,
 with a count of its tabs, and opening that row returns to the tab you last had open.
 
 On web and desktop, press `Cmd+Option+T` on macOS or `Ctrl+Alt+T` on Windows and Linux to list
 each tab under its chat instead, with its own status, provider, and time since your last message.
 The tabs button in the sidebar header, the command palette, and **Settings → General** toggle the
 same view. Moving, pinning, or settling the chat's row applies to the row, and its tabs stay under
-it.
+it. Hover a listed tab and click **×**, or right-click it and choose **Close tab**, to close it.
 
 To bring in another tab's conversation, type `@` in the composer and pick the tab; its summary
 lands as a chip at the cursor. Before the first message in a new tab, you can also click a sibling
