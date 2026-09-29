@@ -3657,7 +3657,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         setComposerHighlightedItemId(null);
         // The summary is fetched after the query text leaves, so the chip lands at the caret
         // wherever it is by then.
-        captureThreadTabContext(item.threadId, item.label).then(
+        captureThreadTabContext.capture(item.threadId, item.label).then(
           (reference) => {
             const current = readComposerSnapshot();
             const edit = inlineContextReferenceReplacement(

@@ -106,12 +106,14 @@ is its own conversation and provider.
   closed from the hover control on its menu row (`apps/web/src/components/chat/ThreadTabs.tsx`,
   `ChatHeader.tsx`).
 - **Context from other tabs.** Type `@` in the composer and pick a sibling tab, or, before the
-  first message, click one under **Include context from**. Either path inserts a `thread-tab`
+  first message, click one under **Include context from** (hovering one previews its summary).
+  Either path inserts a `thread-tab`
   context chip at the caret, which can be moved like any other chip. The kind lives in
   `packages/contracts/src/composerContext.ts` and is formatted for providers in
   `packages/shared/src/composerContextReferences.ts`. The summary covers the recent conversation,
   tools, reasoning, errors, changed files, and the latest plan (`apps/server/src/threadTabs/summary.ts`).
-  It is captured when chosen, so later changes in that chat do not change it.
+  It is captured when chosen (or when first previewed), so later changes in that chat do not
+  change it.
 - **Forking.** On web and desktop, a started chat can fork into a new tab (`forkThreadTab` in
   `ThreadTabs.tsx`). The new tab's draft starts with a `thread-tab` summary chip.
   - A user message's hover actions include **Fork into new tab**. The summary stops before that
