@@ -45,3 +45,8 @@ node_modules/
 .context
 # pnpm content-addressable store; never belongs in the repo.
 .pnpm-store/
+
+# Local editor settings; shared ones stay tracked.
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
