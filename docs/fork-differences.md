@@ -137,6 +137,16 @@ Code: `apps/server/src/storageCleanup.ts` and
 `apps/web/src/components/settings/StorageSettings.tsx`. User guide:
 [project-settings.md](./user/project-settings.md#storage-cleanup).
 
+## Worktree branch prefix
+
+Generated worktree branch names use a configurable prefix instead of a fixed `t3code/`.
+**Settings → General → Branch prefix** takes any namespace, or none, and projects can override it.
+The short-lived `t3code/<id>` placeholder branch a worktree starts on is unchanged.
+
+Code: `buildGeneratedWorktreeBranchName` in `packages/shared/src/git.ts` and `worktreeBranchPrefix`
+in `packages/contracts/src/settings.ts`. User guide:
+[project-settings.md](./user/project-settings.md#defaults-and-inheritance).
+
 ## Desktop mock-update loop
 
 A `Makefile` at the repository root drives a local auto-update test loop for the desktop app:

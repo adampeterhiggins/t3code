@@ -629,6 +629,9 @@ export function useSettingsRestore(onRestored?: () => void) {
       DEFAULT_UNIFIED_SETTINGS.newWorktreesStartFromOrigin
         ? ["New worktrees start from origin"]
         : []),
+      ...(settings.worktreeBranchPrefix !== DEFAULT_UNIFIED_SETTINGS.worktreeBranchPrefix
+        ? ["Branch prefix"]
+        : []),
       ...(settings.addProjectBaseDirectory !== DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory
         ? ["Add project base directory"]
         : []),
@@ -674,6 +677,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.addProjectBaseDirectory,
       settings.defaultThreadEnvMode,
       settings.newWorktreesStartFromOrigin,
+      settings.worktreeBranchPrefix,
       settings.diffFilesCollapsed,
       settings.diffIgnoreWhitespace,
       settings.diffLayout,
@@ -808,6 +812,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       providerHealthRefreshInterval: DEFAULT_UNIFIED_SETTINGS.providerHealthRefreshInterval,
       defaultThreadEnvMode: DEFAULT_UNIFIED_SETTINGS.defaultThreadEnvMode,
       newWorktreesStartFromOrigin: DEFAULT_UNIFIED_SETTINGS.newWorktreesStartFromOrigin,
+      worktreeBranchPrefix: DEFAULT_UNIFIED_SETTINGS.worktreeBranchPrefix,
       addProjectBaseDirectory: DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory,
       confirmThreadArchive: DEFAULT_UNIFIED_SETTINGS.confirmThreadArchive,
       confirmThreadDelete: DEFAULT_UNIFIED_SETTINGS.confirmThreadDelete,
@@ -2233,6 +2238,7 @@ export function GeneralSettingsPanel() {
   const backgroundActivityProfileOption = resolveBackgroundActivityProfileOption(settings);
   const mixedBackgroundActivity = useScopedSettingsMixed(["backgroundActivity"]);
   const mixedAddProjectBaseDirectory = useScopedSettingsMixed(["addProjectBaseDirectory"]);
+  const mixedWorktreeBranchPrefix = useScopedSettingsMixed(["worktreeBranchPrefix"]);
   const mixedTextGenerationModel = useScopedSettingsMixed(["textGenerationModelSelection"]);
   const backgroundActivityDescription =
     backgroundActivityProfileOption === "advanced"
@@ -3046,6 +3052,35 @@ export function GeneralSettingsPanel() {
                 updateSettings({ newWorktreesStartFromOrigin: Boolean(checked) })
               }
               aria-label="Start new worktrees from origin by default"
+            />
+          }
+        />
+        <SettingsRow
+          serverScoped
+          settingKeys={["worktreeBranchPrefix"]}
+          {...searchableSetting("worktree-branch-prefix")}
+          description="Prepended to generated worktree branch names. Leave empty for no prefix."
+          resetAction={
+            settings.worktreeBranchPrefix !== DEFAULT_UNIFIED_SETTINGS.worktreeBranchPrefix ? (
+              <SettingResetButton
+                label="branch prefix"
+                onClick={() =>
+                  updateSettings({
+                    worktreeBranchPrefix: DEFAULT_UNIFIED_SETTINGS.worktreeBranchPrefix,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <DraftInput
+              size="sm"
+              className="w-full sm:w-72"
+              value={mixedWorktreeBranchPrefix ? "" : settings.worktreeBranchPrefix}
+              onCommit={(next) => updateSettings({ worktreeBranchPrefix: next })}
+              placeholder={mixedWorktreeBranchPrefix ? "Mixed" : "No prefix"}
+              spellCheck={false}
+              aria-label="Branch prefix"
             />
           }
         />

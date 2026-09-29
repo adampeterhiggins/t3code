@@ -104,6 +104,42 @@ export function buildTemporaryWorktreeBranchName(
   return `${WORKTREE_BRANCH_PREFIX}/${token}`;
 }
 
+/**
+ * The branch a thread's temporary worktree branch is renamed to once a name has
+ * been generated. `prefix` is the user's branch prefix setting; an empty prefix
+ * yields a bare branch name.
+ */
+export function buildGeneratedWorktreeBranchName(raw: string, prefix: string): string {
+  const namespace = prefix
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9/_-]+/g, "-")
+    .replace(/\/+/g, "/")
+    .replace(/^[./_-]+|[./_-]+$/g, "");
+
+  const normalized = raw
+    .trim()
+    .toLowerCase()
+    .replace(/^refs\/heads\//, "")
+    .replace(/['"`]/g, "");
+
+  const withoutPrefix =
+    namespace.length > 0 && normalized.startsWith(`${namespace}/`)
+      ? normalized.slice(`${namespace}/`.length)
+      : normalized;
+
+  const branchFragment = withoutPrefix
+    .replace(/[^a-z0-9/_-]+/g, "-")
+    .replace(/\/+/g, "/")
+    .replace(/-+/g, "-")
+    .replace(/^[./_-]+|[./_-]+$/g, "")
+    .slice(0, 64)
+    .replace(/[./_-]+$/g, "");
+
+  const safeFragment = branchFragment.length > 0 ? branchFragment : "update";
+  return namespace.length > 0 ? `${namespace}/${safeFragment}` : safeFragment;
+}
+
 export function isTemporaryWorktreeBranch(refName: string): boolean {
   return TEMP_WORKTREE_BRANCH_PATTERN.test(refName.trim().toLowerCase());
 }

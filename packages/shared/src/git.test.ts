@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   applyGitStatusStreamEvent,
+  buildGeneratedWorktreeBranchName,
   buildTemporaryWorktreeBranchName,
   isTemporaryWorktreeBranch,
   normalizeGitRemoteUrl,
@@ -209,6 +210,30 @@ describe("isTemporaryWorktreeBranch", () => {
     expect(isTemporaryWorktreeBranch(`${WORKTREE_BRANCH_PREFIX}/feature/demo`)).toBe(false);
     expect(isTemporaryWorktreeBranch("main")).toBe(false);
     expect(isTemporaryWorktreeBranch(`${WORKTREE_BRANCH_PREFIX}/deadbeef-extra`)).toBe(false);
+  });
+});
+
+describe("buildGeneratedWorktreeBranchName", () => {
+  it("namespaces the generated name under the configured prefix", () => {
+    expect(buildGeneratedWorktreeBranchName("Fix Reconnect Backoff", "t3code")).toBe(
+      "t3code/fix-reconnect-backoff",
+    );
+    expect(buildGeneratedWorktreeBranchName("fix/reconnect", "adam/")).toBe("adam/fix/reconnect");
+  });
+
+  it("does not double a prefix the generator already included", () => {
+    expect(buildGeneratedWorktreeBranchName("refs/heads/adam/fix-login", "adam")).toBe(
+      "adam/fix-login",
+    );
+  });
+
+  it("drops the namespace when the prefix is empty", () => {
+    expect(buildGeneratedWorktreeBranchName("feature/fix-login", "")).toBe("feature/fix-login");
+    expect(buildGeneratedWorktreeBranchName("feature/fix-login", " / ")).toBe("feature/fix-login");
+  });
+
+  it("sanitizes an invalid prefix into a valid ref fragment", () => {
+    expect(buildGeneratedWorktreeBranchName("fix", "My Team..")).toBe("my-team/fix");
   });
 });
 
