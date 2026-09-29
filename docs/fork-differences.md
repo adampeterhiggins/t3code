@@ -112,10 +112,16 @@ is its own conversation and provider.
   `packages/shared/src/composerContextReferences.ts`. The summary covers the recent conversation,
   tools, reasoning, errors, changed files, and the latest plan (`apps/server/src/threadTabs/summary.ts`).
   It is captured when chosen, so later changes in that chat do not change it.
-- **Fork from a message.** On web and desktop, a user message's hover actions include **Fork into
-  new tab**. It opens a new tab whose draft holds a `thread-tab` chip summarizing the chat before
-  that message (`beforeMessageId` on the handoff request), then the message's text and attachments,
-  so it can be resent with another model or provider (`forkThreadTab` in `ThreadTabs.tsx`).
+- **Forking.** On web and desktop, a started chat can fork into a new tab (`forkThreadTab` in
+  `ThreadTabs.tsx`). The new tab's draft starts with a `thread-tab` summary chip.
+  - A user message's hover actions include **Fork into new tab**. The summary stops before that
+    message (`beforeMessageId` on the handoff request), and the message's text and attachments
+    follow it.
+  - Each model picker row has a hover fork button. The new tab runs that model, the whole chat is
+    summarized, and the current draft (text, attachments, and context chips) is copied after it.
+    Other providers, and models the provider cannot switch to mid-chat, stay listed instead of
+    being hidden or disabled; choosing one forks, since it cannot replace the tab's model
+    (`matchesModelPickerLock` in `ModelPickerContent.tsx`).
 - **Mobile.** A switcher menu switches, creates, and closes tabs
   (`apps/mobile/src/features/threads/ThreadTabs.tsx`). An empty tab can attach sibling context when
   sending. Mobile does not have the header crumb, the `@` chip, forking, or the sidebar tab list.

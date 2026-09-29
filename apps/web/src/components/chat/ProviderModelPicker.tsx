@@ -55,6 +55,9 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   onOpenProviderSetup?: (instanceId: ProviderInstanceId) => void;
   getModelDisabledReason?: (instanceId: ProviderInstanceId, model: string) => string | null;
   onInstanceModelChange: (instanceId: ProviderInstanceId, model: string) => void;
+  /** Forking into a new tab; see `ModelPickerContent`. */
+  onForkModel?: (instanceId: ProviderInstanceId, model: string) => void;
+  modelRequiresFork?: (instanceId: ProviderInstanceId, model: string) => boolean;
 }) {
   const composerFloatingLayerProps = useComposerMenuProps();
   const [uncontrolledIsMenuOpen, setUncontrolledIsMenuOpen] = useState(false);
@@ -301,6 +304,16 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             ? { getModelDisabledReason: props.getModelDisabledReason }
             : {})}
           onInstanceModelChange={handleInstanceModelChange}
+          {...(props.onForkModel
+            ? {
+                onForkModel: (instanceId: ProviderInstanceId, model: string) => {
+                  if (props.disabled) return;
+                  props.onForkModel?.(instanceId, model);
+                  setIsMenuOpen(false);
+                },
+              }
+            : {})}
+          {...(props.modelRequiresFork ? { modelRequiresFork: props.modelRequiresFork } : {})}
         />
       </PopoverPopup>
     </Popover>

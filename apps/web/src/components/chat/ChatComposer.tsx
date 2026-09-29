@@ -1480,6 +1480,9 @@ export interface ChatComposerProps {
   ) => void;
   onOpenProviderSetup: (instanceId: ProviderInstanceId) => void;
   getModelDisabledReason: (instanceId: ProviderInstanceId, model: string) => string | null;
+  /** Set once the thread has started: the picker can then fork into a new tab. */
+  onForkModel?: (instanceId: ProviderInstanceId, model: string) => void;
+  modelRequiresFork?: (instanceId: ProviderInstanceId, model: string) => boolean;
   toggleInteractionMode: () => void;
   handleRuntimeModeChange: (mode: RuntimeMode) => void;
   handleInteractionModeChange: (mode: ProviderInteractionMode) => void;
@@ -1583,6 +1586,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     onProviderModelSelect,
     onOpenProviderSetup,
     getModelDisabledReason,
+    onForkModel,
+    modelRequiresFork,
     toggleInteractionMode,
     handleRuntimeModeChange,
     handleInteractionModeChange,
@@ -5215,6 +5220,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           onProviderModelSelect(instanceId, model);
         }}
         onOpenProviderSetup={onOpenProviderSetup}
+        {...(onForkModel ? { onForkModel } : {})}
+        {...(modelRequiresFork ? { modelRequiresFork } : {})}
       />
 
       <>
