@@ -79,7 +79,8 @@ checkout and:
   `.worktreeinclude` is honored even without Conductor settings.
 - runs `scripts.setup` as the setup script, unless the project has its own setup action, which
   wins.
-- runs `scripts.archive` before the worktree is removed.
+- runs `scripts.archive` before the worktree is removed, whether you delete it or storage cleanup
+  removes it.
 
 These scripts can read `CONDUCTOR_ROOT_PATH`, `CONDUCTOR_WORKSPACE_PATH`,
 `CONDUCTOR_WORKSPACE_NAME`, `CONDUCTOR_DEFAULT_BRANCH`, and `CONDUCTOR_PORT`, the first of ten
