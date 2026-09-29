@@ -16,121 +16,28 @@
  *
  * @module ConductorWorkspace
  */
+import {
+  CONDUCTOR_SETTINGS_FILES,
+  WORKTREE_INCLUDE_PATH,
+  conductorIncludePatternLines,
+  resolveConductorSettings,
+  type ResolvedConductorSettings,
+} from "@t3tools/shared/conductorSettings";
 import { HostProcessEnvironment, HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import * as NodeCrypto from "node:crypto";
-import { parse as parseToml } from "smol-toml";
 
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
-import * as Schema from "effect/Schema";
 
 import * as ProcessRunner from "../processRunner.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 
-const ConductorSettingsFile = Schema.Struct({
-  scripts: Schema.optionalKey(
-    Schema.Struct({
-      setup: Schema.optionalKey(Schema.String),
-      archive: Schema.optionalKey(Schema.String),
-    }),
-  ),
-  file_include_globs: Schema.optionalKey(Schema.String),
-  environment_variables: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
-});
-type ConductorSettingsFile = typeof ConductorSettingsFile.Type;
-const decodeConductorSettingsFile = Schema.decodeUnknownExit(ConductorSettingsFile);
-
-interface ConductorConfig {
-  readonly setupScript: string | null;
-  readonly archiveScript: string | null;
-  /** Gitignore-syntax patterns for files copied from the project root, or null for none. */
-  readonly includePatterns: string | null;
-  /** `environment_variables` plus its `local` section. */
-  readonly environment: Readonly<Record<string, string>>;
-  /** True when any Conductor settings file exists. */
-  readonly configured: boolean;
-}
-
-/** Conductor's own default when a repository configures no Files to copy. */
-const DEFAULT_INCLUDE_PATTERNS = ".env*";
-const WORKTREE_INCLUDE_FILE = ".worktreeinclude";
 const COPY_LIST_MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
 const COPY_CONCURRENCY = 8;
 const ARCHIVE_TIMEOUT = "60 seconds";
-
-/**
- * Settings files in the order they apply; later files win. Legacy
- * `conductor.json` only counts until the repository has migrated to
- * `.conductor/settings.toml`, matching Conductor.
- */
-const SETTINGS_FILES = [
-  { path: "conductor.json", format: "json", legacy: true },
-  { path: ".conductor/settings.json", format: "json", legacy: false },
-  { path: ".conductor/settings.toml", format: "toml", legacy: false },
-  { path: ".conductor/settings.local.json", format: "json", legacy: false },
-  { path: ".conductor/settings.local.toml", format: "toml", legacy: false },
-] as const;
-
-/** Unparseable contents become `undefined`, which the schema then rejects. */
-function parseSettingsFile(format: "json" | "toml", raw: string): unknown {
-  try {
-    return format === "toml" ? parseToml(raw) : JSON.parse(raw);
-  } catch {
-    return undefined;
-  }
-}
-
-function stringEntries(value: unknown): Record<string, string> {
-  if (typeof value !== "object" || value === null) return {};
-  return Object.fromEntries(
-    Object.entries(value).filter(
-      (entry): entry is [string, string] => typeof entry[1] === "string",
-    ),
-  );
-}
-
-/** Folds decoded settings files (lowest precedence first) into one config. */
-function mergeConductorSettings(
-  files: ReadonlyArray<ConductorSettingsFile>,
-  worktreeInclude: string | null,
-): ConductorConfig {
-  let setupScript: string | null = null;
-  let archiveScript: string | null = null;
-  let includeGlobs: string | null = null;
-  const environment: Record<string, string> = {};
-  for (const file of files) {
-    if (file.scripts?.setup !== undefined) setupScript = file.scripts.setup.trim() || null;
-    if (file.scripts?.archive !== undefined) archiveScript = file.scripts.archive.trim() || null;
-    if (file.file_include_globs !== undefined) includeGlobs = file.file_include_globs;
-    const variables = file.environment_variables;
-    if (variables !== undefined) {
-      Object.assign(environment, stringEntries(variables), stringEntries(variables.local));
-    }
-  }
-  const configured = files.length > 0;
-  return {
-    setupScript,
-    archiveScript,
-    // `.worktreeinclude` wins over settings, which win over the default. The
-    // file is honored on its own too, as Claude Code worktrees do.
-    includePatterns:
-      worktreeInclude ?? includeGlobs ?? (configured ? DEFAULT_INCLUDE_PATTERNS : null),
-    environment,
-    configured,
-  };
-}
-
-/** Pattern lines git can take as `--exclude` values: no blanks, no comments. */
-function includePatternLines(patterns: string): string[] {
-  return patterns
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0 && !line.startsWith("#"));
-}
 
 /**
  * First of the ten ports Conductor hands each workspace (`CONDUCTOR_PORT`
@@ -208,32 +115,26 @@ export const make = Effect.gen(function* () {
       );
 
   const load = Effect.fn("ConductorWorkspace.load")(function* (projectRoot: string) {
-    const contents = yield* Effect.forEach(SETTINGS_FILES, (file) =>
-      readOptional(path.join(projectRoot, file.path)).pipe(Effect.map((raw) => ({ ...file, raw }))),
+    const files = Object.fromEntries(
+      yield* Effect.forEach(CONDUCTOR_SETTINGS_FILES, (file) =>
+        readOptional(path.join(projectRoot, file.path)).pipe(
+          Effect.map((raw) => [file.path, raw] as const),
+        ),
+      ),
     );
-    const migrated = contents.some(
-      (file) => file.path === ".conductor/settings.toml" && file.raw !== null,
-    );
-    const files: ConductorSettingsFile[] = [];
-    for (const file of contents) {
-      if (file.raw === null || (file.legacy && migrated)) continue;
-      const decoded = decodeConductorSettingsFile(parseSettingsFile(file.format, file.raw));
-      if (Exit.isSuccess(decoded)) {
-        files.push(decoded.value);
-      } else {
-        yield* Effect.logWarning("ignoring invalid Conductor settings file", {
-          filePath: path.join(projectRoot, file.path),
-          cause: decoded.cause,
-        });
-      }
+    const worktreeInclude = yield* readOptional(path.join(projectRoot, WORKTREE_INCLUDE_PATH));
+    const settings = resolveConductorSettings({ files, worktreeInclude });
+    for (const filePath of settings.invalidFiles) {
+      yield* Effect.logWarning("ignoring invalid Conductor settings file", {
+        filePath: path.join(projectRoot, filePath),
+      });
     }
-    const worktreeInclude = yield* readOptional(path.join(projectRoot, WORKTREE_INCLUDE_FILE));
-    return mergeConductorSettings(files, worktreeInclude);
+    return settings;
   });
 
   const resolveEnv = Effect.fn("ConductorWorkspace.resolveEnv")(function* (
     input: ConductorWorktreeInput,
-    config: ConductorConfig,
+    config: ResolvedConductorSettings,
   ) {
     const defaultBranch = yield* git.resolvePrimaryRemoteName(input.projectRoot).pipe(
       Effect.flatMap((remote) => git.resolveDefaultBranchName(input.projectRoot, remote)),
@@ -258,7 +159,7 @@ export const make = Effect.gen(function* () {
     input: ConductorWorktreeInput,
     patterns: string,
   ) {
-    const lines = includePatternLines(patterns);
+    const lines = conductorIncludePatternLines(patterns);
     if (lines.length === 0) return;
     const listed = yield* git.execute({
       operation: "ConductorWorkspace.listIncludedFiles",

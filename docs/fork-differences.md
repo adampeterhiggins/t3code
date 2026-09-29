@@ -178,10 +178,13 @@ checkout: gitignored Files to copy (`.worktreeinclude`, `file_include_globs`, de
 `scripts.setup` as the setup script when the project has no setup action of its own, and
 `scripts.archive` before a worktree is removed. Scripts get Conductor's `CONDUCTOR_*` variables and
 `environment_variables`; `CONDUCTOR_PORT` is derived from the worktree path. Conductor run scripts
-are not supported yet. This runs on the server, so every client gets it.
+are not supported yet. This runs on the server, so every client gets it. On web and desktop, the
+project's **Conductor** settings section edits the setup and archive scripts, Files to copy, and
+environment variables in `settings.local.toml` or `settings.toml`.
 
-Code: `apps/server/src/project/ConductorWorkspace.ts`, called from
-`ProjectSetupScriptRunner.ts` and `GitWorkflowService.removeWorktree`. User guide:
+Code: `packages/shared/src/conductorSettings.ts`, `apps/server/src/project/ConductorWorkspace.ts`
+(called from `ProjectSetupScriptRunner.ts` and `GitWorkflowService.removeWorktree`), and
+`apps/web/src/components/settings/ConductorSettings.tsx`. User guide:
 [project-settings.md](./user/project-settings.md#repositories-set-up-for-conductor).
 
 ## Desktop mock-update loop

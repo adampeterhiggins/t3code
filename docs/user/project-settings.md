@@ -86,6 +86,12 @@ These scripts can read `CONDUCTOR_ROOT_PATH`, `CONDUCTOR_WORKSPACE_PATH`,
 ports reserved for that worktree, plus any `environment_variables` from the settings. Run scripts
 from Conductor settings are not shown in T3 Code yet.
 
+To change these settings without leaving T3 Code, select the project in **Settings** and scroll to
+**Conductor**. **Only me** saves to `.conductor/settings.local.toml`, which Conductor treats as
+personal overrides; **Repository** saves to `.conductor/settings.toml`, which you can commit for
+everyone. Clear a field or use its reset button to fall back to the other file. Saving rewrites the
+file without its comments.
+
 ## Storage cleanup
 
 Open **Settings → Storage** to enable automatic cleanup on one machine or all connected

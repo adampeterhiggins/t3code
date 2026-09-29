@@ -747,6 +747,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["commands scripts setup run dev server checkout worktree t3.json import"],
   },
   {
+    id: "project-conductor",
+    title: "Conductor",
+    to: "/settings/projects",
+    searchTerms: [
+      "conductor settings.toml setup archive script files to copy worktreeinclude env environment variables",
+    ],
+  },
+  {
     id: "environment-icon",
     title: "Environment icon",
     to: "/settings/connections",

@@ -104,7 +104,7 @@ it.layer(TestLayer)("ConductorWorkspace", (it) => {
     Effect.gen(function* () {
       const path = yield* Path.Path;
       const { root, worktree } = yield* makeRepo({
-        "conductor.json": JSON.stringify({ scripts: { setup: "legacy" } }),
+        "conductor.json": '{ "scripts": { "setup": "legacy" } }',
         ".conductor/settings.toml": [
           'file_include_globs = "config/local.json"',
           "[scripts]",

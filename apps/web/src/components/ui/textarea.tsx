@@ -8,10 +8,18 @@ import { cn } from "~/lib/utils";
 
 type TextareaProps = React.ComponentProps<"textarea"> & {
   size?: "sm" | "default" | "lg" | number;
+  /** `code` sets the text in the monospace font, for commands and config. */
+  variant?: "default" | "code";
   unstyled?: boolean;
 };
 
-function Textarea({ className, size = "default", unstyled = false, ...props }: TextareaProps) {
+function Textarea({
+  className,
+  size = "default",
+  variant = "default",
+  unstyled = false,
+  ...props
+}: TextareaProps) {
   return (
     <span
       className={
@@ -33,6 +41,7 @@ function Textarea({ className, size = "default", unstyled = false, ...props }: T
               size === "sm" &&
                 "min-h-16.5 px-[calc(--spacing(2.5)-1px)] py-[calc(--spacing(1)-1px)] max-sm:min-h-19.5",
               size === "lg" && "min-h-18.5 py-[calc(--spacing(2)-1px)] max-sm:min-h-21.5",
+              variant === "code" && "font-mono",
             )}
             data-slot="textarea"
             {...mergeProps(defaultProps, props)}
