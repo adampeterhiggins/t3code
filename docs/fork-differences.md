@@ -197,6 +197,14 @@ resource-telemetry stream only while it is open.
 Code: `apps/web/src/components/sidebar/SidebarResourcePill.tsx` and `readUsage` in
 `apps/server/src/resourceTelemetry/ResourceTelemetry.ts`.
 
+## Diagnostics settings tab
+
+Diagnostics has its own entry in the settings sidebar, between Connections and Archive. Upstream
+only reaches it from the View diagnostics button in General. This is web and desktop.
+
+Code: `SETTINGS_SECTION_LABELS` in `apps/web/src/components/settings/settingsSearch.ts` and
+`SETTINGS_SECTION_ICONS` in `apps/web/src/components/settings/SettingsSidebarNav.tsx`.
+
 ## Conductor workspace settings
 
 New worktrees honor a repository's Conductor (`conductor.build`) settings from the project
