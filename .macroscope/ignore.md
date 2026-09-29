@@ -20,6 +20,8 @@
 **/__snapshots__/**
 **/.agents/skills/**
 **/.claude/skills/**
+**/.cursor/skills/**
+**/.grok/skills/**
 **/.github/skills/**
 **/bower_components/**
 **/jspm_packages/**
