@@ -21,7 +21,7 @@ import {
 } from "../auth/http.ts";
 import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
-import { summarizeSiblingChat } from "./summary.ts";
+import { siblingChatBeforeMessage, summarizeSiblingChat } from "./summary.ts";
 
 interface TabRow {
   readonly threadId: string;
@@ -187,32 +187,43 @@ export const threadTabsHttpApiLayer = HttpApiBuilder.group(
           );
           if (!group) return yield* failEnvironmentNotFound("thread_not_found");
           const sourceIds = [...new Set(args.payload.sourceThreadIds)];
+          const { beforeMessageId } = args.payload;
           if (
             sourceIds.includes(args.params.threadId) ||
-            sourceIds.some((id) => !group.tabs.some((tab) => tab.threadId === id))
+            sourceIds.some((id) => !group.tabs.some((tab) => tab.threadId === id)) ||
+            (beforeMessageId !== undefined && sourceIds.length !== 1)
           ) {
             return yield* failEnvironmentInvalidRequest("invalid_command");
           }
+          // A fork cuts the history at its message, which may be older than the recent window.
+          const window = beforeMessageId === undefined ? { turnLimit: 8 } : undefined;
           const sections = yield* Effect.forEach(sourceIds, (sourceId) =>
-            snapshots.getThreadDetailSnapshot(sourceId, { turnLimit: 8 }).pipe(
-              Effect.map((detail) => {
+            snapshots.getThreadDetailSnapshot(sourceId, window).pipe(
+              Effect.catch((cause) => failEnvironmentInternal("internal_error", cause)),
+              Effect.flatMap((detail) => {
                 const tab = group.tabs.find((entry) => entry.threadId === sourceId);
-                if (Option.isNone(detail) || !tab) return "";
+                if (Option.isNone(detail) || !tab) return Effect.succeed("");
                 const { thread, snapshotSequence } = detail.value;
-                return `Source thread: ${sourceId} (snapshot ${snapshotSequence})\n${summarizeSiblingChat(
-                  {
-                    title: tab.title,
-                    worktreePath: thread.worktreePath,
-                    latestTurnState: thread.latestTurn?.state ?? null,
-                    messages: thread.messages,
-                    activities: thread.activities,
-                    checkpoints: thread.checkpoints,
-                    proposedPlans: thread.proposedPlans,
-                  },
-                )}`;
+                const chat = {
+                  title: tab.title,
+                  worktreePath: thread.worktreePath,
+                  latestTurnState: thread.latestTurn?.state ?? null,
+                  messages: thread.messages,
+                  activities: thread.activities,
+                  checkpoints: thread.checkpoints,
+                  proposedPlans: thread.proposedPlans,
+                };
+                const source =
+                  beforeMessageId === undefined
+                    ? chat
+                    : siblingChatBeforeMessage(chat, beforeMessageId);
+                if (!source) return failEnvironmentInvalidRequest("invalid_command");
+                return Effect.succeed(
+                  `Source thread: ${sourceId} (snapshot ${snapshotSequence})\n${summarizeSiblingChat(source)}`,
+                );
               }),
             ),
-          ).pipe(Effect.catch((cause) => failEnvironmentInternal("internal_error", cause)));
+          );
           return {
             text: sections.filter(Boolean).join("\n\n"),
           };

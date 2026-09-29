@@ -1,5 +1,5 @@
 import * as Schema from "effect/Schema";
-import { ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { MessageId, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { ModelSelection } from "./orchestration.ts";
 
 export const ThreadTab = Schema.Struct({
@@ -32,6 +32,8 @@ export type CreateThreadTabInput = typeof CreateThreadTabInput.Type;
 
 export const ThreadTabHandoffInput = Schema.Struct({
   sourceThreadIds: Schema.Array(ThreadId).check(Schema.isMaxLength(8)),
+  /** Forking: summarize only what came before this user message of the single source. */
+  beforeMessageId: Schema.optional(MessageId),
 });
 export type ThreadTabHandoffInput = typeof ThreadTabHandoffInput.Type;
 

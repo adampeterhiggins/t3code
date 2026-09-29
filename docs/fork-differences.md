@@ -107,9 +107,13 @@ is its own conversation and provider.
   `packages/shared/src/composerContextReferences.ts`. The summary covers the recent conversation,
   tools, reasoning, errors, changed files, and the latest plan (`apps/server/src/threadTabs/summary.ts`).
   It is captured when chosen, so later changes in that chat do not change it.
+- **Fork from a message.** On web and desktop, a user message's hover actions include **Fork into
+  new tab**. It opens a new tab whose draft holds a `thread-tab` chip summarizing the chat before
+  that message (`beforeMessageId` on the handoff request), then the message's text and attachments,
+  so it can be resent with another model or provider (`forkThreadTab` in `ThreadTabs.tsx`).
 - **Mobile.** A switcher menu switches, creates, and closes tabs
   (`apps/mobile/src/features/threads/ThreadTabs.tsx`). An empty tab can attach sibling context when
-  sending. Mobile does not have the header crumb, the `@` chip, or the sidebar tab list.
+  sending. Mobile does not have the header crumb, the `@` chip, forking, or the sidebar tab list.
 
 User guide: [thread-sidebar.md](./user/thread-sidebar.md#continue-in-another-tab).
 
