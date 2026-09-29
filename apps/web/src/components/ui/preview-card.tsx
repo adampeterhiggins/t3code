@@ -13,16 +13,20 @@ function PreviewCardPopup({
   align = "start",
   side = "top",
   sideOffset = 6,
+  anchor,
   ...props
 }: PreviewCardPrimitive.Popup.Props & {
   align?: PreviewCardPrimitive.Positioner.Props["align"];
   side?: PreviewCardPrimitive.Positioner.Props["side"];
   sideOffset?: PreviewCardPrimitive.Positioner.Props["sideOffset"];
+  /** Positions against something other than the trigger, e.g. a point under the cursor. */
+  anchor?: PreviewCardPrimitive.Positioner.Props["anchor"];
 }) {
   return (
     <PreviewCardPrimitive.Portal>
       <PreviewCardPrimitive.Positioner
         align={align}
+        anchor={anchor}
         className="z-[140] max-w-(--available-width)"
         data-slot="preview-card-positioner"
         side={side}
