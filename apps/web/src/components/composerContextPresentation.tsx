@@ -7,12 +7,8 @@ import type {
 } from "@t3tools/contracts";
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
 import { videoMimeType } from "@t3tools/shared/video";
-import {
-  MessageCircleIcon,
-  MessagesSquareIcon,
-  MousePointerClickIcon,
-  SquareKanbanIcon,
-} from "lucide-react";
+import { MessageCircleIcon, MessagesSquareIcon, MousePointerClickIcon } from "lucide-react";
+import { LinearIcon } from "./Icons";
 import { createContext, type MouseEvent, type ReactElement, type ReactNode, use } from "react";
 import type { EnvironmentId } from "@t3tools/contracts";
 
@@ -455,7 +451,7 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
       render: (entry, context, definition) =>
         entry.kind === "linear-issue" ? (
           <ContextChip
-            icon={<SquareKanbanIcon />}
+            icon={<LinearIcon />}
             label={entry.record.label}
             kindLabel="Linear issue"
             details={<ComposerLinearIssueDetails record={entry.record} />}

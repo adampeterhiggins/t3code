@@ -1,5 +1,6 @@
 import type { ScopedThreadRef } from "@t3tools/contracts";
-import { PaperclipIcon, SquareKanbanIcon } from "lucide-react";
+import { PaperclipIcon } from "lucide-react";
+import { LinearIcon } from "../Icons";
 import { memo } from "react";
 
 import { Button } from "../ui/button";
@@ -26,7 +27,7 @@ export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
           Files and images
         </MenuItem>
         <MenuItem onClick={() => openLinearIssuePicker(props.threadRef)}>
-          <SquareKanbanIcon />
+          <LinearIcon />
           Linear issue
         </MenuItem>
       </MenuPopup>

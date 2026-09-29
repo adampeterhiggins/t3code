@@ -17,10 +17,10 @@ import {
   MessagesSquareIcon,
   PackageIcon,
   SettingsIcon,
-  SquareKanbanIcon,
   UserRoundIcon,
   type LucideIcon,
 } from "lucide-react";
+import { LinearIcon } from "../Icons";
 import { memo, useLayoutEffect, useRef } from "react";
 
 import { type ComposerSlashCommand, type ComposerTriggerKind } from "../../composer-logic";
@@ -230,7 +230,7 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
         <MessagesSquareIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
       ) : null}
       {props.item.type === "linear-issue" ? (
-        <SquareKanbanIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+        <LinearIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
       ) : null}
       {pullRequestPresentation ? (
         <pullRequestPresentation.Icon

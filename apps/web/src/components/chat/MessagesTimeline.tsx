@@ -1,4 +1,5 @@
 import { ArrowUpIcon, ClockIcon } from "lucide-react";
+import { LinearIcon } from "../Icons";
 import { ReadOnlySourcePreview } from "../files/AttachmentFilePreview";
 import { useRightPanelStore } from "~/rightPanelStore";
 import {
@@ -124,7 +125,6 @@ import {
   HammerIcon,
   MessageCircleIcon,
   MessagesSquareIcon,
-  SquareKanbanIcon,
   Minimize2Icon,
   MousePointerClickIcon,
   PaintbrushIcon,
@@ -3963,7 +3963,7 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
             copyMarkdown={context.copyMarkdown}
             accessibleLabel={`Linear issue, ${record.label}`}
             kind="linear-issue"
-            icon={<SquareKanbanIcon />}
+            icon={<LinearIcon />}
             label={record.label}
           >
             <UserMessageLinearIssueDetails record={record} />

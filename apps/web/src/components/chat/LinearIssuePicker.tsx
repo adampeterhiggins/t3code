@@ -7,7 +7,7 @@ import { linearIssueContextRecord } from "@t3tools/client-runtime/state/linear";
 import type { LinearIssueSummary, ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/unstable/reactivity";
-import { SquareKanbanIcon } from "lucide-react";
+import { LinearIcon } from "../Icons";
 import { useCallback, useState } from "react";
 
 import { useComposerDraftStore } from "~/composerDraftStore";
@@ -165,7 +165,7 @@ function LinearIssuePickerDialog(props: { threadRef: ScopedThreadRef; onClose: (
           <CommandPaletteContent
             inputProps={{
               placeholder: "Search Linear issues, or paste ENG-123 or an issue link",
-              startAddon: <SquareKanbanIcon />,
+              startAddon: <LinearIcon />,
             }}
             footerActionLabel={attaching ? "Attaching…" : "Attach"}
             inputAccessory={

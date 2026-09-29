@@ -55,11 +55,11 @@ import {
   MoonIcon,
   PaletteIcon,
   SettingsIcon,
-  SquareKanbanIcon,
   SquarePenIcon,
   SunIcon,
   TextSearchIcon,
 } from "lucide-react";
+import { LinearIcon } from "./Icons";
 import {
   useCallback,
   useDeferredValue,
@@ -1844,7 +1844,7 @@ function OpenCommandPaletteDialog(props: {
       value: "action:attach-linear-issue",
       searchTerms: ["linear", "issue", "ticket", "attach", "context"],
       title: "Attach Linear issue",
-      icon: <SquareKanbanIcon className={ITEM_ICON_CLASS} />,
+      icon: <LinearIcon className={ITEM_ICON_CLASS} />,
       run: async () => {
         openLinearIssuePicker(composerThreadRef);
       },
