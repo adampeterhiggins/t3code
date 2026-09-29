@@ -31,6 +31,7 @@ import { type DraftId } from "~/composerDraftStore";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
 import ProjectScriptsControl, {
+  type ConductorScriptItem,
   type NewProjectScriptInput,
   type ProjectScriptActionResult,
 } from "../ProjectScriptsControl";
@@ -79,6 +80,10 @@ interface ChatHeaderProps {
   onNewThreadInProject: () => void;
   onOpenProjectSettings?: (() => void) | undefined;
   onRunProjectScript: (script: ProjectScript) => void;
+  /** The repository's Conductor run scripts, run from the same control. */
+  conductorScripts: ReadonlyArray<ConductorScriptItem>;
+  onRunConductorScript: (scriptId: string) => void;
+  onStopConductorScript: (scriptId: string) => void;
   onAddProjectScript: (input: NewProjectScriptInput) => Promise<ProjectScriptActionResult>;
   onUpdateProjectScript: (
     scriptId: string,
@@ -150,6 +155,9 @@ export const ChatHeader = memo(function ChatHeader({
   onNewThreadInProject,
   onOpenProjectSettings,
   onRunProjectScript,
+  conductorScripts,
+  onRunConductorScript,
+  onStopConductorScript,
   onAddProjectScript,
   onUpdateProjectScript,
   onDeleteProjectScript,
@@ -379,6 +387,9 @@ export const ChatHeader = memo(function ChatHeader({
             keybindings={keybindings}
             preferredScriptId={preferredScriptId}
             onRunScript={onRunProjectScript}
+            conductorScripts={conductorScripts}
+            onRunConductorScript={onRunConductorScript}
+            onStopConductorScript={onStopConductorScript}
             onAddScript={onAddProjectScript}
             onUpdateScript={onUpdateProjectScript}
             onDeleteScript={onDeleteProjectScript}

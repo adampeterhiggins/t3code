@@ -1,5 +1,6 @@
 import type {
   ProjectScript,
+  ProjectScriptIcon,
   ResolvedKeybindingsConfig,
   T3ProjectFileScript,
 } from "@t3tools/contracts";
@@ -7,7 +8,7 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { ChevronDownIcon, DownloadIcon, PlusIcon, SettingsIcon } from "lucide-react";
+import { ChevronDownIcon, DownloadIcon, PlusIcon, SettingsIcon, SquareIcon } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 
 import { commandForProjectScript, primaryProjectScript } from "~/projectScripts";
@@ -42,6 +43,16 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 export type { NewProjectScriptInput, ProjectScriptActionResult };
 
 const NO_FILE_SCRIPTS: ReadonlyArray<T3ProjectFileScript> = [];
+const NO_CONDUCTOR_SCRIPTS: ReadonlyArray<ConductorScriptItem> = [];
+
+/** A run script from the repository's Conductor settings; clicking it runs or stops it. */
+export interface ConductorScriptItem {
+  readonly id: string;
+  readonly name: string;
+  readonly command: string;
+  readonly icon: ProjectScriptIcon;
+  readonly running: boolean;
+}
 
 interface ProjectScriptsControlProps {
   presentation?: "toolbar" | "menu";
@@ -52,6 +63,10 @@ interface ProjectScriptsControlProps {
   keybindings: ResolvedKeybindingsConfig;
   preferredScriptId?: string | null;
   onRunScript: (script: ProjectScript) => void;
+  /** Run scripts from `.conductor/settings.toml`, default first. */
+  conductorScripts?: ReadonlyArray<ConductorScriptItem>;
+  onRunConductorScript?: (scriptId: string) => void;
+  onStopConductorScript?: (scriptId: string) => void;
   onAddScript: (input: NewProjectScriptInput) => Promise<ProjectScriptActionResult>;
   onUpdateScript: (
     scriptId: string,
@@ -68,6 +83,9 @@ export default function ProjectScriptsControl({
   keybindings,
   preferredScriptId = null,
   onRunScript,
+  conductorScripts = NO_CONDUCTOR_SCRIPTS,
+  onRunConductorScript,
+  onStopConductorScript,
   onAddScript,
   onUpdateScript,
   onDeleteScript,
@@ -89,6 +107,11 @@ export default function ProjectScriptsControl({
     }
     return primaryProjectScript(scripts);
   }, [preferredScriptId, scripts]);
+  // Like Conductor's Run button: a project with no actions of its own leads
+  // with the repository's default run script.
+  const primaryConductorScript = primaryScript ? null : (conductorScripts[0] ?? null);
+  const toggleConductorScript = (script: ConductorScriptItem) =>
+    script.running ? onStopConductorScript?.(script.id) : onRunConductorScript?.(script.id);
   const importableScripts = useMemo(
     () =>
       fileScripts.filter(
@@ -164,6 +187,31 @@ export default function ProjectScriptsControl({
     </>
   );
 
+  const conductorMenuItems = conductorScripts.length > 0 && (
+    <>
+      {scripts.length > 0 && <MenuSeparator />}
+      <MenuGroup>
+        <MenuGroupLabel>From Conductor</MenuGroupLabel>
+        {conductorScripts.map((script) => (
+          <MenuItem
+            density={presentation === "menu" ? "touch" : "default"}
+            key={script.id}
+            title={script.command}
+            onClick={() => toggleConductorScript(script)}
+          >
+            {script.running ? (
+              <SquareIcon className="size-4" />
+            ) : (
+              <ScriptIcon icon={script.icon} className="size-4" />
+            )}
+            <MenuItemLabel>{script.running ? `Stop ${script.name}` : script.name}</MenuItemLabel>
+          </MenuItem>
+        ))}
+      </MenuGroup>
+      <MenuSeparator />
+    </>
+  );
+
   const scriptItems = (
     <>
       {scripts.map((script) => {
@@ -218,6 +266,7 @@ export default function ProjectScriptsControl({
           </MenuItem>
         );
       })}
+      {conductorMenuItems}
       {importMenuItems}
       <MenuItem density={presentation === "menu" ? "touch" : "default"} onClick={openAddDialog}>
         <PlusIcon className="size-4" />
@@ -242,7 +291,19 @@ export default function ProjectScriptsControl({
               </MenuShortcut>
             </MenuItem>
           )}
-          {primaryScript || importableScripts.length > 0 ? (
+          {primaryConductorScript && (
+            <MenuItem density="touch" onClick={() => toggleConductorScript(primaryConductorScript)}>
+              {primaryConductorScript.running ? (
+                <SquareIcon className="size-4" />
+              ) : (
+                <ScriptIcon icon={primaryConductorScript.icon} className="size-4" />
+              )}
+              <MenuItemLabel>
+                {primaryConductorScript.running ? "Stop" : "Run"} {primaryConductorScript.name}
+              </MenuItemLabel>
+            </MenuItem>
+          )}
+          {primaryScript || conductorScripts.length > 0 || importableScripts.length > 0 ? (
             <MenuSub
               open={actionsMenuOpen.scripts}
               onOpenChange={(open) =>
@@ -288,6 +349,49 @@ export default function ProjectScriptsControl({
               </span>
             </TooltipTrigger>
             <TooltipPopup side="top">Run {primaryScript.name}</TooltipPopup>
+          </Tooltip>
+          <GroupSeparator className="hidden @3xl/header-actions:block" />
+          <Menu
+            open={actionsMenuOpen.scripts}
+            onOpenChange={(open) =>
+              setActionsMenuOpen({ presentation, scripts: open, imports: false })
+            }
+          >
+            <MenuTrigger
+              render={<Button size="icon-xs" variant="outline" aria-label="Script actions" />}
+            >
+              <ChevronDownIcon className="size-4" />
+            </MenuTrigger>
+            <MenuPopup align="end">{scriptItems}</MenuPopup>
+          </Menu>
+        </Group>
+      ) : primaryConductorScript ? (
+        <Group aria-label="Project scripts">
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  size="xs"
+                  variant="outline"
+                  className="w-7 sm:w-6 @3xl/header-actions:w-auto!"
+                  aria-label={`${primaryConductorScript.running ? "Stop" : "Run"} ${primaryConductorScript.name}`}
+                  data-toolbar-control=""
+                  onClick={() => toggleConductorScript(primaryConductorScript)}
+                />
+              }
+            >
+              {primaryConductorScript.running ? (
+                <SquareIcon />
+              ) : (
+                <ScriptIcon icon={primaryConductorScript.icon} />
+              )}
+              <span className="sr-only @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5">
+                {primaryConductorScript.running ? "Stop" : "Run"} {primaryConductorScript.name}
+              </span>
+            </TooltipTrigger>
+            <TooltipPopup side="top">
+              {primaryConductorScript.running ? "Stop" : "Run"} {primaryConductorScript.command}
+            </TooltipPopup>
           </Tooltip>
           <GroupSeparator className="hidden @3xl/header-actions:block" />
           <Menu

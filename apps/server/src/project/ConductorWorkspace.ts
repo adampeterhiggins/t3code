@@ -20,11 +20,11 @@ import {
   CONDUCTOR_SETTINGS_FILES,
   WORKTREE_INCLUDE_PATH,
   conductorIncludePatternLines,
+  conductorScriptEnv,
   resolveConductorSettings,
   type ResolvedConductorSettings,
 } from "@t3tools/shared/conductorSettings";
 import { HostProcessEnvironment, HostProcessPlatform } from "@t3tools/shared/hostProcess";
-import * as NodeCrypto from "node:crypto";
 
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -38,35 +38,6 @@ import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 const COPY_LIST_MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
 const COPY_CONCURRENCY = 8;
 const ARCHIVE_TIMEOUT = "60 seconds";
-
-/**
- * First of the ten ports Conductor hands each workspace (`CONDUCTOR_PORT`
- * through `CONDUCTOR_PORT + 9`). Derived from the worktree path so it is
- * stable across restarts and the same for setup and archive without being
- * stored anywhere.
- */
-export function conductorPort(worktreePath: string): number {
-  const hash = NodeCrypto.createHash("sha256").update(worktreePath).digest();
-  return 30_000 + (hash.readUInt32BE(0) % 2_000) * 10;
-}
-
-function conductorScriptEnv(input: {
-  readonly projectRoot: string;
-  readonly worktreePath: string;
-  readonly workspaceName: string;
-  readonly defaultBranch: string | null;
-  readonly environment: Readonly<Record<string, string>>;
-}): Record<string, string> {
-  return {
-    ...input.environment,
-    CONDUCTOR_WORKSPACE_NAME: input.workspaceName,
-    CONDUCTOR_WORKSPACE_PATH: input.worktreePath,
-    CONDUCTOR_ROOT_PATH: input.projectRoot,
-    CONDUCTOR_PORT: String(conductorPort(input.worktreePath)),
-    CONDUCTOR_IS_LOCAL: "1",
-    ...(input.defaultBranch ? { CONDUCTOR_DEFAULT_BRANCH: input.defaultBranch } : {}),
-  };
-}
 
 export interface ConductorWorktreeInput {
   readonly projectRoot: string;
@@ -143,7 +114,6 @@ export const make = Effect.gen(function* () {
     return conductorScriptEnv({
       projectRoot: input.projectRoot,
       worktreePath: input.worktreePath,
-      workspaceName: path.basename(input.worktreePath),
       defaultBranch,
       environment: config.environment,
     });

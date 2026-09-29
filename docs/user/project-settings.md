@@ -84,8 +84,13 @@ checkout and:
 
 These scripts can read `CONDUCTOR_ROOT_PATH`, `CONDUCTOR_WORKSPACE_PATH`,
 `CONDUCTOR_WORKSPACE_NAME`, `CONDUCTOR_DEFAULT_BRANCH`, and `CONDUCTOR_PORT`, the first of ten
-ports reserved for that worktree, plus any `environment_variables` from the settings. Run scripts
-from Conductor settings are not shown in T3 Code yet.
+ports reserved for that worktree, plus any `environment_variables` from the settings.
+
+Run scripts (`[scripts.run.<name>]`) appear in the chat header's actions menu under **From
+Conductor**. When the project has no actions of its own, the default run script becomes the header's
+**Run** button. Each run script gets its own terminal in the thread's workspace; while it is running,
+its button reads **Stop**, which ends it. With `run_mode = "nonconcurrent"`, starting one stops the
+others in the same thread. Run scripts are available on web and desktop.
 
 To change these settings without leaving T3 Code, select the project in **Settings** and scroll to
 **Conductor**. **Only me** saves to `.conductor/settings.local.toml`, which Conductor treats as

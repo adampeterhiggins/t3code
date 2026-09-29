@@ -4,6 +4,8 @@ import { parse as parseToml } from "smol-toml";
 import {
   CONDUCTOR_LOCAL_SETTINGS_PATH,
   CONDUCTOR_SETTINGS_PATH,
+  conductorPort,
+  conductorScriptEnv,
   resolveConductorSettings,
   updateConductorSettingsToml,
 } from "./conductorSettings.ts";
@@ -57,6 +59,107 @@ describe("resolveConductorSettings", () => {
     expect(resolveConductorSettings({ files: {}, worktreeInclude: "certs/**\n" })).toMatchObject({
       configured: false,
       includePatterns: "certs/**\n",
+    });
+  });
+});
+
+describe("run scripts", () => {
+  it("resolves orchestra's dev script", () => {
+    const settings = resolveConductorSettings({
+      files: { [CONDUCTOR_SETTINGS_PATH]: ORCHESTRA },
+      worktreeInclude: null,
+    });
+    expect(settings.runMode).toBe("concurrent");
+    expect(settings.runScripts).toEqual([
+      {
+        id: "dev",
+        name: "dev",
+        command: "./scripts/conductor.sh start --open",
+        icon: "play",
+        default: true,
+        cwd: null,
+      },
+    ]);
+  });
+
+  it("merges scripts by id across files, puts the default first, and honors hide", () => {
+    const settings = resolveConductorSettings({
+      files: {
+        [CONDUCTOR_SETTINGS_PATH]: [
+          "[scripts]",
+          'run_mode = "nonconcurrent"',
+          "[scripts.run.test-watch]",
+          'command = "pnpm test"',
+          'args = ["--watch", "it\'s"]',
+          'icon = "test-tube"',
+          "[scripts.run.web]",
+          'command = "pnpm dev"',
+          "default = true",
+          "[scripts.run.cloud-only]",
+          'command = "deploy"',
+          'available_in = ["cloud"]',
+          "[scripts.run.worker]",
+          'command = "pnpm worker"',
+          'options = { cwd = "apps/worker" }',
+        ].join("\n"),
+        [CONDUCTOR_LOCAL_SETTINGS_PATH]: [
+          "[scripts.run.web]",
+          'command = "pnpm dev --host 127.0.0.1"',
+          "[scripts.run.worker]",
+          "hide = true",
+        ].join("\n"),
+      },
+      worktreeInclude: null,
+    });
+    expect(settings.runMode).toBe("nonconcurrent");
+    expect(settings.runScripts).toEqual([
+      {
+        id: "web",
+        name: "web",
+        command: "pnpm dev --host 127.0.0.1",
+        icon: "play",
+        default: true,
+        cwd: null,
+      },
+      {
+        id: "test-watch",
+        name: "test watch",
+        command: "pnpm test --watch 'it'\\''s'",
+        icon: "test-tube",
+        default: false,
+        cwd: null,
+      },
+    ]);
+  });
+
+  it("reads the legacy single run script", () => {
+    expect(
+      resolveConductorSettings({
+        files: { "conductor.json": '{ "scripts": { "run": "npm run dev" } }' },
+        worktreeInclude: null,
+      }).runScripts,
+    ).toMatchObject([{ id: "run", command: "npm run dev", default: true }]);
+  });
+
+  it("gives each workspace a stable block of ports and its Conductor variables", () => {
+    const port = conductorPort("/repo/worktrees/lisbon");
+    expect(port).toBe(conductorPort("/repo/worktrees/lisbon"));
+    expect(port % 10).toBe(0);
+    expect(port).toBeGreaterThanOrEqual(30_000);
+    expect(port).toBeLessThan(50_000);
+    expect(
+      conductorScriptEnv({
+        projectRoot: "/repo",
+        worktreePath: "/repo/worktrees/lisbon/",
+        defaultBranch: "main",
+        environment: { API_URL: "x", CONDUCTOR_ROOT_PATH: "ignored" },
+      }),
+    ).toMatchObject({
+      API_URL: "x",
+      CONDUCTOR_ROOT_PATH: "/repo",
+      CONDUCTOR_WORKSPACE_NAME: "lisbon",
+      CONDUCTOR_DEFAULT_BRANCH: "main",
+      CONDUCTOR_IS_LOCAL: "1",
     });
   });
 });

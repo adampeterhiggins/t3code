@@ -188,16 +188,20 @@ Code: `apps/web/src/components/sidebar/SidebarResourcePill.tsx` and `readUsage` 
 New worktrees honor a repository's Conductor (`conductor.build`) settings from the project
 checkout: gitignored Files to copy (`.worktreeinclude`, `file_include_globs`, default `.env*`),
 `scripts.setup` as the setup script when the project has no setup action of its own, and
-`scripts.archive` before a worktree is removed, by the user or by storage cleanup. Scripts get Conductor's `CONDUCTOR_*` variables and
-`environment_variables`; `CONDUCTOR_PORT` is derived from the worktree path. Conductor run scripts
-are not supported yet. This runs on the server, so every client gets it. On web and desktop, the
-project's **Conductor** settings section edits the setup and archive scripts, Files to copy, and
-environment variables in `settings.local.toml` or `settings.toml`.
+`scripts.archive` before a worktree is removed, by the user or by storage cleanup. Scripts get
+Conductor's `CONDUCTOR_*` variables and `environment_variables`; `CONDUCTOR_PORT` is derived from
+the worktree path. This runs on the server, so every client gets it.
+
+On web and desktop, run scripts (`scripts.run`) show in the chat header's actions menu, and the
+default one is the header's Run button when the project has no actions of its own. Each runs in its
+own terminal and toggles to Stop while running; `run_mode = "nonconcurrent"` applies within a
+thread. The project's **Conductor** settings section edits the setup and archive scripts, Files to
+copy, and environment variables in `settings.local.toml` or `settings.toml`.
 
 Code: `packages/shared/src/conductorSettings.ts`, `apps/server/src/project/ConductorWorkspace.ts`
 (called from `ProjectSetupScriptRunner.ts`, `GitWorkflowService.removeWorktree`, and
-`storageCleanup.ts`), and
-`apps/web/src/components/settings/ConductorSettings.tsx`. User guide:
+`storageCleanup.ts`), `apps/web/src/components/settings/ConductorSettings.tsx`, and the run
+button in `apps/web/src/components/ProjectScriptsControl.tsx`. User guide:
 [project-settings.md](./user/project-settings.md#repositories-set-up-for-conductor).
 
 ## Desktop mock-update loop
