@@ -9,6 +9,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { deriveProviderInstanceEntries } from "../../providerInstances";
 import {
   adjacentModelPickerProvider,
+  matchesModelPickerLock,
   resolveModelPickerSelectedModel,
   shouldIncludeModelPickerOption,
   shouldOfferModelPickerSetup,
@@ -315,5 +316,37 @@ describe("adjacentModelPickerProvider", () => {
         selectableUnavailableDriverKinds: undefined,
       }),
     ).toBe(claude.driverKind);
+  });
+});
+
+describe("matchesModelPickerLock", () => {
+  const codex = ProviderDriverKind.make("codex");
+  const claude = ProviderDriverKind.make("claudeAgent");
+
+  it("lets an unstarted thread use any provider", () => {
+    expect(
+      matchesModelPickerLock({
+        entry: { driverKind: claude },
+        lockedProvider: null,
+        lockedContinuationGroupKey: null,
+      }),
+    ).toBe(true);
+  });
+
+  it("keeps a started thread on its provider and continuation group", () => {
+    const lock = { lockedProvider: codex, lockedContinuationGroupKey: "home-a" };
+    expect(
+      matchesModelPickerLock({
+        ...lock,
+        entry: { driverKind: codex, continuationGroupKey: "home-a" },
+      }),
+    ).toBe(true);
+    expect(
+      matchesModelPickerLock({
+        ...lock,
+        entry: { driverKind: codex, continuationGroupKey: "home-b" },
+      }),
+    ).toBe(false);
+    expect(matchesModelPickerLock({ ...lock, entry: { driverKind: claude } })).toBe(false);
   });
 });

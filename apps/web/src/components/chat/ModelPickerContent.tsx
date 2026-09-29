@@ -150,6 +150,21 @@ export function adjacentModelPickerProvider(input: {
 
 const EMPTY_MODEL_JUMP_LABELS = new Map<string, string>();
 
+/**
+ * Whether a started thread can move to this instance in place. Outside the lock, the picker
+ * either hides the instance or, when forking is available, opens it in a new tab.
+ */
+export function matchesModelPickerLock(input: {
+  entry: Pick<ProviderInstanceEntry, "driverKind" | "continuationGroupKey">;
+  lockedProvider: ProviderDriverKind | null;
+  lockedContinuationGroupKey: string | null;
+}): boolean {
+  if (input.lockedProvider === null) return true;
+  if (input.entry.driverKind !== input.lockedProvider) return false;
+  if (!input.lockedContinuationGroupKey) return true;
+  return input.entry.continuationGroupKey === input.lockedContinuationGroupKey;
+}
+
 function ModelListSeparator() {
   return <div className="h-0.5" />;
 }
@@ -188,6 +203,13 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   onOpenProviderSetup?: (instanceId: ProviderInstanceId) => void;
   getModelDisabledReason?: (instanceId: ProviderInstanceId, model: string) => string | null;
   onInstanceModelChange: (instanceId: ProviderInstanceId, model: string) => void;
+  /**
+   * Opens the model in a new tab of the thread. When set, the provider lock stops hiding other
+   * providers: their models, and any `modelRequiresFork` reports, can only be forked to, while
+   * models the thread can switch to also offer forking on hover.
+   */
+  onForkModel?: (instanceId: ProviderInstanceId, model: string) => void;
+  modelRequiresFork?: (instanceId: ProviderInstanceId, model: string) => boolean;
 }) {
   const {
     keybindings: providedKeybindings,
@@ -196,6 +218,8 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     getModelDisabledReason,
     onInstanceModelChange,
     onToggleModel,
+    onForkModel,
+    modelRequiresFork,
   } = props;
   const [searchQuery, setSearchQuery] = useState("");
   const [showTopScrollFade, setShowTopScrollFade] = useState(false);
@@ -348,12 +372,12 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     [instanceEntries],
   );
   const matchesLockedProvider = useCallback(
-    (entry: Pick<ProviderInstanceEntry, "driverKind" | "continuationGroupKey">): boolean => {
-      if (props.lockedProvider === null) return true;
-      if (entry.driverKind !== props.lockedProvider) return false;
-      if (!props.lockedContinuationGroupKey) return true;
-      return entry.continuationGroupKey === props.lockedContinuationGroupKey;
-    },
+    (entry: Pick<ProviderInstanceEntry, "driverKind" | "continuationGroupKey">): boolean =>
+      matchesModelPickerLock({
+        entry,
+        lockedProvider: props.lockedProvider,
+        lockedContinuationGroupKey: props.lockedContinuationGroupKey ?? null,
+      }),
     [props.lockedContinuationGroupKey, props.lockedProvider],
   );
 
@@ -439,7 +463,14 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     activeModelSlug,
   ]);
 
-  const isLocked = props.lockedProvider !== null;
+  // With forking available, other providers stay listed and open in a new tab instead.
+  const isLocked = props.lockedProvider !== null && onForkModel === undefined;
+  const requiresFork = useCallback(
+    (model: Pick<ModelPickerItem, "driverKind" | "continuationGroupKey" | "instanceId" | "slug">) =>
+      onForkModel !== undefined &&
+      (!matchesLockedProvider(model) || modelRequiresFork?.(model.instanceId, model.slug) === true),
+    [matchesLockedProvider, modelRequiresFork, onForkModel],
+  );
   const isSearching = searchQuery.trim().length > 0;
   const lockedDisabledDriverKinds = useMemo(() => {
     if (!isLocked) {
@@ -530,7 +561,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       // When searching, we only respect locked provider (by driver kind),
       // ignoring sidebar selection so searches can find a model before the
       // user chooses a specific provider rail item.
-      if (props.lockedProvider !== null) {
+      if (isLocked) {
         const lockedProviderMatches: Array<(typeof rankedMatches)[number]> = [];
         for (const rankedModel of rankedMatches) {
           if (matchesLockedProvider(rankedModel.model)) {
@@ -565,7 +596,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
         .map((rankedModel) => rankedModel.model);
     }
 
-    if (props.lockedProvider !== null) {
+    if (isLocked) {
       result = result.filter((m) => matchesLockedProvider(m));
       if (selectedDriverKind === "favorites") {
         result = result.filter((m) =>
@@ -611,8 +642,8 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     flatModels,
     instanceEntries,
     instanceOrder,
+    isLocked,
     matchesLockedProvider,
-    props.lockedProvider,
     searchQuery,
     selectedDriverKind,
   ]);
@@ -687,7 +718,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   );
 
   const handleModelSelect = useCallback(
-    (modelSlug: string, instanceId: ProviderInstanceId, additive = false) => {
+    (modelSlug: string, instanceId: ProviderInstanceId, additive = false, fork = false) => {
       if (getModelDisabledReason?.(instanceId, modelSlug)) {
         return;
       }
@@ -719,7 +750,18 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       // normalization rules, so pass the driver kind here.
       const resolvedModel = resolveSelectableModel(resolvedEntry.driverKind, modelSlug, options);
       if (resolvedModel) {
-        if (additive && onToggleModel) {
+        if (
+          onForkModel &&
+          (fork ||
+            requiresFork({
+              driverKind: resolvedEntry.driverKind,
+              continuationGroupKey: resolvedEntry.continuationGroupKey,
+              instanceId: resolvedInstanceId,
+              slug: resolvedModel,
+            }))
+        ) {
+          onForkModel(resolvedInstanceId, resolvedModel);
+        } else if (additive && onToggleModel) {
           onToggleModel(resolvedInstanceId, resolvedModel);
         } else {
           onInstanceModelChange(resolvedInstanceId, resolvedModel);
@@ -731,10 +773,12 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       getModelDisabledReason,
       instanceEntries,
       modelOptionsByInstance,
+      onForkModel,
       onInstanceModelChange,
       onToggleModel,
       props.activeInstanceId,
       props.lockedContinuationGroupKey,
+      requiresFork,
     ],
   );
 
@@ -1139,6 +1183,13 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                         jumpLabel={modelJumpLabelByKey.get(modelKey) ?? null}
                         disabledReason={disabledReason}
                         onToggleFavorite={() => toggleFavorite(model.instanceId, model.slug)}
+                        {...(onForkModel
+                          ? {
+                              forkOnly: requiresFork(model),
+                              onFork: () =>
+                                handleModelSelect(model.slug, model.instanceId, false, true),
+                            }
+                          : {})}
                       />
                     );
                   }}

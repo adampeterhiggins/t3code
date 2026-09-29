@@ -1,6 +1,6 @@
 import { type ProviderDriverKind, type ProviderInstanceId } from "@t3tools/contracts";
 import { memo } from "react";
-import { CheckIcon, StarIcon } from "lucide-react";
+import { CheckIcon, GitForkIcon, StarIcon } from "lucide-react";
 import {
   getDisplayModelName,
   getTriggerDisplayModelLabel,
@@ -40,6 +40,10 @@ export const ModelListRow = memo(function ModelListRow(props: {
   jumpLabel?: string | null;
   disabledReason?: string | null;
   onToggleFavorite: () => void;
+  /** Opens this model in a new tab; shown on hover, or always when `forkOnly`. */
+  onFork?: () => void;
+  /** The thread cannot switch to this model, so choosing the row forks. */
+  forkOnly?: boolean;
 }) {
   const ProviderIcon = PROVIDER_ICON_BY_PROVIDER[props.driverKind] ?? null;
   const providerLabel = props.model.subProvider
@@ -97,6 +101,41 @@ export const ModelListRow = memo(function ModelListRow(props: {
           <CheckIcon className="size-3.5" aria-hidden="true" />
         ) : null}
         {props.jumpLabel ? <Kbd>{props.jumpLabel}</Kbd> : null}
+        {props.onFork ? (
+          <span
+            className={cn(
+              "flex",
+              !props.forkOnly &&
+                "opacity-0 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover:opacity-100 group-data-highlighted:opacity-100",
+            )}
+          >
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    size="icon-xs"
+                    variant="ghost-muted"
+                    className="shrink-0"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      props.onFork?.();
+                    }}
+                    onKeyDown={(event) => {
+                      event.stopPropagation();
+                    }}
+                    disabled={Boolean(props.disabledReason)}
+                    aria-label="Fork into new tab"
+                  >
+                    <GitForkIcon className="size-3.5 sm:size-3" />
+                  </Button>
+                }
+              />
+              <TooltipPopup side="top" align="center">
+                {props.forkOnly ? "Opens in a new tab" : "Fork into new tab"}
+              </TooltipPopup>
+            </Tooltip>
+          </span>
+        ) : null}
         <Tooltip>
           <TooltipTrigger
             render={

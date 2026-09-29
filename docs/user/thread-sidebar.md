@@ -40,6 +40,11 @@ To retry a message with another model or provider on web or desktop, hover the m
 followed by the message itself and its attachments. Pick a model, edit if you like, and send.
 Files the original chat changed after that message stay changed, since tabs share the workspace.
 
+To carry on with a different model instead, open the model picker after the first message and
+click the fork button on a model. A new tab opens on that model, with a summary of the chat and
+a copy of what you had typed. Models from other providers are listed too. A chat cannot switch to
+them in place, so choosing one always opens a new tab.
+
 ### Start in the background
 
 In a desktop browser or the desktop app, press `Cmd+Enter` on macOS or `Ctrl+Enter`

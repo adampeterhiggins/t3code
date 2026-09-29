@@ -343,9 +343,9 @@ export function useCaptureThreadTabContext(
 }
 
 /**
- * Forks a chat at one of its user messages: opens a new tab in the same thread whose draft holds
- * a summary of everything before that message, followed by the message itself, so it can be
- * sent again with another model. Resolves to the new tab once the client knows about it.
+ * Forks a chat into a new tab of the same thread, on `modelSelection`: the new draft holds a
+ * summary of the source chat, cut before `beforeMessageId` when forking from a message, followed
+ * by `prompt`. Resolves to the new tab once the client knows about it.
  */
 export async function forkThreadTab(
   connection: PreparedConnection,
@@ -354,10 +354,10 @@ export async function forkThreadTab(
     sourceThreadId: ThreadId;
     sourceTitle: string;
     modelSelection: ModelSelection;
-    messageId: MessageId;
-    /** The message's text as it should be recalled into a composer. */
+    beforeMessageId?: MessageId;
+    /** Composer text to follow the summary. */
     prompt: string;
-    /** False for the chat's first message, which has no history to summarize. */
+    /** False when forking from the chat's first message, which leaves nothing to summarize. */
     hasHistory: boolean;
   },
 ): Promise<ScopedThreadRef> {
@@ -373,7 +373,7 @@ export async function forkThreadTab(
         threadId,
         sourceThreadId: input.sourceThreadId,
         title: input.sourceTitle,
-        beforeMessageId: input.messageId,
+        ...(input.beforeMessageId ? { beforeMessageId: input.beforeMessageId } : {}),
       })
     : null;
   const threadRef = scopeThreadRef(input.environmentId, threadId);
