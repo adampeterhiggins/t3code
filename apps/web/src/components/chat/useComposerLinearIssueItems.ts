@@ -9,16 +9,24 @@ import type { ComposerCommandItem } from "./ComposerCommandMenu";
 
 // Linear allows 30 searches a minute, so the `#` query settles longer than pull requests do.
 const LINEAR_SEARCH_DEBOUNCE_MS = 300;
-const LINEAR_RESULT_LIMIT = 8;
+const LINEAR_RESULT_LIMIT = 20;
 const LINEAR_IDENTIFIER_PATTERN = /^[a-z][a-z0-9_]*-\d+$/i;
 
+export type ComposerReferenceTab = "pull-requests" | "linear-issues";
+
+/** The `#` menu's starting tab: an identifier (`#ENG-123`) names an issue, anything else a PR. */
+export function defaultComposerReferenceTab(query: string): ComposerReferenceTab {
+  return LINEAR_IDENTIFIER_PATTERN.test(query) ? "linear-issues" : "pull-requests";
+}
+
 /**
- * Linear issues for the composer's `#` menu, beside pull requests. A bare number is a pull
- * request, so it skips Linear; an identifier (`#ENG-123`) ranks its issue first.
+ * Linear issues for the composer's `#` menu, shown on their own tab beside pull requests. Only
+ * the visible tab searches, which keeps typing within Linear's search limit.
  */
 export function useComposerLinearIssueItems(
   environmentId: EnvironmentId,
   trigger: ComposerTrigger | null,
+  active: boolean,
 ) {
   const connection = useEnvironmentQuery(
     trigger?.kind === "pull-request"
@@ -26,7 +34,7 @@ export function useComposerLinearIssueItems(
       : null,
   );
   const enabled = trigger?.kind === "pull-request" && connection.data?.phase === "connected";
-  const query = enabled && !/^\d+$/.test(trigger.query) ? trigger.query : null;
+  const query = enabled && active ? trigger.query : null;
   const debouncedQuery = useDebouncedValue(query, LINEAR_SEARCH_DEBOUNCE_MS);
   const settledQuery = query === debouncedQuery ? query : null;
   const issues = useEnvironmentQuery(
@@ -50,8 +58,7 @@ export function useComposerLinearIssueItems(
   return {
     enabled,
     items,
-    /** Ranks Linear ahead of pull requests when the query names an issue. */
-    leadsResults: query !== null && LINEAR_IDENTIFIER_PATTERN.test(query),
+    error: issues.error,
     isPending: query !== null && (query !== debouncedQuery || issues.isPending),
   };
 }

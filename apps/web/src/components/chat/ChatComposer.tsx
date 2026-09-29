@@ -259,7 +259,12 @@ import { type ComposerCommandItem, ComposerCommandMenu } from "./ComposerCommand
 import { useCaptureThreadTabContext } from "./ThreadTabs";
 import { ComposerAttachMenu } from "./ComposerAttachMenu";
 import { useAttachLinearIssue } from "./LinearIssuePicker";
-import { useComposerLinearIssueItems } from "./useComposerLinearIssueItems";
+import {
+  type ComposerReferenceTab,
+  defaultComposerReferenceTab,
+  useComposerLinearIssueItems,
+} from "./useComposerLinearIssueItems";
+
 import { ComposerPendingApprovalActions } from "./ComposerPendingApprovalActions";
 import { CompactComposerControlsMenu } from "./CompactComposerControlsMenu";
 import { ComposerImageThumbnail } from "./ComposerImageThumbnail";
@@ -333,6 +338,11 @@ import {
   suppressActiveComposerScrollGesture,
 } from "./composerScrollGesture";
 import { prepareVideoFirstFrame } from "../../lib/videoFirstFrame";
+
+const REFERENCE_MENU_TABS = [
+  { id: "pull-requests", label: "Pull requests" },
+  { id: "linear-issues", label: "Linear issues" },
+] as const;
 
 function ComposerVideoThumbnail({ file }: { file: File }) {
   const setVideo = useCallback(
@@ -2382,7 +2392,23 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         }),
   );
 
-  const linearIssueMenu = useComposerLinearIssueItems(environmentId, composerTrigger);
+  // A tab picked by hand holds until this `#` token closes; otherwise the query picks it.
+  const [referenceTabChoice, setReferenceTabChoice] = useState<{
+    rangeStart: number;
+    tab: ComposerReferenceTab;
+  } | null>(null);
+  const referenceTab: ComposerReferenceTab =
+    composerTrigger?.kind !== "pull-request"
+      ? "pull-requests"
+      : referenceTabChoice?.rangeStart === composerTrigger.rangeStart
+        ? referenceTabChoice.tab
+        : defaultComposerReferenceTab(composerTrigger.query);
+  const linearIssueMenu = useComposerLinearIssueItems(
+    environmentId,
+    composerTrigger,
+    referenceTab === "linear-issues",
+  );
+  const showLinearIssues = linearIssueMenu.enabled && referenceTab === "linear-issues";
   const attachLinearIssue = useAttachLinearIssue();
   const captureThreadTabContext = useCaptureThreadTabContext(
     environmentId,
@@ -2390,6 +2416,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   );
   const composerMenuItems = useMemo<ComposerCommandItem[]>(() => {
     if (!composerTrigger) return [];
+    if (composerTrigger.kind === "pull-request" && showLinearIssues) {
+      return linearIssueMenu.items;
+    }
     if (composerTrigger.kind === "path") {
       const tabQuery = composerTrigger.query.trim().toLowerCase();
       const tabItems = (threadTabGroup?.tabs ?? [])
@@ -2542,12 +2571,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         label: `#${pullRequest.number}`,
         description: pullRequest.title,
       }));
-      return linearIssueMenu.leadsResults
-        ? [...linearIssueMenu.items, ...pullRequestItems]
-        : [...pullRequestItems, ...linearIssueMenu.items];
-    }
-    if (composerTrigger.kind === "pull-request") {
-      return linearIssueMenu.items;
+      return pullRequestItems;
     }
     return [];
   }, [
@@ -2555,7 +2579,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     composerTrigger,
     exactPullRequestLookup.data,
     linearIssueMenu.items,
-    linearIssueMenu.leadsResults,
     planModeUiEnabled,
     pullRequestLookup.data,
     pullRequestProjectId,
@@ -2566,6 +2589,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     selectedProviderSlashCommands,
     selectedProviderStatus,
     settings.showSkillsInSlashMenu,
+    showLinearIssues,
     threadTabGroup,
     activeThreadId,
     workspaceEntries.entries,
@@ -2641,21 +2665,23 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const isComposerMenuLoading =
     (composerTriggerKind === "path" && pathTriggerQuery.length > 0 && workspaceEntries.isPending) ||
     (composerTriggerKind === "pull-request" &&
+      !showLinearIssues &&
       pullRequestProjectId !== null &&
       pullRequestRepository !== null &&
       (pullRequestLookup.isPending ||
         pullRequestTextQuery !== debouncedPullRequestTextQuery ||
         pullRequestTriggerNumber !== debouncedPullRequestNumber ||
         exactPullRequestLookup.isPending)) ||
-    (composerTriggerKind === "pull-request" && linearIssueMenu.isPending);
+    (showLinearIssues && linearIssueMenu.isPending);
   const composerMenuEmptyState = useMemo(() => {
     if (composerTriggerKind === "skill") {
       return "No skills found. Try / to browse provider commands.";
     }
-    if (composerTriggerKind === "pull-request" && linearIssueMenu.enabled) {
+    if (showLinearIssues) {
+      if (linearIssueMenu.error !== null) return linearIssueMenu.error;
       return composerTrigger?.query
-        ? `No pull request or Linear issue matches ${composerTrigger.query}.`
-        : "No pull requests or Linear issues found.";
+        ? `No Linear issue matches ${composerTrigger.query}.`
+        : "No open Linear issues are assigned to you.";
     }
     if (composerTriggerKind === "pull-request") {
       if (pullRequestProjectId === null || pullRequestRepository === null) {
@@ -2677,7 +2703,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   }, [
     composerTrigger,
     composerTriggerKind,
-    linearIssueMenu.enabled,
+    linearIssueMenu.error,
+    showLinearIssues,
     pullRequestLookup.data?.errors,
     pullRequestLookup.error,
     pullRequestProjectId,
@@ -6676,6 +6703,20 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     isLoading={isComposerMenuLoading}
                     triggerKind={composerTriggerKind}
                     emptyStateText={composerMenuEmptyState}
+                    {...(showLinearIssues ? { loadingText: "Searching Linear issues..." } : {})}
+                    {...(linearIssueMenu.enabled && composerTrigger?.kind === "pull-request"
+                      ? {
+                          tabs: {
+                            options: REFERENCE_MENU_TABS,
+                            activeId: referenceTab,
+                            onSelect: (tab: string) =>
+                              setReferenceTabChoice({
+                                rangeStart: composerTrigger.rangeStart,
+                                tab: tab === "linear-issues" ? "linear-issues" : "pull-requests",
+                              }),
+                          },
+                        }
+                      : {})}
                     activeItemId={activeComposerMenuItem?.id ?? null}
                     onHighlightedItemChange={onComposerMenuItemHighlighted}
                     onSelect={onSelectComposerItem}
