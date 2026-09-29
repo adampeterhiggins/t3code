@@ -133,11 +133,23 @@ User guide: [thread-sidebar.md](./user/thread-sidebar.md#continue-in-another-tab
 The git toolbar's primary action becomes **View PR** when the branch already has an open pull
 request, on web and mobile. On web and desktop, **Settings → General → Open pull requests in**
 chooses the side panel (the default) or the browser. The other destination stays in the actions
-menu.
+menu. The browser is whichever one **Open links in** picks (see below).
 
 Code: `packages/client-runtime/src/state/gitActions.ts`,
 `apps/web/src/components/GitActionsControl.tsx`, and `pullRequestOpenTarget` in
 `packages/contracts/src/settings.ts`.
+
+## Pull request host links follow Open links in
+
+Upstream's pull request panel always sends its links to the system browser. In the fork, those
+links follow **Settings → Integrations → Browser → Open links in** when the panel is next to a
+thread. That covers "Open on GitHub", the PR number, the repository name, author profiles, comment
+timestamps, activity links, attachments, and the "Open on GitHub" button on the load-error
+screen. Cmd/Ctrl-click still opens the system browser. The pull requests page has no thread, so
+its links still open in the system browser.
+
+Code: `useLinkClickHandler` in `apps/web/src/browser/useOpenLink.ts` and
+`apps/web/src/components/pullRequest/PullRequestMarkdownContext.ts`.
 
 ## Worktree cleanup ignored names
 

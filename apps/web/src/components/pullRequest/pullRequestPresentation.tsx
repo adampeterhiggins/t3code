@@ -8,6 +8,7 @@ import type {
   PullRequestMergeability,
   PullRequestReviewDecision,
   PullRequestState,
+  ScopedThreadRef,
 } from "@t3tools/contracts";
 import {
   CircleCheckIcon,
@@ -27,6 +28,7 @@ import { InlineButton } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import type { PullRequestReviewOutcome } from "./pullRequestDetail.logic";
 import { pullRequestLabelColor } from "./pullRequestList.logic";
+import { usePullRequestLinkClick } from "./PullRequestMarkdownContext";
 import {
   PULL_REQUEST_STATE_PRESENTATION,
   PullRequestGlyph,
@@ -458,13 +460,17 @@ export function PullRequestActorLabel({
   variant = "label",
   tooltip = true,
   profileUrl,
+  threadRef,
 }: {
   actor: PullRequestActor | null;
   className?: string;
   variant?: "label" | "avatar";
   tooltip?: boolean;
   profileUrl?: string | null;
+  /** Thread the profile link can open beside; the surrounding detail's by default. */
+  threadRef?: ScopedThreadRef | null;
 }) {
+  const onLinkClick = usePullRequestLinkClick(threadRef);
   const login = actor?.login ?? "ghost";
   const label = (
     <span className={cn("flex min-w-0 items-center", variant === "label" && "gap-1.5")}>
@@ -489,6 +495,7 @@ export function PullRequestActorLabel({
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label={`Open ${login}'s profile`}
+                  onClick={(event) => onLinkClick(event, profileUrl)}
                 />
               }
             />

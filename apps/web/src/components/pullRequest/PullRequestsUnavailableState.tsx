@@ -1,9 +1,11 @@
+import type { ScopedThreadRef } from "@t3tools/contracts";
 import { RefreshIcon } from "~/components/ui/refresh-icon";
 import { ExternalLinkIcon } from "lucide-react";
 
 import { Button } from "../ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "../ui/empty";
 import { PullRequestGlyph } from "./pullRequestIcons";
+import { usePullRequestLinkClick } from "./PullRequestMarkdownContext";
 
 export function PullRequestsUnavailableState({
   title = "Could not load pull requests",
@@ -11,13 +13,17 @@ export function PullRequestsUnavailableState({
   onRetry,
   refreshing = false,
   gitHubUrl,
+  threadRef,
 }: {
   title?: string;
   error: string;
   onRetry?: () => void;
   refreshing?: boolean;
   gitHubUrl?: string;
+  /** Thread the host link can open beside; the surrounding detail's by default. */
+  threadRef?: ScopedThreadRef | null;
 }) {
+  const onLinkClick = usePullRequestLinkClick(threadRef);
   return (
     <Empty className="min-h-0 justify-center-safe overflow-y-auto [&>*]:shrink-0">
       <EmptyMedia variant="icon">
@@ -47,7 +53,14 @@ export function PullRequestsUnavailableState({
             <Button
               size="sm"
               variant="outline"
-              render={<a href={gitHubUrl} target="_blank" rel="noopener noreferrer" />}
+              render={
+                <a
+                  href={gitHubUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(event) => onLinkClick(event, gitHubUrl)}
+                />
+              }
             >
               <ExternalLinkIcon aria-hidden className="size-3.5" />
               Open on GitHub
