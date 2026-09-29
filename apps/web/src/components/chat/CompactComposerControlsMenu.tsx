@@ -37,6 +37,13 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
   const composerFloatingLayerProps = useComposerMenuProps();
   const size = props.size ?? "sm";
   const [open, setOpen] = useComposerMenuState(props.hidden);
+  const accountMenu = props.accountMenu;
+  const lockedAccount =
+    accountMenu !== undefined && accountMenu.accounts.length < 2
+      ? (accountMenu.accounts.find(
+          (account) => account.instanceId === accountMenu.activeInstanceId,
+        ) ?? accountMenu.accounts[0])
+      : undefined;
 
   return (
     <Menu open={open} onOpenChange={setOpen}>
@@ -90,23 +97,32 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
           <MenuRadioItem value="auto">Auto</MenuRadioItem>
           <MenuRadioItem value="full-access">Full access</MenuRadioItem>
         </MenuRadioGroup>
-        {props.accountMenu && props.accountMenu.accounts.length > 0 ? (
+        {accountMenu && accountMenu.accounts.length > 1 ? (
           <>
             <MenuDivider />
             <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">Account</div>
             <MenuRadioGroup
-              value={props.accountMenu.activeInstanceId}
+              value={accountMenu.activeInstanceId}
               onValueChange={(value) => {
-                if (!value || value === props.accountMenu?.activeInstanceId) return;
-                props.accountMenu?.onAccountChange(value as ProviderInstanceId);
+                if (!value || value === accountMenu.activeInstanceId) return;
+                accountMenu.onAccountChange(value as ProviderInstanceId);
               }}
             >
-              {props.accountMenu.accounts.map((account) => (
+              {accountMenu.accounts.map((account) => (
                 <MenuRadioItem key={account.instanceId} value={account.instanceId}>
                   {account.displayName}
                 </MenuRadioItem>
               ))}
             </MenuRadioGroup>
+          </>
+        ) : lockedAccount ? (
+          <>
+            <MenuDivider />
+            <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">Account</div>
+            <div className="px-2 text-sm">{lockedAccount.displayName}</div>
+            <p className="px-2 pt-0.5 pb-1.5 text-muted-foreground text-xs">
+              Locked for this thread
+            </p>
           </>
         ) : null}
       </MenuPopup>
