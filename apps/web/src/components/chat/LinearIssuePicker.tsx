@@ -194,14 +194,17 @@ function LinearIssuePickerDialog(props: { threadRef: ScopedThreadRef; onClose: (
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={() => void select(issue)}
                       >
-                        <span className="w-20 shrink-0 text-muted-foreground text-xs tabular-nums">
+                        <span className="w-20 shrink-0 truncate text-muted-foreground text-xs tabular-nums">
                           {issue.identifier}
                         </span>
                         <span className="min-w-0 flex-1 truncate text-foreground text-sm">
                           {issue.title}
                         </span>
-                        <span className="shrink-0 text-muted-foreground/70 text-xs">
-                          {issue.assigneeName ? `${issue.assigneeName} · ` : ""}
+                        {/* Fixed widths so assignee and status line up down the list. */}
+                        <span className="w-28 shrink-0 truncate text-muted-foreground/70 text-xs">
+                          {issue.assigneeName ?? "Unassigned"}
+                        </span>
+                        <span className="w-24 shrink-0 truncate text-muted-foreground/70 text-xs">
                           {issue.stateName}
                         </span>
                       </CommandItem>
