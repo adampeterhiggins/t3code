@@ -276,7 +276,9 @@ Code: `apps/server/src/linear/`, `packages/contracts/src/linear.ts`, `LinearIssu
 
 On web and desktop, a new thread's composer has a **⋯** button in its top-right corner. It opens a
 picker with PRs, Branches, and Issues tabs. The same picker opens from the command palette and from
-`chat.startFrom` (`mod+shift+b`); both of those start a new thread first.
+`chat.startFrom` (`mod+shift+b`); both of those start a new thread first. The PRs tab filters and
+sorts with the pull requests page's filter menu, and the Issues tab with the Linear attach picker's
+filter bar, whose view it shares.
 
 - A pull request goes through upstream's pull request checkout dialog, which offers the current
   checkout or a new worktree.
