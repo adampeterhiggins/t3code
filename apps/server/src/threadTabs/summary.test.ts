@@ -8,7 +8,7 @@ import {
   type OrchestrationMessage,
   type OrchestrationThreadActivity,
 } from "@t3tools/contracts";
-import { summarizeSiblingChat } from "./summary.ts";
+import { siblingChatBeforeMessage, summarizeSiblingChat } from "./summary.ts";
 
 let clock = 0;
 // Strictly increasing timestamps order the fixture chronologically.
@@ -164,5 +164,44 @@ describe("sibling chat handoff", () => {
     expect(summary).toContain("Assistant: Start");
     expect(summary).toContain("Conclusion");
     expect(summary.length).toBeLessThan(3_000);
+  });
+
+  it("forks from a user message with only the history before it", () => {
+    const messages = [
+      message("u1", "user", "Build the search view"),
+      message("a1", "assistant", "Built it"),
+    ];
+    const earlyTool = activity("tool.completed", "Read search.ts", { status: "completed" });
+    const earlyFiles = checkpoint([
+      { path: "search.ts", kind: "modified", additions: 1, deletions: 0 },
+    ]);
+    messages.push(message("u2", "user", "Now add filters"));
+    messages.push(message("a2", "assistant", "Added filters"));
+    const lateTool = activity("tool.completed", "Read filters.ts", { status: "completed" });
+    const lateFiles = checkpoint([
+      { path: "filters.ts", kind: "modified", additions: 4, deletions: 0 },
+    ]);
+    const chat = {
+      title: "Search",
+      latestTurnState: "completed",
+      messages,
+      activities: [earlyTool, lateTool],
+      checkpoints: [earlyFiles, lateFiles],
+    };
+
+    const forked = siblingChatBeforeMessage(chat, "u2");
+    expect(forked).not.toBeNull();
+    const summary = summarizeSiblingChat(forked!);
+    expect(summary).toContain("User: Build the search view");
+    expect(summary).toContain("Assistant: Built it");
+    expect(summary).toContain("Read search.ts");
+    expect(summary).toContain("search.ts (+1 −0)");
+    expect(summary).not.toContain("Now add filters");
+    expect(summary).not.toContain("Added filters");
+    expect(summary).not.toContain("filters.ts");
+    expect(summary).not.toContain("Latest turn");
+
+    expect(siblingChatBeforeMessage(chat, "a1")).toBeNull();
+    expect(siblingChatBeforeMessage(chat, "missing")).toBeNull();
   });
 });

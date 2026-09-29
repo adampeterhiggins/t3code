@@ -27,6 +27,29 @@ export interface SiblingChatSource {
   readonly proposedPlans?: ReadonlyArray<OrchestrationProposedPlan>;
 }
 
+/**
+ * The chat as it stood just before a user message, for forking from that message. Null when the
+ * message is not one of the chat's user messages.
+ */
+export function siblingChatBeforeMessage(
+  source: SiblingChatSource,
+  messageId: string,
+): SiblingChatSource | null {
+  const index = source.messages.findIndex((message) => message.id === messageId);
+  const cutoff = source.messages[index];
+  if (!cutoff || cutoff.role !== "user") return null;
+  const before = (at: string) => at < cutoff.createdAt;
+  return {
+    ...source,
+    // The latest turn is at or after the cutoff, so its state says nothing about this history.
+    latestTurnState: null,
+    messages: source.messages.slice(0, index),
+    activities: (source.activities ?? []).filter((activity) => before(activity.createdAt)),
+    checkpoints: (source.checkpoints ?? []).filter((checkpoint) => before(checkpoint.completedAt)),
+    proposedPlans: (source.proposedPlans ?? []).filter((plan) => before(plan.createdAt)),
+  };
+}
+
 type Entry =
   | { readonly at: string; readonly kind: "message"; readonly message: OrchestrationMessage }
   | { readonly at: string; readonly kind: "tool"; readonly label: string }

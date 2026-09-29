@@ -35,6 +35,11 @@ The summary is captured when you click, so later changes in that chat do not cha
 the same workspace can edit the same files, so review the current checkout before restoring
 changes.
 
+To retry a message with another model or provider on web or desktop, hover the message and click
+**Fork into new tab**. The new tab's composer holds a summary of the chat up to that message,
+followed by the message itself and its attachments. Pick a model, edit if you like, and send.
+Files the original chat changed after that message stay changed, since tabs share the workspace.
+
 ### Start in the background
 
 In a desktop browser or the desktop app, press `Cmd+Enter` on macOS or `Ctrl+Enter`

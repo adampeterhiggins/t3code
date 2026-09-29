@@ -3,10 +3,13 @@ import {
   listThreadTabs,
   prepareThreadTabHandoff,
 } from "@t3tools/client-runtime/thread-tabs";
+import type { PreparedConnection } from "@t3tools/client-runtime/connection";
 import {
   COMPOSER_CONTEXT_THREAD_TAB_SUMMARY_MAX_CHARS,
   type EnvironmentId,
+  type MessageId,
   type ModelSelection,
+  type ScopedThreadRef,
   type ThreadId,
   type ThreadTabGroup,
 } from "@t3tools/contracts";
@@ -22,8 +25,10 @@ import { PlusIcon, XIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { useThreadActions } from "../../hooks/useThreadActions";
+import { useComposerDraftStore } from "../../composerDraftStore";
 import {
   type ComposerContextReference,
+  formatInlineContextReference,
   toKindScopedComposerContextId,
 } from "../../lib/composerContextReferences";
 import { runtime } from "../../lib/runtime";
@@ -290,35 +295,99 @@ function ThreadTabContextPill(props: {
 
 /**
  * Captures a sibling tab's transcript summary into the draft of `threadId` and resolves to the
- * chip reference for the composer to place. Null until the thread and connection are ready.
+ * chip reference for the composer to place. With `beforeMessageId`, only the history before
+ * that user message of the source is summarized.
  */
+async function captureThreadTabContext(
+  connection: PreparedConnection,
+  input: {
+    threadId: ThreadId;
+    sourceThreadId: ThreadId;
+    title: string;
+    beforeMessageId?: MessageId;
+  },
+): Promise<ComposerContextReference> {
+  const { threadId, sourceThreadId, title, beforeMessageId } = input;
+  const handoff = await runtime.runPromise(
+    prepareThreadTabHandoff(connection, threadId, {
+      sourceThreadIds: [sourceThreadId],
+      ...(beforeMessageId ? { beforeMessageId } : {}),
+    }),
+  );
+  const contextId = toKindScopedComposerContextId("thread-tab", sourceThreadId);
+  const label = sanitizeComposerContextLabel(title, "thread-tab");
+  useThreadTabContextStore.getState().upsert(threadId, {
+    version: 1,
+    kind: "thread-tab",
+    contextId,
+    label,
+    threadId: sourceThreadId,
+    title: title.slice(0, 2_048),
+    summary: handoff.text.slice(0, COMPOSER_CONTEXT_THREAD_TAB_SUMMARY_MAX_CHARS),
+  });
+  return { kind: "thread-tab", contextId, label } satisfies ComposerContextReference;
+}
+
+/** Hook form of `captureThreadTabContext`, bound to the thread being composed in. */
 export function useCaptureThreadTabContext(
   environmentId: EnvironmentId,
   threadId: ThreadId | null,
 ) {
   const prepared = usePreparedConnection(environmentId);
-  const upsertRecord = useThreadTabContextStore((state) => state.upsert);
   return useMemo(() => {
     if (threadId === null || Option.isNone(prepared)) return null;
     const connection = prepared.value;
-    return async (sourceThreadId: ThreadId, title: string): Promise<ComposerContextReference> => {
-      const handoff = await runtime.runPromise(
-        prepareThreadTabHandoff(connection, threadId, { sourceThreadIds: [sourceThreadId] }),
-      );
-      const contextId = toKindScopedComposerContextId("thread-tab", sourceThreadId);
-      const label = sanitizeComposerContextLabel(title, "thread-tab");
-      upsertRecord(threadId, {
-        version: 1,
-        kind: "thread-tab",
-        contextId,
-        label,
-        threadId: sourceThreadId,
-        title: title.slice(0, 2_048),
-        summary: handoff.text.slice(0, COMPOSER_CONTEXT_THREAD_TAB_SUMMARY_MAX_CHARS),
-      });
-      return { kind: "thread-tab", contextId, label } satisfies ComposerContextReference;
-    };
-  }, [prepared, threadId, upsertRecord]);
+    return (sourceThreadId: ThreadId, title: string) =>
+      captureThreadTabContext(connection, { threadId, sourceThreadId, title });
+  }, [prepared, threadId]);
+}
+
+/**
+ * Forks a chat at one of its user messages: opens a new tab in the same thread whose draft holds
+ * a summary of everything before that message, followed by the message itself, so it can be
+ * sent again with another model. Resolves to the new tab once the client knows about it.
+ */
+export async function forkThreadTab(
+  connection: PreparedConnection,
+  input: {
+    environmentId: EnvironmentId;
+    sourceThreadId: ThreadId;
+    sourceTitle: string;
+    modelSelection: ModelSelection;
+    messageId: MessageId;
+    /** The message's text as it should be recalled into a composer. */
+    prompt: string;
+    /** False for the chat's first message, which has no history to summarize. */
+    hasHistory: boolean;
+  },
+): Promise<ScopedThreadRef> {
+  const threadId = newThreadId();
+  await runtime.runPromise(
+    createThreadTab(connection, input.sourceThreadId, {
+      threadId,
+      modelSelection: input.modelSelection,
+    }),
+  );
+  const reference = input.hasHistory
+    ? await captureThreadTabContext(connection, {
+        threadId,
+        sourceThreadId: input.sourceThreadId,
+        title: input.sourceTitle,
+        beforeMessageId: input.messageId,
+      })
+    : null;
+  const threadRef = scopeThreadRef(input.environmentId, threadId);
+  useComposerDraftStore
+    .getState()
+    .setPrompt(
+      threadRef,
+      [reference ? formatInlineContextReference(reference) : "", input.prompt]
+        .filter((part) => part.length > 0)
+        .join("\n\n"),
+    );
+  // The thread route redirects away from threads the client store has not heard of yet.
+  await waitForThreadShell(threadRef);
+  return threadRef;
 }
 
 /**
