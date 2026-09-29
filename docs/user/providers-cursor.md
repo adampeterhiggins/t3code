@@ -44,3 +44,10 @@ Cursor exposes only its own model aliases through ACP. To use a custom model
 endpoint (for example an OpenAI-compatible gateway), enable
 `CURSOR_API_MODE` on the instance, select the matching API base URL from the
 model picker, and define the model name here.
+
+## Subagents
+
+When Cursor delegates work to a subagent, the subagent appears in
+[Agents](./thread-sidebar.md#inspect-agent-work) with its type, model, the tools
+it runs, and its final answer. Cursor does not report per-subagent token usage,
+and you cannot open or steer a Cursor subagent from T3 Code.

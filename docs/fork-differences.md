@@ -75,6 +75,20 @@ Code: `apps/web/src/components/chat/ProviderAccountPicker.tsx` and
 `apps/web/src/components/chat/providerAccountSelection.ts`. User guide:
 [providers-codex.md](./user/providers-codex.md#switch-accounts-in-an-existing-thread).
 
+## Cursor subagents in Agents
+
+Cursor subagents show up in the Agents panel and the conversation's agent launch row, like
+Claude's. Upstream never asks Cursor for subagent updates, so Cursor threads leave Agents empty.
+The server opts in with `clientCapabilities._meta.subagents` and maps Cursor's
+`subagent_spawned`, `subagent_state_update`, and child-session updates onto `task.*` events.
+`effect-acp` delivers `session/update` kinds its schema does not define as extension
+notifications instead of closing the connection.
+
+Code: `apps/server/src/provider/acp/CursorSubagents.ts`, the subagent handlers in
+`apps/server/src/provider/Layers/CursorAdapter.ts`, and `isUnknownSessionUpdate` in
+`packages/effect-acp/src/protocol.ts`. User guide:
+[providers-cursor.md](./user/providers-cursor.md#subagents).
+
 ## Chat tabs
 
 A thread can have several chat tabs that share one workspace (same checkout and worktree). Each tab
