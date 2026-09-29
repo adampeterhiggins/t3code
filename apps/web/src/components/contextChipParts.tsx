@@ -10,6 +10,7 @@ import {
 
 import { PULL_REQUEST_STATE_PRESENTATION } from "~/components/pullRequest/pullRequestIcons";
 import type { PullRequestContextDisplayState } from "~/lib/composerContextRecords";
+import ChatMarkdown from "./ChatMarkdown";
 import { PierreEntryIcon } from "./chat/PierreEntryIcon";
 import { middleTruncateAttachmentName } from "./composerInlineChip";
 import { PullRequestContextDetails } from "./PullRequestContextDetails";
@@ -299,10 +300,21 @@ export function ThreadTabSummaryDetails({ summary }: { summary: string }) {
   );
 }
 
+/**
+ * A Linear issue snapshot rendered as markdown: the heading, facts, description, and comments
+ * the agent receives, scrolling when long.
+ */
+export function LinearIssueMarkdown({ markdown }: { markdown: string }) {
+  return (
+    <div className="max-h-80 overflow-y-auto rounded-lg border border-border/70 bg-background/70 px-3 py-2.5 text-xs text-foreground">
+      <ChatMarkdown text={markdown} cwd={undefined} />
+    </div>
+  );
+}
+
 /** An attached Linear issue: the snapshot the agent received, with a link back to Linear. */
 export function LinearIssueDetails(props: {
   identifier: string;
-  title: string;
   stateName: string;
   url: string;
   markdown: string;
@@ -324,8 +336,7 @@ export function LinearIssueDetails(props: {
           Open in Linear
         </a>
       </div>
-      <p className="font-medium text-foreground text-sm">{props.title}</p>
-      <ThreadTabSummaryDetails summary={props.markdown} />
+      <LinearIssueMarkdown markdown={props.markdown} />
     </div>
   );
 }

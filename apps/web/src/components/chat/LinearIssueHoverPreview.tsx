@@ -3,7 +3,7 @@ import { type ReactElement, useState } from "react";
 
 import { linearEnvironment } from "~/state/linear";
 import { useEnvironmentQuery } from "~/state/query";
-import { ThreadTabSummaryDetails } from "../contextChipParts";
+import { LinearIssueMarkdown } from "../contextChipParts";
 import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
 
 /**
@@ -33,21 +33,7 @@ export function LinearIssueHoverPreview(props: {
           {detail === null ? (
             <p className="text-muted-foreground">{issue.error ?? "Loading issue…"}</p>
           ) : (
-            <>
-              <div className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
-                <span className="shrink-0 font-medium">{detail.identifier}</span>
-                <span aria-hidden>·</span>
-                <span className="min-w-0 truncate">
-                  {[detail.stateName, detail.priorityLabel, detail.assigneeName ?? "Unassigned"]
-                    .filter((part) => part !== null)
-                    .join(" · ")}
-                </span>
-              </div>
-              <p className="font-medium text-foreground text-sm leading-snug text-pretty">
-                {detail.title}
-              </p>
-              <ThreadTabSummaryDetails summary={detail.markdown} />
-            </>
+            <LinearIssueMarkdown markdown={detail.markdown} />
           )}
         </div>
       </PreviewCardPopup>

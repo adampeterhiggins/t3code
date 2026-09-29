@@ -3982,7 +3982,6 @@ function UserMessageLinearIssueDetails({ record }: { record: LinearIssueContextR
   return (
     <LinearIssueDetails
       identifier={record.identifier}
-      title={record.title}
       stateName={record.stateName}
       url={record.url}
       markdown={record.markdown}
