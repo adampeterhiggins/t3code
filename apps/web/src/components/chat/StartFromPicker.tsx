@@ -46,6 +46,7 @@ import {
   CommandList,
 } from "../ui/command";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
+import { LinearIssueHoverPreview } from "./LinearIssueHoverPreview";
 import { useAttachLinearIssue } from "./LinearIssuePicker";
 import {
   localBranchName,
@@ -53,6 +54,7 @@ import {
   threadsForBranch,
   threadsForPullRequest,
 } from "./StartFromPicker.logic";
+import { BranchHoverPreview, PullRequestHoverPreview } from "./StartFromPreviews";
 
 type StartFromTab = "pull-requests" | "branches" | "issues";
 const TABS: ReadonlyArray<{ value: StartFromTab; label: string }> = [
@@ -234,6 +236,7 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
           {(entry: EnvironmentPullRequestEntry) => {
             const presentation =
               PULL_REQUEST_STATE_PRESENTATION[entry.isDraft ? "draft" : entry.state];
+            const inUse = threadsForPullRequest(threads, entry);
             return (
               <CommandItem
                 key={entry.url}
@@ -241,19 +244,30 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => selectPullRequest(entry)}
               >
-                <presentation.Icon className={cn("size-4 shrink-0", presentation.toneClassName)} />
-                <span className="w-12 shrink-0 text-muted-foreground text-xs tabular-nums">
-                  #{entry.number}
-                </span>
-                <span className="min-w-0 flex-1 truncate text-sm">{entry.title}</span>
-                {threadsForPullRequest(threads, entry).length > 0 ? (
-                  <Badge variant="outline" size="sm">
-                    In use
-                  </Badge>
-                ) : null}
-                <span className="w-24 shrink-0 truncate text-end text-muted-foreground/70 text-xs">
-                  {entry.author?.login ?? ""}
-                </span>
+                <PullRequestHoverPreview
+                  entry={entry}
+                  threadRef={threadRef}
+                  threads={inUse}
+                  trigger={
+                    <span className="flex min-w-0 flex-1 items-center gap-2">
+                      <presentation.Icon
+                        className={cn("size-4 shrink-0", presentation.toneClassName)}
+                      />
+                      <span className="w-12 shrink-0 text-muted-foreground text-xs tabular-nums">
+                        #{entry.number}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-sm">{entry.title}</span>
+                      {inUse.length > 0 ? (
+                        <Badge variant="outline" size="sm">
+                          In use
+                        </Badge>
+                      ) : null}
+                      <span className="w-24 shrink-0 truncate text-end text-muted-foreground/70 text-xs">
+                        {entry.author?.login ?? ""}
+                      </span>
+                    </span>
+                  }
+                />
               </CommandItem>
             );
           }}
@@ -270,31 +284,43 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
           : (branches.error ?? "No branches match."),
       <CommandGroup items={[...refs]}>
         <CommandCollection>
-          {(ref: VcsRef) => (
-            <CommandItem
-              key={ref.name}
-              value={ref.name}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => selectBranch(ref)}
-            >
-              <GitBranchIcon className="size-4 shrink-0 text-muted-foreground" />
-              <span className="min-w-0 flex-1 truncate font-mono text-xs">{ref.name}</span>
-              {threadsForBranch(threads, ref).length > 0 ? (
-                <Badge variant="outline" size="sm">
-                  In use
-                </Badge>
-              ) : null}
-              {ref.current ? (
-                <Badge variant="secondary" size="sm">
-                  current
-                </Badge>
-              ) : ref.isRemote ? (
-                <Badge variant="secondary" size="sm">
-                  remote
-                </Badge>
-              ) : null}
-            </CommandItem>
-          )}
+          {(ref: VcsRef) => {
+            const inUse = threadsForBranch(threads, ref);
+            return (
+              <CommandItem
+                key={ref.name}
+                value={ref.name}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => selectBranch(ref)}
+              >
+                <BranchHoverPreview
+                  branch={ref}
+                  workspaceRoot={workspaceRoot}
+                  threads={inUse}
+                  trigger={
+                    <span className="flex min-w-0 flex-1 items-center gap-2">
+                      <GitBranchIcon className="size-4 shrink-0 text-muted-foreground" />
+                      <span className="min-w-0 flex-1 truncate font-mono text-xs">{ref.name}</span>
+                      {inUse.length > 0 ? (
+                        <Badge variant="outline" size="sm">
+                          In use
+                        </Badge>
+                      ) : null}
+                      {ref.current ? (
+                        <Badge variant="secondary" size="sm">
+                          current
+                        </Badge>
+                      ) : ref.isRemote ? (
+                        <Badge variant="secondary" size="sm">
+                          remote
+                        </Badge>
+                      ) : null}
+                    </span>
+                  }
+                />
+              </CommandItem>
+            );
+          }}
         </CommandCollection>
       </CommandGroup>,
     );
@@ -332,14 +358,22 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => void selectIssue(issue)}
             >
-              <LinearIcon className="size-4 shrink-0 text-muted-foreground" />
-              <span className="w-20 shrink-0 truncate text-muted-foreground text-xs tabular-nums">
-                {issue.identifier}
-              </span>
-              <span className="min-w-0 flex-1 truncate text-sm">{issue.title}</span>
-              <span className="w-24 shrink-0 truncate text-end text-muted-foreground/70 text-xs">
-                {issue.stateName}
-              </span>
+              <LinearIssueHoverPreview
+                environmentId={environmentId}
+                issueId={issue.id}
+                trigger={
+                  <span className="flex min-w-0 flex-1 items-center gap-2">
+                    <LinearIcon className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="w-20 shrink-0 truncate text-muted-foreground text-xs tabular-nums">
+                      {issue.identifier}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-sm">{issue.title}</span>
+                    <span className="w-24 shrink-0 truncate text-end text-muted-foreground/70 text-xs">
+                      {issue.stateName}
+                    </span>
+                  </span>
+                }
+              />
             </CommandItem>
           )}
         </CommandCollection>
