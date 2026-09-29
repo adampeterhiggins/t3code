@@ -56,13 +56,15 @@ export const useLinearIssuePickerViewStore = create<{
   ),
 );
 
+// One shared object: a selector that builds a fresh default each call never settles and loops.
+const DEFAULT_PICKER_VIEW: PickerView = {
+  filters: DEFAULT_LINEAR_ISSUE_FILTERS,
+  sort: DEFAULT_LINEAR_ISSUE_SORT,
+};
+
 export function useLinearIssuePickerView(environmentId: EnvironmentId): PickerView {
   return useLinearIssuePickerViewStore(
-    (state) =>
-      state.viewsByEnvironmentId[environmentId] ?? {
-        filters: DEFAULT_LINEAR_ISSUE_FILTERS,
-        sort: DEFAULT_LINEAR_ISSUE_SORT,
-      },
+    (state) => state.viewsByEnvironmentId[environmentId] ?? DEFAULT_PICKER_VIEW,
   );
 }
 
