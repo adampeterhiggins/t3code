@@ -76,6 +76,7 @@ import {
   resolveProjectScripts,
 } from "@t3tools/shared/projectScripts";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
+import { conductorScriptEnv } from "@t3tools/shared/conductorSettings";
 import { sourceControlRepositorySelector } from "@t3tools/shared/sourceControl";
 import { truncate } from "@t3tools/shared/String";
 import { resolveThreadReferenceCopyTarget } from "@t3tools/shared/threadReference";
@@ -174,6 +175,12 @@ import {
   type Thread,
 } from "../types";
 import { useTheme } from "../hooks/useTheme";
+import { useConductorSettings } from "../hooks/useConductorSettings";
+import {
+  conductorRunTerminalId,
+  conductorScriptCwd,
+  conductorScriptIcon,
+} from "../conductorRunScripts";
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
 import { isCommandPaletteOpen } from "../commandPaletteBus";
 import { subscribeSnapShotComposerFocus } from "../lib/desktopSnapShot";
@@ -4235,6 +4242,8 @@ export default function ChatView(props: ChatViewProps) {
         worktreePath?: string | null;
         preferNewTerminal?: boolean;
         rememberAsLastInvoked?: boolean;
+        /** Runs in this terminal, opening it if needed, instead of the active one. */
+        terminalId?: string;
       },
     ) => {
       if (!activeThreadId || !activeProject || !activeThread) return;
@@ -4249,7 +4258,9 @@ export default function ChatView(props: ChatViewProps) {
         terminalUiState.activeTerminalId || activeKnownTerminalIds[0] || DEFAULT_THREAD_TERMINAL_ID;
       const isBaseTerminalBusy = runningTerminalIds.includes(baseTerminalId);
       const wantsNewTerminal = Boolean(options?.preferNewTerminal) || isBaseTerminalBusy;
-      const shouldCreateNewTerminal = wantsNewTerminal;
+      const shouldCreateNewTerminal = options?.terminalId
+        ? !activeKnownTerminalIds.includes(options.terminalId)
+        : wantsNewTerminal;
       const targetWorktreePath = options?.worktreePath ?? activeThread.worktreePath ?? null;
 
       setTerminalUiLaunchContext({
@@ -4270,9 +4281,9 @@ export default function ChatView(props: ChatViewProps) {
         worktreePath: targetWorktreePath,
         ...(options?.env ? { extraEnv: options.env } : {}),
       });
-      const targetTerminalId = shouldCreateNewTerminal
-        ? nextTerminalId(allocatableActiveTerminalIds)
-        : baseTerminalId;
+      const targetTerminalId =
+        options?.terminalId ??
+        (shouldCreateNewTerminal ? nextTerminalId(allocatableActiveTerminalIds) : baseTerminalId);
       const openTerminalInput: TerminalOpenInput = shouldCreateNewTerminal
         ? {
             threadId: activeThreadId,
@@ -4362,6 +4373,79 @@ export default function ChatView(props: ChatViewProps) {
       { rememberAsLastInvoked: false },
     );
   }, []);
+
+  // The repository's Conductor run scripts. Each runs in its own terminal so
+  // the header can show it running and stop it, like Conductor's Run button.
+  const conductorSettings = useConductorSettings(
+    environmentId,
+    activeProject?.workspaceRoot ?? null,
+  );
+  const {
+    runScripts: conductorRunScripts,
+    runMode: conductorRunMode,
+    environment: conductorEnvironment,
+  } = conductorSettings.resolved;
+  const conductorScriptItems = useMemo(
+    () =>
+      conductorRunScripts.map((script) => ({
+        id: script.id,
+        name: script.name,
+        command: script.command,
+        icon: conductorScriptIcon(script.icon),
+        running: runningTerminalIds.includes(conductorRunTerminalId(script.id)),
+      })),
+    [conductorRunScripts, runningTerminalIds],
+  );
+  const runConductorScript = useCallback(
+    (scriptId: string) => {
+      const script = conductorRunScripts.find((candidate) => candidate.id === scriptId);
+      if (!script || !activeProject) return;
+      if (conductorRunMode === "nonconcurrent") {
+        for (const other of conductorRunScripts) {
+          const otherTerminalId = conductorRunTerminalId(other.id);
+          if (other.id !== scriptId && runningTerminalIds.includes(otherTerminalId)) {
+            closeTerminal(otherTerminalId);
+          }
+        }
+      }
+      const workspacePath = activeThreadWorktreePath ?? activeProject.workspaceRoot;
+      void runProjectScript(
+        {
+          id: `conductor-${script.id}`,
+          name: script.name,
+          command: script.command,
+          icon: conductorScriptIcon(script.icon),
+          runOnWorktreeCreate: false,
+        },
+        {
+          terminalId: conductorRunTerminalId(script.id),
+          cwd: conductorScriptCwd(workspacePath, script.cwd),
+          worktreePath: activeThreadWorktreePath,
+          env: conductorScriptEnv({
+            projectRoot: activeProject.workspaceRoot,
+            worktreePath: workspacePath,
+            defaultBranch: null,
+            environment: conductorEnvironment,
+          }),
+          rememberAsLastInvoked: false,
+        },
+      );
+    },
+    [
+      activeProject,
+      activeThreadWorktreePath,
+      closeTerminal,
+      conductorEnvironment,
+      conductorRunMode,
+      conductorRunScripts,
+      runProjectScript,
+      runningTerminalIds,
+    ],
+  );
+  const stopConductorScript = useCallback(
+    (scriptId: string) => closeTerminal(conductorRunTerminalId(scriptId)),
+    [closeTerminal],
+  );
 
   const supportsProjectSettingsOverrides =
     environmentById.get(environmentId)?.serverConfig?.environment.capabilities
@@ -9936,6 +10020,9 @@ export default function ChatView(props: ChatViewProps) {
               ? { onOpenProjectSettings: handleOpenDraftProjectSettings }
               : {})}
             onRunProjectScript={runProjectScript}
+            conductorScripts={conductorScriptItems}
+            onRunConductorScript={runConductorScript}
+            onStopConductorScript={stopConductorScript}
             onAddProjectScript={saveProjectScript}
             onUpdateProjectScript={updateProjectScript}
             onDeleteProjectScript={deleteProjectScript}

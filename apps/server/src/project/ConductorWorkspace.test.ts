@@ -1,5 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
+import { conductorPort } from "@t3tools/shared/conductorSettings";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -9,6 +10,7 @@ import * as ServerConfig from "../config.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
+
 import * as ConductorWorkspace from "./ConductorWorkspace.ts";
 
 const TestLayer = ConductorWorkspace.layer.pipe(
@@ -89,7 +91,7 @@ it.layer(TestLayer)("ConductorWorkspace", (it) => {
         CONDUCTOR_WORKSPACE_PATH: worktree,
         CONDUCTOR_WORKSPACE_NAME: "lisbon",
         CONDUCTOR_IS_LOCAL: "1",
-        CONDUCTOR_PORT: String(ConductorWorkspace.conductorPort(worktree)),
+        CONDUCTOR_PORT: String(conductorPort(worktree)),
       });
       // The default `.env*` pattern matches at any depth but copies ignored
       // files only: tracked and merely untracked ones stay behind.
@@ -164,9 +166,7 @@ it.layer(TestLayer)("ConductorWorkspace", (it) => {
       const conductor = yield* ConductorWorkspace.ConductorWorkspace;
       yield* conductor.archiveWorktree({ projectRoot: root, worktreePath: worktree });
 
-      expect(yield* read(path.join(root, "archived"))).toBe(
-        `lisbon:${ConductorWorkspace.conductorPort(worktree)}\n`,
-      );
+      expect(yield* read(path.join(root, "archived"))).toBe(`lisbon:${conductorPort(worktree)}\n`);
     }),
   );
 });

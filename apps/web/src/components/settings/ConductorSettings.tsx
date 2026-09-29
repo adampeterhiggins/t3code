@@ -7,7 +7,6 @@ import {
   CONDUCTOR_LOCAL_SETTINGS_PATH,
   CONDUCTOR_SETTINGS_PATH,
   DEFAULT_CONDUCTOR_INCLUDE_PATTERNS,
-  WORKTREE_INCLUDE_PATH,
   conductorEnvironmentEntries,
   parseConductorSettingsFile,
   resolveConductorSettings,
@@ -17,6 +16,7 @@ import {
 import { setupProjectScript } from "@t3tools/shared/projectScripts";
 import { useRef, useState, type ReactNode } from "react";
 
+import { useConductorSettings } from "~/hooks/useConductorSettings";
 import { projectEnvironment } from "~/state/projects";
 import { useAtomCommand } from "~/state/use-atom-command";
 import {
@@ -24,7 +24,6 @@ import {
   confirmProjectFileQueryData,
   getOptimisticProjectFileQueryData,
   setProjectFileQueryData,
-  useProjectFileQuery,
 } from "../files/projectFilesQueryState";
 import { Textarea } from "../ui/textarea";
 import { toastManager } from "../ui/toast";
@@ -67,10 +66,6 @@ export function ConductorSettings() {
   );
 }
 
-function fileContents(query: ReturnType<typeof useProjectFileQuery>): string | null {
-  return query.data && !query.data.truncated ? query.data.contents : null;
-}
-
 function ConductorSettingsSection({
   environmentId,
   cwd,
@@ -83,25 +78,7 @@ function ConductorSettingsSection({
   const [target, setTarget] = useState<Target>("local");
   const writeFile = useAtomCommand(projectEnvironment.writeFile, { reportFailure: false });
 
-  // Every file Conductor reads, so the page resolves exactly what the server will.
-  const files = {
-    "conductor.json": fileContents(useProjectFileQuery(environmentId, cwd, "conductor.json")),
-    ".conductor/settings.json": fileContents(
-      useProjectFileQuery(environmentId, cwd, ".conductor/settings.json"),
-    ),
-    [CONDUCTOR_SETTINGS_PATH]: fileContents(
-      useProjectFileQuery(environmentId, cwd, CONDUCTOR_SETTINGS_PATH),
-    ),
-    ".conductor/settings.local.json": fileContents(
-      useProjectFileQuery(environmentId, cwd, ".conductor/settings.local.json"),
-    ),
-    [CONDUCTOR_LOCAL_SETTINGS_PATH]: fileContents(
-      useProjectFileQuery(environmentId, cwd, CONDUCTOR_LOCAL_SETTINGS_PATH),
-    ),
-  };
-  const worktreeInclude = fileContents(
-    useProjectFileQuery(environmentId, cwd, WORKTREE_INCLUDE_PATH),
-  );
+  const { files, worktreeInclude, resolved } = useConductorSettings(environmentId, cwd);
 
   const targetPath = TARGET_PATH[target];
   const targetRaw = files[targetPath as keyof typeof files];
@@ -118,7 +95,6 @@ function ConductorSettingsSection({
     },
     worktreeInclude: null,
   });
-  const resolved = resolveConductorSettings({ files, worktreeInclude });
   const local =
     target === "shared"
       ? parseConductorSettingsFile("toml", files[CONDUCTOR_LOCAL_SETTINGS_PATH] ?? "")
