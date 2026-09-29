@@ -279,9 +279,11 @@ function ThreadTabContextPill(props: {
       variant="pill"
       pressed={false}
       disabled={props.disabled}
+      title={label}
+      className="min-w-0"
       onClick={() => props.onSelect(label)}
     >
-      {label}
+      <span className="truncate">{label}</span>
     </Toggle>
   );
 }
@@ -354,8 +356,9 @@ export function ThreadTabContextPills({
 
   return (
     <div className="pb-2">
-      <div className="flex items-center gap-1.5 overflow-x-auto">
-        <span className="shrink-0 text-xs text-muted-foreground">Include context from</span>
+      <p className="pb-1.5 text-xs text-muted-foreground">Include context from</p>
+      {/* Fixed thirds of the composer width, wrapping onto new rows instead of scrolling. */}
+      <div className="grid grid-cols-3 gap-1.5">
         {siblings.map((tab) => (
           <ThreadTabContextPill
             key={tab.threadId}
