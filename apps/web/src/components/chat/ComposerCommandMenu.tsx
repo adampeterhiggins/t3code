@@ -22,7 +22,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { LinearIcon } from "../Icons";
-import { memo, useLayoutEffect, useRef } from "react";
+import { memo, useCallback, useLayoutEffect, useRef } from "react";
 
 import { type ComposerSlashCommand, type ComposerTriggerKind } from "../../composer-logic";
 import { cn } from "~/lib/utils";
@@ -111,9 +111,21 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
   onSelect: (item: ComposerCommandItem) => void;
 }) {
   const listRef = useRef<HTMLDivElement>(null);
+  // Only keyboard moves scroll the list. Following the pointer would scroll a half-visible edge
+  // row into view, put a new row under the cursor, and creep the list along.
+  const pointerHighlightedIdRef = useRef<string | null>(null);
+  const { onHighlightedItemChange } = props;
+  const highlightFromPointer = useCallback(
+    (itemId: string | null) => {
+      pointerHighlightedIdRef.current = itemId;
+      onHighlightedItemChange(itemId);
+    },
+    [onHighlightedItemChange],
+  );
 
   useLayoutEffect(() => {
     if (!props.activeItemId || !listRef.current) return;
+    if (props.activeItemId === pointerHighlightedIdRef.current) return;
     const el = listRef.current.querySelector<HTMLElement>(
       `[data-composer-item-id="${CSS.escape(props.activeItemId)}"]`,
     );
@@ -124,10 +136,10 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
     <Command
       autoHighlight={false}
       mode="none"
-      onItemHighlighted={(highlightedValue) => {
-        props.onHighlightedItemChange(
-          typeof highlightedValue === "string" ? highlightedValue : null,
-        );
+      onItemHighlighted={(highlightedValue, eventDetails) => {
+        const itemId = typeof highlightedValue === "string" ? highlightedValue : null;
+        if (eventDetails.reason === "pointer") highlightFromPointer(itemId);
+        else props.onHighlightedItemChange(itemId);
       }}
     >
       <ComposerBanner.Surface
@@ -165,7 +177,7 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
                   triggerKind={props.triggerKind}
                   resolvedTheme={props.resolvedTheme}
                   isActive={props.activeItemId === item.id}
-                  onHighlight={props.onHighlightedItemChange}
+                  onHighlight={highlightFromPointer}
                   onSelect={props.onSelect}
                 />
               ))}
