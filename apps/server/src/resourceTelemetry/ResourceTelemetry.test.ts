@@ -466,6 +466,69 @@ describe("ResourceTelemetry", () => {
     ),
   );
 
+  it.effect("summarizes usage from background history and shares one read across callers", () =>
+    Effect.gen(function* () {
+      yield* TestClock.adjust(Duration.minutes(1));
+      const now = DateTime.toEpochMillis(yield* DateTime.now);
+      const externalProcesses = [{ pid: 5_000, startTimeMs: 300 }];
+      const historyReads = yield* Ref.make(0);
+      const status =
+        yield* Ref.make<NativeTelemetryClient.NativeTelemetryClientHealth["status"]>("healthy");
+      const nativeLayer = NativeTelemetryClient.layerTest({
+        readHistory: () =>
+          Ref.update(historyReads, (count) => count + 1).pipe(
+            Effect.as([
+              nativeSnapshot({
+                sequence: 1,
+                sampledAtUnixMs: now - 2_000,
+                childCpuTimeMs: 0,
+                childWriteBytes: 0,
+                externalProcesses,
+              }),
+              nativeSnapshot({
+                sequence: 2,
+                sampledAtUnixMs: now - 1_000,
+                childCpuTimeMs: 0,
+                childWriteBytes: 0,
+                externalProcesses,
+              }),
+            ]),
+          ),
+        health: Effect.map(Ref.get(status), (current) => ({
+          status: current,
+          hello: Option.none(),
+          lastSampleAt: Option.none(),
+          lastError: Option.none(),
+          restartCount: 0,
+          sampleIntervalMs: 5_000,
+        })),
+      });
+      const layer = ResourceTelemetry.layer.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            nativeLayer,
+            DesktopTelemetryReceiver.layerTest(),
+            ResourceAttribution.layer,
+          ),
+        ),
+      );
+
+      yield* Effect.gen(function* () {
+        const telemetry = yield* ResourceTelemetry.ResourceTelemetry;
+        const [first, second] = yield* Effect.all([telemetry.readUsage, telemetry.readUsage]);
+        expect(first).toEqual(second);
+        expect(first?.processCount).toBe(4);
+        expect(first?.rssBytes).toBe(4 * 1_024);
+        expect(yield* Ref.get(historyReads)).toBe(1);
+
+        yield* Ref.set(status, "unavailable");
+        yield* TestClock.adjust(Duration.seconds(6));
+        expect(yield* telemetry.readUsage).toBeNull();
+        expect(yield* Ref.get(historyReads)).toBe(1);
+      }).pipe(Effect.provide(layer));
+    }),
+  );
+
   it.effect("combines native, Electron, attribution, retry, and history data", () =>
     Effect.gen(function* () {
       const startedAt = DateTime.toEpochMillis(yield* DateTime.now);

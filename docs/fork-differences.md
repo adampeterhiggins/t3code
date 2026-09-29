@@ -151,6 +151,21 @@ Code: `buildGeneratedWorktreeBranchName` in `packages/shared/src/git.ts` and `wo
 in `packages/contracts/src/settings.ts`. User guide:
 [project-settings.md](./user/project-settings.md#defaults-and-inheritance).
 
+## Sidebar resource pill
+
+The sidebar titlebar shows how much memory T3 uses on the primary environment's machine. That
+covers the server, provider and terminal processes, and on desktop the Electron processes. Clicking
+the pill opens a process tree with per-process CPU and memory, plus a link to Settings >
+Diagnostics. The pill is hidden when the resource monitor has no sample and when the sidebar is
+narrow. This is web and desktop.
+
+The pill polls `server.getResourceUsage`, which reads the monitor's background history, so an
+always-visible pill does not raise the sampling rate. The popover holds the live
+resource-telemetry stream only while it is open.
+
+Code: `apps/web/src/components/sidebar/SidebarResourcePill.tsx` and `readUsage` in
+`apps/server/src/resourceTelemetry/ResourceTelemetry.ts`.
+
 ## Desktop mock-update loop
 
 A `Makefile` at the repository root drives a local auto-update test loop for the desktop app:
