@@ -7,6 +7,7 @@ import {
   COMPOSER_CONTEXT_THREAD_TAB_SUMMARY_MAX_CHARS,
   type EnvironmentId,
   type ModelSelection,
+  type ScopedThreadRef,
   type ThreadId,
   type ThreadTabGroup,
 } from "@t3tools/contracts";
@@ -19,7 +20,7 @@ import { sanitizeComposerContextLabel } from "@t3tools/shared/composerContextRef
 import * as Option from "effect/Option";
 import { useNavigate } from "@tanstack/react-router";
 import { PlusIcon, XIcon } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useThreadActions } from "../../hooks/useThreadActions";
 import {
@@ -33,7 +34,7 @@ import {
   useThreadShellsForProjectRefs,
   waitForThreadShell,
 } from "../../state/entities";
-import { usePreparedConnection } from "../../state/session";
+import { readPreparedConnection, usePreparedConnection } from "../../state/session";
 import { useThreadTabContextStore } from "../../threadTabContextStore";
 import { WorkspaceBreadcrumbText } from "../WorkspaceBreadcrumb";
 import {
@@ -99,6 +100,76 @@ export function useThreadTabGroup(environmentId: EnvironmentId, threadId: Thread
   }, [group, projectShells, shell, threadId]);
 }
 
+/** The tab that takes over when `threadId` closes: the next one, else the previous. */
+export function threadTabNeighbour(
+  group: Pick<ThreadTabGroup, "tabs">,
+  threadId: ThreadId,
+): ThreadId | null {
+  const index = group.tabs.findIndex((tab) => tab.threadId === threadId);
+  if (index === -1) return null;
+  return (group.tabs[index + 1] ?? group.tabs[index - 1])?.threadId ?? null;
+}
+
+/**
+ * Opens and closes chat tabs for any surface: the header crumb, the sidebar, and thread menus.
+ * Failures toast here, so callers only need to await.
+ */
+export function useThreadTabActions() {
+  const navigate = useNavigate();
+  const { archiveThread } = useThreadActions();
+
+  /** Adds a tab to `source`'s group (making one if needed) and opens it. */
+  const createTab = useCallback(
+    async (source: ScopedThreadRef, modelSelection: ModelSelection) => {
+      try {
+        const prepared = readPreparedConnection(source.environmentId);
+        if (!prepared) throw new Error("This environment is not connected.");
+        const threadRef = scopeThreadRef(source.environmentId, newThreadId());
+        await runtime.runPromise(
+          createThreadTab(prepared, source.threadId, {
+            threadId: threadRef.threadId,
+            modelSelection,
+          }),
+        );
+        // The thread route redirects away from threads the client store has not heard of yet.
+        await waitForThreadShell(threadRef);
+        await navigate({
+          to: "/$environmentId/$threadId",
+          params: { environmentId: threadRef.environmentId, threadId: threadRef.threadId },
+        });
+      } catch (cause) {
+        toastManager.add({
+          type: "error",
+          title: "Could not create tab",
+          description: cause instanceof Error ? cause.message : undefined,
+        });
+      }
+    },
+    [navigate],
+  );
+
+  /**
+   * Closing archives the tab's thread, so undo and the archived-threads list can reopen it.
+   * Closing the open tab lands on `next`.
+   */
+  const closeTab = useCallback(
+    async (tab: ScopedThreadRef, next: ScopedThreadRef) => {
+      const result = await archiveThread(tab, { next });
+      if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+        const error = squashAtomCommandFailure(result);
+        toastManager.add({
+          type: "error",
+          title: "Could not close tab",
+          description: error instanceof Error ? error.message : undefined,
+        });
+      }
+    },
+    [archiveThread],
+  );
+
+  return { createTab, closeTab };
+}
+
 /** A tab's name everywhere it appears: the live thread title, so renames show up immediately. */
 function useTabLabel(environmentId: EnvironmentId, group: ThreadTabGroup, threadId: ThreadId) {
   const shell = useThreadShell(scopeThreadRef(environmentId, threadId));
@@ -130,7 +201,7 @@ export function ThreadTabMenu({
 }) {
   const prepared = usePreparedConnection(environmentId);
   const navigate = useNavigate();
-  const { archiveThread } = useThreadActions();
+  const { createTab, closeTab } = useThreadTabActions();
   const [busy, setBusy] = useState(false);
   const currentLabel = useTabLabel(environmentId, group, threadId);
 
@@ -140,51 +211,25 @@ export function ThreadTabMenu({
       params: { environmentId, threadId: nextThreadId },
     });
 
-  // Closing archives the tab's thread, so undo and the archived-threads list can reopen it.
-  // Closing the open tab lands on its neighbour.
-  const close = async (tabThreadId: ThreadId) => {
-    const index = group.tabs.findIndex((tab) => tab.threadId === tabThreadId);
-    const next = group.tabs[index + 1] ?? group.tabs[index - 1];
-    if (!next) return;
+  const run = async (action: () => Promise<void>) => {
     setBusy(true);
     try {
-      const result = await archiveThread(scopeThreadRef(environmentId, tabThreadId), {
-        next: scopeThreadRef(environmentId, next.threadId),
-      });
-      if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-        const error = squashAtomCommandFailure(result);
-        toastManager.add({
-          type: "error",
-          title: "Could not close tab",
-          description: error instanceof Error ? error.message : undefined,
-        });
-      }
+      await action();
     } finally {
       setBusy(false);
     }
   };
 
-  const create = async () => {
-    if (Option.isNone(prepared)) return;
-    setBusy(true);
-    const nextThreadId = newThreadId();
-    try {
-      await runtime.runPromise(
-        createThreadTab(prepared.value, threadId, { threadId: nextThreadId, modelSelection }),
-      );
-      // The thread route redirects away from threads the client store has not heard of yet.
-      await waitForThreadShell(scopeThreadRef(environmentId, nextThreadId));
-      open(nextThreadId);
-    } catch (cause) {
-      toastManager.add({
-        type: "error",
-        title: "Could not create tab",
-        description: cause instanceof Error ? cause.message : undefined,
-      });
-    } finally {
-      setBusy(false);
-    }
+  const close = (tabThreadId: ThreadId) => {
+    const next = threadTabNeighbour(group, tabThreadId);
+    if (!next) return;
+    void run(() =>
+      closeTab(scopeThreadRef(environmentId, tabThreadId), scopeThreadRef(environmentId, next)),
+    );
   };
+
+  const create = () =>
+    void run(() => createTab(scopeThreadRef(environmentId, threadId), modelSelection));
 
   // A lone tab repeats the thread title, so the segment becomes a direct "new tab" action.
   if (group.tabs.length <= 1) {
@@ -196,7 +241,7 @@ export function ThreadTabMenu({
               type="button"
               aria-label="New tab"
               disabled={busy || Option.isNone(prepared)}
-              onClick={() => void create()}
+              onClick={create}
               className="inline-flex cursor-pointer items-center rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-50"
             />
           }
@@ -245,7 +290,7 @@ export function ThreadTabMenu({
                   onClick={(event) => {
                     event.stopPropagation();
                     event.preventDefault();
-                    void close(tab.threadId);
+                    close(tab.threadId);
                   }}
                   className="-me-1 inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted-foreground opacity-0 transition-opacity hover:bg-foreground/10 hover:text-foreground in-data-highlighted:opacity-100 disabled:cursor-default disabled:opacity-0"
                 >
@@ -256,7 +301,7 @@ export function ThreadTabMenu({
           ))}
         </MenuRadioGroup>
         <MenuSeparator />
-        <MenuItem disabled={busy || Option.isNone(prepared)} onClick={() => void create()}>
+        <MenuItem disabled={busy || Option.isNone(prepared)} onClick={create}>
           <PlusIcon />
           New tab
         </MenuItem>

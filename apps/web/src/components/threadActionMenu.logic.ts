@@ -7,6 +7,8 @@ import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled"
  * remains data-driven.
  */
 export type ThreadActionMenuId =
+  | "new-tab"
+  | "close-tab"
   | "new-thread-on-branch"
   | "filter-by-project"
   | "project-settings"
@@ -41,6 +43,11 @@ export interface ThreadActionMenuState {
     /** True when the list is already scoped to this thread's project. */
     readonly isActive: boolean;
   } | null;
+  /**
+   * Chat tabs for this thread. Null where the environment has no tabs; `canClose` is false for
+   * a thread with no sibling tab, where closing would just be archiving.
+   */
+  readonly tabs: { readonly canClose: boolean } | null;
   readonly isPinned: boolean;
   readonly isSettled: boolean;
   /** False while the user has turned automatic settlement off for this thread. */
@@ -70,6 +77,7 @@ export function buildThreadActionMenuItems(
   state: ThreadActionMenuState,
 ): ReadonlyArray<ContextMenuItem<ThreadActionMenuId>> {
   return [
+    ...(state.tabs ? [{ id: "new-tab" as const, label: "New tab", icon: "plus" }] : []),
     ...(state.branch
       ? [
           {
@@ -182,12 +190,23 @@ export function buildThreadActionMenuItems(
     // (stays visible in the Settled shelf) and Delete (clears history for
     // good), so it sits beside Delete without borrowing its destructive
     // styling.
+    ...(state.tabs?.canClose
+      ? [
+          {
+            id: "close-tab" as const,
+            label: "Close tab",
+            icon: "x",
+            disabled: state.isRunning,
+            separatorBefore: true,
+          },
+        ]
+      : []),
     {
       id: "archive",
       label: "Archive thread",
       icon: "archive",
       disabled: state.isRunning,
-      separatorBefore: true,
+      separatorBefore: !state.tabs?.canClose,
     },
     {
       id: "delete",

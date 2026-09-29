@@ -169,6 +169,7 @@ import {
   firstValidTimestampMs,
   groupSidebarTabThreads,
   hasUnseenCompletion,
+  sidebarTabNeighbourKey,
   isSidebarNestedLinkClick,
   isTrailingDoubleClick,
   orderItemsByPreferredIds,
@@ -221,6 +222,7 @@ import { resolveSnoozePresets, snoozeWakeLabel, type SnoozePreset } from "./Side
 import { ProjectFavicon, type ProjectFaviconProject } from "./ProjectFavicon";
 import { ThreadSearchMatchExcerpt } from "./ThreadSearchMatch";
 import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
+import { useThreadTabActions } from "./chat/ThreadTabs";
 import { ProviderInstanceIcon } from "./chat/ProviderInstanceIcon";
 import { getTriggerDisplayModelLabel } from "./chat/providerIconUtils";
 import {
@@ -1106,6 +1108,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
    * composer. Absent when the sidebar cannot open server threads.
    */
   onFileDropThreads?: ((threadRef: ScopedThreadRef, files: File[]) => void) | undefined;
+  /** Adds a chat tab to this row's group. Absent where the environment has no tabs. */
+  onNewTab?: ((threadRef: ScopedThreadRef) => void) | undefined;
   /** Tabs in this row's group while they are hidden; the badge shows only above one. */
   tabCount: number;
   /** The group's other tabs, listed under the row while tabs are shown. */
@@ -1118,6 +1122,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     onContextMenu,
     onAcknowledgeWoke,
     onFileDropThreads,
+    onNewTab,
     onRenameTitleChange,
     onSettle,
     onSnooze,
@@ -1336,6 +1341,14 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       onSettle(threadRef);
     },
     [onSettle, threadRef],
+  );
+  const handleNewTabClick = useCallback(
+    (event: ReactMouseEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      onNewTab?.(threadRef);
+    },
+    [onNewTab, threadRef],
   );
   const handleUnsettleClick = useCallback(
     (event: ReactMouseEvent) => {
@@ -1772,9 +1785,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
         // Matches the content box; the py-0.5 padding is added on top. An open
         // tab list drops the title line, so the header is only project and branch.
         "list-none py-0.5 [content-visibility:auto]",
-        unifyTabs
-          ? "[contain-intrinsic-size:auto_52px]"
-          : "[contain-intrinsic-size:auto_78px]",
+        unifyTabs ? "[contain-intrinsic-size:auto_52px]" : "[contain-intrinsic-size:auto_78px]",
         sortable?.isDragging && "relative z-20",
       )}
     >
@@ -1887,7 +1898,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                       threadTimeLabel(thread)
                     )}
                   </span>
-                  {props.settlementSupported || showSnoozeButton || hasUnsentDraft ? (
+                  {props.settlementSupported || showSnoozeButton || hasUnsentDraft || onNewTab ? (
                     <span
                       className={cn(
                         // focus-visible, not focus-within: a mouse click leaves
@@ -1914,6 +1925,23 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                             <XIcon className="size-3.5" />
                           </TooltipTrigger>
                           <TooltipPopup side="top">Discard draft</TooltipPopup>
+                        </Tooltip>
+                      ) : null}
+                      {onNewTab ? (
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <button
+                                type="button"
+                                aria-label="New tab"
+                                onClick={handleNewTabClick}
+                                className="inline-flex cursor-pointer items-center rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
+                              />
+                            }
+                          >
+                            <PlusIcon className="size-3.5" />
+                          </TooltipTrigger>
+                          <TooltipPopup side="top">New tab</TooltipPopup>
                         </Tooltip>
                       ) : null}
                       {showSnoozeButton ? (
@@ -2119,6 +2147,8 @@ const SidebarTabRow = memo(function SidebarTabRow(props: {
   onCancelRename: () => void;
   onContextMenu: (threadRef: ScopedThreadRef, position: { x: number; y: number }) => void;
   onFileDropThreads: (threadRef: ScopedThreadRef, files: File[]) => void;
+  /** Closes this tab; its hover control stands in for the time label. */
+  onCloseTab: (threadRef: ScopedThreadRef) => void;
   /**
    * False for the group's own thread: its status already sits on the header,
    * and repeating it would make the first tab row unlike the others.
@@ -2268,9 +2298,22 @@ const SidebarTabRow = memo(function SidebarTabRow(props: {
               <span role="status">{topStatus.label}</span>
             </span>
           ) : null}
-          <span className="shrink-0 text-xs tabular-nums text-secondary-label">
+          <span className="shrink-0 text-xs tabular-nums text-secondary-label group-hover/sidebar-row:hidden group-focus-visible/sidebar-row:hidden group-has-[:focus-visible]/sidebar-row:hidden">
             {threadTimeLabel(thread)}
           </span>
+          <button
+            type="button"
+            aria-label="Close tab"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              props.onCloseTab(threadRef);
+            }}
+            onDoubleClick={(event) => event.stopPropagation()}
+            className="-mx-1 hidden size-5 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted-foreground outline-none hover:bg-foreground/10 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:inline-flex group-hover/sidebar-row:inline-flex group-focus-visible/sidebar-row:inline-flex"
+          >
+            <XIcon className="size-3.5" />
+          </button>
           {driverKind ? (
             <span aria-hidden className="inline-flex shrink-0 items-center">
               <ProviderInstanceIcon
@@ -2473,7 +2516,8 @@ export default function Sidebar() {
   const projects = useProjects();
   const projectOrder = useUiStateStore((store) => store.projectOrder);
   const threads = useThreadShells();
-  const tabThreadGroups = useHiddenTabThreads(threads);
+  const { hiddenTabThreads: tabThreadGroups, tabEnvironmentIds } = useHiddenTabThreads(threads);
+  const { createTab, closeTab } = useThreadTabActions();
   const showTabs = useClientSettings((s) => s.sidebarShowTabs);
   const updateClientSettings = useUpdateClientSettings();
   // Listed tabs open themselves; hidden tabs fold into their group's row, which reopens the
@@ -3238,6 +3282,30 @@ export default function Sidebar() {
       });
     },
     [clearSelection, hiddenTabThreads, isMobile, router, setOpenMobile, setSelectionAnchor],
+  );
+  const tabThreadGroupsRef = useRef(tabThreadGroups);
+  tabThreadGroupsRef.current = tabThreadGroups;
+  // New tabs join the clicked thread's group and start on its model.
+  const handleNewTab = useCallback(
+    (threadRef: ScopedThreadRef) => {
+      const thread = threadByKeyRef.current.get(scopedThreadKey(threadRef));
+      if (!thread) return;
+      if (isMobile) setOpenMobile(false);
+      void createTab(threadRef, thread.modelSelection);
+    },
+    [createTab, isMobile, setOpenMobile],
+  );
+  const handleCloseTab = useCallback(
+    (threadRef: ScopedThreadRef) => {
+      const nextKey = sidebarTabNeighbourKey(
+        scopedThreadKey(threadRef),
+        tabThreadGroupsRef.current,
+      );
+      const next = nextKey === null ? undefined : threadByKeyRef.current.get(nextKey);
+      if (!next) return;
+      void closeTab(threadRef, scopeThreadRef(next.environmentId, next.id));
+    },
+    [closeTab],
   );
 
   // Dropping files on a row opens that thread and attaches the files there.
@@ -4437,6 +4505,12 @@ export default function Sidebar() {
                     isActive: projectScopeKey === threadProjectGroup.projectKey,
                   }
                 : null,
+              tabs: tabEnvironmentIds.has(thread.environmentId)
+                ? {
+                    canClose:
+                      sidebarTabNeighbourKey(threadKey, tabThreadGroupsRef.current) !== null,
+                  }
+                : null,
               isPinned,
               isSettled,
               autoSettleEnabled: thread.autoSettleDisabledAt == null,
@@ -4480,6 +4554,12 @@ export default function Sidebar() {
             return;
           case "project-settings":
             if (threadProjectGroup) openProjectSettings(threadProjectGroup);
+            return;
+          case "new-tab":
+            handleNewTab(threadRef);
+            return;
+          case "close-tab":
+            handleCloseTab(threadRef);
             return;
           case "new-thread-on-branch": {
             // Explicit branch carry-over: reuse the thread's worktree when it
@@ -4656,7 +4736,9 @@ export default function Sidebar() {
       copyPathToClipboard,
       copyThreadIdToClipboard,
       deleteThread,
+      handleCloseTab,
       handleMultiSelectContextMenu,
+      handleNewTab,
       markThreadUnread,
       openProjectSettings,
       projectScopeKey,
@@ -4665,6 +4747,7 @@ export default function Sidebar() {
       setProjectScopeKey,
       setThreadAutoSettle,
       startThreadRename,
+      tabEnvironmentIds,
       updateThreadMetadata,
       timestampFormat,
     ],
@@ -5184,6 +5267,11 @@ export default function Sidebar() {
                             onUnpin={attemptUnpin}
                             onAcknowledgeWoke={acknowledgeWoke}
                             onFileDropThreads={handleThreadFileDrop}
+                            onNewTab={
+                              isCard && tabEnvironmentIds.has(thread.environmentId)
+                                ? handleNewTab
+                                : undefined
+                            }
                             tabCount={showTabs || !rowTabs ? 0 : rowTabs.length + 1}
                             tabs={
                               showTabs && rowTabs ? (
@@ -5229,6 +5317,7 @@ export default function Sidebar() {
                                         onCancelRename={cancelThreadRename}
                                         onContextMenu={handleThreadContextMenu}
                                         onFileDropThreads={handleThreadFileDrop}
+                                        onCloseTab={handleCloseTab}
                                       />
                                     );
                                   })}

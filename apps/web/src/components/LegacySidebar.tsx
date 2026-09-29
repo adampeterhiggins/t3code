@@ -79,6 +79,7 @@ import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstra
 import { isElectron } from "../env";
 import { useTerminalFocus } from "../hooks/useTerminalFocus";
 import { useHiddenTabThreads } from "./sidebar/useHiddenTabThreads";
+import { useThreadTabActions } from "./chat/ThreadTabs";
 import { resolveThreadTabTarget } from "../threadTabRecencyStore";
 import { useOpenPrLink } from "../lib/openPullRequestLink";
 import { releaseProjectDraftUploads } from "../lib/composerDraftUploads";
@@ -231,7 +232,10 @@ const SIDEBAR_LIST_ANIMATION_OPTIONS = {
   easing: "ease-out",
 } as const;
 const EMPTY_THREAD_JUMP_LABELS = new Map<string, string>();
-const HiddenTabThreadsContext = React.createContext<ReadonlyMap<string, string>>(new Map());
+const HiddenTabThreadsContext = React.createContext<ReturnType<typeof useHiddenTabThreads>>({
+  hiddenTabThreads: new Map(),
+  tabEnvironmentIds: new Set(),
+});
 const PROJECT_GROUPING_MODE_LABELS: Record<SidebarProjectGroupingMode, string> = {
   repository: "Group by repository",
   repository_path: "Group by repository path",
@@ -1255,7 +1259,8 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   });
   const openPrLink = useOpenPrLink();
   const allProjectThreads = useThreadShellsForProjectRefs(project.memberProjectRefs);
-  const hiddenTabThreads = React.useContext(HiddenTabThreadsContext);
+  const { hiddenTabThreads, tabEnvironmentIds } = React.useContext(HiddenTabThreadsContext);
+  const { createTab } = useThreadTabActions();
   const sidebarThreads = useMemo(
     () =>
       allProjectThreads.filter(
@@ -2261,6 +2266,9 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         thread.worktreePath ?? threadProject?.workspaceRoot ?? project.workspaceRoot ?? null;
       const clicked = await api.contextMenu.show(
         [
+          ...(tabEnvironmentIds.has(thread.environmentId)
+            ? [{ id: "new-tab", label: "New tab" }]
+            : []),
           ...(thread.branch
             ? [{ id: "new-thread-on-branch", label: `New thread on ${thread.branch}` }]
             : []),
@@ -2280,6 +2288,12 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
           to: "/projects/$projectKey",
           params: { projectKey: project.projectKey },
         });
+        return;
+      }
+
+      if (clicked === "new-tab") {
+        if (isMobile) setOpenMobile(false);
+        await createTab(threadRef, thread.modelSelection);
         return;
       }
 
@@ -2363,6 +2377,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       appSettingsConfirmThreadDelete,
       copyPathToClipboard,
       copyThreadIdToClipboard,
+      createTab,
       deleteThread,
       handleNewThread,
       isMobile,
@@ -2373,6 +2388,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       router,
       setOpenMobile,
       startThreadRename,
+      tabEnvironmentIds,
     ],
   );
 
@@ -3140,7 +3156,8 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
 export default function LegacySidebar() {
   const projects = useProjects();
   const allSidebarThreads = useThreadShells();
-  const hiddenTabThreads = useHiddenTabThreads(allSidebarThreads);
+  const tabThreads = useHiddenTabThreads(allSidebarThreads);
+  const { hiddenTabThreads } = tabThreads;
   const sidebarThreads = useMemo(
     () =>
       allSidebarThreads.filter(
@@ -3790,7 +3807,7 @@ export default function LegacySidebar() {
   }, []);
 
   return (
-    <HiddenTabThreadsContext.Provider value={hiddenTabThreads}>
+    <HiddenTabThreadsContext.Provider value={tabThreads}>
       {prewarmedSidebarThreadRefs.map((threadRef) => (
         <SidebarThreadDetailPrewarmer key={scopedThreadKey(threadRef)} threadRef={threadRef} />
       ))}

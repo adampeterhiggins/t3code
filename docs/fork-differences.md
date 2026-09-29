@@ -94,7 +94,12 @@ is its own conversation and provider.
   of its tabs is open, and opening it returns to the tab last left open
   (`apps/web/src/threadTabRecencyStore.ts`). On web and desktop, **Settings → General → Show tabs
   in sidebar** — also the sidebar button, the command palette, and `Cmd+Option+T` on macOS or
-  `Ctrl+Alt+T` on Windows and Linux — lists each tab under that row.
+  `Ctrl+Alt+T` on Windows and Linux — lists each tab under that row. The row's hover actions add a
+  **+** that opens a new tab, and each listed tab has a hover **×** that closes it.
+- **Menus.** The thread right-click menu in both sidebars and the header's thread menu offer
+  **New tab**. The sidebar's menu also offers **Close tab** on a thread that has a sibling tab.
+  Closing archives the tab's thread and lands on its neighbour (`useThreadTabActions` in
+  `apps/web/src/components/chat/ThreadTabs.tsx`).
 - **Web header.** The breadcrumb reads `project / thread / tab`. The thread crumb keeps the thread
   action menu and acts on the original thread. The tab crumb switches, creates, and closes tabs. A
   chat with one tab shows a **New tab** button instead of repeating the title. A tab can also be
