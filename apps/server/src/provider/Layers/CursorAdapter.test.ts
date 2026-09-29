@@ -302,6 +302,79 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
     }),
   );
 
+  it.effect("maps Cursor subagent runs onto task lifecycle events", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CursorAdapter;
+      const settings = yield* ServerSettingsService;
+      const threadId = ThreadId.make("cursor-subagent-thread");
+
+      const wrapperPath = yield* Effect.promise(() =>
+        makeMockAgentWrapper({ T3_ACP_EMIT_CURSOR_SUBAGENT: "1" }),
+      );
+      yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
+
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.threadId === threadId),
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("cursor"),
+        cwd: process.cwd(),
+        runtimeMode: "full-access",
+        modelSelection: { instanceId: ProviderInstanceId.make("cursor"), model: "default" },
+      });
+      yield* adapter.sendTurn({ threadId, input: "delegate this", attachments: [] });
+
+      const events = Array.from(yield* Fiber.join(eventsFiber));
+      const tasks = events.flatMap((event) =>
+        event.type === "task.started" ||
+        event.type === "task.progress" ||
+        event.type === "task.completed"
+          ? [{ type: event.type, payload: event.payload }]
+          : [],
+      );
+      assert.deepStrictEqual(
+        tasks.map(({ type, payload }) => [
+          type,
+          payload.taskId,
+          payload.title,
+          "lastToolName" in payload ? payload.lastToolName : undefined,
+        ]),
+        [
+          [
+            "task.started",
+            "mock-subagent-session-1",
+            "Find the config loader and report where it lives.",
+            undefined,
+          ],
+          ["task.progress", "mock-subagent-session-1", "Find config loader", undefined],
+          ["task.progress", "mock-subagent-session-1", "Find config loader", "Grep"],
+          ["task.completed", "mock-subagent-session-1", "Find config loader", undefined],
+        ],
+      );
+      const completed = tasks.at(-1)?.payload;
+      assert.include(completed, {
+        taskType: "subagent",
+        role: "explore",
+        model: "mock-model",
+        toolUseId: "mock-task-tool-call-1",
+        status: "completed",
+        summary: "It lives in src/config.ts.",
+      });
+      // The child's work stays out of the parent timeline.
+      assert.isFalse(
+        events.some(
+          (event) =>
+            event.type === "content.delta" && event.payload.delta.includes("src/config.ts"),
+        ),
+      );
+    }),
+  );
+
   it.effect("sends skills in Cursor's native form and preserves exact slash command input", () =>
     Effect.gen(function* () {
       const adapter = yield* CursorAdapter;

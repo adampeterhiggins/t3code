@@ -82,6 +82,23 @@ interface AcpPendingRequest {
 }
 
 const decodeSessionUpdate = Schema.decodeUnknownEffect(AcpSchema.SessionNotification);
+const KNOWN_SESSION_UPDATE_KINDS: ReadonlySet<string> = new Set(
+  AcpSchema.SessionUpdate.members.map((member) => member.fields.sessionUpdate.literal),
+);
+
+/**
+ * Agents add their own `sessionUpdate` kinds (Cursor's `subagent_spawned`).
+ * Those arrive as `ExtNotification`s on `session/update` instead of failing the
+ * connection; malformed standard kinds still fail to decode.
+ */
+function isUnknownSessionUpdate(payload: unknown): boolean {
+  if (typeof payload !== "object" || payload === null) return false;
+  const update = (payload as { readonly update?: unknown }).update;
+  if (typeof update !== "object" || update === null) return false;
+  const kind = (update as { readonly sessionUpdate?: unknown }).sessionUpdate;
+  return typeof kind === "string" && !KNOWN_SESSION_UPDATE_KINDS.has(kind);
+}
+
 const decodeElicitationComplete = Schema.decodeUnknownEffect(
   AcpSchema.ElicitationCompleteNotification,
 );
@@ -297,6 +314,13 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
   const handleRequestEncoded = (message: RpcMessage.RequestEncoded) => {
     if (message.id === "") {
       if (message.tag === CLIENT_METHODS.session_update) {
+        if (isUnknownSessionUpdate(message.payload)) {
+          return dispatchNotification({
+            _tag: "ExtNotification",
+            method: message.tag,
+            params: message.payload,
+          });
+        }
         return decodeSessionUpdate(message.payload).pipe(
           Effect.map(
             (params) =>

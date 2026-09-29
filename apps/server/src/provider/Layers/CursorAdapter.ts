@@ -67,6 +67,13 @@ import {
 } from "../acp/AcpRuntimeModel.ts";
 import { makeAcpNativeLoggerFactory } from "../acp/AcpNativeLogging.ts";
 import { applyCursorAcpModelSelection, makeCursorAcpRuntime } from "../acp/CursorAcpSupport.ts";
+import {
+  cursorSubagentChildEvents,
+  cursorSubagentLifecycleEvents,
+  cursorTaskToolEvents,
+  type CursorSubagentTracker,
+  makeCursorSubagentTracker,
+} from "../acp/CursorSubagents.ts";
 import { CursorTransportFailure } from "../acp/CursorTransportFailure.ts";
 import {
   CursorAskQuestionRequest,
@@ -151,6 +158,7 @@ interface CursorSessionContext {
   promptsInFlight: number;
   assistantReply: CursorTransportFailure;
   stopped: boolean;
+  readonly subagents: CursorSubagentTracker;
 }
 
 function settlePendingApprovalsAsCancelled(
@@ -558,6 +566,7 @@ export function makeCursorAdapter(
             childProcessSpawner,
             cwd,
             runtimeMode: input.runtimeMode,
+            subagents: true,
             ...(resumeSessionId ? { resumeSessionId } : {}),
             clientInfo: { name: "t3-code", version: "0.0.0" },
             ...(mcpSession
@@ -591,7 +600,72 @@ export function makeCursorAdapter(
                 }),
             ),
           );
+          const subagents = makeCursorSubagentTracker();
+          const offerSubagentEvents = (events: ReturnType<typeof cursorSubagentChildEvents>) =>
+            Effect.forEach(
+              events,
+              (event) =>
+                Effect.gen(function* () {
+                  yield* offerRuntimeEvent({
+                    ...event,
+                    ...(yield* makeEventStamp()),
+                    provider: PROVIDER,
+                    threadId: input.threadId,
+                  });
+                }),
+              { discard: true },
+            );
           const started = yield* Effect.gen(function* () {
+            // `ctx` is unset while session/load replays history, so replayed
+            // subagent runs are skipped here like replayed todos are.
+            yield* acp.handleExtNotification("session/update", Schema.Unknown, (params) =>
+              mapExtensionFailure(
+                Effect.gen(function* () {
+                  if (!ctx || ctx.stopped) return;
+                  yield* logNative(input.threadId, "session/update", params, "acp.jsonrpc");
+                  yield* offerSubagentEvents(
+                    cursorSubagentLifecycleEvents({
+                      tracker: ctx.subagents,
+                      params,
+                      turnId: ctx.activeTurnId,
+                    }),
+                  );
+                }),
+              ),
+            );
+            // Runs in wire order with the lifecycle handler above. The runtime
+            // projects the root session itself; here root Task tool calls name
+            // their run and each child session feeds its own.
+            yield* acp.handleSessionUpdate((notification) =>
+              mapExtensionFailure(
+                Effect.gen(function* () {
+                  if (!ctx || ctx.stopped) return;
+                  const update = notification.update;
+                  if (ctx.subagents.runs.has(notification.sessionId)) {
+                    yield* logNative(input.threadId, "session/update", notification, "acp.jsonrpc");
+                    yield* offerSubagentEvents(
+                      cursorSubagentChildEvents({
+                        tracker: ctx.subagents,
+                        notification,
+                        turnId: ctx.activeTurnId,
+                      }),
+                    );
+                  } else if (
+                    update.sessionUpdate === "tool_call" ||
+                    update.sessionUpdate === "tool_call_update"
+                  ) {
+                    yield* offerSubagentEvents(
+                      cursorTaskToolEvents({
+                        tracker: ctx.subagents,
+                        toolCallId: update.toolCallId,
+                        rawInput: update.rawInput,
+                        turnId: ctx.activeTurnId,
+                      }),
+                    );
+                  }
+                }),
+              ),
+            );
             yield* acp.handleExtRequest("cursor/ask_question", CursorAskQuestionRequest, (params) =>
               mapExtensionFailure(
                 Effect.gen(function* () {
@@ -803,6 +877,7 @@ export function makeCursorAdapter(
             promptsInFlight: 0,
             assistantReply: new CursorTransportFailure(),
             stopped: false,
+            subagents,
           };
 
           const nf = yield* Stream.runDrain(

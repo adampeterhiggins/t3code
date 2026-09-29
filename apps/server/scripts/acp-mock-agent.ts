@@ -35,6 +35,7 @@ const emitActiveToolThenHang = process.env.T3_ACP_EMIT_ACTIVE_TOOL_THEN_HANG ===
 const emitGrokMonitorPostTurnPoll = process.env.T3_ACP_EMIT_GROK_MONITOR_POST_TURN_POLL === "1";
 const emitGrokBackgroundTaskStarted = process.env.T3_ACP_EMIT_GROK_BACKGROUND_TASK_STARTED === "1";
 const emitForeignSessionUpdates = process.env.T3_ACP_EMIT_FOREIGN_SESSION_UPDATES === "1";
+const emitCursorSubagent = process.env.T3_ACP_EMIT_CURSOR_SUBAGENT === "1";
 const waitForResumeRelease = process.env.T3_ACP_WAIT_FOR_RESUME_RELEASE === "1";
 const completeFirstPromptOnCancel = process.env.T3_ACP_COMPLETE_FIRST_PROMPT_ON_CANCEL === "1";
 const floodStderr = process.env.T3_ACP_FLOOD_STDERR === "1";
@@ -74,6 +75,7 @@ const sessionId = "mock-session-1";
 let currentModeId = antigravityProfile ? "default" : "ask";
 let currentModelId = antigravityProfile ? "gemini-test-low" : "default";
 let parameterizedModelPicker = false;
+let subagentsRequested = false;
 let currentReasoning = "medium";
 let currentContext = "272k";
 let currentFast = false;
@@ -395,6 +397,7 @@ const program = Effect.gen(function* () {
       }
       parameterizedModelPicker =
         request.clientCapabilities?._meta?.parameterizedModelPicker === true;
+      subagentsRequested = request.clientCapabilities?._meta?.subagents === true;
       if (antigravityProfile) {
         return {
           protocolVersion: 1,
@@ -903,6 +906,56 @@ const program = Effect.gen(function* () {
           },
         });
         return yield* Effect.never;
+      }
+
+      if (emitCursorSubagent && subagentsRequested) {
+        // Cursor's subagent wire (captured from cursor-agent 2026.09.26): the
+        // lifecycle arrives on the root session, the child's work on its own.
+        const childSessionId = "mock-subagent-session-1";
+        const toolCallId = "mock-task-tool-call-1";
+        const meta = { cursor: { toolCallId, agentId: childSessionId, model: "mock-model" } };
+        const update = (sessionId: string, value: Record<string, unknown>) =>
+          writeJsonRpcNotification("session/update", { sessionId, update: value });
+        update(requestedSessionId, {
+          sessionUpdate: "subagent_spawned",
+          subagentSessionId: childSessionId,
+          name: "explore",
+          task: "Find the config loader and report where it lives.",
+          capabilities: {},
+          _meta: meta,
+        });
+        update(requestedSessionId, {
+          sessionUpdate: "tool_call",
+          toolCallId,
+          title: "Task: Find config loader",
+          kind: "other",
+          status: "in_progress",
+          rawInput: { _toolName: "task", description: "Find config loader" },
+        });
+        update(childSessionId, {
+          sessionUpdate: "tool_call",
+          toolCallId: "mock-child-tool-1",
+          title: "Grep",
+          kind: "search",
+          status: "in_progress",
+        });
+        update(childSessionId, {
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "text", text: "It lives in src/config.ts." },
+        });
+        update(requestedSessionId, {
+          sessionUpdate: "subagent_state_update",
+          subagentSessionId: childSessionId,
+          state: "completed",
+          _meta: meta,
+        });
+        update(requestedSessionId, {
+          sessionUpdate: "tool_call_update",
+          toolCallId,
+          status: "completed",
+          rawOutput: { durationMs: 10, isBackground: false },
+        });
+        return { stopReason: "end_turn" };
       }
 
       if (emitGrokBackgroundTaskStarted) {

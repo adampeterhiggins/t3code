@@ -38,6 +38,8 @@ export interface CursorAcpRuntimeInput extends Omit<
   readonly cursorSettings: CursorAcpRuntimeCursorSettings | null | undefined;
   readonly environment?: NodeJS.ProcessEnv;
   readonly runtimeMode?: RuntimeMode;
+  /** Opt in to Cursor's subagent session updates (see CursorSubagents.ts). */
+  readonly subagents?: boolean;
 }
 
 export interface CursorAcpModelSelectionErrorContext {
@@ -81,7 +83,11 @@ export const makeCursorAcpRuntime = (
           input.environment,
           input.runtimeMode,
         ),
-        clientCapabilities: CURSOR_PARAMETERIZED_MODEL_PICKER_CAPABILITIES,
+        clientCapabilities: input.subagents
+          ? {
+              _meta: { ...CURSOR_PARAMETERIZED_MODEL_PICKER_CAPABILITIES._meta, subagents: true },
+            }
+          : CURSOR_PARAMETERIZED_MODEL_PICKER_CAPABILITIES,
       }).pipe(
         Layer.provide(
           Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, input.childProcessSpawner),

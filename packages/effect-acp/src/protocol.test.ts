@@ -170,6 +170,52 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
     }),
   );
 
+  it.effect("delivers agent-defined session/update kinds as extension notifications", () =>
+    Effect.gen(function* () {
+      const { stdio, input } = yield* makeInMemoryStdio();
+      const transport = yield* AcpProtocol.makeAcpPatchedProtocol({
+        stdio,
+        serverRequestMethods: new Set(),
+      });
+      const notifications =
+        yield* Deferred.make<ReadonlyArray<AcpProtocol.AcpIncomingNotification>>();
+      yield* transport.incoming.pipe(
+        Stream.take(2),
+        Stream.runCollect,
+        Effect.flatMap((chunk) => Deferred.succeed(notifications, chunk)),
+        Effect.forkScoped,
+      );
+
+      const spawned = {
+        sessionId: "session-1",
+        update: { sessionUpdate: "subagent_spawned", subagentSessionId: "child-1", task: "Read" },
+      };
+      yield* Queue.offer(
+        input,
+        encoder.encode(
+          `${encodeUnknownJsonString({ jsonrpc: "2.0", method: "session/update", params: spawned })}\n`,
+        ),
+      );
+      // The connection survives and later standard updates still decode.
+      yield* Queue.offer(
+        input,
+        yield* encodeJsonl(SessionUpdateNotification, {
+          jsonrpc: "2.0",
+          method: "session/update",
+          params: { sessionId: "session-1", update: { sessionUpdate: "plan", entries: [] } },
+        }),
+      );
+
+      const [extension, update] = yield* Deferred.await(notifications);
+      assert.deepEqual(extension, {
+        _tag: "ExtNotification",
+        method: "session/update",
+        params: spawned,
+      });
+      assert.equal(update?._tag, "SessionUpdate");
+    }),
+  );
+
   it.effect("keeps invalid core notification values only in the schema cause", () =>
     Effect.gen(function* () {
       const secret = "acp-core-notification-secret-sentinel";
