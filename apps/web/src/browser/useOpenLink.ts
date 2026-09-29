@@ -3,9 +3,11 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { useCallback } from "react";
+import { type MouseEvent, useCallback } from "react";
 
 import { recordVisitForThread } from "~/browserHistoryStore";
+import { toastManager } from "~/components/ui/toast";
+import { useClientSettings } from "~/hooks/useSettings";
 import { readLocalApi } from "~/localApi";
 import { previewEnvironment } from "~/state/preview";
 import { useAtomCommand } from "~/state/use-atom-command";
@@ -64,5 +66,39 @@ export function useOpenLink(threadRef: ScopedThreadRef | null | undefined): (
       await api.shell.openExternal(url);
     },
     [openPreview, threadRef],
+  );
+}
+
+/**
+ * A click handler for host links that follows "Open links in", for anchors and buttons alike.
+ * A real `_blank` anchor keeps its default whenever the link goes to the system browser — the
+ * desktop shell turns it into openExternal, and a browser tab has no shell to call — so only an
+ * in-app open is intercepted. An element without an href is opened through `useOpenLink`.
+ */
+export function useLinkClickHandler(
+  threadRef: ScopedThreadRef | null | undefined,
+): (event: MouseEvent<HTMLElement>, url: string) => void {
+  const preference = useClientSettings((settings) => settings.browserLinkTarget);
+  const openLink = useOpenLink(threadRef);
+  return useCallback(
+    (event, url) => {
+      if (event.defaultPrevented) return;
+      const target = resolveLinkTarget({
+        url,
+        event,
+        preference,
+        canOpenInApp: canOpenLinksInApp(Boolean(threadRef)),
+      });
+      const isAnchor =
+        event.currentTarget instanceof HTMLAnchorElement && event.currentTarget.href.length > 0;
+      if (target === "system" && isAnchor) return;
+      event.preventDefault();
+      event.stopPropagation();
+      void openLink(url, { event }).catch((error: unknown) => {
+        console.error(error);
+        toastManager.add({ type: "error", title: "Unable to open link" });
+      });
+    },
+    [openLink, preference, threadRef],
   );
 }

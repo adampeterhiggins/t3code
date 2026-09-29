@@ -7,7 +7,7 @@
  * both themes) and the single `animate-skeleton` pulse, applied once on the container so any
  * number of bars costs one opacity animation.
  */
-import type { PullRequestListEntry, PullRequestSummary } from "@t3tools/contracts";
+import type { PullRequestListEntry, PullRequestSummary, ScopedThreadRef } from "@t3tools/contracts";
 import {
   ArrowLeftIcon,
   ChevronRightIcon,
@@ -21,7 +21,6 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { readLocalApi } from "~/localApi";
 import { cn } from "~/lib/utils";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 
@@ -29,6 +28,7 @@ import { Button, InlineButton } from "../ui/button";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { MiddleTruncate } from "../ui/middle-truncate";
 import { PullRequestCopyableCode } from "./PullRequestCopyableCode";
+import { usePullRequestLinkClick } from "./PullRequestMarkdownContext";
 import {
   PullRequestActorLabel,
   PullRequestDiffStat,
@@ -105,6 +105,7 @@ export function PullRequestDetailGhost({
   onBack,
   onClose,
   onCheckoutError,
+  threadRef,
 }: {
   seed?: PullRequestListEntry | null;
   summary?: PullRequestSummary | null;
@@ -117,7 +118,10 @@ export function PullRequestDetailGhost({
   onBack?: (() => void) | undefined;
   onClose?: (() => void) | undefined;
   onCheckoutError?: ((error: Error) => void) | undefined;
+  /** Thread the host link can open beside, as on the detail this stands in for. */
+  threadRef?: ScopedThreadRef | null;
 }) {
+  const onLinkClick = usePullRequestLinkClick(threadRef);
   const seed = summary
     ? {
         ...entry,
@@ -168,7 +172,7 @@ export function PullRequestDetailGhost({
               <>
                 <span className="min-w-0 truncate font-medium">{seed.repository}</span>
                 <InlineButton
-                  onClick={() => void readLocalApi()?.shell.openExternal(seed.url)}
+                  onClick={(event) => onLinkClick(event, seed.url)}
                   aria-label={`Open pull request #${seed.number} on host`}
                 >
                   <span className={statePresentation?.toneClassName}>#{seed.number}</span>

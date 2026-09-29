@@ -2,21 +2,18 @@ import { ExternalLinkIcon, PaperclipIcon } from "lucide-react";
 import { markdownImageSourceFragment } from "@t3tools/client-runtime/markdown-images";
 import { githubMediaFetchUrl } from "@t3tools/shared/githubMedia";
 import type { AssetResource, EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import { createContext, useContext, useMemo } from "react";
+import { useContext, useMemo } from "react";
 import type { Options as ReactMarkdownOptions } from "react-markdown";
 
+import { useLinkClickHandler } from "~/browser/useOpenLink";
 import { useAssetUrlRefresh, useAssetUrlState } from "~/assets/assetUrls";
 import { cn } from "~/lib/utils";
 import { PULL_REQUESTS_PANEL_REF } from "~/rightPanelStore";
 
 import ChatMarkdown from "../ChatMarkdown";
 import { MediaVideoPlayer } from "../media/MediaVideoPlayer";
+import { PullRequestMarkdownContext } from "./PullRequestMarkdownContext";
 import { remarkPullRequestAutolinks, splitPullRequestBody } from "./pullRequestMarkdown.logic";
-
-export const PullRequestMarkdownContext = createContext<{
-  repositoryUrl: string | null;
-  threadRef: ScopedThreadRef | null;
-} | null>(null);
 
 /**
  * A video GitHub hosts for the repository. It plays through a signed asset URL the server
@@ -77,6 +74,7 @@ export function PullRequestMarkdown({
   const context = useContext(PullRequestMarkdownContext);
   const repositoryUrl = context?.repositoryUrl;
   const resolvedThreadRef = threadRef ?? context?.threadRef ?? undefined;
+  const onLinkClick = useLinkClickHandler(resolvedThreadRef);
   const extraRemarkPlugins = useMemo<NonNullable<ReactMarkdownOptions["remarkPlugins"]>>(
     () => (repositoryUrl ? [[remarkPullRequestAutolinks, { repositoryUrl }]] : []),
     [repositoryUrl],
@@ -132,11 +130,13 @@ export function PullRequestMarkdown({
           // A plain anchor rather than the page's openExternal button: the desktop window
           // turns a blocked _blank into openExternal itself, and in a browser tab — where
           // there is no shell to call — this is the only one of the two that goes anywhere.
+          // The click is only intercepted when "Open links in" asks for the in-app browser.
           <a
             key={segment.id}
             href={segment.url}
             rel="noreferrer noopener"
             target="_blank"
+            onClick={(event) => onLinkClick(event, segment.url)}
             className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-sm hover:bg-muted/60"
           >
             <PaperclipIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />

@@ -64,6 +64,7 @@ import {
 } from "~/keybindings";
 import { primaryServerKeybindingsAtom } from "~/state/server";
 import { useClientSettings } from "~/hooks/useSettings";
+import { useLinkClickHandler, useOpenLink } from "~/browser/useOpenLink";
 import {
   deriveLogicalProjectKeyFromSettings,
   derivePhysicalProjectKey,
@@ -72,7 +73,6 @@ import {
 import { changeRequestRepositoryUrl, gitHubPullRequestBrowserUrl } from "~/lib/openPullRequestLink";
 import { usePreparePullRequestThreadAction } from "~/lib/sourceControlActions";
 import { cn } from "~/lib/utils";
-import { readLocalApi } from "~/localApi";
 import type { ReviewCommentContext } from "~/reviewCommentContext";
 import { buildPhysicalToLogicalProjectKeyMap } from "~/sidebarProjectGrouping";
 import { useProjects, useServerConfigs } from "~/state/entities";
@@ -129,7 +129,7 @@ import { DiffPanelLoadingState } from "../DiffPanelShell";
 import { PullRequestsUnavailableState } from "./PullRequestsUnavailableState";
 import type { PullRequestAgentSelectionInput } from "./PullRequestCodeTab";
 import { openOnHostLabel, showPullRequestLinkContextMenu } from "./pullRequestLinkContextMenu";
-import { PullRequestMarkdownContext } from "./PullRequestMarkdown";
+import { PullRequestMarkdownContext } from "./PullRequestMarkdownContext";
 import { PullRequestComposer } from "./PullRequestComposer";
 import { PullRequestSummaryTab } from "./PullRequestSummaryTab";
 import { PullRequestTimelineTab } from "./PullRequestTimelineTab";
@@ -320,12 +320,14 @@ function ActOnEnvironmentPicker({
 const openNumberContextMenu = (
   event: ReactMouseEvent,
   detail: { readonly url: string; readonly provider: string },
+  openLink: (url: string) => Promise<void>,
 ): void => {
   event.preventDefault();
   event.stopPropagation();
   void showPullRequestLinkContextMenu({
     url: detail.url,
     openLabel: openOnHostLabel(detail.provider),
+    openLink,
     position: { x: event.clientX, y: event.clientY },
   });
 };
@@ -748,6 +750,8 @@ export function PullRequestDetailPanel({
     () => ({ repositoryUrl: detail?.provider === "github" ? repositoryUrl : null, threadRef }),
     [detail?.provider, repositoryUrl, threadRef],
   );
+  const onLinkClick = useLinkClickHandler(threadRef);
+  const openLink = useOpenLink(threadRef);
   const authorProfileUrl =
     detail?.provider === "github" &&
     detail.author !== null &&
@@ -1628,6 +1632,7 @@ export function PullRequestDetailPanel({
       <PullRequestDetailGhost
         seed={matchingListEntry}
         summary={sharedSummary}
+        threadRef={threadRef}
         checkoutCommand={checkoutCommand}
         onCheckoutError={onCheckoutCommandError}
         number={reference.number}
@@ -1706,7 +1711,7 @@ export function PullRequestDetailPanel({
                       repositoryUrl ? (
                         <button
                           type="button"
-                          onClick={() => void readLocalApi()?.shell.openExternal(repositoryUrl)}
+                          onClick={(event) => onLinkClick(event, repositoryUrl)}
                           className="min-w-0 cursor-pointer truncate text-left font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
                         >
                           {detail.repository}
@@ -1727,8 +1732,8 @@ export function PullRequestDetailPanel({
                     render={
                       <button
                         type="button"
-                        onClick={() => void readLocalApi()?.shell.openExternal(detail.url)}
-                        onContextMenu={(event) => openNumberContextMenu(event, detail)}
+                        onClick={(event) => onLinkClick(event, detail.url)}
+                        onContextMenu={(event) => openNumberContextMenu(event, detail, openLink)}
                         className={cn(
                           "inline-flex shrink-0 cursor-pointer items-center gap-0.5 font-medium underline-offset-2 hover:underline",
                           statePresentation.toneClassName,
@@ -1782,8 +1787,8 @@ export function PullRequestDetailPanel({
                       <button
                         type="button"
                         tabIndex={condensed ? 0 : -1}
-                        onClick={() => void readLocalApi()?.shell.openExternal(detail.url)}
-                        onContextMenu={(event) => openNumberContextMenu(event, detail)}
+                        onClick={(event) => onLinkClick(event, detail.url)}
+                        onContextMenu={(event) => openNumberContextMenu(event, detail, openLink)}
                         className={cn(
                           "inline-flex shrink-0 cursor-pointer items-center gap-0.5 font-medium underline-offset-2 hover:underline",
                           statePresentation.toneClassName,
@@ -2163,7 +2168,7 @@ export function PullRequestDetailPanel({
                       ) : null}
                     </>
                   ) : null}
-                  <MenuItem onClick={() => void readLocalApi()?.shell.openExternal(detail.url)}>
+                  <MenuItem onClick={(event) => onLinkClick(event, detail.url)}>
                     <ArrowUpRightIcon className="size-3.5" />
                     {openOnHostLabel(detail.provider)}
                   </MenuItem>
@@ -2254,6 +2259,7 @@ export function PullRequestDetailPanel({
                     <PullRequestActorLabel
                       actor={detail.author}
                       profileUrl={authorProfileUrl}
+                      threadRef={threadRef}
                       variant="avatar"
                       className="shrink-0"
                     />
@@ -2430,7 +2436,11 @@ export function PullRequestDetailPanel({
                 )}
                 <div className="mt-2 flex min-h-5 min-w-0 items-center gap-2 text-xs text-muted-foreground">
                   <PullRequestMetaLine className="min-w-0 whitespace-nowrap">
-                    <PullRequestActorLabel actor={detail.author} profileUrl={authorProfileUrl} />
+                    <PullRequestActorLabel
+                      actor={detail.author}
+                      profileUrl={authorProfileUrl}
+                      threadRef={threadRef}
+                    />
                     <span>updated {formatRelativeTimeLabel(detail.updatedAt)}</span>
                   </PullRequestMetaLine>
                   {checkoutCommand ? (
@@ -2715,6 +2725,7 @@ export function PullRequestDetailPanel({
             error={detailQuery.error}
             refreshing={detailQuery.isPending}
             onRetry={refreshDetail}
+            threadRef={threadRef}
             {...(unavailableGitHubUrl ? { gitHubUrl: unavailableGitHubUrl } : {})}
           />
         ) : detail ? (

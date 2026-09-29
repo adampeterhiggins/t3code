@@ -92,11 +92,15 @@ vi.mock("../ui/alert-dialog", () => ({
   AlertDialogFooter: Wrapper,
   AlertDialogClose: Wrapper,
 }));
-vi.mock("./PullRequestMarkdown", () => ({
+vi.mock("./PullRequestMarkdown", () => ({ PullRequestMarkdown: () => null }));
+vi.mock("./PullRequestMarkdownContext", () => ({
   PullRequestMarkdownContext: Wrapper,
-  PullRequestMarkdown: () => null,
+  usePullRequestLinkClick: () => vi.fn(),
 }));
-vi.mock("~/browser/useOpenLink", () => ({ useOpenLink: () => vi.fn() }));
+vi.mock("~/browser/useOpenLink", () => ({
+  useOpenLink: () => vi.fn(),
+  useLinkClickHandler: () => vi.fn(),
+}));
 vi.mock("./PullRequestThreadLinks", () => ({ PullRequestThreadLinks: () => null }));
 vi.mock("./PullRequestSummaryTab", () => ({
   PullRequestSummaryTab: ({

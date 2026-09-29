@@ -15,8 +15,8 @@ import {
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
+import { useOpenLink } from "~/browser/useOpenLink";
 import { cn } from "~/lib/utils";
-import { readLocalApi } from "~/localApi";
 import { pullRequestEnvironment } from "~/state/pullRequests";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
@@ -572,8 +572,12 @@ export function PullRequestTimelineTab({
   );
   const orderedEvents = order === "newest" ? events : events.toReversed();
   const rows = groupPullRequestTimelineConversations(orderedEvents);
+  const openLink = useOpenLink(threadRef);
   const openOnHost = (url: string) => {
-    void readLocalApi()?.shell.openExternal(url);
+    void openLink(url).catch((error: unknown) => {
+      console.error(error);
+      toastManager.add({ type: "error", title: "Unable to open link" });
+    });
   };
 
   return (

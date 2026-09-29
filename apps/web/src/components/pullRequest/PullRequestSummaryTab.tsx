@@ -57,6 +57,7 @@ import { PullRequestCommentBody } from "./PullRequestCommentBody";
 import { PullRequestMarkdownEditor } from "./PullRequestMarkdownEditor";
 import { PullRequestReactionBar } from "./PullRequestReactions";
 import { PullRequestConversationGhost } from "./PullRequestGhosts";
+import { usePullRequestLinkClick } from "./PullRequestMarkdownContext";
 import { sectionCollapseAnchorScrollTop } from "./pullRequestSummaryScroll.logic";
 
 /** One reviewer, however a host happens to have cased their login this time. */
@@ -71,7 +72,9 @@ function CommentIdentity({
   comment: PullRequestComment;
   detail: PullRequestDetailView;
 }) {
+  const onLinkClick = usePullRequestLinkClick();
   const actor = comment.author;
+  const commentUrl = comment.url;
   const profileUrl =
     detail.provider === "github" && actor && !actor.login.endsWith("[bot]")
       ? new URL(`/${encodeURIComponent(actor.login)}`, detail.url).toString()
@@ -82,11 +85,12 @@ function CommentIdentity({
       <Tooltip>
         <TooltipTrigger
           render={
-            comment.url ? (
+            commentUrl ? (
               <a
-                href={comment.url}
+                href={commentUrl}
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={(event) => onLinkClick(event, commentUrl)}
                 className="text-muted-foreground hover:text-foreground hover:underline"
               />
             ) : (

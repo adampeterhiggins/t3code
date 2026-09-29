@@ -115,7 +115,6 @@ import { resolvePathLinkTarget } from "~/terminal-links";
 import { type DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { getSourceControlPresentation } from "~/sourceControlPresentation";
 import { useOpenLink } from "~/browser/useOpenLink";
-import { readLocalApi } from "~/localApi";
 import { useOpenPrLink } from "~/lib/openPullRequestLink";
 import { useClientSettings } from "~/hooks/useSettings";
 
@@ -1230,11 +1229,7 @@ export default function GitActionsControl({
   const openPrUrl = gitStatusForActions?.pr?.state === "open" ? gitStatusForActions.pr.url : null;
   const openPrInBrowser = useCallback(() => {
     if (!openPrUrl) return;
-    void (async () => {
-      const api = readLocalApi();
-      if (!api) throw new Error("Link opening is unavailable.");
-      await api.shell.openExternal(openPrUrl);
-    })().catch((err: unknown) => {
+    void openLink(openPrUrl).catch((err: unknown) => {
       console.error(err);
       toastManager.add(
         stackedThreadToast({
@@ -1245,7 +1240,7 @@ export default function GitActionsControl({
         }),
       );
     });
-  }, [openPrUrl, threadToastData]);
+  }, [openLink, openPrUrl, threadToastData]);
 
   runGitActionWithToast = useEffectEvent(
     async ({
