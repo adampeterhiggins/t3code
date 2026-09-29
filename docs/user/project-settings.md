@@ -67,6 +67,25 @@ Worktree branches are renamed after the first message, under `t3code/` by defaul
 to get bare branch names. Until the rename, a new worktree briefly sits on a `t3code/<id>`
 placeholder branch.
 
+## Repositories set up for Conductor
+
+Repositories configured for [Conductor](https://conductor.build) work without a `t3.json`. When
+T3 Code creates a worktree for a new thread, it reads `.conductor/settings.toml` (and your
+uncommitted `.conductor/settings.local.toml`, or a legacy `conductor.json`) from the project
+checkout and:
+
+- copies gitignored files matching `.worktreeinclude`, or `file_include_globs`, from the project
+  checkout into the worktree. With neither, it copies `.env*` files, as Conductor does.
+  `.worktreeinclude` is honored even without Conductor settings.
+- runs `scripts.setup` as the setup script, unless the project has its own setup action, which
+  wins.
+- runs `scripts.archive` before the worktree is removed.
+
+These scripts can read `CONDUCTOR_ROOT_PATH`, `CONDUCTOR_WORKSPACE_PATH`,
+`CONDUCTOR_WORKSPACE_NAME`, `CONDUCTOR_DEFAULT_BRANCH`, and `CONDUCTOR_PORT`, the first of ten
+ports reserved for that worktree, plus any `environment_variables` from the settings. Run scripts
+from Conductor settings are not shown in T3 Code yet.
+
 ## Storage cleanup
 
 Open **Settings → Storage** to enable automatic cleanup on one machine or all connected

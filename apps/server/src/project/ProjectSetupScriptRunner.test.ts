@@ -9,6 +9,7 @@ import * as Schema from "effect/Schema";
 import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as TerminalManager from "../terminal/Manager.ts";
+import * as ConductorWorkspace from "./ConductorWorkspace.ts";
 import * as ProjectSetupScriptRunner from "./ProjectSetupScriptRunner.ts";
 
 const isProjectSetupScriptOperationError = Schema.is(
@@ -78,11 +79,13 @@ const testLayer = (
   project: OrchestrationProject,
   terminal: TerminalOverrides,
   settings = ServerSettings.layerTest(),
+  conductor = ConductorWorkspace.layerNoop,
 ) =>
   ProjectSetupScriptRunner.layer.pipe(
     Layer.provideMerge(makeProjectionSnapshotQueryLayer(project)),
     Layer.provideMerge(makeTerminalManagerLayer(terminal)),
     Layer.provide(settings),
+    Layer.provide(conductor),
   );
 
 describe("ProjectSetupScriptRunner", () => {
@@ -166,6 +169,99 @@ describe("ProjectSetupScriptRunner", () => {
       expect(open).not.toHaveBeenCalled();
       expect(write).not.toHaveBeenCalled();
     }).pipe(Effect.provide(testLayer(project, { open, write })));
+  });
+
+  describe("with Conductor settings", () => {
+    const conductor = Layer.succeed(ConductorWorkspace.ConductorWorkspace, {
+      prepareWorktree: () =>
+        Effect.succeed({ setupScript: "./scripts/setup.sh", env: { CONDUCTOR_PORT: "30010" } }),
+      archiveWorktree: () => Effect.void,
+    });
+    const openTerminal = () =>
+      vi.fn((input: { terminalId: string }) =>
+        Effect.succeed({
+          threadId: "thread-1",
+          terminalId: input.terminalId,
+          cwd: "/repo/worktrees/a",
+          worktreePath: "/repo/worktrees/a",
+          status: "running" as const,
+          pid: 123,
+          history: "",
+          exitCode: null,
+          exitSignal: null,
+          label: input.terminalId,
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        }),
+      );
+
+    it.effect("runs the Conductor setup script when T3 has none", () => {
+      const open = openTerminal();
+      const write = vi.fn(() => Effect.void);
+      return Effect.gen(function* () {
+        const runner = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
+        const result = yield* runner.runForThread({
+          threadId: "thread-1",
+          projectId: "project-1",
+          worktreePath: "/repo/worktrees/a",
+        });
+        expect(result).toMatchObject({
+          status: "started",
+          scriptId: "conductor-setup",
+          async: true,
+        });
+        expect(open).toHaveBeenCalledWith(
+          expect.objectContaining({
+            env: expect.objectContaining({ CONDUCTOR_PORT: "30010" }),
+          }),
+        );
+        expect(write).toHaveBeenCalledWith(
+          expect.objectContaining({ data: "./scripts/setup.sh\r" }),
+        );
+      }).pipe(
+        Effect.provide(
+          testLayer(makeProject([]), { open, write }, ServerSettings.layerTest(), conductor),
+        ),
+      );
+    });
+
+    it.effect("prefers a setup action configured in T3", () => {
+      const open = openTerminal();
+      const write = vi.fn(() => Effect.void);
+      return Effect.gen(function* () {
+        const runner = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
+        const result = yield* runner.runForThread({
+          threadId: "thread-1",
+          projectId: "project-1",
+          worktreePath: "/repo/worktrees/a",
+        });
+        expect(result).toMatchObject({ status: "started", scriptId: "setup" });
+        expect(open).toHaveBeenCalledWith(
+          expect.objectContaining({
+            env: expect.objectContaining({ CONDUCTOR_PORT: "30010" }),
+          }),
+        );
+        expect(write).toHaveBeenCalledWith(expect.objectContaining({ data: "npm install\r" }));
+      }).pipe(
+        Effect.provide(
+          testLayer(
+            makeProject([]),
+            { open, write },
+            ServerSettings.layerTest({
+              defaultProjectScripts: [
+                {
+                  id: "setup",
+                  name: "Setup",
+                  command: "npm install",
+                  icon: "configure",
+                  runOnWorktreeCreate: true,
+                },
+              ],
+            }),
+            conductor,
+          ),
+        ),
+      );
+    });
   });
 
   it.effect(

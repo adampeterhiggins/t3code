@@ -7,6 +7,7 @@ import * as Option from "effect/Option";
 import { VcsRepositoryDetectionError } from "@t3tools/contracts";
 
 import * as GitManager from "./GitManager.ts";
+import * as ConductorWorkspace from "../project/ConductorWorkspace.ts";
 import * as GitWorkflowService from "./GitWorkflowService.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
@@ -21,6 +22,7 @@ function makeLayer(input: {
       }),
     ),
     Layer.provide(Layer.mock(GitVcsDriver.GitVcsDriver)({})),
+    Layer.provide(ConductorWorkspace.layerNoop),
     Layer.provide(Layer.mock(GitManager.GitManager)({})),
   );
 }
@@ -124,6 +126,7 @@ describe("GitWorkflowService", () => {
         }),
       ),
       Layer.provide(Layer.mock(GitVcsDriver.GitVcsDriver)({})),
+      Layer.provide(ConductorWorkspace.layerNoop),
       Layer.provide(
         Layer.mock(GitManager.GitManager)({
           localStatus,

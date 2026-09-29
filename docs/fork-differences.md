@@ -171,6 +171,19 @@ resource-telemetry stream only while it is open.
 Code: `apps/web/src/components/sidebar/SidebarResourcePill.tsx` and `readUsage` in
 `apps/server/src/resourceTelemetry/ResourceTelemetry.ts`.
 
+## Conductor workspace settings
+
+New worktrees honor a repository's Conductor (`conductor.build`) settings from the project
+checkout: gitignored Files to copy (`.worktreeinclude`, `file_include_globs`, default `.env*`),
+`scripts.setup` as the setup script when the project has no setup action of its own, and
+`scripts.archive` before a worktree is removed. Scripts get Conductor's `CONDUCTOR_*` variables and
+`environment_variables`; `CONDUCTOR_PORT` is derived from the worktree path. Conductor run scripts
+are not supported yet. This runs on the server, so every client gets it.
+
+Code: `apps/server/src/project/ConductorWorkspace.ts`, called from
+`ProjectSetupScriptRunner.ts` and `GitWorkflowService.removeWorktree`. User guide:
+[project-settings.md](./user/project-settings.md#repositories-set-up-for-conductor).
+
 ## Desktop mock-update loop
 
 A `Makefile` at the repository root drives a local auto-update test loop for the desktop app:
