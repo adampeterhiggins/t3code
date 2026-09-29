@@ -6703,6 +6703,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     isLoading={isComposerMenuLoading}
                     triggerKind={composerTriggerKind}
                     emptyStateText={composerMenuEmptyState}
+                    environmentId={environmentId}
                     {...(showLinearIssues ? { loadingText: "Searching Linear issues..." } : {})}
                     {...(linearIssueMenu.enabled && composerTrigger?.kind === "pull-request"
                       ? {

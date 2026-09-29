@@ -52,6 +52,12 @@ export function createLinearEnvironmentAtoms<R, E>(
       tag: WS_METHODS.linearGetFilterOptions,
       staleTimeMs: 5 * 60_000,
     }),
+    // One issue's full snapshot, for hover previews; cached briefly so re-hovering is instant.
+    issue: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:linear:issue",
+      tag: WS_METHODS.linearGetIssue,
+      staleTimeMs: 60_000,
+    }),
     // Fetched once when an issue is attached; the result is snapshotted into the message.
     getIssue: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:linear:get-issue",

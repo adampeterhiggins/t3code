@@ -4,6 +4,7 @@ import {
   type ProviderSkillSourceKind,
 } from "@t3tools/client-runtime/providerSkills";
 import {
+  type EnvironmentId,
   type ProjectEntry,
   type ProviderDriverKind,
   type PullRequestContextMetadata,
@@ -30,6 +31,7 @@ import { Button } from "../ui/button";
 import { Command, CommandGroup, CommandItem, CommandList } from "../ui/command";
 import { PierreEntryIcon } from "./PierreEntryIcon";
 import { ComposerBanner } from "./ComposerBanner";
+import { LinearIssueHoverPreview } from "./LinearIssueHoverPreview";
 import { resolvePullRequestState } from "../pullRequest/pullRequestPresentation";
 
 export type ComposerCommandItem =
@@ -103,6 +105,8 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
     onSelect: (id: string) => void;
   };
   activeItemId: string | null;
+  /** Lets Linear issue rows fetch their hover preview. */
+  environmentId?: EnvironmentId;
   onHighlightedItemChange: (itemId: string | null) => void;
   onSelect: (item: ComposerCommandItem) => void;
 }) {
@@ -157,6 +161,7 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
                 <ComposerCommandMenuItem
                   key={item.id}
                   item={item}
+                  environmentId={props.environmentId ?? null}
                   triggerKind={props.triggerKind}
                   resolvedTheme={props.resolvedTheme}
                   isActive={props.activeItemId === item.id}
@@ -191,8 +196,37 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
   );
 });
 
+type LinearIssueCommandItem = Extract<ComposerCommandItem, { type: "linear-issue" }>;
+
+/** Fixed-width columns so identifiers, assignees, and statuses line up down the list. */
+function LinearIssueRow(props: {
+  item: LinearIssueCommandItem;
+  environmentId: EnvironmentId | null;
+}) {
+  const row = (
+    <span className="flex min-w-0 flex-1 items-center gap-2 text-xs">
+      <span className="w-20 shrink-0 truncate font-medium font-sans">{props.item.label}</span>
+      <span className="min-w-0 flex-1 truncate text-secondary-label">{props.item.description}</span>
+      <span className="w-28 shrink-0 truncate text-secondary-label">
+        {props.item.assigneeName ?? "Unassigned"}
+      </span>
+      <span className="w-24 shrink-0 truncate text-secondary-label">{props.item.stateName}</span>
+    </span>
+  );
+  return props.environmentId === null ? (
+    row
+  ) : (
+    <LinearIssueHoverPreview
+      environmentId={props.environmentId}
+      issueId={props.item.issueId}
+      trigger={row}
+    />
+  );
+}
+
 const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
   item: ComposerCommandItem;
+  environmentId: EnvironmentId | null;
   triggerKind: ComposerTriggerKind | null;
   resolvedTheme: "light" | "dark";
   isActive: boolean;
@@ -242,19 +276,7 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
         />
       ) : null}
       {props.item.type === "linear-issue" ? (
-        // Fixed-width columns so identifiers, assignees, and statuses line up down the list.
-        <span className="flex min-w-0 flex-1 items-center gap-2 text-xs">
-          <span className="w-20 shrink-0 truncate font-medium font-sans">{props.item.label}</span>
-          <span className="min-w-0 flex-1 truncate text-secondary-label">
-            {props.item.description}
-          </span>
-          <span className="w-28 shrink-0 truncate text-secondary-label">
-            {props.item.assigneeName ?? "Unassigned"}
-          </span>
-          <span className="w-24 shrink-0 truncate text-secondary-label">
-            {props.item.stateName}
-          </span>
-        </span>
+        <LinearIssueRow item={props.item} environmentId={props.environmentId} />
       ) : (
         <span className="flex min-w-0 flex-1 items-center gap-2">
           <span className="min-w-0 max-w-[45%] shrink-0 truncate font-sans text-xs font-medium">
