@@ -40,6 +40,11 @@ import {
   projectScriptRuntimeEnv,
   resolveProjectScripts,
 } from "@t3tools/shared/projectScripts";
+import {
+  conductorRunScriptLaunch,
+  conductorRunTerminalId,
+  conductorScriptIcon,
+} from "@t3tools/client-runtime/conductor-run-scripts";
 import { Alert, Platform, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useWorkspaceState } from "../../state/workspace";
@@ -77,6 +82,8 @@ import { terminalDebugLog } from "../terminal/terminalDebugLog";
 import { ThreadDetailScreen, type ThreadDetailScreenProps } from "./ThreadDetailScreen";
 import { GitOverviewSheet } from "./git/GitOverviewSheet";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { terminalEnvironment } from "../../state/terminal";
+import { useConductorSettings } from "../projects/useConductorSettings";
 import { useSelectedThreadGitActions } from "../../state/use-selected-thread-git-actions";
 import { useSelectedThreadGitState } from "../../state/use-selected-thread-git-state";
 import { useSelectedThreadRequests } from "../../state/use-selected-thread-requests";
@@ -162,7 +169,7 @@ function ThreadHeader(
         subtitle={props.subtitle}
         sidebar={native.sidebar}
         options={native.options}
-        optionsVersion={props.gitControls.projectScripts}
+        optionsVersion={[props.gitControls.projectScripts, props.gitControls.conductorScripts]}
         trailing={
           props.fileInspectorSupported && props.hasThreadCwd ? (
             <ScreenHeaderButton
@@ -804,6 +811,110 @@ function ThreadRouteContent(
       terminalMenuSessions,
     ],
   );
+  // The repository's Conductor run scripts. Each runs in its own terminal
+  // (`conductor-run-<id>`), so the menu can show it running and stop it.
+  const conductorSettings = useConductorSettings(
+    selectedThreadProject?.environmentId ?? null,
+    selectedThreadProject?.workspaceRoot ?? null,
+  );
+  const {
+    runScripts: conductorRunScripts,
+    runMode: conductorRunMode,
+    environment: conductorEnvironment,
+  } = conductorSettings.resolved;
+  const runningTerminalIds = useMemo(
+    () =>
+      new Set(
+        terminalMenuSessions
+          .filter((session) => session.hasRunningSubprocess)
+          .map((session) => session.terminalId),
+      ),
+    [terminalMenuSessions],
+  );
+  const conductorScriptItems = useMemo(
+    () =>
+      conductorRunScripts.map((script) => ({
+        id: script.id,
+        name: script.name,
+        command: script.command,
+        icon: conductorScriptIcon(script.icon),
+        running: runningTerminalIds.has(conductorRunTerminalId(script.id)),
+      })),
+    [conductorRunScripts, runningTerminalIds],
+  );
+  const closeTerminal = useAtomCommand(terminalEnvironment.close, "terminal close");
+  const stopConductorTerminal = useCallback(
+    (terminalId: string) => {
+      if (!selectedThread) return;
+      void closeTerminal({
+        environmentId: selectedThread.environmentId,
+        input: { threadId: selectedThread.id, terminalId, deleteHistory: true },
+      });
+    },
+    [closeTerminal, selectedThread],
+  );
+  const handleToggleConductorScript = useCallback(
+    (scriptId: string) => {
+      const script = conductorRunScripts.find((candidate) => candidate.id === scriptId);
+      if (!script || !selectedThread || !selectedThreadProject?.workspaceRoot) return;
+      const terminalId = conductorRunTerminalId(script.id);
+      if (runningTerminalIds.has(terminalId)) {
+        stopConductorTerminal(terminalId);
+        return;
+      }
+      if (conductorRunMode === "nonconcurrent") {
+        for (const other of conductorRunScripts) {
+          const otherTerminalId = conductorRunTerminalId(other.id);
+          if (runningTerminalIds.has(otherTerminalId)) stopConductorTerminal(otherTerminalId);
+        }
+      }
+      const worktreePath = resolvePreferredThreadWorktreePath({
+        threadShellWorktreePath: selectedThread.worktreePath ?? null,
+        threadDetailWorktreePath: selectedThreadDetailWorktreePath,
+      });
+      const launch = conductorRunScriptLaunch({
+        script,
+        projectRoot: selectedThreadProject.workspaceRoot,
+        worktreePath,
+        environment: conductorEnvironment,
+      });
+      stagePendingTerminalLaunch({
+        target: {
+          environmentId: selectedThread.environmentId,
+          threadId: selectedThread.id,
+          terminalId,
+        },
+        launch: {
+          cwd: launch.cwd,
+          worktreePath,
+          env: {
+            ...projectScriptRuntimeEnv({
+              project: { cwd: selectedThreadProject.workspaceRoot },
+              worktreePath,
+            }),
+            ...launch.env,
+          },
+          initialInput: `${launch.command}\r`,
+        },
+      });
+      void navigation.navigate("ThreadTerminal", {
+        environmentId: String(selectedThread.environmentId),
+        threadId: String(selectedThread.id),
+        terminalId,
+      });
+    },
+    [
+      conductorEnvironment,
+      conductorRunMode,
+      conductorRunScripts,
+      navigation,
+      runningTerminalIds,
+      selectedThread,
+      selectedThreadDetailWorktreePath,
+      selectedThreadProject,
+      stopConductorTerminal,
+    ],
+  );
   const threadGitControlProps = {
     environmentId: environmentIdRaw ?? "",
     threadId: threadId ?? "",
@@ -828,6 +939,8 @@ function ThreadRouteContent(
           selectedThreadProject,
         )
       : [],
+    conductorScripts: conductorScriptItems,
+    onToggleConductorScript: handleToggleConductorScript,
     terminalSessions: terminalMenuSessions,
     showDirectFileControl: layout.usesSplitView,
     onOpenTerminal: handleOpenTerminal,

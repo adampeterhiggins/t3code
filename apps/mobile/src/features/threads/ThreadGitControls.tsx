@@ -19,9 +19,12 @@ import { Alert } from "react-native";
 import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
 import {
   basename,
+  conductorScriptMenuIcon,
+  conductorScriptMenuLabel,
   getTerminalStatusLabel,
   projectScriptMenuIcon,
   projectScriptMenuLabel,
+  type ConductorScriptMenuItem,
   type TerminalMenuSession,
 } from "../terminal/terminalMenu";
 
@@ -100,12 +103,16 @@ type ThreadGitControlsProps = ThreadGitMenuProps & {
   readonly canOpenTerminal: boolean;
   readonly canOpenFiles: boolean;
   readonly projectScripts: ReadonlyArray<ProjectScript>;
+  /** Run scripts from the repository's Conductor settings. */
+  readonly conductorScripts: ReadonlyArray<ConductorScriptMenuItem>;
   readonly terminalSessions: ReadonlyArray<TerminalMenuSession>;
   readonly showActionControls?: boolean;
   readonly showDirectFileControl?: boolean;
   readonly onOpenTerminal: (terminalId?: string | null) => void;
   readonly onOpenNewTerminal: () => void;
   readonly onRunProjectScript: (script: ProjectScript) => Promise<void>;
+  /** Runs the Conductor script, or stops it when it is running. */
+  readonly onToggleConductorScript: (scriptId: string) => void;
 };
 
 function useThreadGitControlModel(props: ThreadGitMenuProps) {
@@ -268,7 +275,14 @@ function useThreadGitHeaderActionItems(props: ThreadGitControlsProps): ThreadGit
               onPress: () => void props.onRunProjectScript(script),
               type: "action" as const,
             })),
-            ...(props.projectScripts.length === 0
+            ...props.conductorScripts.map((script) => ({
+              description: script.command,
+              icon: { name: conductorScriptMenuIcon(script), type: "sfSymbol" as const },
+              label: conductorScriptMenuLabel(script),
+              onPress: () => props.onToggleConductorScript(script.id),
+              type: "action" as const,
+            })),
+            ...(props.projectScripts.length === 0 && props.conductorScripts.length === 0
               ? [
                   {
                     description: "This project has no saved scripts yet",
@@ -387,6 +401,8 @@ function useThreadGitHeaderActionItems(props: ThreadGitControlsProps): ThreadGit
       props.onOpenTerminal,
       props.onRunProjectScript,
       props.projectScripts,
+      props.conductorScripts,
+      props.onToggleConductorScript,
       props.terminalSessions,
     ],
   );
@@ -433,7 +449,19 @@ export function ThreadGitControls(props: ThreadGitControlsProps) {
           disabled={!props.canOpenTerminal}
           separateBackground
         >
-          {props.projectScripts.length > 0 ? (
+          {props.conductorScripts.map((script) => (
+            <NativeHeaderToolbar.MenuAction
+              key={`conductor:${script.id}`}
+              icon={conductorScriptMenuIcon(script)}
+              onPress={() => props.onToggleConductorScript(script.id)}
+              subtitle={script.command}
+            >
+              <NativeHeaderToolbar.Label>
+                {conductorScriptMenuLabel(script)}
+              </NativeHeaderToolbar.Label>
+            </NativeHeaderToolbar.MenuAction>
+          ))}
+          {props.projectScripts.length > 0 || props.conductorScripts.length > 0 ? (
             props.projectScripts.map((script) => (
               <NativeHeaderToolbar.MenuAction
                 key={script.id}

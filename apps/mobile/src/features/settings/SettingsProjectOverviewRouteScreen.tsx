@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { projectEnvironment } from "../../state/projects";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { SettingsScreen } from "./components/SettingsScreen";
+import { SettingsConductorSection } from "./components/SettingsConductorSection";
 import { SettingsSection } from "./components/SettingsSection";
 import {
   AndroidSettingsEnvironmentFilter,
@@ -138,6 +139,13 @@ function ProjectOverviewContent(props: {
           </View>
         </View>
       </SettingsSection>
+
+      <SettingsConductorSection
+        project={representative}
+        environment={props.environments.find(
+          (entry) => entry.environmentId === representative.environmentId,
+        )}
+      />
 
       <SettingsSection title="Checkouts">
         {props.members.map((member, index) => {

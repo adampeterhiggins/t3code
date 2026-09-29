@@ -166,3 +166,20 @@ export function projectScriptMenuIcon(icon: ProjectScript["icon"]) {
   if (icon === "debug") return "ladybug";
   return "play";
 }
+
+/** A Conductor run script in the terminal menu; pressing it runs or stops it. */
+export interface ConductorScriptMenuItem {
+  readonly id: string;
+  readonly name: string;
+  readonly command: string;
+  readonly icon: ProjectScript["icon"];
+  readonly running: boolean;
+}
+
+export function conductorScriptMenuLabel(script: ConductorScriptMenuItem): string {
+  return script.running ? `Stop ${script.name}` : script.name;
+}
+
+export function conductorScriptMenuIcon(script: ConductorScriptMenuItem) {
+  return script.running ? "stop.fill" : projectScriptMenuIcon(script.icon);
+}

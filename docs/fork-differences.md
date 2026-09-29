@@ -214,16 +214,20 @@ checkout: gitignored Files to copy (`.worktreeinclude`, `file_include_globs`, de
 Conductor's `CONDUCTOR_*` variables and `environment_variables`; `CONDUCTOR_PORT` is derived from
 the worktree path. This runs on the server, so every client gets it.
 
-On web and desktop, run scripts (`scripts.run`) show in the chat header's actions menu, and the
-default one is the header's Run button when the project has no actions of its own. Each runs in its
-own terminal and toggles to Stop while running; `run_mode = "nonconcurrent"` applies within a
-thread. The project's **Conductor** settings section edits the setup and archive scripts, Files to
-copy, and environment variables in `settings.local.toml` or `settings.toml`.
+Run scripts (`scripts.run`) show in the chat header's actions menu on web and desktop, where the
+default one is the header's Run button when the project has no actions of its own, and in the
+thread's terminal menu on mobile. Each runs in its own terminal and toggles to Stop while running;
+`run_mode = "nonconcurrent"` applies within a thread. The project's **Conductor** settings section
+(web, desktop, and mobile's project overview) edits the setup and archive scripts, Files to copy,
+and environment variables in `settings.local.toml` or `settings.toml`.
 
-Code: `packages/shared/src/conductorSettings.ts`, `apps/server/src/project/ConductorWorkspace.ts`
+Code: `packages/shared/src/conductorSettings.ts` and `conductorSettingsEditor.ts`,
+`packages/client-runtime/src/conductorRunScripts.ts`, `apps/server/src/project/ConductorWorkspace.ts`
 (called from `ProjectSetupScriptRunner.ts`, `GitWorkflowService.removeWorktree`, and
-`storageCleanup.ts`), `apps/web/src/components/settings/ConductorSettings.tsx`, and the run
-button in `apps/web/src/components/ProjectScriptsControl.tsx`. User guide:
+`storageCleanup.ts`), `apps/web/src/components/settings/ConductorSettings.tsx`, the run button in
+`apps/web/src/components/ProjectScriptsControl.tsx`, and on mobile
+`apps/mobile/src/features/settings/components/SettingsConductorSection.tsx` and the terminal menu in
+`apps/mobile/src/features/threads/ThreadGitControls.tsx`. User guide:
 [project-settings.md](./user/project-settings.md#repositories-set-up-for-conductor).
 
 ## Desktop mock-update loop

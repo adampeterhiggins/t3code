@@ -76,7 +76,6 @@ import {
   resolveProjectScripts,
 } from "@t3tools/shared/projectScripts";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
-import { conductorScriptEnv } from "@t3tools/shared/conductorSettings";
 import { sourceControlRepositorySelector } from "@t3tools/shared/sourceControl";
 import { truncate } from "@t3tools/shared/String";
 import { resolveThreadReferenceCopyTarget } from "@t3tools/shared/threadReference";
@@ -177,10 +176,10 @@ import {
 import { useTheme } from "../hooks/useTheme";
 import { useConductorSettings } from "../hooks/useConductorSettings";
 import {
+  conductorRunScriptLaunch,
   conductorRunTerminalId,
-  conductorScriptCwd,
   conductorScriptIcon,
-} from "../conductorRunScripts";
+} from "@t3tools/client-runtime/conductor-run-scripts";
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
 import { isCommandPaletteOpen } from "../commandPaletteBus";
 import { subscribeSnapShotComposerFocus } from "../lib/desktopSnapShot";
@@ -4408,25 +4407,25 @@ export default function ChatView(props: ChatViewProps) {
           }
         }
       }
-      const workspacePath = activeThreadWorktreePath ?? activeProject.workspaceRoot;
+      const launch = conductorRunScriptLaunch({
+        script,
+        projectRoot: activeProject.workspaceRoot,
+        worktreePath: activeThreadWorktreePath,
+        environment: conductorEnvironment,
+      });
       void runProjectScript(
         {
           id: `conductor-${script.id}`,
           name: script.name,
-          command: script.command,
-          icon: conductorScriptIcon(script.icon),
+          command: launch.command,
+          icon: launch.icon,
           runOnWorktreeCreate: false,
         },
         {
-          terminalId: conductorRunTerminalId(script.id),
-          cwd: conductorScriptCwd(workspacePath, script.cwd),
+          terminalId: launch.terminalId,
+          cwd: launch.cwd,
           worktreePath: activeThreadWorktreePath,
-          env: conductorScriptEnv({
-            projectRoot: activeProject.workspaceRoot,
-            worktreePath: workspacePath,
-            defaultBranch: null,
-            environment: conductorEnvironment,
-          }),
+          env: launch.env,
           rememberAsLastInvoked: false,
         },
       );
