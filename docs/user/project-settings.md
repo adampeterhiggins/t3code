@@ -90,10 +90,11 @@ Run scripts (`[scripts.run.<name>]`) appear in the chat header's actions menu un
 Conductor**. When the project has no actions of its own, the default run script becomes the header's
 **Run** button. Each run script gets its own terminal in the thread's workspace; while it is running,
 its button reads **Stop**, which ends it. With `run_mode = "nonconcurrent"`, starting one stops the
-others in the same thread. Run scripts are available on web and desktop.
+others in the same thread. On mobile, run scripts are in the thread's terminal menu, where the same
+item stops a script that is running.
 
 To change these settings without leaving T3 Code, select the project in **Settings** and scroll to
-**Conductor**. **Only me** saves to `.conductor/settings.local.toml`, which Conductor treats as
+**Conductor** (on mobile, **Settings → Project overview**). **Only me** saves to `.conductor/settings.local.toml`, which Conductor treats as
 personal overrides; **Repository** saves to `.conductor/settings.toml`, which you can commit for
 everyone. Clear a field or use its reset button to fall back to the other file. Saving rewrites the
 file without its comments.

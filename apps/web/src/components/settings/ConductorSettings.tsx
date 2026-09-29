@@ -4,17 +4,17 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import {
-  CONDUCTOR_LOCAL_SETTINGS_PATH,
-  CONDUCTOR_SETTINGS_PATH,
-  DEFAULT_CONDUCTOR_INCLUDE_PATTERNS,
-  conductorEnvironmentEntries,
-  parseConductorSettingsFile,
-  resolveConductorSettings,
   updateConductorSettingsToml,
   type ConductorSettingsPatch,
 } from "@t3tools/shared/conductorSettings";
+import {
+  conductorEditModel,
+  parseConductorEnvironmentLines,
+  type ConductorEditField,
+  type ConductorEditTarget,
+} from "@t3tools/shared/conductorSettingsEditor";
 import { setupProjectScript } from "@t3tools/shared/projectScripts";
-import { useRef, useState, type ReactNode } from "react";
+import { useRef, useState } from "react";
 
 import { useConductorSettings } from "~/hooks/useConductorSettings";
 import { projectEnvironment } from "~/state/projects";
@@ -30,18 +30,6 @@ import { toastManager } from "../ui/toast";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { SettingResetButton, SettingsRow, SettingsSection } from "./settingsLayout";
 import { useSettingsScope } from "./SettingsScopeContext";
-
-type Target = "local" | "shared";
-
-const TARGET_PATH: Record<Target, string> = {
-  local: CONDUCTOR_LOCAL_SETTINGS_PATH,
-  shared: CONDUCTOR_SETTINGS_PATH,
-};
-const TARGET_LABEL: Record<Target, string> = {
-  local: "settings.local.toml",
-  shared: "settings.toml",
-};
-const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /**
  * The project's Conductor settings (`.conductor/settings.toml` and the
@@ -75,37 +63,20 @@ function ConductorSettingsSection({
   cwd: string;
   setupActionName: string | null;
 }) {
-  const [target, setTarget] = useState<Target>("local");
+  const [target, setTarget] = useState<ConductorEditTarget>("local");
   const writeFile = useAtomCommand(projectEnvironment.writeFile, { reportFailure: false });
 
-  const { files, worktreeInclude, resolved } = useConductorSettings(environmentId, cwd);
+  const { files, worktreeInclude } = useConductorSettings(environmentId, cwd);
 
-  const targetPath = TARGET_PATH[target];
-  const targetRaw = files[targetPath as keyof typeof files];
-  const own = targetRaw === null ? {} : parseConductorSettingsFile("toml", targetRaw);
-  // What applies if the target file leaves a field unset. Local overrides are
-  // left out when editing the repository file; they get their own status.
-  const inherited = resolveConductorSettings({
-    files: {
-      ...files,
-      [targetPath]: null,
-      ...(target === "shared"
-        ? { [CONDUCTOR_LOCAL_SETTINGS_PATH]: null, ".conductor/settings.local.json": null }
-        : {}),
-    },
-    worktreeInclude: null,
-  });
-  const local =
-    target === "shared"
-      ? parseConductorSettingsFile("toml", files[CONDUCTOR_LOCAL_SETTINGS_PATH] ?? "")
-      : null;
+  const model = conductorEditModel({ files, worktreeInclude, target, setupActionName });
+  const { targetPath, targetLabel, targetRaw } = model;
 
   // Saves run one at a time, each on top of the previous one's contents, so
   // editing a second field while the first is still writing loses nothing.
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
   const save = (patch: ConductorSettingsPatch) => {
     const path = targetPath;
-    const label = TARGET_LABEL[target];
+    const label = targetLabel;
     const fallbackRaw = targetRaw;
     saveQueue.current = saveQueue.current.then(async () => {
       const currentRaw =
@@ -151,50 +122,17 @@ function ConductorSettingsSection({
     });
   };
 
-  const disabled = own === null;
-  const inheritedSource = target === "local" ? "settings.toml" : "defaults";
+  const disabled = model.targetInvalid;
 
-  /** Where a field's value comes from, as shown under its title. */
-  const fieldStatus = (input: {
-    ownValue: string | undefined;
-    inheritedValue: string | null;
-    overridden: boolean;
-    note?: ReactNode;
-  }): ReactNode => {
-    const parts: ReactNode[] = [];
-    if (input.overridden) {
-      parts.push(
-        <span key="overridden" className="text-warning">
-          Overridden on this machine by settings.local.toml.
-        </span>,
-      );
-    } else if (input.ownValue !== undefined) {
-      parts.push(
-        input.inheritedValue === null
-          ? `Set in ${TARGET_LABEL[target]}.`
-          : `Set in ${TARGET_LABEL[target]}, overriding ${inheritedSource}.`,
-      );
-    } else if (input.inheritedValue !== null) {
-      parts.push(`From ${target === "local" ? "settings.toml" : "another settings file"}.`);
-    }
-    if (input.note) parts.push(input.note);
-    return parts.length > 0 ? <span className="flex flex-col gap-0.5">{parts}</span> : null;
-  };
-
-  const resetButton = (label: string, ownValue: unknown, patch: ConductorSettingsPatch) =>
-    ownValue === undefined ? null : (
+  const resetButton = (label: string, field: ConductorEditField, patch: ConductorSettingsPatch) =>
+    field.isSet ? (
       <SettingResetButton
         label={label}
-        tooltip={`Remove from ${TARGET_LABEL[target]}`}
+        tooltip={`Remove from ${targetLabel}`}
         disabled={disabled}
         onClick={() => save(patch)}
       />
-    );
-
-  const ownEnvironment = conductorEnvironmentEntries(own?.environment_variables);
-  const inheritedEnvironmentKeys = Object.keys(resolved.environment).filter(
-    (key) => !(key in ownEnvironment),
-  );
+    ) : null;
 
   return (
     <SettingsSection id="project-conductor" title="Conductor">
@@ -222,48 +160,31 @@ function ConductorSettingsSection({
           </ToggleGroup>
         }
       />
-      {own === null ? (
+      {model.targetInvalid ? (
         <SettingsRow
           className="text-warning"
-          title={`${TARGET_LABEL[target]} is invalid`}
+          title={`${targetLabel} is invalid`}
           description="It is not valid TOML, so it is ignored and cannot be edited here. Fix it in an editor."
         />
       ) : null}
-      {resolved.invalidFiles
-        .filter((path) => path !== targetPath)
-        .map((path) => (
-          <SettingsRow
-            key={path}
-            className="text-warning"
-            title={`${path} is invalid`}
-            description="It fails to parse, so new worktrees ignore it."
-          />
-        ))}
+      {model.otherInvalidFiles.map((path) => (
+        <SettingsRow
+          key={path}
+          className="text-warning"
+          title={`${path} is invalid`}
+          description="It fails to parse, so new worktrees ignore it."
+        />
+      ))}
 
       <SettingsRow
         title="Setup script"
         description="Runs in each new worktree after it is created."
-        status={fieldStatus({
-          ownValue: own?.scripts?.setup,
-          inheritedValue: inherited.setupScript,
-          overridden: local?.scripts?.setup !== undefined,
-          ...(setupActionName && resolved.setupScript
-            ? {
-                note: (
-                  <span className="text-warning">
-                    Not used: the project's “{setupActionName}” action runs on worktree creation
-                    instead.
-                  </span>
-                ),
-              }
-            : {}),
-        })}
-        resetAction={resetButton("setup script", own?.scripts?.setup, { setup: null })}
+        status={<FieldStatus field={model.setup} />}
+        resetAction={resetButton("setup script", model.setup, { setup: null })}
       >
         <ScriptField
           ariaLabel="Setup script"
-          value={own?.scripts?.setup ?? ""}
-          placeholder={inherited.setupScript ?? "pnpm install"}
+          field={model.setup}
           disabled={disabled}
           onCommit={(next) => save({ setup: next })}
         />
@@ -272,17 +193,12 @@ function ConductorSettingsSection({
       <SettingsRow
         title="Archive script"
         description="Runs in a worktree just before T3 Code removes it."
-        status={fieldStatus({
-          ownValue: own?.scripts?.archive,
-          inheritedValue: inherited.archiveScript,
-          overridden: local?.scripts?.archive !== undefined,
-        })}
-        resetAction={resetButton("archive script", own?.scripts?.archive, { archive: null })}
+        status={<FieldStatus field={model.archive} />}
+        resetAction={resetButton("archive script", model.archive, { archive: null })}
       >
         <ScriptField
           ariaLabel="Archive script"
-          value={own?.scripts?.archive ?? ""}
-          placeholder={inherited.archiveScript ?? "docker compose down"}
+          field={model.archive}
           disabled={disabled}
           onCommit={(next) => save({ archive: next })}
         />
@@ -291,28 +207,13 @@ function ConductorSettingsSection({
       <SettingsRow
         title="Files to copy"
         description="Gitignored files matching these patterns are copied from this checkout into each new worktree. Uses .gitignore syntax, one pattern per line."
-        status={
-          worktreeInclude !== null ? (
-            <span className="text-warning">
-              This repository's .worktreeinclude takes precedence, so these patterns are not used.
-            </span>
-          ) : (
-            fieldStatus({
-              ownValue: own?.file_include_globs,
-              inheritedValue: inherited.configured ? inherited.includePatterns : null,
-              overridden: local?.file_include_globs !== undefined,
-            })
-          )
-        }
-        resetAction={resetButton("files to copy", own?.file_include_globs, {
-          fileIncludeGlobs: null,
-        })}
+        status={<FieldStatus field={model.filesToCopy} />}
+        resetAction={resetButton("files to copy", model.filesToCopy, { fileIncludeGlobs: null })}
       >
         <ScriptField
           ariaLabel="Files to copy"
-          value={worktreeInclude ?? own?.file_include_globs ?? ""}
-          placeholder={inherited.includePatterns ?? DEFAULT_CONDUCTOR_INCLUDE_PATTERNS}
-          disabled={disabled || worktreeInclude !== null}
+          field={model.filesToCopy}
+          disabled={disabled || model.filesToCopy.lockedByWorktreeInclude}
           onCommit={(next) => save({ fileIncludeGlobs: next })}
         />
       </SettingsRow>
@@ -321,29 +222,22 @@ function ConductorSettingsSection({
         title="Environment variables"
         description={
           <>
-            Passed to the setup and archive scripts, one <code>KEY=value</code> per line, alongside
-            CONDUCTOR_ROOT_PATH, CONDUCTOR_WORKSPACE_PATH, CONDUCTOR_PORT, and the other Conductor
-            variables.
+            Passed to the setup, archive, and run scripts, one <code>KEY=value</code> per line,
+            alongside CONDUCTOR_ROOT_PATH, CONDUCTOR_WORKSPACE_PATH, CONDUCTOR_PORT, and the other
+            Conductor variables.
           </>
         }
-        status={
-          inheritedEnvironmentKeys.length > 0
-            ? `Also set by other settings files: ${inheritedEnvironmentKeys.join(", ")}.`
-            : null
-        }
-        resetAction={resetButton("environment variables", own?.environment_variables, {
+        status={<FieldStatus field={model.environment} />}
+        resetAction={resetButton("environment variables", model.environment, {
           environment: null,
         })}
       >
         <ScriptField
           ariaLabel="Environment variables"
-          value={Object.entries(ownEnvironment)
-            .map(([key, value]) => `${key}=${value}`)
-            .join("\n")}
-          placeholder="API_URL=http://localhost:3000"
+          field={model.environment}
           disabled={disabled}
           onCommit={(next) => {
-            const parsed = parseEnvironmentLines(next);
+            const parsed = parseConductorEnvironmentLines(next);
             if (typeof parsed === "string") {
               toastManager.add({
                 type: "error",
@@ -360,20 +254,18 @@ function ConductorSettingsSection({
   );
 }
 
-/** `KEY=value` lines to a record, or a message naming the first bad line. */
-function parseEnvironmentLines(text: string): Record<string, string> | string {
-  const entries: Record<string, string> = {};
-  for (const line of text.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (trimmed.length === 0 || trimmed.startsWith("#")) continue;
-    const separator = trimmed.indexOf("=");
-    const key = separator === -1 ? trimmed : trimmed.slice(0, separator).trim();
-    if (separator === -1 || !ENV_KEY_PATTERN.test(key)) {
-      return `“${trimmed}” is not a KEY=value line.`;
-    }
-    entries[key] = trimmed.slice(separator + 1).trim();
-  }
-  return entries;
+/** Where a field's value comes from, as shown under its title. */
+function FieldStatus({ field }: { field: ConductorEditField }) {
+  if (field.statuses.length === 0) return null;
+  return (
+    <span className="flex flex-col gap-0.5">
+      {field.statuses.map((status) => (
+        <span key={status.text} className={status.tone === "warning" ? "text-warning" : undefined}>
+          {status.text}
+        </span>
+      ))}
+    </span>
+  );
 }
 
 /**
@@ -382,17 +274,16 @@ function parseEnvironmentLines(text: string): Record<string, string> | string {
  */
 function ScriptField({
   ariaLabel,
-  value,
-  placeholder,
+  field,
   disabled,
   onCommit,
 }: {
   ariaLabel: string;
-  value: string;
-  placeholder: string;
+  field: ConductorEditField;
   disabled: boolean;
   onCommit: (next: string) => void;
 }) {
+  const { value, placeholder } = field;
   const [draft, setDraft] = useState<string | null>(null);
   return (
     <div className="pt-2 pb-3">

@@ -131,6 +131,10 @@
       "types": "./src/projectSettings.ts",
       "import": "./src/projectSettings.ts"
     },
+    "./conductorSettingsEditor": {
+      "types": "./src/conductorSettingsEditor.ts",
+      "import": "./src/conductorSettingsEditor.ts"
+    },
     "./conductorSettings": {
       "types": "./src/conductorSettings.ts",
       "import": "./src/conductorSettings.ts"
