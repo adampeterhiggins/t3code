@@ -62,10 +62,10 @@ itself, or **Skip** to leave them for a setup script. It resolves in the same or
 workspace default: a `"worktreeSubmodules"` value in the `t3.json` of the branch being checked out
 applies when the project and environment are both on **Inherit**.
 
-Worktree branches are renamed after the first message, under `t3code/` by default. Change
-**Branch prefix** in **Settings → General** to use your own namespace, such as `adam`, or clear it
-to get bare branch names. Until the rename, a new worktree briefly sits on a `t3code/<id>`
-placeholder branch.
+New worktree branches are named from the first message before the agent starts, under `t3code/`
+by default. Change **Branch prefix** in **Settings → General** to use your own namespace, such as
+`adam`, or clear it to get bare branch names. If naming takes too long, the worktree starts on a
+`t3code/<id>` placeholder branch and is renamed shortly after.
 
 ## Repositories set up for Conductor
 

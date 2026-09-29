@@ -2,6 +2,8 @@ import {
   sameUsageLimitCommandCoverage,
   withUsageLimitsCommands,
 } from "@t3tools/shared/usageLimits";
+import { assistantCitationsToPlainText } from "@t3tools/shared/assistantCitations";
+import { isTemporaryWorktreeBranch } from "@t3tools/shared/git";
 import * as Cause from "effect/Cause";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
@@ -173,6 +175,7 @@ import * as ForgejoCli from "./sourceControl/ForgejoCli.ts";
 import * as SourceControlProviderRegistry from "./sourceControl/SourceControlProviderRegistry.ts";
 import { suggestWorktreeCleanupIgnoredNames } from "./storageCleanup.ts";
 import * as TextGeneration from "./textGeneration/TextGeneration.ts";
+import { generateWorktreeBranchName } from "./git/worktreeBranchName.ts";
 import * as GitVcsDriver from "./vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "./vcs/VcsDriverRegistry.ts";
 import * as VcsProjectConfig from "./vcs/VcsProjectConfig.ts";
@@ -184,6 +187,8 @@ const isOrchestrationDispatchCommandError = Schema.is(OrchestrationDispatchComma
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 const CONFIG_DISCOVERY_TIMEOUT = Duration.seconds(5);
+// How long worktree bootstrap waits, past checkout, for a generated branch name.
+const BOOTSTRAP_BRANCH_NAME_TIMEOUT = Duration.seconds(10);
 
 const resolveDiscoveryForConfig = <A, E, R>(
   discovery: Effect.Effect<A, E, R>,
@@ -565,6 +570,7 @@ const makeWsRpcLayer = (
         yield* Effect.context<Effect.Services<ReturnType<typeof remoteSshDeviceHosts>>>();
       const portDiscovery = yield* PortScanner.PortDiscovery;
       const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
+      const textGeneration = yield* TextGeneration.TextGeneration;
       const modelManifest = yield* ModelManifest.ModelManifest;
       const providerVersionCache = yield* ProviderMaintenance.ProviderVersionCache;
       const providerService = yield* ProviderService.ProviderService;
@@ -1047,11 +1053,11 @@ const makeWsRpcLayer = (
           return output;
         });
 
-      // Project setting > environment setting; null when neither is set so
-      // the driver reads the freshly created checkout's own t3.json (the
-      // branch being checked out may declare something the project root does
-      // not). Settings that fail to load fall through the same way.
-      const resolveBootstrapWorktreeSubmodules = Effect.fnUntraced(function* (input: {
+      // The thread's project settings, or null when they fail to load. They
+      // skip t3.json, so a null `worktreeSubmodules` lets the driver read the
+      // freshly created checkout's own t3.json (the branch being checked out
+      // may declare something the project root does not).
+      const resolveBootstrapProjectSettings = Effect.fnUntraced(function* (input: {
         readonly threadId: ThreadId;
         readonly projectId: ProjectId | null;
       }) {
@@ -1072,8 +1078,7 @@ const makeWsRpcLayer = (
                 Effect.map(Option.getOrNull),
                 Effect.orElseSucceed(() => null),
               );
-        return resolveProjectSettings(settings, resolvedProjectId, project).settings
-          .worktreeSubmodules;
+        return resolveProjectSettings(settings, resolvedProjectId, project).settings;
       });
 
       const dispatchBootstrapTurnStart = (
@@ -1334,6 +1339,39 @@ const makeWsRpcLayer = (
             let shouldPrepareWorktree = prepareWorktree
               ? yield* gitWorkflow.isRepository(prepareWorktree.projectCwd)
               : false;
+            // Name the branch from the message while the fetch and checkout
+            // run, so the agent and setup script start on the final branch
+            // instead of watching the temporary one get renamed under them.
+            const branchNameFiber =
+              prepareWorktree?.branch !== undefined &&
+              shouldPrepareWorktree &&
+              isTemporaryWorktreeBranch(prepareWorktree.branch)
+                ? yield* resolveBootstrapProjectSettings({
+                    threadId,
+                    projectId: targetProjectId ?? null,
+                  }).pipe(
+                    Effect.flatMap((settings) =>
+                      settings
+                        ? generateWorktreeBranchName(
+                            { textGeneration, providerRegistry },
+                            {
+                              cwd: prepareWorktree.projectCwd,
+                              messageText: assistantCitationsToPlainText(command.message.text),
+                              attachments: command.message.attachments,
+                              settings,
+                            },
+                          )
+                        : Effect.succeed(null),
+                    ),
+                    Effect.catchCause((cause) =>
+                      Effect.logWarning("worktree bootstrap failed to generate a branch name", {
+                        threadId,
+                        cause: Cause.pretty(cause),
+                      }).pipe(Effect.as(null)),
+                    ),
+                    Effect.forkChild,
+                  )
+                : null;
             let worktreeBaseRef = prepareWorktree?.baseBranch ?? null;
 
             if (prepareWorktree && shouldPrepareWorktree) {
@@ -1494,10 +1532,11 @@ const makeWsRpcLayer = (
               }
               yield* worktreeSetupTracker.stageStatus(threadId, "checkout", "running");
               let checkoutTotal: number | null = null;
-              const submodules = yield* resolveBootstrapWorktreeSubmodules({
-                threadId,
-                projectId: targetProjectId ?? null,
-              });
+              const submodules =
+                (yield* resolveBootstrapProjectSettings({
+                  threadId,
+                  projectId: targetProjectId ?? null,
+                }))?.worktreeSubmodules ?? null;
               const worktree = yield* gitWorkflow.createWorktree(
                 {
                   cwd: prepareWorktree.projectCwd,
@@ -1586,11 +1625,38 @@ const makeWsRpcLayer = (
                 }),
               }));
               targetWorktreePath = worktree.worktree.path;
+              // A slow or failed name keeps the temporary branch; the provider
+              // command reactor then renames it once the turn is under way.
+              const generatedBranch = branchNameFiber
+                ? Option.flatten(
+                    yield* Fiber.join(branchNameFiber).pipe(
+                      Effect.map(Option.fromNullishOr),
+                      Effect.timeoutOption(BOOTSTRAP_BRANCH_NAME_TIMEOUT),
+                    ),
+                  )
+                : Option.none();
+              const branch = Option.isSome(generatedBranch)
+                ? yield* gitWorkflow
+                    .renameBranch({
+                      cwd: targetWorktreePath,
+                      oldBranch: worktree.worktree.refName,
+                      newBranch: generatedBranch.value,
+                    })
+                    .pipe(
+                      Effect.map((renamed) => renamed.branch),
+                      Effect.catchCause((cause) =>
+                        Effect.logWarning("worktree bootstrap failed to rename branch", {
+                          threadId,
+                          cause: Cause.pretty(cause),
+                        }).pipe(Effect.as(worktree.worktree.refName)),
+                      ),
+                    )
+                : worktree.worktree.refName;
               yield* dispatchFromClient({
                 type: "thread.meta.update",
                 commandId: yield* serverCommandId("bootstrap-thread-meta-update"),
                 threadId,
-                branch: worktree.worktree.refName,
+                branch,
                 worktreePath: targetWorktreePath,
               });
               yield* refreshGitStatus(targetWorktreePath);
