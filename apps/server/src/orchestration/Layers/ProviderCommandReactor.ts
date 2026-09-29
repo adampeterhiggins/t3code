@@ -15,7 +15,7 @@ import {
 } from "@t3tools/contracts";
 import { assistantCitationsToPlainText } from "@t3tools/shared/assistantCitations";
 import { projectComposerContextForProvider } from "@t3tools/shared/composerContextReferences";
-import { buildGeneratedWorktreeBranchName, isTemporaryWorktreeBranch } from "@t3tools/shared/git";
+import { isTemporaryWorktreeBranch } from "@t3tools/shared/git";
 import * as Cache from "effect/Cache";
 import * as Cause from "effect/Cause";
 import * as Crypto from "effect/Crypto";
@@ -58,13 +58,11 @@ import {
   type ThreadTitleMessage,
 } from "../../textGeneration/ThreadTitleContext.ts";
 import { canReplaceThreadTitle, DEFAULT_THREAD_TITLE } from "../threadTitles.ts";
-import {
-  resolveSourceControlWriterModelSelection,
-  ServerSettingsService,
-} from "../../serverSettings.ts";
+import { ServerSettingsService } from "../../serverSettings.ts";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
 import { GitWorkflowService } from "../../git/GitWorkflowService.ts";
+import { generateWorktreeBranchName } from "../../git/worktreeBranchName.ts";
 import * as TerminalManager from "../../terminal/Manager.ts";
 const isProviderAdapterProcessError = Schema.is(ProviderAdapterProcessError);
 const isProviderAdapterRequestError = Schema.is(ProviderAdapterRequestError);
@@ -901,28 +899,15 @@ const make = Effect.gen(function* () {
 
     const oldBranch = input.branch;
     const cwd = input.worktreePath;
-    const attachments = input.attachments ?? [];
     yield* Effect.gen(function* () {
-      const settings = yield* projectSettingsForThread(input.threadId);
-      const modelSelection =
-        settings.sourceControlWriterModelSelection === null
-          ? settings.textGenerationModelSelection
-          : resolveSourceControlWriterModelSelection(
-              settings,
-              yield* providerRegistry.getProviders,
-            );
-
-      const generated = yield* textGeneration.generateBranchName({
-        cwd,
-        message: input.messageText,
-        ...(attachments.length > 0 ? { attachments } : {}),
-        modelSelection,
-      });
-      if (!generated) return;
-
-      const targetBranch = buildGeneratedWorktreeBranchName(
-        generated.branch,
-        settings.worktreeBranchPrefix,
+      const targetBranch = yield* generateWorktreeBranchName(
+        { textGeneration, providerRegistry },
+        {
+          cwd,
+          messageText: input.messageText,
+          attachments: input.attachments,
+          settings: yield* projectSettingsForThread(input.threadId),
+        },
       );
       if (targetBranch === oldBranch) return;
 

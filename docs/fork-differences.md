@@ -156,10 +156,12 @@ Code: `apps/server/src/storageCleanup.ts` and
 
 Generated worktree branch names use a configurable prefix instead of a fixed `t3code/`.
 **Settings → General → Branch prefix** takes any namespace, or none, and projects can override it.
-The short-lived `t3code/<id>` placeholder branch a worktree starts on is unchanged.
+The name is generated while the worktree is checked out, so the agent and setup script start on
+the final branch; upstream renames the `t3code/<id>` placeholder after the first turn has started.
+The placeholder remains only when naming outlasts checkout by more than a few seconds.
 
-Code: `buildGeneratedWorktreeBranchName` in `packages/shared/src/git.ts` and `worktreeBranchPrefix`
-in `packages/contracts/src/settings.ts`. User guide:
+Code: `generateWorktreeBranchName` in `apps/server/src/git/worktreeBranchName.ts`, its bootstrap
+call in `apps/server/src/ws.ts`, and `worktreeBranchPrefix` in `packages/contracts/src/settings.ts`. User guide:
 [project-settings.md](./user/project-settings.md#defaults-and-inheritance).
 
 ## Sidebar resource pill

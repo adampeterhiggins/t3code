@@ -11707,6 +11707,119 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  it.effect("names a temporary worktree branch before the first turn starts", () =>
+    Effect.gen(function* () {
+      const dispatchedCommands: Array<OrchestrationCommand> = [];
+      const renameBranch = vi.fn(
+        (input: Parameters<GitVcsDriver.GitVcsDriver["Service"]["renameBranch"]>[0]) =>
+          Effect.succeed({ branch: input.newBranch }),
+      );
+      const textGeneration: Pick<ProviderInstance["textGeneration"], "generateBranchName"> = {
+        generateBranchName: () => Effect.succeed({ branch: "Fix login redirect" }),
+      };
+
+      yield* buildAppUnderTest({
+        layers: {
+          vcsDriver: {
+            isInsideWorkTree: () => Effect.succeed(true),
+          },
+          gitVcsDriver: {
+            execute: () => Effect.succeed(SUCCESSFUL_GIT_EXECUTION),
+            createWorktree: () =>
+              Effect.succeed({
+                worktree: { refName: "t3code/0a1b2c3d", path: "/tmp/bootstrap-worktree" },
+              }),
+            renameBranch,
+          },
+          serverSettings: {
+            getSettings: Effect.succeed({ ...DEFAULT_SERVER_SETTINGS, worktreeBranchPrefix: "ah" }),
+          },
+          providerInstanceRegistry: {
+            getInstance: () =>
+              Effect.succeed({
+                instanceId: defaultModelSelection.instanceId,
+                driverKind: ProviderDriverKind.make("codex"),
+                enabled: true,
+                displayName: undefined,
+                continuationIdentity: {
+                  driverKind: ProviderDriverKind.make("codex"),
+                  continuationKey: defaultModelSelection.instanceId,
+                },
+                snapshot: {} as ProviderInstance["snapshot"],
+                adapter: {} as ProviderInstance["adapter"],
+                textGeneration: textGeneration as ProviderInstance["textGeneration"],
+              }),
+          },
+          orchestrationEngine: {
+            dispatch: (command) =>
+              Effect.sync(() => {
+                dispatchedCommands.push(command);
+                return { sequence: dispatchedCommands.length };
+              }),
+            readEvents: () => Stream.empty,
+          },
+        },
+      });
+
+      const createdAt = "2026-01-01T00:00:00.000Z";
+      const wsUrl = yield* getWsServerUrl("/ws");
+      yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[ORCHESTRATION_WS_METHODS.dispatchCommand]({
+            type: "thread.turn.start",
+            commandId: CommandId.make("cmd-bootstrap-branch-name"),
+            threadId: ThreadId.make("thread-bootstrap-branch-name"),
+            message: {
+              messageId: MessageId.make("msg-bootstrap-branch-name"),
+              role: "user",
+              text: "fix the login redirect",
+              attachments: [],
+            },
+            modelSelection: defaultModelSelection,
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            bootstrap: {
+              createThread: {
+                projectId: defaultProjectId,
+                title: "Bootstrap Thread",
+                modelSelection: defaultModelSelection,
+                runtimeMode: "full-access",
+                interactionMode: "default",
+                branch: "main",
+                worktreePath: null,
+                createdAt,
+              },
+              prepareWorktree: {
+                projectCwd: "/tmp/project",
+                baseBranch: "main",
+                branch: "t3code/0a1b2c3d",
+              },
+            },
+            createdAt,
+          }),
+        ),
+      );
+
+      assert.deepEqual(renameBranch.mock.calls[0]?.[0], {
+        cwd: "/tmp/bootstrap-worktree",
+        oldBranch: "t3code/0a1b2c3d",
+        newBranch: "ah/fix-login-redirect",
+      });
+      const metaUpdateIndex = dispatchedCommands.findIndex(
+        (command) => command.type === "thread.meta.update",
+      );
+      const metaUpdate = dispatchedCommands[metaUpdateIndex];
+      assertTrue(metaUpdate?.type === "thread.meta.update");
+      if (metaUpdate?.type === "thread.meta.update") {
+        assert.equal(metaUpdate.branch, "ah/fix-login-redirect");
+      }
+      assert.isBelow(
+        metaUpdateIndex,
+        dispatchedCommands.findIndex((command) => command.type === "thread.turn.start"),
+      );
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect.each([
     { caseName: "a non-repository", isRepository: false, failFetch: false },
     { caseName: "a base without a commit", isRepository: true, failFetch: false },
