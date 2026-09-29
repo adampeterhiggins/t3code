@@ -7,7 +7,9 @@ import type {
   ResourceTelemetryProcessIdentity,
   ResourceTelemetryRetryResult,
   ResourceTelemetrySnapshot,
+  ResourceUsageSummary,
 } from "@t3tools/contracts";
+import * as Cache from "effect/Cache";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -66,6 +68,7 @@ export class ResourceTelemetry extends Context.Service<
     readonly readHistory: (
       input: ResourceTelemetryHistoryInput,
     ) => Effect.Effect<ResourceTelemetryHistoryWithLegacyBuckets>;
+    readonly readUsage: Effect.Effect<ResourceUsageSummary | null>;
     readonly refresh: Effect.Effect<ResourceTelemetrySnapshot, ResourceTelemetryRefreshFailed>;
     readonly validateProcessIdentity: (
       identity: ResourceTelemetryProcessIdentity,
@@ -73,6 +76,9 @@ export class ResourceTelemetry extends Context.Service<
     readonly retry: Effect.Effect<ResourceTelemetryRetryResult>;
   }
 >()("t3/resourceTelemetry/ResourceTelemetry") {}
+
+// Long enough to hold a sample at the background cadence, short enough to read as "now".
+const USAGE_WINDOW_MS = 15_000;
 
 interface TelemetryState {
   readonly nativeSnapshot: Option.Option<ResourceMonitorSnapshotEvent>;
@@ -445,6 +451,29 @@ export const make = Effect.fn("resourceTelemetry.resourceTelemetry.make")(functi
         }),
       });
     });
+  // Reads the sidecar's background history rather than holding the live
+  // stream, so an always-visible indicator never raises the sampling rate.
+  const readUsageUncached = Effect.gen(function* () {
+    const nativeHealth = yield* nativeClient.health;
+    if (nativeHealth.status !== "healthy" && nativeHealth.status !== "degraded") return null;
+    const windowMs = Math.max(USAGE_WINDOW_MS, nativeHealth.sampleIntervalMs * 2);
+    const history = yield* readHistory({ windowMs, bucketMs: windowMs });
+    const bucket = history.buckets.at(-1);
+    if (bucket === undefined || bucket.maxProcessCount === 0) return null;
+    return {
+      sampledAt: bucket.endedAt,
+      cpuPercent: bucket.avgCpuPercent,
+      rssBytes: bucket.maxRssBytes,
+      processCount: bucket.maxProcessCount,
+    } satisfies ResourceUsageSummary;
+  });
+  // Every connected client polls this; one cached read serves them all.
+  const usageCache = yield* Cache.make({
+    capacity: 1,
+    lookup: (_key: "usage") => readUsageUncached,
+    timeToLive: "5 seconds",
+  });
+
   yield* nativeHealthSubscription.changes.pipe(
     Stream.runForEach(() => refreshHealth),
     Effect.forkScoped,
@@ -488,6 +517,7 @@ export const make = Effect.fn("resourceTelemetry.resourceTelemetry.make")(functi
     changes: liveChanges,
     subscribe,
     readHistory,
+    readUsage: Cache.get(usageCache, "usage"),
     refresh,
     validateProcessIdentity,
     retry: nativeClient.retry.pipe(

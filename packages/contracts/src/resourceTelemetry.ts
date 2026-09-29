@@ -515,6 +515,18 @@ export const ResourceTelemetryHistory = Schema.Struct({
 });
 export type ResourceTelemetryHistory = typeof ResourceTelemetryHistory.Type;
 
+/**
+ * The footprint of every process T3 owns on its host, averaged over the last
+ * few samples. Small enough for an always-visible indicator to poll.
+ */
+export const ResourceUsageSummary = Schema.Struct({
+  sampledAt: Schema.DateTimeUtc,
+  cpuPercent: Schema.Number,
+  rssBytes: NonNegativeInt,
+  processCount: NonNegativeInt,
+});
+export type ResourceUsageSummary = typeof ResourceUsageSummary.Type;
+
 export const ResourceTelemetryRetryResult = Schema.Struct({
   accepted: Schema.Boolean,
   snapshot: ResourceTelemetrySnapshot,

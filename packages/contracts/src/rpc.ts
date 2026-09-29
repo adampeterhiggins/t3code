@@ -247,6 +247,7 @@ import {
   ResourceTelemetryHistoryInput,
   ResourceTelemetryRetryResult,
   ResourceTelemetrySnapshot,
+  ResourceUsageSummary,
 } from "./resourceTelemetry.ts";
 import {
   UsageLimitSourceError,
@@ -380,6 +381,7 @@ export const WS_METHODS = {
   serverGetHostResources: "server.getHostResources",
   serverGetProcessResourceHistory: "server.getProcessResourceHistory",
   serverGetResourceTelemetryHistory: "server.getResourceTelemetryHistory",
+  serverGetResourceUsage: "server.getResourceUsage",
   serverRetryResourceTelemetry: "server.retryResourceTelemetry",
   serverSignalProcess: "server.signalProcess",
   serverReportClientActivity: "server.reportClientActivity",
@@ -647,6 +649,13 @@ const WsServerGetResourceTelemetryHistoryRpc = Rpc.make(
     error: EnvironmentAuthorizationError,
   },
 );
+
+// Null while the resource monitor has no recent sample to report.
+const WsServerGetResourceUsageRpc = Rpc.make(WS_METHODS.serverGetResourceUsage, {
+  payload: Schema.Struct({}),
+  success: Schema.NullOr(ResourceUsageSummary),
+  error: EnvironmentAuthorizationError,
+});
 
 const WsServerRetryResourceTelemetryRpc = Rpc.make(WS_METHODS.serverRetryResourceTelemetry, {
   payload: Schema.Struct({}),
@@ -1436,6 +1445,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerGetHostResourcesRpc,
   WsServerGetProcessResourceHistoryRpc,
   WsServerGetResourceTelemetryHistoryRpc,
+  WsServerGetResourceUsageRpc,
   WsServerRetryResourceTelemetryRpc,
   WsServerGetUsageSummaryRpc,
   WsServerRefreshUsageRatesRpc,

@@ -49,6 +49,8 @@ import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
 import {
+  formatBytes,
+  formatProcessName,
   resourceHistoryBarHeight,
   resourceHistoryCpuScaleMax,
   shouldShowResourceMonitorRetry,
@@ -62,18 +64,6 @@ const HISTORY_WINDOWS = [
   { label: "30m", windowMs: 30 * 60_000, bucketMs: 60_000 },
   { label: "1h", windowMs: 60 * 60_000, bucketMs: 2 * 60_000 },
 ] as const;
-
-function formatBytes(value: number): string {
-  if (value < 1_024) return `${Math.round(value)} B`;
-  const units = ["KB", "MB", "GB", "TB"] as const;
-  let next = value;
-  let unitIndex = -1;
-  do {
-    next /= 1_024;
-    unitIndex += 1;
-  } while (next >= 1_024 && unitIndex < units.length - 1);
-  return `${next.toFixed(next >= 100 ? 0 : next >= 10 ? 1 : 2)} ${units[unitIndex]}`;
-}
 
 function formatRate(value: number): string {
   return `${formatBytes(value)}/s`;
@@ -107,13 +97,6 @@ function processIdentityKey(process: ResourceTelemetryProcess): string {
 
 function processSummaryIdentityKey(process: ResourceTelemetryProcessSummary): string {
   return `${process.identity.pid}:${process.identity.startTimeMs}`;
-}
-
-function formatProcessName(process: Pick<ResourceTelemetryProcess, "command" | "name">): string {
-  if (process.name.trim()) return process.name;
-  const firstToken = process.command.trim().split(/\s+/)[0] ?? process.command;
-  const normalized = firstToken.replace(/^['"]|['"]$/g, "");
-  return normalized.split(/[\\/]/).findLast((segment) => segment.length > 0) ?? normalized;
 }
 
 function categoryLabel(category: ResourceTelemetryProcessCategory): string {

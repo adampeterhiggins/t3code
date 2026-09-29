@@ -1,6 +1,27 @@
 import type { ResourceTelemetryProcess, ResourceTelemetrySourceStatus } from "@t3tools/contracts";
 
-function processIdentityKey(process: ResourceTelemetryProcess): string {
+export function formatBytes(value: number): string {
+  if (value < 1_024) return `${Math.round(value)} B`;
+  const units = ["KB", "MB", "GB", "TB"] as const;
+  let next = value;
+  let unitIndex = -1;
+  do {
+    next /= 1_024;
+    unitIndex += 1;
+  } while (next >= 1_024 && unitIndex < units.length - 1);
+  return `${next.toFixed(next >= 100 ? 0 : next >= 10 ? 1 : 2)} ${units[unitIndex]}`;
+}
+
+export function formatProcessName(
+  process: Pick<ResourceTelemetryProcess, "command" | "name">,
+): string {
+  if (process.name.trim()) return process.name;
+  const firstToken = process.command.trim().split(/\s+/)[0] ?? process.command;
+  const normalized = firstToken.replace(/^['"]|['"]$/g, "");
+  return normalized.split(/[\\/]/).findLast((segment) => segment.length > 0) ?? normalized;
+}
+
+export function processIdentityKey(process: ResourceTelemetryProcess): string {
   return `${process.identity.pid}:${process.identity.startTimeMs}`;
 }
 

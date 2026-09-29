@@ -170,6 +170,7 @@ describe("ProcessDiagnostics", () => {
           changes: Stream.empty,
           subscribe: Effect.die("unused"),
           readHistory: () => Effect.die("unused"),
+          readUsage: Effect.die("unused"),
           refresh: Effect.fail(
             new ResourceTelemetry.ResourceTelemetryRefreshFailed({
               operation: "refresh",
