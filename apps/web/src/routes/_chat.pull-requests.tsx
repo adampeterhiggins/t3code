@@ -96,6 +96,8 @@ import { pullRequestFilterProjects } from "../components/pullRequest/pullRequest
 import { environmentMachineIcon } from "../components/EnvironmentMachineIcon";
 import { PullRequestDetailPanel } from "../components/pullRequest/PullRequestDetailPanel";
 import {
+  PULL_REQUEST_INVOLVEMENT_OPTIONS,
+  PULL_REQUEST_STATE_OPTIONS,
   PullRequestFiltersMenu,
   PullRequestFilterOptionIcon,
   PullRequestSearchInput,
@@ -158,7 +160,6 @@ import { cn } from "~/lib/utils";
 import { Separator } from "~/components/ui/separator";
 import { primaryServerKeybindingsAtom } from "~/state/server";
 import { getSourceControlPresentationForKind } from "~/sourceControlPresentation";
-import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
 
 function getShortcutContext() {
   return {
@@ -223,20 +224,6 @@ function PullRequestGroupHeader({
     </div>
   );
 }
-
-// The state filters wear the same glyphs the rows do, so the two read as one vocabulary.
-const INVOLVEMENT_TABS = [
-  { value: "all", label: "All", Icon: LayersIcon },
-  { value: "reviewing", label: "Reviewing", Icon: EyeIcon },
-  { value: "authored", label: "Authored", Icon: PenLineIcon },
-] as const satisfies ReadonlyArray<PullRequestFilterOption<PullRequestInvolvement>>;
-
-const STATE_TABS = [
-  { value: "all", label: "All", Icon: LayersIcon },
-  { value: "open", label: "Open", Icon: PullRequestGlyph.pullRequest },
-  { value: "closed", label: "Closed", Icon: PullRequestGlyph.closed },
-  { value: "merged", label: "Merged", Icon: PullRequestGlyph.merged },
-] as const satisfies ReadonlyArray<PullRequestFilterOption<PullRequestListState>>;
 
 const SORT_OPTIONS = [
   { value: "ready", label: "Merge readiness", Icon: ListChecksIcon },
@@ -1896,10 +1883,10 @@ function PullRequestsRouteView() {
     <PullRequestFiltersMenu
       onOpenChange={setFiltersOpen}
       state={search.state}
-      stateOptions={STATE_TABS}
+      stateOptions={PULL_REQUEST_STATE_OPTIONS}
       onState={(state) => updateListScope({ state })}
       involvement={search.involvement}
-      involvementOptions={INVOLVEMENT_TABS}
+      involvementOptions={PULL_REQUEST_INVOLVEMENT_OPTIONS}
       onInvolvement={(involvement) => updateListScope({ involvement })}
       filters={menuFilters}
       onFilters={(next) =>
@@ -2487,14 +2474,14 @@ function PullRequestsColumn({
               <CompactFilterMenu
                 label="Filter by state"
                 value={state}
-                options={STATE_TABS}
+                options={PULL_REQUEST_STATE_OPTIONS}
                 onChange={onState}
                 className="shrink-0"
               />
               <CompactFilterMenu
                 label="Filter by involvement"
                 value={involvement}
-                options={INVOLVEMENT_TABS}
+                options={PULL_REQUEST_INVOLVEMENT_OPTIONS}
                 onChange={onInvolvement}
               />
               {hostMenuOptions.length > 2 ? (

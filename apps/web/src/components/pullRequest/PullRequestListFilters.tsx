@@ -13,10 +13,12 @@ import {
   CircleDashedIcon,
   CircleSlashIcon,
   CircleXIcon,
+  EyeIcon,
   EyeOffIcon,
   FolderGit2Icon,
   LayersIcon,
   ListFilterIcon,
+  PenLineIcon,
   SearchIcon,
   TagIcon,
   UserRoundIcon,
@@ -73,6 +75,20 @@ export function PullRequestFilterOptionIcon<Value extends string>({
     <option.Icon aria-hidden className="size-3.5" />
   );
 }
+
+// The state filters wear the same glyphs the rows do, so the two read as one vocabulary.
+export const PULL_REQUEST_INVOLVEMENT_OPTIONS = [
+  { value: "all", label: "All", Icon: LayersIcon },
+  { value: "reviewing", label: "Reviewing", Icon: EyeIcon },
+  { value: "authored", label: "Authored", Icon: PenLineIcon },
+] as const satisfies ReadonlyArray<PullRequestFilterOption<PullRequestInvolvement>>;
+
+export const PULL_REQUEST_STATE_OPTIONS = [
+  { value: "all", label: "All", Icon: LayersIcon },
+  { value: "open", label: "Open", Icon: PullRequestGlyph.pullRequest },
+  { value: "closed", label: "Closed", Icon: PullRequestGlyph.closed },
+  { value: "merged", label: "Merged", Icon: PullRequestGlyph.merged },
+] as const satisfies ReadonlyArray<PullRequestFilterOption<PullRequestListState>>;
 
 export interface PullRequestExpectedHost {
   readonly host: string;
@@ -387,6 +403,7 @@ function PullRequestLabelFilter({
 }
 
 export function PullRequestFiltersMenu({
+  size = "default",
   onOpenChange,
   state,
   stateOptions,
@@ -410,6 +427,8 @@ export function PullRequestFiltersMenu({
   unavailable,
   onProject,
 }: {
+  /** `xs` for a picker's filter row, beside its other small controls. */
+  size?: "default" | "xs";
   onOpenChange?: (open: boolean) => void;
   state: PullRequestListState;
   stateOptions: ReadonlyArray<PullRequestFilterOption<PullRequestListState>>;
@@ -436,7 +455,10 @@ export function PullRequestFiltersMenu({
    */
   serverOptions: ReadonlyArray<PullRequestFilterOption<string>>;
   onServer: (server: EnvironmentId | undefined) => void;
-  /** The projects of every connected environment, each carrying the one its favicon is read from. */
+  /**
+   * The projects of every connected environment, each carrying the one its favicon is read from.
+   * Empty leaves the Project group out, for a list already scoped to one project.
+   */
   projects: ReadonlyArray<ProjectFaviconProject & { readonly id: ProjectId }>;
   projectId: ProjectId | undefined;
   /**
@@ -500,8 +522,8 @@ export function PullRequestFiltersMenu({
   ];
   return (
     <Menu onOpenChange={onOpenChange}>
-      <MenuTrigger render={<Button variant="outline" />}>
-        <ListFilterIcon className="size-4" />
+      <MenuTrigger render={<Button variant="outline" size={size} />}>
+        <ListFilterIcon className={size === "xs" ? undefined : "size-4"} />
         <span>Filters</span>
         {filterCount > 0 ? (
           <span className="rounded-full bg-muted px-1.5 text-xs text-muted-foreground tabular-nums">
@@ -579,17 +601,23 @@ export function PullRequestFiltersMenu({
             />
           </>
         ) : null}
-        <MenuSeparator />
-        <PullRequestFilterRadioSubmenu
-          label="Project"
-          value={projectValue}
-          options={projectOptions}
-          onChange={(next) => {
-            const project = projects.find((candidate) => pullRequestProjectKey(candidate) === next);
-            if (project) onProject(project.id, project.environmentId);
-            else if (projectId !== undefined) onProject(undefined, undefined);
-          }}
-        />
+        {projects.length > 0 ? (
+          <>
+            <MenuSeparator />
+            <PullRequestFilterRadioSubmenu
+              label="Project"
+              value={projectValue}
+              options={projectOptions}
+              onChange={(next) => {
+                const project = projects.find(
+                  (candidate) => pullRequestProjectKey(candidate) === next,
+                );
+                if (project) onProject(project.id, project.environmentId);
+                else if (projectId !== undefined) onProject(undefined, undefined);
+              }}
+            />
+          </>
+        ) : null}
       </MenuPopup>
     </Menu>
   );

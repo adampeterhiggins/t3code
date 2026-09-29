@@ -27,11 +27,11 @@ import { memo, useCallback, useLayoutEffect, useRef } from "react";
 import { type ComposerSlashCommand, type ComposerTriggerKind } from "../../composer-logic";
 import { cn } from "~/lib/utils";
 import { Badge } from "../ui/badge";
-import { Button } from "../ui/button";
 import { Command, CommandGroup, CommandItem, CommandList } from "../ui/command";
 import { PierreEntryIcon } from "./PierreEntryIcon";
 import { ComposerBanner } from "./ComposerBanner";
 import { LinearIssueHoverPreview } from "./LinearIssueHoverPreview";
+import { SourceTabs } from "./SourceTabs";
 import { resolvePullRequestState } from "../pullRequest/pullRequestPresentation";
 
 export type ComposerCommandItem =
@@ -147,25 +147,7 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
         className="flex min-h-0 w-full flex-col overflow-hidden pb-(--chat-composer-attachment-overlap) **:data-[slot=scroll-area-scrollbar]:data-[orientation=vertical]:my-4"
         data-composer-command-drawer="true"
       >
-        {props.tabs ? (
-          <div role="tablist" className="flex gap-1 px-3 pt-2.5">
-            {props.tabs.options.map((tab) => (
-              <Button
-                key={tab.id}
-                type="button"
-                role="tab"
-                size="xs"
-                aria-selected={tab.id === props.tabs?.activeId}
-                variant={tab.id === props.tabs?.activeId ? "secondary" : "ghost-muted"}
-                // Keep the caret in the editor so typing continues the query.
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => props.tabs?.onSelect(tab.id)}
-              >
-                {tab.label}
-              </Button>
-            ))}
-          </div>
-        ) : null}
+        {props.tabs ? <SourceTabs {...props.tabs} className="flex gap-1 px-3 pt-2.5" /> : null}
         {props.items.length > 0 ? (
           <CommandList className="max-h-72 min-h-0 scroll-pb-6">
             <CommandGroup>

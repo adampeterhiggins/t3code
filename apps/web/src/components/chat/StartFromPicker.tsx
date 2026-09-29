@@ -45,7 +45,12 @@ import {
   CommandItem,
   CommandList,
 } from "../ui/command";
-import { Toggle, ToggleGroup } from "../ui/toggle-group";
+import { LinearIssueHoverPreview } from "./LinearIssueHoverPreview";
+import {
+  LinearIssueFilterBar,
+  useLinearIssuePickerView,
+  useLinearIssuePickerViewStore,
+} from "./LinearIssueFilters";
 import { useAttachLinearIssue } from "./LinearIssuePicker";
 import {
   localBranchName,
@@ -53,12 +58,19 @@ import {
   threadsForBranch,
   threadsForPullRequest,
 } from "./StartFromPicker.logic";
+import { SourceTabs } from "./SourceTabs";
+import {
+  DEFAULT_PULL_REQUEST_PICKER_VIEW,
+  narrowPickerPullRequests,
+  PullRequestPickerFilterBar,
+} from "./StartFromPullRequestFilters";
+import { BranchHoverPreview, PullRequestHoverPreview } from "./StartFromPreviews";
 
 type StartFromTab = "pull-requests" | "branches" | "issues";
-const TABS: ReadonlyArray<{ value: StartFromTab; label: string }> = [
-  { value: "pull-requests", label: "PRs" },
-  { value: "branches", label: "Branches" },
-  { value: "issues", label: "Issues" },
+const TABS: ReadonlyArray<{ id: StartFromTab; label: string }> = [
+  { id: "pull-requests", label: "PRs" },
+  { id: "branches", label: "Branches" },
+  { id: "issues", label: "Issues" },
 ];
 const PLACEHOLDERS: Record<StartFromTab, string> = {
   "pull-requests": "Search pull requests by title, number, or author",
@@ -68,6 +80,7 @@ const PLACEHOLDERS: Record<StartFromTab, string> = {
 const SEARCH_DEBOUNCE_MS = 300;
 const PULL_REQUEST_LIMIT = 50;
 const EMPTY_ISSUES: ReadonlyArray<LinearIssueSummary> = [];
+const EMPTY_PULL_REQUESTS: ReadonlyArray<EnvironmentPullRequestEntry> = [];
 
 /**
  * Whether the draft composer's "start from" picker is open. Set by the composer's ⋯ button, the
@@ -126,6 +139,7 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
   const projectRefs = useMemo(() => [projectRef], [projectRef]);
   const threads = useThreadShellsForProjectRefs(projectRefs);
 
+  const [pullRequestView, setPullRequestView] = useState(DEFAULT_PULL_REQUEST_PICKER_VIEW);
   const pullRequestTargets = useMemo(
     () =>
       tab === "pull-requests"
@@ -133,17 +147,31 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
             {
               environmentId,
               input: {
-                state: "open" as const,
+                state: pullRequestView.state,
                 projectId,
                 limit: PULL_REQUEST_LIMIT,
+                ...(Object.keys(pullRequestView.filters).length > 0
+                  ? { filters: pullRequestView.filters }
+                  : {}),
                 ...(debouncedQuery.length > 0 ? { query: debouncedQuery } : {}),
               },
             },
           ]
         : [],
-    [debouncedQuery, environmentId, projectId, tab],
+    [debouncedQuery, environmentId, projectId, pullRequestView, tab],
   );
   const pullRequests = usePullRequestList(pullRequestTargets);
+  const loadedPullRequests = pullRequests.data?.entries ?? EMPTY_PULL_REQUESTS;
+  const pullRequestEntries = useMemo(
+    () =>
+      narrowPickerPullRequests(
+        loadedPullRequests,
+        pullRequests.data?.viewers ?? {},
+        pullRequestView,
+        debouncedQuery,
+      ),
+    [debouncedQuery, loadedPullRequests, pullRequestView, pullRequests.data?.viewers],
+  );
 
   const branches = usePaginatedBranches({
     environmentId: tab === "branches" ? environmentId : null,
@@ -155,12 +183,27 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
     tab === "issues" ? linearEnvironment.connection({ environmentId, input: {} }) : null,
   );
   const linearConnected = linearConnection.data?.phase === "connected";
-  const issuesQuery = useEnvironmentQuery(
+  // Shared with the attach picker, so a view set up in one carries over to the other.
+  const issueView = useLinearIssuePickerView(environmentId);
+  const setIssueView = useLinearIssuePickerViewStore((state) => state.setView);
+  const issueFilterOptions = useEnvironmentQuery(
     tab === "issues" && linearConnected
-      ? linearEnvironment.issues({ environmentId, input: { query: debouncedQuery } })
+      ? linearEnvironment.filterOptions({ environmentId, input: {} })
       : null,
   );
-  const issues = issuesQuery.data?.issues ?? EMPTY_ISSUES;
+  const issuesQuery = useEnvironmentQuery(
+    tab === "issues" && linearConnected
+      ? linearEnvironment.issues({
+          environmentId,
+          input: { query: debouncedQuery, filters: issueView.filters, sort: issueView.sort },
+        })
+      : null,
+  );
+  // A new query starts from an empty atom; keep the last results on screen until it answers.
+  const [shownIssues, setShownIssues] = useState(EMPTY_ISSUES);
+  const latestIssues = issuesQuery.data?.issues;
+  if (latestIssues !== undefined && latestIssues !== shownIssues) setShownIssues(latestIssues);
+  const issues = latestIssues ?? shownIssues;
 
   const close = () => {
     if (!busy) closeStartFromPicker();
@@ -207,9 +250,9 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
   const cycleTab = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key !== "Tab") return;
     event.preventDefault();
-    const index = TABS.findIndex((entry) => entry.value === tab);
+    const index = TABS.findIndex((entry) => entry.id === tab);
     const next = TABS[(index + (event.shiftKey ? TABS.length - 1 : 1)) % TABS.length];
-    if (next) setTab(next.value);
+    if (next) setTab(next.id);
   };
 
   const searching = trimmedQuery !== debouncedQuery;
@@ -222,18 +265,19 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
 
   let content: ReactNode;
   if (tab === "pull-requests") {
-    const entries = pullRequests.data?.entries ?? [];
+    const entries = pullRequestEntries;
     content = listOrStatus(
       entries.length > 0
         ? null
         : pullRequests.isPending || searching
           ? "Loading pull requests…"
-          : (pullRequests.error ?? "No open pull requests match."),
+          : (pullRequests.error ?? "No pull requests match these filters."),
       <CommandGroup items={[...entries]}>
         <CommandCollection>
           {(entry: EnvironmentPullRequestEntry) => {
             const presentation =
               PULL_REQUEST_STATE_PRESENTATION[entry.isDraft ? "draft" : entry.state];
+            const inUse = threadsForPullRequest(threads, entry);
             return (
               <CommandItem
                 key={entry.url}
@@ -241,19 +285,30 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => selectPullRequest(entry)}
               >
-                <presentation.Icon className={cn("size-4 shrink-0", presentation.toneClassName)} />
-                <span className="w-12 shrink-0 text-muted-foreground text-xs tabular-nums">
-                  #{entry.number}
-                </span>
-                <span className="min-w-0 flex-1 truncate text-sm">{entry.title}</span>
-                {threadsForPullRequest(threads, entry).length > 0 ? (
-                  <Badge variant="outline" size="sm">
-                    In use
-                  </Badge>
-                ) : null}
-                <span className="w-24 shrink-0 truncate text-end text-muted-foreground/70 text-xs">
-                  {entry.author?.login ?? ""}
-                </span>
+                <PullRequestHoverPreview
+                  entry={entry}
+                  threadRef={threadRef}
+                  threads={inUse}
+                  trigger={
+                    <span className="flex min-w-0 flex-1 items-center gap-2">
+                      <presentation.Icon
+                        className={cn("size-4 shrink-0", presentation.toneClassName)}
+                      />
+                      <span className="w-12 shrink-0 text-muted-foreground text-xs tabular-nums">
+                        #{entry.number}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-sm">{entry.title}</span>
+                      {inUse.length > 0 ? (
+                        <Badge variant="outline" size="sm">
+                          In use
+                        </Badge>
+                      ) : null}
+                      <span className="w-24 shrink-0 truncate text-end text-muted-foreground/70 text-xs">
+                        {entry.author?.login ?? ""}
+                      </span>
+                    </span>
+                  }
+                />
               </CommandItem>
             );
           }}
@@ -270,31 +325,43 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
           : (branches.error ?? "No branches match."),
       <CommandGroup items={[...refs]}>
         <CommandCollection>
-          {(ref: VcsRef) => (
-            <CommandItem
-              key={ref.name}
-              value={ref.name}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => selectBranch(ref)}
-            >
-              <GitBranchIcon className="size-4 shrink-0 text-muted-foreground" />
-              <span className="min-w-0 flex-1 truncate font-mono text-xs">{ref.name}</span>
-              {threadsForBranch(threads, ref).length > 0 ? (
-                <Badge variant="outline" size="sm">
-                  In use
-                </Badge>
-              ) : null}
-              {ref.current ? (
-                <Badge variant="secondary" size="sm">
-                  current
-                </Badge>
-              ) : ref.isRemote ? (
-                <Badge variant="secondary" size="sm">
-                  remote
-                </Badge>
-              ) : null}
-            </CommandItem>
-          )}
+          {(ref: VcsRef) => {
+            const inUse = threadsForBranch(threads, ref);
+            return (
+              <CommandItem
+                key={ref.name}
+                value={ref.name}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => selectBranch(ref)}
+              >
+                <BranchHoverPreview
+                  branch={ref}
+                  workspaceRoot={workspaceRoot}
+                  threads={inUse}
+                  trigger={
+                    <span className="flex min-w-0 flex-1 items-center gap-2">
+                      <GitBranchIcon className="size-4 shrink-0 text-muted-foreground" />
+                      <span className="min-w-0 flex-1 truncate font-mono text-xs">{ref.name}</span>
+                      {inUse.length > 0 ? (
+                        <Badge variant="outline" size="sm">
+                          In use
+                        </Badge>
+                      ) : null}
+                      {ref.current ? (
+                        <Badge variant="secondary" size="sm">
+                          current
+                        </Badge>
+                      ) : ref.isRemote ? (
+                        <Badge variant="secondary" size="sm">
+                          remote
+                        </Badge>
+                      ) : null}
+                    </span>
+                  }
+                />
+              </CommandItem>
+            );
+          }}
         </CommandCollection>
       </CommandGroup>,
     );
@@ -321,7 +388,7 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
           ? "Reading Linear status…"
           : issuesQuery.isPending || searching
             ? "Searching Linear…"
-            : (issuesQuery.error ?? "No issues match."),
+            : (issuesQuery.error ?? "No issues match these filters."),
       <CommandGroup items={[...issues]}>
         <CommandCollection>
           {(issue: LinearIssueSummary) => (
@@ -332,14 +399,22 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => void selectIssue(issue)}
             >
-              <LinearIcon className="size-4 shrink-0 text-muted-foreground" />
-              <span className="w-20 shrink-0 truncate text-muted-foreground text-xs tabular-nums">
-                {issue.identifier}
-              </span>
-              <span className="min-w-0 flex-1 truncate text-sm">{issue.title}</span>
-              <span className="w-24 shrink-0 truncate text-end text-muted-foreground/70 text-xs">
-                {issue.stateName}
-              </span>
+              <LinearIssueHoverPreview
+                environmentId={environmentId}
+                issueId={issue.id}
+                trigger={
+                  <span className="flex min-w-0 flex-1 items-center gap-2">
+                    <LinearIcon className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="w-20 shrink-0 truncate text-muted-foreground text-xs tabular-nums">
+                      {issue.identifier}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-sm">{issue.title}</span>
+                    <span className="w-24 shrink-0 truncate text-end text-muted-foreground/70 text-xs">
+                      {issue.stateName}
+                    </span>
+                  </span>
+                }
+              />
             </CommandItem>
           )}
         </CommandCollection>
@@ -361,29 +436,29 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
           <CommandPaletteContent
             inputProps={{ placeholder: PLACEHOLDERS[tab], onKeyDown: cycleTab }}
             inputAccessory={
-              <div className="flex items-center px-3 pb-2">
-                <ToggleGroup
-                  aria-label="Start from"
-                  value={[tab]}
-                  onValueChange={(next) => {
-                    const value = next[0];
-                    if (value === "pull-requests" || value === "branches" || value === "issues") {
-                      setTab(value);
-                    }
-                  }}
-                >
-                  {TABS.map((entry) => (
-                    <Toggle
-                      key={entry.value}
-                      value={entry.value}
-                      // Keep focus in the search box so arrows and Enter still drive the list.
-                      onMouseDown={(event) => event.preventDefault()}
-                    >
-                      {entry.label}
-                    </Toggle>
-                  ))}
-                </ToggleGroup>
-              </div>
+              <>
+                <SourceTabs
+                  options={TABS}
+                  activeId={tab}
+                  onSelect={setTab}
+                  className="flex gap-1 px-3 pb-2"
+                />
+                {tab === "pull-requests" ? (
+                  <PullRequestPickerFilterBar
+                    entries={loadedPullRequests}
+                    view={pullRequestView}
+                    onChange={setPullRequestView}
+                  />
+                ) : null}
+                {tab === "issues" && linearConnected ? (
+                  <LinearIssueFilterBar
+                    options={issueFilterOptions.data}
+                    view={issueView}
+                    searching={debouncedQuery.length > 0}
+                    onChange={(next) => setIssueView(environmentId, next)}
+                  />
+                ) : null}
+              </>
             }
             footerActionLabel={tab === "issues" ? (busy ? "Attaching…" : "Attach") : "Start thread"}
             footerTrailing={<span className="text-xs">Tab switches source</span>}
