@@ -30,7 +30,7 @@ it. Hover a listed tab and click **×**, or right-click it and choose **Close ta
 
 To bring in another tab's conversation, type `@` in the composer and pick the tab; its summary
 lands as a chip at the cursor. Before the first message in a new tab, you can also click a sibling
-under **Include context from**. Move or delete the chip like any other context.
+under **Include context from**; hover one first to preview its summary. Move or delete the chip like any other context.
 The summary covers that chat's recent conversation, the commands and tools its agent ran, errors,
 files it changed, and its latest plan, trimmed to fit.
 The summary is captured when you click, so later changes in that chat do not change it. Tabs in

@@ -40,6 +40,7 @@ import {
 } from "../../state/entities";
 import { readPreparedConnection, usePreparedConnection } from "../../state/session";
 import { useThreadTabContextStore } from "../../threadTabContextStore";
+import { ThreadTabSummaryDetails } from "../contextChipParts";
 import { WorkspaceBreadcrumbText } from "../WorkspaceBreadcrumb";
 import {
   Menu,
@@ -50,6 +51,7 @@ import {
   MenuSeparator,
   MenuTrigger,
 } from "../ui/menu";
+import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
 import { toastManager } from "../ui/toast";
 import { Toggle } from "../ui/toggle";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -314,33 +316,80 @@ export function ThreadTabMenu({
   );
 }
 
+/** A preview's summary: loading until the handoff resolves, then its text or failure. */
+type ThreadTabSummaryPreview =
+  | { status: "loading" }
+  | { status: "ready"; summary: string }
+  | { status: "failed"; message: string };
+
 function ThreadTabContextPill(props: {
   environmentId: EnvironmentId;
   group: ThreadTabGroup;
   threadId: ThreadId;
   disabled: boolean;
+  preview: ThreadTabSummaryPreview | undefined;
+  onPreview: () => void;
   onSelect: (title: string) => void;
 }) {
   const label = useTabLabel(props.environmentId, props.group, props.threadId);
+  const { preview } = props;
   return (
-    <Toggle
-      size="compact"
-      variant="pill"
-      pressed={false}
-      disabled={props.disabled}
-      title={label}
-      className="min-w-0"
-      onClick={() => props.onSelect(label)}
+    <PreviewCard
+      onOpenChange={(open) => {
+        if (open) props.onPreview();
+      }}
     >
-      <span className="truncate">{label}</span>
-    </Toggle>
+      <PreviewCardTrigger
+        delay={350}
+        closeDelay={120}
+        render={
+          <Toggle
+            size="compact"
+            variant="pill"
+            pressed={false}
+            disabled={props.disabled}
+            aria-label={`Include context from ${label}`}
+            className="min-w-0"
+            onClick={() => props.onSelect(label)}
+          />
+        }
+      >
+        <span className="truncate">{label}</span>
+      </PreviewCardTrigger>
+      <PreviewCardPopup align="center" className="w-96 max-w-[calc(100vw-2rem)]">
+        <div className="p-2">
+          {preview?.status === "ready" ? (
+            <ThreadTabSummaryDetails summary={preview.summary} />
+          ) : (
+            <p className="px-1 text-xs text-muted-foreground">
+              {preview?.status === "failed" ? preview.message : "Summarizing…"}
+            </p>
+          )}
+        </div>
+      </PreviewCardPopup>
+    </PreviewCard>
   );
+}
+
+/** The transcript summary of a sibling tab, as captured into the draft of `threadId`. */
+async function fetchThreadTabSummary(
+  connection: PreparedConnection,
+  input: { threadId: ThreadId; sourceThreadId: ThreadId; beforeMessageId?: MessageId },
+): Promise<string> {
+  const handoff = await runtime.runPromise(
+    prepareThreadTabHandoff(connection, input.threadId, {
+      sourceThreadIds: [input.sourceThreadId],
+      ...(input.beforeMessageId ? { beforeMessageId: input.beforeMessageId } : {}),
+    }),
+  );
+  return handoff.text.slice(0, COMPOSER_CONTEXT_THREAD_TAB_SUMMARY_MAX_CHARS);
 }
 
 /**
  * Captures a sibling tab's transcript summary into the draft of `threadId` and resolves to the
  * chip reference for the composer to place. With `beforeMessageId`, only the history before
- * that user message of the source is summarized.
+ * that user message of the source is summarized. A `summary` already fetched for a preview is
+ * used as is.
  */
 async function captureThreadTabContext(
   connection: PreparedConnection,
@@ -349,15 +398,11 @@ async function captureThreadTabContext(
     sourceThreadId: ThreadId;
     title: string;
     beforeMessageId?: MessageId;
+    summary?: string;
   },
 ): Promise<ComposerContextReference> {
-  const { threadId, sourceThreadId, title, beforeMessageId } = input;
-  const handoff = await runtime.runPromise(
-    prepareThreadTabHandoff(connection, threadId, {
-      sourceThreadIds: [sourceThreadId],
-      ...(beforeMessageId ? { beforeMessageId } : {}),
-    }),
-  );
+  const { threadId, sourceThreadId, title } = input;
+  const summary = input.summary ?? (await fetchThreadTabSummary(connection, input));
   const contextId = toKindScopedComposerContextId("thread-tab", sourceThreadId);
   const label = sanitizeComposerContextLabel(title, "thread-tab");
   useThreadTabContextStore.getState().upsert(threadId, {
@@ -367,7 +412,7 @@ async function captureThreadTabContext(
     label,
     threadId: sourceThreadId,
     title: title.slice(0, 2_048),
-    summary: handoff.text.slice(0, COMPOSER_CONTEXT_THREAD_TAB_SUMMARY_MAX_CHARS),
+    summary,
   });
   return { kind: "thread-tab", contextId, label } satisfies ComposerContextReference;
 }
@@ -381,8 +426,17 @@ export function useCaptureThreadTabContext(
   return useMemo(() => {
     if (threadId === null || Option.isNone(prepared)) return null;
     const connection = prepared.value;
-    return (sourceThreadId: ThreadId, title: string) =>
-      captureThreadTabContext(connection, { threadId, sourceThreadId, title });
+    return {
+      capture: (sourceThreadId: ThreadId, title: string, summary?: string) =>
+        captureThreadTabContext(connection, {
+          threadId,
+          sourceThreadId,
+          title,
+          ...(summary !== undefined ? { summary } : {}),
+        }),
+      fetchSummary: (sourceThreadId: ThreadId) =>
+        fetchThreadTabSummary(connection, { threadId, sourceThreadId }),
+    };
   }, [prepared, threadId]);
 }
 
@@ -449,17 +503,44 @@ export function ThreadTabContextPills({
   group: ThreadTabGroup;
   onInsert: (reference: ComposerContextReference) => void;
 }) {
-  const capture = useCaptureThreadTabContext(environmentId, threadId);
+  const threadTabContext = useCaptureThreadTabContext(environmentId, threadId);
   const [loadingId, setLoadingId] = useState<ThreadId | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Summaries fetched on hover, kept so a later click inserts what the preview showed.
+  const [previews, setPreviews] = useState<Partial<Record<ThreadId, ThreadTabSummaryPreview>>>({});
   const siblings = group.tabs.filter((tab) => tab.threadId !== threadId);
-  if (siblings.length === 0 || capture === null) return null;
+  if (siblings.length === 0 || threadTabContext === null) return null;
+
+  const preview = (sourceThreadId: ThreadId) => {
+    const existing = previews[sourceThreadId];
+    if (existing !== undefined && existing.status !== "failed") return;
+    setPreviews((current) => ({ ...current, [sourceThreadId]: { status: "loading" } }));
+    threadTabContext.fetchSummary(sourceThreadId).then(
+      (summary) =>
+        setPreviews((current) => ({ ...current, [sourceThreadId]: { status: "ready", summary } })),
+      (cause: unknown) =>
+        setPreviews((current) => ({
+          ...current,
+          [sourceThreadId]: {
+            status: "failed",
+            message: cause instanceof Error ? cause.message : "Could not summarize that tab.",
+          },
+        })),
+    );
+  };
 
   const insert = async (sourceThreadId: ThreadId, title: string) => {
     setLoadingId(sourceThreadId);
     setError(null);
+    const previewed = previews[sourceThreadId];
     try {
-      onInsert(await capture(sourceThreadId, title));
+      onInsert(
+        await threadTabContext.capture(
+          sourceThreadId,
+          title,
+          previewed?.status === "ready" ? previewed.summary : undefined,
+        ),
+      );
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not summarize that tab.");
     } finally {
@@ -479,6 +560,8 @@ export function ThreadTabContextPills({
             group={group}
             threadId={tab.threadId}
             disabled={loadingId !== null}
+            preview={previews[tab.threadId]}
+            onPreview={() => preview(tab.threadId)}
             onSelect={(title) => void insert(tab.threadId, title)}
           />
         ))}
