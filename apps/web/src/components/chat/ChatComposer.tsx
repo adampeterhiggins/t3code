@@ -5034,22 +5034,43 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     size: composerControlsInStrip ? "xs" : "sm",
     hidden: composerControlsHidden || restingHiddenBlockCount > 1,
   });
-  const providerAccounts = useMemo(
-    () =>
-      accountsForProvider({
-        entries: providerInstanceEntries,
-        driverKind: selectedProvider,
-        ...(lockedContinuationGroupKey != null ? { lockedContinuationGroupKey } : {}),
-      }),
-    [lockedContinuationGroupKey, providerInstanceEntries, selectedProvider],
-  );
-  const showProviderAccountPicker = useMemo(
-    () =>
-      shouldShowProviderAccountPicker(
-        accountsForProvider({ entries: providerInstanceEntries, driverKind: selectedProvider }),
-      ),
+  const allProviderAccounts = useMemo(
+    () => accountsForProvider({ entries: providerInstanceEntries, driverKind: selectedProvider }),
     [providerInstanceEntries, selectedProvider],
   );
+  const lockedProviderAccounts = useMemo(
+    () =>
+      lockedContinuationGroupKey != null
+        ? accountsForProvider({
+            entries: providerInstanceEntries,
+            driverKind: selectedProvider,
+            lockedContinuationGroupKey,
+          })
+        : allProviderAccounts,
+    [allProviderAccounts, lockedContinuationGroupKey, providerInstanceEntries, selectedProvider],
+  );
+  const showProviderAccountPicker = shouldShowProviderAccountPicker(allProviderAccounts);
+  // A started thread that can fork lists every account; the ones it cannot switch to in place
+  // open in a new tab instead.
+  const providerAccounts = onForkModel ? allProviderAccounts : lockedProviderAccounts;
+  const resolveAccountSwitchModel = (instanceId: ProviderInstanceId) =>
+    resolveModelForAccountSwitch({
+      currentModel: selectedModelForPickerWithCustomFallback,
+      destinationModels: modelOptionsByInstance.get(instanceId) ?? [],
+    });
+  const accountRequiresFork = (instanceId: ProviderInstanceId) =>
+    onForkModel !== undefined &&
+    (!lockedProviderAccounts.some((account) => account.instanceId === instanceId) ||
+      modelRequiresFork?.(instanceId, resolveAccountSwitchModel(instanceId)) === true);
+  const onAccountChange = (instanceId: ProviderInstanceId) => {
+    const nextModel = resolveAccountSwitchModel(instanceId);
+    if (onForkModel && accountRequiresFork(instanceId)) {
+      onForkModel(instanceId, nextModel);
+      return;
+    }
+    setMultipleModelSelections(null);
+    onProviderModelSelect(instanceId, nextModel);
+  };
   const restingProviderAccountPicker = showProviderAccountPicker ? (
     <ProviderAccountPicker
       isComposerOwned
@@ -5058,15 +5079,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       size={composerControlsInStrip ? "xs" : "sm"}
       disabled={providerCatalogPending || isSendBusy}
       hidden={composerControlsHidden || restingHiddenBlockCount > 2}
-      onAccountChange={(instanceId) => {
-        const destinationModels = modelOptionsByInstance.get(instanceId) ?? [];
-        const nextModel = resolveModelForAccountSwitch({
-          currentModel: selectedModelForPickerWithCustomFallback,
-          destinationModels,
-        });
-        setMultipleModelSelections(null);
-        onProviderModelSelect(instanceId, nextModel);
-      }}
+      onAccountChange={onAccountChange}
+      requiresFork={accountRequiresFork}
     />
   ) : null;
   const restingBlockDefs = [
@@ -5270,15 +5284,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   accountMenu: {
                     activeInstanceId: selectedInstanceId,
                     accounts: providerAccounts,
-                    onAccountChange: (instanceId: ProviderInstanceId) => {
-                      const destinationModels = modelOptionsByInstance.get(instanceId) ?? [];
-                      const nextModel = resolveModelForAccountSwitch({
-                        currentModel: selectedModelForPickerWithCustomFallback,
-                        destinationModels,
-                      });
-                      setMultipleModelSelections(null);
-                      onProviderModelSelect(instanceId, nextModel);
-                    },
+                    onAccountChange,
+                    requiresFork: accountRequiresFork,
                   },
                 }
               : {})}

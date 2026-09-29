@@ -65,8 +65,11 @@ and [providers-opencode.md](./user/providers-opencode.md).
 
 When more than one enabled instance of a provider can serve the thread, the composer has an
 account picker separate from the model picker. The model list stays one row per provider and
-model. Codex only offers instances that share the thread's home. After the first message, an
-account that can no longer be switched stays visible as a label. This is web and desktop.
+model. Codex only switches in place between instances that share the thread's home. After the
+first message on a server thread, other accounts stay listed and are marked **New tab**; choosing
+one forks the chat into a new tab on that account (see [Chat tabs](#chat-tabs)). Where forking is
+unavailable, an account that can no longer be switched stays visible as a label. This is web and
+desktop.
 
 Code: `apps/web/src/components/chat/ProviderAccountPicker.tsx` and
 `apps/web/src/components/chat/providerAccountSelection.ts`. User guide:
@@ -122,8 +125,9 @@ is its own conversation and provider.
   - Each model picker row has a hover fork button. The new tab runs that model, the whole chat is
     summarized, and the current draft (text, attachments, and context chips) is copied after it.
     Other providers, and models the provider cannot switch to mid-chat, stay listed instead of
-    being hidden or disabled; choosing one forks, since it cannot replace the tab's model
-    (`matchesModelPickerLock` in `ModelPickerContent.tsx`).
+    being hidden. Their rows show a not-allowed cursor and a tooltip, and only the fork button
+    opens them, so a stray click never forks (`matchesModelPickerLock` in `ModelPickerContent.tsx`).
+  - The account picker forks the same way when the chosen account cannot take over the tab.
 - **Mobile.** A switcher menu switches, creates, and closes tabs
   (`apps/mobile/src/features/threads/ThreadTabs.tsx`). An empty tab can attach sibling context when
   sending. Mobile does not have the header crumb, the `@` chip, forking, or the sidebar tab list.

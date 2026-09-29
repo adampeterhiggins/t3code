@@ -45,7 +45,8 @@ Files the original chat changed after that message stay changed, since tabs shar
 To carry on with a different model instead, open the model picker after the first message and
 click the fork button on a model. A new tab opens on that model, with a summary of the chat and
 a copy of what you had typed. Models from other providers are listed too. A chat cannot switch to
-them in place, so choosing one always opens a new tab.
+them in place, so clicking the row does nothing; use its fork button. Picking another account in
+the composer's account picker works the same way, and those accounts are marked **New tab**.
 
 ### Start in the background
 

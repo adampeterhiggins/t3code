@@ -1,6 +1,6 @@
 import { type ProviderInstanceId } from "@t3tools/contracts";
 import { memo } from "react";
-import { CheckIcon } from "lucide-react";
+import { CheckIcon, GitForkIcon } from "lucide-react";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
@@ -20,11 +20,16 @@ import { cn } from "~/lib/utils";
  * than two switchable `accounts` (a thread locked to one account's home) it
  * becomes a plain label — icon and name, no control chrome — so the thread
  * still shows which account it runs on.
+ *
+ * Once a thread has started, accounts it cannot switch to in place can still
+ * be listed with `requiresFork`: choosing one calls `onAccountChange`, which
+ * forks the chat into a new tab on that account.
  */
 export const ProviderAccountPicker = memo(function ProviderAccountPicker(props: {
   activeInstanceId: ProviderInstanceId;
   accounts: ReadonlyArray<ProviderInstanceEntry>;
   onAccountChange: (instanceId: ProviderInstanceId) => void;
+  requiresFork?: (instanceId: ProviderInstanceId) => boolean;
   size?: ComposerControlSize;
   isComposerOwned?: boolean;
   disabled?: boolean;
@@ -42,6 +47,10 @@ export const ProviderAccountPicker = memo(function ProviderAccountPicker(props: 
   }
 
   const triggerLabel = activeEntry.displayName;
+  const forksToOtherAccounts = props.accounts.some(
+    (account) =>
+      account.instanceId !== activeEntry.instanceId && props.requiresFork?.(account.instanceId),
+  );
   const triggerContent = (
     <span className={cn("flex min-w-0 w-full items-center", size === "xs" ? "gap-1" : "gap-1.5")}>
       <ProviderInstanceIcon
@@ -119,11 +128,16 @@ export const ProviderAccountPicker = memo(function ProviderAccountPicker(props: 
         >
           {triggerContent}
         </TooltipTrigger>
-        <TooltipPopup side="top">{`Account: ${triggerLabel}`}</TooltipPopup>
+        <TooltipPopup side="top">
+          {forksToOtherAccounts
+            ? `Account: ${triggerLabel}. Another account opens in a new tab.`
+            : `Account: ${triggerLabel}`}
+        </TooltipPopup>
       </Tooltip>
       <MenuPopup align="start" {...(props.isComposerOwned ? composerFloatingLayerProps : {})}>
         {props.accounts.map((account) => {
           const isSelected = account.instanceId === activeEntry.instanceId;
+          const forks = !isSelected && props.requiresFork?.(account.instanceId) === true;
           return (
             <MenuItem
               key={account.instanceId}
@@ -144,6 +158,12 @@ export const ProviderAccountPicker = memo(function ProviderAccountPicker(props: 
               />
               <span className="min-w-0 flex-1 truncate">{account.displayName}</span>
               {isSelected ? <CheckIcon className="size-3.5 shrink-0" aria-hidden="true" /> : null}
+              {forks ? (
+                <span className="flex shrink-0 items-center gap-1 text-muted-foreground text-xs">
+                  <GitForkIcon className="size-3" aria-hidden="true" />
+                  New tab
+                </span>
+              ) : null}
             </MenuItem>
           );
         })}
