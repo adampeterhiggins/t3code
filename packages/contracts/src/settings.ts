@@ -289,6 +289,11 @@ export const BrowserLinkTarget = Schema.Literals(["system", "app"]);
 export type BrowserLinkTarget = typeof BrowserLinkTarget.Type;
 export const DEFAULT_BROWSER_LINK_TARGET: BrowserLinkTarget = "system";
 
+/** Where "Open in Linear" links go: the usual link handling, or the Linear desktop app. */
+export const LinearLinkTarget = Schema.Literals(["browser", "app"]);
+export type LinearLinkTarget = typeof LinearLinkTarget.Type;
+export const DEFAULT_LINEAR_LINK_TARGET: LinearLinkTarget = "browser";
+
 export const LoadBalancingWeights = Schema.Record(
   TrimmedNonEmptyString,
   Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 100 })),
@@ -343,6 +348,10 @@ export const ClientSettingsSchema = Schema.Struct({
    */
   browserLinkTarget: BrowserLinkTarget.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_BROWSER_LINK_TARGET)),
+  ),
+  /** Whether "Open in Linear" opens the Linear desktop app instead of following `browserLinkTarget`. */
+  linearLinkTarget: LinearLinkTarget.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_LINEAR_LINK_TARGET)),
   ),
   /**
    * Whether an agent using a preview pops the floating mini player into
@@ -1747,6 +1756,7 @@ export const ClientSettingsPatch = Schema.Struct({
   browserRecordingShowKeyPresses: Schema.optionalKey(Schema.Boolean),
   browserRecordingShowMousePresses: Schema.optionalKey(Schema.Boolean),
   browserLinkTarget: Schema.optionalKey(BrowserLinkTarget),
+  linearLinkTarget: Schema.optionalKey(LinearLinkTarget),
   browserAutoShowFloatingPreview: Schema.optionalKey(Schema.Boolean),
   browserProfiles: Schema.optionalKey(Schema.Array(BrowserProfile)),
   browserDefaultProfileId: Schema.optionalKey(BrowserProfileId),

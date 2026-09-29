@@ -32,12 +32,24 @@ Attach a Linear issue to a message so the agent gets its details without you pas
 - On web and desktop, run **Attach Linear issue** from the command palette.
 - On mobile, tap **+** in the composer and choose **Linear issue**.
 
+The picker's filter menus narrow the list by assignee, team, project, milestone, status, priority,
+and label, and **Sort** orders it by last update, creation, priority, due date, status, or title. It
+starts on your open assigned issues and remembers your filters on each device. Search text applies
+on top of the filters and ranks results by relevance unless you sort by created or updated time.
+Statuses and labels match by name across teams. **Reset** returns to the defaults.
+
 The issue appears as a chip in your message. Hover or tap it to see what the agent receives: the
 title, state, priority, assignee, labels, description, sub-issues, links, and recent comments.
 Long issues are trimmed, dropping the oldest comments first.
 
 The issue is copied when you attach it, so later edits in Linear don't change a message you
 already sent. Chips in an unsent draft don't survive a reload; attach the issue again.
+
+## Open issues in the Linear app
+
+The **Open in Linear** link on an issue chip follows **Open links in** by default. To open issues in
+the Linear desktop app instead, set **Settings > Integrations > Linear > Open Linear links in** to
+**Linear app**. If the app isn't installed, the desktop app opens the issue in your browser.
 
 ## Disconnect
 

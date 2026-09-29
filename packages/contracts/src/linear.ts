@@ -54,15 +54,78 @@ export const LinearIssueSummary = Schema.Struct({
 });
 export type LinearIssueSummary = typeof LinearIssueSummary.Type;
 
+const LinearFilterValues = Schema.Array(Schema.String.check(Schema.isMaxLength(256))).check(
+  Schema.isMaxLength(100),
+);
+
 /**
- * `linear.listIssues` payload. An empty query lists the viewer's open assigned
- * issues; an identifier (`ENG-123`) or issue URL is looked up directly; any
- * other text runs Linear's issue search.
+ * Picker filters. Each list narrows the results when non-empty. `assigneeIds` also takes `me`
+ * and `none`, and `projectIds` takes `none`. Statuses and labels match by name, since each team
+ * has its own copy. Without explicit statuses, `includeClosed` decides whether completed and
+ * canceled issues show.
+ */
+export const LinearIssueFilters = Schema.Struct({
+  assigneeIds: LinearFilterValues,
+  teamIds: LinearFilterValues,
+  projectIds: LinearFilterValues,
+  milestoneIds: LinearFilterValues,
+  stateNames: LinearFilterValues,
+  priorities: Schema.Array(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 4 }))).check(
+    Schema.isMaxLength(5),
+  ),
+  labelNames: LinearFilterValues,
+  includeClosed: Schema.Boolean,
+});
+export type LinearIssueFilters = typeof LinearIssueFilters.Type;
+
+export const LINEAR_ISSUE_SORT_FIELDS = [
+  "updated",
+  "created",
+  "priority",
+  "dueDate",
+  "status",
+  "title",
+] as const;
+export const LinearIssueSort = Schema.Struct({
+  field: Schema.Literals(LINEAR_ISSUE_SORT_FIELDS),
+  direction: Schema.Literals(["asc", "desc"]),
+});
+export type LinearIssueSort = typeof LinearIssueSort.Type;
+
+/**
+ * `linear.listIssues` payload. An identifier (`ENG-123`) or issue URL is looked up directly;
+ * other text runs Linear's issue search, ranked by relevance. With neither filters nor text, it
+ * lists the viewer's open assigned issues.
  */
 export const LinearListIssuesInput = Schema.Struct({
   query: Schema.optional(Schema.String.check(Schema.isMaxLength(256))),
+  filters: Schema.optional(LinearIssueFilters),
+  sort: Schema.optional(LinearIssueSort),
 });
 export type LinearListIssuesInput = typeof LinearListIssuesInput.Type;
+
+/** The values the picker's filter menus offer, for the connected workspace. */
+export const LinearFilterOptions = Schema.Struct({
+  teams: Schema.Array(
+    Schema.Struct({ id: Schema.String, key: Schema.String, name: Schema.String }),
+  ),
+  states: Schema.Array(
+    Schema.Struct({ name: Schema.String, type: Schema.String, color: Schema.String }),
+  ),
+  projects: Schema.Array(
+    Schema.Struct({
+      id: Schema.String,
+      name: Schema.String,
+      teamIds: Schema.Array(Schema.String),
+      milestones: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
+    }),
+  ),
+  users: Schema.Array(
+    Schema.Struct({ id: Schema.String, name: Schema.String, isMe: Schema.Boolean }),
+  ),
+  labels: Schema.Array(Schema.Struct({ name: Schema.String, color: Schema.String })),
+});
+export type LinearFilterOptions = typeof LinearFilterOptions.Type;
 
 export const LinearListIssuesResult = Schema.Struct({
   issues: Schema.Array(LinearIssueSummary),

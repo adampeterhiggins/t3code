@@ -3157,6 +3157,10 @@ const makeWsRpcLayer = (
           observeRpcEffect(WS_METHODS.linearListIssues, linearApi.listIssues(input), {
             "rpc.aggregate": "linear",
           }),
+        [WS_METHODS.linearGetFilterOptions]: (_input) =>
+          observeRpcEffect(WS_METHODS.linearGetFilterOptions, linearApi.getFilterOptions, {
+            "rpc.aggregate": "linear",
+          }),
         [WS_METHODS.linearGetIssue]: (input) =>
           observeRpcEffect(WS_METHODS.linearGetIssue, linearApi.getIssue(input), {
             "rpc.aggregate": "linear",

@@ -20,6 +20,7 @@ import {
   LinearCompleteLoginInput,
   LinearConnectionState,
   LinearError,
+  LinearFilterOptions,
   LinearGetIssueInput,
   LinearIssueContext,
   LinearListIssuesInput,
@@ -447,6 +448,7 @@ export const WS_METHODS = {
   linearDisconnect: "linear.disconnect",
   linearListIssues: "linear.listIssues",
   linearGetIssue: "linear.getIssue",
+  linearGetFilterOptions: "linear.getFilterOptions",
   projectCloneStart: "projectClone.start",
   projectCloneCancel: "projectClone.cancel",
   projectCloneRetry: "projectClone.retry",
@@ -678,6 +680,12 @@ const WsLinearListIssuesRpc = Rpc.make(WS_METHODS.linearListIssues, {
 const WsLinearGetIssueRpc = Rpc.make(WS_METHODS.linearGetIssue, {
   payload: LinearGetIssueInput,
   success: LinearIssueContext,
+  error: LinearRpcError,
+});
+
+const WsLinearGetFilterOptionsRpc = Rpc.make(WS_METHODS.linearGetFilterOptions, {
+  payload: Schema.Struct({}),
+  success: LinearFilterOptions,
   error: LinearRpcError,
 });
 
@@ -1557,6 +1565,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsLinearDisconnectRpc,
   WsLinearListIssuesRpc,
   WsLinearGetIssueRpc,
+  WsLinearGetFilterOptionsRpc,
   WsProjectCloneStartRpc,
   WsProjectCloneCancelRpc,
   WsProjectCloneRetryRpc,

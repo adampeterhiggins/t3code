@@ -18,6 +18,11 @@ import { useDebouncedValue } from "~/state/queries";
 import { useEnvironmentQuery } from "~/state/query";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { CommandPaletteContent } from "../CommandPaletteContent";
+import {
+  LinearIssueFilterBar,
+  useLinearIssuePickerView,
+  useLinearIssuePickerViewStore,
+} from "./LinearIssueFilters";
 import { Button } from "../ui/button";
 import {
   CommandCollection,
@@ -107,9 +112,17 @@ function LinearIssuePickerDialog(props: { threadRef: ScopedThreadRef; onClose: (
     linearEnvironment.connection({ environmentId, input: {} }),
   );
   const connected = connection.data?.phase === "connected";
+  const view = useLinearIssuePickerView(environmentId);
+  const setView = useLinearIssuePickerViewStore((state) => state.setView);
+  const filterOptions = useEnvironmentQuery(
+    connected ? linearEnvironment.filterOptions({ environmentId, input: {} }) : null,
+  );
   const issuesQuery = useEnvironmentQuery(
     connected
-      ? linearEnvironment.issues({ environmentId, input: { query: debouncedQuery } })
+      ? linearEnvironment.issues({
+          environmentId,
+          input: { query: debouncedQuery, filters: view.filters, sort: view.sort },
+        })
       : null,
   );
   // A new query starts from an empty atom; keep the last results on screen until it answers.
@@ -137,9 +150,7 @@ function LinearIssuePickerDialog(props: { threadRef: ScopedThreadRef; onClose: (
           : issues.length === 0
             ? searching
               ? "Searching Linear…"
-              : debouncedQuery
-                ? "No matching issues."
-                : "No open issues are assigned to you."
+              : "No issues match these filters."
             : null;
 
   return (
@@ -157,6 +168,14 @@ function LinearIssuePickerDialog(props: { threadRef: ScopedThreadRef; onClose: (
               startAddon: <SquareKanbanIcon />,
             }}
             footerActionLabel={attaching ? "Attaching…" : "Attach"}
+            inputAccessory={
+              <LinearIssueFilterBar
+                options={filterOptions.data}
+                view={view}
+                searching={debouncedQuery.length > 0}
+                onChange={(next) => setView(environmentId, next)}
+              />
+            }
             mode="none"
             value={query}
             onValueChange={setQuery}
@@ -182,6 +201,7 @@ function LinearIssuePickerDialog(props: { threadRef: ScopedThreadRef; onClose: (
                           {issue.title}
                         </span>
                         <span className="shrink-0 text-muted-foreground/70 text-xs">
+                          {issue.assigneeName ? `${issue.assigneeName} · ` : ""}
                           {issue.stateName}
                         </span>
                       </CommandItem>

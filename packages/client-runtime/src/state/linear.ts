@@ -46,6 +46,12 @@ export function createLinearEnvironmentAtoms<R, E>(
       tag: WS_METHODS.linearListIssues,
       staleTimeMs: 30_000,
     }),
+    // Teams, statuses, projects, people, and labels for the picker's filter menus.
+    filterOptions: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:linear:filter-options",
+      tag: WS_METHODS.linearGetFilterOptions,
+      staleTimeMs: 5 * 60_000,
+    }),
     // Fetched once when an issue is attached; the result is snapshotted into the message.
     getIssue: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:linear:get-issue",
@@ -72,4 +78,19 @@ export function linearIssueContextRecord(issue: LinearIssueContext): LinearIssue
     stateName: issue.stateName,
     markdown: issue.markdown,
   };
+}
+
+/**
+ * The Linear desktop app's link for a linear.app URL: same path on the `linear:` scheme. Returns
+ * null for anything that is not a linear.app link.
+ */
+export function linearAppUrl(url: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "https:" || parsed.hostname !== "linear.app") return null;
+  return `linear:/${parsed.pathname}${parsed.search}${parsed.hash}`;
 }

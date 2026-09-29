@@ -3,11 +3,17 @@ import {
   squashAtomCommandFailure,
   type AtomCommandResult,
 } from "@t3tools/client-runtime/state/runtime";
-import type { EnvironmentId, LinearConnectionState } from "@t3tools/contracts";
+import {
+  DEFAULT_LINEAR_LINK_TARGET,
+  type EnvironmentId,
+  type LinearConnectionState,
+  type LinearLinkTarget,
+} from "@t3tools/contracts";
 import { useRef, useState } from "react";
 
 import { isElectron } from "../../env";
 import { writeTextToClipboard } from "../../hooks/useCopyToClipboard";
+import { useClientSettings, useUpdatePrimarySettings } from "../../hooks/useSettings";
 import { ensureLocalApi } from "../../localApi";
 import { usePrimaryEnvironment } from "../../state/environments";
 import { linearEnvironment } from "../../state/linear";
@@ -15,7 +21,8 @@ import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import { SettingsRow, SettingsSection } from "./settingsLayout";
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
+import { SettingResetButton, SettingsRow, SettingsSection } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import { useSettingsScope } from "./SettingsScopeContext";
 
@@ -46,7 +53,56 @@ export function LinearSettingsSection() {
           environmentLabel={environment?.label ?? "this environment"}
         />
       )}
+      <LinearLinkTargetSetting />
     </SettingsSection>
+  );
+}
+
+const LINEAR_LINK_TARGET_LABELS: Readonly<Record<LinearLinkTarget, string>> = {
+  browser: "Like other links",
+  app: "Linear app",
+};
+
+/** Device-local: whether the Linear app is installed is a property of this machine. */
+function LinearLinkTargetSetting() {
+  const linkTarget = useClientSettings((settings) => settings.linearLinkTarget);
+  const updateSettings = useUpdatePrimarySettings();
+  return (
+    <SettingsRow
+      {...searchableSetting("linear-link-target")}
+      description="Where Open in Linear goes. Like other links follows Open links in above."
+      resetAction={
+        linkTarget !== DEFAULT_LINEAR_LINK_TARGET ? (
+          <SettingResetButton
+            label="Linear links"
+            onClick={() => updateSettings({ linearLinkTarget: DEFAULT_LINEAR_LINK_TARGET })}
+          />
+        ) : null
+      }
+      control={
+        <Select
+          value={linkTarget}
+          onValueChange={(value) => {
+            if (value === "browser" || value === "app") {
+              updateSettings({ linearLinkTarget: value });
+            }
+          }}
+        >
+          <SelectTrigger size="sm" className="w-full sm:w-40" aria-label="Open Linear links in">
+            <SelectValue>{LINEAR_LINK_TARGET_LABELS[linkTarget]}</SelectValue>
+          </SelectTrigger>
+          <SelectPopup align="end" alignItemWithTrigger={false}>
+            {(Object.keys(LINEAR_LINK_TARGET_LABELS) as ReadonlyArray<LinearLinkTarget>).map(
+              (target) => (
+                <SelectItem hideIndicator key={target} value={target}>
+                  {LINEAR_LINK_TARGET_LABELS[target]}
+                </SelectItem>
+              ),
+            )}
+          </SelectPopup>
+        </Select>
+      }
+    />
   );
 }
 

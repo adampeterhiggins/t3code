@@ -229,8 +229,11 @@ When the browser is on another device, the user pastes the redirect URL back ins
 
 Issues attach to messages as a `linear-issue` context chip: from the composer's attach menu (which
 now asks between files and a Linear issue), the `#` menu beside pull requests, the command palette,
-and the mobile attach menu. The server renders the issue to capped markdown when it is attached,
-and that snapshot is inlined into the prompt for every provider.
+and the mobile attach menu. The web picker filters by assignee, team, project, milestone, status,
+priority, and label, and sorts by the fields Linear's API offers. The server renders the issue to
+capped markdown when it is attached, and that snapshot is inlined into the prompt for every
+provider. An **Open Linear links in** setting can send issue links to the Linear desktop app
+(`linear://`), which the desktop shell's external-URL allowlist permits.
 
 Code: `apps/server/src/linear/`, `packages/contracts/src/linear.ts`, `LinearIssueContextRecord` in
 `packages/contracts/src/composerContext.ts`, `packages/client-runtime/src/state/linear.ts`,
@@ -238,6 +241,7 @@ Code: `apps/server/src/linear/`, `packages/contracts/src/linear.ts`, `LinearIssu
 `apps/web/src/components/chat/LinearIssuePicker.tsx`,
 `apps/web/src/components/chat/ComposerAttachMenu.tsx`,
 `apps/web/src/components/chat/useComposerLinearIssueItems.ts`,
+`apps/web/src/components/chat/LinearIssueFilters.tsx`,
 `apps/mobile/src/components/LinearIssuePickerSheet.tsx`, and
 `apps/mobile/src/features/settings/SettingsLinearRouteScreen.tsx`. User guide:
 [linear.md](./user/linear.md).

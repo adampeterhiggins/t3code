@@ -19,6 +19,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import type { ComposerFileAttachment, ComposerImageAttachment } from "~/composerDraftStore";
 import { composerFileNeedsReattach } from "~/composerDraftStore";
 import { useTheme } from "~/hooks/useTheme";
+import { useLinearLinkClickHandler } from "~/browser/useLinearLinkClickHandler";
 import {
   formatAttachmentUploadProgress,
   type AttachmentUploadState,
@@ -471,6 +472,7 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
 
 function ComposerLinearIssueDetails({ record }: { record: LinearIssueContextRecord }) {
   const actions = use(ComposerContextActionsContext);
+  const openLinearLink = useLinearLinkClickHandler(actions.openLink);
   return (
     <LinearIssueDetails
       identifier={record.identifier}
@@ -478,7 +480,7 @@ function ComposerLinearIssueDetails({ record }: { record: LinearIssueContextReco
       stateName={record.stateName}
       url={record.url}
       markdown={record.markdown}
-      onOpenLink={actions.openLink}
+      onOpenLink={openLinearLink}
     />
   );
 }

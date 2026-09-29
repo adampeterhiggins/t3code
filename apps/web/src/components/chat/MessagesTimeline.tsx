@@ -251,6 +251,7 @@ import { ContextChip, ContextChipLabel, type ContextChipKind } from "../ContextC
 import { createContextPresentationRegistry } from "../contextPresentationRegistry";
 import { useOpenPrLink } from "~/lib/openPullRequestLink";
 import { useLinkClickHandler } from "~/browser/useOpenLink";
+import { useLinearLinkClickHandler } from "~/browser/useLinearLinkClickHandler";
 import { useClientSettings } from "~/hooks/useSettings";
 import type { ChatMarkdownContextReference } from "../ChatMarkdown";
 import { useMediaQuery } from "~/hooks/useMediaQuery";
@@ -3977,7 +3978,7 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
 
 function UserMessageLinearIssueDetails({ record }: { record: LinearIssueContextRecord }) {
   const { threadRef } = use(TimelineRowCtx);
-  const openLink = useLinkClickHandler(threadRef);
+  const openLink = useLinearLinkClickHandler(useLinkClickHandler(threadRef));
   return (
     <LinearIssueDetails
       identifier={record.identifier}

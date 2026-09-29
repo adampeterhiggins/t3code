@@ -109,6 +109,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.linearSubscribeState]: AuthOrchestrationReadScope,
   [WS_METHODS.linearListIssues]: AuthOrchestrationReadScope,
   [WS_METHODS.linearGetIssue]: AuthOrchestrationReadScope,
+  [WS_METHODS.linearGetFilterOptions]: AuthOrchestrationReadScope,
   [WS_METHODS.linearStartLogin]: AuthOrchestrationOperateScope,
   [WS_METHODS.linearCompleteLogin]: AuthOrchestrationOperateScope,
   [WS_METHODS.linearCancelLogin]: AuthOrchestrationOperateScope,
