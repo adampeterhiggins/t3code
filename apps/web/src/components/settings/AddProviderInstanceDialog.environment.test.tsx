@@ -178,7 +178,8 @@ describe("AddProviderInstanceDialog environment routing", () => {
 
   it("creates the instance on Config and lands on a sign-in step for its id", () => {
     let tree = renderDialog();
-    clickButton(tree, "Next");
+    // Codex opens on the ChatGPT connect choice; the manual path reaches Config.
+    clickButton(tree, "Configure manually");
 
     tree = renderDialog();
     const idInput = visitElements(tree, (element) => element.props.placeholder === "codex_work");
@@ -194,7 +195,7 @@ describe("AddProviderInstanceDialog environment routing", () => {
 
     expect(settingsHooks.updateInner).toHaveBeenCalledWith({
       providerInstances: {
-        codex_work: { driver: "codex", enabled: true },
+        codex_work: { driver: "codex", enabled: true, config: { setupMode: "existing" } },
       },
     });
     // A targeted refresh asks the server to probe the new instance so its

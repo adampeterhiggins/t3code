@@ -1,4 +1,6 @@
 import type {
+  ChatGptReconnectProfile,
+  ChatGptTransferredProfile,
   ProviderAuthRespondInput,
   ProviderAuthStartInput,
   ProviderAuthState,
@@ -22,11 +24,25 @@ export interface ProviderAuthStartOptions {
   readonly methodId?: string | undefined;
   readonly credential?: string | undefined;
   readonly stopSessions?: Effect.Effect<void, ProviderSetupError> | undefined;
+  /** Where a browser sign-in returns to, and who receives its callback. */
+  readonly returnUrl?: string | undefined;
+  readonly callbackMode?: "server" | "client" | undefined;
 }
 
 export interface ProviderAuthController {
   /** Equal keys mean these instances share credentials on this environment. */
   readonly credentialBinding?: { readonly owner: "provider" | "t3"; readonly key: string };
+  readonly reconnectProfile?: (
+    methodId: string,
+  ) => Effect.Effect<ChatGptReconnectProfile | null, ProviderSetupError>;
+  readonly importProfile?: (
+    profile: ChatGptTransferredProfile,
+    stopSessions: Effect.Effect<void, ProviderSetupError>,
+  ) => Effect.Effect<ProviderAuthState, ProviderSetupError>;
+  readonly adoptCredentials?: (
+    update: Effect.Effect<void, ProviderSetupError>,
+    stopSessions: Effect.Effect<void, ProviderSetupError>,
+  ) => Effect.Effect<ProviderAuthState, ProviderSetupError>;
   readonly isChangingCredentials?: Effect.Effect<boolean>;
   readonly invalidate?: Effect.Effect<void>;
   readonly refreshMethods?: Effect.Effect<void>;
@@ -62,6 +78,12 @@ interface ProviderAuthTarget {
 }
 
 export interface ProviderAuthServiceShape {
+  readonly reconnectProfile: (
+    input: ProviderAuthTarget & { methodId: string },
+  ) => Effect.Effect<ChatGptReconnectProfile | null, ProviderSetupError>;
+  readonly importProfile: (
+    input: ProviderAuthTarget & { profile: ChatGptTransferredProfile },
+  ) => Effect.Effect<ProviderAuthState, ProviderSetupError>;
   readonly start: (
     input: ProviderAuthStartInput,
     ownerSessionId: string,
