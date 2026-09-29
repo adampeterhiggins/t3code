@@ -118,6 +118,7 @@ import * as PullRequestReadCache from "./pullRequest/PullRequestReadCache.ts";
 import * as SourceControlRateLimit from "./sourceControl/SourceControlRateLimit.ts";
 import * as SourceControlRepositoryService from "./sourceControl/SourceControlRepositoryService.ts";
 import * as ProjectSetupScriptRunner from "./project/ProjectSetupScriptRunner.ts";
+import * as ConductorWorkspace from "./project/ConductorWorkspace.ts";
 import * as WorktreeSetupTracker from "./project/WorktreeSetupTracker.ts";
 import { ObservabilityLive } from "./observability/Layers/Observability.ts";
 import * as HeapSnapshot from "./observability/HeapSnapshot.ts";
@@ -358,8 +359,19 @@ const PullRequestServiceLive = PullRequestService.layer.pipe(
   Layer.provide(SourceControlRateLimit.layer),
 );
 
+const ConductorWorkspaceLayerLive = ConductorWorkspace.layer.pipe(
+  Layer.provide(GitVcsDriver.layer),
+  Layer.provide(ProcessRunner.layer),
+);
+
 const GitManagerLayerLive = GitManager.layer.pipe(
-  Layer.provideMerge(ProjectSetupScriptRunner.layer.pipe(Layer.provide(ServerSettingsLayerLive))),
+  Layer.provideMerge(
+    ProjectSetupScriptRunner.layer.pipe(
+      Layer.provide(ServerSettingsLayerLive),
+      Layer.provide(ConductorWorkspaceLayerLive),
+    ),
+  ),
+  Layer.provideMerge(ConductorWorkspaceLayerLive),
   Layer.provideMerge(WorktreeSetupTracker.layer),
   Layer.provideMerge(GitVcsDriver.layer),
   Layer.provideMerge(SourceControlProviderRegistryLayerLive),

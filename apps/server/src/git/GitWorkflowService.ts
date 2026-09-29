@@ -28,6 +28,7 @@ import {
   type VcsStatusResult,
 } from "@t3tools/contracts";
 
+import * as ConductorWorkspace from "../project/ConductorWorkspace.ts";
 import * as GitManager from "./GitManager.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
@@ -154,6 +155,7 @@ export const make = Effect.gen(function* () {
   const registry = yield* VcsDriverRegistry.VcsDriverRegistry;
   const git = yield* GitVcsDriver.GitVcsDriver;
   const gitManager = yield* GitManager.GitManager;
+  const conductorWorkspace = yield* ConductorWorkspace.ConductorWorkspace;
 
   const ensureGit = Effect.fn("GitWorkflowService.ensureGit")(function* (
     operation: string,
@@ -362,6 +364,9 @@ export const make = Effect.gen(function* () {
       ),
     removeWorktree: (input) =>
       ensureGitCommand("GitWorkflowService.removeWorktree", input.cwd).pipe(
+        Effect.andThen(
+          conductorWorkspace.archiveWorktree({ projectRoot: input.cwd, worktreePath: input.path }),
+        ),
         Effect.andThen(git.removeWorktree(input)),
       ),
     pruneWorktrees: (input) =>

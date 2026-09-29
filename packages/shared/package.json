@@ -131,6 +131,10 @@
       "types": "./src/projectSettings.ts",
       "import": "./src/projectSettings.ts"
     },
+    "./conductorSettings": {
+      "types": "./src/conductorSettings.ts",
+      "import": "./src/conductorSettings.ts"
+    },
     "./t3ProjectFile": {
       "types": "./src/t3ProjectFile.ts",
       "import": "./src/t3ProjectFile.ts"
@@ -358,6 +362,7 @@
     "@t3tools/contracts": "workspace:*",
     "effect": "catalog:",
     "jose": "catalog:",
+    "smol-toml": "1.8.0",
     "yaml": "catalog:"
   },
   "devDependencies": {

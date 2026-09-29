@@ -18,6 +18,7 @@ import * as Schema from "effect/Schema";
 import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as TerminalManager from "../terminal/Manager.ts";
+import * as ConductorWorkspace from "./ConductorWorkspace.ts";
 
 export interface ProjectSetupScriptRunnerResultNoScript {
   readonly status: "no-script";
@@ -196,6 +197,7 @@ export const make = Effect.gen(function* () {
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
   const terminalManager = yield* TerminalManager.TerminalManager;
   const serverSettings = yield* ServerSettings.ServerSettingsService;
+  const conductorWorkspace = yield* ConductorWorkspace.ConductorWorkspace;
   const completionShell = resolveCompletionShell(
     yield* HostProcessPlatform,
     yield* HostProcessEnvironment,
@@ -338,7 +340,22 @@ export const make = Effect.gen(function* () {
           }),
       ),
     );
-    const script = setupProjectScript(resolveProjectScripts(settings, project));
+    // Copies the repository's Conductor files to copy even when no script runs.
+    const conductor = yield* conductorWorkspace.prepareWorktree({
+      projectRoot: project.workspaceRoot,
+      worktreePath: input.worktreePath,
+    });
+    // A setup action configured in T3 wins over the repository's Conductor one.
+    const script =
+      setupProjectScript(resolveProjectScripts(settings, project)) ??
+      (conductor.setupScript === null
+        ? null
+        : {
+            id: "conductor-setup",
+            name: "Conductor setup",
+            command: conductor.setupScript,
+            async: true,
+          });
     if (!script) {
       return {
         status: "no-script",
@@ -350,6 +367,7 @@ export const make = Effect.gen(function* () {
     const env = projectScriptRuntimeEnv({
       project: { cwd: project.workspaceRoot },
       worktreePath: input.worktreePath,
+      extraEnv: { ...conductor.env },
     });
     const observe = input.observeCompletion;
     const completionToken = observe ? NodeCrypto.randomUUID().replaceAll("-", "") : null;
