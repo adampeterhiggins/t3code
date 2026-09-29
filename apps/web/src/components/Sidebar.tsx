@@ -3224,7 +3224,7 @@ export default function Sidebar() {
   // history stays readable without un-settling, and sending a message or
   // starting a session un-settles server-side.
   const navigateToThread = useCallback(
-    (threadRef: ScopedThreadRef) => {
+    (threadRef: ScopedThreadRef, tabGroups: ReadonlyMap<string, string> = hiddenTabThreads) => {
       if (useThreadSelectionStore.getState().selectedThreadKeys.size > 0) {
         clearSelection();
       }
@@ -3234,10 +3234,16 @@ export default function Sidebar() {
       }
       return router.navigate({
         to: "/$environmentId/$threadId",
-        params: buildThreadRouteParams(resolveThreadTabTarget(threadRef, hiddenTabThreads)),
+        params: buildThreadRouteParams(resolveThreadTabTarget(threadRef, tabGroups)),
       });
     },
     [clearSelection, hiddenTabThreads, isMobile, router, setOpenMobile, setSelectionAnchor],
+  );
+  // A card stands for its whole tab group, so it reopens the tab you left even
+  // while listed tab rows open exactly themselves.
+  const navigateToTabGroup = useCallback(
+    (threadRef: ScopedThreadRef) => navigateToThread(threadRef, tabThreadGroups),
+    [navigateToThread, tabThreadGroups],
   );
 
   // Dropping files on a row opens that thread and attaches the files there.
@@ -3384,8 +3390,12 @@ export default function Sidebar() {
     [updateThreadMetadata],
   );
 
-  const handleThreadClick = useCallback(
-    (event: ReactMouseEvent, threadRef: ScopedThreadRef) => {
+  const clickThread = useCallback(
+    (
+      event: ReactMouseEvent,
+      threadRef: ScopedThreadRef,
+      navigate: (threadRef: ScopedThreadRef) => void,
+    ) => {
       if (isSidebarNestedLinkClick(event.target)) return;
       const isMac = isMacPlatform(navigator.platform);
       const isModClick = isMac ? event.metaKey : event.ctrlKey;
@@ -3403,9 +3413,19 @@ export default function Sidebar() {
       if (isTrailingDoubleClick(event.detail)) {
         return;
       }
-      navigateToThread(threadRef);
+      navigate(threadRef);
     },
-    [navigateToThread, rangeSelectTo, toggleThreadSelection],
+    [rangeSelectTo, toggleThreadSelection],
+  );
+  const handleThreadClick = useCallback(
+    (event: ReactMouseEvent, threadRef: ScopedThreadRef) =>
+      clickThread(event, threadRef, navigateToThread),
+    [clickThread, navigateToThread],
+  );
+  const handleTabGroupClick = useCallback(
+    (event: ReactMouseEvent, threadRef: ScopedThreadRef) =>
+      clickThread(event, threadRef, navigateToTabGroup),
+    [clickThread, navigateToTabGroup],
   );
 
   // A settle per thread at a time: double clicks and repeated menu picks
@@ -5168,8 +5188,8 @@ export default function Sidebar() {
                               EMPTY_PROVIDER_ENTRIES
                             }
                             timestampFormat={timestampFormat}
-                            onThreadClick={handleThreadClick}
-                            onThreadActivate={navigateToThread}
+                            onThreadClick={isCard ? handleTabGroupClick : handleThreadClick}
+                            onThreadActivate={isCard ? navigateToTabGroup : navigateToThread}
                             onStartRename={startThreadRename}
                             onRenameTitleChange={setRenamingTitle}
                             onCommitRename={commitThreadRename}
