@@ -203,6 +203,8 @@ import {
 } from "../composerContextPresentation";
 import { useOpenPrLink } from "~/lib/openPullRequestLink";
 import { useThreadTabContextRecords } from "~/threadTabContextStore";
+import { useLinearIssueContextRecords } from "~/linearIssueContextStore";
+import { useLinkClickHandler } from "~/browser/useOpenLink";
 import {
   collectInlineContextIds,
   stripInlineContextReferences,
@@ -255,6 +257,9 @@ import {
 import { resolveModelPickerSelectedModel } from "./ModelPickerContent";
 import { type ComposerCommandItem, ComposerCommandMenu } from "./ComposerCommandMenu";
 import { useCaptureThreadTabContext } from "./ThreadTabs";
+import { ComposerAttachMenu } from "./ComposerAttachMenu";
+import { useAttachLinearIssue } from "./LinearIssuePicker";
+import { useComposerLinearIssueItems } from "./useComposerLinearIssueItems";
 import { ComposerPendingApprovalActions } from "./ComposerPendingApprovalActions";
 import { CompactComposerControlsMenu } from "./CompactComposerControlsMenu";
 import { ComposerImageThumbnail } from "./ComposerImageThumbnail";
@@ -1677,6 +1682,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const nonPersistedComposerImageIds = attachmentDraft.nonPersistedImageIds;
   const uploadsByImageId = useAttachmentUploadStore((state) => state.uploadsByImageId);
   const openPrLink = useOpenPrLink(routeThreadRef);
+  const openLink = useLinkClickHandler(routeThreadRef);
   const [previewFileId, setPreviewFileId] = useState<string | null>(null);
   const previewFile = composerFiles.find((file) => file.id === previewFileId);
   const composerContextActions = useMemo(
@@ -1711,10 +1717,20 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       openPullRequest: (event: React.MouseEvent<HTMLElement>, url: string) => {
         openPrLink(event, url);
       },
+      openLink,
     }),
-    [composerFiles, composerImages, environmentId, onExpandImage, openPrLink, routeThreadRef],
+    [
+      composerFiles,
+      composerImages,
+      environmentId,
+      onExpandImage,
+      openLink,
+      openPrLink,
+      routeThreadRef,
+    ],
   );
   const composerThreadTabContexts = useThreadTabContextRecords(routeThreadRef?.threadId);
+  const composerLinearIssueContexts = useLinearIssueContextRecords(routeThreadRef?.threadId);
   const composerContextRecords = useMemo(
     () =>
       composerContextRecordsFromDraft({
@@ -1722,6 +1738,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         reviewComments: composerReviewComments,
         previewAnnotations: composerPreviewAnnotations,
         threadTabs: composerThreadTabContexts,
+        linearIssues: composerLinearIssueContexts,
         images: composerImages,
         files: composerFiles,
         uploadsByImageId,
@@ -1733,6 +1750,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       composerReviewComments,
       composerTerminalContexts,
       composerThreadTabContexts,
+      composerLinearIssueContexts,
       uploadsByImageId,
     ],
   );
@@ -2364,6 +2382,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         }),
   );
 
+  const linearIssueMenu = useComposerLinearIssueItems(environmentId, composerTrigger);
+  const attachLinearIssue = useAttachLinearIssue();
   const captureThreadTabContext = useCaptureThreadTabContext(
     environmentId,
     threadTabGroup ? activeThreadId : null,
@@ -2507,7 +2527,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             }),
             composerTrigger.query,
           ).slice(0, COMPOSER_PULL_REQUEST_RESULT_LIMIT);
-      return matches.map((pullRequest) => ({
+      const pullRequestItems = matches.map((pullRequest): ComposerCommandItem => ({
         id: `pull-request:${pullRequest.projectId}:${pullRequest.repository}:${pullRequest.number}`,
         type: "pull-request",
         pullRequest: {
@@ -2522,12 +2542,20 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         label: `#${pullRequest.number}`,
         description: pullRequest.title,
       }));
+      return linearIssueMenu.leadsResults
+        ? [...linearIssueMenu.items, ...pullRequestItems]
+        : [...pullRequestItems, ...linearIssueMenu.items];
+    }
+    if (composerTrigger.kind === "pull-request") {
+      return linearIssueMenu.items;
     }
     return [];
   }, [
     compactSlashCommandAvailable,
     composerTrigger,
     exactPullRequestLookup.data,
+    linearIssueMenu.items,
+    linearIssueMenu.leadsResults,
     planModeUiEnabled,
     pullRequestLookup.data,
     pullRequestProjectId,
@@ -2618,10 +2646,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       (pullRequestLookup.isPending ||
         pullRequestTextQuery !== debouncedPullRequestTextQuery ||
         pullRequestTriggerNumber !== debouncedPullRequestNumber ||
-        exactPullRequestLookup.isPending));
+        exactPullRequestLookup.isPending)) ||
+    (composerTriggerKind === "pull-request" && linearIssueMenu.isPending);
   const composerMenuEmptyState = useMemo(() => {
     if (composerTriggerKind === "skill") {
       return "No skills found. Try / to browse provider commands.";
+    }
+    if (composerTriggerKind === "pull-request" && linearIssueMenu.enabled) {
+      return composerTrigger?.query
+        ? `No pull request or Linear issue matches ${composerTrigger.query}.`
+        : "No pull requests or Linear issues found.";
     }
     if (composerTriggerKind === "pull-request") {
       if (pullRequestProjectId === null || pullRequestRepository === null) {
@@ -2643,6 +2677,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   }, [
     composerTrigger,
     composerTriggerKind,
+    linearIssueMenu.enabled,
     pullRequestLookup.data?.errors,
     pullRequestLookup.error,
     pullRequestProjectId,
@@ -3677,6 +3712,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         );
         return;
       }
+      if (item.type === "linear-issue") {
+        const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
+          expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
+        });
+        if (!applied) return;
+        setComposerHighlightedItemId(null);
+        // The chip lands at the caret once the issue is fetched and snapshotted.
+        void attachLinearIssue(routeThreadRef, item.issueId);
+        return;
+      }
       if (item.type === "slash-command") {
         if (item.command === "model") {
           const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
@@ -3780,6 +3825,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     [
       addComposerDraftReviewComment,
       applyPromptReplacement,
+      attachLinearIssue,
       captureThreadTabContext,
       composerDraftTarget,
       handleInteractionModeChange,
@@ -3787,6 +3833,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       onUsageLimitsCommand,
       readComposerSnapshot,
       resolveActiveComposerTrigger,
+      routeThreadRef,
     ],
   );
 
@@ -7160,23 +7207,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                           });
                         }}
                       />
-                      <Tooltip>
-                        <TooltipTrigger
-                          render={
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon-sm"
-                              onPointerDown={(event) => event.preventDefault()}
-                              onClick={() => attachmentInputRef.current?.click()}
-                              aria-label="Attach files"
-                            />
-                          }
-                        >
-                          <PaperclipIcon />
-                        </TooltipTrigger>
-                        <TooltipPopup>Attach files</TooltipPopup>
-                      </Tooltip>
+                      <ComposerAttachMenu
+                        threadRef={routeThreadRef}
+                        onAttachFiles={() => attachmentInputRef.current?.click()}
+                      />
                     </>
                   ) : null}
                   <ComposerFooterPrimaryActions

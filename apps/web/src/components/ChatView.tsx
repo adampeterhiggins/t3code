@@ -225,6 +225,7 @@ import { PullRequestsUnavailableState } from "./pullRequest/PullRequestsUnavaila
 import { RightPanelTabs } from "./RightPanelTabs";
 import { AgentsPanel } from "./AgentsPanel";
 import { LinkPullRequestDialogHost } from "./pullRequest/LinkPullRequestDialog";
+import { LinearIssuePickerHost } from "./chat/LinearIssuePicker";
 import { ThreadPullRequestsPanel } from "./pullRequest/ThreadPullRequestsPanel";
 import { useDeviceState } from "~/state/device";
 import { DeviceSetup } from "./device/DeviceSetup";
@@ -324,6 +325,10 @@ import {
   stripInlineContextReferences,
 } from "../lib/composerContextReferences";
 import { readThreadTabContextRecords, useThreadTabContextStore } from "../threadTabContextStore";
+import {
+  readLinearIssueContextRecords,
+  useLinearIssueContextStore,
+} from "../linearIssueContextStore";
 import { useThreadTabRecencyStore } from "../threadTabRecencyStore";
 import { serializeLegacyContextMessage } from "@t3tools/shared/composerContextLegacySend";
 import {
@@ -7331,6 +7336,7 @@ export default function ChatView(props: ChatViewProps) {
       const store = useComposerDraftStore.getState();
       const draft = store.getComposerDraft(composerDraftTarget);
       const tabContexts = readThreadTabContextRecords(activeThread.id);
+      const linearIssueContexts = readLinearIssueContextRecords(activeThread.id);
       const tabRef = await forkThreadTab(connection, {
         environmentId,
         sourceThreadId: activeThread.id,
@@ -7342,6 +7348,9 @@ export default function ChatView(props: ChatViewProps) {
       // Chips in the copied prompt resolve against these, so ids are kept.
       for (const record of tabContexts) {
         useThreadTabContextStore.getState().upsert(tabRef.threadId, record);
+      }
+      for (const record of linearIssueContexts) {
+        useLinearIssueContextStore.getState().upsert(tabRef.threadId, record);
       }
       if (draft) {
         store.addImages(tabRef, draft.images.map(cloneComposerImageForRetry), {
@@ -7934,6 +7943,10 @@ export default function ChatView(props: ChatViewProps) {
           referencedContextIds.has(record.contextId),
         )
       : [];
+    // Unlike chat tabs, Linear issues also attach to a draft thread's first message.
+    const composerLinearIssuesSnapshot = readLinearIssueContextRecords(threadIdForSend).filter(
+      (record) => referencedContextIds.has(record.contextId),
+    );
     // Expired terminal excerpts are not sent; their chips leave the text with them.
     const messageTextForSend = composerTerminalContexts
       .filter((context) => !composerTerminalContextsSnapshot.includes(context))
@@ -7952,6 +7965,7 @@ export default function ChatView(props: ChatViewProps) {
         reviewComments: composerReviewCommentsSnapshot,
         previewAnnotations: composerPreviewAnnotationsSnapshot,
         threadTabs: composerThreadTabsSnapshot,
+        linearIssues: composerLinearIssuesSnapshot,
         attachments: composerAttachmentsSnapshot.map((attachment, index) => ({
           attachment,
           attachmentId: attachmentIds[index] ?? attachment.id,
@@ -8658,6 +8672,7 @@ export default function ChatView(props: ChatViewProps) {
       } else {
         turnStartSucceeded = true;
         if (isServerThread) useThreadTabContextStore.getState().clear(threadIdForSend);
+        useLinearIssueContextStore.getState().clear(threadIdForSend);
         // The turn is under way and will spend quota, so that thread's limits
         // snapshot is stale. Uploads may have outlasted a navigation, so only
         // the sending thread's panel clears.
@@ -10673,6 +10688,7 @@ export default function ChatView(props: ChatViewProps) {
         </AlertDialogPopup>
       </AlertDialog>
       <LinkPullRequestDialogHost />
+      <LinearIssuePickerHost />
       {expandedImage && (
         <ExpandedImageDialog
           key={expandedImageKey(expandedImage)}

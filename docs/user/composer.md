@@ -32,6 +32,8 @@ also send files to T3 Code through another app's system share sheet.
 
 See [images and videos](#images-and-videos-in-messages) for previewing and saving media.
 
+The paperclip also attaches a Linear issue once you connect Linear. See [Linear](./linear.md).
+
 ## Send while the agent is working
 
 On web and desktop, a message sent during a running turn waits at the end of the conversation as a

@@ -115,6 +115,17 @@ const knownRecords: Record<(typeof COMPOSER_CONTEXT_KINDS)[number], Record<strin
     title: "Assistant Identity",
     summary: "User: who are you?\nAssistant: an agent.",
   },
+  "linear-issue": {
+    ...base,
+    kind: "linear-issue",
+    label: "ENG-123",
+    issueId: "3f2c9a1e-0000-4000-8000-000000000000",
+    identifier: "ENG-123",
+    title: "Fix login",
+    url: "https://linear.app/acme/issue/ENG-123/fix-login",
+    stateName: "In Progress",
+    markdown: "# ENG-123: Fix login\n\n## Description\nThe button does nothing.",
+  },
 };
 
 describe("ComposerContextRecord", () => {

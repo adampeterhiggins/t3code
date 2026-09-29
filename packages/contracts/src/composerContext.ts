@@ -6,6 +6,7 @@ import {
   PositiveInt,
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
+import { LINEAR_ISSUE_MARKDOWN_MAX_CHARS } from "./linear.ts";
 
 /**
  * Inline context records: the typed payload behind every composer chip.
@@ -26,6 +27,7 @@ export const COMPOSER_CONTEXT_KINDS = [
   "mention",
   "skill",
   "thread-tab",
+  "linear-issue",
 ] as const;
 export type KnownComposerContextKind = (typeof COMPOSER_CONTEXT_KINDS)[number];
 
@@ -228,6 +230,19 @@ export const ThreadTabContextRecord = Schema.Struct({
 });
 export type ThreadTabContextRecord = typeof ThreadTabContextRecord.Type;
 
+/** A Linear issue rendered as markdown when the chip was inserted, so the message keeps what the agent saw. */
+export const LinearIssueContextRecord = Schema.Struct({
+  ...recordBase,
+  kind: Schema.Literal("linear-issue"),
+  issueId: TrimmedNonEmptyString.check(Schema.isMaxLength(CONTEXT_ID_MAX_CHARS)),
+  identifier: TrimmedNonEmptyString.check(Schema.isMaxLength(64)),
+  title: ShortString,
+  url: ShortString,
+  stateName: ShortString,
+  markdown: BoundedString(LINEAR_ISSUE_MARKDOWN_MAX_CHARS),
+});
+export type LinearIssueContextRecord = typeof LinearIssueContextRecord.Type;
+
 /**
  * Catch-all for kinds this build does not know. Known discriminators are excluded so a
  * malformed known record fails its own schema instead of sliding through unchecked.
@@ -259,6 +274,7 @@ export const KnownComposerContextRecord = Schema.Union([
   MentionContextRecord,
   SkillContextRecord,
   ThreadTabContextRecord,
+  LinearIssueContextRecord,
 ]);
 export type KnownComposerContextRecord = typeof KnownComposerContextRecord.Type;
 

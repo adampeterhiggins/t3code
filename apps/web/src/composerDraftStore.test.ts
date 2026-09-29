@@ -14,6 +14,7 @@ import {
   ProviderInstanceId,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   ThreadId,
+  type ComposerContextId,
   type ModelSelection,
   type PreviewAnnotationPayload,
   type ProviderOptionSelection,
@@ -889,6 +890,31 @@ describe("composerDraftStore terminal contexts", () => {
       unregister?.();
     },
   );
+
+  it("places an external context chip at the caret, or appends it with no composer mounted", () => {
+    const store = useComposerDraftStore.getState();
+    const reference = {
+      kind: "linear-issue" as const,
+      contextId: "linear-issue_abc" as ComposerContextId,
+      label: "ENG-1",
+    };
+    store.setPrompt(threadRef, "fix");
+    store.insertContextReference(threadRef, reference);
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.prompt).toBe(
+      "fix [ENG-1](t3-context://v1/linear-issue/linear-issue_abc) ",
+    );
+
+    store.setPrompt(threadRef, "before after");
+    const handler = vi.fn(() => {
+      store.setPrompt(threadRef, "before [ENG-1] after");
+      return true;
+    });
+    const unregister = store.setContextInsertionHandler(threadRef, handler);
+    store.insertContextReference(threadRef, reference);
+    expect(handler).toHaveBeenCalledWith([reference]);
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.prompt).toBe("before [ENG-1] after");
+    unregister?.();
+  });
 
   it("normalizes legacy terminal ids before storing and removing their references", () => {
     const store = useComposerDraftStore.getState();

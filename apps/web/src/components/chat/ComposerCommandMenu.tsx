@@ -17,6 +17,7 @@ import {
   MessagesSquareIcon,
   PackageIcon,
   SettingsIcon,
+  SquareKanbanIcon,
   UserRoundIcon,
   type LucideIcon,
 } from "lucide-react";
@@ -73,6 +74,13 @@ export type ComposerCommandItem =
       id: string;
       type: "pull-request";
       pullRequest: PullRequestContextMetadata;
+      label: string;
+      description: string;
+    }
+  | {
+      id: string;
+      type: "linear-issue";
+      issueId: string;
       label: string;
       description: string;
     };
@@ -190,6 +198,9 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
       ) : null}
       {props.item.type === "thread-tab" ? (
         <MessagesSquareIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+      ) : null}
+      {props.item.type === "linear-issue" ? (
+        <SquareKanbanIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
       ) : null}
       {pullRequestPresentation ? (
         <pullRequestPresentation.Icon

@@ -218,7 +218,7 @@ Code: `packages/shared/src/conductorSettings.ts`, `apps/server/src/project/Condu
 button in `apps/web/src/components/ProjectScriptsControl.tsx`. User guide:
 [project-settings.md](./user/project-settings.md#repositories-set-up-for-conductor).
 
-## Linear connection
+## Linear integration
 
 **Settings > Integrations > Linear** connects a Linear account to the environment with OAuth
 (PKCE, read-only scope, no client secret). The server holds the credential and refreshes it, so
@@ -227,9 +227,20 @@ on fixed port 47831, which must match the redirect URI registered on the fork's 
 When the browser is on another device, the user pastes the redirect URL back instead.
 `T3CODE_LINEAR_CLIENT_ID` points a fork at its own Linear app.
 
-Code: `apps/server/src/linear/`, `packages/contracts/src/linear.ts`,
-`packages/client-runtime/src/state/linear.ts`, and
-`apps/web/src/components/settings/LinearSettings.tsx`. User guide: [linear.md](./user/linear.md).
+Issues attach to messages as a `linear-issue` context chip: from the composer's attach menu (which
+now asks between files and a Linear issue), the `#` menu beside pull requests, the command palette,
+and the mobile attach menu. The server renders the issue to capped markdown when it is attached,
+and that snapshot is inlined into the prompt for every provider.
+
+Code: `apps/server/src/linear/`, `packages/contracts/src/linear.ts`, `LinearIssueContextRecord` in
+`packages/contracts/src/composerContext.ts`, `packages/client-runtime/src/state/linear.ts`,
+`apps/web/src/components/settings/LinearSettings.tsx`,
+`apps/web/src/components/chat/LinearIssuePicker.tsx`,
+`apps/web/src/components/chat/ComposerAttachMenu.tsx`,
+`apps/web/src/components/chat/useComposerLinearIssueItems.ts`,
+`apps/mobile/src/components/LinearIssuePickerSheet.tsx`, and
+`apps/mobile/src/features/settings/SettingsLinearRouteScreen.tsx`. User guide:
+[linear.md](./user/linear.md).
 
 ## Desktop mock-update loop
 

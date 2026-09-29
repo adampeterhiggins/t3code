@@ -39,6 +39,7 @@ import {
   resolveEnvironmentMachineKind,
 } from "@t3tools/contracts";
 import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
+import { openLinearIssuePicker } from "./chat/LinearIssuePicker";
 import * as Option from "effect/Option";
 import {
   ArrowLeftIcon,
@@ -54,6 +55,7 @@ import {
   MoonIcon,
   PaletteIcon,
   SettingsIcon,
+  SquareKanbanIcon,
   SquarePenIcon,
   SunIcon,
   TextSearchIcon,
@@ -1829,6 +1831,24 @@ function OpenCommandPaletteDialog(props: {
         },
       });
     }
+  }
+
+  const composerThreadRef = activeThread
+    ? scopeThreadRef(activeThread.environmentId, activeThread.id)
+    : activeDraftThread
+      ? scopeThreadRef(activeDraftThread.environmentId, activeDraftThread.threadId)
+      : null;
+  if (composerThreadRef !== null) {
+    actionItems.push({
+      kind: "action",
+      value: "action:attach-linear-issue",
+      searchTerms: ["linear", "issue", "ticket", "attach", "context"],
+      title: "Attach Linear issue",
+      icon: <SquareKanbanIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        openLinearIssuePicker(composerThreadRef);
+      },
+    });
   }
 
   actionItems.push({

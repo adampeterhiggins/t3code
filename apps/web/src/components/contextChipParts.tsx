@@ -299,6 +299,37 @@ export function ThreadTabSummaryDetails({ summary }: { summary: string }) {
   );
 }
 
+/** An attached Linear issue: the snapshot the agent received, with a link back to Linear. */
+export function LinearIssueDetails(props: {
+  identifier: string;
+  title: string;
+  stateName: string;
+  url: string;
+  markdown: string;
+  onOpenLink: (event: MouseEvent<HTMLElement>, url: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-baseline justify-between gap-3 text-xs text-muted-foreground">
+        <span>
+          {props.identifier} · {props.stateName}
+        </span>
+        <a
+          href={props.url}
+          target="_blank"
+          rel="noreferrer"
+          className="shrink-0 underline-offset-2 hover:text-foreground hover:underline"
+          onClick={(event) => props.onOpenLink(event, props.url)}
+        >
+          Open in Linear
+        </a>
+      </div>
+      <p className="font-medium text-foreground text-sm">{props.title}</p>
+      <ThreadTabSummaryDetails summary={props.markdown} />
+    </div>
+  );
+}
+
 export function UnresolvedChip(props: { label: string; tooltip: string; copyMarkdown?: string }) {
   return (
     <ContextChipShell

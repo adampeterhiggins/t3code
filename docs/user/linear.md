@@ -1,10 +1,10 @@
 # Linear
 
-Connect a Linear account so you can attach Linear issues to messages.
+Connect a Linear account, then attach Linear issues to messages as context for the agent.
 
 ## Connect an account
 
-1. Open **Settings > Integrations** and find **Linear**.
+1. Open **Settings > Integrations** and find **Linear**. On mobile, open **Settings > Linear**.
 2. Click **Connect Linear**. Linear's approval page opens in your browser.
 3. Choose your workspace and click **Approve**.
 
@@ -20,6 +20,24 @@ your phone, that page won't load. Copy its full URL from the address bar and pas
 **Approving from another device?** under the Linear setting.
 
 Sign-in needs port 47831 free on the server machine while you approve.
+
+## Attach an issue
+
+Attach a Linear issue to a message so the agent gets its details without you pasting them in:
+
+- Click the paperclip in the composer and choose **Linear issue**. Search your issues, or paste an
+  identifier like `ENG-123` or an issue link. With no search, it lists your open assigned issues.
+- Type `#` in the composer. Linear issues appear beside pull requests; `#ENG-123` jumps to that
+  issue, and a bare number like `#42` only matches pull requests.
+- On web and desktop, run **Attach Linear issue** from the command palette.
+- On mobile, tap **+** in the composer and choose **Linear issue**.
+
+The issue appears as a chip in your message. Hover or tap it to see what the agent receives: the
+title, state, priority, assignee, labels, description, sub-issues, links, and recent comments.
+Long issues are trimmed, dropping the oldest comments first.
+
+The issue is copied when you attach it, so later edits in Linear don't change a message you
+already sent. Chips in an unsent draft don't survive a reload; attach the issue again.
 
 ## Disconnect
 
