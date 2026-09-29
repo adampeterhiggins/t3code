@@ -18,6 +18,7 @@ import { useDebouncedValue } from "~/state/queries";
 import { useEnvironmentQuery } from "~/state/query";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { CommandPaletteContent } from "../CommandPaletteContent";
+import { LinearIssueHoverPreview } from "./LinearIssueHoverPreview";
 import {
   LinearIssueFilterBar,
   useLinearIssuePickerView,
@@ -194,19 +195,27 @@ function LinearIssuePickerDialog(props: { threadRef: ScopedThreadRef; onClose: (
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={() => void select(issue)}
                       >
-                        <span className="w-20 shrink-0 truncate text-muted-foreground text-xs tabular-nums">
-                          {issue.identifier}
-                        </span>
-                        <span className="min-w-0 flex-1 truncate text-foreground text-sm">
-                          {issue.title}
-                        </span>
-                        {/* Fixed widths so assignee and status line up down the list. */}
-                        <span className="w-28 shrink-0 truncate text-muted-foreground/70 text-xs">
-                          {issue.assigneeName ?? "Unassigned"}
-                        </span>
-                        <span className="w-24 shrink-0 truncate text-muted-foreground/70 text-xs">
-                          {issue.stateName}
-                        </span>
+                        <LinearIssueHoverPreview
+                          environmentId={environmentId}
+                          issueId={issue.id}
+                          trigger={
+                            <span className="flex min-w-0 flex-1 items-center gap-2">
+                              <span className="w-20 shrink-0 truncate text-muted-foreground text-xs tabular-nums">
+                                {issue.identifier}
+                              </span>
+                              <span className="min-w-0 flex-1 truncate text-foreground text-sm">
+                                {issue.title}
+                              </span>
+                              {/* Fixed widths so assignee and status line up down the list. */}
+                              <span className="w-28 shrink-0 truncate text-muted-foreground/70 text-xs">
+                                {issue.assigneeName ?? "Unassigned"}
+                              </span>
+                              <span className="w-24 shrink-0 truncate text-muted-foreground/70 text-xs">
+                                {issue.stateName}
+                              </span>
+                            </span>
+                          }
+                        />
                       </CommandItem>
                     )}
                   </CommandCollection>
