@@ -52,6 +52,9 @@ jobs:
       - name: Check
         run: vp check
 
+      - name: Check skill symlinks
+        run: vp run skills:check
+
       - name: Typecheck
         run: vpr typecheck
 
