@@ -51,7 +51,9 @@ export function useComposerLinearIssueItems(
             type: "linear-issue",
             issueId: issue.id,
             label: issue.identifier,
-            description: `${issue.title} · ${issue.stateName}`,
+            description: issue.title,
+            assigneeName: issue.assigneeName,
+            stateName: issue.stateName,
           })),
     [issues.data, settledQuery],
   );

@@ -84,6 +84,8 @@ export type ComposerCommandItem =
       issueId: string;
       label: string;
       description: string;
+      assigneeName: string | null;
+      stateName: string;
     };
 
 export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
@@ -239,27 +241,43 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
           className={cn("size-4 shrink-0", pullRequestPresentation.toneClassName)}
         />
       ) : null}
-      <span className="flex min-w-0 flex-1 items-center gap-2">
-        <span className="min-w-0 max-w-[45%] shrink-0 truncate font-sans text-xs font-medium">
-          {isSlashSkill ? (
-            <>
-              <span className="text-secondary-label">/skill:</span>
-              {formatProviderSkillDisplayName(isSlashSkill)}
-            </>
-          ) : (
-            props.item.label
-          )}
+      {props.item.type === "linear-issue" ? (
+        // Fixed-width columns so identifiers, assignees, and statuses line up down the list.
+        <span className="flex min-w-0 flex-1 items-center gap-2 text-xs">
+          <span className="w-20 shrink-0 truncate font-medium font-sans">{props.item.label}</span>
+          <span className="min-w-0 flex-1 truncate text-secondary-label">
+            {props.item.description}
+          </span>
+          <span className="w-28 shrink-0 truncate text-secondary-label">
+            {props.item.assigneeName ?? "Unassigned"}
+          </span>
+          <span className="w-24 shrink-0 truncate text-secondary-label">
+            {props.item.stateName}
+          </span>
         </span>
-        <span className="min-w-0 max-w-[48ch] flex-1 truncate text-left text-secondary-label text-xs">
-          {props.item.description}
+      ) : (
+        <span className="flex min-w-0 flex-1 items-center gap-2">
+          <span className="min-w-0 max-w-[45%] shrink-0 truncate font-sans text-xs font-medium">
+            {isSlashSkill ? (
+              <>
+                <span className="text-secondary-label">/skill:</span>
+                {formatProviderSkillDisplayName(isSlashSkill)}
+              </>
+            ) : (
+              props.item.label
+            )}
+          </span>
+          <span className="min-w-0 max-w-[48ch] flex-1 truncate text-left text-secondary-label text-xs">
+            {props.item.description}
+          </span>
+          {skillSourceKind ? (
+            <SkillSourceBadge
+              kind={skillSourceKind}
+              showSkillSuffix={props.triggerKind === "skill"}
+            />
+          ) : null}
         </span>
-        {skillSourceKind ? (
-          <SkillSourceBadge
-            kind={skillSourceKind}
-            showSkillSuffix={props.triggerKind === "skill"}
-          />
-        ) : null}
-      </span>
+      )}
     </CommandItem>
   );
 });
