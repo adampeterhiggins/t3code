@@ -218,6 +218,19 @@ Code: `packages/shared/src/conductorSettings.ts`, `apps/server/src/project/Condu
 button in `apps/web/src/components/ProjectScriptsControl.tsx`. User guide:
 [project-settings.md](./user/project-settings.md#repositories-set-up-for-conductor).
 
+## Linear connection
+
+**Settings > Integrations > Linear** connects a Linear account to the environment with OAuth
+(PKCE, read-only scope, no client secret). The server holds the credential and refreshes it, so
+every client of that environment can use it. The browser's redirect lands on a loopback listener
+on fixed port 47831, which must match the redirect URI registered on the fork's Linear OAuth app.
+When the browser is on another device, the user pastes the redirect URL back instead.
+`T3CODE_LINEAR_CLIENT_ID` points a fork at its own Linear app.
+
+Code: `apps/server/src/linear/`, `packages/contracts/src/linear.ts`,
+`packages/client-runtime/src/state/linear.ts`, and
+`apps/web/src/components/settings/LinearSettings.tsx`. User guide: [linear.md](./user/linear.md).
+
 ## Desktop mock-update loop
 
 A `Makefile` at the repository root drives a local auto-update test loop for the desktop app:

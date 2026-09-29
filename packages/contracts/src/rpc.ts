@@ -15,6 +15,16 @@ import {
 } from "./providerSetup.ts";
 
 import { ExternalLauncherError, LaunchEditorInput } from "./editor.ts";
+import {
+  LinearCancelLoginInput,
+  LinearCompleteLoginInput,
+  LinearConnectionState,
+  LinearError,
+  LinearGetIssueInput,
+  LinearIssueContext,
+  LinearListIssuesInput,
+  LinearListIssuesResult,
+} from "./linear.ts";
 import { TextGenerationError } from "./git.ts";
 import {
   AuthAccessStreamError,
@@ -428,6 +438,15 @@ export const WS_METHODS = {
   sourceControlLookupRepository: "sourceControl.lookupRepository",
   sourceControlCloneRepository: "sourceControl.cloneRepository",
   sourceControlPublishRepository: "sourceControl.publishRepository",
+
+  // Linear methods
+  linearSubscribeState: "linear.subscribeState",
+  linearStartLogin: "linear.startLogin",
+  linearCompleteLogin: "linear.completeLogin",
+  linearCancelLogin: "linear.cancelLogin",
+  linearDisconnect: "linear.disconnect",
+  linearListIssues: "linear.listIssues",
+  linearGetIssue: "linear.getIssue",
   projectCloneStart: "projectClone.start",
   projectCloneCancel: "projectClone.cancel",
   projectCloneRetry: "projectClone.retry",
@@ -615,6 +634,51 @@ const WsServerDiscoverSourceControlRpc = Rpc.make(WS_METHODS.serverDiscoverSourc
   payload: Schema.Struct({}),
   success: SourceControlDiscoveryResult,
   error: EnvironmentAuthorizationError,
+});
+
+const LinearRpcError = Schema.Union([LinearError, EnvironmentAuthorizationError]);
+
+const WsLinearSubscribeStateRpc = Rpc.make(WS_METHODS.linearSubscribeState, {
+  payload: Schema.Struct({}),
+  success: LinearConnectionState,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
+const WsLinearStartLoginRpc = Rpc.make(WS_METHODS.linearStartLogin, {
+  payload: Schema.Struct({}),
+  success: LinearConnectionState,
+  error: LinearRpcError,
+});
+
+const WsLinearCompleteLoginRpc = Rpc.make(WS_METHODS.linearCompleteLogin, {
+  payload: LinearCompleteLoginInput,
+  success: LinearConnectionState,
+  error: LinearRpcError,
+});
+
+const WsLinearCancelLoginRpc = Rpc.make(WS_METHODS.linearCancelLogin, {
+  payload: LinearCancelLoginInput,
+  success: LinearConnectionState,
+  error: LinearRpcError,
+});
+
+const WsLinearDisconnectRpc = Rpc.make(WS_METHODS.linearDisconnect, {
+  payload: Schema.Struct({}),
+  success: LinearConnectionState,
+  error: LinearRpcError,
+});
+
+const WsLinearListIssuesRpc = Rpc.make(WS_METHODS.linearListIssues, {
+  payload: LinearListIssuesInput,
+  success: LinearListIssuesResult,
+  error: LinearRpcError,
+});
+
+const WsLinearGetIssueRpc = Rpc.make(WS_METHODS.linearGetIssue, {
+  payload: LinearGetIssueInput,
+  success: LinearIssueContext,
+  error: LinearRpcError,
 });
 
 const WsServerGetTraceDiagnosticsRpc = Rpc.make(WS_METHODS.serverGetTraceDiagnostics, {
@@ -1486,6 +1550,13 @@ export const WsRpcGroup = RpcGroup.make(
   WsSourceControlLookupRepositoryRpc,
   WsSourceControlCloneRepositoryRpc,
   WsSourceControlPublishRepositoryRpc,
+  WsLinearSubscribeStateRpc,
+  WsLinearStartLoginRpc,
+  WsLinearCompleteLoginRpc,
+  WsLinearCancelLoginRpc,
+  WsLinearDisconnectRpc,
+  WsLinearListIssuesRpc,
+  WsLinearGetIssueRpc,
   WsProjectCloneStartRpc,
   WsProjectCloneCancelRpc,
   WsProjectCloneRetryRpc,
