@@ -9,6 +9,7 @@ import { useRef, useState } from "react";
 import { isElectron } from "../../env";
 import { writeTextToClipboard } from "../../hooks/useCopyToClipboard";
 import { ensureLocalApi } from "../../localApi";
+import { usePrimaryEnvironment } from "../../state/environments";
 import { linearEnvironment } from "../../state/linear";
 import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -23,9 +24,14 @@ import { useSettingsScope } from "./SettingsScopeContext";
  * the environment, so every client of that environment can attach issues.
  */
 export function LinearSettingsSection() {
-  const { environment } = useSettingsScope();
-  const environmentId =
-    environment?.connection.phase === "connected" ? environment.environmentId : null;
+  const { environment: scopedEnvironment } = useSettingsScope();
+  const primaryEnvironment = usePrimaryEnvironment();
+  // The account belongs to an environment, not a project, so a project or
+  // stale selection in the header falls back to the primary environment.
+  const environment = [scopedEnvironment, primaryEnvironment].find(
+    (candidate) => candidate?.connection.phase === "connected",
+  );
+  const environmentId = environment?.environmentId ?? null;
   return (
     <SettingsSection {...searchableSetting("linear")}>
       {environmentId === null ? (

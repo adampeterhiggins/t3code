@@ -4,9 +4,11 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
+import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 import * as HttpClient from "effect/unstable/http/HttpClient";
 import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
 import * as HttpClientResponse from "effect/unstable/http/HttpClientResponse";
+import * as HttpRouter from "effect/unstable/http/HttpRouter";
 
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as LinearAuth from "./LinearAuth.ts";
@@ -95,6 +97,13 @@ function makeHarness(input: {
   return { layer, requests, storedToken };
 }
 
+/** A browser-style request to the login's loopback listener, over a real socket. */
+const requestLoopback = (path: string) =>
+  HttpClient.get(`http://127.0.0.1:47831${path}`).pipe(
+    Effect.map((response) => response.status),
+    Effect.provide(FetchHttpClient.layer),
+  );
+
 const firstStateWhere = (
   auth: LinearAuth.LinearAuth["Service"],
   phase: "connected" | "failed" | "disconnected",
@@ -181,4 +190,40 @@ it.effect("finishes a login from a pasted redirect URL without a client secret",
     assert.isFalse(exchange?.params?.has("client_secret"));
     assert.strictEqual(harness.storedToken()?.account.workspaceUrlKey, "acme");
   }).pipe(Effect.provide(harness.layer));
+});
+
+it.effect("can start another login after a finished one and after a cancelled one", () => {
+  const harness = makeHarness({});
+  return Effect.gen(function* () {
+    const auth = yield* LinearAuth.LinearAuth;
+    const first = yield* auth.startLogin;
+    const state = new URL(first.authorizationUrl ?? "").searchParams.get("state");
+    // A real browser redirect, over a kept-alive connection like a browser's.
+    assert.strictEqual(yield* requestLoopback(`/callback?code=the-code&state=${state}`), 200);
+    yield* firstStateWhere(auth, "connected");
+    yield* auth.disconnect;
+    const second = yield* auth.startLogin.pipe(Effect.timeout("5 seconds"));
+    assert.strictEqual(second.phase, "waiting");
+    yield* auth.cancelLogin({ flowId: second.flowId ?? "" });
+    const third = yield* auth.startLogin.pipe(Effect.timeout("5 seconds"));
+    assert.strictEqual(third.phase, "waiting");
+  }).pipe(Effect.provide(harness.layer));
+});
+
+it.effect("keeps its callback listener apart from a router the host server already built", () => {
+  const harness = makeHarness({});
+  return Effect.gen(function* () {
+    const auth = yield* LinearAuth.LinearAuth;
+    // Inside the real server, requests run with the app's memo map, which
+    // already holds the app's own HttpRouter.
+    const memoMap = yield* Layer.makeMemoMap;
+    yield* Layer.buildWithMemoMap(HttpRouter.layer, memoMap, yield* Effect.scope);
+    const inHost = <A, E>(effect: Effect.Effect<A, E>) =>
+      effect.pipe(Effect.provideService(Layer.CurrentMemoMap, memoMap));
+    const first = yield* inHost(auth.startLogin);
+    yield* inHost(auth.cancelLogin({ flowId: first.flowId ?? "" }));
+    const second = yield* inHost(auth.startLogin).pipe(Effect.timeout("5 seconds"));
+    assert.strictEqual(second.phase, "waiting");
+    assert.strictEqual(yield* requestLoopback("/api/auth/session"), 404);
+  }).pipe(Effect.scoped, Effect.provide(harness.layer));
 });

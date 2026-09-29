@@ -9,6 +9,7 @@ import {
   type LinearConnectionState,
   LinearError,
 } from "@t3tools/contracts";
+import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Config from "effect/Config";
 import * as Context from "effect/Context";
@@ -18,6 +19,7 @@ import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Encoding from "effect/Encoding";
+import * as Exit from "effect/Exit";
 import * as FiberHandle from "effect/FiberHandle";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -47,6 +49,7 @@ import {
 
 const LINEAR_TOKEN_SECRET = "linear-oauth-token";
 const LOGIN_TIMEOUT = Duration.minutes(10);
+const UNEXPECTED_STOP = "Linear sign-in stopped unexpectedly. Try again.";
 const REFRESH_EARLY_MS = Duration.toMillis(Duration.minutes(5));
 
 const PersistedLinearToken = Schema.Struct({
@@ -261,7 +264,7 @@ export const make = Effect.gen(function* () {
   ) =>
     Effect.scoped(
       Effect.gen(function* () {
-        yield* HttpRouter.serve(callbackRoute(flow), {
+        const listener = HttpRouter.serve(callbackRoute(flow), {
           disableListenLog: true,
           disableLogger: true,
         }).pipe(
@@ -272,7 +275,11 @@ export const make = Effect.gen(function* () {
               disablePreemptiveShutdown: true,
             }),
           ),
-          Layer.build,
+        );
+        // A fresh memo map: requests inside the server carry the app's memo
+        // map, and reusing its memoized HttpRouter would serve the whole app
+        // on the loopback port and fail the next login's route registration.
+        yield* Layer.buildWithMemoMap(listener, yield* Layer.makeMemoMap, yield* Effect.scope).pipe(
           Effect.mapError((cause) =>
             loginError(
               `Port ${LINEAR_LOOPBACK_PORT} is in use, so the Linear callback cannot be received. Free the port and try again.`,
@@ -298,6 +305,18 @@ export const make = Effect.gen(function* () {
             SubscriptionRef.set(state, failedState(error.detail)),
           ),
       }),
+      // `startLogin` waits on `listening`, so a defect or interruption must
+      // settle it too; a no-op once the listener is up.
+      Effect.onExit((exit) =>
+        Exit.isSuccess(exit)
+          ? Effect.void
+          : Effect.andThen(
+              Deferred.fail(listening, loginError(UNEXPECTED_STOP)),
+              Cause.hasInterruptsOnly(exit.cause)
+                ? Effect.void
+                : SubscriptionRef.set(state, failedState(UNEXPECTED_STOP)),
+            ),
+      ),
       Effect.ensuring(Ref.set(activeFlow, null)),
     );
 
