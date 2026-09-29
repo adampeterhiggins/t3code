@@ -62,6 +62,7 @@ import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 
 import { AppText as Text } from "../../components/AppText";
 import { ComposerAttachmentButton } from "../../components/ComposerAttachmentButton";
+import { useLinearIssuePicker } from "../../components/LinearIssuePickerSheet";
 import {
   ComposerAttachmentStrip,
   ComposerAttachmentThumbnail,
@@ -331,6 +332,10 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     );
   }, [props.serverConfig, props.selectedThread.modelSelection.instanceId]);
   const composerOwnerKey = scopedThreadKey(props.environmentId, props.selectedThread.id);
+  const linearIssuePicker = useLinearIssuePicker({
+    environmentId: props.environmentId,
+    draftKey: composerOwnerKey,
+  });
   const openDraftDocument = (attachment: ComposerDocumentAttachment) => {
     Keyboard.dismiss();
     navigation.navigate("ThreadAttachment", {
@@ -709,6 +714,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                 )}
                 onPickMedia={props.onPickDraftMedia}
                 onPickFiles={props.onPickDraftFiles}
+                onPickLinearIssue={linearIssuePicker.open}
               />
             ) : null}
             {isExpanded && stripAttachments.length > 0 ? (
@@ -960,6 +966,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                       )}
                       onPickMedia={props.onPickDraftMedia}
                       onPickFiles={props.onPickDraftFiles}
+                      onPickLinearIssue={linearIssuePicker.open}
                     />
                     <View className="min-w-0 shrink">
                       <ComposerInlineControl
@@ -1009,6 +1016,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
 
       <VideoPreviewModal source={previewVideo} onRequestClose={closePreview} />
       <FilePreviewModal source={previewFile} onRequestClose={closePreview} />
+      {linearIssuePicker.sheet}
     </Animated.View>
   );
 });

@@ -26,6 +26,7 @@ import {
   isFileBackedComposerAttachment,
   type DraftComposerAttachment,
 } from "../lib/composerImages";
+import { tryOpenExternalUrl } from "../lib/openExternalUrl";
 import { FilePreviewModal } from "./FilePreviewModal";
 import { VideoPreviewModal } from "./VideoPreviewModal";
 import { ComposerContextAttachment } from "./ComposerContextAttachment";
@@ -338,6 +339,35 @@ export function ComposerContextSheet(props: {
                     <ContextField label="HTML" value={record.htmlPreview} code />
                     <ContextField label="Styles" value={record.styles} code />
                   </>
+                ) : null}
+                {record.kind === "linear-issue" ? (
+                  <View className="gap-3">
+                    <View className="gap-1">
+                      <Text selectable className="text-lg font-t3-semibold text-foreground">
+                        {record.title}
+                      </Text>
+                      <Text className="text-sm text-foreground-muted">
+                        {record.identifier} · {record.stateName}
+                      </Text>
+                    </View>
+                    {/^https?:\/\//i.test(record.url) ? (
+                      <Pressable
+                        accessibilityRole="link"
+                        onPress={() => {
+                          void tryOpenExternalUrl(record.url, "linear").then((opened) => {
+                            if (!opened) Alert.alert("Could not open Linear", "Try again later.");
+                          });
+                        }}
+                        className="rounded-xl bg-subtle p-4"
+                      >
+                        <Text className="text-foreground">Open in Linear</Text>
+                      </Pressable>
+                    ) : null}
+                    {/* Plain text like the other captured context here: exactly what the agent received. */}
+                    <Text selectable className="text-sm text-foreground">
+                      {record.markdown}
+                    </Text>
+                  </View>
                 ) : null}
                 {record.kind === "image" ? (
                   <ContextField

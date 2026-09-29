@@ -18,6 +18,7 @@ const CONTEXT_CHIP_PRESENTATIONS = {
   "review-comment": { accent: "#8a70dd", symbol: "text.bubble" },
   "pull-request": { accent: "#7079e4", symbol: "git-pull-request" },
   skill: { accent: "#b261be", symbol: "cube" },
+  "linear-issue": { accent: "#617de6", symbol: "ticket" },
 } as const;
 
 /**

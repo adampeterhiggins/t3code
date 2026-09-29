@@ -80,6 +80,7 @@ import {
   SettingsEnvironmentSourceControlRouteScreen,
 } from "./features/settings/SettingsServerControlsRouteScreen";
 import { SettingsKeyboardRouteScreen } from "./features/settings/SettingsKeyboardRouteScreen";
+import { SettingsLinearRouteScreen } from "./features/settings/SettingsLinearRouteScreen";
 import { SettingsLegalRouteScreen } from "./features/settings/SettingsLegalRouteScreen";
 import {
   SettingsOpenSourceLicenseRouteScreen,
@@ -218,6 +219,11 @@ const SettingsContentStack = createNativeStackNavigator({
       screen: SettingsEnvironmentMaintenanceRouteScreen,
       linking: "maintenance",
       options: { title: "Maintenance" },
+    }),
+    SettingsLinear: createNativeStackScreen({
+      screen: SettingsLinearRouteScreen,
+      linking: "linear",
+      options: { title: "Linear" },
     }),
     SettingsNotifications: createNativeStackScreen({
       screen: SettingsNotificationsRouteScreen,

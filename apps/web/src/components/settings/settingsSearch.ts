@@ -598,6 +598,21 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["allow disable enable open drive preview tools sessions project override"],
   },
   {
+    id: "linear",
+    title: "Linear",
+    to: "/settings/integrations",
+    searchTerms: ["linear issues tickets connect account sign in oauth disconnect attach context"],
+    environmentOnly: true,
+    scope: "environment-defaults",
+  },
+  {
+    id: "linear-link-target",
+    title: "Open Linear links in",
+    to: "/settings/integrations",
+    targetId: "linear",
+    searchTerms: ["linear app desktop open in linear links browser"],
+  },
+  {
     id: "device-hosts",
     title: "Device hosts",
     to: "/settings/integrations",

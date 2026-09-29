@@ -104,6 +104,16 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.sourceControlLookupRepository]: AuthOrchestrationReadScope,
   [WS_METHODS.sourceControlCloneRepository]: AuthOrchestrationOperateScope,
   [WS_METHODS.sourceControlPublishRepository]: AuthOrchestrationOperateScope,
+  // Reading issues is a read; connecting or disconnecting the environment's
+  // Linear account changes what every client of this environment can reach.
+  [WS_METHODS.linearSubscribeState]: AuthOrchestrationReadScope,
+  [WS_METHODS.linearListIssues]: AuthOrchestrationReadScope,
+  [WS_METHODS.linearGetIssue]: AuthOrchestrationReadScope,
+  [WS_METHODS.linearGetFilterOptions]: AuthOrchestrationReadScope,
+  [WS_METHODS.linearStartLogin]: AuthOrchestrationOperateScope,
+  [WS_METHODS.linearCompleteLogin]: AuthOrchestrationOperateScope,
+  [WS_METHODS.linearCancelLogin]: AuthOrchestrationOperateScope,
+  [WS_METHODS.linearDisconnect]: AuthOrchestrationOperateScope,
   [WS_METHODS.projectCloneStart]: AuthOrchestrationOperateScope,
   [WS_METHODS.projectCloneCancel]: AuthOrchestrationOperateScope,
   [WS_METHODS.projectCloneRetry]: AuthOrchestrationOperateScope,

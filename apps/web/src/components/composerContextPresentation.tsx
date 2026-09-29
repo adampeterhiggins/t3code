@@ -1,15 +1,21 @@
 import ChatMarkdown from "./ChatMarkdown";
 import { ReadOnlySourcePreview } from "./files/AttachmentFilePreview";
-import type { PreviewAnnotationPayload, ThreadTabContextRecord } from "@t3tools/contracts";
+import type {
+  LinearIssueContextRecord,
+  PreviewAnnotationPayload,
+  ThreadTabContextRecord,
+} from "@t3tools/contracts";
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
 import { videoMimeType } from "@t3tools/shared/video";
 import { MessageCircleIcon, MessagesSquareIcon, MousePointerClickIcon } from "lucide-react";
+import { LinearIcon } from "./Icons";
 import { createContext, type MouseEvent, type ReactElement, type ReactNode, use } from "react";
 import type { EnvironmentId } from "@t3tools/contracts";
 
 import type { ComposerFileAttachment, ComposerImageAttachment } from "~/composerDraftStore";
 import { composerFileNeedsReattach } from "~/composerDraftStore";
 import { useTheme } from "~/hooks/useTheme";
+import { useLinearLinkClickHandler } from "~/browser/useLinearLinkClickHandler";
 import {
   formatAttachmentUploadProgress,
   type AttachmentUploadState,
@@ -42,6 +48,7 @@ import {
   ContextChipShell,
   FileChip,
   ImageChipButton,
+  LinearIssueDetails,
   PULL_REQUEST_CHIP_KINDS,
   PullRequestChip,
   ThreadTabSummaryDetails,
@@ -57,6 +64,7 @@ export type ComposerDraftContextRecord =
   | { kind: "review-comment"; record: ReviewCommentContext }
   | { kind: "preview-annotation"; record: PreviewAnnotationPayload }
   | { kind: "thread-tab"; record: ThreadTabContextRecord }
+  | { kind: "linear-issue"; record: LinearIssueContextRecord }
   | { kind: "image"; record: ComposerImageAttachment; upload?: AttachmentUploadState | undefined }
   | { kind: "file"; record: ComposerFileAttachment; upload?: AttachmentUploadState | undefined };
 
@@ -68,6 +76,7 @@ export interface ComposerContextActions {
   openFile: (fileId: string) => void;
   openMention: (path: string) => void;
   openPullRequest: (event: MouseEvent<HTMLElement>, url: string) => void;
+  openLink: (event: MouseEvent<HTMLElement>, url: string) => void;
 }
 
 export const ComposerContextActionsContext = createContext<ComposerContextActions>({
@@ -77,6 +86,7 @@ export const ComposerContextActionsContext = createContext<ComposerContextAction
   openFile: () => {},
   openMention: () => {},
   openPullRequest: () => {},
+  openLink: () => {},
 });
 
 export type ComposerDraftContextRecords = ReadonlyMap<string, ComposerDraftContextRecord>;
@@ -97,6 +107,7 @@ export function composerContextRecordsFromDraft(input: {
   reviewComments?: ReadonlyArray<ReviewCommentContext>;
   previewAnnotations?: ReadonlyArray<PreviewAnnotationPayload>;
   threadTabs?: ReadonlyArray<ThreadTabContextRecord>;
+  linearIssues?: ReadonlyArray<LinearIssueContextRecord>;
   images?: ReadonlyArray<ComposerImageAttachment>;
   files?: ReadonlyArray<ComposerFileAttachment>;
   uploadsByImageId?: Readonly<Record<string, AttachmentUploadState>>;
@@ -127,6 +138,9 @@ export function composerContextRecordsFromDraft(input: {
   }
   for (const record of input.threadTabs ?? []) {
     records.set(record.contextId, { kind: "thread-tab", record });
+  }
+  for (const record of input.linearIssues ?? []) {
+    records.set(record.contextId, { kind: "linear-issue", record });
   }
   return records;
 }
@@ -431,9 +445,40 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
           <UnresolvedContextChip label={context.label} />
         ),
     },
+    {
+      kind: "linear-issue",
+      canRender: (entry) => entry.kind === "linear-issue",
+      render: (entry, context, definition) =>
+        entry.kind === "linear-issue" ? (
+          <ContextChip
+            icon={<LinearIcon />}
+            label={entry.record.label}
+            kindLabel="Linear issue"
+            details={<ComposerLinearIssueDetails record={entry.record} />}
+            detailsMode={definition.capabilities.details}
+            kind="linear-issue"
+          />
+        ) : (
+          <UnresolvedContextChip label={context.label} />
+        ),
+    },
   ],
   fallback: (_kind, _entry, context) => <UnresolvedContextChip label={context.label} />,
 });
+
+function ComposerLinearIssueDetails({ record }: { record: LinearIssueContextRecord }) {
+  const actions = use(ComposerContextActionsContext);
+  const openLinearLink = useLinearLinkClickHandler(actions.openLink);
+  return (
+    <LinearIssueDetails
+      identifier={record.identifier}
+      stateName={record.stateName}
+      url={record.url}
+      markdown={record.markdown}
+      onOpenLink={openLinearLink}
+    />
+  );
+}
 
 /** Compact chip for one reference. Unknown kinds and missing records use the registry fallback. */
 export function ComposerContextReferenceChip(props: {

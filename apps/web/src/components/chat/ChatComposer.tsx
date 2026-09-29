@@ -203,6 +203,8 @@ import {
 } from "../composerContextPresentation";
 import { useOpenPrLink } from "~/lib/openPullRequestLink";
 import { useThreadTabContextRecords } from "~/threadTabContextStore";
+import { useLinearIssueContextRecords } from "~/linearIssueContextStore";
+import { useLinkClickHandler } from "~/browser/useOpenLink";
 import {
   collectInlineContextIds,
   stripInlineContextReferences,
@@ -255,6 +257,14 @@ import {
 import { resolveModelPickerSelectedModel } from "./ModelPickerContent";
 import { type ComposerCommandItem, ComposerCommandMenu } from "./ComposerCommandMenu";
 import { useCaptureThreadTabContext } from "./ThreadTabs";
+import { ComposerAttachMenu } from "./ComposerAttachMenu";
+import { useAttachLinearIssue } from "./LinearIssuePicker";
+import {
+  type ComposerReferenceTab,
+  defaultComposerReferenceTab,
+  useComposerLinearIssueItems,
+} from "./useComposerLinearIssueItems";
+
 import { ComposerPendingApprovalActions } from "./ComposerPendingApprovalActions";
 import { CompactComposerControlsMenu } from "./CompactComposerControlsMenu";
 import { ComposerImageThumbnail } from "./ComposerImageThumbnail";
@@ -328,6 +338,11 @@ import {
   suppressActiveComposerScrollGesture,
 } from "./composerScrollGesture";
 import { prepareVideoFirstFrame } from "../../lib/videoFirstFrame";
+
+const REFERENCE_MENU_TABS = [
+  { id: "pull-requests", label: "Pull requests" },
+  { id: "linear-issues", label: "Linear issues" },
+] as const;
 
 function ComposerVideoThumbnail({ file }: { file: File }) {
   const setVideo = useCallback(
@@ -1677,6 +1692,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const nonPersistedComposerImageIds = attachmentDraft.nonPersistedImageIds;
   const uploadsByImageId = useAttachmentUploadStore((state) => state.uploadsByImageId);
   const openPrLink = useOpenPrLink(routeThreadRef);
+  const openLink = useLinkClickHandler(routeThreadRef);
   const [previewFileId, setPreviewFileId] = useState<string | null>(null);
   const previewFile = composerFiles.find((file) => file.id === previewFileId);
   const composerContextActions = useMemo(
@@ -1711,10 +1727,20 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       openPullRequest: (event: React.MouseEvent<HTMLElement>, url: string) => {
         openPrLink(event, url);
       },
+      openLink,
     }),
-    [composerFiles, composerImages, environmentId, onExpandImage, openPrLink, routeThreadRef],
+    [
+      composerFiles,
+      composerImages,
+      environmentId,
+      onExpandImage,
+      openLink,
+      openPrLink,
+      routeThreadRef,
+    ],
   );
   const composerThreadTabContexts = useThreadTabContextRecords(routeThreadRef?.threadId);
+  const composerLinearIssueContexts = useLinearIssueContextRecords(routeThreadRef?.threadId);
   const composerContextRecords = useMemo(
     () =>
       composerContextRecordsFromDraft({
@@ -1722,6 +1748,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         reviewComments: composerReviewComments,
         previewAnnotations: composerPreviewAnnotations,
         threadTabs: composerThreadTabContexts,
+        linearIssues: composerLinearIssueContexts,
         images: composerImages,
         files: composerFiles,
         uploadsByImageId,
@@ -1733,6 +1760,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       composerReviewComments,
       composerTerminalContexts,
       composerThreadTabContexts,
+      composerLinearIssueContexts,
       uploadsByImageId,
     ],
   );
@@ -2364,12 +2392,33 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         }),
   );
 
+  // A tab picked by hand holds until this `#` token closes; otherwise the query picks it.
+  const [referenceTabChoice, setReferenceTabChoice] = useState<{
+    rangeStart: number;
+    tab: ComposerReferenceTab;
+  } | null>(null);
+  const referenceTab: ComposerReferenceTab =
+    composerTrigger?.kind !== "pull-request"
+      ? "pull-requests"
+      : referenceTabChoice?.rangeStart === composerTrigger.rangeStart
+        ? referenceTabChoice.tab
+        : defaultComposerReferenceTab(composerTrigger.query);
+  const linearIssueMenu = useComposerLinearIssueItems(
+    environmentId,
+    composerTrigger,
+    referenceTab === "linear-issues",
+  );
+  const showLinearIssues = linearIssueMenu.enabled && referenceTab === "linear-issues";
+  const attachLinearIssue = useAttachLinearIssue();
   const captureThreadTabContext = useCaptureThreadTabContext(
     environmentId,
     threadTabGroup ? activeThreadId : null,
   );
   const composerMenuItems = useMemo<ComposerCommandItem[]>(() => {
     if (!composerTrigger) return [];
+    if (composerTrigger.kind === "pull-request" && showLinearIssues) {
+      return linearIssueMenu.items;
+    }
     if (composerTrigger.kind === "path") {
       const tabQuery = composerTrigger.query.trim().toLowerCase();
       const tabItems = (threadTabGroup?.tabs ?? [])
@@ -2507,7 +2556,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             }),
             composerTrigger.query,
           ).slice(0, COMPOSER_PULL_REQUEST_RESULT_LIMIT);
-      return matches.map((pullRequest) => ({
+      const pullRequestItems = matches.map((pullRequest): ComposerCommandItem => ({
         id: `pull-request:${pullRequest.projectId}:${pullRequest.repository}:${pullRequest.number}`,
         type: "pull-request",
         pullRequest: {
@@ -2522,12 +2571,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         label: `#${pullRequest.number}`,
         description: pullRequest.title,
       }));
+      return pullRequestItems;
     }
     return [];
   }, [
     compactSlashCommandAvailable,
     composerTrigger,
     exactPullRequestLookup.data,
+    linearIssueMenu.items,
     planModeUiEnabled,
     pullRequestLookup.data,
     pullRequestProjectId,
@@ -2538,6 +2589,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     selectedProviderSlashCommands,
     selectedProviderStatus,
     settings.showSkillsInSlashMenu,
+    showLinearIssues,
     threadTabGroup,
     activeThreadId,
     workspaceEntries.entries,
@@ -2613,15 +2665,23 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const isComposerMenuLoading =
     (composerTriggerKind === "path" && pathTriggerQuery.length > 0 && workspaceEntries.isPending) ||
     (composerTriggerKind === "pull-request" &&
+      !showLinearIssues &&
       pullRequestProjectId !== null &&
       pullRequestRepository !== null &&
       (pullRequestLookup.isPending ||
         pullRequestTextQuery !== debouncedPullRequestTextQuery ||
         pullRequestTriggerNumber !== debouncedPullRequestNumber ||
-        exactPullRequestLookup.isPending));
+        exactPullRequestLookup.isPending)) ||
+    (showLinearIssues && linearIssueMenu.isPending);
   const composerMenuEmptyState = useMemo(() => {
     if (composerTriggerKind === "skill") {
       return "No skills found. Try / to browse provider commands.";
+    }
+    if (showLinearIssues) {
+      if (linearIssueMenu.error !== null) return linearIssueMenu.error;
+      return composerTrigger?.query
+        ? `No Linear issue matches ${composerTrigger.query}.`
+        : "No open Linear issues are assigned to you.";
     }
     if (composerTriggerKind === "pull-request") {
       if (pullRequestProjectId === null || pullRequestRepository === null) {
@@ -2643,6 +2703,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   }, [
     composerTrigger,
     composerTriggerKind,
+    linearIssueMenu.error,
+    showLinearIssues,
     pullRequestLookup.data?.errors,
     pullRequestLookup.error,
     pullRequestProjectId,
@@ -3677,6 +3739,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         );
         return;
       }
+      if (item.type === "linear-issue") {
+        const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
+          expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
+        });
+        if (!applied) return;
+        setComposerHighlightedItemId(null);
+        // The chip lands at the caret once the issue is fetched and snapshotted.
+        void attachLinearIssue(routeThreadRef, item.issueId);
+        return;
+      }
       if (item.type === "slash-command") {
         if (item.command === "model") {
           const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
@@ -3780,6 +3852,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     [
       addComposerDraftReviewComment,
       applyPromptReplacement,
+      attachLinearIssue,
       captureThreadTabContext,
       composerDraftTarget,
       handleInteractionModeChange,
@@ -3787,6 +3860,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       onUsageLimitsCommand,
       readComposerSnapshot,
       resolveActiveComposerTrigger,
+      routeThreadRef,
     ],
   );
 
@@ -6629,6 +6703,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     isLoading={isComposerMenuLoading}
                     triggerKind={composerTriggerKind}
                     emptyStateText={composerMenuEmptyState}
+                    environmentId={environmentId}
+                    {...(showLinearIssues ? { loadingText: "Searching Linear issues..." } : {})}
+                    {...(linearIssueMenu.enabled && composerTrigger?.kind === "pull-request"
+                      ? {
+                          tabs: {
+                            options: REFERENCE_MENU_TABS,
+                            activeId: referenceTab,
+                            onSelect: (tab: string) =>
+                              setReferenceTabChoice({
+                                rangeStart: composerTrigger.rangeStart,
+                                tab: tab === "linear-issues" ? "linear-issues" : "pull-requests",
+                              }),
+                          },
+                        }
+                      : {})}
                     activeItemId={activeComposerMenuItem?.id ?? null}
                     onHighlightedItemChange={onComposerMenuItemHighlighted}
                     onSelect={onSelectComposerItem}
@@ -7160,23 +7249,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                           });
                         }}
                       />
-                      <Tooltip>
-                        <TooltipTrigger
-                          render={
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon-sm"
-                              onPointerDown={(event) => event.preventDefault()}
-                              onClick={() => attachmentInputRef.current?.click()}
-                              aria-label="Attach files"
-                            />
-                          }
-                        >
-                          <PaperclipIcon />
-                        </TooltipTrigger>
-                        <TooltipPopup>Attach files</TooltipPopup>
-                      </Tooltip>
+                      <ComposerAttachMenu
+                        threadRef={routeThreadRef}
+                        onAttachFiles={() => attachmentInputRef.current?.click()}
+                      />
                     </>
                   ) : null}
                   <ComposerFooterPrimaryActions

@@ -117,6 +117,8 @@ import * as ProviderService from "./provider/Services/ProviderService.ts";
 import * as ProviderSessionDirectory from "./provider/Services/ProviderSessionDirectory.ts";
 import * as ProviderMaintenanceRunner from "./provider/providerMaintenanceRunner.ts";
 import { ProviderAuthService } from "./provider/Services/ProviderAuthService.ts";
+import { LinearApi } from "./linear/LinearApi.ts";
+import { LinearAuth } from "./linear/LinearAuth.ts";
 import { ProviderInstanceRegistry } from "./provider/Services/ProviderInstanceRegistry.ts";
 import { makeProviderInstallation } from "./provider/providerInstallation.ts";
 import * as ServerSelfUpdate from "./cloud/selfUpdate.ts";
@@ -577,6 +579,8 @@ const makeWsRpcLayer = (
       const providerSessionDirectory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
       const providerMaintenanceRunner = yield* ProviderMaintenanceRunner.ProviderMaintenanceRunner;
       const providerAuth = yield* ProviderAuthService;
+      const linearAuth = yield* LinearAuth;
+      const linearApi = yield* LinearApi;
       const providerInstances = yield* ProviderInstanceRegistry;
       const providerInstallation = yield* makeProviderInstallation();
       const serverUpdate = yield* ServerSelfUpdate.ServerSelfUpdate;
@@ -3128,6 +3132,38 @@ const makeWsRpcLayer = (
         [WS_METHODS.subscribeProjectClones]: () =>
           observeRpcStream(WS_METHODS.subscribeProjectClones, projectCloneTracker.stream, {
             "rpc.aggregate": "source-control",
+          }),
+        [WS_METHODS.linearSubscribeState]: (_input) =>
+          observeRpcStream(WS_METHODS.linearSubscribeState, linearAuth.state, {
+            "rpc.aggregate": "linear",
+          }),
+        [WS_METHODS.linearStartLogin]: (_input) =>
+          observeRpcEffect(WS_METHODS.linearStartLogin, linearAuth.startLogin, {
+            "rpc.aggregate": "linear",
+          }),
+        [WS_METHODS.linearCompleteLogin]: (input) =>
+          observeRpcEffect(WS_METHODS.linearCompleteLogin, linearAuth.completeLogin(input), {
+            "rpc.aggregate": "linear",
+          }),
+        [WS_METHODS.linearCancelLogin]: (input) =>
+          observeRpcEffect(WS_METHODS.linearCancelLogin, linearAuth.cancelLogin(input), {
+            "rpc.aggregate": "linear",
+          }),
+        [WS_METHODS.linearDisconnect]: (_input) =>
+          observeRpcEffect(WS_METHODS.linearDisconnect, linearAuth.disconnect, {
+            "rpc.aggregate": "linear",
+          }),
+        [WS_METHODS.linearListIssues]: (input) =>
+          observeRpcEffect(WS_METHODS.linearListIssues, linearApi.listIssues(input), {
+            "rpc.aggregate": "linear",
+          }),
+        [WS_METHODS.linearGetFilterOptions]: (_input) =>
+          observeRpcEffect(WS_METHODS.linearGetFilterOptions, linearApi.getFilterOptions, {
+            "rpc.aggregate": "linear",
+          }),
+        [WS_METHODS.linearGetIssue]: (input) =>
+          observeRpcEffect(WS_METHODS.linearGetIssue, linearApi.getIssue(input), {
+            "rpc.aggregate": "linear",
           }),
         [WS_METHODS.sourceControlPublishRepository]: (input) =>
           observeRpcEffect(

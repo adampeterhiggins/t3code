@@ -1,4 +1,5 @@
 import { ArrowUpIcon, ClockIcon } from "lucide-react";
+import { LinearIcon } from "../Icons";
 import { ReadOnlySourcePreview } from "../files/AttachmentFilePreview";
 import { useRightPanelStore } from "~/rightPanelStore";
 import {
@@ -141,6 +142,7 @@ import type {
   ComposerContextId,
   ComposerContextRecord,
   KnownComposerContextRecord,
+  LinearIssueContextRecord,
 } from "@t3tools/contracts";
 import { Button } from "../ui/button";
 import type { QueuedComposerMessage } from "../../queuedMessageStore";
@@ -223,6 +225,7 @@ import {
   PULL_REQUEST_CHIP_KINDS,
   PullRequestChip,
   ThreadTabSummaryDetails,
+  LinearIssueDetails,
   UnresolvedChip,
 } from "../contextChipParts";
 import {
@@ -247,6 +250,8 @@ import { chatMarkdownClipboardPayload } from "../../markdown-clipboard";
 import { ContextChip, ContextChipLabel, type ContextChipKind } from "../ContextChip";
 import { createContextPresentationRegistry } from "../contextPresentationRegistry";
 import { useOpenPrLink } from "~/lib/openPullRequestLink";
+import { useLinkClickHandler } from "~/browser/useOpenLink";
+import { useLinearLinkClickHandler } from "~/browser/useLinearLinkClickHandler";
 import { useClientSettings } from "~/hooks/useSettings";
 import type { ChatMarkdownContextReference } from "../ChatMarkdown";
 import { useMediaQuery } from "~/hooks/useMediaQuery";
@@ -3949,9 +3954,41 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
           <UnavailableUserMessageContextChip {...context} />
         ),
     },
+    {
+      kind: "linear-issue",
+      canRender: (record) => record.kind === "linear-issue",
+      render: (record, context) =>
+        record.kind === "linear-issue" ? (
+          <UserMessageContextPopover
+            copyMarkdown={context.copyMarkdown}
+            accessibleLabel={`Linear issue, ${record.label}`}
+            kind="linear-issue"
+            icon={<LinearIcon />}
+            label={record.label}
+          >
+            <UserMessageLinearIssueDetails record={record} />
+          </UserMessageContextPopover>
+        ) : (
+          <UnavailableUserMessageContextChip {...context} />
+        ),
+    },
   ],
   fallback: (_kind, _record, context) => <UnavailableUserMessageContextChip {...context} />,
 });
+
+function UserMessageLinearIssueDetails({ record }: { record: LinearIssueContextRecord }) {
+  const { threadRef } = use(TimelineRowCtx);
+  const openLink = useLinearLinkClickHandler(useLinkClickHandler(threadRef));
+  return (
+    <LinearIssueDetails
+      identifier={record.identifier}
+      stateName={record.stateName}
+      url={record.url}
+      markdown={record.markdown}
+      onOpenLink={openLink}
+    />
+  );
+}
 
 /** One inline context chip in a sent message, dispatched by the shared presentation registry. */
 function UserMessageContextReferenceChip(props: {

@@ -1,6 +1,7 @@
 import type { EnvironmentId, PullRequestContextMetadata } from "@t3tools/contracts";
 import { CircleDashedIcon, FilmIcon, ImageIcon } from "lucide-react";
 import {
+  useMemo,
   useState,
   type ComponentProps,
   type CSSProperties,
@@ -10,6 +11,8 @@ import {
 
 import { PULL_REQUEST_STATE_PRESENTATION } from "~/components/pullRequest/pullRequestIcons";
 import type { PullRequestContextDisplayState } from "~/lib/composerContextRecords";
+import { formatLinearMarkdownForPreview } from "~/lib/linearMarkdown";
+import ChatMarkdown from "./ChatMarkdown";
 import { PierreEntryIcon } from "./chat/PierreEntryIcon";
 import { middleTruncateAttachmentName } from "./composerInlineChip";
 import { PullRequestContextDetails } from "./PullRequestContextDetails";
@@ -295,6 +298,48 @@ export function ThreadTabSummaryDetails({ summary }: { summary: string }) {
   return (
     <div className="max-h-80 overflow-y-auto whitespace-pre-wrap wrap-break-word rounded-lg border border-border/70 bg-background/70 px-3 py-2.5 text-xs text-foreground">
       {summary}
+    </div>
+  );
+}
+
+/**
+ * A Linear issue snapshot rendered as markdown: the heading, facts, description, and comments
+ * the agent receives, scrolling when long.
+ */
+export function LinearIssueMarkdown({ markdown, url }: { markdown: string; url: string }) {
+  const text = useMemo(() => formatLinearMarkdownForPreview(markdown, url), [markdown, url]);
+  return (
+    <div className="max-h-80 overflow-y-auto rounded-lg border border-border/70 bg-background/70 px-3 py-2.5 text-xs text-foreground">
+      <ChatMarkdown text={text} cwd={undefined} />
+    </div>
+  );
+}
+
+/** An attached Linear issue: the snapshot the agent received, with a link back to Linear. */
+export function LinearIssueDetails(props: {
+  identifier: string;
+  stateName: string;
+  url: string;
+  markdown: string;
+  onOpenLink: (event: MouseEvent<HTMLElement>, url: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-baseline justify-between gap-3 text-xs text-muted-foreground">
+        <span>
+          {props.identifier} · {props.stateName}
+        </span>
+        <a
+          href={props.url}
+          target="_blank"
+          rel="noreferrer"
+          className="shrink-0 underline-offset-2 hover:text-foreground hover:underline"
+          onClick={(event) => props.onOpenLink(event, props.url)}
+        >
+          Open in Linear
+        </a>
+      </div>
+      <LinearIssueMarkdown markdown={props.markdown} url={props.url} />
     </div>
   );
 }

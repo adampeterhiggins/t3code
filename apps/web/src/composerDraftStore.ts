@@ -669,6 +669,14 @@ interface ComposerDraftStoreState {
     comment: ReviewCommentContext,
     options?: ComposerContextAddOptions,
   ) => void;
+  /**
+   * Places a chip for a payload held outside the draft (a Linear issue snapshot) at the caret of
+   * the mounted composer, or appends it to the prompt when none is mounted.
+   */
+  insertContextReference: (
+    threadRef: ComposerThreadTarget,
+    reference: ComposerContextReference,
+  ) => void;
   /** Registers (or clears, with null) the caret-insertion handler for a draft. */
   setContextInsertionHandler: (
     threadRef: ComposerThreadTarget,
@@ -3868,6 +3876,23 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
                       ? existing.prompt
                       : appendInlineContextReference(existing.prompt, reference),
                   reviewComments: [...reviewComments, { ...comment }],
+                },
+              },
+            };
+          });
+        },
+        insertContextReference: (threadRef, reference) => {
+          const threadKey = resolveComposerDraftKey(get(), threadRef);
+          if (!threadKey) return;
+          if (contextInsertionHandlers.get(threadKey)?.([reference])) return;
+          set((state) => {
+            const existing = state.draftsByThreadKey[threadKey] ?? createEmptyThreadDraft();
+            return {
+              draftsByThreadKey: {
+                ...state.draftsByThreadKey,
+                [threadKey]: {
+                  ...existing,
+                  prompt: appendInlineContextReference(existing.prompt, reference),
                 },
               },
             };

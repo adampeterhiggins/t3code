@@ -106,6 +106,21 @@ describe("ElectronShell", () => {
     }).pipe(Effect.provide(ElectronShell.layer)),
   );
 
+  it.effect("opens Linear desktop app links", () =>
+    Effect.gen(function* () {
+      openExternalMock.mockResolvedValue(undefined);
+
+      const electronShell = yield* ElectronShell.ElectronShell;
+      const results = yield* Effect.all([
+        electronShell.openExternal("linear://acme/issue/ENG-1/fix-login"),
+        electronShell.openExternal("linear://user@acme/issue/ENG-1"),
+      ]);
+
+      assert.deepEqual(results, [true, false]);
+      assert.deepEqual(openExternalMock.mock.calls, [["linear://acme/issue/ENG-1/fix-login"]]);
+    }).pipe(Effect.provide(ElectronShell.layer)),
+  );
+
   it.effect("does not open editor URLs that mix up link shapes", () =>
     Effect.gen(function* () {
       openExternalMock.mockResolvedValue(undefined);

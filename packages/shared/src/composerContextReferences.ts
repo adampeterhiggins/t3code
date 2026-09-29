@@ -237,6 +237,13 @@ function formatComposerContextProviderPayload(record: KnownComposerContextRecord
       return [`chat tab: ${record.title}`, `threadId: ${record.threadId}`, record.summary].join(
         "\n",
       );
+    case "linear-issue":
+      return [
+        `linear issue: ${record.identifier}`,
+        `url: ${record.url}`,
+        `state: ${record.stateName}`,
+        record.markdown,
+      ].join("\n");
   }
 }
 

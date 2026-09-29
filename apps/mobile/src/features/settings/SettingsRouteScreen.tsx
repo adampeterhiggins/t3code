@@ -187,6 +187,12 @@ function SettingsIndexSections() {
           disabled={noServerTargets}
         />
         <SettingsRow
+          icon="ticket"
+          label="Linear"
+          target="SettingsLinear"
+          disabled={noServerTargets}
+        />
+        <SettingsRow
           icon="arrow.clockwise"
           label="Maintenance"
           target="SettingsEnvironmentMaintenance"

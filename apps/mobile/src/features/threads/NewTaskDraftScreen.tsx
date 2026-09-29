@@ -51,6 +51,7 @@ import {
 import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
 import { MaterialScreenContent } from "../../components/MaterialScreenContent";
 import { ComposerAttachmentButton } from "../../components/ComposerAttachmentButton";
+import { useLinearIssuePicker } from "../../components/LinearIssuePickerSheet";
 import { ComposerAttachmentStrip } from "../../components/ComposerAttachmentStrip";
 import { composerStripAttachments } from "../../lib/composerImages";
 import { EnvironmentMachineSymbol } from "../../components/EnvironmentMachineSymbol";
@@ -972,6 +973,11 @@ export function NewTaskDraftScreen(props: {
     shareImportAttempt,
   ]);
 
+  const linearIssuePicker = useLinearIssuePicker(
+    flow.draftKey && flow.selectedEnvironmentId
+      ? { environmentId: flow.selectedEnvironmentId, draftKey: flow.draftKey }
+      : null,
+  );
   const selectedEnvironmentLabel =
     flow.environments.find(
       (environment) => environment.environmentId === flow.selectedEnvironmentId,
@@ -1685,6 +1691,11 @@ export function NewTaskDraftScreen(props: {
                     )}
                     onPickMedia={handlePickMedia}
                     onPickFiles={handlePickFiles}
+                    onPickLinearIssue={
+                      flow.draftKey && flow.selectedEnvironmentId
+                        ? linearIssuePicker.open
+                        : undefined
+                    }
                   />
                   <View className="min-w-0 flex-1 flex-row items-center justify-end gap-2">
                     <View className="min-w-0 shrink">
@@ -1765,6 +1776,7 @@ export function NewTaskDraftScreen(props: {
       </ComposerSurface>
       <VideoPreviewModal source={previewVideo} onRequestClose={closeMediaPreview} />
       <FilePreviewModal source={previewFile} onRequestClose={closeMediaPreview} />
+      {linearIssuePicker.sheet}
     </View>
   );
 

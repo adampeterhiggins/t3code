@@ -35,6 +35,10 @@ const isRemoteEditorUrl = (url: URL) =>
       url.pathname.startsWith("/ssh-remote+") &&
       url.pathname.length > "/ssh-remote+".length);
 
+// "Open in Linear" can target the Linear desktop app, which mirrors linear.app paths.
+const isLinearAppUrl = (url: URL) =>
+  url.protocol === "linear:" && url.username.length === 0 && url.password.length === 0;
+
 export function parseSafeExternalUrl(rawUrl: unknown): Option.Option<string> {
   if (typeof rawUrl !== "string") {
     return Option.none();
@@ -42,7 +46,7 @@ export function parseSafeExternalUrl(rawUrl: unknown): Option.Option<string> {
 
   try {
     const url = new URL(rawUrl);
-    return SAFE_WEB_PROTOCOLS.has(url.protocol) || isRemoteEditorUrl(url)
+    return SAFE_WEB_PROTOCOLS.has(url.protocol) || isRemoteEditorUrl(url) || isLinearAppUrl(url)
       ? Option.some(url.href)
       : Option.none();
   } catch {
