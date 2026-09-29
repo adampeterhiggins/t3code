@@ -225,6 +225,7 @@ import { RightPanelTabs } from "./RightPanelTabs";
 import { AgentsPanel } from "./AgentsPanel";
 import { LinkPullRequestDialogHost } from "./pullRequest/LinkPullRequestDialog";
 import { LinearIssuePickerHost } from "./chat/LinearIssuePicker";
+import { openStartFromPicker, StartFromPickerHost } from "./chat/StartFromPicker";
 import { ThreadPullRequestsPanel } from "./pullRequest/ThreadPullRequestsPanel";
 import { useDeviceState } from "~/state/device";
 import { DeviceSetup } from "./device/DeviceSetup";
@@ -10287,6 +10288,11 @@ export default function ChatView(props: ChatViewProps) {
                             isLocalDraftThread={isLocalDraftThread}
                             forceExpandedOnMobile={forceExpandedMobileComposer && isDraftHeroState}
                             projectSelectionRequired={isLocalDraftThread && activeProject === null}
+                            {...(isDraftHeroState &&
+                            canCheckoutPullRequestIntoThread &&
+                            activeProject
+                              ? { onStartFrom: openStartFromPicker }
+                              : {})}
                             phase={phase}
                             isConnecting={isConnecting}
                             isSendBusy={isSendBusy}
@@ -10688,6 +10694,17 @@ export default function ChatView(props: ChatViewProps) {
       </AlertDialog>
       <LinkPullRequestDialogHost />
       <LinearIssuePickerHost />
+      {canCheckoutPullRequestIntoThread && activeProject && activeProjectRef ? (
+        <StartFromPickerHost
+          environmentId={activeProject.environmentId}
+          projectRef={activeProjectRef}
+          projectId={activeProject.id}
+          workspaceRoot={activeProject.workspaceRoot}
+          threadRef={routeThreadRef}
+          onPullRequest={openPullRequestDialog}
+          onBranch={openOrReuseProjectDraftThread}
+        />
+      ) : null}
       {expandedImage && (
         <ExpandedImageDialog
           key={expandedImageKey(expandedImage)}

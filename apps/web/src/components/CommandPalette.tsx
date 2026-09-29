@@ -40,6 +40,7 @@ import {
 } from "@t3tools/contracts";
 import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
 import { openLinearIssuePicker } from "./chat/LinearIssuePicker";
+import { openStartFromPicker } from "./chat/StartFromPicker";
 import * as Option from "effect/Option";
 import {
   ArrowLeftIcon,
@@ -48,6 +49,7 @@ import {
   FileSearchIcon,
   FolderIcon,
   FolderPlusIcon,
+  GitBranchIcon,
   LayersIcon,
   LinkIcon,
   MessageSquareIcon,
@@ -1774,6 +1776,28 @@ function OpenCommandPaletteDialog(props: {
             defaultProjectRef,
             handleNewThread,
           });
+        },
+      });
+      actionItems.push({
+        kind: "action",
+        value: "action:start-thread-from",
+        searchTerms: ["pull request", "pr", "branch", "issue", "linear", "checkout", "start from"],
+        title: (
+          <>
+            New thread from PR, branch, or issue in{" "}
+            <span className="font-semibold">{activeProjectTitle}</span>
+          </>
+        ),
+        icon: <GitBranchIcon className={ITEM_ICON_CLASS} />,
+        shortcutCommand: "chat.startFrom",
+        run: async () => {
+          const started = await startNewThreadFromContext({
+            activeDraftThread,
+            activeThread: activeThread ?? undefined,
+            defaultProjectRef,
+            handleNewThread,
+          });
+          if (started) openStartFromPicker();
         },
       });
     }

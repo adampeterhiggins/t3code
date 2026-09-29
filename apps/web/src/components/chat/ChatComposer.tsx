@@ -957,6 +957,7 @@ import { Select, SelectItem, SelectPopup, SelectValue } from "../ui/select";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
 import {
+  EllipsisIcon,
   FileIcon,
   BotIcon,
   CircleAlertIcon,
@@ -1373,6 +1374,8 @@ export interface ChatComposerProps {
   isLocalDraftThread: boolean;
   forceExpandedOnMobile: boolean;
   projectSelectionRequired: boolean;
+  /** Present on the new-thread splash: opens the "start from PR, branch, or issue" picker. */
+  onStartFrom?: () => void;
 
   // Session phase
   phase: SessionPhase;
@@ -1536,6 +1539,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     isLocalDraftThread: _isLocalDraftThread,
     forceExpandedOnMobile,
     projectSelectionRequired,
+    onStartFrom,
     phase,
     isConnecting,
     isSendBusy,
@@ -2329,6 +2333,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     composerTerminalContexts.length === 0 &&
     composerPreviewAnnotations.length === 0 &&
     composerReviewComments.length === 0;
+
+  const startFromShortcutLabel = onStartFrom
+    ? shortcutLabelForCommand(keybindings, "chat.startFrom", {
+        context: { terminalFocus: false, terminalOpen, modelPickerOpen: false },
+      })
+    : null;
 
   const pullRequestListTargets = useMemo(
     () =>
@@ -6677,6 +6687,28 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 isComposerResting && "py-2 sm:py-2",
               )}
             >
+              {onStartFrom && !isComposerResting ? (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        className="absolute end-2 top-2 z-10 sm:end-2.5 sm:top-2.5"
+                        aria-label="Start from a pull request, branch, or issue"
+                        onClick={onStartFrom}
+                      />
+                    }
+                  >
+                    <EllipsisIcon />
+                  </TooltipTrigger>
+                  <TooltipPopup>
+                    Start from a PR, branch, or issue
+                    {startFromShortcutLabel ? ` (${startFromShortcutLabel})` : null}
+                  </TooltipPopup>
+                </Tooltip>
+              ) : null}
               {isStashMenuOpen && !composerMenuOpen && !isComposerApprovalState && (
                 <ComposerCommandMenuLayer anchor={composerMenuAnchor}>
                   <ComposerStashMenu
@@ -7115,7 +7147,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     buildContextClipboardFragment={buildContextClipboardFragment}
                     importContextFragment={importContextFragment}
                     skills={selectedProviderSkills}
-                    containerClassName={cn(isComposerResting && "min-w-0 flex-1")}
+                    containerClassName={cn(
+                      isComposerResting && "min-w-0 flex-1",
+                      onStartFrom && !isComposerResting && "pe-7",
+                    )}
                     className={cn(
                       showMobilePendingAnswerActions && "max-sm:pb-12",
                       isComposerResting &&
