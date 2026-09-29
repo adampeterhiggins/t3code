@@ -59,6 +59,7 @@ import * as Path from "effect/Path";
 import { ChildProcessSpawner } from "effect/unstable/process";
 import { ServerConfig } from "../config.ts";
 import * as StorageCleanup from "../storageCleanup.ts";
+import * as ConductorWorkspace from "../project/ConductorWorkspace.ts";
 import { withWorkspaceLease } from "../workspace/workspaceLease.ts";
 import { TerminalManager } from "../terminal/Manager.ts";
 import { GitVcsDriver } from "../vcs/GitVcsDriver.ts";
@@ -1659,6 +1660,7 @@ describe("storage cleanup", () => {
           const deleteRule = protection.startsWith("deleted");
           let tombstoned = deleteRule && protection !== "deleted-event";
           const removals: string[] = [];
+          const archived: string[] = [];
           const mergeRule = protection === "merged" || protection === "unmerged";
           const unchangedRule =
             protection === "unchanged" ||
@@ -1943,6 +1945,13 @@ describe("storage cleanup", () => {
                     return fs.remove(input.path, { recursive: true }).pipe(Effect.orDie);
                   },
                 }),
+                Layer.succeed(ConductorWorkspace.ConductorWorkspace, {
+                  prepareWorktree: () => Effect.die("unused"),
+                  archiveWorktree: (input) =>
+                    Effect.sync(() => {
+                      archived.push(input.worktreePath);
+                    }),
+                }),
                 Layer.mock(TerminalManager)({
                   subscribeMetadata: (listener) =>
                     listener({
@@ -2022,6 +2031,8 @@ describe("storage cleanup", () => {
                 ? [worktreePath]
                 : [],
           );
+          // Every worktree cleanup removes gets its archive script first.
+          assert.deepStrictEqual(archived, removals);
           assert.strictEqual(fetches, mergeRule || unchangedRule ? 1 : 0);
           assert.strictEqual(thread.worktreePath, worktreePath);
           assert.strictEqual(thread.branch, "feature");

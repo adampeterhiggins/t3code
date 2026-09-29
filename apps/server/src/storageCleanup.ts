@@ -29,6 +29,7 @@ import * as Stream from "effect/Stream";
 
 import * as ServerConfig from "./config.ts";
 import * as GitManager from "./git/GitManager.ts";
+import * as ConductorWorkspace from "./project/ConductorWorkspace.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import * as ThreadDeletionReactor from "./orchestration/Services/ThreadDeletionReactor.ts";
@@ -364,6 +365,7 @@ export const make = Effect.gen(function* () {
   const providers = yield* ProviderService.ProviderService;
   const git = yield* GitVcsDriver.GitVcsDriver;
   const gitManager = yield* GitManager.GitManager;
+  const conductorWorkspace = yield* ConductorWorkspace.ConductorWorkspace;
   const terminals = yield* TerminalManager.TerminalManager;
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -602,6 +604,12 @@ export const make = Effect.gen(function* () {
           )
         )
           return;
+        // Same as a user removing the worktree: the repository's Conductor
+        // archive script gets to clean up outside the checkout first.
+        yield* conductorWorkspace.archiveWorktree({
+          projectRoot: project.workspaceRoot,
+          worktreePath,
+        });
         yield* git.removeWorktree({ cwd: project.workspaceRoot, path: worktreePath, force: false });
         yield* gitManager.invalidateStatus(project.workspaceRoot);
         // Preserve branch and path: ProviderCommandReactor recreates the checkout
