@@ -42,7 +42,7 @@ export const ModelListRow = memo(function ModelListRow(props: {
   onToggleFavorite: () => void;
   /** Opens this model in a new tab; shown on hover, or always when `forkOnly`. */
   onFork?: () => void;
-  /** The thread cannot switch to this model, so choosing the row forks. */
+  /** The thread cannot switch to this model, so only the fork button opens it. */
   forkOnly?: boolean;
 }) {
   const ProviderIcon = PROVIDER_ICON_BY_PROVIDER[props.driverKind] ?? null;
@@ -60,6 +60,7 @@ export const ModelListRow = memo(function ModelListRow(props: {
         "group relative w-full !min-w-0 max-w-full cursor-pointer",
         props.disabledReason &&
           "data-disabled:pointer-events-auto data-disabled:cursor-not-allowed",
+        props.forkOnly && "cursor-not-allowed",
       )}
     >
       <div className="min-w-0 flex-1 text-left">
@@ -131,7 +132,7 @@ export const ModelListRow = memo(function ModelListRow(props: {
                 }
               />
               <TooltipPopup side="top" align="center">
-                {props.forkOnly ? "Opens in a new tab" : "Fork into new tab"}
+                Fork into new tab
               </TooltipPopup>
             </Tooltip>
           </span>
@@ -170,7 +171,12 @@ export const ModelListRow = memo(function ModelListRow(props: {
     </ComboboxItem>
   );
 
-  if (!props.disabledReason) {
+  const rowTooltip =
+    props.disabledReason ??
+    (props.forkOnly
+      ? "This chat can't switch to this model. Use the fork button to open it in a new tab."
+      : null);
+  if (!rowTooltip) {
     return row;
   }
 
@@ -178,7 +184,7 @@ export const ModelListRow = memo(function ModelListRow(props: {
     <Tooltip>
       <TooltipTrigger render={row} />
       <TooltipPopup side="left" align="center">
-        {props.disabledReason}
+        {rowTooltip}
       </TooltipPopup>
     </Tooltip>
   );

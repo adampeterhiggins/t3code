@@ -43,8 +43,9 @@ Choose the other account from the thread's account picker in the composer (shown
 when more than one Codex account is enabled). T3 Code offers compatible Codex
 instances that share the thread's **CODEX_HOME path**. Changing accounts does
 not move the conversation into a separate Codex home. Once the thread has
-started, an account that does not share that home stays visible as a label so
-you can see which account the thread runs on. It cannot be changed.
+started, accounts that do not share that home are marked **New tab**. Choosing
+one opens a new tab on that account, with a summary of the chat and a copy of
+your draft.
 
 If the account is missing from the picker, compare the home paths in provider
 settings. If two instances show the same unexpected account or models, check their

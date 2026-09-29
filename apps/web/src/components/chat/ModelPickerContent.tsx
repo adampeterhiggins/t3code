@@ -205,8 +205,8 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   onInstanceModelChange: (instanceId: ProviderInstanceId, model: string) => void;
   /**
    * Opens the model in a new tab of the thread. When set, the provider lock stops hiding other
-   * providers: their models, and any `modelRequiresFork` reports, can only be forked to, while
-   * models the thread can switch to also offer forking on hover.
+   * providers: their models, and any `modelRequiresFork` reports, can only be opened with the
+   * row's fork button, while models the thread can switch to also offer forking on hover.
    */
   onForkModel?: (instanceId: ProviderInstanceId, model: string) => void;
   modelRequiresFork?: (instanceId: ProviderInstanceId, model: string) => boolean;
@@ -750,17 +750,18 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       // normalization rules, so pass the driver kind here.
       const resolvedModel = resolveSelectableModel(resolvedEntry.driverKind, modelSlug, options);
       if (resolvedModel) {
-        if (
-          onForkModel &&
-          (fork ||
-            requiresFork({
-              driverKind: resolvedEntry.driverKind,
-              continuationGroupKey: resolvedEntry.continuationGroupKey,
-              instanceId: resolvedInstanceId,
-              slug: resolvedModel,
-            }))
-        ) {
+        if (onForkModel && fork) {
           onForkModel(resolvedInstanceId, resolvedModel);
+        } else if (
+          requiresFork({
+            driverKind: resolvedEntry.driverKind,
+            continuationGroupKey: resolvedEntry.continuationGroupKey,
+            instanceId: resolvedInstanceId,
+            slug: resolvedModel,
+          })
+        ) {
+          // Only the row's fork button opens these, so a stray click never forks.
+          return;
         } else if (additive && onToggleModel) {
           onToggleModel(resolvedInstanceId, resolvedModel);
         } else {

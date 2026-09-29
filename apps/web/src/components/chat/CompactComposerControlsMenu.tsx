@@ -1,6 +1,6 @@
 import { ProviderInteractionMode, RuntimeMode, type ProviderInstanceId } from "@t3tools/contracts";
 import { memo, type ReactNode } from "react";
-import { EllipsisIcon } from "lucide-react";
+import { EllipsisIcon, GitForkIcon } from "lucide-react";
 import {
   Menu,
   MenuPopup,
@@ -23,6 +23,8 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
     activeInstanceId: ProviderInstanceId;
     accounts: ReadonlyArray<ProviderInstanceEntry>;
     onAccountChange: (instanceId: ProviderInstanceId) => void;
+    /** See `ProviderAccountPicker`. */
+    requiresFork?: (instanceId: ProviderInstanceId) => boolean;
   };
   size?: "sm" | "xs";
   /**
@@ -110,7 +112,16 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
             >
               {accountMenu.accounts.map((account) => (
                 <MenuRadioItem key={account.instanceId} value={account.instanceId}>
-                  {account.displayName}
+                  <span className="flex items-center gap-2">
+                    <span className="min-w-0 flex-1 truncate">{account.displayName}</span>
+                    {account.instanceId !== accountMenu.activeInstanceId &&
+                    accountMenu.requiresFork?.(account.instanceId) ? (
+                      <span className="flex shrink-0 items-center gap-1 text-muted-foreground text-xs">
+                        <GitForkIcon className="size-3" aria-hidden="true" />
+                        New tab
+                      </span>
+                    ) : null}
+                  </span>
                 </MenuRadioItem>
               ))}
             </MenuRadioGroup>
