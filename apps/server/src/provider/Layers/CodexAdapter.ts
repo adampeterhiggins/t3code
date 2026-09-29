@@ -9,12 +9,14 @@
  */
 import {
   EventId,
+  isToolLifecycleItemType,
   type CanonicalItemType,
   type CanonicalRequestType,
   type CodexSettings,
   ProviderDriverKind,
   type ProviderEvent,
   ProviderInstanceId,
+  ProviderItemId,
   type ProviderRuntimeEvent,
   type ProviderRequestKind,
   type ThreadTokenUsageSnapshot,
@@ -27,6 +29,8 @@ import {
   RuntimeRequestId,
   RuntimeTaskId,
   type RuntimeTaskUsage,
+  SUBAGENT_PROMPT_CHAR_LIMIT,
+  type SubagentTranscriptEntry,
   type TurnTokenUsage,
   ProviderApprovalDecision,
   ThreadId,
@@ -68,7 +72,9 @@ import {
   type CodexSessionRuntimeError,
   type CodexSessionRuntimeOptions,
   type CodexSessionRuntimeShape,
+  type CodexThreadSnapshot,
 } from "./CodexSessionRuntime.ts";
+import { boundSubagentPrompt, boundSubagentTranscript } from "../subagentTranscript.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
 import { resolveCodexLaunchArgs } from "./codexLaunchArgs.ts";
 import {
@@ -1009,6 +1015,7 @@ function mapItemLifecycle(
   event: ProviderEvent,
   canonicalThreadId: ThreadId,
   lifecycle: "item.started" | "item.updated" | "item.completed",
+  agentId?: string,
 ): ProviderRuntimeEvent | undefined {
   const payload =
     readPayload(EffectCodexSchema.V2ItemStartedNotification, event.payload) ??
@@ -1044,8 +1051,159 @@ function mapItemLifecycle(
       ...(detail ? { detail } : {}),
       ...toolPresentation,
       ...(event.payload !== undefined ? { data: event.payload } : {}),
+      ...(agentId ? { agentId } : {}),
     },
   };
+}
+
+/**
+ * A collab child's tool item as an ordinary item.* row attributed to the
+ * child (agentId), so the Agents panel can show the agent's own tool calls
+ * while the parent timeline hides them. Non-tool items (messages, reasoning)
+ * stay summary-only; streaming deltas never reach here.
+ */
+function mapCollabChildToolItem(
+  event: ProviderEvent,
+  canonicalThreadId: ThreadId,
+  agentThreadId: string,
+  phase: unknown,
+): ProviderRuntimeEvent | undefined {
+  const payload =
+    typeof event.payload === "object" && event.payload !== null
+      ? (event.payload as Record<string, unknown>)
+      : undefined;
+  const item =
+    typeof payload?.item === "object" && payload.item !== null
+      ? (payload.item as Record<string, unknown>)
+      : undefined;
+  const itemId = typeof item?.id === "string" ? item.id : undefined;
+  if (!itemId || !isToolLifecycleItemType(toCanonicalItemType(String(item?.type)))) {
+    return undefined;
+  }
+  return mapItemLifecycle(
+    {
+      ...event,
+      // Scoped by child thread: provider call ids are only unique per thread.
+      itemId: ProviderItemId.make(`codex-agent:${agentThreadId}:${itemId}`),
+    },
+    canonicalThreadId,
+    phase === "started" ? "item.started" : "item.completed",
+    agentThreadId,
+  );
+}
+
+type CodexThreadItemSnapshot = CodexThreadSnapshot["turns"][number]["items"][number];
+
+function toTranscriptStatus(status: unknown): SubagentTranscriptEntry["status"] {
+  switch (status) {
+    case "inProgress":
+      return "running";
+    case "completed":
+      return "completed";
+    case "failed":
+    case "declined":
+      return "failed";
+    default:
+      return undefined;
+  }
+}
+
+function jsonText(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value === "string") return trimText(value);
+  const encoded = JSON.stringify(value);
+  return encoded === "{}" || encoded === "[]" ? undefined : encoded;
+}
+
+function joinedText(
+  parts: ReadonlyArray<string | undefined>,
+  separator = "\n",
+): string | undefined {
+  const kept = parts.filter((part): part is string => part !== undefined && part.length > 0);
+  return kept.length > 0 ? kept.join(separator) : undefined;
+}
+
+function contentText(content: ReadonlyArray<unknown>): string | undefined {
+  return joinedText(
+    content.map((entry) => {
+      const record = asUnknownRecord(entry);
+      return typeof record?.text === "string" ? record.text : undefined;
+    }),
+  );
+}
+
+function toolEntry(
+  text: string,
+  toolName: string,
+  fields: { input?: string | undefined; output?: string | undefined; status?: unknown },
+): SubagentTranscriptEntry {
+  const status = toTranscriptStatus(fields.status);
+  return {
+    kind: "tool",
+    text,
+    toolName,
+    ...(fields.input ? { input: fields.input } : {}),
+    ...(fields.output ? { output: fields.output } : {}),
+    ...(status ? { status } : {}),
+  };
+}
+
+function codexTranscriptEntry(item: CodexThreadItemSnapshot): SubagentTranscriptEntry | undefined {
+  switch (item.type) {
+    case "userMessage":
+      return { kind: "user", text: contentText(item.content) ?? "" };
+    case "agentMessage":
+      return { kind: "assistant", text: item.text };
+    case "reasoning":
+      return { kind: "reasoning", text: joinedText(item.summary ?? [], "\n\n") ?? "" };
+    case "commandExecution":
+      return toolEntry("Ran command", "command", {
+        input: item.command,
+        output: trimText(item.aggregatedOutput),
+        status: item.status,
+      });
+    case "fileChange":
+      return toolEntry("File change", "file_change", {
+        input: joinedText(item.changes.map((change) => `${change.kind.type} ${change.path}`)),
+        output: joinedText(item.changes.map((change) => change.diff)),
+        status: item.status,
+      });
+    case "mcpToolCall":
+      return toolEntry(`${item.server} · ${item.tool}`, item.tool, {
+        input: jsonText(item.arguments),
+        output: item.error?.message ?? (item.result ? contentText(item.result.content) : undefined),
+        status: item.status,
+      });
+    case "dynamicToolCall":
+      return toolEntry(item.tool, item.tool, {
+        input: jsonText(item.arguments),
+        output: item.contentItems ? contentText(item.contentItems) : undefined,
+        status: item.status,
+      });
+    case "collabAgentToolCall":
+      return toolEntry(`Agent ${item.tool}`, item.tool, {
+        input: trimText(item.prompt),
+        status: item.status,
+      });
+    case "webSearch":
+      return toolEntry("Web search", "web_search", { input: item.query, status: "completed" });
+    case "imageView":
+      return toolEntry("Image view", "image_view", { input: item.path, status: "completed" });
+    default:
+      return undefined;
+  }
+}
+
+/** Normalizes a collab child's native history into Agents-panel transcript entries. */
+export function codexSubagentTranscriptEntries(
+  turns: CodexThreadSnapshot["turns"],
+): ReadonlyArray<SubagentTranscriptEntry> {
+  return turns.flatMap((turn) =>
+    turn.items.flatMap((item) => {
+      const entry = codexTranscriptEntry(item);
+      return entry ? [entry] : [];
+    }),
+  );
 }
 
 /**
@@ -1082,6 +1240,7 @@ function mapCollabAgentEvent(
   const title = knownName ?? agentThreadId;
   const model = typeof payload.model === "string" ? payload.model.trim() : "";
   const effort = typeof payload.effort === "string" ? payload.effort.trim() : "";
+  const prompt = boundSubagentPrompt(payload.prompt, SUBAGENT_PROMPT_CHAR_LIMIT);
   // Identity repeated on every status patch so rows are self-describing when
   // the start row ages out of activity retention (review finding: a
   // reconstructed agent had a UUID name and no role/path).
@@ -1104,6 +1263,7 @@ function mapCollabAgentEvent(
             taskId,
             description: title,
             title,
+            ...(prompt ? { prompt } : {}),
             ...linkage,
             ...(typeof payload.parentThreadId === "string"
               ? { parentAgentId: payload.parentThreadId }
@@ -1143,6 +1303,7 @@ function mapCollabAgentEvent(
               taskId,
               description: title,
               title,
+              ...(prompt ? { prompt } : {}),
               ...linkage,
             },
           },
@@ -1167,6 +1328,11 @@ function mapCollabAgentEvent(
           ? (payload.turn as Record<string, unknown>)
           : undefined;
       const turnStatus = typeof turn?.status === "string" ? turn.status : undefined;
+      const turnError = asUnknownRecord(turn?.error);
+      const error =
+        turnStatus === "failed" && typeof turnError?.message === "string"
+          ? trimText(turnError.message)
+          : undefined;
       const status =
         turnStatus === "failed"
           ? ("failed" as const)
@@ -1177,7 +1343,7 @@ function mapCollabAgentEvent(
         {
           ...base,
           type: "task.updated",
-          payload: { taskId, status, ...linkage },
+          payload: { taskId, status, ...(error ? { error } : {}), ...linkage },
         },
       ];
     }
@@ -1189,11 +1355,13 @@ function mapCollabAgentEvent(
       const statusType = typeof status?.type === "string" ? status.type : undefined;
       if (statusType === "systemError") {
         // Silently dropping this once left children stuck running forever.
+        const error =
+          typeof payload.errorMessage === "string" ? trimText(payload.errorMessage) : undefined;
         return [
           {
             ...base,
             type: "task.updated",
-            payload: { taskId, status: "failed", ...linkage },
+            payload: { taskId, status: "failed", ...(error ? { error } : {}), ...linkage },
           },
         ];
       }
@@ -1286,6 +1454,12 @@ function mapCollabAgentEvent(
         (typeof item?.query === "string" ? item.query : undefined);
       const canonical = toCanonicalItemType(itemTypeRaw);
       const summary = looseSummary ?? canonical.replaceAll("_", " ");
+      const toolEvent = mapCollabChildToolItem(
+        event,
+        canonicalThreadId,
+        agentThreadId,
+        payload.phase,
+      );
       return [
         {
           ...base,
@@ -1297,6 +1471,7 @@ function mapCollabAgentEvent(
             summary,
           },
         },
+        ...(toolEvent ? [toolEvent] : []),
       ];
     }
     case "collabAgent/closed":
@@ -2676,6 +2851,22 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
       })),
     );
 
+  const readSubagentTranscript: NonNullable<CodexAdapterShape["readSubagentTranscript"]> = (
+    threadId,
+    taskId,
+  ) =>
+    requireSession(threadId).pipe(
+      Effect.flatMap((session) => session.runtime.readChildThread(taskId)),
+      Effect.mapError((cause) =>
+        cause._tag === "ProviderAdapterSessionNotFoundError"
+          ? cause
+          : mapCodexRuntimeError(threadId, "thread/read", cause),
+      ),
+      Effect.map((snapshot) =>
+        snapshot ? boundSubagentTranscript(codexSubagentTranscriptEntries(snapshot.turns)) : null,
+      ),
+    );
+
   const rollbackThread: CodexAdapterShape["rollbackThread"] = (threadId, numTurns) => {
     if (!Number.isInteger(numTurns) || numTurns < 1) {
       return Effect.fail(
@@ -2810,6 +3001,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     compaction: { type: "native", start: compactThread },
     interruptTurn,
     readThread,
+    readSubagentTranscript,
     rollbackThread,
     uploadFeedback,
     respondToRequest,

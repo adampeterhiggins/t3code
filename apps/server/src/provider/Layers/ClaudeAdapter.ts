@@ -13,6 +13,7 @@ import {
   type CanUseTool,
   query,
   getSessionMessages,
+  getSubagentMessages,
   forkSession,
   type Options as ClaudeQueryOptions,
   type PermissionMode,
@@ -52,6 +53,8 @@ import {
   RuntimeRequestId,
   RuntimeTaskId,
   type RuntimeTaskStatus,
+  SUBAGENT_PROMPT_CHAR_LIMIT,
+  type SubagentTranscriptEntry,
   type RuntimeTaskUsage,
   type TaskAgentLinkage,
   type TaskRunHandles,
@@ -116,6 +119,7 @@ import {
 } from "../Errors.ts";
 import { type ClaudeAdapterShape } from "../Services/ClaudeAdapter.ts";
 import { spawnAndCollect } from "../providerSnapshot.ts";
+import { boundSubagentPrompt, boundSubagentTranscript } from "../subagentTranscript.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
 const encodeUnknownJsonStringExit = Schema.encodeUnknownExit(Schema.fromJsonString(Schema.Unknown));
 const decodeUnknownJsonStringExit = Schema.decodeUnknownExit(Schema.fromJsonString(Schema.Unknown));
@@ -131,6 +135,8 @@ const decodeSessionMessages = Schema.decodeSync(
         uuid: Schema.String,
         parent_tool_use_id: Schema.NullOr(Schema.String),
         message: Schema.Unknown,
+        timestamp: Schema.optionalKey(Schema.String),
+        is_meta: Schema.optionalKey(Schema.Boolean),
       }),
     ),
   ),
@@ -141,6 +147,8 @@ type ClaudeHistoryMessage = {
   readonly uuid: string;
   readonly parent_tool_use_id: string | null;
   readonly message: unknown;
+  readonly timestamp?: string;
+  readonly is_meta?: boolean;
 };
 
 const isClaudeConversationMessage = (message: ClaudeHistoryMessage): boolean =>
@@ -477,6 +485,7 @@ export interface ClaudeAdapterLiveOptions {
     readonly options: ClaudeQueryOptions;
   }) => ClaudeQueryRuntime;
   readonly getSessionMessages?: typeof getSessionMessages;
+  readonly getSubagentMessages?: typeof getSubagentMessages;
   readonly forkSession?: typeof forkSession;
   readonly nativeEventLogPath?: string;
   readonly nativeEventLogger?: EventNdjsonLogger;
@@ -1922,6 +1931,102 @@ function toolResultBlocksFromUserMessage(message: SDKMessage): Array<{
   }
 
   return blocks;
+}
+
+/** Readable input for a transcript tool entry: the command or path when the
+ * tool has one, otherwise the JSON input. */
+function subagentToolInputText(input: Record<string, unknown>): string | undefined {
+  for (const key of ["command", "cmd", "file_path", "notebook_path", "path", "pattern", "url"]) {
+    const value = trimmedString(input[key]);
+    if (value) return value;
+  }
+  return Object.keys(input).length > 0 ? encodeJsonStringForDiagnostics(input) : undefined;
+}
+
+function subagentTimestamp(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const parsed = DateTime.make(value);
+  return parsed._tag === "Some" ? DateTime.formatIso(parsed.value) : undefined;
+}
+
+/**
+ * Maps a subagent's SDK history (`getSubagentMessages`) to transcript entries.
+ * A tool_use and its later tool_result fold into one "tool" entry.
+ */
+function claudeSubagentTranscriptEntries(
+  messages: ReadonlyArray<ClaudeHistoryMessage>,
+): Array<SubagentTranscriptEntry> {
+  const entries: Array<SubagentTranscriptEntry> = [];
+  const toolEntryIndexById = new Map<string, number>();
+  for (const message of messages) {
+    if ((message.type !== "user" && message.type !== "assistant") || message.is_meta) continue;
+    const at = subagentTimestamp(message.timestamp);
+    const stamp = at ? { at } : {};
+    const content =
+      typeof message.message === "object" && message.message !== null
+        ? (message.message as { content?: unknown }).content
+        : undefined;
+    const blocks: ReadonlyArray<unknown> =
+      typeof content === "string"
+        ? [{ type: "text", text: content }]
+        : Array.isArray(content)
+          ? content
+          : [];
+    for (const raw of blocks) {
+      if (!raw || typeof raw !== "object") continue;
+      const block = raw as Record<string, unknown>;
+      switch (block.type) {
+        case "text": {
+          const text = trimmedString(block.text);
+          if (text) {
+            entries.push({ kind: message.type === "user" ? "user" : "assistant", text, ...stamp });
+          }
+          break;
+        }
+        case "thinking": {
+          const text = trimmedString(block.thinking);
+          if (text) entries.push({ kind: "reasoning", text, ...stamp });
+          break;
+        }
+        case "tool_use":
+        case "server_tool_use":
+        case "mcp_tool_use": {
+          const toolName = trimmedString(block.name) ?? "Tool";
+          const input =
+            typeof block.input === "object" && block.input !== null && !Array.isArray(block.input)
+              ? (block.input as Record<string, unknown>)
+              : {};
+          const inputText = subagentToolInputText(input);
+          if (typeof block.id === "string") toolEntryIndexById.set(block.id, entries.length);
+          entries.push({
+            kind: "tool",
+            text: trimmedString(input.description) ?? toolName,
+            toolName,
+            ...(inputText ? { input: inputText } : {}),
+            status: "running",
+            ...stamp,
+          });
+          break;
+        }
+        case "tool_result": {
+          const index =
+            typeof block.tool_use_id === "string"
+              ? toolEntryIndexById.get(block.tool_use_id)
+              : undefined;
+          const toolEntry = index === undefined ? undefined : entries[index];
+          if (index === undefined || !toolEntry) break;
+          const output = extractTextContent(block.content).trim();
+          entries[index] = {
+            ...toolEntry,
+            ...(output ? { output } : {}),
+            status: block.is_error === true ? "failed" : "completed",
+          };
+          break;
+        }
+      }
+    }
+  }
+  return entries;
 }
 
 function toSessionError(
@@ -3758,12 +3863,18 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           effort,
         });
         context.liveTaskIds.add(message.task_id);
+        // The SDK forwards the agent's launch prompt; older CLIs omit it, so
+        // fall back to the launching Agent/Task tool's input.
+        const prompt =
+          boundSubagentPrompt(message.prompt, SUBAGENT_PROMPT_CHAR_LIMIT) ??
+          boundSubagentPrompt(launchInput?.prompt, SUBAGENT_PROMPT_CHAR_LIMIT);
         yield* offerRuntimeEvent({
           ...base,
           type: "task.started",
           payload: {
             taskId: RuntimeTaskId.make(message.task_id),
             description: message.description,
+            ...(prompt ? { prompt } : {}),
             ...(message.task_type ? { taskType: message.task_type } : {}),
             ...(owningAgentId ? { agentId: owningAgentId } : {}),
             ...(message.description ? { title: message.description } : {}),
@@ -5313,12 +5424,100 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     context.interruptedTurnSettled = undefined;
   });
 
+  // The single-executable has no sibling script and no Node to run one
+  // with, so it hosts the worker as a hidden subcommand of itself.
+  const resolveHistoryWorkerArguments = Effect.fn("resolveHistoryWorkerArguments")(function* (
+    threadId: ThreadId,
+    method: string,
+  ) {
+    if (yield* HostProcessIsExecutable) return ["__claude-history"];
+    return [
+      yield* path
+        .fromFileUrl(
+          new URL(
+            import.meta.url.endsWith(".ts")
+              ? "../../claude-history-worker.ts"
+              : "./claude-history-worker.mjs",
+            import.meta.url,
+          ),
+        )
+        .pipe(Effect.mapError((cause) => toRequestError(threadId, method, cause))),
+    ];
+  });
+
+  const runHistoryWorker = async (
+    workerArguments: ReadonlyArray<string>,
+    method: "getSessionMessages" | "forkSession" | "getSubagentMessages",
+    historySessionId: string,
+    args: object,
+  ) => {
+    // SDK history helpers read process.env. Isolate the provider's home instead
+    // of changing the server's environment while other providers are running.
+    // @effect-diagnostics-next-line runEffectInsideEffect:off - SDK callback runs outside the fiber; the spawn is self-contained
+    const result = await Effect.runPromise(
+      spawnAndCollect(
+        process.execPath,
+        ChildProcess.make(
+          process.execPath,
+          [...workerArguments, method, historySessionId, encodeHistoryArgs(args)],
+          { env: { ...claudeEnvironment, ELECTRON_RUN_AS_NODE: "1" } },
+        ),
+      ).pipe(
+        Effect.timeout("30 seconds"),
+        Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+      ),
+    );
+    if (result.code !== 0) throw new Error(result.stderr || "Claude history command failed.");
+    return result.stdout;
+  };
+
   const readThread: ClaudeAdapterShape["readThread"] = Effect.fn("readThread")(
     function* (threadId) {
       const context = yield* requireSession(threadId);
       return yield* snapshotThread(context);
     },
   );
+
+  // Claude registers a local_agent task under its agentId, so the task id on
+  // task.* events is also the subagent transcript id getSubagentMessages reads.
+  const readSubagentTranscript: NonNullable<ClaudeAdapterShape["readSubagentTranscript"]> =
+    Effect.fn("readSubagentTranscript")(function* (threadId, taskId) {
+      const context = yield* requireSession(threadId);
+      const sessionId = context.resumeSessionId;
+      const task = context.taskAgents.get(taskId);
+      // Workflow member slots (`<coord>:wf:<i>`) are not agent ids, and shells,
+      // monitors, workflows, and remote agents keep no local subagent transcript.
+      if (
+        !sessionId ||
+        taskId.includes(":") ||
+        (task?.taskType !== undefined && task.taskType !== "local_agent")
+      ) {
+        return null;
+      }
+      const readOptions = context.session.cwd ? { dir: context.session.cwd } : {};
+      const workerArguments =
+        options?.getSubagentMessages === undefined &&
+        claudeEnvironment.CLAUDE_CONFIG_DIR !== process.env.CLAUDE_CONFIG_DIR
+          ? yield* resolveHistoryWorkerArguments(threadId, "thread/subagentTranscript")
+          : undefined;
+      const messages: ReadonlyArray<ClaudeHistoryMessage> = yield* Effect.tryPromise({
+        try: async () => {
+          if (options?.getSubagentMessages) {
+            return options.getSubagentMessages(sessionId, taskId, readOptions);
+          }
+          if (!workerArguments) return getSubagentMessages(sessionId, taskId, readOptions);
+          return decodeSessionMessages(
+            await runHistoryWorker(workerArguments, "getSubagentMessages", sessionId, {
+              ...readOptions,
+              agentId: taskId,
+            }),
+          );
+        },
+        catch: (cause) => toRequestError(threadId, "thread/subagentTranscript", cause),
+      });
+      if (messages.length === 0) return null;
+      return boundSubagentTranscript(claudeSubagentTranscriptEntries(messages));
+    });
 
   const rollbackThread: ClaudeAdapterShape["rollbackThread"] = Effect.fn("rollbackThread")(
     function* (threadId, numTurns) {
@@ -5351,46 +5550,15 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           detail: "Claude session id is unavailable.",
         });
       }
-      // The single-executable has no sibling script and no Node to run one
-      // with, so it hosts the worker as a hidden subcommand of itself.
-      const historyWorkerArguments = (yield* HostProcessIsExecutable)
-        ? ["__claude-history"]
-        : [
-            yield* path
-              .fromFileUrl(
-                new URL(
-                  import.meta.url.endsWith(".ts")
-                    ? "../../claude-history-worker.ts"
-                    : "./claude-history-worker.mjs",
-                  import.meta.url,
-                ),
-              )
-              .pipe(Effect.mapError((cause) => toRequestError(threadId, "thread/rollback", cause))),
-          ];
-      const runScopedHistoryCommand = async (
+      const historyWorkerArguments = yield* resolveHistoryWorkerArguments(
+        threadId,
+        "thread/rollback",
+      );
+      const runScopedHistoryCommand = (
         method: "getSessionMessages" | "forkSession",
         args: object,
         historySessionId = sessionId,
-      ) => {
-        // SDK history helpers read process.env. Isolate the provider's home instead
-        // of changing the server's environment while other providers are running.
-        // @effect-diagnostics-next-line runEffectInsideEffect:off - SDK callback runs outside the fiber; the spawn is self-contained
-        const result = await Effect.runPromise(
-          spawnAndCollect(
-            process.execPath,
-            ChildProcess.make(
-              process.execPath,
-              [...historyWorkerArguments, method, historySessionId, encodeHistoryArgs(args)],
-              { env: { ...claudeEnvironment, ELECTRON_RUN_AS_NODE: "1" } },
-            ),
-          ).pipe(
-            Effect.timeout("30 seconds"),
-            Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-          ),
-        );
-        if (result.code !== 0) throw new Error(result.stderr || "Claude history command failed.");
-        return result.stdout;
-      };
+      ) => runHistoryWorker(historyWorkerArguments, method, historySessionId, args);
       const readHistory = (historySessionId: string) =>
         Effect.tryPromise({
           try: async () => {
@@ -5593,6 +5761,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     sendTurn,
     interruptTurn,
     readThread,
+    readSubagentTranscript,
     rollbackThread,
     respondToRequest,
     respondToUserInput,

@@ -48,6 +48,7 @@ model picker, and define the model name here.
 ## Subagents
 
 When Cursor delegates work to a subagent, the subagent appears in
-[Agents](./thread-sidebar.md#inspect-agent-work) with its type, model, the tools
-it runs, and its final answer. Cursor does not report per-subagent token usage,
-and you cannot open or steer a Cursor subagent from T3 Code.
+[Agents](./thread-sidebar.md#inspect-agent-work) with its type, model, prompt,
+each tool call it makes, and its final answer. Cursor does not report
+per-subagent token usage or keep a subagent transcript T3 Code can read, and you
+cannot steer a Cursor subagent from T3 Code.

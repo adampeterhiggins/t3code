@@ -2040,6 +2040,12 @@ const makeWsRpcLayer = (
             readWorkflowScript({ scriptPath: input.scriptPath }),
             { "rpc.aggregate": "orchestration" },
           ),
+        [ORCHESTRATION_WS_METHODS.getSubagentTranscript]: (input) =>
+          observeRpcEffect(
+            ORCHESTRATION_WS_METHODS.getSubagentTranscript,
+            providerService.readSubagentTranscript(input),
+            { "rpc.aggregate": "orchestration" },
+          ),
         [ORCHESTRATION_WS_METHODS.getTurnDiff]: (input) =>
           observeRpcEffect(
             ORCHESTRATION_WS_METHODS.getTurnDiff,

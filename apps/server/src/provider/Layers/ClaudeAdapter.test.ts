@@ -174,6 +174,7 @@ function makeHarness(config?: {
   readonly scopedLimitNames?: ClaudeAdapterLiveOptions["scopedLimitNames"];
   readonly environment?: ClaudeAdapterLiveOptions["environment"];
   readonly getSessionMessages?: ClaudeAdapterLiveOptions["getSessionMessages"];
+  readonly getSubagentMessages?: ClaudeAdapterLiveOptions["getSubagentMessages"];
   readonly forkSession?: ClaudeAdapterLiveOptions["forkSession"];
 }) {
   const query = new FakeClaudeQuery();
@@ -192,6 +193,7 @@ function makeHarness(config?: {
     modelCatalog: Effect.succeed(SYNTHETIC_CLAUDE_MODEL_CATALOG),
     ...(config?.getSessionMessages ? { getSessionMessages: config.getSessionMessages } : {}),
     ...(config?.forkSession ? { forkSession: config.forkSession } : {}),
+    ...(config?.getSubagentMessages ? { getSubagentMessages: config.getSubagentMessages } : {}),
     createQuery: (input) => {
       if (createInput && config?.getSessionMessages) queries.push(new FakeClaudeQuery());
       createInput = input;
@@ -2230,6 +2232,215 @@ describe("ClaudeAdapterLive", () => {
       if (completed?.type === "turn.completed") {
         assert.equal(completed.payload.tokenUsage?.hasSubagents, true);
       }
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
+  it.effect("carries the subagent launch prompt on task.started only", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const startedFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.type === "task.started" || event.type === "task.progress"),
+        Stream.take(3),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({ threadId: session.threadId, input: "delegate", attachments: [] });
+
+      // SDK task_started.prompt wins over the tool input.
+      harness.query.emit({
+        type: "system",
+        subtype: "task_started",
+        task_id: "agent-sdk-prompt",
+        description: "Audit",
+        task_type: "local_agent",
+        prompt: "  Audit the SQL changes  ",
+        uuid: "task-started-sdk-prompt",
+        session_id: CLAUDE_ORIGINAL_SESSION_ID,
+      } as unknown as SDKMessage);
+      // Older CLIs omit it: fall back to the launching Agent tool's input.
+      harness.query.emit({
+        type: "stream_event",
+        session_id: CLAUDE_ORIGINAL_SESSION_ID,
+        uuid: "stream-agent-tool",
+        parent_tool_use_id: null,
+        event: {
+          type: "content_block_start",
+          index: 0,
+          content_block: {
+            type: "tool_use",
+            id: "tool-agent-fallback",
+            name: "Agent",
+            input: { description: "Review", prompt: "x".repeat(5000) },
+          },
+        },
+      } as unknown as SDKMessage);
+      harness.query.emit({
+        type: "system",
+        subtype: "task_started",
+        task_id: "agent-tool-prompt",
+        description: "Review",
+        task_type: "local_agent",
+        tool_use_id: "tool-agent-fallback",
+        uuid: "task-started-tool-prompt",
+        session_id: CLAUDE_ORIGINAL_SESSION_ID,
+      } as unknown as SDKMessage);
+      harness.query.emit({
+        type: "system",
+        subtype: "task_progress",
+        task_id: "agent-sdk-prompt",
+        description: "Audit",
+        usage: { total_tokens: 10, tool_uses: 1, duration_ms: 5 },
+        uuid: "task-progress-sdk-prompt",
+        session_id: CLAUDE_ORIGINAL_SESSION_ID,
+      } as unknown as SDKMessage);
+
+      const events = Array.from(yield* Fiber.join(startedFiber));
+      const [sdkPrompt, toolPrompt, progress] = events;
+      assert.equal(sdkPrompt?.type, "task.started");
+      assert.equal(toolPrompt?.type, "task.started");
+      assert.equal(progress?.type, "task.progress");
+      if (sdkPrompt?.type === "task.started") {
+        assert.equal(sdkPrompt.payload.prompt, "Audit the SQL changes");
+      }
+      if (toolPrompt?.type === "task.started") {
+        assert.equal(toolPrompt.payload.prompt?.length, 4000);
+        assert.isTrue(toolPrompt.payload.prompt?.endsWith("…"));
+      }
+      if (progress?.type === "task.progress") {
+        assert.notProperty(progress.payload, "prompt");
+      }
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
+  it.effect("reads a subagent transcript from Claude history by its task id", () => {
+    const calls: Array<{ sessionId: string; agentId: string; dir: string | undefined }> = [];
+    const harness = makeHarness({
+      getSubagentMessages: async (sessionId, agentId, options) => {
+        calls.push({ sessionId, agentId, dir: options?.dir });
+        if (agentId !== "a1b2c3d4") return [];
+        return [
+          {
+            ...claudeHistoryMessage({
+              type: "user",
+              uuid: "sub-1",
+              content: "Find the flaky test",
+            }),
+            timestamp: "2026-09-29T10:00:00.000Z",
+          },
+          claudeHistoryMessage({
+            type: "assistant",
+            uuid: "sub-2",
+            content: [
+              { type: "thinking", thinking: "Search the suite first." },
+              { type: "text", text: "Looking at the tests." },
+              {
+                type: "tool_use",
+                id: "sub-tool-1",
+                name: "Bash",
+                input: { command: "vp test run", description: "Run tests" },
+              },
+              { type: "tool_use", id: "sub-tool-2", name: "Read", input: { file_path: "/a.ts" } },
+            ],
+          }),
+          claudeHistoryMessage({
+            type: "user",
+            uuid: "sub-3",
+            content: [
+              { type: "tool_result", tool_use_id: "sub-tool-1", content: "1 failed" },
+              {
+                type: "tool_result",
+                tool_use_id: "sub-tool-2",
+                is_error: true,
+                content: [{ type: "text", text: "ENOENT" }],
+              },
+            ],
+          }),
+          { ...claudeHistoryMessage({ type: "user", uuid: "sub-meta" }), is_meta: true },
+        ] as never;
+      },
+    });
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const startedFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.type === "task.started"),
+        Stream.take(2),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+        cwd: "/tmp/claude-subagent-project",
+      });
+      yield* adapter.sendTurn({ threadId: session.threadId, input: "delegate", attachments: [] });
+      for (const [taskId, taskType] of [
+        ["a1b2c3d4", "local_agent"],
+        ["bshell1", "local_bash"],
+      ] as const) {
+        harness.query.emit({
+          type: "system",
+          subtype: "task_started",
+          task_id: taskId,
+          description: taskId,
+          task_type: taskType,
+          uuid: `task-started-${taskId}`,
+          session_id: CLAUDE_ORIGINAL_SESSION_ID,
+        } as unknown as SDKMessage);
+      }
+      yield* Fiber.join(startedFiber);
+
+      const transcript = yield* adapter.readSubagentTranscript!(THREAD_ID, "a1b2c3d4");
+      assert.deepEqual(calls, [
+        {
+          sessionId: CLAUDE_ORIGINAL_SESSION_ID,
+          agentId: "a1b2c3d4",
+          dir: "/tmp/claude-subagent-project",
+        },
+      ]);
+      assert.deepEqual(transcript, {
+        truncated: false,
+        entries: [
+          { kind: "user", text: "Find the flaky test", at: "2026-09-29T10:00:00.000Z" },
+          { kind: "reasoning", text: "Search the suite first." },
+          { kind: "assistant", text: "Looking at the tests." },
+          {
+            kind: "tool",
+            text: "Run tests",
+            toolName: "Bash",
+            input: "vp test run",
+            output: "1 failed",
+            status: "completed",
+          },
+          {
+            kind: "tool",
+            text: "Read",
+            toolName: "Read",
+            input: "/a.ts",
+            output: "ENOENT",
+            status: "failed",
+          },
+        ],
+      });
+
+      // Non-agent tasks and workflow member slots have no subagent transcript;
+      // an agent with no history file resolves null too.
+      assert.isNull(yield* adapter.readSubagentTranscript!(THREAD_ID, "bshell1"));
+      assert.isNull(yield* adapter.readSubagentTranscript!(THREAD_ID, "wf-coord:wf:0"));
+      assert.isNull(yield* adapter.readSubagentTranscript!(THREAD_ID, "unknown-agent"));
+      assert.equal(calls.length, 2);
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
       Effect.provide(harness.layer),

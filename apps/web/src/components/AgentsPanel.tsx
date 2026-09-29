@@ -9,8 +9,15 @@
  * - Workflow expansion is presentation state. A live run stays expanded when
  *   it settles; older collapsed runs can still be opened at run granularity.
  * - Static status dots, DOM-write elapsed timers, plain token counters.
+ * - Rows open the agent's detail view. Filters and sorts never move a row
+ *   while it works (see applyAgentPanelView).
  */
 import { useAtomValue } from "@effect/atom-react";
+import {
+  applyAgentPanelView,
+  findPanelAgent,
+  isAgentPanelViewFiltered,
+} from "@t3tools/client-runtime/state/agentPanelView";
 import type {
   AgentPanelModel,
   AgentPanelWorkflowGroup,
@@ -20,97 +27,21 @@ import {
   formatSubagentModelLabel,
   formatSubagentTokenCount,
 } from "@t3tools/client-runtime/state/subagentRuntime";
-import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import type { EnvironmentId, OrchestrationThreadActivity, ThreadId } from "@t3tools/contracts";
 import { Bot, Braces, Check, ChevronDown, ChevronRight, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
+import { useAgentsPanelStore } from "~/agentsPanelStore";
 import { cn } from "~/lib/utils";
 import { orchestrationEnvironment } from "~/state/orchestration";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Button } from "~/components/ui/button";
 
-/**
- * In-flight states all present as Working (one steady state, per the
- * monitoring-pill design: detail belongs in the activity sub-line, and a
- * stalled/waiting/queued subagent is still the fleet doing its job, not a
- * user problem). Only settled states differentiate.
- */
-const STATUS_VISUALS: Record<RuntimeSubagent["status"], { dotClass: string; label: string }> = {
-  pending: { dotClass: "bg-info", label: "Working" },
-  running: { dotClass: "bg-info", label: "Working" },
-  waiting: { dotClass: "bg-info", label: "Working" },
-  // Idle reads as settled (muted, not sky): a resting Codex child looks done
-  // unless resumed — live-test: sky idle dots read as stuck in-progress.
-  idle: { dotClass: "bg-muted-foreground/50", label: "Idle · resumable" },
-  completed: { dotClass: "bg-success", label: "Completed" },
-  failed: { dotClass: "bg-destructive", label: "Failed" },
-  cancelled: { dotClass: "bg-muted-foreground/60", label: "Stopped" },
-  interrupted: { dotClass: "bg-muted-foreground/60", label: "Stopped" },
-};
+import { AgentDetailView } from "./AgentDetailView";
+import { AgentsPanelToolbar } from "./AgentsPanelToolbar";
+import { AgentElapsed, elapsedBetween, STATUS_VISUALS, StatusDot } from "./AgentStatus";
 
-function StatusDot({ status }: { status: RuntimeSubagent["status"] }) {
-  return (
-    <span
-      aria-hidden
-      className={cn("size-1.5 shrink-0 rounded-full", STATUS_VISUALS[status].dotClass)}
-    />
-  );
-}
-
-function formatElapsedSeconds(totalSeconds: number): string {
-  const seconds = Math.max(0, Math.floor(totalSeconds));
-  const minutes = Math.floor(seconds / 60);
-  if (minutes === 0) {
-    return `${seconds}s`;
-  }
-  const hours = Math.floor(minutes / 60);
-  if (hours === 0) {
-    return `${minutes}m ${String(seconds % 60).padStart(2, "0")}s`;
-  }
-  return `${hours}h ${String(minutes % 60).padStart(2, "0")}m`;
-}
-
-function elapsedBetween(startedAt: string, endIso: string | null): string {
-  const start = Date.parse(startedAt);
-  const end = endIso ? Date.parse(endIso) : Date.now();
-  if (Number.isNaN(start) || Number.isNaN(end)) {
-    return "";
-  }
-  return formatElapsedSeconds((end - start) / 1000);
-}
-
-/**
- * Elapsed time for the current activation. Live agents self-tick via DOM
- * writes (zero React commits per tick); settled agents freeze at completedAt.
- */
-function AgentElapsed({ agent }: { agent: RuntimeSubagent }) {
-  const textRef = useRef<HTMLSpanElement>(null);
-  const live = agent.status === "running" || agent.status === "waiting";
-  const startedAt = agent.startedAt;
-
-  useEffect(() => {
-    if (!live || !startedAt) {
-      return;
-    }
-    const update = () => {
-      if (textRef.current) {
-        textRef.current.textContent = elapsedBetween(startedAt, null);
-      }
-    };
-    update();
-    const id = setInterval(update, 1000);
-    return () => clearInterval(id);
-  }, [live, startedAt]);
-
-  if (!startedAt) {
-    return null;
-  }
-  return (
-    <span ref={textRef} className="tabular-nums">
-      {elapsedBetween(startedAt, live ? null : agent.completedAt)}
-    </span>
-  );
-}
+type OpenAgent = (agentId: string) => void;
 
 /**
  * Status-dependent activity line. Live rows lead with what is happening now;
@@ -136,8 +67,8 @@ function agentActivityText(agent: RuntimeSubagent): string | null {
   );
 }
 
-/** Flat, non-interactive agent status line. No unfold. */
-function AgentRow({ agent }: { agent: RuntimeSubagent }) {
+/** Fixed-height agent status line; opens the agent's detail view. */
+function AgentRow({ agent, onOpen }: { agent: RuntimeSubagent; onOpen: OpenAgent }) {
   const visuals = STATUS_VISUALS[agent.status];
   const statusLabel =
     agent.kind === "subagent_batch" && agent.status === "idle" ? "Idle" : visuals.label;
@@ -155,7 +86,12 @@ function AgentRow({ agent }: { agent: RuntimeSubagent }) {
   ].filter((value): value is string => value !== null);
 
   return (
-    <div className="grid h-[3.875rem] grid-cols-[0.375rem_minmax(0,1fr)_auto] grid-rows-[1.25rem_1.125rem_1rem] items-center gap-x-2 rounded-md px-1.5 py-1">
+    <button
+      type="button"
+      onClick={() => onOpen(agent.id)}
+      aria-label={`${agent.title}, ${statusLabel}. Show details`}
+      className="grid h-[3.875rem] w-full grid-cols-[0.375rem_minmax(0,1fr)_auto] grid-rows-[1.25rem_1.125rem_1rem] items-center gap-x-2 rounded-md px-1.5 py-1 text-left hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
+    >
       <span className="col-start-1 row-start-1 flex items-center">
         <StatusDot status={agent.status} />
       </span>
@@ -186,8 +122,7 @@ function AgentRow({ agent }: { agent: RuntimeSubagent }) {
       <span className="col-start-2 col-end-4 row-start-3 truncate font-mono text-2xs tabular-nums text-muted-foreground/70">
         {metadata.join(" · ")}
       </span>
-      <span className="sr-only">{statusLabel}</span>
-    </div>
+    </button>
   );
 }
 
@@ -318,9 +253,11 @@ function WorkflowScriptView({
 function PhaseSection({
   phase,
   defaultOpen = false,
+  onOpenAgent,
 }: {
   phase: AgentPanelWorkflowGroup["phases"][number];
   defaultOpen?: boolean;
+  onOpenAgent: OpenAgent;
 }) {
   const [open, setOpen] = useState(defaultOpen || phase.state === "running");
   const previousState = useRef(phase.state);
@@ -369,7 +306,11 @@ function PhaseSection({
           </span>
         ) : null}
       </button>
-      {open ? phase.members.map((member) => <AgentRow key={member.id} agent={member} />) : null}
+      {open
+        ? phase.members.map((member) => (
+            <AgentRow key={member.id} agent={member} onOpen={onOpenAgent} />
+          ))
+        : null}
     </div>
   );
 }
@@ -380,11 +321,13 @@ function ExpandedWorkflowSection({
   environmentId,
   threadId,
   onCollapse,
+  onOpenAgent,
 }: {
   group: AgentPanelWorkflowGroup;
   environmentId: EnvironmentId | null;
   threadId: ThreadId | null;
   onCollapse: () => void;
+  onOpenAgent: OpenAgent;
 }) {
   const [scriptOpen, setScriptOpen] = useState(false);
   const members = workflowMembers(group);
@@ -439,13 +382,18 @@ function ExpandedWorkflowSection({
         />
       ) : null}
       {group.phases.map((phase) => (
-        <PhaseSection key={phase.index} phase={phase} defaultOpen={!workflowIsLive(group)} />
+        <PhaseSection
+          key={phase.index}
+          phase={phase}
+          defaultOpen={!workflowIsLive(group)}
+          onOpenAgent={onOpenAgent}
+        />
       ))}
       {group.unphasedMembers.map((member) => (
-        <AgentRow key={member.id} agent={member} />
+        <AgentRow key={member.id} agent={member} onOpen={onOpenAgent} />
       ))}
       {group.phases.length === 0 && group.unphasedMembers.length === 0 ? (
-        <AgentRow agent={group.workflow} />
+        <AgentRow agent={group.workflow} onOpen={onOpenAgent} />
       ) : null}
     </section>
   );
@@ -503,18 +451,24 @@ function WorkflowSection({
   group,
   environmentId,
   threadId,
+  forceOpen,
+  onOpenAgent,
 }: {
   group: AgentPanelWorkflowGroup;
   environmentId: EnvironmentId | null;
   threadId: ThreadId | null;
+  /** A filtered view shows its matches instead of collapsed summaries. */
+  forceOpen: boolean;
+  onOpenAgent: OpenAgent;
 }) {
   const [open, setOpen] = useState(() => workflowIsLive(group));
-  return open ? (
+  return open || forceOpen ? (
     <ExpandedWorkflowSection
       group={group}
       environmentId={environmentId}
       threadId={threadId}
       onCollapse={() => setOpen(false)}
+      onOpenAgent={onOpenAgent}
     />
   ) : (
     <CollapsedWorkflowSection group={group} onExpand={() => setOpen(true)} />
@@ -523,13 +477,30 @@ function WorkflowSection({
 
 export function AgentsPanel({
   model,
+  activities,
+  threadKey,
   environmentId = null,
   threadId = null,
 }: {
   model: AgentPanelModel;
+  activities: ReadonlyArray<OrchestrationThreadActivity>;
+  /** Scoped thread key; the chat focuses an agent through the panel store. */
+  threadKey: string | null;
   environmentId?: EnvironmentId | null;
   threadId?: ThreadId | null;
 }) {
+  const view = useAgentsPanelStore((state) => state.view);
+  const setView = useAgentsPanelStore((state) => state.setView);
+  const focusAgent = useAgentsPanelStore((state) => state.focusAgent);
+  const focusedAgentId = useAgentsPanelStore((state) =>
+    threadKey ? (state.focusedAgentIdByThreadKey[threadKey] ?? null) : null,
+  );
+  const visible = useMemo(() => applyAgentPanelView(model, view), [model, view]);
+  const focusedAgent = focusedAgentId ? findPanelAgent(model, focusedAgentId) : null;
+  const openAgent = (agentId: string) => {
+    if (threadKey) focusAgent(threadKey, agentId);
+  };
+
   if (!model.hasAgents) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
@@ -543,25 +514,56 @@ export function AgentsPanel({
     );
   }
 
+  if (focusedAgent) {
+    return (
+      <AgentDetailView
+        key={focusedAgent.id}
+        agent={focusedAgent}
+        activities={activities}
+        environmentId={environmentId}
+        threadId={threadId}
+        onBack={() => {
+          if (threadKey) focusAgent(threadKey, null);
+        }}
+      />
+    );
+  }
+
+  const filtered = isAgentPanelViewFiltered(view);
   return (
     <div className="flex h-full min-h-0 flex-col">
+      <AgentsPanelToolbar view={view} onChange={setView} />
       <ScrollArea className="min-h-0 flex-1">
         <div className="flex flex-col gap-2 p-2">
-          {model.workflows.map((group) => (
+          {visible.visibleCount === 0 ? (
+            <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
+              <p className="text-xs text-muted-foreground">No agents match these filters.</p>
+              <Button
+                size="xs"
+                variant="outline"
+                onClick={() => setView({ ...view, statuses: [], query: "" })}
+              >
+                Clear filters
+              </Button>
+            </div>
+          ) : null}
+          {visible.workflows.map((group) => (
             <WorkflowSection
               key={group.workflow.id}
               group={group}
               environmentId={environmentId}
               threadId={threadId}
+              forceOpen={filtered}
+              onOpenAgent={openAgent}
             />
           ))}
-          {model.directAgents.length > 0 ? (
+          {visible.directAgents.length > 0 ? (
             <section>
               <div className="px-1.5 pt-1 text-3xs font-medium uppercase tracking-wider text-muted-foreground">
                 Direct spawns
               </div>
-              {model.directAgents.map((agent) => (
-                <AgentRow key={agent.id} agent={agent} />
+              {visible.directAgents.map((agent) => (
+                <AgentRow key={agent.id} agent={agent} onOpen={openAgent} />
               ))}
             </section>
           ) : null}
@@ -576,6 +578,7 @@ export function AgentsPanel({
           ) : null}
           {model.idleCount > 0 ? <span>{model.idleCount} idle</span> : null}
           {model.settledCount > 0 ? <span>{model.settledCount} settled</span> : null}
+          {filtered ? <span>· {visible.visibleCount} shown</span> : null}
         </span>
         <span className="tabular-nums">Σ {formatSubagentTokenCount(model.totalTokens)} tok</span>
       </footer>

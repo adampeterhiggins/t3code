@@ -114,7 +114,7 @@ describe("Grok background tasks", () => {
     },
   );
 
-  it("starts unknown poll tasks before progress or completion and ignores subagents", () => {
+  it("starts unknown poll tasks before progress or completion", () => {
     const { tasks, update } = mapper();
     const events = update({
       type: "TaskOutput",
@@ -131,20 +131,129 @@ describe("Grok background tasks", () => {
       "task.progress",
       "task.started",
       "task.completed",
+      "task.started",
+      "task.progress",
     ]);
     expect(events.map(({ payload }) => payload.taskType)).toEqual([
       "shell",
       "shell",
       "monitor",
       "monitor",
+      "subagent",
+      "subagent",
     ]);
-    expect([...tasks.keys()]).toEqual(["shell-1"]);
+    expect(events[4]?.payload).toMatchObject({ title: "work", role: "executor" });
+    expect([...tasks.keys()]).toEqual(["shell-1", "agent-1"]);
     expect(events.map((event) => event.turnId)).toEqual([
       undefined,
       undefined,
       undefined,
       undefined,
+      undefined,
+      undefined,
     ]);
+  });
+
+  describe("subagents", () => {
+    const spawnInput = {
+      prompt: "Find every caller of loadConfig and list them.",
+      description: "find callers",
+    };
+    const spawned = {
+      type: "Text",
+      text: "Subagent started in background.\nsubagent_id: agent-1\ntype: explore\ndescription: find callers",
+    };
+    const poll = (status: string, output: string) => ({
+      type: "TaskOutput",
+      Result: { task_id: "agent-1", command: "[subagent:explore] find callers", status, output },
+    });
+
+    it("starts on spawn with its prompt, then follows polls to completion", () => {
+      const { tasks, update } = mapper();
+      expect(update(spawned, { rawInput: spawnInput })).toEqual([
+        {
+          type: "task.started",
+          turnId,
+          payload: {
+            taskId: "agent-1",
+            taskType: "subagent",
+            description: "find callers",
+            title: "find callers",
+            role: "explore",
+            toolUseId: "call-1",
+            prompt: spawnInput.prompt,
+          },
+        },
+      ]);
+
+      const [progress] = update(
+        poll(
+          "running",
+          "Subagent is still running.\nProgress: turn 2, 5 tool calls, 12K/200K tokens (6% context)",
+        ),
+      );
+      expect(progress).toMatchObject({
+        type: "task.progress",
+        turnId,
+        payload: {
+          taskId: "agent-1",
+          summary: "Progress: turn 2, 5 tool calls, 12K/200K tokens (6% context)",
+        },
+      });
+      expect(progress?.payload).not.toHaveProperty("prompt");
+
+      const [completed] = update(
+        poll(
+          "completed",
+          '<subagent_result>\nCallers: a.ts, b.ts\nsubagent_id: agent-1\nTo continue this subagent\'s conversation, use resume_from="agent-1".\n</subagent_result>',
+        ),
+      );
+      expect(completed).toMatchObject({
+        type: "task.completed",
+        payload: { taskId: "agent-1", status: "completed", summary: "Callers: a.ts, b.ts" },
+      });
+      expect(tasks.size).toBe(0);
+    });
+
+    it("carries a failed run's output as its summary", () => {
+      const { update } = mapper();
+      update(spawned, { rawInput: spawnInput });
+      expect(
+        update(poll("failed", "Model request failed: rate limited"))[0]?.payload,
+      ).toMatchObject({ status: "failed", summary: "Model request failed: rate limited" });
+    });
+
+    it("completes a foreground spawn from its own result", () => {
+      const { tasks, update } = mapper();
+      const events = update(
+        {
+          type: "Text",
+          text: "<subagent_result>\nDone.\n<subagent_meta>id=agent-1, tool_calls=3, duration_ms=900</subagent_meta>\nsubagent_id: agent-1\n</subagent_result>",
+        },
+        { rawInput: spawnInput },
+      );
+      expect(events.map(({ type }) => type)).toEqual(["task.started", "task.completed"]);
+      expect(events[1]?.payload).toMatchObject({ status: "completed", summary: "Done." });
+      expect(tasks.size).toBe(0);
+    });
+
+    it("stops a subagent that is killed", () => {
+      const { tasks, update } = mapper();
+      update(spawned, { rawInput: spawnInput });
+      const [stopped] = update({
+        type: "KillTask",
+        Result: { task_id: "agent-1", outcome: "killed" },
+      });
+      expect(stopped?.payload).toMatchObject({ taskType: "subagent", status: "stopped" });
+      expect(tasks.size).toBe(0);
+    });
+
+    it("ignores subagent-id text from tools other than the spawn", () => {
+      const { tasks, update } = mapper();
+      expect(update(spawned)).toEqual([]);
+      expect(update(spawned, { rawInput: spawnInput, toolCallStatus: "failed" })).toEqual([]);
+      expect(tasks.size).toBe(0);
+    });
   });
 
   it("retires only successfully killed tasks, including mixed results", () => {

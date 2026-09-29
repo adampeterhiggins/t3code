@@ -61,6 +61,8 @@ export interface RuntimeSubagent {
   readonly kind: "subagent" | "subagent_batch" | "workflow" | "workflow_agent";
   readonly title: string;
   readonly role: string | null;
+  /** Instructions the agent was launched with, when the provider reports them. */
+  readonly prompt: string | null;
   readonly model: string | null;
   readonly effort: string | null;
   readonly status: RuntimeSubagentStatus;
@@ -106,6 +108,8 @@ export function isActiveSubagentStatus(status: RuntimeSubagentStatus): boolean {
 
 const RECENT_ACTIVITY_LIMIT = 6;
 const SUMMARY_CHAR_LIMIT = 180;
+/** Results and errors are read in full in the agent detail view. */
+const OUTCOME_CHAR_LIMIT = 4000;
 const ROSTER_LIMIT = 100;
 
 /**
@@ -120,8 +124,12 @@ export function isBackgroundTaskActivity(payload: Record<string, unknown>): bool
   return payload.agentKind !== "agent";
 }
 
-function bounded(value: string): string {
-  return value.length <= SUMMARY_CHAR_LIMIT ? value : `${value.slice(0, SUMMARY_CHAR_LIMIT - 1)}…`;
+function bounded(value: string, limit = SUMMARY_CHAR_LIMIT): string {
+  return value.length <= limit ? value : `${value.slice(0, limit - 1)}…`;
+}
+
+function boundedOutcome(value: string): string {
+  return bounded(value, OUTCOME_CHAR_LIMIT);
 }
 
 /** Appends to the ring buffer, deduping consecutive identical summaries. */
@@ -230,6 +238,7 @@ interface MutableAgent {
   kind: RuntimeSubagent["kind"];
   title: string;
   role: string | null;
+  prompt: string | null;
   model: string | null;
   effort: string | null;
   status: RuntimeSubagentStatus;
@@ -287,6 +296,7 @@ function getOrCreate(
     kind: kindFromPayload(payload, id),
     title: asString(payload.title) ?? asString(payload.detail) ?? id,
     role: asString(payload.role) ?? null,
+    prompt: null,
     model: asString(payload.model) ?? null,
     effort: asString(payload.effort) ?? null,
     status: "pending",
@@ -322,6 +332,8 @@ function fillMetadata(agent: MutableAgent, payload: Record<string, unknown>): vo
   if (title) agent.title = title;
   const role = asString(payload.role);
   if (role) agent.role = role;
+  const prompt = asString(payload.prompt);
+  if (prompt) agent.prompt = prompt;
   const model = asString(payload.model);
   if (model) agent.model = model;
   const effort = asString(payload.effort);
@@ -536,7 +548,7 @@ export function foldSubagentActivities(
           }
         }
         const error = asString(payload.error);
-        if (error) agent.error = bounded(error);
+        if (error) agent.error = boundedOutcome(error);
         agent.usage = mergeUsageMax(agent.usage, asUsage(payload.typedUsage));
         agent.updatedAt = at;
         break;
@@ -560,7 +572,7 @@ export function foldSubagentActivities(
         const status = asRuntimeStatus(payload.status);
         if (status) applyStatus(agent, status, at);
         const error = asString(payload.error);
-        if (error) agent.error = bounded(error);
+        if (error) agent.error = boundedOutcome(error);
         // Provider end time beats ingestion time for the transition that
         // actually settled the run (applyStatus fills completedAt with the
         // activity timestamp first, so check the transition, not null).
@@ -592,9 +604,9 @@ export function foldSubagentActivities(
         if (isTerminalSubagentStatus(agent.status)) {
           if (summary) {
             if (agent.status === "failed") {
-              agent.error = agent.error ?? bounded(summary);
+              agent.error = agent.error ?? boundedOutcome(summary);
             } else {
-              agent.result = agent.result ?? bounded(summary);
+              agent.result = agent.result ?? boundedOutcome(summary);
             }
           }
           agent.usage = mergeUsageMax(agent.usage, asUsage(payload.typedUsage));
@@ -604,9 +616,9 @@ export function foldSubagentActivities(
         applyStatus(agent, status, at);
         if (summary) {
           if (status === "failed") {
-            agent.error = agent.error ?? bounded(summary);
+            agent.error = agent.error ?? boundedOutcome(summary);
           } else {
-            agent.result = bounded(summary);
+            agent.result = boundedOutcome(summary);
           }
         }
         agent.usage = mergeUsageMax(agent.usage, asUsage(payload.typedUsage));

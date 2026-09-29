@@ -61,6 +61,7 @@ import {
   type ProviderAdapterError,
 } from "../Errors.ts";
 import type { ProviderAdapterShape } from "../Services/ProviderAdapter.ts";
+import type { SubagentTranscriptRead } from "../subagentTranscript.ts";
 import * as ProviderAdapterRegistry from "../Services/ProviderAdapterRegistry.ts";
 import * as ProviderService from "../Services/ProviderService.ts";
 import * as ProviderSessionDirectory from "../Services/ProviderSessionDirectory.ts";
@@ -264,6 +265,18 @@ function makeFakeCodexAdapter(
       Effect.succeed({ feedbackId: `feedback-${input.threadId}` }),
   );
 
+  const readSubagentTranscript = vi.fn(
+    (
+      _threadId: ThreadId,
+      taskId: string,
+    ): Effect.Effect<SubagentTranscriptRead | null, ProviderAdapterError> =>
+      Effect.succeed(
+        taskId === "known-agent"
+          ? { entries: [{ kind: "assistant", text: "Done." }], truncated: false }
+          : null,
+      ),
+  );
+
   const stopAll = vi.fn((): Effect.Effect<void, ProviderAdapterError> =>
     Effect.sync(() => {
       sessions.clear();
@@ -294,7 +307,7 @@ function makeFakeCodexAdapter(
     hasSession,
     readThread,
     rollbackThread,
-    ...(provider === CODEX_DRIVER ? { uploadFeedback } : {}),
+    ...(provider === CODEX_DRIVER ? { uploadFeedback, readSubagentTranscript } : {}),
     stopAll,
     get streamEvents() {
       return Stream.fromPubSub(runtimeEventPubSub);
@@ -332,6 +345,7 @@ function makeFakeCodexAdapter(
     readThread,
     rollbackThread,
     uploadFeedback,
+    readSubagentTranscript,
     stopAll,
   };
 }
@@ -2227,6 +2241,75 @@ routing.layer("ProviderServiceLive routing", (it) => {
       assert.instanceOf(error, ProviderValidationError);
       assert.include(error.issue, "does not support feedback uploads");
       assert.strictEqual(routing.claude.startSession.mock.calls.length, 0);
+    }),
+  );
+
+  it.effect("reads a subagent transcript from the running session", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const threadId = asThreadId("thread-transcript-route");
+      yield* provider.startSession(threadId, {
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexInstanceId,
+        threadId,
+        runtimeMode: "full-access",
+      });
+
+      const result = yield* provider.readSubagentTranscript({ threadId, taskId: "known-agent" });
+      assert.deepStrictEqual(result, {
+        taskId: "known-agent",
+        entries: [{ kind: "assistant", text: "Done." }],
+        truncated: false,
+      });
+
+      const missing = yield* provider
+        .readSubagentTranscript({ threadId, taskId: "unknown-agent" })
+        .pipe(Effect.flip);
+      assert.strictEqual(missing.reason, "not-found");
+    }),
+  );
+
+  it.effect("never restarts a stopped session to read a transcript", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const threadId = asThreadId("thread-transcript-stopped");
+      yield* provider.startSession(threadId, {
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexInstanceId,
+        threadId,
+        runtimeMode: "full-access",
+      });
+      yield* routing.codex.stopSession(threadId);
+      routing.codex.startSession.mockClear();
+      routing.codex.readSubagentTranscript.mockClear();
+
+      const error = yield* provider
+        .readSubagentTranscript({ threadId, taskId: "known-agent" })
+        .pipe(Effect.flip);
+
+      assert.strictEqual(error.reason, "session-not-running");
+      assert.strictEqual(routing.codex.startSession.mock.calls.length, 0);
+      assert.strictEqual(routing.codex.readSubagentTranscript.mock.calls.length, 0);
+    }),
+  );
+
+  it.effect("reports providers without subagent transcripts as unsupported", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const threadId = asThreadId("thread-transcript-unsupported");
+      yield* provider.startSession(threadId, {
+        provider: CLAUDE_AGENT_DRIVER,
+        providerInstanceId: claudeAgentInstanceId,
+        threadId,
+        runtimeMode: "full-access",
+      });
+
+      const error = yield* provider
+        .readSubagentTranscript({ threadId, taskId: "known-agent" })
+        .pipe(Effect.flip);
+
+      assert.strictEqual(error.reason, "unsupported");
+      routing.claude.startSession.mockClear();
     }),
   );
 

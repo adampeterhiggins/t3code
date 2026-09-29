@@ -174,6 +174,27 @@ for custom configuration.
 ## Inspect agent work
 
 On web and desktop, use **Agents** to follow work delegated to subagents.
+Search the list, filter it by status, or sort it by status, tokens, or
+duration. Token and duration sorts rank finished agents; agents still working
+stay at the top in launch order, so rows don't jump while you read them.
+
+Click an agent to see its token breakdown, the prompt it was given, its full
+result or error, and the tool calls it made. In the conversation, expand an
+agent in its launch row and choose **Show details** to open it directly.
+**Load transcript** fetches the agent's own conversation from the provider. It
+works while the thread's provider session is running.
+
+| Provider    | Tool calls | Prompt                | Transcript |
+| ----------- | ---------- | --------------------- | ---------- |
+| Claude      | Yes        | Yes                   | Yes        |
+| Codex       | Yes        | When Codex reports it | Yes        |
+| OpenCode    | Yes        | Yes                   | Yes        |
+| Cursor      | Yes        | Yes                   | No         |
+| Grok        | No         | Yes                   | No         |
+| Antigravity | No         | No                    | No         |
+
+Antigravity reports subagents as one row per batch. Devin does not report
+subagents.
 
 Expand a tool call in the conversation to see its full command and output.
 Summaries shorten shell wrappers and can still describe the latest call after it

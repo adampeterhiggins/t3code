@@ -89,6 +89,24 @@ Code: `apps/server/src/provider/acp/CursorSubagents.ts`, the subagent handlers i
 `packages/effect-acp/src/protocol.ts`. User guide:
 [providers-cursor.md](./user/providers-cursor.md#subagents).
 
+## Agents panel drilldowns
+
+The Agents panel has search, a status filter, and sorting, and each agent opens a detail view with
+its usage breakdown, launch prompt, full result or error, tool calls, and an on-demand transcript.
+Upstream's panel is a fixed list with one summary line per agent. To feed it:
+
+- Adapters put the launch prompt on `task.started` (`prompt`) and emit a subagent's own tool calls
+  as `item.*` events tagged with `agentId`, as Claude already did upstream. Codex, Cursor, and
+  OpenCode do this in the fork.
+- OpenCode child sessions and Grok subagents join the panel at all; upstream shows neither.
+- `orchestration.getSubagentTranscript` reads a subagent's history through the adapter's
+  `readSubagentTranscript` (Claude, Codex, OpenCode), only while the session is running.
+
+Code: `apps/web/src/components/AgentsPanel.tsx`, `AgentDetailView.tsx`,
+`packages/client-runtime/src/state/agentPanelView.ts`, and
+`apps/server/src/provider/subagentTranscript.ts`. User guide:
+[thread-sidebar.md](./user/thread-sidebar.md#inspect-agent-work).
+
 ## Chat tabs
 
 A thread can have several chat tabs that share one workspace (same checkout and worktree). Each tab

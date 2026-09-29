@@ -10,6 +10,7 @@
  * @module ProviderServiceLive
  */
 import {
+  OrchestrationGetSubagentTranscriptError,
   EventId,
   MessageId,
   ModelSelection,
@@ -2339,6 +2340,44 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     },
   );
 
+  const readSubagentTranscript: ProviderServiceMethod<"readSubagentTranscript"> = Effect.fn(
+    "readSubagentTranscript",
+  )(function* (input) {
+    const transcriptError = (
+      reason: OrchestrationGetSubagentTranscriptError["reason"],
+      cause?: unknown,
+    ) =>
+      new OrchestrationGetSubagentTranscriptError({
+        reason,
+        taskId: input.taskId,
+        ...(cause !== undefined ? { cause } : {}),
+      });
+    const routed = yield* resolveRoutableSession({
+      threadId: input.threadId,
+      operation: "ProviderService.readSubagentTranscript",
+      allowRecovery: false,
+    }).pipe(Effect.mapError((cause) => transcriptError("not-found", cause)));
+    const read = routed.adapter.readSubagentTranscript;
+    if (read === undefined) {
+      return yield* transcriptError("unsupported");
+    }
+    if (!routed.isActive) {
+      return yield* transcriptError("session-not-running");
+    }
+    yield* Effect.annotateCurrentSpan({
+      "provider.operation": "read-subagent-transcript",
+      "provider.kind": routed.adapter.provider,
+      "provider.thread_id": input.threadId,
+    });
+    const transcript = yield* read(input.threadId, input.taskId).pipe(
+      Effect.mapError((cause) => transcriptError("read-failed", cause)),
+    );
+    if (transcript === null) {
+      return yield* transcriptError("not-found");
+    }
+    return { taskId: input.taskId, ...transcript };
+  });
+
   const runStopAll = Effect.fn("runStopAll")(function* () {
     // Continuation is project-scopable, so decide it per session's project;
     // without orchestration the environment value is all there is.
@@ -2463,6 +2502,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     assertConversationRollbackSupported,
     rollbackConversation,
     uploadFeedback,
+    readSubagentTranscript,
     // Each access creates a fresh PubSub subscription so that multiple
     // consumers (ProviderRuntimeIngestion, CheckpointReactor, etc.) each
     // independently receive all runtime events.
