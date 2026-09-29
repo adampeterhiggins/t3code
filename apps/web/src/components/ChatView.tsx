@@ -195,6 +195,7 @@ import {
   type RightPanelSurface,
   useRightPanelStore,
 } from "../rightPanelStore";
+import { useAgentsPanelStore } from "../agentsPanelStore";
 import {
   isPreviewSupportedInRuntime,
   setActivePreviewTab,
@@ -4702,10 +4703,15 @@ export default function ChatView(props: ChatViewProps) {
     if (!activeThreadRef || !activeProject) return;
     useRightPanelStore.getState().open(activeThreadRef, "files");
   }, [activeProject, activeThreadRef]);
-  const addAgentsSurface = useCallback(() => {
-    if (!activeThreadRef) return;
-    useRightPanelStore.getState().open(activeThreadRef, "agents");
-  }, [activeThreadRef]);
+  const openAgentsSurface = useCallback(
+    (agentId: string | null) => {
+      if (!activeThreadRef) return;
+      useAgentsPanelStore.getState().focusAgent(scopedThreadKey(activeThreadRef), agentId);
+      useRightPanelStore.getState().open(activeThreadRef, "agents");
+    },
+    [activeThreadRef],
+  );
+  const addAgentsSurface = useCallback(() => openAgentsSurface(null), [openAgentsSurface]);
   const supportsThreadPullRequests =
     serverConfig?.environment.capabilities.threadPullRequests === true;
   const visiblePullRequests = visibleThreadPullRequests(
@@ -9892,6 +9898,8 @@ export default function ChatView(props: ChatViewProps) {
     ) : renderedRightPanelSurface?.kind === "agents" ? (
       <AgentsPanel
         model={agentPanelModel}
+        activities={threadActivities}
+        threadKey={activeThreadRef ? scopedThreadKey(activeThreadRef) : null}
         environmentId={activeThreadRef?.environmentId ?? null}
         threadId={activeThreadRef?.threadId ?? null}
       />
@@ -10096,7 +10104,7 @@ export default function ChatView(props: ChatViewProps) {
                   ? {
                       onCiteAssistantText: citeAssistantText,
                       agentPanelModel,
-                      onOpenAgents: addAgentsSurface,
+                      onOpenAgents: openAgentsSurface,
                       onUseArtifactTemplate: useArtifactTemplate,
                       ...(activeProject ? { onRunShellCommand: runShellCommand } : {}),
                     }

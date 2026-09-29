@@ -2556,6 +2556,297 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
     }),
   );
 
+  it.effect("surfaces task child sessions as subagents with attributed tools and usage", () =>
+    Effect.gen(function* () {
+      const adapter = yield* OpenCodeAdapter;
+      const threadId = asThreadId("thread-opencode-subagents");
+      const root = "http://127.0.0.1:9999/session";
+      const publish = makeOpenCodeEventQueue();
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.threadId === threadId),
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* adapter.startSession({
+        provider: ProviderDriverKind.make("opencode"),
+        threadId,
+        runtimeMode: "full-access",
+      });
+      const sendFiber = yield* adapter
+        .sendTurn({
+          threadId,
+          input: "Delegate twice",
+          modelSelection: createModelSelection(
+            ProviderInstanceId.make("opencode"),
+            "opencode/kimi-k3",
+          ),
+        })
+        .pipe(Effect.forkChild);
+      publish({
+        type: "session.status",
+        properties: { sessionID: root, status: { type: "busy" } },
+      });
+      yield* Fiber.join(sendFiber);
+
+      const taskPart = (callID: string, state: Record<string, unknown>) => ({
+        type: "message.part.updated",
+        properties: {
+          sessionID: root,
+          part: {
+            id: `part-${callID}`,
+            sessionID: root,
+            messageID: "msg-root-assistant",
+            type: "tool",
+            callID,
+            tool: "task",
+            state,
+          },
+        },
+      });
+      const auditInput = {
+        description: "Audit auth",
+        prompt: "Look at the auth flow",
+        subagent_type: "explore",
+      };
+      const docsInput = {
+        description: "Write docs",
+        prompt: "Document it",
+        subagent_type: "general",
+      };
+      publish(
+        taskPart("call-task-a", { status: "running", input: auditInput, time: { start: 1 } }),
+      );
+      publish(taskPart("call-task-b", { status: "running", input: docsInput, time: { start: 1 } }));
+      // Children arrive out of order; the title's description decides the match.
+      for (const [id, title] of [
+        ["ses_b", "Write docs (@general subagent)"],
+        ["ses_a", "Audit auth (@explore subagent)"],
+      ] as const) {
+        publish({
+          type: "session.created",
+          properties: { sessionID: id, info: { id, parentID: root, title } },
+        });
+      }
+      publish({
+        type: "message.updated",
+        properties: { sessionID: "ses_a", info: { id: "msg-a", role: "assistant" } },
+      });
+      publish({
+        type: "message.part.updated",
+        properties: {
+          sessionID: "ses_a",
+          part: {
+            id: "part-a-read",
+            sessionID: "ses_a",
+            messageID: "msg-a",
+            type: "tool",
+            callID: "call-a-read",
+            tool: "read",
+            state: { status: "running", input: { filePath: "/repo/auth.ts" }, time: { start: 2 } },
+          },
+        },
+      });
+      publish({
+        type: "message.part.delta",
+        properties: {
+          sessionID: "ses_a",
+          messageID: "msg-a",
+          partID: "part-a-text",
+          field: "text",
+          delta: "Auth",
+        },
+      });
+      publish({
+        type: "message.part.updated",
+        properties: {
+          sessionID: "ses_a",
+          part: {
+            id: "part-a-step",
+            sessionID: "ses_a",
+            messageID: "msg-a",
+            type: "step-finish",
+            reason: "stop",
+            cost: 0,
+            tokens: { input: 100, output: 20, reasoning: 5, cache: { read: 40, write: 10 } },
+          },
+        },
+      });
+      publish({
+        type: "message.part.updated",
+        properties: {
+          sessionID: "ses_a",
+          part: {
+            id: "part-a-text",
+            sessionID: "ses_a",
+            messageID: "msg-a",
+            type: "text",
+            text: "Auth looks fine",
+            time: { start: 3, end: 4 },
+          },
+        },
+      });
+      publish(
+        taskPart("call-task-a", {
+          status: "completed",
+          input: auditInput,
+          output: "task_id: ses_a\n\n<task_result>\nAuth looks fine\n</task_result>",
+          title: "Audit auth",
+          metadata: { sessionId: "ses_a", model: { providerID: "opencode", modelID: "kimi-k3" } },
+          time: { start: 1, end: 5 },
+        }),
+      );
+      publish(
+        taskPart("call-task-b", {
+          status: "error",
+          input: docsInput,
+          error: "Docs agent crashed",
+          metadata: { sessionId: "ses_b" },
+          time: { start: 1, end: 5 },
+        }),
+      );
+      publish({
+        type: "session.status",
+        properties: { sessionID: root, status: { type: "idle" } },
+      });
+
+      const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+      const ofType = <T extends (typeof events)[number]["type"]>(type: T) =>
+        events.filter(
+          (event): event is Extract<(typeof events)[number], { type: T }> => event.type === type,
+        );
+
+      NodeAssert.deepEqual(
+        ofType("task.started").map((event) => event.payload),
+        [
+          {
+            taskId: "ses_b",
+            description: "Write docs",
+            prompt: "Document it",
+            taskType: "subagent",
+            title: "Write docs",
+            role: "general",
+            toolUseId: "call-task-b",
+          },
+          {
+            taskId: "ses_a",
+            description: "Audit auth",
+            prompt: "Look at the auth flow",
+            taskType: "subagent",
+            title: "Audit auth",
+            role: "explore",
+            toolUseId: "call-task-a",
+          },
+        ],
+      );
+      const childTool = events.find(
+        (event) => event.type === "item.updated" && event.itemId === "call-a-read",
+      );
+      NodeAssert.equal(childTool?.type === "item.updated" && childTool.payload.agentId, "ses_a");
+      // Child text stays out of the main timeline.
+      NodeAssert.equal(ofType("content.delta").length, 0);
+      const progress = ofType("task.progress").filter((event) => event.payload.taskId === "ses_a");
+      NodeAssert.deepEqual(progress.at(-1)?.payload.typedUsage, {
+        totalTokens: 175,
+        inputTokens: 150,
+        cachedInputTokens: 40,
+        outputTokens: 25,
+        reasoningOutputTokens: 5,
+        toolUses: 1,
+      });
+      NodeAssert.equal(progress.at(-1)?.payload.summary, "Auth looks fine");
+      NodeAssert.equal(progress[0]?.payload.lastToolName, "read");
+      NodeAssert.deepEqual(
+        ofType("task.completed").map((event) => [
+          event.payload.taskId,
+          event.payload.status,
+          event.payload.summary,
+          event.payload.model,
+        ]),
+        [
+          ["ses_a", "completed", "Auth looks fine", "opencode/kimi-k3"],
+          ["ses_b", "failed", "Docs agent crashed", undefined],
+        ],
+      );
+      // Child step usage never lands in the main-agent accumulator.
+      NodeAssert.deepEqual(ofType("turn.completed")[0]?.payload.tokenUsage, {
+        usageStatus: "unavailable",
+        usageScope: "main_agent",
+        hasSubagents: true,
+      });
+      yield* adapter.stopSession(threadId);
+    }),
+  );
+
+  it.effect("reads transcripts only for direct children of the thread's root session", () =>
+    Effect.gen(function* () {
+      const adapter = yield* OpenCodeAdapter;
+      const threadId = asThreadId("thread-opencode-subagent-transcript");
+      const root = "http://127.0.0.1:9999/session";
+      // Not seen live (e.g. after a restart): proven by its native parent.
+      runtimeMock.state.sessionParentById.set("ses_earlier_child", root);
+      runtimeMock.state.sessionParentById.set("ses_foreign", "ses_someone_else");
+      runtimeMock.state.forkMessagesBySession.set("ses_earlier_child", [
+        {
+          info: { id: "msg-user", role: "user" },
+          parts: [
+            { type: "text", text: "Find the bug", time: { start: 1 } },
+            { type: "text", text: "synthetic reminder", synthetic: true },
+          ],
+        },
+        {
+          info: { id: "msg-assistant", role: "assistant" },
+          parts: [
+            { type: "reasoning", text: "Thinking", time: { start: 2 } },
+            {
+              type: "tool",
+              tool: "bash",
+              callID: "call-bash",
+              state: {
+                status: "completed",
+                input: { command: "pnpm test" },
+                output: "ok",
+                title: "Run tests",
+                metadata: {},
+                time: { start: 3, end: 4 },
+              },
+            },
+            { type: "text", text: "Fixed it", time: { start: 5 } },
+          ],
+        },
+      ]);
+      yield* adapter.startSession({
+        provider: ProviderDriverKind.make("opencode"),
+        threadId,
+        runtimeMode: "full-access",
+      });
+      const read = adapter.readSubagentTranscript!;
+      const transcript = yield* read(threadId, "ses_earlier_child");
+      NodeAssert.equal(transcript?.truncated, false);
+      NodeAssert.deepEqual(
+        transcript?.entries.map(({ at: _at, ...entry }) => entry),
+        [
+          { kind: "user", text: "Find the bug" },
+          { kind: "reasoning", text: "Thinking" },
+          {
+            kind: "tool",
+            text: "Run tests",
+            toolName: "bash",
+            input: "pnpm test",
+            output: "ok",
+            status: "completed",
+          },
+          { kind: "assistant", text: "Fixed it" },
+        ],
+      );
+      NodeAssert.equal(yield* read(threadId, "ses_foreign"), null);
+      NodeAssert.equal(yield* read(threadId, root), null);
+      runtimeMock.state.missingSessionIds.add("ses_missing");
+      NodeAssert.equal(yield* read(threadId, "ses_missing"), null);
+      yield* adapter.stopSession(threadId);
+    }),
+  );
+
   it.effect("sums owned OpenCode step usage and marks unresolved usage partial", () =>
     Effect.gen(function* () {
       const adapter = yield* OpenCodeAdapter;
@@ -4212,7 +4503,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       ];
 
       const openedEventsFiber = yield* adapter.streamEvents.pipe(
-        Stream.filter((event) => event.threadId === threadId),
+        Stream.filter((event) => event.threadId === threadId && !event.type.startsWith("task.")),
         Stream.take(3),
         Stream.runCollect,
         Effect.forkChild,
@@ -4512,7 +4803,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       ];
 
       const requestedEventsFiber = yield* adapter.streamEvents.pipe(
-        Stream.filter((event) => event.threadId === threadId),
+        Stream.filter((event) => event.threadId === threadId && !event.type.startsWith("task.")),
         Stream.take(3),
         Stream.runCollect,
         Effect.forkChild,

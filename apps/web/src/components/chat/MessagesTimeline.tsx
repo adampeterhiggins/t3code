@@ -307,7 +307,8 @@ interface TimelineRowSharedState {
   workGroupViewState: WorkGroupViewState;
   agentPanelModel: AgentPanelModel;
   expandedSpawnEntryIds: ReadonlySet<string>;
-  onOpenAgents: () => void;
+  /** Opens the Agents panel, focused on one agent when an id is given. */
+  onOpenAgents: (agentId: string | null) => void;
   onCancelWorktreeSetup: (() => void) | null;
   onWorktreeSetupWorkLocally: (() => void) | null;
   onOpenWorktreeSetupTerminal: ((terminalId: string) => void) | null;
@@ -415,7 +416,7 @@ interface MessagesTimelineProps {
     sourceAnchor: AssistantCitationSourceAnchor,
   ) => boolean;
   agentPanelModel?: AgentPanelModel;
-  onOpenAgents?: () => void;
+  onOpenAgents?: (agentId: string | null) => void;
   isWorking: boolean;
   isPreparingWorktree?: boolean;
   isCompacting?: boolean;
@@ -4664,7 +4665,7 @@ const AgentSpawnRow = memo(function AgentSpawnRow(props: {
           ))}
           <button
             type="button"
-            onClick={onOpenAgents}
+            onClick={() => onOpenAgents(null)}
             className="mt-1 self-start rounded-sm px-1 text-xs text-muted-foreground hover:text-foreground"
           >
             Open Agents panel ›
@@ -4693,6 +4694,7 @@ function AgentSpawnMemberRow({
   agent: RuntimeSubagent;
   onToggleEntry?: ((collapsed: boolean) => void) | undefined;
 }) {
+  const { onOpenAgents } = use(TimelineRowCtx);
   const [open, setOpen] = useState(false);
   const activeStatus = isActiveSubagentStatus(agent.status);
   const activity = activeStatus
@@ -4785,6 +4787,16 @@ function AgentSpawnMemberRow({
           onPointerDown={stopRowToggle}
         >
           <pre className={toolCallExpandedBodyClassName}>{body}</pre>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onOpenAgents(agent.id);
+            }}
+            className="mt-1 rounded-sm text-xs text-muted-foreground hover:text-foreground"
+          >
+            Show details ›
+          </button>
         </div>
       ) : null}
     </div>

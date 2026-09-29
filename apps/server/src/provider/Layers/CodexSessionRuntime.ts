@@ -220,6 +220,14 @@ export interface CodexSessionRuntimeShape {
   readonly compactThread: Effect.Effect<void, CodexSessionRuntimeError>;
   readonly interruptTurn: (turnId?: TurnId) => Effect.Effect<void, CodexSessionRuntimeError>;
   readonly readThread: Effect.Effect<CodexThreadSnapshot, CodexSessionRuntimeError>;
+  /**
+   * Reads a registered collab child's own thread history. Resolves null for
+   * any id that is not a child of this session, so callers can never read an
+   * arbitrary thread through it.
+   */
+  readonly readChildThread: (
+    childThreadId: string,
+  ) => Effect.Effect<CodexThreadSnapshot | null, CodexSessionRuntimeError>;
   readonly rollbackThread: (
     numTurns: number,
   ) => Effect.Effect<CodexThreadSnapshot, CodexSessionRuntimeError>;
@@ -1054,6 +1062,36 @@ function rememberCollabReceiverTurns(
   }
 }
 
+/**
+ * Spawn prompts keyed by child thread id. The prompt rides on the spawning
+ * thread's `collabAgentToolCall` (tool spawnAgent); receiverThreadIds names
+ * the child once it exists (usually only on item/completed). Returns the
+ * receivers whose prompt was newly learned.
+ */
+function rememberCollabSpawnPrompts(
+  prompts: Map<string, string>,
+  notification: CodexServerNotification,
+): ReadonlyArray<string> {
+  if (notification.method !== "item/started" && notification.method !== "item/completed") {
+    return [];
+  }
+  const item = notification.params.item;
+  if (item.type !== "collabAgentToolCall" || item.tool !== "spawnAgent") {
+    return [];
+  }
+  const prompt = nonEmptyMetadataValue(item.prompt);
+  if (!prompt) {
+    return [];
+  }
+  const learned: Array<string> = [];
+  for (const receiverThreadId of item.receiverThreadIds) {
+    if (prompts.has(receiverThreadId)) continue;
+    prompts.set(receiverThreadId, prompt);
+    learned.push(receiverThreadId);
+  }
+  return learned;
+}
+
 function shouldSuppressChildConversationNotification(
   method: CodexRpc.ServerNotificationMethod,
 ): boolean {
@@ -1314,6 +1352,8 @@ export const makeCodexSessionRuntime = (
     const collabReceiverTurnsRef = yield* Ref.make(new Map<string, TurnId>());
     const collabChildAgentsRef = yield* Ref.make(new Map<string, CollabChildAgentState>());
     const collabChildMetadataRef = yield* Ref.make(new Map<string, CollabChildMetadataState>());
+    /** Child provider-thread id → the prompt it was spawned with. */
+    const collabChildPromptsRef = yield* Ref.make(new Map<string, string>());
     /** Child provider-thread id → its currently running provider turn id. */
     const collabChildLiveTurnsRef = yield* Ref.make(new Map<string, string>());
     const suppressMemoryConsolidationNotification = makeMemoryConsolidationNotificationFilter();
@@ -1481,6 +1521,29 @@ export const makeCodexSessionRuntime = (
       });
     });
 
+    const emitCollabChildStarted = Effect.fn("CodexSessionRuntime.emitCollabChildStarted")(
+      function* (agentThreadId: string) {
+        const child = (yield* Ref.get(collabChildAgentsRef)).get(agentThreadId);
+        if (!child) {
+          return;
+        }
+        const metadata = (yield* Ref.get(collabChildMetadataRef)).get(agentThreadId);
+        const prompt = (yield* Ref.get(collabChildPromptsRef)).get(agentThreadId);
+        yield* emitEvent({
+          kind: "notification",
+          threadId: options.threadId,
+          method: "collabAgent/started",
+          ...(child.spawnTurnId ? { turnId: child.spawnTurnId } : {}),
+          payload: {
+            ...collabChildIdentity(child, metadata),
+            ...(child.depth !== undefined ? { depth: child.depth } : {}),
+            ...(child.parentThreadId ? { parentThreadId: child.parentThreadId } : {}),
+            ...(prompt ? { prompt } : {}),
+          },
+        });
+      },
+    );
+
     const startCollabChildMetadataLookup = Effect.fn(
       "CodexSessionRuntime.startCollabChildMetadataLookup",
     )(function* (agentThreadId: string) {
@@ -1609,18 +1672,7 @@ export const makeCodexSessionRuntime = (
             next.set(thread.id, state);
             return next;
           });
-          const metadata = (yield* Ref.get(collabChildMetadataRef)).get(thread.id);
-          yield* emitEvent({
-            kind: "notification",
-            threadId: options.threadId,
-            method: "collabAgent/started",
-            ...(state.spawnTurnId ? { turnId: state.spawnTurnId } : {}),
-            payload: {
-              ...collabChildIdentity(state, metadata),
-              ...(state.depth !== undefined ? { depth: state.depth } : {}),
-              ...(state.parentThreadId ? { parentThreadId: state.parentThreadId } : {}),
-            },
-          });
+          yield* emitCollabChildStarted(thread.id);
           yield* startCollabChildMetadataLookup(thread.id);
           return true;
         }
@@ -1672,6 +1724,7 @@ export const makeCodexSessionRuntime = (
           });
           const registeredChild = (yield* Ref.get(collabChildAgentsRef)).get(item.agentThreadId);
           const metadata = (yield* Ref.get(collabChildMetadataRef)).get(item.agentThreadId);
+          const prompt = (yield* Ref.get(collabChildPromptsRef)).get(item.agentThreadId);
           yield* emitEvent({
             kind: "notification",
             threadId: options.threadId,
@@ -1682,6 +1735,7 @@ export const makeCodexSessionRuntime = (
                 ? collabChildIdentity(registeredChild, metadata)
                 : { agentThreadId: item.agentThreadId, agentPath: item.agentPath }),
               activityKind: item.kind,
+              ...(prompt && item.kind === "started" ? { prompt } : {}),
             },
           });
           if (item.kind === "started") {
@@ -1809,9 +1863,12 @@ export const makeCodexSessionRuntime = (
               threadId: options.threadId,
               ...(child.spawnTurnId ? { turnId: child.spawnTurnId } : {}),
               method: "collabAgent/item",
+              // The whole notification rides along so the adapter can map a
+              // tool item exactly like a root one (it decodes the same shape).
               payload: {
+                ...notification.params,
                 ...childIdentity,
-                item: notification.params.item,
+                phase: notification.method === "item/started" ? "started" : "completed",
               },
             });
             return true;
@@ -1851,6 +1908,7 @@ export const makeCodexSessionRuntime = (
               next.delete(child.agentThreadId);
               return next;
             });
+            const errorMessage = nonEmptyMetadataValue(notification.params.error?.message);
             yield* emitEvent({
               kind: "notification",
               threadId: options.threadId,
@@ -1859,6 +1917,7 @@ export const makeCodexSessionRuntime = (
               payload: {
                 ...childIdentity,
                 status: { type: "systemError" },
+                ...(errorMessage ? { errorMessage } : {}),
               },
             });
             return true;
@@ -1917,6 +1976,16 @@ export const makeCodexSessionRuntime = (
         })();
 
         rememberCollabReceiverTurns(collabReceiverTurns, notification, route.turnId);
+        // A prompt learned after the child already registered (the spawn
+        // item completes after the child's thread/started) re-announces the
+        // child so its task.started carries the prompt.
+        const promptedChildren = rememberCollabSpawnPrompts(
+          yield* Ref.get(collabChildPromptsRef),
+          notification,
+        );
+        for (const childThreadId of promptedChildren) {
+          yield* emitCollabChildStarted(childThreadId);
+        }
         // Interception FIRST: a registered v2 child is usually also in the
         // receiver-turn map (collabAgentToolCall.receiverThreadIds), and the
         // legacy suppressor below would drop its lifecycle before it could
@@ -2658,6 +2727,13 @@ export const makeCodexSessionRuntime = (
         const providerThreadId = yield* readProviderThreadId;
         return yield* readCodexThread(client, providerThreadId);
       }),
+      readChildThread: (childThreadId) =>
+        Effect.gen(function* () {
+          if (!(yield* Ref.get(collabChildAgentsRef)).has(childThreadId)) {
+            return null;
+          }
+          return yield* readCodexThread(client, childThreadId);
+        }),
       rollbackThread: (numTurns) =>
         Effect.gen(function* () {
           const providerThreadId = yield* readProviderThreadId;

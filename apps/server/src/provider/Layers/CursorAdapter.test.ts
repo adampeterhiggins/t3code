@@ -356,6 +356,31 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
           ["task.completed", "mock-subagent-session-1", "Find config loader", undefined],
         ],
       );
+      const started = events.find((event) => event.type === "task.started");
+      assert.strictEqual(
+        started?.type === "task.started" ? started.payload.prompt : undefined,
+        "Find the config loader and report where it lives.",
+      );
+      // The child's own tool call is an agent-owned item row.
+      const childItems = events.flatMap((event) =>
+        event.type === "item.started" && event.payload.agentId !== undefined
+          ? [
+              {
+                itemId: String(event.itemId),
+                title: event.payload.title,
+                agentId: event.payload.agentId,
+              },
+            ]
+          : [],
+      );
+      assert.deepStrictEqual(childItems, [
+        {
+          itemId: "cursor-subagent:mock-subagent-session-1:mock-child-tool-1",
+          // Rendered like a root ACP tool row.
+          title: "Searched files",
+          agentId: "mock-subagent-session-1",
+        },
+      ]);
       const completed = tasks.at(-1)?.payload;
       assert.include(completed, {
         taskType: "subagent",

@@ -70,6 +70,7 @@ describe("Cursor subagents", () => {
           role: "generalPurpose",
           model: "grok-4.7-high-fast",
           toolUseId: taskToolCallId,
+          prompt,
         },
       },
     ]);
@@ -85,7 +86,9 @@ describe("Cursor subagents", () => {
       ["task.progress", "Read README.md contents"],
     ]);
 
-    // Each child tool call reports once, under its most specific title.
+    // Each child tool call becomes an agent-owned item row, and reports its
+    // most specific title once as the run's latest tool.
+    const itemId = `cursor-subagent:${childId}:read-1`;
     expect(
       child({
         sessionUpdate: "tool_call",
@@ -94,21 +97,31 @@ describe("Cursor subagents", () => {
         kind: "read",
         status: "pending",
       }),
-    ).toEqual([]);
+    ).toMatchObject([
+      {
+        type: "item.started",
+        itemId,
+        turnId,
+        payload: { itemType: "dynamic_tool_call", status: "inProgress", agentId: childId },
+      },
+    ]);
     expect(
       child({ sessionUpdate: "tool_call_update", toolCallId: "read-1", title: "Read README.md" }),
-    ).toEqual([]);
+    ).toMatchObject([
+      { type: "item.updated", itemId, payload: { title: "Read README.md", agentId: childId } },
+    ]);
     const progress = child({
       sessionUpdate: "tool_call_update",
       toolCallId: "read-1",
       status: "in_progress",
     });
-    expect(progress.map((event) => event.payload)).toMatchObject([
-      { taskId: childId, lastToolName: "Read README.md" },
-    ]);
+    expect(progress.map((event) => event.type)).toEqual(["item.updated", "task.progress"]);
+    expect(progress[1]?.payload).toMatchObject({ taskId: childId, lastToolName: "Read README.md" });
     expect(
       child({ sessionUpdate: "tool_call_update", toolCallId: "read-1", status: "completed" }),
-    ).toEqual([]);
+    ).toMatchObject([
+      { type: "item.completed", itemId, payload: { status: "completed", agentId: childId } },
+    ]);
 
     child({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "hel" } });
     child({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "lo" } });
@@ -156,6 +169,59 @@ describe("Cursor subagents", () => {
     expect(lifecycle(stateUpdate("completed"))[0]?.payload).toMatchObject({
       summary: "Found it.",
     });
+  });
+
+  it("keeps the full task as the prompt and a short first line as the title", () => {
+    const { lifecycle } = harness();
+    const long = `First line\n${"x".repeat(5_000)}`;
+    const [started] = lifecycle({
+      ...spawned,
+      update: { ...spawned.update, task: long, _meta: { cursor: { agentId: childId } } },
+    });
+    expect(started?.payload.title).toBe("First line");
+    const startedPrompt = started?.type === "task.started" ? started.payload.prompt : undefined;
+    expect(startedPrompt?.length).toBe(4_000);
+    expect(startedPrompt?.startsWith(long.slice(0, 100))).toBe(true);
+  });
+
+  it("explains a failed run by its last reply, else its failed tool call", () => {
+    const withReply = harness();
+    withReply.lifecycle(spawned);
+    withReply.child({
+      sessionUpdate: "agent_message_chunk",
+      content: { type: "text", text: "Could not open README.md." },
+    });
+    expect(withReply.lifecycle(stateUpdate("failed"))[0]?.payload).toMatchObject({
+      status: "failed",
+      summary: "Could not open README.md.",
+    });
+
+    const silent = harness();
+    silent.lifecycle(spawned);
+    silent.child({ sessionUpdate: "tool_call", toolCallId: "t", title: "Shell", status: "failed" });
+    expect(silent.lifecycle(stateUpdate("failed"))[0]?.payload).toMatchObject({
+      status: "failed",
+      summary: "Shell failed",
+    });
+  });
+
+  it("namespaces child item ids per child session", () => {
+    const { lifecycle, tracker } = harness();
+    lifecycle(spawned);
+    lifecycle({ ...spawned, update: { ...spawned.update, subagentSessionId: "other-child" } });
+    const call = { sessionUpdate: "tool_call", toolCallId: "t", title: "Grep" } as const;
+    const ids = [childId, "other-child"].map(
+      (sessionId) =>
+        cursorSubagentChildEvents({
+          tracker,
+          notification: { sessionId, update: call },
+          turnId,
+        })[0],
+    );
+    expect(ids.map((event) => (event && "itemId" in event ? event.itemId : undefined))).toEqual([
+      `cursor-subagent:${childId}:t`,
+      "cursor-subagent:other-child:t",
+    ]);
   });
 
   it.each([

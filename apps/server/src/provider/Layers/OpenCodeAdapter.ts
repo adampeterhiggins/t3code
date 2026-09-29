@@ -8,6 +8,10 @@ import {
   type ProviderSession,
   RuntimeItemId,
   RuntimeRequestId,
+  RuntimeTaskId,
+  type RuntimeTaskUsage,
+  SUBAGENT_PROMPT_CHAR_LIMIT,
+  type SubagentTranscriptEntry,
   ThreadId,
   type ToolLifecycleItemType,
   type TurnTokenUsage,
@@ -45,6 +49,7 @@ import {
 } from "../Errors.ts";
 import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
 import { type OpenCodeAdapterShape } from "../Services/OpenCodeAdapter.ts";
+import { boundSubagentPrompt, boundSubagentTranscript } from "../subagentTranscript.ts";
 import {
   buildOpenCodePermissionRules,
   OpenCodeRuntime,
@@ -343,6 +348,12 @@ interface OpenCodeSessionContext {
   readonly directory: string;
   openCodeSessionId: string;
   readonly relatedSessionIds: Set<string>;
+  /** Direct children of the root session, keyed by child session id. */
+  readonly subagents: Map<string, OpenCodeSubagentState>;
+  /** Deeper descendants mapped to the direct child (subagent) that owns them. */
+  readonly subagentOwnerBySessionId: Map<string, string>;
+  /** Root-session `task` tool calls that have not finished yet, by callID. */
+  readonly taskToolCalls: Map<string, OpenCodeTaskToolCall>;
   readonly resolvedRequestIds: Set<string>;
   readonly autoRepliedRequestIds: Set<string>;
   readonly emittedTerminalRequestIds: Set<string>;
@@ -710,6 +721,253 @@ function toolStateCreatedAt(part: Extract<Part, { type: "tool" }>): string | und
     default:
       return undefined;
   }
+}
+
+/**
+ * Runtime item lifecycle event for a native tool part. Shared by the root
+ * session and subagent sessions; subagent callers add `agentId`.
+ */
+function openCodeToolItemEvent(part: Extract<Part, { type: "tool" }>) {
+  const itemType = toToolLifecycleItemType(part.tool);
+  const title =
+    part.state.status === "running" || part.state.status === "completed"
+      ? (part.state.title ?? part.tool)
+      : part.tool;
+  const detail = detailFromToolPart(part);
+  return {
+    type:
+      part.state.status === "pending"
+        ? ("item.started" as const)
+        : part.state.status === "completed" || part.state.status === "error"
+          ? ("item.completed" as const)
+          : ("item.updated" as const),
+    itemId: part.callID,
+    createdAt: toolStateCreatedAt(part),
+    payload: {
+      itemType,
+      ...(part.state.status === "error"
+        ? { status: "failed" as const }
+        : part.state.status === "completed"
+          ? { status: "completed" as const }
+          : { status: "inProgress" as const }),
+      ...(title ? { title } : {}),
+      ...(detail ? { detail } : {}),
+      data: {
+        tool: part.tool,
+        state: part.state,
+        ...(typeof part.state.input.command === "string"
+          ? { command: part.state.input.command }
+          : {}),
+        ...(itemType === "file_change" ? { input: part.state.input } : {}),
+        ...(part.state.status === "completed" &&
+        (itemType === "command_execution" || itemType === "mcp_tool_call")
+          ? { result: part.state.output }
+          : {}),
+      },
+    },
+  };
+}
+
+/** Bound for subagent progress/completion summaries. */
+const SUBAGENT_SUMMARY_CHAR_LIMIT = 2000;
+
+/**
+ * One direct child session of the thread's root session, surfaced as a
+ * subagent. `taskId` is the child session id.
+ */
+interface OpenCodeSubagentState {
+  readonly taskId: string;
+  toolUseId: string | undefined;
+  title: string | undefined;
+  role: string | undefined;
+  model: string | undefined;
+  prompt: string | undefined;
+  started: boolean;
+  completed: boolean;
+  lastToolName: string | undefined;
+  lastAssistantText: string | undefined;
+  readonly messageRoleById: Map<string, "user" | "assistant">;
+  readonly stepPartIds: Set<string>;
+  readonly toolCallIds: Set<string>;
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
+  reasoningTokens: number;
+}
+
+/** The root session's `task` tool call that spawns (or resumes) a child session. */
+interface OpenCodeTaskToolCall {
+  readonly callID: string;
+  description: string | undefined;
+  prompt: string | undefined;
+  role: string | undefined;
+  model: string | undefined;
+  sessionId: string | undefined;
+}
+
+function makeOpenCodeSubagentState(taskId: string): OpenCodeSubagentState {
+  return {
+    taskId,
+    toolUseId: undefined,
+    title: undefined,
+    role: undefined,
+    model: undefined,
+    prompt: undefined,
+    started: false,
+    completed: false,
+    lastToolName: undefined,
+    lastAssistantText: undefined,
+    messageRoleById: new Map(),
+    stepPartIds: new Set(),
+    toolCallIds: new Set(),
+    inputTokens: 0,
+    cachedInputTokens: 0,
+    outputTokens: 0,
+    reasoningTokens: 0,
+  };
+}
+
+function stringField(record: Record<string, unknown> | undefined, key: string) {
+  const value = record?.[key];
+  return typeof value === "string" ? trimText(value) : undefined;
+}
+
+/** Reads the fields OpenCode's `task` tool puts in its input and metadata. */
+function readOpenCodeTaskToolCall(
+  part: Extract<Part, { type: "tool" }>,
+  previous: OpenCodeTaskToolCall | undefined,
+): OpenCodeTaskToolCall {
+  const input = part.state.input;
+  const metadata = "metadata" in part.state ? part.state.metadata : undefined;
+  const model = metadata?.model;
+  const modelSlug =
+    model !== null && typeof model === "object"
+      ? [
+          stringField(model as Record<string, unknown>, "providerID"),
+          stringField(model as Record<string, unknown>, "modelID"),
+        ]
+          .filter((segment) => segment !== undefined)
+          .join("/")
+      : undefined;
+  return {
+    callID: part.callID,
+    description: stringField(input, "description") ?? previous?.description,
+    prompt: stringField(input, "prompt") ?? previous?.prompt,
+    role: stringField(input, "subagent_type") ?? previous?.role,
+    model: trimText(modelSlug) ?? previous?.model,
+    sessionId: stringField(metadata, "sessionId") ?? previous?.sessionId,
+  };
+}
+
+/** OpenCode titles task children `<description> (@<agent> subagent)`. */
+function parseOpenCodeSubagentTitle(title: string | undefined) {
+  const match = title ? /^(.*) \(@([^()]+) subagent\)$/.exec(title.trim()) : null;
+  if (!match) {
+    return { description: title && !isOpenCodeDefaultTitle(title) ? trimText(title) : undefined };
+  }
+  return { description: trimText(match[1]), role: trimText(match[2]) };
+}
+
+/** Pulls the child's answer out of the task tool's `<task_result>` output. */
+function openCodeTaskResultText(output: string): string | undefined {
+  const match = /<task_result>([\s\S]*?)<\/task_result>/.exec(output);
+  return trimText(match ? match[1] : output);
+}
+
+function applyOpenCodeTaskToolCall(state: OpenCodeSubagentState, call: OpenCodeTaskToolCall) {
+  state.toolUseId = call.callID;
+  state.title = call.description ?? state.title;
+  state.role = call.role ?? state.role;
+  state.model = call.model ?? state.model;
+  state.prompt = boundSubagentPrompt(call.prompt, SUBAGENT_PROMPT_CHAR_LIMIT) ?? state.prompt;
+}
+
+function openCodeSubagentLinkage(state: OpenCodeSubagentState) {
+  return {
+    taskType: "subagent",
+    ...(state.title ? { title: state.title } : {}),
+    ...(state.role ? { role: state.role } : {}),
+    ...(state.model ? { model: state.model } : {}),
+    ...(state.toolUseId ? { toolUseId: state.toolUseId } : {}),
+  };
+}
+
+function openCodeSubagentUsage(state: OpenCodeSubagentState): RuntimeTaskUsage | undefined {
+  if (state.stepPartIds.size === 0 && state.toolCallIds.size === 0) {
+    return undefined;
+  }
+  return {
+    totalTokens: state.inputTokens + state.outputTokens,
+    inputTokens: state.inputTokens,
+    cachedInputTokens: state.cachedInputTokens,
+    outputTokens: state.outputTokens,
+    reasoningOutputTokens: Math.min(state.outputTokens, state.reasoningTokens),
+    toolUses: state.toolCallIds.size,
+  };
+}
+
+function openCodeToolInputText(input: Record<string, unknown>): string | undefined {
+  if (typeof input.command === "string") return input.command;
+  if (Object.keys(input).length === 0) return undefined;
+  try {
+    return JSON.stringify(input);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Maps a child session's native history to transcript entries. */
+export function openCodeSubagentTranscriptEntries(
+  messages: ReadonlyArray<{
+    readonly info: { readonly role: string };
+    readonly parts: ReadonlyArray<Part>;
+  }>,
+): Array<SubagentTranscriptEntry> {
+  const entries: Array<SubagentTranscriptEntry> = [];
+  for (const message of messages) {
+    for (const part of message.parts) {
+      if (part.type === "text") {
+        if (part.synthetic || part.ignored) continue;
+        const at = part.time ? isoFromEpochMs(part.time.start) : undefined;
+        entries.push({
+          kind: message.info.role === "user" ? "user" : "assistant",
+          text: part.text,
+          ...(at ? { at } : {}),
+        });
+      } else if (part.type === "reasoning") {
+        const at = isoFromEpochMs(part.time.start);
+        entries.push({ kind: "reasoning", text: part.text, ...(at ? { at } : {}) });
+      } else if (part.type === "tool") {
+        const state = part.state;
+        const input = openCodeToolInputText(state.input);
+        const output =
+          state.status === "completed"
+            ? state.output
+            : state.status === "error"
+              ? state.error
+              : undefined;
+        const at = state.status === "pending" ? undefined : isoFromEpochMs(state.time.start);
+        entries.push({
+          kind: "tool",
+          text:
+            (state.status === "running" || state.status === "completed"
+              ? state.title
+              : undefined) ?? part.tool,
+          toolName: part.tool,
+          ...(input !== undefined ? { input } : {}),
+          ...(output !== undefined ? { output } : {}),
+          status:
+            state.status === "completed"
+              ? "completed"
+              : state.status === "error"
+                ? "failed"
+                : "running",
+          ...(at ? { at } : {}),
+        });
+      }
+    }
+  }
+  return entries;
 }
 
 function sessionErrorMessage(error: unknown): string {
@@ -1519,6 +1777,8 @@ export function makeOpenCodeAdapter(
       if (cancellation) {
         context.cancellation = undefined;
       }
+      // Before the turn id clears, so the stopped rows land on this turn.
+      yield* stopLiveSubagents(context, raw);
       let tokenUsage: TurnTokenUsage = {
         usageStatus: "unavailable",
         usageScope: "main_agent",
@@ -1661,6 +1921,325 @@ export function makeOpenCodeAdapter(
             ...(latestText.length > 0 ? { detail: latestText } : {}),
           },
         });
+      }
+    });
+
+    // Subagents: each direct child session of the root session is one agent,
+    // keyed by child session id. Its tool parts become agent-attributed items,
+    // its step usage feeds only its own task usage, and its text stays out of
+    // the main timeline (the transcript read covers it).
+    const emitSubagentEvent = Effect.fn("emitSubagentEvent")(function* (
+      context: OpenCodeSessionContext,
+      state: OpenCodeSubagentState,
+      raw: unknown,
+      event:
+        | { readonly type: "task.started" }
+        | {
+            readonly type: "task.progress";
+            readonly summary?: string | undefined;
+            readonly lastToolName?: string | undefined;
+          }
+        | {
+            readonly type: "task.completed";
+            readonly status: "completed" | "failed" | "stopped";
+            readonly summary?: string | undefined;
+          },
+    ) {
+      const base = yield* buildEventBase({
+        threadId: context.session.threadId,
+        turnId: context.activeTurnId,
+        raw,
+      });
+      const taskId = RuntimeTaskId.make(state.taskId);
+      const linkage = openCodeSubagentLinkage(state);
+      const typedUsage = openCodeSubagentUsage(state);
+      const summary = boundSubagentPrompt(
+        event.type === "task.started" ? undefined : event.summary,
+        SUBAGENT_SUMMARY_CHAR_LIMIT,
+      );
+      switch (event.type) {
+        case "task.started":
+          yield* emit({
+            ...base,
+            type: "task.started",
+            payload: {
+              taskId,
+              ...(state.title ? { description: state.title } : {}),
+              ...(state.prompt ? { prompt: state.prompt } : {}),
+              ...linkage,
+            },
+          });
+          return;
+        case "task.progress":
+          yield* emit({
+            ...base,
+            type: "task.progress",
+            payload: {
+              taskId,
+              description: state.title ?? state.role ?? "Subagent",
+              ...(summary ? { summary } : {}),
+              ...(event.lastToolName ? { lastToolName: event.lastToolName } : {}),
+              ...(typedUsage ? { typedUsage } : {}),
+              ...linkage,
+            },
+          });
+          return;
+        case "task.completed":
+          yield* emit({
+            ...base,
+            type: "task.completed",
+            payload: {
+              taskId,
+              status: event.status,
+              ...(summary ? { summary } : {}),
+              ...(typedUsage ? { typedUsage } : {}),
+              ...linkage,
+            },
+          });
+          return;
+      }
+    });
+
+    const startSubagent = Effect.fn("startSubagent")(function* (
+      context: OpenCodeSessionContext,
+      state: OpenCodeSubagentState,
+      raw: unknown,
+    ) {
+      if (state.started) return;
+      state.started = true;
+      state.completed = false;
+      yield* emitSubagentEvent(context, state, raw, { type: "task.started" });
+    });
+
+    const completeSubagent = Effect.fn("completeSubagent")(function* (
+      context: OpenCodeSessionContext,
+      state: OpenCodeSubagentState,
+      status: "completed" | "failed" | "stopped",
+      summary: string | undefined,
+      raw: unknown,
+    ) {
+      if (state.completed) return;
+      yield* startSubagent(context, state, raw);
+      state.completed = true;
+      yield* emitSubagentEvent(context, state, raw, { type: "task.completed", status, summary });
+    });
+
+    const stopLiveSubagents = Effect.fn("stopLiveSubagents")(function* (
+      context: OpenCodeSessionContext,
+      raw: unknown,
+    ) {
+      for (const state of context.subagents.values()) {
+        if (state.started && !state.completed) {
+          yield* completeSubagent(context, state, "stopped", undefined, raw);
+        }
+      }
+      context.taskToolCalls.clear();
+    });
+
+    // A direct child appeared. The spawning `task` call is usually already
+    // running with its input: match it by the description OpenCode puts in the
+    // child title, or take the only unclaimed call. Parallel calls that cannot
+    // be told apart link later through the call's `metadata.sessionId`.
+    const registerOpenCodeChildSession = Effect.fn("registerOpenCodeChildSession")(function* (
+      context: OpenCodeSessionContext,
+      session: { readonly id: string; readonly title: string },
+      raw: unknown,
+    ) {
+      if (context.subagents.has(session.id)) return;
+      const state = makeOpenCodeSubagentState(session.id);
+      const parsed = parseOpenCodeSubagentTitle(session.title);
+      state.title = parsed.description;
+      state.role = parsed.role;
+      context.subagents.set(session.id, state);
+
+      const claimed = new Set(
+        [...context.subagents.values()].flatMap((agent) =>
+          agent.toolUseId ? [agent.toolUseId] : [],
+        ),
+      );
+      const candidates = [...context.taskToolCalls.values()].filter(
+        (call) => call.sessionId === undefined && !claimed.has(call.callID),
+      );
+      const byDescription = candidates.filter(
+        (call) =>
+          parsed.description !== undefined &&
+          call.description === parsed.description &&
+          (parsed.role === undefined || call.role === undefined || call.role === parsed.role),
+      );
+      const match =
+        byDescription.length === 1
+          ? byDescription[0]
+          : candidates.length === 1
+            ? candidates[0]
+            : undefined;
+      if (match) {
+        match.sessionId = session.id;
+        applyOpenCodeTaskToolCall(state, match);
+      }
+      yield* startSubagent(context, state, raw);
+    });
+
+    // Root-session `task` tool part: remember its input, link it to its child
+    // session once known, and settle the agent when the call finishes.
+    const observeOpenCodeTaskTool = Effect.fn("observeOpenCodeTaskTool")(function* (
+      context: OpenCodeSessionContext,
+      part: Extract<Part, { type: "tool" }>,
+      raw: unknown,
+    ) {
+      const previous = context.taskToolCalls.get(part.callID);
+      const call = readOpenCodeTaskToolCall(part, previous);
+      const linked =
+        call.sessionId === undefined
+          ? [...context.subagents.values()].find((agent) => agent.toolUseId === part.callID)
+          : undefined;
+      if (linked) call.sessionId = linked.taskId;
+
+      if (part.state.status === "pending" || part.state.status === "running") {
+        context.taskToolCalls.set(part.callID, call);
+        if (call.sessionId === undefined) return;
+        const existing = context.subagents.get(call.sessionId);
+        if (existing === undefined || (existing.completed && existing.toolUseId !== call.callID)) {
+          // Missed `session.created`, or the call resumed an earlier child
+          // through the tool's `task_id`: (re)start the agent from the call.
+          const state = existing ?? makeOpenCodeSubagentState(call.sessionId);
+          applyOpenCodeTaskToolCall(state, call);
+          state.started = false;
+          context.subagents.set(call.sessionId, state);
+          yield* startSubagent(context, state, raw);
+          return;
+        }
+        // Late linkage or model metadata rides on the next progress row.
+        if (
+          existing.toolUseId === undefined ||
+          (existing.toolUseId === call.callID && call.model && call.model !== existing.model)
+        ) {
+          applyOpenCodeTaskToolCall(existing, call);
+          yield* emitSubagentEvent(context, existing, raw, { type: "task.progress" });
+        }
+        return;
+      }
+
+      context.taskToolCalls.delete(part.callID);
+      const state =
+        call.sessionId === undefined ? undefined : context.subagents.get(call.sessionId);
+      if (!state) return;
+      if (state.toolUseId === undefined || state.toolUseId === call.callID) {
+        applyOpenCodeTaskToolCall(state, call);
+      }
+      if (part.state.status === "completed") {
+        yield* completeSubagent(
+          context,
+          state,
+          "completed",
+          state.lastAssistantText ?? openCodeTaskResultText(part.state.output),
+          raw,
+        );
+      } else {
+        yield* completeSubagent(context, state, "failed", part.state.error, raw);
+      }
+    });
+
+    const handleOpenCodeSubagentEvent = Effect.fn("handleOpenCodeSubagentEvent")(function* (
+      context: OpenCodeSessionContext,
+      state: OpenCodeSubagentState,
+      sessionId: string,
+      event: OpenCodeSubscribedEvent,
+    ) {
+      const isDirect = sessionId === state.taskId;
+      switch (event.type) {
+        case "message.updated": {
+          if (isDirect) {
+            state.messageRoleById.set(event.properties.info.id, event.properties.info.role);
+          }
+          return;
+        }
+        case "message.part.updated": {
+          const part = event.properties.part;
+          if (part.type === "tool") {
+            const item = openCodeToolItemEvent(part);
+            yield* emit({
+              ...(yield* buildEventBase({
+                threadId: context.session.threadId,
+                turnId: context.activeTurnId,
+                itemId: item.itemId,
+                createdAt: item.createdAt,
+                raw: event,
+              })),
+              type: item.type,
+              payload: { ...item.payload, agentId: state.taskId },
+            });
+            if (isDirect && !state.toolCallIds.has(part.callID)) {
+              state.toolCallIds.add(part.callID);
+              state.lastToolName = part.tool;
+              yield* emitSubagentEvent(context, state, event, {
+                type: "task.progress",
+                lastToolName: part.tool,
+              });
+            }
+            return;
+          }
+          if (!isDirect) return;
+          if (part.type === "step-finish") {
+            if (state.stepPartIds.has(part.id)) return;
+            state.stepPartIds.add(part.id);
+            state.inputTokens +=
+              part.tokens.input + part.tokens.cache.read + part.tokens.cache.write;
+            state.cachedInputTokens += part.tokens.cache.read;
+            state.outputTokens += part.tokens.output + part.tokens.reasoning;
+            state.reasoningTokens += part.tokens.reasoning;
+            yield* emitSubagentEvent(context, state, event, {
+              type: "task.progress",
+              lastToolName: state.lastToolName,
+            });
+            return;
+          }
+          if (
+            part.type === "text" &&
+            part.time?.end !== undefined &&
+            !part.synthetic &&
+            state.messageRoleById.get(part.messageID) === "assistant"
+          ) {
+            const text = trimText(part.text);
+            if (!text || text === state.lastAssistantText) return;
+            state.lastAssistantText = text;
+            yield* emitSubagentEvent(context, state, event, {
+              type: "task.progress",
+              summary: text,
+              lastToolName: state.lastToolName,
+            });
+          }
+          return;
+        }
+        case "session.status": {
+          // A linked agent settles with its `task` call, which carries the
+          // outcome. Only an unlinked agent settles on idle.
+          if (
+            isDirect &&
+            state.started &&
+            state.toolUseId === undefined &&
+            event.properties.status.type === "idle"
+          ) {
+            yield* completeSubagent(context, state, "completed", state.lastAssistantText, event);
+          }
+          return;
+        }
+        case "session.error": {
+          if (!isDirect || !state.started) return;
+          if (isOpenCodeAbortError(event.properties.error)) {
+            yield* completeSubagent(context, state, "stopped", undefined, event);
+          } else {
+            yield* completeSubagent(
+              context,
+              state,
+              "failed",
+              sessionErrorMessage(event.properties.error),
+              event,
+            );
+          }
+          return;
+        }
+        default:
+          return;
       }
     });
 
@@ -2225,9 +2804,25 @@ export function makeOpenCodeAdapter(
         const session = event.properties.info;
         if (session.parentID && context.relatedSessionIds.has(session.parentID)) {
           addRelatedOpenCodeSession(context, session.id);
+          const owner =
+            session.parentID === context.openCodeSessionId
+              ? undefined
+              : context.subagents.has(session.parentID)
+                ? session.parentID
+                : context.subagentOwnerBySessionId.get(session.parentID);
+          if (owner !== undefined) {
+            context.subagentOwnerBySessionId.set(session.id, owner);
+          } else if (
+            event.type === "session.created" &&
+            session.parentID === context.openCodeSessionId &&
+            !(yield* Ref.get(context.stopped))
+          ) {
+            yield* registerOpenCodeChildSession(context, session, event);
+          }
         }
       } else if (event.type === "session.deleted") {
         context.relatedSessionIds.delete(event.properties.info.id);
+        context.subagentOwnerBySessionId.delete(event.properties.info.id);
       }
 
       const payloadSessionId = openCodeEventSessionId(event);
@@ -2261,6 +2856,15 @@ export function makeOpenCodeAdapter(
         isOpenCodeChildRequestEvent(event) &&
         (context.relatedSessionIds.has(payloadSessionId) || isKnownPendingTerminalEvent);
       if (!isParentEvent && !isChildRequestEvent) {
+        const subagent =
+          payloadSessionId === undefined
+            ? undefined
+            : context.subagents.get(
+                context.subagentOwnerBySessionId.get(payloadSessionId) ?? payloadSessionId,
+              );
+        if (subagent && payloadSessionId !== undefined) {
+          yield* handleOpenCodeSubagentEvent(context, subagent, payloadSessionId, event);
+        }
         return;
       }
 
@@ -2483,51 +3087,21 @@ export function makeOpenCodeAdapter(
           }
 
           if (part.type === "tool") {
-            const itemType = toToolLifecycleItemType(part.tool);
-            const title =
-              part.state.status === "running" || part.state.status === "completed"
-                ? (part.state.title ?? part.tool)
-                : part.tool;
-            const detail = detailFromToolPart(part);
-            const payload = {
-              itemType,
-              ...(part.state.status === "error"
-                ? { status: "failed" as const }
-                : part.state.status === "completed"
-                  ? { status: "completed" as const }
-                  : { status: "inProgress" as const }),
-              ...(title ? { title } : {}),
-              ...(detail ? { detail } : {}),
-              data: {
-                tool: part.tool,
-                state: part.state,
-                ...(typeof part.state.input.command === "string"
-                  ? { command: part.state.input.command }
-                  : {}),
-                ...(itemType === "file_change" ? { input: part.state.input } : {}),
-                ...(part.state.status === "completed" &&
-                (itemType === "command_execution" || itemType === "mcp_tool_call")
-                  ? { result: part.state.output }
-                  : {}),
-              },
-            };
-            const runtimeEvent: ProviderRuntimeEvent = {
+            const item = openCodeToolItemEvent(part);
+            yield* emit({
               ...(yield* buildEventBase({
                 threadId: context.session.threadId,
                 turnId,
-                itemId: part.callID,
-                createdAt: toolStateCreatedAt(part),
+                itemId: item.itemId,
+                createdAt: item.createdAt,
                 raw: event,
               })),
-              type:
-                part.state.status === "pending"
-                  ? "item.started"
-                  : part.state.status === "completed" || part.state.status === "error"
-                    ? "item.completed"
-                    : "item.updated",
-              payload,
-            };
-            yield* emit(runtimeEvent);
+              type: item.type,
+              payload: item.payload,
+            });
+            if (part.tool === "task") {
+              yield* observeOpenCodeTaskTool(context, part, event);
+            }
           }
           break;
         }
@@ -3010,6 +3584,9 @@ export function makeOpenCodeAdapter(
           directory,
           openCodeSessionId: started.openCodeSession.id,
           relatedSessionIds: new Set([started.openCodeSession.id]),
+          subagents: new Map(),
+          subagentOwnerBySessionId: new Map(),
+          taskToolCalls: new Map(),
           resolvedRequestIds: new Set(),
           autoRepliedRequestIds: new Set(),
           emittedTerminalRequestIds: new Set(),
@@ -3923,6 +4500,30 @@ export function makeOpenCodeAdapter(
       },
     );
 
+    // Only a direct child of this thread's root session is readable: one seen
+    // live, or (after a restart) one whose native parent is the root session.
+    const readSubagentTranscript: NonNullable<OpenCodeAdapterShape["readSubagentTranscript"]> =
+      Effect.fn("readSubagentTranscript")(function* (threadId, taskId) {
+        const context = yield* ensureSessionContext(sessions, threadId);
+        if (taskId === context.openCodeSessionId) return null;
+        if (!context.subagents.has(taskId)) {
+          const child = yield* runOpenCodeSdk("session.get", (signal) =>
+            context.client.session.get({ sessionID: taskId }, { signal }),
+          ).pipe(
+            Effect.catchIf(
+              (cause) => isOpenCodeNotFound(cause),
+              () => Effect.undefined,
+            ),
+            Effect.mapError(toRequestError),
+          );
+          if (child?.data?.parentID !== context.openCodeSessionId) return null;
+        }
+        const messages = yield* runOpenCodeSdk("session.messages", (signal) =>
+          context.client.session.messages({ sessionID: taskId }, { signal }),
+        ).pipe(Effect.mapError(toRequestError));
+        return boundSubagentTranscript(openCodeSubagentTranscriptEntries(messages.data ?? []));
+      });
+
     const rollbackThread: OpenCodeAdapterShape["rollbackThread"] = Effect.fn("rollbackThread")(
       function* (threadId, numTurns) {
         const context = yield* ensureSessionContext(sessions, threadId);
@@ -3986,6 +4587,9 @@ export function makeOpenCodeAdapter(
           context.openCodeSessionId = forkedSessionId;
           context.relatedSessionIds.clear();
           context.relatedSessionIds.add(forkedSessionId);
+          context.subagents.clear();
+          context.subagentOwnerBySessionId.clear();
+          context.taskToolCalls.clear();
           context.messageRoleById.clear();
           context.textPartsByMessageId.clear();
           context.turnTokenUsage = undefined;
@@ -4049,6 +4653,7 @@ export function makeOpenCodeAdapter(
       listSessions,
       hasSession,
       readThread,
+      readSubagentTranscript,
       rollbackThread,
       stopAll,
       get streamEvents() {

@@ -12,6 +12,9 @@
  * @module ProviderService
  */
 import type {
+  OrchestrationGetSubagentTranscriptError,
+  OrchestrationGetSubagentTranscriptInput,
+  OrchestrationGetSubagentTranscriptResult,
   ProviderInterruptTurnInput,
   ProviderInstanceId,
   ProviderRespondToRequestInput,
@@ -127,6 +130,17 @@ export interface ProviderServiceShape {
   readonly uploadFeedback: (
     input: ProviderUploadFeedbackInput,
   ) => Effect.Effect<ProviderUploadFeedbackResult, ProviderServiceError>;
+
+  /**
+   * Read a subagent transcript from the thread's running provider session.
+   * Never starts or recovers a session just to read history.
+   */
+  readonly readSubagentTranscript: (
+    input: OrchestrationGetSubagentTranscriptInput,
+  ) => Effect.Effect<
+    OrchestrationGetSubagentTranscriptResult,
+    OrchestrationGetSubagentTranscriptError
+  >;
 
   /**
    * Canonical provider runtime event stream.

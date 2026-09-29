@@ -97,6 +97,10 @@ class FakeCodexRuntime implements CodexSessionRuntimeShape {
     }),
   );
 
+  public readonly readChildThreadImpl = vi.fn(
+    (_childThreadId: string): Promise<CodexThreadSnapshot | null> => Promise.resolve(null),
+  );
+
   public readonly rollbackThreadImpl = vi.fn((_numTurns: number): Promise<CodexThreadSnapshot> =>
     Promise.resolve({
       threadId: "provider-thread-1",
@@ -141,6 +145,10 @@ class FakeCodexRuntime implements CodexSessionRuntimeShape {
   }
 
   readThread = Effect.promise(() => this.readThreadImpl());
+
+  readChildThread(childThreadId: string) {
+    return Effect.promise(() => this.readChildThreadImpl(childThreadId));
+  }
 
   rollbackThread(numTurns: number) {
     return Effect.promise(() => this.rollbackThreadImpl(numTurns));
@@ -1234,6 +1242,215 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
           { taskId: "child-1", status: "idle" },
           { taskId: "child-2", status: "running" },
         ],
+      );
+    }),
+  );
+
+  it.effect("emits a child's tool items as agent-attributed item rows", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      const eventsFiber = yield* Stream.runCollect(Stream.take(adapter.streamEvents, 5)).pipe(
+        Effect.forkChild,
+      );
+
+      const commandItem = {
+        type: "commandExecution",
+        id: "call_1",
+        command: "ls -la",
+        commandActions: [],
+        cwd: "/repo",
+        status: "inProgress",
+      };
+      const childItem = (id: string, phase: "started" | "completed", item: unknown) => ({
+        id: asEventId(id),
+        kind: "notification" as const,
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        method: "collabAgent/item",
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-1"),
+        payload: {
+          threadId: "child-1",
+          turnId: "child-turn-1",
+          ...(phase === "started" ? { startedAtMs: 1 } : { completedAtMs: 2 }),
+          item,
+          agentThreadId: "child-1",
+          agentPath: "/root/audit",
+          phase,
+        },
+      });
+
+      yield* runtime.emit(childItem("evt-child-cmd-start", "started", commandItem));
+      yield* runtime.emit(
+        childItem("evt-child-cmd-done", "completed", {
+          ...commandItem,
+          status: "completed",
+          aggregatedOutput: "total 0",
+        }),
+      );
+      // Messages stay summary-only: no item row for the agent's own chat.
+      yield* runtime.emit(
+        childItem("evt-child-msg", "completed", { type: "agentMessage", id: "msg_1", text: "hi" }),
+      );
+
+      const events = Array.from(yield* Fiber.join(eventsFiber));
+      NodeAssert.deepStrictEqual(
+        events.map((event) => event.type),
+        ["task.progress", "item.started", "task.progress", "item.completed", "task.progress"],
+      );
+      const started = events[1];
+      const completed = events[3];
+      NodeAssert.ok(started?.type === "item.started" && completed?.type === "item.completed");
+      NodeAssert.equal(started.itemId, "codex-agent:child-1:call_1");
+      NodeAssert.equal(completed.itemId, "codex-agent:child-1:call_1");
+      NodeAssert.equal(started.turnId, "turn-1");
+      NodeAssert.deepStrictEqual(
+        {
+          itemType: started.payload.itemType,
+          status: started.payload.status,
+          title: started.payload.title,
+          detail: started.payload.detail,
+          agentId: started.payload.agentId,
+        },
+        {
+          itemType: "command_execution",
+          status: "inProgress",
+          title: "Ran command",
+          detail: "ls -la",
+          agentId: "child-1",
+        },
+      );
+      NodeAssert.equal(completed.payload.status, "completed");
+      NodeAssert.equal(completed.payload.agentId, "child-1");
+    }),
+  );
+
+  it.effect("carries child failure messages and spawn prompts onto task events", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      const eventsFiber = yield* Stream.runCollect(Stream.take(adapter.streamEvents, 3)).pipe(
+        Effect.forkChild,
+      );
+      const childEvent = (id: string, method: string, payload: Record<string, unknown>) => ({
+        id: asEventId(id),
+        kind: "notification" as const,
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        method,
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-1"),
+        payload: { agentThreadId: "child-1", agentPath: "/root/audit", ...payload },
+      });
+
+      yield* runtime.emit(
+        childEvent("evt-child-start", "collabAgent/started", {
+          prompt: `  ${"x".repeat(5000)}  `,
+        }),
+      );
+      yield* runtime.emit(
+        childEvent("evt-child-error", "collabAgent/statusChanged", {
+          status: { type: "systemError" },
+          errorMessage: " stream disconnected ",
+        }),
+      );
+      yield* runtime.emit(
+        childEvent("evt-child-turn-failed", "collabAgent/turnCompleted", {
+          turn: { status: "failed", error: { message: "context window exceeded" } },
+        }),
+      );
+
+      const events = Array.from(yield* Fiber.join(eventsFiber));
+      const [started, errored, turnFailed] = events;
+      NodeAssert.ok(started?.type === "task.started");
+      NodeAssert.equal(started.payload.prompt?.length, 4000);
+      NodeAssert.ok(started.payload.prompt?.startsWith("xxx"));
+      NodeAssert.ok(errored?.type === "task.updated");
+      NodeAssert.deepStrictEqual(
+        { status: errored.payload.status, error: errored.payload.error },
+        { status: "failed", error: "stream disconnected" },
+      );
+      NodeAssert.ok(turnFailed?.type === "task.updated");
+      NodeAssert.deepStrictEqual(
+        { status: turnFailed.payload.status, error: turnFailed.payload.error },
+        { status: "failed", error: "context window exceeded" },
+      );
+    }),
+  );
+
+  it.effect("reads a registered child's transcript and nothing else", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      runtime.readChildThreadImpl.mockImplementation((childThreadId: string) =>
+        Promise.resolve(
+          childThreadId === "child-1"
+            ? ({
+                threadId: "child-1",
+                turns: [
+                  {
+                    id: asTurnId("child-turn-1"),
+                    items: [
+                      {
+                        type: "userMessage",
+                        id: "u1",
+                        content: [{ type: "text", text: "Audit the repo" }],
+                      },
+                      { type: "reasoning", id: "r1", summary: ["Looking around"], content: [] },
+                      {
+                        type: "commandExecution",
+                        id: "c1",
+                        command: "ls",
+                        commandActions: [],
+                        cwd: "/repo",
+                        status: "failed",
+                        aggregatedOutput: "ls: denied",
+                      },
+                      {
+                        type: "mcpToolCall",
+                        id: "m1",
+                        server: "docs",
+                        tool: "search",
+                        arguments: { q: "effect" },
+                        status: "completed",
+                        result: { content: [{ type: "text", text: "found" }] },
+                      },
+                      { type: "agentMessage", id: "a1", text: "All good" },
+                      { type: "contextCompaction", id: "x1" },
+                    ],
+                  },
+                ],
+              } as CodexThreadSnapshot)
+            : null,
+        ),
+      );
+
+      const transcript = yield* adapter.readSubagentTranscript!(asThreadId("thread-1"), "child-1");
+      NodeAssert.deepStrictEqual(transcript, {
+        truncated: false,
+        entries: [
+          { kind: "user", text: "Audit the repo" },
+          { kind: "reasoning", text: "Looking around" },
+          {
+            kind: "tool",
+            text: "Ran command",
+            toolName: "command",
+            input: "ls",
+            output: "ls: denied",
+            status: "failed",
+          },
+          {
+            kind: "tool",
+            text: "docs · search",
+            toolName: "search",
+            input: '{"q":"effect"}',
+            output: "found",
+            status: "completed",
+          },
+          { kind: "assistant", text: "All good" },
+        ],
+      });
+      NodeAssert.equal(
+        yield* adapter.readSubagentTranscript!(asThreadId("thread-1"), "not-a-child"),
+        null,
       );
     }),
   );

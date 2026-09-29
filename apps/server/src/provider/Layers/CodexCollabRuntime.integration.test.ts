@@ -473,6 +473,131 @@ describe("CodexSessionRuntime collab integration", () => {
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 
+  it.effect("forwards child tool items, spawn prompts, errors, and child history reads", () =>
+    Effect.gen(function* () {
+      const childCommand = {
+        type: "commandExecution",
+        id: "call_child_ls",
+        command: "ls",
+        commandActions: [],
+        cwd: "/workspace/repo",
+        status: "inProgress",
+      };
+      const childTurnId = `${CHILD_A}-turn-1`;
+      const script = {
+        rootThreadId: ROOT,
+        notifications: [
+          capturedSpawnedThread(CHILD_A),
+          {
+            method: "item/started",
+            params: { threadId: CHILD_A, turnId: childTurnId, startedAtMs: 1, item: childCommand },
+          },
+          {
+            method: "item/completed",
+            params: {
+              threadId: CHILD_A,
+              turnId: childTurnId,
+              completedAtMs: 2,
+              item: { ...childCommand, status: "completed", aggregatedOutput: "README.md" },
+            },
+          },
+          // The spawn item completes after the child registered: its prompt
+          // must still reach the child's task.started.
+          {
+            method: "item/completed",
+            params: {
+              threadId: ROOT,
+              turnId: wireFixture.responses.turnStart.turn.id,
+              completedAtMs: 3,
+              item: {
+                type: "collabAgentToolCall",
+                id: "call_spawn_a",
+                tool: "spawnAgent",
+                status: "completed",
+                senderThreadId: ROOT,
+                receiverThreadIds: [CHILD_A],
+                prompt: "Check the model",
+                agentsStates: {},
+              },
+            },
+          },
+          {
+            method: "error",
+            params: {
+              threadId: CHILD_A,
+              turnId: childTurnId,
+              willRetry: false,
+              error: { message: "stream disconnected" },
+            },
+          },
+        ],
+        threadTurns: {
+          [CHILD_A]: [
+            {
+              ...wireFixture.responses.turnStart.turn,
+              id: childTurnId,
+              status: "completed",
+              items: [{ ...childCommand, status: "completed" }],
+            },
+          ],
+        },
+      };
+      // @effect-diagnostics-next-line preferSchemaOverJson:off
+      NodeFS.writeFileSync(scriptPath, JSON.stringify(script), "utf8");
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => NodeFS.rmSync(scriptPath, { force: true })),
+      );
+
+      const runtime = yield* makeCodexSessionRuntime({
+        threadId: ThreadId.make("thread-collab-child-items"),
+        binaryPath: peerPath,
+        cwd: NodeOS.tmpdir(),
+        runtimeMode: "full-access",
+        environment: { ...process.env, T3_CODEX_COLLAB_SCRIPT: scriptPath },
+      });
+      const eventsFiber = yield* runtime.events.pipe(
+        Stream.takeUntil((event) => event.method === "turn/completed"),
+        Stream.runCollect,
+        Effect.forkScoped,
+      );
+      yield* runtime.start();
+      yield* runtime.sendTurn({ input: "spawn one child" });
+      const events = Array.from(yield* Fiber.join(eventsFiber));
+
+      const childItems = events
+        .filter((event) => event.method === "collabAgent/item")
+        .map((event) => event.payload as Record<string, unknown>);
+      assert.deepEqual(
+        childItems.map((payload) => [payload.agentThreadId, payload.phase, payload.threadId]),
+        [
+          [CHILD_A, "started", CHILD_A],
+          [CHILD_A, "completed", CHILD_A],
+        ],
+      );
+      const starts = events
+        .filter((event) => event.method === "collabAgent/started")
+        .map((event) => (event.payload as { prompt?: string }).prompt);
+      assert.deepEqual(starts, [undefined, "Check the model"]);
+      const failure = events.find((event) => event.method === "collabAgent/statusChanged");
+      assert.deepInclude(failure?.payload, {
+        agentThreadId: CHILD_A,
+        status: { type: "systemError" },
+        errorMessage: "stream disconnected",
+      });
+
+      const history = yield* runtime.readChildThread(CHILD_A);
+      assert.deepEqual(
+        history?.turns.flatMap((turn) => turn.items.map((item) => item.id)),
+        ["call_child_ls"],
+      );
+      // Only registered children are readable: never the root or a stranger.
+      assert.isNull(yield* runtime.readChildThread(ROOT));
+      assert.isNull(yield* runtime.readChildThread("unrelated-thread"));
+
+      yield* runtime.close;
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
   // it.live: the runtime talks to a real child process; under it.effect's
   // TestClock the internal timers freeze and the join never completes.
   it.live("Stop interrupts every live child regardless of registration timing", () =>

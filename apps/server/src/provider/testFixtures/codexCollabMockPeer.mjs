@@ -162,6 +162,22 @@ rl.on("line", (line) => {
     write({ id, result: fixture.responses.threadStart });
     return;
   }
+  if (method === "thread/read" && script.threadTurns) {
+    // Opt-in history reads: `threadTurns` maps a thread id to its turns.
+    const threadId = message.params?.threadId;
+    write({
+      id,
+      result: {
+        thread: {
+          ...fixture.responses.threadStart.thread,
+          id: threadId,
+          sessionId: threadId,
+          turns: message.params?.includeTurns ? (script.threadTurns[threadId] ?? []) : [],
+        },
+      },
+    });
+    return;
+  }
   if (method === "turn/start") {
     const turnId = script.turnIds?.[turnStartCount];
     const turn = turnId

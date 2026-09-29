@@ -1,14 +1,21 @@
 /**
  * Cursor ACP subagents: maps Cursor's `subagent_spawned` / `subagent_state_update`
  * session updates and each child session's own updates onto `task.*` events,
- * so Cursor subagents fill the Agents panel like Claude's do.
+ * so Cursor subagents fill the Agents panel like Claude's do. A child's tool
+ * calls become `item.*` rows tagged with `agentId`, which clients show in that
+ * agent's detail view instead of the main timeline.
  *
  * Cursor only sends these after the client opts in with
  * `clientCapabilities._meta.subagents`. Every child runs in its own ACP
  * session; its updates carry the child's session id, never the root's.
  */
 import {
+  RuntimeItemId,
   RuntimeTaskId,
+  SUBAGENT_PROMPT_CHAR_LIMIT,
+  type ProviderRuntimeItemCompletedEvent,
+  type ProviderRuntimeItemStartedEvent,
+  type ProviderRuntimeItemUpdatedEvent,
   type ProviderRuntimeTaskCompletedEvent,
   type ProviderRuntimeTaskProgressEvent,
   type ProviderRuntimeTaskStartedEvent,
@@ -16,10 +23,36 @@ import {
 } from "@t3tools/contracts";
 import type * as EffectAcpSchema from "effect-acp/schema";
 
+import { boundSubagentPrompt } from "../subagentTranscript.ts";
+import {
+  type AcpToolCallState,
+  canonicalItemTypeFromAcpToolKind,
+  decideToolCallUpdateEmission,
+  mergeToolCallState,
+  parseSessionUpdateEvent,
+  toolCallProgressLength,
+} from "./AcpRuntimeModel.ts";
+
 type TaskEvent =
   | Pick<ProviderRuntimeTaskStartedEvent, "type" | "payload" | "turnId">
   | Pick<ProviderRuntimeTaskProgressEvent, "type" | "payload" | "turnId">
   | Pick<ProviderRuntimeTaskCompletedEvent, "type" | "payload" | "turnId">;
+
+type ItemEvent =
+  | Pick<ProviderRuntimeItemStartedEvent, "type" | "payload" | "turnId" | "itemId" | "raw">
+  | Pick<ProviderRuntimeItemUpdatedEvent, "type" | "payload" | "turnId" | "itemId" | "raw">
+  | Pick<ProviderRuntimeItemCompletedEvent, "type" | "payload" | "turnId" | "itemId" | "raw">;
+
+/** Merged state of one child tool call, with the same coalescing as root calls. */
+interface CursorChildToolCall {
+  readonly state: AcpToolCallState;
+  readonly lastEmittedDetailLength: number | undefined;
+  readonly skippedSinceEmit: number;
+  /** Cursor's own latest title, more specific than the rendered row title. */
+  readonly name: string | undefined;
+  /** Whether its `lastToolName` progress row went out. */
+  readonly reported: boolean;
+}
 
 interface CursorSubagentRun {
   payload: {
@@ -35,8 +68,10 @@ interface CursorSubagentRun {
   readonly turnId: TurnId | undefined;
   /** The child's latest reply segment; becomes the completion summary. */
   reply: string;
-  /** Child tool calls not yet reported, with their latest title. */
-  readonly pendingToolTitles: Map<string, string>;
+  /** The child's unfinished tool calls by ACP tool call id. */
+  readonly toolCalls: Map<string, CursorChildToolCall>;
+  /** Title of the child's latest failed tool call, the only failure text Cursor sends. */
+  lastFailedTool: string | undefined;
 }
 
 export interface CursorSubagentTracker {
@@ -105,6 +140,7 @@ export function cursorSubagentLifecycleEvents(input: {
 
   if (update.sessionUpdate === "subagent_spawned") {
     if (tracker.runs.has(childSessionId)) return [];
+    const prompt = boundSubagentPrompt(update.task, SUBAGENT_PROMPT_CHAR_LIMIT);
     const task = text(update.task) ?? "Subagent task";
     const role = text(update.name);
     const model = text(meta.model);
@@ -123,10 +159,17 @@ export function cursorSubagentLifecycleEvents(input: {
       },
       turnId,
       reply: "",
-      pendingToolTitles: new Map(),
+      toolCalls: new Map(),
+      lastFailedTool: undefined,
     };
     tracker.runs.set(childSessionId, run);
-    return [{ type: "task.started", payload: { ...run.payload }, ...attribution(run, turnId) }];
+    return [
+      {
+        type: "task.started",
+        payload: { ...run.payload, ...(prompt ? { prompt } : {}) },
+        ...attribution(run, turnId),
+      },
+    ];
   }
 
   if (update.sessionUpdate === "subagent_state_update") {
@@ -134,7 +177,11 @@ export function cursorSubagentLifecycleEvents(input: {
     const status = terminalStatus(text(update.state));
     if (!run || !status) return [];
     tracker.runs.delete(childSessionId);
-    const summary = text(run.reply);
+    // Cursor's state update carries no error text: a failed run is explained by
+    // its last reply, else by the tool call that failed.
+    const summary =
+      text(run.reply) ??
+      (status === "failed" && run.lastFailedTool ? `${run.lastFailedTool} failed` : undefined);
     return [
       {
         type: "task.completed",
@@ -172,15 +219,34 @@ export function cursorTaskToolEvents(input: {
   return [];
 }
 
+/** Child item ids are namespaced by session so they never collide with root items. */
+function childItemId(childSessionId: string, toolCallId: string) {
+  return RuntimeItemId.make(`cursor-subagent:${childSessionId}:${toolCallId}`);
+}
+
+function childItemStatus(status: AcpToolCallState["status"]) {
+  switch (status) {
+    case "pending":
+    case "inProgress":
+      return "inProgress";
+    case "completed":
+    case "failed":
+      return status;
+    default:
+      return undefined;
+  }
+}
+
 /**
- * Folds a child session's own updates into its run: each tool call becomes one
- * progress row once it starts, and the reply text is kept for the summary.
+ * Folds a child session's own updates into its run: each tool call becomes an
+ * agent-owned item row plus one progress row once it starts, and the reply
+ * text is kept for the summary.
  */
 export function cursorSubagentChildEvents(input: {
   readonly tracker: CursorSubagentTracker;
   readonly notification: EffectAcpSchema.SessionNotification;
   readonly turnId: TurnId | undefined;
-}): TaskEvent[] {
+}): Array<TaskEvent | ItemEvent> {
   const run = input.tracker.runs.get(input.notification.sessionId);
   if (!run) return [];
   const update = input.notification.update;
@@ -195,22 +261,64 @@ export function cursorSubagentChildEvents(input: {
     case "tool_call_update": {
       // A new tool call ends the reply segment before it; only the last one is the answer.
       if (update.sessionUpdate === "tool_call") run.reply = "";
-      const title = text(update.title) ?? run.pendingToolTitles.get(update.toolCallId);
-      if (update.sessionUpdate === "tool_call" || title) {
-        run.pendingToolTitles.set(update.toolCallId, title ?? "Tool call");
+      const parsed = parseSessionUpdateEvent(input.notification).events.find(
+        (event) => event._tag === "ToolCallUpdated",
+      );
+      if (!parsed) return [];
+      const tracked = run.toolCalls.get(update.toolCallId);
+      const state = mergeToolCallState(tracked?.state, parsed.toolCall);
+      const decision = decideToolCallUpdateEmission({
+        previous: tracked?.state,
+        next: state,
+        lastEmittedDetailLength: tracked?.lastEmittedDetailLength,
+        skippedSinceEmit: tracked?.skippedSinceEmit ?? 0,
+      });
+      const name = text(update.title) ?? tracked?.name;
+      const terminal = state.status === "completed" || state.status === "failed";
+      const report =
+        !tracked?.reported &&
+        (state.status === "inProgress" || terminal) &&
+        (tracked !== undefined || update.sessionUpdate === "tool_call" || name !== undefined);
+      if (terminal) {
+        run.toolCalls.delete(update.toolCallId);
+        if (state.status === "failed") run.lastFailedTool = name ?? "Tool call";
+      } else {
+        run.toolCalls.set(update.toolCallId, {
+          state,
+          lastEmittedDetailLength: decision.emit
+            ? toolCallProgressLength(state)
+            : tracked?.lastEmittedDetailLength,
+          skippedSinceEmit: decision.skippedSinceEmit,
+          name,
+          reported: tracked?.reported === true || report,
+        });
       }
-      const status = update.status;
-      if (status !== "in_progress" && status !== "completed" && status !== "failed") return [];
-      const lastToolName = run.pendingToolTitles.get(update.toolCallId);
-      if (lastToolName === undefined) return [];
-      run.pendingToolTitles.delete(update.toolCallId);
-      return [
-        {
-          type: "task.progress",
-          payload: { ...run.payload, lastToolName },
+      const events: Array<TaskEvent | ItemEvent> = [];
+      if (decision.emit) {
+        const status = childItemStatus(state.status);
+        events.push({
+          type: terminal ? "item.completed" : tracked ? "item.updated" : "item.started",
+          itemId: childItemId(input.notification.sessionId, state.toolCallId),
+          payload: {
+            itemType: canonicalItemTypeFromAcpToolKind(state.kind),
+            ...(status ? { status } : {}),
+            ...(state.title ? { title: state.title } : {}),
+            ...(state.detail ? { detail: state.detail } : {}),
+            ...(Object.keys(state.data).length > 0 ? { data: state.data } : {}),
+            agentId: run.payload.taskId,
+          },
+          raw: { source: "acp.jsonrpc", method: "session/update", payload: parsed.rawPayload },
           ...attribution(run, input.turnId),
-        },
-      ];
+        });
+      }
+      if (report) {
+        events.push({
+          type: "task.progress",
+          payload: { ...run.payload, lastToolName: name ?? "Tool call" },
+          ...attribution(run, input.turnId),
+        });
+      }
+      return events;
     }
     default:
       return [];

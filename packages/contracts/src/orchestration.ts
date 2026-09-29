@@ -35,6 +35,7 @@ import {
 export const ORCHESTRATION_WS_METHODS = {
   dispatchCommand: "orchestration.dispatchCommand",
   getWorkflowScript: "orchestration.getWorkflowScript",
+  getSubagentTranscript: "orchestration.getSubagentTranscript",
   getTurnDiff: "orchestration.getTurnDiff",
   getFullThreadDiff: "orchestration.getFullThreadDiff",
   searchThreads: "orchestration.searchThreads",
@@ -2364,6 +2365,61 @@ export class OrchestrationGetWorkflowScriptError extends Schema.TaggedError<Orch
   }
 }
 
+export const OrchestrationGetSubagentTranscriptInput = Schema.Struct({
+  threadId: ThreadId,
+  /** Agents-panel task id. The server resolves the provider source itself. */
+  taskId: TrimmedNonEmptyString,
+});
+export type OrchestrationGetSubagentTranscriptInput =
+  typeof OrchestrationGetSubagentTranscriptInput.Type;
+
+/**
+ * One normalized step of a subagent's own conversation. Providers map their
+ * native history into this shape; text fields are bounded by the adapter.
+ */
+export const SubagentTranscriptEntry = Schema.Struct({
+  kind: Schema.Literals(["user", "assistant", "reasoning", "tool"]),
+  /** Message text, or the tool's title for tool entries. */
+  text: Schema.String,
+  toolName: Schema.optional(Schema.String),
+  /** Tool input, such as a command or file path. */
+  input: Schema.optional(Schema.String),
+  /** Tool output or result text. */
+  output: Schema.optional(Schema.String),
+  status: Schema.optional(Schema.Literals(["running", "completed", "failed"])),
+  at: Schema.optional(IsoDateTime),
+});
+export type SubagentTranscriptEntry = typeof SubagentTranscriptEntry.Type;
+
+export const OrchestrationGetSubagentTranscriptResult = Schema.Struct({
+  taskId: TrimmedNonEmptyString,
+  entries: Schema.Array(SubagentTranscriptEntry),
+  /** True when older entries were dropped to respect the size limit. */
+  truncated: Schema.Boolean,
+});
+export type OrchestrationGetSubagentTranscriptResult =
+  typeof OrchestrationGetSubagentTranscriptResult.Type;
+
+const SUBAGENT_TRANSCRIPT_ERROR_MESSAGES = {
+  unsupported: "This provider does not expose subagent transcripts.",
+  "session-not-running": "Transcripts are available while the provider session is running.",
+  "not-found": "No transcript was found for this agent.",
+  "read-failed": "The transcript could not be read.",
+} as const;
+
+export class OrchestrationGetSubagentTranscriptError extends Schema.TaggedError<OrchestrationGetSubagentTranscriptError>()(
+  "OrchestrationGetSubagentTranscriptError",
+  {
+    reason: Schema.Literals(["unsupported", "session-not-running", "not-found", "read-failed"]),
+    taskId: Schema.String,
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {
+  override get message(): string {
+    return SUBAGENT_TRANSCRIPT_ERROR_MESSAGES[this.reason];
+  }
+}
+
 export const OrchestrationRpcSchemas = {
   dispatchCommand: {
     input: ClientOrchestrationCommand,
@@ -2372,6 +2428,10 @@ export const OrchestrationRpcSchemas = {
   getWorkflowScript: {
     input: OrchestrationGetWorkflowScriptInput,
     output: OrchestrationGetWorkflowScriptResult,
+  },
+  getSubagentTranscript: {
+    input: OrchestrationGetSubagentTranscriptInput,
+    output: OrchestrationGetSubagentTranscriptResult,
   },
   getTurnDiff: {
     input: OrchestrationGetTurnDiffInput,

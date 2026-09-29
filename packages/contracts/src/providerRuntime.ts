@@ -628,11 +628,17 @@ const taskAgentLinkageFields = {
 } as const;
 
 export const TaskAgentLinkage = Schema.Struct(taskAgentLinkageFields);
+
+/** Upper bound for TaskStartedPayload.prompt, applied by adapters. */
+export const SUBAGENT_PROMPT_CHAR_LIMIT = 4000;
 export type TaskAgentLinkage = typeof TaskAgentLinkage.Type;
 
 const TaskStartedPayload = Schema.Struct({
   taskId: RuntimeTaskId,
   description: Schema.optional(TrimmedNonEmptyStringSchema),
+  /** Instructions the agent was launched with. Adapters bound it to
+   * SUBAGENT_PROMPT_CHAR_LIMIT; only the start row carries it. */
+  prompt: Schema.optional(TrimmedNonEmptyStringSchema),
   ...taskAgentLinkageFields,
 });
 export type TaskStartedPayload = typeof TaskStartedPayload.Type;

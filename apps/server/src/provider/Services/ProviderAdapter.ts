@@ -25,6 +25,8 @@ import type {
 import type * as Effect from "effect/Effect";
 import type * as Stream from "effect/Stream";
 
+import type { SubagentTranscriptRead } from "../subagentTranscript.ts";
+
 export type ProviderSessionModelSwitchMode = "in-session" | "unsupported";
 
 /**
@@ -130,6 +132,17 @@ export interface ProviderAdapterShape<TError> {
    * Read a provider thread snapshot.
    */
   readonly readThread: (threadId: ThreadId) => Effect.Effect<ProviderThreadSnapshot, TError>;
+
+  /**
+   * Read one subagent's own conversation from the provider's native history.
+   * `taskId` is the task id the adapter emitted on task.* events. Resolves
+   * null when the provider has no transcript for that agent. Omitted when
+   * the provider cannot expose subagent transcripts.
+   */
+  readonly readSubagentTranscript?: (
+    threadId: ThreadId,
+    taskId: string,
+  ) => Effect.Effect<SubagentTranscriptRead | null, TError>;
 
   /**
    * Roll back a provider thread by N turns.
