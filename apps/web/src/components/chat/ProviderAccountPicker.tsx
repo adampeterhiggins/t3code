@@ -18,7 +18,8 @@ import { cn } from "~/lib/utils";
  * Composer control for switching accounts of the active provider.
  * Rendered when that provider has more than one enabled account. With fewer
  * than two switchable `accounts` (a thread locked to one account's home) it
- * becomes a static label so the thread still shows which account it runs on.
+ * becomes a plain label — icon and name, no control chrome — so the thread
+ * still shows which account it runs on.
  */
 export const ProviderAccountPicker = memo(function ProviderAccountPicker(props: {
   activeInstanceId: ProviderInstanceId;
@@ -67,13 +68,16 @@ export const ProviderAccountPicker = memo(function ProviderAccountPicker(props: 
       <Tooltip>
         <TooltipTrigger
           render={
-            <ComposerControl
-              render={<span />}
-              aria-label={`Account: ${triggerLabel}`}
+            <span
+              aria-label={`Account: ${triggerLabel}, locked for this thread`}
+              data-account-locked="true"
               data-chat-provider-account-picker="true"
-              size={size}
+              tabIndex={-1}
               className={cn(
-                "min-w-0 max-w-40 shrink cursor-default justify-start hover:bg-transparent",
+                "inline-flex min-w-0 max-w-40 shrink cursor-default items-center justify-start px-1 text-left font-normal select-none",
+                size === "xs"
+                  ? "gap-1 text-muted-foreground/70 text-sm sm:text-xs"
+                  : "gap-1.5 text-secondary-label sm:text-sm",
                 props.triggerClassName,
               )}
             />

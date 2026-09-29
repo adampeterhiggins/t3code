@@ -65,7 +65,8 @@ and [providers-opencode.md](./user/providers-opencode.md).
 
 When more than one enabled instance of a provider can serve the thread, the composer has an
 account picker separate from the model picker. The model list stays one row per provider and
-model. Codex only offers instances that share the thread's home. This is web and desktop.
+model. Codex only offers instances that share the thread's home. After the first message, an
+account that can no longer be switched stays visible as a label. This is web and desktop.
 
 Code: `apps/web/src/components/chat/ProviderAccountPicker.tsx` and
 `apps/web/src/components/chat/providerAccountSelection.ts`. User guide:
