@@ -2833,6 +2833,37 @@ describe("deriveMessagesTimelineRows", () => {
     });
   });
 
+  it("labels file tool calls relative to the thread workspace", () => {
+    const entry = {
+      id: "read",
+      createdAt: "2026-01-01T00:00:01Z",
+      label: "Tool call",
+      tone: "tool" as const,
+      itemType: "dynamic_tool_call" as const,
+    };
+    expect(
+      workEntryDisplayLabel({ ...entry, detail: "Read: /repo/wt/src/index.ts" }, "/repo/wt"),
+    ).toBe("Read: src/index.ts");
+    expect(
+      workEntryDisplayLabel(
+        { ...entry, toolTitle: "Read /repo/wt/AGENTS.md (1 - 20)" },
+        "/repo/wt",
+      ),
+    ).toBe("Read AGENTS.md (1 - 20)");
+    expect(
+      workEntryDisplayLabel(
+        {
+          id: "summary",
+          createdAt: "2026-01-01T00:00:02Z",
+          label: "Task",
+          tone: "info",
+          detail: "Summary of /repo/wt/src",
+        },
+        "/repo/wt",
+      ),
+    ).toBe("Summary of /repo/wt/src");
+  });
+
   it("renders one tool call directly after collapsing its lifecycle updates", () => {
     const turnId = TurnId.make("turn-1");
     const rows = deriveMessagesTimelineRows({

@@ -1,6 +1,9 @@
 import * as Option from "effect/Option";
 import { foldUserInputActivities } from "@t3tools/client-runtime/work-log/user-input";
-import { formatCommandForWorkspace } from "@t3tools/client-runtime/work-log/command-display";
+import {
+  formatCommandForWorkspace,
+  formatToolTextForWorkspace,
+} from "@t3tools/client-runtime/work-log/command-display";
 import * as Schema from "effect/Schema";
 import {
   requestKindFromRequestType,
@@ -2464,21 +2467,35 @@ function getThreadFeedActivityEntries(
   const cached = activityEntriesCache.get(activities);
   if (cached?.workspaceRoot === workspaceRoot) return cached.entries;
   const entries = deriveWorkLogEntries(activities).map((entry) =>
-    toThreadFeedActivityEntry(withWorkspaceCommand(entry, workspaceRoot)),
+    toThreadFeedActivityEntry(withWorkspacePaths(entry, workspaceRoot)),
   );
   activityEntriesCache.set(activities, { workspaceRoot, entries });
   return entries;
 }
 
-function withWorkspaceCommand(
+/** Shows commands and tool labels relative to the directory the thread runs in. */
+function withWorkspacePaths(
   entry: DerivedWorkLogEntry,
   workspaceRoot: string | null,
 ): DerivedWorkLogEntry {
-  if (!workspaceRoot || !entry.command) return entry;
-  const command = formatCommandForWorkspace(entry.command, workspaceRoot);
-  const rawCommand = entry.rawCommand && formatCommandForWorkspace(entry.rawCommand, workspaceRoot);
-  if (command === entry.command && rawCommand === entry.rawCommand) return entry;
-  return { ...entry, command, ...(rawCommand ? { rawCommand } : {}) };
+  if (!workspaceRoot) return entry;
+  if (entry.command) {
+    const command = formatCommandForWorkspace(entry.command, workspaceRoot);
+    const rawCommand =
+      entry.rawCommand && formatCommandForWorkspace(entry.rawCommand, workspaceRoot);
+    if (command === entry.command && rawCommand === entry.rawCommand) return entry;
+    return { ...entry, command, ...(rawCommand ? { rawCommand } : {}) };
+  }
+  // Without a command, detail is the tool's target rather than command output.
+  const detail = entry.detail && formatToolTextForWorkspace(entry, entry.detail, workspaceRoot);
+  const toolTitle =
+    entry.toolTitle && formatToolTextForWorkspace(entry, entry.toolTitle, workspaceRoot);
+  if (detail === entry.detail && toolTitle === entry.toolTitle) return entry;
+  return {
+    ...entry,
+    ...(detail ? { detail } : {}),
+    ...(toolTitle ? { toolTitle } : {}),
+  };
 }
 
 function toThreadFeedActivityEntry(

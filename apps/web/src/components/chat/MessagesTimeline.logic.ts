@@ -3,7 +3,10 @@ export { worktreeSetupAgentStarted } from "@t3tools/client-runtime/worktree-setu
 import * as Equal from "effect/Equal";
 import { shallow } from "zustand/vanilla/shallow";
 import { renderCodexDirectivesForCopy } from "@t3tools/client-runtime/codex-markdown-directives";
-import { formatCommandForWorkspace } from "@t3tools/client-runtime/work-log/command-display";
+import {
+  formatCommandForWorkspace,
+  formatToolTextForWorkspace,
+} from "@t3tools/client-runtime/work-log/command-display";
 import { commandProgramName } from "@t3tools/client-runtime/work-log/command-label";
 import {
   liveActivityToolStatus,
@@ -50,7 +53,11 @@ function singleToolCallLabel(entry: WorkLogEntry, workspaceRoot: string | undefi
   if (toolPresentation) return toolPresentation.displayName;
   const command = entry.command?.trim();
   if (command) return formatCommandForWorkspace(command, workspaceRoot);
-  const heading = normalizeCompactToolLabel(entry.toolTitle || entry.label);
+  const heading = formatToolTextForWorkspace(
+    entry,
+    normalizeCompactToolLabel(entry.toolTitle || entry.label),
+    workspaceRoot,
+  );
   return `${heading.charAt(0).toUpperCase()}${heading.slice(1)}`;
 }
 
@@ -58,7 +65,7 @@ export function workEntryDisplayLabel(entry: WorkLogEntry, workspaceRoot: string
   const toolPresentation = resolveWorkEntryToolPresentation(entry);
   if (toolPresentation) return toolPresentation.displayName;
   if (entry.command) return formatCommandForWorkspace(entry.command, workspaceRoot);
-  if (entry.detail) return entry.detail;
+  if (entry.detail) return formatToolTextForWorkspace(entry, entry.detail, workspaceRoot);
   const [firstPath] = entry.changedFiles ?? [];
   if (firstPath) {
     const path = formatWorkspaceRelativePath(firstPath, workspaceRoot);
@@ -66,7 +73,11 @@ export function workEntryDisplayLabel(entry: WorkLogEntry, workspaceRoot: string
       ? path
       : `${path} +${entry.changedFiles!.length - 1} more`;
   }
-  const heading = normalizeCompactToolLabel(entry.toolTitle || entry.label);
+  const heading = formatToolTextForWorkspace(
+    entry,
+    normalizeCompactToolLabel(entry.toolTitle || entry.label),
+    workspaceRoot,
+  );
   return `${heading.charAt(0).toUpperCase()}${heading.slice(1)}`;
 }
 

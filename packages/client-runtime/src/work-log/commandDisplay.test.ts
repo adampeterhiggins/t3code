@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { formatCommandForWorkspace } from "./commandDisplay.ts";
+import {
+  formatCommandForWorkspace,
+  formatPathsForWorkspace,
+  formatToolTextForWorkspace,
+} from "./commandDisplay.ts";
 
 const root = "/Users/me/.t3/worktrees/app/wt-1";
 
@@ -72,5 +76,30 @@ describe("formatCommandForWorkspace", () => {
         "C:\\Users\\me\\repo",
       ),
     ).toBe("Get-Content src\\a.ts");
+  });
+});
+
+describe("formatPathsForWorkspace", () => {
+  it.each([
+    [
+      `Read: ${root}/src/provider/RuntimeInstructions.ts`,
+      "Read: src/provider/RuntimeInstructions.ts",
+    ],
+    [`Read ${root}/docs/AGENTS.md (321 - 360)`, "Read docs/AGENTS.md (321 - 360)"],
+    [`${root}/packages/shared/src/serverSettings.ts`, "packages/shared/src/serverSettings.ts"],
+    [`Write: ${root}-other/notes.md`, `Write: ${root}-other/notes.md`],
+    ["Read: /tmp/notes.md", "Read: /tmp/notes.md"],
+  ])("%s", (text, expected) => {
+    expect(formatPathsForWorkspace(text, root)).toBe(expected);
+  });
+});
+
+describe("formatToolTextForWorkspace", () => {
+  it("rewrites tool rows and leaves prose rows alone", () => {
+    const text = `Everything below is under ${root}/apps`;
+    expect(formatToolTextForWorkspace({ itemType: "file_change" }, text, root)).toBe(
+      "Everything below is under apps",
+    );
+    expect(formatToolTextForWorkspace({}, text, root)).toBe(text);
   });
 });

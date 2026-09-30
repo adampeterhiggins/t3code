@@ -35,7 +35,10 @@ import {
   summarizeToolGroup,
   omitSupersededLifecycleMarkers,
 } from "@t3tools/client-runtime/work-log/presentation";
-import { formatCommandForWorkspace } from "@t3tools/client-runtime/work-log/command-display";
+import {
+  formatCommandForWorkspace,
+  formatToolTextForWorkspace,
+} from "@t3tools/client-runtime/work-log/command-display";
 import { resolveWorkGroupScrollAnchor } from "@t3tools/client-runtime/work-log/scroll-anchor";
 import {
   hasToolActivityData,
@@ -4537,7 +4540,10 @@ function buildToolCallExpandedBody(
   }
   const detail = workEntry.detail?.trim();
   if (detail !== viewedImagePath?.trim()) {
-    addBlock(detail);
+    // A command's detail is its output, shown as written.
+    addBlock(
+      detail && !command ? formatToolTextForWorkspace(workEntry, detail, workspaceRoot) : detail,
+    );
   }
   const viewedImagePaths = new Set(
     viewedImagePath

@@ -1174,6 +1174,33 @@ describe("buildThreadFeed", () => {
     });
   });
 
+  it("shows file tool targets relative to the thread workspace", () => {
+    const thread = makeThread({
+      id: ThreadId.make("thread-workspace-read"),
+      projectId: ProjectId.make("project-1"),
+      title: "Workspace read",
+      activities: [
+        makeActivity({
+          id: EventId.make("workspace-read"),
+          kind: "tool.completed",
+          tone: "tool",
+          summary: "Tool call",
+          createdAt: "2026-04-01T00:00:01.000Z",
+          turnId: TurnId.make("turn-1"),
+          payload: {
+            itemType: "dynamic_tool_call",
+            title: "Tool call",
+            detail: "Read: /repo/wt/src/index.ts",
+          },
+        }),
+      ],
+    });
+
+    const [group] = buildThreadFeed(thread, { workspaceRoot: "/repo/wt" });
+    if (!group || group.type !== "activity-group") throw new Error("expected an activity group");
+    expect(group.activities[0]?.detail).toBe("Read: src/index.ts");
+  });
+
   it("keeps viewed image metadata while collapsing a streamed Claude Read", () => {
     const turnId = TurnId.make("turn-image-read");
     const imagePath = `/workspace/${"nested folder/".repeat(16)}reference image.webp`;
