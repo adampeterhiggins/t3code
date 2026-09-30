@@ -186,15 +186,12 @@ export const threadTabsHttpApiLayer = HttpApiBuilder.group(
         Effect.fn("environment.threadTabs.handoff")(function* (args) {
           yield* annotateEnvironmentRequest(args.endpoint.name);
           yield* requireEnvironmentScope(AuthOrchestrationOperateScope);
-          const group = yield* groupFor(args.params.threadId).pipe(
-            Effect.catch((cause) => failEnvironmentInternal("internal_error", cause)),
-          );
-          if (!group) return yield* failEnvironmentNotFound("thread_not_found");
+          // Sources may be sibling tabs or any other thread in this environment, and the thread
+          // composing may still be a draft, so only self-reference is refused.
           const sourceIds = [...new Set(args.payload.sourceThreadIds)];
           const { beforeMessageId, afterMessageId } = args.payload;
           if (
             sourceIds.includes(args.params.threadId) ||
-            sourceIds.some((id) => !group.tabs.some((tab) => tab.threadId === id)) ||
             ((beforeMessageId !== undefined || afterMessageId !== undefined) &&
               sourceIds.length !== 1) ||
             (beforeMessageId !== undefined && afterMessageId !== undefined)
@@ -210,11 +207,10 @@ export const threadTabsHttpApiLayer = HttpApiBuilder.group(
             snapshots.getThreadDetailSnapshot(sourceId, window).pipe(
               Effect.catch((cause) => failEnvironmentInternal("internal_error", cause)),
               Effect.flatMap((detail) => {
-                const tab = group.tabs.find((entry) => entry.threadId === sourceId);
-                if (Option.isNone(detail) || !tab) return Effect.succeed("");
+                if (Option.isNone(detail)) return failEnvironmentInvalidRequest("invalid_command");
                 const { thread, snapshotSequence } = detail.value;
                 const chat = {
-                  title: tab.title,
+                  title: thread.title,
                   worktreePath: thread.worktreePath,
                   latestTurnState: thread.latestTurn?.state ?? null,
                   messages: thread.messages,

@@ -436,7 +436,7 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
           <ContextChip
             icon={<MessagesSquareIcon />}
             label={entry.record.label}
-            kindLabel="Chat tab summary"
+            kindLabel="Chat summary"
             details={<ThreadTabSummaryDetails summary={entry.record.summary} />}
             detailsMode={definition.capabilities.details}
             kind="thread-tab"

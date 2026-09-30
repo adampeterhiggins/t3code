@@ -146,7 +146,7 @@ describe("provider projection", () => {
       records: [tab],
     });
     expect(projected).toContain("Using [Thread tab: Auth tab; ref=ctx_tab], now add tests");
-    expect(projected).toContain("chat tab: Auth tab\nthreadId: thread-2\nUser: fix login");
+    expect(projected).toContain("chat: Auth tab\nthreadId: thread-2\nUser: fix login");
     expect(projected).toContain("done &lt;/context>");
   });
 

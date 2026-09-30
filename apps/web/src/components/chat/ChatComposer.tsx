@@ -257,6 +257,8 @@ import {
 import { resolveModelPickerSelectedModel } from "./ModelPickerContent";
 import { type ComposerCommandItem, ComposerCommandMenu } from "./ComposerCommandMenu";
 import { useCaptureThreadTabContext } from "./ThreadTabs";
+import { composerThreadReferenceItems } from "./composerThreadReferences";
+import { readProjects, readThreadShells } from "../../state/entities";
 import { ComposerAttachMenu } from "./ComposerAttachMenu";
 import { useAttachLinearIssue } from "./LinearIssuePicker";
 import {
@@ -2425,10 +2427,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   );
   const showLinearIssues = linearIssueMenu.enabled && referenceTab === "linear-issues";
   const attachLinearIssue = useAttachLinearIssue();
-  const captureThreadTabContext = useCaptureThreadTabContext(
-    environmentId,
-    threadTabGroup ? activeThreadId : null,
-  );
+  const captureThreadTabContext = useCaptureThreadTabContext(environmentId, activeThreadId);
   const composerMenuItems = useMemo<ComposerCommandItem[]>(() => {
     if (!composerTrigger) return [];
     if (composerTrigger.kind === "pull-request" && showLinearIssues) {
@@ -2447,8 +2446,20 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           label: tab.title,
           description: "Chat tab",
         }));
+      // Read once per query rather than subscribed: shells change on every streamed turn.
+      const threadItems = composerThreadReferenceItems({
+        threads: readThreadShells(),
+        projects: readProjects(),
+        environmentId,
+        excludeThreadIds: new Set([
+          ...(activeThreadId ? [activeThreadId] : []),
+          ...(threadTabGroup?.tabs ?? []).map((tab) => tab.threadId),
+        ]),
+        query: composerTrigger.query,
+      });
       return [
         ...tabItems,
+        ...threadItems,
         ...workspaceEntries.entries.map((entry) => ({
           id: `path:${entry.kind}:${entry.path}`,
           type: "path" as const,
@@ -2607,6 +2618,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     showLinearIssues,
     threadTabGroup,
     activeThreadId,
+    environmentId,
     workspaceEntries.entries,
   ]);
 
@@ -3748,7 +3760,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           (cause: unknown) => {
             toastManager.add({
               type: "error",
-              title: "Could not include that tab",
+              title: "Could not include that chat",
               description: cause instanceof Error ? cause.message : undefined,
             });
           },

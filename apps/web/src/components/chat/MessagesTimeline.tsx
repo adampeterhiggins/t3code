@@ -3945,7 +3945,7 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
         record.kind === "thread-tab" ? (
           <UserMessageContextPopover
             copyMarkdown={context.copyMarkdown}
-            accessibleLabel={`Chat tab summary, ${record.label}`}
+            accessibleLabel={`Chat summary, ${record.label}`}
             kind="thread-tab"
             icon={<MessagesSquareIcon />}
             label={record.label}

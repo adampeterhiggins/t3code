@@ -8115,12 +8115,10 @@ export default function ChatView(props: ChatViewProps) {
     const composerPreviewAnnotationsSnapshot = [...composerPreviewAnnotations];
     const composerReviewCommentsSnapshot: ReviewCommentContext[] = [...composerReviewComments];
     const referencedContextIds = new Set(collectInlineContextIds(promptForSend));
-    const composerThreadTabsSnapshot = isServerThread
-      ? readThreadTabContextRecords(threadIdForSend).filter((record) =>
-          referencedContextIds.has(record.contextId),
-        )
-      : [];
-    // Unlike chat tabs, Linear issues also attach to a draft thread's first message.
+    // Chat summaries and Linear issues also attach to a draft thread's first message.
+    const composerThreadTabsSnapshot = readThreadTabContextRecords(threadIdForSend).filter(
+      (record) => referencedContextIds.has(record.contextId),
+    );
     const composerLinearIssuesSnapshot = readLinearIssueContextRecords(threadIdForSend).filter(
       (record) => referencedContextIds.has(record.contextId),
     );
@@ -8821,7 +8819,7 @@ export default function ChatView(props: ChatViewProps) {
         failure = startResult;
       } else {
         turnStartSucceeded = true;
-        if (isServerThread) useThreadTabContextStore.getState().clear(threadIdForSend);
+        useThreadTabContextStore.getState().clear(threadIdForSend);
         useLinearIssueContextStore.getState().clear(threadIdForSend);
         // The turn is under way and will spend quota, so that thread's limits
         // snapshot is stale. Uploads may have outlasted a navigation, so only

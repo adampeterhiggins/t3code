@@ -165,9 +165,11 @@ is its own conversation and provider.
 - **Right panel.** Each tab keeps its own right-panel surfaces, but the panel stays open or closed
   as you move between tabs, including new, forked, and closed-into tabs
   (`useRightPanelFollowsTabSwitch` in `ThreadTabs.tsx`).
-- **Context from other tabs.** Type `@` in the composer and pick a sibling tab, or, before the
+- **Context from other chats.** Type `@` in the composer and pick a sibling tab, or, before the
   first message, click one under **Include context from** (hovering one previews its summary).
-  Either path inserts a `thread-tab`
+  The `@` menu also lists other unarchived threads in the environment, matched by title
+  (`apps/web/src/components/chat/composerThreadReferences.ts`), and works in a new draft thread
+  too. Either path inserts a `thread-tab`
   context chip at the caret, which can be moved like any other chip. The kind lives in
   `packages/contracts/src/composerContext.ts` and is formatted for providers in
   `packages/shared/src/composerContextReferences.ts`. The summary covers the recent conversation,
