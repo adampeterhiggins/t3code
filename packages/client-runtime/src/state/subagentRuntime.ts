@@ -714,7 +714,13 @@ export interface AgentPanelModel {
   readonly waitingCount: number;
   readonly idleCount: number;
   readonly settledCount: number;
+  /** settledCount split by outcome, for the footer's status dots. */
+  readonly completedCount: number;
+  readonly failedCount: number;
+  readonly stoppedCount: number;
   readonly totalTokens: number;
+  /** Summed usage breakdown; a field is absent when no agent reported it. */
+  readonly usageTotals: Omit<SubagentUsage, "totalTokens" | "durationMs">;
   readonly hasAgents: boolean;
   readonly liveCount: number;
 }
@@ -726,7 +732,11 @@ const EMPTY_PANEL_MODEL: AgentPanelModel = {
   waitingCount: 0,
   idleCount: 0,
   settledCount: 0,
+  completedCount: 0,
+  failedCount: 0,
+  stoppedCount: 0,
   totalTokens: 0,
+  usageTotals: {},
   hasAgents: false,
   liveCount: 0,
 };
@@ -842,7 +852,13 @@ export function deriveAgentPanelModel({
   let waitingCount = 0;
   let idleCount = 0;
   let settledCount = 0;
+  let completedCount = 0;
+  let failedCount = 0;
+  let stoppedCount = 0;
   let totalTokens = 0;
+  const usageTotals: {
+    -readonly [K in keyof AgentPanelModel["usageTotals"]]: AgentPanelModel["usageTotals"][K];
+  } = {};
   for (const agent of source) {
     // A workflow coordinator with members is a container for those members, not
     // work of its own: it reports running for the whole run and aggregates their
@@ -852,8 +868,23 @@ export function deriveAgentPanelModel({
     if (agent.status === "running" || agent.status === "pending") runningCount += 1;
     else if (agent.status === "waiting") waitingCount += 1;
     else if (agent.status === "idle") idleCount += 1;
-    else settledCount += 1;
+    else {
+      settledCount += 1;
+      if (agent.status === "completed") completedCount += 1;
+      else if (agent.status === "failed") failedCount += 1;
+      else stoppedCount += 1;
+    }
     totalTokens += agent.usage?.totalTokens ?? 0;
+    for (const key of [
+      "inputTokens",
+      "cachedInputTokens",
+      "outputTokens",
+      "reasoningOutputTokens",
+      "toolUses",
+    ] as const) {
+      const value = agent.usage?.[key];
+      if (value !== undefined) usageTotals[key] = (usageTotals[key] ?? 0) + value;
+    }
   }
 
   return {
@@ -867,7 +898,11 @@ export function deriveAgentPanelModel({
     waitingCount,
     idleCount,
     settledCount,
+    completedCount,
+    failedCount,
+    stoppedCount,
     totalTokens,
+    usageTotals,
     hasAgents: true,
     liveCount: runningCount + waitingCount,
   };

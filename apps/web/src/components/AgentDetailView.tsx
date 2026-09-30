@@ -10,11 +10,9 @@ import {
   DEFAULT_SUBAGENT_TOOL_LOG_VIEW,
   DEFAULT_SUBAGENT_TRANSCRIPT_VIEW,
   deriveSubagentToolLog,
-  subagentToolCallText,
   subagentTranscriptKindFilterFor,
   subagentTranscriptToolKind,
   type SubagentToolKind,
-  type SubagentToolLogEntry,
   type SubagentToolLogSort,
   type SubagentToolLogView,
   type SubagentTranscriptKindFilter,
@@ -22,7 +20,6 @@ import {
 } from "@t3tools/client-runtime/state/agentPanelView";
 import {
   formatSubagentModelLabel,
-  formatSubagentTokenCount,
   isActiveSubagentStatus,
   type RuntimeSubagent,
 } from "@t3tools/client-runtime/state/subagentRuntime";
@@ -34,36 +31,19 @@ import type {
 } from "@t3tools/contracts";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import {
-  ArrowDownIcon,
   ArrowDownUpIcon,
-  ArrowUpIcon,
   BrainIcon,
   ChevronDownIcon,
   ChevronLeft,
   ChevronRightIcon,
-  DatabaseIcon,
-  EyeIcon,
-  GlobeIcon,
   ListFilterIcon,
   MessageCircleIcon,
   RefreshCw,
   SearchIcon,
-  SquarePenIcon,
-  TerminalIcon,
   UserIcon,
-  WrenchIcon,
   XIcon,
-  type LucideIcon,
 } from "lucide-react";
-import {
-  memo,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type KeyboardEvent,
-  type ReactNode,
-} from "react";
+import { memo, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { useClientSettings } from "~/hooks/useSettings";
 import { cn } from "~/lib/utils";
@@ -71,7 +51,15 @@ import { orchestrationEnvironment } from "~/state/orchestration";
 import { useEnvironmentQuery } from "~/state/query";
 import { formatSecondsTimestamp } from "~/timestampFormat";
 
-import { AgentElapsed, elapsedBetween, STATUS_VISUALS, StatusDot } from "./AgentStatus";
+import {
+  AgentUsageFooter,
+  CallRow,
+  rowKeyToggle,
+  TOOL_KIND_ICONS,
+  TOOL_STATUS_LABELS,
+  ToolLogList,
+} from "./AgentActivityParts";
+import { AgentElapsed, STATUS_VISUALS, StatusDot } from "./AgentStatus";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import {
@@ -85,9 +73,7 @@ import {
   MenuSeparator,
   MenuTrigger,
 } from "./ui/menu";
-import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "./ui/preview-card";
 import { ScrollArea } from "./ui/scroll-area";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
 function Section(props: { title: string; children: ReactNode }) {
   return (
@@ -97,25 +83,6 @@ function Section(props: { title: string; children: ReactNode }) {
       </h3>
       {props.children}
     </section>
-  );
-}
-
-/** Mirrors the chat's expanded tool call body. */
-function ExpandedBody(props: { text: string; meta?: string; tone?: "default" | "error" }) {
-  return (
-    <div className="cursor-default rounded-md bg-muted/40 px-3 py-2">
-      <pre
-        className={cn(
-          "max-h-64 cursor-text overflow-auto whitespace-pre-wrap break-words font-mono text-2xs leading-relaxed select-text",
-          props.tone === "error" ? "text-destructive-foreground" : "text-secondary-label",
-        )}
-      >
-        {props.text}
-      </pre>
-      {props.meta ? (
-        <p className="mt-1.5 font-mono text-3xs text-muted-foreground">{props.meta}</p>
-      ) : null}
-    </div>
   );
 }
 
@@ -159,15 +126,6 @@ function ClampedText(props: { text: string; lines: 3 | 4; tone?: "default" | "er
   );
 }
 
-const TOOL_KIND_ICONS: Record<SubagentToolKind, LucideIcon> = {
-  command: TerminalIcon,
-  read: EyeIcon,
-  edit: SquarePenIcon,
-  search: SearchIcon,
-  web: GlobeIcon,
-  other: WrenchIcon,
-};
-
 const TOOL_KIND_LABELS: Record<SubagentToolKind, string> = {
   command: "Commands",
   read: "Reads",
@@ -175,12 +133,6 @@ const TOOL_KIND_LABELS: Record<SubagentToolKind, string> = {
   search: "Searches",
   web: "Web",
   other: "Other",
-};
-
-const TOOL_STATUS_LABELS: Record<SubagentToolLogEntry["status"], string> = {
-  running: "Running",
-  completed: "Completed",
-  failed: "Failed",
 };
 
 const TOOL_SORT_LABELS: Record<SubagentToolLogSort, string> = {
@@ -199,106 +151,6 @@ const TRANSCRIPT_SORT_LABELS: Record<SubagentTranscriptView["sort"], string> = {
   oldest: "Oldest first",
   newest: "Newest first",
 };
-
-function rowKeyToggle(toggle: () => void) {
-  return (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      toggle();
-    }
-  };
-}
-
-/**
- * One call, shaped like the chat's tool row. Hovering previews the whole
- * call; clicking pins it open inline.
- */
-const CallRow = memo(function CallRow(props: {
-  icon: LucideIcon;
-  title: string;
-  detail: string | null;
-  status: SubagentToolLogEntry["status"];
-  time: string | null;
-  duration: string | null;
-  body: string;
-  meta: string;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const Icon = props.icon;
-  const failed = props.status === "failed";
-  const toggle = () => setExpanded(!expanded);
-  const line = (
-    <div
-      role="button"
-      tabIndex={0}
-      aria-expanded={expanded}
-      aria-label={failed ? `${props.title}, failed` : props.title}
-      onClick={toggle}
-      onKeyDown={rowKeyToggle(toggle)}
-      className="flex cursor-pointer select-none items-center gap-1.5 rounded-md px-0.5 text-xs leading-relaxed hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
-    >
-      <span className="flex size-5 shrink-0 items-center justify-center text-icon-muted">
-        <Icon aria-hidden className="size-3.5" />
-      </span>
-      <span
-        className={cn(
-          "min-w-0 truncate",
-          props.detail ? "shrink-0 max-w-[60%]" : "flex-1",
-          props.status === "running" ? "text-foreground" : "text-secondary-label",
-        )}
-      >
-        {props.title}
-      </span>
-      {props.detail ? (
-        <span className="min-w-0 flex-1 truncate font-mono text-2xs text-muted-foreground">
-          {props.detail}
-        </span>
-      ) : null}
-      {failed ? <XIcon aria-hidden className="size-3 shrink-0 text-destructive" /> : null}
-      <span className="flex shrink-0 gap-2 ps-1 font-mono text-2xs tabular-nums">
-        {props.time ? <span className="text-muted-foreground">{props.time}</span> : null}
-        {props.duration !== null ? (
-          <span className="min-w-9 text-right text-muted-foreground/70">{props.duration}</span>
-        ) : null}
-      </span>
-      <ChevronRightIcon
-        aria-hidden
-        className={cn(
-          "size-3 shrink-0 text-icon-muted opacity-70 transition-transform duration-200",
-          expanded && "rotate-90",
-        )}
-      />
-    </div>
-  );
-  return (
-    <li className={cn("flex flex-col", expanded && "mb-1")}>
-      {expanded ? (
-        line
-      ) : (
-        <PreviewCard>
-          <PreviewCardTrigger render={line} delay={350} closeDelay={80} />
-          <PreviewCardPopup side="left" align="start" className="w-md max-w-[calc(100vw-2rem)]">
-            <div className="flex flex-col gap-1.5 p-3">
-              <p className="flex items-center gap-1.5 text-xs text-secondary-label">
-                <Icon aria-hidden className="size-3.5 text-icon-muted" />
-                {props.title}
-              </p>
-              <pre className="max-h-[50vh] overflow-hidden whitespace-pre-wrap break-words font-mono text-2xs leading-relaxed">
-                {props.body}
-              </pre>
-              <p className="font-mono text-3xs text-muted-foreground">{props.meta}</p>
-            </div>
-          </PreviewCardPopup>
-        </PreviewCard>
-      )}
-      {expanded ? (
-        <div className="ms-6.5 mt-1">
-          <ExpandedBody text={props.body} meta={props.meta} tone={failed ? "error" : "default"} />
-        </div>
-      ) : null}
-    </li>
-  );
-});
 
 /** Prompt, agent and thinking text in the transcript: clamped, click to open. */
 const MessageRow = memo(function MessageRow(props: {
@@ -348,37 +200,6 @@ const MessageRow = memo(function MessageRow(props: {
     </li>
   );
 });
-
-function durationLabel(entry: SubagentToolLogEntry): string {
-  return entry.completedAt ? elapsedBetween(entry.startedAt, entry.completedAt) : "…";
-}
-
-function ToolLogList(props: {
-  entries: ReadonlyArray<SubagentToolLogEntry>;
-  timestampFormat: TimestampFormat;
-}) {
-  return (
-    <ol className="flex flex-col gap-px">
-      {props.entries.map((entry) => {
-        const time = formatSecondsTimestamp(entry.startedAt, props.timestampFormat);
-        const duration = durationLabel(entry);
-        return (
-          <CallRow
-            key={entry.id}
-            icon={TOOL_KIND_ICONS[entry.kind]}
-            title={entry.title}
-            detail={entry.detail ?? entry.command}
-            status={entry.status}
-            time={time}
-            duration={duration}
-            body={subagentToolCallText(entry)}
-            meta={[time, TOOL_STATUS_LABELS[entry.status].toLowerCase(), duration].join(" · ")}
-          />
-        );
-      })}
-    </ol>
-  );
-}
 
 function TranscriptList(props: {
   rows: ReturnType<typeof applySubagentTranscriptView>;
@@ -508,6 +329,7 @@ type ActivityMode = "tools" | "transcript";
 
 function ActivitySection(props: {
   agent: RuntimeSubagent;
+  initialToolCallId: string | null;
   activities: ReadonlyArray<OrchestrationThreadActivity>;
   environmentId: EnvironmentId | null;
   threadId: ThreadId | null;
@@ -601,7 +423,11 @@ function ActivitySection(props: {
       ) : visibleTools.length === 0 ? (
         <p className="px-0.5 text-xs text-muted-foreground">No tool calls match.</p>
       ) : (
-        <ToolLogList entries={visibleTools} timestampFormat={props.timestampFormat} />
+        <ToolLogList
+          entries={visibleTools}
+          timestampFormat={props.timestampFormat}
+          expandedId={props.initialToolCallId}
+        />
       );
   } else if (transcriptQuery.data) {
     body =
@@ -762,106 +588,13 @@ function ActivitySection(props: {
   );
 }
 
-function UsageStat(props: { icon: LucideIcon; label: string; value: string }) {
-  const Icon = props.icon;
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={<span tabIndex={0} className="flex shrink-0 items-center gap-1 outline-none" />}
-      >
-        <Icon aria-hidden className="size-3 text-icon-muted" />
-        <span className="text-foreground">{props.value}</span>
-      </TooltipTrigger>
-      <TooltipPopup>{props.label}</TooltipPopup>
-    </Tooltip>
-  );
-}
-
-/** Token usage as icon + number; each label lives in its tooltip. */
-function UsageFooter({ agent }: { agent: RuntimeSubagent }) {
-  const usage = agent.usage;
-  const breakdown: Array<[string, string]> = [];
-  if (usage) {
-    breakdown.push(["Total", formatSubagentTokenCount(usage.totalTokens)]);
-    if (usage.inputTokens !== undefined)
-      breakdown.push(["Input", formatSubagentTokenCount(usage.inputTokens)]);
-    if (usage.cachedInputTokens !== undefined)
-      breakdown.push(["Cached", formatSubagentTokenCount(usage.cachedInputTokens)]);
-    if (usage.outputTokens !== undefined)
-      breakdown.push(["Output", formatSubagentTokenCount(usage.outputTokens)]);
-    if (usage.reasoningOutputTokens !== undefined)
-      breakdown.push(["Reasoning", formatSubagentTokenCount(usage.reasoningOutputTokens)]);
-    if (usage.toolUses !== undefined) breakdown.push(["Tool calls", String(usage.toolUses)]);
-  }
-  if (agent.activationCount > 1) breakdown.push(["Runs", String(agent.activationCount)]);
-  if (agent.attempt !== null && agent.attempt > 1)
-    breakdown.push(["Attempt", String(agent.attempt)]);
-  if (!usage && breakdown.length === 0) return null;
-
-  const cachedShare =
-    usage?.cachedInputTokens !== undefined && usage.inputTokens
-      ? Math.round((usage.cachedInputTokens / usage.inputTokens) * 100)
-      : null;
-  const exact = (value: number) => value.toLocaleString();
-  return (
-    <footer className="flex items-center justify-between gap-3 border-t border-border/60 px-3 py-1.5 font-mono text-2xs tabular-nums text-muted-foreground">
-      <span className="flex min-w-0 items-center gap-3 overflow-hidden">
-        {usage?.inputTokens !== undefined ? (
-          <UsageStat
-            icon={ArrowDownIcon}
-            label={`Input tokens · ${exact(usage.inputTokens)}`}
-            value={formatSubagentTokenCount(usage.inputTokens)}
-          />
-        ) : null}
-        {cachedShare !== null && usage?.cachedInputTokens !== undefined ? (
-          <UsageStat
-            icon={DatabaseIcon}
-            label={`Cached input · ${exact(usage.cachedInputTokens)} (${cachedShare}% of input)`}
-            value={`${cachedShare}%`}
-          />
-        ) : null}
-        {usage?.outputTokens !== undefined ? (
-          <UsageStat
-            icon={ArrowUpIcon}
-            label={`Output tokens · ${exact(usage.outputTokens)}`}
-            value={formatSubagentTokenCount(usage.outputTokens)}
-          />
-        ) : null}
-        {usage?.reasoningOutputTokens !== undefined ? (
-          <UsageStat
-            icon={BrainIcon}
-            label={`Reasoning tokens · ${exact(usage.reasoningOutputTokens)}`}
-            value={formatSubagentTokenCount(usage.reasoningOutputTokens)}
-          />
-        ) : null}
-      </span>
-      <Tooltip>
-        <TooltipTrigger render={<span tabIndex={0} className="shrink-0 outline-none" />}>
-          Σ{" "}
-          <span className="text-foreground">
-            {usage ? formatSubagentTokenCount(usage.totalTokens) : "—"}
-          </span>
-        </TooltipTrigger>
-        <TooltipPopup side="top" align="end">
-          <dl className="grid grid-cols-[auto_auto] gap-x-4 gap-y-0.5 font-mono text-2xs tabular-nums">
-            {breakdown.map(([label, value]) => (
-              <div key={label} className="contents">
-                <dt className="text-muted-foreground">{label}</dt>
-                <dd className="text-right">{value}</dd>
-              </div>
-            ))}
-          </dl>
-        </TooltipPopup>
-      </Tooltip>
-    </footer>
-  );
-}
-
 export function AgentDetailView(props: {
   agent: RuntimeSubagent;
   activities: ReadonlyArray<OrchestrationThreadActivity>;
   environmentId: EnvironmentId | null;
   threadId: ThreadId | null;
+  /** Opens with this tool call expanded and in view (from the agent preview). */
+  initialToolCallId?: string | null;
   onBack: () => void;
 }) {
   const { agent } = props;
@@ -914,6 +647,7 @@ export function AgentDetailView(props: {
           ) : null}
           <ActivitySection
             agent={agent}
+            initialToolCallId={props.initialToolCallId ?? null}
             activities={props.activities}
             environmentId={props.environmentId}
             threadId={props.threadId}
@@ -940,7 +674,7 @@ export function AgentDetailView(props: {
           ) : null}
         </div>
       </ScrollArea>
-      <UsageFooter agent={agent} />
+      <AgentUsageFooter agent={agent} />
     </div>
   );
 }

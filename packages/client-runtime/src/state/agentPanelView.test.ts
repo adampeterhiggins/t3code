@@ -9,6 +9,7 @@ import {
   DEFAULT_SUBAGENT_TOOL_LOG_VIEW,
   DEFAULT_SUBAGENT_TRANSCRIPT_VIEW,
   deriveSubagentToolLog,
+  deriveSubagentToolLogs,
   subagentToolCallText,
   subagentTranscriptToolKind,
   type AgentPanelView,
@@ -268,6 +269,53 @@ describe("applySubagentTranscriptView", () => {
       query: "parse.ts",
     });
     expect(byOutput.map((row) => row.index)).toEqual([2]);
+  });
+});
+
+describe("deriveSubagentToolLogs", () => {
+  it("groups every agent's calls in one pass and ignores untagged ones", () => {
+    const logs = deriveSubagentToolLogs([
+      activity("tool.started", { agentId: "a", toolCallId: "t1", title: "Read file" }),
+      activity("tool.started", { agentId: "b", toolCallId: "t2", title: "Ran command" }),
+      activity("tool.started", { toolCallId: "t3", title: "Main thread" }),
+      activity("tool.started", { agentId: "a", toolCallId: "t4", title: "Edit" }),
+    ]);
+    expect([...logs.keys()]).toEqual(["a", "b"]);
+    expect(logs.get("a")?.map((entry) => entry.id)).toEqual(["t1", "t4"]);
+  });
+});
+
+describe("deriveAgentPanelModel footer totals", () => {
+  it("splits settled agents by outcome and sums reported usage", () => {
+    const panel = model([
+      start("a"),
+      activity("task.completed", {
+        taskId: "a",
+        status: "completed",
+        typedUsage: { totalTokens: 100, inputTokens: 80, cachedInputTokens: 40, outputTokens: 20 },
+      }),
+      start("b"),
+      activity("task.completed", {
+        taskId: "b",
+        status: "failed",
+        typedUsage: { totalTokens: 50, inputTokens: 30 },
+      }),
+      start("c"),
+      complete("c", 10, "stopped"),
+      start("d"),
+    ]);
+    expect([
+      panel.completedCount,
+      panel.failedCount,
+      panel.stoppedCount,
+      panel.runningCount,
+    ]).toEqual([1, 1, 1, 1]);
+    expect(panel.totalTokens).toBe(160);
+    expect(panel.usageTotals).toEqual({
+      inputTokens: 110,
+      cachedInputTokens: 40,
+      outputTokens: 20,
+    });
   });
 });
 

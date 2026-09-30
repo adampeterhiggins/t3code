@@ -252,20 +252,25 @@ function commandFrom(data: unknown): string | null {
 }
 
 /**
- * The agent's own tool calls, oldest first. Providers tag a subagent's tool
- * activities with `agentId` (the agent's task id); the chat hides them and
- * this log is where they surface. One entry per tool call; later rows for the
- * same call update it in place.
+ * Every agent's own tool calls in one pass, each oldest first. Providers tag a
+ * subagent's tool activities with `agentId` (the agent's task id); the chat
+ * hides them and the Agents panel is where they surface. One entry per tool
+ * call; later rows for the same call update it in place.
  */
-export function deriveSubagentToolLog(
+export function deriveSubagentToolLogs(
   activities: ReadonlyArray<OrchestrationThreadActivity>,
-  agentId: string,
-): ReadonlyArray<SubagentToolLogEntry> {
-  const entries = new Map<string, SubagentToolLogEntry>();
+): ReadonlyMap<string, ReadonlyArray<SubagentToolLogEntry>> {
+  const byAgent = new Map<string, Map<string, SubagentToolLogEntry>>();
   for (const activity of activities) {
     if (!TOOL_KINDS.has(activity.kind)) continue;
     const payload = asRecord(activity.payload);
-    if (payload === null || payload.agentId !== agentId) continue;
+    const agentId = asText(payload?.agentId);
+    if (payload === null || agentId === null) continue;
+    let entries = byAgent.get(agentId);
+    if (!entries) {
+      entries = new Map();
+      byAgent.set(agentId, entries);
+    }
     const id = asText(payload.toolCallId) ?? activity.id;
     const existing = entries.get(id);
     const nativeStatus = asText(payload.status);
@@ -289,7 +294,17 @@ export function deriveSubagentToolLog(
       completedAt: existing?.completedAt ?? (status === "running" ? null : activity.createdAt),
     });
   }
-  return Array.from(entries.values());
+  return new Map(
+    Array.from(byAgent, ([agentId, entries]) => [agentId, Array.from(entries.values())]),
+  );
+}
+
+/** One agent's tool calls, oldest first. See deriveSubagentToolLogs. */
+export function deriveSubagentToolLog(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+  agentId: string,
+): ReadonlyArray<SubagentToolLogEntry> {
+  return deriveSubagentToolLogs(activities).get(agentId) ?? [];
 }
 
 /** Everything a call recorded, deduplicated, for previews, expansion and search. */
