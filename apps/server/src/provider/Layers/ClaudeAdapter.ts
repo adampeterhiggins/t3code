@@ -1509,6 +1509,12 @@ function summarizeToolRequest(toolName: string, input: Record<string, unknown>):
     return `${toolName}: ${command.trim().slice(0, 400)}`;
   }
 
+  // File, search and fetch tools read best as their target, not their JSON.
+  for (const key of ["file_path", "notebook_path", "path", "pattern", "url"]) {
+    const target = trimmedString(input[key]);
+    if (target) return `${toolName}: ${target.slice(0, 400)}`;
+  }
+
   // For agent/subagent tools, prefer the human-readable description or prompt
   // over raw JSON. The structured subagent_type is carried separately on the
   // task.* payloads (role) — the label is display-only.
@@ -2960,6 +2966,81 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     yield* updateResumeCursor(context);
   });
 
+  /** Registers a tool_use block as in flight and emits its item.started. */
+  const startInFlightTool = Effect.fn("startInFlightTool")(function* (
+    context: ClaudeSessionContext,
+    input: {
+      readonly index: number;
+      readonly block: { readonly id: string; readonly name: string; readonly input: unknown };
+      readonly parentToolUseId: string | undefined;
+      readonly rawMethod: string;
+      readonly rawPayload: unknown;
+    },
+  ) {
+    const { index, block, parentToolUseId } = input;
+    const toolName = block.name;
+    const toolInput =
+      typeof block.input === "object" && block.input !== null
+        ? (block.input as Record<string, unknown>)
+        : {};
+    const itemType = classifyToolItemType(toolName, toolInput);
+    const itemId = block.id;
+    const detail = summarizeToolRequest(toolName, toolInput);
+    const inputFingerprint =
+      Object.keys(toolInput).length > 0 ? toolInputFingerprint(toolInput) : undefined;
+
+    // Attribute tools that ran inside a subagent to their owning agent so
+    // clients can re-home them out of the main timeline (quiet-timeline
+    // guarantee): the SDK tags subagent tool_use blocks with the spawning
+    // Task tool's id as parent_tool_use_id.
+    const owningAgentId = agentIdForParentToolUse(context.taskAgents, parentToolUseId);
+
+    const tool: ToolInFlight = {
+      itemId,
+      itemType,
+      toolName,
+      title: titleForTool(itemType),
+      detail,
+      input: toolInput,
+      partialInputJson: "",
+      ...(inputFingerprint ? { lastEmittedInputFingerprint: inputFingerprint } : {}),
+      ...(owningAgentId ? { agentId: owningAgentId } : {}),
+      ...(parentToolUseId ? { parentToolUseId } : {}),
+    };
+    context.inFlightTools.set(index, tool);
+
+    const stamp = yield* makeEventStamp();
+    yield* offerRuntimeEvent({
+      type: "item.started",
+      eventId: stamp.eventId,
+      provider: PROVIDER,
+      createdAt: stamp.createdAt,
+      threadId: context.session.threadId,
+      ...(context.turnState ? { turnId: asCanonicalTurnId(context.turnState.turnId) } : {}),
+      itemId: asRuntimeItemId(tool.itemId),
+      payload: {
+        itemType: tool.itemType,
+        status: "inProgress",
+        title: tool.title,
+        ...(tool.detail ? { detail: tool.detail } : {}),
+        ...(tool.agentId ? { agentId: tool.agentId } : {}),
+        ...(tool.parentToolUseId ? { parentToolUseId: tool.parentToolUseId } : {}),
+        data: {
+          toolName: tool.toolName,
+          input: toolInput,
+        },
+      },
+      providerRefs: nativeProviderRefs(context, {
+        providerItemId: tool.itemId,
+      }),
+      raw: {
+        source: "claude.sdk.message",
+        method: input.rawMethod,
+        payload: input.rawPayload,
+      },
+    });
+  });
+
   const handleStreamEvent = Effect.fn("handleStreamEvent")(function* (
     context: ClaudeSessionContext,
     message: SDKMessage,
@@ -3191,68 +3272,14 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         return;
       }
 
-      const toolName = block.name;
-      const toolInput =
-        typeof block.input === "object" && block.input !== null
-          ? (block.input as Record<string, unknown>)
-          : {};
-      const itemType = classifyToolItemType(toolName, toolInput);
-      const itemId = block.id;
-      const detail = summarizeToolRequest(toolName, toolInput);
-      const inputFingerprint =
-        Object.keys(toolInput).length > 0 ? toolInputFingerprint(toolInput) : undefined;
-
-      // Attribute tools that ran inside a subagent to their owning agent so
-      // clients can re-home them out of the main timeline (quiet-timeline
-      // guarantee): the SDK forwards subagent tool_use blocks tagged with the
-      // spawning Task tool's id as parent_tool_use_id.
       const parentToolUseId =
         (message as { parent_tool_use_id?: string | null }).parent_tool_use_id ?? undefined;
-      const owningAgentId = agentIdForParentToolUse(context.taskAgents, parentToolUseId);
-
-      const tool: ToolInFlight = {
-        itemId,
-        itemType,
-        toolName,
-        title: titleForTool(itemType),
-        detail,
-        input: toolInput,
-        partialInputJson: "",
-        ...(inputFingerprint ? { lastEmittedInputFingerprint: inputFingerprint } : {}),
-        ...(owningAgentId ? { agentId: owningAgentId } : {}),
-        ...(parentToolUseId ? { parentToolUseId } : {}),
-      };
-      context.inFlightTools.set(index, tool);
-
-      const stamp = yield* makeEventStamp();
-      yield* offerRuntimeEvent({
-        type: "item.started",
-        eventId: stamp.eventId,
-        provider: PROVIDER,
-        createdAt: stamp.createdAt,
-        threadId: context.session.threadId,
-        ...(context.turnState ? { turnId: asCanonicalTurnId(context.turnState.turnId) } : {}),
-        itemId: asRuntimeItemId(tool.itemId),
-        payload: {
-          itemType: tool.itemType,
-          status: "inProgress",
-          title: tool.title,
-          ...(tool.detail ? { detail: tool.detail } : {}),
-          ...(tool.agentId ? { agentId: tool.agentId } : {}),
-          ...(tool.parentToolUseId ? { parentToolUseId: tool.parentToolUseId } : {}),
-          data: {
-            toolName: tool.toolName,
-            input: toolInput,
-          },
-        },
-        providerRefs: nativeProviderRefs(context, {
-          providerItemId: tool.itemId,
-        }),
-        raw: {
-          source: "claude.sdk.message",
-          method: "claude/stream_event/content_block_start",
-          payload: message,
-        },
+      yield* startInFlightTool(context, {
+        index,
+        block,
+        parentToolUseId,
+        rawMethod: "claude/stream_event/content_block_start",
+        rawPayload: message,
       });
       return;
     }
@@ -3466,6 +3493,33 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
             snapshotModel,
           );
         }
+      }
+      // The SDK forwards subagent tool calls as complete assistant snapshots
+      // rather than stream events, so register any tool_use it has not already
+      // streamed. The matching user tool_result then completes it.
+      const content: unknown = message.message.content;
+      for (const block of Array.isArray(content) ? content : []) {
+        if (
+          !block ||
+          typeof block !== "object" ||
+          (block.type !== "tool_use" &&
+            block.type !== "server_tool_use" &&
+            block.type !== "mcp_tool_use") ||
+          typeof block.id !== "string" ||
+          typeof block.name !== "string" ||
+          Array.from(context.inFlightTools.values()).some((tool) => tool.itemId === block.id)
+        ) {
+          continue;
+        }
+        // Stream indexes are non-negative; snapshot tools take unused negative keys.
+        const index = Math.min(0, ...context.inFlightTools.keys()) - 1;
+        yield* startInFlightTool(context, {
+          index,
+          block,
+          parentToolUseId: assistantParentToolUseId,
+          rawMethod: "claude/assistant",
+          rawPayload: message,
+        });
       }
       context.lastAssistantUuid = message.uuid;
       yield* updateResumeCursor(context);
