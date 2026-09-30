@@ -47,6 +47,7 @@ import {
   ArrowLeftIcon,
   ChartNoAxesColumnIcon,
   CornerLeftUpIcon,
+  DownloadIcon,
   FileSearchIcon,
   FolderIcon,
   FolderPlusIcon,
@@ -173,6 +174,7 @@ import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
 import { ProjectFavicon } from "./ProjectFavicon";
 import { ProjectFilePicker } from "./files/ProjectFilePicker";
 import { openLinkPullRequestDialog } from "./pullRequest/LinkPullRequestDialog";
+import { openTranscriptExportDialog } from "./TranscriptExportDialog";
 import { ProjectContentSearchDialog } from "./search/ProjectContentSearchDialog";
 import { toggleThemeEditorForTheme } from "./settings/themeEditorStore";
 import { searchSettings, SETTINGS_SECTION_LABELS } from "./settings/settingsSearch";
@@ -1825,6 +1827,20 @@ function OpenCommandPaletteDialog(props: {
       icon: <LinkIcon className={ITEM_ICON_CLASS} />,
       shortcutCommand: "thread.copyReference",
       run: copyActiveThreadReference,
+    });
+  }
+
+  if (activeThread !== null) {
+    const threadRef = scopeThreadRef(activeThread.environmentId, activeThread.id);
+    actionItems.push({
+      kind: "action",
+      value: "action:export-transcript",
+      searchTerms: ["export", "transcript", "markdown", "save", "copy", "conversation"],
+      title: "Export transcript",
+      icon: <DownloadIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        openTranscriptExportDialog(threadRef);
+      },
     });
   }
 

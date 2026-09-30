@@ -36,6 +36,19 @@ export class ElectronDialogPickFilesError extends Schema.TaggedError<ElectronDia
   }
 }
 
+export class ElectronDialogSaveFileError extends Schema.TaggedError<ElectronDialogSaveFileError>()(
+  "ElectronDialogSaveFileError",
+  {
+    ownerWindowId: Schema.NullOr(Schema.Number),
+    cause: Schema.Defect(),
+  },
+) {
+  override get message(): string {
+    const owner = this.ownerWindowId === null ? "the application" : `window ${this.ownerWindowId}`;
+    return `Failed to open the Electron save dialog for ${owner}.`;
+  }
+}
+
 export class ElectronDialogShowMessageBoxError extends Schema.TaggedError<ElectronDialogShowMessageBoxError>()(
   "ElectronDialogShowMessageBoxError",
   {
@@ -69,6 +82,7 @@ export class ElectronDialogShowErrorBoxError extends Schema.TaggedError<Electron
 export const ElectronDialogError = Schema.Union([
   ElectronDialogPickFolderError,
   ElectronDialogPickFilesError,
+  ElectronDialogSaveFileError,
   ElectronDialogShowMessageBoxError,
   ElectronDialogShowErrorBoxError,
 ]);
@@ -86,6 +100,12 @@ export interface ElectronDialogPickFilesInput {
   readonly multiple: boolean;
 }
 
+export interface ElectronDialogSaveFileInput {
+  readonly owner: Option.Option<Electron.BrowserWindow>;
+  readonly defaultPath: string;
+  readonly filters: readonly Electron.FileFilter[];
+}
+
 export class ElectronDialog extends Context.Service<
   ElectronDialog,
   {
@@ -95,6 +115,9 @@ export class ElectronDialog extends Context.Service<
     readonly pickFiles: (
       input: ElectronDialogPickFilesInput,
     ) => Effect.Effect<readonly string[], ElectronDialogPickFilesError>;
+    readonly saveFile: (
+      input: ElectronDialogSaveFileInput,
+    ) => Effect.Effect<Option.Option<string>, ElectronDialogSaveFileError>;
     readonly showMessageBox: (
       options: Electron.MessageBoxOptions,
     ) => Effect.Effect<Electron.MessageBoxReturnValue, ElectronDialogShowMessageBoxError>;
@@ -163,6 +186,29 @@ export const make = ElectronDialog.of({
         }),
     });
     return result.canceled ? [] : result.filePaths;
+  }),
+  saveFile: Effect.fn("desktop.electron.dialog.saveFile")(function* (input) {
+    const saveDialogOptions: Electron.SaveDialogOptions = {
+      defaultPath: input.defaultPath,
+      filters: [...input.filters],
+      properties: ["createDirectory", "showOverwriteConfirmation"],
+    };
+    const result = yield* Effect.tryPromise({
+      try: () =>
+        Option.match(input.owner, {
+          onNone: () => Electron.dialog.showSaveDialog(saveDialogOptions),
+          onSome: (owner) => Electron.dialog.showSaveDialog(owner, saveDialogOptions),
+        }),
+      catch: (cause) =>
+        new ElectronDialogSaveFileError({
+          ownerWindowId: Option.match(input.owner, {
+            onNone: () => null,
+            onSome: (owner) => owner.id,
+          }),
+          cause,
+        }),
+    });
+    return result.canceled ? Option.none() : Option.fromNullishOr(result.filePath || undefined);
   }),
   showMessageBox: (options) =>
     Effect.tryPromise({

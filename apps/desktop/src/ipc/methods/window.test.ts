@@ -22,6 +22,7 @@ vi.mock("electron", () => ({
 import * as DesktopBackendManager from "../../backend/DesktopBackendManager.ts";
 import * as DesktopBackendPool from "../../backend/DesktopBackendPool.ts";
 import * as ElectronDialog from "../../electron/ElectronDialog.ts";
+import * as ElectronShell from "../../electron/ElectronShell.ts";
 import * as ElectronWindow from "../../electron/ElectronWindow.ts";
 import * as DesktopAppSettings from "../../settings/DesktopAppSettings.ts";
 import type { DesktopSettings } from "../../settings/DesktopAppSettings.ts";
@@ -31,6 +32,8 @@ import {
   pasteAsText,
   pickProjectFavicon,
   probeRemoteEditors,
+  saveTextFile,
+  showSavedFileInFolder,
 } from "./window.ts";
 
 const readyWslConfig: DesktopBackendManager.DesktopBackendStartConfig = {
@@ -262,6 +265,62 @@ describe("pickProjectFavicon", () => {
 
       assert.strictEqual(result, null);
       assert.strictEqual(pickFiles.mock.calls.length, 0);
+    }),
+  );
+});
+
+describe("saveTextFile", () => {
+  const saveLayer = (
+    saveFile: () => Effect.Effect<Option.Option<string>>,
+    showItemInFolder: (path: string) => Effect.Effect<void>,
+  ) =>
+    Layer.mergeAll(
+      Layer.mock(ElectronDialog.ElectronDialog)({ saveFile }),
+      Layer.mock(ElectronShell.ElectronShell)({ showItemInFolder }),
+      Layer.mock(ElectronWindow.ElectronWindow)({ focusedMainOrFirst: Effect.succeedNone }),
+      NodeServices.layer,
+    );
+
+  it.effect("writes the file the user picked and can reveal only that file", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const directory = yield* fs.makeTempDirectoryScoped({ prefix: "t3-save-text-" });
+      const target = path.join(directory, "chosen.md");
+      const revealed: string[] = [];
+      const layer = saveLayer(
+        () => Effect.succeedSome(target),
+        (filePath) => Effect.sync(() => void revealed.push(filePath)),
+      );
+
+      const saved = yield* saveTextFile
+        .handler({ defaultFileName: "thread.md", contents: "# Thread\n" })
+        .pipe(Effect.provide(layer));
+      yield* showSavedFileInFolder
+        .handler(path.join(directory, "other.md"))
+        .pipe(Effect.provide(layer));
+      yield* showSavedFileInFolder.handler(target).pipe(Effect.provide(layer));
+
+      assert.strictEqual(saved, target);
+      assert.strictEqual(yield* fs.readFileString(target), "# Thread\n");
+      assert.deepEqual(revealed, [target]);
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("writes nothing when the dialog is cancelled", () =>
+    Effect.gen(function* () {
+      const saved = yield* saveTextFile
+        .handler({ defaultFileName: "thread.md", contents: "# Thread\n" })
+        .pipe(
+          Effect.provide(
+            saveLayer(
+              () => Effect.succeedNone,
+              () => Effect.void,
+            ),
+          ),
+        );
+
+      assert.strictEqual(saved, null);
     }),
   );
 });

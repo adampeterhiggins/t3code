@@ -43,6 +43,7 @@ const makeDesktopClerkLayer = (
     openExternal: () => Effect.succeed(true),
     openSystemSettings: () => Effect.succeed(false),
     copyText: () => Effect.void,
+    showItemInFolder: () => Effect.void,
   },
 ) => {
   const environment = DesktopEnvironment.DesktopEnvironment.of({
@@ -308,6 +309,7 @@ for (const entry of ["startup", "open-url"] as const) {
           }),
         openSystemSettings: () => Effect.succeed(false),
         copyText: () => Effect.void,
+        showItemInFolder: () => Effect.void,
       });
       const listeners = new Map<string, (...args: unknown[]) => void>();
       const electronApp = {

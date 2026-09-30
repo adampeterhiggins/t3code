@@ -176,6 +176,9 @@ contextBridge.exposeInMainWorld("desktopBridge", {
   pickProjectFavicon: (initialPath) =>
     ipcRenderer.invoke(IpcChannels.PICK_PROJECT_FAVICON_CHANNEL, initialPath),
   pickThemeFiles: () => ipcRenderer.invoke(IpcChannels.PICK_THEME_FILES_CHANNEL, undefined),
+  saveTextFile: (input) => ipcRenderer.invoke(IpcChannels.SAVE_TEXT_FILE_CHANNEL, input),
+  showSavedFileInFolder: (path) =>
+    ipcRenderer.invoke(IpcChannels.SHOW_SAVED_FILE_IN_FOLDER_CHANNEL, path),
   setTheme: (theme) => ipcRenderer.invoke(IpcChannels.SET_THEME_CHANNEL, theme),
   showContextMenu: (items, position) =>
     ipcRenderer.invoke(IpcChannels.CONTEXT_MENU_CHANNEL, {
