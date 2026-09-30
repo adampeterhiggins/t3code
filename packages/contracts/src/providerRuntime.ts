@@ -823,11 +823,23 @@ const RuntimeWarningPayload = Schema.Struct({
 });
 export type RuntimeWarningPayload = typeof RuntimeWarningPayload.Type;
 
+/**
+ * Set on a `runtime.error` when the provider stopped the turn because the
+ * account's usage allowance ran out, so clients can offer to resume the
+ * session once it resets or to continue elsewhere. `resetsAt` is when the
+ * exhausted window reopens, when the provider reports it.
+ */
+export const ProviderUsageLimitStop = Schema.Struct({
+  resetsAt: Schema.optional(IsoDateTime),
+});
+export type ProviderUsageLimitStop = typeof ProviderUsageLimitStop.Type;
+
 const RuntimeErrorPayload = Schema.Struct({
   message: TrimmedNonEmptyStringSchema,
   code: Schema.optional(TrimmedNonEmptyStringSchema),
   class: Schema.optional(RuntimeErrorClass),
   detail: Schema.optional(Schema.Unknown),
+  usageLimit: Schema.optional(ProviderUsageLimitStop),
 });
 export type RuntimeErrorPayload = typeof RuntimeErrorPayload.Type;
 

@@ -17,6 +17,7 @@ import { makeOrchestrationReactor } from "./OrchestrationReactor.ts";
 import * as AgentAwarenessRelay from "../../relay/AgentAwarenessRelay.ts";
 import { StorageCleanup } from "../../storageCleanup.ts";
 import { ThreadTabSettlementReactor } from "../../threadTabs/settlement.ts";
+import { UsageLimitResumeReactor } from "../UsageLimitResumeReactor.ts";
 
 describe("OrchestrationReactor", () => {
   let runtime: ManagedRuntime.ManagedRuntime<OrchestrationReactor, never> | null = null;
@@ -106,6 +107,14 @@ describe("OrchestrationReactor", () => {
           }),
         ),
         Layer.provideMerge(
+          Layer.succeed(UsageLimitResumeReactor, {
+            start: () => {
+              started.push("usage-limit-resume-reactor");
+              return Effect.void;
+            },
+          }),
+        ),
+        Layer.provideMerge(
           Layer.succeed(PullRequestSyncReactor.PullRequestSyncReactor, {
             start: () => {
               started.push("pull-request-sync-reactor");
@@ -140,6 +149,7 @@ describe("OrchestrationReactor", () => {
       "thread-pull-request-reactor",
       "thread-settlement-reactor",
       "thread-tab-settlement-reactor",
+      "usage-limit-resume-reactor",
       "pull-request-sync-reactor",
       "agent-awareness-relay",
       "storage-cleanup",

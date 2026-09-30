@@ -15,6 +15,7 @@ import * as ThreadPullRequestReactor from "../ThreadPullRequestReactor.ts";
 import * as AgentAwarenessRelay from "../../relay/AgentAwarenessRelay.ts";
 import * as StorageCleanup from "../../storageCleanup.ts";
 import * as ThreadTabSettlementReactor from "../../threadTabs/settlement.ts";
+import * as UsageLimitResumeReactor from "../UsageLimitResumeReactor.ts";
 
 export const makeOrchestrationReactor = Effect.gen(function* () {
   const providerRuntimeIngestion = yield* ProviderRuntimeIngestionService;
@@ -23,6 +24,7 @@ export const makeOrchestrationReactor = Effect.gen(function* () {
   const threadDeletionReactor = yield* ThreadDeletionReactor;
   const threadSettlementReactor = yield* ThreadSettlementReactor.ThreadSettlementReactor;
   const threadTabSettlementReactor = yield* ThreadTabSettlementReactor.ThreadTabSettlementReactor;
+  const usageLimitResumeReactor = yield* UsageLimitResumeReactor.UsageLimitResumeReactor;
   const pullRequestSyncReactor = yield* PullRequestSyncReactor.PullRequestSyncReactor;
   const threadPullRequestReactor = yield* ThreadPullRequestReactor.ThreadPullRequestReactor;
   const agentAwarenessRelay = yield* AgentAwarenessRelay.AgentAwarenessRelay;
@@ -36,6 +38,7 @@ export const makeOrchestrationReactor = Effect.gen(function* () {
     yield* threadPullRequestReactor.start();
     yield* threadSettlementReactor.start();
     yield* threadTabSettlementReactor.start();
+    yield* usageLimitResumeReactor.start();
     yield* pullRequestSyncReactor.start();
     yield* agentAwarenessRelay.start();
     yield* storageCleanup.start();

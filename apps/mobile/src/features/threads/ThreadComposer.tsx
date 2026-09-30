@@ -1,4 +1,5 @@
 import { ChatGptUsageLimitNotice } from "./ChatGptUsageLimitNotice";
+import { UsageLimitRecoveryNotice } from "./UsageLimitRecoveryNotice";
 import type { ComposerTextPaste } from "../../native/T3ComposerEditor.types";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import { useAtomValue } from "@effect/atom-react";
@@ -644,6 +645,10 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
         style={{ maxWidth: props.contentMaxWidth }}
       >
         <ChatGptUsageLimitNotice
+          environmentId={props.environmentId}
+          thread={props.selectedThread}
+        />
+        <UsageLimitRecoveryNotice
           environmentId={props.environmentId}
           thread={props.selectedThread}
         />

@@ -4037,6 +4037,34 @@ describe("ProviderRuntimeIngestion", () => {
     expect(activity?.kind).toBe("runtime.error");
     expect(activityPayload?.message).toBe("runtime activity exploded");
     expect(activityPayload?.code).toBe("subscription_sharing_usage_limit_exceeded");
+    expect(activityPayload).not.toHaveProperty("usageLimit");
+  });
+
+  it("keeps the usage-limit marker on the runtime.error activity", async () => {
+    const harness = await createHarness();
+
+    harness.emit({
+      type: "runtime.error",
+      eventId: asEventId("evt-usage-limit-error"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:00.000Z",
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-usage-limit"),
+      payload: {
+        message: "Codex usage limit reached.",
+        usageLimit: { resetsAt: "2026-01-01T03:00:00.000Z" },
+      },
+    });
+
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.id === "evt-usage-limit-error"),
+    );
+    const activity = thread.activities.find(
+      (entry: ProviderRuntimeTestActivity) => entry.id === "evt-usage-limit-error",
+    );
+    expect(activity?.payload).toMatchObject({
+      usageLimit: { resetsAt: "2026-01-01T03:00:00.000Z" },
+    });
   });
 
   it("keeps the session running when a runtime.warning arrives during an active turn", async () => {

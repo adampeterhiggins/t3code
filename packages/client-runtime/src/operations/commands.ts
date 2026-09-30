@@ -58,6 +58,7 @@ export type RevertThreadCheckpointInput = CommandInput<"thread.checkpoint.revert
   readonly restoreFiles?: boolean;
 };
 export type StopThreadSessionInput = CommandInput<"thread.session.stop">;
+export type ResumeThreadAfterUsageLimitInput = CommandInput<"thread.usage-limit.resume">;
 
 type DispatchTag = typeof ORCHESTRATION_WS_METHODS.dispatchCommand;
 type CommandEffect = Effect.Effect<
@@ -388,3 +389,17 @@ export const stopThreadSession: (input: StopThreadSessionInput) => CommandEffect
     createdAt: metadata.createdAt,
   });
 });
+
+export const resumeThreadAfterUsageLimit: (
+  input: ResumeThreadAfterUsageLimitInput,
+) => CommandEffect = Effect.fn("EnvironmentCommands.resumeThreadAfterUsageLimit")(
+  function* (input) {
+    const metadata = yield* timestampedCommandMetadata(input);
+    return yield* dispatch({
+      ...input,
+      type: "thread.usage-limit.resume",
+      commandId: metadata.commandId,
+      createdAt: metadata.createdAt,
+    });
+  },
+);

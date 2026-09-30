@@ -542,6 +542,32 @@ Code: [`attentionInbox.ts`](../packages/client-runtime/src/state/attentionInbox.
 the `attention-inbox` view in [`CommandPalette.tsx`](../apps/web/src/components/CommandPalette.tsx).
 User guide: [thread-sidebar.md](./user/thread-sidebar.md#see-what-needs-you).
 
+## Usage-limit recovery
+
+When Codex or Claude ends a turn because the account's usage allowance ran out, the thread shows a
+recovery banner instead of the plain error. Upstream only shows the error. The banner offers:
+
+- **Resume when available**, only when the provider reported a reset time. It arms the server to
+  send "Continue where you left off." into the same session a minute after the reset, with no
+  client connected and across restarts. It covers that one stop and is off until chosen; **Cancel
+  auto-resume** disarms it.
+- **Resume now**, which sends the same message at once.
+- **Continue in new tab** on web and desktop, which forks the chat onto another ready account or
+  model through the [Chat tabs](#chat-tabs) fork.
+
+Adapters mark the stop with `usageLimit` (and `resetsAt` when known) on `runtime.error`. Codex uses
+`usageLimitExceeded`; Claude uses a rejected rate-limit window or `blocking_limit`. Cursor, Grok,
+OpenCode, Antigravity, and Devin do not mark stops, so they keep the plain error. Arming and
+cancelling are the `thread.usage-limit.resume` command, recorded as thread activities. Mobile has
+the resume actions but not **Continue in new tab**.
+
+Code: `packages/shared/src/usageLimitRecovery.ts`,
+`apps/server/src/orchestration/UsageLimitResumeReactor.ts`, the `thread.usage-limit.resume` case in
+`apps/server/src/orchestration/decider.ts`, `apps/web/src/components/chat/UsageLimitRecoveryBanner.tsx`,
+and `apps/mobile/src/features/threads/UsageLimitRecoveryNotice.tsx`. User guides:
+[providers-codex.md](./user/providers-codex.md#codex-says-i-hit-a-usage-limit) and
+[providers-claude.md](./user/providers-claude.md#usage-limits).
+
 ## Keeping this page current
 
 Update this page in the same change that adds, changes, or removes a user-visible fork-only

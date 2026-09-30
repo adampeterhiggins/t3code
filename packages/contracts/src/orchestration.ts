@@ -1429,6 +1429,23 @@ const ThreadSessionStopCommand = Schema.Struct({
   onlyIfSettled: Schema.optional(Schema.Boolean),
 });
 
+/**
+ * Recovery for a turn the provider stopped on a usage limit. `errorActivityId`
+ * is the `runtime.error` activity that recorded the stop. "now" continues the
+ * same session at once, "schedule" arms an automatic continue at `resumeAt`,
+ * and "cancel" disarms it. Arming covers one interruption: a later stop needs
+ * its own opt-in.
+ */
+const ThreadUsageLimitResumeCommand = Schema.Struct({
+  type: Schema.Literal("thread.usage-limit.resume"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  errorActivityId: EventId,
+  action: Schema.Literals(["now", "schedule", "cancel"]),
+  resumeAt: Schema.optional(IsoDateTime),
+  createdAt: IsoDateTime,
+});
+
 const DispatchableClientOrchestrationCommand = Schema.Union([
   ProjectCreateCommand,
   ProjectMetaUpdateCommand,
@@ -1459,6 +1476,7 @@ const DispatchableClientOrchestrationCommand = Schema.Union([
   ThreadCheckpointRevertCommand,
   ThreadConversationRevertCommand,
   ThreadSessionStopCommand,
+  ThreadUsageLimitResumeCommand,
 ]);
 export type DispatchableClientOrchestrationCommand =
   typeof DispatchableClientOrchestrationCommand.Type;
@@ -1493,6 +1511,7 @@ export const ClientOrchestrationCommand = Schema.Union([
   ThreadCheckpointRevertCommand,
   ThreadConversationRevertCommand,
   ThreadSessionStopCommand,
+  ThreadUsageLimitResumeCommand,
 ]);
 export type ClientOrchestrationCommand = typeof ClientOrchestrationCommand.Type;
 

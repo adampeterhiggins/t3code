@@ -61,6 +61,12 @@ Claude Code holds the turn until that window reopens, so it can keep showing as
 working. Wait for the reset, or stop the turn and continue later. The warning's
 timestamp shows when the displayed wait started.
 
+If Claude ends the turn on the limit instead, the thread keeps its work and
+offers **Resume when available** (continue the same session shortly after the
+reset, even with no app open; **Cancel auto-resume** turns it off), **Resume
+now**, and, on web and desktop, **Continue in new tab** on another account or
+model. Automatic resume is only offered when Claude reported a reset time.
+
 ## Skills
 
 Claude skills come from the config directory's `skills` folder and the project's

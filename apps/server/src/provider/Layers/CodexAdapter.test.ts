@@ -3173,6 +3173,10 @@ usageLimitLayer("CodexAdapterLive usage limits", (it) => {
         if (event.type === "runtime.error") {
           NodeAssert.equal(event.payload.message, expected);
           NodeAssert.equal(event.payload.detail, CODEX_OUT_OF_CREDITS);
+          // The thread offers to resume when the exhausted weekly window reopens.
+          NodeAssert.deepStrictEqual(event.payload.usageLimit, {
+            resetsAt: "2026-01-06T05:00:00.000Z",
+          });
         }
         if (event.type === "turn.completed") {
           NodeAssert.equal(event.payload.errorMessage, expected);
@@ -3275,6 +3279,8 @@ usageLimitLayer("CodexAdapterLive usage limits", (it) => {
       );
       const runtimeError = events.find((event) => event.type === "runtime.error");
       NodeAssert.equal(runtimeError?.payload.message, expected);
+      // Still a usage-limit stop, with no reset time to wait for.
+      NodeAssert.deepStrictEqual(runtimeError?.payload.usageLimit, {});
       const completed = events.find((event) => event.type === "turn.completed");
       NodeAssert.equal(completed?.payload.errorMessage, expected);
     }),

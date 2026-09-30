@@ -26,6 +26,7 @@ import {
 import { createModelSelection } from "@t3tools/shared/model";
 import { assert, describe, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
+import * as DateTime from "effect/DateTime";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -2785,12 +2786,13 @@ describe("ClaudeAdapterLive", () => {
       yield* adapter.sendTurn({ threadId: session.threadId, input: "hello", attachments: [] });
 
       const nowMs = yield* Clock.currentTimeMillis;
+      const resetsAtSeconds = Math.floor(nowMs / 1000) + 2 * 60 * 60;
       harness.query.emit({
         type: "rate_limit_event",
         rate_limit_info: {
           status: "rejected",
           rateLimitType: "five_hour",
-          resetsAt: Math.floor(nowMs / 1000) + 2 * 60 * 60,
+          resetsAt: resetsAtSeconds,
         },
         session_id: "sdk-session-limit",
         uuid: "rate-limit-rejected",
@@ -2805,11 +2807,18 @@ describe("ClaudeAdapterLive", () => {
         uuid: "result-limit",
       } as unknown as SDKMessage);
 
-      const payload = completedTurn(Array.from(yield* Fiber.join(runtimeEventsFiber)));
+      const events = Array.from(yield* Fiber.join(runtimeEventsFiber));
+      const payload = completedTurn(events);
       assert.equal(payload.state, "failed");
       assert.equal(
         payload.errorMessage,
         "Claude usage limit reached. Send the message again once the limit resets.",
+      );
+      // The stop carries the reset so the thread can offer to resume then.
+      const runtimeError = events.find((event) => event.type === "runtime.error");
+      assert.deepEqual(
+        runtimeError?.type === "runtime.error" ? runtimeError.payload.usageLimit : undefined,
+        { resetsAt: DateTime.formatIso(DateTime.makeUnsafe(resetsAtSeconds * 1000)) },
       );
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),

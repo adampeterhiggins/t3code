@@ -45,6 +45,7 @@ import {
   type ProviderRuntimeTurnStatus,
   type ProviderSendTurnInput,
   type ProviderSession,
+  type ProviderUsageLimitStop,
   type ThreadTokenUsageSnapshot,
   type TurnTokenUsage,
   type ProviderUserInputAnswers,
@@ -82,6 +83,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Fiber from "effect/Fiber";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
@@ -283,7 +285,8 @@ interface ClaudeTurnState {
   hasSubagents: boolean;
   nextSyntheticAssistantBlockIndex: number;
   authenticationFailureMessage: string | undefined;
-  rejectedRateLimitTypes: Set<string>;
+  /** Blocking windows keyed by type, with the epoch-seconds reset each reported. */
+  rejectedRateLimitTypes: Map<string, number | undefined>;
   latestAssistantRateLimited: boolean;
   emittedThinkingText: boolean;
   readonly thinkingSnapshotIds: Set<string>;
@@ -671,6 +674,23 @@ function describeClaudeUsageLimit(
   return `Claude usage limit reached. This turn is paused until the ${
     label ? `${label} ` : ""
   }limit resets${wait ? ` in ${wait}` : ""}.`;
+}
+
+/**
+ * The usage-limit marker for a turn that failed on a blocking window. With
+ * several windows blocked, the turn can only continue once the last reopens.
+ */
+function claudeUsageLimitStop(
+  rejected: ReadonlyMap<string, number | undefined> | undefined,
+): ProviderUsageLimitStop {
+  let latest: number | undefined;
+  for (const resetsAt of rejected?.values() ?? []) {
+    if (resetsAt !== undefined && Number.isFinite(resetsAt) && (latest ?? 0) < resetsAt) {
+      latest = resetsAt;
+    }
+  }
+  const resetsAt = latest === undefined ? Option.none() : DateTime.make(latest * 1000);
+  return Option.isSome(resetsAt) ? { resetsAt: DateTime.formatIso(resetsAt.value) } : {};
 }
 
 function formatClaudeUsageLimitWait(waitMs: number): string {
@@ -2603,10 +2623,8 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     context: ClaudeSessionContext,
     message: string,
     cause?: unknown,
+    usageLimit?: ProviderUsageLimitStop,
   ) {
-    if (cause !== undefined) {
-      void cause;
-    }
     const turnState = context.turnState;
     const stamp = yield* makeEventStamp();
     yield* offerRuntimeEvent({
@@ -2620,6 +2638,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         message,
         class: "provider_error",
         ...(cause !== undefined ? { detail: cause } : {}),
+        ...(usageLimit ? { usageLimit } : {}),
       },
       providerRefs: nativeProviderRefs(context),
     });
@@ -3544,7 +3563,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         hasSubagents: false,
         nextSyntheticAssistantBlockIndex: -1,
         authenticationFailureMessage: undefined,
-        rejectedRateLimitTypes: new Set(),
+        rejectedRateLimitTypes: new Map(),
         latestAssistantRateLimited: false,
         emittedThinkingText: false,
         thinkingSnapshotIds: new Set(),
@@ -3645,15 +3664,26 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     }
 
     const turn = context.turnState;
+    const rateLimited =
+      turn !== undefined &&
+      (turn.rejectedRateLimitTypes.size > 0 || turn.latestAssistantRateLimited);
     const failureHint =
       turn?.authenticationFailureMessage ??
-      (turn && (turn.rejectedRateLimitTypes.size > 0 || turn.latestAssistantRateLimited)
+      (rateLimited
         ? "Claude usage limit reached. Send the message again once the limit resets."
         : undefined);
     const { status, errorMessage } = resultOutcome(message, failureHint);
 
     if (status === "failed") {
-      yield* emitRuntimeError(context, errorMessage ?? "Claude turn failed.");
+      const usageLimited =
+        turn?.authenticationFailureMessage === undefined &&
+        (rateLimited || message.terminal_reason === "blocking_limit");
+      yield* emitRuntimeError(
+        context,
+        errorMessage ?? "Claude turn failed.",
+        undefined,
+        usageLimited ? claudeUsageLimitStop(turn?.rejectedRateLimitTypes) : undefined,
+      );
     }
 
     yield* completeTurn(context, status, errorMessage, message);
@@ -4271,7 +4301,8 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         // Current blocking evidence is independent of whether its warning has
         // already been shown. A recovery can omit or advance the reset time;
         // its window type remains stable without clearing another window.
-        if (blocked) context.turnState.rejectedRateLimitTypes.add(limitType);
+        if (blocked)
+          context.turnState.rejectedRateLimitTypes.set(limitType, rateLimitInfo.resetsAt);
         else if (
           rateLimitInfo.status === "allowed" ||
           rateLimitInfo.status === "allowed_warning" ||
@@ -5376,7 +5407,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         hasSubagents: false,
         nextSyntheticAssistantBlockIndex: -1,
         authenticationFailureMessage: undefined,
-        rejectedRateLimitTypes: new Set(),
+        rejectedRateLimitTypes: new Map(),
         latestAssistantRateLimited: false,
         emittedThinkingText: false,
         thinkingSnapshotIds: new Set(),
