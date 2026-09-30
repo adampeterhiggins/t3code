@@ -3328,7 +3328,8 @@ export default function Sidebar() {
   // New tabs join the clicked thread's group and start on its model.
   const handleNewTab = useCallback(
     (threadRef: ScopedThreadRef) => {
-      const thread = threadByKeyRef.current.get(scopedThreadKey(threadRef));
+      // Compact rows act on the displayed tab, which can be hidden from the ordered list.
+      const thread = readThreadShell(threadRef);
       if (!thread) return;
       if (isMobile) setOpenMobile(false);
       void createTab(threadRef, thread.modelSelection);
@@ -4499,7 +4500,7 @@ export default function Sidebar() {
           await handleMultiSelectContextMenu(position);
           return;
         }
-        const thread = threadByKeyRef.current.get(threadKey);
+        const thread = readThreadShell(threadRef);
         if (!thread) return;
         const threadWorkspacePath =
           thread.worktreePath ??
