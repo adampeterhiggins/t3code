@@ -292,12 +292,17 @@ When the browser is on another device, the user pastes the redirect URL back ins
 `T3CODE_LINEAR_CLIENT_ID` points a fork at its own Linear app.
 
 Issues attach to messages as a `linear-issue` context chip: from the composer's attach menu (which
-now asks between files and a Linear issue), the `#` menu beside pull requests, the command palette,
+now asks between files, a Linear issue, and a pull request), the `#` menu beside pull requests, the command palette,
 and the mobile attach menu. The web picker filters by assignee, team, project, milestone, status,
 priority, and label, and sorts by the fields Linear's API offers. The server renders the issue to
 capped markdown when it is attached, and that snapshot is inlined into the prompt for every
 provider. An **Open Linear links in** setting can send issue links to the Linear desktop app
 (`linear://`), which the desktop shell's external-URL allowlist permits.
+
+The attach menu's pull request option, also in the web command palette, opens a searchable picker
+([`PullRequestAttachPicker.tsx`](../apps/web/src/components/chat/PullRequestAttachPicker.tsx)) and
+inserts the same context chip as picking the pull request from the `#` menu. It is not a thread
+link.
 
 Code: `apps/server/src/linear/`, `packages/contracts/src/linear.ts`, `LinearIssueContextRecord` in
 `packages/contracts/src/composerContext.ts`, `packages/client-runtime/src/state/linear.ts`,

@@ -227,6 +227,7 @@ import { RightPanelTabs } from "./RightPanelTabs";
 import { AgentsPanel } from "./AgentsPanel";
 import { LinkPullRequestDialogHost } from "./pullRequest/LinkPullRequestDialog";
 import { LinearIssuePickerHost } from "./chat/LinearIssuePicker";
+import { PullRequestAttachPickerHost } from "./chat/PullRequestAttachPicker";
 import { openStartFromPicker, StartFromPickerHost } from "./chat/StartFromPicker";
 import { ThreadPullRequestsPanel } from "./pullRequest/ThreadPullRequestsPanel";
 import { useDeviceState } from "~/state/device";
@@ -10858,6 +10859,12 @@ export default function ChatView(props: ChatViewProps) {
       </AlertDialog>
       <LinkPullRequestDialogHost />
       <LinearIssuePickerHost />
+      {supportsPullRequests && activeProject ? (
+        <PullRequestAttachPickerHost
+          environmentId={activeProject.environmentId}
+          projectId={activeProject.id}
+        />
+      ) : null}
       {canCheckoutPullRequestIntoThread && activeProject && activeProjectRef ? (
         <StartFromPickerHost
           environmentId={activeProject.environmentId}
