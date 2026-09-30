@@ -63,6 +63,7 @@ import {
 import { AgentElapsed, STATUS_VISUALS, StatusDot } from "./AgentStatus";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import {
   Menu,
   MenuCheckboxItem,
@@ -618,19 +619,32 @@ export function AgentDetailView(props: {
             <ChevronLeft aria-hidden />
             Agents
           </Button>
-          {props.onOpenInTab ? (
-            <Button size="xs" variant="ghost-muted" onClick={props.onOpenInTab}>
-              <SquareArrowOutUpRightIcon aria-hidden />
-              Open in new tab
-            </Button>
-          ) : null}
           <span className="ml-auto pr-1 font-mono text-2xs text-muted-foreground/80">
             <AgentElapsed agent={agent} />
           </span>
         </div>
         <div className="flex min-w-0 items-center gap-2 px-1">
           <StatusDot status={agent.status} />
-          <h2 className="min-w-0 truncate text-sm font-medium">{agent.title}</h2>
+          <div className="flex min-w-0 items-center gap-1">
+            <h2 className="min-w-0 truncate text-sm font-medium">{agent.title}</h2>
+            {props.onOpenInTab ? (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      size="icon-micro"
+                      variant="ghost-muted"
+                      aria-label="Open in new tab"
+                      onClick={props.onOpenInTab}
+                    />
+                  }
+                >
+                  <SquareArrowOutUpRightIcon aria-hidden />
+                </TooltipTrigger>
+                <TooltipPopup side="bottom">Open in new tab</TooltipPopup>
+              </Tooltip>
+            ) : null}
+          </div>
         </div>
         <p className="truncate px-1 font-mono text-2xs text-muted-foreground">
           {identity.join(" · ")}
