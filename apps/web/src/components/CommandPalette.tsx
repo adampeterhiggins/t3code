@@ -40,6 +40,7 @@ import {
 } from "@t3tools/contracts";
 import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
 import { openLinearIssuePicker } from "./chat/LinearIssuePicker";
+import { openPullRequestAttachPicker } from "./chat/PullRequestAttachPicker";
 import { openStartFromPicker } from "./chat/StartFromPicker";
 import * as Option from "effect/Option";
 import {
@@ -1873,6 +1874,21 @@ function OpenCommandPaletteDialog(props: {
         openLinearIssuePicker(composerThreadRef);
       },
     });
+    const composerEnvironment = environments.find(
+      (environment) => environment.environmentId === composerThreadRef.environmentId,
+    );
+    if (composerEnvironment?.serverConfig?.environment.capabilities.pullRequests === true) {
+      actionItems.push({
+        kind: "action",
+        value: "action:attach-pull-request",
+        searchTerms: ["pull request", "pr", "attach", "context"],
+        title: "Attach pull request",
+        icon: <PullRequestGlyph.pullRequest className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          openPullRequestAttachPicker(composerThreadRef);
+        },
+      });
+    }
   }
 
   actionItems.push({

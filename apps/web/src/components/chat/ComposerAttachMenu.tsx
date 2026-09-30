@@ -7,10 +7,14 @@ import { Button } from "../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { useComposerMenuProps } from "./composerEventScope";
 import { openLinearIssuePicker } from "./LinearIssuePicker";
+import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
+import { openPullRequestAttachPicker } from "./PullRequestAttachPicker";
 
-/** The composer's attach button: asks what to attach, files or a Linear issue. */
+/** The composer's attach button: asks what to attach, files, a Linear issue or a pull request. */
 export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
   threadRef: ScopedThreadRef;
+  /** Whether the thread's project can list pull requests to attach. */
+  pullRequestsAvailable: boolean;
   onAttachFiles: () => void;
 }) {
   const composerMenuProps = useComposerMenuProps();
@@ -30,6 +34,12 @@ export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
           <LinearIcon />
           Linear issue
         </MenuItem>
+        {props.pullRequestsAvailable ? (
+          <MenuItem onClick={() => openPullRequestAttachPicker(props.threadRef)}>
+            <PullRequestGlyph.pullRequest />
+            Pull request
+          </MenuItem>
+        ) : null}
       </MenuPopup>
     </Menu>
   );

@@ -7292,6 +7292,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       />
                       <ComposerAttachMenu
                         threadRef={routeThreadRef}
+                        pullRequestsAvailable={pullRequestProjectId !== null}
                         onAttachFiles={() => attachmentInputRef.current?.click()}
                       />
                     </>
