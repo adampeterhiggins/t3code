@@ -12090,6 +12090,22 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         );
 
         assert.equal(ensure.mock.calls[0]?.[0].cwd, "/tmp/existing-worktree");
+        // Progress lands in the work log under one id, settled before the turn starts.
+        const progress = dispatchedCommands.flatMap((command) =>
+          command.type === "thread.activity.append" &&
+          command.activity.kind === "context-repositories"
+            ? [command.activity]
+            : [],
+        );
+        assert.deepEqual(
+          progress.map((activity) => activity.summary),
+          ["Cloning context repositories", "Context repositories ready"],
+        );
+        assert.equal(new Set(progress.map((activity) => activity.id)).size, 1);
+        assert.deepEqual(progress.at(-1)?.payload, {
+          detail: "acme/api: already in .context/api",
+        });
+        assert.equal(dispatchedCommands.at(-1)?.type, "thread.turn.start");
         const turnStart = dispatchedCommands.find(
           (command) => command.type === "thread.turn.start",
         );

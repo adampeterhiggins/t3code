@@ -193,6 +193,24 @@ import * as RelayClient from "@t3tools/shared/relayClient";
 const isOrchestrationDispatchCommandError = Schema.is(OrchestrationDispatchCommandError);
 const isRepositoryContextRecord = Schema.is(RepositoryContextRecord);
 
+/** One repository's outcome as a work log line. */
+function describeContextRepositoryOutcome(record: RepositoryContextRecord): string {
+  const outcome = record.outcome;
+  if (!outcome) return "not checked";
+  const git = outcome.git
+    ? ` · ${outcome.git.branch ?? "detached"}${outcome.git.behind > 0 ? ` · ${outcome.git.behind} behind` : ""}${outcome.git.changedFiles > 0 ? ` · ${outcome.git.changedFiles} changed` : ""}`
+    : "";
+  switch (outcome.status) {
+    case "cloned":
+      return `cloned into ${outcome.path}${git}`;
+    case "present":
+      return `already in ${outcome.path}${git}`;
+    case "conflict":
+    case "failed":
+      return outcome.detail ?? outcome.status;
+  }
+}
+
 /** One line for the setup card: how the attached repositories came out. */
 function summarizeContextRepositoryOutcomes(records: ReadonlyArray<RepositoryContextRecord>): {
   readonly ok: boolean;
@@ -2072,10 +2090,77 @@ const makeWsRpcLayer = (
       ) =>
         Effect.gen(function* () {
           const cwd = yield* resolveThreadWorkspaceCwd(command.threadId);
-          const prepared = cwd
-            ? (yield* ensureTurnContextRepositories(command, cwd)).command
-            : command;
-          return yield* dispatchFromClient(prepared);
+          if (!cwd) return yield* dispatchFromClient(command);
+          const records = messageRepositoryRecords(command.message.context);
+          const total = records.length;
+          const startedAt = yield* nowIso;
+          let finished = 0;
+          let current: string | null = null;
+          const lastStep = new Map<string, number>();
+          // With no setup card here, the work log carries the progress: one
+          // row per message, upserted by a fixed id, like the setup record.
+          const recordProgress = (input: {
+            readonly summary: string;
+            readonly detail: string;
+            readonly tone: "info" | "error";
+          }) =>
+            Effect.gen(function* () {
+              yield* dispatchFromClient({
+                type: "thread.activity.append",
+                commandId: yield* serverCommandId("context-repositories-activity"),
+                threadId: command.threadId,
+                activity: {
+                  id: EventId.make(`context-repositories:${command.message.messageId}`),
+                  tone: input.tone,
+                  kind: "context-repositories",
+                  summary: input.summary,
+                  payload: { detail: input.detail },
+                  turnId: null,
+                  createdAt: startedAt,
+                },
+                createdAt: yield* nowIso,
+              });
+            }).pipe(Effect.ignoreCause({ log: true }));
+          const running = (detail: string) =>
+            recordProgress({ summary: "Cloning context repositories", detail, tone: "info" });
+
+          yield* running(`0 of ${total}`);
+          const ensured = yield* ensureTurnContextRepositories(command, cwd, (event) => {
+            switch (event.type) {
+              case "started":
+                current = event.record.nameWithOwner;
+                return running(`${finished} of ${total} · ${current}`);
+              case "clone-progress": {
+                // Each update is a persisted event, so only quarter steps of
+                // the transfer are recorded.
+                if (event.line.stage !== "receiving" || event.line.percent === null) {
+                  return Effect.void;
+                }
+                const step = Math.floor(event.line.percent / 25);
+                if (lastStep.get(event.record.contextId) === step) return Effect.void;
+                lastStep.set(event.record.contextId, step);
+                return running(
+                  `${finished} of ${total} · ${event.record.nameWithOwner} ${event.line.percent}%`,
+                );
+              }
+              case "finished":
+                finished += 1;
+                return running(`${finished} of ${total}`);
+            }
+          });
+          const summary = summarizeContextRepositoryOutcomes(ensured.ensured);
+          yield* recordProgress({
+            summary: summary.ok
+              ? "Context repositories ready"
+              : "Some context repositories are not available",
+            detail: ensured.ensured
+              .map(
+                (record) => `${record.nameWithOwner}: ${describeContextRepositoryOutcome(record)}`,
+              )
+              .join("\n"),
+            tone: summary.ok ? "info" : "error",
+          });
+          return yield* dispatchFromClient(ensured.command);
         }).pipe(
           Effect.mapError((cause) =>
             toDispatchCommandError(cause, "Failed to dispatch orchestration command"),
