@@ -74,6 +74,7 @@ import {
   environmentTransportLabel,
   formatDesktopSshTarget,
 } from "./EnvironmentRow";
+import { AgentAccessSection } from "./AgentAccessSettings";
 import { FoldedSettingsSection } from "./FoldedSettingsSection";
 import { LoadBalancingSettings } from "./LoadBalancingSettings";
 import { GitHubRoutingSettings } from "./GitHubRoutingSettings";
@@ -3385,6 +3386,13 @@ export function ConnectionsSettings() {
             ) : null}
           </SettingsSection>
 
+          {canManageLocalBackend ? (
+            <AgentAccessSection
+              clientSessions={desktopClientSessions}
+              revokingSessionId={revokingDesktopClientSessionId}
+              onRevoke={handleRevokeDesktopClientSession}
+            />
+          ) : null}
           {isLocalBackendRemotelyReachable ? (
             <FoldedSettingsSection
               id="authorized-clients"

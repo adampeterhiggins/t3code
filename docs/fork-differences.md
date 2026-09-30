@@ -424,6 +424,23 @@ start in that directory.
 Code: `packages/client-runtime/src/work-log/commandDisplay.ts` and
 `apps/server/src/provider/RuntimeInstructions.ts`.
 
+## Agent access over MCP
+
+A second MCP server at `/mcp/query` gives agents outside T3 Code read-only access to the
+environment's history: projects, threads, turns, messages, activities, plans, turn diffs, linked
+pull requests, and usage. Its tools page with cursors, take `since`/`until` bounds, and cap text.
+It authenticates with an environment bearer token that has `orchestration:read`, never a cookie,
+and lists only its own tools. The thread-scoped `/mcp` server is unchanged.
+
+Tokens come from **Settings → Connections → Agent access** (`POST /api/auth/agent-access-tokens`)
+or `t3 auth session issue --read-only`. Each token is a normal client session, so revoking it works
+like revoking any client. Web and desktop only.
+
+Code: `apps/server/src/mcp/query/`, the `agentAccessToken` handler in
+`apps/server/src/auth/http.ts`, `AuthReadOnlyClientScopes` in `packages/contracts/src/auth.ts`, and
+`apps/web/src/components/settings/AgentAccessSettings.tsx`. User guide:
+[agent-access.md](./user/agent-access.md).
+
 ## Keeping this page current
 
 Update this page in the same change that adds, changes, or removes a user-visible fork-only

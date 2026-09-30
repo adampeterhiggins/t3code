@@ -86,6 +86,15 @@ const getHttpMcpEndpointHost = (address: NetAddress.IpAddress): string =>
     ? "127.0.0.1"
     : NetAddress.formatUrlHostString(NetAddress.formatIp(address));
 
+/** The URL an agent on this machine uses to reach an MCP path on this server. */
+export const localMcpEndpointUrl = (
+  address: NetAddress.SocketAddress,
+  path: `/${string}`,
+): string =>
+  NetAddress.isInetAddress(address)
+    ? `http://${getHttpMcpEndpointHost(address.address)}:${address.port}${path}`
+    : `http://127.0.0.1${path}`;
+
 const makeWithOptions = Effect.fn("McpSessionRegistry.make")(function* (
   options: McpSessionRegistryOptions = {},
 ) {
@@ -96,9 +105,7 @@ const makeWithOptions = Effect.fn("McpSessionRegistry.make")(function* (
   const state = yield* SynchronizedRef.make<RegistryState>({ records: new Map() });
   const currentTimeMillis = options.now ? Effect.sync(options.now) : Clock.currentTimeMillis;
   const livenessWindowMs = options.livenessWindowMs ?? DEFAULT_LIVENESS_WINDOW_MS;
-  const endpoint = NetAddress.isInetAddress(httpServer.address)
-    ? `http://${getHttpMcpEndpointHost(httpServer.address.address)}:${httpServer.address.port}/mcp`
-    : "http://127.0.0.1/mcp";
+  const endpoint = localMcpEndpointUrl(httpServer.address, "/mcp");
 
   const hashToken = (token: string) =>
     crypto

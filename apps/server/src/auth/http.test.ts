@@ -134,3 +134,75 @@ it.effect("sets the selected browser session cookies through the HTTP route", ()
     );
   }).pipe(Effect.provide(NodeServices.layer)),
 );
+
+it.effect("issues read-only agent access tokens only to access managers", () =>
+  Effect.gen(function* () {
+    const crypto = yield* Crypto.Crypto;
+    const unusedSecretStore = ServerSecretStore.ServerSecretStore.of({
+      get: () => Effect.succeedNone,
+      set: () => Effect.void,
+      create: () => Effect.void,
+      getOrCreateRandom: () => Effect.die("Not used by these routes."),
+      remove: () => Effect.void,
+    });
+    const requestContext = Context.make(Crypto.Crypto, crypto).pipe(
+      Context.add(ServerSecretStore.ServerSecretStore, unusedSecretStore),
+    );
+    return yield* Effect.acquireUseRelease(
+      Effect.sync(() => HttpRouter.toWebHandler(routesLayer, { disableLogger: true })),
+      (environment) =>
+        Effect.tryPromise(async () => {
+          const devResponse = await environment.handler(
+            postJson("/api/auth/browser-session", { credential: DEV_TOKEN }),
+            requestContext,
+          );
+          const adminCookie =
+            devResponse.headers
+              .getSetCookie()
+              .find((cookie) => cookie.startsWith("t3_dev_session_"))
+              ?.split(";", 1)[0] ?? "";
+
+          const created = await environment.handler(
+            postJson(
+              "/api/auth/agent-access-tokens",
+              { label: "EOD brief", expiresInDays: 30 },
+              { cookie: adminCookie },
+            ),
+            requestContext,
+          );
+          expect(created.status).toBe(200);
+          const issued = (await created.json()) as {
+            token: string;
+            scopes: ReadonlyArray<string>;
+            label: string;
+            mcpUrl: string;
+          };
+          expect(issued).toMatchObject({ scopes: ["orchestration:read"], label: "EOD brief" });
+          expect(issued.mcpUrl).toMatch(/\/mcp\/query$/);
+
+          const tokenSession = await environment.handler(
+            new Request("http://127.0.0.1/api/auth/session", {
+              headers: { authorization: `Bearer ${issued.token}` },
+            }),
+            requestContext,
+          );
+          expect(await tokenSession.json()).toMatchObject({
+            authenticated: true,
+            scopes: ["orchestration:read"],
+          });
+
+          // A read-only token cannot mint more tokens.
+          const escalation = await environment.handler(
+            postJson(
+              "/api/auth/agent-access-tokens",
+              { label: "Another", expiresInDays: 30 },
+              { authorization: `Bearer ${issued.token}` },
+            ),
+            requestContext,
+          );
+          expect(escalation.status).toBe(403);
+        }),
+      (environment) => Effect.promise(() => environment.dispose()),
+    );
+  }).pipe(Effect.provide(NodeServices.layer)),
+);

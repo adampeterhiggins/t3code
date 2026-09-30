@@ -811,6 +811,15 @@ export const SETTINGS_SEARCH_ITEMS = [
     localBackendManagementOnly: true,
   },
   {
+    id: "agent-access",
+    title: "Agent access",
+    to: "/settings/connections",
+    searchTerms: [
+      "mcp query read-only token claude code scheduled agents history api eod brief external",
+    ],
+    localBackendManagementOnly: true,
+  },
+  {
     id: "tailscale-https",
     title: "Tailscale HTTPS",
     to: "/settings/connections",

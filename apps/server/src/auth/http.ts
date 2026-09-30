@@ -1,6 +1,7 @@
 import {
   AuthAccessReadScope,
   AuthAccessWriteScope,
+  AuthReadOnlyClientScopes,
   AuthStandardClientScopes,
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
@@ -26,19 +27,26 @@ import type { AuthEnvironmentScope, DpopFailureReason } from "@t3tools/contracts
 import { parseAllowedOAuthScope } from "@t3tools/shared/oauthScope";
 import { causeErrorTag } from "@t3tools/shared/observability";
 import * as DateTime from "effect/DateTime";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import { identity } from "effect/Function";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Cookies from "effect/unstable/http/Cookies";
 import * as HttpEffect from "effect/unstable/http/HttpEffect";
-import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
+import { HttpServer, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
 import * as HttpApiBuilder from "effect/unstable/httpapi/HttpApiBuilder";
 
+import * as ServerConfig from "../config.ts";
+import { localMcpEndpointUrl } from "../mcp/McpSessionRegistry.ts";
 import * as EnvironmentAuth from "./EnvironmentAuth.ts";
 import * as SessionStore from "./SessionStore.ts";
 import { traceAuthenticatedRelayRequest, traceRelayRequest } from "../cloud/traceRelayRequest.ts";
 import { deriveAuthClientMetadata } from "./utils.ts";
 import { verifyRequestDpopProof } from "./dpop.ts";
+
+/** Subject for tokens minted from Settings → Connections → Agent access. */
+export const AGENT_ACCESS_TOKEN_SUBJECT = "agent-access-token";
 
 const CREDENTIAL_RESPONSE_HEADERS = {
   "cache-control": "no-store",
@@ -233,6 +241,7 @@ export const authHttpApiLayer = HttpApiBuilder.group(
   Effect.fnUntraced(function* (handlers) {
     const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
     const sessions = yield* SessionStore.SessionStore;
+    const config = yield* ServerConfig.ServerConfig;
 
     return handlers
       .handle(
@@ -419,6 +428,38 @@ export const authHttpApiLayer = HttpApiBuilder.group(
           },
           Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>
             failEnvironmentInternal("pairing_credential_issuance_failed", error),
+          ),
+        ),
+      )
+      .handle(
+        "agentAccessToken",
+        Effect.fn("environment.auth.agentAccessToken")(
+          function* (args) {
+            yield* annotateEnvironmentRequest(args.endpoint.name);
+            yield* requireEnvironmentScope(AuthAccessWriteScope);
+            const issued = yield* serverAuth.issueSession({
+              scopes: AuthReadOnlyClientScopes,
+              subject: AGENT_ACCESS_TOKEN_SUBJECT,
+              label: args.payload.label,
+              ttl: Duration.days(args.payload.expiresInDays),
+            });
+            const httpServer = yield* Effect.serviceOption(HttpServer.HttpServer);
+            // Tests build these routes without a listener; the server always has one.
+            const mcpUrl = Option.isSome(httpServer)
+              ? localMcpEndpointUrl(httpServer.value.address, "/mcp/query")
+              : `http://127.0.0.1:${config.port}/mcp/query`;
+            yield* appendCredentialResponseHeaders;
+            return {
+              sessionId: issued.sessionId,
+              token: issued.token,
+              label: args.payload.label,
+              scopes: issued.scopes,
+              expiresAt: issued.expiresAt,
+              mcpUrl,
+            };
+          },
+          Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>
+            failEnvironmentInternal("agent_access_token_issuance_failed", error),
           ),
         ),
       )
