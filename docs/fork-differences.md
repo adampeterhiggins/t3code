@@ -197,6 +197,28 @@ is its own conversation and provider.
 
 User guide: [thread-sidebar.md](./user/thread-sidebar.md#continue-in-another-tab).
 
+## Split view
+
+On web and desktop, two chats can be shown side by side. Each pane is a full `ChatView` with its
+own timeline, composer, right panel, and terminal.
+
+- **State.** `apps/web/src/splitViewStore.ts` holds the pair of thread keys, in memory only. The
+  split shows while the routed thread is one of the pair, and the routed thread is the focused
+  pane, so the header, sidebar, command palette, and global shortcuts follow focus unchanged.
+  Focusing a pane replaces the route. Panes are keyed by thread, so moving focus never remounts
+  a timeline.
+- **Focus.** Window-level shortcuts, paste-to-composer, digit answers, right-panel launcher
+  letters, and composer focus grabs skip the unfocused pane (`useSplitPaneFocus` in
+  `apps/web/src/components/chat/splitPane.ts`). Each pane uses CSS layout containment so its
+  fixed title-bar controls stay inside it (`SplitChatPanes.tsx`).
+- **Entry points.** The tab crumb menu's per-tab split button, **Open in split view** / **Close
+  split view** in both sidebars' thread menus, the command palette, `splitView.toggle`
+  (`mod+\`), and `splitView.focusOther` (`mod+alt+\`). Each pane header has a close button.
+- **Mobile.** Not supported. Windows at or below the right-panel sheet breakpoint also show one
+  chat.
+
+User guide: [thread-sidebar.md](./user/thread-sidebar.md#view-two-chats-side-by-side).
+
 ## View an open pull request
 
 The git toolbar's primary action becomes **View PR** when the branch already has an open pull

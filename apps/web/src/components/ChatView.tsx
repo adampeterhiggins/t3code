@@ -396,6 +396,8 @@ import type { AssistantCitationRequest } from "./chat/AssistantCitationSource";
 import { resolveTimelineIsAtEnd, worktreeSetupAgentStarted } from "./chat/MessagesTimeline.logic";
 import { resolveComposerTimelineInset, resolveScrollToEndClearance } from "./composerFooterLayout";
 import { ChatHeader } from "./chat/ChatHeader";
+import { subscribeSplitViewAction, useSplitPaneFocus, useSplitViewActions } from "./chat/splitPane";
+import { useSplitViewStore } from "../splitViewStore";
 import {
   ThreadTabContextPills,
   forkThreadTab,
@@ -1552,6 +1554,14 @@ export default function ChatView(props: ChatViewProps) {
     [environmentId, threadId],
   );
   const routeThreadKey = useMemo(() => scopedThreadKey(routeThreadRef), [routeThreadRef]);
+  // In a split, the pane beside the routed chat leaves window-level shortcuts and focus alone.
+  const splitPaneFocus = useSplitPaneFocus();
+  const unfocusedSplitPane = splitPaneFocus === "unfocused";
+  const unfocusedSplitPaneRef = useRef(unfocusedSplitPane);
+  useLayoutEffect(() => {
+    unfocusedSplitPaneRef.current = unfocusedSplitPane;
+  }, [unfocusedSplitPane]);
+  const splitViewActions = useSplitViewActions();
   const currentRouteThreadKeyRef = useRef<string | null>(routeThreadKey);
   useLayoutEffect(() => {
     currentRouteThreadKeyRef.current = routeThreadKey;
@@ -1988,11 +1998,16 @@ export default function ChatView(props: ChatViewProps) {
   const activeThread = activeServerThread ?? localDraftThread;
   const threadTabGroup = useThreadTabGroup(environmentId, activeServerThread?.id ?? null);
   const openThreadTabId = threadTabGroup ? (activeServerThread?.id ?? null) : null;
-  useRightPanelFollowsTabSwitch(environmentId, openThreadTabId, threadTabGroup);
+  // Split panes each keep their own right panel, so neither carries it across a tab switch.
+  useRightPanelFollowsTabSwitch(
+    environmentId,
+    splitPaneFocus === null ? openThreadTabId : null,
+    threadTabGroup,
+  );
   useEffect(() => {
-    if (openThreadTabId === null) return;
+    if (openThreadTabId === null || unfocusedSplitPane) return;
     useThreadTabRecencyStore.getState().markOpened(scopeThreadRef(environmentId, openThreadTabId));
-  }, [environmentId, openThreadTabId]);
+  }, [environmentId, openThreadTabId, unfocusedSplitPane]);
   const threadError = isServerThread
     ? (localServerError ?? activeServerThread?.session?.lastError ?? null)
     : localDraftError;
@@ -5371,13 +5386,12 @@ export default function ChatView(props: ChatViewProps) {
       },
     );
   }, []);
-  useEffect(
-    () =>
-      subscribePreviewAction((action) => {
-        if (action === "toggle-panel") togglePreviewPanel();
-      }),
-    [togglePreviewPanel],
-  );
+  useEffect(() => {
+    if (unfocusedSplitPane) return;
+    return subscribePreviewAction((action) => {
+      if (action === "toggle-panel") togglePreviewPanel();
+    });
+  }, [togglePreviewPanel, unfocusedSplitPane]);
   const persistThreadSettingsForNextTurn = useCallback(
     async (input: {
       threadId: ThreadId;
@@ -5677,8 +5691,8 @@ export default function ChatView(props: ChatViewProps) {
           if (
             !(event.target instanceof Node) ||
             (!scrollNode.contains(event.target) &&
-              event.target !== document.body &&
-              event.target !== document.documentElement) ||
+              (unfocusedSplitPaneRef.current ||
+                (event.target !== document.body && event.target !== document.documentElement))) ||
             event.defaultPrevented ||
             event.isComposing ||
             event.altKey ||
@@ -5906,7 +5920,8 @@ export default function ChatView(props: ChatViewProps) {
   }, [activeThread?.id, routeThreadKey]);
 
   useEffect(() => {
-    if (!activeThread?.id || terminalUiState.terminalOpen) return;
+    // Opening a split mounts the other pane; it must not take focus from the routed chat.
+    if (!activeThread?.id || terminalUiState.terminalOpen || unfocusedSplitPaneRef.current) return;
     const frame = window.requestAnimationFrame(() => {
       focusComposer();
     });
@@ -5915,6 +5930,17 @@ export default function ChatView(props: ChatViewProps) {
     };
   }, [activeThread?.id, focusComposer, terminalUiState.terminalOpen]);
 
+  // Moving to this pane from the keyboard hands it the keyboard too. A click leaves focus where
+  // it landed, so selecting text in the other pane still works.
+  const composerFocusRequested = useSplitViewStore(
+    (state) => state.composerFocusKey === routeThreadKey,
+  );
+  useEffect(() => {
+    if (!composerFocusRequested || unfocusedSplitPane) return;
+    useSplitViewStore.getState().clearComposerFocus();
+    focusComposer();
+  }, [composerFocusRequested, focusComposer, unfocusedSplitPane]);
+
   // Tabbing back into the app lands focus wherever it last was, often the right panel or the
   // body. Put it in the composer unless something that takes typing already holds it. The
   // drawer terminal owns keyboard input while it is open, so it opts out here; a right panel
@@ -5922,6 +5948,7 @@ export default function ChatView(props: ChatViewProps) {
   // returning to the app does not raise the keyboard.
   useEffect(() => {
     if (!activeThread?.id || terminalUiState.terminalOpen || isMobileViewport) return;
+    if (unfocusedSplitPane) return;
     let frame: number | null = null;
     const onWindowFocus = () => {
       if (frame !== null) window.cancelAnimationFrame(frame);
@@ -5940,7 +5967,13 @@ export default function ChatView(props: ChatViewProps) {
       window.removeEventListener("focus", onWindowFocus);
       if (frame !== null) window.cancelAnimationFrame(frame);
     };
-  }, [activeThread?.id, focusComposer, isMobileViewport, terminalUiState.terminalOpen]);
+  }, [
+    activeThread?.id,
+    focusComposer,
+    isMobileViewport,
+    terminalUiState.terminalOpen,
+    unfocusedSplitPane,
+  ]);
 
   useEffect(() => {
     if (!activeThread?.id) return;
@@ -6843,6 +6876,26 @@ export default function ChatView(props: ChatViewProps) {
     terminalUiOpenByThreadRef.current[activeThreadKey] = current;
   }, [activeThreadKey, focusComposer, terminalUiState.terminalOpen]);
 
+  // Split view acts on the routed server thread, the focused pane.
+  const handleSplitViewAction = useCallback(
+    (action: "toggle" | "focus-other") => {
+      if (!isServerThread) return;
+      if (action === "focus-other") {
+        splitViewActions.focusOther(routeThreadRef);
+        return;
+      }
+      splitViewActions.toggle(
+        routeThreadRef,
+        threadTabGroup ? threadTabGroup.tabs.map((tab) => tab.threadId) : null,
+      );
+    },
+    [isServerThread, routeThreadRef, splitViewActions, threadTabGroup],
+  );
+  useEffect(() => {
+    if (unfocusedSplitPane) return;
+    return subscribeSplitViewAction(handleSplitViewAction);
+  }, [handleSplitViewAction, unfocusedSplitPane]);
+
   const getShortcutContext = useCallback(
     (eventTarget: EventTarget | null = document.activeElement) => ({
       terminalFocus: getTerminalFocusOwner() !== null,
@@ -6858,6 +6911,7 @@ export default function ChatView(props: ChatViewProps) {
   );
 
   useEffect(() => {
+    if (unfocusedSplitPane) return;
     const handler = (event: globalThis.KeyboardEvent) => {
       if (preventRepeatedTerminalCloseShortcut(event, keybindings)) {
         event.stopPropagation();
@@ -6900,6 +6954,14 @@ export default function ChatView(props: ChatViewProps) {
         event.preventDefault();
         event.stopPropagation();
         if (!event.repeat) copyActiveThreadReference();
+        return;
+      }
+
+      if (command === "splitView.toggle" || command === "splitView.focusOther") {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!event.repeat)
+          handleSplitViewAction(command === "splitView.toggle" ? "toggle" : "focus-other");
         return;
       }
 
@@ -7104,6 +7166,8 @@ export default function ChatView(props: ChatViewProps) {
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
   }, [
+    unfocusedSplitPane,
+    handleSplitViewAction,
     activeProject,
     activeRightPanelSurface,
     activeProjectScripts,
@@ -7146,6 +7210,7 @@ export default function ChatView(props: ChatViewProps) {
   // so a paste that follows has no editable target and would be dropped.
   // Route it to the composer like a typed key, which also expands it.
   useEffect(() => {
+    if (unfocusedSplitPane) return;
     const keyHandler = (event: KeyboardEvent) => {
       if (
         shouldRedirectInputToComposer(event) &&
@@ -7178,7 +7243,7 @@ export default function ChatView(props: ChatViewProps) {
       window.removeEventListener("keydown", keyHandler, true);
       window.removeEventListener("paste", handler, true);
     };
-  }, [activeThreadId, composerRef]);
+  }, [activeThreadId, composerRef, unfocusedSplitPane]);
 
   const [pendingRevert, setPendingRevert] = useState<{
     turnCount: number;

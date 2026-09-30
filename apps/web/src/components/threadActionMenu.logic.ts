@@ -9,6 +9,8 @@ import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled"
 export type ThreadActionMenuId =
   | "new-tab"
   | "close-tab"
+  | "open-in-split"
+  | "close-split"
   | "new-thread-on-branch"
   | "filter-by-project"
   | "project-settings"
@@ -50,6 +52,11 @@ export interface ThreadActionMenuState {
    * a thread with no sibling tab, where closing would just be archiving.
    */
   readonly tabs: { readonly canClose: boolean } | null;
+  /**
+   * Split view for this thread: "open" shows it beside the routed chat, "close" ends the split
+   * it is in. Null where neither applies, such as the routed chat outside a split.
+   */
+  readonly split?: "open" | "close" | null;
   readonly isPinned: boolean;
   readonly isSettled: boolean;
   /** False while the user has turned automatic settlement off for this thread. */
@@ -80,6 +87,11 @@ export function buildThreadActionMenuItems(
 ): ReadonlyArray<ContextMenuItem<ThreadActionMenuId>> {
   return [
     ...(state.tabs ? [{ id: "new-tab" as const, label: "New tab", icon: "plus" }] : []),
+    ...(state.split === "open"
+      ? [{ id: "open-in-split" as const, label: "Open in split view", icon: "columns-2" }]
+      : state.split === "close"
+        ? [{ id: "close-split" as const, label: "Close split view", icon: "columns-2" }]
+        : []),
     ...(state.branch
       ? [
           {

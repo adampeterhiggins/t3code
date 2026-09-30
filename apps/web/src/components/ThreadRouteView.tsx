@@ -6,7 +6,10 @@ import { useEffect, useState } from "react";
 import ChatView from "./ChatView";
 import { resolveDraftPromotionNavigationTarget, threadHasStarted } from "./ChatView.logic";
 import { waitForDraftHeroTransition } from "./chat/draftHeroTransition";
+import { SplitChatPanes } from "./chat/SplitChatPanes";
+import { SPLIT_VIEW_HIDDEN_MEDIA_QUERY, useSplitPartner } from "./chat/splitPane";
 import { SidebarInset } from "./ui/sidebar";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import {
   finalizePromotedDraftThreadByRef,
   markPromotedDraftThreadByRef,
@@ -121,6 +124,10 @@ export function ThreadRouteView({ target }: { target: ThreadRouteTarget }) {
     status: serverThreadStatus,
   });
   const serverThreadStarted = threadHasStarted(serverThreadDetail);
+  const splitHidden = useMediaQuery(SPLIT_VIEW_HIDDEN_MEDIA_QUERY);
+  const splitPartner = useSplitPartner(
+    target.kind === "server" && !splitHidden ? target.threadRef : null,
+  );
   const environmentHasAnyThreads = environmentThreadRefs.length > 0 || environmentHasDraftThreads;
 
   useEffect(() => {
@@ -194,6 +201,13 @@ export function ThreadRouteView({ target }: { target: ThreadRouteTarget }) {
         />
       );
     }
+  } else if (
+    splitPartner &&
+    (renderState === "ready" || (renderState === "loading" && serverThreadShell !== null))
+  ) {
+    // Entering or leaving a split remounts the routed chat once; moving focus between the
+    // panes does not.
+    view = <SplitChatPanes routeRef={target.threadRef} partnerRef={splitPartner} />;
   } else if (renderState === "ready" || (renderState === "loading" && serverThreadShell !== null)) {
     view = (
       <ChatView
