@@ -192,7 +192,7 @@ function TabMenuLabel(props: {
 
 /**
  * Breadcrumb segment naming the open tab; its menu switches, opens, or closes tabs.
- * With a single tab it is just a "new tab" button.
+ * A "new tab" button always follows it; with a single tab it is only that button.
  */
 export function ThreadTabMenu({
   environmentId,
@@ -237,82 +237,85 @@ export function ThreadTabMenu({
   const create = () =>
     void run(() => createTab(scopeThreadRef(environmentId, threadId), modelSelection));
 
-  // A lone tab repeats the thread title, so the segment becomes a direct "new tab" action.
-  if (group.tabs.length <= 1) {
-    return (
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <button
-              type="button"
-              aria-label="New tab"
-              disabled={busy || Option.isNone(prepared)}
-              onClick={create}
-              className="inline-flex cursor-pointer items-center rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-50"
-            />
-          }
-        >
-          <PlusIcon className="size-3.5" />
-        </TooltipTrigger>
-        <TooltipPopup side="top">New tab</TooltipPopup>
-      </Tooltip>
-    );
-  }
-
-  return (
-    <Menu>
-      {/* Themed headers fill every menu-trigger slot as a toolbar control; this is a breadcrumb. */}
-      <MenuTrigger
-        data-slot="thread-tab-crumb"
+  const newTabButton = (
+    <Tooltip>
+      <TooltipTrigger
         render={
           <button
             type="button"
-            aria-label={`Chat tab: ${currentLabel}`}
-            className="group/tab-crumb inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label="New tab"
+            disabled={busy || Option.isNone(prepared)}
+            onClick={create}
+            className="inline-flex shrink-0 cursor-pointer items-center rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-50"
           />
         }
       >
-        <WorkspaceBreadcrumbText>{currentLabel}</WorkspaceBreadcrumbText>
-      </MenuTrigger>
-      <MenuPopup align="start" side="bottom">
-        <MenuRadioGroup value={threadId} onValueChange={(value) => open(value as ThreadId)}>
-          {group.tabs.map((tab) => (
-            <MenuRadioItem key={tab.threadId} value={tab.threadId}>
-              <span className="flex items-center gap-2">
-                <span className="min-w-0 flex-1 truncate">
-                  <TabMenuLabel
-                    environmentId={environmentId}
-                    group={group}
-                    threadId={tab.threadId}
-                  />
+        <PlusIcon className="size-3.5" />
+      </TooltipTrigger>
+      <TooltipPopup side="top">New tab</TooltipPopup>
+    </Tooltip>
+  );
+
+  // A lone tab repeats the thread title, so the segment is just the "new tab" action.
+  if (group.tabs.length <= 1) return newTabButton;
+
+  return (
+    <span className="flex min-w-0 items-center gap-2">
+      <Menu>
+        {/* Themed headers fill every menu-trigger slot as a toolbar control; this is a breadcrumb. */}
+        <MenuTrigger
+          data-slot="thread-tab-crumb"
+          render={
+            <button
+              type="button"
+              aria-label={`Chat tab: ${currentLabel}`}
+              className="group/tab-crumb inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          }
+        >
+          <WorkspaceBreadcrumbText>{currentLabel}</WorkspaceBreadcrumbText>
+        </MenuTrigger>
+        <MenuPopup align="start" side="bottom">
+          <MenuRadioGroup value={threadId} onValueChange={(value) => open(value as ThreadId)}>
+            {group.tabs.map((tab) => (
+              <MenuRadioItem key={tab.threadId} value={tab.threadId}>
+                <span className="flex items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate">
+                    <TabMenuLabel
+                      environmentId={environmentId}
+                      group={group}
+                      threadId={tab.threadId}
+                    />
+                  </span>
+                  {/* Shown on the highlighted row; handlers stop the item from switching tabs. */}
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    aria-label="Close tab"
+                    disabled={busy}
+                    onMouseUp={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      event.preventDefault();
+                      close(tab.threadId);
+                    }}
+                    className="-me-1 inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted-foreground opacity-0 transition-opacity hover:bg-foreground/10 hover:text-foreground in-data-highlighted:opacity-100 disabled:cursor-default disabled:opacity-0"
+                  >
+                    <XIcon className="size-3.5" />
+                  </button>
                 </span>
-                {/* Shown on the highlighted row; handlers stop the item from switching tabs. */}
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  aria-label="Close tab"
-                  disabled={busy}
-                  onMouseUp={(event) => event.stopPropagation()}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    event.preventDefault();
-                    close(tab.threadId);
-                  }}
-                  className="-me-1 inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted-foreground opacity-0 transition-opacity hover:bg-foreground/10 hover:text-foreground in-data-highlighted:opacity-100 disabled:cursor-default disabled:opacity-0"
-                >
-                  <XIcon className="size-3.5" />
-                </button>
-              </span>
-            </MenuRadioItem>
-          ))}
-        </MenuRadioGroup>
-        <MenuSeparator />
-        <MenuItem disabled={busy || Option.isNone(prepared)} onClick={create}>
-          <PlusIcon />
-          New tab
-        </MenuItem>
-      </MenuPopup>
-    </Menu>
+              </MenuRadioItem>
+            ))}
+          </MenuRadioGroup>
+          <MenuSeparator />
+          <MenuItem disabled={busy || Option.isNone(prepared)} onClick={create}>
+            <PlusIcon />
+            New tab
+          </MenuItem>
+        </MenuPopup>
+      </Menu>
+      {newTabButton}
+    </span>
   );
 }
 
