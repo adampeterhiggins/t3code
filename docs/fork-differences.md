@@ -170,7 +170,9 @@ is its own conversation and provider.
   first message, click one under **Include context from** (hovering one previews its summary).
   The `@` menu also lists other unarchived threads in the environment, matched by title
   (`apps/web/src/components/chat/composerThreadReferences.ts`), and works in a new draft thread
-  too. Either path inserts a `thread-tab`
+  too. On web and desktop, **Attach → Thread** and **Attach thread** in the command palette open
+  a searchable picker of those threads, including sibling tabs
+  ([`ThreadAttachPicker.tsx`](../apps/web/src/components/chat/ThreadAttachPicker.tsx)). These paths insert a `thread-tab`
   context chip at the caret, which can be moved like any other chip. The kind lives in
   `packages/contracts/src/composerContext.ts` and is formatted for providers in
   `packages/shared/src/composerContextReferences.ts`. The summary covers the recent conversation,

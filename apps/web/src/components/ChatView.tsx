@@ -227,6 +227,7 @@ import { RightPanelTabs } from "./RightPanelTabs";
 import { AgentsPanel } from "./AgentsPanel";
 import { LinkPullRequestDialogHost } from "./pullRequest/LinkPullRequestDialog";
 import { LinearIssuePickerHost } from "./chat/LinearIssuePicker";
+import { ThreadAttachPickerHost } from "./chat/ThreadAttachPicker";
 import { RepositoryAttachPickerHost } from "./chat/RepositoryAttachPicker";
 import { PullRequestAttachPickerHost } from "./chat/PullRequestAttachPicker";
 import { openStartFromPicker, StartFromPickerHost } from "./chat/StartFromPicker";
@@ -10882,6 +10883,7 @@ export default function ChatView(props: ChatViewProps) {
       </AlertDialog>
       <LinkPullRequestDialogHost />
       <LinearIssuePickerHost />
+      <ThreadAttachPickerHost />
       <RepositoryAttachPickerHost
         workspaceCwd={activeWorktreePath ?? (sendEnvMode === "worktree" ? null : activeProjectCwd)}
       />

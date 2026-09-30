@@ -67,4 +67,39 @@ describe("composerThreadReferenceItems", () => {
     });
     expect(items.map((item) => item.threadId)).toEqual(["f", "e", "b"]);
   });
+
+  it("lets the attachment picker show more recent threads than the mention menu", () => {
+    const items = composerThreadReferenceItems({
+      threads: [
+        ...threads,
+        thread("g", "Sibling tab", "2026-09-08T00:00:00.000Z"),
+        thread("h", "Another project", "2026-09-09T00:00:00.000Z", {
+          projectId: ProjectId.make("project-2"),
+        }),
+      ],
+      projects,
+      environmentId,
+      excludeThreadIds: new Set([ThreadId.make("e")]),
+      query: "",
+      limit: 50,
+    });
+    expect(items.map((item) => item.threadId)).toEqual(["h", "g", "f", "b", "a"]);
+  });
+
+  it("applies the picker limit after matching and sorting", () => {
+    const threads = Array.from({ length: 60 }, (_, index) =>
+      thread(`thread-${index}`, `Work ${index}`, new Date(index * 60_000).toISOString()),
+    );
+    const items = composerThreadReferenceItems({
+      threads,
+      projects,
+      environmentId,
+      excludeThreadIds: new Set([ThreadId.make("thread-59")]),
+      query: "WORK",
+      limit: 50,
+    });
+    expect(items).toHaveLength(50);
+    expect(items[0]?.threadId).toBe("thread-58");
+    expect(items.at(-1)?.threadId).toBe("thread-9");
+  });
 });

@@ -41,6 +41,7 @@ import {
 import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
 import { openLinearIssuePicker } from "./chat/LinearIssuePicker";
 import { useThreadLinearLink, useUnlinkLinearIssue } from "./chat/LinearThreadLink";
+import { openThreadAttachPicker } from "./chat/ThreadAttachPicker";
 import { openPullRequestAttachPicker } from "./chat/PullRequestAttachPicker";
 import { openRepositoryAttachPicker } from "./chat/RepositoryAttachPicker";
 import { openStartFromPicker } from "./chat/StartFromPicker";
@@ -1891,6 +1892,16 @@ function OpenCommandPaletteDialog(props: {
       ? scopeThreadRef(activeDraftThread.environmentId, activeDraftThread.threadId)
       : null;
   if (composerThreadRef !== null) {
+    actionItems.push({
+      kind: "action",
+      value: "action:attach-thread",
+      searchTerms: ["thread", "chat", "conversation", "summary", "attach", "context"],
+      title: "Attach thread",
+      icon: <MessageSquareIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        openThreadAttachPicker(composerThreadRef);
+      },
+    });
     actionItems.push({
       kind: "action",
       value: "action:attach-linear-issue",

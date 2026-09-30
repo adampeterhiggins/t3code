@@ -18,6 +18,8 @@ export function composerThreadReferenceItems(input: {
   environmentId: EnvironmentId;
   excludeThreadIds: ReadonlySet<ThreadId>;
   query: string;
+  /** Dedicated pickers can show more results than the inline mention menu. */
+  limit?: number;
 }) {
   const query = input.query.trim().toLowerCase();
   const projectTitles = new Map(
@@ -34,7 +36,7 @@ export function composerThreadReferenceItems(input: {
         thread.title.toLowerCase().includes(query),
     )
     .toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt))
-    .slice(0, query ? THREAD_REFERENCE_LIMIT : THREAD_REFERENCE_EMPTY_QUERY_LIMIT)
+    .slice(0, input.limit ?? (query ? THREAD_REFERENCE_LIMIT : THREAD_REFERENCE_EMPTY_QUERY_LIMIT))
     .map((thread) => ({
       id: `thread-tab:${thread.id}`,
       type: "thread-tab" as const,
