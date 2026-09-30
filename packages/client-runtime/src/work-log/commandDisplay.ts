@@ -47,29 +47,28 @@ export function formatCommandForWorkspace(
     return caseInsensitive ? trimmed.toLowerCase() : trimmed;
   };
   const rootForCompare = normalizeForCompare(root);
-  if (!(caseInsensitive ? command.toLowerCase() : command).includes(rootForCompare)) {
-    return command;
-  }
 
-  let rewriteEnd = command.length;
-  for (const match of command.matchAll(DIRECTORY_CHANGE_PATTERN)) {
-    const target = match[2];
-    const normalizedTarget = target === undefined ? undefined : normalizeForCompare(target);
-    if (normalizedTarget === rootForCompare || normalizedTarget === ".") continue;
-    rewriteEnd = match.index + match[0].length;
-    break;
-  }
-
-  const rootPath = new RegExp(
-    `(^|[\\s'"=(])${escapeRegExp(root)}(?:([\\\\/])(?=[^\\s'"\`;&|)\\\\/])|[\\\\/]*(?=$|[\\s'"\`;&|):]))`,
-    caseInsensitive ? "gi" : "g",
-  );
-  const rewritten = command
-    .slice(0, rewriteEnd)
-    .replace(rootPath, (_match, before: string, separator: string | undefined) =>
-      separator ? before : `${before}.`,
+  let formatted = command;
+  if ((caseInsensitive ? command.toLowerCase() : command).includes(rootForCompare)) {
+    let rewriteEnd = command.length;
+    for (const match of command.matchAll(DIRECTORY_CHANGE_PATTERN)) {
+      const target = match[2];
+      const normalizedTarget = target === undefined ? undefined : normalizeForCompare(target);
+      if (normalizedTarget === rootForCompare || normalizedTarget === ".") continue;
+      rewriteEnd = match.index + match[0].length;
+      break;
+    }
+    const rootPath = new RegExp(
+      `(^|[\\s'"=(])${escapeRegExp(root)}(?:([\\\\/])(?=[^\\s'"\`;&|)\\\\/])|[\\\\/]*(?=$|[\\s'"\`;&|):]))`,
+      caseInsensitive ? "gi" : "g",
     );
-  let formatted = rewritten + command.slice(rewriteEnd);
+    formatted =
+      command
+        .slice(0, rewriteEnd)
+        .replace(rootPath, (_match, before: string, separator: string | undefined) =>
+          separator ? before : `${before}.`,
+        ) + command.slice(rewriteEnd);
+  }
   // Each pass consumes the separator that the next adjacent `cd .` needs.
   for (let previous = ""; previous !== formatted;) {
     previous = formatted;

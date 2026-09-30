@@ -14,6 +14,7 @@ describe("formatCommandForWorkspace", () => {
     [`cd -- ${root} && git status`, "git status"],
     [`cd ${root} && cd ${root} && git status`, "git status"],
     [`git status && cd ${root} && make lint`, "git status && make lint"],
+    ["cd . && git status --short", "git status --short"],
     [`(cd ${root} && vp test)`, "(vp test)"],
     [`/bin/zsh -lc 'cd ${root} && git status'`, "/bin/zsh -lc 'git status'"],
     [
