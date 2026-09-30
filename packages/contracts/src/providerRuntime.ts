@@ -621,6 +621,19 @@ const taskAgentLinkageFields = {
   /** Codex agent hierarchy path, e.g. "/root/marlow". */
   agentPath: Schema.optional(TrimmedNonEmptyStringSchema),
   /**
+   * Directory the agent works in, when the provider reports one. Absent means
+   * unknown, not "same as the thread": clients show the thread's workspace as
+   * an assumption.
+   */
+  cwd: Schema.optional(TrimmedNonEmptyStringSchema),
+  /** Git branch checked out in `cwd`, when reported (Claude isolated worktrees). */
+  worktreeBranch: Schema.optional(TrimmedNonEmptyStringSchema),
+  /** Requested isolation: a dedicated git worktree, or a remote cloud session. */
+  isolation: Schema.optional(Schema.Literals(["worktree", "remote"])),
+  /** Lines the agent added and removed, when the provider reports them. */
+  linesAdded: Schema.optional(NonNegativeInt),
+  linesRemoved: Schema.optional(NonNegativeInt),
+  /**
    * Set on provider-synthesized child-agent events (Codex) whose activity
    * belongs in the Agents surface, never the parent timeline.
    */

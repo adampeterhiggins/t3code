@@ -385,6 +385,13 @@ interface ClaudeTaskAgentState {
    * assistant snapshots (authoritative API model). */
   model: string | undefined;
   effort: string | undefined;
+  /** Agent tool isolation. A worktree agent's path and branch arrive only with
+   * the tool result, so its cwd stays unset until then. */
+  isolation?: "worktree" | "remote" | undefined;
+  cwd?: string | undefined;
+  worktreeBranch?: string | undefined;
+  linesAdded?: number | undefined;
+  linesRemoved?: number | undefined;
 }
 
 /**
@@ -1387,7 +1394,23 @@ function taskLinkageFor(
     ...(agent.toolUseId ? { toolUseId: agent.toolUseId } : {}),
     ...(agent.workflowName ? { workflowName: agent.workflowName } : {}),
     ...(agent.runHandles ? { runHandles: agent.runHandles } : {}),
+    ...(agent.isolation ? { isolation: agent.isolation } : {}),
+    ...(agent.cwd ? { cwd: agent.cwd } : {}),
+    ...(agent.worktreeBranch ? { worktreeBranch: agent.worktreeBranch } : {}),
+    ...(agent.linesAdded !== undefined ? { linesAdded: agent.linesAdded } : {}),
+    ...(agent.linesRemoved !== undefined ? { linesRemoved: agent.linesRemoved } : {}),
   };
+}
+
+function readAgentIsolation(
+  input: Record<string, unknown> | undefined,
+): "worktree" | "remote" | undefined {
+  const isolation = input?.isolation;
+  return isolation === "worktree" || isolation === "remote" ? isolation : undefined;
+}
+
+function readLineCount(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : undefined;
 }
 
 const WORKFLOW_PHASE_CAP = 64;
@@ -3404,6 +3427,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           };
           const existing = context.taskAgents.get(workflowTaskId);
           context.taskAgents.set(workflowTaskId, {
+            ...existing,
             taskId: workflowTaskId,
             toolUseId: existing?.toolUseId ?? tool.itemId,
             description: existing?.description,
@@ -3415,6 +3439,51 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
             owningAgentId: existing?.owningAgentId,
             model: existing?.model,
             effort: existing?.effort,
+          });
+        }
+      }
+
+      // A synchronous Agent tool result reports the agent's isolated worktree
+      // and line counts. The task has usually settled by now, so re-announce
+      // its linkage in a status-free update.
+      const launchedAgent =
+        !toolResult.isError && toolUseResult
+          ? Array.from(context.taskAgents.values()).find((agent) => agent.toolUseId === tool.itemId)
+          : undefined;
+      if (launchedAgent && toolUseResult) {
+        const worktreePath = trimmedString(toolUseResult.worktreePath);
+        const worktreeBranch = trimmedString(toolUseResult.worktreeBranch);
+        const toolStats =
+          typeof toolUseResult.toolStats === "object" && toolUseResult.toolStats !== null
+            ? (toolUseResult.toolStats as Record<string, unknown>)
+            : undefined;
+        const linesAdded = readLineCount(toolStats?.linesAdded);
+        const linesRemoved = readLineCount(toolStats?.linesRemoved);
+        if (worktreePath || linesAdded !== undefined || linesRemoved !== undefined) {
+          if (worktreePath) {
+            launchedAgent.cwd = worktreePath;
+            launchedAgent.worktreeBranch = worktreeBranch;
+          }
+          launchedAgent.linesAdded = linesAdded ?? launchedAgent.linesAdded;
+          launchedAgent.linesRemoved = linesRemoved ?? launchedAgent.linesRemoved;
+          const workspaceStamp = yield* makeEventStamp();
+          yield* offerRuntimeEvent({
+            type: "task.updated",
+            eventId: workspaceStamp.eventId,
+            provider: PROVIDER,
+            createdAt: workspaceStamp.createdAt,
+            threadId: context.session.threadId,
+            ...(context.turnState ? { turnId: asCanonicalTurnId(context.turnState.turnId) } : {}),
+            payload: {
+              taskId: RuntimeTaskId.make(launchedAgent.taskId),
+              ...taskLinkageFor(context.taskAgents, launchedAgent.taskId),
+            },
+            providerRefs: nativeProviderRefs(context, { providerItemId: tool.itemId }),
+            raw: {
+              source: "claude.sdk.message",
+              method: "claude/user",
+              payload: message,
+            },
           });
         }
       }
@@ -3847,9 +3916,28 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           (typeof rawLaunchEffort === "number" && Number.isFinite(rawLaunchEffort)
             ? String(rawLaunchEffort)
             : context.currentEffort);
+        // Where the agent works: an isolated agent's worktree is only known
+        // from the Agent tool result; a nested agent inherits its owner's
+        // workspace; anything else runs in the session's cwd.
+        const isolation = readAgentIsolation(launchInput);
+        const owningAgent = owningAgentId
+          ? Array.from(context.taskAgents.values()).find(
+              (agent) => agent.toolUseId === owningAgentId || agent.taskId === owningAgentId,
+            )
+          : undefined;
+        const workspace = isolation
+          ? { isolation }
+          : owningAgentId
+            ? {
+                isolation: owningAgent?.isolation,
+                cwd: owningAgent?.cwd,
+                worktreeBranch: owningAgent?.worktreeBranch,
+              }
+            : { cwd: trimmedString(context.session.cwd ?? undefined) };
         // Remember the agent identity so every later task.* payload for this
         // taskId is self-describing (identity must survive activity retention).
         context.taskAgents.set(message.task_id, {
+          ...workspace,
           taskId: message.task_id,
           toolUseId: message.tool_use_id,
           description: message.description,
@@ -3883,6 +3971,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
             ...(effort ? { effort } : {}),
             ...(message.tool_use_id ? { toolUseId: message.tool_use_id } : {}),
             ...(message.workflow_name ? { workflowName: message.workflow_name } : {}),
+            ...(workspace.isolation ? { isolation: workspace.isolation } : {}),
+            ...(workspace.cwd ? { cwd: workspace.cwd } : {}),
+            ...(workspace.worktreeBranch ? { worktreeBranch: workspace.worktreeBranch } : {}),
           },
         });
         return;

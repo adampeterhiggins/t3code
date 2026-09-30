@@ -1345,6 +1345,7 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
       yield* runtime.emit(
         childEvent("evt-child-start", "collabAgent/started", {
           prompt: `  ${"x".repeat(5000)}  `,
+          cwd: "/workspace/child-worktree",
         }),
       );
       yield* runtime.emit(
@@ -1364,6 +1365,7 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
       NodeAssert.ok(started?.type === "task.started");
       NodeAssert.equal(started.payload.prompt?.length, 4000);
       NodeAssert.ok(started.payload.prompt?.startsWith("xxx"));
+      NodeAssert.equal(started.payload.cwd, "/workspace/child-worktree");
       NodeAssert.ok(errored?.type === "task.updated");
       NodeAssert.deepStrictEqual(
         { status: errored.payload.status, error: errored.payload.error },

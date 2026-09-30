@@ -970,6 +970,8 @@ interface CollabChildAgentState {
   readonly agentPath: string | undefined;
   readonly depth: number | undefined;
   readonly parentThreadId: string | undefined;
+  /** Working directory the child thread reported in its thread/started. */
+  readonly cwd: string | undefined;
   /**
    * Parent canonical turn active when the child registered. Stamped on every
    * synthetic collabAgent/* event so clients can batch a fleet by its spawn
@@ -995,6 +997,7 @@ function collabChildIdentity(
     ...(child.nickname ? { nickname: child.nickname } : {}),
     ...(child.role ? { role: child.role } : {}),
     ...(child.agentPath ? { agentPath: child.agentPath } : {}),
+    ...(child.cwd ? { cwd: child.cwd } : {}),
     ...(metadata?.model ? { model: metadata.model } : {}),
     ...(metadata?.effort ? { effort: metadata.effort } : {}),
   };
@@ -1665,6 +1668,7 @@ export const makeCodexSessionRuntime = (
             depth: spawn.depth ?? existingChild?.depth,
             parentThreadId:
               spawn.parentThreadId ?? thread.parentThreadId ?? existingChild?.parentThreadId,
+            cwd: nonEmptyMetadataValue(thread.cwd) ?? existingChild?.cwd,
             spawnTurnId,
           };
           yield* Ref.update(collabChildAgentsRef, (current) => {
@@ -1718,6 +1722,7 @@ export const makeCodexSessionRuntime = (
               agentPath: existing?.agentPath ?? item.agentPath,
               depth: existing?.depth,
               parentThreadId: existing?.parentThreadId,
+              cwd: existing?.cwd,
               spawnTurnId: existing ? existing.spawnTurnId : activitySpawnTurnId,
             });
             return next;

@@ -782,6 +782,8 @@ interface OpenCodeSubagentState {
   role: string | undefined;
   model: string | undefined;
   prompt: string | undefined;
+  /** The child session's own directory, as OpenCode reports it. */
+  cwd: string | undefined;
   started: boolean;
   completed: boolean;
   lastToolName: string | undefined;
@@ -813,6 +815,7 @@ function makeOpenCodeSubagentState(taskId: string): OpenCodeSubagentState {
     role: undefined,
     model: undefined,
     prompt: undefined,
+    cwd: undefined,
     started: false,
     completed: false,
     lastToolName: undefined,
@@ -889,6 +892,7 @@ function openCodeSubagentLinkage(state: OpenCodeSubagentState) {
     ...(state.role ? { role: state.role } : {}),
     ...(state.model ? { model: state.model } : {}),
     ...(state.toolUseId ? { toolUseId: state.toolUseId } : {}),
+    ...(state.cwd ? { cwd: state.cwd } : {}),
   };
 }
 
@@ -2042,11 +2046,12 @@ export function makeOpenCodeAdapter(
     // be told apart link later through the call's `metadata.sessionId`.
     const registerOpenCodeChildSession = Effect.fn("registerOpenCodeChildSession")(function* (
       context: OpenCodeSessionContext,
-      session: { readonly id: string; readonly title: string },
+      session: { readonly id: string; readonly title: string; readonly directory?: string },
       raw: unknown,
     ) {
       if (context.subagents.has(session.id)) return;
       const state = makeOpenCodeSubagentState(session.id);
+      state.cwd = session.directory?.trim() || undefined;
       const parsed = parseOpenCodeSubagentTitle(session.title);
       state.title = parsed.description;
       state.role = parsed.role;

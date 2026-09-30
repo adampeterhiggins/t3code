@@ -203,6 +203,13 @@ inspect others. Close a tab with its close button; open that agent's detail
 view again to reopen it. **Agents** in a dedicated tab returns to the list.
 Tabs belong to the current thread and are restored when you reopen the app.
 
+Each agent shows the folder it works in. **shared** means it edits the thread's
+own worktree, and **isolated** means it has a separate one, such as a Claude
+agent launched with worktree isolation. **thread folder?** means the provider
+doesn't say where its subagents run, so the thread's folder is shown as a
+best guess. In an agent's detail view, hover the folder line to see the full
+path and branch and copy them.
+
 Tool calls list newest first. Search them, filter by status or tool, or sort
 oldest first or by duration. Hover a call to preview all of it; click to keep
 it open. The menu on the **Tool calls** heading switches to the **Transcript**,

@@ -2324,6 +2324,109 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  it.effect("reports where each subagent works: session cwd, isolated worktree, or remote", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const taskEventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.type === "task.started" || event.type === "task.updated"),
+        Stream.take(4),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+        cwd: "/tmp/claude-workspace-project",
+      });
+      yield* adapter.sendTurn({ threadId: session.threadId, input: "delegate", attachments: [] });
+
+      const launch = (index: number, id: string, input: Record<string, unknown>) =>
+        harness.query.emit({
+          type: "stream_event",
+          session_id: CLAUDE_ORIGINAL_SESSION_ID,
+          uuid: `stream-${id}`,
+          parent_tool_use_id: null,
+          event: {
+            type: "content_block_start",
+            index,
+            content_block: { type: "tool_use", id, name: "Agent", input },
+          },
+        } as unknown as SDKMessage);
+      const started = (taskId: string, toolUseId: string) =>
+        harness.query.emit({
+          type: "system",
+          subtype: "task_started",
+          task_id: taskId,
+          description: taskId,
+          task_type: "local_agent",
+          tool_use_id: toolUseId,
+          uuid: `started-${taskId}`,
+          session_id: CLAUDE_ORIGINAL_SESSION_ID,
+        } as unknown as SDKMessage);
+
+      launch(0, "tool-shared", { description: "Shared", prompt: "look" });
+      started("agent-shared", "tool-shared");
+      launch(1, "tool-isolated", {
+        description: "Isolated",
+        prompt: "edit",
+        isolation: "worktree",
+      });
+      started("agent-isolated", "tool-isolated");
+      launch(2, "tool-remote", { description: "Remote", prompt: "e2e", isolation: "remote" });
+      started("agent-remote", "tool-remote");
+      harness.query.emit({
+        type: "user",
+        session_id: CLAUDE_ORIGINAL_SESSION_ID,
+        uuid: "user-isolated-result",
+        parent_tool_use_id: null,
+        message: {
+          role: "user",
+          content: [{ type: "tool_result", tool_use_id: "tool-isolated", content: "done" }],
+        },
+        tool_use_result: {
+          status: "completed",
+          prompt: "edit",
+          worktreePath: "/tmp/claude-workspace-project/.claude/worktrees/agent-a91f",
+          worktreeBranch: "worktree-agent-a91f",
+          toolStats: { linesAdded: 42, linesRemoved: 7 },
+        },
+      } as unknown as SDKMessage);
+
+      const [shared, isolated, remote, reported] = Array.from(yield* Fiber.join(taskEventsFiber));
+      assert.equal(shared?.type, "task.started");
+      if (shared?.type === "task.started") {
+        assert.equal(shared.payload.cwd, "/tmp/claude-workspace-project");
+        assert.notProperty(shared.payload, "isolation");
+      }
+      if (isolated?.type === "task.started") {
+        assert.equal(isolated.payload.isolation, "worktree");
+        assert.notProperty(isolated.payload, "cwd");
+      }
+      if (remote?.type === "task.started") {
+        assert.equal(remote.payload.isolation, "remote");
+        assert.notProperty(remote.payload, "cwd");
+      }
+      assert.equal(reported?.type, "task.updated");
+      if (reported?.type === "task.updated") {
+        assert.equal(reported.payload.taskId, "agent-isolated");
+        assert.notProperty(reported.payload, "status");
+        assert.equal(
+          reported.payload.cwd,
+          "/tmp/claude-workspace-project/.claude/worktrees/agent-a91f",
+        );
+        assert.equal(reported.payload.worktreeBranch, "worktree-agent-a91f");
+        assert.equal(reported.payload.isolation, "worktree");
+        assert.equal(reported.payload.linesAdded, 42);
+        assert.equal(reported.payload.linesRemoved, 7);
+      }
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   it.effect("reads a subagent transcript from Claude history by its task id", () => {
     const calls: Array<{ sessionId: string; agentId: string; dir: string | undefined }> = [];
     const harness = makeHarness({

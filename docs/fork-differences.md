@@ -109,16 +109,24 @@ its launch prompt, full result or error, searchable and filterable tool calls or
 transcript, and a usage footer. On web and desktop, **Open in new tab** keeps an agent in its own
 thread-scoped sidebar tab alongside the fleet and other agents. Agent tabs can be closed and
 reopened from the detail view, and are restored when the app restarts.
+Each agent also shows where it works: its worktree's folder name in the row, and the folder,
+branch, and lines changed in the detail header, with the full path and copy buttons on hover.
+The folder is tagged **shared** when it is the thread's own, **isolated** when it differs, and
+**thread folder?** when the provider does not report one (Cursor, Grok, Antigravity).
 Upstream's panel is a fixed list with one summary line per agent. To feed it:
 
 - Adapters put the launch prompt on `task.started` (`prompt`) and emit a subagent's own tool calls
   as `item.*` events tagged with `agentId`, as Claude already did upstream. Codex, Cursor, and
   OpenCode do this in the fork.
 - OpenCode child sessions and Grok subagents join the panel at all; upstream shows neither.
+- Task payloads carry the agent's `cwd`, `worktreeBranch`, `isolation`, and line counts when the
+  provider reports them: Claude from the Agent tool's `isolation` input and its result's
+  `worktreePath` and `toolStats`, Codex from the child thread's `thread.cwd`, and OpenCode from the
+  child session's `directory`.
 - `orchestration.getSubagentTranscript` reads a subagent's history through the adapter's
   `readSubagentTranscript` (Claude, Codex, OpenCode), only while the session is running.
 
-Code: `apps/web/src/components/AgentsPanel.tsx`, `AgentDetailView.tsx`,
+Code: `apps/web/src/components/AgentsPanel.tsx`, `AgentDetailView.tsx`, `AgentWorkspace.tsx`,
 `apps/web/src/rightPanelStore.ts`, `packages/client-runtime/src/state/agentPanelView.ts`, and
 `apps/server/src/provider/subagentTranscript.ts`. User guide:
 [thread-sidebar.md](./user/thread-sidebar.md#inspect-agent-work).

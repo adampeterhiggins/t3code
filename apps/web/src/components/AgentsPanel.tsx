@@ -29,6 +29,7 @@ import type {
   RuntimeSubagent,
 } from "@t3tools/client-runtime/state/subagentRuntime";
 import {
+  deriveSubagentWorkspace,
   formatSubagentModelLabel,
   formatSubagentTokenCount,
   isActiveSubagentStatus,
@@ -50,9 +51,15 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { AgentUsageFooter, TOOL_KIND_ICONS, ToolLogList, UsageFooter } from "./AgentActivityParts";
 import { AgentDetailView } from "./AgentDetailView";
 import { AgentsPanelToolbar } from "./AgentsPanelToolbar";
+import { AgentWorkspaceChip } from "./AgentWorkspace";
 import { AgentElapsed, elapsedBetween, STATUS_VISUALS, StatusDot } from "./AgentStatus";
 
 type OpenAgent = (agentId: string, toolCallId?: string) => void;
+/** The thread's own workspace, which subagents are compared against. */
+export interface ThreadWorkspace {
+  readonly path: string | null;
+  readonly branch: string | null;
+}
 type ToolLogs = ReadonlyMap<string, ReadonlyArray<SubagentToolLogEntry>>;
 
 const NO_TOOL_CALLS: ReadonlyArray<SubagentToolLogEntry> = [];
@@ -102,6 +109,7 @@ function LiveActivityLine(props: {
 function AgentRowContent(props: {
   agent: RuntimeSubagent;
   toolLog: ReadonlyArray<SubagentToolLogEntry>;
+  threadWorkspace: ThreadWorkspace;
 }) {
   const { agent } = props;
   const live = isActiveSubagentStatus(agent.status);
@@ -116,6 +124,7 @@ function AgentRowContent(props: {
         ) : failed ? (
           <X aria-hidden className="size-3 shrink-0 text-destructive" />
         ) : null}
+        <AgentWorkspaceChip workspace={deriveSubagentWorkspace(agent, props.threadWorkspace)} />
         <span className="shrink-0 font-mono text-2xs tabular-nums text-muted-foreground/80">
           {agent.usage ? formatSubagentTokenCount(agent.usage.totalTokens) : ""}
         </span>
@@ -239,6 +248,7 @@ function AgentPreviewContent(props: {
 function AgentRow(props: {
   agent: RuntimeSubagent;
   toolLogs: ToolLogs;
+  threadWorkspace: ThreadWorkspace;
   timestampFormat: TimestampFormat;
   onOpen: OpenAgent;
 }) {
@@ -262,7 +272,7 @@ function AgentRow(props: {
           />
         }
       >
-        <AgentRowContent agent={agent} toolLog={toolLog} />
+        <AgentRowContent agent={agent} toolLog={toolLog} threadWorkspace={props.threadWorkspace} />
       </PreviewCardTrigger>
       <PreviewCardPopup side="left" align="start" className="w-100 max-w-[calc(100vw-2rem)]">
         <AgentPreviewContent
@@ -279,6 +289,7 @@ function AgentRow(props: {
 /** Shared by every agent row in the list. */
 interface RowContext {
   readonly toolLogs: ToolLogs;
+  readonly threadWorkspace: ThreadWorkspace;
   readonly timestampFormat: TimestampFormat;
   readonly onOpenAgent: OpenAgent;
 }
@@ -289,6 +300,7 @@ function Rows(props: { agents: ReadonlyArray<RuntimeSubagent>; ctx: RowContext }
       key={agent.id}
       agent={agent}
       toolLogs={props.ctx.toolLogs}
+      threadWorkspace={props.ctx.threadWorkspace}
       timestampFormat={props.ctx.timestampFormat}
       onOpen={props.ctx.onOpenAgent}
     />
@@ -630,6 +642,7 @@ export function AgentsPanel({
   threadKey,
   environmentId = null,
   threadId = null,
+  threadWorkspace,
   dedicatedAgentId,
   onOpenAgentTab,
   onViewAgents,
@@ -643,6 +656,7 @@ export function AgentsPanel({
   threadKey: string | null;
   environmentId?: EnvironmentId | null;
   threadId?: ThreadId | null;
+  threadWorkspace: ThreadWorkspace;
 }) {
   const view = useAgentsPanelStore((state) => state.view);
   const setView = useAgentsPanelStore((state) => state.setView);
@@ -658,6 +672,7 @@ export function AgentsPanel({
   const focusedAgent = detailAgentId ? findPanelAgent(model, detailAgentId) : null;
   const ctx: RowContext = {
     toolLogs,
+    threadWorkspace,
     timestampFormat,
     onOpenAgent: (agentId, toolCallId) => {
       if (threadKey) focusAgent(threadKey, agentId, toolCallId ?? null);
@@ -696,6 +711,7 @@ export function AgentsPanel({
       <AgentDetailView
         key={focusedAgent.id}
         agent={focusedAgent}
+        workspace={deriveSubagentWorkspace(focusedAgent, threadWorkspace)}
         activities={activities}
         environmentId={environmentId}
         threadId={threadId}
