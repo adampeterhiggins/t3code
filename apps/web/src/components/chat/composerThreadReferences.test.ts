@@ -2,10 +2,13 @@ import type {
   EnvironmentProject,
   EnvironmentThreadShell,
 } from "@t3tools/client-runtime/state/shell";
-import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
+import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 
-import { composerThreadReferenceItems } from "./composerThreadReferences";
+import {
+  composerThreadReferenceItems,
+  DEFAULT_THREAD_ATTACH_PICKER_VIEW,
+} from "./composerThreadReferences";
 
 const environmentId = EnvironmentId.make("env-1");
 const projectId = ProjectId.make("project-1");
@@ -21,7 +24,9 @@ function thread(
     environmentId,
     projectId,
     title,
+    createdAt: updatedAt,
     updatedAt,
+    modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-6.1-sol" },
     archivedAt: null,
     ...overrides,
   } as EnvironmentThreadShell;
@@ -101,5 +106,57 @@ describe("composerThreadReferenceItems", () => {
     expect(items).toHaveLength(50);
     expect(items[0]?.threadId).toBe("thread-58");
     expect(items.at(-1)?.threadId).toBe("thread-9");
+  });
+
+  it("combines project and provider filters with title search before limiting results", () => {
+    const secondProject = ProjectId.make("project-2");
+    const claude = { instanceId: ProviderInstanceId.make("claude-personal"), model: "sonnet" };
+    const items = composerThreadReferenceItems({
+      threads: [
+        thread("a", "Login in main project", "2026-09-03", { modelSelection: claude }),
+        thread("b", "Login with Codex", "2026-09-04", { projectId: secondProject }),
+        thread("c", "Unrelated Claude work", "2026-09-05", {
+          projectId: secondProject,
+          modelSelection: claude,
+        }),
+        thread("d", "Login with Claude", "2026-09-02", {
+          projectId: secondProject,
+          modelSelection: claude,
+        }),
+      ],
+      projects,
+      environmentId,
+      excludeThreadIds: new Set(),
+      query: "login",
+      limit: 1,
+      view: {
+        ...DEFAULT_THREAD_ATTACH_PICKER_VIEW,
+        projectIds: [secondProject],
+        providerInstanceIds: [claude.instanceId],
+      },
+    });
+    expect(items.map((item) => item.threadId)).toEqual(["d"]);
+  });
+
+  it.each([
+    ["updated", ["a", "b", "c"]],
+    ["newest", ["c", "b", "a"]],
+    ["oldest", ["a", "b", "c"]],
+    ["title", ["b", "c", "a"]],
+  ] as const)("sorts picker results by %s before applying the limit", (sort, expected) => {
+    const items = composerThreadReferenceItems({
+      threads: [
+        thread("a", "Zebra", "2026-09-03", { createdAt: "2026-09-01" }),
+        thread("b", "Alpha", "2026-09-02", { createdAt: "2026-09-02" }),
+        thread("c", "Middle", "2026-09-01", { createdAt: "2026-09-03" }),
+      ],
+      projects,
+      environmentId,
+      excludeThreadIds: new Set(),
+      query: "",
+      limit: 2,
+      view: { ...DEFAULT_THREAD_ATTACH_PICKER_VIEW, sort },
+    });
+    expect(items.map((item) => item.threadId)).toEqual(expected.slice(0, 2));
   });
 });
