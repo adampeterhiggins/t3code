@@ -12,9 +12,10 @@ import type {
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/unstable/reactivity";
-import { FolderGit2Icon, LockIcon } from "lucide-react";
+import { ExternalLinkIcon, FolderGit2Icon, LockIcon } from "lucide-react";
 import { useState } from "react";
 
+import { useLinkClickHandler } from "~/browser/useOpenLink";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { useEnvironmentSettings } from "~/hooks/useSettings";
 import { useRepositoryContextStore } from "~/repositoryContextStore";
@@ -32,6 +33,7 @@ import {
   CommandItem,
   CommandList,
 } from "../ui/command";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 const OWNER_DEBOUNCE_MS = 300;
 const MAX_SHOWN = 50;
@@ -100,6 +102,42 @@ export function RepositoryAttachPickerHost(props: { workspaceCwd: string | null 
       workspaceCwd={props.workspaceCwd}
       onClose={() => appAtomRegistry.set(repositoryAttachPickerThreadAtom, null)}
     />
+  );
+}
+
+/**
+ * Flush right on a row, shown on hover or keyboard highlight: opens the repository in the
+ * browser without attaching it. Only web URLs get one; an ssh remote has nothing to open.
+ */
+function OpenRepositoryButton(props: { threadRef: ScopedThreadRef; url: string }) {
+  const openLink = useLinkClickHandler(props.threadRef);
+  if (!/^https?:\/\//i.test(props.url)) return null;
+  return (
+    <span className="flex shrink-0 opacity-0 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover/row:opacity-100 in-data-highlighted:opacity-100">
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              size="icon-xs"
+              variant="ghost-muted"
+              aria-label="Open repository"
+              render={<a href={props.url} target="_blank" rel="noreferrer" />}
+              // Keep focus in the search box, and do not attach the row.
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={(event) => {
+                event.stopPropagation();
+                openLink(event, props.url);
+              }}
+            >
+              <ExternalLinkIcon />
+            </Button>
+          }
+        />
+        <TooltipPopup side="top" align="center">
+          Open repository
+        </TooltipPopup>
+      </Tooltip>
+    </span>
   );
 }
 
@@ -264,7 +302,7 @@ function RepositoryAttachPickerDialog(props: {
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={() => select(entry)}
                       >
-                        <span className="flex min-w-0 flex-1 items-center gap-2">
+                        <span className="group/row flex min-w-0 flex-1 items-center gap-2">
                           <span className="min-w-0 flex-1 truncate text-foreground text-sm">
                             {entry.nameWithOwner}
                           </span>
@@ -273,6 +311,7 @@ function RepositoryAttachPickerDialog(props: {
                               {entry.remoteUrl}
                             </span>
                           )}
+                          <OpenRepositoryButton threadRef={threadRef} url={entry.remoteUrl} />
                         </span>
                       </CommandItem>
                     )}
@@ -293,7 +332,7 @@ function RepositoryAttachPickerDialog(props: {
                         })
                       }
                     >
-                      <span className="flex min-w-0 flex-1 items-center gap-2">
+                      <span className="group/row flex min-w-0 flex-1 items-center gap-2">
                         {/* Fixed widths so the lock and descriptions line up down the list. */}
                         <span className="w-52 shrink-0 truncate text-foreground text-sm">
                           {candidate.name}
@@ -310,6 +349,7 @@ function RepositoryAttachPickerDialog(props: {
                           {candidate.description ?? ""}
                         </span>
                         {workspaceBadge(candidate.url)}
+                        <OpenRepositoryButton threadRef={threadRef} url={candidate.url} />
                       </span>
                     </CommandItem>
                   )}
