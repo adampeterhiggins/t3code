@@ -3770,6 +3770,11 @@ export default function ChatView(props: ChatViewProps) {
   const activeProjectCwd = activeProject?.workspaceRoot ?? null;
   const activeThreadWorktreePath = activeThread?.worktreePath ?? null;
   const activeWorkspaceRoot = activeThreadWorktreePath ?? activeProjectCwd ?? undefined;
+  const activeThreadBranchName = activeThread?.branch ?? null;
+  const agentThreadWorkspace = useMemo(
+    () => ({ path: activeWorkspaceRoot ?? null, branch: activeThreadBranchName }),
+    [activeWorkspaceRoot, activeThreadBranchName],
+  );
   useLayoutEffect(() => {
     if (
       threadDetailLoading ||
@@ -10055,6 +10060,7 @@ export default function ChatView(props: ChatViewProps) {
         threadKey={activeThreadRef ? scopedThreadKey(activeThreadRef) : null}
         environmentId={activeThreadRef?.environmentId ?? null}
         threadId={activeThreadRef?.threadId ?? null}
+        threadWorkspace={agentThreadWorkspace}
       />
     ) : renderedRightPanelSurface?.kind === "device" ? (
       <Suspense fallback={null}>

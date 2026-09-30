@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { classifyTaskAgentKind, type OrchestrationThreadActivity } from "@t3tools/contracts";
 import {
   deriveAgentPanelModel,
+  deriveSubagentWorkspace,
   foldSubagentActivities,
   formatSubagentModelLabel,
   formatSubagentTokenCount,
@@ -889,5 +890,77 @@ describe("nested agents vs subagent shells", () => {
       }),
     ]);
     expect(agents.map((agent) => agent.id)).toEqual(["nested-1"]);
+  });
+});
+
+describe("subagent workspace", () => {
+  const thread = { path: "/repo/.t3/worktrees/feature-a/", branch: "feature-a" };
+
+  it("keeps a worktree reported after the agent settled", () => {
+    const [agent] = fold([
+      activity("task.started", { taskId: "iso-1", taskType: "subagent", isolation: "worktree" }),
+      activity("task.completed", { taskId: "iso-1", status: "completed" }),
+      activity("task.updated", {
+        taskId: "iso-1",
+        cwd: "/repo/.claude/worktrees/agent-a91f",
+        worktreeBranch: "worktree-agent-a91f",
+        linesAdded: 12,
+        linesRemoved: 3,
+      }),
+    ]);
+    expect(agent!.status).toBe("completed");
+    expect(agent).toMatchObject({
+      isolation: "worktree",
+      cwd: "/repo/.claude/worktrees/agent-a91f",
+      linesAdded: 12,
+      linesRemoved: 3,
+    });
+    expect(deriveSubagentWorkspace(agent!, thread)).toEqual({
+      kind: "isolated",
+      path: "/repo/.claude/worktrees/agent-a91f",
+      name: "agent-a91f",
+      branch: "worktree-agent-a91f",
+    });
+  });
+
+  it("reads a reported cwd equal to the thread's as shared, with the thread's branch", () => {
+    expect(
+      deriveSubagentWorkspace(
+        { cwd: "/repo/.t3/worktrees/feature-a", worktreeBranch: null, isolation: null },
+        thread,
+      ),
+    ).toEqual({
+      kind: "shared",
+      path: "/repo/.t3/worktrees/feature-a",
+      name: "feature-a",
+      branch: "feature-a",
+    });
+  });
+
+  it("marks the thread's workspace as assumed when the provider reports no cwd", () => {
+    const none = { cwd: null, worktreeBranch: null, isolation: null };
+    expect(deriveSubagentWorkspace(none, thread)).toMatchObject({
+      kind: "assumed",
+      name: "feature-a",
+    });
+    expect(deriveSubagentWorkspace(none, { path: null, branch: null })).toBeNull();
+  });
+
+  it("waits for an isolated worktree's path and never guesses a remote one", () => {
+    expect(
+      deriveSubagentWorkspace({ cwd: null, worktreeBranch: null, isolation: "worktree" }, thread),
+    ).toEqual({ kind: "pending" });
+    expect(
+      deriveSubagentWorkspace({ cwd: null, worktreeBranch: null, isolation: "remote" }, thread),
+    ).toEqual({ kind: "remote" });
+  });
+
+  it("names Windows paths by their last segment", () => {
+    expect(
+      deriveSubagentWorkspace(
+        { cwd: "C:\\work\\agent-b2", worktreeBranch: null, isolation: null },
+        thread,
+      ),
+    ).toMatchObject({ kind: "isolated", name: "agent-b2", branch: null });
   });
 });

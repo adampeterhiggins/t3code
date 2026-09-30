@@ -22,6 +22,7 @@ import {
   formatSubagentModelLabel,
   isActiveSubagentStatus,
   type RuntimeSubagent,
+  type SubagentWorkspace,
 } from "@t3tools/client-runtime/state/subagentRuntime";
 import type {
   EnvironmentId,
@@ -61,6 +62,7 @@ import {
   ToolLogList,
 } from "./AgentActivityParts";
 import { AgentElapsed, STATUS_VISUALS, StatusDot } from "./AgentStatus";
+import { AgentWorkspaceLine } from "./AgentWorkspace";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import {
@@ -591,6 +593,7 @@ function ActivitySection(props: {
 
 export function AgentDetailView(props: {
   agent: RuntimeSubagent;
+  workspace: SubagentWorkspace | null;
   activities: ReadonlyArray<OrchestrationThreadActivity>;
   environmentId: EnvironmentId | null;
   threadId: ThreadId | null;
@@ -635,6 +638,7 @@ export function AgentDetailView(props: {
         <p className="truncate px-1 font-mono text-2xs text-muted-foreground">
           {identity.join(" · ")}
         </p>
+        <AgentWorkspaceLine agent={agent} workspace={props.workspace} />
       </header>
       <ScrollArea className="min-h-0 flex-1">
         <div className="flex flex-col gap-3.5 p-2">

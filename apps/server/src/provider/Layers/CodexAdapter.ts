@@ -1241,6 +1241,7 @@ function mapCollabAgentEvent(
   const model = typeof payload.model === "string" ? payload.model.trim() : "";
   const effort = typeof payload.effort === "string" ? payload.effort.trim() : "";
   const prompt = boundSubagentPrompt(payload.prompt, SUBAGENT_PROMPT_CHAR_LIMIT);
+  const cwd = typeof payload.cwd === "string" ? payload.cwd.trim() : "";
   // Identity repeated on every status patch so rows are self-describing when
   // the start row ages out of activity retention (review finding: a
   // reconstructed agent had a UUID name and no role/path).
@@ -1250,6 +1251,7 @@ function mapCollabAgentEvent(
     ...(model ? { model } : {}),
     ...(effort ? { effort } : {}),
     ...(agentPath ? { agentPath } : {}),
+    ...(cwd ? { cwd } : {}),
     timelineBypass: true,
   } as const;
 

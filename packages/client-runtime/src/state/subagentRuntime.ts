@@ -81,6 +81,12 @@ export interface RuntimeSubagent {
   readonly workflowName: string | null;
   readonly phases: ReadonlyArray<SubagentWorkflowPhase>;
   readonly runHandles: SubagentRunHandles | null;
+  /** Directory the agent works in, when the provider reports it. */
+  readonly cwd: string | null;
+  readonly worktreeBranch: string | null;
+  readonly isolation: "worktree" | "remote" | null;
+  readonly linesAdded: number | null;
+  readonly linesRemoved: number | null;
   readonly recentActivity: ReadonlyArray<SubagentActivityEntry>;
   /** First retained observation, used as the roster's stable display order. */
   readonly firstSeenAt: string;
@@ -257,6 +263,11 @@ interface MutableAgent {
   workflowName: string | null;
   phases: ReadonlyArray<SubagentWorkflowPhase>;
   runHandles: SubagentRunHandles | null;
+  cwd: string | null;
+  worktreeBranch: string | null;
+  isolation: "worktree" | "remote" | null;
+  linesAdded: number | null;
+  linesRemoved: number | null;
   recentActivity: ReadonlyArray<SubagentActivityEntry>;
   firstSeenAt: string;
   startedAt: string | null;
@@ -315,6 +326,11 @@ function getOrCreate(
     workflowName: asString(payload.workflowName) ?? null,
     phases: [],
     runHandles: null,
+    cwd: null,
+    worktreeBranch: null,
+    isolation: null,
+    linesAdded: null,
+    linesRemoved: null,
     recentActivity: [],
     firstSeenAt: at,
     startedAt: null,
@@ -368,6 +384,17 @@ function fillMetadata(agent: MutableAgent, payload: Record<string, unknown>): vo
   }
   const outputFile = asString(payload.outputFile);
   if (outputFile) agent.outputFile = outputFile;
+  const cwd = asString(payload.cwd);
+  if (cwd) agent.cwd = cwd;
+  const worktreeBranch = asString(payload.worktreeBranch);
+  if (worktreeBranch) agent.worktreeBranch = worktreeBranch;
+  if (payload.isolation === "worktree" || payload.isolation === "remote") {
+    agent.isolation = payload.isolation;
+  }
+  const linesAdded = asCount(payload.linesAdded);
+  if (linesAdded !== undefined) agent.linesAdded = linesAdded;
+  const linesRemoved = asCount(payload.linesRemoved);
+  if (linesRemoved !== undefined) agent.linesRemoved = linesRemoved;
   if (Array.isArray(payload.phases)) {
     const phases: SubagentWorkflowPhase[] = [];
     for (const entry of payload.phases) {
@@ -913,6 +940,62 @@ export function deriveAgentPanelModel({
  * ("claude-sonnet-5[1m]" → "sonnet-5[1m]", "claude-opus-4-20250514" →
  * "opus-4"). Unknown ids pass through untouched; effort appends as "· high".
  */
+export type SubagentWorkspace =
+  | { readonly kind: "remote" }
+  /** Isolated worktree whose path the provider has not reported yet. */
+  | { readonly kind: "pending" }
+  | {
+      readonly kind: "shared" | "isolated" | "assumed";
+      readonly path: string;
+      readonly name: string;
+      readonly branch: string | null;
+    };
+
+function trimTrailingSeparators(path: string): string {
+  return path.length > 1 ? path.replace(/[\\/]+$/, "") : path;
+}
+
+/** Last path segment: the worktree's folder name. */
+export function workspaceFolderName(path: string): string {
+  return (
+    trimTrailingSeparators(path)
+      .split(/[\\/]/)
+      .findLast((part) => part.length > 0) ?? path
+  );
+}
+
+/**
+ * Where an agent works, relative to its thread's workspace. A reported cwd
+ * equal to the thread's is shared and a different one is isolated. Without a
+ * reported cwd the thread's workspace is only an assumption: several
+ * providers never say where their subagents run.
+ */
+export function deriveSubagentWorkspace(
+  agent: Pick<RuntimeSubagent, "cwd" | "worktreeBranch" | "isolation">,
+  thread: { readonly path: string | null; readonly branch: string | null },
+): SubagentWorkspace | null {
+  if (agent.isolation === "remote") return { kind: "remote" };
+  const threadPath = thread.path ? trimTrailingSeparators(thread.path) : null;
+  if (agent.cwd) {
+    const path = trimTrailingSeparators(agent.cwd);
+    const shared = path === threadPath;
+    return {
+      kind: shared ? "shared" : "isolated",
+      path,
+      name: workspaceFolderName(path),
+      branch: agent.worktreeBranch ?? (shared ? thread.branch : null),
+    };
+  }
+  if (agent.isolation === "worktree") return { kind: "pending" };
+  if (!threadPath) return null;
+  return {
+    kind: "assumed",
+    path: threadPath,
+    name: workspaceFolderName(threadPath),
+    branch: thread.branch,
+  };
+}
+
 export function formatSubagentModelLabel(
   model: string | null,
   effort: string | null,

@@ -2619,13 +2619,17 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       );
       publish(taskPart("call-task-b", { status: "running", input: docsInput, time: { start: 1 } }));
       // Children arrive out of order; the title's description decides the match.
-      for (const [id, title] of [
-        ["ses_b", "Write docs (@general subagent)"],
-        ["ses_a", "Audit auth (@explore subagent)"],
+      // Only ses_a reports its own directory.
+      for (const [id, title, directory] of [
+        ["ses_b", "Write docs (@general subagent)", undefined],
+        ["ses_a", "Audit auth (@explore subagent)", "/repo/.worktrees/audit"],
       ] as const) {
         publish({
           type: "session.created",
-          properties: { sessionID: id, info: { id, parentID: root, title } },
+          properties: {
+            sessionID: id,
+            info: { id, parentID: root, title, ...(directory ? { directory } : {}) },
+          },
         });
       }
       publish({
@@ -2736,6 +2740,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
             title: "Audit auth",
             role: "explore",
             toolUseId: "call-task-a",
+            cwd: "/repo/.worktrees/audit",
           },
         ],
       );

@@ -236,6 +236,51 @@ describe("CodexSessionRuntime collab integration", () => {
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 
+  it.effect("carries the child thread's reported cwd on its agent identity", () =>
+    Effect.gen(function* () {
+      const spawned = capturedSpawnedThread();
+      const script = {
+        rootThreadId: ROOT,
+        notifications: [
+          {
+            ...spawned,
+            params: { thread: { ...spawned.params.thread, cwd: "/workspace/child-worktree" } },
+          },
+        ],
+        childResumeSnapshots: { [CHILD_A]: { model: "gpt-5.6-luna", reasoningEffort: "low" } },
+      };
+      // @effect-diagnostics-next-line preferSchemaOverJson:off
+      NodeFS.writeFileSync(scriptPath, JSON.stringify(script), "utf8");
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => NodeFS.rmSync(scriptPath, { force: true })),
+      );
+
+      const runtime = yield* makeCodexSessionRuntime({
+        threadId: ThreadId.make("thread-collab-child-cwd"),
+        binaryPath: peerPath,
+        cwd: NodeOS.tmpdir(),
+        runtimeMode: "full-access",
+        environment: { ...process.env, T3_CODEX_COLLAB_SCRIPT: scriptPath },
+      });
+      const startedFiber = yield* runtime.events.pipe(
+        Stream.filter((event) => event.method === "collabAgent/started"),
+        Stream.take(1),
+        Stream.runCollect,
+        Effect.forkScoped,
+      );
+
+      yield* runtime.start();
+      yield* runtime.sendTurn({ input: "start one child" });
+      const [started] = Array.from(yield* Fiber.join(startedFiber));
+      assert.deepInclude(started?.payload, {
+        agentThreadId: CHILD_A,
+        cwd: "/workspace/child-worktree",
+      });
+
+      yield* runtime.close;
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
   it.effect("keeps child settings and reroutes newer than the resume snapshot", () =>
     Effect.gen(function* () {
       const statusChanged = wireFixture.notifications.find(
