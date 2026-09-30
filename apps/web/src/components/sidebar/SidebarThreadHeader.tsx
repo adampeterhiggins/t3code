@@ -29,8 +29,10 @@ export interface SidebarThreadHeaderProps {
   searchFieldRef?: RefObject<HTMLDivElement | null>;
   /** Without projects there is nothing to scope, so those controls stay out. */
   hasProjects: boolean;
-  /** The project scope combobox, rendered as the first icon of the group. */
+  /** The project scope combobox, rendered with the project icons of the group. */
   projectScope: ReactNode;
+  /** Leads the icon group; renders nothing while no thread needs the user. */
+  attentionInbox: ReactNode;
   onNewProject: () => void;
   /** Receives the click so Shift+click can skip the project picker. */
   onNewThread: (event: ReactMouseEvent) => void;
@@ -59,6 +61,7 @@ export function SidebarThreadHeader({
   searchFieldRef,
   hasProjects,
   projectScope,
+  attentionInbox,
   onNewProject,
   onNewThread,
   newThreadDisabled,
@@ -131,6 +134,7 @@ export function SidebarThreadHeader({
           hover states, and a background well reads far louder on themed
           palettes than on the base light and dark ones. */}
       <div className="flex shrink-0 items-center">
+        {attentionInbox}
         {tabsToggle ? (
           <SidebarHeaderIconButton
             label={tabsToggle.shown ? "Hide tabs" : "Show tabs"}

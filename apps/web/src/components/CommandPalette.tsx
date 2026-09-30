@@ -55,6 +55,7 @@ import {
   FolderIcon,
   FolderPlusIcon,
   GitBranchIcon,
+  InboxIcon,
   LayersIcon,
   LinkIcon,
   MessageSquareIcon,
@@ -83,6 +84,7 @@ import { useAtomValue } from "@effect/atom-react";
 
 import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
+import { useAttentionInbox } from "../hooks/useAttentionInbox";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { useOpenPanelPullRequestUrl } from "../hooks/useOpenPanelPullRequestUrl";
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
@@ -138,6 +140,7 @@ import {
 } from "../lib/utils";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
 import { buildThreadRouteParams, resolveThreadRouteTarget } from "../threadRoutes";
+import { formatRelativeTimeLabel } from "../timestampFormat";
 import { useAvailableSettingsSearchItems } from "./settings/useAvailableSettingsSearchItems";
 import {
   applyWslEnvironmentConfiguration,
@@ -175,6 +178,10 @@ import { CommandPaletteResults } from "./CommandPaletteResults";
 import { AzureDevOpsIcon, BitbucketIcon, GitHubIcon, GitLabIcon, ForgejoIcon } from "./Icons";
 import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
 import { ProjectFavicon } from "./ProjectFavicon";
+import {
+  ATTENTION_REASON_PRESENTATION,
+  useProjectTitleByKey,
+} from "./sidebar/SidebarAttentionInbox";
 import { ProjectFilePicker } from "./files/ProjectFilePicker";
 import { openLinkPullRequestDialog } from "./pullRequest/LinkPullRequestDialog";
 import { openTranscriptExportDialog } from "./TranscriptExportDialog";
@@ -573,6 +580,13 @@ export function CommandPalette({ children }: { children: ReactNode }) {
         });
         return;
       }
+      if (command === "attentionInbox.open") {
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.repeat) return;
+        dispatch({ _tag: "OpenAttentionInbox" });
+        return;
+      }
       if (command === "usage.open") {
         event.preventDefault();
         event.stopPropagation();
@@ -708,6 +722,8 @@ function OpenCommandPaletteDialog(props: {
   const navigate = useNavigate();
   const pathname = useLocation({ select: (location) => location.pathname });
   const { clearOpenIntent, openIntent, openOverlayMode, setOpen } = props;
+  const attentionEntries = useAttentionInbox();
+  const attentionProjectTitleByKey = useProjectTitleByKey();
   const [query, setQuery] = useState(openIntent?.kind === "search" ? openIntent.query : "");
   const [linkedThreadSearch, setLinkedThreadSearch] = useState(
     openIntent?.kind === "search" ? openIntent : null,
@@ -2164,6 +2180,81 @@ function OpenCommandPaletteDialog(props: {
     });
   }
 
+  const attentionInboxItem: CommandPaletteSubmenuItem = {
+    kind: "submenu",
+    value: "action:attention-inbox",
+    searchTerms: [
+      "needs attention",
+      "inbox",
+      "attention",
+      "approval",
+      "input",
+      "question",
+      "failed",
+      "completed",
+      "unread",
+      "review",
+    ],
+    title: "Needs attention",
+    ...(attentionEntries.length > 0
+      ? {
+          titleTrailingContent: (
+            <span className="text-xs text-muted-foreground/70 tabular-nums">
+              {attentionEntries.length}
+            </span>
+          ),
+        }
+      : {}),
+    icon: <InboxIcon className={ITEM_ICON_CLASS} />,
+    addonIcon: <InboxIcon className={ADDON_ICON_CLASS} />,
+    shortcutCommand: "attentionInbox.open",
+    groups: [
+      {
+        value: "attention-inbox",
+        label: "Needs attention",
+        items: attentionEntries.map((entry) => {
+          const { label, Icon, iconClassName } = ATTENTION_REASON_PRESENTATION[entry.reason];
+          const projectTitle = attentionProjectTitleByKey.get(
+            `${entry.thread.environmentId}:${entry.thread.projectId}`,
+          );
+          return {
+            kind: "action" as const,
+            value: `attention:${entry.key}`,
+            searchTerms: [entry.thread.title, label, projectTitle ?? ""],
+            title: entry.thread.title,
+            description: projectTitle ? `${label} · ${projectTitle}` : label,
+            timestamp: formatRelativeTimeLabel(entry.at),
+            icon: <Icon className={cn("size-4", iconClassName)} />,
+            run: async () => {
+              // The entry's own route, not its tab group's last-opened tab.
+              await navigate({
+                to: "/$environmentId/$threadId",
+                params: buildThreadRouteParams(
+                  scopeThreadRef(entry.thread.environmentId, entry.thread.id),
+                ),
+              });
+            },
+          };
+        }),
+      },
+    ],
+  };
+  actionItems.push(attentionInboxItem);
+
+  useLayoutEffect(() => {
+    if (openIntent?.kind !== "attention-inbox") return;
+    clearOpenIntent();
+    browseNavigation.invalidate();
+    cloneLookupGeneration.current += 1;
+    setIsRemoteProjectLookingUp(false);
+    setAddProjectCloneFlow(null);
+    setViewStack([]);
+    pushPaletteView({
+      addonIcon: <InboxIcon className={ADDON_ICON_CLASS} />,
+      groups: [{ value: "attention-inbox", label: "Needs attention", items: [] }],
+    });
+  }, [browseNavigation, clearOpenIntent, openIntent, pushPaletteView]);
+
   actionItems.push({
     kind: "action",
     value: "action:usage",
@@ -2258,9 +2349,11 @@ function OpenCommandPaletteDialog(props: {
         )
       : currentView?.groups[0]?.value === "themes"
         ? changeThemeItem.groups
-        : currentView?.groups[0]?.value === "appearance"
-          ? changeAppearanceItem.groups
-          : (currentView?.groups ?? rootGroups);
+        : currentView?.groups[0]?.value === "attention-inbox"
+          ? attentionInboxItem.groups
+          : currentView?.groups[0]?.value === "appearance"
+            ? changeAppearanceItem.groups
+            : (currentView?.groups ?? rootGroups);
 
   const filteredGroups = filterCommandPaletteGroups({
     activeGroups,

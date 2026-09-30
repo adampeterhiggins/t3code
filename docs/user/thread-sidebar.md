@@ -68,6 +68,16 @@ in a new thread's model picker to add or remove them. A regular click returns to
 single model. Choose a base branch and send. Each selection starts a separate thread
 and worktree while you stay in the new thread composer. This requires a Git project.
 
+## See what needs you
+
+On web and desktop, the inbox button appears in the sidebar header while a thread needs you. It
+lists threads from every project and chat tab that are waiting for an approval or an answer, that
+failed, or that finished since you last opened them. Click an entry to open that exact tab. Use
+the check mark to mark a failure or completion read; **Mark unread** in the thread menu brings a
+completion back. Approvals and questions stay listed until you answer them. Snoozed threads stay
+out until they wake or ask for you. Press `Cmd+Option+N` on macOS or `Ctrl+Alt+N` on Windows and
+Linux, or search the command palette for **Needs attention**, to see the same list.
+
 ## Pin and reorder threads
 
 Pin a thread from its menu to keep it above your active work.
