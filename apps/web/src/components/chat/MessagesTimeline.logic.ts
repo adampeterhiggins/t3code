@@ -3,6 +3,7 @@ export { worktreeSetupAgentStarted } from "@t3tools/client-runtime/worktree-setu
 import * as Equal from "effect/Equal";
 import { shallow } from "zustand/vanilla/shallow";
 import { renderCodexDirectivesForCopy } from "@t3tools/client-runtime/codex-markdown-directives";
+import { formatCommandForWorkspace } from "@t3tools/client-runtime/work-log/command-display";
 import { commandProgramName } from "@t3tools/client-runtime/work-log/command-label";
 import {
   liveActivityToolStatus,
@@ -44,11 +45,11 @@ export const TIMELINE_MINIMAP_MIN_ITEMS = 2;
 const TIMELINE_MINIMAP_MAX_HEIGHT_CSS = "calc(100vh - 18rem)";
 const TIMELINE_MINIMAP_PERSISTENT_GUTTER = 48;
 
-function singleToolCallLabel(entry: WorkLogEntry): string {
+function singleToolCallLabel(entry: WorkLogEntry, workspaceRoot: string | undefined): string {
   const toolPresentation = resolveWorkEntryToolPresentation(entry, "completed");
   if (toolPresentation) return toolPresentation.displayName;
   const command = entry.command?.trim();
-  if (command) return command;
+  if (command) return formatCommandForWorkspace(command, workspaceRoot);
   const heading = normalizeCompactToolLabel(entry.toolTitle || entry.label);
   return `${heading.charAt(0).toUpperCase()}${heading.slice(1)}`;
 }
@@ -56,7 +57,7 @@ function singleToolCallLabel(entry: WorkLogEntry): string {
 export function workEntryDisplayLabel(entry: WorkLogEntry, workspaceRoot: string | undefined) {
   const toolPresentation = resolveWorkEntryToolPresentation(entry);
   if (toolPresentation) return toolPresentation.displayName;
-  if (entry.command) return entry.command;
+  if (entry.command) return formatCommandForWorkspace(entry.command, workspaceRoot);
   if (entry.detail) return entry.detail;
   const [firstPath] = entry.changedFiles ?? [];
   if (firstPath) {
@@ -975,6 +976,8 @@ export function deriveMessagesTimelineRows(input: {
   worktreeSetup?: WorktreeSetupSnapshot | null;
   /** Messages sent during the running turn, rendered after the live rows. */
   queuedMessages?: ReadonlyArray<QueuedComposerMessage>;
+  /** Directory the thread's commands start in; commands are shown relative to it. */
+  workspaceRoot?: string | undefined;
 }): MessagesTimelineRow[] {
   const turnDiffSummaryByAssistantMessageId = new Map<MessageId, TurnDiffSummary>();
   for (const summary of input.turnDiffSummaries) {
@@ -1300,7 +1303,7 @@ export function deriveMessagesTimelineRows(input: {
             displayLabel:
               toolGroupAction(singleEntry) === "edit"
                 ? summarizeToolGroup(visibleGroupedEntries)
-                : singleToolCallLabel(singleEntry),
+                : singleToolCallLabel(singleEntry, input.workspaceRoot),
           });
         } else {
           const groupId = workGroupId(timelineEntry.id, timelineEntry.entry);
@@ -1341,7 +1344,7 @@ export function deriveMessagesTimelineRows(input: {
             hiddenCount: visibleGroupedEntries.length,
             expanded,
             summary: usesSingleToolCallLabel
-              ? singleToolCallLabel(singleEntry)
+              ? singleToolCallLabel(singleEntry, input.workspaceRoot)
               : singleEntry !== null && !workLogEntryIsToolLike(singleEntry)
                 ? singleEntry.label
                 : summarizeToolGroup(visibleGroupedEntries),

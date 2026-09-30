@@ -1,5 +1,6 @@
 import * as Option from "effect/Option";
 import { foldUserInputActivities } from "@t3tools/client-runtime/work-log/user-input";
+import { formatCommandForWorkspace } from "@t3tools/client-runtime/work-log/command-display";
 import * as Schema from "effect/Schema";
 import {
   requestKindFromRequestType,
@@ -241,7 +242,10 @@ type ThreadFeedActivityGroup = Extract<ThreadFeedEntry, { readonly type: "activi
 // These keys are immutable inputs. Weak caches release old histories with their source data.
 const activityEntriesCache = new WeakMap<
   ReadonlyArray<OrchestrationThreadActivity>,
-  ReadonlyArray<Extract<RawThreadFeedEntry, { readonly type: "activity" }>>
+  {
+    readonly workspaceRoot: string | null;
+    readonly entries: ReadonlyArray<Extract<RawThreadFeedEntry, { readonly type: "activity" }>>;
+  }
 >();
 const messageEntriesCache = new WeakMap<
   OrchestrationThread["messages"][number],
@@ -2408,6 +2412,8 @@ export function buildThreadFeed(
   options?: {
     readonly loadedMessages?: ReadonlyArray<OrchestrationThread["messages"][number]>;
     readonly localMessages?: ReadonlyArray<OrchestrationThread["messages"][number]>;
+    /** Directory the thread's commands start in; commands are shown relative to it. */
+    readonly workspaceRoot?: string | null;
   },
 ): ThreadFeedEntry[] {
   const loadedMessages = options?.loadedMessages ?? thread.messages;
@@ -2416,7 +2422,10 @@ export function buildThreadFeed(
     : loadedMessages;
   const oldestLoadedMessageCreatedAt =
     options?.loadedMessages !== undefined ? (loadedMessages[0]?.createdAt ?? null) : null;
-  const activityEntries = getThreadFeedActivityEntries(thread.activities).filter(
+  const activityEntries = getThreadFeedActivityEntries(
+    thread.activities,
+    options?.workspaceRoot ?? null,
+  ).filter(
     (entry) =>
       oldestLoadedMessageCreatedAt === null || entry.createdAt >= oldestLoadedMessageCreatedAt,
   );
@@ -2448,12 +2457,28 @@ export function buildThreadFeed(
   return groupAdjacentActivities(entries);
 }
 
-function getThreadFeedActivityEntries(activities: ReadonlyArray<OrchestrationThreadActivity>) {
+function getThreadFeedActivityEntries(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+  workspaceRoot: string | null,
+) {
   const cached = activityEntriesCache.get(activities);
-  if (cached) return cached;
-  const entries = deriveWorkLogEntries(activities).map(toThreadFeedActivityEntry);
-  activityEntriesCache.set(activities, entries);
+  if (cached?.workspaceRoot === workspaceRoot) return cached.entries;
+  const entries = deriveWorkLogEntries(activities).map((entry) =>
+    toThreadFeedActivityEntry(withWorkspaceCommand(entry, workspaceRoot)),
+  );
+  activityEntriesCache.set(activities, { workspaceRoot, entries });
   return entries;
+}
+
+function withWorkspaceCommand(
+  entry: DerivedWorkLogEntry,
+  workspaceRoot: string | null,
+): DerivedWorkLogEntry {
+  if (!workspaceRoot || !entry.command) return entry;
+  const command = formatCommandForWorkspace(entry.command, workspaceRoot);
+  const rawCommand = entry.rawCommand && formatCommandForWorkspace(entry.rawCommand, workspaceRoot);
+  if (command === entry.command && rawCommand === entry.rawCommand) return entry;
+  return { ...entry, command, ...(rawCommand ? { rawCommand } : {}) };
 }
 
 function toThreadFeedActivityEntry(

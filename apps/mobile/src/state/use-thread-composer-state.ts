@@ -71,6 +71,7 @@ import { enqueueThreadOutboxMessage } from "./thread-outbox";
 import { dispatchingQueuedMessageIdAtom, useThreadOutboxMessages } from "./use-thread-outbox";
 import { threadEnvironment } from "./threads";
 import { useAtomCommand } from "./use-atom-command";
+import { useSelectedThreadWorktree } from "./use-selected-thread-worktree";
 import {
   composerAttachmentUploadBlockReason,
   composerAttachmentUploadsAtom,
@@ -130,6 +131,7 @@ export function useThreadComposerState() {
     selectedEnvironmentRuntime,
   } = useThreadSelection();
   const selectedThreadDetail = useSelectedThreadDetail();
+  const { selectedThreadCwd } = useSelectedThreadWorktree();
   const composerDrafts = useAtomValue(composerDraftsAtom);
   const acknowledgedMessages = useAtomValue(acknowledgedThreadMessagesAtom);
   const queuedMessagesByThreadKey = useThreadOutboxMessages();
@@ -201,14 +203,17 @@ export function useThreadComposerState() {
     const loadedMessages = selectedThreadMessages ?? [];
     const feed =
       (selectedThreadMessages && selectedThreadActivities) || pendingCreationMessage !== null
-        ? buildThreadFeed({
-            messages:
-              pendingCreationMessage !== null &&
-              !loadedMessages.some((message) => message.id === pendingCreationMessage.messageId)
-                ? [...loadedMessages, pendingThreadCreationMessage(pendingCreationMessage)]
-                : loadedMessages,
-            activities: selectedThreadActivities ?? [],
-          })
+        ? buildThreadFeed(
+            {
+              messages:
+                pendingCreationMessage !== null &&
+                !loadedMessages.some((message) => message.id === pendingCreationMessage.messageId)
+                  ? [...loadedMessages, pendingThreadCreationMessage(pendingCreationMessage)]
+                  : loadedMessages,
+              activities: selectedThreadActivities ?? [],
+            },
+            { workspaceRoot: selectedThreadCwd },
+          )
         : [];
     const pendingAcknowledgments = acknowledgedMessages.filter(
       (message) =>
@@ -222,6 +227,7 @@ export function useThreadComposerState() {
   }, [
     selectedThreadActivities,
     selectedThreadMessages,
+    selectedThreadCwd,
     pendingCreationMessage,
     selectedThreadKey,
     selectedThreadQueuedMessages,

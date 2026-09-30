@@ -35,6 +35,7 @@ import {
   summarizeToolGroup,
   omitSupersededLifecycleMarkers,
 } from "@t3tools/client-runtime/work-log/presentation";
+import { formatCommandForWorkspace } from "@t3tools/client-runtime/work-log/command-display";
 import { resolveWorkGroupScrollAnchor } from "@t3tools/client-runtime/work-log/scroll-anchor";
 import {
   hasToolActivityData,
@@ -804,6 +805,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         liveAgentTaskIds,
         worktreeSetup,
         queuedMessages,
+        workspaceRoot,
       },
       previous?.threadKey === listIdentityKey && previous.workspaceRoot === workspaceRoot
         ? previous.projection
@@ -4527,10 +4529,11 @@ function buildToolCallExpandedBody(
   addBlock(toolActivityDataBody(workEntry));
   const command = workEntry.command?.trim();
   const raw = workEntryRawCommand(workEntry);
-  if (command === visibleLabel.trim()) {
+  if (command && formatCommandForWorkspace(command, workspaceRoot) === visibleLabel.trim()) {
     seen.add(command);
   } else {
-    addBlock(raw ?? command);
+    const shownCommand = raw ?? command;
+    addBlock(shownCommand && formatCommandForWorkspace(shownCommand, workspaceRoot));
   }
   const detail = workEntry.detail?.trim();
   if (detail !== viewedImagePath?.trim()) {

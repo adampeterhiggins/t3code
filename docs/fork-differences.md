@@ -394,6 +394,17 @@ install the first build into `/Applications`. `T3CODE_DESKTOP_IDENTITY` makes
 install ad hoc–signed builds. Run `make` targets from the repository root, starting with
 `make update-cert`.
 
+## Commands shown relative to the workspace
+
+Command tool calls in the web, desktop, and mobile timelines are shown as they would read from the
+thread's working directory. A leading `cd` to that directory is dropped and absolute paths inside
+it become relative. Rewriting stops at the first `cd` somewhere else, because relative paths after
+it would point somewhere else. Approval prompts still show the exact command. The shared runtime
+instructions also tell every provider that shell commands already start in that directory.
+
+Code: `packages/client-runtime/src/work-log/commandDisplay.ts` and
+`apps/server/src/provider/RuntimeInstructions.ts`.
+
 ## Keeping this page current
 
 Update this page in the same change that adds, changes, or removes a user-visible fork-only

@@ -2804,6 +2804,35 @@ describe("deriveMessagesTimelineRows", () => {
     });
   });
 
+  it("labels a single command relative to the thread workspace", () => {
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "command-entry",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:01Z",
+          entry: {
+            id: "command",
+            createdAt: "2026-01-01T00:00:01Z",
+            label: "Ran command",
+            command: "cd /repo/wt && rg -n needle /repo/wt/src",
+            tone: "tool" as const,
+            toolLifecycleStatus: "completed" as const,
+          },
+        },
+      ],
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaries: [],
+      supportsConversationRollback: false,
+      workspaceRoot: "/repo/wt",
+    });
+
+    expect(rows.find((row) => row.kind === "work")).toMatchObject({
+      displayLabel: "rg -n needle src",
+    });
+  });
+
   it("renders one tool call directly after collapsing its lifecycle updates", () => {
     const turnId = TurnId.make("turn-1");
     const rows = deriveMessagesTimelineRows({
