@@ -47,6 +47,7 @@ import {
   ThreadTabHandoff,
   ThreadTabHandoffInput,
 } from "./threadTabs.ts";
+import { PullRequestWatches, SetPullRequestWatchInput } from "./pullRequestWatch.ts";
 import {
   PullRequestDiffInput,
   PullRequestDiffResult,
@@ -599,6 +600,28 @@ export class EnvironmentThreadTabsHttpApi extends HttpApiGroup.make("threadTabs"
     }).middleware(EnvironmentAuthenticatedAuth),
   ) {}
 
+const PullRequestWatchParams = Schema.Struct({ threadId: ThreadId });
+
+/** Fork-only: a thread's pull request watches. Both endpoints answer with the thread's watches. */
+export class EnvironmentPullRequestWatchesHttpApi extends HttpApiGroup.make("pullRequestWatches")
+  .add(
+    HttpApiEndpoint.get("list", "/api/pull-request-watches/:threadId", {
+      headers: OptionalBearerHeaders,
+      params: PullRequestWatchParams,
+      success: PullRequestWatches,
+      error: EnvironmentThreadTabsErrors,
+    }).middleware(EnvironmentAuthenticatedAuth),
+  )
+  .add(
+    HttpApiEndpoint.post("set", "/api/pull-request-watches/:threadId", {
+      headers: OptionalBearerHeaders,
+      params: PullRequestWatchParams,
+      payload: SetPullRequestWatchInput,
+      success: PullRequestWatches,
+      error: EnvironmentThreadTabsErrors,
+    }).middleware(EnvironmentAuthenticatedAuth),
+  ) {}
+
 /** Large, compressible pull-request payloads travel over HTTP rather than the RPC socket. */
 class EnvironmentPullRequestsHttpApi extends HttpApiGroup.make("pullRequests").add(
   HttpApiEndpoint.post("diff", "/api/pull-requests/diff", {
@@ -681,5 +704,6 @@ export class EnvironmentHttpApi extends HttpApi.make("environment")
   .add(EnvironmentAuthHttpApi)
   .add(EnvironmentOrchestrationHttpApi)
   .add(EnvironmentThreadTabsHttpApi)
+  .add(EnvironmentPullRequestWatchesHttpApi)
   .add(EnvironmentPullRequestsHttpApi)
   .add(EnvironmentConnectHttpApi) {}

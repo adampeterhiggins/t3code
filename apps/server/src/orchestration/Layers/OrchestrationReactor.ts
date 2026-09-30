@@ -16,6 +16,7 @@ import * as AgentAwarenessRelay from "../../relay/AgentAwarenessRelay.ts";
 import * as StorageCleanup from "../../storageCleanup.ts";
 import * as ThreadTabSettlementReactor from "../../threadTabs/settlement.ts";
 import * as UsageLimitResumeReactor from "../UsageLimitResumeReactor.ts";
+import * as PullRequestWatchReactor from "../../pullRequestWatch/reactor.ts";
 
 export const makeOrchestrationReactor = Effect.gen(function* () {
   const providerRuntimeIngestion = yield* ProviderRuntimeIngestionService;
@@ -26,6 +27,7 @@ export const makeOrchestrationReactor = Effect.gen(function* () {
   const threadTabSettlementReactor = yield* ThreadTabSettlementReactor.ThreadTabSettlementReactor;
   const usageLimitResumeReactor = yield* UsageLimitResumeReactor.UsageLimitResumeReactor;
   const pullRequestSyncReactor = yield* PullRequestSyncReactor.PullRequestSyncReactor;
+  const pullRequestWatchReactor = yield* PullRequestWatchReactor.PullRequestWatchReactor;
   const threadPullRequestReactor = yield* ThreadPullRequestReactor.ThreadPullRequestReactor;
   const agentAwarenessRelay = yield* AgentAwarenessRelay.AgentAwarenessRelay;
   const storageCleanup = yield* StorageCleanup.StorageCleanup;
@@ -40,6 +42,7 @@ export const makeOrchestrationReactor = Effect.gen(function* () {
     yield* threadTabSettlementReactor.start();
     yield* usageLimitResumeReactor.start();
     yield* pullRequestSyncReactor.start();
+    yield* pullRequestWatchReactor.start();
     yield* agentAwarenessRelay.start();
     yield* storageCleanup.start();
   });

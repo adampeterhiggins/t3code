@@ -194,6 +194,19 @@ review is terminal. An open or unsynced link keeps it active.
 Cross-repository links use a project on the same host. Azure DevOps reviews require a project checked
 out from the matching organization and repository.
 
+### Watch a pull request
+
+Choose **Watch and follow up** from a linked pull request's row menu to have the agent keep working
+on it. When the pull request reports failing checks, requested changes, or merge conflicts, T3 Code
+starts a follow-up turn in the thread once the agent is idle. The server does the watching, so it
+continues with every client closed.
+
+A watch starts at most 3 follow-ups. It asks about a problem once: failing checks come back after
+a new push, and requested changes or conflicts come back only after they have cleared. The row shows
+what the watch is waiting for. **Pause watching**, **Resume watching** (which also restores the
+follow-up budget), and **Stop watching** are in the same menu. A watch ends when its pull request
+merges or closes. Watches are set up from web and desktop; follow-up turns appear on every client.
+
 ## GitHub stacks
 
 The Pull Requests page shows each PR's position in its GitHub stack. Open the stack badge in a

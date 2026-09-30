@@ -7,6 +7,7 @@ export * from "./auth.ts";
 export * from "./environment.ts";
 export * from "./environmentHttp.ts";
 export * from "./threadTabs.ts";
+export * from "./pullRequestWatch.ts";
 export * from "./relayClient.ts";
 export * from "./desktopBootstrap.ts";
 export * from "./desktopAppActivation.ts";
