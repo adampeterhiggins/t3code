@@ -240,6 +240,48 @@ describe("deriveSubagentToolLog kinds and commands", () => {
   });
 });
 
+describe("deriveSubagentToolLog workspace paths", () => {
+  it("shows commands and file targets relative to the thread workspace", () => {
+    const log = deriveSubagentToolLog(
+      [
+        activity("tool.completed", {
+          agentId: "alpha",
+          toolCallId: "c1",
+          itemType: "command_execution",
+          title: "Bash",
+          detail: "cd /repo && sed -n 1,80p /repo/docs/a.md",
+          data: { command: "cd /repo && sed -n 1,80p /repo/docs/a.md" },
+        }),
+        activity("tool.completed", {
+          agentId: "alpha",
+          toolCallId: "c2",
+          itemType: "dynamic_tool_call",
+          title: "Read",
+          detail: "/repo/src/a.ts",
+          data: { file_path: "/repo/src/a.ts" },
+        }),
+        activity("tool.completed", {
+          agentId: "alpha",
+          toolCallId: "c3",
+          itemType: "dynamic_tool_call",
+          title: "Read",
+          detail: "/elsewhere/b.ts",
+        }),
+      ],
+      "alpha",
+      "/repo",
+    );
+    expect(log.map((entry) => entry.detail)).toEqual([
+      "sed -n 1,80p docs/a.md",
+      "src/a.ts",
+      "/elsewhere/b.ts",
+    ]);
+    expect(log[0]!.command).toBe("sed -n 1,80p docs/a.md");
+    // The preview's path still matches the detail, so the call shows it once.
+    expect(subagentToolCallText(log[1]!, false)).toBe("src/a.ts");
+  });
+});
+
 describe("applySubagentToolLogView", () => {
   const log = deriveSubagentToolLog(
     [

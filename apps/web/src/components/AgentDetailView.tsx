@@ -10,6 +10,7 @@ import {
   DEFAULT_SUBAGENT_TOOL_LOG_VIEW,
   DEFAULT_SUBAGENT_TRANSCRIPT_VIEW,
   deriveSubagentToolLog,
+  formatSubagentToolInput,
   subagentTranscriptKindFilterFor,
   subagentTranscriptToolKind,
   type SubagentToolKind,
@@ -206,6 +207,7 @@ const MessageRow = memo(function MessageRow(props: {
 function TranscriptList(props: {
   rows: ReturnType<typeof applySubagentTranscriptView>;
   timestampFormat: TimestampFormat;
+  workspaceRoot: string | undefined;
 }) {
   return (
     <ol className="flex flex-col gap-px">
@@ -215,16 +217,19 @@ function TranscriptList(props: {
           return <MessageRow key={index} entry={entry} time={time} />;
         }
         const status = entry.status ?? "completed";
+        const kind = subagentTranscriptToolKind(entry.toolName);
+        const input =
+          entry.input && formatSubagentToolInput(kind, entry.input, props.workspaceRoot);
         return (
           <CallRow
             key={index}
-            icon={TOOL_KIND_ICONS[subagentTranscriptToolKind(entry.toolName)]}
+            icon={TOOL_KIND_ICONS[kind]}
             title={entry.text}
-            detail={entry.input ?? null}
+            detail={input || null}
             status={status}
             time={time}
             duration={null}
-            body={[entry.input, entry.output].filter(Boolean).join("\n\n") || entry.text}
+            body={[input, entry.output].filter(Boolean).join("\n\n") || entry.text}
             meta={[entry.toolName, time, TOOL_STATUS_LABELS[status].toLowerCase()]
               .filter(Boolean)
               .join(" · ")}
@@ -333,6 +338,7 @@ function ActivitySection(props: {
   agent: RuntimeSubagent;
   initialToolCallId: string | null;
   activities: ReadonlyArray<OrchestrationThreadActivity>;
+  workspaceRoot: string | undefined;
   environmentId: EnvironmentId | null;
   threadId: ThreadId | null;
   timestampFormat: TimestampFormat;
@@ -349,8 +355,8 @@ function ActivitySection(props: {
   const canLoadTranscript = props.environmentId !== null && props.threadId !== null;
 
   const toolLog = useMemo(
-    () => deriveSubagentToolLog(props.activities, agent.id),
-    [props.activities, agent.id],
+    () => deriveSubagentToolLog(props.activities, agent.id, props.workspaceRoot),
+    [props.activities, agent.id, props.workspaceRoot],
   );
   const toolStatusCounts = useMemo(() => countBy(toolLog, (entry) => entry.status), [toolLog]);
   const toolKindCounts = useMemo(() => countBy(toolLog, (entry) => entry.kind), [toolLog]);
@@ -447,7 +453,11 @@ function ActivitySection(props: {
               Nothing in the transcript matches.
             </p>
           ) : (
-            <TranscriptList rows={visibleTranscript} timestampFormat={props.timestampFormat} />
+            <TranscriptList
+              rows={visibleTranscript}
+              timestampFormat={props.timestampFormat}
+              workspaceRoot={props.workspaceRoot}
+            />
           )}
         </>
       );
@@ -593,6 +603,8 @@ function ActivitySection(props: {
 export function AgentDetailView(props: {
   agent: RuntimeSubagent;
   activities: ReadonlyArray<OrchestrationThreadActivity>;
+  /** Directory the thread's commands start in; tool calls are shown relative to it. */
+  workspaceRoot?: string | undefined;
   environmentId: EnvironmentId | null;
   threadId: ThreadId | null;
   /** Opens with this tool call expanded and in view (from the agent preview). */
@@ -671,6 +683,7 @@ export function AgentDetailView(props: {
             agent={agent}
             initialToolCallId={props.initialToolCallId ?? null}
             activities={props.activities}
+            workspaceRoot={props.workspaceRoot}
             environmentId={props.environmentId}
             threadId={props.threadId}
             timestampFormat={timestampFormat}

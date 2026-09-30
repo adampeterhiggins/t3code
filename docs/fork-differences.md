@@ -452,15 +452,16 @@ install ad hoc–signed builds. Run `make` targets from the repository root, sta
 
 ## Commands and file paths shown relative to the workspace
 
-Tool calls in the web, desktop, and mobile timelines show paths inside the thread's working
-directory as relative. For commands, a leading `cd` to that directory is dropped. Rewriting a
+Tool calls in the web, desktop, and mobile timelines, and subagent tool calls in the web and
+desktop Agents panel, show paths inside the thread's working directory as relative. For commands, a leading `cd` to that directory is dropped. Rewriting a
 command stops at the first `cd` somewhere else, because relative paths after it would point
 somewhere else. File, image, and other tool labels (`Read: src/index.ts`) get the same path
 treatment. Paths outside the directory stay absolute, and approval prompts still show the exact
 command. The shared runtime instructions also tell every provider that shell commands already
 start in that directory.
 
-Code: `packages/client-runtime/src/work-log/commandDisplay.ts` and
+Code: `packages/client-runtime/src/work-log/commandDisplay.ts`,
+`packages/client-runtime/src/state/agentPanelView.ts`, and
 `apps/server/src/provider/RuntimeInstructions.ts`.
 
 ## Agent access over MCP

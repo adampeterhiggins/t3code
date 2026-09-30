@@ -690,6 +690,7 @@ export function AgentsPanel({
   threadKey,
   environmentId = null,
   threadId = null,
+  workspaceRoot,
   dedicatedAgentId,
   onOpenAgentTab,
   onViewAgents,
@@ -703,6 +704,8 @@ export function AgentsPanel({
   threadKey: string | null;
   environmentId?: EnvironmentId | null;
   threadId?: ThreadId | null;
+  /** Directory the thread's commands start in; tool calls are shown relative to it. */
+  workspaceRoot?: string | undefined;
 }) {
   const view = useAgentsPanelStore((state) => state.view);
   const setView = useAgentsPanelStore((state) => state.setView);
@@ -713,7 +716,10 @@ export function AgentsPanel({
   );
   const { timestampFormat } = useClientSettings();
   const visible = useMemo(() => applyAgentPanelView(model, view), [model, view]);
-  const toolLogs = useMemo(() => deriveSubagentToolLogs(activities), [activities]);
+  const toolLogs = useMemo(
+    () => deriveSubagentToolLogs(activities, workspaceRoot),
+    [activities, workspaceRoot],
+  );
   const detailAgentId = dedicatedAgentId ?? focusedAgentId;
   const focusedAgent = detailAgentId ? findPanelAgent(model, detailAgentId) : null;
   const ctx: RowContext = {
@@ -758,6 +764,7 @@ export function AgentsPanel({
         key={focusedAgent.id}
         agent={focusedAgent}
         activities={activities}
+        workspaceRoot={workspaceRoot}
         environmentId={environmentId}
         threadId={threadId}
         initialToolCallId={dedicatedAgentId ? null : focusedToolCallId}
