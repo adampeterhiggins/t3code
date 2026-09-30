@@ -2,6 +2,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import {
   CommandId,
+  ComposerContextId,
   EventId,
   MessageId,
   ProjectId,
@@ -132,6 +133,79 @@ it.layer(NodeServices.layer)("thread.message.user.append", (it) => {
         "thread.message-sent",
         "thread.turn-start-requested",
       ]);
+    }),
+  );
+
+  it.effect("restates a persisted message whose context the turn start filled in", () =>
+    Effect.gen(function* () {
+      const repository = {
+        version: 1 as const,
+        contextId: ComposerContextId.make("ctx_repo"),
+        kind: "repository" as const,
+        label: "acme/api",
+        nameWithOwner: "acme/api",
+        remoteUrl: "https://github.com/acme/api",
+        directoryName: "api",
+      };
+      const text = "Read [acme/api](t3-context://v1/repository/ctx_repo)";
+      const readModel = yield* readModelWithThread;
+      const appended = yield* decideOrchestrationCommand({
+        command: {
+          ...appendCommand,
+          message: {
+            ...appendCommand.message,
+            text,
+            context: { version: 1, records: [repository] },
+          },
+        },
+        readModel,
+      });
+      const appendedEvent = Array.isArray(appended) ? appended[0]! : appended;
+      const withMessage = yield* projectEvent(readModel, { ...appendedEvent, sequence: 3 });
+
+      const unchanged = yield* decideOrchestrationCommand({
+        command: {
+          ...turnStartCommand,
+          message: {
+            ...turnStartCommand.message,
+            text,
+            context: { version: 1, records: [repository] },
+          },
+        },
+        readModel: withMessage,
+      });
+      expect(
+        (Array.isArray(unchanged) ? unchanged : [unchanged]).map((event) => event.type),
+      ).toEqual(["thread.turn-start-requested"]);
+
+      const outcome = {
+        status: "cloned" as const,
+        path: ".context/api",
+        detail: null,
+        git: null,
+        fetched: false,
+      };
+      const planned = yield* decideOrchestrationCommand({
+        command: {
+          ...turnStartCommand,
+          message: {
+            ...turnStartCommand.message,
+            text,
+            context: { version: 1, records: [{ ...repository, outcome }] },
+          },
+        },
+        readModel: withMessage,
+      });
+      const events = Array.isArray(planned) ? planned : [planned];
+      expect(events.map((event) => event.type)).toEqual([
+        "thread.message-sent",
+        "thread.turn-start-requested",
+      ]);
+      expect(events[0]?.metadata.deferredTurn).toBe(true);
+      const restated = yield* projectEvent(withMessage, { ...events[0]!, sequence: 4 });
+      const message = restated.threads[0]?.messages.find((entry) => entry.id === messageId);
+      expect(message?.text).toBe(text);
+      expect(message?.context?.records).toEqual([{ ...repository, outcome }]);
     }),
   );
 });

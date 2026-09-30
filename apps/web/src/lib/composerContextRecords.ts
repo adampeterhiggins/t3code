@@ -18,6 +18,7 @@ import type {
   ThreadId,
   ThreadTabContextRecord,
   LinearIssueContextRecord,
+  RepositoryContextRecord,
 } from "@t3tools/contracts";
 import { upgradeLegacyContextMessage } from "@t3tools/shared/composerContextLegacy";
 import { encodeComposerContextFragment } from "@t3tools/shared/composerContextClipboard";
@@ -299,6 +300,7 @@ export function buildMessageContext(input: {
   previewAnnotations: ReadonlyArray<PreviewAnnotationPayload>;
   threadTabs?: ReadonlyArray<ThreadTabContextRecord>;
   linearIssues?: ReadonlyArray<LinearIssueContextRecord>;
+  repositories?: ReadonlyArray<RepositoryContextRecord>;
   attachments?: ReadonlyArray<BoundComposerAttachment>;
 }): OrchestrationMessageContext | undefined {
   // An annotation's screenshot travels as the image attachment that reuses its id.
@@ -317,6 +319,7 @@ export function buildMessageContext(input: {
     ),
     ...(input.threadTabs ?? []),
     ...(input.linearIssues ?? []),
+    ...(input.repositories ?? []),
     ...(input.attachments ?? []).map(attachmentContextRecord),
   ];
   return records.length === 0 ? undefined : { version: 1, records };

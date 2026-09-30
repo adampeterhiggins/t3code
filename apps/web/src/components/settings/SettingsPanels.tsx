@@ -635,6 +635,13 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.addProjectBaseDirectory !== DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory
         ? ["Add project base directory"]
         : []),
+      ...(settings.contextRepositoryOwner !== DEFAULT_UNIFIED_SETTINGS.contextRepositoryOwner
+        ? ["Repository owner"]
+        : []),
+      ...(settings.contextRepositoryDirectory !==
+      DEFAULT_UNIFIED_SETTINGS.contextRepositoryDirectory
+        ? ["Repository folder"]
+        : []),
       ...(settings.confirmThreadUnpin !== DEFAULT_UNIFIED_SETTINGS.confirmThreadUnpin
         ? ["Unpin confirmation"]
         : []),
@@ -675,6 +682,8 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.sendShortcut,
       settings.followUpBehavior,
       settings.addProjectBaseDirectory,
+      settings.contextRepositoryOwner,
+      settings.contextRepositoryDirectory,
       settings.defaultThreadEnvMode,
       settings.newWorktreesStartFromOrigin,
       settings.worktreeBranchPrefix,
@@ -814,6 +823,8 @@ export function useSettingsRestore(onRestored?: () => void) {
       newWorktreesStartFromOrigin: DEFAULT_UNIFIED_SETTINGS.newWorktreesStartFromOrigin,
       worktreeBranchPrefix: DEFAULT_UNIFIED_SETTINGS.worktreeBranchPrefix,
       addProjectBaseDirectory: DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory,
+      contextRepositoryOwner: DEFAULT_UNIFIED_SETTINGS.contextRepositoryOwner,
+      contextRepositoryDirectory: DEFAULT_UNIFIED_SETTINGS.contextRepositoryDirectory,
       confirmThreadArchive: DEFAULT_UNIFIED_SETTINGS.confirmThreadArchive,
       confirmThreadDelete: DEFAULT_UNIFIED_SETTINGS.confirmThreadDelete,
       confirmThreadUnpin: DEFAULT_UNIFIED_SETTINGS.confirmThreadUnpin,
@@ -2238,6 +2249,8 @@ export function GeneralSettingsPanel() {
   const backgroundActivityProfileOption = resolveBackgroundActivityProfileOption(settings);
   const mixedBackgroundActivity = useScopedSettingsMixed(["backgroundActivity"]);
   const mixedAddProjectBaseDirectory = useScopedSettingsMixed(["addProjectBaseDirectory"]);
+  const mixedContextRepositoryOwner = useScopedSettingsMixed(["contextRepositoryOwner"]);
+  const mixedContextRepositoryDirectory = useScopedSettingsMixed(["contextRepositoryDirectory"]);
   const mixedWorktreeBranchPrefix = useScopedSettingsMixed(["worktreeBranchPrefix"]);
   const mixedTextGenerationModel = useScopedSettingsMixed(["textGenerationModelSelection"]);
   const backgroundActivityDescription =
@@ -3111,6 +3124,65 @@ export function GeneralSettingsPanel() {
               placeholder={mixedAddProjectBaseDirectory ? "Mixed" : "~/"}
               spellCheck={false}
               aria-label="Add project base directory"
+            />
+          }
+        />
+        <SettingsRow
+          serverScoped
+          settingKeys={["contextRepositoryOwner"]}
+          {...searchableSetting("context-repository-owner")}
+          description="GitHub organization or user whose repositories the composer's Attach > Repository list shows first."
+          resetAction={
+            settings.contextRepositoryOwner !== DEFAULT_UNIFIED_SETTINGS.contextRepositoryOwner ? (
+              <SettingResetButton
+                label="repository owner"
+                onClick={() =>
+                  updateSettings({
+                    contextRepositoryOwner: DEFAULT_UNIFIED_SETTINGS.contextRepositoryOwner,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <DraftInput
+              size="sm"
+              className="w-full sm:w-72"
+              value={mixedContextRepositoryOwner ? "" : settings.contextRepositoryOwner}
+              onCommit={(next) => updateSettings({ contextRepositoryOwner: next })}
+              placeholder={mixedContextRepositoryOwner ? "Mixed" : "e.g. acme"}
+              spellCheck={false}
+              aria-label="Repository owner"
+            />
+          }
+        />
+        <SettingsRow
+          serverScoped
+          settingKeys={["contextRepositoryDirectory"]}
+          {...searchableSetting("context-repository-directory")}
+          description="Folder inside the workspace that attached repositories are cloned into."
+          resetAction={
+            settings.contextRepositoryDirectory !==
+            DEFAULT_UNIFIED_SETTINGS.contextRepositoryDirectory ? (
+              <SettingResetButton
+                label="repository folder"
+                onClick={() =>
+                  updateSettings({
+                    contextRepositoryDirectory: DEFAULT_UNIFIED_SETTINGS.contextRepositoryDirectory,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <DraftInput
+              size="sm"
+              className="w-full sm:w-72"
+              value={mixedContextRepositoryDirectory ? "" : settings.contextRepositoryDirectory}
+              onCommit={(next) => updateSettings({ contextRepositoryDirectory: next })}
+              placeholder={mixedContextRepositoryDirectory ? "Mixed" : ".context"}
+              spellCheck={false}
+              aria-label="Repository folder"
             />
           }
         />

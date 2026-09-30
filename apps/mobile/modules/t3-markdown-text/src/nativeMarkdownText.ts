@@ -19,6 +19,7 @@ const CONTEXT_CHIP_PRESENTATIONS = {
   "pull-request": { accent: "#7079e4", symbol: "git-pull-request" },
   skill: { accent: "#b261be", symbol: "cube" },
   "linear-issue": { accent: "#617de6", symbol: "ticket" },
+  repository: { accent: "#009c9c", symbol: "folder" },
 } as const;
 
 /**

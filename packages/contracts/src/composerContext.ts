@@ -6,6 +6,7 @@ import {
   PositiveInt,
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
+import { ContextRepositoryDirectoryName, ContextRepositoryOutcome } from "./contextRepositories.ts";
 import { LINEAR_ISSUE_MARKDOWN_MAX_CHARS } from "./linear.ts";
 
 /**
@@ -28,6 +29,7 @@ export const COMPOSER_CONTEXT_KINDS = [
   "skill",
   "thread-tab",
   "linear-issue",
+  "repository",
 ] as const;
 export type KnownComposerContextKind = (typeof COMPOSER_CONTEXT_KINDS)[number];
 
@@ -244,6 +246,21 @@ export const LinearIssueContextRecord = Schema.Struct({
 export type LinearIssueContextRecord = typeof LinearIssueContextRecord.Type;
 
 /**
+ * A repository to clone into the workspace's context directory. The server fills `outcome`
+ * before the turn starts; a draft never carries one.
+ */
+export const RepositoryContextRecord = Schema.Struct({
+  ...recordBase,
+  kind: Schema.Literal("repository"),
+  nameWithOwner: TrimmedNonEmptyString.check(Schema.isMaxLength(255)),
+  /** Credential-free clone URL. */
+  remoteUrl: TrimmedNonEmptyString.check(Schema.isMaxLength(2_048)),
+  directoryName: ContextRepositoryDirectoryName,
+  outcome: Schema.optional(ContextRepositoryOutcome),
+});
+export type RepositoryContextRecord = typeof RepositoryContextRecord.Type;
+
+/**
  * Catch-all for kinds this build does not know. Known discriminators are excluded so a
  * malformed known record fails its own schema instead of sliding through unchecked.
  * Mirrors `ChatUnknownAttachment`.
@@ -275,6 +292,7 @@ export const KnownComposerContextRecord = Schema.Union([
   SkillContextRecord,
   ThreadTabContextRecord,
   LinearIssueContextRecord,
+  RepositoryContextRecord,
 ]);
 export type KnownComposerContextRecord = typeof KnownComposerContextRecord.Type;
 

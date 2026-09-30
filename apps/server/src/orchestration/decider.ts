@@ -24,6 +24,7 @@ import { compareDateTimeStrings } from "@t3tools/shared/dateTime";
 import * as DateTime from "effect/DateTime";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
+import * as Equal from "effect/Equal";
 import * as Schema from "effect/Schema";
 import * as Option from "effect/Option";
 import * as Predicate from "effect/Predicate";
@@ -1431,8 +1432,43 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           message.role === "user" &&
           message.turnId === null,
       );
+      // The server can add to a persisted message's context while preparing
+      // the turn (clone outcomes for attached repositories); restate it so
+      // the message the provider reads carries them.
+      const persistedContextChanged =
+        persistedUserMessage !== undefined &&
+        command.message.context !== undefined &&
+        !Equal.equals(command.message.context, persistedUserMessage.context);
       const userMessageEvent: Omit<OrchestrationEvent, "sequence"> | null = persistedUserMessage
-        ? null
+        ? persistedContextChanged
+          ? {
+              ...(yield* withEventBase({
+                aggregateKind: "thread",
+                aggregateId: command.threadId,
+                occurredAt: command.createdAt,
+                commandId: command.commandId,
+                // Not a new send: the checkpoint baseline stays with the turn start.
+                metadata: { deferredTurn: true },
+              })),
+              type: "thread.message-sent",
+              payload: {
+                threadId: command.threadId,
+                messageId: persistedUserMessage.id,
+                role: "user",
+                text: persistedUserMessage.text,
+                ...(persistedUserMessage.attachments !== undefined
+                  ? { attachments: persistedUserMessage.attachments }
+                  : {}),
+                ...(command.message.context !== undefined
+                  ? { context: command.message.context }
+                  : {}),
+                turnId: null,
+                streaming: false,
+                createdAt: persistedUserMessage.createdAt,
+                updatedAt: command.createdAt,
+              },
+            }
+          : null
         : {
             ...(yield* withEventBase({
               aggregateKind: "thread",

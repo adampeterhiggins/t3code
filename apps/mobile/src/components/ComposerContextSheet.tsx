@@ -27,6 +27,10 @@ import {
   type DraftComposerAttachment,
 } from "../lib/composerImages";
 import { tryOpenExternalUrl } from "../lib/openExternalUrl";
+import {
+  contextRepositoryOutcomeLabel,
+  describeContextRepositoryGitStatus,
+} from "@t3tools/client-runtime/context-repositories";
 import { FilePreviewModal } from "./FilePreviewModal";
 import { VideoPreviewModal } from "./VideoPreviewModal";
 import { ComposerContextAttachment } from "./ComposerContextAttachment";
@@ -367,6 +371,29 @@ export function ComposerContextSheet(props: {
                     <Text selectable className="text-sm text-foreground">
                       {record.markdown}
                     </Text>
+                  </View>
+                ) : null}
+                {record.kind === "repository" ? (
+                  <View className="gap-3">
+                    <ContextField label="Repository" value={record.nameWithOwner} />
+                    <ContextField label="Remote" value={record.remoteUrl} />
+                    <ContextField
+                      label="Clone"
+                      value={
+                        record.outcome
+                          ? contextRepositoryOutcomeLabel(record.outcome)
+                          : `Cloned into the workspace's context folder as ${record.directoryName} when sent, unless it is already there.`
+                      }
+                    />
+                    <ContextField label="Detail" value={record.outcome?.detail} />
+                    <ContextField
+                      label="Git"
+                      value={
+                        record.outcome?.git
+                          ? describeContextRepositoryGitStatus(record.outcome.git)
+                          : null
+                      }
+                    />
                   </View>
                 ) : null}
                 {record.kind === "image" ? (

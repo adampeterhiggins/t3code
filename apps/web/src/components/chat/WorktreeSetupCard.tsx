@@ -387,6 +387,10 @@ export function WorktreeSetupCard({
               {stage.id === "setup-script" && showTail ? (
                 <OutputTail lines={stage.tail} failed={stage.status === "failed"} />
               ) : null}
+              {/* Repositories that could not be cloned, one line each. */}
+              {stage.id === "context-repositories" && stage.tail.length > 0 ? (
+                <OutputTail lines={stage.tail} failed={false} />
+              ) : null}
             </div>
           ))}
         </div>

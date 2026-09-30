@@ -1,4 +1,12 @@
-import type { EnvironmentId, PullRequestContextMetadata } from "@t3tools/contracts";
+import {
+  contextRepositoryOutcomeLabel,
+  describeContextRepositoryGitStatus,
+} from "@t3tools/client-runtime/context-repositories";
+import type {
+  EnvironmentId,
+  PullRequestContextMetadata,
+  RepositoryContextRecord,
+} from "@t3tools/contracts";
 import { CircleDashedIcon, FilmIcon, ImageIcon } from "lucide-react";
 import {
   useMemo,
@@ -340,6 +348,62 @@ export function LinearIssueDetails(props: {
         </a>
       </div>
       <LinearIssueMarkdown markdown={props.markdown} url={props.url} />
+    </div>
+  );
+}
+
+/**
+ * An attached repository: where it goes and, once sent, what the server did with it. The draft
+ * has no outcome yet; the clone happens when the message sends.
+ */
+export function RepositoryDetails(props: {
+  record: RepositoryContextRecord;
+  onOpenLink: (event: MouseEvent<HTMLElement>, url: string) => void;
+}) {
+  const { record } = props;
+  const outcome = record.outcome;
+  const browsable = /^https?:\/\//i.test(record.remoteUrl);
+  return (
+    <div className="flex flex-col gap-2 text-xs">
+      <div className="flex items-baseline justify-between gap-3 text-muted-foreground">
+        <span className="min-w-0 truncate">{record.nameWithOwner}</span>
+        {browsable ? (
+          <a
+            href={record.remoteUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="shrink-0 underline-offset-2 hover:text-foreground hover:underline"
+            onClick={(event) => props.onOpenLink(event, record.remoteUrl)}
+          >
+            Open repository
+          </a>
+        ) : null}
+      </div>
+      {outcome ? (
+        <>
+          <p
+            className={
+              outcome.status === "failed" || outcome.status === "conflict"
+                ? "text-warning"
+                : "text-foreground"
+            }
+          >
+            {contextRepositoryOutcomeLabel(outcome)}
+          </p>
+          {outcome.detail ? <p className="text-muted-foreground">{outcome.detail}</p> : null}
+          {outcome.git ? (
+            <p className="text-muted-foreground">
+              {describeContextRepositoryGitStatus(outcome.git)}
+              {outcome.git.upstream && !outcome.fetched ? " (as of the last fetch)" : ""}
+            </p>
+          ) : null}
+        </>
+      ) : (
+        <p className="text-muted-foreground">
+          Cloned into the workspace's context folder as {record.directoryName} when you send, unless
+          it is already there.
+        </p>
+      )}
     </div>
   );
 }

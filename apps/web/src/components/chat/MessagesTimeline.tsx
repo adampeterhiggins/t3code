@@ -128,6 +128,7 @@ import {
   DownloadIcon,
   EyeIcon,
   GlobeIcon,
+  FolderGit2Icon,
   HammerIcon,
   MessageCircleIcon,
   MessagesSquareIcon,
@@ -149,6 +150,7 @@ import type {
   ComposerContextRecord,
   KnownComposerContextRecord,
   LinearIssueContextRecord,
+  RepositoryContextRecord,
 } from "@t3tools/contracts";
 import { Button } from "../ui/button";
 import type { QueuedComposerMessage } from "../../queuedMessageStore";
@@ -232,6 +234,7 @@ import {
   PullRequestChip,
   ThreadTabSummaryDetails,
   LinearIssueDetails,
+  RepositoryDetails,
   UnresolvedChip,
 } from "../contextChipParts";
 import {
@@ -3979,9 +3982,32 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
           <UnavailableUserMessageContextChip {...context} />
         ),
     },
+    {
+      kind: "repository",
+      canRender: (record) => record.kind === "repository",
+      render: (record, context) =>
+        record.kind === "repository" ? (
+          <UserMessageContextPopover
+            copyMarkdown={context.copyMarkdown}
+            accessibleLabel={`Repository, ${record.label}`}
+            kind="repository"
+            icon={<FolderGit2Icon />}
+            label={record.label}
+          >
+            <UserMessageRepositoryDetails record={record} />
+          </UserMessageContextPopover>
+        ) : (
+          <UnavailableUserMessageContextChip {...context} />
+        ),
+    },
   ],
   fallback: (_kind, _record, context) => <UnavailableUserMessageContextChip {...context} />,
 });
+
+function UserMessageRepositoryDetails({ record }: { record: RepositoryContextRecord }) {
+  const { threadRef } = use(TimelineRowCtx);
+  return <RepositoryDetails record={record} onOpenLink={useLinkClickHandler(threadRef)} />;
+}
 
 function UserMessageLinearIssueDetails({ record }: { record: LinearIssueContextRecord }) {
   const { threadRef } = use(TimelineRowCtx);

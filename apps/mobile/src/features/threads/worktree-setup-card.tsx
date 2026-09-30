@@ -230,6 +230,9 @@ function SetupDetailsSheet({
               (stage.status === "running" || stage.status === "failed" || stage.tail.length > 0) ? (
                 <OutputTail lines={stage.tail} failed={stage.status === "failed"} />
               ) : null}
+              {stage.id === "context-repositories" && stage.tail.length > 0 ? (
+                <OutputTail lines={stage.tail} failed={false} />
+              ) : null}
             </View>
           ))}
         {snapshot.phase === "failed" && snapshot.error ? (

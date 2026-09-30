@@ -452,6 +452,20 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["base directory folder browser path home"],
   },
   {
+    id: "context-repository-owner",
+    title: "Repository owner",
+    to: "/settings/general",
+    scope: "environment-defaults",
+    searchTerms: ["attach repository github organization org user ctxclone context clone"],
+  },
+  {
+    id: "context-repository-directory",
+    title: "Repository folder",
+    to: "/settings/general",
+    scope: "environment-defaults",
+    searchTerms: ["attach repository .context clone directory ctxclone"],
+  },
+  {
     id: "unpin-confirmation",
     title: "Unpin confirmation",
     to: "/settings/general",

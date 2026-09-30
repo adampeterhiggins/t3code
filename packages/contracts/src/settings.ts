@@ -1365,6 +1365,13 @@ export const ServerSettings = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed(null)),
   ),
   addProjectBaseDirectory: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  /**
+   * GitHub owner (org or user) whose repositories the composer's repository picker lists
+   * first. Empty means the picker asks for one.
+   */
+  contextRepositoryOwner: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  /** Workspace-relative folder attached repositories are cloned into. Empty means `.context`. */
+  contextRepositoryDirectory: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   textGenerationModelSelection: ModelSelection.pipe(
     Schema.withDecodingDefault(
       Effect.succeed({
@@ -1689,6 +1696,8 @@ export const ServerSettingsPatch = Schema.Struct({
   worktreeBranchPrefix: Schema.optionalKey(TrimmedString),
   worktreeSubmodules: Schema.optionalKey(Schema.NullOr(WorktreeSubmodules)),
   addProjectBaseDirectory: Schema.optionalKey(TrimmedString),
+  contextRepositoryOwner: Schema.optionalKey(TrimmedString),
+  contextRepositoryDirectory: Schema.optionalKey(TrimmedString),
   textGenerationModelSelection: Schema.optionalKey(ModelSelectionPatch),
   sourceControlWritingStyle: Schema.optionalKey(
     Schema.Struct({
