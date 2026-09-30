@@ -1,4 +1,4 @@
-import { projectQuestionToolInput } from "@t3tools/shared/toolActivity";
+import { projectQuestionToolInput, summarizeToolActivityInput } from "@t3tools/shared/toolActivity";
 import type {
   OrchestrationEvent,
   OrchestrationThreadActivity,
@@ -452,7 +452,11 @@ export function projectActivityPayload(
     };
   }
 
-  const projectedData: Record<string, unknown> = { ...questionInput };
+  const preview = summarizeToolActivityInput(data);
+  const projectedData: Record<string, unknown> = {
+    ...questionInput,
+    ...(preview ? { preview } : {}),
+  };
   const item = projectCommandData(data);
   if (item) {
     projectedData.item = item;

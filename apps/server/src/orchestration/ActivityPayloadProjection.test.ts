@@ -21,6 +21,19 @@ function activity(payload: Record<string, unknown>): OrchestrationThreadActivity
  * assertions are the tripwire.
  */
 describe("projectActivityPayload", () => {
+  it("keeps bounded edit details through wire slimming", () => {
+    const projected = projectActivityPayload(
+      activity({
+        itemType: "file_change",
+        data: { rawInput: { file_path: "src/a.ts", old_string: "before", new_string: "after" } },
+      }),
+    );
+    const data = (projected.payload as { data: Record<string, unknown> }).data;
+    expect(data.preview).toBe("src/a.ts\n\nBefore\nbefore\n\nAfter\nafter");
+    expect(data.rawInput).toBeUndefined();
+    expect(projectActivityPayload(projected)).toEqual(projected);
+  });
+
   it("preserves tool attribution (agentId/parentToolUseId) through data slimming", () => {
     const projected = projectActivityPayload(
       activity({

@@ -233,7 +233,7 @@ export function ToolLogList(props: {
             status={entry.status}
             time={time}
             duration={duration}
-            body={subagentToolCallText(entry)}
+            body={subagentToolCallText(entry, false)}
             meta={[time, TOOL_STATUS_LABELS[entry.status].toLowerCase(), duration].join(" · ")}
             defaultExpanded={entry.id === props.expandedId}
             {...(onActivate ? { onActivate: () => onActivate(entry.id) } : {})}

@@ -33,6 +33,14 @@ const devinResourceToolEvent = {
 } as const;
 
 describe("extractToolActivityPresentation", () => {
+  it("makes bounded edit previews available to web and mobile expansion", () => {
+    const data = { preview: "src/a.ts\n\nBefore\nbefore\n\nAfter\nfixed" };
+    const extracted = extractToolActivityData({ itemType: "file_change", data });
+    const entry = { itemType: "file_change", toolData: extracted };
+    expect(hasToolActivityData(entry)).toBe(true);
+    expect(toolActivityDataBody(entry)).toBe(data.preview);
+  });
+
   it("expands generic resource URI and embedded text without serializing collapsed rows", () => {
     const resource = { uri: "urn:notes", text: "Resource notes" };
     const entry = { itemType: "dynamic_tool_call", toolData: { resource } };

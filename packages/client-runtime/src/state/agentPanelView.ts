@@ -1,3 +1,4 @@
+import { summarizeToolActivityInput } from "@t3tools/shared/toolActivity";
 /**
  * Agents-panel presentation over the source-neutral AgentPanelModel: the
  * user's filter/sort view, and the per-agent tool log derived from the
@@ -203,6 +204,7 @@ export interface SubagentToolLogEntry {
   readonly detail: string | null;
   /** The full command when the provider recorded one beyond the detail line. */
   readonly command: string | null;
+  readonly preview?: string | null;
   readonly itemType: string | null;
   readonly kind: SubagentToolKind;
   readonly status: "running" | "completed" | "failed";
@@ -248,7 +250,12 @@ function toolKindFor(title: string, itemType: string | null, data: unknown): Sub
 
 function commandFrom(data: unknown): string | null {
   const record = asRecord(data);
-  return asText(record?.command) ?? asText(asRecord(record?.rawInput)?.command);
+  return (
+    asText(record?.command) ??
+    asText(asRecord(record?.rawInput)?.command) ??
+    asText(asRecord(record?.input)?.command) ??
+    asText(asRecord(record?.item)?.command)
+  );
 }
 
 /**
@@ -287,6 +294,7 @@ export function deriveSubagentToolLogs(
       title,
       detail: asText(payload.detail) ?? existing?.detail ?? null,
       command: commandFrom(payload.data) ?? existing?.command ?? null,
+      preview: summarizeToolActivityInput(payload.data) ?? existing?.preview ?? null,
       itemType,
       kind: toolKindFor(title, itemType, payload.data),
       status: existing && existing.status !== "running" ? existing.status : status,
@@ -308,9 +316,17 @@ export function deriveSubagentToolLog(
 }
 
 /** Everything a call recorded, deduplicated, for previews, expansion and search. */
-export function subagentToolCallText(entry: SubagentToolLogEntry): string {
-  return [...new Set([entry.title, entry.detail, entry.command].filter((v) => v !== null))].join(
-    "\n\n",
+export function subagentToolCallText(entry: SubagentToolLogEntry, includeTitle = true): string {
+  const preview = entry.preview ?? null;
+  const detail = entry.detail && preview?.split("\n").includes(entry.detail) ? null : entry.detail;
+  return (
+    [
+      ...new Set(
+        [includeTitle ? entry.title : null, detail, entry.command, preview].filter(
+          (v) => v != null,
+        ),
+      ),
+    ].join("\n\n") || entry.title
   );
 }
 

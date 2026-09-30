@@ -133,6 +133,27 @@ describe("applyAgentPanelView", () => {
 });
 
 describe("deriveSubagentToolLog", () => {
+  it("preserves edit previews across lifecycle updates and searches their contents", () => {
+    const log = deriveSubagentToolLog(
+      [
+        activity("tool.started", {
+          agentId: "alpha",
+          toolCallId: "edit",
+          title: "Edit",
+          data: {
+            preview: "src/a.ts\n\nBefore\nbefore\n\nAfter\nfixed",
+          },
+        }),
+        activity("tool.completed", { agentId: "alpha", toolCallId: "edit" }),
+      ],
+      "alpha",
+    );
+    expect(subagentToolCallText(log[0]!)).toContain("After\nfixed");
+    expect(
+      applySubagentToolLogView(log, { query: "fixed", statuses: [], kinds: [], sort: "oldest" }),
+    ).toHaveLength(1);
+  });
+
   it("collects one entry per tool call owned by the agent", () => {
     const rows = [
       activity("tool.started", { agentId: "alpha", toolCallId: "t1", title: "Read file" }),
