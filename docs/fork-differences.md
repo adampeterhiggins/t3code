@@ -384,6 +384,18 @@ install the first build into `/Applications`. `T3CODE_DESKTOP_IDENTITY` makes
 install ad hoc–signed builds. Run `make` targets from the repository root, starting with
 `make update-cert`.
 
+## Desktop imports the full login-shell environment
+
+On macOS and Linux, the desktop app imports every variable your interactive login shell exports
+(`~/.zprofile`, `~/.zshrc`, and so on), not just `PATH` and a few session variables. Setup scripts,
+run scripts, terminals, and agents then see the tokens and tool config a terminal would, such as a
+package-registry token exported from `~/.zshrc`. Variables the app was launched with still win,
+and shell and terminal bookkeeping (`PWD`, `SHLVL`, `TERM`, ...) is skipped. Upstream imports only
+an allowlist. Rc changes take effect when the app restarts.
+
+Code: `installPosixEnvironment` in
+[`DesktopShellEnvironment.ts`](../apps/desktop/src/shell/DesktopShellEnvironment.ts).
+
 ## Keeping this page current
 
 Update this page in the same change that adds, changes, or removes a user-visible fork-only

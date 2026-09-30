@@ -19,14 +19,25 @@ const isDesktopShellEnvironmentCommandError = Schema.is(
   DesktopShellEnvironment.DesktopShellEnvironmentCommandError,
 );
 
-function envOutput(values: Readonly<Record<string, string>>): string {
-  return Object.entries(values)
+/**
+ * Mimics the POSIX probe: each named variable between its markers, then an
+ * `env -0` dump of everything the shell exported, named variables included.
+ */
+function envOutput(
+  values: Readonly<Record<string, string>>,
+  otherExports: Readonly<Record<string, string>> = {},
+): string {
+  const named = Object.entries(values)
     .flatMap(([name, value]) => [
       `__T3CODE_ENV_${name}_START__`,
       value,
       `__T3CODE_ENV_${name}_END__`,
     ])
     .join("\n");
+  const all = Object.entries({ ...values, ...otherExports })
+    .map(([name, value]) => `${name}=${value}\0`)
+    .join("");
+  return `${named}\n__T3CODE_ENV_ALL_START__${all}__T3CODE_ENV_ALL_END__`;
 }
 
 function makeProcess(output: string): ChildProcessSpawner.ChildProcessHandle {
@@ -149,6 +160,43 @@ describe("DesktopShellEnvironment", () => {
 
       assert.equal(env.PATH, "/opt/homebrew/bin:/usr/bin");
       assert.equal(env.SSH_AUTH_SOCK, "/tmp/inherited.sock");
+    }),
+  );
+
+  it.effect("imports variables exported from the user's rc files", () =>
+    Effect.gen(function* () {
+      const env: NodeJS.ProcessEnv = {
+        SHELL: "/bin/zsh",
+        PATH: "/usr/bin",
+        HOME: "/Users/test",
+        INHERITED_TOKEN: "from-launch",
+      };
+
+      yield* runShellEnvironment({
+        env,
+        platform: "darwin",
+        handler: () =>
+          envOutput(
+            { PATH: "/opt/homebrew/bin:/usr/bin" },
+            {
+              FD_GITHUB_PACKAGES_TOKEN: "from-zshrc",
+              MULTILINE: "first\nsecond=value",
+              INHERITED_TOKEN: "from-zshrc",
+              HOME: "/elsewhere",
+              PWD: "/Users/test",
+              SHLVL: "1",
+              TERM: "xterm-256color",
+            },
+          ),
+      });
+
+      assert.equal(env.FD_GITHUB_PACKAGES_TOKEN, "from-zshrc");
+      assert.equal(env.MULTILINE, "first\nsecond=value");
+      assert.equal(env.INHERITED_TOKEN, "from-launch");
+      assert.equal(env.HOME, "/Users/test");
+      assert.equal(env.PWD, undefined);
+      assert.equal(env.SHLVL, undefined);
+      assert.equal(env.TERM, undefined);
     }),
   );
 

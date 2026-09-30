@@ -86,6 +86,23 @@ const LOGIN_SHELL_ENV_NAMES = [
   "XDG_SESSION_TYPE",
   "WAYLAND_DISPLAY",
 ] as const;
+/**
+ * Login-shell variables the blanket import skips: the named ones above follow
+ * their own precedence rules, and the rest describe the probe shell or a
+ * terminal rather than the user's environment.
+ */
+const LOGIN_SHELL_ENV_IGNORED_NAMES = new Set<string>([
+  ...LOGIN_SHELL_ENV_NAMES,
+  "_",
+  "OLDPWD",
+  "PWD",
+  "SHLVL",
+  "COLORTERM",
+  "TERM",
+  "TERM_PROGRAM",
+  "TERM_PROGRAM_VERSION",
+  "TERM_SESSION_ID",
+]);
 const WINDOWS_PROFILE_ENV_NAMES = ["PATH", "FNM_DIR", "FNM_MULTISHELL_PATH"] as const;
 const LOCALE_ENV_NAMES = ["LANG", "LC_ALL", "LC_CTYPE"] as const;
 const FALLBACK_LC_CTYPE = "en_US.UTF-8";
@@ -211,16 +228,23 @@ const logShellEnvironmentCommandError = (
     }),
   );
 
+const FULL_ENVIRONMENT_START_MARKER = "__T3CODE_ENV_ALL_START__";
+const FULL_ENVIRONMENT_END_MARKER = "__T3CODE_ENV_ALL_END__";
+
 const capturePosixEnvironmentCommand = (names: ReadonlyArray<string>) =>
-  names
-    .map((name) => {
+  [
+    ...names.map((name) => {
       return [
         `printf '%s\\n' '${startMarker(name)}'`,
         `printenv ${name} || true`,
         `printf '%s\\n' '${endMarker(name)}'`,
       ].join("; ");
-    })
-    .join("; ");
+    }),
+    // NUL-separated so values containing newlines survive.
+    `printf '%s' '${FULL_ENVIRONMENT_START_MARKER}'`,
+    "env -0 || true",
+    `printf '%s' '${FULL_ENVIRONMENT_END_MARKER}'`,
+  ].join("; ");
 
 const captureWindowsEnvironmentCommand = (names: ReadonlyArray<string>) =>
   [
@@ -255,6 +279,23 @@ const extractEnvironment = (output: string, names: ReadonlyArray<string>): Envir
     }
   }
 
+  return environment;
+};
+
+/** Parses the `env -0` dump the POSIX probe prints between the full-environment markers. */
+const extractFullEnvironment = (output: string): EnvironmentPatch => {
+  const start = output.indexOf(FULL_ENVIRONMENT_START_MARKER);
+  if (start === -1) return {};
+  const valueStart = start + FULL_ENVIRONMENT_START_MARKER.length;
+  const end = output.indexOf(FULL_ENVIRONMENT_END_MARKER, valueStart);
+  if (end === -1) return {};
+
+  const environment: EnvironmentPatch = {};
+  for (const entry of output.slice(valueStart, end).split("\0")) {
+    const separator = entry.indexOf("=");
+    if (separator <= 0) continue;
+    environment[entry.slice(0, separator)] = entry.slice(separator + 1);
+  }
   return environment;
 };
 
@@ -307,18 +348,30 @@ const runCommandOutput = Effect.fn("desktop.shellEnvironment.runCommandOutput")(
   return "";
 });
 
+/**
+ * Runs the user's interactive login shell once, so exports from both profile
+ * and rc files (`~/.zprofile`, `~/.zshrc`, ...) are seen. Returns the named
+ * variables and, separately, everything the shell exported.
+ */
 const readLoginShellEnvironment = (
   shell: string,
   names: ReadonlyArray<string>,
-): Effect.Effect<EnvironmentPatch, never, ChildProcessSpawner.ChildProcessSpawner> =>
-  names.length === 0
-    ? Effect.succeed({})
-    : runCommandOutput({
-        probe: "login-shell",
-        command: shell,
-        args: ["-ilc", capturePosixEnvironmentCommand(names)],
-        timeout: LOGIN_SHELL_TIMEOUT,
-      }).pipe(Effect.map((output) => extractEnvironment(output, names)));
+): Effect.Effect<
+  { readonly named: EnvironmentPatch; readonly all: EnvironmentPatch },
+  never,
+  ChildProcessSpawner.ChildProcessSpawner
+> =>
+  runCommandOutput({
+    probe: "login-shell",
+    command: shell,
+    args: ["-ilc", capturePosixEnvironmentCommand(names)],
+    timeout: LOGIN_SHELL_TIMEOUT,
+  }).pipe(
+    Effect.map((output) => ({
+      named: extractEnvironment(output, names),
+      all: extractFullEnvironment(output),
+    })),
+  );
 
 const readLaunchctlPath = runCommandOutput({
   probe: "launchctl-path",
@@ -404,12 +457,12 @@ const installPosixEnvironment = Effect.fn("desktop.shellEnvironment.installPosix
   > {
     const fileSystem = yield* FileSystem.FileSystem;
     const shellEnvironment: EnvironmentPatch = {};
+    const shellExports: EnvironmentPatch = {};
 
     for (const shell of listLoginShellCandidates(config)) {
-      Object.assign(
-        shellEnvironment,
-        yield* readLoginShellEnvironment(shell, LOGIN_SHELL_ENV_NAMES),
-      );
+      const result = yield* readLoginShellEnvironment(shell, LOGIN_SHELL_ENV_NAMES);
+      Object.assign(shellEnvironment, result.named);
+      Object.assign(shellExports, result.all);
       if (shellEnvironment.PATH) break;
     }
 
@@ -477,6 +530,14 @@ const installPosixEnvironment = Effect.fn("desktop.shellEnvironment.installPosix
       if (LOCALE_ENV_NAMES.every((name) => Option.isNone(trimNonEmpty(config.env[name])))) {
         config.env.LC_CTYPE = FALLBACK_LC_CTYPE;
       }
+    }
+
+    // A GUI launch inherits almost nothing, so tokens and tool config the user
+    // exports from their rc files would otherwise be missing for setup scripts
+    // and agents. Inherited values still win, as they do for a terminal launch.
+    for (const [name, value] of Object.entries(shellExports)) {
+      if (LOGIN_SHELL_ENV_IGNORED_NAMES.has(name) || config.env[name] !== undefined) continue;
+      config.env[name] = value;
     }
 
     if (
