@@ -4209,6 +4209,81 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  it.effect("subagent tool calls from assistant snapshots are attributed to the agent", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+
+      const itemEventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.type === "item.started" || event.type === "item.completed"),
+        Stream.take(2),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({
+        threadId: session.threadId,
+        input: "spawn an agent",
+        attachments: [],
+      });
+
+      harness.query.emit({
+        type: "system",
+        subtype: "task_started",
+        task_id: "task-edit",
+        description: "Agent E",
+        task_type: "local_agent",
+        tool_use_id: "toolu_agent_e",
+        uuid: "task-edit-uuid",
+        session_id: "sdk-session",
+      } as unknown as SDKMessage);
+      // Subagent tool calls arrive as whole snapshots, never as stream events.
+      const input = { file_path: "/tmp/a.ts", old_string: "before", new_string: "after" };
+      harness.query.emit({
+        type: "assistant",
+        parent_tool_use_id: "toolu_agent_e",
+        message: {
+          model: SYNTHETIC_SUBAGENT_MODEL,
+          content: [{ type: "tool_use", id: "toolu_sub_edit", name: "Edit", input }],
+        },
+        uuid: "subagent-edit-uuid",
+        session_id: "sdk-session",
+      } as unknown as SDKMessage);
+      harness.query.emit({
+        type: "user",
+        parent_tool_use_id: "toolu_agent_e",
+        message: {
+          role: "user",
+          content: [{ type: "tool_result", tool_use_id: "toolu_sub_edit", content: "ok" }],
+        },
+        uuid: "subagent-edit-result-uuid",
+        session_id: "sdk-session",
+      } as unknown as SDKMessage);
+
+      const [started, completed] = Array.from(yield* Fiber.join(itemEventsFiber));
+      assert.equal(started?.type, "item.started");
+      assert.equal(completed?.type, "item.completed");
+      for (const event of [started, completed]) {
+        assert.equal(event?.itemId, "toolu_sub_edit");
+        if (event?.type === "item.started" || event?.type === "item.completed") {
+          assert.equal(event.payload.agentId, "task-edit");
+        }
+      }
+      if (started?.type === "item.started") {
+        assert.equal(started.payload.detail, "Edit: /tmp/a.ts");
+        assert.deepEqual((started.payload.data as { input: unknown }).input, input);
+      }
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   it.effect("a subagent snapshot that beats task_started still wins over the seed", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {

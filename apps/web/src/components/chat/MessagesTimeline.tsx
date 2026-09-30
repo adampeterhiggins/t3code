@@ -1,3 +1,4 @@
+import { ToolCallBody } from "../ToolCallBody";
 import { ArrowUpIcon, ClockIcon } from "lucide-react";
 import { LinearIcon } from "../Icons";
 import { ReadOnlySourcePreview } from "../files/AttachmentFilePreview";
@@ -5044,7 +5045,7 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
           onClick={stopRowToggle}
           onPointerDown={stopRowToggle}
         >
-          <pre className={toolCallExpandedBodyClassName}>{expandedBody}</pre>
+          <ToolCallBody className={toolCallExpandedBodyClassName} text={expandedBody} />
         </div>
       ) : null}
     </div>

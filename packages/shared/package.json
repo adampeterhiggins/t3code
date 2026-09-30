@@ -376,6 +376,7 @@
     "@noble/curves": "catalog:",
     "@noble/hashes": "catalog:",
     "@t3tools/contracts": "workspace:*",
+    "diff": "8.0.3",
     "effect": "catalog:",
     "jose": "catalog:",
     "smol-toml": "1.8.0",

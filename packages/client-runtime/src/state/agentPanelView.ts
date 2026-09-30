@@ -1,3 +1,4 @@
+import { summarizeToolActivityInput } from "@t3tools/shared/toolActivity";
 /**
  * Agents-panel presentation over the source-neutral AgentPanelModel: the
  * user's filter/sort view, and the per-agent tool log derived from the
@@ -203,6 +204,7 @@ export interface SubagentToolLogEntry {
   readonly detail: string | null;
   /** The full command when the provider recorded one beyond the detail line. */
   readonly command: string | null;
+  readonly preview?: string | null;
   readonly itemType: string | null;
   readonly kind: SubagentToolKind;
   readonly status: "running" | "completed" | "failed";
@@ -248,7 +250,12 @@ function toolKindFor(title: string, itemType: string | null, data: unknown): Sub
 
 function commandFrom(data: unknown): string | null {
   const record = asRecord(data);
-  return asText(record?.command) ?? asText(asRecord(record?.rawInput)?.command);
+  return (
+    asText(record?.command) ??
+    asText(asRecord(record?.rawInput)?.command) ??
+    asText(asRecord(record?.input)?.command) ??
+    asText(asRecord(record?.item)?.command)
+  );
 }
 
 /**
@@ -280,15 +287,29 @@ export function deriveSubagentToolLogs(
         : activity.kind === "tool.completed" || nativeStatus === "completed"
           ? "completed"
           : "running";
-    const title = asText(payload.title) ?? existing?.title ?? activity.summary;
+    const payloadTitle = asText(payload.title);
     const itemType = asText(payload.itemType) ?? existing?.itemType ?? null;
+    // Adapters title tools by category ("File change", "Tool call") with a
+    // "Write: <path>" detail; name the row after the tool instead.
+    const toolName = asText(asRecord(payload.data)?.toolName);
+    const rawDetail = asText(payload.detail);
+    const namedDetail =
+      toolName !== null && rawDetail?.startsWith(`${toolName}: `)
+        ? rawDetail.slice(toolName.length + 2)
+        : null;
+    const title =
+      namedDetail !== null || (toolName !== null && existing?.title === toolName)
+        ? (toolName ?? activity.summary)
+        : (payloadTitle ?? existing?.title ?? activity.summary);
+    const detail = namedDetail ?? rawDetail;
     entries.set(id, {
       id,
       title,
-      detail: asText(payload.detail) ?? existing?.detail ?? null,
+      detail: detail ?? existing?.detail ?? null,
       command: commandFrom(payload.data) ?? existing?.command ?? null,
+      preview: summarizeToolActivityInput(payload.data) ?? existing?.preview ?? null,
       itemType,
-      kind: toolKindFor(title, itemType, payload.data),
+      kind: toolKindFor(payloadTitle ?? activity.summary, itemType, payload.data),
       status: existing && existing.status !== "running" ? existing.status : status,
       startedAt: existing?.startedAt ?? activity.createdAt,
       completedAt: existing?.completedAt ?? (status === "running" ? null : activity.createdAt),
@@ -308,9 +329,17 @@ export function deriveSubagentToolLog(
 }
 
 /** Everything a call recorded, deduplicated, for previews, expansion and search. */
-export function subagentToolCallText(entry: SubagentToolLogEntry): string {
-  return [...new Set([entry.title, entry.detail, entry.command].filter((v) => v !== null))].join(
-    "\n\n",
+export function subagentToolCallText(entry: SubagentToolLogEntry, includeTitle = true): string {
+  const preview = entry.preview ?? null;
+  const detail = entry.detail && preview?.split("\n").includes(entry.detail) ? null : entry.detail;
+  return (
+    [
+      ...new Set(
+        [includeTitle ? entry.title : null, detail, entry.command, preview].filter(
+          (v) => v != null,
+        ),
+      ),
+    ].join("\n\n") || entry.title
   );
 }
 

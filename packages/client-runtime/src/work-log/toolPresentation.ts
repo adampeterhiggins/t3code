@@ -1,3 +1,4 @@
+import { summarizeToolActivityInput } from "@t3tools/shared/toolActivity";
 import type {
   ToolActivityIcon,
   ToolActivityNativeAppReference,
@@ -12,7 +13,7 @@ export interface ExtractedToolActivityPresentation {
 }
 
 /**
- * Keeps the bounded resource metadata that providers attach to an otherwise
+ * Keeps bounded tool previews and resource metadata attached to an otherwise
  * generic tool row. MCP rows retain their existing focused payload shape.
  */
 export function extractToolActivityData(payloadValue: unknown): unknown {
@@ -22,7 +23,7 @@ export function extractToolActivityData(payloadValue: unknown): unknown {
   if (payload?.itemType === "mcp_tool_call") {
     return typeof data.toolName === "string" ? (data.item ?? data) : data.item;
   }
-  return "resource" in data ? data : undefined;
+  return "resource" in data || summarizeToolActivityInput(data) ? data : undefined;
 }
 
 type ToolActivityDataEntry = { readonly itemType?: string; readonly toolData?: unknown };
@@ -31,16 +32,21 @@ type ToolActivityDataEntry = { readonly itemType?: string; readonly toolData?: u
 export function hasToolActivityData(entry: ToolActivityDataEntry): boolean {
   return entry.itemType === "mcp_tool_call"
     ? entry.toolData !== undefined
-    : asRecord(asRecord(entry.toolData)?.resource) !== undefined;
+    : asRecord(asRecord(entry.toolData)?.resource) !== undefined ||
+        summarizeToolActivityInput(entry.toolData) !== undefined;
 }
 
-/** Shared expanded detail for MCP calls and bounded generic resource metadata. */
+/** Shared expanded detail for MCP calls, tool previews, and resource metadata. */
 export function toolActivityDataBody(entry: ToolActivityDataEntry): string | undefined {
   if (!hasToolActivityData(entry)) return undefined;
   if (entry.itemType === "mcp_tool_call") {
     return `MCP call\n${JSON.stringify(entry.toolData, null, 2)}`;
   }
-  return `Resource\n${JSON.stringify(asRecord(entry.toolData)?.resource, null, 2)}`;
+  const preview = summarizeToolActivityInput(entry.toolData);
+  const resource = asRecord(entry.toolData)?.resource;
+  return [preview, resource ? `Resource\n${JSON.stringify(resource, null, 2)}` : undefined]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
