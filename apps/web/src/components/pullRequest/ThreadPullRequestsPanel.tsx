@@ -282,8 +282,8 @@ function EnabledThreadPullRequestsPanel({ threadRef }: { threadRef: ScopedThread
         <PullRequestGlyph.link aria-hidden className="size-6 text-muted-foreground/60" />
         <p className="text-sm font-medium">No linked pull requests</p>
         <p className="max-w-60 text-xs text-muted-foreground">
-          Pull requests the agent opens from this thread land here. Link one yourself from a URL or
-          a number.
+          Pull requests the agent opens from this thread land here. Link your own from the list or a
+          URL.
         </p>
         <Button size="sm" variant="outline" onClick={openLinkDialog}>
           <PlusIcon className="size-3.5" />
