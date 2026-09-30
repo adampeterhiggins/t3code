@@ -72,6 +72,24 @@ export const fetchEnvironmentThreadSnapshot = Effect.fn(
 export type FetchEnvironmentThreadSnapshotError = RemoteEnvironmentRequestError;
 
 /**
+ * One full thread snapshot for callers outside the thread state machine, such
+ * as transcript export. Relay signing and remote authorization apply when the
+ * runtime provides them.
+ */
+export const loadFullThreadSnapshot = Effect.fn("clientRuntime.state.loadFullThreadSnapshot")(
+  function* (prepared: PreparedConnection, threadId: ThreadId) {
+    const signer = yield* Effect.serviceOption(ManagedRelayDpopSigner);
+    const remoteAuthorization = yield* Effect.serviceOption(RemoteEnvironmentAuthorization);
+    return yield* fetchEnvironmentThreadSnapshot({
+      prepared,
+      threadId,
+      signer,
+      remoteAuthorization,
+    });
+  },
+);
+
+/**
  * Loads a thread's detail snapshot over HTTP, returning `Option.none()` when it
  * cannot be loaded (so the caller falls back to the socket-embedded snapshot).
  * Decouples the thread state machine from the underlying HTTP + DPoP details and

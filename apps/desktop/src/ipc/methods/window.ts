@@ -8,6 +8,7 @@ import {
   PickedThemeFileSchema,
   PickFolderOptionsSchema,
   PRIMARY_LOCAL_ENVIRONMENT_ID,
+  SaveTextFileInputSchema,
   REMOTE_CAPABLE_EDITOR_IDS,
   SystemSettingsPaneSchema,
   type DesktopEnvironmentBootstrap,
@@ -417,6 +418,45 @@ export const pickThemeFiles = DesktopIpc.makeIpcMethod({
         Effect.orElseSucceed((): PickedThemeFile => ({ name, size: 0, text: "" })),
       );
     });
+  }),
+});
+
+// Paths this process wrote through `saveTextFile`, so the renderer can only
+// reveal files the user just saved rather than probe arbitrary paths.
+const savedTextFilePaths = new Set<string>();
+
+export const saveTextFile = DesktopIpc.makeIpcMethod({
+  channel: IpcChannels.SAVE_TEXT_FILE_CHANNEL,
+  payload: SaveTextFileInputSchema,
+  result: Schema.NullOr(Schema.String),
+  handler: Effect.fn("desktop.ipc.window.saveTextFile")(function* (input) {
+    const dialog = yield* ElectronDialog.ElectronDialog;
+    const electronWindow = yield* ElectronWindow.ElectronWindow;
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const extension = path.extname(input.defaultFileName).slice(1);
+    const selectedPath = yield* dialog.saveFile({
+      owner: yield* electronWindow.focusedMainOrFirst,
+      defaultPath: path.join(NodeOS.homedir(), "Downloads", path.basename(input.defaultFileName)),
+      filters: extension === "md" ? [{ name: "Markdown", extensions: ["md"] }] : [],
+    });
+    if (Option.isNone(selectedPath)) {
+      return null;
+    }
+    yield* fileSystem.writeFileString(selectedPath.value, input.contents);
+    savedTextFilePaths.add(selectedPath.value);
+    return selectedPath.value;
+  }),
+});
+
+export const showSavedFileInFolder = DesktopIpc.makeIpcMethod({
+  channel: IpcChannels.SHOW_SAVED_FILE_IN_FOLDER_CHANNEL,
+  payload: Schema.String,
+  result: Schema.Void,
+  handler: Effect.fn("desktop.ipc.window.showSavedFileInFolder")(function* (filePath) {
+    if (!savedTextFilePaths.has(filePath)) return;
+    const shell = yield* ElectronShell.ElectronShell;
+    yield* shell.showItemInFolder(filePath);
   }),
 });
 

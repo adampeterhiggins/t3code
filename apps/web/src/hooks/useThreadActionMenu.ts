@@ -16,6 +16,7 @@ import {
   buildThreadActionMenuItems,
   type ThreadActionMenuId,
 } from "../components/threadActionMenu.logic";
+import { openTranscriptExportDialog } from "../components/TranscriptExportDialog";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
 import { threadEnvironment } from "../state/threads";
 import { useAtomCommand } from "../state/use-atom-command";
@@ -281,6 +282,9 @@ export function useThreadActionMenu(input: {
             return;
           case "copy-thread-id":
             copyThreadIdToClipboard(thread.id, { threadId: thread.id });
+            return;
+          case "export-transcript":
+            openTranscriptExportDialog(threadRef);
             return;
           case "archive": {
             if (confirmThreadArchive) {

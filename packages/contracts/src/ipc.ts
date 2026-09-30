@@ -538,6 +538,17 @@ export const PickedThemeFileSchema = Schema.Struct({
   text: Schema.String,
 });
 
+/** A text file the renderer asks the desktop shell to save through the native save dialog. */
+export interface SaveTextFileInput {
+  defaultFileName: string;
+  contents: string;
+}
+
+export const SaveTextFileInputSchema = Schema.Struct({
+  defaultFileName: Schema.String,
+  contents: Schema.String,
+});
+
 export interface DesktopWslDistro {
   name: string;
   isDefault: boolean;
@@ -1207,6 +1218,14 @@ export interface DesktopBridge {
    * web callers fall back to a plain file input.
    */
   pickThemeFiles?: () => Promise<readonly PickedThemeFile[] | null>;
+  /**
+   * Native save dialog, then writes `contents` to the chosen path. Resolves the
+   * saved path, or null when cancelled. Optional: older desktop shells lack it,
+   * and callers fall back to a browser download.
+   */
+  saveTextFile?: (input: SaveTextFileInput) => Promise<string | null>;
+  /** Reveals a file saved by `saveTextFile` in the OS file manager. */
+  showSavedFileInFolder?: (path: string) => Promise<void>;
   setTheme: (theme: DesktopTheme) => Promise<void>;
   showContextMenu: <T extends string>(
     items: readonly ContextMenuItem<T>[],

@@ -385,6 +385,22 @@ Code: `bootstrap.deferTurn` in `packages/contracts/src/orchestration.ts`, handle
 `apps/web/src/components/ChatView.tsx` and the pill in `ComposerPrimaryActions.tsx`. User guide:
 [thread-sidebar.md](./user/thread-sidebar.md#start-a-thread).
 
+## Export a transcript
+
+On web and desktop, **Export transcript…** in a thread's menu (sidebar row, sidebar tab row, chat
+header) or the command palette opens a dialog that previews the thread as Markdown. **Concise** keeps
+the prompts and replies; **Full** adds the work log (tool calls, commands, file edits) and proposed
+plans in time order. Reasoning is always left out. **Header** adds front matter with the project,
+branch, provider, model, and dates. **Save…** writes a `.md` file on the device running the client:
+the native save dialog on desktop, the browser's save picker in Chromium, and a download elsewhere.
+**Copy** puts the same Markdown on the clipboard. The dialog loads the whole thread over HTTP, so it
+works for threads that are not open. Mobile does not offer it.
+
+Code: [`threadTranscript.ts`](../apps/web/src/lib/threadTranscript.ts),
+[`TranscriptExportDialog.tsx`](../apps/web/src/components/TranscriptExportDialog.tsx), and
+`saveTextFile` in [`window.ts`](../apps/desktop/src/ipc/methods/window.ts). User guide:
+[thread-sidebar.md](./user/thread-sidebar.md#export-a-transcript).
+
 ## Desktop mock-update loop
 
 A `Makefile` at the repository root drives a local auto-update test loop for the desktop app:

@@ -308,6 +308,7 @@ function makeTestLayer(input: {
             Effect.sync(() => {
               input.copiedTexts?.push(text);
             }),
+          showItemInFolder: () => Effect.void,
         } satisfies ElectronShell.ElectronShell["Service"]),
         electronThemeLayer,
         electronWindowLayer,
@@ -410,6 +411,7 @@ const makeSplashScenario = (createOutcomes: readonly (Electron.BrowserWindow | n
             openExternal: () => Effect.succeed(true),
             openSystemSettings: () => Effect.succeed(true),
             copyText: () => Effect.void,
+            showItemInFolder: () => Effect.void,
           } satisfies ElectronShell.ElectronShell["Service"]),
           electronThemeLayer,
           Layer.succeed(ElectronWindow.ElectronWindow, electronWindowShape),

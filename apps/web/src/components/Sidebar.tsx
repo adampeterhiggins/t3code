@@ -159,6 +159,7 @@ import { cn } from "~/lib/utils";
 import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
 import { ProjectEnvironmentBadge } from "./ProjectEnvironmentBadge";
 import { buildThreadActionMenuItems } from "./threadActionMenu.logic";
+import { openTranscriptExportDialog } from "./TranscriptExportDialog";
 import {
   animateSidebarLayoutChanges,
   applySidebarThreadDrop,
@@ -4700,6 +4701,9 @@ export default function Sidebar() {
             return;
           case "copy-thread-id":
             copyThreadIdToClipboard(thread.id, { threadId: thread.id });
+            return;
+          case "export-transcript":
+            openTranscriptExportDialog(threadRef);
             return;
           case "archive": {
             if (confirmThreadArchive) {
