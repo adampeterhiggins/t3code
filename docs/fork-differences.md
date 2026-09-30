@@ -108,9 +108,10 @@ latest tool call, and hover previews of each agent. Each agent opens a detail vi
 its launch prompt, full result or error, searchable and filterable tool calls or an on-demand
 transcript, and a usage footer. Tool previews include bounded unified edit diffs and line counts,
 read ranges, search arguments, working directories, and exit codes when the provider supplies them.
-The same details appear in chat tool expansions on web, desktop, and mobile. On web and desktop, **Open in new tab** keeps an agent in its own
-thread-scoped sidebar tab alongside the fleet and other agents. Agent tabs can be closed and
-reopened from the detail view, and are restored when the app restarts.
+The same details appear in chat tool expansions on web, desktop, and mobile. On web and desktop,
+right-click an agent in the list and choose **Open in new tab**, or use the same action in its
+detail view, to keep it in its own thread-scoped sidebar tab alongside the fleet and other agents.
+Agent tabs can be closed and reopened the same way, and are restored when the app restarts.
 Upstream's panel is a fixed list with one summary line per agent. To feed it:
 
 - Adapters put the launch prompt on `task.started` (`prompt`) and emit a subagent's own tool calls
