@@ -34,7 +34,8 @@ same view. Moving, pinning, or settling the chat's row applies to the row, and i
 it. Hover a listed tab and click **×**, or right-click it and choose **Close tab**, to close it.
 
 To bring in another tab's conversation, type `@` in the composer and pick the tab; its summary
-lands as a chip at the cursor. Before the first message in a new tab, you can also click a sibling
+lands as a chip at the cursor. On web and desktop, the same menu also lists other threads on that
+server, from any project, by title, so you can pull in a chat that was never a tab here. Before the first message in a new tab, you can also click a sibling
 under **Include context from**; hover one first to preview its summary. Move or delete the chip like any other context.
 The summary covers that chat's recent conversation, the commands and tools its agent ran, errors,
 files it changed, and its latest plan, trimmed to fit.

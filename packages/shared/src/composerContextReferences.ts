@@ -234,9 +234,7 @@ function formatComposerContextProviderPayload(record: KnownComposerContextRecord
     case "skill":
       return `name: ${record.name}`;
     case "thread-tab":
-      return [`chat tab: ${record.title}`, `threadId: ${record.threadId}`, record.summary].join(
-        "\n",
-      );
+      return [`chat: ${record.title}`, `threadId: ${record.threadId}`, record.summary].join("\n");
     case "linear-issue":
       return [
         `linear issue: ${record.identifier}`,

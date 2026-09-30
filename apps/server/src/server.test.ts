@@ -2213,6 +2213,49 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  it.effect("summarizes any other thread for a draft, but never the thread itself", () =>
+    Effect.gen(function* () {
+      const source = {
+        ...makeDefaultOrchestrationReadModel().threads[0]!,
+        id: ThreadId.make("thread-elsewhere"),
+        title: "Elsewhere",
+      };
+      yield* buildAppUnderTest({
+        layers: {
+          projectionSnapshotQuery: {
+            getThreadDetailSnapshot: (requestedThreadId) =>
+              Effect.succeed(
+                requestedThreadId === source.id
+                  ? Option.some({ snapshotSequence: 3, thread: source })
+                  : Option.none(),
+              ),
+          },
+        },
+      });
+      const cookie = yield* getAuthenticatedSessionCookieHeader();
+      const handoff = (threadId: string) =>
+        Effect.gen(function* () {
+          return yield* fetchEffect(
+            yield* getHttpServerUrl(`/api/thread-tabs/${threadId}/handoff`),
+            {
+              method: "POST",
+              headers: { cookie, "content-type": "application/json" },
+              body: jsonRequestBody({ sourceThreadIds: [source.id] }),
+            },
+          );
+        });
+
+      const draftResponse = yield* handoff("thread-draft");
+      const body = yield* responseJsonEffect<{ readonly text: string }>(draftResponse);
+      assert.equal(draftResponse.status, 200);
+      assert.include(body.text, "Source thread: thread-elsewhere (snapshot 3)");
+      assert.include(body.text, "Elsewhere");
+
+      const selfResponse = yield* handoff(source.id);
+      assert.equal(selfResponse.status, 400);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("compresses large JSON responses through the composed routes", () =>
     Effect.gen(function* () {
       const descriptor = {
