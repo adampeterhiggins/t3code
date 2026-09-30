@@ -37,6 +37,7 @@ import {
   type ServerSettings as ServerSettingsValue,
 } from "@t3tools/contracts";
 import { expandAssistantCitationsForProvider } from "@t3tools/shared/assistantCitations";
+import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { causeErrorTag } from "@t3tools/shared/observability";
 import { getModelSelectionStringOptionValue } from "@t3tools/shared/model";
@@ -80,6 +81,8 @@ import type { ProviderAdapterShape } from "../Services/ProviderAdapter.ts";
 import * as ProviderAdapterRegistry from "../Services/ProviderAdapterRegistry.ts";
 import * as ProviderService from "../Services/ProviderService.ts";
 import * as ProviderSessionDirectory from "../Services/ProviderSessionDirectory.ts";
+import * as SubagentTranscriptStore from "../SubagentTranscriptStore.ts";
+import type { SubagentTranscriptRead } from "../subagentTranscript.ts";
 import { type EventNdjsonLogger } from "./EventNdjsonLogger.ts";
 import * as ProviderEventLoggers from "./ProviderEventLoggers.ts";
 import * as AnalyticsService from "../../telemetry/AnalyticsService.ts";
@@ -491,6 +494,9 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
   const serverSettings = yield* ServerSettings.ServerSettingsService;
   const projectionQuery = yield* Effect.serviceOption(
     ProjectionSnapshotQuery.ProjectionSnapshotQuery,
+  );
+  const transcriptStore = yield* Effect.serviceOption(
+    SubagentTranscriptStore.SubagentTranscriptStore,
   );
   const issueMcpCredential =
     options?.issueMcpCredential ?? McpSessionRegistry.issueActiveMcpCredential;
@@ -1103,6 +1109,17 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
       });
     });
 
+  // A finished agent's transcript is read once, off the event path, so it outlives the session.
+  const completedTranscripts = yield* makeDrainableWorker(
+    (task: { readonly threadId: ThreadId; readonly taskId: string }) =>
+      readLiveSubagentTranscript(task).pipe(
+        Effect.flatMap((transcript) =>
+          retainSubagentTranscript(task.threadId, task.taskId, transcript),
+        ),
+        Effect.ignore,
+      ),
+  );
+
   const processRuntimeEvent = (
     source: {
       readonly instanceId: ProviderInstanceId;
@@ -1158,6 +1175,11 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         }
       } else if (canonicalEvent.type === "session.exited") {
         yield* clearTurnAnalyticsSession(source.instanceId, canonicalEvent.threadId);
+      } else if (canonicalEvent.type === "task.completed" && Option.isSome(transcriptStore)) {
+        yield* completedTranscripts.enqueue({
+          threadId: canonicalEvent.threadId,
+          taskId: canonicalEvent.payload.taskId,
+        });
       }
       if (
         isCompactedEvent(canonicalEvent) &&
@@ -2340,9 +2362,10 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     },
   );
 
-  const readSubagentTranscript: ProviderServiceMethod<"readSubagentTranscript"> = Effect.fn(
-    "readSubagentTranscript",
-  )(function* (input) {
+  const readLiveSubagentTranscript = Effect.fn("readLiveSubagentTranscript")(function* (input: {
+    readonly threadId: ThreadId;
+    readonly taskId: string;
+  }) {
     const transcriptError = (
       reason: OrchestrationGetSubagentTranscriptError["reason"],
       cause?: unknown,
@@ -2375,7 +2398,38 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     if (transcript === null) {
       return yield* transcriptError("not-found");
     }
-    return { taskId: input.taskId, ...transcript };
+    return transcript;
+  });
+
+  const retainSubagentTranscript = (
+    threadId: ThreadId,
+    taskId: string,
+    transcript: SubagentTranscriptRead,
+  ) =>
+    Option.isSome(transcriptStore)
+      ? transcriptStore.value.retain(threadId, taskId, transcript)
+      : Effect.void;
+
+  // Live reads refresh the retained copy; when the provider cannot answer, the retained copy
+  // stands in, and the original error surfaces only if nothing was kept.
+  const readSubagentTranscript: ProviderServiceMethod<"readSubagentTranscript"> = Effect.fn(
+    "readSubagentTranscript",
+  )(function* (input) {
+    return yield* readLiveSubagentTranscript(input).pipe(
+      Effect.tap((transcript) =>
+        retainSubagentTranscript(input.threadId, input.taskId, transcript),
+      ),
+      Effect.map((transcript) => ({ taskId: input.taskId, ...transcript })),
+      Effect.catch((error) =>
+        Effect.gen(function* () {
+          const retained = Option.isSome(transcriptStore)
+            ? yield* transcriptStore.value.get(input.threadId, input.taskId)
+            : Option.none();
+          if (Option.isNone(retained)) return yield* error;
+          return { taskId: input.taskId, ...retained.value };
+        }),
+      ),
+    );
   });
 
   const runStopAll = Effect.fn("runStopAll")(function* () {

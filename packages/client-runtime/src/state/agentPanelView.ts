@@ -196,6 +196,35 @@ export function findPanelAgent(model: AgentPanelModel, agentId: string): Runtime
   return model.directAgents.find((agent) => agent.id === agentId) ?? null;
 }
 
+/** Characters of launch prompt kept when a result is attached to chat. */
+const RESULT_CONTEXT_PROMPT_CHAR_LIMIT = 600;
+
+/**
+ * A finished agent's findings as text for the composer, so a follow-up turn knows what was asked
+ * and what came back. Null while the agent works or when it reported nothing.
+ */
+export function subagentResultChatContext(
+  agent: Pick<RuntimeSubagent, "title" | "role" | "status" | "prompt" | "result" | "error">,
+): string | null {
+  if (isActiveSubagentStatus(agent.status)) return null;
+  const outcome = agent.error ?? agent.result;
+  if (!outcome?.trim()) return null;
+  const name = agent.role ? `${agent.title} (${agent.role})` : agent.title;
+  const prompt = agent.prompt?.trim();
+  const sections = [
+    agent.error ? `The "${name}" subagent failed.` : `Findings from the "${name}" subagent.`,
+    prompt
+      ? `Task:\n${
+          prompt.length <= RESULT_CONTEXT_PROMPT_CHAR_LIMIT
+            ? prompt
+            : `${prompt.slice(0, RESULT_CONTEXT_PROMPT_CHAR_LIMIT - 1)}…`
+        }`
+      : null,
+    `${agent.error ? "Error" : "Result"}:\n${outcome.trim()}`,
+  ];
+  return sections.filter((section) => section !== null).join("\n\n");
+}
+
 /** The tool families the log groups calls into, for icons and filtering. */
 export type SubagentToolKind = "command" | "read" | "edit" | "search" | "web" | "other";
 

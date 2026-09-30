@@ -10,6 +10,7 @@ import {
   DEFAULT_SUBAGENT_TRANSCRIPT_VIEW,
   deriveSubagentToolLog,
   deriveSubagentToolLogs,
+  subagentResultChatContext,
   subagentToolCallText,
   subagentTranscriptToolKind,
   type AgentPanelView,
@@ -450,5 +451,45 @@ describe("foldSubagentActivities prompt", () => {
       complete("alpha", 10),
     ]);
     expect(agent?.prompt).toBe("Find every caller of foo");
+  });
+});
+
+describe("subagentResultChatContext", () => {
+  const finished = {
+    title: "Map auth flow",
+    role: "Explore",
+    status: "completed" as const,
+    prompt: "Find where sessions are refreshed.",
+    result: "Sessions refresh in auth/session.ts.",
+    error: null,
+  };
+
+  it("pairs the task with the result", () => {
+    expect(subagentResultChatContext(finished)).toBe(
+      [
+        'Findings from the "Map auth flow (Explore)" subagent.',
+        "Task:\nFind where sessions are refreshed.",
+        "Result:\nSessions refresh in auth/session.ts.",
+      ].join("\n\n"),
+    );
+  });
+
+  it("reports failures and bounds long prompts", () => {
+    const context = subagentResultChatContext({
+      ...finished,
+      role: null,
+      status: "failed",
+      prompt: "x".repeat(2_000),
+      error: "Rate limited.",
+    });
+    expect(context?.startsWith('The "Map auth flow" subagent failed.')).toBe(true);
+    expect(context?.endsWith("Error:\nRate limited.")).toBe(true);
+    expect(context?.includes(`${"x".repeat(599)}…`)).toBe(true);
+    expect(context?.includes("x".repeat(600))).toBe(false);
+  });
+
+  it("offers nothing while the agent works or when it reported nothing", () => {
+    expect(subagentResultChatContext({ ...finished, status: "running" })).toBeNull();
+    expect(subagentResultChatContext({ ...finished, result: "  " })).toBeNull();
   });
 });

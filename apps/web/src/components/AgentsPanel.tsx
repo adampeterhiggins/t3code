@@ -23,6 +23,7 @@ import {
   findPanelAgent,
   isAgentPanelViewFiltered,
   type SubagentToolLogEntry,
+  subagentResultChatContext,
 } from "@t3tools/client-runtime/state/agentPanelView";
 import type {
   AgentPanelModel,
@@ -45,6 +46,7 @@ import { Bot, Braces, Check, ChevronDown, ChevronRight, Workflow, X } from "luci
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 
 import { useAgentsPanelStore } from "~/agentsPanelStore";
+import { useComposerHandleContext } from "~/composerHandleContext";
 import { readLocalApi } from "~/localApi";
 import { useClientSettings } from "~/hooks/useSettings";
 import { cn } from "~/lib/utils";
@@ -56,6 +58,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 
 import { AgentUsageFooter, TOOL_KIND_ICONS, ToolLogList, UsageFooter } from "./AgentActivityParts";
 import { AgentDetailView } from "./AgentDetailView";
+import { attachAgentResultToChat } from "./attachAgentResult";
 import { AgentsPanelToolbar } from "./AgentsPanelToolbar";
 import { AgentElapsed, elapsedBetween, STATUS_VISUALS, StatusDot } from "./AgentStatus";
 
@@ -242,24 +245,30 @@ function AgentPreviewContent(props: {
   );
 }
 
-/** Right-click on a list row. The same action as the detail view's title icon. */
-async function showOpenAgentTabMenu(
-  agent: RuntimeSubagent,
-  onOpenInTab: (agent: RuntimeSubagent) => void,
+/** Right-click on a list row. The same actions as the detail view's icons. */
+async function showAgentRowMenu(
+  actions: {
+    readonly openInTab?: (() => void) | undefined;
+    readonly attachResult?: (() => void) | undefined;
+  },
   position: { readonly x: number; readonly y: number },
 ): Promise<void> {
   const api = readLocalApi();
   if (!api) return;
-  const items = [
-    { id: "open-in-tab", label: "Open in new tab" },
-  ] as const satisfies readonly ContextMenuItem<"open-in-tab">[];
-  let action: "open-in-tab" | null;
+  const items: ContextMenuItem<"open-in-tab" | "attach-result">[] = [
+    ...(actions.openInTab ? [{ id: "open-in-tab" as const, label: "Open in new tab" }] : []),
+    ...(actions.attachResult
+      ? [{ id: "attach-result" as const, label: "Attach result to chat" }]
+      : []),
+  ];
+  let action: "open-in-tab" | "attach-result" | null;
   try {
     action = await api.contextMenu.show(items, position);
   } catch {
     return;
   }
-  if (action === "open-in-tab") onOpenInTab(agent);
+  if (action === "open-in-tab") actions.openInTab?.();
+  if (action === "attach-result") actions.attachResult?.();
 }
 
 function menuPosition(event: MouseEvent<HTMLButtonElement>): { x: number; y: number } {
@@ -280,6 +289,14 @@ function AgentRow(props: {
 }) {
   const { agent, onOpen, onOpenInTab } = props;
   const toolLog = props.toolLogs.get(agent.id) ?? NO_TOOL_CALLS;
+  const composerRef = useComposerHandleContext();
+  const menuActions = {
+    openInTab: onOpenInTab ? () => onOpenInTab(agent) : undefined,
+    attachResult:
+      subagentResultChatContext(agent) !== null
+        ? () => attachAgentResultToChat(composerRef, agent)
+        : undefined,
+  };
   const previewActions = useRef<{ close: () => void; unmount: () => void } | null>(null);
   const menuOpen = useRef(false);
   const statusLabel =
@@ -301,17 +318,15 @@ function AgentRow(props: {
             type="button"
             onClick={() => onOpen(agent.id)}
             onContextMenu={
-              onOpenInTab
+              menuActions.openInTab || menuActions.attachResult
                 ? (event) => {
                     event.preventDefault();
                     event.stopPropagation();
                     menuOpen.current = true;
                     previewActions.current?.close();
-                    void showOpenAgentTabMenu(agent, onOpenInTab, menuPosition(event)).finally(
-                      () => {
-                        menuOpen.current = false;
-                      },
-                    );
+                    void showAgentRowMenu(menuActions, menuPosition(event)).finally(() => {
+                      menuOpen.current = false;
+                    });
                   }
                 : undefined
             }
