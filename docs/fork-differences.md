@@ -160,6 +160,9 @@ is its own conversation and provider.
   chat with one tab shows a **New tab** button instead of repeating the title. A tab can also be
   closed from the hover control on its menu row (`apps/web/src/components/chat/ThreadTabs.tsx`,
   `ChatHeader.tsx`).
+- **Right panel.** Each tab keeps its own right-panel surfaces, but the panel stays open or closed
+  as you move between tabs, including new, forked, and closed-into tabs
+  (`useRightPanelFollowsTabSwitch` in `ThreadTabs.tsx`).
 - **Context from other tabs.** Type `@` in the composer and pick a sibling tab, or, before the
   first message, click one under **Include context from** (hovering one previews its summary).
   Either path inserts a `thread-tab`

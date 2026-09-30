@@ -22,7 +22,7 @@ import { sanitizeComposerContextLabel } from "@t3tools/shared/composerContextRef
 import * as Option from "effect/Option";
 import { useNavigate } from "@tanstack/react-router";
 import { PlusIcon, XIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 
 import { useThreadActions } from "../../hooks/useThreadActions";
 import { useComposerDraftStore } from "../../composerDraftStore";
@@ -38,6 +38,7 @@ import {
   useThreadShellsForProjectRefs,
   waitForThreadShell,
 } from "../../state/entities";
+import { selectThreadRightPanelState, useRightPanelStore } from "../../rightPanelStore";
 import { readPreparedConnection, usePreparedConnection } from "../../state/session";
 import { useThreadTabContextStore } from "../../threadTabContextStore";
 import { ThreadTabSummaryDetails } from "../contextChipParts";
@@ -56,6 +57,9 @@ import { toastManager } from "../ui/toast";
 import { Toggle } from "../ui/toggle";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
+/** The last group loaded, so a remounted chat view shows a sibling tab's group at once. */
+let lastLoadedThreadTabGroup: ThreadTabGroup | null = null;
+
 /**
  * Tab group for a server thread; null until loaded or when it belongs to another thread.
  * Closed (archived) tabs drop out live, and come back if the archive is undone. Tab titles
@@ -63,7 +67,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
  */
 export function useThreadTabGroup(environmentId: EnvironmentId, threadId: ThreadId | null) {
   const prepared = usePreparedConnection(environmentId);
-  const [group, setGroup] = useState<ThreadTabGroup | null>(null);
+  const [group, setGroup] = useState(() => lastLoadedThreadTabGroup);
   const shell = useThreadShell(threadId === null ? null : scopeThreadRef(environmentId, threadId));
   const projectShells = useThreadShellsForProjectRefs(
     shell ? [scopeProjectRef(environmentId, shell.projectId)] : [],
@@ -74,7 +78,9 @@ export function useThreadTabGroup(environmentId: EnvironmentId, threadId: Thread
     let active = true;
     void runtime.runPromise(listThreadTabs(prepared.value, threadId)).then(
       (next) => {
-        if (active) setGroup(next);
+        if (!active) return;
+        lastLoadedThreadTabGroup = next;
+        setGroup(next);
       },
       () => {
         if (active) setGroup(null);
@@ -104,6 +110,53 @@ export function useThreadTabGroup(environmentId: EnvironmentId, threadId: Thread
       }),
     };
   }, [group, projectShells, shell, threadId]);
+}
+
+/** Shows or hides `to`'s right panel to match `from`'s, keeping `to`'s own surfaces. */
+function carryRightPanelVisibility(from: ScopedThreadRef, to: ScopedThreadRef) {
+  const panels = useRightPanelStore.getState();
+  const isOpen = selectThreadRightPanelState(panels.byThreadKey, from).isOpen;
+  if (selectThreadRightPanelState(panels.byThreadKey, to).isOpen === isOpen) return;
+  if (isOpen) panels.show(to);
+  else panels.close(to);
+}
+
+/** The tab group the chat view last showed, so a switch to a sibling tab can be recognised. */
+let lastShownTab: { ref: ScopedThreadRef; tabIds: ReadonlySet<ThreadId> } | null = null;
+
+/**
+ * Keeps the right panel's visibility steady across a tab switch: the next tab opens or
+ * closes its panel to match the tab you came from, showing its own surfaces. Runs before
+ * paint so the panel never flickers shut. New tabs are covered where they are created.
+ */
+export function useRightPanelFollowsTabSwitch(
+  environmentId: EnvironmentId,
+  threadId: ThreadId | null,
+  group: ThreadTabGroup | null,
+) {
+  useLayoutEffect(() => {
+    const previous = lastShownTab;
+    if (
+      threadId === null ||
+      previous === null ||
+      previous.ref.environmentId !== environmentId ||
+      previous.ref.threadId === threadId ||
+      !previous.tabIds.has(threadId)
+    ) {
+      return;
+    }
+    carryRightPanelVisibility(previous.ref, scopeThreadRef(environmentId, threadId));
+  }, [environmentId, threadId]);
+
+  useLayoutEffect(() => {
+    lastShownTab =
+      threadId !== null && group
+        ? {
+            ref: scopeThreadRef(environmentId, threadId),
+            tabIds: new Set(group.tabs.map((tab) => tab.threadId)),
+          }
+        : null;
+  }, [environmentId, group, threadId]);
 }
 
 /** The tab that takes over when `threadId` closes: the next one, else the previous. */
@@ -137,6 +190,7 @@ export function useThreadTabActions() {
             modelSelection,
           }),
         );
+        carryRightPanelVisibility(source, threadRef);
         // The thread route redirects away from threads the client store has not heard of yet.
         await waitForThreadShell(threadRef);
         await navigate({
@@ -478,6 +532,8 @@ export async function forkThreadTab(
       modelSelection: input.modelSelection,
     }),
   );
+  const threadRef = scopeThreadRef(input.environmentId, threadId);
+  carryRightPanelVisibility(scopeThreadRef(input.environmentId, input.sourceThreadId), threadRef);
   const reference = input.hasHistory
     ? await captureThreadTabContext(connection, {
         threadId,
@@ -487,7 +543,6 @@ export async function forkThreadTab(
         ...(input.afterMessageId ? { afterMessageId: input.afterMessageId } : {}),
       })
     : null;
-  const threadRef = scopeThreadRef(input.environmentId, threadId);
   useComposerDraftStore
     .getState()
     .setPrompt(
