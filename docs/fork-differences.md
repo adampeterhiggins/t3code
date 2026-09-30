@@ -341,6 +341,17 @@ Code: `apps/web/src/components/chat/StartFromPicker.tsx`, `StartFromPicker.logic
 in `ChatComposer.tsx`, and `chat.startFrom` in `packages/contracts/src/keybindings.ts`. User guide:
 [source-control.md](./user/source-control.md#start-a-thread-from-a-pull-request-branch-or-issue).
 
+## Link pull requests from a picker
+
+**Link pull request**, from the linked pull requests panel or the command palette, opens a
+multi-select picker instead of a URL field. It lists the project's pull requests with the start-from
+picker's filters, puts the thread's branch first, and pins the thread's current links at the top
+with their boxes checked. Pasting a URL or `#123` adds that pull request as a row. Nothing changes
+until **Link** (or ⌘/Ctrl+Enter) applies every check and uncheck at once. An environment that holds
+a single link keeps one row checked. See
+[`LinkPullRequestDialog.tsx`](../apps/web/src/components/pullRequest/LinkPullRequestDialog.tsx) and
+[Linked pull requests](user/source-control.md#linked-pull-requests).
+
 ## Create a thread before writing its first message
 
 On web and desktop, a new thread's empty composer shows **Create worktree** (or **Create thread**

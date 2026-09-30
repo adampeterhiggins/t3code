@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { changeRequestWebUrl, resolveLinkPullRequestInput } from "./LinkPullRequestDialog";
+import {
+  changeRequestWebUrl,
+  type LinkCandidate,
+  planLinkSelection,
+  resolveLinkPullRequestInput,
+} from "./LinkPullRequestDialog";
 
 const project = {
   host: "github.com",
@@ -132,5 +137,31 @@ describe("changeRequestWebUrl", () => {
       "https://gitlab.com/g/sub/repo/-/merge_requests/5",
     );
     expect(changeRequestWebUrl("unknown", "x", "a/b", 1)).toBeNull();
+  });
+});
+
+describe("planLinkSelection", () => {
+  const candidate = (number: number): LinkCandidate => ({
+    key: `github.com/acme/web#${number}`,
+    url: `https://github.com/acme/web/pull/${number}`,
+    repository: "acme/web",
+    number,
+    title: null,
+  });
+  const selection = (...candidates: LinkCandidate[]) =>
+    new Map(candidates.map((entry) => [entry.key, entry]));
+
+  it("links checked pull requests and unlinks unchecked ones", () => {
+    const plan = planLinkSelection(
+      [candidate(1), candidate(2)],
+      selection(candidate(2), candidate(3)),
+    );
+    expect(plan.link.map((entry) => entry.number)).toEqual([3]);
+    expect(plan.unlink.map((entry) => entry.number)).toEqual([1]);
+  });
+
+  it("changes nothing when the selection matches the links", () => {
+    const plan = planLinkSelection([candidate(1)], selection(candidate(1)));
+    expect(plan).toEqual({ link: [], unlink: [] });
   });
 });
