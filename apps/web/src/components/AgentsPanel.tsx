@@ -12,7 +12,8 @@
  * - Static status dots, DOM-write elapsed timers, plain token counters.
  * - Hovering a row previews the agent (prompt, latest tool calls, usage);
  *   the preview stays open under the pointer, and clicking it or the row opens
- *   the agent's detail view. Filters and sorts never move a row while it works
+ *   the agent's detail view. Right-click a row to open that agent in its own
+ *   tab. Filters and sorts never move a row while it works
  *   (see applyAgentPanelView).
  */
 import { useAtomValue } from "@effect/atom-react";
@@ -33,12 +34,18 @@ import {
   formatSubagentTokenCount,
   isActiveSubagentStatus,
 } from "@t3tools/client-runtime/state/subagentRuntime";
-import type { EnvironmentId, OrchestrationThreadActivity, ThreadId } from "@t3tools/contracts";
+import type {
+  ContextMenuItem,
+  EnvironmentId,
+  OrchestrationThreadActivity,
+  ThreadId,
+} from "@t3tools/contracts";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { Bot, Braces, Check, ChevronDown, ChevronRight, Workflow, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 
 import { useAgentsPanelStore } from "~/agentsPanelStore";
+import { readLocalApi } from "~/localApi";
 import { useClientSettings } from "~/hooks/useSettings";
 import { cn } from "~/lib/utils";
 import { orchestrationEnvironment } from "~/state/orchestration";
@@ -235,21 +242,57 @@ function AgentPreviewContent(props: {
   );
 }
 
+/** Right-click on a list row. The same action as the detail view's title icon. */
+async function showOpenAgentTabMenu(
+  agent: RuntimeSubagent,
+  onOpenInTab: (agent: RuntimeSubagent) => void,
+  position: { readonly x: number; readonly y: number },
+): Promise<void> {
+  const api = readLocalApi();
+  if (!api) return;
+  const items = [
+    { id: "open-in-tab", label: "Open in new tab" },
+  ] as const satisfies readonly ContextMenuItem<"open-in-tab">[];
+  let action: "open-in-tab" | null;
+  try {
+    action = await api.contextMenu.show(items, position);
+  } catch {
+    return;
+  }
+  if (action === "open-in-tab") onOpenInTab(agent);
+}
+
+function menuPosition(event: MouseEvent<HTMLButtonElement>): { x: number; y: number } {
+  if (event.clientX === 0 && event.clientY === 0) {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    return { x: bounds.left, y: bounds.bottom };
+  }
+  return { x: event.clientX, y: event.clientY };
+}
+
 /** Agent row with its hover preview; both open the agent's detail view. */
 function AgentRow(props: {
   agent: RuntimeSubagent;
   toolLogs: ToolLogs;
   timestampFormat: TimestampFormat;
   onOpen: OpenAgent;
+  onOpenInTab?: ((agent: RuntimeSubagent) => void) | undefined;
 }) {
-  const { agent, onOpen } = props;
+  const { agent, onOpen, onOpenInTab } = props;
   const toolLog = props.toolLogs.get(agent.id) ?? NO_TOOL_CALLS;
+  const previewActions = useRef<{ close: () => void; unmount: () => void } | null>(null);
+  const menuOpen = useRef(false);
   const statusLabel =
     agent.kind === "subagent_batch" && agent.status === "idle"
       ? "Idle"
       : STATUS_VISUALS[agent.status].label;
   return (
-    <PreviewCard>
+    <PreviewCard
+      actionsRef={previewActions}
+      onOpenChange={(open, details) => {
+        if (open && menuOpen.current) details.cancel();
+      }}
+    >
       <PreviewCardTrigger
         delay={400}
         closeDelay={150}
@@ -257,6 +300,21 @@ function AgentRow(props: {
           <button
             type="button"
             onClick={() => onOpen(agent.id)}
+            onContextMenu={
+              onOpenInTab
+                ? (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    menuOpen.current = true;
+                    previewActions.current?.close();
+                    void showOpenAgentTabMenu(agent, onOpenInTab, menuPosition(event)).finally(
+                      () => {
+                        menuOpen.current = false;
+                      },
+                    );
+                  }
+                : undefined
+            }
             aria-label={`${agent.title}, ${statusLabel}. Show details`}
             className="flex w-full flex-col rounded-md px-1.5 text-left hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
           />
@@ -281,6 +339,7 @@ interface RowContext {
   readonly toolLogs: ToolLogs;
   readonly timestampFormat: TimestampFormat;
   readonly onOpenAgent: OpenAgent;
+  readonly onOpenInTab?: ((agent: RuntimeSubagent) => void) | undefined;
 }
 
 function Rows(props: { agents: ReadonlyArray<RuntimeSubagent>; ctx: RowContext }) {
@@ -291,6 +350,7 @@ function Rows(props: { agents: ReadonlyArray<RuntimeSubagent>; ctx: RowContext }
       toolLogs={props.ctx.toolLogs}
       timestampFormat={props.ctx.timestampFormat}
       onOpen={props.ctx.onOpenAgent}
+      onOpenInTab={props.ctx.onOpenInTab}
     />
   ));
 }
@@ -662,6 +722,7 @@ export function AgentsPanel({
     onOpenAgent: (agentId, toolCallId) => {
       if (threadKey) focusAgent(threadKey, agentId, toolCallId ?? null);
     },
+    onOpenInTab: onOpenAgentTab,
   };
 
   if (dedicatedAgentId && !focusedAgent) {
