@@ -8,7 +8,11 @@ import {
   type OrchestrationMessage,
   type OrchestrationThreadActivity,
 } from "@t3tools/contracts";
-import { siblingChatBeforeMessage, summarizeSiblingChat } from "./summary.ts";
+import {
+  siblingChatBeforeMessage,
+  siblingChatThroughMessage,
+  summarizeSiblingChat,
+} from "./summary.ts";
 
 let clock = 0;
 // Strictly increasing timestamps order the fixture chronologically.
@@ -203,5 +207,64 @@ describe("sibling chat handoff", () => {
 
     expect(siblingChatBeforeMessage(chat, "a1")).toBeNull();
     expect(siblingChatBeforeMessage(chat, "missing")).toBeNull();
+  });
+  it("forks through a completed assistant response without later dialogue or work", () => {
+    const opening = message("u1", "user", "Build search");
+    const answer = message("a1", "assistant", "Built search");
+    // Tool work can land while the assistant response is streaming.
+    const earlyTool = activity("tool.completed", "Read search.ts", {});
+    const earlyFiles = checkpoint([
+      { path: "search.ts", kind: "modified", additions: 1, deletions: 0 },
+    ]);
+    const plan = {
+      id: "early-plan",
+      turnId: null,
+      planMarkdown: "Build the search view",
+      implementedAt: null,
+      implementationThreadId: null,
+      createdAt: at(),
+      updatedAt: at(),
+    };
+    const completedAnswer = { ...answer, updatedAt: at() };
+    const later = message("u2", "user", "Add filters");
+    const lateTool = activity("tool.completed", "Read filters.ts", {});
+    const lateFiles = checkpoint([
+      { path: "filters.ts", kind: "modified", additions: 4, deletions: 0 },
+    ]);
+    const chat = {
+      title: "Search",
+      latestTurnState: "running",
+      messages: [opening, completedAnswer, later, message("a2", "assistant", "Added filters")],
+      activities: [earlyTool, lateTool],
+      checkpoints: [earlyFiles, lateFiles],
+      proposedPlans: [
+        plan,
+        { ...plan, id: "late-plan", planMarkdown: "Add filters", updatedAt: at() },
+      ],
+    };
+    const forked = siblingChatThroughMessage(chat, "a1");
+    expect(forked?.messages.map((entry) => entry.id)).toEqual(["u1", "a1"]);
+    const summary = summarizeSiblingChat(forked!);
+    expect(summary).toContain("User: Build search");
+    expect(summary).toContain("Assistant: Built search");
+    expect(summary).toContain("Read search.ts");
+    expect(summary).toContain("search.ts (+1 −0)");
+    expect(summary).toContain("Latest plan:\nBuild the search view");
+    expect(summary).not.toContain("filters");
+    expect(summary).not.toContain("Latest turn");
+  });
+
+  it("rejects assistant fork cutoffs that are missing, streaming, or another role", () => {
+    const chat = {
+      title: "Search",
+      messages: [
+        message("u1", "user", "Build search"),
+        message("a1", "assistant", "Working", true),
+        message("r1", "reasoning", "Thinking"),
+      ],
+    };
+    for (const id of ["missing", "u1", "a1", "r1"]) {
+      expect(siblingChatThroughMessage(chat, id)).toBeNull();
+    }
   });
 });

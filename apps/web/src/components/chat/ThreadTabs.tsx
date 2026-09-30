@@ -374,12 +374,18 @@ function ThreadTabContextPill(props: {
 /** The transcript summary of a sibling tab, as captured into the draft of `threadId`. */
 async function fetchThreadTabSummary(
   connection: PreparedConnection,
-  input: { threadId: ThreadId; sourceThreadId: ThreadId; beforeMessageId?: MessageId },
+  input: {
+    threadId: ThreadId;
+    sourceThreadId: ThreadId;
+    beforeMessageId?: MessageId;
+    afterMessageId?: MessageId;
+  },
 ): Promise<string> {
   const handoff = await runtime.runPromise(
     prepareThreadTabHandoff(connection, input.threadId, {
       sourceThreadIds: [input.sourceThreadId],
       ...(input.beforeMessageId ? { beforeMessageId: input.beforeMessageId } : {}),
+      ...(input.afterMessageId ? { afterMessageId: input.afterMessageId } : {}),
     }),
   );
   return handoff.text.slice(0, COMPOSER_CONTEXT_THREAD_TAB_SUMMARY_MAX_CHARS);
@@ -388,7 +394,8 @@ async function fetchThreadTabSummary(
 /**
  * Captures a sibling tab's transcript summary into the draft of `threadId` and resolves to the
  * chip reference for the composer to place. With `beforeMessageId`, only the history before
- * that user message of the source is summarized. A `summary` already fetched for a preview is
+ * that user message of the source is summarized; `afterMessageId` includes the assistant response.
+ * A `summary` already fetched for a preview is
  * used as is.
  */
 async function captureThreadTabContext(
@@ -398,6 +405,7 @@ async function captureThreadTabContext(
     sourceThreadId: ThreadId;
     title: string;
     beforeMessageId?: MessageId;
+    afterMessageId?: MessageId;
     summary?: string;
   },
 ): Promise<ComposerContextReference> {
@@ -442,7 +450,7 @@ export function useCaptureThreadTabContext(
 
 /**
  * Forks a chat into a new tab of the same thread, on `modelSelection`: the new draft holds a
- * summary of the source chat, cut before `beforeMessageId` when forking from a message, followed
+ * summary of the source chat, cut before `beforeMessageId` or through `afterMessageId`, followed
  * by `prompt`. Resolves to the new tab once the client knows about it.
  */
 export async function forkThreadTab(
@@ -453,6 +461,7 @@ export async function forkThreadTab(
     sourceTitle: string;
     modelSelection: ModelSelection;
     beforeMessageId?: MessageId;
+    afterMessageId?: MessageId;
     /** Composer text to follow the summary. */
     prompt: string;
     /** False when forking from the chat's first message, which leaves nothing to summarize. */
@@ -472,6 +481,7 @@ export async function forkThreadTab(
         sourceThreadId: input.sourceThreadId,
         title: input.sourceTitle,
         ...(input.beforeMessageId ? { beforeMessageId: input.beforeMessageId } : {}),
+        ...(input.afterMessageId ? { afterMessageId: input.afterMessageId } : {}),
       })
     : null;
   const threadRef = scopeThreadRef(input.environmentId, threadId);

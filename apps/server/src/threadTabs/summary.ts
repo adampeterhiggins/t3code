@@ -50,6 +50,25 @@ export function siblingChatBeforeMessage(
   };
 }
 
+/** The chat through a completed assistant response, ready for a follow-up in a new tab. */
+export function siblingChatThroughMessage(
+  source: SiblingChatSource,
+  messageId: string,
+): SiblingChatSource | null {
+  const index = source.messages.findIndex((message) => message.id === messageId);
+  const cutoff = source.messages[index];
+  if (!cutoff || cutoff.role !== "assistant" || cutoff.streaming) return null;
+  const through = (at: string) => at <= cutoff.updatedAt;
+  return {
+    ...source,
+    latestTurnState: null,
+    messages: source.messages.slice(0, index + 1),
+    activities: (source.activities ?? []).filter((activity) => through(activity.createdAt)),
+    checkpoints: (source.checkpoints ?? []).filter((checkpoint) => through(checkpoint.completedAt)),
+    proposedPlans: (source.proposedPlans ?? []).filter((plan) => through(plan.updatedAt)),
+  };
+}
+
 type Entry =
   | { readonly at: string; readonly kind: "message"; readonly message: OrchestrationMessage }
   | { readonly at: string; readonly kind: "tool"; readonly label: string }
