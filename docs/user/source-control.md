@@ -104,8 +104,8 @@ uses the project's instructions and recent commit subjects.
 In a new thread, click **⋯** in the top-right corner of the composer, press `mod+shift+b`, or
 run **New thread from PR, branch, or issue** from the command palette.
 
-- **PRs** lists the project's open pull requests. Picking one checks it out, in the current
-  checkout or a new worktree.
+- **PRs** lists the project's open pull requests. Picking one checks its branch out in a worktree,
+  reusing the one it is already checked out in, and points the new thread there.
 - **Branches** works on a branch where it is already checked out. A branch that isn't checked out
   anywhere becomes the base of a new worktree, so your main checkout is never switched.
 - **Issues** attaches a Linear issue to the message. This needs a connected Linear account (see

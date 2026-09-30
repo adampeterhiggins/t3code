@@ -1,5 +1,9 @@
 import { useAtomValue } from "@effect/atom-react";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import {
+  isAtomCommandInterrupted,
+  squashAtomCommandFailure,
+} from "@t3tools/client-runtime/state/runtime";
 import type {
   EnvironmentId,
   LinearIssueSummary,
@@ -15,6 +19,7 @@ import { GitBranchIcon } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useMemo, useState } from "react";
 
 import { appAtomRegistry } from "~/rpc/atomRegistry";
+import { usePreparePullRequestThreadAction } from "~/lib/sourceControlActions";
 import { cn } from "~/lib/utils";
 import { useThreadShellsForProjectRefs } from "~/state/entities";
 import { linearEnvironment } from "~/state/linear";
@@ -45,6 +50,7 @@ import {
   CommandItem,
   CommandList,
 } from "../ui/command";
+import { toastManager } from "../ui/toast";
 import { LinearIssueHoverPreview } from "./LinearIssueHoverPreview";
 import {
   LinearIssueFilterBar,
@@ -106,10 +112,8 @@ interface StartFromPickerProps {
   readonly workspaceRoot: string;
   /** The draft's thread, which a picked Linear issue is attached to. */
   readonly threadRef: ScopedThreadRef;
-  /** Check a pull request out for the draft, through the pull request thread dialog. */
-  readonly onPullRequest: (url: string) => void;
-  /** Point the draft at a branch. */
-  readonly onBranch: (start: ReturnType<typeof resolveBranchStart>) => Promise<unknown> | void;
+  /** Point the draft at a checkout: a picked branch's, or a picked pull request's. */
+  readonly onCheckout: (checkout: ReturnType<typeof resolveBranchStart>) => void;
 }
 
 /** Mounted by a local draft's chat view; shows the picker while it is open. */
@@ -138,6 +142,11 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
 
   const projectRefs = useMemo(() => [projectRef], [projectRef]);
   const threads = useThreadShellsForProjectRefs(projectRefs);
+  const checkoutScope = useMemo(
+    () => ({ environmentId, cwd: workspaceRoot }),
+    [environmentId, workspaceRoot],
+  );
+  const preparePullRequestCheckout = usePreparePullRequestThreadAction(checkoutScope);
 
   const [pullRequestView, setPullRequestView] = useState(DEFAULT_PULL_REQUEST_PICKER_VIEW);
   const pullRequestTargets = useMemo(
@@ -219,16 +228,57 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
     else setPrompt({ subject, threads: existing, startNew: start });
   };
 
+  /**
+   * Checks the pull request's head branch out in its own worktree, or reuses the worktree it is
+   * already checked out in, then points the draft there. The picker stays open until then, so
+   * nothing is sent from the old checkout in the meantime.
+   */
+  const checkOutPullRequest = async (entry: EnvironmentPullRequestEntry) => {
+    setBusy(true);
+    const result = await preparePullRequestCheckout.run({
+      reference: entry.url,
+      mode: "worktree",
+      // The project's setup script runs in a new worktree for the thread it is made for.
+      threadId: threadRef.threadId,
+    });
+    setBusy(false);
+    if (result._tag === "Failure") {
+      if (!isAtomCommandInterrupted(result)) {
+        const failure = squashAtomCommandFailure(result);
+        toastManager.add({
+          type: "error",
+          title: `Could not check out #${entry.number}`,
+          description: failure instanceof Error ? failure.message : undefined,
+        });
+      }
+      preparePullRequestCheckout.resetError();
+      return;
+    }
+    closeStartFromPicker();
+    props.onCheckout({
+      branch: result.value.branch,
+      worktreePath: result.value.worktreePath,
+      envMode: "worktree",
+    });
+    if (!result.value.isOnPullRequestHead) {
+      toastManager.add({
+        type: "warning",
+        title: "Checked out, but not on the latest commits",
+        description:
+          "The worktree holds uncommitted work or local commits, so it stays behind the pull request.",
+      });
+    }
+  };
+
   const selectPullRequest = (entry: EnvironmentPullRequestEntry) =>
     startOrAsk(`#${entry.number}`, threadsForPullRequest(threads, entry), () => {
-      closeStartFromPicker();
-      props.onPullRequest(entry.url);
+      void checkOutPullRequest(entry);
     });
 
   const selectBranch = (ref: VcsRef) =>
     startOrAsk(localBranchName(ref), threadsForBranch(threads, ref), () => {
       closeStartFromPicker();
-      void props.onBranch(resolveBranchStart(ref, workspaceRoot));
+      props.onCheckout(resolveBranchStart(ref, workspaceRoot));
     });
 
   const selectIssue = async (issue: LinearIssueSummary) => {
@@ -282,6 +332,7 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
               <CommandItem
                 key={entry.url}
                 value={entry.url}
+                disabled={busy}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => selectPullRequest(entry)}
               >
@@ -331,6 +382,7 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
               <CommandItem
                 key={ref.name}
                 value={ref.name}
+                disabled={busy}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => selectBranch(ref)}
               >
@@ -460,7 +512,15 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
                 ) : null}
               </>
             }
-            footerActionLabel={tab === "issues" ? (busy ? "Attaching…" : "Attach") : "Start thread"}
+            footerActionLabel={
+              tab === "issues"
+                ? busy
+                  ? "Attaching…"
+                  : "Attach"
+                : busy
+                  ? "Checking out…"
+                  : "Start thread"
+            }
             footerTrailing={<span className="text-xs">Tab switches source</span>}
             mode="none"
             value={query}

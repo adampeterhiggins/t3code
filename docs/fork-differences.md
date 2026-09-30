@@ -341,8 +341,9 @@ picker with PRs, Branches, and Issues tabs. The same picker opens from the comma
 sorts with the pull requests page's filter menu, and the Issues tab with the Linear attach picker's
 filter bar, whose view it shares.
 
-- A pull request goes through upstream's pull request checkout dialog, which offers the current
-  checkout or a new worktree.
+- A pull request is checked out in a new worktree, or the worktree it is already checked out in,
+  and the draft is pointed there. Upstream's checkout dialog, with its Local and Worktree choice,
+  is skipped. A branch already checked out in the project's own checkout is refused.
 - A branch is worked on where it is already checked out. Any other branch becomes the base of a new
   worktree.
 - An issue is attached as a Linear context chip (see [Linear integration](#linear-integration)).
