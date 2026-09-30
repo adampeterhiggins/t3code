@@ -182,7 +182,8 @@ for custom configuration.
 ## Export a transcript
 
 On web and desktop, right-click a thread or tab and choose **Export transcript…**, or run
-**Export transcript** from the command palette, to bring a conversation into another app. Choose
+**Export transcript** from the command palette, to bring a conversation into another app. If the
+chat has more than one tab, pick which tab to export at the top of the preview. Choose
 **Concise** for just the prompts and replies, or **Full** to also include the commands, tool calls,
 file edits, and plans. Turn off **Header** to drop the project, branch, and model details at the
 top. **Save…** saves a Markdown file on the device you are using, even when the thread runs on a

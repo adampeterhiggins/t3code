@@ -1,10 +1,10 @@
 import { useAtomValue } from "@effect/atom-react";
-import { scopeProjectRef } from "@t3tools/client-runtime/environment";
+import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { loadFullThreadSnapshot } from "@t3tools/client-runtime/state/threads";
-import type { OrchestrationThread, ScopedThreadRef } from "@t3tools/contracts";
+import type { OrchestrationThread, ScopedThreadRef, ThreadId } from "@t3tools/contracts";
 import { CopyIcon, DownloadIcon } from "lucide-react";
 import { Atom } from "effect/unstable/reactivity";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { runtime } from "~/lib/runtime";
@@ -18,6 +18,7 @@ import { isMacPlatform, isWindowsPlatform } from "~/lib/utils";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { useProject } from "~/state/entities";
 import { readPreparedConnection } from "~/state/session";
+import { useThreadTabGroup } from "./chat/ThreadTabs";
 import { Button } from "./ui/button";
 import {
   Dialog,
@@ -28,6 +29,7 @@ import {
   DialogPopup,
   DialogTitle,
 } from "./ui/dialog";
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "./ui/select";
 import { Spinner } from "./ui/spinner";
 import { Switch } from "./ui/switch";
 import { toastManager } from "./ui/toast";
@@ -72,34 +74,31 @@ type LoadState =
   | { readonly status: "ready"; readonly thread: OrchestrationThread }
   | { readonly status: "failed"; readonly message: string };
 
+/** Full snapshots by thread, loaded on first view so switching tabs back is instant. */
 function useFullThread(threadRef: ScopedThreadRef): LoadState {
-  // The host keys this dialog by thread, so the ref is fixed for its lifetime.
-  const [state, setState] = useState<LoadState>(() =>
-    readPreparedConnection(threadRef.environmentId) === null
-      ? { status: "failed", message: "This thread's environment is not connected." }
-      : { status: "loading" },
-  );
+  const [loaded, setLoaded] = useState<ReadonlyMap<ThreadId, LoadState>>(() => new Map());
+  const requested = useRef(new Set<ThreadId>());
+  const connected = readPreparedConnection(threadRef.environmentId) !== null;
   useEffect(() => {
     const prepared = readPreparedConnection(threadRef.environmentId);
-    if (prepared === null) return;
-    let active = true;
-    void runtime.runPromise(loadFullThreadSnapshot(prepared, threadRef.threadId)).then(
-      (snapshot) => {
-        if (active) setState({ status: "ready", thread: snapshot.thread });
-      },
-      (error: unknown) => {
-        if (!active) return;
-        setState({
+    const { threadId } = threadRef;
+    if (prepared === null || requested.current.has(threadId)) return;
+    requested.current.add(threadId);
+    const settle = (state: LoadState) =>
+      setLoaded((previous) => new Map(previous).set(threadId, state));
+    void runtime.runPromise(loadFullThreadSnapshot(prepared, threadId)).then(
+      (snapshot) => settle({ status: "ready", thread: snapshot.thread }),
+      (error: unknown) =>
+        settle({
           status: "failed",
           message: error instanceof Error ? error.message : "Could not load this thread.",
-        });
-      },
+        }),
     );
-    return () => {
-      active = false;
-    };
   }, [threadRef]);
-  return state;
+  if (!connected) {
+    return { status: "failed", message: "This thread's environment is not connected." };
+  }
+  return loaded.get(threadRef.threadId) ?? { status: "loading" };
 }
 
 function revealLabel(): string {
@@ -114,7 +113,16 @@ function formatTokenEstimate(characters: number): string {
   return tokens < 1000 ? `~${tokens} tokens` : `~${(tokens / 1000).toFixed(1)}k tokens`;
 }
 
-function TranscriptExportDialog({ threadRef }: { threadRef: ScopedThreadRef }) {
+function TranscriptExportDialog({ threadRef: openedRef }: { threadRef: ScopedThreadRef }) {
+  const { environmentId } = openedRef;
+  // A thread with sibling chat tabs can export any of them; it starts on the one it was opened from.
+  const tabGroup = useThreadTabGroup(environmentId, openedRef.threadId);
+  const tabs = tabGroup && tabGroup.tabs.length > 1 ? tabGroup.tabs : null;
+  const [selectedThreadId, setSelectedThreadId] = useState(openedRef.threadId);
+  const threadRef = useMemo(
+    () => scopeThreadRef(environmentId, selectedThreadId),
+    [environmentId, selectedThreadId],
+  );
   const load = useFullThread(threadRef);
   const thread = load.status === "ready" ? load.thread : null;
   const project = useProject(
@@ -140,6 +148,8 @@ function TranscriptExportDialog({ threadRef }: { threadRef: ScopedThreadRef }) {
         : null,
     [thread, project?.title, detail, includeHeader],
   );
+  const title =
+    thread?.title ?? tabs?.find((tab) => tab.threadId === selectedThreadId)?.title ?? null;
   const fileName = thread ? transcriptFileName(thread.title) : null;
 
   const { copyToClipboard } = useCopyToClipboard({
@@ -223,13 +233,40 @@ function TranscriptExportDialog({ threadRef }: { threadRef: ScopedThreadRef }) {
             <DialogTitle>Export transcript</DialogTitle>
             <DialogDescription>
               <span className="block truncate">
-                {[thread?.title, project?.title].filter(Boolean).join(" · ") || "Loading thread…"}
+                {[title, project?.title].filter(Boolean).join(" · ") || "Loading thread…"}
               </span>
             </DialogDescription>
           </DialogHeader>
           <DialogPanel>
             <div className="overflow-hidden rounded-xl border bg-background">
               <div className="flex items-center gap-3 border-b p-2">
+                {tabs ? (
+                  <Select
+                    value={selectedThreadId}
+                    items={Object.fromEntries(tabs.map((tab) => [tab.threadId, tab.title]))}
+                    onValueChange={(value) => {
+                      const tab = tabs.find((candidate) => candidate.threadId === value);
+                      if (tab) setSelectedThreadId(tab.threadId);
+                    }}
+                  >
+                    <SelectTrigger
+                      size="compact"
+                      aria-label="Tab to export"
+                      className="w-auto min-w-0 max-w-56"
+                    >
+                      <span className="min-w-0 truncate">
+                        <SelectValue />
+                      </span>
+                    </SelectTrigger>
+                    <SelectPopup>
+                      {tabs.map((tab) => (
+                        <SelectItem key={tab.threadId} value={tab.threadId}>
+                          {tab.title}
+                        </SelectItem>
+                      ))}
+                    </SelectPopup>
+                  </Select>
+                ) : null}
                 <ToggleGroup
                   aria-label="Transcript detail"
                   value={[detail]}

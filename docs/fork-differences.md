@@ -388,7 +388,8 @@ Code: `bootstrap.deferTurn` in `packages/contracts/src/orchestration.ts`, handle
 ## Export a transcript
 
 On web and desktop, **Export transcript…** in a thread's menu (sidebar row, sidebar tab row, chat
-header) or the command palette opens a dialog that previews the thread as Markdown. **Concise** keeps
+header) or the command palette opens a dialog that previews the thread as Markdown. A thread with
+several chat tabs gets a tab picker, starting on the tab it was opened from. **Concise** keeps
 the prompts and replies; **Full** adds the work log (tool calls, commands, file edits) and proposed
 plans in time order. Reasoning is always left out. **Header** adds front matter with the project,
 branch, provider, model, and dates. **Save…** writes a `.md` file on the device running the client:
