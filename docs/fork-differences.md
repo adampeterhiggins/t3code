@@ -92,7 +92,8 @@ Code: `apps/server/src/provider/acp/CursorSubagents.ts`, the subagent handlers i
 ## Agents panel drilldowns
 
 The Agents panel has search, a status filter, and sorting, and each agent opens a detail view with
-its usage breakdown, launch prompt, full result or error, tool calls, and an on-demand transcript.
+its launch prompt, full result or error, searchable and filterable tool calls or an on-demand
+transcript, and a usage footer.
 Upstream's panel is a fixed list with one summary line per agent. To feed it:
 
 - Adapters put the launch prompt on `task.started` (`prompt`) and emit a subagent's own tool calls

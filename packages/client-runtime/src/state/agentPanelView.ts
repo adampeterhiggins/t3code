@@ -3,7 +3,13 @@
  * user's filter/sort view, and the per-agent tool log derived from the
  * thread's agent-tagged tool activities. Pure; shared by every client.
  */
-import type { OrchestrationThreadActivity } from "@t3tools/contracts";
+import {
+  isToolLifecycleItemType,
+  type OrchestrationThreadActivity,
+  type SubagentTranscriptEntry,
+} from "@t3tools/contracts";
+
+import { toolGroupAction } from "../work-log/presentation.ts";
 
 import type {
   AgentPanelModel,
@@ -188,11 +194,17 @@ export function findPanelAgent(model: AgentPanelModel, agentId: string): Runtime
   return model.directAgents.find((agent) => agent.id === agentId) ?? null;
 }
 
+/** The tool families the log groups calls into, for icons and filtering. */
+export type SubagentToolKind = "command" | "read" | "edit" | "search" | "web" | "other";
+
 export interface SubagentToolLogEntry {
   readonly id: string;
   readonly title: string;
   readonly detail: string | null;
+  /** The full command when the provider recorded one beyond the detail line. */
+  readonly command: string | null;
   readonly itemType: string | null;
+  readonly kind: SubagentToolKind;
   readonly status: "running" | "completed" | "failed";
   readonly startedAt: string;
   readonly completedAt: string | null;
@@ -202,6 +214,41 @@ const TOOL_KINDS: ReadonlySet<string> = new Set(["tool.started", "tool.updated",
 
 function asText(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+/** Classifies a call the same way the chat picks its tool icon. */
+function toolKindFor(title: string, itemType: string | null, data: unknown): SubagentToolKind {
+  const action = toolGroupAction({
+    label: title,
+    toolTitle: title,
+    tone: "tool",
+    toolData: data,
+    ...(itemType !== null && isToolLifecycleItemType(itemType) ? { itemType } : {}),
+  });
+  switch (action) {
+    case "command":
+    case "read":
+    case "edit":
+      return action;
+    case "code-search":
+      return "search";
+    case "search":
+    case "browser":
+      return "web";
+    default:
+      return "other";
+  }
+}
+
+function commandFrom(data: unknown): string | null {
+  const record = asRecord(data);
+  return asText(record?.command) ?? asText(asRecord(record?.rawInput)?.command);
 }
 
 /**
@@ -217,9 +264,8 @@ export function deriveSubagentToolLog(
   const entries = new Map<string, SubagentToolLogEntry>();
   for (const activity of activities) {
     if (!TOOL_KINDS.has(activity.kind)) continue;
-    if (typeof activity.payload !== "object" || activity.payload === null) continue;
-    const payload = activity.payload as Record<string, unknown>;
-    if (payload.agentId !== agentId) continue;
+    const payload = asRecord(activity.payload);
+    if (payload === null || payload.agentId !== agentId) continue;
     const id = asText(payload.toolCallId) ?? activity.id;
     const existing = entries.get(id);
     const nativeStatus = asText(payload.status);
@@ -229,15 +275,135 @@ export function deriveSubagentToolLog(
         : activity.kind === "tool.completed" || nativeStatus === "completed"
           ? "completed"
           : "running";
+    const title = asText(payload.title) ?? existing?.title ?? activity.summary;
+    const itemType = asText(payload.itemType) ?? existing?.itemType ?? null;
     entries.set(id, {
       id,
-      title: asText(payload.title) ?? existing?.title ?? activity.summary,
+      title,
       detail: asText(payload.detail) ?? existing?.detail ?? null,
-      itemType: asText(payload.itemType) ?? existing?.itemType ?? null,
+      command: commandFrom(payload.data) ?? existing?.command ?? null,
+      itemType,
+      kind: toolKindFor(title, itemType, payload.data),
       status: existing && existing.status !== "running" ? existing.status : status,
       startedAt: existing?.startedAt ?? activity.createdAt,
       completedAt: existing?.completedAt ?? (status === "running" ? null : activity.createdAt),
     });
   }
   return Array.from(entries.values());
+}
+
+/** Everything a call recorded, deduplicated, for previews, expansion and search. */
+export function subagentToolCallText(entry: SubagentToolLogEntry): string {
+  return [...new Set([entry.title, entry.detail, entry.command].filter((v) => v !== null))].join(
+    "\n\n",
+  );
+}
+
+export type SubagentToolLogSort = "newest" | "oldest" | "duration";
+
+export interface SubagentToolLogView {
+  readonly query: string;
+  /** Empty means every status. */
+  readonly statuses: ReadonlyArray<SubagentToolLogEntry["status"]>;
+  /** Empty means every kind. */
+  readonly kinds: ReadonlyArray<SubagentToolKind>;
+  readonly sort: SubagentToolLogSort;
+}
+
+export const DEFAULT_SUBAGENT_TOOL_LOG_VIEW: SubagentToolLogView = {
+  query: "",
+  statuses: [],
+  kinds: [],
+  sort: "newest",
+};
+
+function durationMs(entry: SubagentToolLogEntry): number {
+  // Running calls have no end yet; they sort as the longest.
+  return entry.completedAt === null
+    ? Number.POSITIVE_INFINITY
+    : Date.parse(entry.completedAt) - Date.parse(entry.startedAt);
+}
+
+/** Filters, searches and sorts the log. Input is oldest first, as derived. */
+export function applySubagentToolLogView(
+  entries: ReadonlyArray<SubagentToolLogEntry>,
+  view: SubagentToolLogView,
+): ReadonlyArray<SubagentToolLogEntry> {
+  const query = view.query.trim().toLocaleLowerCase();
+  const visible = entries.filter(
+    (entry) =>
+      (view.statuses.length === 0 || view.statuses.includes(entry.status)) &&
+      (view.kinds.length === 0 || view.kinds.includes(entry.kind)) &&
+      (query.length === 0 || subagentToolCallText(entry).toLocaleLowerCase().includes(query)),
+  );
+  // `filter` returned a fresh array; sorting it in place keeps Hermes (no toSorted) happy.
+  switch (view.sort) {
+    case "oldest":
+      return visible;
+    case "newest":
+      // oxlint-disable-next-line unicorn/no-array-reverse
+      return visible.reverse();
+    case "duration":
+      return visible.sort((a, b) => durationMs(b) - durationMs(a));
+  }
+}
+
+export type SubagentTranscriptKindFilter = "message" | "reasoning" | "tool";
+
+export interface SubagentTranscriptView {
+  readonly query: string;
+  /** Empty means every kind. */
+  readonly kinds: ReadonlyArray<SubagentTranscriptKindFilter>;
+  readonly sort: "oldest" | "newest";
+}
+
+/** A transcript reads as a conversation, so it starts oldest first. */
+export const DEFAULT_SUBAGENT_TRANSCRIPT_VIEW: SubagentTranscriptView = {
+  query: "",
+  kinds: [],
+  sort: "oldest",
+};
+
+/**
+ * Transcripts carry the provider's native tool name ("Bash", "Read",
+ * "exec_command", ...), so the family is a best-effort match on it.
+ */
+export function subagentTranscriptToolKind(toolName: string | undefined): SubagentToolKind {
+  const name = toolName?.toLocaleLowerCase() ?? "";
+  if (/web|fetch|url|browser/.test(name)) return "web";
+  if (/bash|shell|exec|command|terminal/.test(name)) return "command";
+  if (/grep|glob|search|find/.test(name)) return "search";
+  if (/edit|write|patch|apply/.test(name)) return "edit";
+  if (/read|view|open/.test(name)) return "read";
+  return "other";
+}
+
+export function subagentTranscriptKindFilterFor(
+  entry: SubagentTranscriptEntry,
+): SubagentTranscriptKindFilter {
+  return entry.kind === "user" || entry.kind === "assistant" ? "message" : entry.kind;
+}
+
+/**
+ * Filters, searches and sorts transcript entries, keeping each entry's
+ * position in the provider's transcript as a stable key.
+ */
+export function applySubagentTranscriptView(
+  entries: ReadonlyArray<SubagentTranscriptEntry>,
+  view: SubagentTranscriptView,
+): ReadonlyArray<{ readonly index: number; readonly entry: SubagentTranscriptEntry }> {
+  const query = view.query.trim().toLocaleLowerCase();
+  const visible = entries
+    .map((entry, index) => ({ index, entry }))
+    .filter(
+      ({ entry }) =>
+        (view.kinds.length === 0 || view.kinds.includes(subagentTranscriptKindFilterFor(entry))) &&
+        (query.length === 0 ||
+          [entry.text, entry.toolName, entry.input, entry.output].some((value) =>
+            value?.toLocaleLowerCase().includes(query),
+          )),
+    );
+  // Hermes lacks toReversed; `filter` returned a fresh array, so this cannot mutate the input.
+  // oxlint-disable-next-line unicorn/no-array-reverse
+  return view.sort === "newest" ? visible.reverse() : visible;
 }

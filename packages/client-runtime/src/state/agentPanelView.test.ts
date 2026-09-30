@@ -4,7 +4,13 @@ import type { OrchestrationThreadActivity } from "@t3tools/contracts";
 import {
   applyAgentPanelView,
   DEFAULT_AGENT_PANEL_VIEW,
+  applySubagentToolLogView,
+  applySubagentTranscriptView,
+  DEFAULT_SUBAGENT_TOOL_LOG_VIEW,
+  DEFAULT_SUBAGENT_TRANSCRIPT_VIEW,
   deriveSubagentToolLog,
+  subagentToolCallText,
+  subagentTranscriptToolKind,
   type AgentPanelView,
 } from "./agentPanelView.ts";
 import { deriveAgentPanelModel, foldSubagentActivities } from "./subagentRuntime.ts";
@@ -142,6 +148,144 @@ describe("deriveSubagentToolLog", () => {
       { id: "t4", title: "Run tests", detail: null, status: "failed" },
     ]);
     expect(log[0]?.completedAt).not.toBeNull();
+  });
+});
+
+describe("deriveSubagentToolLog kinds and commands", () => {
+  it("classifies calls like the chat and keeps the full command", () => {
+    const log = deriveSubagentToolLog(
+      [
+        activity("tool.completed", {
+          agentId: "alpha",
+          toolCallId: "c1",
+          itemType: "command_execution",
+          title: "Ran command",
+          detail: "vp test run",
+          data: { rawInput: { command: "vp test run src/a.test.ts --reporter verbose" } },
+        }),
+        activity("tool.completed", {
+          agentId: "alpha",
+          toolCallId: "c2",
+          itemType: "dynamic_tool_call",
+          title: "Read file",
+        }),
+        activity("tool.completed", {
+          agentId: "alpha",
+          toolCallId: "c3",
+          itemType: "file_change",
+          title: "Edit src/a.ts",
+        }),
+        activity("tool.completed", {
+          agentId: "alpha",
+          toolCallId: "c4",
+          itemType: "web_search",
+          title: "Web search",
+        }),
+      ],
+      "alpha",
+    );
+    expect(log.map((entry) => entry.kind)).toEqual(["command", "read", "edit", "web"]);
+    expect(subagentToolCallText(log[0]!)).toBe(
+      "Ran command\n\nvp test run\n\nvp test run src/a.test.ts --reporter verbose",
+    );
+  });
+});
+
+describe("applySubagentToolLogView", () => {
+  const log = deriveSubagentToolLog(
+    [
+      activity("tool.started", {
+        agentId: "a",
+        toolCallId: "t1",
+        title: "Read file",
+        detail: "a.ts",
+      }),
+      activity("tool.completed", { agentId: "a", toolCallId: "t1" }),
+      activity("tool.started", {
+        agentId: "a",
+        toolCallId: "t2",
+        itemType: "command_execution",
+        title: "Ran command",
+        detail: "vp test run",
+      }),
+      activity("tool.updated", { agentId: "a", toolCallId: "t2" }),
+      activity("tool.updated", { agentId: "a", toolCallId: "t2" }),
+      activity("tool.completed", { agentId: "a", toolCallId: "t2", status: "failed" }),
+      activity("tool.started", {
+        agentId: "a",
+        toolCallId: "t3",
+        title: "Read file",
+        detail: "b.ts",
+      }),
+    ],
+    "a",
+  );
+  const ids = (view: Partial<typeof DEFAULT_SUBAGENT_TOOL_LOG_VIEW>) =>
+    applySubagentToolLogView(log, { ...DEFAULT_SUBAGENT_TOOL_LOG_VIEW, ...view }).map((e) => e.id);
+
+  it("defaults to newest first", () => {
+    expect(ids({})).toEqual(["t3", "t2", "t1"]);
+    expect(ids({ sort: "oldest" })).toEqual(["t1", "t2", "t3"]);
+  });
+
+  it("sorts running calls first, then by duration", () => {
+    expect(ids({ sort: "duration" })).toEqual(["t3", "t2", "t1"]);
+  });
+
+  it("filters by status and kind, and searches the full call", () => {
+    expect(ids({ statuses: ["failed"] })).toEqual(["t2"]);
+    expect(ids({ kinds: ["command"] })).toEqual(["t2"]);
+    expect(ids({ query: "B.TS" })).toEqual(["t3"]);
+  });
+});
+
+describe("applySubagentTranscriptView", () => {
+  const entries = [
+    { kind: "user", text: "Find the bug" },
+    { kind: "reasoning", text: "Check the parser" },
+    { kind: "tool", text: "Ran", toolName: "Bash", input: "rg parse", output: "src/parse.ts:12" },
+    { kind: "assistant", text: "Found it in the parser" },
+  ] as const;
+
+  it("keeps transcript order by default and preserves positions", () => {
+    const visible = applySubagentTranscriptView(entries, DEFAULT_SUBAGENT_TRANSCRIPT_VIEW);
+    expect(visible.map((row) => row.index)).toEqual([0, 1, 2, 3]);
+    const newest = applySubagentTranscriptView(entries, {
+      ...DEFAULT_SUBAGENT_TRANSCRIPT_VIEW,
+      sort: "newest",
+    });
+    expect(newest.map((row) => row.index)).toEqual([3, 2, 1, 0]);
+  });
+
+  it("groups user and agent text as messages and searches tool output", () => {
+    const messages = applySubagentTranscriptView(entries, {
+      ...DEFAULT_SUBAGENT_TRANSCRIPT_VIEW,
+      kinds: ["message"],
+    });
+    expect(messages.map((row) => row.index)).toEqual([0, 3]);
+    const byOutput = applySubagentTranscriptView(entries, {
+      ...DEFAULT_SUBAGENT_TRANSCRIPT_VIEW,
+      query: "parse.ts",
+    });
+    expect(byOutput.map((row) => row.index)).toEqual([2]);
+  });
+});
+
+describe("subagentTranscriptToolKind", () => {
+  it("maps native tool names onto the log's families", () => {
+    expect(
+      [
+        "Bash",
+        "exec_command",
+        "Read",
+        "Edit",
+        "Grep",
+        "WebSearch",
+        "WebFetch",
+        "Task",
+        undefined,
+      ].map(subagentTranscriptToolKind),
+    ).toEqual(["command", "command", "read", "edit", "search", "web", "web", "other", "other"]);
   });
 });
 
