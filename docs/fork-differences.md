@@ -316,6 +316,21 @@ Code: `apps/web/src/components/chat/StartFromPicker.tsx`, `StartFromPicker.logic
 in `ChatComposer.tsx`, and `chat.startFrom` in `packages/contracts/src/keybindings.ts`. User guide:
 [source-control.md](./user/source-control.md#start-a-thread-from-a-pull-request-branch-or-issue).
 
+## Create a thread before writing its first message
+
+On web and desktop, a new thread's empty composer shows **Create worktree** (or **Create thread**
+in Local mode) in place of the send arrow; Enter does the same. It creates the thread, prepares the
+worktree, and runs the setup script without starting a turn, then opens the thread with an empty
+composer so context can be added first. The first real message starts the turn and names the thread
+and branch. Chat tabs already share a workspace, so they never offer it. A selection of several
+models, or a server without the `deferredBootstrapTurn` capability, keeps the plain send arrow.
+Mobile does not offer it.
+
+Code: `bootstrap.deferTurn` in `packages/contracts/src/orchestration.ts`, handled by
+`dispatchBootstrapTurnStart` in `apps/server/src/ws.ts`; `createThreadWithoutMessage` in
+`apps/web/src/components/ChatView.tsx` and the pill in `ComposerPrimaryActions.tsx`. User guide:
+[thread-sidebar.md](./user/thread-sidebar.md#start-a-thread).
+
 ## Desktop mock-update loop
 
 A `Makefile` at the repository root drives a local auto-update test loop for the desktop app:

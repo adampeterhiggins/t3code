@@ -11830,6 +11830,112 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  it.effect("creates a deferred bootstrap thread and worktree without starting a turn", () =>
+    Effect.gen(function* () {
+      const dispatchedCommands: Array<OrchestrationCommand> = [];
+      const generateBranchName = vi.fn(() => Effect.succeed({ branch: "unused" }));
+      const textGeneration: Pick<ProviderInstance["textGeneration"], "generateBranchName"> = {
+        generateBranchName,
+      };
+
+      yield* buildAppUnderTest({
+        layers: {
+          vcsDriver: {
+            isInsideWorkTree: () => Effect.succeed(true),
+          },
+          gitVcsDriver: {
+            execute: () => Effect.succeed(SUCCESSFUL_GIT_EXECUTION),
+            createWorktree: () =>
+              Effect.succeed({
+                worktree: { refName: "t3code/0a1b2c3d", path: "/tmp/deferred-worktree" },
+              }),
+          },
+          providerInstanceRegistry: {
+            getInstance: () =>
+              Effect.succeed({
+                instanceId: defaultModelSelection.instanceId,
+                driverKind: ProviderDriverKind.make("codex"),
+                enabled: true,
+                displayName: undefined,
+                continuationIdentity: {
+                  driverKind: ProviderDriverKind.make("codex"),
+                  continuationKey: defaultModelSelection.instanceId,
+                },
+                snapshot: {} as ProviderInstance["snapshot"],
+                adapter: {} as ProviderInstance["adapter"],
+                textGeneration: textGeneration as ProviderInstance["textGeneration"],
+              }),
+          },
+          orchestrationEngine: {
+            dispatch: (command) =>
+              Effect.sync(() => {
+                dispatchedCommands.push(command);
+                return { sequence: dispatchedCommands.length };
+              }),
+            readEvents: () => Stream.empty,
+          },
+        },
+      });
+
+      const createdAt = "2026-01-01T00:00:00.000Z";
+      const wsUrl = yield* getWsServerUrl("/ws");
+      yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[ORCHESTRATION_WS_METHODS.dispatchCommand]({
+            type: "thread.turn.start",
+            commandId: CommandId.make("cmd-deferred-bootstrap"),
+            threadId: ThreadId.make("thread-deferred-bootstrap"),
+            message: {
+              messageId: MessageId.make("msg-deferred-bootstrap"),
+              role: "user",
+              text: "placeholder",
+              attachments: [],
+            },
+            modelSelection: defaultModelSelection,
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            bootstrap: {
+              createThread: {
+                projectId: defaultProjectId,
+                title: "New thread",
+                modelSelection: defaultModelSelection,
+                runtimeMode: "full-access",
+                interactionMode: "default",
+                branch: "main",
+                worktreePath: null,
+                createdAt,
+              },
+              prepareWorktree: {
+                projectCwd: "/tmp/project",
+                baseBranch: "main",
+                branch: "t3code/0a1b2c3d",
+              },
+              runSetupScript: true,
+              deferTurn: true,
+            },
+            createdAt,
+          }),
+        ),
+      );
+
+      const types = dispatchedCommands.map((command) => command.type);
+      assert.include(types, "thread.create");
+      assert.notInclude(types, "thread.message.user.append");
+      assert.notInclude(types, "thread.session.set");
+      assert.notInclude(types, "thread.turn.start");
+      const metaUpdate = dispatchedCommands.find(
+        (command) => command.type === "thread.meta.update",
+      );
+      assertTrue(metaUpdate?.type === "thread.meta.update");
+      if (metaUpdate?.type === "thread.meta.update") {
+        // The first real turn names the branch from its message.
+        assert.equal(metaUpdate.branch, "t3code/0a1b2c3d");
+        assert.equal(metaUpdate.worktreePath, "/tmp/deferred-worktree");
+      }
+      assert.equal(generateBranchName.mock.calls.length, 0);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect.each([
     { caseName: "a non-repository", isRepository: false, failFetch: false },
     { caseName: "a base without a commit", isRepository: true, failFetch: false },

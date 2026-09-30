@@ -1,5 +1,5 @@
 import { memo, type PointerEventHandler } from "react";
-import { ChevronDownIcon, ChevronLeftIcon } from "lucide-react";
+import { ChevronDownIcon, ChevronLeftIcon, GitBranchIcon, PlusIcon } from "lucide-react";
 import { useEnvironmentIdentificationMode } from "~/hooks/useSettings";
 import { cn } from "~/lib/utils";
 import { StageBackdropButtonArt, useSidebarStageBackdropVariant } from "../SidebarStageBackdrop";
@@ -28,6 +28,8 @@ interface ComposerPrimaryActionsProps {
   isEnvironmentUnavailable: boolean;
   isPreparingWorktree: boolean;
   hasSendableContent: boolean;
+  /** Set on a new thread's draft: an empty send creates the thread (and worktree) without a turn. */
+  createWithoutMessage?: "worktree" | "thread" | null;
   preserveComposerFocusOnPointerDown?: boolean;
   onPreviousPendingQuestion: () => void;
   onInterrupt: () => void;
@@ -73,6 +75,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   isEnvironmentUnavailable,
   isPreparingWorktree,
   hasSendableContent,
+  createWithoutMessage = null,
   preserveComposerFocusOnPointerDown = false,
   onPreviousPendingQuestion,
   onInterrupt,
@@ -208,6 +211,30 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           </MenuPopup>
         </Menu>
       </div>
+    );
+  }
+
+  // Only while idle: a normal first send also empties the draft, and must not read as a create.
+  if (
+    createWithoutMessage !== null &&
+    !hasSendableContent &&
+    !isRunning &&
+    !isSendBusy &&
+    !isConnecting &&
+    !isPreparingWorktree
+  ) {
+    const Icon = createWithoutMessage === "worktree" ? GitBranchIcon : PlusIcon;
+    return (
+      <button
+        type="submit"
+        className={cn(messageActionPillClassName, "h-9 sm:h-8", compact ? "px-3" : "px-4")}
+        {...pointerFocusProps}
+        disabled={isSendDisabled || isEnvironmentUnavailable}
+        aria-label={sendDisabledReason ?? undefined}
+      >
+        <Icon className="size-3.5" aria-hidden="true" />
+        {createWithoutMessage === "worktree" ? "Create worktree" : "Create thread"}
+      </button>
     );
   }
 

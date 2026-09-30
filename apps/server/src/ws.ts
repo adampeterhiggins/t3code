@@ -547,12 +547,14 @@ const makeWsRpcLayer = (
           case "thread.create":
             return analytics.record("client.thread.started", clientAnalyticsProps);
           case "thread.turn.start":
-            return command.bootstrap?.createThread
-              ? Effect.andThen(
-                  analytics.record("client.thread.started", clientAnalyticsProps),
-                  analytics.record("client.turn.requested", clientAnalyticsProps),
-                )
-              : analytics.record("client.turn.requested", clientAnalyticsProps);
+            return command.bootstrap?.deferTurn === true
+              ? analytics.record("client.thread.started", clientAnalyticsProps)
+              : command.bootstrap?.createThread
+                ? Effect.andThen(
+                    analytics.record("client.thread.started", clientAnalyticsProps),
+                    analytics.record("client.turn.requested", clientAnalyticsProps),
+                  )
+                : analytics.record("client.turn.requested", clientAnalyticsProps);
           default:
             return Effect.void;
         }
@@ -1094,6 +1096,14 @@ const makeWsRpcLayer = (
           const bootstrap = command.bootstrap;
           const { bootstrap: _bootstrap, ...finalTurnStartCommand } = command;
           let createdThread = false;
+          let createdThreadSequence = 0;
+          // Set up the thread and workspace only; the user's first send starts the turn.
+          const deferTurn = bootstrap?.deferTurn === true;
+          if (deferTurn && !bootstrap?.createThread) {
+            return yield* new OrchestrationDispatchCommandError({
+              message: "A deferred bootstrap turn must create its thread.",
+            });
+          }
           let targetProjectId = bootstrap?.createThread?.projectId;
           let targetProjectCwd = bootstrap?.prepareWorktree?.projectCwd;
           let targetWorktreePath = bootstrap?.createThread?.worktreePath ?? null;
@@ -1348,7 +1358,9 @@ const makeWsRpcLayer = (
             // Name the branch from the message while the fetch and checkout
             // run, so the agent and setup script start on the final branch
             // instead of watching the temporary one get renamed under them.
+            // A deferred turn has no message yet; the first turn renames the branch instead.
             const branchNameFiber =
+              !deferTurn &&
               prepareWorktree?.branch !== undefined &&
               shouldPrepareWorktree &&
               isTemporaryWorktreeBranch(prepareWorktree.branch)
@@ -1484,25 +1496,28 @@ const makeWsRpcLayer = (
               // Drain through that event before setup or turn start can own
               // terminals and provider sessions under the reused thread id.
               createdThread = true;
+              createdThreadSequence = created.sequence;
               yield* threadDeletionReactor.drainThrough(created.sequence);
               // Persist the send now rather than with the turn: the thread is
               // real from here on, so any client (or a reload) sees the message
               // while the worktree is still being prepared. The turn start
               // later references this id instead of re-sending the text.
-              yield* dispatchFromClient({
-                type: "thread.message.user.append",
-                commandId: yield* serverCommandId("bootstrap-thread-message"),
-                threadId: command.threadId,
-                message: {
-                  messageId: command.message.messageId,
-                  text: command.message.text,
-                  attachments: command.message.attachments,
-                  ...(command.message.context !== undefined
-                    ? { context: command.message.context }
-                    : {}),
-                },
-                createdAt: command.createdAt,
-              });
+              if (!deferTurn) {
+                yield* dispatchFromClient({
+                  type: "thread.message.user.append",
+                  commandId: yield* serverCommandId("bootstrap-thread-message"),
+                  threadId: command.threadId,
+                  message: {
+                    messageId: command.message.messageId,
+                    text: command.message.text,
+                    attachments: command.message.attachments,
+                    ...(command.message.context !== undefined
+                      ? { context: command.message.context }
+                      : {}),
+                  },
+                  createdAt: command.createdAt,
+                });
+              }
               if (tracked) {
                 const running = yield* worktreeSetupTracker.get(threadId);
                 if (running) yield* recordWorktreeSetup(running);
@@ -1510,7 +1525,9 @@ const makeWsRpcLayer = (
             }
 
             if (prepareWorktree && shouldPrepareWorktree && worktreeBaseRef) {
-              if (bootstrap?.createThread && createdThread) {
+              // A deferred turn leaves no session behind: a placeholder would
+              // outlive the setup and read as a started conversation.
+              if (bootstrap?.createThread && createdThread && !deferTurn) {
                 // The checkout and setup script can run for minutes before the
                 // turn starts, and the created thread carries no message or
                 // turn until then. Project a starting session now so every
@@ -1670,14 +1687,31 @@ const makeWsRpcLayer = (
 
             const pendingSetupScript = yield* runSetupProgram();
 
-            yield* track(worktreeSetupTracker.stageStatus(threadId, "agent", "running"));
-            // Past this point a cancel would roll back a thread whose turn has
-            // started. Drop the cancel handle and make the handoff atomic.
-            yield* track(worktreeSetupTracker.markUncancellable(threadId));
-            const started = yield* Effect.uninterruptible(
-              dispatchFromClient(finalTurnStartCommand),
-            );
-            yield* track(worktreeSetupTracker.stageStatus(threadId, "agent", "done"));
+            let started: { readonly sequence: number };
+            if (deferTurn) {
+              // The workspace is ready; a cancel now would only roll back a finished setup.
+              yield* track(worktreeSetupTracker.markUncancellable(threadId));
+              // No agent will run beside an async script (often a dev server that never
+              // exits), so starting it is where setup ends; it keeps running in its terminal.
+              if (pendingSetupScript) {
+                yield* track(
+                  worktreeSetupTracker.stageStatus(
+                    threadId,
+                    "setup-script",
+                    "done",
+                    "running in its terminal",
+                  ),
+                );
+              }
+              started = { sequence: createdThreadSequence };
+            } else {
+              yield* track(worktreeSetupTracker.stageStatus(threadId, "agent", "running"));
+              // Past this point a cancel would roll back a thread whose turn has
+              // started. Drop the cancel handle and make the handoff atomic.
+              yield* track(worktreeSetupTracker.markUncancellable(threadId));
+              started = yield* Effect.uninterruptible(dispatchFromClient(finalTurnStartCommand));
+              yield* track(worktreeSetupTracker.stageStatus(threadId, "agent", "done"));
+            }
             // An async setup script outlives the handoff: the snapshot stays
             // running so the client keeps its row next to the agent's work,
             // and settles when the script exits. The turn already started, so
@@ -1691,7 +1725,7 @@ const makeWsRpcLayer = (
                     ),
                   )
               : Effect.void;
-            if (pendingSetupScript) {
+            if (pendingSetupScript && !deferTurn) {
               yield* Fiber.join(pendingSetupScript).pipe(
                 Effect.ignoreCause({ log: true }),
                 Effect.andThen(settle),
@@ -1834,7 +1868,9 @@ const makeWsRpcLayer = (
                       threadId,
                       branch: bootstrap?.prepareWorktree?.branch ?? null,
                       baseRef: bootstrap?.prepareWorktree?.baseBranch ?? null,
-                      stages: ["fetch", "checkout", "submodules", "setup-script", "agent"],
+                      stages: deferTurn
+                        ? ["fetch", "checkout", "submodules", "setup-script"]
+                        : ["fetch", "checkout", "submodules", "setup-script", "agent"],
                       fiber,
                     });
                     return fiber;
