@@ -630,7 +630,13 @@ export function AgentsPanel({
   threadKey,
   environmentId = null,
   threadId = null,
+  dedicatedAgentId,
+  onOpenAgentTab,
+  onViewAgents,
 }: {
+  dedicatedAgentId?: string | undefined;
+  onOpenAgentTab?: ((agent: RuntimeSubagent) => void) | undefined;
+  onViewAgents?: (() => void) | undefined;
   model: AgentPanelModel;
   activities: ReadonlyArray<OrchestrationThreadActivity>;
   /** Scoped thread key; the chat focuses an agent through the panel store. */
@@ -648,7 +654,8 @@ export function AgentsPanel({
   const { timestampFormat } = useClientSettings();
   const visible = useMemo(() => applyAgentPanelView(model, view), [model, view]);
   const toolLogs = useMemo(() => deriveSubagentToolLogs(activities), [activities]);
-  const focusedAgent = focusedAgentId ? findPanelAgent(model, focusedAgentId) : null;
+  const detailAgentId = dedicatedAgentId ?? focusedAgentId;
+  const focusedAgent = detailAgentId ? findPanelAgent(model, detailAgentId) : null;
   const ctx: RowContext = {
     toolLogs,
     timestampFormat,
@@ -656,6 +663,20 @@ export function AgentsPanel({
       if (threadKey) focusAgent(threadKey, agentId, toolCallId ?? null);
     },
   };
+
+  if (dedicatedAgentId && !focusedAgent) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
+        <p className="text-sm font-medium">Agent unavailable</p>
+        <p className="text-xs text-muted-foreground">
+          This agent's activity is not available in this thread.
+        </p>
+        <Button size="xs" variant="ghost-muted" onClick={onViewAgents}>
+          View agents
+        </Button>
+      </div>
+    );
+  }
 
   if (!model.hasAgents) {
     return (
@@ -678,9 +699,13 @@ export function AgentsPanel({
         activities={activities}
         environmentId={environmentId}
         threadId={threadId}
-        initialToolCallId={focusedToolCallId}
+        initialToolCallId={dedicatedAgentId ? null : focusedToolCallId}
+        onOpenInTab={
+          !dedicatedAgentId && onOpenAgentTab ? () => onOpenAgentTab(focusedAgent) : undefined
+        }
         onBack={() => {
-          if (threadKey) focusAgent(threadKey, null);
+          if (dedicatedAgentId) onViewAgents?.();
+          else if (threadKey) focusAgent(threadKey, null);
         }}
       />
     );

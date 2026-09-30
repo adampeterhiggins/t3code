@@ -195,6 +195,12 @@ tool calls it made, and its token usage in the footer (hover a number for its
 label, or the total for the full breakdown). In the conversation, expand an
 agent in its launch row and choose **Show details** to open it directly.
 
+Choose **Open in new tab** in an agent's detail view to keep it in a dedicated
+sidebar tab. You can keep several agents open while using the Agents list to
+inspect others. Close a tab with its close button; open that agent's detail
+view again to reopen it. **Agents** in a dedicated tab returns to the list.
+Tabs belong to the current thread and are restored when you reopen the app.
+
 Tool calls list newest first. Search them, filter by status or tool, or sort
 oldest first or by duration. Hover a call to preview all of it; click to keep
 it open. The menu on the **Tool calls** heading switches to the **Transcript**,

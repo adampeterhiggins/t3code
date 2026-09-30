@@ -630,6 +630,8 @@ function surfaceTitle(
       return "Pull requests";
     case "agents":
       return "Agents";
+    case "agent":
+      return surface.title;
     case "device":
       return surface.title ?? surface.target?.name ?? "Device";
     case "preview": {
@@ -713,6 +715,7 @@ function SurfaceIcon({
       );
     case "pull-requests":
       return <PullRequestGlyph.link className="size-3 shrink-0" />;
+    case "agent":
     case "agents":
       return <Bot className="size-3 shrink-0" />;
     case "device":

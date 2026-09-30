@@ -21,6 +21,50 @@ beforeEach(() => {
 });
 
 describe("rightPanelStore", () => {
+  it("keeps dedicated agent tabs independent from the fleet and reuses an open agent tab", () => {
+    const store = useRightPanelStore.getState();
+    store.open(refA, "agents");
+    store.openAgent(refA, "review", "Review changes");
+    store.openAgent(refA, "tests", "Run tests");
+    store.openAgent(refA, "review", "Review changes");
+    let state = selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA);
+    expect(state.surfaces).toEqual([
+      { id: "agents", kind: "agents" },
+      { id: "agent:review", kind: "agent", agentId: "review", title: "Review changes" },
+      { id: "agent:tests", kind: "agent", agentId: "tests", title: "Run tests" },
+    ]);
+    expect(state.activeSurfaceId).toBe("agent:review");
+    store.open(refA, "agents");
+    expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBe("agents");
+    store.closeSurface(refA, "agent:review");
+    state = selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA);
+    expect(state.surfaces.map((surface) => surface.id)).toEqual(["agents", "agent:tests"]);
+    store.openAgent(refA, "review", "Review changes");
+    expect(
+      selectActiveRightPanelSurface(useRightPanelStore.getState().byThreadKey, refA),
+    ).toMatchObject({ agentId: "review" });
+  });
+
+  it("scopes agent tabs to their thread and environment and restores their selection", () => {
+    const otherEnvironment = scopeThreadRef("env-2" as EnvironmentId, refA.threadId);
+    const store = useRightPanelStore.getState();
+    store.openAgent(refA, "agent-1", "First thread");
+    store.openAgent(refB, "agent-1", "Second thread");
+    store.openAgent(otherEnvironment, "agent-1", "Other environment");
+    const restored = migratePersistedRightPanelState({
+      byThreadKey: useRightPanelStore.getState().byThreadKey,
+    });
+    expect(selectActiveRightPanelSurface(restored.byThreadKey, refA)).toMatchObject({
+      title: "First thread",
+    });
+    expect(selectActiveRightPanelSurface(restored.byThreadKey, refB)).toMatchObject({
+      title: "Second thread",
+    });
+    expect(selectActiveRightPanelSurface(restored.byThreadKey, otherEnvironment)).toMatchObject({
+      title: "Other environment",
+    });
+  });
+
   it("gives each host/device its own tab and preserves renamed tabs", () => {
     const store = useRightPanelStore.getState();
     const android = {
