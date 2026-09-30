@@ -1374,6 +1374,94 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
     );
   });
 
+  describe("recentThreads for the conversation picker", () => {
+    it.effect("narrows to one session and rescans on refresh", () =>
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const nowMs = Date.parse("2026-08-24T12:00:00.000Z");
+        yield* TestClock.setTime(nowMs);
+        const claudeHomePath = yield* makeTempDir("t3code-picker-claude-");
+        const codexHomePath = yield* makeTempDir("t3code-picker-codex-");
+        const workspace = yield* makeTempDir("t3code-picker-project-");
+        const directory = path.join(codexHomePath, "sessions", "2026", "08", "24");
+        const rollout = (sessionId: string, turns: number) =>
+          [
+            encodeTranscriptRecord({
+              type: "session_meta",
+              payload: { id: sessionId, cwd: workspace },
+            }),
+            ...Array.from({ length: turns }, (_, turn) => [
+              encodeTranscriptRecord({
+                type: "event_msg",
+                payload: { type: "user_message", message: `Prompt ${turn}` },
+              }),
+              encodeTranscriptRecord({
+                type: "response_item",
+                payload: {
+                  type: "message",
+                  role: "assistant",
+                  content: [{ type: "output_text", text: `Answer ${turn}` }],
+                },
+              }),
+            ]).flat(),
+          ].join("\n");
+        yield* writeTranscript({
+          filePath: path.join(directory, "rollout-2026-08-24T10-00-00-session-long.jsonl"),
+          contents: rollout("session-long", 150),
+          mtimeMs: nowMs - 2_000,
+        });
+        yield* writeTranscript({
+          filePath: path.join(directory, "rollout-2026-08-24T11-00-00-session-short.jsonl"),
+          contents: rollout("session-short", 1),
+          mtimeMs: nowMs - 1_000,
+        });
+
+        const outcomes = yield* Effect.gen(function* () {
+          const scanner = yield* AgentSessionScanner.AgentSessionScanner;
+          const collect = (options?: AgentSessionScanner.AgentSessionRecentThreadsOptions) =>
+            scanner.recentThreads(workspace, [], options).pipe(
+              Stream.runCollect,
+              Effect.map((all) =>
+                Array.from(all).flatMap((outcome) =>
+                  outcome._tag === "Importable" ? [outcome.thread] : [],
+                ),
+              ),
+            );
+          const everything = yield* collect();
+          const one = yield* collect({
+            session: {
+              providerInstanceId: ProviderInstanceId.make("codex"),
+              providerSessionId: "session-long",
+            },
+          });
+          yield* writeTranscript({
+            filePath: path.join(directory, "rollout-2026-08-24T11-30-00-session-new.jsonl"),
+            contents: rollout("session-new", 1),
+            mtimeMs: nowMs - 500,
+          });
+          const cached = yield* collect();
+          const refreshed = yield* collect({ refresh: true });
+          return { everything, one, cached, refreshed };
+        }).pipe(Effect.provide(makeScannerTestLayer({ claudeHomePath, codexHomePath })));
+
+        expect(outcomes.everything.map((thread) => thread.providerSessionId)).toEqual([
+          "session-short",
+          "session-long",
+        ]);
+        expect(outcomes.one.map((thread) => thread.providerSessionId)).toEqual(["session-long"]);
+        // Imports keep the newest 200 messages, but the picker counts all of them.
+        expect(outcomes.one[0]?.messages).toHaveLength(200);
+        expect(outcomes.one[0]?.messageCount).toBe(300);
+        expect(outcomes.cached).toHaveLength(2);
+        expect(outcomes.refreshed.map((thread) => thread.providerSessionId)).toEqual([
+          "session-new",
+          "session-short",
+          "session-long",
+        ]);
+      }),
+    );
+  });
+
   describe("recentThreads", () => {
     it.effect.each([false, true])(
       "counts terminal newlines correctly with record overflow=%s",

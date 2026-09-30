@@ -435,6 +435,24 @@ Code: [`threadTranscript.ts`](../apps/web/src/lib/threadTranscript.ts),
 `saveTextFile` in [`window.ts`](../apps/desktop/src/ipc/methods/window.ts). User guide:
 [thread-sidebar.md](./user/thread-sidebar.md#export-a-transcript).
 
+## Import a CLI conversation
+
+Upstream imports recent Claude Code and Codex history only in bulk, from the welcome wizard. The
+fork adds a per-project picker on web and desktop: **Import conversation into …** in the command
+palette, and **Import conversation…** in the legacy sidebar's project menu. `agentSessions.list`
+returns the project's conversations from the last 30 days (newest 50, with first prompt, message
+count, and dates), marking ones a live thread already resumes so the picker opens that thread
+instead. `agentSessions.import` takes an optional `session` to import just one, from a fresh scan,
+and returns its thread. The thread binds to the original session exactly like the wizard's import,
+so the next turn resumes it. The server advertises the picker with the `agentSessionPicker`
+capability. Cursor, Grok, OpenCode, Antigravity, Devin, and mobile have no import.
+
+Code: `listProjectAgentSessions` in
+[`AgentSessionImporter.ts`](../apps/server/src/project/AgentSessionImporter.ts), the
+`recentThreads` options in [`AgentSessionScanner.ts`](../apps/server/src/project/AgentSessionScanner.ts),
+and [`ImportConversationDialog.tsx`](../apps/web/src/components/ImportConversationDialog.tsx).
+User guide: [thread-sidebar.md](./user/thread-sidebar.md#import-a-cli-conversation).
+
 ## Attach repositories as context
 
 The composer's attach menu (and **Attach repository** in the web command palette) picks other

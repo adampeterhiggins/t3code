@@ -11,6 +11,7 @@ import {
   type OrchestrationCommand,
   type OrchestrationProjectShell,
   type OrchestrationThread,
+  type OrchestrationThreadShell,
   type ProviderSendTurnInput,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -59,7 +60,7 @@ import { TextGeneration } from "../textGeneration/TextGeneration.ts";
 import { TerminalManager } from "../terminal/Manager.ts";
 import { VcsStatusBroadcaster } from "../vcs/VcsStatusBroadcaster.ts";
 import * as RepositoryIdentityResolver from "./RepositoryIdentityResolver.ts";
-import { importRecentAgentThreads } from "./AgentSessionImporter.ts";
+import { importRecentAgentThreads, listProjectAgentSessions } from "./AgentSessionImporter.ts";
 import * as AgentSessionScanner from "./AgentSessionScanner.ts";
 
 const PROJECT_ID = ProjectId.make("project-1");
@@ -79,6 +80,7 @@ const makeThread = (source: "codex" | "claudeAgent"): AgentSessionScanner.AgentS
     { role: "user", text: "Fix the bug", createdAt: "2026-08-24T10:00:00.000Z" },
     { role: "assistant", text: "Fixed", createdAt: "2026-08-24T10:01:00.000Z" },
   ],
+  messageCount: 2,
 });
 
 const makeThreadOutcome = (thread: AgentSessionScanner.AgentSessionThread) =>
@@ -198,7 +200,165 @@ const runImport = (input: {
     Effect.provide(input.snapshots),
   );
 
+const makeRecordingEngine = (commands: Array<OrchestrationCommand>) =>
+  OrchestrationEngine.OrchestrationEngineService.of({
+    dispatch: (command) => Effect.sync(() => ({ sequence: commands.push(command) })),
+    readEvents: () => Stream.empty,
+    readThreadEvents: () => Stream.empty,
+    getThreadReplayStats: () => Effect.die("unused"),
+    streamDomainEvents: Stream.empty,
+    subscribeDomainEvents: Effect.succeed(Stream.empty),
+    latestSequence: Effect.succeed(0),
+  });
+
 it.layer(NodeServices.layer)("AgentSessionImporter", (it) => {
+  describe("conversation picker", () => {
+    it.effect("lists sessions and links the ones a live thread already resumes", () =>
+      Effect.gen(function* () {
+        const recentThreadCalls: Array<unknown> = [];
+        const codex = makeThread("codex");
+        const claude = {
+          ...makeThread("claudeAgent"),
+          title: "Claude title",
+          messages: [
+            { role: "user" as const, text: "\n  Tidy the README\nthen more", createdAt: "" },
+          ],
+          messageCount: 240,
+        };
+        const scanner = AgentSessionScanner.AgentSessionScanner.of({
+          scan: Effect.die("unused"),
+          recentThreads: (_root, completed, options) => {
+            recentThreadCalls.push({ completed, options });
+            return Stream.make(
+              makeThreadOutcome(codex),
+              { _tag: "Skipped" } as const,
+              makeThreadOutcome(claude),
+            );
+          },
+        });
+        const liveThreadId = ThreadId.make("thread-native-codex");
+        const deletedThreadId = ThreadId.make("thread-deleted-claude");
+        const directory = ProviderSessionDirectory.ProviderSessionDirectory.of({
+          upsert: () => Effect.die("unused"),
+          getProvider: () => Effect.die("unused"),
+          recordImportedTranscript: () => Effect.die("unused"),
+          getBinding: () => Effect.die("unused"),
+          listThreadIds: () => Effect.die("unused"),
+          listBindings: () =>
+            Effect.succeed([
+              {
+                threadId: liveThreadId,
+                provider: ProviderDriverKind.make("codex"),
+                providerInstanceId: codex.providerInstanceId,
+                resumeCursor: { threadId: codex.providerSessionId },
+                lastSeenAt: "2026-08-24T10:00:00.000Z",
+              },
+              {
+                threadId: deletedThreadId,
+                provider: ProviderDriverKind.make("claudeAgent"),
+                providerInstanceId: claude.providerInstanceId,
+                resumeCursor: { threadId: deletedThreadId, resume: claude.providerSessionId },
+                lastSeenAt: "2026-08-24T10:00:00.000Z",
+              },
+            ]),
+        });
+        const snapshots = Layer.mock(ProjectionSnapshotQuery.ProjectionSnapshotQuery)({
+          getProjectShellById: () => Effect.succeed(Option.some(makeProject())),
+          getThreadShellById: (threadId) =>
+            Effect.succeed(
+              threadId === liveThreadId
+                ? Option.some({} as unknown as OrchestrationThreadShell)
+                : Option.none(),
+            ),
+        });
+
+        const result = yield* listProjectAgentSessions({ projectId: PROJECT_ID }).pipe(
+          Effect.provideService(AgentSessionScanner.AgentSessionScanner, scanner),
+          Effect.provideService(ProviderSessionDirectory.ProviderSessionDirectory, directory),
+          Effect.provide(snapshots),
+        );
+
+        expect(recentThreadCalls).toEqual([{ completed: [], options: { refresh: true } }]);
+        expect(result).toEqual({
+          truncated: false,
+          sessions: [
+            {
+              provider: "codex",
+              providerInstanceId: "codex",
+              providerSessionId: "codex-session",
+              title: "Imported codex thread",
+              preview: "Fix the bug",
+              messageCount: 2,
+              createdAt: codex.createdAt,
+              updatedAt: codex.updatedAt,
+              threadId: liveThreadId,
+            },
+            {
+              provider: "claudeAgent",
+              providerInstanceId: "claudeAgent",
+              providerSessionId: CLAUDE_SESSION_ID,
+              title: "Claude title",
+              preview: "Tidy the README",
+              messageCount: 240,
+              createdAt: claude.createdAt,
+              updatedAt: claude.updatedAt,
+              threadId: null,
+            },
+          ],
+        });
+      }),
+    );
+
+    it.effect("imports one session from a fresh scan and returns its thread", () =>
+      Effect.gen(function* () {
+        const commands: Array<OrchestrationCommand> = [];
+        const bindings: Array<ProviderSessionDirectory.ProviderRuntimeBinding> = [];
+        const requested: Array<AgentSessionScanner.AgentSessionRecentThreadsOptions | undefined> =
+          [];
+        const session = {
+          providerInstanceId: ProviderInstanceId.make("claudeAgent"),
+          providerSessionId: CLAUDE_SESSION_ID,
+        };
+        const scanner = AgentSessionScanner.AgentSessionScanner.of({
+          scan: Effect.die("unused"),
+          recentThreads: (_root, _completed, options) => {
+            requested.push(options);
+            return Stream.succeed(makeThreadOutcome(makeThread("claudeAgent")));
+          },
+        });
+        const directory = ProviderSessionDirectory.ProviderSessionDirectory.of({
+          upsert: (binding) => Effect.sync(() => void bindings.push(binding)),
+          getProvider: () => Effect.die("unused"),
+          recordImportedTranscript: () => Effect.void,
+          getBinding: () => Effect.succeedNone,
+          listThreadIds: () => Effect.die("unused"),
+          listBindings: () => Effect.die("unused"),
+        });
+
+        const result = yield* importRecentAgentThreads({ projectId: PROJECT_ID, session }).pipe(
+          Effect.provideService(AgentSessionScanner.AgentSessionScanner, scanner),
+          Effect.provideService(
+            OrchestrationEngine.OrchestrationEngineService,
+            makeRecordingEngine(commands),
+          ),
+          Effect.provideService(ProviderSessionDirectory.ProviderSessionDirectory, directory),
+          Effect.provide(makeSnapshotsLayer({ project: makeProject() })),
+        );
+
+        const threadId = `import:claudeAgent:${CLAUDE_SESSION_ID}`;
+        expect(requested).toEqual([{ session, refresh: true }]);
+        expect(result).toEqual({ importedCount: 1, skippedCount: 0, threadIds: [threadId] });
+        expect(commands.map((command) => command.type)).toEqual([
+          "thread.create",
+          "thread.history.import",
+        ]);
+        expect(bindings).toMatchObject([
+          { threadId, resumeCursor: { threadId, resume: CLAUDE_SESSION_ID } },
+        ]);
+      }),
+    );
+  });
+
   describe("importRecentAgentThreads", () => {
     it.effect("uses the project root and stores provider-specific resume cursors", () =>
       Effect.gen(function* () {

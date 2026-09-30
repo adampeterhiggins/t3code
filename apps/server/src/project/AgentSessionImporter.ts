@@ -15,12 +15,16 @@ import {
   ThreadId,
   type AgentSessionImportInput,
   type AgentSessionImportResult,
+  type AgentSessionListInput,
+  type AgentSessionListResult,
+  type AgentSessionSummary,
   type OrchestrationThread,
 } from "@t3tools/contracts";
 import { normalizeProjectPathForComparison } from "@t3tools/shared/path";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
@@ -28,6 +32,13 @@ import * as OrchestrationEngine from "../orchestration/Services/OrchestrationEng
 import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as ProviderSessionDirectory from "../provider/Services/ProviderSessionDirectory.ts";
 import * as AgentSessionScanner from "./AgentSessionScanner.ts";
+
+/**
+ * The picker reads each listed transcript in full to count its messages, so it
+ * stops at the newest sessions instead of reading the import budget's hundred.
+ */
+const MAX_LISTED_SESSIONS = 50;
+const MAX_PREVIEW_CHARS = 200;
 
 const CLAUDE_SESSION_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -132,6 +143,8 @@ export const importRecentAgentThreads = Effect.fn("importRecentAgentThreads")(fu
   const threads = scanner.recentThreads(
     workspaceRoot,
     completedSources.map((entry) => entry.source),
+    // The picker lists from a fresh scan, so import from one too.
+    input.session === undefined ? {} : { session: input.session, refresh: true },
   );
   const importedThreadIds = new Set<ThreadId>();
   let importedCount = 0;
@@ -294,5 +307,100 @@ export const importRecentAgentThreads = Effect.fn("importRecentAgentThreads")(fu
     }),
   );
 
-  return { importedCount, skippedCount } satisfies AgentSessionImportResult;
+  return {
+    importedCount,
+    skippedCount,
+    ...(input.session === undefined ? {} : { threadIds: [...importedThreadIds] }),
+  } satisfies AgentSessionImportResult;
+});
+
+/** The provider session a binding resumes, in the shape each adapter writes its cursor. */
+function boundSessionId(binding: ProviderSessionDirectory.ProviderRuntimeBinding): string | null {
+  const cursor = binding.resumeCursor;
+  if (typeof cursor !== "object" || cursor === null) return null;
+  const fields = cursor as Record<string, unknown>;
+  const id =
+    binding.provider === "codex"
+      ? fields.threadId
+      : binding.provider === "claudeAgent"
+        ? (fields.resume ?? fields.sessionId)
+        : undefined;
+  return typeof id === "string" && id.length > 0 ? id : null;
+}
+
+function previewText(thread: AgentSessionScanner.AgentSessionThread): string {
+  const prompt = thread.messages.find((message) => message.role === "user")?.text ?? "";
+  const firstLine = prompt
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+  return (firstLine ?? "").slice(0, MAX_PREVIEW_CHARS);
+}
+
+/**
+ * List the recent Claude Code and Codex conversations recorded for a project's
+ * directory, newest first, marking the ones a live thread already resumes.
+ */
+export const listProjectAgentSessions = Effect.fn("listProjectAgentSessions")(function* (
+  input: AgentSessionListInput,
+) {
+  const scanner = yield* AgentSessionScanner.AgentSessionScanner;
+  const snapshots = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
+  const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+  const readProjects = (cause: unknown) =>
+    new AgentSessionScanError({ operation: "read-projects", cause });
+  const project = yield* snapshots.getProjectShellById(input.projectId).pipe(
+    Effect.mapError(readProjects),
+    Effect.flatMap(
+      Option.match({
+        onNone: () =>
+          Effect.fail(new AgentSessionImportProjectNotFoundError({ projectId: input.projectId })),
+        onSome: Effect.succeed,
+      }),
+    ),
+  );
+
+  const threads = yield* scanner.recentThreads(project.workspaceRoot, [], { refresh: true }).pipe(
+    Stream.filterMap((outcome) =>
+      outcome._tag === "Importable" ? Result.succeed(outcome.thread) : Result.failVoid,
+    ),
+    Stream.take(MAX_LISTED_SESSIONS + 1),
+    Stream.runCollect,
+  );
+
+  const bindings = yield* directory.listBindings().pipe(Effect.mapError(readProjects));
+  const boundThreadIds = new Map<string, ThreadId>();
+  for (const binding of bindings) {
+    const sessionId = boundSessionId(binding);
+    if (sessionId === null || binding.providerInstanceId === undefined) continue;
+    boundThreadIds.set(`${binding.providerInstanceId}\0${sessionId}`, binding.threadId);
+  }
+
+  const sessions: Array<AgentSessionSummary> = [];
+  for (const thread of Array.from(threads).slice(0, MAX_LISTED_SESSIONS)) {
+    const boundThreadId = boundThreadIds.get(
+      `${thread.providerInstanceId}\0${thread.providerSessionId}`,
+    );
+    // Bindings outlive deleted threads; only a live thread is worth opening.
+    const liveThread =
+      boundThreadId === undefined
+        ? Option.none()
+        : yield* snapshots.getThreadShellById(boundThreadId).pipe(Effect.mapError(readProjects));
+    sessions.push({
+      provider: thread.source,
+      providerInstanceId: thread.providerInstanceId,
+      providerSessionId: thread.providerSessionId,
+      title: thread.title,
+      preview: previewText(thread),
+      messageCount: thread.messageCount,
+      createdAt: thread.createdAt,
+      updatedAt: thread.updatedAt,
+      threadId: Option.isSome(liveThread) && boundThreadId !== undefined ? boundThreadId : null,
+    });
+  }
+
+  return {
+    sessions,
+    truncated: threads.length > MAX_LISTED_SESSIONS,
+  } satisfies AgentSessionListResult;
 });

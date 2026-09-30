@@ -57,6 +57,7 @@ import {
   FolderIcon,
   FolderPlusIcon,
   GitBranchIcon,
+  HistoryIcon,
   InboxIcon,
   LayersIcon,
   LinkIcon,
@@ -187,6 +188,7 @@ import {
 import { ProjectFilePicker } from "./files/ProjectFilePicker";
 import { openLinkPullRequestDialog } from "./pullRequest/LinkPullRequestDialog";
 import { openTranscriptExportDialog } from "./TranscriptExportDialog";
+import { openImportConversationDialog } from "./ImportConversationDialog";
 import { ProjectContentSearchDialog } from "./search/ProjectContentSearchDialog";
 import { toggleThemeEditorForTheme } from "./settings/themeEditorStore";
 import { searchSettings, SETTINGS_SECTION_LABELS } from "./settings/settingsSearch";
@@ -783,7 +785,8 @@ function OpenCommandPaletteDialog(props: {
         : null,
   );
   const unlinkLinearIssue = useUnlinkLinearIssue();
-  const activeThreadServerConfig = useServerConfigs().get(
+  const serverConfigs = useServerConfigs();
+  const activeThreadServerConfig = serverConfigs.get(
     activeThread?.environmentId ?? ("" as EnvironmentId),
   );
   const activeThreadReferenceCopyTarget =
@@ -1838,6 +1841,35 @@ function OpenCommandPaletteDialog(props: {
           if (started) openStartFromPicker();
         },
       });
+      const importProjectRef = contextualProjectRef;
+      if (
+        importProjectRef !== null &&
+        serverConfigs.get(importProjectRef.environmentId)?.environment.capabilities
+          .agentSessionPicker === true
+      ) {
+        actionItems.push({
+          kind: "action",
+          value: "action:import-conversation",
+          searchTerms: [
+            "import",
+            "conversation",
+            "claude code",
+            "codex",
+            "session",
+            "resume",
+            "cli",
+          ],
+          title: (
+            <>
+              Import conversation into <span className="font-semibold">{activeProjectTitle}</span>
+            </>
+          ),
+          icon: <HistoryIcon className={ITEM_ICON_CLASS} />,
+          run: async () => {
+            openImportConversationDialog(importProjectRef);
+          },
+        });
+      }
     }
 
     actionItems.push({
