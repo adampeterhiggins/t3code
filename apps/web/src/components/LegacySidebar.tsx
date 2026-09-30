@@ -219,6 +219,7 @@ import {
 } from "../sidebarProjectGrouping";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
 import { openTranscriptExportDialog } from "./TranscriptExportDialog";
+import { openLinearIssuePicker } from "./chat/LinearIssuePicker";
 const SIDEBAR_SORT_LABELS: Record<SidebarProjectSortOrder, string> = {
   updated_at: "Last user message",
   created_at: "Created at",
@@ -2278,6 +2279,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
           { id: "copy-path", label: "Copy Path" },
           { id: "copy-thread-id", label: "Copy Thread ID" },
           { id: "export-transcript", label: "Export transcript…" },
+          { id: "link-linear-issue", label: "Link Linear issue…" },
           { id: "project-settings", label: "Project settings" },
           { id: "delete", label: "Delete", destructive: true, icon: "trash" },
         ],
@@ -2352,6 +2354,10 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       }
       if (clicked === "export-transcript") {
         openTranscriptExportDialog(threadRef);
+        return;
+      }
+      if (clicked === "link-linear-issue") {
+        openLinearIssuePicker(threadRef, "link");
         return;
       }
       if (clicked !== "delete") return;

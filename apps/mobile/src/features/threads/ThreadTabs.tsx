@@ -13,15 +13,22 @@ import { Alert, Pressable, ScrollView, Text, View } from "react-native";
 
 import { SymbolView } from "../../components/AppSymbol";
 import { ControlPillMenu } from "../../components/ControlPillMenu";
+import { useLinearIssuePicker } from "../../components/LinearIssuePickerSheet";
 import { runtime } from "../../lib/runtime";
 import { uuidv4 } from "../../lib/uuid";
 import { usePreparedConnection } from "../../state/session";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { refreshArchivedThreadsForEnvironment } from "../archive/useArchivedThreadSnapshots";
+import {
+  ThreadLinearLinkButton,
+  ThreadLinearLinkChip,
+  useThreadLinearLink,
+} from "./ThreadLinearLink";
 
 const NEW_TAB_ACTION = "tab:new";
 const CLOSE_TAB_ACTION = "tab:close";
+const LINK_LINEAR_ACTION = "tab:link-linear";
 
 const selectedSources = new Map<string, ReadonlyArray<ThreadId>>();
 
@@ -33,7 +40,10 @@ export function clearSelectedThreadTabSources(threadId: ThreadId): void {
   selectedSources.delete(threadId);
 }
 
-/** Switches, opens, and closes a thread's chat tabs; empty tabs also pick sibling context. */
+/**
+ * Switches, opens, and closes a thread's chat tabs; empty tabs also pick sibling context. The
+ * group's linked Linear issue sits beside the switcher.
+ */
 export function ThreadTabs({
   environmentId,
   threadId,
@@ -57,6 +67,8 @@ export function ThreadTabs({
     selectedThreadTabSources(threadId),
   );
   const [busy, setBusy] = useState(false);
+  const linear = useThreadLinearLink(environmentId, threadId);
+  const linearPicker = useLinearIssuePicker({ mode: "link", environmentId, threadId });
 
   useEffect(() => {
     if (Option.isNone(prepared)) return;
@@ -128,6 +140,7 @@ export function ThreadTabs({
   const onMenuAction = (id: string) => {
     if (id === NEW_TAB_ACTION) void create();
     else if (id === CLOSE_TAB_ACTION) void close();
+    else if (id === LINK_LINEAR_ACTION) linearPicker.open();
     else if (id !== threadId) navigateTo(ThreadId.make(id));
   };
   const toggle = (sourceId: ThreadId) => {
@@ -144,49 +157,67 @@ export function ThreadTabs({
 
   return (
     <View className="border-b border-border px-3 py-1.5">
-      {group.tabs.length <= 1 ? (
-        // A lone tab would repeat the thread title, so the switcher is just a "new tab" action.
-        <Pressable
-          accessibilityLabel="New tab"
-          accessibilityRole="button"
-          disabled={busy}
-          onPress={() => void create()}
-          className="flex-row items-center gap-1.5 self-start rounded-full bg-subtle px-3 py-1.5 active:opacity-70 disabled:opacity-50"
-        >
-          <SymbolView name="plus" size={13} tintColorClassName="accent-foreground" />
-          <Text className="text-sm font-medium text-foreground">New tab</Text>
-        </Pressable>
-      ) : (
-        <ControlPillMenu
-          accessible
-          accessibilityRole="button"
-          accessibilityLabel={`Chat tab: ${title}`}
-          title="Tabs"
-          actions={[
-            ...group.tabs.map((tab) => ({
-              id: tab.threadId,
-              title: tab.threadId === threadId ? title : tab.title,
-              state: tab.threadId === threadId ? ("on" as const) : ("off" as const),
-            })),
-            { id: NEW_TAB_ACTION, title: "New tab", image: "plus" },
-            { id: CLOSE_TAB_ACTION, title: "Close tab", image: "xmark" },
-          ]}
-          onPressAction={({ nativeEvent }) => onMenuAction(nativeEvent.event)}
-        >
+      <View className="flex-row items-center gap-2">
+        {group.tabs.length <= 1 ? (
+          // A lone tab would repeat the thread title, so the switcher is just a "new tab" action.
           <Pressable
-            accessibilityLabel={`Chat tab: ${title}`}
+            accessibilityLabel="New tab"
             accessibilityRole="button"
             disabled={busy}
-            className="max-w-full flex-row items-center gap-1.5 self-start rounded-full bg-subtle px-3 py-1.5 active:opacity-70 disabled:opacity-50"
+            onPress={() => void create()}
+            className="flex-row items-center gap-1.5 self-start rounded-full bg-subtle px-3 py-1.5 active:opacity-70 disabled:opacity-50"
           >
-            <Text numberOfLines={1} className="shrink text-sm font-medium text-foreground">
-              {title}
-            </Text>
-            <Text className="text-sm text-muted-foreground">{group.tabs.length}</Text>
-            <SymbolView name="chevron.down" size={11} tintColorClassName="accent-foreground" />
+            <SymbolView name="plus" size={13} tintColorClassName="accent-foreground" />
+            <Text className="text-sm font-medium text-foreground">New tab</Text>
           </Pressable>
-        </ControlPillMenu>
-      )}
+        ) : (
+          <ControlPillMenu
+            accessible
+            accessibilityRole="button"
+            accessibilityLabel={`Chat tab: ${title}`}
+            title="Tabs"
+            // Long titles shrink so the linked issue beside the switcher stays visible.
+            style={{ flexShrink: 1, minWidth: 0 }}
+            actions={[
+              ...group.tabs.map((tab) => ({
+                id: tab.threadId,
+                title: tab.threadId === threadId ? title : tab.title,
+                state: tab.threadId === threadId ? ("on" as const) : ("off" as const),
+              })),
+              { id: NEW_TAB_ACTION, title: "New tab", image: "plus" },
+              { id: CLOSE_TAB_ACTION, title: "Close tab", image: "xmark" },
+              ...(linear.canLink
+                ? [{ id: LINK_LINEAR_ACTION, title: "Link Linear issue", image: "link" }]
+                : []),
+            ]}
+            onPressAction={({ nativeEvent }) => onMenuAction(nativeEvent.event)}
+          >
+            <Pressable
+              accessibilityLabel={`Chat tab: ${title}`}
+              accessibilityRole="button"
+              disabled={busy}
+              className="min-w-0 shrink flex-row items-center gap-1.5 self-start rounded-full bg-subtle px-3 py-1.5 active:opacity-70 disabled:opacity-50"
+            >
+              <Text numberOfLines={1} className="shrink text-sm font-medium text-foreground">
+                {title}
+              </Text>
+              <Text className="text-sm text-muted-foreground">{group.tabs.length}</Text>
+              <SymbolView name="chevron.down" size={11} tintColorClassName="accent-foreground" />
+            </Pressable>
+          </ControlPillMenu>
+        )}
+        {linear.link ? (
+          <ThreadLinearLinkChip
+            environmentId={environmentId}
+            threadId={threadId}
+            link={linear.link}
+            onChange={linearPicker.open}
+          />
+        ) : linear.canLink && group.tabs.length <= 1 ? (
+          <ThreadLinearLinkButton onPress={linearPicker.open} />
+        ) : null}
+      </View>
+      {linearPicker.sheet}
       {empty && group.tabs.length > 1 ? (
         <ScrollView
           horizontal

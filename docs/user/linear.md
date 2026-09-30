@@ -45,6 +45,24 @@ Long issues are trimmed, dropping the oldest comments first.
 The issue is copied when you attach it, so later edits in Linear don't change a message you
 already sent. Chips in an unsent draft don't survive a reload; attach the issue again.
 
+## Link an issue to a thread
+
+A linked issue stays with the thread and all of its chat tabs, so you can see which issue the work
+is for and find that work again later. A thread links one issue at a time.
+
+- On web and desktop, choose **Link Linear issue…** from the thread's menu (the sidebar row or
+  the chat header title), or run **Link Linear issue** from the command palette.
+- Starting a new thread from an issue with the composer's **⋯** picker links that issue too.
+- On mobile, tap **Link issue** beside the tab switcher, or choose **Link Linear issue** from the
+  tab menu.
+
+The chat header (on mobile, the tab switcher) then shows the issue's identifier and its current
+Linear status. Click or tap it to open the issue, change it, or unlink it. The status is read
+from Linear, so it can lag for up to a minute after a change there.
+
+When you start a thread from an issue that another thread is already linked to, the picker marks
+it **In use** and asks whether to open that thread or start a new one.
+
 ## Open issues in the Linear app
 
 The **Open in Linear** link on an issue chip follows **Open links in** by default. To open issues in

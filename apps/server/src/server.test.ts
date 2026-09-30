@@ -137,6 +137,7 @@ import * as ModelManifest from "./provider/ModelManifest.ts";
 import * as ProviderService from "./provider/Services/ProviderService.ts";
 import { ProviderAuthService } from "./provider/Services/ProviderAuthService.ts";
 import { LinearApi } from "./linear/LinearApi.ts";
+import { LinearThreadLinks } from "./linear/LinearThreadLinks.ts";
 import { LinearAuth } from "./linear/LinearAuth.ts";
 import { ProviderInstanceRegistry } from "./provider/Services/ProviderInstanceRegistry.ts";
 import {
@@ -834,6 +835,7 @@ const buildAppUnderTest = (options?: {
           }),
           Layer.mock(LinearAuth)({}),
           Layer.mock(LinearApi)({}),
+          Layer.mock(LinearThreadLinks)({ refresh: Effect.void }),
           Layer.mock(ProviderInstanceRegistry)({
             getInstance: () => Effect.undefined,
             listInstances: Effect.succeed([]),

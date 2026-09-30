@@ -17,6 +17,7 @@ import {
   type ThreadActionMenuId,
 } from "../components/threadActionMenu.logic";
 import { openTranscriptExportDialog } from "../components/TranscriptExportDialog";
+import { openLinearIssuePicker } from "../components/chat/LinearIssuePicker";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
 import { threadEnvironment } from "../state/threads";
 import { useAtomCommand } from "../state/use-atom-command";
@@ -285,6 +286,9 @@ export function useThreadActionMenu(input: {
             return;
           case "export-transcript":
             openTranscriptExportDialog(threadRef);
+            return;
+          case "link-linear-issue":
+            openLinearIssuePicker(threadRef, "link");
             return;
           case "archive": {
             if (confirmThreadArchive) {

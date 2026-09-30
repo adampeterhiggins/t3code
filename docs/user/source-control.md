@@ -108,10 +108,10 @@ run **New thread from PR, branch, or issue** from the command palette.
   reusing the one it is already checked out in, and points the new thread there.
 - **Branches** works on a branch where it is already checked out. A branch that isn't checked out
   anywhere becomes the base of a new worktree, so your main checkout is never switched.
-- **Issues** attaches a Linear issue to the message. This needs a connected Linear account (see
-  [Linear](./linear.md)).
+- **Issues** attaches a Linear issue to the message and links it to the thread. This needs a
+  connected Linear account (see [Linear](./linear.md#link-an-issue-to-a-thread)).
 
-If a pull request or branch already has a thread, T3 Code asks whether to open it or start a
+If a pull request, branch, or linked issue already has a thread, T3 Code asks whether to open it or start a
 second thread. This is web and desktop.
 
 ## Review and merge

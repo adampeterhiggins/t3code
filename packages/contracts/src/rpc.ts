@@ -39,8 +39,13 @@ import {
   LinearFilterOptions,
   LinearGetIssueInput,
   LinearIssueContext,
+  LinearIssueSummary,
+  LinearLinkThreadInput,
   LinearListIssuesInput,
   LinearListIssuesResult,
+  LinearThreadLink,
+  LinearThreadLinks,
+  LinearUnlinkThreadInput,
 } from "./linear.ts";
 import { TextGenerationError } from "./git.ts";
 import {
@@ -474,6 +479,10 @@ export const WS_METHODS = {
   linearListIssues: "linear.listIssues",
   linearGetIssue: "linear.getIssue",
   linearGetFilterOptions: "linear.getFilterOptions",
+  linearGetIssueSummary: "linear.getIssueSummary",
+  linearSubscribeThreadLinks: "linear.subscribeThreadLinks",
+  linearLinkThread: "linear.linkThread",
+  linearUnlinkThread: "linear.unlinkThread",
   projectCloneStart: "projectClone.start",
   projectCloneCancel: "projectClone.cancel",
   projectCloneRetry: "projectClone.retry",
@@ -734,6 +743,31 @@ const WsLinearGetIssueRpc = Rpc.make(WS_METHODS.linearGetIssue, {
 const WsLinearGetFilterOptionsRpc = Rpc.make(WS_METHODS.linearGetFilterOptions, {
   payload: Schema.Struct({}),
   success: LinearFilterOptions,
+  error: LinearRpcError,
+});
+
+const WsLinearGetIssueSummaryRpc = Rpc.make(WS_METHODS.linearGetIssueSummary, {
+  payload: LinearGetIssueInput,
+  success: LinearIssueSummary,
+  error: LinearRpcError,
+});
+
+const WsLinearSubscribeThreadLinksRpc = Rpc.make(WS_METHODS.linearSubscribeThreadLinks, {
+  payload: Schema.Struct({}),
+  success: LinearThreadLinks,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
+const WsLinearLinkThreadRpc = Rpc.make(WS_METHODS.linearLinkThread, {
+  payload: LinearLinkThreadInput,
+  success: LinearThreadLink,
+  error: LinearRpcError,
+});
+
+const WsLinearUnlinkThreadRpc = Rpc.make(WS_METHODS.linearUnlinkThread, {
+  payload: LinearUnlinkThreadInput,
+  success: Schema.Struct({}),
   error: LinearRpcError,
 });
 
@@ -1646,6 +1680,10 @@ export const WsRpcGroup = RpcGroup.make(
   WsLinearListIssuesRpc,
   WsLinearGetIssueRpc,
   WsLinearGetFilterOptionsRpc,
+  WsLinearGetIssueSummaryRpc,
+  WsLinearSubscribeThreadLinksRpc,
+  WsLinearLinkThreadRpc,
+  WsLinearUnlinkThreadRpc,
   WsProjectCloneStartRpc,
   WsProjectCloneCancelRpc,
   WsProjectCloneRetryRpc,

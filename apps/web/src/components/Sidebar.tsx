@@ -160,6 +160,7 @@ import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
 import { ProjectEnvironmentBadge } from "./ProjectEnvironmentBadge";
 import { buildThreadActionMenuItems } from "./threadActionMenu.logic";
 import { openTranscriptExportDialog } from "./TranscriptExportDialog";
+import { openLinearIssuePicker } from "./chat/LinearIssuePicker";
 import {
   animateSidebarLayoutChanges,
   applySidebarThreadDrop,
@@ -4705,6 +4706,9 @@ export default function Sidebar() {
             return;
           case "export-transcript":
             openTranscriptExportDialog(threadRef);
+            return;
+          case "link-linear-issue":
+            openLinearIssuePicker(threadRef, "link");
             return;
           case "archive": {
             if (confirmThreadArchive) {

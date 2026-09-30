@@ -19,6 +19,7 @@ import {
   failEnvironmentNotFound,
   requireEnvironmentScope,
 } from "../auth/http.ts";
+import { LinearThreadLinks } from "../linear/LinearThreadLinks.ts";
 import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import {
@@ -40,6 +41,7 @@ export const threadTabsHttpApiLayer = HttpApiBuilder.group(
     const sql = yield* SqlClient.SqlClient;
     const snapshots = yield* ProjectionSnapshotQuery;
     const engine = yield* OrchestrationEngineService;
+    const linearThreadLinks = yield* LinearThreadLinks;
 
     const groupFor = Effect.fn("ThreadTabs.groupFor")(function* (threadId: ThreadId) {
       const source = yield* snapshots.getThreadShellById(threadId);
@@ -147,6 +149,8 @@ export const threadTabsHttpApiLayer = HttpApiBuilder.group(
               }),
             )
             .pipe(Effect.catch((cause) => failEnvironmentInternal("internal_error", cause)));
+          // The group's Linear link, if any, now covers the new tab too.
+          yield* linearThreadLinks.refresh;
 
           yield* engine
             .dispatch({

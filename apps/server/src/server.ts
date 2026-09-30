@@ -57,6 +57,7 @@ import { ProviderServiceLive } from "./provider/Layers/ProviderService.ts";
 import { ProviderAuthServiceLive } from "./provider/Layers/ProviderAuthService.ts";
 import * as LinearApi from "./linear/LinearApi.ts";
 import * as LinearAuth from "./linear/LinearAuth.ts";
+import * as LinearThreadLinks from "./linear/LinearThreadLinks.ts";
 import { CodexInstallation } from "./provider/CodexInstallation.ts";
 import { AntigravityInstallation } from "./provider/AntigravityInstallation.ts";
 import { ProviderInstanceRegistry } from "./provider/Services/ProviderInstanceRegistry.ts";
@@ -538,7 +539,12 @@ const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
   Layer.provideMerge(ProviderInstallationRefreshLive),
   Layer.provideMerge(ReplayMarkers.layer),
   Layer.provideMerge(ProviderAuthServiceLive),
-  Layer.provideMerge(LinearApi.layer.pipe(Layer.provideMerge(LinearAuth.layer))),
+  Layer.provideMerge(
+    LinearThreadLinks.layer.pipe(
+      Layer.provideMerge(LinearApi.layer),
+      Layer.provideMerge(LinearAuth.layer),
+    ),
+  ),
   // Core Services
   Layer.provideMerge(ServerSettingsLayerLive),
   Layer.provideMerge(CheckpointingLayerLive),

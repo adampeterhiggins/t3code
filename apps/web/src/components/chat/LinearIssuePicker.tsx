@@ -39,18 +39,24 @@ import { toastManager } from "../ui/toast";
 const SEARCH_DEBOUNCE_MS = 300;
 const EMPTY_ISSUES: ReadonlyArray<LinearIssueSummary> = [];
 
+type LinearIssuePickerMode = "attach" | "link";
+
 /**
- * The thread whose composer the picker attaches to, set by whichever entry point asked (the
- * attach menu, the command palette) and rendered once by the chat view, so the picker outlives a
+ * The thread the picker acts on and what picking does: attach the issue to that thread's composer,
+ * or link it to the thread's tab group. Set by whichever entry point asked (the attach menu, the
+ * thread menu, the command palette) and rendered once by the chat view, so the picker outlives a
  * palette that closes the moment its command runs.
  */
-const linearIssuePickerThreadAtom = Atom.make<ScopedThreadRef | null>(null).pipe(
-  Atom.keepAlive,
-  Atom.withLabel("linear:issue-picker-thread"),
-);
+const linearIssuePickerAtom = Atom.make<{
+  readonly threadRef: ScopedThreadRef;
+  readonly mode: LinearIssuePickerMode;
+} | null>(null).pipe(Atom.keepAlive, Atom.withLabel("linear:issue-picker-thread"));
 
-export function openLinearIssuePicker(threadRef: ScopedThreadRef): void {
-  appAtomRegistry.set(linearIssuePickerThreadAtom, threadRef);
+export function openLinearIssuePicker(
+  threadRef: ScopedThreadRef,
+  mode: LinearIssuePickerMode = "attach",
+): void {
+  appAtomRegistry.set(linearIssuePickerAtom, { threadRef, mode });
 }
 
 /**
@@ -89,23 +95,55 @@ export function useAttachLinearIssue() {
   );
 }
 
+/** Links an issue to the thread's tab group, replacing the one it had. */
+export function useLinkLinearIssue() {
+  const linkThread = useAtomCommand(linearEnvironment.linkThread, { reportFailure: false });
+  return useCallback(
+    async (threadRef: ScopedThreadRef, issueId: string): Promise<boolean> => {
+      const result = await linkThread({
+        environmentId: threadRef.environmentId,
+        input: { threadId: threadRef.threadId, issueId },
+      });
+      if (result._tag === "Failure") {
+        if (!isAtomCommandInterrupted(result)) {
+          const failure = squashAtomCommandFailure(result);
+          toastManager.add({
+            type: "error",
+            title: "Could not link the Linear issue",
+            description: failure instanceof Error ? failure.message : undefined,
+          });
+        }
+        return false;
+      }
+      return true;
+    },
+    [linkThread],
+  );
+}
+
 /** Mounted once per chat view; shows the picker for whichever thread asked for it. */
 export function LinearIssuePickerHost() {
-  const threadRef = useAtomValue(linearIssuePickerThreadAtom);
-  if (threadRef === null) return null;
+  const target = useAtomValue(linearIssuePickerAtom);
+  if (target === null) return null;
   return (
     <LinearIssuePickerDialog
-      threadRef={threadRef}
-      onClose={() => appAtomRegistry.set(linearIssuePickerThreadAtom, null)}
+      threadRef={target.threadRef}
+      mode={target.mode}
+      onClose={() => appAtomRegistry.set(linearIssuePickerAtom, null)}
     />
   );
 }
 
-function LinearIssuePickerDialog(props: { threadRef: ScopedThreadRef; onClose: () => void }) {
-  const { threadRef, onClose } = props;
+function LinearIssuePickerDialog(props: {
+  threadRef: ScopedThreadRef;
+  mode: LinearIssuePickerMode;
+  onClose: () => void;
+}) {
+  const { threadRef, mode, onClose } = props;
   const environmentId = threadRef.environmentId;
   const navigate = useNavigate();
   const attachIssue = useAttachLinearIssue();
+  const linkIssue = useLinkLinearIssue();
   const [query, setQuery] = useState("");
   const [attaching, setAttaching] = useState(false);
   const debouncedQuery = useDebouncedValue(query.trim(), SEARCH_DEBOUNCE_MS);
@@ -136,9 +174,9 @@ function LinearIssuePickerDialog(props: { threadRef: ScopedThreadRef; onClose: (
   async function select(issue: LinearIssueSummary) {
     if (attaching) return;
     setAttaching(true);
-    const attached = await attachIssue(threadRef, issue.id);
+    const done = await (mode === "link" ? linkIssue : attachIssue)(threadRef, issue.id);
     setAttaching(false);
-    if (attached) onClose();
+    if (done) onClose();
   }
 
   const status =
@@ -161,14 +199,25 @@ function LinearIssuePickerDialog(props: { threadRef: ScopedThreadRef; onClose: (
         if (!open) onClose();
       }}
     >
-      <CommandDialogPopup aria-label="Attach Linear issue" className="overflow-hidden">
+      <CommandDialogPopup
+        aria-label={mode === "link" ? "Link Linear issue" : "Attach Linear issue"}
+        className="overflow-hidden"
+      >
         {connected || connection.data === null ? (
           <CommandPaletteContent
             inputProps={{
               placeholder: "Search Linear issues, or paste ENG-123 or an issue link",
               startAddon: <LinearIcon />,
             }}
-            footerActionLabel={attaching ? "Attaching…" : "Attach"}
+            footerActionLabel={
+              mode === "link"
+                ? attaching
+                  ? "Linking…"
+                  : "Link"
+                : attaching
+                  ? "Attaching…"
+                  : "Attach"
+            }
             inputAccessory={
               <LinearIssueFilterBar
                 options={filterOptions.data}
@@ -226,7 +275,9 @@ function LinearIssuePickerDialog(props: { threadRef: ScopedThreadRef; onClose: (
         ) : (
           <div className="flex flex-col items-center gap-3 px-6 py-10 text-center text-sm">
             <p className="text-muted-foreground">
-              Connect a Linear account to attach issues to messages.
+              {mode === "link"
+                ? "Connect a Linear account to link an issue to this thread."
+                : "Connect a Linear account to attach issues to messages."}
             </p>
             <Button
               size="sm"
