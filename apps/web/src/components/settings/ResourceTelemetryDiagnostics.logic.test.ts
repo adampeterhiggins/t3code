@@ -4,6 +4,7 @@ import type { ResourceTelemetryProcess } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
 import {
+  resourceProcessLabel,
   resourceHistoryBarHeight,
   resourceHistoryCpuScaleMax,
   shouldShowResourceMonitorRetry,
@@ -86,5 +87,34 @@ describe("visibleResourceTelemetryProcesses", () => {
       processes[1],
       processes[3],
     ]);
+  });
+});
+
+describe("resourceProcessLabel", () => {
+  it("shows executable names for utility processes without a service name", () => {
+    expect(
+      resourceProcessLabel({ ...process(1, 0, 0), category: "electron-utility", name: "codex" }),
+    ).toBe("codex");
+    expect(
+      resourceProcessLabel({
+        ...process(1, 0, 0),
+        category: "electron-utility",
+        name: "",
+        command: "/usr/bin/node app.js",
+      }),
+    ).toBe("node");
+  });
+
+  it("prefers an Electron service name and keeps app roles recognizable", () => {
+    expect(
+      resourceProcessLabel({
+        ...process(1, 0, 0),
+        category: "electron-utility",
+        electronServiceName: "Network Service",
+      }),
+    ).toBe("Network Service");
+    expect(resourceProcessLabel({ ...process(1, 0, 0), category: "electron-renderer" })).toBe(
+      "Renderer",
+    );
   });
 });

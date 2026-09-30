@@ -21,6 +21,27 @@ export function formatProcessName(
   return normalized.split(/[\\/]/).findLast((segment) => segment.length > 0) ?? normalized;
 }
 
+export function resourceProcessLabel(
+  process: Pick<ResourceTelemetryProcess, "category" | "command" | "name" | "electronServiceName">,
+): string {
+  switch (process.category) {
+    case "electron-main":
+      return "App";
+    case "electron-renderer":
+      return "Renderer";
+    case "electron-gpu":
+      return "GPU";
+    case "electron-utility":
+      return process.electronServiceName?.trim() || formatProcessName(process) || "Utility";
+    case "server":
+      return "Server";
+    case "resource-monitor":
+      return "Monitor";
+    default:
+      return formatProcessName(process);
+  }
+}
+
 export function processIdentityKey(process: ResourceTelemetryProcess): string {
   return `${process.identity.pid}:${process.identity.startTimeMs}`;
 }

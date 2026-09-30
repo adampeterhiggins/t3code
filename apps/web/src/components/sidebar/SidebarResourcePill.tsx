@@ -9,7 +9,7 @@ import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
 import {
   formatBytes,
-  formatProcessName,
+  resourceProcessLabel,
   processIdentityKey,
   visibleResourceTelemetryProcesses,
 } from "../settings/ResourceTelemetryDiagnostics.logic";
@@ -20,25 +20,6 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 // The server caches one read for every client, so this only bounds staleness.
 const USAGE_POLL_INTERVAL_MS = 10_000;
-
-function processLabel(process: ResourceTelemetryProcess): string {
-  switch (process.category) {
-    case "electron-main":
-      return "App";
-    case "electron-renderer":
-      return "Renderer";
-    case "electron-gpu":
-      return "GPU";
-    case "electron-utility":
-      return process.electronServiceName ?? "Utility";
-    case "server":
-      return "Server";
-    case "resource-monitor":
-      return "Monitor";
-    default:
-      return formatProcessName(process);
-  }
-}
 
 /**
  * The primary environment's T3 footprint in the sidebar titlebar. The pill
@@ -188,7 +169,7 @@ function ResourceUsageRow({
   collapsed: boolean;
   onToggle: (process: ResourceTelemetryProcess) => void;
 }) {
-  const label = processLabel(process);
+  const label = resourceProcessLabel(process);
   const ChevronIcon = collapsed ? ChevronRightIcon : ChevronDownIcon;
   return (
     <li className="grid grid-cols-[minmax(0,1fr)_3.5rem_4.5rem] items-center gap-2 px-3 py-0.5">
@@ -211,7 +192,8 @@ function ResourceUsageRow({
         <Tooltip>
           <TooltipTrigger render={<span className="truncate">{label}</span>} />
           <TooltipPopup side="top" variant="code">
-            {process.command || process.name}
+            <div>PID {process.identity.pid}</div>
+            <div>{process.command || process.name}</div>
           </TooltipPopup>
         </Tooltip>
       </div>
