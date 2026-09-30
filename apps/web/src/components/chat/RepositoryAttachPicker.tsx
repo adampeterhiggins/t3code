@@ -294,12 +294,18 @@ function RepositoryAttachPickerDialog(props: {
                       }
                     >
                       <span className="flex min-w-0 flex-1 items-center gap-2">
-                        <span className="max-w-64 shrink-0 truncate text-foreground text-sm">
+                        {/* Fixed widths so the lock and descriptions line up down the list. */}
+                        <span className="w-52 shrink-0 truncate text-foreground text-sm">
                           {candidate.name}
                         </span>
-                        {candidate.isPrivate ? (
-                          <LockIcon className="size-3 shrink-0 text-muted-foreground/70" />
-                        ) : null}
+                        <span className="flex w-3 shrink-0 items-center">
+                          {candidate.isPrivate ? (
+                            <LockIcon
+                              aria-label="Private"
+                              className="size-3 text-muted-foreground/70"
+                            />
+                          ) : null}
+                        </span>
                         <span className="min-w-0 flex-1 truncate text-muted-foreground text-xs">
                           {candidate.description ?? ""}
                         </span>
