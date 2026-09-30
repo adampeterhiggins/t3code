@@ -49,3 +49,11 @@ Devin's session modes. **Supervised** runs Devin's default permission policy
 and prompts for risky actions; **Auto-accept edits** maps to Code, **Auto** to
 Smart, and **Full access** to Bypass Permissions. Plan turns run in Plan mode
 and the previous mode is restored afterwards.
+
+## Subagents
+
+When Devin delegates work to a subagent, the subagent appears in
+[Agents](./thread-sidebar.md#inspect-agent-work) with its profile, model,
+prompt, each tool call it makes, and its final answer. Devin does not send the
+output of a subagent's tool calls or per-subagent token usage, and you cannot
+steer a Devin subagent from T3 Code.

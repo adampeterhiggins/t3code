@@ -76,6 +76,11 @@ import {
   resolveDevinModeId,
 } from "../acp/DevinAcpSupport.ts";
 import { prepareDevinMcp } from "../acp/DevinMcp.ts";
+import {
+  type DevinSubagentTracker,
+  devinSubagentToolCallEvents,
+  makeDevinSubagentTracker,
+} from "../acp/DevinSubagents.ts";
 import { hasCandidateSkillMention, planDevinSkillDispatch } from "../Drivers/DevinSkillDispatch.ts";
 import { discoverDevinSkills } from "../Drivers/DevinSkills.ts";
 import { type DevinAdapterShape } from "../Services/DevinAdapter.ts";
@@ -301,6 +306,7 @@ interface DevinSessionContext {
   readonly turns: Array<{ id: TurnId; items: Array<unknown> }>;
   lastPlanFingerprint: string | undefined;
   activeTurnId: TurnId | undefined;
+  readonly subagents: DevinSubagentTracker;
   /** Context meter state from the last `usage_update` session notification. */
   lastContextWindowUsed: number | undefined;
   lastContextWindowSize: number | undefined;
@@ -1066,6 +1072,7 @@ export function makeDevinAdapter(devinSettings: DevinSettings, options?: DevinAd
             turns: [],
             lastPlanFingerprint: undefined,
             activeTurnId: undefined,
+            subagents: makeDevinSubagentTracker(),
             promptsInFlight: 0,
             lastContextWindowUsed: undefined,
             lastContextWindowSize: undefined,
@@ -1122,6 +1129,23 @@ export function makeDevinAdapter(devinSettings: DevinSettings, options?: DevinAd
                         toolCall,
                       );
                       yield* logNative(ctx.threadId, "session/update", rawPayload);
+                      // Subagent markers live in `_meta`, which sanitizing may drop.
+                      const subagent = devinSubagentToolCallEvents({
+                        tracker: ctx.subagents,
+                        toolCall,
+                        notification: event.rawPayload,
+                        rawPayload,
+                        turnId: ctx.activeTurnId,
+                      });
+                      for (const subagentEvent of subagent.events) {
+                        yield* offerRuntimeEvent({
+                          ...subagentEvent,
+                          ...(yield* makeEventStamp()),
+                          provider: PROVIDER,
+                          threadId: ctx.threadId,
+                        });
+                      }
+                      if (subagent.handled) return;
                       yield* offerRuntimeEvent(
                         makeAcpToolCallEvent({
                           stamp: yield* makeEventStamp(),

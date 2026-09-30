@@ -216,11 +216,11 @@ session is running.
 | Codex       | Yes        | When Codex reports it | Yes        |
 | OpenCode    | Yes        | Yes                   | Yes        |
 | Cursor      | Yes        | Yes                   | No         |
+| Devin       | Yes        | Yes                   | No         |
 | Grok        | No         | Yes                   | No         |
 | Antigravity | No         | No                    | No         |
 
-Antigravity reports subagents as one row per batch. Devin does not report
-subagents.
+Antigravity reports subagents as one row per batch.
 
 Expand a tool call in the conversation to see its full command and output.
 Summaries shorten shell wrappers and can still describe the latest call after it
