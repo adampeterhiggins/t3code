@@ -10013,8 +10013,25 @@ export default function ChatView(props: ChatViewProps) {
       />
     ) : renderedRightPanelSurface?.kind === "pull-requests" && activeThreadRef ? (
       <ThreadPullRequestsPanel threadRef={activeThreadRef} />
-    ) : renderedRightPanelSurface?.kind === "agents" ? (
+    ) : renderedRightPanelSurface?.kind === "agents" ||
+      renderedRightPanelSurface?.kind === "agent" ? (
       <AgentsPanel
+        key={renderedRightPanelSurface.id}
+        dedicatedAgentId={
+          renderedRightPanelSurface.kind === "agent" ? renderedRightPanelSurface.agentId : undefined
+        }
+        onOpenAgentTab={
+          activeThreadRef
+            ? (agent) => {
+                useRightPanelStore.getState().openAgent(activeThreadRef, agent.id, agent.title);
+              }
+            : undefined
+        }
+        onViewAgents={() => {
+          if (!activeThreadRef) return;
+          useAgentsPanelStore.getState().focusAgent(scopedThreadKey(activeThreadRef), null);
+          useRightPanelStore.getState().open(activeThreadRef, "agents");
+        }}
         model={agentPanelModel}
         activities={threadActivities}
         threadKey={activeThreadRef ? scopedThreadKey(activeThreadRef) : null}

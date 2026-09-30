@@ -38,6 +38,7 @@ import {
   ChevronRightIcon,
   ListFilterIcon,
   MessageCircleIcon,
+  SquareArrowOutUpRightIcon,
   RefreshCw,
   SearchIcon,
   UserIcon,
@@ -596,6 +597,7 @@ export function AgentDetailView(props: {
   /** Opens with this tool call expanded and in view (from the agent preview). */
   initialToolCallId?: string | null;
   onBack: () => void;
+  onOpenInTab?: (() => void) | undefined;
 }) {
   const { agent } = props;
   const { timestampFormat } = useClientSettings();
@@ -616,6 +618,12 @@ export function AgentDetailView(props: {
             <ChevronLeft aria-hidden />
             Agents
           </Button>
+          {props.onOpenInTab ? (
+            <Button size="xs" variant="ghost-muted" onClick={props.onOpenInTab}>
+              <SquareArrowOutUpRightIcon aria-hidden />
+              Open in new tab
+            </Button>
+          ) : null}
           <span className="ml-auto pr-1 font-mono text-2xs text-muted-foreground/80">
             <AgentElapsed agent={agent} />
           </span>
