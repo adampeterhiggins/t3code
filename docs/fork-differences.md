@@ -112,15 +112,18 @@ reopened from the detail view, and are restored when the app restarts.
 Upstream's panel is a fixed list with one summary line per agent. To feed it:
 
 - Adapters put the launch prompt on `task.started` (`prompt`) and emit a subagent's own tool calls
-  as `item.*` events tagged with `agentId`, as Claude already did upstream. Codex, Cursor, and
-  OpenCode do this in the fork.
-- OpenCode child sessions and Grok subagents join the panel at all; upstream shows neither.
+  as `item.*` events tagged with `agentId`, as Claude already did upstream. Codex, Cursor,
+  OpenCode, and Devin do this in the fork.
+- OpenCode child sessions, Grok subagents, and Devin subagents join the panel at all; upstream
+  shows none of them. Devin reports subagents inside the root ACP session as `_meta` markers on
+  tool call notifications (`cognition.ai/subagent_started`, `subagent_completed`, and
+  `subagent_context` on the child's calls); `DevinSubagents.ts` maps them onto `task.*` events.
 - `orchestration.getSubagentTranscript` reads a subagent's history through the adapter's
   `readSubagentTranscript` (Claude, Codex, OpenCode), only while the session is running.
 
 Code: `apps/web/src/components/AgentsPanel.tsx`, `AgentDetailView.tsx`,
-`apps/web/src/rightPanelStore.ts`, `packages/client-runtime/src/state/agentPanelView.ts`, and
-`apps/server/src/provider/subagentTranscript.ts`. User guide:
+`apps/web/src/rightPanelStore.ts`, `packages/client-runtime/src/state/agentPanelView.ts`,
+`apps/server/src/provider/acp/DevinSubagents.ts`, and `apps/server/src/provider/subagentTranscript.ts`. User guide:
 [thread-sidebar.md](./user/thread-sidebar.md#inspect-agent-work).
 
 ## Chat tabs
