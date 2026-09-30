@@ -31,7 +31,7 @@ const WORKSPACE_TAGS = {
 } as const;
 
 const WORKSPACE_NOTES: Record<LocatedWorkspace["kind"], string> = {
-  shared: "Same folder as the thread. Edits land in its working tree.",
+  shared: "Inside the thread's worktree. Edits land in its working tree.",
   isolated: "A separate folder from the thread's.",
   assumed: "Assumed. This provider doesn't report where its subagents run.",
 };
@@ -164,7 +164,7 @@ export function AgentWorkspaceLine(props: {
   );
 }
 
-/** Compact folder name for an agent row; the full path is its tooltip. */
+/** Compact folder name for an agent row. The detail header carries the full path. */
 export function AgentWorkspaceChip(props: { workspace: SubagentWorkspace | null }) {
   const { workspace } = props;
   if (!workspace) return null;
@@ -182,7 +182,6 @@ export function AgentWorkspaceChip(props: { workspace: SubagentWorkspace | null 
   }
   return (
     <span
-      title={workspace.path}
       className={cn(
         "flex max-w-32 shrink-0 items-center gap-1 font-mono text-2xs",
         workspace.kind === "isolated" ? "text-info-foreground" : "text-muted-foreground/80",

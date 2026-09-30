@@ -937,6 +937,27 @@ describe("subagent workspace", () => {
     });
   });
 
+  it("names a cwd inside the thread's worktree after the worktree, not its subfolder", () => {
+    expect(
+      deriveSubagentWorkspace(
+        { cwd: "/repo/.t3/worktrees/feature-a/apps/server", worktreeBranch: null, isolation: null },
+        thread,
+      ),
+    ).toEqual({
+      kind: "shared",
+      path: "/repo/.t3/worktrees/feature-a/apps/server",
+      name: "feature-a",
+      branch: "feature-a",
+    });
+    // A sibling that merely shares the prefix is a different folder.
+    expect(
+      deriveSubagentWorkspace(
+        { cwd: "/repo/.t3/worktrees/feature-ab", worktreeBranch: null, isolation: null },
+        thread,
+      ),
+    ).toMatchObject({ kind: "isolated", name: "feature-ab" });
+  });
+
   it("marks the thread's workspace as assumed when the provider reports no cwd", () => {
     const none = { cwd: null, worktreeBranch: null, isolation: null };
     expect(deriveSubagentWorkspace(none, thread)).toMatchObject({

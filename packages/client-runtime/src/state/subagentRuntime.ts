@@ -964,11 +964,18 @@ export function workspaceFolderName(path: string): string {
   );
 }
 
+function isSameOrInside(path: string, root: string): boolean {
+  if (path === root) return true;
+  const next = path.charAt(root.length);
+  return path.startsWith(root) && (next === "/" || next === "\\");
+}
+
 /**
- * Where an agent works, relative to its thread's workspace. A reported cwd
- * equal to the thread's is shared and a different one is isolated. Without a
- * reported cwd the thread's workspace is only an assumption: several
- * providers never say where their subagents run.
+ * Where an agent works, relative to its thread's workspace. A reported cwd at
+ * or below the thread's worktree is shared and named after that worktree, so
+ * an agent in `<worktree>/apps/server` still reads as the worktree. Any other
+ * cwd is isolated. Without a reported cwd the thread's workspace is only an
+ * assumption: several providers never say where their subagents run.
  */
 export function deriveSubagentWorkspace(
   agent: Pick<RuntimeSubagent, "cwd" | "worktreeBranch" | "isolation">,
@@ -978,11 +985,11 @@ export function deriveSubagentWorkspace(
   const threadPath = thread.path ? trimTrailingSeparators(thread.path) : null;
   if (agent.cwd) {
     const path = trimTrailingSeparators(agent.cwd);
-    const shared = path === threadPath;
+    const shared = threadPath !== null && isSameOrInside(path, threadPath);
     return {
       kind: shared ? "shared" : "isolated",
       path,
-      name: workspaceFolderName(path),
+      name: workspaceFolderName(shared ? threadPath : path),
       branch: agent.worktreeBranch ?? (shared ? thread.branch : null),
     };
   }
