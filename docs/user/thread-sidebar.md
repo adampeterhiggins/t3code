@@ -30,8 +30,10 @@ with a count of its tabs, and opening that row returns to the tab you last had o
 On web and desktop, press `Cmd+Option+T` on macOS or `Ctrl+Alt+T` on Windows and Linux to list
 each tab under its chat instead, with its own status, provider, and time since your last message.
 The tabs button in the sidebar header, the command palette, and **Settings → General** toggle the
-same view. Moving, pinning, or settling the chat's row applies to the row, and its tabs stay under
-it. Hover a listed tab and click **×**, or right-click it and choose **Close tab**, to close it.
+same view for every chat. To list or fold one chat's tabs on their own, click the tab count on its
+row. Changing the view for every chat resets those choices. Moving, pinning, or settling the chat's
+row applies to the row, and its tabs stay under it. Hover a listed tab and click **×**, or
+right-click it and choose **Close tab**, to close it.
 
 To bring in another tab's conversation, type `@` in the composer and pick the tab; its summary
 lands as a chip at the cursor. On web and desktop, the same menu also lists other threads on that

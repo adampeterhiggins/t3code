@@ -13,7 +13,10 @@ import {
   deleteSelectedThreadEntries,
   filterSidebarProjectScopeItems,
   getSidebarThreadIdsToPrewarm,
+  foldedSidebarTabThreads,
   groupSidebarTabThreads,
+  isSidebarTabGroupOpen,
+  setSidebarTabGroupOverride,
   sidebarTabNeighbourKey,
   resolveAdjacentThreadId,
   reduceSidebarProjectScopeMenuState,
@@ -2604,4 +2607,34 @@ describe("navigation after parking a thread", () => {
       ).toBe(expected);
     },
   );
+});
+
+describe("sidebar tab group overrides", () => {
+  const groups = new Map([
+    ["env:b", "env:a"],
+    ["env:c", "env:a"],
+    ["env:y", "env:x"],
+  ]);
+
+  it("folds every group into its row when tabs are hidden and nothing is overridden", () => {
+    expect(foldedSidebarTabThreads(groups, {}, false)).toBe(groups);
+    expect(foldedSidebarTabThreads(groups, {}, true).size).toBe(0);
+  });
+
+  it("opens one group while the rest follow the sidebar-wide setting", () => {
+    const overrides = setSidebarTabGroupOverride({}, "env:a", true, false);
+    expect(isSidebarTabGroupOpen("env:a", overrides, false)).toBe(true);
+    expect(isSidebarTabGroupOpen("env:x", overrides, false)).toBe(false);
+    expect([...foldedSidebarTabThreads(groups, overrides, false)]).toEqual([["env:y", "env:x"]]);
+  });
+
+  it("folds one group while tabs are shown everywhere else", () => {
+    const overrides = setSidebarTabGroupOverride({}, "env:x", false, true);
+    expect([...foldedSidebarTabThreads(groups, overrides, true)]).toEqual([["env:y", "env:x"]]);
+  });
+
+  it("drops a choice once it matches the sidebar-wide setting again", () => {
+    const opened = setSidebarTabGroupOverride({}, "env:a", true, false);
+    expect(setSidebarTabGroupOverride(opened, "env:a", false, false)).toEqual({});
+  });
 });
