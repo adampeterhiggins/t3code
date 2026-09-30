@@ -1,13 +1,18 @@
 import { useAtomValue } from "@effect/atom-react";
-import type { ScopedThreadRef, ThreadId } from "@t3tools/contracts";
+import { listThreadTabMemberships } from "@t3tools/client-runtime/thread-tabs";
+import type { PreparedConnection } from "@t3tools/client-runtime/connection";
+import type { ScopedThreadRef, ThreadId, ThreadTabMembership } from "@t3tools/contracts";
+import * as Option from "effect/Option";
 import { Atom } from "effect/unstable/reactivity";
-import { MessageSquareIcon } from "lucide-react";
+import { CornerDownRightIcon, MessageSquareIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { useProjects, useServerConfigs, useThreadShells } from "~/state/entities";
 import { deriveProviderInstanceEntries } from "~/providerInstances";
+import { runtime } from "~/lib/runtime";
+import { usePreparedConnection } from "~/state/session";
 import { CommandPaletteContent } from "../CommandPaletteContent";
 import { ThreadTabSummaryDetails } from "../contextChipParts";
 import {
@@ -15,6 +20,7 @@ import {
   CommandDialog,
   CommandDialogPopup,
   CommandGroup,
+  CommandGroupLabel,
   CommandItem,
   CommandList,
 } from "../ui/command";
@@ -22,6 +28,7 @@ import { toastManager } from "../ui/toast";
 import {
   composerThreadReferenceItems,
   DEFAULT_THREAD_ATTACH_PICKER_VIEW,
+  groupThreadAttachPickerItems,
 } from "./composerThreadReferences";
 import { CursorPreviewCard } from "./CursorPreviewCard";
 import { ThreadAttachPickerFilterBar } from "./ThreadAttachPickerFilters";
@@ -60,6 +67,43 @@ function ThreadAttachPickerDialog({ threadRef }: { threadRef: ScopedThreadRef })
   const threads = useThreadShells();
   const projects = useProjects();
   const serverConfigs = useServerConfigs();
+  const prepared = usePreparedConnection(threadRef.environmentId);
+  // Renames and activity updates do not change membership. A new or closed tab does.
+  const membershipThreadIds = threads
+    .filter(
+      (thread) => thread.environmentId === threadRef.environmentId && thread.archivedAt === null,
+    )
+    .map((thread) => thread.id)
+    .toSorted()
+    .join("|");
+  const [tabMemberships, setTabMemberships] = useState<{
+    connection: PreparedConnection;
+    threadIds: string;
+    rows: ReadonlyArray<ThreadTabMembership>;
+  } | null>(null);
+  useEffect(() => {
+    if (Option.isNone(prepared)) return;
+    const connection = prepared.value;
+    let active = true;
+    const store = (rows: ReadonlyArray<ThreadTabMembership>) => {
+      if (active) setTabMemberships({ connection, threadIds: membershipThreadIds, rows });
+    };
+    runtime.runPromise(listThreadTabMemberships(connection)).then(store, () => {
+      // Upstream environments without tabs still expose their ordinary threads.
+      store([]);
+    });
+    return () => {
+      active = false;
+    };
+  }, [prepared, membershipThreadIds]);
+  const membershipsReady =
+    Option.isNone(prepared) ||
+    (tabMemberships?.connection === prepared.value &&
+      tabMemberships.threadIds === membershipThreadIds);
+  const memberships =
+    Option.isSome(prepared) && tabMemberships?.connection === prepared.value
+      ? tabMemberships.rows
+      : undefined;
   const captureContext = useCaptureThreadTabContext(threadRef.environmentId, threadRef.threadId);
   const loadSummary = useMemo(
     () =>
@@ -80,9 +124,11 @@ function ThreadAttachPickerDialog({ threadRef }: { threadRef: ScopedThreadRef })
         query,
         limit: THREAD_PICKER_LIMIT,
         view,
+        ...(memberships ? { tabMemberships: memberships } : {}),
       }),
-    [threads, projects, threadRef, query, view],
+    [threads, projects, threadRef, query, view, memberships],
   );
+  const groups = useMemo(() => groupThreadAttachPickerItems(entries), [entries]);
   const filterOptions = useMemo(() => {
     const availableThreads = threads.filter(
       (thread) =>
@@ -160,7 +206,11 @@ function ThreadAttachPickerDialog({ threadRef }: { threadRef: ScopedThreadRef })
           value={query}
           onValueChange={setQuery}
         >
-          {entries.length === 0 ? (
+          {!membershipsReady ? (
+            <div className="py-10 text-center text-muted-foreground text-sm">
+              Loading thread tabs…
+            </div>
+          ) : entries.length === 0 ? (
             <div className="py-10 text-center text-muted-foreground text-sm">
               {query.trim() || view.projectIds.length > 0 || view.providerInstanceIds.length > 0
                 ? "No threads match these filters."
@@ -168,37 +218,57 @@ function ThreadAttachPickerDialog({ threadRef }: { threadRef: ScopedThreadRef })
             </div>
           ) : (
             <CommandList>
-              <CommandGroup items={entries}>
-                <CommandCollection>
-                  {(entry: (typeof entries)[number]) => (
-                    <CommandItem
-                      key={entry.id}
-                      value={entry.id}
-                      disabled={attaching || captureContext === null}
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => void select(entry)}
-                    >
-                      <CursorPreviewCard
-                        trigger={
-                          <span className="flex min-w-0 flex-1 items-center gap-2">
-                            <MessageSquareIcon className="size-4 shrink-0 text-muted-foreground" />
-                            <span className="min-w-0 flex-1 truncate text-sm">{entry.label}</span>
-                            <span className="max-w-40 shrink-0 truncate text-muted-foreground text-xs">
-                              {entry.description}
-                            </span>
-                          </span>
-                        }
+              {groups.map((group) => (
+                <CommandGroup key={group.id} items={group.entries}>
+                  {group.parentTitle !== null ? (
+                    <CommandGroupLabel>
+                      <span className="flex min-w-0 items-center justify-between gap-2">
+                        <span className="min-w-0 truncate">{group.parentTitle}</span>
+                        <span className="shrink-0 text-muted-foreground">{group.projectTitle}</span>
+                      </span>
+                    </CommandGroupLabel>
+                  ) : null}
+                  <CommandCollection>
+                    {(entry: (typeof entries)[number]) => (
+                      <CommandItem
+                        key={entry.id}
+                        value={entry.id}
+                        disabled={attaching || captureContext === null}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => void select(entry)}
                       >
-                        <ThreadSummaryPreview
-                          threadId={entry.threadId}
-                          title={entry.label}
-                          loadSummary={loadSummary}
-                        />
-                      </CursorPreviewCard>
-                    </CommandItem>
-                  )}
-                </CommandCollection>
-              </CommandGroup>
+                        <CursorPreviewCard
+                          trigger={
+                            <span className="flex min-w-0 flex-1 items-center gap-2">
+                              {entry.parentThreadId !== null &&
+                              entry.threadId !== entry.parentThreadId ? (
+                                <CornerDownRightIcon className="size-4 shrink-0 text-muted-foreground" />
+                              ) : (
+                                <MessageSquareIcon className="size-4 shrink-0 text-muted-foreground" />
+                              )}
+                              <span className="min-w-0 flex-1 truncate text-sm">{entry.label}</span>
+                              <span className="max-w-40 shrink-0 truncate text-muted-foreground text-xs">
+                                {entry.parentThreadId === null
+                                  ? entry.description
+                                  : entry.threadId === entry.parentThreadId
+                                    ? "Original tab"
+                                    : "Tab"}
+                              </span>
+                            </span>
+                          }
+                        >
+                          <ThreadSummaryPreview
+                            threadId={entry.threadId}
+                            title={entry.label}
+                            parentTitle={entry.parentThreadTitle}
+                            loadSummary={loadSummary}
+                          />
+                        </CursorPreviewCard>
+                      </CommandItem>
+                    )}
+                  </CommandCollection>
+                </CommandGroup>
+              ))}
             </CommandList>
           )}
         </CommandPaletteContent>
@@ -210,6 +280,7 @@ function ThreadAttachPickerDialog({ threadRef }: { threadRef: ScopedThreadRef })
 function ThreadSummaryPreview(props: {
   threadId: ThreadId;
   title: string;
+  parentTitle: string | null;
   loadSummary: ReturnType<typeof createThreadAttachSummaryLoader> | null;
 }) {
   const { threadId, loadSummary } = props;
@@ -234,6 +305,9 @@ function ThreadSummaryPreview(props: {
   }, [threadId, loadSummary]);
   return (
     <div className="flex flex-col gap-2">
+      {props.parentTitle !== null && props.parentTitle !== props.title ? (
+        <p className="truncate text-muted-foreground">{props.parentTitle}</p>
+      ) : null}
       <p className="truncate font-medium">{props.title}</p>
       {preview && "summary" in preview ? (
         <ThreadTabSummaryDetails summary={preview.summary} />

@@ -8,6 +8,7 @@ import { describe, expect, it } from "@effect/vitest";
 import {
   composerThreadReferenceItems,
   DEFAULT_THREAD_ATTACH_PICKER_VIEW,
+  groupThreadAttachPickerItems,
 } from "./composerThreadReferences";
 
 const environmentId = EnvironmentId.make("env-1");
@@ -158,5 +159,112 @@ describe("composerThreadReferenceItems", () => {
       view: { ...DEFAULT_THREAD_ATTACH_PICKER_VIEW, sort },
     });
     expect(items.map((item) => item.threadId)).toEqual(expected.slice(0, 2));
+  });
+
+  it("keeps tabs together under their parent and orders groups by their best matching tab", () => {
+    const items = composerThreadReferenceItems({
+      threads: [
+        thread("parent", "Improve authentication", "2026-09-01"),
+        thread("child", "Review redirect handling", "2026-09-04"),
+        thread("other", "Independent work", "2026-09-03"),
+      ],
+      projects,
+      environmentId,
+      excludeThreadIds: new Set(),
+      query: "",
+      limit: 50,
+      tabMemberships: ["parent", "child"].map((id) => ({
+        threadId: ThreadId.make(id),
+        groupId: ThreadId.make("parent"),
+      })),
+    });
+    expect(
+      groupThreadAttachPickerItems(items).map((group) => ({
+        id: group.id,
+        title: group.parentTitle,
+        project: group.projectTitle,
+        tabs: group.entries.map((entry) => entry.threadId),
+      })),
+    ).toEqual([
+      {
+        id: "parent",
+        title: "Improve authentication",
+        project: "t3code",
+        tabs: ["child", "parent"],
+      },
+      { id: "other", title: null, project: "t3code", tabs: ["other"] },
+    ]);
+  });
+
+  it("finds sibling tabs by their parent's title even when the current parent tab is excluded", () => {
+    const claude = { instanceId: ProviderInstanceId.make("claude"), model: "sonnet" };
+    const items = composerThreadReferenceItems({
+      threads: [
+        thread("parent", "Improve authentication", "2026-09-01"),
+        thread("child", "Review redirect handling", "2026-09-04", { modelSelection: claude }),
+        thread("other-tab", "Implement login", "2026-09-03"),
+      ],
+      projects,
+      environmentId,
+      excludeThreadIds: new Set([ThreadId.make("parent")]),
+      query: "AUTHENTICATION",
+      limit: 50,
+      view: { ...DEFAULT_THREAD_ATTACH_PICKER_VIEW, providerInstanceIds: [claude.instanceId] },
+      tabMemberships: ["parent", "child", "other-tab"].map((id) => ({
+        threadId: ThreadId.make(id),
+        groupId: ThreadId.make("parent"),
+      })),
+    });
+    expect(items.map((entry) => [entry.threadId, entry.parentThreadTitle])).toEqual([
+      ["child", "Improve authentication"],
+    ]);
+    expect(groupThreadAttachPickerItems(items)[0]?.id).toBe("parent");
+  });
+
+  it("promotes the first open tab's title when the original tab is closed or missing", () => {
+    const items = composerThreadReferenceItems({
+      threads: [
+        thread("parent", "Closed original", "2026-09-01", { archivedAt: "2026-09-02" }),
+        thread("child", "First open tab", "2026-09-03"),
+        thread("later", "Most active tab", "2026-09-04"),
+      ],
+      projects,
+      environmentId,
+      excludeThreadIds: new Set(),
+      query: "",
+      limit: 50,
+      tabMemberships: ["parent", "missing", "child", "later"].map((id) => ({
+        threadId: ThreadId.make(id),
+        groupId: ThreadId.make("parent"),
+      })),
+    });
+    expect(
+      groupThreadAttachPickerItems(items).map((group) => ({
+        title: group.parentTitle,
+        tabs: group.entries.map((entry) => entry.threadId),
+      })),
+    ).toEqual([{ title: "First open tab", tabs: ["later", "child"] }]);
+  });
+
+  it("resolves parent labels from the target environment, including live renames", () => {
+    const items = composerThreadReferenceItems({
+      threads: [
+        thread("parent", "Parent in other environment", "2026-09-05", {
+          environmentId: EnvironmentId.make("env-2"),
+        }),
+        thread("parent", "Renamed parent", "2026-09-01"),
+        thread("child", "Review", "2026-09-04"),
+      ],
+      projects,
+      environmentId,
+      excludeThreadIds: new Set([ThreadId.make("parent")]),
+      query: "renamed",
+      limit: 50,
+      tabMemberships: ["parent", "child"].map((id) => ({
+        threadId: ThreadId.make(id),
+        groupId: ThreadId.make("parent"),
+      })),
+    });
+    expect(items.map((entry) => entry.parentThreadTitle)).toEqual(["Renamed parent"]);
   });
 });
