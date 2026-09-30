@@ -178,6 +178,8 @@ import {
 import { orchestrationHttpApiLayer } from "./orchestration/http.ts";
 import { threadTabsHttpApiLayer } from "./threadTabs/http.ts";
 import * as ThreadTabSettlementReactor from "./threadTabs/settlement.ts";
+import * as PullRequestWatchReactor from "./pullRequestWatch/reactor.ts";
+import { pullRequestWatchesHttpApiLayer } from "./pullRequestWatch/http.ts";
 import * as NetService from "@t3tools/shared/Net";
 import * as RelayClient from "@t3tools/shared/relayClient";
 import { disableTailscaleServe, ensureTailscaleServe } from "@t3tools/tailscale";
@@ -280,6 +282,7 @@ const ReactorLayerLive = Layer.empty.pipe(
   Layer.provideMerge(ThreadSettlementReactor.layer),
   Layer.provideMerge(ThreadTabSettlementReactor.layer),
   Layer.provideMerge(PullRequestSyncReactor.layer),
+  Layer.provideMerge(PullRequestWatchReactor.layer),
   Layer.provideMerge(ThreadPullRequestReactor.layer),
   Layer.provideMerge(AgentAwarenessRelay.layer.pipe(Layer.provide(ServerSecretStore.layer))),
   Layer.provideMerge(RuntimeReceiptBusLive),
@@ -634,6 +637,7 @@ export const makeRoutesLayer = Layer.mergeAll(
       Layer.provide(connectHttpApiLayer),
       Layer.provide(orchestrationHttpApiLayer),
       Layer.provide(threadTabsHttpApiLayer),
+      Layer.provide(pullRequestWatchesHttpApiLayer),
       Layer.provide(pullRequestHttpApiLayer),
       Layer.provide(serverEnvironmentHttpApiLayer),
       Layer.provide(environmentAuthenticatedAuthLayer),

@@ -70,6 +70,7 @@ import * as ThreadSettlementReactor from "../src/orchestration/ThreadSettlementR
 import * as PullRequestSyncReactor from "../src/orchestration/PullRequestSyncReactor.ts";
 import * as ThreadPullRequestReactor from "../src/orchestration/ThreadPullRequestReactor.ts";
 import { ThreadTabSettlementReactor } from "../src/threadTabs/settlement.ts";
+import * as PullRequestWatchReactor from "../src/pullRequestWatch/reactor.ts";
 import { OrchestrationReactor } from "../src/orchestration/Services/OrchestrationReactor.ts";
 import { ProjectionSnapshotQuery } from "../src/orchestration/Services/ProjectionSnapshotQuery.ts";
 import {
@@ -422,6 +423,13 @@ export const makeOrchestrationIntegrationHarness = (
           start: () => Effect.void,
           drain: Effect.void,
           requestSync: () => Effect.void,
+        }),
+      ),
+      Layer.provideMerge(
+        Layer.succeed(PullRequestWatchReactor.PullRequestWatchReactor, {
+          start: () => Effect.void,
+          drain: Effect.void,
+          evaluate: () => Effect.void,
         }),
       ),
       Layer.provideMerge(

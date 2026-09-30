@@ -7,6 +7,10 @@
       "types": "./src/threadTabs.ts",
       "default": "./src/threadTabs.ts"
     },
+    "./pull-request-watches": {
+      "types": "./src/pullRequestWatches.ts",
+      "default": "./src/pullRequestWatches.ts"
+    },
     "./device/stream": {
       "types": "./src/device/stream.ts",
       "default": "./src/device/stream.ts"

@@ -8,6 +8,7 @@ import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import { runMigrations } from "../Migrations.ts";
 import { ensureThreadTabsSchema } from "../../threadTabs/schema.ts";
 import { ensureLinearThreadLinksSchema } from "../../linear/threadLinksSchema.ts";
+import { ensurePullRequestWatchSchema } from "../../pullRequestWatch/store.ts";
 import { ServerConfig } from "../../config.ts";
 
 // Size the -wal file is cut back to on the first commit after a WAL reset.
@@ -26,6 +27,7 @@ const setup = Layer.effectDiscard(
     yield* runMigrations();
     yield* ensureThreadTabsSchema();
     yield* ensureLinearThreadLinksSchema();
+    yield* ensurePullRequestWatchSchema();
   }),
 );
 

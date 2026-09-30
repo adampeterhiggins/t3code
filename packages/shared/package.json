@@ -211,6 +211,10 @@
       "types": "./src/threadPullRequests.ts",
       "import": "./src/threadPullRequests.ts"
     },
+    "./pullRequestWatch": {
+      "types": "./src/pullRequestWatch.ts",
+      "import": "./src/pullRequestWatch.ts"
+    },
     "./changeRequestUrl": {
       "types": "./src/changeRequestUrl.ts",
       "import": "./src/changeRequestUrl.ts"
