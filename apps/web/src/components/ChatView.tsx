@@ -2659,6 +2659,14 @@ export default function ChatView(props: ChatViewProps) {
     [openOrReuseProjectDraftThread],
   );
 
+  // The start-from picker only opens on a new thread's draft, so it points that draft.
+  const pointDraftAtCheckout = useCallback(
+    (checkout: { branch: string; worktreePath: string | null; envMode: DraftThreadEnvMode }) => {
+      setDraftThreadContext(composerDraftTarget, checkout);
+    },
+    [composerDraftTarget, setDraftThreadContext],
+  );
+
   // Once a thread selects an environment, never substitute the primary
   // environment's config while the selected environment is still loading.
   const serverConfig = activeThread
@@ -10890,8 +10898,7 @@ export default function ChatView(props: ChatViewProps) {
           projectId={activeProject.id}
           workspaceRoot={activeProject.workspaceRoot}
           threadRef={routeThreadRef}
-          onPullRequest={openPullRequestDialog}
-          onBranch={openOrReuseProjectDraftThread}
+          onCheckout={pointDraftAtCheckout}
         />
       ) : null}
       {expandedImage && (
