@@ -21,6 +21,11 @@ import {
   threadPullRequestKeysEqual,
 } from "@t3tools/shared/threadPullRequests";
 import { compareDateTimeStrings } from "@t3tools/shared/dateTime";
+import {
+  USAGE_LIMIT_RESUME_CANCELLED_KIND,
+  USAGE_LIMIT_RESUME_PROMPT,
+  USAGE_LIMIT_RESUME_SCHEDULED_KIND,
+} from "@t3tools/shared/usageLimitRecovery";
 import * as DateTime from "effect/DateTime";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
@@ -1915,6 +1920,79 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           createdAt: command.createdAt,
         },
       };
+    }
+
+    case "thread.usage-limit.resume": {
+      const thread = yield* requireThreadNotArchived({
+        readModel,
+        command,
+        threadId: command.threadId,
+      });
+      // The command read model carries no activity history, so whether the
+      // stop is still open is the caller's check (usageLimitRecovery). Here
+      // only refuse to start a second turn over live work.
+      if (command.action === "now") {
+        if (
+          thread.session?.status === "starting" ||
+          thread.session?.status === "running" ||
+          hasQueuedTurnStartForThread(thread, command.createdAt)
+        ) {
+          return yield* new OrchestrationCommandInvariantError({
+            commandType: command.type,
+            detail: `thread ${command.threadId} is already working; not resuming`,
+          });
+        }
+        return yield* decideOrchestrationCommand({
+          readModel,
+          command: {
+            type: "thread.turn.start",
+            commandId: command.commandId,
+            threadId: command.threadId,
+            createdAt: command.createdAt,
+            runtimeMode: thread.runtimeMode,
+            interactionMode: thread.interactionMode,
+            message: {
+              messageId: MessageId.make(`usage-limit-resume:${command.commandId}`),
+              role: "user",
+              text: USAGE_LIMIT_RESUME_PROMPT,
+              attachments: [],
+            },
+          },
+        });
+      }
+      const resumeAt = command.resumeAt;
+      if (
+        command.action === "schedule" &&
+        (resumeAt === undefined || !Number.isFinite(Date.parse(resumeAt)))
+      ) {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: `thread ${command.threadId} resume needs a valid resumeAt`,
+        });
+      }
+      const scheduled = command.action === "schedule";
+      return yield* decideOrchestrationCommand({
+        readModel,
+        command: {
+          type: "thread.activity.append",
+          commandId: command.commandId,
+          threadId: command.threadId,
+          createdAt: command.createdAt,
+          activity: {
+            id: EventId.make(`usage-limit-resume:${command.commandId}`),
+            tone: "info",
+            kind: scheduled ? USAGE_LIMIT_RESUME_SCHEDULED_KIND : USAGE_LIMIT_RESUME_CANCELLED_KIND,
+            summary: scheduled ? "Resume scheduled" : "Scheduled resume cancelled",
+            payload: {
+              threadId: command.threadId,
+              errorActivityId: command.errorActivityId,
+              ...(scheduled ? { resumeAt } : {}),
+            },
+            turnId: null,
+            createdAt: command.createdAt,
+          },
+        },
+      });
     }
 
     case "thread.session.set": {

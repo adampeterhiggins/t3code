@@ -323,6 +323,10 @@
       "types": "./src/usageLimits.ts",
       "import": "./src/usageLimits.ts"
     },
+    "./usageLimitRecovery": {
+      "types": "./src/usageLimitRecovery.ts",
+      "import": "./src/usageLimitRecovery.ts"
+    },
     "./desktopAppControl": {
       "types": "./src/desktopAppControl.ts",
       "import": "./src/desktopAppControl.ts"

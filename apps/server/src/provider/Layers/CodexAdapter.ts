@@ -81,6 +81,7 @@ import {
   type CodexRateLimitSnapshot,
   codexRateLimitsToUpdate,
   codexUsageLimitMessage,
+  codexUsageLimitResetsAt,
   mergeCodexRateLimits,
 } from "./codexUsageLimits.ts";
 const isCodexAppServerProcessExitedError = Schema.is(CodexErrors.CodexAppServerProcessExitedError);
@@ -2620,6 +2621,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
                 };
               } else if (turnError?.codexErrorInfo === "usageLimitExceeded") {
                 usageLimitMessage = codexUsageLimitMessage(rateLimits, event.createdAt);
+                const resetsAt = codexUsageLimitResetsAt(rateLimits, event.createdAt);
                 usageLimitError = {
                   ...runtimeEventBase(event, event.threadId),
                   type: "runtime.error",
@@ -2627,6 +2629,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
                     message: usageLimitMessage,
                     class: "provider_error",
                     ...(turnError.message ? { detail: turnError.message } : {}),
+                    usageLimit: resetsAt ? { resetsAt } : {},
                   },
                 };
               }

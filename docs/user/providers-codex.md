@@ -99,9 +99,23 @@ for command and file approvals.
 ## Codex says I hit a usage limit
 
 When Codex stops on a usage limit, the thread names the window that ran out and
-when it resets, when Codex reports them. Send the message again after the reset. On a workspace plan the
-message also says whether your workspace owner needs to add credits or raise the
-spend limit to continue sooner.
+when it resets, when Codex reports them. On a workspace plan the message also
+says whether your workspace owner needs to add credits or raise the spend limit
+to continue sooner.
+
+The thread keeps its work and offers a way to pick it back up:
+
+- **Resume when available** continues the same session shortly after the reset,
+  even if no app is open. It is off until you choose it for that stop, and
+  **Cancel auto-resume** turns it off again. It appears only when Codex reported
+  a reset time.
+- **Resume now** continues the same session straight away, for example after
+  your workspace added credits.
+- **Continue in new tab** (web and desktop) forks the chat into a new tab on
+  another account or model, starting from a summary of this one. See
+  [Switch accounts in an existing thread](#switch-accounts-in-an-existing-thread).
+
+Sending any new message also moves the thread past the stop.
 
 ## Send feedback to OpenAI
 

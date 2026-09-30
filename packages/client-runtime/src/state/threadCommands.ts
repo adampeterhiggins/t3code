@@ -31,6 +31,7 @@ import {
   type ReorderActiveThreadInput,
   type SetThreadAutoSettleInput,
   type SettleThreadInput,
+  type ResumeThreadAfterUsageLimitInput,
   type SnoozeThreadInput,
   type StartThreadTurnInput,
   type StopThreadSessionInput,
@@ -56,6 +57,7 @@ import {
   reorderActiveThread,
   setThreadAutoSettle,
   settleThread,
+  resumeThreadAfterUsageLimit,
   snoozeThread,
   startThreadTurn,
   stopThreadSession,
@@ -70,6 +72,7 @@ import type { EnvironmentRegistry } from "../connection/registry.ts";
 
 export type {
   ArchiveThreadInput,
+  ResumeThreadAfterUsageLimitInput,
   CreateThreadInput,
   DeleteThreadInput,
   InterruptThreadTurnInput,
@@ -152,6 +155,12 @@ export function createThreadEnvironmentAtoms<R, E>(
     unsnooze: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:unsnooze",
       execute: (input: UnsnoozeThreadInput) => unsnoozeThread(input),
+      scheduler,
+      concurrency,
+    }),
+    resumeAfterUsageLimit: createEnvironmentCommand(runtime, {
+      label: "environment-data:commands:thread:resume-after-usage-limit",
+      execute: (input: ResumeThreadAfterUsageLimitInput) => resumeThreadAfterUsageLimit(input),
       scheduler,
       concurrency,
     }),

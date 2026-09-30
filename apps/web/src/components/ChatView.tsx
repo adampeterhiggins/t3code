@@ -270,9 +270,17 @@ import { getProviderModelCapabilities } from "../providerModels";
 import {
   applyProviderInstanceSettings,
   deriveProviderInstanceEntries,
+  isProviderInstancePickerReady,
   NO_PROVIDER_MODEL_SELECTION,
   sortProviderInstanceEntries,
 } from "../providerInstances";
+import { resolveModelForAccountSwitch } from "./chat/providerAccountSelection";
+import { UsageLimitRecoveryBanner } from "./chat/UsageLimitRecoveryBanner";
+import {
+  USAGE_LIMIT_RESUME_PROMPT,
+  deriveUsageLimitRecovery,
+  usageLimitResumeAt,
+} from "@t3tools/shared/usageLimitRecovery";
 import {
   useClientSettings,
   useClientSettingsHydrated,
@@ -6344,6 +6352,62 @@ export default function ChatView(props: ChatViewProps) {
       setUnsnoozingThreadKey((current) => (current === threadKey ? null : current));
     }
   }, [activeThreadRef, unsnoozeThreadMutation]);
+  // A turn stopped on a usage limit keeps its work and offers to resume the same
+  // session or continue in a new tab elsewhere, instead of a plain error.
+  const supportsUsageLimitResume =
+    serverConfig?.environment.capabilities.threadUsageLimitResume === true;
+  const usageLimitRecovery = useMemo(
+    () =>
+      isServerThread && activeThreadShell !== null
+        ? deriveUsageLimitRecovery({
+            activities: threadActivities,
+            latestUserMessageAt: activeThreadShell.latestUserMessageAt,
+            sessionStatus: activeThreadShell.session?.status ?? null,
+          })
+        : null,
+    [activeThreadShell, isServerThread, threadActivities],
+  );
+  const resumeAfterUsageLimitMutation = useAtomCommand(threadEnvironment.resumeAfterUsageLimit, {
+    reportFailure: false,
+  });
+  const [usageLimitResumeBusy, setUsageLimitResumeBusy] = useState(false);
+  const resumeAfterUsageLimit = async (
+    action: "now" | "schedule" | "cancel",
+    resumeAt?: string,
+  ) => {
+    if (!activeThreadRef || !usageLimitRecovery) return;
+    setUsageLimitResumeBusy(true);
+    try {
+      const result = await resumeAfterUsageLimitMutation({
+        environmentId: activeThreadRef.environmentId,
+        input: {
+          threadId: activeThreadRef.threadId,
+          errorActivityId: usageLimitRecovery.errorActivityId,
+          action,
+          ...(resumeAt ? { resumeAt } : {}),
+        },
+      });
+      if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+        const error = squashAtomCommandFailure(result);
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: action === "cancel" ? "Could not cancel the resume" : "Could not resume",
+            description: error instanceof Error ? error.message : "An error occurred.",
+          }),
+        );
+      }
+    } finally {
+      setUsageLimitResumeBusy(false);
+    }
+  };
+  // Waiting only makes sense while the reset is still ahead.
+  const usageLimitNowMs = Date.parse(nowMinute);
+  const usageLimitResumeWhenAvailableAt =
+    usageLimitRecovery?.resetsAt != null &&
+    Date.parse(usageLimitRecovery.resetsAt) > usageLimitNowMs
+      ? usageLimitResumeAt(usageLimitRecovery.resetsAt, usageLimitNowMs)
+      : null;
   const [isRestoringThreadBranch, setIsRestoringThreadBranch] = useState(false);
   const [branchRestoreConfirmOpen, setBranchRestoreConfirmOpen] = useState(false);
   // Once revealed for a given mismatch, the banner stays mounted until the
@@ -7446,7 +7510,8 @@ export default function ChatView(props: ChatViewProps) {
 
   // From the model picker: the whole tab is summarized, the new tab runs the picked model, and
   // this tab's draft is copied after the summary. The draft here is left as it was.
-  const onForkModel = (instanceId: ProviderInstanceId, model: string) =>
+  // `emptyDraftPrompt` stands in for the draft when there is none.
+  const onForkModel = (instanceId: ProviderInstanceId, model: string, emptyDraftPrompt = "") =>
     runFork(async (connection) => {
       if (!activeThread) return;
       const store = useComposerDraftStore.getState();
@@ -7459,7 +7524,7 @@ export default function ChatView(props: ChatViewProps) {
         sourceThreadId: activeThread.id,
         sourceTitle: activeThread.title,
         modelSelection: createModelSelection(instanceId, model),
-        prompt: draft?.prompt.trim() ?? "",
+        prompt: draft?.prompt.trim() || emptyDraftPrompt,
         hasHistory: activeThread.messages.length > 0,
       });
       // Chips in the copied prompt resolve against these, so ids are kept.
@@ -9925,6 +9990,23 @@ export default function ChatView(props: ChatViewProps) {
   const onForkComposerModel = useCallback((instanceId: ProviderInstanceId, model: string) => {
     void onForkModelRef.current(instanceId, model);
   }, []);
+  // Other ready accounts, of any provider, that can pick up a usage-limited chat in a new tab.
+  const usageLimitAlternatives = useMemo(() => {
+    if (!usageLimitRecovery || !activeThread) return [];
+    const blockedInstanceId =
+      activeThread.session?.providerInstanceId ?? activeThread.modelSelection.instanceId;
+    return providerInstanceEntries
+      .filter(
+        (entry) => entry.instanceId !== blockedInstanceId && isProviderInstancePickerReady(entry),
+      )
+      .map((entry) => ({
+        entry,
+        model: resolveModelForAccountSwitch({
+          currentModel: activeThread.modelSelection.model,
+          destinationModels: entry.models,
+        }),
+      }));
+  }, [activeThread, providerInstanceEntries, usageLimitRecovery]);
 
   // Files dropped on a sidebar row land here once the dropped-on thread is
   // actually open, then take the exact same path as a workspace drop:
@@ -10327,15 +10409,47 @@ export default function ChatView(props: ChatViewProps) {
                 onDismiss={() => setDismissedProviderStatusBannerKey(providerStatusBannerKey)}
                 onOpenProviderSetup={openProviderSetup}
               />
-              <ThreadErrorBanner
-                error={visibleThreadError}
-                chatGptUsageLimit={isChatGptUsageLimitError(threadActivities, visibleThreadError)}
-                onDismiss={() => {
-                  setThreadError(activeThread.id, null);
-                  dismissThreadErrorBannerForSession(threadErrorBannerKey);
-                  setThreadErrorBannerDismissTick((tick) => tick + 1);
-                }}
-              />
+              {usageLimitRecovery ? (
+                <UsageLimitRecoveryBanner
+                  recovery={usageLimitRecovery}
+                  timestampFormat={timestampFormat}
+                  nowMs={usageLimitNowMs}
+                  busy={usageLimitResumeBusy}
+                  alternatives={usageLimitAlternatives}
+                  {...(supportsUsageLimitResume
+                    ? {
+                        onResumeNow: () => void resumeAfterUsageLimit("now"),
+                        onCancelScheduledResume: () => void resumeAfterUsageLimit("cancel"),
+                        ...(usageLimitResumeWhenAvailableAt !== null
+                          ? {
+                              onResumeWhenAvailable: () =>
+                                void resumeAfterUsageLimit(
+                                  "schedule",
+                                  usageLimitResumeWhenAvailableAt,
+                                ),
+                            }
+                          : {}),
+                      }
+                    : {})}
+                  {...(canForkModel
+                    ? {
+                        onContinueWith: (instanceId: ProviderInstanceId, model: string) =>
+                          void onForkModel(instanceId, model, USAGE_LIMIT_RESUME_PROMPT),
+                        onChooseModel: () => composerRef.current?.openModelPicker(),
+                      }
+                    : {})}
+                />
+              ) : (
+                <ThreadErrorBanner
+                  error={visibleThreadError}
+                  chatGptUsageLimit={isChatGptUsageLimitError(threadActivities, visibleThreadError)}
+                  onDismiss={() => {
+                    setThreadError(activeThread.id, null);
+                    dismissThreadErrorBannerForSession(threadErrorBannerKey);
+                    setThreadErrorBannerDismissTick((tick) => tick + 1);
+                  }}
+                />
+              )}
             </div>
             {/* Messages Wrapper */}
             <div className="relative flex min-h-0 flex-1 flex-col bg-background">

@@ -573,6 +573,8 @@ export function runtimeEventToActivities(
           payload: {
             message: truncateDetail(event.payload.message),
             ...(event.payload.code ? { code: event.payload.code } : {}),
+            // Clients offer usage-limit recovery from this; see usageLimitRecovery.
+            ...(event.payload.usageLimit ? { usageLimit: event.payload.usageLimit } : {}),
           },
           turnId: toTurnId(event.turnId) ?? null,
           ...maybeSequence,
