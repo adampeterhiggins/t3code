@@ -31,7 +31,8 @@ import {
 } from "@t3tools/client-runtime/state/thread-search";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import { useHiddenTabThreads } from "./sidebar/useHiddenTabThreads";
-import { resolveThreadTabTarget } from "../threadTabRecencyStore";
+import { resolveThreadTabTarget, useThreadTabRecencyStore } from "../threadTabRecencyStore";
+import { threadTabGroupTarget } from "@t3tools/client-runtime/thread-tabs";
 import {
   parseScopedThreadKey,
   scopeProjectRef,
@@ -1048,6 +1049,8 @@ const dropVerbBadge: Record<SidebarDropVerb, ReactNode> = {
 
 const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   thread: SidebarThreadSummary;
+  /** The tab the hidden-tabs row opens; the group thread still owns ordering and selection. */
+  displayThread: SidebarThreadSummary;
   variant: "card" | "slim";
   // Slim rows are either settled (action: un-settle) or merely quiet
   // (seen Ready threads — action: settle).
@@ -1135,7 +1138,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     onUnpin,
     openPullRequestsInRightPanel,
     renamingTitle,
-    thread,
+    displayThread: thread,
     variant,
     variantAction,
   } = props;
@@ -1143,11 +1146,17 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     () => scopeThreadRef(thread.environmentId, thread.id),
     [thread.environmentId, thread.id],
   );
+  const rowThreadRef = useMemo(
+    () => scopeThreadRef(props.thread.environmentId, props.thread.id),
+    [props.thread.environmentId, props.thread.id],
+  );
+  const rowThreadKey = scopedThreadKey(rowThreadRef);
   const threadKey = scopedThreadKey(threadRef);
   const { leaseLiveStatus, rowRef } = useSidebarRowSubscriptionLease(props.isActive);
   const isRegeneratingTitle = thread.titleRegeneration != null;
   const lastVisitedAt = useUiStateStore((state) => state.threadLastVisitedAtById[threadKey]);
-  const isSelected = useThreadSelectionStore((state) => state.selectedThreadKeys.has(threadKey));
+  const rowLastVisitedAt = useUiStateStore((state) => state.threadLastVisitedAtById[rowThreadKey]);
+  const isSelected = useThreadSelectionStore((state) => state.selectedThreadKeys.has(rowThreadKey));
   const openPrLink = useOpenPrLink();
   const runningTerminalIds = useThreadRunningTerminalIds({
     environmentId: thread.environmentId,
@@ -1206,12 +1215,13 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   // message, settling, archiving, or a change request state that settles the
   // thread. Timer wakes survive a mere visit. An unparseable visit timestamp
   // counts as never-visited, so corrupt local data cannot eat the wake signal.
-  const lastVisitedDate = lastVisitedAt === undefined ? null : parseTimestampDate(lastVisitedAt);
+  const lastVisitedDate =
+    rowLastVisitedAt === undefined ? null : parseTimestampDate(rowLastVisitedAt);
   const wokeAtDate = props.wokeAt === null ? null : parseTimestampDate(props.wokeAt);
   const isWoke =
     wokeAtDate !== null &&
     (lastVisitedDate === null || lastVisitedDate < wokeAtDate) &&
-    thread.settledOverride !== "settled";
+    props.thread.settledOverride !== "settled";
   // Background work always recedes when it is not selected: an unread parent
   // completion must not pull a still-working thread back into the foreground.
   // Ready and action-required rows keep their unread and wake prominence.
@@ -1275,18 +1285,18 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
 
   const handleClick = useCallback(
     (event: ReactMouseEvent) => {
-      onThreadClick(event, threadRef);
+      onThreadClick(event, rowThreadRef);
     },
-    [onThreadClick, threadRef],
+    [onThreadClick, rowThreadRef],
   );
   const handleAcknowledgeWokeClick = useCallback(
     (event: ReactMouseEvent) => {
       event.preventDefault();
       event.stopPropagation();
       if (props.wokeAt === null) return;
-      onAcknowledgeWoke(threadRef, props.wokeAt);
+      onAcknowledgeWoke(rowThreadRef, props.wokeAt);
     },
-    [onAcknowledgeWoke, props.wokeAt, threadRef],
+    [onAcknowledgeWoke, props.wokeAt, rowThreadRef],
   );
   const handleContextMenu = useCallback(
     (event: ReactMouseEvent) => {
@@ -1300,9 +1310,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       if (event.target !== event.currentTarget) return;
       if (event.key !== "Enter" && event.key !== " ") return;
       event.preventDefault();
-      onThreadActivate(threadRef);
+      onThreadActivate(rowThreadRef);
     },
-    [onThreadActivate, threadRef],
+    [onThreadActivate, rowThreadRef],
   );
   const handleDoubleClick = useCallback(
     (event: ReactMouseEvent) => {
@@ -1343,9 +1353,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     (event: ReactMouseEvent) => {
       event.preventDefault();
       event.stopPropagation();
-      onSettle(threadRef);
+      onSettle(rowThreadRef);
     },
-    [onSettle, threadRef],
+    [onSettle, rowThreadRef],
   );
   const handleNewTabClick = useCallback(
     (event: ReactMouseEvent) => {
@@ -1359,31 +1369,31 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     (event: ReactMouseEvent) => {
       event.preventDefault();
       event.stopPropagation();
-      onUnsettle(threadRef);
+      onUnsettle(rowThreadRef);
     },
-    [onUnsettle, threadRef],
+    [onUnsettle, rowThreadRef],
   );
   const handleUnsnoozeClick = useCallback(
     (event: ReactMouseEvent) => {
       event.preventDefault();
       event.stopPropagation();
-      onUnsnooze(threadRef);
+      onUnsnooze(rowThreadRef);
     },
-    [onUnsnooze, threadRef],
+    [onUnsnooze, rowThreadRef],
   );
   const handleUnpinClick = useCallback(
     (event: ReactMouseEvent) => {
       event.preventDefault();
       event.stopPropagation();
-      onUnpin(threadRef);
+      onUnpin(rowThreadRef);
     },
-    [onUnpin, threadRef],
+    [onUnpin, rowThreadRef],
   );
   const handleSnoozePreset = useCallback(
     (preset: Pick<SnoozePreset, "snoozedUntil">) => {
-      onSnooze(threadRef, preset);
+      onSnooze(rowThreadRef, preset);
     },
-    [onSnooze, threadRef],
+    [onSnooze, rowThreadRef],
   );
   // While the snooze popover is open the pointer leaves the row, which
   // would fade the hover actions out from under the open menu. Pin them and
@@ -1392,7 +1402,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   // Snooze is offered only where it can succeed: capability-gated and never
   // on blocked-on-you work or queued turns (the server rejects both).
   const showSnoozeButton =
-    props.snoozeSupported && canSnooze(thread, { now: new Date().toISOString() });
+    props.snoozeSupported && canSnooze(props.thread, { now: new Date().toISOString() });
   // If the thread becomes blocked while the popover is open, the button
   // unmounts without firing onOpenChange(false). Deriving the flag keeps a
   // stale true from permanently hiding the status label / pinning the
@@ -2532,6 +2542,7 @@ export default function Sidebar() {
   const { hiddenTabThreads: tabThreadGroups, tabEnvironmentIds } = useHiddenTabThreads(threads);
   const { createTab, closeTab } = useThreadTabActions();
   const showTabs = useClientSettings((s) => s.sidebarShowTabs);
+  const openedAtByThreadKey = useThreadTabRecencyStore((s) => s.openedAtByThreadKey);
   const updateClientSettings = useUpdateClientSettings();
   // Listed tabs open themselves; hidden tabs fold into their group's row, which reopens the
   // tab you last had open.
@@ -3046,6 +3057,20 @@ export default function Sidebar() {
     [tabThreadGroups, threads],
   );
   const listedTabsByRowKey = showTabs ? tabsByRowKey : EMPTY_TABS_BY_ROW;
+  const displayTabsByRowKey = useMemo(() => {
+    const displayTabs = new Map<string, EnvironmentThreadShell>();
+    if (showTabs) return displayTabs;
+    for (const [rowKey, tabs] of tabsByRowKey) {
+      const targetKey = threadTabGroupTarget(
+        rowKey,
+        new Map(tabs.map((tab) => [sidebarThreadKey(tab), rowKey])),
+        openedAtByThreadKey,
+      );
+      const tab = tabs.find((tab) => sidebarThreadKey(tab) === targetKey);
+      if (tab) displayTabs.set(rowKey, tab);
+    }
+    return displayTabs;
+  }, [openedAtByThreadKey, showTabs, tabsByRowKey]);
 
   const threadSearchInputRef = useRef<HTMLInputElement>(null);
   const [threadSearchQuery, setThreadSearchQuery] = useState("");
@@ -5182,12 +5207,15 @@ export default function Sidebar() {
                         const isCard = section === "active" || section === "pinned";
                         const rowVariant = isCard ? "card" : "slim";
                         const rowTabs = tabsByRowKey.get(threadKey);
+                        const displayThread = displayTabsByRowKey.get(threadKey) ?? thread;
+                        const displayThreadKey = sidebarThreadKey(displayThread);
                         return (
                           <SidebarThreadRow
                             // Fade between card and compact rows while the outer
                             // sortable wrapper keeps its identity during a drag.
                             key={`${threadKey}:${rowVariant}`}
                             thread={thread}
+                            displayThread={displayThread}
                             variant={rowVariant}
                             // Snoozed rows wake, settled rows un-settle, and cards settle.
                             variantAction={
@@ -5270,8 +5298,10 @@ export default function Sidebar() {
                             onRenameTitleChange={setRenamingTitle}
                             onCommitRename={commitThreadRename}
                             onCancelRename={cancelThreadRename}
-                            isRenaming={renamingThreadKey === threadKey}
-                            renamingTitle={renamingThreadKey === threadKey ? renamingTitle : ""}
+                            isRenaming={renamingThreadKey === displayThreadKey}
+                            renamingTitle={
+                              renamingThreadKey === displayThreadKey ? renamingTitle : ""
+                            }
                             onContextMenu={handleThreadContextMenu}
                             onSettle={attemptSettle}
                             onUnsettle={attemptUnsettle}
@@ -5352,7 +5382,8 @@ export default function Sidebar() {
                             key={threadKey}
                             id={threadKey}
                             disabled={
-                              renamingThreadKey === threadKey ||
+                              renamingThreadKey ===
+                                sidebarThreadKey(displayTabsByRowKey.get(threadKey) ?? thread) ||
                               !draggableThreadKeys.has(threadKey) ||
                               optimisticDrop !== null
                             }
