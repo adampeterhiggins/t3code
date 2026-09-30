@@ -481,6 +481,27 @@ Code: `apps/server/src/mcp/query/`, the `agentAccessToken` handler in
 `apps/web/src/components/settings/AgentAccessSettings.tsx`. User guide:
 [agent-access.md](./user/agent-access.md).
 
+## Attention inbox
+
+On web and desktop, an inbox button appears in the sidebar header while any thread needs you, with
+a count. Its popover lists those threads across every environment, project, and chat tab, one
+entry per thread with its most urgent reason: an approval, a question for you, a failed turn, or
+finished work you have not opened yet. Clicking an entry opens that exact tab, not the tab its
+sidebar row would return to. Failures and completions leave the inbox once you open the thread or
+mark them read; **Mark unread** in the thread menu brings a completion back. Approvals and
+questions stay until answered. Archived threads are left out, and so are snoozed ones until they
+wake or raise their hand. The same list is **Needs attention** in the command palette
+(`mod+alt+n`, `attentionInbox.open`).
+
+The inbox is derived on the client from thread shells and the client's existing read markers, so
+it adds no server state or payload. Mobile does not show it, because the mobile client does not
+track which threads you have read.
+
+Code: [`attentionInbox.ts`](../packages/client-runtime/src/state/attentionInbox.ts),
+[`SidebarAttentionInbox.tsx`](../apps/web/src/components/sidebar/SidebarAttentionInbox.tsx), and
+the `attention-inbox` view in [`CommandPalette.tsx`](../apps/web/src/components/CommandPalette.tsx).
+User guide: [thread-sidebar.md](./user/thread-sidebar.md#see-what-needs-you).
+
 ## Keeping this page current
 
 Update this page in the same change that adds, changes, or removes a user-visible fork-only

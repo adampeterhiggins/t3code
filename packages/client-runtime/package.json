@@ -251,6 +251,10 @@
       "types": "./src/state/threadSort.ts",
       "default": "./src/state/threadSort.ts"
     },
+    "./state/attention-inbox": {
+      "types": "./src/state/attentionInbox.ts",
+      "default": "./src/state/attentionInbox.ts"
+    },
     "./state/thread-settled": {
       "types": "./src/state/threadSettled.ts",
       "default": "./src/state/threadSettled.ts"
