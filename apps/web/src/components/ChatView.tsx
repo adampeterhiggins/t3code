@@ -394,7 +394,12 @@ import type { AssistantCitationRequest } from "./chat/AssistantCitationSource";
 import { resolveTimelineIsAtEnd, worktreeSetupAgentStarted } from "./chat/MessagesTimeline.logic";
 import { resolveComposerTimelineInset, resolveScrollToEndClearance } from "./composerFooterLayout";
 import { ChatHeader } from "./chat/ChatHeader";
-import { ThreadTabContextPills, forkThreadTab, useThreadTabGroup } from "./chat/ThreadTabs";
+import {
+  ThreadTabContextPills,
+  forkThreadTab,
+  useRightPanelFollowsTabSwitch,
+  useThreadTabGroup,
+} from "./chat/ThreadTabs";
 import { runtime } from "../lib/runtime";
 import { PanelLayoutControls, RightPanelMaximizeControl } from "./chat/PanelLayoutControls";
 import { expandedImageKey, type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
@@ -1981,6 +1986,7 @@ export default function ChatView(props: ChatViewProps) {
   const activeThread = activeServerThread ?? localDraftThread;
   const threadTabGroup = useThreadTabGroup(environmentId, activeServerThread?.id ?? null);
   const openThreadTabId = threadTabGroup ? (activeServerThread?.id ?? null) : null;
+  useRightPanelFollowsTabSwitch(environmentId, openThreadTabId, threadTabGroup);
   useEffect(() => {
     if (openThreadTabId === null) return;
     useThreadTabRecencyStore.getState().markOpened(scopeThreadRef(environmentId, openThreadTabId));
