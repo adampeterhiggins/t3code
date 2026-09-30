@@ -415,7 +415,7 @@ A picked repository becomes a `repository` context chip. When the message sends,
 clones what is missing before the turn starts. It leaves an existing clone of the same remote
 alone (fetching only, so ahead/behind are current) and never overwrites a folder that belongs to
 something else. On a new worktree this runs as a step of the setup card, before the setup script.
-Otherwise it runs before the turn is recorded. Each record's clone outcome and git status are
+Otherwise it runs before the turn is recorded, with a work log row showing progress. Each record's clone outcome and git status are
 written back onto the message. The chip shows them, and the agent's prompt includes them, so the
 agent knows what is there. A failed clone is a warning and the agent still starts. The server adds
 the folder to the repository's `info/exclude` so checkpoints and diffs ignore the clones. The
