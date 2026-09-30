@@ -10076,6 +10076,7 @@ export default function ChatView(props: ChatViewProps) {
         }}
         model={agentPanelModel}
         activities={threadActivities}
+        workspaceRoot={activeWorkspaceRoot}
         threadKey={activeThreadRef ? scopedThreadKey(activeThreadRef) : null}
         environmentId={activeThreadRef?.environmentId ?? null}
         threadId={activeThreadRef?.threadId ?? null}
