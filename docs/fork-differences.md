@@ -127,7 +127,8 @@ is its own conversation and provider.
 - **Sidebars.** By default child tabs are hidden from the web sidebar, the legacy project sidebar,
   and both mobile thread lists (`useHiddenTabThreads`). The group's row stays highlighted while any
   of its tabs is open, and opening it returns to the tab last left open
-  (`apps/web/src/threadTabRecencyStore.ts`). On web and desktop, **Settings → General → Show tabs
+  (`apps/web/src/threadTabRecencyStore.ts`). With tabs hidden on web and desktop, the row shows
+  that tab’s title, model, and details (`apps/web/src/components/Sidebar.tsx`). On web and desktop, **Settings → General → Show tabs
   in sidebar** — also the sidebar button, the command palette, and `Cmd+Option+T` on macOS or
   `Ctrl+Alt+T` on Windows and Linux — lists each tab under that row. The row's hover actions add a
   **+** that opens a new tab, and each listed tab has a hover **×** that closes it.
