@@ -3,11 +3,17 @@ import { ReadOnlySourcePreview } from "./files/AttachmentFilePreview";
 import type {
   LinearIssueContextRecord,
   PreviewAnnotationPayload,
+  RepositoryContextRecord,
   ThreadTabContextRecord,
 } from "@t3tools/contracts";
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
 import { videoMimeType } from "@t3tools/shared/video";
-import { MessageCircleIcon, MessagesSquareIcon, MousePointerClickIcon } from "lucide-react";
+import {
+  FolderGit2Icon,
+  MessageCircleIcon,
+  MessagesSquareIcon,
+  MousePointerClickIcon,
+} from "lucide-react";
 import { LinearIcon } from "./Icons";
 import { createContext, type MouseEvent, type ReactElement, type ReactNode, use } from "react";
 import type { EnvironmentId } from "@t3tools/contracts";
@@ -49,6 +55,7 @@ import {
   FileChip,
   ImageChipButton,
   LinearIssueDetails,
+  RepositoryDetails,
   PULL_REQUEST_CHIP_KINDS,
   PullRequestChip,
   ThreadTabSummaryDetails,
@@ -65,6 +72,7 @@ export type ComposerDraftContextRecord =
   | { kind: "preview-annotation"; record: PreviewAnnotationPayload }
   | { kind: "thread-tab"; record: ThreadTabContextRecord }
   | { kind: "linear-issue"; record: LinearIssueContextRecord }
+  | { kind: "repository"; record: RepositoryContextRecord }
   | { kind: "image"; record: ComposerImageAttachment; upload?: AttachmentUploadState | undefined }
   | { kind: "file"; record: ComposerFileAttachment; upload?: AttachmentUploadState | undefined };
 
@@ -108,6 +116,7 @@ export function composerContextRecordsFromDraft(input: {
   previewAnnotations?: ReadonlyArray<PreviewAnnotationPayload>;
   threadTabs?: ReadonlyArray<ThreadTabContextRecord>;
   linearIssues?: ReadonlyArray<LinearIssueContextRecord>;
+  repositories?: ReadonlyArray<RepositoryContextRecord>;
   images?: ReadonlyArray<ComposerImageAttachment>;
   files?: ReadonlyArray<ComposerFileAttachment>;
   uploadsByImageId?: Readonly<Record<string, AttachmentUploadState>>;
@@ -141,6 +150,9 @@ export function composerContextRecordsFromDraft(input: {
   }
   for (const record of input.linearIssues ?? []) {
     records.set(record.contextId, { kind: "linear-issue", record });
+  }
+  for (const record of input.repositories ?? []) {
+    records.set(record.contextId, { kind: "repository", record });
   }
   return records;
 }
@@ -462,9 +474,31 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
           <UnresolvedContextChip label={context.label} />
         ),
     },
+    {
+      kind: "repository",
+      canRender: (entry) => entry.kind === "repository",
+      render: (entry, context, definition) =>
+        entry.kind === "repository" ? (
+          <ContextChip
+            icon={<FolderGit2Icon />}
+            label={entry.record.label}
+            kindLabel="Repository"
+            details={<ComposerRepositoryDetails record={entry.record} />}
+            detailsMode={definition.capabilities.details}
+            kind="repository"
+          />
+        ) : (
+          <UnresolvedContextChip label={context.label} />
+        ),
+    },
   ],
   fallback: (_kind, _entry, context) => <UnresolvedContextChip label={context.label} />,
 });
+
+function ComposerRepositoryDetails({ record }: { record: RepositoryContextRecord }) {
+  const actions = use(ComposerContextActionsContext);
+  return <RepositoryDetails record={record} onOpenLink={actions.openLink} />;
+}
 
 function ComposerLinearIssueDetails({ record }: { record: LinearIssueContextRecord }) {
   const actions = use(ComposerContextActionsContext);

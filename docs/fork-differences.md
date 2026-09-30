@@ -402,6 +402,34 @@ Code: [`threadTranscript.ts`](../apps/web/src/lib/threadTranscript.ts),
 `saveTextFile` in [`window.ts`](../apps/desktop/src/ipc/methods/window.ts). User guide:
 [thread-sidebar.md](./user/thread-sidebar.md#export-a-transcript).
 
+## Attach repositories as context
+
+The composer's attach menu (and **Attach repository** in the web command palette) picks other
+repositories to clone into the workspace's context folder, `.context/` by default, the way the
+`ctxclone` shell tool does. The picker lists the default owner's GitHub repositories (via
+`gh repo list`), most recently attached first. Typing `org/` lists another owner, and a pasted
+`owner/repo` or clone URL also works. Rows for repositories already cloned into the thread's
+workspace show their branch, ahead/behind, and changed-file count.
+
+A picked repository becomes a `repository` context chip. When the message sends, the server
+clones what is missing before the turn starts. It leaves an existing clone of the same remote
+alone (fetching only, so ahead/behind are current) and never overwrites a folder that belongs to
+something else. On a new worktree this runs as a step of the setup card, before the setup script.
+Otherwise it runs before the turn is recorded, with a work log row showing progress. Each record's clone outcome and git status are
+written back onto the message. The chip shows them, and the agent's prompt includes them, so the
+agent knows what is there. A failed clone is a warning and the agent still starts. The server adds
+the folder to the repository's `info/exclude` so checkpoints and diffs ignore the clones. The
+default owner and the folder are server settings in **Settings > General**. Mobile shows the chips
+and the setup step, but has no picker.
+
+Code: `apps/server/src/contextRepositories/ContextRepositories.ts`,
+`packages/contracts/src/contextRepositories.ts`, `RepositoryContextRecord` in
+`packages/contracts/src/composerContext.ts`, the context-repository step in `apps/server/src/ws.ts`,
+the persisted-message restatement in `apps/server/src/orchestration/decider.ts`,
+`packages/client-runtime/src/contextRepositories.ts`, and
+`apps/web/src/components/chat/RepositoryAttachPicker.tsx`. User guide:
+[composer.md](./user/composer.md#attach-repositories).
+
 ## Desktop mock-update loop
 
 A `Makefile` at the repository root drives a local auto-update test loop for the desktop app:

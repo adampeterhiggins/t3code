@@ -11,6 +11,7 @@ import {
   AuthEnvironmentBootstrapTokenType,
   AuthTokenExchangeGrantType,
   CommandId,
+  ComposerContextId,
   DEFAULT_SERVER_SETTINGS,
   type DpopFailureReason,
   EnvironmentId,
@@ -156,6 +157,7 @@ import * as ServiceLauncherClient from "./cloud/serviceLauncherClient.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
 import * as ProjectCloneTracker from "./project/ProjectCloneTracker.ts";
+import * as ContextRepositories from "./contextRepositories/ContextRepositories.ts";
 import * as WorktreeSetupTracker from "./project/WorktreeSetupTracker.ts";
 import * as PreviewManager from "./preview/Manager.ts";
 import * as PortScanner from "./preview/PortScanner.ts";
@@ -548,6 +550,7 @@ const buildAppUnderTest = (options?: {
     projectSetupScriptRunner?: Partial<
       ProjectSetupScriptRunner.ProjectSetupScriptRunner["Service"]
     >;
+    contextRepositories?: Partial<ContextRepositories.ContextRepositories["Service"]>;
     providerSessionDirectory?: Partial<
       ProviderSessionDirectory.ProviderSessionDirectory["Service"]
     >;
@@ -966,6 +969,9 @@ const buildAppUnderTest = (options?: {
             ...options?.layers?.terminalManager,
           }),
           WorktreeSetupTracker.layer,
+          Layer.mock(ContextRepositories.ContextRepositories)({
+            ...options?.layers?.contextRepositories,
+          }),
           ProjectCloneTracker.layer.pipe(
             Layer.provide(
               Layer.mock(SourceControlRepositoryService.SourceControlRepositoryService)({
@@ -11900,6 +11906,214 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         dispatchedCommands.findIndex((command) => command.type === "thread.turn.start"),
       );
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect(
+    "clones attached repositories into a new worktree before the setup script and turn",
+    () =>
+      Effect.gen(function* () {
+        const steps: Array<string> = [];
+        const dispatchedCommands: Array<OrchestrationCommand> = [];
+        const repository = {
+          version: 1 as const,
+          contextId: ComposerContextId.make("ctx_repo"),
+          kind: "repository" as const,
+          label: "acme/api",
+          nameWithOwner: "acme/api",
+          remoteUrl: "https://github.com/acme/api",
+          directoryName: "api",
+        };
+        const outcome = {
+          status: "cloned" as const,
+          path: ".context/api",
+          detail: null,
+          git: null,
+          fetched: false,
+        };
+        const ensure = vi.fn(
+          (input: Parameters<ContextRepositories.ContextRepositories["Service"]["ensure"]>[0]) =>
+            Effect.sync(() => {
+              steps.push(`ensure:${input.cwd}`);
+              return input.repositories.map((record) => ({ ...record, outcome }));
+            }),
+        );
+
+        yield* buildAppUnderTest({
+          layers: {
+            vcsDriver: { isInsideWorkTree: () => Effect.succeed(true) },
+            gitVcsDriver: {
+              execute: () => Effect.succeed(SUCCESSFUL_GIT_EXECUTION),
+              createWorktree: () =>
+                Effect.succeed({
+                  worktree: { refName: "feature/api", path: "/tmp/bootstrap-worktree" },
+                }),
+            },
+            contextRepositories: { ensure },
+            projectSetupScriptRunner: {
+              runForThread: () =>
+                Effect.sync(() => {
+                  steps.push("setup-script");
+                  return { status: "no-script" as const };
+                }),
+            },
+            orchestrationEngine: {
+              dispatch: (command) =>
+                Effect.sync(() => {
+                  if (command.type === "thread.turn.start") steps.push("turn");
+                  dispatchedCommands.push(command);
+                  return { sequence: dispatchedCommands.length };
+                }),
+              readEvents: () => Stream.empty,
+            },
+          },
+        });
+
+        const createdAt = "2026-01-01T00:00:00.000Z";
+        const wsUrl = yield* getWsServerUrl("/ws");
+        yield* Effect.scoped(
+          withWsRpcClient(wsUrl, (client) =>
+            client[ORCHESTRATION_WS_METHODS.dispatchCommand]({
+              type: "thread.turn.start",
+              commandId: CommandId.make("cmd-bootstrap-context-repos"),
+              threadId: ThreadId.make("thread-bootstrap-context-repos"),
+              message: {
+                messageId: MessageId.make("msg-bootstrap-context-repos"),
+                role: "user",
+                text: "Read [acme/api](t3-context://v1/repository/ctx_repo)",
+                attachments: [],
+                context: { version: 1, records: [repository] },
+              },
+              modelSelection: defaultModelSelection,
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              bootstrap: {
+                createThread: {
+                  projectId: defaultProjectId,
+                  title: "Bootstrap Thread",
+                  modelSelection: defaultModelSelection,
+                  runtimeMode: "full-access",
+                  interactionMode: "default",
+                  branch: "main",
+                  worktreePath: null,
+                  createdAt,
+                },
+                prepareWorktree: {
+                  projectCwd: "/tmp/project",
+                  baseBranch: "main",
+                  branch: "feature/api",
+                },
+                runSetupScript: true,
+              },
+              createdAt,
+            }),
+          ),
+        );
+
+        assert.deepEqual(steps, ["ensure:/tmp/bootstrap-worktree", "setup-script", "turn"]);
+        const turnStart = dispatchedCommands.find(
+          (command) => command.type === "thread.turn.start",
+        );
+        assertTrue(turnStart?.type === "thread.turn.start");
+        if (turnStart?.type === "thread.turn.start") {
+          assert.deepEqual(turnStart.message.context?.records, [{ ...repository, outcome }]);
+        }
+      }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect(
+    "clones attached repositories into an existing thread's workspace before its turn",
+    () =>
+      Effect.gen(function* () {
+        const dispatchedCommands: Array<OrchestrationCommand> = [];
+        const repository = {
+          version: 1 as const,
+          contextId: ComposerContextId.make("ctx_repo"),
+          kind: "repository" as const,
+          label: "acme/api",
+          nameWithOwner: "acme/api",
+          remoteUrl: "https://github.com/acme/api",
+          directoryName: "api",
+        };
+        const outcome = {
+          status: "present" as const,
+          path: ".context/api",
+          detail: null,
+          git: null,
+          fetched: true,
+        };
+        const ensure = vi.fn(
+          (input: Parameters<ContextRepositories.ContextRepositories["Service"]["ensure"]>[0]) =>
+            Effect.succeed(input.repositories.map((record) => ({ ...record, outcome }))),
+        );
+
+        yield* buildAppUnderTest({
+          layers: {
+            contextRepositories: { ensure },
+            projectionSnapshotQuery: {
+              getThreadShellById: (threadId) =>
+                Effect.succeedSome({
+                  ...makeDefaultOrchestrationThreadShell(),
+                  id: threadId,
+                  worktreePath: "/tmp/existing-worktree",
+                }),
+            },
+            orchestrationEngine: {
+              dispatch: (command) =>
+                Effect.sync(() => {
+                  dispatchedCommands.push(command);
+                  return { sequence: dispatchedCommands.length };
+                }),
+              readEvents: () => Stream.empty,
+            },
+          },
+        });
+
+        const wsUrl = yield* getWsServerUrl("/ws");
+        yield* Effect.scoped(
+          withWsRpcClient(wsUrl, (client) =>
+            client[ORCHESTRATION_WS_METHODS.dispatchCommand]({
+              type: "thread.turn.start",
+              commandId: CommandId.make("cmd-follow-up-context-repos"),
+              threadId: defaultThreadId,
+              message: {
+                messageId: MessageId.make("msg-follow-up-context-repos"),
+                role: "user",
+                text: "Read [acme/api](t3-context://v1/repository/ctx_repo)",
+                attachments: [],
+                context: { version: 1, records: [repository] },
+              },
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              createdAt: "2026-01-01T00:00:00.000Z",
+            }),
+          ),
+        );
+
+        assert.equal(ensure.mock.calls[0]?.[0].cwd, "/tmp/existing-worktree");
+        // Progress lands in the work log under one id, settled before the turn starts.
+        const progress = dispatchedCommands.flatMap((command) =>
+          command.type === "thread.activity.append" &&
+          command.activity.kind === "context-repositories"
+            ? [command.activity]
+            : [],
+        );
+        assert.deepEqual(
+          progress.map((activity) => activity.summary),
+          ["Cloning context repositories", "Context repositories ready"],
+        );
+        assert.equal(new Set(progress.map((activity) => activity.id)).size, 1);
+        assert.deepEqual(progress.at(-1)?.payload, {
+          detail: "acme/api: already in .context/api",
+        });
+        assert.equal(dispatchedCommands.at(-1)?.type, "thread.turn.start");
+        const turnStart = dispatchedCommands.find(
+          (command) => command.type === "thread.turn.start",
+        );
+        assertTrue(turnStart?.type === "thread.turn.start");
+        if (turnStart?.type === "thread.turn.start") {
+          assert.deepEqual(turnStart.message.context?.records, [{ ...repository, outcome }]);
+        }
+      }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
   it.effect("creates a deferred bootstrap thread and worktree without starting a turn", () =>

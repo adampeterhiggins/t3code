@@ -160,6 +160,22 @@ Provider commands must start the message to run. T3 Code commands such as
 Send `/compact` in an existing conversation to reduce context usage when the
 provider supports it. Web and desktop also offer compaction from the context meter.
 
+## Attach repositories
+
+Give the agent another repository's source to read by attaching it: choose **Repository** from the
+paperclip menu, or **Attach repository** in the command palette. Set a default GitHub owner in
+**Settings > General > Repository owner** so the list opens ready. Type `another-org/` to list a
+different owner, or paste `owner/repo` or a clone URL. The list notes repositories already cloned
+into this thread's workspace, with their branch and how far behind they are.
+
+When you send, T3 Code clones each attached repository into the workspace's `.context/` folder
+before the agent starts. The folder can be changed in **Settings > General > Repository folder**.
+On a new worktree the clone is a step of the setup progress. A repository that is already there is
+left as it is and not pulled. A folder that belongs to something else is never overwritten. If a
+clone fails, the agent still starts. Select the chip in the sent message to see what happened, and
+the agent is told the same thing. Clones use the server machine's git and `gh` credentials, and
+are not tracked by the workspace's own git.
+
 ## Context in your message
 
 Context you attach lands where your cursor is, as a chip inside your text: a terminal excerpt,

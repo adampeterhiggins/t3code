@@ -52,6 +52,10 @@ const DEFINITIONS = [
     kind: "linear-issue",
     capabilities: { details: "popover", expanded: "none", defaultDraftView: "compact" },
   },
+  {
+    kind: "repository",
+    capabilities: { details: "popover", expanded: "none", defaultDraftView: "compact" },
+  },
 ] as const satisfies ReadonlyArray<ContextPresentationDefinition>;
 
 function buildDefinitionRegistry(

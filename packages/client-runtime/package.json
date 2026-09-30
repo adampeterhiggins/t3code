@@ -19,6 +19,10 @@
       "types": "./src/conductorRunScripts.ts",
       "default": "./src/conductorRunScripts.ts"
     },
+    "./context-repositories": {
+      "types": "./src/contextRepositories.ts",
+      "default": "./src/contextRepositories.ts"
+    },
     "./worktree-setup": {
       "types": "./src/worktreeSetup.ts",
       "default": "./src/worktreeSetup.ts"

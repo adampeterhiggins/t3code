@@ -23,6 +23,13 @@ import {
   ProviderSetupInput,
 } from "./providerSetup.ts";
 
+import {
+  ContextRepositoryError,
+  ContextRepositoryInspectInput,
+  ContextRepositoryInspectResult,
+  ContextRepositoryListInput,
+  ContextRepositoryListResult,
+} from "./contextRepositories.ts";
 import { ExternalLauncherError, LaunchEditorInput } from "./editor.ts";
 import {
   LinearCancelLoginInput,
@@ -453,6 +460,10 @@ export const WS_METHODS = {
   sourceControlLookupRepository: "sourceControl.lookupRepository",
   sourceControlCloneRepository: "sourceControl.cloneRepository",
   sourceControlPublishRepository: "sourceControl.publishRepository",
+
+  // Context repository methods
+  contextRepositoriesList: "contextRepositories.list",
+  contextRepositoriesInspect: "contextRepositories.inspect",
 
   // Linear methods
   linearSubscribeState: "linear.subscribeState",
@@ -1019,6 +1030,23 @@ const WsSourceControlCloneRepositoryRpc = Rpc.make(WS_METHODS.sourceControlClone
   payload: SourceControlCloneRepositoryInput,
   success: SourceControlCloneRepositoryResult,
   error: Schema.Union([SourceControlRepositoryError, EnvironmentAuthorizationError]),
+});
+
+const ContextRepositoryRpcError = Schema.Union([
+  ContextRepositoryError,
+  EnvironmentAuthorizationError,
+]);
+
+const WsContextRepositoriesListRpc = Rpc.make(WS_METHODS.contextRepositoriesList, {
+  payload: ContextRepositoryListInput,
+  success: ContextRepositoryListResult,
+  error: ContextRepositoryRpcError,
+});
+
+const WsContextRepositoriesInspectRpc = Rpc.make(WS_METHODS.contextRepositoriesInspect, {
+  payload: ContextRepositoryInspectInput,
+  success: ContextRepositoryInspectResult,
+  error: ContextRepositoryRpcError,
 });
 
 // Clone-backed project creation. `start` returns once the project exists and
@@ -1608,6 +1636,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsSourceControlLookupRepositoryRpc,
   WsSourceControlCloneRepositoryRpc,
   WsSourceControlPublishRepositoryRpc,
+  WsContextRepositoriesListRpc,
+  WsContextRepositoriesInspectRpc,
   WsLinearSubscribeStateRpc,
   WsLinearStartLoginRpc,
   WsLinearCompleteLoginRpc,

@@ -83,6 +83,8 @@ import {
   WORKTREE_SETUP_ACTIVITY_KIND,
   worktreeSetupActivityId,
   type WorktreeSetupSnapshot,
+  type OrchestrationMessageContext,
+  RepositoryContextRecord,
 } from "@t3tools/contracts";
 import { resolveServerBackgroundActivitySettings } from "@t3tools/shared/backgroundActivitySettings";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
@@ -147,6 +149,7 @@ import { linkCreatedPullRequest } from "./git/linkCreatedPullRequest.ts";
 import * as ReviewService from "./review/ReviewService.ts";
 import * as ProjectSetupScriptRunner from "./project/ProjectSetupScriptRunner.ts";
 import * as ProjectCloneTracker from "./project/ProjectCloneTracker.ts";
+import * as ContextRepositories from "./contextRepositories/ContextRepositories.ts";
 import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
 import * as WorktreeSetupTracker from "./project/WorktreeSetupTracker.ts";
 import * as AgentSessionScanner from "./project/AgentSessionScanner.ts";
@@ -188,6 +191,41 @@ import * as SessionStore from "./auth/SessionStore.ts";
 import { failEnvironmentAuthInvalid, failEnvironmentInternal } from "./auth/http.ts";
 import * as RelayClient from "@t3tools/shared/relayClient";
 const isOrchestrationDispatchCommandError = Schema.is(OrchestrationDispatchCommandError);
+const isRepositoryContextRecord = Schema.is(RepositoryContextRecord);
+
+/** One repository's outcome as a work log line. */
+function describeContextRepositoryOutcome(record: RepositoryContextRecord): string {
+  const outcome = record.outcome;
+  if (!outcome) return "not checked";
+  const git = outcome.git
+    ? ` · ${outcome.git.branch ?? "detached"}${outcome.git.behind > 0 ? ` · ${outcome.git.behind} behind` : ""}${outcome.git.changedFiles > 0 ? ` · ${outcome.git.changedFiles} changed` : ""}`
+    : "";
+  switch (outcome.status) {
+    case "cloned":
+      return `cloned into ${outcome.path}${git}`;
+    case "present":
+      return `already in ${outcome.path}${git}`;
+    case "conflict":
+    case "failed":
+      return outcome.detail ?? outcome.status;
+  }
+}
+
+/** One line for the setup card: how the attached repositories came out. */
+function summarizeContextRepositoryOutcomes(records: ReadonlyArray<RepositoryContextRecord>): {
+  readonly ok: boolean;
+  readonly detail: string;
+} {
+  const counts = { cloned: 0, present: 0, conflict: 0, failed: 0 };
+  for (const record of records) if (record.outcome) counts[record.outcome.status] += 1;
+  const parts = [
+    ...(counts.cloned > 0 ? [`${counts.cloned} cloned`] : []),
+    ...(counts.present > 0 ? [`${counts.present} already present`] : []),
+    ...(counts.conflict > 0 ? [`${counts.conflict} blocked by an existing folder`] : []),
+    ...(counts.failed > 0 ? [`${counts.failed} failed`] : []),
+  ];
+  return { ok: counts.conflict + counts.failed === 0, detail: parts.join(", ") };
+}
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 const CONFIG_DISCOVERY_TIMEOUT = Duration.seconds(5);
@@ -633,6 +671,7 @@ const makeWsRpcLayer = (
       const projectSetupScriptRunner = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
       const worktreeSetupTracker = yield* WorktreeSetupTracker.WorktreeSetupTracker;
       const projectCloneTracker = yield* ProjectCloneTracker.ProjectCloneTracker;
+      const contextRepositories = yield* ContextRepositories.ContextRepositories;
       const repositoryIdentityResolver =
         yield* RepositoryIdentityResolver.RepositoryIdentityResolver;
       // Clone hooks run on the tracker's fiber, outside any RPC, so the
@@ -1089,12 +1128,80 @@ const makeWsRpcLayer = (
         return resolveProjectSettings(settings, resolvedProjectId, project).settings;
       });
 
+      /** The message's `repository` records: repositories to clone before its turn starts. */
+      const messageRepositoryRecords = (context: OrchestrationMessageContext | undefined) =>
+        (context?.records ?? []).filter(isRepositoryContextRecord);
+
+      const contextRepositoryDirectory = serverSettings.getSettings.pipe(
+        Effect.map((settings) => settings.contextRepositoryDirectory),
+        Effect.orElseSucceed(() => ""),
+      );
+
+      /**
+       * Clones the turn's attached repositories into `cwd` and returns the
+       * command with each record's outcome filled in, so the persisted message
+       * (and through it the chip and the agent's prompt) says what happened.
+       * Never fails: a clone problem is a warning on its record.
+       */
+      const ensureTurnContextRepositories = (
+        command: Extract<OrchestrationCommand, { type: "thread.turn.start" }>,
+        cwd: string,
+        onProgress?: (event: ContextRepositories.ContextRepositoryProgress) => Effect.Effect<void>,
+      ) =>
+        Effect.gen(function* () {
+          const context = command.message.context;
+          const records = messageRepositoryRecords(context);
+          if (!context || records.length === 0) return { command, ensured: records };
+          const ensured = yield* contextRepositories.ensure({
+            cwd,
+            directory: yield* contextRepositoryDirectory,
+            repositories: records,
+            ...(onProgress ? { onProgress } : {}),
+          });
+          const byId = new Map(ensured.map((record) => [record.contextId, record]));
+          return {
+            command: {
+              ...command,
+              message: {
+                ...command.message,
+                context: {
+                  ...context,
+                  records: context.records.map((record) => byId.get(record.contextId) ?? record),
+                },
+              },
+            },
+            ensured,
+          };
+        });
+
+      /** A thread's workspace: its worktree, else its project's root. */
+      const resolveThreadWorkspaceCwd = (threadId: ThreadId) =>
+        Effect.gen(function* () {
+          const thread = Option.getOrNull(
+            yield* projectionSnapshotQuery
+              .getThreadShellById(threadId)
+              .pipe(Effect.orElseSucceed(() => Option.none())),
+          );
+          if (!thread) return null;
+          if (thread.worktreePath) return thread.worktreePath;
+          return yield* resolveProjectWorkspaceRoot(thread.projectId);
+        });
+
+      const resolveProjectWorkspaceRoot = (projectId: ProjectId) =>
+        projectionSnapshotQuery.getProjectShellById(projectId).pipe(
+          Effect.map((project) => Option.getOrNull(project)?.workspaceRoot ?? null),
+          Effect.orElseSucceed(() => null),
+        );
+
       const dispatchBootstrapTurnStart = (
         command: Extract<OrchestrationCommand, { type: "thread.turn.start" }>,
       ): Effect.Effect<{ readonly sequence: number }, OrchestrationDispatchCommandError> =>
         Effect.gen(function* () {
           const bootstrap = command.bootstrap;
-          const { bootstrap: _bootstrap, ...finalTurnStartCommand } = command;
+          const { bootstrap: _bootstrap, ...bootstrapTurnStartCommand } = command;
+          // Gains clone outcomes once the context repositories are ensured.
+          let finalTurnStartCommand = bootstrapTurnStartCommand;
+          const repositoryRecords = messageRepositoryRecords(command.message.context);
           let createdThread = false;
           let createdThreadSequence = 0;
           // Set up the thread and workspace only; the user's first send starts the turn.
@@ -1685,6 +1792,90 @@ const makeWsRpcLayer = (
               yield* refreshGitStatus(targetWorktreePath);
             }
 
+            // Attached repositories go in before the setup script, so the
+            // script (and then the agent) can rely on them being there.
+            if (repositoryRecords.length > 0 && !deferTurn) {
+              const workspaceCwd =
+                targetWorktreePath ??
+                targetProjectCwd ??
+                (targetProjectId ? yield* resolveProjectWorkspaceRoot(targetProjectId) : null);
+              if (workspaceCwd) {
+                const total = repositoryRecords.length;
+                let finished = 0;
+                const lastPercent = new Map<string, number>();
+                yield* track(
+                  worktreeSetupTracker.stageStatus(
+                    threadId,
+                    "context-repositories",
+                    "running",
+                    `0 of ${total}`,
+                  ),
+                );
+                const ensured = yield* ensureTurnContextRepositories(
+                  finalTurnStartCommand,
+                  workspaceCwd,
+                  (event) => {
+                    switch (event.type) {
+                      case "started":
+                        return Effect.void;
+                      case "clone-progress": {
+                        // Git redraws its counters many times a second; only
+                        // whole steps of 10% reach the card.
+                        const percent = event.line.percent ?? 0;
+                        const key = `${event.record.contextId}:${event.line.stage}`;
+                        const step = Math.floor(percent / 10);
+                        if (lastPercent.get(key) === step) return Effect.void;
+                        lastPercent.set(key, step);
+                        return track(
+                          worktreeSetupTracker.stage(threadId, "context-repositories", {
+                            detail: `${finished} of ${total} · ${event.record.nameWithOwner} ${event.line.stage} ${percent}%`,
+                          }),
+                        );
+                      }
+                      case "finished": {
+                        finished += 1;
+                        const { outcome, record } = event;
+                        const progress = worktreeSetupTracker.stage(
+                          threadId,
+                          "context-repositories",
+                          { detail: `${finished} of ${total}` },
+                        );
+                        // Only problems reach the tail; the card shows it under a warning.
+                        const problem =
+                          outcome.status === "failed" || outcome.status === "conflict"
+                            ? worktreeSetupTracker.appendTail(
+                                threadId,
+                                "context-repositories",
+                                `${record.nameWithOwner}: ${outcome.detail ?? outcome.status}`,
+                              )
+                            : Effect.void;
+                        return track(progress.pipe(Effect.andThen(problem)));
+                      }
+                    }
+                  },
+                );
+                finalTurnStartCommand = ensured.command;
+                const summary = summarizeContextRepositoryOutcomes(ensured.ensured);
+                yield* track(
+                  worktreeSetupTracker.stageStatus(
+                    threadId,
+                    "context-repositories",
+                    summary.ok ? "done" : "warning",
+                    summary.detail,
+                  ),
+                );
+              } else {
+                yield* track(
+                  worktreeSetupTracker.stageStatus(
+                    threadId,
+                    "context-repositories",
+                    "skipped",
+                    "no workspace",
+                  ),
+                );
+              }
+            }
+
             const pendingSetupScript = yield* runSetupProgram();
 
             let started: { readonly sequence: number };
@@ -1870,7 +2061,16 @@ const makeWsRpcLayer = (
                       baseRef: bootstrap?.prepareWorktree?.baseBranch ?? null,
                       stages: deferTurn
                         ? ["fetch", "checkout", "submodules", "setup-script"]
-                        : ["fetch", "checkout", "submodules", "setup-script", "agent"],
+                        : [
+                            "fetch",
+                            "checkout",
+                            "submodules",
+                            ...(repositoryRecords.length > 0
+                              ? (["context-repositories"] as const)
+                              : []),
+                            "setup-script",
+                            "agent",
+                          ],
                       fiber,
                     });
                     return fiber;
@@ -1883,25 +2083,112 @@ const makeWsRpcLayer = (
           return yield* runBootstrap;
         });
 
+      // A follow-up (or a first send into an existing workspace) clones before
+      // the turn is recorded, so the message lands with its outcomes.
+      const dispatchTurnStartWithContextRepositories = (
+        command: Extract<OrchestrationCommand, { type: "thread.turn.start" }>,
+      ) =>
+        Effect.gen(function* () {
+          const cwd = yield* resolveThreadWorkspaceCwd(command.threadId);
+          if (!cwd) return yield* dispatchFromClient(command);
+          const records = messageRepositoryRecords(command.message.context);
+          const total = records.length;
+          const startedAt = yield* nowIso;
+          let finished = 0;
+          let current: string | null = null;
+          const lastStep = new Map<string, number>();
+          // With no setup card here, the work log carries the progress: one
+          // row per message, upserted by a fixed id, like the setup record.
+          const recordProgress = (input: {
+            readonly summary: string;
+            readonly detail: string;
+            readonly tone: "info" | "error";
+          }) =>
+            Effect.gen(function* () {
+              yield* dispatchFromClient({
+                type: "thread.activity.append",
+                commandId: yield* serverCommandId("context-repositories-activity"),
+                threadId: command.threadId,
+                activity: {
+                  id: EventId.make(`context-repositories:${command.message.messageId}`),
+                  tone: input.tone,
+                  kind: "context-repositories",
+                  summary: input.summary,
+                  payload: { detail: input.detail },
+                  turnId: null,
+                  createdAt: startedAt,
+                },
+                createdAt: yield* nowIso,
+              });
+            }).pipe(Effect.ignoreCause({ log: true }));
+          const running = (detail: string) =>
+            recordProgress({ summary: "Cloning context repositories", detail, tone: "info" });
+
+          yield* running(`0 of ${total}`);
+          const ensured = yield* ensureTurnContextRepositories(command, cwd, (event) => {
+            switch (event.type) {
+              case "started":
+                current = event.record.nameWithOwner;
+                return running(`${finished} of ${total} · ${current}`);
+              case "clone-progress": {
+                // Each update is a persisted event, so only quarter steps of
+                // the transfer are recorded.
+                if (event.line.stage !== "receiving" || event.line.percent === null) {
+                  return Effect.void;
+                }
+                const step = Math.floor(event.line.percent / 25);
+                if (lastStep.get(event.record.contextId) === step) return Effect.void;
+                lastStep.set(event.record.contextId, step);
+                return running(
+                  `${finished} of ${total} · ${event.record.nameWithOwner} ${event.line.percent}%`,
+                );
+              }
+              case "finished":
+                finished += 1;
+                return running(`${finished} of ${total}`);
+            }
+          });
+          const summary = summarizeContextRepositoryOutcomes(ensured.ensured);
+          yield* recordProgress({
+            summary: summary.ok
+              ? "Context repositories ready"
+              : "Some context repositories are not available",
+            detail: ensured.ensured
+              .map(
+                (record) => `${record.nameWithOwner}: ${describeContextRepositoryOutcome(record)}`,
+              )
+              .join("\n"),
+            tone: summary.ok ? "info" : "error",
+          });
+          return yield* dispatchFromClient(ensured.command);
+        }).pipe(
+          Effect.mapError((cause) =>
+            toDispatchCommandError(cause, "Failed to dispatch orchestration command"),
+          ),
+        );
+
       const dispatchNormalizedCommand = (
         normalizedCommand: OrchestrationCommand,
       ): Effect.Effect<{ readonly sequence: number }, OrchestrationDispatchCommandError> => {
         const dispatchEffect =
           normalizedCommand.type === "thread.turn.start" && normalizedCommand.bootstrap
             ? dispatchBootstrapTurnStart(normalizedCommand)
-            : dispatchFromClient(normalizedCommand).pipe(
-                Effect.tap(({ sequence }) =>
-                  // Returning from thread.create is the handoff point at which
-                  // clients may start resources for the new incarnation. Use
-                  // its event sequence as the exact deletion-cleanup fence.
-                  normalizedCommand.type === "thread.create"
-                    ? threadDeletionReactor.drainThrough(sequence)
-                    : Effect.void,
-                ),
-                Effect.mapError((cause) =>
-                  toDispatchCommandError(cause, "Failed to dispatch orchestration command"),
-                ),
-              );
+            : normalizedCommand.type === "thread.turn.start" &&
+                messageRepositoryRecords(normalizedCommand.message.context).length > 0
+              ? dispatchTurnStartWithContextRepositories(normalizedCommand)
+              : dispatchFromClient(normalizedCommand).pipe(
+                  Effect.tap(({ sequence }) =>
+                    // Returning from thread.create is the handoff point at which
+                    // clients may start resources for the new incarnation. Use
+                    // its event sequence as the exact deletion-cleanup fence.
+                    normalizedCommand.type === "thread.create"
+                      ? threadDeletionReactor.drainThrough(sequence)
+                      : Effect.void,
+                  ),
+                  Effect.mapError((cause) =>
+                    toDispatchCommandError(cause, "Failed to dispatch orchestration command"),
+                  ),
+                );
 
         return startup
           .enqueueCommand(dispatchEffect)
@@ -3121,6 +3408,18 @@ const makeWsRpcLayer = (
             {
               "rpc.aggregate": "source-control",
             },
+          ),
+        [WS_METHODS.contextRepositoriesList]: (input) =>
+          observeRpcEffect(WS_METHODS.contextRepositoriesList, contextRepositories.list(input), {
+            "rpc.aggregate": "source-control",
+          }),
+        [WS_METHODS.contextRepositoriesInspect]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.contextRepositoriesInspect,
+            Effect.flatMap(contextRepositoryDirectory, (directory) =>
+              contextRepositories.inspect({ cwd: input.cwd, directory }),
+            ),
+            { "rpc.aggregate": "source-control" },
           ),
         [WS_METHODS.sourceControlCloneRepository]: (input) =>
           observeRpcEffect(

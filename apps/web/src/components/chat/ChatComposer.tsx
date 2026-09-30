@@ -204,6 +204,7 @@ import {
 import { useOpenPrLink } from "~/lib/openPullRequestLink";
 import { useThreadTabContextRecords } from "~/threadTabContextStore";
 import { useLinearIssueContextRecords } from "~/linearIssueContextStore";
+import { useRepositoryContextRecords } from "~/repositoryContextStore";
 import { useLinkClickHandler } from "~/browser/useOpenLink";
 import {
   collectInlineContextIds,
@@ -1752,6 +1753,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   );
   const composerThreadTabContexts = useThreadTabContextRecords(routeThreadRef?.threadId);
   const composerLinearIssueContexts = useLinearIssueContextRecords(routeThreadRef?.threadId);
+  const composerRepositoryContexts = useRepositoryContextRecords(routeThreadRef?.threadId);
   const composerContextRecords = useMemo(
     () =>
       composerContextRecordsFromDraft({
@@ -1760,6 +1762,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         previewAnnotations: composerPreviewAnnotations,
         threadTabs: composerThreadTabContexts,
         linearIssues: composerLinearIssueContexts,
+        repositories: composerRepositoryContexts,
         images: composerImages,
         files: composerFiles,
         uploadsByImageId,
@@ -1772,6 +1775,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       composerTerminalContexts,
       composerThreadTabContexts,
       composerLinearIssueContexts,
+      composerRepositoryContexts,
       uploadsByImageId,
     ],
   );

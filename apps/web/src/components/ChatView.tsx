@@ -227,6 +227,7 @@ import { RightPanelTabs } from "./RightPanelTabs";
 import { AgentsPanel } from "./AgentsPanel";
 import { LinkPullRequestDialogHost } from "./pullRequest/LinkPullRequestDialog";
 import { LinearIssuePickerHost } from "./chat/LinearIssuePicker";
+import { RepositoryAttachPickerHost } from "./chat/RepositoryAttachPicker";
 import { PullRequestAttachPickerHost } from "./chat/PullRequestAttachPicker";
 import { openStartFromPicker, StartFromPickerHost } from "./chat/StartFromPicker";
 import { ThreadPullRequestsPanel } from "./pullRequest/ThreadPullRequestsPanel";
@@ -332,6 +333,7 @@ import {
   readLinearIssueContextRecords,
   useLinearIssueContextStore,
 } from "../linearIssueContextStore";
+import { readRepositoryContextRecords, useRepositoryContextStore } from "../repositoryContextStore";
 import { useThreadTabRecencyStore } from "../threadTabRecencyStore";
 import { serializeLegacyContextMessage } from "@t3tools/shared/composerContextLegacySend";
 import {
@@ -7378,6 +7380,7 @@ export default function ChatView(props: ChatViewProps) {
       const draft = store.getComposerDraft(composerDraftTarget);
       const tabContexts = readThreadTabContextRecords(activeThread.id);
       const linearIssueContexts = readLinearIssueContextRecords(activeThread.id);
+      const repositoryContexts = readRepositoryContextRecords(activeThread.id);
       const tabRef = await forkThreadTab(connection, {
         environmentId,
         sourceThreadId: activeThread.id,
@@ -7392,6 +7395,9 @@ export default function ChatView(props: ChatViewProps) {
       }
       for (const record of linearIssueContexts) {
         useLinearIssueContextStore.getState().upsert(tabRef.threadId, record);
+      }
+      for (const record of repositoryContexts) {
+        useRepositoryContextStore.getState().upsert(tabRef.threadId, record);
       }
       if (draft) {
         store.addImages(tabRef, draft.images.map(cloneComposerImageForRetry), {
@@ -8122,6 +8128,9 @@ export default function ChatView(props: ChatViewProps) {
     const composerLinearIssuesSnapshot = readLinearIssueContextRecords(threadIdForSend).filter(
       (record) => referencedContextIds.has(record.contextId),
     );
+    const composerRepositoriesSnapshot = readRepositoryContextRecords(threadIdForSend).filter(
+      (record) => referencedContextIds.has(record.contextId),
+    );
     // Expired terminal excerpts are not sent; their chips leave the text with them.
     const messageTextForSend = composerTerminalContexts
       .filter((context) => !composerTerminalContextsSnapshot.includes(context))
@@ -8141,6 +8150,7 @@ export default function ChatView(props: ChatViewProps) {
         previewAnnotations: composerPreviewAnnotationsSnapshot,
         threadTabs: composerThreadTabsSnapshot,
         linearIssues: composerLinearIssuesSnapshot,
+        repositories: composerRepositoriesSnapshot,
         attachments: composerAttachmentsSnapshot.map((attachment, index) => ({
           attachment,
           attachmentId: attachmentIds[index] ?? attachment.id,
@@ -8821,6 +8831,7 @@ export default function ChatView(props: ChatViewProps) {
         turnStartSucceeded = true;
         useThreadTabContextStore.getState().clear(threadIdForSend);
         useLinearIssueContextStore.getState().clear(threadIdForSend);
+        useRepositoryContextStore.getState().clear(threadIdForSend);
         // The turn is under way and will spend quota, so that thread's limits
         // snapshot is stale. Uploads may have outlasted a navigation, so only
         // the sending thread's panel clears.
@@ -10863,6 +10874,9 @@ export default function ChatView(props: ChatViewProps) {
       </AlertDialog>
       <LinkPullRequestDialogHost />
       <LinearIssuePickerHost />
+      <RepositoryAttachPickerHost
+        workspaceCwd={activeWorktreePath ?? (sendEnvMode === "worktree" ? null : activeProjectCwd)}
+      />
       {supportsPullRequests && activeProject ? (
         <PullRequestAttachPickerHost
           environmentId={activeProject.environmentId}

@@ -109,6 +109,8 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.sourceControlLookupRepository]: AuthOrchestrationReadScope,
   [WS_METHODS.sourceControlCloneRepository]: AuthOrchestrationOperateScope,
   [WS_METHODS.sourceControlPublishRepository]: AuthOrchestrationOperateScope,
+  [WS_METHODS.contextRepositoriesList]: AuthOrchestrationReadScope,
+  [WS_METHODS.contextRepositoriesInspect]: AuthOrchestrationReadScope,
   // Reading issues is a read; connecting or disconnecting the environment's
   // Linear account changes what every client of this environment can reach.
   [WS_METHODS.linearSubscribeState]: AuthOrchestrationReadScope,

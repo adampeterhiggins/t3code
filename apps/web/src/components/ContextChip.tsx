@@ -46,6 +46,7 @@ const contextChipVariants = cva(
         citation: "[--context-chip-accent:oklch(0.62_0.16_259)]",
         "thread-tab": "[--context-chip-accent:oklch(0.62_0.134_120)]",
         "linear-issue": "[--context-chip-accent:oklch(0.62_0.16_270)]",
+        repository: "[--context-chip-accent:oklch(0.62_0.12_195)]",
       },
       // Colors live in compoundVariants below so they come after the kind colors.
       state: {
@@ -73,6 +74,7 @@ const contextChipVariants = cva(
           "citation",
           "thread-tab",
           "linear-issue",
+          "repository",
         ],
         className:
           "[--context-chip-border:color-mix(in_oklab,var(--context-chip-accent)_34%,var(--contrast-border))] [--context-chip-border-hover:color-mix(in_oklab,var(--context-chip-accent)_48%,var(--contrast-border))] [--context-chip-foreground:color-mix(in_oklab,var(--context-chip-accent)_22%,var(--contrast-foreground))] border-(--context-chip-border) bg-(--context-chip-accent)/11 text-(--context-chip-foreground) [button:enabled&,a&]:hover:border-(--context-chip-border-hover) [button:enabled&,a&]:hover:bg-(--context-chip-accent)/17",

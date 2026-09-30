@@ -115,6 +115,7 @@ import * as VcsProcess from "./vcs/VcsProcess.ts";
 import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
 import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
 import * as ProjectCloneTracker from "./project/ProjectCloneTracker.ts";
+import * as ContextRepositories from "./contextRepositories/ContextRepositories.ts";
 import * as GitWorkflowService from "./git/GitWorkflowService.ts";
 import * as ReviewService from "./review/ReviewService.ts";
 import * as SourceControlProviderRegistry from "./sourceControl/SourceControlProviderRegistry.ts";
@@ -403,6 +404,12 @@ const ProjectCloneTrackerLayerLive = ProjectCloneTracker.layer.pipe(
   Layer.provide(SourceControlRepositoryServiceLayerLive),
 );
 
+const ContextRepositoriesLayerLive = ContextRepositories.layer.pipe(
+  Layer.provide(SourceControlRepositoryServiceLayerLive),
+  Layer.provide(GitVcsDriver.layer),
+  Layer.provide(GitHubCli.layer),
+);
+
 const ReviewLayerLive = ReviewService.layer.pipe(
   Layer.provideMerge(GitVcsDriver.layer),
   Layer.provideMerge(VcsDriverRegistryLayerLive),
@@ -416,6 +423,7 @@ const VcsLayerLive = Layer.empty.pipe(
   Layer.provideMerge(ReviewLayerLive),
   Layer.provideMerge(SourceControlRepositoryServiceLayerLive),
   Layer.provideMerge(ProjectCloneTrackerLayerLive),
+  Layer.provideMerge(ContextRepositoriesLayerLive),
   Layer.provideMerge(
     VcsStatusBroadcaster.layer.pipe(
       Layer.provide(GitWorkflowLayerLive),

@@ -41,6 +41,7 @@ import {
 import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
 import { openLinearIssuePicker } from "./chat/LinearIssuePicker";
 import { openPullRequestAttachPicker } from "./chat/PullRequestAttachPicker";
+import { openRepositoryAttachPicker } from "./chat/RepositoryAttachPicker";
 import { openStartFromPicker } from "./chat/StartFromPicker";
 import * as Option from "effect/Option";
 import {
@@ -49,6 +50,7 @@ import {
   CornerLeftUpIcon,
   DownloadIcon,
   FileSearchIcon,
+  FolderGit2Icon,
   FolderIcon,
   FolderPlusIcon,
   GitBranchIcon,
@@ -1905,6 +1907,16 @@ function OpenCommandPaletteDialog(props: {
         },
       });
     }
+    actionItems.push({
+      kind: "action",
+      value: "action:attach-repository",
+      searchTerms: ["repository", "repo", "clone", "context", "ctxclone", "attach"],
+      title: "Attach repository",
+      icon: <FolderGit2Icon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        openRepositoryAttachPicker(composerThreadRef);
+      },
+    });
   }
 
   actionItems.push({

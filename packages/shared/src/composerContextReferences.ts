@@ -3,8 +3,10 @@ import {
   type ComposerContextId,
   type ComposerContextKind,
   type ComposerContextRecord,
+  type ContextRepositoryGitStatus,
   type ElementContextDetails,
   type KnownComposerContextRecord,
+  type RepositoryContextRecord,
 } from "@t3tools/contracts";
 
 /**
@@ -242,7 +244,60 @@ function formatComposerContextProviderPayload(record: KnownComposerContextRecord
         `state: ${record.stateName}`,
         record.markdown,
       ].join("\n");
+    case "repository":
+      return formatRepositoryPayload(record);
   }
+}
+
+/** Where the clone is and what the server did with it, so the agent never assumes a clone exists. */
+function formatRepositoryPayload(record: RepositoryContextRecord): string {
+  const lines = [`repository: ${record.nameWithOwner}`, `remote: ${record.remoteUrl}`];
+  const outcome = record.outcome;
+  if (!outcome) {
+    lines.push(
+      `path: .context/${record.directoryName}`,
+      "status: not checked; the clone may be missing",
+    );
+    return lines.join("\n");
+  }
+  lines.push(`path: ${outcome.path}`);
+  switch (outcome.status) {
+    case "cloned":
+      lines.push("status: cloned just now for this message");
+      break;
+    case "present":
+      lines.push("status: already cloned; left as it was, not pulled");
+      break;
+    case "conflict":
+      lines.push("status: not cloned; the folder already exists and is not a clone of this remote");
+      break;
+    case "failed":
+      lines.push("status: clone failed; the repository is not available locally");
+      break;
+  }
+  if (outcome.detail) lines.push(`detail: ${outcome.detail}`);
+  if (outcome.git) lines.push(`git: ${formatRepositoryGitStatus(outcome.git, outcome.fetched)}`);
+  return lines.join("\n");
+}
+
+function formatRepositoryGitStatus(git: ContextRepositoryGitStatus, fetched: boolean): string {
+  const parts = [
+    git.branch ? `on ${git.branch}` : "detached HEAD",
+    ...(git.headSha ? [`at ${git.headSha.slice(0, 12)}`] : []),
+  ];
+  if (git.upstream) {
+    parts.push(
+      `${git.ahead} ahead and ${git.behind} behind ${git.upstream}${fetched ? "" : " (as of the last fetch)"}`,
+    );
+  } else {
+    parts.push("no upstream");
+  }
+  parts.push(
+    git.changedFiles === 0
+      ? "clean working tree"
+      : `${git.changedFiles} changed file${git.changedFiles === 1 ? "" : "s"}`,
+  );
+  return parts.join(", ");
 }
 
 function formatEnvelopeEntry(

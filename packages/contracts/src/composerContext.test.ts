@@ -126,6 +126,28 @@ const knownRecords: Record<(typeof COMPOSER_CONTEXT_KINDS)[number], Record<strin
     stateName: "In Progress",
     markdown: "# ENG-123: Fix login\n\n## Description\nThe button does nothing.",
   },
+  repository: {
+    ...base,
+    kind: "repository",
+    label: "acme/api",
+    nameWithOwner: "acme/api",
+    remoteUrl: "https://github.com/acme/api",
+    directoryName: "api",
+    outcome: {
+      status: "present",
+      path: ".context/api",
+      detail: null,
+      git: {
+        branch: "main",
+        headSha: "0123456789abcdef",
+        upstream: "origin/main",
+        ahead: 0,
+        behind: 3,
+        changedFiles: 1,
+      },
+      fetched: true,
+    },
+  },
 };
 
 describe("ComposerContextRecord", () => {
@@ -169,6 +191,12 @@ describe("ComposerContextRecord", () => {
         ],
       }).records,
     ).toEqual([{ ...knownRecords.skill, contextId: "ctx_skill" }]);
+  });
+
+  it("keeps a repository folder inside the context directory", () => {
+    for (const directoryName of ["..", ".", "a/b", "a\\b", ""]) {
+      expect(Option.isNone(decodeRecord({ ...knownRecords.repository, directoryName }))).toBe(true);
+    }
   });
 
   it("rejects bad ids and versions", () => {

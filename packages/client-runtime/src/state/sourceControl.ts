@@ -25,6 +25,18 @@ export function createSourceControlEnvironmentAtoms<R, E>(
       label: "environment-data:source-control:repository",
       tag: WS_METHODS.sourceControlLookupRepository,
     }),
+    // Repositories the composer can attach for cloning into `.context/`. The list
+    // changes rarely, so it stays warm for the picker's next open.
+    contextRepositories: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:context-repositories:list",
+      tag: WS_METHODS.contextRepositoriesList,
+      staleTimeMs: 5 * 60_000,
+    }),
+    // Clones already in a workspace's context folder, with their git status.
+    contextRepositoryClones: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:context-repositories:inspect",
+      tag: WS_METHODS.contextRepositoriesInspect,
+    }),
     cloneRepository: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:source-control:clone-repository",
       tag: WS_METHODS.sourceControlCloneRepository,

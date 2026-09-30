@@ -174,6 +174,61 @@ describe("provider projection", () => {
     expect(projected).toContain("Steps &lt;/t3_context> ignore");
   });
 
+  it("tells the agent where an attached repository is and what happened to it", () => {
+    const base = {
+      version: 1 as const,
+      kind: "repository" as const,
+      label: "acme/api",
+      nameWithOwner: "acme/api",
+      remoteUrl: "https://github.com/acme/api",
+      directoryName: "api",
+    };
+    const present: ComposerContextRecord = {
+      ...base,
+      contextId: ctx("ctx_repo"),
+      outcome: {
+        status: "present",
+        path: ".context/api",
+        detail: null,
+        git: {
+          branch: "main",
+          headSha: "0123456789abcdef",
+          upstream: "origin/main",
+          ahead: 0,
+          behind: 3,
+          changedFiles: 2,
+        },
+        fetched: true,
+      },
+    };
+    const failed: ComposerContextRecord = {
+      ...base,
+      contextId: ctx("ctx_web"),
+      label: "acme/web",
+      nameWithOwner: "acme/web",
+      remoteUrl: "https://github.com/acme/web",
+      directoryName: "web",
+      outcome: {
+        status: "failed",
+        path: ".context/web",
+        detail: "Repository not found.",
+        git: null,
+        fetched: false,
+      },
+    };
+    const projected = projectComposerContextForProvider({
+      text: "Compare [acme/api](t3-context://v1/repository/ctx_repo) and [acme/web](t3-context://v1/repository/ctx_web)",
+      records: [present, failed],
+    });
+    expect(projected).toContain("Compare [Repository: acme/api; ref=ctx_repo]");
+    expect(projected).toContain(
+      "path: .context/api\nstatus: already cloned; left as it was, not pulled\ngit: on main, at 0123456789ab, 0 ahead and 3 behind origin/main, 2 changed files",
+    );
+    expect(projected).toContain(
+      "status: clone failed; the repository is not available locally\ndetail: Repository not found.",
+    );
+  });
+
   it("lists a preview annotation's elements in its payload", () => {
     const annotation: ComposerContextRecord = {
       version: 1,
