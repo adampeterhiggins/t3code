@@ -1,6 +1,6 @@
 import * as Schema from "effect/Schema";
 
-import { IsoDateTime, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { IsoDateTime, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 
 /** Longest rendered issue body sent to a client or inlined into a prompt. */
 export const LINEAR_ISSUE_MARKDOWN_MAX_CHARS = 32_000;
@@ -144,6 +144,36 @@ export const LinearIssueContext = Schema.Struct({
   markdown: Schema.String.check(Schema.isMaxLength(LINEAR_ISSUE_MARKDOWN_MAX_CHARS)),
 });
 export type LinearIssueContext = typeof LinearIssueContext.Type;
+
+/**
+ * A Linear issue linked to a thread and its chat tabs. `groupId` is the tab group's id (the
+ * thread itself when it has no tabs) and `threadIds` lists the group's threads. The identifier,
+ * title, and url are copied when linked; clients read the issue's status live.
+ */
+export const LinearThreadLink = Schema.Struct({
+  groupId: ThreadId,
+  threadIds: Schema.Array(ThreadId),
+  issueId: Schema.String,
+  identifier: Schema.String,
+  title: Schema.String,
+  url: Schema.String,
+  linkedAt: IsoDateTime,
+});
+export type LinearThreadLink = typeof LinearThreadLink.Type;
+
+export const LinearThreadLinks = Schema.Array(LinearThreadLink);
+export type LinearThreadLinks = typeof LinearThreadLinks.Type;
+
+/** Links the thread's tab group to an issue, replacing any issue it was linked to. */
+export const LinearLinkThreadInput = Schema.Struct({
+  threadId: ThreadId,
+  /** Issue UUID or identifier such as `ENG-123`. */
+  issueId: TrimmedNonEmptyString.check(Schema.isMaxLength(128)),
+});
+export type LinearLinkThreadInput = typeof LinearLinkThreadInput.Type;
+
+export const LinearUnlinkThreadInput = Schema.Struct({ threadId: ThreadId });
+export type LinearUnlinkThreadInput = typeof LinearUnlinkThreadInput.Type;
 
 export const LinearErrorReason = Schema.Literals([
   "not-connected",

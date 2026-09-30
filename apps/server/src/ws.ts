@@ -123,6 +123,7 @@ import * as ProviderMaintenanceRunner from "./provider/providerMaintenanceRunner
 import { ProviderAuthService } from "./provider/Services/ProviderAuthService.ts";
 import { LinearApi } from "./linear/LinearApi.ts";
 import { LinearAuth } from "./linear/LinearAuth.ts";
+import { LinearThreadLinks } from "./linear/LinearThreadLinks.ts";
 import { ProviderInstanceRegistry } from "./provider/Services/ProviderInstanceRegistry.ts";
 import { makeProviderInstallation } from "./provider/providerInstallation.ts";
 import * as ServerSelfUpdate from "./cloud/selfUpdate.ts";
@@ -623,6 +624,7 @@ const makeWsRpcLayer = (
       const providerAuth = yield* ProviderAuthService;
       const linearAuth = yield* LinearAuth;
       const linearApi = yield* LinearApi;
+      const linearThreadLinks = yield* LinearThreadLinks;
       const providerInstances = yield* ProviderInstanceRegistry;
       const providerInstallation = yield* makeProviderInstallation();
       const serverUpdate = yield* ServerSelfUpdate.ServerSelfUpdate;
@@ -3520,6 +3522,24 @@ const makeWsRpcLayer = (
           observeRpcEffect(WS_METHODS.linearGetIssue, linearApi.getIssue(input), {
             "rpc.aggregate": "linear",
           }),
+        [WS_METHODS.linearGetIssueSummary]: (input) =>
+          observeRpcEffect(WS_METHODS.linearGetIssueSummary, linearApi.getIssueSummary(input), {
+            "rpc.aggregate": "linear",
+          }),
+        [WS_METHODS.linearSubscribeThreadLinks]: (_input) =>
+          observeRpcStream(WS_METHODS.linearSubscribeThreadLinks, linearThreadLinks.links, {
+            "rpc.aggregate": "linear",
+          }),
+        [WS_METHODS.linearLinkThread]: (input) =>
+          observeRpcEffect(WS_METHODS.linearLinkThread, linearThreadLinks.link(input), {
+            "rpc.aggregate": "linear",
+          }),
+        [WS_METHODS.linearUnlinkThread]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.linearUnlinkThread,
+            linearThreadLinks.unlink(input).pipe(Effect.as({})),
+            { "rpc.aggregate": "linear" },
+          ),
         [WS_METHODS.sourceControlPublishRepository]: (input) =>
           observeRpcEffect(
             WS_METHODS.sourceControlPublishRepository,

@@ -318,6 +318,13 @@ capped markdown when it is attached, and that snapshot is inlined into the promp
 provider. An **Open Linear links in** setting can send issue links to the Linear desktop app
 (`linear://`), which the desktop shell's external-URL allowlist permits.
 
+A thread's chat-tab group can also be linked to one issue, from the thread menu or the command
+palette, and starting a thread from an issue links it. The link lives in the fork-owned
+`fork_linear_thread_links` table, keyed by tab group, and streams to clients over
+`linear.subscribeThreadLinks`. Only the issue's identity is stored; the chat header chip reads its
+status live, and offers open, change, and unlink. Mobile shows the same chip beside the tab
+switcher (`apps/mobile/src/features/threads/ThreadLinearLink.tsx`).
+
 The attach menu's pull request option, also in the web command palette, opens a searchable picker
 ([`PullRequestAttachPicker.tsx`](../apps/web/src/components/chat/PullRequestAttachPicker.tsx)) and
 inserts the same context chip as picking the pull request from the `#` menu. It is not a thread
@@ -330,6 +337,8 @@ Code: `apps/server/src/linear/`, `packages/contracts/src/linear.ts`, `LinearIssu
 `apps/web/src/components/chat/ComposerAttachMenu.tsx`,
 `apps/web/src/components/chat/useComposerLinearIssueItems.ts`,
 `apps/web/src/components/chat/LinearIssueFilters.tsx`,
+`apps/web/src/components/chat/LinearThreadLink.tsx`,
+`apps/server/src/linear/LinearThreadLinks.ts`,
 `apps/mobile/src/components/LinearIssuePickerSheet.tsx`, and
 `apps/mobile/src/features/settings/SettingsLinearRouteScreen.tsx`. User guide:
 [linear.md](./user/linear.md).
@@ -347,14 +356,14 @@ filter bar, whose view it shares.
   is skipped. A branch already checked out in the project's own checkout is refused.
 - A branch is worked on where it is already checked out. Any other branch becomes the base of a new
   worktree.
-- An issue is attached as a Linear context chip (see [Linear integration](#linear-integration)).
-  Only Linear issues are offered.
+- An issue is attached as a Linear context chip and linked to the new thread (see
+  [Linear integration](#linear-integration)). Only Linear issues are offered.
 
-A pull request or branch that a live thread is already on is marked **In use**. Picking it asks
-whether to open that thread or start a second one. The default branch never counts as in use.
-Hovering a row previews it: a pull request's description, a branch's full name and where it would
-run (both listing threads already on it), or the issue snapshot an attached chip would carry.
-Mobile does not have the picker.
+A pull request or branch that a live thread is already on, or an issue linked to a live thread,
+is marked **In use**. Picking it asks whether to open that thread or start a second one. The
+default branch never counts as in use. Hovering a row previews it: a pull request's description,
+a branch's full name and where it would run (both listing threads already on it), or the issue
+snapshot an attached chip would carry. Mobile does not have the picker.
 
 Code: `apps/web/src/components/chat/StartFromPicker.tsx`, `StartFromPicker.logic.ts` and
 `StartFromPreviews.tsx`, the button

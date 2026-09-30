@@ -1,5 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { threadsForLinearIssue } from "@t3tools/client-runtime/state/linear";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -57,7 +58,8 @@ import {
   useLinearIssuePickerView,
   useLinearIssuePickerViewStore,
 } from "./LinearIssueFilters";
-import { useAttachLinearIssue } from "./LinearIssuePicker";
+import { useAttachLinearIssue, useLinkLinearIssue } from "./LinearIssuePicker";
+import { useLinearThreadLinks } from "./LinearThreadLink";
 import {
   localBranchName,
   resolveBranchStart,
@@ -110,7 +112,7 @@ interface StartFromPickerProps {
   readonly projectRef: ScopedProjectRef;
   readonly projectId: ProjectId;
   readonly workspaceRoot: string;
-  /** The draft's thread, which a picked Linear issue is attached to. */
+  /** The draft's thread, which a picked Linear issue is attached and linked to. */
   readonly threadRef: ScopedThreadRef;
   /** Point the draft at a checkout: a picked branch's, or a picked pull request's. */
   readonly onCheckout: (checkout: ReturnType<typeof resolveBranchStart>) => void;
@@ -133,6 +135,7 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
   const { environmentId, projectRef, projectId, workspaceRoot, threadRef } = props;
   const navigate = useNavigate();
   const attachIssue = useAttachLinearIssue();
+  const linkIssue = useLinkLinearIssue();
   const [tab, setTab] = useState<StartFromTab>("pull-requests");
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
@@ -213,6 +216,7 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
   const latestIssues = issuesQuery.data?.issues;
   if (latestIssues !== undefined && latestIssues !== shownIssues) setShownIssues(latestIssues);
   const issues = latestIssues ?? shownIssues;
+  const linearLinks = useLinearThreadLinks(tab === "issues" ? environmentId : null);
 
   const close = () => {
     if (!busy) closeStartFromPicker();
@@ -281,12 +285,17 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
       props.onCheckout(resolveBranchStart(ref, workspaceRoot));
     });
 
-  const selectIssue = async (issue: LinearIssueSummary) => {
-    setBusy(true);
-    const attached = await attachIssue(threadRef, issue.id);
-    setBusy(false);
-    if (attached) closeStartFromPicker();
-  };
+  // The draft is linked as well as given the chip, so picking the issue again offers this thread.
+  const selectIssue = (issue: LinearIssueSummary) =>
+    startOrAsk(issue.identifier, threadsForLinearIssue(threads, linearLinks, issue.id), () => {
+      void (async () => {
+        setBusy(true);
+        const attached = await attachIssue(threadRef, issue.id);
+        if (attached) await linkIssue(threadRef, issue.id);
+        setBusy(false);
+        if (attached) closeStartFromPicker();
+      })();
+    });
 
   const openExistingThread = (thread: EnvironmentThreadShell) => {
     setPrompt(null);
@@ -443,32 +452,40 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
             : (issuesQuery.error ?? "No issues match these filters."),
       <CommandGroup items={[...issues]}>
         <CommandCollection>
-          {(issue: LinearIssueSummary) => (
-            <CommandItem
-              key={issue.id}
-              value={issue.id}
-              disabled={busy}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => void selectIssue(issue)}
-            >
-              <LinearIssueHoverPreview
-                environmentId={environmentId}
-                issueId={issue.id}
-                trigger={
-                  <span className="flex min-w-0 flex-1 items-center gap-2">
-                    <LinearIcon className="size-4 shrink-0 text-muted-foreground" />
-                    <span className="w-20 shrink-0 truncate text-muted-foreground text-xs tabular-nums">
-                      {issue.identifier}
+          {(issue: LinearIssueSummary) => {
+            const inUse = threadsForLinearIssue(threads, linearLinks, issue.id);
+            return (
+              <CommandItem
+                key={issue.id}
+                value={issue.id}
+                disabled={busy}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => selectIssue(issue)}
+              >
+                <LinearIssueHoverPreview
+                  environmentId={environmentId}
+                  issueId={issue.id}
+                  trigger={
+                    <span className="flex min-w-0 flex-1 items-center gap-2">
+                      <LinearIcon className="size-4 shrink-0 text-muted-foreground" />
+                      <span className="w-20 shrink-0 truncate text-muted-foreground text-xs tabular-nums">
+                        {issue.identifier}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-sm">{issue.title}</span>
+                      {inUse.length > 0 ? (
+                        <Badge variant="outline" size="sm">
+                          In use
+                        </Badge>
+                      ) : null}
+                      <span className="w-24 shrink-0 truncate text-end text-muted-foreground/70 text-xs">
+                        {issue.stateName}
+                      </span>
                     </span>
-                    <span className="min-w-0 flex-1 truncate text-sm">{issue.title}</span>
-                    <span className="w-24 shrink-0 truncate text-end text-muted-foreground/70 text-xs">
-                      {issue.stateName}
-                    </span>
-                  </span>
-                }
-              />
-            </CommandItem>
-          )}
+                  }
+                />
+              </CommandItem>
+            );
+          }}
         </CommandCollection>
       </CommandGroup>,
     );

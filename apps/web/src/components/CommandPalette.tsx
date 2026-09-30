@@ -40,6 +40,7 @@ import {
 } from "@t3tools/contracts";
 import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
 import { openLinearIssuePicker } from "./chat/LinearIssuePicker";
+import { useThreadLinearLink, useUnlinkLinearIssue } from "./chat/LinearThreadLink";
 import { openPullRequestAttachPicker } from "./chat/PullRequestAttachPicker";
 import { openRepositoryAttachPicker } from "./chat/RepositoryAttachPicker";
 import { openStartFromPicker } from "./chat/StartFromPicker";
@@ -750,6 +751,14 @@ function OpenCommandPaletteDialog(props: {
         ? scopeThreadRef(activeThread.environmentId, activeThread.id)
         : null;
   const openPanelPullRequestUrl = useOpenPanelPullRequestUrl(referenceThreadRef);
+  const activeLinearLink = useThreadLinearLink(
+    activeThread
+      ? scopeThreadRef(activeThread.environmentId, activeThread.id)
+      : activeDraftThread
+        ? scopeThreadRef(activeDraftThread.environmentId, activeDraftThread.threadId)
+        : null,
+  );
+  const unlinkLinearIssue = useUnlinkLinearIssue();
   const activeThreadServerConfig = useServerConfigs().get(
     activeThread?.environmentId ?? ("" as EnvironmentId),
   );
@@ -1892,6 +1901,30 @@ function OpenCommandPaletteDialog(props: {
         openLinearIssuePicker(composerThreadRef);
       },
     });
+    actionItems.push({
+      kind: "action",
+      value: "action:link-linear-issue",
+      searchTerms: ["linear", "issue", "ticket", "link", "thread"],
+      title: activeLinearLink
+        ? `Change linked Linear issue (${activeLinearLink.identifier})`
+        : "Link Linear issue",
+      icon: <LinearIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        openLinearIssuePicker(composerThreadRef, "link");
+      },
+    });
+    if (activeLinearLink) {
+      actionItems.push({
+        kind: "action",
+        value: "action:unlink-linear-issue",
+        searchTerms: ["linear", "issue", "ticket", "unlink", "remove"],
+        title: `Unlink Linear issue ${activeLinearLink.identifier}`,
+        icon: <LinearIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          await unlinkLinearIssue(composerThreadRef);
+        },
+      });
+    }
     const composerEnvironment = environments.find(
       (environment) => environment.environmentId === composerThreadRef.environmentId,
     );

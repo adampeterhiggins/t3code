@@ -2,6 +2,8 @@ import {
   type ComposerContextId,
   type LinearIssueContext,
   type LinearIssueContextRecord,
+  type LinearThreadLink,
+  type ThreadId,
   WS_METHODS,
 } from "@t3tools/contracts";
 import { sanitizeComposerContextLabel } from "@t3tools/shared/composerContextReferences";
@@ -63,7 +65,58 @@ export function createLinearEnvironmentAtoms<R, E>(
       label: "environment-data:linear:get-issue",
       tag: WS_METHODS.linearGetIssue,
     }),
+    // A linked issue's live status, without the body and comments.
+    issueSummary: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:linear:issue-summary",
+      tag: WS_METHODS.linearGetIssueSummary,
+      staleTimeMs: 60_000,
+    }),
+    // Every thread group's linked issue in the environment.
+    threadLinks: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:linear:thread-links",
+      tag: WS_METHODS.linearSubscribeThreadLinks,
+    }),
+    linkThread: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:linear:link-thread",
+      tag: WS_METHODS.linearLinkThread,
+    }),
+    unlinkThread: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:linear:unlink-thread",
+      tag: WS_METHODS.linearUnlinkThread,
+    }),
   };
+}
+
+/** The issue linked to the thread's tab group, if any. */
+export function linearLinkForThread(
+  links: ReadonlyArray<LinearThreadLink> | null | undefined,
+  threadId: ThreadId,
+): LinearThreadLink | null {
+  return links?.find((link) => link.threadIds.includes(threadId)) ?? null;
+}
+
+/**
+ * Live threads in a group linked to the issue, newest first. The picker offers to open these
+ * instead of starting another thread.
+ */
+export function threadsForLinearIssue<
+  T extends {
+    readonly id: ThreadId;
+    readonly archivedAt: string | null;
+    readonly updatedAt: string;
+  },
+>(
+  threads: ReadonlyArray<T>,
+  links: ReadonlyArray<LinearThreadLink> | null | undefined,
+  issueId: string,
+): T[] {
+  const linkedThreadIds = new Set(
+    (links ?? []).filter((link) => link.issueId === issueId).flatMap((link) => link.threadIds),
+  );
+  if (linkedThreadIds.size === 0) return [];
+  return threads
+    .filter((thread) => thread.archivedAt === null && linkedThreadIds.has(thread.id))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
 /**

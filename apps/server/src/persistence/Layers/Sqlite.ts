@@ -7,6 +7,7 @@ import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 
 import { runMigrations } from "../Migrations.ts";
 import { ensureThreadTabsSchema } from "../../threadTabs/schema.ts";
+import { ensureLinearThreadLinksSchema } from "../../linear/threadLinksSchema.ts";
 import { ServerConfig } from "../../config.ts";
 
 // Size the -wal file is cut back to on the first commit after a WAL reset.
@@ -24,6 +25,7 @@ const setup = Layer.effectDiscard(
     yield* sql.unsafe(`PRAGMA journal_size_limit = ${WAL_SIZE_LIMIT_BYTES};`);
     yield* runMigrations();
     yield* ensureThreadTabsSchema();
+    yield* ensureLinearThreadLinksSchema();
   }),
 );
 

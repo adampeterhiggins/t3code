@@ -1,4 +1,4 @@
-import type { EnvironmentId, LinearIssueSummary } from "@t3tools/contracts";
+import type { EnvironmentId, LinearIssueSummary, ThreadId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { linearIssueContextRecord } from "@t3tools/client-runtime/state/linear";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
@@ -36,27 +36,46 @@ function linearErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message.trim() ? error.message : fallback;
 }
 
+/** Attach inserts the issue into a composer draft; link links it to the thread's tab group. */
+export type LinearIssuePickerTarget =
+  | {
+      readonly mode?: "attach";
+      readonly environmentId: EnvironmentId;
+      readonly draftKey: string;
+    }
+  | {
+      readonly mode: "link";
+      readonly environmentId: EnvironmentId;
+      readonly threadId: ThreadId;
+    };
+
+type OpenedLinearIssuePicker =
+  | {
+      readonly mode: "attach";
+      readonly environmentId: EnvironmentId;
+      readonly draftKey: string;
+      readonly insertion: ComposerDraftInsertion;
+    }
+  | { readonly mode: "link"; readonly environmentId: EnvironmentId; readonly threadId: ThreadId };
+
 /**
- * The composer's Linear action. The owner renders `sheet` somewhere that outlives composer
- * focus: opening the sheet blurs the editor, which can unmount a focus-dependent toolbar.
+ * A Linear issue picker. The owner renders `sheet` somewhere that outlives composer focus:
+ * opening the sheet blurs the editor, which can unmount a focus-dependent toolbar.
  */
-export function useLinearIssuePicker(
-  target: { readonly environmentId: EnvironmentId; readonly draftKey: string } | null,
-): { readonly open: () => void; readonly sheet: ReactNode } {
+export function useLinearIssuePicker(target: LinearIssuePickerTarget | null): {
+  readonly open: () => void;
+  readonly sheet: ReactNode;
+} {
   const navigation = useNavigation();
   const connection = useEnvironmentQuery(
     target
       ? linearEnvironment.connection({ environmentId: target.environmentId, input: {} })
       : null,
   );
-  const [opened, setOpened] = useState<{
-    readonly environmentId: EnvironmentId;
-    readonly draftKey: string;
-    readonly insertion: ComposerDraftInsertion;
-  } | null>(null);
+  const [opened, setOpened] = useState<OpenedLinearIssuePicker | null>(null);
   const open = () => {
     if (!target) return;
-    // Connecting is a settings task; the picker only attaches.
+    // Connecting is a settings task; the picker only picks.
     if (connection.data && connection.data.phase !== "connected") {
       navigation.navigate("SettingsSheet", {
         screen: "SettingsContent",
@@ -64,7 +83,15 @@ export function useLinearIssuePicker(
       });
       return;
     }
-    setOpened({ ...target, insertion: captureComposerDraftInsertion(target.draftKey) });
+    setOpened(
+      target.mode === "link"
+        ? target
+        : {
+            ...target,
+            mode: "attach",
+            insertion: captureComposerDraftInsertion(target.draftKey),
+          },
+    );
   };
   return {
     open,
@@ -72,13 +99,11 @@ export function useLinearIssuePicker(
   };
 }
 
-/** Attaches a Linear issue at the caret the composer had when the sheet opened. */
-function LinearIssuePickerSheet(props: {
-  readonly environmentId: EnvironmentId;
-  readonly draftKey: string;
-  readonly insertion: ComposerDraftInsertion;
-  readonly onClose: () => void;
-}) {
+/**
+ * Attaches a Linear issue at the caret the composer had when the sheet opened, or links one to
+ * the thread's tab group.
+ */
+function LinearIssuePickerSheet(props: OpenedLinearIssuePicker & { readonly onClose: () => void }) {
   const insets = useSafeAreaInsets();
   const connection = useEnvironmentQuery(
     linearEnvironment.connection({ environmentId: props.environmentId, input: {} }),
@@ -95,7 +120,9 @@ function LinearIssuePickerSheet(props: {
         }
       >
         <View className="flex-row items-center justify-between p-4">
-          <Text className="text-lg text-foreground">Linear issue</Text>
+          <Text className="text-lg text-foreground">
+            {props.mode === "link" ? "Link Linear issue" : "Linear issue"}
+          </Text>
           <Pressable accessibilityRole="button" onPress={props.onClose} className="p-3">
             <Text className="text-foreground">Cancel</Text>
           </Pressable>
@@ -118,12 +145,7 @@ function LinearIssuePickerSheet(props: {
   );
 }
 
-function LinearIssueSearch(props: {
-  readonly environmentId: EnvironmentId;
-  readonly draftKey: string;
-  readonly insertion: ComposerDraftInsertion;
-  readonly onClose: () => void;
-}) {
+function LinearIssueSearch(props: OpenedLinearIssuePicker & { readonly onClose: () => void }) {
   const insets = useSafeAreaInsets();
   const [query, setQuery] = useState("");
   const trimmed = query.trim();
@@ -139,6 +161,10 @@ function LinearIssueSearch(props: {
     label: "linear issue fetch",
     reportFailure: false,
   });
+  const linkThread = useAtomCommand(linearEnvironment.linkThread, {
+    label: "linear thread link",
+    reportFailure: false,
+  });
   const [attaching, setAttaching] = useState<string | null>(null);
   const issues = Option.getOrNull(AsyncResult.value(result))?.issues ?? [];
   const pending = settled !== trimmed || result.waiting;
@@ -151,6 +177,21 @@ function LinearIssueSearch(props: {
     if (attaching) return;
     setAttaching(issue.id);
     try {
+      if (props.mode === "link") {
+        const linked = await linkThread({
+          environmentId: props.environmentId,
+          input: { threadId: props.threadId, issueId: issue.id },
+        });
+        if (linked._tag === "Failure") {
+          Alert.alert(
+            "Could not link issue",
+            linearErrorMessage(squashAtomCommandFailure(linked), "Try again."),
+          );
+          return;
+        }
+        props.onClose();
+        return;
+      }
       const fetched = await getIssue({
         environmentId: props.environmentId,
         input: { id: issue.id },

@@ -36,6 +36,7 @@ import ProjectScriptsControl, {
   type ProjectScriptActionResult,
 } from "../ProjectScriptsControl";
 import { OpenInPicker } from "./OpenInPicker";
+import { LinearThreadLinkChip } from "./LinearThreadLink";
 import { ThreadTabMenu } from "./ThreadTabs";
 import { useThreadShell } from "../../state/entities";
 import { useRemoteOpenState, type RemoteOpenMode } from "../../remoteOpen";
@@ -527,6 +528,9 @@ export const ChatHeader = memo(function ChatHeader({
           </>
         ) : null}
       </WorkspaceBreadcrumb>
+      <LinearThreadLinkChip
+        threadRef={scopeThreadRef(activeThreadEnvironmentId, currentThreadId)}
+      />
       <div
         ref={headerActionsRef}
         data-chat-header-actions

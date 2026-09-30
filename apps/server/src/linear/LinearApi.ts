@@ -203,6 +203,10 @@ export class LinearApi extends Context.Service<
       input: LinearGetIssueInput,
     ) => Effect.Effect<LinearIssueContext, LinearError>;
     readonly getFilterOptions: Effect.Effect<LinearFilterOptions, LinearError>;
+    /** The issue's summary fields alone, for linking and live status. */
+    readonly getIssueSummary: (
+      input: LinearGetIssueInput,
+    ) => Effect.Effect<LinearIssueSummary, LinearError>;
   }
 >()("t3/linear/LinearApi") {}
 
@@ -358,7 +362,23 @@ export const make = Effect.gen(function* () {
     return { ...summary, markdown } satisfies LinearIssueContext;
   });
 
-  return LinearApi.of({ listIssues, getIssue, getFilterOptions: getFilterOptions() });
+  const getIssueSummary = Effect.fn("linear.get_issue_summary")(function* (
+    input: LinearGetIssueInput,
+  ) {
+    const { issue } = yield* query(
+      ISSUE_SUMMARY_QUERY,
+      { id: parseLinearIssueRef(input.id) ?? input.id },
+      IssueSummaryData,
+    );
+    return toSummary(issue);
+  });
+
+  return LinearApi.of({
+    listIssues,
+    getIssue,
+    getFilterOptions: getFilterOptions(),
+    getIssueSummary,
+  });
 });
 
 export const layer = Layer.effect(LinearApi, make);
