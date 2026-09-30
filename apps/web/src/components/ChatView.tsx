@@ -7318,13 +7318,31 @@ export default function ChatView(props: ChatViewProps) {
       params: { environmentId: tabRef.environmentId, threadId: tabRef.threadId },
     });
 
-  // From a user message: the summary stops before it, and the message follows for a retry.
+  // User messages are retried after the summary; assistant responses are included for a follow-up.
   const onForkFromMessage = (messageId: MessageId) =>
     runFork(async (connection) => {
       if (!activeThread) return;
       const index = activeThread.messages.findIndex((message) => message.id === messageId);
       const message = activeThread.messages[index];
-      if (!message || message.role !== "user") return;
+      if (
+        !message ||
+        (message.role !== "user" && message.role !== "assistant") ||
+        message.streaming
+      )
+        return;
+      if (message.role === "assistant") {
+        const tabRef = await forkThreadTab(connection, {
+          environmentId,
+          sourceThreadId: activeThread.id,
+          sourceTitle: activeThread.title,
+          modelSelection: activeThread.modelSelection,
+          afterMessageId: messageId,
+          prompt: "",
+          hasHistory: true,
+        });
+        await openForkedTab(tabRef);
+        return;
+      }
       const files = await prepareRevertedMessageAttachments({
         message,
         environmentId,

@@ -34,6 +34,8 @@ export const ThreadTabHandoffInput = Schema.Struct({
   sourceThreadIds: Schema.Array(ThreadId).check(Schema.isMaxLength(8)),
   /** Forking: summarize only what came before this user message of the single source. */
   beforeMessageId: Schema.optional(MessageId),
+  /** Forking: summarize through this completed assistant message of the single source. */
+  afterMessageId: Schema.optional(MessageId),
 });
 export type ThreadTabHandoffInput = typeof ThreadTabHandoffInput.Type;
 

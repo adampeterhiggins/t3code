@@ -2256,7 +2256,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
               <RevertUserMessageButton turnCount={revertTurnCount} messageId={row.message.id} />
             )}
             {ctx.onForkFromMessage && (
-              <ForkUserMessageButton messageId={row.message.id} onFork={ctx.onForkFromMessage} />
+              <ForkMessageButton messageId={row.message.id} onFork={ctx.onForkFromMessage} />
             )}
             {resolvedContext.text && (
               <MessageCopyButton
@@ -2337,7 +2337,7 @@ function RevertUserMessageButton({
   );
 }
 
-function ForkUserMessageButton({
+function ForkMessageButton({
   messageId,
   onFork,
 }: {
@@ -2516,6 +2516,9 @@ function AssistantMessageMeta({
         className,
       )}
     >
+      {ctx.onForkFromMessage && !message.streaming && (
+        <ForkMessageButton messageId={message.id} onFork={ctx.onForkFromMessage} />
+      )}
       <AssistantCopyButton
         message={message}
         showCopyButton={showCopyButton}

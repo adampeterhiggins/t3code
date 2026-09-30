@@ -45,6 +45,8 @@ changes.
 To retry a message with another model or provider on web or desktop, hover the message and click
 **Fork into new tab**. The new tab's composer holds a summary of the chat up to that message,
 followed by the message itself and its attachments. Pick a model, edit if you like, and send.
+To continue from an agent response, use its **Fork into new tab** action. The new composer holds
+only a summary attachment covering the chat through that response, ready for your follow-up.
 Files the original chat changed after that message stay changed, since tabs share the workspace.
 
 To carry on with a different model instead, open the model picker after the first message and

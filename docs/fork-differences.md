@@ -171,6 +171,9 @@ is its own conversation and provider.
   - A user message's hover actions include **Fork into new tab**. The summary stops before that
     message (`beforeMessageId` on the handoff request), and the message's text and attachments
     follow it.
+  - A completed agent response has the same fork action. Its summary includes that response
+    (`afterMessageId` on the handoff request); the new draft holds only the summary attachment,
+    ready for a follow-up.
   - Each model picker row has a hover fork button. The new tab runs that model, the whole chat is
     summarized, and the current draft (text, attachments, and context chips) is copied after it.
     Other providers, and models the provider cannot switch to mid-chat, stay listed instead of
