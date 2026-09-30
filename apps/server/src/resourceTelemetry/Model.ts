@@ -118,7 +118,10 @@ function inferredElectronCategory(
   const command = process.command.toLowerCase();
   if (command.includes("--type=renderer")) return "electron-renderer";
   if (command.includes("--type=gpu-process")) return "electron-gpu";
-  return "electron-utility";
+  if (command.includes("--type=utility")) return "electron-utility";
+  // Electron also owns agent and shell subprocesses; ancestry alone does not
+  // make them Chromium utility services.
+  return "server-child";
 }
 
 function matchElectronMetric(

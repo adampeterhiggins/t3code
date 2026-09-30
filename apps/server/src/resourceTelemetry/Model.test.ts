@@ -174,6 +174,50 @@ describe("resource telemetry process model", () => {
     expect(result.groups.electron.processCount).toBe(2);
   });
 
+  it("keeps agent and shell descendants separate from Chromium services", () => {
+    const result = merge({
+      native: nativeSnapshot(BASE_TIME_MS, [
+        processSample({ pid: SERVER_PID, ppid: 1, startTimeMs: 1_000 }),
+        processSample({ pid: 300, ppid: 1, startTimeMs: 10_000 }),
+        processSample({ pid: 301, ppid: 300, startTimeMs: 11_000, name: "codex" }),
+        processSample({ pid: 302, ppid: 301, startTimeMs: 12_000, name: "zsh" }),
+        processSample({
+          pid: 303,
+          ppid: 300,
+          startTimeMs: 13_000,
+          command: "Electron Helper --type=utility",
+        }),
+        processSample({
+          pid: 304,
+          ppid: 300,
+          startTimeMs: 14_000,
+          command: "Electron Helper --type=renderer",
+        }),
+        processSample({
+          pid: 305,
+          ppid: 300,
+          startTimeMs: 15_000,
+          command: "Electron Helper --type=gpu-process",
+        }),
+      ]),
+      desktop: desktopSnapshot(BASE_TIME_MS, [
+        electronMetric({ pid: 300, creationTimeMs: 10_000, type: "Browser" }),
+      ]),
+    });
+
+    expect(result.processes.map((process) => [process.identity.pid, process.category])).toEqual([
+      [100, "server"],
+      [300, "electron-main"],
+      [301, "server-child"],
+      [302, "server-child"],
+      [303, "electron-utility"],
+      [304, "electron-renderer"],
+      [305, "electron-gpu"],
+    ]);
+    expect(result.groups.backend.processCount).toBe(3);
+    expect(result.groups.electron.processCount).toBe(4);
+  });
+
   it("ignores stale Electron metrics after PID reuse", () => {
     const result = merge({
       native: nativeSnapshot(BASE_TIME_MS, [
