@@ -62,6 +62,7 @@ import {
 } from "../Errors.ts";
 import type { ProviderAdapterShape } from "../Services/ProviderAdapter.ts";
 import type { SubagentTranscriptRead } from "../subagentTranscript.ts";
+import * as SubagentTranscriptStore from "../SubagentTranscriptStore.ts";
 import * as ProviderAdapterRegistry from "../Services/ProviderAdapterRegistry.ts";
 import * as ProviderService from "../Services/ProviderService.ts";
 import * as ProviderSessionDirectory from "../Services/ProviderSessionDirectory.ts";
@@ -434,6 +435,7 @@ function makeProviderServiceLayer(
     readonly analyticsLayer?: Layer.Layer<AnalyticsService.AnalyticsService>;
     readonly settingsLayer?: typeof defaultServerSettingsLayer;
     readonly registry?: ProviderAdapterRegistry.ProviderAdapterRegistry["Service"];
+    readonly transcriptStore?: SubagentTranscriptStore.SubagentTranscriptStore["Service"];
   } = {},
 ) {
   const codex = makeFakeCodexAdapter(CODEX_DRIVER, input.supportsConversationRollback);
@@ -467,6 +469,11 @@ function makeProviderServiceLayer(
         Layer.provide(directoryLayer),
         Layer.provide(input.settingsLayer ?? defaultServerSettingsLayer),
         Layer.provide(serverConfigTestLayer),
+        Layer.provide(
+          input.transcriptStore === undefined
+            ? Layer.empty
+            : Layer.succeed(SubagentTranscriptStore.SubagentTranscriptStore, input.transcriptStore),
+        ),
         Layer.provideMerge(input.analyticsLayer ?? AnalyticsService.layerTest),
         Layer.provide(
           Layer.succeed(
@@ -1074,6 +1081,69 @@ it.effect("ProviderServiceLive rejects new sessions for disabled custom instance
 );
 
 const routing = makeProviderServiceLayer();
+
+const retainedTranscripts = new Map<string, SubagentTranscriptStore.RetainedSubagentTranscript>();
+let onTranscriptRetained: Deferred.Deferred<string> | undefined;
+const retention = makeProviderServiceLayer({
+  transcriptStore: {
+    retain: (threadId, taskId, transcript) =>
+      Effect.gen(function* () {
+        const key = `${threadId}:${taskId}`;
+        retainedTranscripts.set(key, { ...transcript, retainedAt: "2026-01-01T00:00:00.000Z" });
+        if (onTranscriptRetained) yield* Deferred.succeed(onTranscriptRetained, key);
+      }),
+    get: (threadId, taskId) =>
+      Effect.succeed(Option.fromNullishOr(retainedTranscripts.get(`${threadId}:${taskId}`))),
+  },
+});
+
+retention.layer("ProviderServiceLive retained subagent transcripts", (it) => {
+  it.effect("keeps a finished agent's transcript readable after the session stops", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const threadId = asThreadId("thread-transcript-retained");
+      yield* provider.startSession(threadId, {
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexInstanceId,
+        threadId,
+        runtimeMode: "full-access",
+      });
+      const retained = yield* Deferred.make<string>();
+      onTranscriptRetained = retained;
+      const completed = yield* provider.streamEvents.pipe(
+        Stream.filter((event) => event.type === "task.completed"),
+        Stream.take(1),
+        Stream.runDrain,
+        Effect.forkChild,
+      );
+      yield* Effect.yieldNow;
+      retention.codex.emit({
+        type: "task.completed",
+        eventId: asEventId("evt-transcript-retained-task-completed"),
+        provider: CODEX_DRIVER,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        threadId,
+        payload: { taskId: "known-agent", status: "completed" },
+      });
+      yield* Fiber.join(completed);
+      assert.strictEqual(yield* Deferred.await(retained), `${threadId}:known-agent`);
+      yield* retention.codex.stopSession(threadId);
+
+      const result = yield* provider.readSubagentTranscript({ threadId, taskId: "known-agent" });
+      assert.deepStrictEqual(result, {
+        taskId: "known-agent",
+        entries: [{ kind: "assistant", text: "Done." }],
+        truncated: false,
+        retainedAt: "2026-01-01T00:00:00.000Z",
+      });
+
+      const missing = yield* provider
+        .readSubagentTranscript({ threadId, taskId: "unknown-agent" })
+        .pipe(Effect.flip);
+      assert.strictEqual(missing.reason, "session-not-running");
+    }),
+  );
+});
 
 const customCompactionDriver = ProviderDriverKind.make("custom-compaction-provider");
 const nativeCompactionInstanceId = ProviderInstanceId.make("native-compaction");

@@ -2419,13 +2419,16 @@ export const OrchestrationGetSubagentTranscriptResult = Schema.Struct({
   entries: Schema.Array(SubagentTranscriptEntry),
   /** True when older entries were dropped to respect the size limit. */
   truncated: Schema.Boolean,
+  /** Set when the provider could not be read and this is the copy the server kept. */
+  retainedAt: Schema.optional(IsoDateTime),
 });
 export type OrchestrationGetSubagentTranscriptResult =
   typeof OrchestrationGetSubagentTranscriptResult.Type;
 
 const SUBAGENT_TRANSCRIPT_ERROR_MESSAGES = {
   unsupported: "This provider does not expose subagent transcripts.",
-  "session-not-running": "Transcripts are available while the provider session is running.",
+  "session-not-running":
+    "No transcript was kept for this agent. Transcripts are read while the provider session is running.",
   "not-found": "No transcript was found for this agent.",
   "read-failed": "The transcript could not be read.",
 } as const;

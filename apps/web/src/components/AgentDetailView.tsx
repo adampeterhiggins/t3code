@@ -5,6 +5,7 @@
  * footer. The transcript is fetched only when asked for and never streams.
  */
 import {
+  subagentResultChatContext,
   applySubagentToolLogView,
   applySubagentTranscriptView,
   DEFAULT_SUBAGENT_TOOL_LOG_VIEW,
@@ -39,6 +40,7 @@ import {
   ChevronRightIcon,
   ListFilterIcon,
   MessageCircleIcon,
+  MessageSquarePlusIcon,
   SquareArrowOutUpRightIcon,
   RefreshCw,
   SearchIcon,
@@ -47,12 +49,14 @@ import {
 } from "lucide-react";
 import { memo, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
+import { useComposerHandleContext } from "~/composerHandleContext";
 import { useClientSettings } from "~/hooks/useSettings";
 import { cn } from "~/lib/utils";
 import { orchestrationEnvironment } from "~/state/orchestration";
 import { useEnvironmentQuery } from "~/state/query";
 import { formatSecondsTimestamp } from "~/timestampFormat";
 
+import { attachAgentResultToChat } from "./attachAgentResult";
 import {
   AgentUsageFooter,
   CallRow,
@@ -78,12 +82,22 @@ import {
 } from "./ui/menu";
 import { ScrollArea } from "./ui/scroll-area";
 
-function Section(props: { title: string; children: ReactNode }) {
+function Section(props: { title: string; action?: ReactNode; children: ReactNode }) {
+  const heading = (
+    <h3 className="px-0.5 text-3xs font-medium uppercase tracking-wider text-muted-foreground">
+      {props.title}
+    </h3>
+  );
   return (
     <section className="flex flex-col gap-1">
-      <h3 className="px-0.5 text-3xs font-medium uppercase tracking-wider text-muted-foreground">
-        {props.title}
-      </h3>
+      {props.action ? (
+        <div className="flex items-center justify-between gap-1">
+          {heading}
+          {props.action}
+        </div>
+      ) : (
+        heading
+      )}
       {props.children}
     </section>
   );
@@ -443,9 +457,19 @@ function ActivitySection(props: {
         <p className="px-0.5 text-xs text-muted-foreground">The transcript is empty.</p>
       ) : (
         <>
-          {transcriptQuery.data.truncated ? (
+          {transcriptQuery.data.retainedAt || transcriptQuery.data.truncated ? (
             <p className="px-0.5 pb-1 text-2xs text-muted-foreground">
-              Showing the latest entries.
+              {[
+                transcriptQuery.data.retainedAt
+                  ? `Saved copy from ${formatSecondsTimestamp(
+                      transcriptQuery.data.retainedAt,
+                      props.timestampFormat,
+                    )}.`
+                  : null,
+                transcriptQuery.data.truncated ? "Showing the latest entries." : null,
+              ]
+                .filter(Boolean)
+                .join(" ")}
             </p>
           ) : null}
           {visibleTranscript.length === 0 ? (
@@ -622,6 +646,8 @@ export function AgentDetailView(props: {
     agent.phaseTitle ? `phase ${agent.phaseTitle}` : null,
   ].filter((value): value is string => value !== null);
   const outcome = agent.error ?? (live ? null : agent.result);
+  const composerRef = useComposerHandleContext();
+  const canAttachResult = subagentResultChatContext(agent) !== null;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -675,7 +701,28 @@ export function AgentDetailView(props: {
             </Section>
           ) : null}
           {outcome ? (
-            <Section title={agent.error ? "Error" : "Result"}>
+            <Section
+              title={agent.error ? "Error" : "Result"}
+              action={
+                canAttachResult ? (
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          size="icon-micro"
+                          variant="ghost-muted"
+                          aria-label="Attach result to chat"
+                          onClick={() => attachAgentResultToChat(composerRef, agent)}
+                        />
+                      }
+                    >
+                      <MessageSquarePlusIcon aria-hidden />
+                    </TooltipTrigger>
+                    <TooltipPopup side="bottom">Attach result to chat</TooltipPopup>
+                  </Tooltip>
+                ) : null
+              }
+            >
               <ClampedText text={outcome} lines={4} tone={agent.error ? "error" : "default"} />
             </Section>
           ) : null}

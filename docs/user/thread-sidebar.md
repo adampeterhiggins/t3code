@@ -268,8 +268,16 @@ Tool calls list newest first. Search them, filter by status or tool, or sort
 oldest first or by duration. Hover a call to preview all of it; click to keep
 it open. The menu on the **Tool calls** heading switches to the **Transcript**,
 the agent's own conversation fetched from the provider, which you can search,
-filter, and sort the same way. Transcripts work while the thread's provider
-session is running.
+filter, and sort the same way. The transcript is read from the provider while
+the thread's session is running. T3 Code keeps a bounded copy of the latest
+entries when an agent finishes and each time you open its transcript, so you
+can still read it after the session stops; that copy is marked **Saved copy**.
+A full read needs the session running again.
+
+To use what an agent found in your next message, choose **Attach result to
+chat** next to its result, or right-click the agent in the list. T3 Code adds
+the agent's task and result to the composer; a long result becomes a pasted
+attachment.
 
 | Provider    | Tool calls | Prompt                | Transcript |
 | ----------- | ---------- | --------------------- | ---------- |

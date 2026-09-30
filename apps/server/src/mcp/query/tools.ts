@@ -637,7 +637,7 @@ const GetActivityTool = Tool.make("get_activity", {
 
 const GetSubagentTranscriptTool = Tool.make("get_subagent_transcript", {
   description:
-    "A subagent's own conversation. taskId comes from a task.started activity. Only available while the thread's provider session is running, and not every provider supports it.",
+    "A subagent's own conversation. taskId comes from a task.started activity. Read from the provider while the thread's session is running; afterwards the server returns the bounded copy it kept (retainedAt is set). Not every provider supports it.",
   parameters: Schema.Struct({ threadId: threadIdInput, taskId: TrimmedNonEmptyString }),
   success: OrchestrationGetSubagentTranscriptResult,
   failure: QueryToolError,

@@ -141,11 +141,17 @@ Upstream's panel is a fixed list with one summary line per agent. To feed it:
   tool call notifications (`cognition.ai/subagent_started`, `subagent_completed`, and
   `subagent_context` on the child's calls); `DevinSubagents.ts` maps them onto `task.*` events.
 - `orchestration.getSubagentTranscript` reads a subagent's history through the adapter's
-  `readSubagentTranscript` (Claude, Codex, OpenCode), only while the session is running.
+  `readSubagentTranscript` (Claude, Codex, OpenCode) while the session is running.
+  ProviderService keeps the last bounded read per agent in the fork-owned
+  `fork_subagent_transcripts` table, captured on `task.completed` and on every live read, and
+  serves it with `retainedAt` once the provider can no longer answer.
+- **Attach result to chat** (detail view and list right-click) pastes the agent's task and
+  result into the composer; `subagentResultChatContext` builds the text.
 
 Code: `apps/web/src/components/AgentsPanel.tsx`, `AgentDetailView.tsx`,
 `apps/web/src/rightPanelStore.ts`, `packages/client-runtime/src/state/agentPanelView.ts`,
-`apps/server/src/provider/acp/DevinSubagents.ts`, and `apps/server/src/provider/subagentTranscript.ts`. User guide:
+`apps/server/src/provider/acp/DevinSubagents.ts`, `apps/server/src/provider/subagentTranscript.ts`,
+and `apps/server/src/provider/SubagentTranscriptStore.ts`. User guide:
 [thread-sidebar.md](./user/thread-sidebar.md#inspect-agent-work).
 
 ## Chat tabs

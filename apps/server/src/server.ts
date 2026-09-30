@@ -54,6 +54,7 @@ import * as ModelManifest from "./provider/ModelManifest.ts";
 import * as ResetCreditCoordinator from "./provider/Layers/resetCreditCoordinator.ts";
 import * as ProviderEventLoggers from "./provider/Layers/ProviderEventLoggers.ts";
 import { ProviderServiceLive } from "./provider/Layers/ProviderService.ts";
+import * as SubagentTranscriptStore from "./provider/SubagentTranscriptStore.ts";
 import { ProviderAuthServiceLive } from "./provider/Layers/ProviderAuthService.ts";
 import * as LinearApi from "./linear/LinearApi.ts";
 import * as LinearAuth from "./linear/LinearAuth.ts";
@@ -302,6 +303,7 @@ const ProviderSessionDirectoryLayerLive = ProviderSessionDirectoryLive.pipe(
 // `ProviderService` and the per-instance drivers read the same logger pair.
 const ProviderLayerLive = ProviderServiceLive.pipe(
   Layer.provide(ProviderAdapterRegistryLive),
+  Layer.provide(SubagentTranscriptStore.layer),
   Layer.provideMerge(ProviderSessionDirectoryLayerLive),
 );
 
