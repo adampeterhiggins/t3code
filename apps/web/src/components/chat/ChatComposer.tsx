@@ -994,6 +994,7 @@ import {
   stepComposerPromptHistory,
   type ComposerPromptHistoryPosition,
 } from "./composerPromptHistory";
+import { useSplitPaneFocus } from "./splitPane";
 import type { PendingUserInputDraftAnswer } from "../../pendingUserInput";
 import type { PendingApproval, PendingUserInput } from "../../session-logic";
 import type { ContextWindowSnapshot } from "../../lib/contextWindow";
@@ -2182,6 +2183,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const [isComposerFooterCompact, setIsComposerFooterCompact] = useState(false);
   const [isComposerPrimaryActionsCompact, setIsComposerPrimaryActionsCompact] = useState(false);
   const [isComposerModelPickerOpen, setIsComposerModelPickerOpen] = useState(false);
+  const unfocusedSplitPane = useSplitPaneFocus() === "unfocused";
   const isMobileViewport = useMediaQuery("max-sm");
   const {
     isComposerFocused,
@@ -5462,6 +5464,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   }, [prompt]);
 
   useEffect(() => {
+    if (unfocusedSplitPane) return;
     const handler = (event: globalThis.KeyboardEvent) => {
       const command = resolveShortcutCommand(event, keybindings, {
         context: {
@@ -5499,6 +5502,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     stashCurrentPrompt,
     isRevertingCheckpoint,
     terminalOpen,
+    unfocusedSplitPane,
   ]);
 
   // ------------------------------------------------------------------

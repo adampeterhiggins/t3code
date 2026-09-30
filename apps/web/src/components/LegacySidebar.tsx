@@ -80,6 +80,8 @@ import { isElectron } from "../env";
 import { useTerminalFocus } from "../hooks/useTerminalFocus";
 import { useHiddenTabThreads } from "./sidebar/useHiddenTabThreads";
 import { useThreadTabActions } from "./chat/ThreadTabs";
+import { useSplitViewActions } from "./chat/splitPane";
+import { splitMenuAction, useSplitViewStore } from "../splitViewStore";
 import { resolveThreadTabTarget } from "../threadTabRecencyStore";
 import { useOpenPrLink } from "../lib/openPullRequestLink";
 import { releaseProjectDraftUploads } from "../lib/composerDraftUploads";
@@ -1263,6 +1265,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   const allProjectThreads = useThreadShellsForProjectRefs(project.memberProjectRefs);
   const { hiddenTabThreads, tabEnvironmentIds } = React.useContext(HiddenTabThreadsContext);
   const { createTab } = useThreadTabActions();
+  const splitViewActions = useSplitViewActions();
   const sidebarThreads = useMemo(
     () =>
       allProjectThreads.filter(
@@ -2266,11 +2269,22 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       );
       const threadWorkspacePath =
         thread.worktreePath ?? threadProject?.workspaceRoot ?? project.workspaceRoot ?? null;
+      // This list only knows the routed chat when it belongs to this project.
+      const routeRef = activeRouteThreadKey ? parseScopedThreadKey(activeRouteThreadKey) : null;
+      const splitAction =
+        routeRef && readThreadShell(routeRef)
+          ? splitMenuAction(useSplitViewStore.getState().panes, threadKey, activeRouteThreadKey)
+          : null;
       const clicked = await api.contextMenu.show(
         [
           ...(tabEnvironmentIds.has(thread.environmentId)
             ? [{ id: "new-tab", label: "New tab" }]
             : []),
+          ...(splitAction === "open"
+            ? [{ id: "open-in-split", label: "Open in split view" }]
+            : splitAction === "close"
+              ? [{ id: "close-split", label: "Close split view" }]
+              : []),
           ...(thread.branch
             ? [{ id: "new-thread-on-branch", label: `New thread on ${thread.branch}` }]
             : []),
@@ -2298,6 +2312,18 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       if (clicked === "new-tab") {
         if (isMobile) setOpenMobile(false);
         await createTab(threadRef, thread.modelSelection);
+        return;
+      }
+
+      if (clicked === "open-in-split") {
+        if (!routeRef) return;
+        if (isMobile) setOpenMobile(false);
+        splitViewActions.openBeside(routeRef, threadRef);
+        return;
+      }
+
+      if (clicked === "close-split") {
+        useSplitViewStore.getState().close();
         return;
       }
 
@@ -2386,6 +2412,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       }
     },
     [
+      activeRouteThreadKey,
       appSettingsConfirmThreadDelete,
       copyPathToClipboard,
       copyThreadIdToClipboard,
@@ -2399,6 +2426,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       project.workspaceRoot,
       router,
       setOpenMobile,
+      splitViewActions,
       startThreadRename,
       tabEnvironmentIds,
     ],

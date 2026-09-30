@@ -44,10 +44,12 @@ import { useThreadLinearLink, useUnlinkLinearIssue } from "./chat/LinearThreadLi
 import { openPullRequestAttachPicker } from "./chat/PullRequestAttachPicker";
 import { openRepositoryAttachPicker } from "./chat/RepositoryAttachPicker";
 import { openStartFromPicker } from "./chat/StartFromPicker";
+import { dispatchSplitViewAction, useSplitPartner } from "./chat/splitPane";
 import * as Option from "effect/Option";
 import {
   ArrowLeftIcon,
   ChartNoAxesColumnIcon,
+  Columns2Icon,
   CornerLeftUpIcon,
   DownloadIcon,
   FileSearchIcon,
@@ -724,6 +726,12 @@ function OpenCommandPaletteDialog(props: {
   const { clearOpenIntent, openIntent, openOverlayMode, setOpen } = props;
   const attentionEntries = useAttentionInbox();
   const attentionProjectTitleByKey = useProjectTitleByKey();
+  const splitRouteTarget = useParams({
+    strict: false,
+    select: (params) => resolveThreadRouteTarget(params),
+  });
+  const splitRouteRef = splitRouteTarget?.kind === "server" ? splitRouteTarget.threadRef : null;
+  const splitViewOpen = useSplitPartner(splitRouteRef) !== null;
   const [query, setQuery] = useState(openIntent?.kind === "search" ? openIntent.query : "");
   const [linkedThreadSearch, setLinkedThreadSearch] = useState(
     openIntent?.kind === "search" ? openIntent : null,
@@ -2148,6 +2156,33 @@ function OpenCommandPaletteDialog(props: {
       });
     },
   });
+
+  if (splitRouteRef) {
+    actionItems.push({
+      kind: "action",
+      value: "action:split-view",
+      searchTerms: ["split", "side by side", "compare", "two", "pane", "tabs", "columns"],
+      title: splitViewOpen ? "Close split view" : "Open split view",
+      icon: <Columns2Icon className={ITEM_ICON_CLASS} />,
+      shortcutCommand: "splitView.toggle",
+      run: async () => {
+        dispatchSplitViewAction("toggle");
+      },
+    });
+    if (splitViewOpen) {
+      actionItems.push({
+        kind: "action",
+        value: "action:split-view-focus-other",
+        searchTerms: ["split", "pane", "focus", "other", "switch"],
+        title: "Focus other split pane",
+        icon: <Columns2Icon className={ITEM_ICON_CLASS} />,
+        shortcutCommand: "splitView.focusOther",
+        run: async () => {
+          dispatchSplitViewAction("focus-other");
+        },
+      });
+    }
+  }
 
   if (!clientSettings.legacySidebarEnabled) {
     actionItems.push({

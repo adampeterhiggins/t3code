@@ -13,7 +13,11 @@ import {
   type ThreadId,
   type ThreadTabGroup,
 } from "@t3tools/contracts";
-import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import {
+  scopeProjectRef,
+  scopedThreadKey,
+  scopeThreadRef,
+} from "@t3tools/client-runtime/environment";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -21,7 +25,7 @@ import {
 import { sanitizeComposerContextLabel } from "@t3tools/shared/composerContextReferences";
 import * as Option from "effect/Option";
 import { useNavigate } from "@tanstack/react-router";
-import { PlusIcon, XIcon } from "lucide-react";
+import { Columns2Icon, PlusIcon, XIcon } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 
 import { useThreadActions } from "../../hooks/useThreadActions";
@@ -40,9 +44,11 @@ import {
 } from "../../state/entities";
 import { selectThreadRightPanelState, useRightPanelStore } from "../../rightPanelStore";
 import { readPreparedConnection, usePreparedConnection } from "../../state/session";
+import { splitPartnerKey, useSplitViewStore } from "../../splitViewStore";
 import { useThreadTabContextStore } from "../../threadTabContextStore";
 import { ThreadTabSummaryDetails } from "../contextChipParts";
 import { WorkspaceBreadcrumbText } from "../WorkspaceBreadcrumb";
+import { useSplitPaneFocus, useSplitViewActions } from "./splitPane";
 import {
   Menu,
   MenuItem,
@@ -264,12 +270,30 @@ export function ThreadTabMenu({
   const { createTab, closeTab } = useThreadTabActions();
   const [busy, setBusy] = useState(false);
   const currentLabel = useTabLabel(environmentId, group, threadId);
+  const splitPaneFocus = useSplitPaneFocus();
+  const splitActions = useSplitViewActions();
+  const currentKey = scopedThreadKey(scopeThreadRef(environmentId, threadId));
+  const splitPartner = useSplitViewStore((state) => splitPartnerKey(state.panes, currentKey));
 
-  const open = (nextThreadId: ThreadId) =>
+  const open = (nextThreadId: ThreadId) => {
+    const next = scopeThreadRef(environmentId, nextThreadId);
+    // In a split, each pane's tab menu switches that pane.
+    if (splitPaneFocus !== null) {
+      useSplitViewStore.getState().replace(currentKey, scopedThreadKey(next));
+      splitActions.focusPane(next);
+      return;
+    }
     void navigate({
       to: "/$environmentId/$threadId",
       params: { environmentId, threadId: nextThreadId },
     });
+  };
+
+  const openBeside = (tabThreadId: ThreadId) =>
+    splitActions.openBeside(
+      scopeThreadRef(environmentId, threadId),
+      scopeThreadRef(environmentId, tabThreadId),
+    );
 
   const run = async (action: () => Promise<void>) => {
     setBusy(true);
@@ -342,6 +366,23 @@ export function ThreadTabMenu({
                     />
                   </span>
                   {/* Shown on the highlighted row; handlers stop the item from switching tabs. */}
+                  {tab.threadId !== threadId &&
+                  splitPartner !== scopedThreadKey(scopeThreadRef(environmentId, tab.threadId)) ? (
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      aria-label="Open in split view"
+                      onMouseUp={(event) => event.stopPropagation()}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        event.preventDefault();
+                        openBeside(tab.threadId);
+                      }}
+                      className="inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted-foreground opacity-0 transition-opacity hover:bg-foreground/10 hover:text-foreground in-data-highlighted:opacity-100"
+                    >
+                      <Columns2Icon className="size-3.5" />
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     tabIndex={-1}

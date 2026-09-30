@@ -226,6 +226,8 @@ import { ProjectFavicon, type ProjectFaviconProject } from "./ProjectFavicon";
 import { ThreadSearchMatchExcerpt } from "./ThreadSearchMatch";
 import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
 import { useThreadTabActions } from "./chat/ThreadTabs";
+import { useSplitViewActions } from "./chat/splitPane";
+import { splitMenuAction, useSplitViewStore } from "../splitViewStore";
 import { ProviderInstanceIcon } from "./chat/ProviderInstanceIcon";
 import { getTriggerDisplayModelLabel } from "./chat/providerIconUtils";
 import {
@@ -2545,6 +2547,7 @@ export default function Sidebar() {
   const threads = useThreadShells();
   const { hiddenTabThreads: tabThreadGroups, tabEnvironmentIds } = useHiddenTabThreads(threads);
   const { createTab, closeTab } = useThreadTabActions();
+  const splitViewActions = useSplitViewActions();
   const showTabs = useClientSettings((s) => s.sidebarShowTabs);
   const openedAtByThreadKey = useThreadTabRecencyStore((s) => s.openedAtByThreadKey);
   const updateClientSettings = useUpdateClientSettings();
@@ -4530,6 +4533,13 @@ export default function Sidebar() {
         const isPinned = thread.pinnedAt != null;
         // Presets resolve at menu-open time (same as the popover).
         const snoozePresets = resolveSnoozePresets(new Date(), timestampFormat);
+        const routeKey = routeThreadKeyRef.current;
+        const routeRef = routeKey ? parseScopedThreadKey(routeKey) : null;
+        // Only a started chat can be split; a draft route has no server thread yet.
+        const splitAction =
+          routeRef && readThreadShell(routeRef)
+            ? splitMenuAction(useSplitViewStore.getState().panes, threadKey, routeKey)
+            : null;
         const threadProjectGroup =
           projectGroupsRef.current.find((project) =>
             project.memberProjectRefs.some(
@@ -4554,6 +4564,7 @@ export default function Sidebar() {
                       sidebarTabNeighbourKey(threadKey, tabThreadGroupsRef.current) !== null,
                   }
                 : null,
+              split: splitAction,
               isPinned,
               isSettled,
               autoSettleEnabled: thread.autoSettleDisabledAt == null,
@@ -4603,6 +4614,14 @@ export default function Sidebar() {
             return;
           case "close-tab":
             handleCloseTab(threadRef);
+            return;
+          case "open-in-split":
+            if (!routeRef) return;
+            if (isMobile) setOpenMobile(false);
+            splitViewActions.openBeside(routeRef, threadRef);
+            return;
+          case "close-split":
+            useSplitViewStore.getState().close();
             return;
           case "new-thread-on-branch": {
             // Explicit branch carry-over: reuse the thread's worktree when it
@@ -4788,13 +4807,16 @@ export default function Sidebar() {
       handleCloseTab,
       handleMultiSelectContextMenu,
       handleNewTab,
+      isMobile,
       markThreadUnread,
       openProjectSettings,
       projectScopeKey,
       projectByKey,
       serverConfigs,
+      setOpenMobile,
       setProjectScopeKey,
       setThreadAutoSettle,
+      splitViewActions,
       startThreadRename,
       tabEnvironmentIds,
       updateThreadMetadata,

@@ -56,6 +56,23 @@ a copy of what you had typed. Models from other providers are listed too. A chat
 them in place, so clicking the row does nothing; use its fork button. Picking another account in
 the composer's account picker works the same way, and those accounts are marked **New tab**.
 
+### View two chats side by side
+
+On web and desktop, you can show two chats next to each other, for example an implementation tab
+beside its review tab. Each side is a full chat with its own timeline, composer, and right panel.
+
+- **Open.** In the tab menu, hover a tab and click the split button. You can also right-click any
+  thread in the sidebar and choose **Open in split view**, or press `Cmd+\` on macOS or `Ctrl+\`
+  on Windows and Linux to open the tab you used most recently beside the current one.
+- **Focus.** The focused side has a colored line along its top, and shortcuts act on that side.
+  Click the other side, or press `Cmd+Option+\` / `Ctrl+Alt+\`, to move focus there.
+- **Close.** Click **×** in either side's header to close that side. `Cmd+\` / `Ctrl+\`, the command
+  palette, or **Close split view** in the sidebar menu closes the other side and keeps the focused one.
+
+Each side's tab menu switches only that side. Opening a chat that is not in the split shows it on
+its own, and going back to either chat brings the split back. Split view needs a wide window;
+narrower windows and the mobile app show one chat at a time.
+
 ### Start in the background
 
 In a desktop browser or the desktop app, press `Cmd+Enter` on macOS or `Ctrl+Enter`

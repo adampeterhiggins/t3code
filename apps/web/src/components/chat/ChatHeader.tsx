@@ -13,7 +13,7 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { EllipsisIcon } from "lucide-react";
+import { EllipsisIcon, XIcon } from "lucide-react";
 import {
   memo,
   useCallback,
@@ -38,6 +38,7 @@ import ProjectScriptsControl, {
 import { OpenInPicker } from "./OpenInPicker";
 import { LinearThreadLinkChip } from "./LinearThreadLink";
 import { ThreadTabMenu } from "./ThreadTabs";
+import { useSplitPaneFocus, useSplitViewActions } from "./splitPane";
 import { useThreadShell } from "../../state/entities";
 import { useRemoteOpenState, type RemoteOpenMode } from "../../remoteOpen";
 import { usePrimaryEnvironmentId } from "../../state/environments";
@@ -179,6 +180,8 @@ export const ChatHeader = memo(function ChatHeader({
     });
   }, [panelAnimationDurationMs, panelAnimationsActive]);
   const isMobile = useIsMobile();
+  const splitPaneFocus = useSplitPaneFocus();
+  const { closePane } = useSplitViewActions();
   // Side panels can leave a desktop header narrower than a phone.
   const [isNarrowHeader, setIsNarrowHeader] = useState(false);
   useEffect(() => {
@@ -406,6 +409,7 @@ export const ChatHeader = memo(function ChatHeader({
             keybindings={keybindings}
             availableEditors={availableEditors}
             openInCwd={openInCwd}
+            enableShortcut={splitPaneFocus !== "unfocused"}
           />
         </>
       )}
@@ -531,6 +535,28 @@ export const ChatHeader = memo(function ChatHeader({
       <LinearThreadLinkChip
         threadRef={scopeThreadRef(activeThreadEnvironmentId, currentThreadId)}
       />
+      {splitPaneFocus !== null ? (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                aria-label="Close split pane"
+                onClick={() =>
+                  closePane(
+                    scopeThreadRef(activeThreadEnvironmentId, currentThreadId),
+                    splitPaneFocus === "focused",
+                  )
+                }
+              />
+            }
+          >
+            <XIcon className="size-4" />
+          </TooltipTrigger>
+          <TooltipPopup side="bottom">Close this pane</TooltipPopup>
+        </Tooltip>
+      ) : null}
       <div
         ref={headerActionsRef}
         data-chat-header-actions

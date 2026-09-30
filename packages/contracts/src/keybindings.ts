@@ -58,6 +58,8 @@ export type ModelPickerKeybindingCommand = (typeof MODEL_PICKER_KEYBINDING_COMMA
 export const STATIC_KEYBINDING_COMMANDS = [
   "sidebar.toggle",
   "sidebar.toggleTabs",
+  "splitView.toggle",
+  "splitView.focusOther",
   "navigation.back",
   "navigation.forward",
   "terminal.toggle",
