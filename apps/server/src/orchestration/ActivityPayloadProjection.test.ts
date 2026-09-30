@@ -29,7 +29,8 @@ describe("projectActivityPayload", () => {
       }),
     );
     const data = (projected.payload as { data: Record<string, unknown> }).data;
-    expect(data.preview).toBe("src/a.ts\n\nBefore\nbefore\n\nAfter\nafter");
+    expect(data.preview).toContain("-before\n");
+    expect(data.preview).toContain("+after\n");
     expect(data.rawInput).toBeUndefined();
     expect(projectActivityPayload(projected)).toEqual(projected);
   });

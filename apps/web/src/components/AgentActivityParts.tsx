@@ -41,6 +41,7 @@ import {
 import { cn } from "~/lib/utils";
 import { formatSecondsTimestamp } from "~/timestampFormat";
 
+import { ToolCallBody } from "./ToolCallBody";
 import { elapsedBetween } from "./AgentStatus";
 import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "./ui/preview-card";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
@@ -49,14 +50,13 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 function ExpandedBody(props: { text: string; meta?: string; tone?: "default" | "error" }) {
   return (
     <div className="cursor-default rounded-md bg-muted/40 px-3 py-2">
-      <pre
+      <ToolCallBody
+        text={props.text}
         className={cn(
-          "max-h-64 cursor-text overflow-auto whitespace-pre-wrap break-words font-mono text-2xs leading-relaxed select-text",
+          "max-h-64 cursor-text",
           props.tone === "error" ? "text-destructive-foreground" : "text-secondary-label",
         )}
-      >
-        {props.text}
-      </pre>
+      />
       {props.meta ? (
         <p className="mt-1.5 font-mono text-3xs text-muted-foreground">{props.meta}</p>
       ) : null}
@@ -189,9 +189,7 @@ export const CallRow = memo(function CallRow(props: {
                 <Icon aria-hidden className="size-3.5 text-icon-muted" />
                 {props.title}
               </p>
-              <pre className="max-h-[50vh] overflow-auto whitespace-pre-wrap break-words font-mono text-2xs leading-relaxed select-text">
-                {props.body}
-              </pre>
+              <ToolCallBody text={props.body} className="max-h-[50vh]" />
               <p className="font-mono text-3xs text-muted-foreground">{props.meta}</p>
             </div>
           </PreviewCardPopup>

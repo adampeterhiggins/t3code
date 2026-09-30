@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { summarizeToolActivityInput } from "./toolActivityPreview";
+import { summarizeToolActivityInput } from "./toolActivityPreview.ts";
 
 describe("summarizeToolActivityInput", () => {
   it("shows Claude and ACP edit replacements without sending full file bodies", () => {
@@ -7,9 +7,11 @@ describe("summarizeToolActivityInput", () => {
       { file_path: "src/a.ts", old_string: "before", new_string: "after" },
       { path: "src/a.ts", oldText: "before", newText: "after" },
     ]) {
-      expect(summarizeToolActivityInput({ rawInput: input })).toBe(
-        "src/a.ts\n\nBefore\nbefore\n\nAfter\nafter",
-      );
+      const preview = summarizeToolActivityInput({ rawInput: input });
+      expect(preview).toContain("+1, −1 lines");
+      expect(preview).toContain("-before\n");
+      expect(preview).toContain("+after\n");
+      expect(preview).not.toContain("Before\n");
     }
     expect(
       summarizeToolActivityInput({

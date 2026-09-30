@@ -106,7 +106,7 @@ Code: `apps/server/src/provider/acp/CursorSubagents.ts`, the subagent handlers i
 The Agents panel has search, a status filter, sorting, compact rows that show a working agent's
 latest tool call, and hover previews of each agent. Each agent opens a detail view with
 its launch prompt, full result or error, searchable and filterable tool calls or an on-demand
-transcript, and a usage footer. Tool previews include bounded edit excerpts and diff counts,
+transcript, and a usage footer. Tool previews include bounded unified edit diffs and line counts,
 read ranges, search arguments, working directories, and exit codes when the provider supplies them.
 The same details appear in chat tool expansions on web, desktop, and mobile. On web and desktop, **Open in new tab** keeps an agent in its own
 thread-scoped sidebar tab alongside the fleet and other agents. Agent tabs can be closed and

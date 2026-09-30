@@ -1,3 +1,5 @@
+import { createPatch } from "diff";
+
 function record(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -15,7 +17,12 @@ export function summarizeToolActivityInput(data: unknown): string | undefined {
   const excerpt = (text: string) => (text.length > 500 ? `${text.slice(0, 499)}…` : text);
   let visited = 0;
   const add = (text: string) => {
-    parts.add(text.length > 600 ? `${text.slice(0, 599)}…` : text);
+    if (text.startsWith("Diff\n")) {
+      const used = [...parts].reduce((length, part) => length + part.length + 2, 0);
+      parts.add(used + text.length <= MAX_PREVIEW ? text : "Additional diff omitted from preview");
+    } else {
+      parts.add(text.length > 600 ? `${text.slice(0, 599)}…` : text);
+    }
   };
   const visit = (value: unknown, depth: number) => {
     if (depth > 4 || visited++ >= 40) return;
@@ -31,9 +38,27 @@ export function summarizeToolActivityInput(data: unknown): string | undefined {
     };
     const path = string("file_path", "filePath", "path", "TargetFile");
     if (path) add(path);
-    const diff = string("diff", "diffString", "unifiedDiff", "patch");
+    let diff = string("diff", "diffString", "unifiedDiff", "patch");
     const before = string("old_string", "oldText", "old_text", "oldString");
     const after = string("new_string", "newText", "new_text", "newString", "ReplacementContent");
+    if (!diff && before !== undefined && after !== undefined) {
+      // Tool replacements may be fragments, rather than complete files. Bound
+      // both input size and diff work; never diff independently clipped text.
+      const oldLines = before && !before.endsWith("\n") ? `${before}\n` : before;
+      const newLines = after && !after.endsWith("\n") ? `${after}\n` : after;
+      if (oldLines === newLines) {
+        add(before === after ? "No changes" : "Trailing newline changed");
+      } else {
+        diff =
+          before.length + after.length <= 32_000
+            ? createPatch(path ?? "edit", oldLines, newLines, undefined, undefined, {
+                context: 2,
+                maxEditLength: 200,
+              })
+            : undefined;
+        if (!diff) add("Edit is too large to preview");
+      }
+    }
     const added = row.linesAdded ?? row.lines_added;
     const removed = row.linesRemoved ?? row.lines_removed;
     if (typeof added === "number" && typeof removed === "number") {
@@ -50,11 +75,10 @@ export function summarizeToolActivityInput(data: unknown): string | undefined {
       }
       add(`+${plus}, −${minus} lines`);
     }
-    if (diff) add(`Diff\n${excerpt(diff)}`);
-    else if (before !== undefined && after !== undefined) {
-      add(`Before\n${excerpt(before) || "(empty)"}`);
-      add(`After\n${excerpt(after) || "(empty)"}`);
-    } else if (path && typeof row.content === "string") {
+    if (diff) {
+      // Keep complete patches so the standard renderer can parse hunk counts.
+      add(diff.length <= 1800 ? `Diff\n${diff}` : "Diff is too large to preview");
+    } else if (before === undefined && path && typeof row.content === "string") {
       add(`Content\n${excerpt(row.content)}`);
     }
     for (const [label, keys] of [
