@@ -46,9 +46,11 @@ import { selectThreadRightPanelState, useRightPanelStore } from "../../rightPane
 import { readPreparedConnection, usePreparedConnection } from "../../state/session";
 import { splitPartnerKey, useSplitViewStore } from "../../splitViewStore";
 import { useThreadTabContextStore } from "../../threadTabContextStore";
-import { ThreadTabSummaryDetails } from "../contextChipParts";
 import { WorkspaceBreadcrumbText } from "../WorkspaceBreadcrumb";
+import { CursorPreviewCard } from "./CursorPreviewCard";
 import { useSplitPaneFocus, useSplitViewActions } from "./splitPane";
+import { createThreadAttachSummaryLoader } from "./threadAttachPickerSummary";
+import { ThreadSummaryPreview } from "./ThreadSummaryPreview";
 import {
   Menu,
   MenuItem,
@@ -58,7 +60,6 @@ import {
   MenuSeparator,
   MenuTrigger,
 } from "../ui/menu";
-import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
 import { toastManager } from "../ui/toast";
 import { Toggle } from "../ui/toggle";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -414,58 +415,39 @@ export function ThreadTabMenu({
   );
 }
 
-/** A preview's summary: loading until the handoff resolves, then its text or failure. */
-type ThreadTabSummaryPreview =
-  | { status: "loading" }
-  | { status: "ready"; summary: string }
-  | { status: "failed"; message: string };
-
 function ThreadTabContextPill(props: {
   environmentId: EnvironmentId;
   group: ThreadTabGroup;
   threadId: ThreadId;
   disabled: boolean;
-  preview: ThreadTabSummaryPreview | undefined;
-  onPreview: () => void;
+  loadSummary: ReturnType<typeof createThreadAttachSummaryLoader>;
   onSelect: (title: string) => void;
 }) {
   const label = useTabLabel(props.environmentId, props.group, props.threadId);
-  const { preview } = props;
   return (
-    <PreviewCard
-      onOpenChange={(open) => {
-        if (open) props.onPreview();
-      }}
+    <CursorPreviewCard
+      trigger={
+        <Toggle
+          size="compact"
+          variant="pill"
+          pressed={false}
+          disabled={props.disabled}
+          aria-label={`Include context from ${label}`}
+          className="min-w-0"
+          onClick={() => props.onSelect(label)}
+        >
+          <span className="truncate">{label}</span>
+        </Toggle>
+      }
     >
-      <PreviewCardTrigger
-        delay={350}
-        closeDelay={120}
-        render={
-          <Toggle
-            size="compact"
-            variant="pill"
-            pressed={false}
-            disabled={props.disabled}
-            aria-label={`Include context from ${label}`}
-            className="min-w-0"
-            onClick={() => props.onSelect(label)}
-          />
-        }
-      >
-        <span className="truncate">{label}</span>
-      </PreviewCardTrigger>
-      <PreviewCardPopup align="center" className="w-96 max-w-[calc(100vw-2rem)]">
-        <div className="p-2">
-          {preview?.status === "ready" ? (
-            <ThreadTabSummaryDetails summary={preview.summary} />
-          ) : (
-            <p className="px-1 text-xs text-muted-foreground">
-              {preview?.status === "failed" ? preview.message : "Summarizing…"}
-            </p>
-          )}
-        </div>
-      </PreviewCardPopup>
-    </PreviewCard>
+      <ThreadSummaryPreview
+        environmentId={props.environmentId}
+        threadId={props.threadId}
+        title={label}
+        parentTitle={null}
+        loadSummary={props.loadSummary}
+      />
+    </CursorPreviewCard>
   );
 }
 
@@ -613,43 +595,25 @@ export function ThreadTabContextPills({
   onInsert: (reference: ComposerContextReference) => void;
 }) {
   const threadTabContext = useCaptureThreadTabContext(environmentId, threadId);
+  // Summaries fetched on hover are kept so a later click inserts what the preview showed.
+  const loadSummary = useMemo(
+    () =>
+      threadTabContext === null
+        ? null
+        : createThreadAttachSummaryLoader(threadTabContext.fetchSummary),
+    [threadTabContext],
+  );
   const [loadingId, setLoadingId] = useState<ThreadId | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // Summaries fetched on hover, kept so a later click inserts what the preview showed.
-  const [previews, setPreviews] = useState<Partial<Record<ThreadId, ThreadTabSummaryPreview>>>({});
   const siblings = group.tabs.filter((tab) => tab.threadId !== threadId);
-  if (siblings.length === 0 || threadTabContext === null) return null;
-
-  const preview = (sourceThreadId: ThreadId) => {
-    const existing = previews[sourceThreadId];
-    if (existing !== undefined && existing.status !== "failed") return;
-    setPreviews((current) => ({ ...current, [sourceThreadId]: { status: "loading" } }));
-    threadTabContext.fetchSummary(sourceThreadId).then(
-      (summary) =>
-        setPreviews((current) => ({ ...current, [sourceThreadId]: { status: "ready", summary } })),
-      (cause: unknown) =>
-        setPreviews((current) => ({
-          ...current,
-          [sourceThreadId]: {
-            status: "failed",
-            message: cause instanceof Error ? cause.message : "Could not summarize that tab.",
-          },
-        })),
-    );
-  };
+  if (siblings.length === 0 || threadTabContext === null || loadSummary === null) return null;
 
   const insert = async (sourceThreadId: ThreadId, title: string) => {
     setLoadingId(sourceThreadId);
     setError(null);
-    const previewed = previews[sourceThreadId];
     try {
-      onInsert(
-        await threadTabContext.capture(
-          sourceThreadId,
-          title,
-          previewed?.status === "ready" ? previewed.summary : undefined,
-        ),
-      );
+      const summary = await loadSummary(sourceThreadId);
+      onInsert(await threadTabContext.capture(sourceThreadId, title, summary));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not summarize that tab.");
     } finally {
@@ -669,8 +633,7 @@ export function ThreadTabContextPills({
             group={group}
             threadId={tab.threadId}
             disabled={loadingId !== null}
-            preview={previews[tab.threadId]}
-            onPreview={() => preview(tab.threadId)}
+            loadSummary={loadSummary}
             onSelect={(title) => void insert(tab.threadId, title)}
           />
         ))}

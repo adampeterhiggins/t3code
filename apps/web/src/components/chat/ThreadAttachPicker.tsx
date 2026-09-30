@@ -7,7 +7,7 @@ import type { ScopedThreadRef, ThreadId, ThreadTabMembership } from "@t3tools/co
 import * as Option from "effect/Option";
 import { Atom } from "effect/unstable/reactivity";
 import { MessageSquareIcon } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
@@ -37,12 +37,9 @@ import {
 } from "./composerThreadReferences";
 import { CursorPreviewCard } from "./CursorPreviewCard";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
-import { getTriggerDisplayModelLabel } from "./providerIconUtils";
 import { ThreadAttachPickerFilterBar } from "./ThreadAttachPickerFilters";
-import {
-  createThreadAttachSummaryLoader,
-  parseThreadSummaryPreview,
-} from "./threadAttachPickerSummary";
+import { createThreadAttachSummaryLoader } from "./threadAttachPickerSummary";
+import { ThreadSummaryPreview } from "./ThreadSummaryPreview";
 import { useCaptureThreadTabContext } from "./ThreadTabs";
 
 const THREAD_PICKER_LIMIT = 50;
@@ -166,16 +163,6 @@ function ThreadAttachPickerDialog({ threadRef }: { threadRef: ScopedThreadRef })
       ),
     [serverConfigs, threadRef.environmentId],
   );
-  const providerLabelOf = (threadId: ThreadId) => {
-    const thread = threadsById.get(threadId);
-    if (!thread) return null;
-    const { instanceId, model } = thread.modelSelection;
-    const provider = providerEntries.get(instanceId);
-    const selected = provider?.models.find((entry) => entry.slug === model);
-    return `${provider?.displayName ?? thread.session?.providerName ?? instanceId} · ${
-      selected ? getTriggerDisplayModelLabel(selected) : model
-    }`;
-  };
   const projectOf = (threadId: ThreadId) => {
     const thread = threadsById.get(threadId);
     return thread ? projectsById.get(thread.projectId) : undefined;
@@ -295,10 +282,9 @@ function ThreadAttachPickerDialog({ threadRef }: { threadRef: ScopedThreadRef })
                               }
                             >
                               <ThreadSummaryPreview
+                                environmentId={threadRef.environmentId}
                                 threadId={entry.threadId}
                                 title={entry.label}
-                                projectTitle={entry.description}
-                                providerLabel={providerLabelOf(entry.threadId)}
                                 parentTitle={entry.parentThreadTitle}
                                 loadSummary={loadSummary}
                               />
@@ -378,116 +364,5 @@ function ThreadActivityMeta({ thread }: { thread: EnvironmentThreadShell | undef
       {/* A fixed slot keeps the provider icons and statuses in one column. */}
       <span className="min-w-16 text-right text-muted-foreground tabular-nums">{time}</span>
     </span>
-  );
-}
-
-function ThreadSummaryPreview(props: {
-  threadId: ThreadId;
-  title: string;
-  projectTitle: string;
-  providerLabel: string | null;
-  parentTitle: string | null;
-  loadSummary: ReturnType<typeof createThreadAttachSummaryLoader> | null;
-}) {
-  const { threadId, loadSummary } = props;
-  const [preview, setPreview] = useState<{ summary: string } | { error: string } | null>(null);
-  useEffect(() => {
-    if (loadSummary === null) return;
-    let active = true;
-    loadSummary(threadId).then(
-      (summary) => {
-        if (active) setPreview({ summary });
-      },
-      (cause: unknown) => {
-        if (active)
-          setPreview({
-            error: cause instanceof Error ? cause.message : "Could not summarize that thread.",
-          });
-      },
-    );
-    return () => {
-      active = false;
-    };
-  }, [threadId, loadSummary]);
-  const content = useMemo(
-    () => (preview && "summary" in preview ? parseThreadSummaryPreview(preview.summary) : null),
-    [preview],
-  );
-  const facts = [
-    props.projectTitle,
-    props.providerLabel,
-    content && content.files.length > 0
-      ? `${content.files.length + content.moreFiles} ${content.files.length + content.moreFiles === 1 ? "file" : "files"} changed`
-      : null,
-  ].filter((fact) => fact !== null);
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex min-w-0 flex-col gap-0.5">
-        {props.parentTitle !== null && props.parentTitle !== props.title ? (
-          <p className="truncate text-muted-foreground">Tab of {props.parentTitle}</p>
-        ) : null}
-        <p className="truncate font-medium text-foreground text-sm">{props.title}</p>
-        <p className="truncate text-muted-foreground">{facts.join(" · ")}</p>
-      </div>
-      {content ? (
-        <div className="flex flex-col gap-2.5 border-t pt-2.5">
-          {content.opening === null &&
-          content.latestUser === null &&
-          content.latestAssistant === null ? (
-            <p className="text-muted-foreground">No messages yet.</p>
-          ) : null}
-          {content.opening !== null ? (
-            <SummaryPreviewSection label="Started with">
-              <p className="line-clamp-3 whitespace-pre-line wrap-break-word">{content.opening}</p>
-            </SummaryPreviewSection>
-          ) : null}
-          {content.latestUser !== null ? (
-            <SummaryPreviewSection
-              label={
-                content.earlierTurns > 0
-                  ? `Latest · after ${content.earlierTurns} more ${content.earlierTurns === 1 ? "turn" : "turns"}`
-                  : "Latest"
-              }
-            >
-              <p className="line-clamp-2 whitespace-pre-line wrap-break-word">
-                {content.latestUser}
-              </p>
-            </SummaryPreviewSection>
-          ) : null}
-          {content.latestAssistant !== null ? (
-            <SummaryPreviewSection label="Agent replied">
-              <p className="line-clamp-4 whitespace-pre-line wrap-break-word text-muted-foreground">
-                {content.latestAssistant}
-              </p>
-            </SummaryPreviewSection>
-          ) : null}
-          {content.files.length > 0 ? (
-            <SummaryPreviewSection label="Files changed">
-              <p className="line-clamp-2 wrap-break-word font-mono text-muted-foreground">
-                {content.files.map((file) => file.split("/").at(-1)).join(", ")}
-                {content.moreFiles > 0 ? `, +${content.moreFiles} more` : ""}
-              </p>
-            </SummaryPreviewSection>
-          ) : null}
-        </div>
-      ) : (
-        <p className="text-muted-foreground">
-          {preview && "error" in preview
-            ? preview.error
-            : loadSummary === null
-              ? "Connect to preview this thread."
-              : "Summarizing…"}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function SummaryPreviewSection(props: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <p className="font-medium text-muted-foreground">{props.label}</p>
-      {props.children}
-    </div>
   );
 }
