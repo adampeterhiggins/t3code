@@ -1313,6 +1313,10 @@ const ThreadTurnStartBootstrap = Schema.Struct({
   createThread: Schema.optional(ThreadTurnStartBootstrapCreateThread),
   prepareWorktree: Schema.optional(ThreadTurnStartBootstrapPrepareWorktree),
   runSetupScript: Schema.optional(Schema.Boolean),
+  /** Create the thread and prepare its workspace, then stop: no message is
+      persisted and no turn starts, so the first real send starts the turn.
+      Requires `createThread`; the command's message is ignored. */
+  deferTurn: Schema.optional(Schema.Boolean),
 });
 
 export type ThreadTurnStartBootstrap = typeof ThreadTurnStartBootstrap.Type;

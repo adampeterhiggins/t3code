@@ -10,6 +10,11 @@ and mode selections, unless the destination project has its own model default.
 Its branch and workspace mode come from your configured defaults. To continue in
 an existing worktree, use **New thread in this worktree** from the branch toolbar.
 
+To set up a thread before you know what to ask, leave the composer empty and click **Create
+worktree** (**Create thread** in Local mode), or press Enter. The worktree and its setup script get
+ready without starting the agent, so you can add files or context first. Your first message then
+names the thread and its branch. This is not available on mobile.
+
 When you change a new thread's project, T3 Code stays in the current environment
 if that project exists there. Otherwise it selects an environment that has it.
 
