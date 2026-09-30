@@ -183,11 +183,24 @@ Search the list, filter it by status, or sort it by status, tokens, or
 duration. Token and duration sorts rank finished agents; agents still working
 stay at the top in launch order, so rows don't jump while you read them.
 
-Click an agent to see its token breakdown, the prompt it was given, its full
-result or error, and the tool calls it made. In the conversation, expand an
+Each agent is one line. Working agents add their latest tool call underneath
+and failed agents their error. Hover an agent to preview its prompt, latest
+tool calls, and usage; the preview stays open while you move onto it, so you
+can hover a tool call inside it to see the whole call. Click the preview, or
+the agent, to open it; clicking a tool call opens the agent with that call
+expanded.
+
+Open an agent to see the prompt it was given, its full result or error, the
+tool calls it made, and its token usage in the footer (hover a number for its
+label, or the total for the full breakdown). In the conversation, expand an
 agent in its launch row and choose **Show details** to open it directly.
-**Load transcript** fetches the agent's own conversation from the provider. It
-works while the thread's provider session is running.
+
+Tool calls list newest first. Search them, filter by status or tool, or sort
+oldest first or by duration. Hover a call to preview all of it; click to keep
+it open. The menu on the **Tool calls** heading switches to the **Transcript**,
+the agent's own conversation fetched from the provider, which you can search,
+filter, and sort the same way. Transcripts work while the thread's provider
+session is running.
 
 | Provider    | Tool calls | Prompt                | Transcript |
 | ----------- | ---------- | --------------------- | ---------- |

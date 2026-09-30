@@ -150,6 +150,13 @@ export function formatShortTimestamp(isoDate: string, timestampFormat: Timestamp
   return getTimestampFormatter(timestampFormat, false).format(date);
 }
 
+/** Wall-clock time to the second, for events that land seconds apart. */
+export function formatSecondsTimestamp(isoDate: string, timestampFormat: TimestampFormat): string {
+  const date = parseTimestampDate(isoDate);
+  if (!date) return "";
+  return getTimestampFormatter(timestampFormat, true).format(date);
+}
+
 const numericDateFormatter = new Intl.DateTimeFormat(timestampLocale, {
   month: "numeric",
   day: "numeric",
