@@ -108,7 +108,10 @@ export function composerThreadReferenceItems(input: {
     }));
 }
 
-/** Keeps matching tabs together, with groups ordered by their highest-ranked matching tab. */
+/**
+ * Keeps matching tabs together, with groups ordered by their highest-ranked matching tab.
+ * The original tab leads its group so the group reads as one thread.
+ */
 export function groupThreadAttachPickerItems(
   items: ReturnType<typeof composerThreadReferenceItems>,
 ) {
@@ -121,8 +124,9 @@ export function groupThreadAttachPickerItems(
   }
   return [...grouped].flatMap(([id, entries]) => {
     const first = entries[0];
-    return first
-      ? [{ id, parentTitle: first.parentThreadTitle, projectTitle: first.description, entries }]
-      : [];
+    if (!first) return [];
+    const original = entries.findIndex((entry) => entry.threadId === id);
+    if (original > 0) entries.unshift(...entries.splice(original, 1));
+    return [{ id, parentTitle: first.parentThreadTitle, projectTitle: first.description, entries }];
   });
 }

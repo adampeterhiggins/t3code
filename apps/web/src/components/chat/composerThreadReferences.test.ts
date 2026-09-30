@@ -190,7 +190,7 @@ describe("composerThreadReferenceItems", () => {
         id: "parent",
         title: "Improve authentication",
         project: "t3code",
-        tabs: ["child", "parent"],
+        tabs: ["parent", "child"],
       },
       { id: "other", title: null, project: "t3code", tabs: ["other"] },
     ]);

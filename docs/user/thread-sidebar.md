@@ -39,8 +39,8 @@ server, from any project, by title, so you can pull in a chat that was never a t
 also choose **Thread** from the composer's attachment menu, or **Attach thread** from the command
 palette, to search other unarchived threads on that server. Filter by project or provider, sort
 by update time, creation time, or title, and hover a result to preview the summary you will attach.
-Tabs are grouped under their thread's title. Search by either title to find a tab, then select
-the tab whose conversation you want to attach.
+A thread's tabs are listed together. Search by the thread's or the tab's title to find a tab,
+then select the tab whose conversation you want to attach.
 Before the first message in a new tab, you can also click a sibling
 under **Include context from**; hover one first to preview its summary. Move or delete the chip like any other context.
 The summary covers that chat's recent conversation, the commands and tools its agent ran, errors,

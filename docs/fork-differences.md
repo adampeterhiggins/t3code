@@ -171,11 +171,11 @@ is its own conversation and provider.
   The `@` menu also lists other unarchived threads in the environment, matched by title
   (`apps/web/src/components/chat/composerThreadReferences.ts`), and works in a new draft thread
   too. On web and desktop, **Attach → Thread** and **Attach thread** in the command palette open
-  a searchable picker of those threads, grouping tabs beneath their thread title (including
-  when filters leave only one matching tab). Searching a thread title finds its tabs too.
-  It has project and provider filters
-  and sorting by updated time, creation time, or title. Hovering a row previews the summary;
-  attaching reuses that snapshot
+  a searchable picker of those threads. A thread's tabs sit together behind a side rule, and
+  searching a thread title finds its tabs too. Rows show the project, provider, status, and
+  last activity as the sidebar does. It has project and provider filters
+  and sorting by updated time, creation time, or title. Hovering a row previews how the chat
+  started, the latest exchange, and changed files; attaching reuses that snapshot
   ([`ThreadAttachPicker.tsx`](../apps/web/src/components/chat/ThreadAttachPicker.tsx)). These paths insert a `thread-tab`
   context chip at the caret, which can be moved like any other chip. The kind lives in
   `packages/contracts/src/composerContext.ts` and is formatted for providers in
