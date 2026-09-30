@@ -185,9 +185,9 @@ export const CallRow = memo(function CallRow(props: {
                 activate();
               }}
             >
-              <p className="flex items-center gap-1.5 text-xs text-secondary-label">
-                <Icon aria-hidden className="size-3.5 text-icon-muted" />
-                {props.title}
+              <p className="flex items-start gap-1.5 text-xs text-secondary-label">
+                <Icon aria-hidden className="mt-px size-3.5 shrink-0 text-icon-muted" />
+                <span className="min-w-0 break-all">{props.title}</span>
               </p>
               <ToolCallBody text={props.body} className="max-h-[50vh]" />
               <p className="font-mono text-3xs text-muted-foreground">{props.meta}</p>

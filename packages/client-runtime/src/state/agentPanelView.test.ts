@@ -280,6 +280,22 @@ describe("deriveSubagentToolLog workspace paths", () => {
     // The preview's path still matches the detail, so the call shows it once.
     expect(subagentToolCallText(log[1]!, false)).toBe("src/a.ts");
   });
+
+  it("relativizes a target that the provider puts in the title", () => {
+    const log = deriveSubagentToolLog(
+      [
+        activity("tool.completed", {
+          agentId: "alpha",
+          toolCallId: "c1",
+          itemType: "dynamic_tool_call",
+          title: "Read /repo/src/a.ts",
+        }),
+      ],
+      "alpha",
+      "/repo",
+    );
+    expect(log[0]!.title).toBe("Read src/a.ts");
+  });
 });
 
 describe("applySubagentToolLogView", () => {

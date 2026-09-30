@@ -359,7 +359,9 @@ function withWorkspacePaths(
   // The preview lists paths and diffs rather than the command, and must keep
   // matching the detail it deduplicates against.
   const preview = entry.preview ? formatPathsForWorkspace(entry.preview, workspaceRoot) : null;
-  return { ...entry, detail: format(entry.detail), command: format(entry.command), preview };
+  // ACP providers such as Cursor put the target in the title ("Read /repo/a.ts").
+  const title = formatPathsForWorkspace(entry.title, workspaceRoot);
+  return { ...entry, title, detail: format(entry.detail), command: format(entry.command), preview };
 }
 
 /** Everything a call recorded, deduplicated, for previews, expansion and search. */
