@@ -1,9 +1,12 @@
-import { ArrowLeftIcon, ChartNoAxesColumnIcon, SettingsIcon } from "lucide-react";
+import { ArrowLeftIcon, ArrowRightIcon, ChartNoAxesColumnIcon, SettingsIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { memo, useCallback } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
+import { useAtomValue } from "@effect/atom-react";
 
 import { useEnvironmentIdentificationMode } from "../../hooks/useSettings";
+import { shortcutLabelForCommand } from "../../keybindings";
+import { primaryServerKeybindingsAtom } from "../../state/server";
 import { cn } from "../../lib/utils";
 import { useEnvironments } from "../../state/environments";
 import { T3Wordmark } from "../T3Wordmark";
@@ -14,6 +17,7 @@ import {
   useEnvironmentStageLabel,
 } from "../SidebarStageBackdrop";
 import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
 import {
   SidebarFooter,
   SidebarMenu,
@@ -72,12 +76,64 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
           {pillLabel}
         </Badge>
       ) : null}
-      <div className="relative z-10 ml-auto hidden md:mr-2 @[16rem]/sidebar-header:flex">
-        <SidebarResourcePill />
+      <div className="relative z-10 ml-auto hidden items-center gap-1 md:mr-2 md:flex">
+        <div className="hidden @[16rem]/sidebar-header:flex">
+          <SidebarResourcePill />
+        </div>
+        <SidebarHistoryNavigation />
       </div>
     </div>
   );
 });
+
+// Browser history buttons, matching the navigation.back/forward shortcuts.
+function SidebarHistoryNavigation() {
+  const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+  const backShortcut = shortcutLabelForCommand(keybindings, "navigation.back");
+  const forwardShortcut = shortcutLabelForCommand(keybindings, "navigation.forward");
+
+  return (
+    <div className="flex items-center">
+      <SidebarHistoryButton
+        icon={<ArrowLeftIcon />}
+        label="Back"
+        shortcut={backShortcut}
+        onClick={() => window.history.back()}
+      />
+      <SidebarHistoryButton
+        icon={<ArrowRightIcon />}
+        label="Forward"
+        shortcut={forwardShortcut}
+        onClick={() => window.history.forward()}
+      />
+    </div>
+  );
+}
+
+function SidebarHistoryButton({
+  icon,
+  label,
+  shortcut,
+  onClick,
+}: {
+  icon: ReactNode;
+  label: string;
+  shortcut: string | null;
+  onClick: () => void;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button aria-label={label} onClick={onClick} size="icon-xs" variant="ghost-muted">
+            {icon}
+          </Button>
+        }
+      />
+      <TooltipPopup side="bottom">{shortcut ? `${label} (${shortcut})` : label}</TooltipPopup>
+    </Tooltip>
+  );
+}
 
 function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
   return (

@@ -257,6 +257,14 @@ resource-telemetry stream only while it is open.
 Code: `apps/web/src/components/sidebar/SidebarResourcePill.tsx` and `readUsage` in
 `apps/server/src/resourceTelemetry/ResourceTelemetry.ts`.
 
+## Sidebar back and forward buttons
+
+The sidebar titlebar has back and forward buttons after the resource pill. They step through the
+app's navigation history, the same as the `navigation.back` and `navigation.forward` shortcuts
+(`Mod+[` and `Mod+]` by default). This is web and desktop. The mobile app uses its own navigation.
+
+Code: `SidebarHistoryNavigation` in `apps/web/src/components/sidebar/SidebarChrome.tsx`.
+
 ## Diagnostics settings tab
 
 Diagnostics has its own entry in the settings sidebar, between Connections and Archive. Upstream
