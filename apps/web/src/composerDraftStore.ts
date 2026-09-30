@@ -4232,6 +4232,20 @@ export function useThreadHasUnsentDraft(threadRef: ScopedThreadRef): boolean {
   );
 }
 
+/**
+ * The model a real thread's composer has picked but not yet sent, or null when the composer
+ * follows the thread's own selection. Lets the sidebar track the composer before the next turn.
+ */
+export function useComposerDraftActiveModelSelection(
+  threadRef: ScopedThreadRef,
+): ModelSelection | null {
+  return useComposerDraftStore((state) => {
+    const draft = getComposerDraftState(state, threadRef);
+    if (!draft?.activeProvider) return null;
+    return draft.modelSelectionByProvider[draft.activeProvider] ?? null;
+  });
+}
+
 function useComposerDraftModelState(threadRef: ComposerThreadTarget): ComposerDraftModelState {
   return useComposerDraftStore(
     useShallow((state) => {

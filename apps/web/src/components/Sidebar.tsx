@@ -253,6 +253,7 @@ import {
   composerDraftHasUserContent,
   DraftId,
   useComposerDraftStore,
+  useComposerDraftActiveModelSelection,
   useThreadHasUnsentDraft,
   type ComposerThreadDraftState,
   type DraftSessionState,
@@ -1232,18 +1233,22 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   });
   const prStatus = prStatusIndicator(pr, linkedPullRequestStatus?.sourceControlProvider);
 
-  const modelInstanceId = thread.session?.providerInstanceId ?? thread.modelSelection.instanceId;
+  // An unsent composer pick wins, so the icon follows the composer before the next turn.
+  const draftModelSelection = useComposerDraftActiveModelSelection(threadRef);
+  const modelSelection = draftModelSelection ?? thread.modelSelection;
+  const modelInstanceId =
+    draftModelSelection?.instanceId ??
+    thread.session?.providerInstanceId ??
+    thread.modelSelection.instanceId;
   const providerEntry = props.providerEntryByInstanceId.get(modelInstanceId) ?? null;
   const driverKind = providerEntry?.driverKind ?? null;
   const showInstanceBadge =
     providerEntry !== null &&
     shouldShowInstanceBadge(providerEntry, props.providerEntryByInstanceId.values());
-  const selectedModel = providerEntry?.models.find(
-    (model) => model.slug === thread.modelSelection.model,
-  );
+  const selectedModel = providerEntry?.models.find((model) => model.slug === modelSelection.model);
   const modelLabel = selectedModel
     ? getTriggerDisplayModelLabel(selectedModel)
-    : thread.modelSelection.model;
+    : modelSelection.model;
 
   // The local environment is "this machine" and needs no marker; every other
   // one gets its machine glyph. With no local environment (the hosted app)
@@ -2179,18 +2184,22 @@ const SidebarTabRow = memo(function SidebarTabRow(props: {
     isSelected,
   });
 
-  const modelInstanceId = thread.session?.providerInstanceId ?? thread.modelSelection.instanceId;
+  // An unsent composer pick wins, so the icon follows the composer before the next turn.
+  const draftModelSelection = useComposerDraftActiveModelSelection(threadRef);
+  const modelSelection = draftModelSelection ?? thread.modelSelection;
+  const modelInstanceId =
+    draftModelSelection?.instanceId ??
+    thread.session?.providerInstanceId ??
+    thread.modelSelection.instanceId;
   const providerEntry = props.providerEntryByInstanceId.get(modelInstanceId) ?? null;
   const driverKind = providerEntry?.driverKind ?? null;
   const showInstanceBadge =
     providerEntry !== null &&
     shouldShowInstanceBadge(providerEntry, props.providerEntryByInstanceId.values());
-  const selectedModel = providerEntry?.models.find(
-    (model) => model.slug === thread.modelSelection.model,
-  );
+  const selectedModel = providerEntry?.models.find((model) => model.slug === modelSelection.model);
   const modelLabel = selectedModel
     ? getTriggerDisplayModelLabel(selectedModel)
-    : thread.modelSelection.model;
+    : modelSelection.model;
 
   const [isFileDragOver, setIsFileDragOver] = useState(false);
   const fileDropHandlers = useMemo(
@@ -2409,17 +2418,21 @@ const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props: {
     activeThreadBranch: thread.branch,
     currentGitBranch: visibleGitStatus?.refName ?? null,
   });
-  const modelInstanceId = thread.session?.providerInstanceId ?? thread.modelSelection.instanceId;
+  // An unsent composer pick wins, so the icon follows the composer before the next turn.
+  const draftModelSelection = useComposerDraftActiveModelSelection(threadRef);
+  const modelSelection = draftModelSelection ?? thread.modelSelection;
+  const modelInstanceId =
+    draftModelSelection?.instanceId ??
+    thread.session?.providerInstanceId ??
+    thread.modelSelection.instanceId;
   const providerEntry = props.providerEntryByInstanceId.get(modelInstanceId) ?? null;
   const showInstanceBadge =
     providerEntry !== null &&
     shouldShowInstanceBadge(providerEntry, props.providerEntryByInstanceId.values());
-  const selectedModel = providerEntry?.models.find(
-    (model) => model.slug === thread.modelSelection.model,
-  );
+  const selectedModel = providerEntry?.models.find((model) => model.slug === modelSelection.model);
   const modelLabel = selectedModel
     ? getTriggerDisplayModelLabel(selectedModel)
-    : thread.modelSelection.model;
+    : modelSelection.model;
   const runningTerminalIds = useThreadRunningTerminalIds({
     environmentId: thread.environmentId,
     threadId: thread.id,
