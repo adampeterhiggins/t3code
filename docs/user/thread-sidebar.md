@@ -216,6 +216,20 @@ file edits, and plans. Turn off **Header** to drop the project, branch, and mode
 top. **Save…** saves a Markdown file on the device you are using, even when the thread runs on a
 remote server; **Copy** puts the same Markdown on your clipboard.
 
+## Import a CLI conversation
+
+On web and desktop, run **Import conversation into …** from the command palette, or right-click a
+project in the legacy sidebar and choose **Import conversation…**, to bring in a Claude Code or
+Codex conversation you started in a terminal. The list shows conversations from the last 30 days
+that ran in the project's folder on the computer hosting it, newest first, with their first
+prompt, message count, and age. Choosing one creates a thread with its messages. Your next message
+continues the same Claude or Codex session, so the agent keeps its full context. Close the CLI
+session first so both sides do not write to it at once.
+
+Conversations that already have a thread, including ones T3 Code started itself, show **Open**
+instead. Imported history keeps the first prompt and the newest 200 messages, without tool
+activity or attachments. Other providers and the mobile app do not offer import.
+
 ## Inspect agent work
 
 On web and desktop, use **Agents** to follow work delegated to subagents.

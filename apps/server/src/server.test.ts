@@ -6111,6 +6111,97 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  it.effect("lists a project's agent conversations over websocket rpc", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const codexHome = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-agent-list-rpc-codex-",
+      });
+      const workspaceRoot = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-agent-list-rpc-workspace-",
+      });
+      const transcriptDirectory = path.join(codexHome, "sessions", "1970", "01", "01");
+      const transcriptPath = path.join(transcriptDirectory, "rollout-1970-01-01-rpc-session.jsonl");
+      yield* fileSystem.makeDirectory(transcriptDirectory, { recursive: true });
+      yield* fileSystem.writeFileString(
+        transcriptPath,
+        [
+          encodeTestJson({
+            timestamp: "1970-01-01T00:00:00.000Z",
+            type: "session_meta",
+            payload: { id: "rpc-session", cwd: workspaceRoot },
+          }),
+          encodeTestJson({
+            timestamp: "1970-01-01T00:00:00.000Z",
+            type: "event_msg",
+            payload: { type: "user_message", message: "Add a changelog" },
+          }),
+        ].join("\n"),
+      );
+      yield* fileSystem.utimes(transcriptPath, 0, 0);
+
+      const projectId = ProjectId.make("agent-list-rpc-project");
+      const project = {
+        id: projectId,
+        title: "Agent list RPC",
+        workspaceRoot,
+        defaultModelSelection: null,
+        scripts: [],
+        createdAt: "1970-01-01T00:00:00.000Z",
+        updatedAt: "1970-01-01T00:00:00.000Z",
+      } as const;
+      yield* buildAppUnderTest({
+        layers: {
+          serverSettings: {
+            getSettings: Effect.succeed({
+              ...DEFAULT_SERVER_SETTINGS,
+              providerInstances: {
+                [ProviderInstanceId.make("codex")]: {
+                  driver: ProviderDriverKind.make("codex"),
+                  config: { homePath: codexHome },
+                },
+                [ProviderInstanceId.make("claudeAgent")]: {
+                  driver: ProviderDriverKind.make("claudeAgent"),
+                  enabled: false,
+                  config: {},
+                },
+              },
+            }),
+          },
+          projectionSnapshotQuery: {
+            getProjectShellById: (requestedProjectId) =>
+              Effect.succeed(
+                requestedProjectId === projectId ? Option.some(project) : Option.none(),
+              ),
+          },
+        },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const result = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) => client[WS_METHODS.agentSessionsList]({ projectId })),
+      );
+
+      assert.deepEqual(result, {
+        truncated: false,
+        sessions: [
+          {
+            provider: "codex",
+            providerInstanceId: ProviderInstanceId.make("codex"),
+            providerSessionId: "rpc-session",
+            title: "Add a changelog",
+            preview: "Add a changelog",
+            messageCount: 1,
+            createdAt: "1970-01-01T00:00:00.000Z",
+            updatedAt: "1970-01-01T00:00:00.000Z",
+            threadId: null,
+          },
+        ],
+      });
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("uploads Codex thread feedback through websocket rpc", () =>
     Effect.gen(function* () {
       const input = {
