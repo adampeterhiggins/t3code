@@ -1,5 +1,5 @@
 import type { ScopedThreadRef } from "@t3tools/contracts";
-import { FolderGit2Icon, PaperclipIcon } from "lucide-react";
+import { FolderGit2Icon, MessageSquareIcon, PaperclipIcon } from "lucide-react";
 import { LinearIcon } from "../Icons";
 import { memo } from "react";
 
@@ -10,10 +10,10 @@ import { openLinearIssuePicker } from "./LinearIssuePicker";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { openPullRequestAttachPicker } from "./PullRequestAttachPicker";
 import { openRepositoryAttachPicker } from "./RepositoryAttachPicker";
+import { openThreadAttachPicker } from "./ThreadAttachPicker";
 
 /**
- * The composer's attach button: asks what to attach, files, a Linear issue, a pull request, or a
- * repository to clone into the workspace's context folder.
+ * The composer's attach button: files, thread summaries, issues, pull requests, and repositories.
  */
 export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
   threadRef: ScopedThreadRef;
@@ -33,6 +33,10 @@ export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
         <MenuItem onClick={props.onAttachFiles}>
           <PaperclipIcon />
           Files and images
+        </MenuItem>
+        <MenuItem onClick={() => openThreadAttachPicker(props.threadRef)}>
+          <MessageSquareIcon />
+          Thread
         </MenuItem>
         <MenuItem onClick={() => openLinearIssuePicker(props.threadRef)}>
           <LinearIcon />

@@ -191,7 +191,13 @@ is its own conversation and provider.
   first message, click one under **Include context from** (hovering one previews its summary).
   The `@` menu also lists other unarchived threads in the environment, matched by title
   (`apps/web/src/components/chat/composerThreadReferences.ts`), and works in a new draft thread
-  too. Either path inserts a `thread-tab`
+  too. On web and desktop, **Attach → Thread** and **Attach thread** in the command palette open
+  a searchable picker of those threads. A thread's tabs sit together behind a side rule, and
+  searching a thread title finds its tabs too. Rows show the project, provider, status, and
+  last activity as the sidebar does. It has project and provider filters
+  and sorting by updated time, creation time, or title. Hovering a row previews how the chat
+  started, the latest exchange, and changed files; attaching reuses that snapshot
+  ([`ThreadAttachPicker.tsx`](../apps/web/src/components/chat/ThreadAttachPicker.tsx)). These paths insert a `thread-tab`
   context chip at the caret, which can be moved like any other chip. The kind lives in
   `packages/contracts/src/composerContext.ts` and is formatted for providers in
   `packages/shared/src/composerContextReferences.ts`. The summary covers the recent conversation,

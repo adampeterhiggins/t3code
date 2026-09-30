@@ -37,7 +37,13 @@ right-click it and choose **Close tab**, to close it.
 
 To bring in another tab's conversation, type `@` in the composer and pick the tab; its summary
 lands as a chip at the cursor. On web and desktop, the same menu also lists other threads on that
-server, from any project, by title, so you can pull in a chat that was never a tab here. Before the first message in a new tab, you can also click a sibling
+server, from any project, by title, so you can pull in a chat that was never a tab here. You can
+also choose **Thread** from the composer's attachment menu, or **Attach thread** from the command
+palette, to search other unarchived threads on that server. Filter by project or provider, sort
+by update time, creation time, or title, and hover a result to preview the summary you will attach.
+A thread's tabs are listed together. Search by the thread's or the tab's title to find a tab,
+then select the tab whose conversation you want to attach.
+Before the first message in a new tab, you can also click a sibling
 under **Include context from**; hover one first to preview its summary. Move or delete the chip like any other context.
 The summary covers that chat's recent conversation, the commands and tools its agent ran, errors,
 files it changed, and its latest plan, trimmed to fit.
