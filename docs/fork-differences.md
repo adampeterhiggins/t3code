@@ -15,6 +15,18 @@ git log --oneline --no-merges upstream/main..HEAD
 Agents update this page in the same change that adds, changes, or removes a difference. The rule
 is in [AGENTS.md](../AGENTS.md#fork-differences).
 
+## Custom file applications
+
+Settings → Integrations → Open in can add, edit, and remove applications for one environment,
+choose a default for chat file links, and override it by file extension. Custom applications
+appear in the workspace Open in picker and file Open with menus. Commands run on the environment
+hosting the file. Remote workspace menus offer custom applications on that host alongside
+editors that support SSH links.
+
+See [the user guide](user/composer.md#opening-file-links),
+[settings](../apps/web/src/components/settings/OpenInSettings.tsx), and
+[launcher](../apps/server/src/process/externalLauncher.ts).
+
 ## Devin provider
 
 Adds Devin as a provider, driven through the local `devin` CLI's ACP server (`devin acp`).

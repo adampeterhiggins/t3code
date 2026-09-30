@@ -2,7 +2,7 @@ import { FolderClosedIcon } from "lucide-react";
 import { describe, expect, it } from "vite-plus/test";
 
 import { FileExplorerIcon, FinderIcon } from "../Icons";
-import { resolveOpenInOptions } from "./OpenInPicker";
+import { resolveOpenInOptions, resolveOpenInEditorIds } from "./OpenInPicker";
 
 describe("resolveOpenInOptions", () => {
   it.each([
@@ -23,4 +23,29 @@ describe("resolveOpenInOptions", () => {
     ]);
     expect(resolveOpenInOptions("MacIntel", [])).toEqual([]);
   });
+});
+
+it("offers configured applications only on an executable environment route", () => {
+  const customEditors = [
+    { id: "custom:typora" as const, label: "Typora", command: "open", args: ["-a", "Typora"] },
+  ];
+  expect(resolveOpenInOptions("MacIntel", ["custom:typora"], customEditors)).toEqual([
+    expect.objectContaining({ value: "custom:typora", label: "Typora" }),
+  ]);
+  expect(resolveOpenInOptions("MacIntel", ["vscode"], customEditors)).toEqual([
+    expect.objectContaining({ value: "vscode" }),
+  ]);
+});
+
+it("keeps host applications available remotely without inventing SSH support", () => {
+  const customEditors = [
+    { id: "custom:typora" as const, label: "Typora", command: "open", args: [] },
+  ];
+  expect(resolveOpenInEditorIds("remote-links", ["idea"], ["vscode"], customEditors)).toEqual([
+    "vscode",
+    "custom:typora",
+  ]);
+  expect(resolveOpenInEditorIds("remote-unavailable", ["idea"], ["vscode"], customEditors)).toEqual(
+    ["custom:typora"],
+  );
 });

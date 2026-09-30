@@ -8164,6 +8164,35 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  it.effect("routes websocket rpc shell.openInEditor with environment applications", () =>
+    Effect.gen(function* () {
+      const customEditors = [
+        { id: "custom:typora" as const, label: "Typora", command: "open", args: ["-a", "Typora"] },
+      ];
+      let configuredApplications: readonly unknown[] | undefined;
+      yield* buildAppUnderTest({
+        layers: {
+          serverSettings: {
+            getSettings: Effect.succeed({ ...DEFAULT_SERVER_SETTINGS, customEditors }),
+          },
+          externalLauncher: {
+            launchEditor: (_input, applications) =>
+              Effect.sync(() => {
+                configuredApplications = applications;
+              }),
+          },
+        },
+      });
+      const wsUrl = yield* getWsServerUrl("/ws");
+      yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[WS_METHODS.shellOpenInEditor]({ cwd: "/tmp/notes.md", editor: "custom:typora" }),
+        ),
+      );
+      assert.deepEqual(configuredApplications, customEditors);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("routes websocket rpc shell.openInEditor errors", () =>
     Effect.gen(function* () {
       const externalLauncherError = new ExternalLauncherCommandNotFoundError({

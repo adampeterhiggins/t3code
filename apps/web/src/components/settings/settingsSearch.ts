@@ -598,6 +598,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["allow disable enable open drive preview tools sessions project override"],
   },
   {
+    id: "open-in",
+    title: "Open in applications and file links",
+    to: "/settings/integrations",
+    scope: "environment-defaults",
+    searchTerms: ["typora markdown md custom editor command default extensions open with files"],
+  },
+  {
     id: "linear",
     title: "Linear",
     to: "/settings/integrations",

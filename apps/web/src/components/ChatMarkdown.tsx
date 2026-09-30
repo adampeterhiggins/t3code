@@ -1,3 +1,9 @@
+import {
+  resolveFileOpenTarget,
+  DEFAULT_SERVER_SETTINGS,
+  EDITORS,
+  type EditorId,
+} from "@t3tools/contracts";
 import { usePullRequestLinking } from "~/hooks/usePullRequestLinking";
 import { useAtomValue } from "@effect/atom-react";
 import {
@@ -1198,6 +1204,11 @@ interface MarkdownFileLinkProps {
   theme: "light" | "dark";
   threadRef?: ScopedThreadRef | undefined;
   onOpen?: ((targetPath: string) => Promise<AtomCommandResult<unknown, unknown>>) | undefined;
+  openExternally?: boolean;
+  openWithEditors?: readonly { readonly id: EditorId; readonly label: string }[];
+  onOpenWith?:
+    | ((path: string, editor: EditorId) => Promise<AtomCommandResult<unknown, unknown>>)
+    | undefined;
   onOpenInPanel: (panelPath: string, line: number | undefined) => void;
   openInEditorMenuLabel: string;
   onOpenInBrowser?: (() => Promise<AtomCommandResult<unknown, unknown>>) | undefined;
@@ -1938,6 +1949,9 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
   threadRef,
   onOpen,
   onOpenInPanel,
+  openExternally,
+  openWithEditors,
+  onOpenWith,
   openInEditorMenuLabel,
   onOpenInBrowser,
   onOpenMedia,
@@ -1983,6 +1997,10 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
   }, [onOpen, targetPath]);
 
   const handleOpenInFilePreview = useCallback(() => {
+    if (openExternally && onOpen) {
+      handleOpenInEditor();
+      return;
+    }
     if (threadRef && panelPath) {
       onOpenInPanel(panelPath, line);
       return;
@@ -1992,7 +2010,16 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
       return;
     }
     handleOpenInEditor();
-  }, [handleOpenInEditor, line, onOpenInPanel, onOpenMedia, panelPath, threadRef]);
+  }, [
+    handleOpenInEditor,
+    line,
+    onOpenInPanel,
+    onOpenMedia,
+    panelPath,
+    threadRef,
+    openExternally,
+    onOpen,
+  ]);
 
   const handleOpenInBrowser = useCallback(() => {
     if (!onOpenInBrowser) {
@@ -2117,8 +2144,23 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
       try {
         const clicked = await api.contextMenu.show(
           [
+            ...(threadRef && panelPath
+              ? ([{ id: "preview-file", label: "Open in T3 file viewer" }] as const)
+              : []),
             ...(onOpenMedia ? ([{ id: "preview-media", label: "Preview media" }] as const) : []),
             ...(onOpen ? ([{ id: "open", label: openInEditorMenuLabel }] as const) : []),
+            ...(onOpenWith && openWithEditors?.length
+              ? [
+                  {
+                    id: "open-with",
+                    label: "Open with",
+                    children: openWithEditors.map((editor) => ({
+                      id: `editor:${editor.id}`,
+                      label: editor.label,
+                    })),
+                  },
+                ]
+              : []),
             ...(onOpenInBrowser
               ? ([{ id: "open-in-browser", label: "Open in integrated browser" }] as const)
               : []),
@@ -2129,6 +2171,20 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
           position,
         );
 
+        if (clicked?.startsWith("editor:") && onOpenWith) {
+          const result = await onOpenWith(targetPath, clicked.slice("editor:".length) as EditorId);
+          if (result._tag === "Failure")
+            toastManager.add({
+              type: "error",
+              title: "Could not open file",
+              description: targetPath,
+            });
+          return;
+        }
+        if (clicked === "preview-file" && panelPath) {
+          onOpenInPanel(panelPath, line);
+          return;
+        }
         if (clicked === "preview-media") {
           onOpenMedia?.();
           return;
@@ -2169,6 +2225,12 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
       onOpenMedia,
       onOpen,
       onReveal,
+      onOpenInPanel,
+      openWithEditors,
+      onOpenWith,
+      panelPath,
+      line,
+      threadRef,
       openInEditorMenuLabel,
       revealLabel,
       targetPath,
@@ -2224,7 +2286,7 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
                   handleOpenInEditor();
                   return;
                 }
-                if (useBrowserPrimaryAction) {
+                if (useBrowserPrimaryAction && !openExternally) {
                   handleOpenInBrowser();
                   return;
                 }
@@ -2276,6 +2338,9 @@ function areMarkdownFileLinkPropsEqual(
     previous.copyMarkdown === next.copyMarkdown &&
     previous.theme === next.theme &&
     previous.threadRef === next.threadRef &&
+    previous.openWithEditors === next.openWithEditors &&
+    previous.onOpenWith === next.onOpenWith &&
+    previous.openExternally === next.openExternally &&
     previous.onOpen === next.onOpen &&
     previous.onOpenInPanel === next.onOpenInPanel &&
     previous.openInEditorMenuLabel === next.openInEditorMenuLabel &&
@@ -2376,10 +2441,30 @@ function useChatMarkdownState({
     [createAssetUrl, cwd, expandMedia, preparedConnection, threadRef],
   );
   const serverConfig = useAtomValue(serverEnvironment.configValueAtom(environmentId));
+  const fileOpenSettings = serverConfig?.settings ?? DEFAULT_SERVER_SETTINGS;
   const projects = useProjects();
   const availableEditors = serverConfig?.availableEditors ?? [];
-  const [preferredEditor] = usePreferredEditor(availableEditors);
-  const preferredEditorMenuLabel = openInEditorMenuLabel(preferredEditor);
+  const allAvailableEditors = useMemo(
+    () => [...availableEditors, ...fileOpenSettings.customEditors.map((editor) => editor.id)],
+    [availableEditors, fileOpenSettings.customEditors],
+  );
+  const openWithEditors = useMemo(
+    () =>
+      [
+        ...EDITORS.filter(
+          (editor) => editor.id !== "file-manager" && availableEditors.includes(editor.id),
+        ),
+        ...fileOpenSettings.customEditors,
+      ].map(({ id, label }) => ({ id, label })),
+    [availableEditors, fileOpenSettings.customEditors],
+  );
+  const [preferredEditor] = usePreferredEditor(allAvailableEditors);
+  const customEditorLabel = fileOpenSettings.customEditors.find(
+    (editor) => editor.id === preferredEditor,
+  )?.label;
+  const preferredEditorMenuLabel = customEditorLabel
+    ? `Open in ${customEditorLabel}`
+    : openInEditorMenuLabel(preferredEditor);
   const openInPreferredEditor = useOpenInPreferredEditor(environmentId, availableEditors);
   const openInEditor = useAtomCommand(shellEnvironment.openInEditor, {
     reportFailure: false,
@@ -2635,6 +2720,7 @@ function useChatMarkdownState({
         fileLinkMeta.workspaceRelativePath ??
         (!canPreviewMedia && isAbsolutePath(fileLinkMeta.filePath) ? fileLinkMeta.filePath : null);
 
+      const fileOpenTarget = resolveFileOpenTarget(fileLinkMeta.filePath, fileOpenSettings);
       return (
         <MarkdownFileLink
           href={fileLinkMeta.targetPath}
@@ -2647,14 +2733,30 @@ function useChatMarkdownState({
           copyMarkdown={copyMarkdown}
           theme={resolvedTheme}
           threadRef={threadRef}
-          {...(canUseShellActions ? { onOpen: openInPreferredEditor } : {})}
+          {...(canUseShellActions
+            ? {
+                onOpen:
+                  fileOpenTarget === "t3"
+                    ? openInPreferredEditor
+                    : (path: string) => openInPreferredEditor(path, fileOpenTarget),
+              }
+            : {})}
+          openExternally={fileOpenTarget !== "t3"}
+          openWithEditors={openWithEditors}
+          onOpenWith={canUseShellActions ? openInPreferredEditor : undefined}
           onOpenInPanel={openFileInPanel}
           onOpenMedia={
             threadRef && canPreviewMedia
               ? () => openMarkdownMedia(mediaPath, fileLinkMeta.filePath)
               : undefined
           }
-          openInEditorMenuLabel={preferredEditorMenuLabel}
+          openInEditorMenuLabel={
+            fileOpenTarget === "t3"
+              ? preferredEditorMenuLabel
+              : fileOpenTarget === "file-manager"
+                ? "Open in system default application"
+                : `Open in ${fileOpenSettings.customEditors.find((editor) => editor.id === fileOpenTarget)?.label ?? openInEditorMenuLabel(fileOpenTarget).replace(/^Open in /, "")}`
+          }
           onReveal={
             canUseShellActions && revealInFileManagerLabel !== undefined
               ? () => revealMarkdownFileInFileManager(fileLinkMeta)
@@ -2676,6 +2778,8 @@ function useChatMarkdownState({
       fileLinkParentSuffixByPath,
       openFileInPanel,
       openInPreferredEditor,
+      fileOpenSettings,
+      openWithEditors,
       openMarkdownFileInPreview,
       openMarkdownMedia,
       preferredEditorMenuLabel,

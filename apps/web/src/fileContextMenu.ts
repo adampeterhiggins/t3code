@@ -63,12 +63,15 @@ export function resolveFileContextMenuAbsolutePath(target: FileContextMenuTarget
   return resolvePathLinkTarget(workspaceFilePath, target.workspaceRoot);
 }
 
-const EDITOR_LABEL_BY_ID = new Map(EDITORS.map((editor) => [editor.id, editor.label]));
+const EDITOR_LABEL_BY_ID = new Map<EditorId, string>(
+  EDITORS.map((editor) => [editor.id, editor.label]),
+);
 
 export interface FileContextMenuCapabilities {
   readonly revealLabel: string | undefined;
   readonly canOpenDefault: boolean;
   readonly editorIds: ReadonlyArray<EditorId>;
+  readonly editorLabels?: ReadonlyMap<EditorId, string>;
 }
 
 /**
@@ -100,7 +103,10 @@ export function buildFileContextMenuItems(input: {
       label: "Open with",
       children: editorIds.map((editorId) => ({
         id: `editor:${editorId}` as FileContextMenuAction,
-        label: EDITOR_LABEL_BY_ID.get(editorId) ?? editorId,
+        label:
+          input.capabilities.editorLabels?.get(editorId) ??
+          EDITOR_LABEL_BY_ID.get(editorId) ??
+          editorId,
       })),
     });
   }
@@ -117,8 +123,13 @@ export function useFileContextMenu(environmentId: EnvironmentId | null) {
   const openInEditor = useAtomCommand(shellEnvironment.openInEditor, { reportFailure: false });
   const serverConfig = useAtomValue(serverEnvironment.configValueAtom(environmentId));
 
+  const settings = useAtomValue(serverEnvironment.configValueAtom(environmentId))?.settings;
   return useMemo(() => {
-    const availableEditors = serverConfig?.availableEditors ?? [];
+    const customEditors = settings?.customEditors ?? [];
+    const availableEditors = [
+      ...(serverConfig?.availableEditors ?? []),
+      ...customEditors.map((editor) => editor.id),
+    ];
     const capabilities: FileContextMenuCapabilities = {
       // The reveal wording comes from the server because on WSL the reveal can
       // run through Windows File Explorer even though the host reports Linux.
@@ -132,6 +143,7 @@ export function useFileContextMenu(environmentId: EnvironmentId | null) {
           : undefined,
       canOpenDefault: availableEditors.includes("file-manager"),
       editorIds: availableEditors,
+      editorLabels: new Map(customEditors.map((editor) => [editor.id, editor.label])),
     };
 
     const activate = async (
@@ -160,7 +172,7 @@ export function useFileContextMenu(environmentId: EnvironmentId | null) {
             ? "Could not open file"
             : reveal
               ? "Unable to reveal file"
-              : `Could not open in ${EDITOR_LABEL_BY_ID.get(editor) ?? editor}`,
+              : `Could not open in ${capabilities.editorLabels?.get(editor) ?? EDITOR_LABEL_BY_ID.get(editor) ?? editor}`,
         description: absolutePath,
       });
     };
@@ -190,7 +202,7 @@ export function useFileContextMenu(environmentId: EnvironmentId | null) {
       activate,
       show,
     };
-  }, [environmentId, openInEditor, serverConfig]);
+  }, [environmentId, openInEditor, serverConfig, settings]);
 }
 
 /** Convenience callback for onContextMenu handlers. */
