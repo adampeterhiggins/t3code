@@ -1,4 +1,5 @@
 import type {
+  AuthAgentAccessTokenResult,
   AuthBrowserSessionResult,
   AuthClientMetadata,
   AuthEnvironmentScope,
@@ -26,6 +27,7 @@ const PrimaryEnvironmentRequestOperation = Schema.Literals([
   "exchange-bootstrap-credential",
   "fetch-environment-descriptor",
   "create-pairing-credential",
+  "create-agent-access-token",
   "list-pairing-links",
   "revoke-pairing-link",
   "list-client-sessions",
@@ -372,6 +374,30 @@ export async function createServerPairingCredential(input?: {
   } catch (error) {
     throw PrimaryEnvironmentRequestError.fromCause({
       operation: "create-pairing-credential",
+      cause: error,
+    });
+  }
+}
+
+/** Mints a read-only token for `/mcp/query`. The token is only ever returned here. */
+export async function createServerAgentAccessToken(input: {
+  readonly label: string;
+  readonly expiresInDays: number;
+}): Promise<AuthAgentAccessTokenResult> {
+  try {
+    return await runPrimaryHttp(
+      PrimaryEnvironmentHttpClient.pipe(
+        Effect.flatMap((client) =>
+          client.auth.agentAccessToken({
+            headers: {},
+            payload: { label: input.label.trim(), expiresInDays: input.expiresInDays },
+          }),
+        ),
+      ),
+    );
+  } catch (error) {
+    throw PrimaryEnvironmentRequestError.fromCause({
+      operation: "create-agent-access-token",
       cause: error,
     });
   }

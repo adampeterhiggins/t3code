@@ -113,6 +113,8 @@ export const AuthAdministrativeScopes = [
   AuthAccessWriteScope,
   AuthRelayWriteScope,
 ] as const;
+/** Agent access tokens: enough to read history over `/mcp/query`, nothing that changes state. */
+export const AuthReadOnlyClientScopes = [AuthOrchestrationReadScope] as const;
 
 export const AuthTokenExchangeGrantType =
   "urn:ietf:params:oauth:grant-type:token-exchange" as const;
@@ -344,6 +346,24 @@ export const AuthCreatePairingCredentialInput = Schema.Struct({
   scopes: Schema.optionalKey(AuthEnvironmentScopes),
 });
 export type AuthCreatePairingCredentialInput = typeof AuthCreatePairingCredentialInput.Type;
+
+export const AuthCreateAgentAccessTokenInput = Schema.Struct({
+  label: TrimmedNonEmptyString.check(Schema.isMaxLength(100)),
+  expiresInDays: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 3650 })),
+});
+export type AuthCreateAgentAccessTokenInput = typeof AuthCreateAgentAccessTokenInput.Type;
+
+/** Returned once at creation. The token is never readable again; the session row carries the rest. */
+export const AuthAgentAccessTokenResult = Schema.Struct({
+  sessionId: AuthSessionId,
+  token: TrimmedNonEmptyString,
+  label: TrimmedNonEmptyString,
+  scopes: AuthEnvironmentScopes,
+  expiresAt: Schema.DateTimeUtc,
+  /** The query MCP endpoint as this server reaches itself; remote agents swap in a reachable host. */
+  mcpUrl: TrimmedNonEmptyString,
+});
+export type AuthAgentAccessTokenResult = typeof AuthAgentAccessTokenResult.Type;
 
 export const AuthSessionState = Schema.Struct({
   authenticated: Schema.Boolean,

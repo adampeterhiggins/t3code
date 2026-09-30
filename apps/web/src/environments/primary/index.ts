@@ -6,6 +6,7 @@ export {
 } from "./context";
 
 export {
+  createServerAgentAccessToken,
   createServerPairingCredential,
   isPrimaryEnvironmentPairingCredentialRejectedError,
   peekPairingTokenFromUrl,

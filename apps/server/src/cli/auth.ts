@@ -1,5 +1,6 @@
 import {
   AuthAdministrativeScopes,
+  AuthReadOnlyClientScopes,
   AuthSessionId,
   AuthStandardClientScopes,
 } from "@t3tools/contracts";
@@ -78,6 +79,13 @@ const baseUrlFlag = Flag.String("base-url").pipe(
 
 const tokenOnlyFlag = Flag.Boolean("token-only").pipe(
   Flag.withDescription("Print only the issued bearer token."),
+  Flag.withDefault(false),
+);
+
+const readOnlyFlag = Flag.Boolean("read-only").pipe(
+  Flag.withDescription(
+    "Grant only `orchestration:read`, for agents that query history over `/mcp/query`.",
+  ),
   Flag.withDefault(false),
 );
 
@@ -164,6 +172,7 @@ const sessionIssueCommand = Command.make("issue", {
   ttl: ttlFlag,
   label: labelFlag,
   subject: subjectFlag,
+  readOnly: readOnlyFlag,
   tokenOnly: tokenOnlyFlag,
   json: jsonFlag,
 }).pipe(
@@ -174,7 +183,7 @@ const sessionIssueCommand = Command.make("issue", {
       (environmentAuth) =>
         Effect.gen(function* () {
           const issued = yield* environmentAuth.issueSession({
-            scopes: AuthAdministrativeScopes,
+            scopes: flags.readOnly ? AuthReadOnlyClientScopes : AuthAdministrativeScopes,
             ...(Option.isSome(flags.ttl) ? { ttl: flags.ttl.value } : {}),
             ...(Option.isSome(flags.label) ? { label: flags.label.value } : {}),
             ...(Option.isSome(flags.subject) ? { subject: flags.subject.value } : {}),
