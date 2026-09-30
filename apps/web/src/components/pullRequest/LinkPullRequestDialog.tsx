@@ -504,6 +504,11 @@ function LinkPullRequestPicker({
                     }}
                   </CommandCollection>
                 </CommandGroup>
+              ) : targets.length > 0 &&
+                (pullRequests.isPending || trimmedQuery !== debouncedQuery) ? (
+                <div className="px-2 py-3 text-muted-foreground text-xs">
+                  Loading pull requests…
+                </div>
               ) : null}
             </CommandList>
           )}
