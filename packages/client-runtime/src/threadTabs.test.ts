@@ -1,6 +1,10 @@
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
-import { hiddenTabThreadKeys, threadTabGroupTarget } from "./threadTabs.ts";
+import {
+  hiddenSidebarTabThreadKeys,
+  hiddenTabThreadKeys,
+  threadTabGroupTarget,
+} from "./threadTabs.ts";
 
 describe("sidebar tab groups", () => {
   it("keeps the parent row and hides its children only in the matching environment", () => {
@@ -71,5 +75,90 @@ describe("sidebar tab groups", () => {
       "local:root",
     );
     expect(threadTabGroupTarget("local:second", hidden, { "local:third": 9 })).toBe("local:second");
+  });
+});
+
+describe("sidebar membership lookup", () => {
+  const local = EnvironmentId.make("local");
+  const remote = EnvironmentId.make("remote");
+  const root = ThreadId.make("root");
+  const child = ThreadId.make("child");
+  const ordinary = ThreadId.make("ordinary");
+  const shell = (id: typeof root, environmentId = local) => ({
+    id,
+    environmentId,
+    archivedAt: null,
+  });
+
+  it("reproduces a tab shell arriving before membership, then keeps it hidden throughout the lookup", () => {
+    const threads = [shell(root), shell(child)];
+    const staleMemberships = new Map([[local, [{ threadId: root, groupId: root }]]]);
+    // The original selector briefly exposed both rows until the HTTP response arrived.
+    expect(hiddenTabThreadKeys(threads, staleMemberships).has("local:child")).toBe(false);
+    const pending = hiddenSidebarTabThreadKeys(
+      threads,
+      staleMemberships,
+      new Set(["local:root"]),
+      new Set([local]),
+    );
+    expect([...pending]).toEqual([["local:child", "local:child"]]);
+    const refreshed = new Map([
+      [local, [root, child].map((threadId) => ({ threadId, groupId: root }))],
+    ]);
+    expect([
+      ...hiddenSidebarTabThreadKeys(
+        threads,
+        refreshed,
+        new Set(["local:root", "local:child"]),
+        new Set([local]),
+      ),
+    ]).toEqual([["local:child", "local:root"]]);
+  });
+
+  it("releases ordinary threads after lookup, including when the endpoint is unsupported", () => {
+    const threads = [shell(root), shell(ordinary)];
+    expect([
+      ...hiddenSidebarTabThreadKeys(threads, new Map(), new Set(["local:root"]), new Set([local])),
+    ]).toEqual([["local:ordinary", "local:ordinary"]]);
+    expect(
+      hiddenSidebarTabThreadKeys(
+        threads,
+        new Map(),
+        new Set(["local:root", "local:ordinary"]),
+        new Set([local]),
+      ).size,
+    ).toBe(0);
+  });
+
+  it("waits only for the captured shells in connected environments", () => {
+    const threads = [shell(root), shell(child), shell(child, remote)];
+    expect([
+      ...hiddenSidebarTabThreadKeys(threads, new Map(), new Set(["local:root"]), new Set([local])),
+    ]).toEqual([["local:child", "local:child"]]);
+  });
+
+  it("preserves known groups during refresh and promotes a sibling when the root closes", () => {
+    const memberships = new Map([
+      [local, [root, child].map((threadId) => ({ threadId, groupId: root }))],
+    ]);
+    expect([
+      ...hiddenSidebarTabThreadKeys(
+        [shell(root), shell(child), shell(ordinary)],
+        memberships,
+        new Set(["local:root", "local:child"]),
+        new Set([local]),
+      ),
+    ]).toEqual([
+      ["local:child", "local:root"],
+      ["local:ordinary", "local:ordinary"],
+    ]);
+    expect(
+      hiddenSidebarTabThreadKeys(
+        [shell(child)],
+        memberships,
+        new Set(["local:root", "local:child"]),
+        new Set([local]),
+      ).size,
+    ).toBe(0);
   });
 });

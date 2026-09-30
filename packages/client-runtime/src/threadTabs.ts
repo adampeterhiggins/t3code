@@ -60,6 +60,38 @@ export function hiddenTabThreadKeys<
 }
 
 /**
+ * New shells must wait for their membership lookup before becoming standalone sidebar rows.
+ * Previously classified rows stay visible while that lookup is in flight. A failed lookup
+ * also classifies its captured shells, allowing ordinary threads on upstream servers through.
+ */
+export function hiddenSidebarTabThreadKeys<
+  T extends {
+    readonly id: ThreadId;
+    readonly environmentId: EnvironmentId;
+    readonly archivedAt: string | null;
+  },
+>(
+  threads: ReadonlyArray<T>,
+  membershipsByEnvironment: ReadonlyMap<EnvironmentId, ReadonlyArray<ThreadTabMembership>>,
+  checkedThreadKeys: ReadonlySet<string>,
+  loadingEnvironmentIds: ReadonlySet<EnvironmentId>,
+): ReadonlyMap<string, string> {
+  const hidden = new Map(hiddenTabThreadKeys(threads, membershipsByEnvironment));
+  for (const thread of threads) {
+    const key = `${thread.environmentId}:${thread.id}`;
+    if (
+      loadingEnvironmentIds.has(thread.environmentId) &&
+      !checkedThreadKeys.has(key) &&
+      !hidden.has(key)
+    ) {
+      // No group representative is known yet; keep routing to the thread itself.
+      hidden.set(key, key);
+    }
+  }
+  return hidden;
+}
+
+/**
  * The thread a sidebar row opens: for a tab group's row, whichever of its tabs was opened most
  * recently, so returning to the group lands on the tab left open. Other keys open themselves.
  */

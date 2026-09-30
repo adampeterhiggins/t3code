@@ -1,4 +1,7 @@
-import { hiddenTabThreadKeys, listThreadTabMemberships } from "@t3tools/client-runtime/thread-tabs";
+import {
+  hiddenSidebarTabThreadKeys,
+  listThreadTabMemberships,
+} from "@t3tools/client-runtime/thread-tabs";
 import type { EnvironmentId, ThreadTabMembership } from "@t3tools/contracts";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import { useEffect, useMemo, useState } from "react";
@@ -18,37 +21,59 @@ export function useHiddenTabThreads(threads: ReadonlyArray<EnvironmentThreadShel
     ReadonlyMap<EnvironmentId, ReadonlyArray<ThreadTabMembership>>
   >(() => new Map());
 
+  const [checkedThreadKeys, setCheckedThreadKeys] = useState<ReadonlySet<string>>(() => new Set());
+  const loadingEnvironmentIds = useMemo(
+    () =>
+      new Set(
+        environments
+          .filter((environment) => readPreparedConnection(environment.environmentId) !== null)
+          .map((environment) => environment.environmentId),
+      ),
+    [environments],
+  );
+
   useEffect(() => {
     if (!threadIds) return;
     let active = true;
+    const requestedThreadKeys = threadIds.split("|");
     void Promise.all(
       environments.map(async (environment) => {
         if (environment.connection.phase !== "connected") return null;
         const prepared = readPreparedConnection(environment.environmentId);
         if (!prepared) return null;
+        let rows: ReadonlyArray<ThreadTabMembership> | null = null;
         try {
-          const rows = await runtime.runPromise(listThreadTabMemberships(prepared));
-          return [environment.environmentId, rows] as const;
+          rows = await runtime.runPromise(listThreadTabMemberships(prepared));
         } catch {
-          return null;
+          // Upstream servers do not serve tabs; their ordinary threads still need to appear.
+        }
+        if (!active) return;
+        setCheckedThreadKeys(
+          (previous) =>
+            new Set([
+              ...previous,
+              ...requestedThreadKeys.filter((key) =>
+                key.startsWith(`${environment.environmentId}:`),
+              ),
+            ]),
+        );
+        if (rows !== null) {
+          const memberships = rows;
+          setMemberships((previous) =>
+            new Map(previous).set(environment.environmentId, memberships),
+          );
         }
       }),
-    ).then((results) => {
-      if (!active) return;
-      setMemberships((previous) => {
-        const next = new Map(previous);
-        for (const result of results) if (result) next.set(result[0], result[1]);
-        return next;
-      });
-    });
+    );
     return () => {
       active = false;
     };
   }, [environments, threadIds]);
 
   const hiddenTabThreads = useMemo(
-    () => hiddenTabThreadKeys(threads, memberships),
-    [threads, memberships],
+    () =>
+      hiddenSidebarTabThreadKeys(threads, memberships, checkedThreadKeys, loadingEnvironmentIds),
+    [threads, memberships, checkedThreadKeys, loadingEnvironmentIds],
   );
   // Keyed on memberships alone so thread updates do not hand the sidebar a new set.
   const tabEnvironmentIds = useMemo(
