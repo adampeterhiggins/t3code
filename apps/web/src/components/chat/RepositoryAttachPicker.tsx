@@ -12,7 +12,7 @@ import type {
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/unstable/reactivity";
-import { ExternalLinkIcon, FolderGit2Icon, LockIcon } from "lucide-react";
+import { ExternalLinkIcon, FolderGit2Icon, LockIcon, LockOpenIcon } from "lucide-react";
 import { useState } from "react";
 
 import { useLinkClickHandler } from "~/browser/useOpenLink";
@@ -333,17 +333,20 @@ function RepositoryAttachPickerDialog(props: {
                       }
                     >
                       <span className="group/row flex min-w-0 flex-1 items-center gap-2">
-                        {/* Fixed widths so the lock and descriptions line up down the list. */}
-                        <span className="w-52 shrink-0 truncate text-foreground text-sm">
+                        {candidate.isPrivate ? (
+                          <LockIcon
+                            aria-label="Private"
+                            className="size-3 shrink-0 text-muted-foreground/70"
+                          />
+                        ) : (
+                          <LockOpenIcon
+                            aria-label="Public"
+                            className="size-3 shrink-0 text-muted-foreground/70"
+                          />
+                        )}
+                        {/* A fixed width so descriptions line up down the list. */}
+                        <span className="w-44 shrink-0 truncate text-foreground text-sm">
                           {candidate.name}
-                        </span>
-                        <span className="flex w-3 shrink-0 items-center">
-                          {candidate.isPrivate ? (
-                            <LockIcon
-                              aria-label="Private"
-                              className="size-3 text-muted-foreground/70"
-                            />
-                          ) : null}
                         </span>
                         <span className="min-w-0 flex-1 truncate text-muted-foreground text-xs">
                           {candidate.description ?? ""}
