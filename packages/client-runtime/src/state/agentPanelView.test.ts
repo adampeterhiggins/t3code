@@ -171,6 +171,33 @@ describe("deriveSubagentToolLog", () => {
     ]);
     expect(log[0]?.completedAt).not.toBeNull();
   });
+
+  it("names rows after the tool when the detail carries its name", () => {
+    const log = deriveSubagentToolLog(
+      [
+        activity("tool.started", {
+          agentId: "alpha",
+          toolCallId: "w1",
+          itemType: "file_change",
+          title: "File change",
+          detail: "Write: /tmp/NOTES.md",
+          data: { toolName: "Write", input: { file_path: "/tmp/NOTES.md", content: "hi" } },
+        }),
+        activity("tool.completed", {
+          agentId: "alpha",
+          toolCallId: "w1",
+          itemType: "file_change",
+          title: "File change",
+          status: "completed",
+          data: { toolName: "Write" },
+        }),
+      ],
+      "alpha",
+    );
+    expect(log.map(({ title, detail, kind }) => ({ title, detail, kind }))).toEqual([
+      { title: "Write", detail: "/tmp/NOTES.md", kind: "edit" },
+    ]);
+  });
 });
 
 describe("deriveSubagentToolLog kinds and commands", () => {

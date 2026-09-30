@@ -57,4 +57,18 @@ describe("summarizeToolActivityInput", () => {
       summarizeToolActivityInput({ unknown: "secret", content: "full output" }),
     ).toBeUndefined();
   });
+
+  it("renders whole-file writes as an all-addition diff, keeping large bodies as excerpts", () => {
+    const small = summarizeToolActivityInput({
+      rawInput: { file_path: "src/new.ts", content: "export const a = 1;\nexport const b = 2;" },
+    });
+    expect(small).toContain("+2, −0 lines");
+    expect(small).toContain("Diff\n");
+    expect(small).toContain("+export const b = 2;\n");
+    const large = summarizeToolActivityInput({
+      rawInput: { file_path: "src/big.ts", content: "x".repeat(4000) },
+    });
+    expect(large).toContain("Content\n");
+    expect(large).not.toContain("Diff\n");
+  });
 });

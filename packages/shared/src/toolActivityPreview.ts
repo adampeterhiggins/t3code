@@ -59,6 +59,12 @@ export function summarizeToolActivityInput(data: unknown): string | undefined {
         if (!diff) add("Edit is too large to preview");
       }
     }
+    // Whole-file writes render as an all-addition patch; large bodies keep the
+    // plain excerpt below.
+    const written = !diff && before === undefined && path ? string("content") : undefined;
+    if (written && written.length <= 1600) {
+      diff = createPatch(path ?? "file", "", written.endsWith("\n") ? written : `${written}\n`);
+    }
     const added = row.linesAdded ?? row.lines_added;
     const removed = row.linesRemoved ?? row.lines_removed;
     if (typeof added === "number" && typeof removed === "number") {

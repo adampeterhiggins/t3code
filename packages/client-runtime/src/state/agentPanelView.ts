@@ -287,16 +287,29 @@ export function deriveSubagentToolLogs(
         : activity.kind === "tool.completed" || nativeStatus === "completed"
           ? "completed"
           : "running";
-    const title = asText(payload.title) ?? existing?.title ?? activity.summary;
+    const payloadTitle = asText(payload.title);
     const itemType = asText(payload.itemType) ?? existing?.itemType ?? null;
+    // Adapters title tools by category ("File change", "Tool call") with a
+    // "Write: <path>" detail; name the row after the tool instead.
+    const toolName = asText(asRecord(payload.data)?.toolName);
+    const rawDetail = asText(payload.detail);
+    const namedDetail =
+      toolName !== null && rawDetail?.startsWith(`${toolName}: `)
+        ? rawDetail.slice(toolName.length + 2)
+        : null;
+    const title =
+      namedDetail !== null || (toolName !== null && existing?.title === toolName)
+        ? (toolName ?? activity.summary)
+        : (payloadTitle ?? existing?.title ?? activity.summary);
+    const detail = namedDetail ?? rawDetail;
     entries.set(id, {
       id,
       title,
-      detail: asText(payload.detail) ?? existing?.detail ?? null,
+      detail: detail ?? existing?.detail ?? null,
       command: commandFrom(payload.data) ?? existing?.command ?? null,
       preview: summarizeToolActivityInput(payload.data) ?? existing?.preview ?? null,
       itemType,
-      kind: toolKindFor(title, itemType, payload.data),
+      kind: toolKindFor(payloadTitle ?? activity.summary, itemType, payload.data),
       status: existing && existing.status !== "running" ? existing.status : status,
       startedAt: existing?.startedAt ?? activity.createdAt,
       completedAt: existing?.completedAt ?? (status === "running" ? null : activity.createdAt),

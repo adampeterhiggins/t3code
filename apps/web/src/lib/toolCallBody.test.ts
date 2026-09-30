@@ -24,4 +24,17 @@ describe("parseToolCallBody", () => {
       { kind: "text", text: "Diff\nnot a patch" },
     ]);
   });
+
+  it("keys each patch by its content so worker highlights match their diff", () => {
+    const key = (old_string: string, new_string: string) => {
+      const summary = summarizeToolActivityInput({
+        rawInput: { file_path: "src/a.ts", old_string, new_string },
+      })!;
+      const diff = parseToolCallBody(summary).find((block) => block.kind === "diff");
+      return diff?.kind === "diff" ? diff.files[0]?.cacheKey : undefined;
+    };
+    expect(key("a", "b")).toBeDefined();
+    expect(key("a", "b")).toBe(key("a", "b"));
+    expect(key("a", "b")).not.toBe(key("a", "c"));
+  });
 });
