@@ -171,7 +171,9 @@ is its own conversation and provider.
   (`apps/web/src/threadTabRecencyStore.ts`). With tabs hidden on web and desktop, the row shows
   that tab’s title, model, and details (`apps/web/src/components/Sidebar.tsx`). On web and desktop, **Settings → General → Show tabs
   in sidebar** — also the sidebar button, the command palette, and `Cmd+Option+T` on macOS or
-  `Ctrl+Alt+T` on Windows and Linux — lists each tab under that row. The row's hover actions add a
+  `Ctrl+Alt+T` on Windows and Linux — lists each tab under that row. The row's tab count opens or
+  folds just that group; those choices stay in the browser and reset when the setting changes. The
+  row's hover actions add a
   **+** that opens a new tab, and each listed tab has a hover **×** that closes it.
 - **Menus.** The thread right-click menu in both sidebars and the header's thread menu offer
   **New tab**. The sidebar's menu also offers **Close tab** on a thread that has a sibling tab.

@@ -170,7 +170,11 @@ import {
   filterSidebarProjectScopeItems,
   formatWorkingDurationLabel,
   firstValidTimestampMs,
+  foldedSidebarTabThreads,
   groupSidebarTabThreads,
+  isSidebarTabGroupOpen,
+  setSidebarTabGroupOverride,
+  type SidebarTabGroupOverrides,
   hasUnseenCompletion,
   sidebarTabNeighbourKey,
   isSidebarNestedLinkClick,
@@ -209,7 +213,7 @@ import {
   restrictBelowSidebarLabel,
 } from "./Sidebar.drag";
 import { SidebarDragLifecycle, SidebarPointerSensor } from "./Sidebar.pointer";
-import { createSidebarListMotion } from "./Sidebar.motion";
+import { animateSidebarDisclosure, createSidebarListMotion } from "./Sidebar.motion";
 import {
   ThreadPullRequestBadgeControl,
   ThreadPullRequestsMiniList,
@@ -272,6 +276,16 @@ const SETTLED_TAIL_PAGE_COUNT = 25;
 // Fresh keys deliberately reset both shelves to collapsed for existing users.
 const SETTLED_SHELF_EXPANDED_KEY = "t3code:sidebar:settled-expanded";
 const SNOOZED_SHELF_EXPANDED_KEY = "t3code:sidebar:snoozed-expanded";
+// Per-group exceptions to Show tabs. Client-local, like the shelves: a view preference.
+// Stored with the Show tabs value they were made under, so changing that setting from
+// anywhere (header, Settings, palette, keybinding) resets every group to it.
+const TAB_GROUP_OVERRIDES_KEY = "t3code:sidebar:tab-group-overrides";
+const TabGroupOverridesSchema = Schema.Struct({
+  showTabs: Schema.Boolean,
+  groups: Schema.Record(Schema.String, Schema.Boolean),
+});
+const NO_TAB_GROUP_OVERRIDES: SidebarTabGroupOverrides = {};
+const INITIAL_TAB_GROUP_OVERRIDES = { showTabs: false, groups: NO_TAB_GROUP_OVERRIDES };
 
 function compactSidebarTimeLabel(label: string): string {
   if (label === "just now") return "now";
@@ -389,7 +403,6 @@ const EMPTY_PROVIDER_ENTRIES: ReadonlyMap<string, ProviderInstanceEntry> = new M
 // Collapsed shelves share one empty list so a route change alone does not
 // give the sidebar list a new identity.
 const EMPTY_THREADS: readonly EnvironmentThreadShell[] = [];
-const EMPTY_TAB_THREADS: ReadonlyMap<string, string> = new Map();
 const EMPTY_TABS_BY_ROW: ReadonlyMap<string, readonly EnvironmentThreadShell[]> = new Map();
 
 function sidebarThreadKey(thread: EnvironmentThreadShell): string {
@@ -1119,10 +1132,15 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   onFileDropThreads?: ((threadRef: ScopedThreadRef, files: File[]) => void) | undefined;
   /** Adds a chat tab to this row's group. Absent where the environment has no tabs. */
   onNewTab?: ((threadRef: ScopedThreadRef) => void) | undefined;
-  /** Tabs in this row's group while they are hidden; the badge shows only above one. */
+  /** Tabs in this row's group; the badge shows only above one. */
   tabCount: number;
-  /** The group's other tabs, listed under the row while tabs are shown. */
+  /** The group's tabs. Mounted under the row while `tabsOpen`, and while it animates closed. */
   tabs: ReactNode;
+  tabsOpen: boolean;
+  /** Opens or folds this group's tabs. Absent where the row has no tabs. */
+  onToggleTabs?: ((rowThreadKey: string) => void) | undefined;
+  /** A tab list finished opening or closing, so rows below it have moved. */
+  onTabsResized?: (() => void) | undefined;
 }) {
   const {
     isRenaming,
@@ -1325,12 +1343,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
         return;
       }
       // The title lives on the first tab row, which owns rename.
-      if (variant === "card" && props.tabs != null) return;
+      if (variant === "card" && props.tabsOpen && props.tabs != null) return;
       if ((event.target as HTMLElement).closest("button, a, input")) return;
       event.preventDefault();
       onStartRename(threadRef, thread.title);
     },
-    [isRenaming, onStartRename, props.tabs, thread.title, threadRef, variant],
+    [isRenaming, onStartRename, props.tabs, props.tabsOpen, thread.title, threadRef, variant],
   );
   const [isFileDragOver, setIsFileDragOver] = useState(false);
   const fileDropHandlers = useMemo(
@@ -1447,7 +1465,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   // content; surface is reserved for interaction (hover, multi-select, route).
   // An open tab list includes this thread as its first row, so the card is only
   // the group header. The active tab carries the highlight.
-  const unifyTabs = variant === "card" && props.tabs != null;
+  const unifyTabs = variant === "card" && props.tabsOpen && props.tabs != null;
   const rowActive = props.isActive && !unifyTabs;
   const rowSurfaceClassName = cn(
     "group/sidebar-row relative w-full cursor-pointer overflow-hidden rounded-md text-left outline-none select-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
@@ -1610,7 +1628,29 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       <TooltipPopup side="top">Unsent draft</TooltipPopup>
     </Tooltip>
   ) : null;
-  const tabCountBadge = props.tabCount > 1 ? <SidebarTabCountBadge count={props.tabCount} /> : null;
+  const onToggleTabs = props.onToggleTabs;
+  const handleToggleTabsClick = useCallback(
+    (event: ReactMouseEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      onToggleTabs?.(rowThreadKey);
+    },
+    [onToggleTabs, rowThreadKey],
+  );
+  const tabCountBadge =
+    props.tabCount > 1 ? (
+      <SidebarTabCountBadge
+        count={props.tabCount}
+        open={props.tabsOpen}
+        onToggle={onToggleTabs ? handleToggleTabsClick : undefined}
+      />
+    ) : null;
+  const tabList =
+    props.tabs != null ? (
+      <SidebarDisclosure open={props.tabsOpen} onSettled={props.onTabsResized}>
+        {props.tabs}
+      </SidebarDisclosure>
+    ) : null;
   const showPin =
     props.isPinned && (!sortable?.isDragging || (props.dragOverPinned && props.dropVerb === null));
   const pinIndicator = showPin ? (
@@ -1791,7 +1831,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
           </TooltipTrigger>
           {detailsTooltip}
         </Tooltip>
-        {props.tabs}
+        {tabList}
       </li>
     );
   }
@@ -1831,12 +1871,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
           }
         >
           {accessibleTitle}
-          <div
-            className={cn(
-              "relative z-10 px-(--sidebar-row-content-inset) py-(--sidebar-content-inset)",
-              unifyTabs ? "h-auto" : "h-[4.875rem]",
-            )}
-          >
+          {/* Sized by content (78px with the title) so the title line can
+              animate away when the group's tabs open. */}
+          <div className="relative z-10 px-(--sidebar-row-content-inset) py-(--sidebar-content-inset)">
             <div className="flex h-5 min-w-0 items-center gap-1.5">
               {draftIndicator}
               {props.project ? (
@@ -1996,22 +2033,19 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                 </span>
               )}
             </div>
-            {unifyTabs ? (
-              isRegeneratingTitle ? (
-                <span role="status" className="sr-only">
-                  Regenerating title
-                </span>
-              ) : null
+            {/* An open tab list starts with this thread, so its title moves there. */}
+            {props.tabs != null ? (
+              <SidebarDisclosure open={!unifyTabs}>
+                <div className="flex min-w-0 pt-1">{title}</div>
+              </SidebarDisclosure>
             ) : (
-              <div className="mt-1 flex min-w-0">
-                {title}
-                {isRegeneratingTitle ? (
-                  <span role="status" className="sr-only">
-                    Regenerating title
-                  </span>
-                ) : null}
-              </div>
+              <div className="mt-1 flex min-w-0">{title}</div>
             )}
+            {isRegeneratingTitle ? (
+              <span role="status" className="sr-only">
+                Regenerating title
+              </span>
+            ) : null}
             <div
               className={cn(
                 "flex min-w-0 items-center gap-1.5 text-secondary-label text-xs",
@@ -2077,7 +2111,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
         </TooltipTrigger>
         {detailsTooltip}
       </Tooltip>
-      {props.tabs}
+      {tabList}
     </li>
   );
 });
@@ -2123,13 +2157,96 @@ function SidebarRenameInput(props: {
   );
 }
 
-function SidebarTabCountBadge(props: { count: number }) {
+/** The group's tab count. With `onToggle`, it opens and folds that group's tabs. */
+function SidebarTabCountBadge(props: {
+  count: number;
+  open: boolean;
+  onToggle?: ((event: ReactMouseEvent) => void) | undefined;
+}) {
+  const className =
+    "inline-flex shrink-0 items-center gap-0.5 text-xs tabular-nums text-muted-foreground/70";
+  if (!props.onToggle) {
+    return props.open ? null : (
+      <span className={className}>
+        <LayersIcon aria-hidden className="size-3" />
+        {props.count}
+        <span className="sr-only"> tabs</span>
+      </span>
+    );
+  }
+  const label = `${props.open ? "Hide" : "Show"} ${props.count} tabs`;
   return (
-    <span className="inline-flex shrink-0 items-center gap-0.5 text-xs tabular-nums text-muted-foreground/70">
-      <LayersIcon aria-hidden className="size-3" />
-      {props.count}
-      <span className="sr-only"> tabs</span>
-    </span>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            aria-label={label}
+            aria-expanded={props.open}
+            data-testid="sidebar-tab-group-toggle"
+            onClick={props.onToggle}
+            onDoubleClick={(event) => event.stopPropagation()}
+            className={cn(
+              className,
+              "-mx-1 cursor-pointer rounded-sm px-1 outline-none transition-colors hover:bg-sidebar-row-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
+            )}
+          />
+        }
+      >
+        <LayersIcon aria-hidden className="size-3" />
+        {props.count}
+        {/* The chevron marks the badge as a control: always while open, on hover while folded. */}
+        <ChevronDownIcon
+          aria-hidden
+          className={cn(
+            "size-3 transition-[rotate,opacity] motion-reduce:transition-none",
+            props.open
+              ? "rotate-180"
+              : "opacity-0 group-hover/sidebar-row:opacity-100 group-has-[:focus-visible]/sidebar-row:opacity-100",
+          )}
+        />
+      </TooltipTrigger>
+      <TooltipPopup side="top">{label}</TooltipPopup>
+    </Tooltip>
+  );
+}
+
+/**
+ * Mounts `children` while open and animates its height on the way in and out.
+ * The first render never animates, so a page load or remount lands in place.
+ */
+function SidebarDisclosure(props: {
+  open: boolean;
+  children: ReactNode;
+  onSettled?: (() => void) | undefined;
+}) {
+  const { open, onSettled } = props;
+  const [mounted, setMounted] = useState(open);
+  if (open && !mounted) setMounted(true);
+  const ref = useRef<HTMLDivElement>(null);
+  const animationRef = useRef<Animation | null>(null);
+  const settledOpenRef = useRef(open);
+  useLayoutEffect(() => {
+    const node = ref.current;
+    if (settledOpenRef.current === open || node === null) return;
+    settledOpenRef.current = open;
+    const animation = animateSidebarDisclosure(node, open, animationRef.current);
+    animationRef.current = animation;
+    const settle = () => {
+      if (animationRef.current !== animation) return;
+      animationRef.current = null;
+      if (!open) setMounted(false);
+      onSettled?.();
+    };
+    if (animation === null) settle();
+    else animation.addEventListener("finish", settle, { once: true });
+  }, [open, onSettled]);
+  useEffect(() => () => animationRef.current?.cancel(), []);
+  if (!mounted) return null;
+  return (
+    <div ref={ref} className="overflow-hidden">
+      {props.children}
+    </div>
   );
 }
 
@@ -2551,9 +2668,21 @@ export default function Sidebar() {
   const showTabs = useClientSettings((s) => s.sidebarShowTabs);
   const openedAtByThreadKey = useThreadTabRecencyStore((s) => s.openedAtByThreadKey);
   const updateClientSettings = useUpdateClientSettings();
+  const [storedTabGroupOverrides, setStoredTabGroupOverrides] = useLocalStorage(
+    TAB_GROUP_OVERRIDES_KEY,
+    INITIAL_TAB_GROUP_OVERRIDES,
+    TabGroupOverridesSchema,
+  );
+  const tabGroupOverrides =
+    storedTabGroupOverrides.showTabs === showTabs
+      ? storedTabGroupOverrides.groups
+      : NO_TAB_GROUP_OVERRIDES;
   // Listed tabs open themselves; hidden tabs fold into their group's row, which reopens the
-  // tab you last had open.
-  const hiddenTabThreads = showTabs ? EMPTY_TAB_THREADS : tabThreadGroups;
+  // tab you last had open. Each group follows Show tabs unless its badge was toggled.
+  const hiddenTabThreads = useMemo(
+    () => foldedSidebarTabThreads(tabThreadGroups, tabGroupOverrides, showTabs),
+    [showTabs, tabGroupOverrides, tabThreadGroups],
+  );
   const router = useRouter();
   const { isMobile, setOpenMobile } = useSidebar();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
@@ -2668,7 +2797,9 @@ export default function Sidebar() {
   // The open thread's group row, which must stay rendered even inside a collapsed shelf.
   const sidebarRouteThreadKey =
     routeThreadKey === null ? null : (tabThreadGroups.get(routeThreadKey) ?? routeThreadKey);
-  const highlightedRouteThreadKey = showTabs ? routeThreadKey : sidebarRouteThreadKey;
+  // A listed tab carries its own highlight; a folded one lights its group's row.
+  const highlightedRouteThreadKey =
+    routeThreadKey === null ? null : (hiddenTabThreads.get(routeThreadKey) ?? routeThreadKey);
   const routeTargetRef = useRef(routeTarget);
   routeTargetRef.current = routeTarget;
   // Post-settle navigation validates against the CURRENT route, not the one
@@ -3063,11 +3194,16 @@ export default function Sidebar() {
           ),
     [tabThreadGroups, threads],
   );
-  const listedTabsByRowKey = showTabs ? tabsByRowKey : EMPTY_TABS_BY_ROW;
+  const listedTabsByRowKey = useMemo(() => {
+    const listed = [...tabsByRowKey].filter(([rowKey]) =>
+      isSidebarTabGroupOpen(rowKey, tabGroupOverrides, showTabs),
+    );
+    return listed.length === 0 ? EMPTY_TABS_BY_ROW : new Map(listed);
+  }, [showTabs, tabGroupOverrides, tabsByRowKey]);
   const displayTabsByRowKey = useMemo(() => {
     const displayTabs = new Map<string, EnvironmentThreadShell>();
-    if (showTabs) return displayTabs;
     for (const [rowKey, tabs] of tabsByRowKey) {
+      if (listedTabsByRowKey.has(rowKey)) continue;
       const targetKey = threadTabGroupTarget(
         rowKey,
         new Map(tabs.map((tab) => [sidebarThreadKey(tab), rowKey])),
@@ -3077,7 +3213,7 @@ export default function Sidebar() {
       if (tab) displayTabs.set(rowKey, tab);
     }
     return displayTabs;
-  }, [openedAtByThreadKey, showTabs, tabsByRowKey]);
+  }, [listedTabsByRowKey, openedAtByThreadKey, tabsByRowKey]);
 
   const threadSearchInputRef = useRef<HTMLInputElement>(null);
   const [threadSearchQuery, setThreadSearchQuery] = useState("");
@@ -3647,6 +3783,9 @@ export default function Sidebar() {
     listMotionRef.current = node === null ? null : createSidebarListMotion(node);
     listMotionRef.current?.update(false);
   }, []);
+  // A group's tabs resize its row in place. Re-baseline without animating so
+  // the next list change measures from where rows actually are.
+  const refreshListMotion = useCallback(() => listMotionRef.current?.update(false), []);
 
   // Hold the chosen section and order until every key write arrives. This
   // also covers first-time ordering, which assigns keys to keyless neighbors.
@@ -4827,6 +4966,15 @@ export default function Sidebar() {
   const toggleShowTabs = useCallback(() => {
     void updateClientSettings({ sidebarShowTabs: !showTabs });
   }, [showTabs, updateClientSettings]);
+  const toggleTabGroup = useCallback(
+    (rowKey: string) =>
+      setStoredTabGroupOverrides((stored) => {
+        const overrides = stored.showTabs === showTabs ? stored.groups : NO_TAB_GROUP_OVERRIDES;
+        const open = !isSidebarTabGroupOpen(rowKey, overrides, showTabs);
+        return { showTabs, groups: setSidebarTabGroupOverride(overrides, rowKey, open, showTabs) };
+      }),
+    [setStoredTabGroupOverrides, showTabs],
+  );
   const toggleTabsShortcutLabel = shortcutLabelForCommand(keybindings, "sidebar.toggleTabs");
 
   // Thread jump (cmd+1..9) and prev/next traversal reuse the same commands as
@@ -5241,6 +5389,7 @@ export default function Sidebar() {
                         const isCard = section === "active" || section === "pinned";
                         const rowVariant = isCard ? "card" : "slim";
                         const rowTabs = tabsByRowKey.get(threadKey);
+                        const rowTabsOpen = listedTabsByRowKey.has(threadKey);
                         const displayThread = displayTabsByRowKey.get(threadKey) ?? thread;
                         const displayThreadKey = sidebarThreadKey(displayThread);
                         return (
@@ -5295,7 +5444,7 @@ export default function Sidebar() {
                             wokeAt={threadWokeAt(thread, { now: snoozeNow })}
                             isActive={highlightedRouteThreadKey === threadKey}
                             groupFocused={
-                              showTabs &&
+                              rowTabsOpen &&
                               isCard &&
                               rowTabs?.some(
                                 (tab) => sidebarThreadKey(tab) === highlightedRouteThreadKey,
@@ -5349,9 +5498,12 @@ export default function Sidebar() {
                                 ? handleNewTab
                                 : undefined
                             }
-                            tabCount={showTabs || !rowTabs ? 0 : rowTabs.length + 1}
+                            tabCount={rowTabs ? rowTabs.length + 1 : 0}
+                            tabsOpen={rowTabsOpen}
+                            onToggleTabs={rowTabs ? toggleTabGroup : undefined}
+                            onTabsResized={refreshListMotion}
                             tabs={
-                              showTabs && rowTabs ? (
+                              rowTabs ? (
                                 <SidebarTabList>
                                   {(isCard ? [thread, ...rowTabs] : rowTabs).map((tab) => {
                                     const tabKey = sidebarThreadKey(tab);

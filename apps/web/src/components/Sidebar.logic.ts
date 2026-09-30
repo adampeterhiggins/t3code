@@ -733,6 +733,49 @@ export function orderItemsByPreferredIds<TItem, TId>(input: {
 }
 
 /**
+ * Per-group tab choices, keyed by the group's row key. A group without an entry follows the
+ * sidebar-wide Show tabs setting.
+ */
+export type SidebarTabGroupOverrides = Readonly<Record<string, boolean>>;
+
+/** Whether a tab group lists its tabs under its row. */
+export function isSidebarTabGroupOpen(
+  rowKey: string,
+  overrides: SidebarTabGroupOverrides,
+  showTabs: boolean,
+): boolean {
+  return overrides[rowKey] ?? showTabs;
+}
+
+/**
+ * Records a group's choice. A choice matching the sidebar-wide setting is dropped, so toggling
+ * a group back leaves nothing behind for the next global toggle to fight.
+ */
+export function setSidebarTabGroupOverride(
+  overrides: SidebarTabGroupOverrides,
+  rowKey: string,
+  open: boolean,
+  showTabs: boolean,
+): SidebarTabGroupOverrides {
+  const { [rowKey]: _previous, ...rest } = overrides;
+  return open === showTabs ? rest : { ...rest, [rowKey]: open };
+}
+
+/** The tabs still folded into their group's row: members of every group that is not open. */
+export function foldedSidebarTabThreads(
+  tabThreadGroups: ReadonlyMap<string, string>,
+  overrides: SidebarTabGroupOverrides,
+  showTabs: boolean,
+): ReadonlyMap<string, string> {
+  if (Object.keys(overrides).length === 0) return showTabs ? new Map() : tabThreadGroups;
+  return new Map(
+    [...tabThreadGroups].filter(
+      ([, rowKey]) => !isSidebarTabGroupOpen(rowKey, overrides, showTabs),
+    ),
+  );
+}
+
+/**
  * The tabs listed under each tab group's sidebar row, in tab order. `hiddenTabThreads` maps a
  * tab's thread key to the key of the row that stands for its group.
  */

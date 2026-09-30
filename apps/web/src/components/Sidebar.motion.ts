@@ -264,3 +264,32 @@ export function createSidebarListMotion(parent: HTMLUListElement) {
     },
   };
 }
+
+// Slightly longer than row travel: a disclosure moves every row below it, and
+// a quick settle reads as the list making room rather than snapping.
+const disclosureTiming = { duration: 200, easing: "cubic-bezier(0.2, 0, 0, 1)" };
+
+/**
+ * Grows or shrinks a disclosure between zero and its content height, fading as it
+ * goes. A reversal mid-flight starts from where the running animation left off.
+ * Returns null when motion is reduced; the caller settles immediately.
+ */
+export function animateSidebarDisclosure(
+  node: HTMLElement,
+  open: boolean,
+  running: Animation | null,
+): Animation | null {
+  const view = node.ownerDocument.defaultView;
+  const from =
+    running === null
+      ? null
+      : {
+          height: view?.getComputedStyle(node).height,
+          opacity: view?.getComputedStyle(node).opacity,
+        };
+  running?.cancel();
+  if (view?.matchMedia("(prefers-reduced-motion: reduce)").matches) return null;
+  const shown = { height: `${node.scrollHeight}px`, opacity: 1 };
+  const hidden = { height: "0px", opacity: 0 };
+  return node.animate([from ?? (open ? hidden : shown), open ? shown : hidden], disclosureTiming);
+}
