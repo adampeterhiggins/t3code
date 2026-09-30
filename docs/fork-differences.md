@@ -424,6 +424,22 @@ a single link keeps one row checked. See
 [`LinkPullRequestDialog.tsx`](../apps/web/src/components/pullRequest/LinkPullRequestDialog.tsx) and
 [Linked pull requests](user/source-control.md#linked-pull-requests).
 
+## Watch a pull request
+
+A linked pull request's row menu can **Watch and follow up**. The server re-reads a watched thread
+when a linked pull request's snapshot syncs or its session changes. If the host reports failing
+checks, requested changes, or merge conflicts the agent has not been asked about, and the thread is
+idle, it starts a follow-up turn with instructions for that work. Each watch allows 3 follow-ups
+until resumed, can be paused or stopped, and ends when the pull request merges or closes. The row
+shows what the watch is waiting for.
+
+Watches live in the fork-owned `fork_pull_request_watches` table, versioned in
+`fork_schema_migrations`, and are served by the `pullRequestWatches` HTTP group. Code:
+[`pullRequestWatch/`](../apps/server/src/pullRequestWatch/reactor.ts),
+[`pullRequestWatch.ts`](../packages/shared/src/pullRequestWatch.ts) (when to follow up), and
+[`ThreadPullRequestsPanel.tsx`](../apps/web/src/components/pullRequest/ThreadPullRequestsPanel.tsx).
+Mobile has no controls yet. See [the user guide](user/source-control.md#watch-a-pull-request).
+
 ## Create a thread before writing its first message
 
 On web and desktop, a new thread's empty composer shows **Create worktree** (or **Create thread**
