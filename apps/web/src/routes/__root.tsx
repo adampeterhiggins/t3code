@@ -579,7 +579,10 @@ function EventRouter({
               return;
             }
 
-            const editor = resolveAndPersistPreferredEditor(serverConfig.availableEditors);
+            const editor = resolveAndPersistPreferredEditor([
+              ...serverConfig.availableEditors,
+              ...serverConfig.settings.customEditors.map((editor) => editor.id),
+            ]);
             if (!editor) {
               return;
             }

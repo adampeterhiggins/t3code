@@ -82,8 +82,43 @@ export const EDITORS = [
   { id: "file-manager", label: "File Manager", commands: null, launchStyle: "direct-path" },
 ] as const satisfies ReadonlyArray<EditorDefinition>;
 
-export const EditorId = Schema.Literals(EDITORS.map((e) => e.id));
+export const CustomEditorId = Schema.TemplateLiteral(["custom:", Schema.String]);
+export const EditorId = Schema.Union([Schema.Literals(EDITORS.map((e) => e.id)), CustomEditorId]);
 export type EditorId = typeof EditorId.Type;
+
+/** Commands run on the environment host, with the file path as a separate argument. */
+export const CustomEditor = Schema.Struct({
+  id: CustomEditorId,
+  label: TrimmedNonEmptyString,
+  command: TrimmedNonEmptyString,
+  args: Schema.Array(Schema.String),
+});
+export type CustomEditor = typeof CustomEditor.Type;
+
+export const FileOpenTarget = Schema.Union([Schema.Literal("t3"), EditorId]);
+export type FileOpenTarget = typeof FileOpenTarget.Type;
+export const FileOpenRule = Schema.Struct({
+  extension: TrimmedNonEmptyString,
+  target: FileOpenTarget,
+});
+
+export function resolveFileOpenTarget(
+  path: string,
+  settings: {
+    readonly fileOpenDefault: FileOpenTarget;
+    readonly fileOpenRules: readonly (typeof FileOpenRule.Type)[];
+  },
+): FileOpenTarget {
+  const name = path.replaceAll("\\", "/").split("/").at(-1) ?? "";
+  const extension = name.includes(".") ? name.slice(name.lastIndexOf(".")).toLowerCase() : "";
+  return (
+    settings.fileOpenRules.find(
+      (rule) =>
+        (rule.extension.startsWith(".") ? rule.extension : `.${rule.extension}`).toLowerCase() ===
+        extension,
+    )?.target ?? settings.fileOpenDefault
+  );
+}
 
 export const FileManagerRevealKind = Schema.Literals(["finder", "file-explorer", "files"]);
 export type FileManagerRevealKind = typeof FileManagerRevealKind.Type;

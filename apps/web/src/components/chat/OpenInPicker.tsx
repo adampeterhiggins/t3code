@@ -1,12 +1,15 @@
+import { useAtomValue } from "@effect/atom-react";
+import { serverEnvironment } from "../../state/server";
 import {
   buildRemoteOpenUrl,
   EditorId,
+  type CustomEditor,
   type EnvironmentId,
   type ResolvedKeybindingsConfig,
 } from "@t3tools/contracts";
 import { memo, useCallback, useEffect, useMemo } from "react";
 import { isOpenFavoriteEditorShortcut, shortcutLabelForCommand } from "../../keybindings";
-import { usePreferredEditor } from "../../editorPreferences";
+import { useAvailableEditors, usePreferredEditor } from "../../editorPreferences";
 import { editorLabelForPlatform } from "../../editorLabels";
 import {
   openRemoteEditorUrl,
@@ -70,6 +73,7 @@ type OpenInOption = {
 export const resolveOpenInOptions = (
   platform: string,
   availableEditors: ReadonlyArray<EditorId>,
+  customEditors: readonly CustomEditor[] = [],
 ) => {
   const baseOptions: ReadonlyArray<Omit<OpenInOption, "label">> = [
     {
@@ -183,10 +187,34 @@ export const resolveOpenInOptions = (
     },
   ];
   const availableEditorSet = new Set(availableEditors);
-  return baseOptions
-    .filter((option) => availableEditorSet.has(option.value))
-    .map((option) => ({ ...option, label: editorLabelForPlatform(option.value, platform) }));
+  return [
+    ...baseOptions
+      .filter((option) => availableEditorSet.has(option.value))
+      .map((option) => ({ ...option, label: editorLabelForPlatform(option.value, platform) })),
+    ...customEditors
+      .filter((editor) => availableEditorSet.has(editor.id))
+      .map((editor): OpenInOption => ({
+        value: editor.id,
+        label: editor.label,
+        Icon: FolderClosedIcon,
+        kind: "generic",
+      })),
+  ];
 };
+
+export function resolveOpenInEditorIds(
+  mode: "local-exec" | "remote-links" | "remote-unavailable",
+  detected: readonly EditorId[],
+  remoteEditors: readonly EditorId[],
+  customEditors: readonly CustomEditor[],
+): readonly EditorId[] {
+  return [
+    ...new Set([
+      ...(mode === "local-exec" ? detected : mode === "remote-links" ? remoteEditors : []),
+      ...customEditors.map((editor) => editor.id),
+    ]),
+  ];
+}
 
 function getOpenInIconClass(kind: OpenInOption["kind"]) {
   return cn(kind === "brand" ? "text-foreground opacity-100" : "text-muted-foreground");
@@ -213,24 +241,34 @@ export const OpenInPicker = memo(function OpenInPicker({
   const remote = useRemoteOpenState(environmentId);
   const remoteCapableEditors = useRemoteCapableEditors();
   const [remoteHintSeen, markRemoteHintSeen] = useRemoteOpenHint();
-  const environmentLabel = useEnvironment(environmentId)?.label ?? "this machine";
+  const environment = useEnvironment(environmentId);
+  const customEditors =
+    useAtomValue(serverEnvironment.settingsValueAtom(environmentId))?.customEditors ?? [];
+  const localEditors = useAvailableEditors(environmentId, availableEditors);
+  const environmentLabel = environment?.label ?? "this machine";
   // Remote mode ignores the server's PATH probe: what matters is what runs on
   // the viewing machine, which only the desktop app can probe.
-  const effectiveEditors = remote.mode === "local-exec" ? availableEditors : remoteCapableEditors;
+  const effectiveEditors = useMemo(
+    () => resolveOpenInEditorIds(remote.mode, localEditors, remoteCapableEditors, customEditors),
+    [remote.mode, localEditors, remoteCapableEditors, customEditors],
+  );
   const [preferredEditor, setPreferredEditor] = usePreferredEditor(effectiveEditors);
   const options = useMemo(
-    () => resolveOpenInOptions(navigator.platform, effectiveEditors),
-    [effectiveEditors],
+    () => resolveOpenInOptions(navigator.platform, effectiveEditors, customEditors),
+    [effectiveEditors, customEditors],
   );
   const primaryOption = options.find(({ value }) => value === preferredEditor) ?? null;
+  const preferredUnavailable =
+    remote.mode === "remote-unavailable" && !preferredEditor?.startsWith("custom:");
 
   const openInEditor = useCallback(
     (editorId: EditorId | null) => {
       if (!openInCwd) return;
       const editor = editorId ?? preferredEditor;
       if (!editor) return;
-      if (remote.mode === "remote-unavailable") return;
-      if (remote.mode === "remote-links") {
+      const custom = editor.startsWith("custom:");
+      if (remote.mode === "remote-unavailable" && !custom) return;
+      if (remote.mode === "remote-links" && !custom) {
         const url = buildRemoteOpenUrl({
           editor,
           host: remote.host.host,
@@ -288,37 +326,41 @@ export const OpenInPicker = memo(function OpenInPicker({
 
   const editorItems = (
     <>
-      {remote.mode === "remote-unavailable" ? (
+      {remote.mode === "remote-unavailable" && (
         <MenuItem density={presentation === "menu" ? "touch" : "default"} disabled>
           No SSH route to {environmentLabel}
         </MenuItem>
-      ) : (
-        <>
-          {options.length === 0 && (
-            <MenuItem density={presentation === "menu" ? "touch" : "default"} disabled>
-              No installed editors found
-            </MenuItem>
-          )}
-          {options.map(({ label, Icon, value, kind }) => (
-            <MenuItem
-              density={presentation === "menu" ? "touch" : "default"}
-              key={value}
-              onClick={() => openInEditor(value)}
-            >
-              <Icon aria-hidden="true" className={getOpenInIconClass(kind)} />
-              <MenuItemLabel>{label}</MenuItemLabel>
-              {value === preferredEditor && openFavoriteEditorShortcutLabel && (
-                <MenuShortcut>{openFavoriteEditorShortcutLabel}</MenuShortcut>
-              )}
-            </MenuItem>
-          ))}
-          {remote.mode === "remote-links" && !remoteHintSeen && (
-            <MenuItem density={presentation === "menu" ? "touch" : "default"} disabled>
-              Opens over SSH. Needs your key on {environmentLabel}
-            </MenuItem>
-          )}
-        </>
       )}
+      <>
+        {options.length === 0 && (
+          <MenuItem density={presentation === "menu" ? "touch" : "default"} disabled>
+            No installed editors found
+          </MenuItem>
+        )}
+        {options.map(({ label, Icon, value, kind }) => (
+          <MenuItem
+            density={presentation === "menu" ? "touch" : "default"}
+            key={value}
+            onClick={() => openInEditor(value)}
+          >
+            <Icon aria-hidden="true" className={getOpenInIconClass(kind)} />
+            <MenuItemLabel>
+              {label}
+              {remote.mode !== "local-exec" && value.startsWith("custom:")
+                ? ` (on ${environmentLabel})`
+                : ""}
+            </MenuItemLabel>
+            {value === preferredEditor && openFavoriteEditorShortcutLabel && (
+              <MenuShortcut>{openFavoriteEditorShortcutLabel}</MenuShortcut>
+            )}
+          </MenuItem>
+        ))}
+        {remote.mode === "remote-links" && !remoteHintSeen && (
+          <MenuItem density={presentation === "menu" ? "touch" : "default"} disabled>
+            Opens over SSH. Needs your key on {environmentLabel}
+          </MenuItem>
+        )}
+      </>
     </>
   );
   if (presentation === "menu") {
@@ -328,7 +370,7 @@ export const OpenInPicker = memo(function OpenInPicker({
           <MenuItem
             density={presentation === "menu" ? "touch" : "default"}
 
-            disabled={!openInCwd || remote.mode === "remote-unavailable"}
+            disabled={!openInCwd || preferredUnavailable}
             onClick={() => openInEditor(preferredEditor)}
           >
             <primaryOption.Icon className={cn("size-4", getOpenInIconClass(primaryOption.kind))} />
@@ -355,7 +397,7 @@ export const OpenInPicker = memo(function OpenInPicker({
         aria-label={compact ? "Open file in preferred editor" : undefined}
         size="xs"
         variant="outline"
-        disabled={!preferredEditor || !openInCwd || remote.mode === "remote-unavailable"}
+        disabled={!preferredEditor || !openInCwd || preferredUnavailable}
         onClick={() => openInEditor(preferredEditor)}
       >
         {primaryOption?.Icon && (

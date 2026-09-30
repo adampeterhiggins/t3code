@@ -286,6 +286,9 @@ export function applyServerSettingsPatch(
   const patch = translateLegacyProjectOverridePatch(current, rawPatch);
   const selectionPatch = patch.textGenerationModelSelection;
   const {
+    // Whole-list replacements preserve removals and cleared argument lists.
+    customEditors,
+    fileOpenRules,
     automaticGitFetchInterval,
     providerHealthRefreshInterval,
     backgroundActivityProfile,
@@ -342,7 +345,11 @@ export function applyServerSettingsPatch(
             },
           }
         : undefined;
-  const merged = deepMerge(current, patchForMerge);
+  const merged = {
+    ...deepMerge(current, patchForMerge),
+    customEditors: customEditors ?? current.customEditors,
+    fileOpenRules: fileOpenRules ?? current.fileOpenRules,
+  };
   const storageCleanupRules =
     storageCleanupPatch === undefined
       ? undefined

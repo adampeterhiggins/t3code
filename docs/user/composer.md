@@ -236,3 +236,20 @@ automatically. HTML previews cannot access your T3 Code session.
 
 On mobile, select a PDF attachment or link to open it. iOS uses the native viewer;
 Android opens a compatible installed file viewer.
+
+## Opening file links
+
+File links in chat open T3's file viewer by default. In **Settings → Integrations → Open in**,
+select one environment to choose another default or add rules for extensions such as `.md`.
+Right-click a file link and choose **Open in T3 file viewer** to preview it without changing
+its default.
+
+Add a custom application with a name, executable command, and optional arguments, one per line.
+T3 appends the file path automatically. For Typora on macOS, use `open` as the command and enter
+`-a` and `Typora` on separate argument lines, then save a `.md` rule targeting Typora.
+You can edit or remove an application later; removal resets its file rules to the default and
+its default selection to the T3 viewer.
+
+Applications open on the computer hosting the file, including when you connect remotely.
+Custom applications are also available from the workspace **Open in** picker and file **Open with**
+menus. Mobile keeps its native file viewer.

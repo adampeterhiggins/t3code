@@ -784,3 +784,27 @@ describe("serverSettings helpers", () => {
     expect(resolved.pauseWhenOnBattery).toBe(false);
   });
 });
+
+describe("application preferences", () => {
+  it("replaces applications and extension rules so edits and removals persist", () => {
+    const configured = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, {
+      customEditors: [
+        { id: "custom:typora", label: "Typora", command: "open", args: ["-a", "Typora"] },
+      ],
+      fileOpenDefault: "custom:typora",
+      fileOpenRules: [{ extension: ".md", target: "custom:typora" }],
+    });
+    const edited = applyServerSettingsPatch(configured, {
+      customEditors: [{ ...configured.customEditors[0]!, args: [] }],
+    });
+    expect(edited.customEditors[0]?.args).toEqual([]);
+    const cleared = applyServerSettingsPatch(edited, {
+      customEditors: [],
+      fileOpenRules: [],
+      fileOpenDefault: "t3",
+    });
+    expect(cleared.customEditors).toEqual([]);
+    expect(cleared.fileOpenRules).toEqual([]);
+    expect(cleared.fileOpenDefault).toBe("t3");
+  });
+});

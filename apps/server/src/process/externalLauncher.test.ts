@@ -1261,3 +1261,52 @@ it.effect("rejects unknown editors through the service API", () =>
     assert.equal(error.message, "Unknown editor: missing-editor");
   }).pipe(Effect.provide(testLayer({ platform: "linux", env: { PATH: "" } }))),
 );
+
+it.effect.skipIf(windowsHost)(
+  "launches configured and system applications without file positions",
+  () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-custom-app-" });
+      const openPath = path.join(binDir, "open");
+      yield* fileSystem.writeFileString(openPath, "#!/bin/sh\nexit 0\n");
+      yield* fileSystem.chmod(openPath, 0o755);
+      let spawned: ChildProcess.StandardCommand | undefined;
+      yield* Effect.gen(function* () {
+        const launcher = yield* ExternalLauncher.ExternalLauncher;
+        yield* launcher.launchEditor(
+          { editor: "custom:typora", cwd: "/workspace with spaces/notes.md:12:3" },
+          [{ id: "custom:typora", label: "Typora", command: "open", args: ["-a", "Typora"] }],
+        );
+        assert.ok(spawned);
+        assert.equal(spawned.command, "open");
+        assert.deepEqual(spawned.args, ["-a", "Typora", "/workspace with spaces/notes.md"]);
+        yield* launcher.launchEditor({
+          editor: "file-manager",
+          cwd: "/workspace with spaces/notes.md:12:3",
+        });
+        assert.deepEqual(spawned.args, ["/workspace with spaces/notes.md"]);
+      }).pipe(
+        Effect.provide(
+          testLayer({
+            platform: "darwin",
+            env: { PATH: binDir },
+            onSpawn: (command) => {
+              spawned = command;
+            },
+          }),
+        ),
+      );
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.effect("rejects custom application IDs that are no longer configured", () =>
+  Effect.gen(function* () {
+    const launcher = yield* ExternalLauncher.ExternalLauncher;
+    const error = yield* launcher
+      .launchEditor({ editor: "custom:removed", cwd: "/notes.md" })
+      .pipe(Effect.flip);
+    assert.equal(error._tag, "ExternalLauncherUnknownEditorError");
+  }).pipe(Effect.provide(testLayer({ platform: "darwin" }))),
+);

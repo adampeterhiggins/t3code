@@ -17,6 +17,7 @@ import {
   type EditorId,
   type FileManagerRevealKind,
   type LaunchEditorInput,
+  type CustomEditor,
 } from "@t3tools/contracts";
 import { resolveEditorCommand } from "@t3tools/shared/editor";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
@@ -501,7 +502,10 @@ export class ExternalLauncher extends Context.Service<
      *
      * Launches the editor as a detached process so server startup is not blocked.
      */
-    readonly launchEditor: (input: LaunchEditorInput) => Effect.Effect<void, ExternalLauncherError>;
+    readonly launchEditor: (
+      input: LaunchEditorInput,
+      customEditors?: readonly CustomEditor[],
+    ) => Effect.Effect<void, ExternalLauncherError>;
   }
 >()("t3/process/externalLauncher") {}
 
@@ -511,6 +515,7 @@ export class ExternalLauncher extends Context.Service<
 
 const resolveEditorLaunch = Effect.fn("resolveEditorLaunch")(function* (
   input: LaunchEditorInput,
+  customEditors: readonly CustomEditor[] = [],
 ): Effect.fn.Return<
   EditorLaunch,
   ExternalLauncherError,
@@ -523,6 +528,22 @@ const resolveEditorLaunch = Effect.fn("resolveEditorLaunch")(function* (
     "externalLauncher.cwd": input.cwd,
     "externalLauncher.platform": platform,
   });
+  if (input.editor.startsWith("custom:")) {
+    const editor = customEditors.find((candidate) => candidate.id === input.editor);
+    if (!editor) return yield* new ExternalLauncherUnknownEditorError({ editor: input.editor });
+    return {
+      editor: editor.id,
+      target: input.cwd,
+      command: editor.command,
+      args: [
+        ...editor.args,
+        Option.match(parseTargetPathAndPosition(input.cwd), {
+          onNone: () => input.cwd,
+          onSome: (target) => target.path,
+        }),
+      ],
+    };
+  }
   const editorDef = EDITORS.find((editor) => editor.id === input.editor);
   if (!editorDef) {
     return yield* new ExternalLauncherUnknownEditorError({ editor: input.editor });
@@ -557,14 +578,18 @@ const resolveEditorLaunch = Effect.fn("resolveEditorLaunch")(function* (
     return yield* resolveFileManagerRevealLaunch(input.cwd, platform, env, command);
   }
 
+  const filePath = Option.match(parseTargetPathAndPosition(input.cwd), {
+    onNone: () => input.cwd,
+    onSome: (target) => target.path,
+  });
   return {
     editor: editorDef.id,
     target: input.cwd,
     command,
     args:
       command === "explorer.exe" && env.WSL_DISTRO_NAME !== undefined
-        ? [resolveWslFileManagerPath(input.cwd, env.WSL_DISTRO_NAME)]
-        : [input.cwd],
+        ? [resolveWslFileManagerPath(filePath, env.WSL_DISTRO_NAME)]
+        : [filePath],
   };
 });
 
@@ -792,9 +817,9 @@ export const make = Effect.gen(function* () {
       launchBrowser(target).pipe(
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
       ),
-    launchEditor: (input) =>
+    launchEditor: (input, customEditors) =>
       provideCommandResolutionServices(
-        Effect.flatMap(resolveEditorLaunch(input), launchEditorProcess),
+        Effect.flatMap(resolveEditorLaunch(input, customEditors), launchEditorProcess),
       ).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner)),
   });
 });

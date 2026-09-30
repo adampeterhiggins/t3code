@@ -9,6 +9,8 @@ import * as Schema from "effect/Schema";
 import { AsyncResult } from "effect/unstable/reactivity";
 import { getLocalStorageItem, setLocalStorageItem, useLocalStorage } from "./hooks/useLocalStorage";
 import { useCallback, useMemo } from "react";
+import { useAtomValue } from "@effect/atom-react";
+import { serverEnvironment } from "./state/server";
 import { shellEnvironment } from "./state/shell";
 import { useAtomCommand } from "./state/use-atom-command";
 
@@ -38,12 +40,29 @@ export class PreferredEditorUnavailableError extends Schema.TaggedError<Preferre
   }
 }
 
+export function useAvailableEditors(
+  environmentId: EnvironmentId | null,
+  detected: readonly EditorId[],
+) {
+  const settings = useAtomValue(serverEnvironment.configValueAtom(environmentId))?.settings;
+  return useMemo(
+    () => [
+      ...new Set([...detected, ...(settings?.customEditors.map((editor) => editor.id) ?? [])]),
+    ],
+    [detected, settings?.customEditors],
+  );
+}
+
 export function usePreferredEditor(availableEditors: ReadonlyArray<EditorId>) {
   const [lastEditor, setLastEditor] = useLocalStorage(LAST_EDITOR_KEY, null, EditorId);
 
   const effectiveEditor = useMemo(() => {
     if (lastEditor && availableEditors.includes(lastEditor)) return lastEditor;
-    return EDITORS.find((editor) => availableEditors.includes(editor.id))?.id ?? null;
+    return (
+      EDITORS.find((editor) => availableEditors.includes(editor.id))?.id ??
+      availableEditors[0] ??
+      null
+    );
   }, [lastEditor, availableEditors]);
 
   return [effectiveEditor, setLastEditor] as const;
@@ -55,7 +74,8 @@ export function resolveAndPersistPreferredEditor(
   const availableEditorIds = new Set(availableEditors);
   const stored = getLocalStorageItem(LAST_EDITOR_KEY, EditorId);
   if (stored && availableEditorIds.has(stored)) return stored;
-  const editor = EDITORS.find((editor) => availableEditorIds.has(editor.id))?.id ?? null;
+  const editor =
+    EDITORS.find((editor) => availableEditorIds.has(editor.id))?.id ?? availableEditors[0] ?? null;
   if (editor) setLocalStorageItem(LAST_EDITOR_KEY, editor, EditorId);
   return editor ?? null;
 }
@@ -64,6 +84,7 @@ export function useOpenInPreferredEditor(
   environmentId: EnvironmentId | null,
   availableEditors: readonly EditorId[],
 ) {
+  const effectiveEditors = useAvailableEditors(environmentId, availableEditors);
   const openInEditor = useAtomCommand(shellEnvironment.openInEditor, {
     reportFailure: false,
   });
@@ -72,6 +93,7 @@ export function useOpenInPreferredEditor(
   return useCallback(
     async (
       targetPath: string,
+      selectedEditor?: EditorId,
     ): Promise<
       AtomCommandResult<
         EditorId,
@@ -89,14 +111,14 @@ export function useOpenInPreferredEditor(
           ),
         );
       }
-      const editor = resolveAndPersistPreferredEditor(availableEditors);
-      if (!editor) {
+      const editor = selectedEditor ?? resolveAndPersistPreferredEditor(effectiveEditors);
+      if (!editor || !effectiveEditors.includes(editor)) {
         return AsyncResult.failure(
           Cause.fail(
             new PreferredEditorUnavailableError({
               environmentId,
               targetPath,
-              availableEditorIds: availableEditors,
+              availableEditorIds: effectiveEditors,
             }),
           ),
         );
@@ -110,6 +132,6 @@ export function useOpenInPreferredEditor(
       });
       return mapAtomCommandResult(result, () => editor);
     },
-    [availableEditors, environmentId, openInEditor],
+    [effectiveEditors, environmentId, openInEditor],
   );
 }
