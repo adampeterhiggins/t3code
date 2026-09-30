@@ -487,7 +487,12 @@ export function AddProviderInstanceDialog({
                     onEnable={() => {}}
                     variant="dialog"
                   />
-                  {(createdProvider?.setup?.authMethods?.length ?? 0) === 0 ? (
+                  {createdProvider?.setup?.canAuthenticate === false ? (
+                    <p className="text-sm text-muted-foreground">
+                      This provider signs in through its own tools. Add any credentials it needs as
+                      environment variables on the provider card.
+                    </p>
+                  ) : (createdProvider?.setup?.authMethods?.length ?? 0) === 0 ? (
                     <p className="text-sm text-muted-foreground">
                       Sign-in options appear here once the provider is detected — you can also
                       finish setup later from the provider card.

@@ -189,6 +189,9 @@ const CURSOR_DRIVER_KIND = ProviderDriverKind.make("cursor");
 const GROK_DRIVER_KIND = ProviderDriverKind.make("grok");
 const OPENCODE_DRIVER_KIND = ProviderDriverKind.make("opencode");
 const DEVIN_DRIVER_KIND = ProviderDriverKind.make("devin");
+const CUSTOM_ACP_DRIVER_KIND = ProviderDriverKind.make("customAcp");
+/** Keep a custom ACP agent's current model. Sent to the agent only if it advertises this id. */
+export const CUSTOM_ACP_DEFAULT_MODEL = "default";
 
 export const DEFAULT_MODEL = "gpt-6-astra";
 
@@ -217,6 +220,7 @@ export const DEFAULT_MODEL_BY_PROVIDER: Partial<Record<ProviderDriverKind, strin
   [ProviderDriverKind.make("antigravity")]: ANTIGRAVITY_DEFAULT_MODEL,
   // Devin's auto-router; the ACP model picker lists it as `adaptive`.
   [DEVIN_DRIVER_KIND]: "adaptive",
+  [CUSTOM_ACP_DRIVER_KIND]: CUSTOM_ACP_DEFAULT_MODEL,
 };
 
 /** Per-provider text generation model defaults. */
@@ -267,4 +271,5 @@ export const PROVIDER_DISPLAY_NAMES: Partial<Record<ProviderDriverKind, string>>
   [GROK_DRIVER_KIND]: "Grok",
   [OPENCODE_DRIVER_KIND]: "OpenCode",
   [DEVIN_DRIVER_KIND]: "Devin",
+  [CUSTOM_ACP_DRIVER_KIND]: "Custom ACP",
 };

@@ -974,6 +974,47 @@ export const DevinSettings = makeProviderSettingsSchema(
 export type DevinSettings = typeof DevinSettings.Type;
 
 /**
+ * Any agent that speaks the Agent Client Protocol over stdio. There is no
+ * default instance: users add one per agent from Settings. Models, modes, and
+ * options come from what the agent advertises; credentials go in the
+ * instance's environment variables.
+ */
+export const CustomAcpSettings = makeProviderSettingsSchema(
+  {
+    enabled: Schema.Boolean.pipe(
+      Schema.withDecodingDefault(Effect.succeed(true)),
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+    binaryPath: TrimmedString.pipe(
+      Schema.withDecodingDefault(Effect.succeed("")),
+      Schema.annotateKey({
+        title: "Agent executable",
+        description: "Command or path that starts the ACP agent on this environment.",
+        providerSettingsForm: { placeholder: "my-agent", clearWhenEmpty: "omit" },
+      }),
+    ),
+    arguments: TrimmedString.pipe(
+      Schema.withDecodingDefault(Effect.succeed("")),
+      Schema.annotateKey({
+        title: "Arguments",
+        description: "Arguments that put the agent in ACP mode, one per line.",
+        providerSettingsForm: {
+          control: "textarea",
+          placeholder: "acp",
+          clearWhenEmpty: "omit",
+        },
+      }),
+    ),
+    customModels: Schema.Array(CustomModelSetting).pipe(
+      Schema.withDecodingDefault(Effect.succeed([])),
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+  },
+  { order: ["binaryPath", "arguments"] },
+);
+export type CustomAcpSettings = typeof CustomAcpSettings.Type;
+
+/**
  * A read-only quota source outside this environment's provider CLIs. The
  * only kind today is a CLIProxyAPI hub, whose management API reports the
  * windows of every pooled account. The key travels in settings for now, like

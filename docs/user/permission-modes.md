@@ -34,4 +34,8 @@ Devin maps the modes onto its session modes: **Supervised** keeps Devin's defaul
 for risky actions, **Auto-accept edits** runs Code, **Auto** runs Smart, and **Full access** runs
 Bypass Permissions.
 
+[Custom ACP agents](./providers-custom-acp.md#approvals) approve every request in **Full access**
+and file edits in **Auto-accept edits**, and ask in the other modes. They also switch to a
+matching session mode when the agent has one.
+
 See the [provider guides](./install.md#providers) for setup and provider-specific limits.

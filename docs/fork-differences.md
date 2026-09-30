@@ -52,6 +52,25 @@ Code: `apps/server/src/provider/**/Devin*`, `apps/server/src/provider/devinModel
 `DevinSettings` in `packages/contracts/src/settings.ts`. User guides:
 [providers-devin.md](./user/providers-devin.md) and [usage.md](./user/usage.md).
 
+## Custom ACP provider
+
+**Settings → Providers → Add provider → Custom ACP** runs any stdio Agent Client Protocol agent
+from an executable and arguments, with credentials in the instance's environment variables. Each
+added instance is one agent; there is no default instance.
+
+- The health check opens a short ACP session and lists what the agent advertises: its models
+  (the `model` config option, else session models), its other config options as model options,
+  and the plan toggle only when it has a plan mode. Slash commands come from its session updates.
+- Turns run over the shared ACP runtime. Approvals follow the permission mode and answer with
+  the agent's own option ids; form elicitations become questions. T3's MCP endpoint is offered
+  only to agents that accept HTTP MCP servers. Resume falls back to a fresh session when the
+  agent cannot load the old one.
+- No sign-in flow, updates, text generation, rewind, or usage accounting.
+
+Code: `apps/server/src/provider/**/CustomAcp*`, `apps/server/src/provider/acp/AcpCommandCatalog.ts`,
+and `CustomAcpSettings` in `packages/contracts/src/settings.ts`. User guide:
+[providers-custom-acp.md](./user/providers-custom-acp.md).
+
 ## Provider sign-in methods
 
 Each provider's **Settings > Providers** card gets a sign-in section with a method picker: the
