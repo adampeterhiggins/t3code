@@ -3,6 +3,7 @@ import {
   ClaudeSettings,
   CodexSettings,
   CursorSettings,
+  CustomAcpSettings,
   DevinSettings,
   GrokSettings,
   OpenCodeSettings,
@@ -10,6 +11,7 @@ import {
 } from "@t3tools/contracts";
 import type * as Schema from "effect/Schema";
 import {
+  ACPRegistryIcon,
   AntigravityIcon,
   ClaudeAI,
   CursorIcon,
@@ -90,6 +92,13 @@ const PROVIDER_CLIENT_DEFINITIONS: readonly ProviderClientDefinition[] = [
     label: "Antigravity",
     icon: AntigravityIcon,
     settingsSchema: AntigravitySettings,
+  },
+  {
+    value: ProviderDriverKind.make("customAcp"),
+    label: "Custom ACP",
+    icon: ACPRegistryIcon,
+    badgeLabel: "Early Access",
+    settingsSchema: CustomAcpSettings,
   },
 ];
 

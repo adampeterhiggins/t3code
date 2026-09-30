@@ -21,7 +21,6 @@ import {
   type ThreadId,
   type ThreadTokenUsageSnapshot,
   TurnId,
-  type UserInputQuestion,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Crypto from "effect/Crypto";
@@ -52,7 +51,13 @@ import {
   ProviderAdapterSessionNotFoundError,
   ProviderAdapterValidationError,
 } from "../Errors.ts";
-import { acpPermissionOutcome, mapAcpToAdapterError } from "../acp/AcpAdapterSupport.ts";
+import {
+  acpElicitationResponseFromAnswers,
+  acpPermissionOutcome,
+  extractAcpElicitationQuestions,
+  mapAcpToAdapterError,
+  selectAcpAutoApprovedPermissionOption,
+} from "../acp/AcpAdapterSupport.ts";
 import type * as AcpSessionRuntime from "../acp/AcpSessionRuntime.ts";
 import {
   makeAcpAssistantItemEvent,
@@ -406,61 +411,6 @@ function applyRequestedSessionConfiguration<E>(input: {
         }),
       ),
     );
-  });
-}
-
-function selectAutoApprovedPermissionOption(
-  request: EffectAcpSchema.RequestPermissionRequest,
-): string | undefined {
-  const allowAlwaysOption = request.options.find((option) => option.kind === "allow_always");
-  if (typeof allowAlwaysOption?.optionId === "string" && allowAlwaysOption.optionId.trim()) {
-    return allowAlwaysOption.optionId.trim();
-  }
-
-  const allowOnceOption = request.options.find((option) => option.kind === "allow_once");
-  if (typeof allowOnceOption?.optionId === "string" && allowOnceOption.optionId.trim()) {
-    return allowOnceOption.optionId.trim();
-  }
-
-  return undefined;
-}
-
-/**
- * Map a `session/elicitation` form request to user-input questions. Enum
- * properties become fixed choices; everything else takes a custom answer.
- * URL-mode elicitations cannot be answered in the chat UI.
- */
-function toElicitationContentValue(
-  value: unknown,
-): string | number | boolean | ReadonlyArray<string> | undefined {
-  if (typeof value === "string" || typeof value === "boolean") return value;
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (Array.isArray(value)) {
-    const strings = value.filter((entry): entry is string => typeof entry === "string");
-    return strings.length === value.length ? strings : undefined;
-  }
-  return undefined;
-}
-
-function extractElicitationQuestions(
-  params: Extract<EffectAcpSchema.ElicitationRequest, { readonly mode: "form" }>,
-): ReadonlyArray<UserInputQuestion> {
-  const properties = params.requestedSchema.properties ?? {};
-  return Object.entries(properties).map(([id, property]) => {
-    const options =
-      "enum" in property && Array.isArray(property.enum)
-        ? property.enum
-            .filter((value): value is string => typeof value === "string")
-            .map((value) => ({ label: value, description: value }))
-        : [];
-    return {
-      id,
-      header: property.title?.trim() || id,
-      question: property.description?.trim() || property.title?.trim() || params.message,
-      options,
-      allowCustomAnswer: true,
-      multiSelect: property.type === "array",
-    };
   });
 }
 
@@ -907,7 +857,7 @@ export function makeDevinAdapter(devinSettings: DevinSettings, options?: DevinAd
                   if (params.mode !== "form") {
                     return { action: { action: "cancel" as const } };
                   }
-                  const questions = extractElicitationQuestions(params);
+                  const questions = extractAcpElicitationQuestions(params);
                   if (questions.length === 0) {
                     return { action: { action: "cancel" as const } };
                   }
@@ -940,23 +890,7 @@ export function makeDevinAdapter(devinSettings: DevinSettings, options?: DevinAd
                     requestId: runtimeRequestId,
                     payload: { answers: resolved },
                   });
-                  if (Object.keys(resolved).length === 0) {
-                    return { action: { action: "cancel" as const } };
-                  }
-                  const content: Record<string, string | number | boolean | ReadonlyArray<string>> =
-                    {};
-                  for (const [key, value] of Object.entries(resolved)) {
-                    const coerced = toElicitationContentValue(value);
-                    if (coerced !== undefined) {
-                      content[key] = coerced;
-                    }
-                  }
-                  return {
-                    action: {
-                      action: "accept" as const,
-                      content,
-                    },
-                  };
+                  return acpElicitationResponseFromAnswers(resolved);
                 }),
               ),
             );
@@ -965,7 +899,7 @@ export function makeDevinAdapter(devinSettings: DevinSettings, options?: DevinAd
                 Effect.gen(function* () {
                   yield* logNative(input.threadId, "session/request_permission", params);
                   if (input.runtimeMode === "full-access") {
-                    const autoApprovedOptionId = selectAutoApprovedPermissionOption(params);
+                    const autoApprovedOptionId = selectAcpAutoApprovedPermissionOption(params);
                     if (autoApprovedOptionId !== undefined) {
                       return {
                         outcome: {

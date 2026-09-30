@@ -24,6 +24,7 @@ import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawne
 import type * as EffectAcpErrors from "effect-acp/errors";
 import type * as EffectAcpSchema from "effect-acp/schema";
 
+import { findAcpModeByAliases } from "./AcpAdapterSupport.ts";
 import type { AcpSessionModeState } from "./AcpRuntimeModel.ts";
 import { collectSessionConfigOptionValues } from "./AcpRuntimeModel.ts";
 import * as AcpSessionRuntime from "./AcpSessionRuntime.ts";
@@ -131,33 +132,6 @@ const DEVIN_MODE_BY_RUNTIME_MODE: Partial<Record<RuntimeMode, ReadonlyArray<stri
   "full-access": ["bypass"],
 };
 
-function normalizeModeSearchText(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
-
-function findModeByAliases(
-  modes: ReadonlyArray<{ readonly id: string; readonly name: string }>,
-  aliases: ReadonlyArray<string>,
-): { readonly id: string } | undefined {
-  const normalizedAliases = aliases.map((alias) => alias.toLowerCase());
-  for (const alias of normalizedAliases) {
-    const exact = modes.find(
-      (mode) => mode.id.toLowerCase() === alias || mode.name.toLowerCase() === alias,
-    );
-    if (exact) return exact;
-  }
-  for (const alias of normalizedAliases) {
-    const partial = modes.find((mode) =>
-      normalizeModeSearchText(`${mode.id} ${mode.name}`).includes(alias),
-    );
-    if (partial) return partial;
-  }
-  return undefined;
-}
-
 /**
  * Resolve the Devin session mode for a turn. Returns `undefined` when the
  * current mode already expresses the requested posture, leaving it alone.
@@ -173,12 +147,12 @@ export function resolveDevinModeId(input: {
   }
 
   if (input.interactionMode === "plan") {
-    return findModeByAliases(modeState.availableModes, DEVIN_PLAN_MODE_ALIASES)?.id;
+    return findAcpModeByAliases(modeState.availableModes, DEVIN_PLAN_MODE_ALIASES)?.id;
   }
 
   const preferredIds = DEVIN_MODE_BY_RUNTIME_MODE[input.runtimeMode];
   if (preferredIds !== undefined) {
-    return findModeByAliases(modeState.availableModes, preferredIds)?.id;
+    return findAcpModeByAliases(modeState.availableModes, preferredIds)?.id;
   }
 
   // approval-required: `normal` is spawn-flag only. If an earlier plan/ask
@@ -186,7 +160,7 @@ export function resolveDevinModeId(input: {
   // mode so the agent can keep working under supervision.
   if (DEVIN_READ_ONLY_MODE_IDS.has(modeState.currentModeId)) {
     return (
-      findModeByAliases(modeState.availableModes, ["accept-edits", "code"])?.id ??
+      findAcpModeByAliases(modeState.availableModes, ["accept-edits", "code"])?.id ??
       modeState.availableModes.find((mode) => !DEVIN_READ_ONLY_MODE_IDS.has(mode.id))?.id
     );
   }

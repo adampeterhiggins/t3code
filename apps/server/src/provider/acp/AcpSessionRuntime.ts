@@ -98,7 +98,12 @@ export interface AcpSessionRuntimeOptions {
   /** Authentication method to invoke after initialization. Omit when the
    * agent consumes credentials from its own CLI state (for example Devin). */
   readonly authMethodId?: string;
-  readonly mcpServers?: ReadonlyArray<EffectAcpSchema.McpServer>;
+  /** A function picks servers from the agent's advertised `mcpCapabilities`. */
+  readonly mcpServers?:
+    | ReadonlyArray<EffectAcpSchema.McpServer>
+    | ((
+        initializeResult: EffectAcpSchema.InitializeResponse,
+      ) => ReadonlyArray<EffectAcpSchema.McpServer>);
   /** Extra workspace roots the agent may read and write besides `cwd`. */
   readonly additionalDirectories?: ReadonlyArray<string>;
   /** Transforms provider stdout before protocol parsing and protocol logging. */
@@ -755,6 +760,10 @@ export const make = (
 
     const startOnce = Effect.gen(function* () {
       const initializeResult = yield* sendInitialize;
+      const mcpServers =
+        typeof options.mcpServers === "function"
+          ? options.mcpServers(initializeResult)
+          : (options.mcpServers ?? []);
 
       if (options.authMethodId) {
         const authenticatePayload = {
@@ -784,7 +793,7 @@ export const make = (
         const resumePayload = {
           sessionId: options.resumeSessionId,
           cwd: options.cwd,
-          mcpServers: options.mcpServers ?? [],
+          mcpServers,
           ...(options.additionalDirectories && options.additionalDirectories.length > 0
             ? { additionalDirectories: options.additionalDirectories }
             : {}),
@@ -812,7 +821,7 @@ export const make = (
         const loadPayload = {
           sessionId: options.resumeSessionId,
           cwd: options.cwd,
-          mcpServers: options.mcpServers ?? [],
+          mcpServers,
           ...(options.additionalDirectories && options.additionalDirectories.length > 0
             ? { additionalDirectories: options.additionalDirectories }
             : {}),
@@ -885,7 +894,7 @@ export const make = (
       } else {
         const createPayload = {
           cwd: options.cwd,
-          mcpServers: options.mcpServers ?? [],
+          mcpServers,
           ...(options.additionalDirectories && options.additionalDirectories.length > 0
             ? { additionalDirectories: options.additionalDirectories }
             : {}),

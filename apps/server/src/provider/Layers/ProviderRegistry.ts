@@ -110,7 +110,9 @@ const shouldRetainMissingProviderModels = (provider: ServerProvider): boolean =>
     !isAntigravity &&
     !isCodex &&
     !isDevin &&
-    provider.driver !== ProviderDriverKind.make("opencode")
+    provider.driver !== ProviderDriverKind.make("opencode") &&
+    // A custom ACP agent's inventory is whatever it advertised last.
+    provider.driver !== ProviderDriverKind.make("customAcp")
   ) {
     return true;
   }

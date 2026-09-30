@@ -28,12 +28,12 @@ import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 
 import { ServerConfig } from "../../config.ts";
 import { execScriptSource, writeFakeCli } from "../../testUtils/fakeCli.ts";
+import { selectAcpPermissionOptionId } from "../acp/AcpAdapterSupport.ts";
 import {
   grokPromptSettlementBelongsToContext,
   isGrokEnterPlanModeToolCall,
   makeGrokAdapter,
   nextGrokPlanModeActive,
-  selectGrokPermissionOptionId,
 } from "./GrokAdapter.ts";
 
 const decodeGrokSettings = Schema.decodeSync(GrokSettings);
@@ -163,9 +163,9 @@ it("maps Always allow to allow_once when Grok omits allow_always", () => {
     { optionId: "reject-once", kind: "reject_once" },
   ]);
 
-  assert.equal(selectGrokPermissionOptionId(request, "acceptForSession"), "allow-once");
-  assert.equal(selectGrokPermissionOptionId(request, "accept"), "allow-once");
-  assert.equal(selectGrokPermissionOptionId(request, "decline"), "reject-once");
+  assert.equal(selectAcpPermissionOptionId(request, "acceptForSession"), "allow-once");
+  assert.equal(selectAcpPermissionOptionId(request, "accept"), "allow-once");
+  assert.equal(selectAcpPermissionOptionId(request, "decline"), "reject-once");
 });
 
 it("prefers allow_always when Grok offers it", () => {
@@ -175,8 +175,8 @@ it("prefers allow_always when Grok offers it", () => {
     { optionId: "reject-once", kind: "reject_once" },
   ]);
 
-  assert.equal(selectGrokPermissionOptionId(request, "acceptForSession"), "allow-always");
-  assert.equal(selectGrokPermissionOptionId(request, "accept"), "allow-once");
+  assert.equal(selectAcpPermissionOptionId(request, "acceptForSession"), "allow-always");
+  assert.equal(selectAcpPermissionOptionId(request, "accept"), "allow-once");
 });
 
 it("requires a settlement to match the live Grok turn", () => {
