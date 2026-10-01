@@ -5592,6 +5592,7 @@ export default function Sidebar() {
                     sortOrder={tabSortOrder}
                     sortDirection={tabSortDirection}
                     shortcutLabel={toggleTabsShortcutLabel}
+                    onToggle={toggleShowTabs}
                     onShownChange={handleTabsShownChange}
                     onSortOrderChange={handleTabSortOrderChange}
                     onSortDirectionChange={handleTabSortDirectionChange}

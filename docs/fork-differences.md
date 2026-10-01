@@ -180,7 +180,8 @@ is its own conversation and provider.
   of its tabs is open, and opening it returns to the tab last left open
   (`apps/web/src/threadTabRecencyStore.ts`). With tabs hidden on web and desktop, the row shows
   that tab’s title, model, and details (`apps/web/src/components/Sidebar.tsx`). On web and desktop, **Settings → General → Tabs in
-  sidebar**, the sidebar header's tabs menu (`sidebar/SidebarTabsMenu.tsx`), the command palette,
+  sidebar**, the sidebar header's tabs button (click to toggle, right-click for a menu;
+  `sidebar/SidebarTabsMenu.tsx`), the command palette,
   and `Cmd+Option+T` on macOS or `Ctrl+Alt+T` on Windows and Linux list each tab under that row:
   all of them, or up to a chosen number with the rest behind a **more** row that keeps the open tab
   listed. **Sort tabs by** orders them by latest response, creation, or last opened, either way, or

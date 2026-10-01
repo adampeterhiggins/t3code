@@ -1,10 +1,12 @@
 /**
- * The sidebar header's tabs menu: how many of a chat's tabs list under its row, and their
- * order. Hide and the shown choices map onto Show tabs, so its keybinding still flips between
- * Hide and whatever was shown last.
+ * The sidebar header's tabs button. A click shows or hides tabs, as it always has; a right-click
+ * (or the context-menu key) opens a menu for how many of a chat's tabs list under its row and
+ * their order. Hide and the shown choices map onto Show tabs, so its keybinding still flips
+ * between Hide and whatever was shown last.
  */
 import type { SidebarTabSortDirection, SidebarTabSortOrder } from "@t3tools/contracts/settings";
 import { CheckIcon, LayersIcon } from "lucide-react";
+import { useRef, useState } from "react";
 
 import {
   Menu,
@@ -19,7 +21,6 @@ import {
   MenuSub,
   MenuSubPopup,
   MenuSubTrigger,
-  MenuTrigger,
 } from "../ui/menu";
 import { SidebarHeaderIconButton } from "./SidebarThreadHeader";
 
@@ -56,6 +57,7 @@ export function SidebarTabsMenu(props: {
   sortOrder: SidebarTabSortOrder;
   sortDirection: SidebarTabSortDirection;
   shortcutLabel: string | null;
+  onToggle: () => void;
   onShownChange: (shown: boolean, limit: number | null) => void;
   onSortOrderChange: (order: SidebarTabSortOrder) => void;
   onSortDirectionChange: (direction: SidebarTabSortDirection) => void;
@@ -65,20 +67,28 @@ export function SidebarTabsMenu(props: {
     props.limit === null || TAB_LIMIT_CHOICES.includes(props.limit)
       ? TAB_LIMIT_CHOICES
       : [...TAB_LIMIT_CHOICES, props.limit].toSorted((left, right) => left - right);
+  const [open, setOpen] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const toggleLabel = props.shown ? "Hide tabs" : "Show tabs";
   return (
-    <Menu>
-      <MenuTrigger
-        render={
-          <SidebarHeaderIconButton
-            label="Tabs in sidebar"
-            tooltip={props.shortcutLabel ? `Tabs in sidebar (${props.shortcutLabel})` : undefined}
-            isActive={props.shown}
-          />
-        }
+    <Menu open={open} onOpenChange={setOpen}>
+      <SidebarHeaderIconButton
+        ref={buttonRef}
+        label={toggleLabel}
+        tooltip={`${toggleLabel}${props.shortcutLabel ? ` (${props.shortcutLabel})` : ""}. Right-click for options`}
+        aria-pressed={props.shown}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        isActive={props.shown}
+        onClick={props.onToggle}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          setOpen(true);
+        }}
       >
         <LayersIcon />
-      </MenuTrigger>
-      <MenuPopup align="end" className="min-w-56">
+      </SidebarHeaderIconButton>
+      <MenuPopup anchor={buttonRef} align="end" className="min-w-56">
         <MenuGroup>
           <MenuGroupLabel>Tabs in sidebar</MenuGroupLabel>
           <MenuRadioGroup

@@ -28,9 +28,9 @@ Each tab has its own provider and conversation. Closing a tab archives it, so un
 with a count of its tabs, and opening that row returns to the tab you last had open.
 
 On web and desktop, press `Cmd+Option+T` on macOS or `Ctrl+Alt+T` on Windows and Linux to list
-each tab under its chat instead, with its own status, provider, and time. The tabs button in the
-sidebar header opens a menu that hides tabs, lists every tab, or lists up to a number of them per
-chat. Past that number the rest fold behind a **more** row, which also shows when a hidden tab is
+each tab under its chat instead, with its own status, provider, and time. Clicking the tabs
+button in the sidebar header does the same. Right-click it for a menu that hides tabs, lists every
+tab, or lists up to a number of them per chat. Past that number the rest fold behind a **more** row, which also shows when a hidden tab is
 working or needs you. Expand it to see them all; it folds again when you open a tab or thread. The
 tab you have open always stays listed. The same shortcut switches between hiding tabs and your
 last choice, and the command palette and **Settings → General → Tabs in sidebar** set it too.
