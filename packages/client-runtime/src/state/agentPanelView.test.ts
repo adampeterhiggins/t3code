@@ -354,6 +354,112 @@ describe("deriveSubagentToolLog workspace paths", () => {
     ]);
     expect(subagentToolCallText(log[0]!, false)).toBe("tests/a.py");
   });
+
+  it("shows a Cursor agent's calls relative to a sibling checkout", () => {
+    const thread = "/Users/me/.t3/worktrees/app/t3code-thread";
+    const checkout = "/Users/me/.t3/worktrees/app/style-r02-swarm";
+    const log = deriveSubagentToolLog(
+      [
+        activity("tool.completed", {
+          agentId: "alpha",
+          toolCallId: "c1",
+          itemType: "dynamic_tool_call",
+          title: `Read ${checkout}/src/repositories/catalogue.py`,
+        }),
+        activity("tool.completed", {
+          agentId: "alpha",
+          toolCallId: "c2",
+          itemType: "dynamic_tool_call",
+          title: `Read ${checkout}/docs/rewrite/README.md (1 - 200)`,
+        }),
+        activity("tool.completed", {
+          agentId: "alpha",
+          toolCallId: "c3",
+          itemType: "command_execution",
+          title: "Ran command",
+          detail: `cd ${checkout} && git status && cat ${checkout}/src/a.py`,
+          data: { command: `cd ${checkout} && git status && cat ${checkout}/src/a.py` },
+        }),
+        activity("tool.completed", {
+          agentId: "alpha",
+          toolCallId: "c4",
+          itemType: "dynamic_tool_call",
+          title: "Read /Users/me/.t3/userdata/agent-tools/out.txt (1 - 20)",
+        }),
+        activity("tool.completed", {
+          agentId: "alpha",
+          toolCallId: "c5",
+          itemType: "dynamic_tool_call",
+          title: `Read ${thread}/AGENTS.md`,
+        }),
+      ],
+      "alpha",
+      thread,
+    );
+    expect(log.map((entry) => entry.title)).toEqual([
+      "Read src/repositories/catalogue.py",
+      "Read docs/rewrite/README.md (1 - 200)",
+      "Ran command",
+      "Read /Users/me/.t3/userdata/agent-tools/out.txt (1 - 20)",
+      "Read AGENTS.md",
+    ]);
+    expect(log[2]!.command).toBe("git status && cat src/a.py");
+  });
+
+  it("leaves a single read of a neighboring checkout absolute", () => {
+    const log = deriveSubagentToolLog(
+      [
+        activity("tool.completed", {
+          agentId: "alpha",
+          toolCallId: "c1",
+          itemType: "dynamic_tool_call",
+          title: "Read /repo/other/src/a.ts",
+        }),
+      ],
+      "alpha",
+      "/repo/wt",
+    );
+    expect(log[0]!.title).toBe("Read /repo/other/src/a.ts");
+  });
+
+  it("leaves two equally used sibling checkouts absolute", () => {
+    const log = deriveSubagentToolLog(
+      [
+        activity("tool.completed", {
+          agentId: "alpha",
+          toolCallId: "c1",
+          itemType: "dynamic_tool_call",
+          title: "Read /repo/one/a.ts",
+        }),
+        activity("tool.completed", {
+          agentId: "alpha",
+          toolCallId: "c2",
+          itemType: "dynamic_tool_call",
+          title: "Read /repo/one/b.ts",
+        }),
+        activity("tool.completed", {
+          agentId: "alpha",
+          toolCallId: "c3",
+          itemType: "dynamic_tool_call",
+          title: "Read /repo/two/c.ts",
+        }),
+        activity("tool.completed", {
+          agentId: "alpha",
+          toolCallId: "c4",
+          itemType: "dynamic_tool_call",
+          title: "Read /repo/two/d.ts",
+        }),
+      ],
+      "alpha",
+      "/repo/wt",
+    );
+    expect(log.map((entry) => entry.title)).toEqual([
+      "Read /repo/one/a.ts",
+      "Read /repo/one/b.ts",
+      "Read /repo/two/c.ts",
+      "Read /repo/two/d.ts",
+    ]);
+  });
 });
 
 describe("applySubagentToolLogView", () => {

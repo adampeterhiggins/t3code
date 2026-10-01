@@ -1,3 +1,4 @@
+import { isWindowsAbsolutePath } from "@t3tools/shared/path";
 import { summarizeToolActivityInput } from "@t3tools/shared/toolActivity";
 /**
  * Agents-panel presentation over the source-neutral AgentPanelModel: the
@@ -361,7 +362,8 @@ function commandFrom(data: unknown): string | null {
  * hides them and the Agents panel is where they surface. One entry per tool
  * call; later rows for the same call update it in place. Commands and paths
  * are shown relative to the agent's worktree, or else `workspaceRoot`, the
- * directory the thread runs in.
+ * directory the thread runs in. A checkout next to that directory is used
+ * instead when the agent's calls sit there.
  */
 export function deriveSubagentToolLogs(
   activities: ReadonlyArray<OrchestrationThreadActivity>,
@@ -419,10 +421,17 @@ export function deriveSubagentToolLogs(
     });
   }
   return new Map(
-    Array.from(byAgent, ([agentId, entries]) => [
-      agentId,
-      Array.from(entries.values(), (entry) => withWorkspacePaths(entry, agentId, workspaceRoot)),
-    ]),
+    Array.from(byAgent, ([agentId, entries]) => {
+      const raw = Array.from(entries.values());
+      const siblingCheckout = subagentSiblingCheckout(
+        raw.map(subagentToolEntryText),
+        workspaceRoot,
+      );
+      return [
+        agentId,
+        raw.map((entry) => withWorkspacePaths(entry, agentId, workspaceRoot, siblingCheckout)),
+      ];
+    }),
   );
 }
 
@@ -444,16 +453,109 @@ function escapeRegExp(value: string): string {
  * agent its own checkout at `<repo>/.claude/worktrees/agent-<agentId>`, which
  * is outside a thread running in a T3 worktree, and never reports the path
  * while the agent runs; the agent's absolute paths are the only record of it.
+ * Otherwise a sibling checkout of the thread workspace (Cursor runs a task
+ * there and still passes absolute file paths) wins for text that uses it.
  */
 function subagentRoot(
   agentId: string,
   text: string,
   workspaceRoot: string | null | undefined,
+  siblingCheckout?: string | null,
 ): string | null | undefined {
   const worktree = new RegExp(
     `[^\\s'"=(]*[\\\\/]\\.claude[\\\\/]worktrees[\\\\/]agent-${escapeRegExp(agentId)}(?=$|[\\s'"\`;&|):\\\\/])`,
   ).exec(text);
-  return worktree?.[0] ?? workspaceRoot;
+  if (worktree?.[0]) return worktree[0];
+  if (siblingCheckout && mentionsDirectory(text, siblingCheckout)) return siblingCheckout;
+  return workspaceRoot;
+}
+
+function parentDirectory(path: string): string | null {
+  const trimmed = path.replace(/[\\/]+$/, "");
+  const index = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  return index > 0 ? trimmed.slice(0, index) : null;
+}
+
+function pathSeparator(path: string): "/" | "\\" {
+  return path.includes("\\") && !path.includes("/") ? "\\" : "/";
+}
+
+function mentionsDirectory(text: string, directory: string): boolean {
+  const caseInsensitive = isWindowsAbsolutePath(directory);
+  const source = caseInsensitive ? text.toLowerCase() : text;
+  const needle = caseInsensitive ? directory.toLowerCase() : directory;
+  let from = 0;
+  while (from < source.length) {
+    const index = source.indexOf(needle, from);
+    if (index < 0) return false;
+    const before = index === 0 ? "" : source[index - 1]!;
+    const after = source[index + needle.length] ?? "";
+    const boundedBefore = index === 0 || /[\s'"=(]/.test(before);
+    const boundedAfter = after === "" || /[\\/]/.test(after) || /[\s'"`;&|):]/.test(after);
+    if (boundedBefore && boundedAfter) return true;
+    from = index + 1;
+  }
+  return false;
+}
+
+function subagentToolEntryText(entry: SubagentToolLogEntry): string {
+  return [entry.title, entry.detail, entry.command, entry.preview].filter(Boolean).join("\n");
+}
+
+/**
+ * A checkout next to `workspaceRoot` that an agent's calls actually use.
+ * Cursor task subagents keep their shell there and still hand file tools
+ * absolute paths, unlike Claude, whose checkout has the agent id in the path.
+ * One call is not enough: a single read of a neighboring file stays absolute.
+ * Two checkouts used equally often stay absolute too.
+ */
+export function subagentSiblingCheckout(
+  entryTexts: ReadonlyArray<string>,
+  workspaceRoot: string | null | undefined,
+): string | null {
+  const root = workspaceRoot?.trim().replace(/[\\/]+$/, "") ?? "";
+  const parent = parentDirectory(root);
+  if (!parent || !/[\\/][^\\/]/.test(root)) return null;
+  const ownName = root.slice(parent.length + 1);
+  const caseInsensitive = isWindowsAbsolutePath(root);
+  const normalize = (value: string) => (caseInsensitive ? value.toLowerCase() : value);
+  const pattern = new RegExp(
+    `(?:^|[\\s'"=(])${escapeRegExp(parent)}[\\\\/]+([^\\s'"\`;&|)\\\\/]+)`,
+    caseInsensitive ? "gi" : "g",
+  );
+  const counts = new Map<string, { readonly path: string; count: number }>();
+  for (const text of entryTexts) {
+    const seen = new Set<string>();
+    for (const match of text.matchAll(pattern)) {
+      const name = match[1];
+      if (!name || name === "." || name === ".." || normalize(name) === normalize(ownName)) {
+        continue;
+      }
+      const after = text.slice((match.index ?? 0) + match[0].length);
+      if (!after.startsWith("/") && !after.startsWith("\\")) continue;
+      const key = normalize(name);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const existing = counts.get(key);
+      counts.set(
+        key,
+        existing
+          ? { path: existing.path, count: existing.count + 1 }
+          : { path: `${parent}${pathSeparator(root)}${name}`, count: 1 },
+      );
+    }
+  }
+  let best: { readonly path: string; count: number } | null = null;
+  let runnerUp = 0;
+  for (const candidate of counts.values()) {
+    if (!best || candidate.count > best.count) {
+      runnerUp = best?.count ?? 0;
+      best = candidate;
+    } else if (candidate.count > runnerUp) {
+      runnerUp = candidate.count;
+    }
+  }
+  return best && best.count >= 2 && best.count > runnerUp ? best.path : null;
 }
 
 /**
@@ -466,8 +568,9 @@ export function formatSubagentToolInput(
   text: string,
   agentId: string,
   workspaceRoot: string | null | undefined,
+  siblingCheckout?: string | null,
 ): string {
-  const root = subagentRoot(agentId, text, workspaceRoot);
+  const root = subagentRoot(agentId, text, workspaceRoot, siblingCheckout);
   return kind === "command"
     ? formatCommandForWorkspace(text, root)
     : formatPathsForWorkspace(text, root);
@@ -477,22 +580,26 @@ function formatSubagentPaths(
   text: string,
   agentId: string,
   workspaceRoot: string | null | undefined,
+  siblingCheckout?: string | null,
 ): string {
-  return formatPathsForWorkspace(text, subagentRoot(agentId, text, workspaceRoot));
+  return formatPathsForWorkspace(text, subagentRoot(agentId, text, workspaceRoot, siblingCheckout));
 }
 
 function withWorkspacePaths(
   entry: SubagentToolLogEntry,
   agentId: string,
   workspaceRoot: string | null | undefined,
+  siblingCheckout: string | null,
 ): SubagentToolLogEntry {
   const format = (text: string | null) =>
-    text && formatSubagentToolInput(entry.kind, text, agentId, workspaceRoot);
+    text && formatSubagentToolInput(entry.kind, text, agentId, workspaceRoot, siblingCheckout);
   // The preview lists paths and diffs rather than the command, and must keep
   // matching the detail it deduplicates against.
-  const preview = entry.preview ? formatSubagentPaths(entry.preview, agentId, workspaceRoot) : null;
+  const preview = entry.preview
+    ? formatSubagentPaths(entry.preview, agentId, workspaceRoot, siblingCheckout)
+    : null;
   // ACP providers such as Cursor put the target in the title ("Read /repo/a.ts").
-  const title = formatSubagentPaths(entry.title, agentId, workspaceRoot);
+  const title = formatSubagentPaths(entry.title, agentId, workspaceRoot, siblingCheckout);
   return { ...entry, title, detail: format(entry.detail), command: format(entry.command), preview };
 }
 
