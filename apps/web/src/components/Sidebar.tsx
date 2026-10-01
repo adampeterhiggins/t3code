@@ -3662,15 +3662,20 @@ export default function Sidebar() {
   // rendered at click time.
   const orderedThreadKeysRef = useRef(orderedThreadKeys);
   orderedThreadKeysRef.current = orderedThreadKeys;
+  // Every row's thread as well as the shown tabs: a card whose tab list stands in for it can
+  // sort its own thread past the tab limit, yet the row still renders and drags by that key.
   const threadByKey = useMemo(
     () =>
       new Map(
-        orderedThreads.map(
-          (thread) =>
-            [scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)), thread] as const,
-        ),
+        [
+          ...pinnedThreads,
+          ...activeThreads,
+          ...visibleSnoozedThreads,
+          ...renderedSettledThreads,
+          ...orderedThreads,
+        ].map((thread) => [sidebarThreadKey(thread), thread] as const),
       ),
-    [orderedThreads],
+    [pinnedThreads, activeThreads, visibleSnoozedThreads, renderedSettledThreads, orderedThreads],
   );
   // Handlers read these through refs: depending on per-update Map/Set
   // identities would give every row a fresh callback prop on each shell
