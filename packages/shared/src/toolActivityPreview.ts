@@ -39,6 +39,21 @@ export function summarizeToolActivityInput(data: unknown): string | undefined {
     const path = string("file_path", "filePath", "path", "TargetFile");
     if (path) add(path);
     let diff = string("diff", "diffString", "unifiedDiff", "patch");
+    // Codex file changes carry bare `@@` hunks for updates, and the raw file
+    // body for adds and deletes. Give both the headers a patch parser needs.
+    const changeKind = record(row.kind)?.type;
+    if (diff !== undefined && path && !/^(?:diff --git |--- )/m.test(diff)) {
+      const body = diff.endsWith("\n") ? diff : `${diff}\n`;
+      if (changeKind === "add" || changeKind === "delete") {
+        diff =
+          body.length <= 1600
+            ? createPatch(path, changeKind === "add" ? "" : body, changeKind === "add" ? body : "")
+            : undefined;
+        if (!diff) add("Diff is too large to preview");
+      } else if (diff.startsWith("@@")) {
+        diff = `--- a/${path}\n+++ b/${path}\n${body}`;
+      }
+    }
     const before = string("old_string", "oldText", "old_text", "oldString");
     const after = string("new_string", "newText", "new_text", "newString", "ReplacementContent");
     if (!diff && before !== undefined && after !== undefined) {
