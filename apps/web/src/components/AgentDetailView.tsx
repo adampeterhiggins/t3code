@@ -222,6 +222,7 @@ const MessageRow = memo(function MessageRow(props: {
 function TranscriptList(props: {
   rows: ReturnType<typeof applySubagentTranscriptView>;
   timestampFormat: TimestampFormat;
+  agentId: string;
   workspaceRoot: string | undefined;
 }) {
   return (
@@ -234,7 +235,8 @@ function TranscriptList(props: {
         const status = entry.status ?? "completed";
         const kind = subagentTranscriptToolKind(entry.toolName);
         const input =
-          entry.input && formatSubagentToolInput(kind, entry.input, props.workspaceRoot);
+          entry.input &&
+          formatSubagentToolInput(kind, entry.input, props.agentId, props.workspaceRoot);
         return (
           <CallRow
             key={index}
@@ -481,6 +483,7 @@ function ActivitySection(props: {
             <TranscriptList
               rows={visibleTranscript}
               timestampFormat={props.timestampFormat}
+              agentId={agent.id}
               workspaceRoot={props.workspaceRoot}
             />
           )}
