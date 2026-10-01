@@ -1445,6 +1445,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   // the group header. The active tab carries the highlight.
   const unifyTabs = variant === "card" && props.tabsOpen && props.tabs != null;
   const rowActive = props.isActive && !unifyTabs;
+  // Each listed tab shows its own status, so the header would only repeat the
+  // first tab's and read as the whole group's. Woke belongs to the group.
+  const headerStatus = unifyTabs && !isWokeStatus ? null : topStatus;
   const rowSurfaceClassName = cn(
     "group/sidebar-row relative w-full cursor-pointer overflow-hidden rounded-md text-left outline-none select-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
     variantAction === "unsettle" && "[&:not(:hover):not(:focus-within)_*]:text-secondary-label/70",
@@ -1503,7 +1506,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
 
   const accessibility = resolveSidebarRowAccessibility({
     title: thread.title,
-    statusLabel: topStatus?.label ?? null,
+    statusLabel: headerStatus?.label ?? null,
     projectDisplayName: props.projectDisplayName,
     isActive: rowActive,
   });
@@ -1902,7 +1905,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                       snoozeMenuOpen && "pointer-events-none absolute right-0 opacity-0",
                     )}
                   >
-                    {topStatus ? (
+                    {headerStatus ? (
                       isWokeStatus ? (
                         <Tooltip>
                           <TooltipTrigger
@@ -1913,11 +1916,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                                 onClick={handleAcknowledgeWokeClick}
                                 className={cn(
                                   "inline-flex cursor-pointer items-center gap-1 rounded-sm font-medium outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring",
-                                  topStatus.className,
+                                  headerStatus.className,
                                 )}
                               >
                                 <AlarmClockIcon aria-hidden className="size-4 shrink-0" />
-                                <span role="status">{topStatus.label}</span>
+                                <span role="status">{headerStatus.label}</span>
                               </button>
                             }
                           />
@@ -1927,14 +1930,17 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                         <span
                           className={cn(
                             "inline-flex items-center gap-1 font-medium",
-                            topStatus.className,
+                            headerStatus.className,
                           )}
                         >
-                          <SidebarTopStatusIcon icon={topStatus.icon} className="size-4 shrink-0" />
+                          <SidebarTopStatusIcon
+                            icon={headerStatus.icon}
+                            className="size-4 shrink-0"
+                          />
                           {/* The label alone is the live region: a role="status"
                             wrapper around the ticking duration would make
                             screen readers announce every second. */}
-                          <span role="status">{topStatus.label}</span>
+                          <span role="status">{headerStatus.label}</span>
                           {status === "working" ? (
                             <span aria-hidden>
                               <WorkingDuration startedAt={resolveWorkingStartedAt(thread)} />
@@ -2438,11 +2444,6 @@ const SidebarTabRow = memo(function SidebarTabRow(props: {
   onFileDropThreads: (threadRef: ScopedThreadRef, files: File[]) => void;
   /** Closes this tab; its hover control stands in for the time label. */
   onCloseTab: (threadRef: ScopedThreadRef) => void;
-  /**
-   * False for the group's own thread: its status already sits on the header,
-   * and repeating it would make the first tab row unlike the others.
-   */
-  showStatus?: boolean;
   /** The sorted-by time, so labels read in the list's order. Defaults to your last message. */
   timeLabel?: string | undefined;
   sortable?: SortableThreadRowBag | undefined;
@@ -2598,7 +2599,7 @@ const SidebarTabRow = memo(function SidebarTabRow(props: {
               className={cn("size-3.5 shrink-0", terminalStatus.colorClass)}
             />
           ) : null}
-          {props.showStatus !== false && topStatus ? (
+          {topStatus ? (
             <span
               className={cn(
                 "inline-flex shrink-0 items-center gap-1 text-xs font-medium",
@@ -5902,7 +5903,6 @@ export default function Sidebar() {
                                               openedAtByThreadKey[tabKey],
                                             )}
                                             thread={tab}
-                                            showStatus={tabKey !== threadKey}
                                             isActive={highlightedRouteThreadKey === tabKey}
                                             jumpLabel={
                                               showThreadJumpHints
