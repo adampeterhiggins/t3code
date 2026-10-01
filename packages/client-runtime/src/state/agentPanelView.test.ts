@@ -316,6 +316,44 @@ describe("deriveSubagentToolLog workspace paths", () => {
     );
     expect(log[0]!.title).toBe("Read src/a.ts");
   });
+
+  it("shows a worktree-isolated agent's calls relative to its own worktree", () => {
+    const worktree = "/main/repo/.claude/worktrees/agent-a15baf";
+    const log = deriveSubagentToolLog(
+      [
+        activity("tool.completed", {
+          agentId: "a15baf",
+          toolCallId: "c1",
+          itemType: "dynamic_tool_call",
+          title: "Read",
+          detail: `${worktree}/tests/a.py`,
+          data: { toolName: "Read", preview: `${worktree}/tests/a.py` },
+        }),
+        activity("tool.completed", {
+          agentId: "a15baf",
+          toolCallId: "c2",
+          itemType: "command_execution",
+          title: "Bash",
+          detail: `cd ${worktree} && grep -n x ${worktree}/src/b.py /t3/worktree/c.py`,
+        }),
+        activity("tool.completed", {
+          agentId: "a15baf",
+          toolCallId: "c3",
+          itemType: "dynamic_tool_call",
+          title: "Read",
+          detail: "/main/repo/.claude/worktrees/agent-other/d.py",
+        }),
+      ],
+      "a15baf",
+      "/t3/worktree",
+    );
+    expect(log.map((entry) => entry.detail)).toEqual([
+      "tests/a.py",
+      "grep -n x src/b.py /t3/worktree/c.py",
+      "/main/repo/.claude/worktrees/agent-other/d.py",
+    ]);
+    expect(subagentToolCallText(log[0]!, false)).toBe("tests/a.py");
+  });
 });
 
 describe("applySubagentToolLogView", () => {

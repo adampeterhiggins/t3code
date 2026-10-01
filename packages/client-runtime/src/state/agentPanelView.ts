@@ -360,7 +360,8 @@ function commandFrom(data: unknown): string | null {
  * subagent's tool activities with `agentId` (the agent's task id); the chat
  * hides them and the Agents panel is where they surface. One entry per tool
  * call; later rows for the same call update it in place. Commands and paths
- * are shown relative to `workspaceRoot`, the directory the thread runs in.
+ * are shown relative to the agent's worktree, or else `workspaceRoot`, the
+ * directory the thread runs in.
  */
 export function deriveSubagentToolLogs(
   activities: ReadonlyArray<OrchestrationThreadActivity>,
@@ -420,7 +421,7 @@ export function deriveSubagentToolLogs(
   return new Map(
     Array.from(byAgent, ([agentId, entries]) => [
       agentId,
-      Array.from(entries.values(), (entry) => withWorkspacePaths(entry, workspaceRoot)),
+      Array.from(entries.values(), (entry) => withWorkspacePaths(entry, agentId, workspaceRoot)),
     ]),
   );
 }
@@ -434,32 +435,64 @@ export function deriveSubagentToolLog(
   return deriveSubagentToolLogs(activities, workspaceRoot).get(agentId) ?? [];
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * The directory an agent's calls run in. Claude Code gives a worktree-isolated
+ * agent its own checkout at `<repo>/.claude/worktrees/agent-<agentId>`, which
+ * is outside a thread running in a T3 worktree, and never reports the path
+ * while the agent runs; the agent's absolute paths are the only record of it.
+ */
+function subagentRoot(
+  agentId: string,
+  text: string,
+  workspaceRoot: string | null | undefined,
+): string | null | undefined {
+  const worktree = new RegExp(
+    `[^\\s'"=(]*[\\\\/]\\.claude[\\\\/]worktrees[\\\\/]agent-${escapeRegExp(agentId)}(?=$|[\\s'"\`;&|):\\\\/])`,
+  ).exec(text);
+  return worktree?.[0] ?? workspaceRoot;
+}
+
 /**
  * Formats a call's input (a command, or a file tool's target) the way the
- * chat shows it: relative to the directory the thread runs in.
+ * chat shows it: relative to the directory the agent runs in, which is the
+ * thread's unless the agent has its own worktree.
  */
 export function formatSubagentToolInput(
   kind: SubagentToolKind,
   text: string,
+  agentId: string,
   workspaceRoot: string | null | undefined,
 ): string {
+  const root = subagentRoot(agentId, text, workspaceRoot);
   return kind === "command"
-    ? formatCommandForWorkspace(text, workspaceRoot)
-    : formatPathsForWorkspace(text, workspaceRoot);
+    ? formatCommandForWorkspace(text, root)
+    : formatPathsForWorkspace(text, root);
+}
+
+function formatSubagentPaths(
+  text: string,
+  agentId: string,
+  workspaceRoot: string | null | undefined,
+): string {
+  return formatPathsForWorkspace(text, subagentRoot(agentId, text, workspaceRoot));
 }
 
 function withWorkspacePaths(
   entry: SubagentToolLogEntry,
+  agentId: string,
   workspaceRoot: string | null | undefined,
 ): SubagentToolLogEntry {
-  if (!workspaceRoot) return entry;
   const format = (text: string | null) =>
-    text && formatSubagentToolInput(entry.kind, text, workspaceRoot);
+    text && formatSubagentToolInput(entry.kind, text, agentId, workspaceRoot);
   // The preview lists paths and diffs rather than the command, and must keep
   // matching the detail it deduplicates against.
-  const preview = entry.preview ? formatPathsForWorkspace(entry.preview, workspaceRoot) : null;
+  const preview = entry.preview ? formatSubagentPaths(entry.preview, agentId, workspaceRoot) : null;
   // ACP providers such as Cursor put the target in the title ("Read /repo/a.ts").
-  const title = formatPathsForWorkspace(entry.title, workspaceRoot);
+  const title = formatSubagentPaths(entry.title, agentId, workspaceRoot);
   return { ...entry, title, detail: format(entry.detail), command: format(entry.command), preview };
 }
 
