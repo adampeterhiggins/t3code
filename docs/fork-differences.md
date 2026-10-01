@@ -603,6 +603,11 @@ cannot be read, or that was edited away meanwhile, stays as text. Paste-as-text 
 skips it, and typing never retries a link the draft already converted or tried, so undo and a
 deleted chip stick. Mobile does not convert links.
 
+A bare link of one of those kinds that is still a link when the message renders, in any message on
+web, desktop, or mobile, shows its short name instead of the URL: `owner/repo#162` for a pull
+request or GitHub issue, `ENG-123` for a Linear issue, and `owner/repo` for a repository. It still
+opens, previews, and copies as the full URL. Link text the writer chose is left alone.
+
 Code: `packages/client-runtime/src/composerObjectLinks.ts`,
 `apps/web/src/components/chat/useResolveComposerObjectLink.ts`, and `convertObjectLinks` in
 `apps/web/src/components/chat/ChatComposer.tsx`. User guide:

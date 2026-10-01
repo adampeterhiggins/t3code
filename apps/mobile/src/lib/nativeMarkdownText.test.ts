@@ -105,6 +105,21 @@ describe("nativeMarkdownTextRuns", () => {
     ]);
   });
 
+  it("renames a bare pull request link but keeps chosen link text", () => {
+    const href = "https://github.com/acme/api/pull/7";
+    const link = (content: string): MarkdownNode => ({
+      type: "link",
+      href,
+      children: [{ type: "text", content }],
+    });
+    expect(
+      nativeMarkdownTextRuns({ type: "paragraph", children: [link(href), link("the PR")] }),
+    ).toEqual([
+      { text: "acme/api#7", href, externalHost: "github.com", sourceText: href },
+      { text: "the PR", href, externalHost: "github.com" },
+    ]);
+  });
+
   it("preserves inline emphasis and code styles", () => {
     const node: MarkdownNode = {
       type: "paragraph",
