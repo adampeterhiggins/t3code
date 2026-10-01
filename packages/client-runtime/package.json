@@ -167,6 +167,10 @@
       "types": "./src/state/linear.ts",
       "default": "./src/state/linear.ts"
     },
+    "./state/slack": {
+      "types": "./src/state/slack.ts",
+      "default": "./src/state/slack.ts"
+    },
     "./state/models": {
       "types": "./src/state/models.ts",
       "default": "./src/state/models.ts"

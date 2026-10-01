@@ -253,6 +253,12 @@ function formatComposerContextProviderPayload(record: KnownComposerContextRecord
       ].join("\n");
     case "repository":
       return formatRepositoryPayload(record);
+    case "slack-thread":
+      return [
+        `slack ${record.scope === "thread" ? "thread" : "message"}: ${record.channelLabel}, linked message by ${record.authorName}`,
+        `url: ${record.url}`,
+        record.markdown,
+      ].join("\n");
   }
 }
 

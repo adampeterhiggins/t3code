@@ -9,6 +9,7 @@ import {
 import { ContextRepositoryDirectoryName, ContextRepositoryOutcome } from "./contextRepositories.ts";
 import { GITHUB_ISSUE_MARKDOWN_MAX_CHARS } from "./githubIssues.ts";
 import { LINEAR_ISSUE_MARKDOWN_MAX_CHARS } from "./linear.ts";
+import { SLACK_THREAD_MARKDOWN_MAX_CHARS } from "./slack.ts";
 
 /**
  * Inline context records: the typed payload behind every composer chip.
@@ -32,6 +33,7 @@ export const COMPOSER_CONTEXT_KINDS = [
   "linear-issue",
   "github-issue",
   "repository",
+  "slack-thread",
 ] as const;
 export type KnownComposerContextKind = (typeof COMPOSER_CONTEXT_KINDS)[number];
 
@@ -262,6 +264,27 @@ export const GitHubIssueContextRecord = Schema.Struct({
 export type GitHubIssueContextRecord = typeof GitHubIssueContextRecord.Type;
 
 /**
+ * A Slack thread, or one message from it, rendered as markdown when the chip was inserted.
+ * `ts` is the linked message; `threadTs` the thread it belongs to, when it is a reply.
+ */
+export const SlackThreadContextRecord = Schema.Struct({
+  ...recordBase,
+  kind: Schema.Literal("slack-thread"),
+  teamId: TrimmedNonEmptyString.check(Schema.isMaxLength(64)),
+  channelId: TrimmedNonEmptyString.check(Schema.isMaxLength(64)),
+  channelLabel: ShortString,
+  ts: TrimmedNonEmptyString.check(Schema.isMaxLength(32)),
+  threadTs: Schema.NullOr(TrimmedNonEmptyString.check(Schema.isMaxLength(32))),
+  url: ShortString,
+  authorName: ShortString,
+  title: ShortString,
+  replyCount: NonNegativeInt,
+  scope: Schema.Literals(["thread", "message"]),
+  markdown: BoundedString(SLACK_THREAD_MARKDOWN_MAX_CHARS),
+});
+export type SlackThreadContextRecord = typeof SlackThreadContextRecord.Type;
+
+/**
  * A repository to clone into the workspace's context directory. The server fills `outcome`
  * before the turn starts; a draft never carries one.
  */
@@ -310,6 +333,7 @@ export const KnownComposerContextRecord = Schema.Union([
   LinearIssueContextRecord,
   GitHubIssueContextRecord,
   RepositoryContextRecord,
+  SlackThreadContextRecord,
 ]);
 export type KnownComposerContextRecord = typeof KnownComposerContextRecord.Type;
 

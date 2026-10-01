@@ -10,6 +10,7 @@ import {
   type PullRequestContextMetadata,
   type ServerProviderSkill,
   type ServerProviderSlashCommand,
+  type SlackMessageSummary,
   type ThreadId,
 } from "@t3tools/contracts";
 import {
@@ -22,7 +23,7 @@ import {
   UserRoundIcon,
   type LucideIcon,
 } from "lucide-react";
-import { GitHubIcon, LinearIcon } from "../Icons";
+import { GitHubIcon, LinearIcon, SlackIcon } from "../Icons";
 import { memo, useCallback, useLayoutEffect, useRef } from "react";
 
 import { type ComposerSlashCommand, type ComposerTriggerKind } from "../../composer-logic";
@@ -38,6 +39,7 @@ import {
 import { LinearIssueHoverPreview } from "./LinearIssueHoverPreview";
 import { SourceTabs } from "./SourceTabs";
 import { resolvePullRequestState } from "../pullRequest/pullRequestPresentation";
+import { formatRelativeTimeLabel } from "~/timestampFormat";
 
 export type ComposerCommandItem =
   | {
@@ -102,6 +104,13 @@ export type ComposerCommandItem =
       description: string;
       authorLogin: string | null;
       state: "open" | "closed";
+    }
+  | {
+      id: string;
+      type: "slack-message";
+      message: SlackMessageSummary;
+      label: string;
+      description: string;
     }
   | {
       id: string;
@@ -277,6 +286,24 @@ function GitHubIssueRow(props: {
   );
 }
 
+type SlackMessageCommandItem = Extract<ComposerCommandItem, { type: "slack-message" }>;
+
+/** Fixed-width columns so channels and times line up down the list. */
+function SlackMessageCommandRow(props: { item: SlackMessageCommandItem }) {
+  const { message } = props.item;
+  return (
+    <span className="flex min-w-0 flex-1 items-center gap-2 text-xs">
+      <span className="w-28 shrink-0 truncate font-medium font-sans">{message.channelLabel}</span>
+      <span className="min-w-0 flex-1 truncate text-secondary-label">
+        <span className="text-foreground">{message.authorName}</span> · {message.text}
+      </span>
+      <span className="w-16 shrink-0 truncate text-end text-secondary-label">
+        {formatRelativeTimeLabel(message.postedAt)}
+      </span>
+    </span>
+  );
+}
+
 const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
   optionId: string;
   item: ComposerCommandItem;
@@ -327,6 +354,9 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
       {props.item.type === "github-issue" ? (
         <GitHubIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
       ) : null}
+      {props.item.type === "slack-message" ? (
+        <SlackIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+      ) : null}
       {props.item.type === "repository" ? (
         <FolderGit2Icon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
       ) : null}
@@ -341,6 +371,8 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
         <LinearIssueRow item={props.item} environmentId={props.environmentId} />
       ) : props.item.type === "github-issue" ? (
         <GitHubIssueRow item={props.item} environmentId={props.environmentId} />
+      ) : props.item.type === "slack-message" ? (
+        <SlackMessageCommandRow item={props.item} />
       ) : (
         <span className="flex min-w-0 flex-1 items-center gap-2">
           <span className="min-w-0 max-w-[45%] shrink-0 truncate font-sans text-xs font-medium">

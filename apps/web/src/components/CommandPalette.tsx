@@ -43,6 +43,7 @@ import {
 } from "@t3tools/contracts";
 import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
 import { openGitHubIssuePicker } from "./chat/GitHubIssuePicker";
+import { openSlackMessagePicker } from "./chat/SlackMessagePicker";
 import { openLinearIssuePicker } from "./chat/LinearIssuePicker";
 import { useThreadLinearLink, useUnlinkLinearIssue } from "./chat/LinearThreadLink";
 import { openThreadAttachPicker } from "./chat/ThreadAttachPicker";
@@ -79,7 +80,7 @@ import {
   SunIcon,
   TextSearchIcon,
 } from "lucide-react";
-import { LinearIcon } from "./Icons";
+import { LinearIcon, SlackIcon } from "./Icons";
 import {
   useCallback,
   useDeferredValue,
@@ -2111,6 +2112,16 @@ function OpenCommandPaletteDialog(props: {
       icon: <LinearIcon className={ITEM_ICON_CLASS} />,
       run: async () => {
         openLinearIssuePicker(composerThreadRef);
+      },
+    });
+    actionItems.push({
+      kind: "action",
+      value: "action:attach-slack-message",
+      searchTerms: ["slack", "message", "thread", "conversation", "attach", "context"],
+      title: "Attach Slack message",
+      icon: <SlackIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        openSlackMessagePicker(composerThreadRef);
       },
     });
     // The picker is mounted by a chat view whose project is on GitHub, so only offer it there.

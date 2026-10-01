@@ -113,6 +113,8 @@ import { ProviderAuthService } from "./provider/Services/ProviderAuthService.ts"
 import { LinearApi } from "./linear/LinearApi.ts";
 import { LinearAuth } from "./linear/LinearAuth.ts";
 import { LinearThreadLinks } from "./linear/LinearThreadLinks.ts";
+import { SlackApi } from "./slack/SlackApi.ts";
+import { SlackAuth } from "./slack/SlackAuth.ts";
 import { GitHubIssues } from "./githubIssues/GitHubIssues.ts";
 import { GitHubIssueThreadLinks } from "./githubIssues/GitHubIssueThreadLinks.ts";
 import { ProviderInstanceRegistry } from "./provider/Services/ProviderInstanceRegistry.ts";
@@ -543,6 +545,8 @@ const makeWsRpcLayer = (
       const linearAuth = yield* LinearAuth;
       const linearApi = yield* LinearApi;
       const linearThreadLinks = yield* LinearThreadLinks;
+      const slackAuth = yield* SlackAuth;
+      const slackApi = yield* SlackApi;
       const githubIssues = yield* GitHubIssues;
       const githubIssueThreadLinks = yield* GitHubIssueThreadLinks;
       const providerInstances = yield* ProviderInstanceRegistry;
@@ -2353,6 +2357,34 @@ const makeWsRpcLayer = (
             linearThreadLinks.unlink(input).pipe(Effect.as({})),
             { "rpc.aggregate": "linear" },
           ),
+        [WS_METHODS.slackSubscribeState]: (_input) =>
+          observeRpcStream(WS_METHODS.slackSubscribeState, slackAuth.state, {
+            "rpc.aggregate": "slack",
+          }),
+        [WS_METHODS.slackStartLogin]: (input) =>
+          observeRpcEffect(WS_METHODS.slackStartLogin, slackAuth.startLogin(input), {
+            "rpc.aggregate": "slack",
+          }),
+        [WS_METHODS.slackCompleteLogin]: (input) =>
+          observeRpcEffect(WS_METHODS.slackCompleteLogin, slackAuth.completeLogin(input), {
+            "rpc.aggregate": "slack",
+          }),
+        [WS_METHODS.slackCancelLogin]: (input) =>
+          observeRpcEffect(WS_METHODS.slackCancelLogin, slackAuth.cancelLogin(input), {
+            "rpc.aggregate": "slack",
+          }),
+        [WS_METHODS.slackDisconnect]: (_input) =>
+          observeRpcEffect(WS_METHODS.slackDisconnect, slackAuth.disconnect, {
+            "rpc.aggregate": "slack",
+          }),
+        [WS_METHODS.slackSearchMessages]: (input) =>
+          observeRpcEffect(WS_METHODS.slackSearchMessages, slackApi.searchMessages(input), {
+            "rpc.aggregate": "slack",
+          }),
+        [WS_METHODS.slackGetThread]: (input) =>
+          observeRpcEffect(WS_METHODS.slackGetThread, slackApi.getThread(input), {
+            "rpc.aggregate": "slack",
+          }),
         [WS_METHODS.githubIssuesList]: (input) =>
           observeRpcEffect(WS_METHODS.githubIssuesList, githubIssues.listIssues(input), {
             "rpc.aggregate": "github-issues",

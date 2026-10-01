@@ -5,6 +5,7 @@ import {
 import type {
   EnvironmentId,
   GitHubIssueContextRecord,
+  SlackThreadContextRecord,
   PullRequestContextMetadata,
   RepositoryContextRecord,
 } from "@t3tools/contracts";
@@ -393,6 +394,32 @@ export function GitHubIssueDetails(props: {
         onOpenLink={props.onOpenLink}
       />
       <GitHubIssueMarkdown markdown={record.markdown} />
+    </div>
+  );
+}
+
+/** An attached Slack thread or message: the snapshot the agent received, with a link back. */
+export function SlackThreadDetails(props: {
+  record: Pick<
+    SlackThreadContextRecord,
+    "channelLabel" | "scope" | "replyCount" | "url" | "markdown"
+  >;
+  onOpenLink: (event: MouseEvent<HTMLElement>, url: string) => void;
+}) {
+  const { record } = props;
+  const what =
+    record.scope === "message"
+      ? "Message"
+      : `Thread · ${record.replyCount} ${record.replyCount === 1 ? "reply" : "replies"}`;
+  return (
+    <div className="flex flex-col gap-2">
+      <IssueDetailsHeader
+        summary={`${record.channelLabel} · ${what}`}
+        url={record.url}
+        linkLabel="Open in Slack"
+        onOpenLink={props.onOpenLink}
+      />
+      <IssueMarkdownBody text={record.markdown} />
     </div>
   );
 }

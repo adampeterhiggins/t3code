@@ -3,10 +3,20 @@ import { parseChangeRequestUrl } from "@t3tools/shared/changeRequestUrl";
 
 /**
  * A link in composer text to something the composer can attach as a chip instead: a Linear
- * issue, a GitHub issue, a pull request, or a GitHub repository root.
+ * issue, a GitHub issue, a pull request, a GitHub repository root, or a Slack message.
  */
 export type ComposerObjectLink =
   | { readonly kind: "linear-issue"; readonly url: string; readonly identifier: string }
+  | {
+      readonly kind: "slack-message";
+      readonly url: string;
+      /** The subdomain, such as `acme` in `acme.slack.com`. */
+      readonly workspace: string;
+      readonly channelId: string;
+      readonly ts: string;
+      /** The thread the message replies in, when the link says so. */
+      readonly threadTs: string | null;
+    }
   | { readonly kind: "github-issue"; readonly url: string }
   | { readonly kind: "pull-request"; readonly url: string }
   | {
@@ -21,6 +31,32 @@ const LEADING_URL = /^https?:\/\/[^\s<>"'`]+/iu;
 // Sentence punctuation and closing brackets that end prose rather than the link.
 const TRAILING_PUNCTUATION = /[.,;:!?)\]}>]+$/u;
 const LINEAR_ISSUE_IDENTIFIER = /^[A-Za-z][A-Za-z0-9]*-\d+$/u;
+const SLACK_CHANNEL_ID = /^[CDG][A-Z0-9]{2,}$/u;
+// `p` and the message timestamp without its dot: the last six digits are the fraction.
+const SLACK_PERMALINK_TS = /^p(\d{7,})$/u;
+const SLACK_TS = /^\d{1,12}\.\d{1,9}$/u;
+
+/**
+ * A Slack message permalink, `https://<workspace>.slack.com/archives/<channel>/p<ts>`, with
+ * `?thread_ts=` when the message is a reply. Channel links (no message) are not attachable.
+ */
+function parseSlackMessageLink(url: string, parsed: URL, segments: ReadonlyArray<string>) {
+  const host = parsed.hostname.toLowerCase();
+  if (!host.endsWith(".slack.com") || host === "app.slack.com") return null;
+  if (segments.length !== 3 || segments[0] !== "archives") return null;
+  const channelId = segments[1]!;
+  const digits = SLACK_PERMALINK_TS.exec(segments[2]!)?.[1];
+  if (!SLACK_CHANNEL_ID.test(channelId) || digits === undefined) return null;
+  const threadTs = parsed.searchParams.get("thread_ts");
+  return {
+    kind: "slack-message",
+    url,
+    workspace: host.split(".")[0]!,
+    channelId,
+    ts: `${digits.slice(0, -6)}.${digits.slice(-6)}`,
+    threadTs: threadTs !== null && SLACK_TS.test(threadTs) ? threadTs : null,
+  } as const;
+}
 
 function isGitHubHost(hostname: string): boolean {
   const host = hostname.toLowerCase();
@@ -47,6 +83,9 @@ export function parseComposerObjectLink(url: string): ComposerObjectLink | null 
       ? { kind: "linear-issue", url, identifier: identifier.toUpperCase() }
       : null;
   }
+  if (parsed.hostname.toLowerCase().endsWith(".slack.com")) {
+    return parseSlackMessageLink(url, parsed, segments);
+  }
   if (parseChangeRequestUrl(url) !== null) return { kind: "pull-request", url };
   if (!isGitHubHost(parsed.hostname)) return null;
   if (parseGitHubIssueUrl(url) !== null) return { kind: "github-issue", url };
@@ -65,7 +104,8 @@ export function parseComposerObjectLink(url: string): ComposerObjectLink | null 
 
 /**
  * The short name a bare link reads as once it is recognised: `owner/repo#7` for a pull request
- * or issue, `ENG-123` for a Linear issue, `owner/repo` for a repository. Null for ordinary links.
+ * or issue, `ENG-123` for a Linear issue, `owner/repo` for a repository, `Slack · acme` for a
+ * Slack message (the channel's name is not in the link). Null for ordinary links.
  */
 export function objectLinkLabel(url: string): string | null {
   const link = parseComposerObjectLink(url);
@@ -74,6 +114,8 @@ export function objectLinkLabel(url: string): string | null {
       return null;
     case "linear-issue":
       return link.identifier;
+    case "slack-message":
+      return `Slack · ${link.workspace}`;
     case "repository":
       return link.nameWithOwner;
     case "github-issue": {

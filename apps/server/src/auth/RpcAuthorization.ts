@@ -125,6 +125,15 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.linearCompleteLogin]: AuthOrchestrationOperateScope,
   [WS_METHODS.linearCancelLogin]: AuthOrchestrationOperateScope,
   [WS_METHODS.linearDisconnect]: AuthOrchestrationOperateScope,
+  // Reading messages is a read; connecting or disconnecting the environment's
+  // Slack account changes what every client of this environment can reach.
+  [WS_METHODS.slackSubscribeState]: AuthOrchestrationReadScope,
+  [WS_METHODS.slackSearchMessages]: AuthOrchestrationReadScope,
+  [WS_METHODS.slackGetThread]: AuthOrchestrationReadScope,
+  [WS_METHODS.slackStartLogin]: AuthOrchestrationOperateScope,
+  [WS_METHODS.slackCompleteLogin]: AuthOrchestrationOperateScope,
+  [WS_METHODS.slackCancelLogin]: AuthOrchestrationOperateScope,
+  [WS_METHODS.slackDisconnect]: AuthOrchestrationOperateScope,
   [WS_METHODS.githubIssuesList]: AuthOrchestrationReadScope,
   [WS_METHODS.githubIssuesGet]: AuthOrchestrationReadScope,
   [WS_METHODS.githubIssuesGetSummary]: AuthOrchestrationReadScope,

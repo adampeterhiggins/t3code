@@ -115,6 +115,7 @@ import {
 import { searchableSetting } from "./settingsSearch";
 import { ProjectDefaultsSettings } from "./ProjectDefaultsSettings";
 import { LinearSettingsSection } from "./LinearSettings";
+import { SlackSettingsSection } from "./SlackSettings";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { BrowserImportWizard, type WizardTarget } from "./BrowserImportWizard";
 import type { ImportOutcome } from "./browserImportWizard.logic";
@@ -1460,6 +1461,7 @@ export function IntegrationsSettingsPanel() {
       </SettingsSection>
       <DeviceIntegrationSettings />
       <LinearSettingsSection />
+      <SlackSettingsSection />
     </SettingsPageContainer>
   );
 }

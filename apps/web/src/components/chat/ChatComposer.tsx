@@ -276,6 +276,8 @@ import { ComposerAttachMenu } from "./ComposerAttachMenu";
 import { useAttachGitHubIssue } from "./GitHubIssuePicker";
 import { useAttachLinearIssue } from "./LinearIssuePicker";
 import { useComposerGitHubIssueItems } from "./useComposerGitHubIssueItems";
+import { useComposerSlackItems } from "./useComposerSlackItems";
+import { slackGetThreadInput, useAttachSlackMessage } from "./SlackMessagePicker";
 import { useResolveComposerObjectLink } from "./useResolveComposerObjectLink";
 import { useComposerRepositoryItems } from "./useComposerRepositoryItems";
 import { attachRepository } from "./RepositoryAttachPicker";
@@ -363,6 +365,7 @@ const REFERENCE_MENU_TABS: ReadonlyArray<{ id: ComposerReferenceTab; label: stri
   { id: "pull-requests", label: "Pull requests" },
   { id: "github-issues", label: "GitHub issues" },
   { id: "linear-issues", label: "Linear issues" },
+  { id: "slack-messages", label: "Slack" },
   { id: "repositories", label: "Repositories" },
 ];
 
@@ -2461,6 +2464,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   );
   const showLinearIssues = linearIssueMenu.enabled && referenceTab === "linear-issues";
   const attachLinearIssue = useAttachLinearIssue();
+  const slackMenu = useComposerSlackItems(
+    environmentId,
+    composerTrigger,
+    referenceTab === "slack-messages",
+  );
+  const showSlackMessages = slackMenu.enabled && referenceTab === "slack-messages";
+  const attachSlackMessage = useAttachSlackMessage();
   const githubIssueMenu = useComposerGitHubIssueItems(
     environmentId,
     githubIssueCwd,
@@ -2483,9 +2493,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const referenceMenuTabs = REFERENCE_MENU_TABS.filter((tab) =>
     tab.id === "linear-issues"
       ? linearIssueMenu.enabled
-      : tab.id === "github-issues"
-        ? githubIssueMenu.enabled
-        : true,
+      : tab.id === "slack-messages"
+        ? slackMenu.enabled
+        : tab.id === "github-issues"
+          ? githubIssueMenu.enabled
+          : true,
   );
   const captureThreadTabContext = useCaptureThreadTabContext(environmentId, activeThreadId);
   const composerMenuItems = useMemo<ComposerCommandItem[]>(() => {
@@ -2495,6 +2507,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     }
     if (composerTrigger.kind === "pull-request" && showGitHubIssues) {
       return githubIssueMenu.items;
+    }
+    if (composerTrigger.kind === "pull-request" && showSlackMessages) {
+      return slackMenu.items;
     }
     if (composerTrigger.kind === "pull-request" && showRepositories) {
       return repositoryMenu.items;
@@ -2678,6 +2693,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     pullRequestRepository,
     pullRequestTriggerNumber,
     repositoryMenu.items,
+    slackMenu.items,
     selectedProvider,
     selectedProviderSkills,
     selectedProviderSlashCommands,
@@ -2686,6 +2702,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     showGitHubIssues,
     showLinearIssues,
     showRepositories,
+    showSlackMessages,
     threadTabGroup,
     activeThreadId,
     environmentId,
@@ -2768,6 +2785,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       !showLinearIssues &&
       !showGitHubIssues &&
       !showRepositories &&
+      !showSlackMessages &&
       pullRequestProjectId !== null &&
       pullRequestRepository !== null &&
       (pullRequestLookup.isPending ||
@@ -2776,7 +2794,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         exactPullRequestLookup.isPending)) ||
     (showLinearIssues && linearIssueMenu.isPending) ||
     (showGitHubIssues && githubIssueMenu.isPending) ||
-    (showRepositories && repositoryMenu.isPending);
+    (showRepositories && repositoryMenu.isPending) ||
+    (showSlackMessages && slackMenu.isPending);
   const composerMenuEmptyState = useMemo(() => {
     if (composerTriggerKind === "skill") {
       return "No skills found. Try / to browse provider commands.";
@@ -2786,6 +2805,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       return composerTrigger?.query
         ? `No Linear issue matches ${composerTrigger.query}.`
         : "No open Linear issues are assigned to you.";
+    }
+    if (showSlackMessages) {
+      if (slackMenu.error !== null) return slackMenu.error;
+      return composerTrigger?.query
+        ? `No Slack message matches ${composerTrigger.query}.`
+        : "Type a word to search Slack.";
     }
     if (showGitHubIssues) {
       if (githubIssueMenu.error !== null) return githubIssueMenu.error;
@@ -2827,6 +2852,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     showGitHubIssues,
     showLinearIssues,
     showRepositories,
+    showSlackMessages,
+    slackMenu.error,
     pullRequestLookup.data?.errors,
     pullRequestLookup.error,
     pullRequestProjectId,
@@ -3887,6 +3914,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         void attachGitHubIssue(routeThreadRef, item.url);
         return;
       }
+      if (item.type === "slack-message") {
+        const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
+          expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
+        });
+        if (!applied) return;
+        setComposerHighlightedItemId(null);
+        // The chip lands at the caret once the thread is fetched and snapshotted.
+        void attachSlackMessage(routeThreadRef, slackGetThreadInput(item.message, "thread"));
+        return;
+      }
       if (item.type === "repository") {
         const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
           expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
@@ -4003,6 +4040,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       addComposerDraftReviewComment,
       applyPromptReplacement,
       attachGitHubIssue,
+      attachSlackMessage,
       attachLinearIssue,
       captureThreadTabContext,
       composerDraftTarget,
@@ -6965,6 +7003,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     {...(showLinearIssues ? { loadingText: "Searching Linear issues..." } : {})}
                     {...(showGitHubIssues ? { loadingText: "Searching GitHub issues..." } : {})}
                     {...(showRepositories ? { loadingText: "Listing repositories..." } : {})}
+                    {...(showSlackMessages ? { loadingText: "Searching Slack..." } : {})}
                     {...(referenceMenuTabs.length > 1 && composerTrigger?.kind === "pull-request"
                       ? {
                           tabs: {

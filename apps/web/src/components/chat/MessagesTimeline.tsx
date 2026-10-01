@@ -1,6 +1,6 @@
 import { ToolCallBody } from "../ToolCallBody";
 import { ArrowUpIcon, ClockIcon } from "lucide-react";
-import { GitHubIcon, LinearIcon } from "../Icons";
+import { GitHubIcon, LinearIcon, SlackIcon } from "../Icons";
 import { ReadOnlySourcePreview } from "../files/AttachmentFilePreview";
 import { useRightPanelStore } from "~/rightPanelStore";
 import {
@@ -152,6 +152,7 @@ import type {
   GitHubIssueContextRecord,
   LinearIssueContextRecord,
   RepositoryContextRecord,
+  SlackThreadContextRecord,
 } from "@t3tools/contracts";
 import { Button } from "../ui/button";
 import type { QueuedComposerMessage } from "../../queuedMessageStore";
@@ -237,6 +238,7 @@ import {
   GitHubIssueDetails,
   LinearIssueDetails,
   RepositoryDetails,
+  SlackThreadDetails,
   UnresolvedChip,
 } from "../contextChipParts";
 import {
@@ -4020,6 +4022,24 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
           <UnavailableUserMessageContextChip {...context} />
         ),
     },
+    {
+      kind: "slack-thread",
+      canRender: (record) => record.kind === "slack-thread",
+      render: (record, context) =>
+        record.kind === "slack-thread" ? (
+          <UserMessageContextPopover
+            copyMarkdown={context.copyMarkdown}
+            accessibleLabel={`Slack ${record.scope}, ${record.label}`}
+            kind="slack-thread"
+            icon={<SlackIcon />}
+            label={record.label}
+          >
+            <UserMessageSlackThreadDetails record={record} />
+          </UserMessageContextPopover>
+        ) : (
+          <UnavailableUserMessageContextChip {...context} />
+        ),
+    },
   ],
   fallback: (_kind, _record, context) => <UnavailableUserMessageContextChip {...context} />,
 });
@@ -4046,6 +4066,11 @@ function UserMessageLinearIssueDetails({ record }: { record: LinearIssueContextR
 function UserMessageGitHubIssueDetails({ record }: { record: GitHubIssueContextRecord }) {
   const { threadRef } = use(TimelineRowCtx);
   return <GitHubIssueDetails record={record} onOpenLink={useLinkClickHandler(threadRef)} />;
+}
+
+function UserMessageSlackThreadDetails({ record }: { record: SlackThreadContextRecord }) {
+  const { threadRef } = use(TimelineRowCtx);
+  return <SlackThreadDetails record={record} onOpenLink={useLinkClickHandler(threadRef)} />;
 }
 
 /** One inline context chip in a sent message, dispatched by the shared presentation registry. */

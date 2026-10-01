@@ -8,6 +8,7 @@ const ExternalUrlTarget = Schema.Literals([
   "provider-auth",
   "linear",
   "github-issue",
+  "slack",
 ]);
 
 export type ExternalUrlTarget = typeof ExternalUrlTarget.Type;
