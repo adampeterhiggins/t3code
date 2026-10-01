@@ -103,6 +103,8 @@ const T3_MCP_TOOL_LABELS: Record<
   update_thread: ["Update", "Updating", "Updated", "a thread"],
   set_thread_state: ["Change", "Changing", "Changed", "a thread's state"],
   respond_to_request: ["Answer", "Answering", "Answered", "a thread's request"],
+  create_project: ["Add", "Adding", "Added", "a project"],
+  update_project: ["Update", "Updating", "Updated", "a project"],
   list_projects: ["List", "Listing", "Listed", "projects"],
   list_threads: ["List", "Listing", "Listed", "threads"],
   get_thread: ["Read", "Reading", "Read", "a thread"],

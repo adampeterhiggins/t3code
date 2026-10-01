@@ -641,7 +641,8 @@ User guide: [agent-access.md](./user/agent-access.md).
 
 With **Agent thread control** on (off by default; environment setting with project overrides), a
 thread's `t3-code` MCP server also lists `create_thread`, `send_message`, `wait_for_thread`,
-`interrupt_turn`, `list_models`, `update_thread`, `set_thread_state`, and the history tools `list_projects`, `list_threads`,
+`interrupt_turn`, `list_models`, `update_thread`, `set_thread_state`, `create_project`,
+`update_project`, and the history tools `list_projects`, `list_threads`,
 `get_thread`, `list_messages`, and `search`. Credentials without it never see them. A thread an
 agent starts records `createdBy`: the chat header on web, desktop, and mobile names the starting
 thread (and opens it) or the agent access token, and web sidebar rows mark it with a bot icon. Its

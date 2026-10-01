@@ -221,6 +221,41 @@ export type RespondToRequestInput = typeof RespondToRequestInput.Type;
 
 export const ThreadActionResult = Schema.Struct({ threadId: Schema.String });
 
+export const CreateProjectInput = Schema.Struct({
+  workspaceRoot: TrimmedNonEmptyString.annotate({
+    description: "Absolute path of the folder the project works in.",
+  }),
+  title: Schema.optional(
+    TrimmedNonEmptyString.annotate({ description: "Defaults to the folder's name." }),
+  ),
+  createIfMissing: Schema.optional(
+    Schema.Boolean.annotate({ description: "Create the folder when it does not exist yet." }),
+  ),
+});
+export type CreateProjectInput = typeof CreateProjectInput.Type;
+
+export const CreateProjectResult = Schema.Struct({
+  projectId: Schema.String,
+  title: Schema.String,
+  workspaceRoot: Schema.String,
+});
+
+export const UpdateProjectInput = Schema.Struct({
+  projectId: TrimmedNonEmptyString.annotate({ description: "Project id from list_projects." }),
+  title: Schema.optional(TrimmedNonEmptyString),
+  defaultModel: Schema.optional(
+    Schema.NullOr(ModelInput).annotate({
+      description: "Model new threads in this project start with; null clears it.",
+    }),
+  ),
+  defaultWorkspace: Schema.optional(
+    Schema.NullOr(Schema.Literals(["local", "worktree"])).annotate({
+      description: "Where new threads run by default; null follows the environment setting.",
+    }),
+  ),
+});
+export type UpdateProjectInput = typeof UpdateProjectInput.Type;
+
 export const InterruptTurnResult = Schema.Struct({
   threadId: Schema.String,
   interrupted: Schema.Boolean.annotate({ description: "False when nothing was running." }),
@@ -372,6 +407,35 @@ const RespondToRequestTool = Tool.make("respond_to_request", {
   .annotate(Tool.OpenWorld, false)
   .annotate(McpSchema.EnabledWhen, McpActor.tokenToolsVisible);
 
+const CreateProjectTool = Tool.make("create_project", {
+  description:
+    "Add a folder to T3 Code as a project, so threads can be started in it. Adding a folder that is already a project fails.",
+  parameters: CreateProjectInput,
+  success: CreateProjectResult,
+  failure: OperateToolError,
+  dependencies,
+})
+  .annotate(Tool.Title, "Add a project")
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, false)
+  .annotate(McpSchema.EnabledWhen, McpActor.operateToolsVisible);
+
+const UpdateProjectTool = Tool.make("update_project", {
+  description: "Rename a project, or change the model and workspace its new threads default to.",
+  parameters: UpdateProjectInput,
+  success: Schema.Struct({ projectId: Schema.String }),
+  failure: OperateToolError,
+  dependencies,
+})
+  .annotate(Tool.Title, "Update a project")
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false)
+  .annotate(McpSchema.EnabledWhen, McpActor.operateToolsVisible);
+
 export const OperateToolkit = Toolkit.make(
   CreateThreadTool,
   SendMessageTool,
@@ -381,4 +445,6 @@ export const OperateToolkit = Toolkit.make(
   UpdateThreadTool,
   SetThreadStateTool,
   RespondToRequestTool,
+  CreateProjectTool,
+  UpdateProjectTool,
 );

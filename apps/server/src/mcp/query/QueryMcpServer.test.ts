@@ -9,13 +9,17 @@ import { HttpBody, HttpClient, HttpRouter } from "effect/unstable/http";
 
 import * as Crypto from "effect/Crypto";
 
+import * as NodeServices from "@effect/platform-node/NodeServices";
+
 import * as EnvironmentAuth from "../../auth/EnvironmentAuth.ts";
+import * as ServerConfig from "../../config.ts";
 import * as GitWorkflowService from "../../git/GitWorkflowService.ts";
 import * as ClientCommandDispatcher from "../../orchestration/ClientCommandDispatcher.ts";
 import { OrchestrationEngineService } from "../../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as ProviderRegistry from "../../provider/Services/ProviderRegistry.ts";
 import * as ServerSettings from "../../serverSettings.ts";
+import * as WorkspacePaths from "../../workspace/WorkspacePaths.ts";
 import * as CheckpointDiffQuery from "../../checkpointing/CheckpointDiffQuery.ts";
 import * as ServerEnvironment from "../../environment/ServerEnvironment.ts";
 import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
@@ -100,7 +104,9 @@ const RoutesLive = Layer.mergeAll(QueryMcpServer.layer, ThreadMcpLive).pipe(
         }),
       ),
       Layer.fresh(SqlitePersistenceMemory),
-    ),
+      WorkspacePaths.layer,
+      ServerConfig.layerTest(process.cwd(), { prefix: "t3-query-mcp-" }),
+    ).pipe(Layer.provideMerge(NodeServices.layer)),
   ),
 );
 

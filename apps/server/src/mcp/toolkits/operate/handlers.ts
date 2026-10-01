@@ -22,10 +22,14 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
+import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as Stream from "effect/Stream";
 
+import * as ServerConfig from "../../../config.ts";
 import * as GitWorkflowService from "../../../git/GitWorkflowService.ts";
+import { normalizeDispatchCommand } from "../../../orchestration/Normalizer.ts";
 import * as ClientCommandDispatcher from "../../../orchestration/ClientCommandDispatcher.ts";
 import * as OrchestrationEngine from "../../../orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "../../../orchestration/Services/ProjectionSnapshotQuery.ts";
@@ -33,9 +37,11 @@ import { threadHasQueuedTurnStart } from "../../../orchestration/ThreadSettlemen
 import { openRequests } from "../../../orchestration/decider.ts";
 import * as ProviderRegistry from "../../../provider/Services/ProviderRegistry.ts";
 import * as ServerSettings from "../../../serverSettings.ts";
+import * as WorkspacePaths from "../../../workspace/WorkspacePaths.ts";
 import * as McpActor from "../../McpActor.ts";
 import { resolveRuntimeMode, selfTargetRefusal, spawnRefusal } from "./policy.ts";
 import {
+  type CreateProjectInput,
   type CreateThreadInput,
   OperateToolError,
   OperateToolkit,
@@ -43,6 +49,7 @@ import {
   type RespondToRequestInput,
   type SetThreadStateInput,
   type ThreadStatusResult,
+  type UpdateProjectInput,
   type UpdateThreadInput,
 } from "./tools.ts";
 
@@ -141,6 +148,11 @@ const make = Effect.gen(function* () {
   const serverSettings = yield* ServerSettings.ServerSettingsService;
   const gitWorkflow = yield* GitWorkflowService.GitWorkflowService;
   const crypto = yield* Crypto.Crypto;
+  const path = yield* Path.Path;
+  // Project roots are resolved and checked the same way a client's are.
+  const normalizerContext = yield* Effect.context<
+    FileSystem.FileSystem | Path.Path | ServerConfig.ServerConfig | WorkspacePaths.WorkspacePaths
+  >();
 
   const uuid = crypto.randomUUIDv4.pipe(Effect.orDie);
   const commandId = (tag: string) =>
@@ -582,6 +594,58 @@ const make = Effect.gen(function* () {
     return { threadId: thread.id };
   });
 
+  const createProject = Effect.fn("OperateToolkit.createProject")(function* (
+    input: CreateProjectInput,
+  ) {
+    yield* requireOperator;
+    const command = yield* normalizeDispatchCommand({
+      type: "project.create",
+      commandId: yield* commandId("create-project"),
+      projectId: ProjectId.make(yield* uuid),
+      title: input.title ?? (path.basename(input.workspaceRoot) || input.workspaceRoot),
+      workspaceRoot: input.workspaceRoot,
+      createWorkspaceRootIfMissing: input.createIfMissing === true,
+      createdAt: yield* nowIso,
+    }).pipe(Effect.provideContext(normalizerContext), Effect.mapError(asToolError));
+    if (command.type !== "project.create") return yield* fail("The project could not be added.");
+    yield* dispatcher.dispatch(command).pipe(Effect.mapError(asToolError));
+    return {
+      projectId: command.projectId,
+      title: command.title,
+      workspaceRoot: command.workspaceRoot,
+    };
+  });
+
+  const updateProject = Effect.fn("OperateToolkit.updateProject")(function* (
+    input: UpdateProjectInput,
+  ) {
+    yield* requireOperator;
+    const projectId = ProjectId.make(input.projectId);
+    yield* dispatcher
+      .dispatch({
+        type: "project.meta.update",
+        commandId: yield* commandId("update-project"),
+        projectId,
+        ...(input.title !== undefined ? { title: input.title } : {}),
+        ...(input.defaultModel !== undefined
+          ? {
+              defaultModelSelection:
+                input.defaultModel === null
+                  ? null
+                  : {
+                      instanceId: ProviderInstanceId.make(input.defaultModel.instanceId),
+                      model: input.defaultModel.model,
+                    },
+            }
+          : {}),
+        ...(input.defaultWorkspace !== undefined
+          ? { defaultThreadEnvMode: input.defaultWorkspace }
+          : {}),
+      })
+      .pipe(Effect.mapError(asToolError));
+    return { projectId };
+  });
+
   const listModels = Effect.fn("OperateToolkit.listModels")(function* (input: {
     readonly includeDisabled?: boolean | undefined;
   }) {
@@ -616,6 +680,8 @@ const make = Effect.gen(function* () {
     update_thread: updateThread,
     set_thread_state: setThreadState,
     respond_to_request: respondToRequest,
+    create_project: createProject,
+    update_project: updateProject,
   });
 });
 
