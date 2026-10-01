@@ -187,6 +187,12 @@ import {
 import { useComposerPathSearch } from "../../lib/composerPathSearchState";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 import {
+  type ComposerObjectLink,
+  findComposerObjectLinks,
+  findTypedComposerObjectLink,
+  locateComposerObjectLink,
+} from "@t3tools/client-runtime/composer-object-links";
+import {
   getRestingComposerImagePreviewCounts,
   resolveRestingComposerControlsLayout,
   shouldAnimateComposerRestingTransition,
@@ -264,6 +270,7 @@ import { ComposerAttachMenu } from "./ComposerAttachMenu";
 import { useAttachGitHubIssue } from "./GitHubIssuePicker";
 import { useAttachLinearIssue } from "./LinearIssuePicker";
 import { useComposerGitHubIssueItems } from "./useComposerGitHubIssueItems";
+import { useResolveComposerObjectLink } from "./useResolveComposerObjectLink";
 import {
   type ComposerReferenceTab,
   defaultComposerReferenceTab,
@@ -2447,6 +2454,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   );
   const showGitHubIssues = githubIssueMenu.enabled && referenceTab === "github-issues";
   const attachGitHubIssue = useAttachGitHubIssue();
+  const resolveComposerObjectLink = useResolveComposerObjectLink({
+    threadRef: routeThreadRef,
+    draftTarget: composerDraftTarget,
+  });
   const referenceMenuTabs = REFERENCE_MENU_TABS.filter(
     (tab) =>
       tab.id === "pull-requests" ||
@@ -3504,6 +3515,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     previewAnnotations: new Map(),
   });
 
+  const convertTypedObjectLinkRef = useRef<
+    ((previousPrompt: string, nextPrompt: string, expandedCursor: number) => void) | null
+  >(null);
   const onPromptChange = useCallback(
     (
       nextPrompt: string,
@@ -3528,8 +3542,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         );
         return;
       }
+      const previousPrompt = promptRef.current;
       promptRef.current = nextPrompt;
       setPrompt(nextPrompt);
+      convertTypedObjectLinkRef.current?.(previousPrompt, nextPrompt, expandedCursor);
       // Any edit ends browsing, even one later undone by hand: typing a
       // character and deleting it leaves the text equal to the recall, and
       // ArrowDown must move the caret then, not clear the composer.
@@ -5923,6 +5939,78 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     return true;
   };
 
+  // Links already converted or tried, per draft. Typing never retries them, so undoing a chip,
+  // deleting one, or a link that failed to load stays as text. Pasting is explicit and does.
+  const handledObjectLinksRef = useRef(new Map<string, Set<string>>());
+  const handledObjectLinks = () => {
+    const key = composerDraftTargetKeyRef.current;
+    let handled = handledObjectLinksRef.current.get(key);
+    if (handled === undefined) {
+      handled = new Set();
+      handledObjectLinksRef.current.set(key, handled);
+    }
+    return handled;
+  };
+
+  /**
+   * Swaps links to issues, pull requests, and repositories for the chips their attach pickers
+   * make. Each link becomes a chip once its object loads, and stays a link if it cannot be read
+   * or was edited away meanwhile. `index` says roughly where each link sits in the prompt.
+   */
+  const convertObjectLinks = (
+    links: ReadonlyArray<{ link: ComposerObjectLink; index: number }>,
+  ) => {
+    const targetKey = composerDraftTargetKeyRef.current;
+    const handled = handledObjectLinks();
+    for (const { link, index } of links) {
+      handled.add(link.url);
+      void resolveComposerObjectLink(link).then((resolved) => {
+        if (resolved === null || composerDraftTargetKeyRef.current !== targetKey) return;
+        const prompt = promptRef.current;
+        const range = locateComposerObjectLink(prompt, link.url, index);
+        if (range === null) return;
+        const edit = inlineContextReferenceReplacement(prompt, range, [resolved.reference]);
+        // Keep the caret where the user left it, shifted past the chip if it was after the link.
+        const cursor = readComposerSnapshot().expandedCursor;
+        const cursorAfter =
+          cursor <= edit.start
+            ? cursor
+            : cursor >= edit.end
+              ? cursor + edit.text.length - (edit.end - edit.start)
+              : edit.start + edit.text.length;
+        const activeElement = document.activeElement;
+        const applied = applyPromptReplacement(edit.start, edit.end, edit.text, {
+          expandedCursorAfterReplace: cursorAfter,
+          focusEditorAfterReplace:
+            activeElement instanceof Node &&
+            composerFormRef.current?.contains(activeElement) === true,
+        });
+        if (applied) resolved.commit();
+      });
+    }
+  };
+
+  const convertPastedObjectLinks = (pastedText: string, keepAsText: boolean) => {
+    const links = findComposerObjectLinks(pastedText);
+    if (links.length === 0) return;
+    if (keepAsText) {
+      for (const { link } of links) handledObjectLinks().add(link.url);
+      return;
+    }
+    // The paste lands at the caret, so offsets into the pasted text are offsets from it.
+    const pasteStart = readComposerSnapshot().expandedCursor;
+    convertObjectLinks(links.map(({ link, index }) => ({ link, index: pasteStart + index })));
+  };
+
+  // Read by `onPromptChange`, which is declared before the replacement helpers this needs.
+  convertTypedObjectLinkRef.current = (previousPrompt, nextPrompt, expandedCursor) => {
+    // One typed character, so pastes, chip insertions, and caret moves never count.
+    if (nextPrompt.length !== previousPrompt.length + 1) return;
+    const typed = findTypedComposerObjectLink(nextPrompt, expandedCursor);
+    if (typed === null || handledObjectLinks().has(typed.link.url)) return;
+    convertObjectLinks([typed]);
+  };
+
   const onComposerPaste = (event: React.ClipboardEvent<HTMLElement>) => {
     const files = Array.from(event.clipboardData.files);
     const plainText = event.clipboardData.getData("text/plain");
@@ -5946,6 +6034,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     // Copied T3 chips need the structured importer to bring their records and files along.
     if ((readPastedComposerContext(event.clipboardData)?.records.length ?? 0) > 0) return;
     if (!foldPastedText(plainText, bypassAutoAttachment)) {
+      convertPastedObjectLinks(plainText, bypassAutoAttachment);
       return;
     }
 

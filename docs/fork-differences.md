@@ -572,6 +572,20 @@ the persisted-message restatement in `apps/server/src/orchestration/decider.ts`,
 `apps/mobile/src/components/RepositoryPickerSheet.tsx`. User guide:
 [composer.md](./user/composer.md#attach-repositories).
 
+## Pasted and typed links become chips
+
+Pasting a Linear issue, GitHub issue, pull request, or GitHub repository root link into the web or
+desktop composer, or typing one followed by whitespace, turns it into the chip its attach picker
+makes. The text goes in as usual, then each link becomes a chip once its object loads. A link that
+cannot be read, or that was edited away meanwhile, stays as text. Paste-as-text (`Cmd+Shift+V`)
+skips it, and typing never retries a link the draft already converted or tried, so undo and a
+deleted chip stick. Mobile does not convert links.
+
+Code: `packages/client-runtime/src/composerObjectLinks.ts`,
+`apps/web/src/components/chat/useResolveComposerObjectLink.ts`, and `convertObjectLinks` in
+`apps/web/src/components/chat/ChatComposer.tsx`. User guide:
+[composer.md](./user/composer.md#context-in-your-message).
+
 ## Desktop mock-update loop
 
 A `Makefile` at the repository root drives a local auto-update test loop for the desktop app:
