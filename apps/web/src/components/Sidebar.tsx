@@ -137,7 +137,11 @@ import { useThreadActions } from "../hooks/useThreadActions";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
 import { startNewThreadFromContext } from "../lib/chatThreadActions";
-import { useClientSettings, useUpdateClientSettings } from "../hooks/useSettings";
+import {
+  useClientSettings,
+  useClientSettingsHydrated,
+  useUpdateClientSettings,
+} from "../hooks/useSettings";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { useNowMinute } from "../hooks/useNowMinute";
@@ -2844,6 +2848,19 @@ export default function Sidebar() {
     storedTabGroupOverrides.showTabs === showTabs
       ? storedTabGroupOverrides.groups
       : NO_TAB_GROUP_OVERRIDES;
+  // Changing Show tabs from anywhere overrides every group's own choice for good: dropped here,
+  // a toggle back would otherwise revive them. Only once settings load, so a page load that
+  // briefly reads the default never wipes them.
+  const clientSettingsHydrated = useClientSettingsHydrated();
+  useEffect(() => {
+    if (!clientSettingsHydrated || storedTabGroupOverrides.showTabs === showTabs) return;
+    setStoredTabGroupOverrides({ showTabs, groups: NO_TAB_GROUP_OVERRIDES });
+  }, [
+    clientSettingsHydrated,
+    setStoredTabGroupOverrides,
+    showTabs,
+    storedTabGroupOverrides.showTabs,
+  ]);
   // Listed tabs open themselves; hidden tabs fold into their group's row, which reopens the
   // tab you last had open. Each group follows Show tabs unless its badge was toggled.
   const hiddenTabThreads = useMemo(
