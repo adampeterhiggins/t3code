@@ -11,6 +11,7 @@ import {
 } from "@t3tools/contracts";
 
 import { formatCommandForWorkspace, formatPathsForWorkspace } from "../work-log/commandDisplay.ts";
+import { unwrapShellCommand } from "../work-log/commandLabel.ts";
 import { toolGroupAction } from "../work-log/presentation.ts";
 
 import type {
@@ -399,15 +400,18 @@ export function deriveSubagentToolLogs(
       namedDetail !== null || (toolName !== null && existing?.title === toolName)
         ? (toolName ?? activity.summary)
         : (payloadTitle ?? existing?.title ?? activity.summary);
-    const detail = namedDetail ?? rawDetail;
+    const kind = toolKindFor(payloadTitle ?? activity.summary, itemType, payload.data);
+    const asInput = (text: string | null) =>
+      text !== null && kind === "command" ? unwrapShellCommand(text) : text;
+    const detail = asInput(namedDetail ?? rawDetail);
     entries.set(id, {
       id,
       title,
       detail: detail ?? existing?.detail ?? null,
-      command: commandFrom(payload.data) ?? existing?.command ?? null,
+      command: asInput(commandFrom(payload.data)) ?? existing?.command ?? null,
       preview: summarizeToolActivityInput(payload.data) ?? existing?.preview ?? null,
       itemType,
-      kind: toolKindFor(payloadTitle ?? activity.summary, itemType, payload.data),
+      kind,
       status: existing && existing.status !== "running" ? existing.status : status,
       startedAt: existing?.startedAt ?? activity.createdAt,
       completedAt: existing?.completedAt ?? (status === "running" ? null : activity.createdAt),

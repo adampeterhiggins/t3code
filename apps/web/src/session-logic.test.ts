@@ -1163,7 +1163,7 @@ describe("deriveWorkLogEntries", () => {
     expect(entry?.rawCommand).toBeUndefined();
   });
 
-  it("preserves serialized shell wrappers with non-matching boundary quotes", () => {
+  it("unwraps shell scripts that splice quoting styles", () => {
     const command =
       "/bin/zsh -lc 'git status\nsed -n '\"'1,20p' apps/web/src/components/DiffPanel.tsx\"";
     const activities: OrchestrationThreadActivity[] = [
@@ -1179,8 +1179,8 @@ describe("deriveWorkLogEntries", () => {
     ];
 
     const [entry] = deriveWorkLogEntries(activities);
-    expect(entry?.command).toBe(command);
-    expect(entry?.rawCommand).toBeUndefined();
+    expect(entry?.command).toBe("git status\nsed -n '1,20p' apps/web/src/components/DiffPanel.tsx");
+    expect(entry?.rawCommand).toBe(command);
   });
 
   it("keeps compact Codex tool metadata used for icons and labels", () => {

@@ -3,6 +3,7 @@ import {
   type PendingApproval,
 } from "@t3tools/client-runtime/pending-requests";
 import { UserInputAttachmentAnswerPayload } from "@t3tools/contracts";
+import { unwrapShellCommand } from "@t3tools/client-runtime/work-log/command-label";
 import { foldUserInputActivities } from "@t3tools/client-runtime/work-log/user-input";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -1016,10 +1017,6 @@ const SHELL_WRAPPER_SPECS = [
     executables: ["cmd", "cmd.exe"],
     wrapperFlagPattern: /(?:^|\s)\/c\s+/i,
   },
-  {
-    executables: ["bash", "sh", "zsh"],
-    wrapperFlagPattern: /(?:^|\s)-(?:l)?c\s+/i,
-  },
 ] as const;
 
 function findShellWrapperSpec(shell: string) {
@@ -1094,7 +1091,9 @@ function formatCommandValue(value: unknown): string | null {
 
 function normalizeCommandValue(value: unknown): string | null {
   const formatted = formatCommandValue(value);
-  return formatted ? unwrapKnownShellCommandWrapper(formatted) : null;
+  if (!formatted) return null;
+  const script = unwrapShellCommand(formatted);
+  return script === formatted ? unwrapKnownShellCommandWrapper(formatted) : script;
 }
 
 function toRawToolCommand(value: unknown, normalizedCommand: string | null): string | null {

@@ -131,6 +131,16 @@ describe("foldSubagentActivities", () => {
     expect(agent.completedAt).not.toBeNull();
   });
 
+  it("shows a child's shell commands without their launch wrapper", () => {
+    const agents = fold([
+      activity("task.progress", {
+        taskId: "task-shell",
+        summary: `/bin/zsh -lc "sed -n '1,20p' src/a.ts && git diff --sta...`,
+      }),
+    ]);
+    expect(agents[0]!.progress).toBe("sed -n '1,20p' src/a.ts && git diff --sta...");
+  });
+
   it("progress can create an agent when its start row aged out of retention", () => {
     const agents = fold([
       activity("task.progress", {

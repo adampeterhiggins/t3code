@@ -43,7 +43,10 @@ import {
   hasToolActivityData,
   toolActivityDataBody,
 } from "@t3tools/client-runtime/work-log/tool-presentation";
-import { commandProgramName } from "@t3tools/client-runtime/work-log/command-label";
+import {
+  commandProgramName,
+  unwrapShellCommand,
+} from "@t3tools/client-runtime/work-log/command-label";
 
 import * as Arr from "effect/Array";
 import * as Order from "effect/Order";
@@ -1034,12 +1037,6 @@ function collapseWhitespace(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
-function stripShellWrapper(value: string): string {
-  const trimmed = value.trim();
-  const match = trimmed.match(/^\/bin\/zsh -lc ['"]?([\s\S]*?)['"]?$/);
-  return (match?.[1] ?? trimmed).trim();
-}
-
 /** Expanded rows retain detail formatting; commands stay in the separate body. */
 export function workEntryRowLabel(entry: WorkLogEntry, expanded = false): string {
   if (entry.agentSpawn) return agentSpawnLabel(entry.agentSpawn);
@@ -1048,7 +1045,7 @@ export function workEntryRowLabel(entry: WorkLogEntry, expanded = false): string
   if (expanded && entry.command?.trim()) return "Command";
   const preview = workEntryPreview(entry);
   if (expanded) return preview?.trim() || workEntryHeading(entry);
-  const compactPreview = preview === null ? null : collapseWhitespace(stripShellWrapper(preview));
+  const compactPreview = preview === null ? null : collapseWhitespace(unwrapShellCommand(preview));
   return compactPreview || workEntryHeading(entry);
 }
 
@@ -1284,10 +1281,6 @@ const SHELL_WRAPPER_SPECS = [
     executables: ["cmd", "cmd.exe"],
     wrapperFlagPattern: /(?:^|\s)\/c\s+/i,
   },
-  {
-    executables: ["bash", "sh", "zsh"],
-    wrapperFlagPattern: /(?:^|\s)-(?:l)?c\s+/i,
-  },
 ] as const;
 
 function findShellWrapperSpec(shell: string) {
@@ -1362,7 +1355,9 @@ function formatCommandValue(value: unknown): string | null {
 
 function normalizeCommandValue(value: unknown): string | null {
   const formatted = formatCommandValue(value);
-  return formatted ? unwrapKnownShellCommandWrapper(formatted) : null;
+  if (!formatted) return null;
+  const script = unwrapShellCommand(formatted);
+  return script === formatted ? unwrapKnownShellCommandWrapper(formatted) : script;
 }
 
 function toRawToolCommand(value: unknown, normalizedCommand: string | null): string | null {

@@ -19,6 +19,8 @@
  */
 import type { OrchestrationThreadActivity } from "@t3tools/contracts";
 
+import { unwrapShellCommand } from "../work-log/commandLabel.ts";
+
 export type RuntimeSubagentStatus =
   | "pending"
   | "running"
@@ -535,7 +537,9 @@ export function foldSubagentActivities(
         ) {
           applyStatus(agent, "running", at);
         }
-        const summary = asString(payload.summary);
+        // Codex reports a child's commands as their raw `zsh -lc '…'` launch.
+        const rawSummary = asString(payload.summary);
+        const summary = rawSummary && unwrapShellCommand(rawSummary);
         if (summary) {
           agent.progress = bounded(summary);
           agent.recentActivity = appendActivity(agent.recentActivity, at, summary);
