@@ -366,6 +366,19 @@ Code: `packages/shared/src/conductorSettings.ts` and `conductorSettingsEditor.ts
 `apps/mobile/src/features/threads/ThreadGitControls.tsx`. User guide:
 [project-settings.md](./user/project-settings.md#repositories-set-up-for-conductor).
 
+## Claude subagent worktrees get the project setup
+
+When a Claude subagent starts in a worktree of its own (`isolation: "worktree"`), the server
+prepares that worktree the way it prepares a thread's: Files to copy, then the project's setup
+script (the T3 setup action or Conductor's `scripts.setup`) with the Conductor variables and
+`environment_variables`, in a `subagent-setup-<agent>` terminal on the parent thread. A non-async
+script holds the subagent until it exits. Claude Code still creates and removes the worktree itself,
+so no archive script runs. Only the Claude adapter does this.
+
+Code: the `SubagentStart` hook in `apps/server/src/provider/Layers/ClaudeAdapter.ts` and
+`apps/server/src/project/SubagentWorktreeSetup.ts`. User guide:
+[project-settings.md](./user/project-settings.md#repositories-set-up-for-conductor).
+
 ## Linear integration
 
 **Settings > Integrations > Linear** connects a Linear account to the environment with OAuth

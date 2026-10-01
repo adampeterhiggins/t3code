@@ -11,6 +11,7 @@
 import * as NodeUtil from "node:util";
 import {
   type CanUseTool,
+  type HookCallbackMatcher,
   query,
   getSessionMessages,
   getSubagentMessages,
@@ -94,6 +95,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import * as McpProviderSession from "../../mcp/McpProviderSession.ts";
+import * as SubagentWorktreeSetup from "../../project/SubagentWorktreeSetup.ts";
 import { resolveClaudeSdkExecutablePath } from "../Drivers/ClaudeExecutable.ts";
 import { claudeSignedOutMessage, makeClaudeEnvironment } from "../Drivers/ClaudeHome.ts";
 import { planClaudeSkillDispatch } from "../Drivers/ClaudeSkillDispatch.ts";
@@ -2242,6 +2244,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
   const serverConfig = yield* ServerConfig;
   const crypto = yield* Crypto.Crypto;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  const subagentWorktreeSetup = yield* Effect.serviceOption(
+    SubagentWorktreeSetup.SubagentWorktreeSetup,
+  );
   const claudeEnvironment = yield* makeClaudeEnvironment(claudeSettings, options?.environment).pipe(
     Effect.provideService(Path.Path, path),
   );
@@ -5099,6 +5104,45 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         callbackOptions,
       ) => runPromise(handleResumeDialog(request, callbackOptions));
 
+      /**
+       * Claude Code creates the worktree for an `isolation: "worktree"`
+       * subagent itself, so T3's worktree setup never sees it. SubagentStart
+       * fires after that worktree exists and before the subagent's first
+       * tool call, with the worktree as its cwd; preparing it there gives the
+       * subagent the same files, setup script, and environment as a thread.
+       */
+      const realPathOrSelf = (target: string) =>
+        fileSystem.realPath(target).pipe(Effect.orElseSucceed(() => target));
+      const sessionRealCwd = input.cwd ? yield* realPathOrSelf(input.cwd) : undefined;
+      // The session cwd is the thread's own, already prepared, worktree.
+      const preparedSubagentWorktrees = new Set<string>(sessionRealCwd ? [sessionRealCwd] : []);
+      const subagentStartHooks: HookCallbackMatcher[] =
+        Option.isSome(subagentWorktreeSetup) && sessionRealCwd
+          ? [
+              {
+                hooks: [
+                  (hookInput) =>
+                    runPromise(
+                      Effect.gen(function* () {
+                        if (hookInput.hook_event_name !== "SubagentStart") return {};
+                        const worktreePath = yield* realPathOrSelf(hookInput.cwd);
+                        if (preparedSubagentWorktrees.has(worktreePath)) return {};
+                        preparedSubagentWorktrees.add(worktreePath);
+                        yield* subagentWorktreeSetup.value.prepare({
+                          threadId,
+                          agentId: hookInput.agent_id,
+                          worktreePath,
+                        });
+                        return {};
+                      }),
+                    ),
+                ],
+                // A blocking setup script (often an install) can outlast the 60s default.
+                timeout: 600,
+              },
+            ]
+          : [];
+
       const claudeBinaryPath = claudeSdkExecutablePath;
       const {
         "permission-mode": launchArgPermissionMode,
@@ -5218,6 +5262,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         supportedDialogKinds: ["resume_return"],
         env: McpProviderSession.withAgentDeviceEnvironment(claudeEnvironment, mcpSession),
         additionalDirectories,
+        ...(subagentStartHooks.length > 0 ? { hooks: { SubagentStart: subagentStartHooks } } : {}),
         ...(Object.keys(extraArgs).length > 0 ? { extraArgs } : {}),
         ...(mcpSession
           ? {
