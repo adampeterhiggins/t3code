@@ -129,6 +129,7 @@ import * as SourceControlRateLimit from "./sourceControl/SourceControlRateLimit.
 import * as SourceControlRepositoryService from "./sourceControl/SourceControlRepositoryService.ts";
 import * as ProjectSetupScriptRunner from "./project/ProjectSetupScriptRunner.ts";
 import * as ConductorWorkspace from "./project/ConductorWorkspace.ts";
+import * as SubagentWorktreeSetup from "./project/SubagentWorktreeSetup.ts";
 import * as WorktreeSetupTracker from "./project/WorktreeSetupTracker.ts";
 import { ObservabilityLive } from "./observability/Layers/Observability.ts";
 import * as HeapSnapshot from "./observability/HeapSnapshot.ts";
@@ -546,6 +547,8 @@ const ProviderInstallationRefreshLive = Layer.effectDiscard(
 );
 
 const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
+  // Hands the project setup runner down to providers, which are built below it.
+  Layer.provideMerge(SubagentWorktreeSetup.installLive),
   Layer.provideMerge(ProviderInstallationRefreshLive),
   Layer.provideMerge(ReplayMarkers.layer),
   Layer.provideMerge(ProviderAuthServiceLive),
@@ -592,7 +595,12 @@ const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
   // from the repo's `model-manifest.json` on `main` and applied by the
   // Codex/Claude drivers.
   Layer.provideMerge(
-    Layer.mergeAll(ProviderEventLoggers.layer, ModelManifest.layer, ResetCreditCoordinator.layer),
+    Layer.mergeAll(
+      ProviderEventLoggers.layer,
+      ModelManifest.layer,
+      ResetCreditCoordinator.layer,
+      SubagentWorktreeSetup.layer,
+    ),
   ),
   // `OpenCodeDriver.create()` yields `OpenCodeRuntime`; previously the old
   // `ProviderRegistryLive` pulled `OpenCodeRuntimeLive` in for itself, but

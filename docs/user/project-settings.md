@@ -86,6 +86,11 @@ These scripts can read `CONDUCTOR_ROOT_PATH`, `CONDUCTOR_WORKSPACE_PATH`,
 `CONDUCTOR_WORKSPACE_NAME`, `CONDUCTOR_DEFAULT_BRANCH`, and `CONDUCTOR_PORT`, the first of ten
 ports reserved for that worktree, plus any `environment_variables` from the settings.
 
+A Claude subagent that runs in its own worktree (`isolation: "worktree"`) gets the same
+preparation: Files to copy, then the project's setup script with these variables, in a terminal
+on the parent thread. The subagent waits for the script unless the script is marked to run in the
+background.
+
 Run scripts (`[scripts.run.<name>]`) appear in the chat header's actions menu under **From
 Conductor**. When the project has no actions of its own, the default run script becomes the header's
 **Run** button. Each run script gets its own terminal in the thread's workspace; while it is running,

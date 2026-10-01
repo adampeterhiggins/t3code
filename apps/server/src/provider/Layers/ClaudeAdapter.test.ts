@@ -40,6 +40,7 @@ import * as TestClock from "effect/testing/TestClock";
 
 import { attachmentRelativePath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
+import * as SubagentWorktreeSetup from "../../project/SubagentWorktreeSetup.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import {
   SYNTHETIC_CLAUDE_CAPABLE_MODEL,
@@ -464,6 +465,55 @@ describe("ClaudeAdapterLive", () => {
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
       Effect.provide(harness.layer),
+    );
+  });
+
+  it.effect("prepares each subagent's own worktree once, not the session cwd", () => {
+    const harness = makeHarness();
+    const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "claude-subagent-worktree-"));
+    const sessionCwd = NodePath.join(root, "thread");
+    const worktree = NodePath.join(root, "thread/.claude/worktrees/agent-a");
+    NodeFS.mkdirSync(worktree, { recursive: true });
+    return Effect.gen(function* () {
+      const prepared: Array<SubagentWorktreeSetup.SubagentWorktreeSetupInput> = [];
+      const setup = yield* SubagentWorktreeSetup.SubagentWorktreeSetup;
+      yield* setup.install((input) => Effect.sync(() => void prepared.push(input)));
+      const adapter = yield* ClaudeAdapter;
+      yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+        cwd: sessionCwd,
+      });
+
+      const hook = harness.getLastCreateQueryInput()?.options.hooks?.SubagentStart?.[0]?.hooks[0];
+      assert.isDefined(hook);
+      const start = (cwd: string) =>
+        Effect.promise(() =>
+          hook!(
+            {
+              hook_event_name: "SubagentStart",
+              session_id: "session",
+              transcript_path: "",
+              cwd,
+              agent_id: "a",
+              agent_type: "general-purpose",
+            },
+            undefined,
+            { signal: new AbortController().signal },
+          ),
+        );
+      yield* start(sessionCwd);
+      yield* start(worktree);
+      yield* start(worktree);
+
+      assert.deepEqual(prepared, [
+        { threadId: THREAD_ID, agentId: "a", worktreePath: NodeFS.realpathSync(worktree) },
+      ]);
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer.pipe(Layer.provideMerge(SubagentWorktreeSetup.layer))),
+      Effect.ensuring(Effect.sync(() => NodeFS.rmSync(root, { recursive: true, force: true }))),
     );
   });
 
