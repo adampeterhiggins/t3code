@@ -10,6 +10,7 @@ import {
   DEFAULT_SUBAGENT_TRANSCRIPT_VIEW,
   deriveSubagentToolLog,
   deriveSubagentToolLogs,
+  subagentContinuationContext,
   subagentResultChatContext,
   subagentToolCallText,
   subagentTranscriptToolKind,
@@ -491,5 +492,69 @@ describe("subagentResultChatContext", () => {
   it("offers nothing while the agent works or when it reported nothing", () => {
     expect(subagentResultChatContext({ ...finished, status: "running" })).toBeNull();
     expect(subagentResultChatContext({ ...finished, result: "  " })).toBeNull();
+  });
+});
+
+describe("subagentContinuationContext", () => {
+  const agent = {
+    title: "Check cache theory",
+    role: "Explore",
+    status: "completed" as const,
+    prompt: "See whether the stale cache explains the flake.",
+    result: "The cache key omits the locale.",
+    error: null,
+    progress: null,
+  };
+  const toolLog = deriveSubagentToolLog(
+    [
+      activity("tool.started", {
+        agentId: "a1",
+        toolCallId: "t1",
+        title: "Read",
+        detail: "src/cache.ts",
+      }),
+      activity("tool.completed", { agentId: "a1", toolCallId: "t1", title: "Read" }),
+      activity("tool.started", {
+        agentId: "a1",
+        toolCallId: "t2",
+        title: "Ran command",
+        detail: "vp test run\n  cache",
+        status: "failed",
+      }),
+    ],
+    "a1",
+  );
+
+  it("carries the task, result and tool calls", () => {
+    expect(subagentContinuationContext(agent, toolLog)).toBe(
+      [
+        'The "Check cache theory (Explore)" subagent finished. Continue from its work.',
+        "Task:\nSee whether the stale cache explains the flake.",
+        "Result:\nThe cache key omits the locale.",
+        "Tool calls (2):\n- Read: src/cache.ts\n- Ran command: vp test run cache (failed)",
+      ].join("\n\n"),
+    );
+  });
+
+  it("works mid-run and keeps only the latest calls", () => {
+    const many = Array.from({ length: 45 }, (_, index) => ({
+      ...toolLog[0]!,
+      title: `Call ${index}`,
+    }));
+    const context = subagentContinuationContext(
+      { ...agent, status: "running", progress: "Reading tests" },
+      many,
+    );
+    expect(context).toContain("was still working when this was captured");
+    expect(context).toContain("Latest progress:\nReading tests");
+    expect(context).not.toContain("Result:");
+    expect(context).toContain("Tool calls (latest 40 of 45):\n- Call 5: src/cache.ts");
+    expect(context).not.toContain("Call 4:");
+  });
+
+  it("offers nothing when the agent left nothing to go on", () => {
+    expect(
+      subagentContinuationContext({ ...agent, status: "running", prompt: null, result: null }, []),
+    ).toBeNull();
   });
 });

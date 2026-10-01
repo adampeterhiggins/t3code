@@ -13,7 +13,7 @@
  * - Hovering a row previews the agent (prompt, latest tool calls, usage);
  *   the preview stays open under the pointer, and clicking it or the row opens
  *   the agent's detail view. Right-click a row to open that agent in its own
- *   tab. Filters and sorts never move a row while it works
+ *   tab or continue from its work in a new chat tab. Filters and sorts never move a row while it works
  *   (see applyAgentPanelView).
  */
 import { useAtomValue } from "@effect/atom-react";
@@ -23,6 +23,7 @@ import {
   findPanelAgent,
   isAgentPanelViewFiltered,
   type SubagentToolLogEntry,
+  subagentContinuationContext,
   subagentResultChatContext,
 } from "@t3tools/client-runtime/state/agentPanelView";
 import type {
@@ -54,6 +55,7 @@ import { orchestrationEnvironment } from "~/state/orchestration";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Button } from "~/components/ui/button";
 import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "~/components/ui/preview-card";
+import { toastManager } from "~/components/ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 
 import { AgentUsageFooter, TOOL_KIND_ICONS, ToolLogList, UsageFooter } from "./AgentActivityParts";
@@ -245,29 +247,36 @@ function AgentPreviewContent(props: {
   );
 }
 
+type AgentRowMenuAction = "open-in-tab" | "continue-in-chat" | "attach-result";
+
 /** Right-click on a list row. The same actions as the detail view's icons. */
 async function showAgentRowMenu(
   actions: {
     readonly openInTab?: (() => void) | undefined;
+    readonly continueInChat?: (() => void) | undefined;
     readonly attachResult?: (() => void) | undefined;
   },
   position: { readonly x: number; readonly y: number },
 ): Promise<void> {
   const api = readLocalApi();
   if (!api) return;
-  const items: ContextMenuItem<"open-in-tab" | "attach-result">[] = [
+  const items: ContextMenuItem<AgentRowMenuAction>[] = [
     ...(actions.openInTab ? [{ id: "open-in-tab" as const, label: "Open in new tab" }] : []),
+    ...(actions.continueInChat
+      ? [{ id: "continue-in-chat" as const, label: "Continue in chat" }]
+      : []),
     ...(actions.attachResult
       ? [{ id: "attach-result" as const, label: "Attach result to chat" }]
       : []),
   ];
-  let action: "open-in-tab" | "attach-result" | null;
+  let action: AgentRowMenuAction | null;
   try {
     action = await api.contextMenu.show(items, position);
   } catch {
     return;
   }
   if (action === "open-in-tab") actions.openInTab?.();
+  if (action === "continue-in-chat") actions.continueInChat?.();
   if (action === "attach-result") actions.attachResult?.();
 }
 
@@ -286,12 +295,14 @@ function AgentRow(props: {
   timestampFormat: TimestampFormat;
   onOpen: OpenAgent;
   onOpenInTab?: ((agent: RuntimeSubagent) => void) | undefined;
+  onContinueInChat?: ((agent: RuntimeSubagent) => void) | undefined;
 }) {
-  const { agent, onOpen, onOpenInTab } = props;
+  const { agent, onOpen, onOpenInTab, onContinueInChat } = props;
   const toolLog = props.toolLogs.get(agent.id) ?? NO_TOOL_CALLS;
   const composerRef = useComposerHandleContext();
   const menuActions = {
     openInTab: onOpenInTab ? () => onOpenInTab(agent) : undefined,
+    continueInChat: onContinueInChat ? () => onContinueInChat(agent) : undefined,
     attachResult:
       subagentResultChatContext(agent) !== null
         ? () => attachAgentResultToChat(composerRef, agent)
@@ -318,7 +329,7 @@ function AgentRow(props: {
             type="button"
             onClick={() => onOpen(agent.id)}
             onContextMenu={
-              menuActions.openInTab || menuActions.attachResult
+              menuActions.openInTab || menuActions.continueInChat || menuActions.attachResult
                 ? (event) => {
                     event.preventDefault();
                     event.stopPropagation();
@@ -355,6 +366,7 @@ interface RowContext {
   readonly timestampFormat: TimestampFormat;
   readonly onOpenAgent: OpenAgent;
   readonly onOpenInTab?: ((agent: RuntimeSubagent) => void) | undefined;
+  readonly onContinueInChat?: ((agent: RuntimeSubagent) => void) | undefined;
 }
 
 function Rows(props: { agents: ReadonlyArray<RuntimeSubagent>; ctx: RowContext }) {
@@ -366,6 +378,7 @@ function Rows(props: { agents: ReadonlyArray<RuntimeSubagent>; ctx: RowContext }
       timestampFormat={props.ctx.timestampFormat}
       onOpen={props.ctx.onOpenAgent}
       onOpenInTab={props.ctx.onOpenInTab}
+      onContinueInChat={props.ctx.onContinueInChat}
     />
   ));
 }
@@ -708,10 +721,13 @@ export function AgentsPanel({
   workspaceRoot,
   dedicatedAgentId,
   onOpenAgentTab,
+  onContinueInChat,
   onViewAgents,
 }: {
   dedicatedAgentId?: string | undefined;
   onOpenAgentTab?: ((agent: RuntimeSubagent) => void) | undefined;
+  /** Opens a chat tab seeded with the agent's work, as captured by `subagentContinuationContext`. */
+  onContinueInChat?: ((agent: RuntimeSubagent, context: string) => void) | undefined;
   onViewAgents?: (() => void) | undefined;
   model: AgentPanelModel;
   activities: ReadonlyArray<OrchestrationThreadActivity>;
@@ -737,6 +753,20 @@ export function AgentsPanel({
   );
   const detailAgentId = dedicatedAgentId ?? focusedAgentId;
   const focusedAgent = detailAgentId ? findPanelAgent(model, detailAgentId) : null;
+  const continueInChat = onContinueInChat
+    ? (agent: RuntimeSubagent) => {
+        const context = subagentContinuationContext(agent, toolLogs.get(agent.id) ?? NO_TOOL_CALLS);
+        if (context !== null) {
+          onContinueInChat(agent, context);
+          return;
+        }
+        toastManager.add({
+          type: "info",
+          title: "Nothing to continue from yet",
+          description: "This agent has no task, result, or tool calls to carry over.",
+        });
+      }
+    : undefined;
   const ctx: RowContext = {
     toolLogs,
     timestampFormat,
@@ -744,6 +774,7 @@ export function AgentsPanel({
       if (threadKey) focusAgent(threadKey, agentId, toolCallId ?? null);
     },
     onOpenInTab: onOpenAgentTab,
+    onContinueInChat: continueInChat,
   };
 
   if (dedicatedAgentId && !focusedAgent) {
@@ -786,6 +817,7 @@ export function AgentsPanel({
         onOpenInTab={
           !dedicatedAgentId && onOpenAgentTab ? () => onOpenAgentTab(focusedAgent) : undefined
         }
+        onContinueInChat={continueInChat ? () => continueInChat(focusedAgent) : undefined}
         onBack={() => {
           if (dedicatedAgentId) onViewAgents?.();
           else if (threadKey) focusAgent(threadKey, null);

@@ -280,6 +280,12 @@ chat** next to its result, or right-click the agent in the list. T3 Code adds
 the agent's task and result to the composer; a long result becomes a pasted
 attachment.
 
+To pick up an agent's line of work in its own conversation, choose **Continue
+in chat** in the agent's detail view, or right-click the agent in the list. A
+new chat tab opens with the agent's task, result, and tool calls attached, so
+you can ask follow-up questions or push the investigation further. The new
+chat starts fresh with that context; it does not resume the agent itself.
+
 | Provider    | Tool calls | Prompt                | Transcript |
 | ----------- | ---------- | --------------------- | ---------- |
 | Claude      | Yes        | Yes                   | Yes        |

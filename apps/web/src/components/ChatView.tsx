@@ -239,6 +239,7 @@ import { WizardPopup } from "./ui/wizard";
 import {
   deriveAgentPanelModel,
   foldSubagentActivities,
+  type RuntimeSubagent,
 } from "@t3tools/client-runtime/state/subagentRuntime";
 import { BranchToolbar, type BranchToolbarHandle } from "./BranchToolbar";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
@@ -7509,6 +7510,26 @@ export default function ChatView(props: ChatViewProps) {
       await openForkedTab(tabRef);
     });
 
+  // From the Agents panel: a new tab of this thread whose draft carries the agent's work.
+  const onContinueAgentInChat = (agent: RuntimeSubagent, context: string) =>
+    runFork(async (connection) => {
+      if (!activeThread) return;
+      const tabRef = await forkThreadTab(connection, {
+        environmentId,
+        sourceThreadId: activeThread.id,
+        sourceTitle: activeThread.title,
+        modelSelection: activeThread.modelSelection,
+        prompt: "",
+        hasHistory: false,
+        context: {
+          producerId: `${activeThread.id}-agent-${agent.id}`,
+          title: agent.title,
+          summary: context,
+        },
+      });
+      await openForkedTab(tabRef);
+    });
+
   // From the model picker: the whole tab is summarized, the new tab runs the picked model, and
   // this tab's draft is copied after the summary. The draft here is left as it was.
   // `emptyDraftPrompt` stands in for the draft when there is none.
@@ -10217,6 +10238,7 @@ export default function ChatView(props: ChatViewProps) {
               }
             : undefined
         }
+        onContinueInChat={isServerThread ? onContinueAgentInChat : undefined}
         onViewAgents={() => {
           if (!activeThreadRef) return;
           useAgentsPanelStore.getState().focusAgent(scopedThreadKey(activeThreadRef), null);
