@@ -235,7 +235,8 @@ export function detectComposerTrigger(text: string, cursorInput: number): Compos
 
   const tokenStart = tokenStartForCursor(text, cursor);
   const token = text.slice(tokenStart, cursor);
-  const pullRequestMatch = /^#([\p{L}\p{N}][\p{L}\p{N}_-]*)?$/u.exec(token);
+  // `#owner/name` names a repository; only the name half may hold dots (`vercel/next.js`).
+  const pullRequestMatch = /^#([\p{L}\p{N}][\p{L}\p{N}_-]*(?:\/[\p{L}\p{N}_.-]*)?)?$/u.exec(token);
   if (pullRequestMatch) {
     return {
       kind: "pull-request",

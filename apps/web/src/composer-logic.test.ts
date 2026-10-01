@@ -291,6 +291,19 @@ describe("detectComposerTrigger", () => {
     });
   });
 
+  it("keeps the hash menu open for an owner-qualified repository name", () => {
+    const text = "Look at #vercel/next.js";
+
+    expect(detectComposerTrigger(text, text.length)).toEqual({
+      kind: "pull-request",
+      query: "vercel/next.js",
+      rangeStart: "Look at ".length,
+      rangeEnd: text.length,
+    });
+    // A sentence-ending dot after a number still closes the menu.
+    expect(detectComposerTrigger("See #123.", "See #123.".length)).toBeNull();
+  });
+
   it("does not keep pull request completion active for headings or embedded hashes", () => {
     expect(detectComposerTrigger("# Heading", "# Heading".length)).toBeNull();
     expect(detectComposerTrigger("issue#123", "issue#123".length)).toBeNull();

@@ -12,11 +12,27 @@ const LINEAR_SEARCH_DEBOUNCE_MS = 300;
 const LINEAR_RESULT_LIMIT = 20;
 const LINEAR_IDENTIFIER_PATTERN = /^[a-z][a-z0-9_]*-\d+$/i;
 
-export type ComposerReferenceTab = "pull-requests" | "linear-issues" | "github-issues";
+export type ComposerReferenceTab =
+  | "pull-requests"
+  | "linear-issues"
+  | "github-issues"
+  | "repositories";
 
-/** The `#` menu's starting tab: an identifier (`#ENG-123`) names an issue, anything else a PR. */
-export function defaultComposerReferenceTab(query: string): ComposerReferenceTab {
-  return LINEAR_IDENTIFIER_PATTERN.test(query) ? "linear-issues" : "pull-requests";
+/**
+ * The `#` menu's starting tab: an identifier (`#ENG-123`) names a Linear issue, `#owner/name` a
+ * repository, and so does a hyphenated name (`#cin-questionnaire`) once a default repository
+ * owner is set. Anything else searches pull requests.
+ */
+export function defaultComposerReferenceTab(
+  query: string,
+  hasDefaultRepositoryOwner: boolean,
+): ComposerReferenceTab {
+  if (LINEAR_IDENTIFIER_PATTERN.test(query)) return "linear-issues";
+  if (query.includes("/")) return "repositories";
+  if (hasDefaultRepositoryOwner && /[\p{L}\p{N}]-[\p{L}\p{N}]/u.test(query)) {
+    return "repositories";
+  }
+  return "pull-requests";
 }
 
 /**

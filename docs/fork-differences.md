@@ -552,6 +552,10 @@ repositories to clone into the workspace's context folder, `.context/` by defaul
 `owner/repo` or clone URL also works. Rows for repositories already cloned into the thread's
 workspace show their branch, ahead/behind, and changed-file count.
 
+On web and desktop the composer's `#` menu also has a **Repositories** tab over the same list:
+`#name` searches the default owner and `#owner/name` another one. `#owner/name`, and a hyphenated
+name once a default owner is set, open that tab by default instead of pull requests.
+
 A picked repository becomes a `repository` context chip. When the message sends, the server
 clones what is missing before the turn starts. It leaves an existing clone of the same remote
 alone (fetching only, so ahead/behind are current) and never overwrites a folder that belongs to
@@ -568,7 +572,8 @@ Code: `apps/server/src/contextRepositories/ContextRepositories.ts`,
 `packages/contracts/src/composerContext.ts`, the context-repository step in `apps/server/src/ws.ts`,
 the persisted-message restatement in `apps/server/src/orchestration/decider.ts`,
 `packages/client-runtime/src/contextRepositories.ts`, and
-`apps/web/src/components/chat/RepositoryAttachPicker.tsx`, and
+`apps/web/src/components/chat/RepositoryAttachPicker.tsx`,
+`apps/web/src/components/chat/useComposerRepositoryItems.ts`, and
 `apps/mobile/src/components/RepositoryPickerSheet.tsx`. User guide:
 [composer.md](./user/composer.md#attach-repositories).
 

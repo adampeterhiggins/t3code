@@ -14,6 +14,7 @@ import {
 } from "@t3tools/contracts";
 import {
   BlocksIcon,
+  FolderGit2Icon,
   FolderIcon,
   MessagesSquareIcon,
   PackageIcon,
@@ -101,6 +102,14 @@ export type ComposerCommandItem =
       description: string;
       authorLogin: string | null;
       state: "open" | "closed";
+    }
+  | {
+      id: string;
+      type: "repository";
+      nameWithOwner: string;
+      remoteUrl: string;
+      label: string;
+      description: string;
     };
 
 export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
@@ -308,6 +317,9 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
       ) : null}
       {props.item.type === "github-issue" ? (
         <GitHubIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+      ) : null}
+      {props.item.type === "repository" ? (
+        <FolderGit2Icon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
       ) : null}
       {pullRequestPresentation ? (
         <pullRequestPresentation.Icon
