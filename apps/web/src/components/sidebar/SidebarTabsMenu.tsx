@@ -6,10 +6,9 @@
  */
 import type { SidebarTabSortDirection, SidebarTabSortOrder } from "@t3tools/contracts/settings";
 import { CheckIcon, LayersIcon } from "lucide-react";
-import { useRef, useState } from "react";
+import { ContextMenu } from "@base-ui/react/context-menu";
 
 import {
-  Menu,
   MenuGroup,
   MenuGroupLabel,
   MenuPopup,
@@ -67,28 +66,25 @@ export function SidebarTabsMenu(props: {
     props.limit === null || TAB_LIMIT_CHOICES.includes(props.limit)
       ? TAB_LIMIT_CHOICES
       : [...TAB_LIMIT_CHOICES, props.limit].toSorted((left, right) => left - right);
-  const [open, setOpen] = useState(false);
-  const buttonRef = useRef<HTMLButtonElement>(null);
   const toggleLabel = props.shown ? "Hide tabs" : "Show tabs";
+  // A context menu, so the trigger owns right-click and the context-menu key while a plain
+  // click stays the toggle. The popup parts are the same as any other menu's.
   return (
-    <Menu open={open} onOpenChange={setOpen}>
-      <SidebarHeaderIconButton
-        ref={buttonRef}
-        label={toggleLabel}
-        tooltip={`${toggleLabel}${props.shortcutLabel ? ` (${props.shortcutLabel})` : ""}. Right-click for options`}
-        aria-pressed={props.shown}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        isActive={props.shown}
-        onClick={props.onToggle}
-        onContextMenu={(event) => {
-          event.preventDefault();
-          setOpen(true);
-        }}
+    <ContextMenu.Root>
+      <ContextMenu.Trigger
+        render={
+          <SidebarHeaderIconButton
+            label={toggleLabel}
+            tooltip={`${toggleLabel}${props.shortcutLabel ? ` (${props.shortcutLabel})` : ""}. Right-click for options`}
+            aria-pressed={props.shown}
+            isActive={props.shown}
+            onClick={props.onToggle}
+          />
+        }
       >
         <LayersIcon />
-      </SidebarHeaderIconButton>
-      <MenuPopup anchor={buttonRef} align="end" className="min-w-56">
+      </ContextMenu.Trigger>
+      <MenuPopup className="min-w-56">
         <MenuGroup>
           <MenuGroupLabel>Tabs in sidebar</MenuGroupLabel>
           <MenuRadioGroup
@@ -194,6 +190,6 @@ export function SidebarTabsMenu(props: {
           </>
         )}
       </MenuPopup>
-    </Menu>
+    </ContextMenu.Root>
   );
 }
