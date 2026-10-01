@@ -19,6 +19,7 @@ const CONTEXT_CHIP_PRESENTATIONS = {
   "pull-request": { accent: "#7079e4", symbol: "git-pull-request" },
   skill: { accent: "#b261be", symbol: "cube" },
   "linear-issue": { accent: "#617de6", symbol: "ticket" },
+  "github-issue": { accent: "#009f6e", symbol: "smallcircle.filled.circle" },
   repository: { accent: "#009c9c", symbol: "folder" },
 } as const;
 
@@ -46,6 +47,12 @@ const PULL_REQUEST_CHIP_PRESENTATIONS = {
   closed: { accent: "#d55665", symbol: "git-pull-request" },
 } as const;
 
+/** A GitHub issue chip is green while open and purple once closed, the way GitHub colours it. */
+const CLOSED_GITHUB_ISSUE_CHIP_PRESENTATION = {
+  accent: "#8a70dd",
+  symbol: "smallcircle.filled.circle",
+} as const;
+
 export function contextChipPresentation(
   kind: string,
   record?: {
@@ -53,6 +60,7 @@ export function contextChipPresentation(
     readonly name?: string;
     readonly mimeType?: string;
     readonly sectionId?: string;
+    readonly state?: string;
     readonly pullRequest?: {
       readonly state?: string;
       readonly isDraft?: boolean;
@@ -83,6 +91,9 @@ export function contextChipPresentation(
     if (Object.hasOwn(PULL_REQUEST_CHIP_PRESENTATIONS, state)) {
       return PULL_REQUEST_CHIP_PRESENTATIONS[state as keyof typeof PULL_REQUEST_CHIP_PRESENTATIONS];
     }
+  }
+  if (presentationKind === "github-issue" && record?.state === "closed") {
+    return CLOSED_GITHUB_ISSUE_CHIP_PRESENTATION;
   }
   return Object.hasOwn(CONTEXT_CHIP_PRESENTATIONS, presentationKind)
     ? CONTEXT_CHIP_PRESENTATIONS[presentationKind as keyof typeof CONTEXT_CHIP_PRESENTATIONS]

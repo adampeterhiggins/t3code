@@ -46,6 +46,7 @@ const contextChipVariants = cva(
         citation: "[--context-chip-accent:oklch(0.62_0.16_259)]",
         "thread-tab": "[--context-chip-accent:oklch(0.62_0.134_120)]",
         "linear-issue": "[--context-chip-accent:oklch(0.62_0.16_270)]",
+        "github-issue": "[--context-chip-accent:oklch(0.62_0.02_259)]",
         repository: "[--context-chip-accent:oklch(0.62_0.12_195)]",
       },
       // Colors live in compoundVariants below so they come after the kind colors.
@@ -74,6 +75,7 @@ const contextChipVariants = cva(
           "citation",
           "thread-tab",
           "linear-issue",
+          "github-issue",
           "repository",
         ],
         className:

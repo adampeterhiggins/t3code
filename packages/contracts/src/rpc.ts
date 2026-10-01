@@ -47,6 +47,18 @@ import {
   LinearThreadLinks,
   LinearUnlinkThreadInput,
 } from "./linear.ts";
+import {
+  GitHubGetIssueInput,
+  GitHubIssueContext,
+  GitHubIssueError,
+  GitHubIssueSummary,
+  GitHubIssueThreadLink,
+  GitHubIssueThreadLinks,
+  GitHubLinkThreadInput,
+  GitHubListIssuesInput,
+  GitHubListIssuesResult,
+  GitHubUnlinkThreadInput,
+} from "./githubIssues.ts";
 import { TextGenerationError } from "./git.ts";
 import {
   AuthAccessStreamError,
@@ -486,6 +498,14 @@ export const WS_METHODS = {
   linearSubscribeThreadLinks: "linear.subscribeThreadLinks",
   linearLinkThread: "linear.linkThread",
   linearUnlinkThread: "linear.unlinkThread",
+
+  // GitHub issue methods
+  githubIssuesList: "githubIssues.list",
+  githubIssuesGet: "githubIssues.get",
+  githubIssuesGetSummary: "githubIssues.getSummary",
+  githubIssuesSubscribeThreadLinks: "githubIssues.subscribeThreadLinks",
+  githubIssuesLinkThread: "githubIssues.linkThread",
+  githubIssuesUnlinkThread: "githubIssues.unlinkThread",
   projectCloneStart: "projectClone.start",
   projectCloneCancel: "projectClone.cancel",
   projectCloneRetry: "projectClone.retry",
@@ -772,6 +792,48 @@ const WsLinearUnlinkThreadRpc = Rpc.make(WS_METHODS.linearUnlinkThread, {
   payload: LinearUnlinkThreadInput,
   success: Schema.Struct({}),
   error: LinearRpcError,
+});
+
+const GitHubIssueRpcError = Schema.Union([GitHubIssueError, EnvironmentAuthorizationError]);
+
+const WsGitHubIssuesListRpc = Rpc.make(WS_METHODS.githubIssuesList, {
+  payload: GitHubListIssuesInput,
+  success: GitHubListIssuesResult,
+  error: GitHubIssueRpcError,
+});
+
+const WsGitHubIssuesGetRpc = Rpc.make(WS_METHODS.githubIssuesGet, {
+  payload: GitHubGetIssueInput,
+  success: GitHubIssueContext,
+  error: GitHubIssueRpcError,
+});
+
+const WsGitHubIssuesGetSummaryRpc = Rpc.make(WS_METHODS.githubIssuesGetSummary, {
+  payload: GitHubGetIssueInput,
+  success: GitHubIssueSummary,
+  error: GitHubIssueRpcError,
+});
+
+const WsGitHubIssuesSubscribeThreadLinksRpc = Rpc.make(
+  WS_METHODS.githubIssuesSubscribeThreadLinks,
+  {
+    payload: Schema.Struct({}),
+    success: GitHubIssueThreadLinks,
+    error: EnvironmentAuthorizationError,
+    stream: true,
+  },
+);
+
+const WsGitHubIssuesLinkThreadRpc = Rpc.make(WS_METHODS.githubIssuesLinkThread, {
+  payload: GitHubLinkThreadInput,
+  success: GitHubIssueThreadLink,
+  error: GitHubIssueRpcError,
+});
+
+const WsGitHubIssuesUnlinkThreadRpc = Rpc.make(WS_METHODS.githubIssuesUnlinkThread, {
+  payload: GitHubUnlinkThreadInput,
+  success: Schema.Struct({}),
+  error: GitHubIssueRpcError,
 });
 
 const WsServerGetTraceDiagnosticsRpc = Rpc.make(WS_METHODS.serverGetTraceDiagnostics, {
@@ -1697,6 +1759,12 @@ export const WsRpcGroup = RpcGroup.make(
   WsLinearSubscribeThreadLinksRpc,
   WsLinearLinkThreadRpc,
   WsLinearUnlinkThreadRpc,
+  WsGitHubIssuesListRpc,
+  WsGitHubIssuesGetRpc,
+  WsGitHubIssuesGetSummaryRpc,
+  WsGitHubIssuesSubscribeThreadLinksRpc,
+  WsGitHubIssuesLinkThreadRpc,
+  WsGitHubIssuesUnlinkThreadRpc,
   WsProjectCloneStartRpc,
   WsProjectCloneCancelRpc,
   WsProjectCloneRetryRpc,

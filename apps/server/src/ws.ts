@@ -124,6 +124,8 @@ import { ProviderAuthService } from "./provider/Services/ProviderAuthService.ts"
 import { LinearApi } from "./linear/LinearApi.ts";
 import { LinearAuth } from "./linear/LinearAuth.ts";
 import { LinearThreadLinks } from "./linear/LinearThreadLinks.ts";
+import { GitHubIssues } from "./githubIssues/GitHubIssues.ts";
+import { GitHubIssueThreadLinks } from "./githubIssues/GitHubIssueThreadLinks.ts";
 import { ProviderInstanceRegistry } from "./provider/Services/ProviderInstanceRegistry.ts";
 import { makeProviderInstallation } from "./provider/providerInstallation.ts";
 import * as ServerSelfUpdate from "./cloud/selfUpdate.ts";
@@ -628,6 +630,8 @@ const makeWsRpcLayer = (
       const linearAuth = yield* LinearAuth;
       const linearApi = yield* LinearApi;
       const linearThreadLinks = yield* LinearThreadLinks;
+      const githubIssues = yield* GitHubIssues;
+      const githubIssueThreadLinks = yield* GitHubIssueThreadLinks;
       const providerInstances = yield* ProviderInstanceRegistry;
       const providerInstallation = yield* makeProviderInstallation();
       const serverUpdate = yield* ServerSelfUpdate.ServerSelfUpdate;
@@ -3542,6 +3546,34 @@ const makeWsRpcLayer = (
             WS_METHODS.linearUnlinkThread,
             linearThreadLinks.unlink(input).pipe(Effect.as({})),
             { "rpc.aggregate": "linear" },
+          ),
+        [WS_METHODS.githubIssuesList]: (input) =>
+          observeRpcEffect(WS_METHODS.githubIssuesList, githubIssues.listIssues(input), {
+            "rpc.aggregate": "github-issues",
+          }),
+        [WS_METHODS.githubIssuesGet]: (input) =>
+          observeRpcEffect(WS_METHODS.githubIssuesGet, githubIssues.getIssue(input), {
+            "rpc.aggregate": "github-issues",
+          }),
+        [WS_METHODS.githubIssuesGetSummary]: (input) =>
+          observeRpcEffect(WS_METHODS.githubIssuesGetSummary, githubIssues.getIssueSummary(input), {
+            "rpc.aggregate": "github-issues",
+          }),
+        [WS_METHODS.githubIssuesSubscribeThreadLinks]: (_input) =>
+          observeRpcStream(
+            WS_METHODS.githubIssuesSubscribeThreadLinks,
+            githubIssueThreadLinks.links,
+            { "rpc.aggregate": "github-issues" },
+          ),
+        [WS_METHODS.githubIssuesLinkThread]: (input) =>
+          observeRpcEffect(WS_METHODS.githubIssuesLinkThread, githubIssueThreadLinks.link(input), {
+            "rpc.aggregate": "github-issues",
+          }),
+        [WS_METHODS.githubIssuesUnlinkThread]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.githubIssuesUnlinkThread,
+            githubIssueThreadLinks.unlink(input).pipe(Effect.as({})),
+            { "rpc.aggregate": "github-issues" },
           ),
         [WS_METHODS.sourceControlPublishRepository]: (input) =>
           observeRpcEffect(

@@ -373,6 +373,36 @@ export function ComposerContextSheet(props: {
                     </Text>
                   </View>
                 ) : null}
+                {record.kind === "github-issue" ? (
+                  <View className="gap-3">
+                    <View className="gap-1">
+                      <Text selectable className="text-lg font-t3-semibold text-foreground">
+                        {record.title}
+                      </Text>
+                      <Text className="text-sm text-foreground-muted">
+                        {record.repository}#{record.number} ·{" "}
+                        {record.state === "open" ? "Open" : "Closed"}
+                      </Text>
+                    </View>
+                    {/^https?:\/\//i.test(record.url) ? (
+                      <Pressable
+                        accessibilityRole="link"
+                        onPress={() => {
+                          void tryOpenExternalUrl(record.url, "github-issue").then((opened) => {
+                            if (!opened) Alert.alert("Could not open GitHub", "Try again later.");
+                          });
+                        }}
+                        className="rounded-xl bg-subtle p-4"
+                      >
+                        <Text className="text-foreground">Open on GitHub</Text>
+                      </Pressable>
+                    ) : null}
+                    {/* Plain text like the other captured context here: exactly what the agent received. */}
+                    <Text selectable className="text-sm text-foreground">
+                      {record.markdown}
+                    </Text>
+                  </View>
+                ) : null}
                 {record.kind === "thread-tab" ? (
                   <View className="gap-3">
                     <ContextField label="Chat" value={record.title} />

@@ -21,7 +21,7 @@ import {
   UserRoundIcon,
   type LucideIcon,
 } from "lucide-react";
-import { LinearIcon } from "../Icons";
+import { GitHubIcon, LinearIcon } from "../Icons";
 import { memo, useCallback, useLayoutEffect, useRef } from "react";
 
 import { type ComposerSlashCommand, type ComposerTriggerKind } from "../../composer-logic";
@@ -30,6 +30,10 @@ import { Badge } from "../ui/badge";
 import { Command, CommandGroup, CommandItem, CommandList } from "../ui/command";
 import { PierreEntryIcon } from "./PierreEntryIcon";
 import { ComposerBanner } from "./ComposerBanner";
+import {
+  GITHUB_ISSUE_STATE_PRESENTATION,
+  GitHubIssueHoverPreview,
+} from "./GitHubIssueHoverPreview";
 import { LinearIssueHoverPreview } from "./LinearIssueHoverPreview";
 import { SourceTabs } from "./SourceTabs";
 import { resolvePullRequestState } from "../pullRequest/pullRequestPresentation";
@@ -88,6 +92,15 @@ export type ComposerCommandItem =
       description: string;
       assigneeName: string | null;
       stateName: string;
+    }
+  | {
+      id: string;
+      type: "github-issue";
+      url: string;
+      label: string;
+      description: string;
+      authorLogin: string | null;
+      state: "open" | "closed";
     };
 
 export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
@@ -105,7 +118,7 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
     onSelect: (id: string) => void;
   };
   activeItemId: string | null;
-  /** Lets Linear issue rows fetch their hover preview. */
+  /** Lets Linear and GitHub issue rows fetch their hover preview. */
   environmentId?: EnvironmentId;
   onHighlightedItemChange: (itemId: string | null) => void;
   onSelect: (item: ComposerCommandItem) => void;
@@ -218,6 +231,37 @@ function LinearIssueRow(props: {
   );
 }
 
+type GitHubIssueCommandItem = Extract<ComposerCommandItem, { type: "github-issue" }>;
+
+/** Fixed-width columns so numbers, authors, and states line up down the list. */
+function GitHubIssueRow(props: {
+  item: GitHubIssueCommandItem;
+  environmentId: EnvironmentId | null;
+}) {
+  const state = GITHUB_ISSUE_STATE_PRESENTATION[props.item.state];
+  const row = (
+    <span className="flex min-w-0 flex-1 items-center gap-2 text-xs">
+      <span className="w-14 shrink-0 truncate font-medium font-sans tabular-nums">
+        {props.item.label}
+      </span>
+      <span className="min-w-0 flex-1 truncate text-secondary-label">{props.item.description}</span>
+      <span className="w-24 shrink-0 truncate text-secondary-label">
+        {props.item.authorLogin ?? ""}
+      </span>
+      <span className={cn("w-14 shrink-0 truncate", state.toneClassName)}>{state.label}</span>
+    </span>
+  );
+  return props.environmentId === null ? (
+    row
+  ) : (
+    <GitHubIssueHoverPreview
+      environmentId={props.environmentId}
+      url={props.item.url}
+      trigger={row}
+    />
+  );
+}
+
 const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
   item: ComposerCommandItem;
   environmentId: EnvironmentId | null;
@@ -262,6 +306,9 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
       {props.item.type === "linear-issue" ? (
         <LinearIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
       ) : null}
+      {props.item.type === "github-issue" ? (
+        <GitHubIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+      ) : null}
       {pullRequestPresentation ? (
         <pullRequestPresentation.Icon
           role="img"
@@ -271,6 +318,8 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
       ) : null}
       {props.item.type === "linear-issue" ? (
         <LinearIssueRow item={props.item} environmentId={props.environmentId} />
+      ) : props.item.type === "github-issue" ? (
+        <GitHubIssueRow item={props.item} environmentId={props.environmentId} />
       ) : (
         <span className="flex min-w-0 flex-1 items-center gap-2">
           <span className="min-w-0 max-w-[45%] shrink-0 truncate font-sans text-xs font-medium">

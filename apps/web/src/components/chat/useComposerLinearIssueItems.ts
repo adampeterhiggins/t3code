@@ -12,7 +12,7 @@ const LINEAR_SEARCH_DEBOUNCE_MS = 300;
 const LINEAR_RESULT_LIMIT = 20;
 const LINEAR_IDENTIFIER_PATTERN = /^[a-z][a-z0-9_]*-\d+$/i;
 
-export type ComposerReferenceTab = "pull-requests" | "linear-issues";
+export type ComposerReferenceTab = "pull-requests" | "linear-issues" | "github-issues";
 
 /** The `#` menu's starting tab: an identifier (`#ENG-123`) names an issue, anything else a PR. */
 export function defaultComposerReferenceTab(query: string): ComposerReferenceTab {

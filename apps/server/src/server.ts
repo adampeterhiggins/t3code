@@ -59,6 +59,8 @@ import { ProviderAuthServiceLive } from "./provider/Layers/ProviderAuthService.t
 import * as LinearApi from "./linear/LinearApi.ts";
 import * as LinearAuth from "./linear/LinearAuth.ts";
 import * as LinearThreadLinks from "./linear/LinearThreadLinks.ts";
+import * as GitHubIssues from "./githubIssues/GitHubIssues.ts";
+import * as GitHubIssueThreadLinks from "./githubIssues/GitHubIssueThreadLinks.ts";
 import { CodexInstallation } from "./provider/CodexInstallation.ts";
 import { AntigravityInstallation } from "./provider/AntigravityInstallation.ts";
 import { ProviderInstanceRegistry } from "./provider/Services/ProviderInstanceRegistry.ts";
@@ -552,6 +554,7 @@ const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
       Layer.provideMerge(LinearAuth.layer),
     ),
   ),
+  Layer.provideMerge(GitHubIssueThreadLinks.layer.pipe(Layer.provideMerge(GitHubIssues.layer))),
   // Core Services
   Layer.provideMerge(ServerSettingsLayerLive),
   Layer.provideMerge(CheckpointingLayerLive),

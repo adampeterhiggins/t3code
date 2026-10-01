@@ -7,6 +7,7 @@ const ExternalUrlTarget = Schema.Literals([
   "pull-request",
   "provider-auth",
   "linear",
+  "github-issue",
 ]);
 
 export type ExternalUrlTarget = typeof ExternalUrlTarget.Type;

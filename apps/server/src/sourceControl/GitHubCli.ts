@@ -466,7 +466,7 @@ export const make = Effect.gen(function* () {
       const [command, action] = input.args;
       if (
         !(
-          (command === "pr" && (action === "list" || action === "view")) ||
+          ((command === "pr" || command === "issue") && (action === "list" || action === "view")) ||
           (command === "repo" && action === "view")
         )
       )

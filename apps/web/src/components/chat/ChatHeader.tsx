@@ -36,6 +36,7 @@ import ProjectScriptsControl, {
   type ProjectScriptActionResult,
 } from "../ProjectScriptsControl";
 import { OpenInPicker } from "./OpenInPicker";
+import { GitHubIssueThreadLinkChip } from "./GitHubIssueThreadLink";
 import { LinearThreadLinkChip } from "./LinearThreadLink";
 import { ThreadTabMenu } from "./ThreadTabs";
 import { useSplitPaneFocus, useSplitViewActions } from "./splitPane";
@@ -533,6 +534,9 @@ export const ChatHeader = memo(function ChatHeader({
         ) : null}
       </WorkspaceBreadcrumb>
       <LinearThreadLinkChip
+        threadRef={scopeThreadRef(activeThreadEnvironmentId, currentThreadId)}
+      />
+      <GitHubIssueThreadLinkChip
         threadRef={scopeThreadRef(activeThreadEnvironmentId, currentThreadId)}
       />
       {splitPaneFocus !== null ? (

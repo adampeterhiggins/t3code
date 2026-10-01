@@ -1,6 +1,7 @@
 import ChatMarkdown from "./ChatMarkdown";
 import { ReadOnlySourcePreview } from "./files/AttachmentFilePreview";
 import type {
+  GitHubIssueContextRecord,
   LinearIssueContextRecord,
   PreviewAnnotationPayload,
   RepositoryContextRecord,
@@ -14,11 +15,12 @@ import {
   MessagesSquareIcon,
   MousePointerClickIcon,
 } from "lucide-react";
-import { LinearIcon } from "./Icons";
+import { GitHubIcon, LinearIcon } from "./Icons";
 import { createContext, type MouseEvent, type ReactElement, type ReactNode, use } from "react";
 import type { EnvironmentId } from "@t3tools/contracts";
 
 import type { ComposerFileAttachment, ComposerImageAttachment } from "~/composerDraftStore";
+import type { IssueContextRecord } from "~/issueContextStore";
 import { composerFileNeedsReattach } from "~/composerDraftStore";
 import { useTheme } from "~/hooks/useTheme";
 import { useLinearLinkClickHandler } from "~/browser/useLinearLinkClickHandler";
@@ -54,6 +56,7 @@ import {
   ContextChipShell,
   FileChip,
   ImageChipButton,
+  GitHubIssueDetails,
   LinearIssueDetails,
   RepositoryDetails,
   PULL_REQUEST_CHIP_KINDS,
@@ -72,6 +75,7 @@ export type ComposerDraftContextRecord =
   | { kind: "preview-annotation"; record: PreviewAnnotationPayload }
   | { kind: "thread-tab"; record: ThreadTabContextRecord }
   | { kind: "linear-issue"; record: LinearIssueContextRecord }
+  | { kind: "github-issue"; record: GitHubIssueContextRecord }
   | { kind: "repository"; record: RepositoryContextRecord }
   | { kind: "image"; record: ComposerImageAttachment; upload?: AttachmentUploadState | undefined }
   | { kind: "file"; record: ComposerFileAttachment; upload?: AttachmentUploadState | undefined };
@@ -115,7 +119,7 @@ export function composerContextRecordsFromDraft(input: {
   reviewComments?: ReadonlyArray<ReviewCommentContext>;
   previewAnnotations?: ReadonlyArray<PreviewAnnotationPayload>;
   threadTabs?: ReadonlyArray<ThreadTabContextRecord>;
-  linearIssues?: ReadonlyArray<LinearIssueContextRecord>;
+  issues?: ReadonlyArray<IssueContextRecord>;
   repositories?: ReadonlyArray<RepositoryContextRecord>;
   images?: ReadonlyArray<ComposerImageAttachment>;
   files?: ReadonlyArray<ComposerFileAttachment>;
@@ -148,8 +152,13 @@ export function composerContextRecordsFromDraft(input: {
   for (const record of input.threadTabs ?? []) {
     records.set(record.contextId, { kind: "thread-tab", record });
   }
-  for (const record of input.linearIssues ?? []) {
-    records.set(record.contextId, { kind: "linear-issue", record });
+  for (const record of input.issues ?? []) {
+    records.set(
+      record.contextId,
+      record.kind === "github-issue"
+        ? { kind: "github-issue", record }
+        : { kind: "linear-issue", record },
+    );
   }
   for (const record of input.repositories ?? []) {
     records.set(record.contextId, { kind: "repository", record });
@@ -475,6 +484,23 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
         ),
     },
     {
+      kind: "github-issue",
+      canRender: (entry) => entry.kind === "github-issue",
+      render: (entry, context, definition) =>
+        entry.kind === "github-issue" ? (
+          <ContextChip
+            icon={<GitHubIcon />}
+            label={entry.record.label}
+            kindLabel="GitHub issue"
+            details={<ComposerGitHubIssueDetails record={entry.record} />}
+            detailsMode={definition.capabilities.details}
+            kind="github-issue"
+          />
+        ) : (
+          <UnresolvedContextChip label={context.label} />
+        ),
+    },
+    {
       kind: "repository",
       canRender: (entry) => entry.kind === "repository",
       render: (entry, context, definition) =>
@@ -512,6 +538,11 @@ function ComposerLinearIssueDetails({ record }: { record: LinearIssueContextReco
       onOpenLink={openLinearLink}
     />
   );
+}
+
+function ComposerGitHubIssueDetails({ record }: { record: GitHubIssueContextRecord }) {
+  const actions = use(ComposerContextActionsContext);
+  return <GitHubIssueDetails record={record} onOpenLink={actions.openLink} />;
 }
 
 /** Compact chip for one reference. Unknown kinds and missing records use the registry fallback. */

@@ -38,6 +38,7 @@ import {
   insertComposerDraftContext,
 } from "../../state/use-composer-drafts";
 import { refreshArchivedThreadsForEnvironment } from "../archive/useArchivedThreadSnapshots";
+import { ThreadGitHubIssueLinkChip, useThreadGitHubIssueLink } from "./ThreadGitHubIssueLink";
 import {
   ThreadLinearLinkButton,
   ThreadLinearLinkChip,
@@ -62,8 +63,8 @@ export function clearSelectedThreadTabSources(threadId: ThreadId): void {
 /**
  * Switches, opens, and closes a thread's chat tabs; empty tabs also pick sibling context. A
  * started chat can hand off to any model: a new tab on that model whose draft starts with a
- * summary of this chat, followed by this chat's unsent draft. The group's linked Linear issue
- * sits beside the switcher.
+ * summary of this chat, followed by this chat's unsent draft. The group's linked Linear and
+ * GitHub issues sit beside the switcher.
  */
 export function ThreadTabs({
   environmentId,
@@ -90,6 +91,7 @@ export function ThreadTabs({
   const [busy, setBusy] = useState(false);
   const linear = useThreadLinearLink(environmentId, threadId);
   const linearPicker = useLinearIssuePicker({ mode: "link", environmentId, threadId });
+  const gitHubIssueLink = useThreadGitHubIssueLink(environmentId, threadId);
   const serverConfig = useEnvironmentServerConfig(environmentId);
   const handOffModels = useMemo(
     () =>
@@ -334,6 +336,13 @@ export function ThreadTabs({
           />
         ) : linear.canLink && group.tabs.length <= 1 ? (
           <ThreadLinearLinkButton onPress={linearPicker.open} />
+        ) : null}
+        {gitHubIssueLink ? (
+          <ThreadGitHubIssueLinkChip
+            environmentId={environmentId}
+            threadId={threadId}
+            link={gitHubIssueLink}
+          />
         ) : null}
       </View>
       {linearPicker.sheet}

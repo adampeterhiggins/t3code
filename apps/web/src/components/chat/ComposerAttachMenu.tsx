@@ -1,11 +1,12 @@
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { FolderGit2Icon, MessageSquareIcon, PaperclipIcon } from "lucide-react";
-import { LinearIcon } from "../Icons";
+import { GitHubIcon, LinearIcon } from "../Icons";
 import { memo } from "react";
 
 import { Button } from "../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { useComposerMenuProps } from "./composerEventScope";
+import { openGitHubIssuePicker } from "./GitHubIssuePicker";
 import { openLinearIssuePicker } from "./LinearIssuePicker";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { openPullRequestAttachPicker } from "./PullRequestAttachPicker";
@@ -19,6 +20,8 @@ export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
   threadRef: ScopedThreadRef;
   /** Whether the thread's project can list pull requests to attach. */
   pullRequestsAvailable: boolean;
+  /** Whether the thread's project is a GitHub repository whose issues can be attached. */
+  githubIssuesAvailable: boolean;
   onAttachFiles: () => void;
 }) {
   const composerMenuProps = useComposerMenuProps();
@@ -42,6 +45,12 @@ export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
           <LinearIcon />
           Linear issue
         </MenuItem>
+        {props.githubIssuesAvailable ? (
+          <MenuItem onClick={() => openGitHubIssuePicker(props.threadRef)}>
+            <GitHubIcon />
+            GitHub issue
+          </MenuItem>
+        ) : null}
         {props.pullRequestsAvailable ? (
           <MenuItem onClick={() => openPullRequestAttachPicker(props.threadRef)}>
             <PullRequestGlyph.pullRequest />

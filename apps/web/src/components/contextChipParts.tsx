@@ -4,6 +4,7 @@ import {
 } from "@t3tools/client-runtime/context-repositories";
 import type {
   EnvironmentId,
+  GitHubIssueContextRecord,
   PullRequestContextMetadata,
   RepositoryContextRecord,
 } from "@t3tools/contracts";
@@ -311,14 +312,47 @@ export function ThreadTabSummaryDetails({ summary }: { summary: string }) {
 }
 
 /**
- * A Linear issue snapshot rendered as markdown: the heading, facts, description, and comments
- * the agent receives, scrolling when long.
+ * An issue snapshot's markdown body: the heading, facts, description, and comments the agent
+ * receives, scrolling when long.
  */
-export function LinearIssueMarkdown({ markdown, url }: { markdown: string; url: string }) {
-  const text = useMemo(() => formatLinearMarkdownForPreview(markdown, url), [markdown, url]);
+function IssueMarkdownBody({ text }: { text: string }) {
   return (
     <div className="max-h-80 overflow-y-auto rounded-lg border border-border/70 bg-background/70 px-3 py-2.5 text-xs text-foreground">
       <ChatMarkdown text={text} cwd={undefined} />
+    </div>
+  );
+}
+
+/** A Linear issue snapshot, with bare Linear links given readable names. */
+export function LinearIssueMarkdown({ markdown, url }: { markdown: string; url: string }) {
+  const text = useMemo(() => formatLinearMarkdownForPreview(markdown, url), [markdown, url]);
+  return <IssueMarkdownBody text={text} />;
+}
+
+/** A GitHub issue snapshot, rendered by the server from its description and comments. */
+export function GitHubIssueMarkdown({ markdown }: { markdown: string }) {
+  return <IssueMarkdownBody text={markdown} />;
+}
+
+/** The header row over an issue snapshot: what it is, and a link back to where it lives. */
+function IssueDetailsHeader(props: {
+  summary: string;
+  url: string;
+  linkLabel: string;
+  onOpenLink: (event: MouseEvent<HTMLElement>, url: string) => void;
+}) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 text-xs text-muted-foreground">
+      <span className="min-w-0 truncate">{props.summary}</span>
+      <a
+        href={props.url}
+        target="_blank"
+        rel="noreferrer"
+        className="shrink-0 underline-offset-2 hover:text-foreground hover:underline"
+        onClick={(event) => props.onOpenLink(event, props.url)}
+      >
+        {props.linkLabel}
+      </a>
     </div>
   );
 }
@@ -333,21 +367,32 @@ export function LinearIssueDetails(props: {
 }) {
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-baseline justify-between gap-3 text-xs text-muted-foreground">
-        <span>
-          {props.identifier} · {props.stateName}
-        </span>
-        <a
-          href={props.url}
-          target="_blank"
-          rel="noreferrer"
-          className="shrink-0 underline-offset-2 hover:text-foreground hover:underline"
-          onClick={(event) => props.onOpenLink(event, props.url)}
-        >
-          Open in Linear
-        </a>
-      </div>
+      <IssueDetailsHeader
+        summary={`${props.identifier} · ${props.stateName}`}
+        url={props.url}
+        linkLabel="Open in Linear"
+        onOpenLink={props.onOpenLink}
+      />
       <LinearIssueMarkdown markdown={props.markdown} url={props.url} />
+    </div>
+  );
+}
+
+/** An attached GitHub issue: the snapshot the agent received, with a link back to GitHub. */
+export function GitHubIssueDetails(props: {
+  record: Pick<GitHubIssueContextRecord, "repository" | "number" | "state" | "url" | "markdown">;
+  onOpenLink: (event: MouseEvent<HTMLElement>, url: string) => void;
+}) {
+  const { record } = props;
+  return (
+    <div className="flex flex-col gap-2">
+      <IssueDetailsHeader
+        summary={`${record.repository}#${record.number} · ${record.state === "open" ? "Open" : "Closed"}`}
+        url={record.url}
+        linkLabel="Open on GitHub"
+        onOpenLink={props.onOpenLink}
+      />
+      <GitHubIssueMarkdown markdown={record.markdown} />
     </div>
   );
 }

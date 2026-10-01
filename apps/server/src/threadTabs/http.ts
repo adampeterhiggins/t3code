@@ -20,6 +20,7 @@ import {
   requireEnvironmentScope,
 } from "../auth/http.ts";
 import { LinearThreadLinks } from "../linear/LinearThreadLinks.ts";
+import { GitHubIssueThreadLinks } from "../githubIssues/GitHubIssueThreadLinks.ts";
 import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import {
@@ -42,6 +43,7 @@ export const threadTabsHttpApiLayer = HttpApiBuilder.group(
     const snapshots = yield* ProjectionSnapshotQuery;
     const engine = yield* OrchestrationEngineService;
     const linearThreadLinks = yield* LinearThreadLinks;
+    const githubIssueThreadLinks = yield* GitHubIssueThreadLinks;
 
     const groupFor = Effect.fn("ThreadTabs.groupFor")(function* (threadId: ThreadId) {
       const source = yield* snapshots.getThreadShellById(threadId);
@@ -149,8 +151,9 @@ export const threadTabsHttpApiLayer = HttpApiBuilder.group(
               }),
             )
             .pipe(Effect.catch((cause) => failEnvironmentInternal("internal_error", cause)));
-          // The group's Linear link, if any, now covers the new tab too.
+          // The group's issue links, if any, now cover the new tab too.
           yield* linearThreadLinks.refresh;
+          yield* githubIssueThreadLinks.refresh;
 
           yield* engine
             .dispatch({

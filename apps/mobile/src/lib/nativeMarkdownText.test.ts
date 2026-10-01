@@ -1174,3 +1174,17 @@ describe("pull request chip status", () => {
     ).toBe("#7079e4");
   });
 });
+
+describe("GitHub issue chip status", () => {
+  it("colours an issue green while open and purple once closed, keeping one glyph", async () => {
+    const { contextChipPresentation } = await import("@t3tools/mobile-markdown-text/markdown");
+    const open = contextChipPresentation("github-issue", { kind: "github-issue", state: "open" });
+    const closed = contextChipPresentation("github-issue", {
+      kind: "github-issue",
+      state: "closed",
+    });
+    expect(open.accent).toBe("#009f6e");
+    expect(closed.accent).toBe("#8a70dd");
+    expect(closed.symbol).toBe(open.symbol);
+  });
+});
