@@ -208,7 +208,9 @@ the repository by text. Choose a result to insert it as a chip.
 On web and desktop, pasting or typing a link to a Linear issue, a GitHub issue, a pull request, or
 a GitHub repository turns the link into the same chip attaching it would make. A typed link
 converts when you type a space or new line after it. The chip replaces the link once the item
-loads. A link T3 Code cannot read stays as text: a Linear issue before you connect Linear, or a
+loads. A link to one comment on a pull request attaches that comment, with the replies before it
+when it is part of a review thread. In the attach menu's pull request picker, right-click a pull
+request and choose **Attach a comment…** to pick one of its comments instead. A link T3 Code cannot read stays as text: a Linear issue before you connect Linear, or a
 pull request from a repository none of your projects is checked out from. Paste with
 `Cmd+Shift+V` (`Ctrl+Shift+V` elsewhere) to keep a link as text. A link you turn back into text
 with undo, or whose chip you delete, is not converted again as you keep typing.
