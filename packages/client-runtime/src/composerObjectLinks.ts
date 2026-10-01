@@ -99,3 +99,21 @@ export function locateComposerObjectLink(
   }
   return best;
 }
+
+/**
+ * The attachable link the user just finished typing: `cursor` sits after a whitespace character
+ * that ends a link (sentence punctuation between them is fine). Null while still typing one.
+ */
+export function findTypedComposerObjectLink(
+  text: string,
+  cursor: number,
+): { readonly link: ComposerObjectLink; readonly index: number } | null {
+  if (!/\s/u.test(text[cursor - 1] ?? "")) return null;
+  const before = text.slice(0, cursor - 1);
+  const start = before.search(/\S+$/u);
+  if (start === -1) return null;
+  const found = findComposerObjectLinks(before.slice(start)).at(-1);
+  if (found === undefined) return null;
+  const rest = before.slice(start + found.index + found.link.url.length);
+  return /^[.,;:!?)\]}>]*$/u.test(rest) ? { link: found.link, index: start + found.index } : null;
+}

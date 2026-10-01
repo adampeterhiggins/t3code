@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   findComposerObjectLinks,
+  findTypedComposerObjectLink,
   locateComposerObjectLink,
   parseComposerObjectLink,
 } from "./composerObjectLinks.ts";
@@ -73,5 +74,23 @@ describe("locateComposerObjectLink", () => {
 
   it("returns null once the link is gone", () => {
     expect(locateComposerObjectLink(`${url}/pull/7`, url, 0)).toBeNull();
+  });
+});
+
+describe("findTypedComposerObjectLink", () => {
+  const url = "https://github.com/acme/api/pull/7";
+
+  it("finds a link once whitespace ends it", () => {
+    const text = `See ${url}, `;
+    expect(findTypedComposerObjectLink(text, text.length)).toEqual({
+      link: { kind: "pull-request", url },
+      index: 4,
+    });
+    expect(findTypedComposerObjectLink(`${url}\n`, url.length + 1)?.index).toBe(0);
+  });
+
+  it("waits while the link is still being typed", () => {
+    expect(findTypedComposerObjectLink(`See ${url}`, url.length + 4)).toBeNull();
+    expect(findTypedComposerObjectLink(`${url} and `, url.length + 5)).toBeNull();
   });
 });
