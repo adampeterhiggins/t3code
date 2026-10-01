@@ -242,8 +242,9 @@ export const OpenInPicker = memo(function OpenInPicker({
   const remoteCapableEditors = useRemoteCapableEditors();
   const [remoteHintSeen, markRemoteHintSeen] = useRemoteOpenHint();
   const environment = useEnvironment(environmentId);
-  const customEditors =
-    useAtomValue(serverEnvironment.settingsValueAtom(environmentId))?.customEditors ?? [];
+  const settings = useAtomValue(serverEnvironment.settingsValueAtom(environmentId));
+  const customEditors = settings?.customEditors ?? [];
+  const workspaceOpenDefault = settings?.workspaceOpenDefault ?? null;
   const localEditors = useAvailableEditors(environmentId, availableEditors);
   const environmentLabel = environment?.label ?? "this machine";
   // Remote mode ignores the server's PATH probe: what matters is what runs on
@@ -252,7 +253,19 @@ export const OpenInPicker = memo(function OpenInPicker({
     () => resolveOpenInEditorIds(remote.mode, localEditors, remoteCapableEditors, customEditors),
     [remote.mode, localEditors, remoteCapableEditors, customEditors],
   );
-  const [preferredEditor, setPreferredEditor] = usePreferredEditor(effectiveEditors);
+  const [lastUsedEditor, setLastUsedEditor] = usePreferredEditor(effectiveEditors);
+  const pinnedEditor =
+    workspaceOpenDefault !== null && effectiveEditors.includes(workspaceOpenDefault)
+      ? workspaceOpenDefault
+      : null;
+  const preferredEditor = pinnedEditor ?? lastUsedEditor;
+  // File opens elsewhere follow last-used, so opening the pinned app must not overwrite it.
+  const setPreferredEditor = useCallback(
+    (editor: EditorId) => {
+      if (editor !== pinnedEditor) setLastUsedEditor(editor);
+    },
+    [pinnedEditor, setLastUsedEditor],
+  );
   const options = useMemo(
     () => resolveOpenInOptions(navigator.platform, effectiveEditors, customEditors),
     [effectiveEditors, customEditors],

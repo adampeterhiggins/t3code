@@ -1,4 +1,4 @@
-import { CustomEditor, FileOpenTarget, FileOpenRule } from "./editor.ts";
+import { CustomEditor, EditorId, FileOpenTarget, FileOpenRule } from "./editor.ts";
 import { SshDeviceHostConfigs } from "./device.ts";
 import * as Effect from "effect/Effect";
 import * as Duration from "effect/Duration";
@@ -1294,6 +1294,10 @@ export const ServerSettings = Schema.Struct({
   customEditors: Schema.Array(CustomEditor).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   fileOpenDefault: FileOpenTarget.pipe(Schema.withDecodingDefault(Effect.succeed("t3" as const))),
   fileOpenRules: Schema.Array(FileOpenRule).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+  /** Application for the workspace Open button; null uses the client's last-used choice. */
+  workspaceOpenDefault: Schema.NullOr(EditorId).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
   worktreeCleanup: WorktreeCleanup.pipe(Schema.withDecodingDefault(Effect.succeed(null))),
   storageCleanup: StorageCleanupSettings.pipe(
     Schema.withDecodingDefault(Effect.succeed(Schema.decodeSync(StorageCleanupSettings)({}))),
@@ -1696,6 +1700,7 @@ export const ServerSettingsPatch = Schema.Struct({
   customEditors: Schema.optionalKey(Schema.Array(CustomEditor)),
   fileOpenDefault: Schema.optionalKey(FileOpenTarget),
   fileOpenRules: Schema.optionalKey(Schema.Array(FileOpenRule)),
+  workspaceOpenDefault: Schema.optionalKey(Schema.NullOr(EditorId)),
   worktreeCleanup: Schema.optionalKey(
     Schema.NullOr(
       Schema.Union([

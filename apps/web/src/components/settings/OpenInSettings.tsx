@@ -1,9 +1,11 @@
 import { EDITORS, type EditorId, type CustomEditor, type FileOpenTarget } from "@t3tools/contracts";
 import { randomUUID } from "../../lib/utils";
+import { editorLabelForPlatform } from "../../editorLabels";
 import { Textarea } from "../ui/textarea";
 import { useState } from "react";
 import { useEnvironments } from "../../state/environments";
 import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
@@ -21,6 +23,7 @@ export function OpenInSettings() {
   const [label, setLabel] = useState("");
   const [command, setCommand] = useState("");
   const [args, setArgs] = useState("");
+  const [runInShell, setRunInShell] = useState(false);
   const [editingId, setEditingId] = useState<CustomEditor["id"] | null>(null);
   const [extension, setExtension] = useState("");
   const [ruleTarget, setRuleTarget] = useState<FileOpenTarget>("t3");
@@ -33,6 +36,15 @@ export function OpenInSettings() {
     ).map((editor) => ({
       id: editor.id,
       label: editor.id === "file-manager" ? "System default application" : editor.label,
+    })),
+    ...settings.customEditors.map((editor) => ({ id: editor.id, label: editor.label })),
+  ];
+  const workspaceOptions: { id: EditorId; label: string }[] = [
+    ...EDITORS.filter((editor) =>
+      environment?.serverConfig?.availableEditors.includes(editor.id),
+    ).map((editor) => ({
+      id: editor.id,
+      label: editorLabelForPlatform(editor.id, navigator.platform),
     })),
     ...settings.customEditors.map((editor) => ({ id: editor.id, label: editor.label })),
   ];
@@ -71,17 +83,53 @@ export function OpenInSettings() {
       customEditors: settings.customEditors.filter((editor) => editor.id !== id),
       fileOpenDefault: settings.fileOpenDefault === id ? "t3" : settings.fileOpenDefault,
       fileOpenRules: settings.fileOpenRules.filter((rule) => rule.target !== id),
+      workspaceOpenDefault:
+        settings.workspaceOpenDefault === id ? null : settings.workspaceOpenDefault,
     });
     if (ruleTarget === id) setRuleTarget("t3");
-    if (editingId === id) {
-      setEditingId(null);
-      setLabel("");
-      setCommand("");
-      setArgs("");
-    }
+    if (editingId === id) resetForm();
+  }
+  function resetForm() {
+    setEditingId(null);
+    setLabel("");
+    setCommand("");
+    setArgs("");
+    setRunInShell(false);
   }
   return (
     <SettingsSection id="open-in" title="Open in">
+      <SettingsRow
+        title="Workspace Open button"
+        description="Choose what the Open button and its shortcut use. Last used remembers your most recent pick on each device."
+        control={
+          <Select
+            value={settings.workspaceOpenDefault ?? "last-used"}
+            disabled={disabled}
+            onValueChange={(next) => {
+              if (next === "last-used") update({ workspaceOpenDefault: null });
+              const option = workspaceOptions.find((candidate) => candidate.id === next);
+              if (option) update({ workspaceOpenDefault: option.id });
+            }}
+          >
+            <SelectTrigger aria-label="Workspace Open button application">
+              <SelectValue>
+                {settings.workspaceOpenDefault === null
+                  ? "Last used"
+                  : (workspaceOptions.find((option) => option.id === settings.workspaceOpenDefault)
+                      ?.label ?? "Unavailable application")}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectPopup>
+              <SelectItem value="last-used">Last used</SelectItem>
+              {workspaceOptions.map((option) => (
+                <SelectItem key={option.id} value={option.id}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectPopup>
+          </Select>
+        }
+      />
       <SettingsRow
         title="File links"
         description="Choose what opens when you click a file link in chat. Applications run on the environment hosting the file."
@@ -150,7 +198,7 @@ export function OpenInSettings() {
         description={
           disabled
             ? "Select a single environment to configure applications."
-            : "Enter an executable and optional arguments, one per line. The file path is appended automatically. For Typora on macOS, use command open and arguments -a and Typora on separate lines."
+            : "Enter an executable and optional arguments, one per line. The file path is appended automatically. For Typora on macOS, use command open and arguments -a and Typora on separate lines. Turn on Run in my shell to use a shell function or alias, such as one from your .zshrc."
         }
       >
         <div className="space-y-2">
@@ -158,6 +206,7 @@ export function OpenInSettings() {
             <div key={editor.id} className="flex items-center gap-2">
               <span className="flex-1 text-sm">
                 {editor.label} · {editor.command}
+                {editor.runInShell ? " (shell)" : ""}
               </span>
               <Button
                 size="xs"
@@ -168,6 +217,7 @@ export function OpenInSettings() {
                   setLabel(editor.label);
                   setCommand(editor.command);
                   setArgs(editor.args.join("\n"));
+                  setRunInShell(editor.runInShell === true);
                 }}
               >
                 Edit
@@ -204,6 +254,14 @@ export function OpenInSettings() {
             disabled={disabled}
             onChange={(event) => setArgs(event.target.value)}
           />
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox
+              checked={runInShell}
+              disabled={disabled}
+              onCheckedChange={(checked) => setRunInShell(checked === true)}
+            />
+            Run in my shell (macOS and Linux)
+          </label>
           <Button
             size="sm"
             variant="outline"
@@ -217,28 +275,17 @@ export function OpenInSettings() {
                     label: label.trim(),
                     command: command.trim(),
                     args: parsedArgs,
+                    ...(runInShell ? { runInShell: true } : {}),
                   },
                 ],
               });
-              setLabel("");
-              setCommand("");
-              setArgs("");
-              setEditingId(null);
+              resetForm();
             }}
           >
             {editingId ? "Save application" : "Add application"}
           </Button>
           {editingId && (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                setEditingId(null);
-                setLabel("");
-                setCommand("");
-                setArgs("");
-              }}
-            >
+            <Button size="sm" variant="ghost" onClick={resetForm}>
               Cancel
             </Button>
           )}

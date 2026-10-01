@@ -1301,6 +1301,49 @@ it.effect.skipIf(windowsHost)(
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
+it.effect.skipIf(windowsHost)(
+  "runs shell applications through the user's shell with arguments kept intact",
+  () => {
+    let spawned: ChildProcess.StandardCommand | undefined;
+    return Effect.gen(function* () {
+      const launcher = yield* ExternalLauncher.ExternalLauncher;
+      yield* launcher.launchEditor(
+        { editor: "custom:opencursor", cwd: `/work tree/it's "here":4` },
+        [
+          {
+            id: "custom:opencursor",
+            label: "opencursor",
+            command: "printf '%s\\n'",
+            args: ["--flag", "two words"],
+            runInShell: true,
+          },
+        ],
+      );
+      assert.ok(spawned);
+      assert.equal(spawned.command, "/bin/sh");
+      const output = NodeChildProcess.execFileSync(spawned.command, [...spawned.args], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+      assert.deepEqual(output.trimEnd().split("\n"), [
+        "--flag",
+        "two words",
+        `/work tree/it's "here"`,
+      ]);
+    }).pipe(
+      Effect.provide(
+        testLayer({
+          platform: "darwin",
+          env: { SHELL: "/bin/sh", PATH: "/usr/bin:/bin" },
+          onSpawn: (command) => {
+            spawned = command;
+          },
+        }),
+      ),
+    );
+  },
+);
+
 it.effect("rejects custom application IDs that are no longer configured", () =>
   Effect.gen(function* () {
     const launcher = yield* ExternalLauncher.ExternalLauncher;

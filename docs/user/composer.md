@@ -286,6 +286,12 @@ T3 appends the file path automatically. For Typora on macOS, use `open` as the c
 You can edit or remove an application later; removal resets its file rules to the default and
 its default selection to the T3 viewer.
 
+On macOS and Linux, turn on **Run in my shell** to use a shell function or alias, such as one
+defined in your `.zshrc`. T3 runs the command in your interactive login shell and passes the
+arguments and path to it unchanged.
+
 Applications open on the computer hosting the file, including when you connect remotely.
 Custom applications are also available from the workspace **Open in** picker and file **Open with**
-menus. Mobile keeps its native file viewer.
+menus. The workspace **Open** button uses your most recent pick on each device; choose an
+application under **Workspace Open button** to always use it instead. Mobile keeps its native file
+viewer.
