@@ -12,6 +12,7 @@ import {
   DEFAULT_SUBAGENT_TRANSCRIPT_VIEW,
   deriveSubagentToolLog,
   formatSubagentToolInput,
+  subagentSiblingCheckout,
   subagentTranscriptKindFilterFor,
   subagentTranscriptToolKind,
   type SubagentToolKind,
@@ -225,6 +226,12 @@ function TranscriptList(props: {
   agentId: string;
   workspaceRoot: string | undefined;
 }) {
+  const siblingCheckout = subagentSiblingCheckout(
+    props.rows.flatMap(({ entry }) =>
+      entry.kind === "tool" ? [[entry.text, entry.input].filter(Boolean).join("\n")] : [],
+    ),
+    props.workspaceRoot,
+  );
   return (
     <ol className="flex flex-col gap-px">
       {props.rows.map(({ index, entry }) => {
@@ -234,19 +241,20 @@ function TranscriptList(props: {
         }
         const status = entry.status ?? "completed";
         const kind = subagentTranscriptToolKind(entry.toolName);
-        const input =
-          entry.input &&
-          formatSubagentToolInput(kind, entry.input, props.agentId, props.workspaceRoot);
+        const format = (text: string) =>
+          formatSubagentToolInput(kind, text, props.agentId, props.workspaceRoot, siblingCheckout);
+        const title = format(entry.text);
+        const input = entry.input && format(entry.input);
         return (
           <CallRow
             key={index}
             icon={TOOL_KIND_ICONS[kind]}
-            title={entry.text}
+            title={title}
             detail={input || null}
             status={status}
             time={time}
             duration={null}
-            body={[input, entry.output].filter(Boolean).join("\n\n") || entry.text}
+            body={[input, entry.output].filter(Boolean).join("\n\n") || title}
             meta={[entry.toolName, time, TOOL_STATUS_LABELS[status].toLowerCase()]
               .filter(Boolean)
               .join(" · ")}

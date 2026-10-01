@@ -661,7 +661,11 @@ Tool calls in the web, desktop, and mobile timelines, and subagent tool calls in
 desktop Agents panel, show paths inside the thread's working directory as relative. For commands, a leading `cd` to that directory is dropped. Rewriting a
 command stops at the first `cd` somewhere else, because relative paths after it would point
 somewhere else. File, image, and other tool labels (`Read: src/index.ts`) get the same path
-treatment. Paths outside the directory stay absolute, and approval prompts still show the exact
+treatment. A subagent working in a sibling checkout of that directory — another folder next to
+the thread's worktree, which is where Cursor runs a task while still passing absolute file
+paths — is shown relative to the sibling once more than one of its calls uses it. Claude Code's
+private agent worktree (`.claude/worktrees/agent-<id>`) is recognized from the path even when
+the agent never reports it. Other paths stay absolute, and approval prompts still show the exact
 command. The shared runtime instructions also tell every provider that shell commands already
 start in that directory.
 
