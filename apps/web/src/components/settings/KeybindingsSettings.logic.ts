@@ -19,14 +19,24 @@ const usageCommandOrder = new Map<KeybindingCommand, number>(
   [...METRIC_OPTIONS, ...WINDOW_OPTIONS].map((option, index) => [option.command, index]),
 );
 
+const firstUsageCommand = METRIC_OPTIONS[0].command;
+
 /**
- * Sort text that keeps the Usage page's metric and period commands in page order under
- * `usagePrefix`, while everything else sorts by `name`. One key per command keeps the sort a
- * total order, so the result never depends on the order bindings arrive in.
+ * Orders commands by `key`, except Usage page commands, which sort as one
+ * block in page order where the first of them would sort. A total order, so
+ * adding a binding elsewhere cannot reshuffle the Usage rows.
  */
-function commandSortName(command: KeybindingCommand, name: string, usagePrefix: string): string {
-  const index = usageCommandOrder.get(command);
-  return index === undefined ? name : `${usagePrefix}${String(index).padStart(2, "0")}`;
+function compareCommands(
+  left: KeybindingCommand,
+  right: KeybindingCommand,
+  key: (command: KeybindingCommand) => string,
+): number {
+  const leftRank = usageCommandOrder.get(left);
+  const rightRank = usageCommandOrder.get(right);
+  if (leftRank !== undefined && rightRank !== undefined) return leftRank - rightRank;
+  return key(leftRank === undefined ? left : firstUsageCommand).localeCompare(
+    key(rightRank === undefined ? right : firstUsageCommand),
+  );
 }
 
 export type KeybindingSource = "Default" | "Custom" | "Project";
@@ -219,9 +229,7 @@ export function buildKeybindingRows(
   });
 
   rowsWithConflicts.sort((left, right) => {
-    const commandCompare = commandSortName(left.command, left.command, "usage.").localeCompare(
-      commandSortName(right.command, right.command, "usage."),
-    );
+    const commandCompare = compareCommands(left.command, right.command, (command) => command);
     if (commandCompare !== 0) return commandCompare;
     return left.key.localeCompare(right.key);
   });
@@ -294,11 +302,7 @@ export function buildKeybindingCommandOptions(
   for (const binding of keybindings) {
     commands.add(binding.command);
   }
-  return [...commands].toSorted((left, right) =>
-    commandSortName(left, commandLabel(left), "Usage: ").localeCompare(
-      commandSortName(right, commandLabel(right), "Usage: "),
-    ),
-  );
+  return [...commands].toSorted((left, right) => compareCommands(left, right, commandLabel));
 }
 
 export function commandLabel(command: KeybindingCommand): string {
@@ -354,6 +358,7 @@ function normalizeShortcutKeyToken(key: string): string | null {
   return null;
 }
 
+/** Turns a keydown into a binding such as `mod+shift+k` or `tab`. Null for modifier-only presses. */
 export function keybindingFromKeyboardEvent(
   event: Pick<KeyboardEvent, "key" | "code" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey">,
   platform: string,
@@ -371,9 +376,6 @@ export function keybindingFromKeyboardEvent(
   }
   if (event.altKey) parts.push("alt");
   if (event.shiftKey) parts.push("shift");
-  if (parts.length === 0) {
-    return null;
-  }
   parts.push(keyToken);
   return parts.join("+");
 }

@@ -95,6 +95,7 @@ const makeHarness = Effect.fn("makeOperateHarness")(function* () {
     Layer.succeed(
       ClientCommandDispatcher.ClientCommandDispatcher,
       ClientCommandDispatcher.ClientCommandDispatcher.of({
+        scratchWorkspaceRoot: Effect.succeed(undefined),
         forOrigin: () => ({
           dispatch: (command) =>
             Ref.update(commands, (recorded) => [...recorded, command]).pipe(

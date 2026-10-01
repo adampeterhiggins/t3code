@@ -45,6 +45,7 @@ import {
   OrchestrationGetTurnDiffError,
   ORCHESTRATION_WS_METHODS,
   ProjectId,
+  type ProjectCreateNewInput,
   type ProjectEntriesFailure,
   type ProjectFileFailure,
   type ProjectFileOperation,
@@ -140,6 +141,7 @@ import { linkCreatedPullRequest } from "./git/linkCreatedPullRequest.ts";
 import * as ReviewService from "./review/ReviewService.ts";
 import * as ProjectCloneTracker from "./project/ProjectCloneTracker.ts";
 import * as ContextRepositories from "./contextRepositories/ContextRepositories.ts";
+import * as NewProject from "./project/NewProject.ts";
 import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
 import * as WorktreeSetupTracker from "./project/WorktreeSetupTracker.ts";
 import * as AgentSessionScanner from "./project/AgentSessionScanner.ts";
@@ -184,6 +186,7 @@ import { failEnvironmentAuthInvalid, failEnvironmentInternal } from "./auth/http
 import * as RelayClient from "@t3tools/shared/relayClient";
 const isOrchestrationDispatchCommandError = Schema.is(OrchestrationDispatchCommandError);
 
+const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 const CONFIG_DISCOVERY_TIMEOUT = Duration.seconds(5);
 
 const resolveDiscoveryForConfig = <A, E, R>(
@@ -936,6 +939,125 @@ const makeWsRpcLayer = (
           return output;
         });
 
+      const path = yield* Path.Path;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const resolveScratchWorkspaceRoot = clientCommandDispatcher.scratchWorkspaceRoot;
+
+      // One Scratch project per environment, created the first time a client
+      // asks. Two clients racing the create both reach dispatch; the loser's
+      // duplicate-root rejection resolves to the project the winner made.
+      // The folder is (re)made on every call so a deleted Scratch still runs.
+      const ensureScratchProject = Effect.gen(function* () {
+        const workspaceRoot = yield* resolveScratchWorkspaceRoot;
+        if (workspaceRoot === undefined) {
+          return yield* new OrchestrationDispatchCommandError({
+            message: "Threads without a project are not available on this environment.",
+          });
+        }
+        yield* fileSystem.makeDirectory(workspaceRoot, { recursive: true }).pipe(
+          Effect.mapError(
+            (cause) =>
+              new OrchestrationDispatchCommandError({
+                message: "Failed to create the folder for threads without a project.",
+                cause,
+              }),
+          ),
+        );
+        const findScratchProjectId = projectionSnapshotQuery
+          .getActiveProjectByWorkspaceRoot(workspaceRoot)
+          .pipe(
+            Effect.map(Option.map((project) => project.id)),
+            Effect.mapError(
+              (cause) =>
+                new OrchestrationDispatchCommandError({
+                  message: "Failed to look up the home for threads without a project.",
+                  cause,
+                }),
+            ),
+          );
+        const existingProjectId = yield* findScratchProjectId;
+        if (Option.isSome(existingProjectId)) {
+          return { projectId: existingProjectId.value };
+        }
+        const projectId = ProjectId.make(yield* randomUUID);
+        return yield* Effect.gen(function* () {
+          const command = yield* normalizeDispatchCommand({
+            type: "project.create",
+            commandId: yield* serverCommandId("scratch-project-create"),
+            projectId,
+            title: "No project",
+            workspaceRoot,
+            createdAt: yield* nowIso,
+          });
+          yield* clientCommands.dispatch(command);
+          // A dashed chat bubble in neutral gray marks Scratch. Set once at
+          // create, so a user's own icon choice is never overwritten.
+          yield* clientCommands.dispatch(
+            yield* normalizeDispatchCommand({
+              type: "project.meta.update",
+              commandId: yield* serverCommandId("scratch-project-icon"),
+              projectId,
+              projectIcon: { kind: "lucide", name: "message-square-dashed", color: "gray" },
+            }),
+          );
+          return { projectId };
+        }).pipe(
+          Effect.catch((error) =>
+            findScratchProjectId.pipe(
+              Effect.flatMap(
+                Option.match({
+                  onNone: () => Effect.fail(error),
+                  onSome: (racedProjectId) => Effect.succeed({ projectId: racedProjectId }),
+                }),
+              ),
+            ),
+          ),
+        );
+      });
+
+      // Projects started from just a name live beside Scratch and worktrees,
+      // away from folders the user organizes by hand. A nested repository is
+      // fine here (unlike Scratch) because each project gets its own `git init`.
+      const newProjectsRoot = path.resolve(config.baseDir, "projects");
+      const createNewProject = (input: ProjectCreateNewInput) =>
+        Effect.gen(function* () {
+          const folder = yield* NewProject.createNewProjectFolder({
+            root: newProjectsRoot,
+            name: input.name,
+          }).pipe(
+            Effect.mapError(
+              (cause) =>
+                new OrchestrationDispatchCommandError({
+                  message: "Failed to create the project folder.",
+                  cause,
+                }),
+            ),
+          );
+          const projectId = ProjectId.make(yield* randomUUID);
+          yield* Effect.gen(function* () {
+            const command = yield* normalizeDispatchCommand({
+              type: "project.create",
+              commandId: yield* serverCommandId("project-create-new"),
+              projectId,
+              title: input.name,
+              workspaceRoot: folder.workspaceRoot,
+              createdAt: yield* nowIso,
+            });
+            yield* clientCommands.dispatch(command);
+          }).pipe(
+            // Only a rejected command means no project uses the folder. An
+            // interrupt can land after the command is queued, so keep it then.
+            Effect.tapError(() =>
+              fileSystem.remove(folder.workspaceRoot, { recursive: true }).pipe(Effect.ignore),
+            ),
+          );
+          return {
+            projectId,
+            workspaceRoot: folder.workspaceRoot,
+            ...(folder.commitError === undefined ? {} : { commitError: folder.commitError }),
+          };
+        });
+
       // Only clients that answer /usage-limits themselves see it in the catalogs;
       // an older client would send the injected command to the provider.
       const loadServerConfig = (options: { readonly usageLimitsCommand: boolean }) =>
@@ -950,6 +1072,7 @@ const makeWsRpcLayer = (
           );
           const environment = yield* serverEnvironment.getDescriptor;
           const auth = yield* serverAuth.getDescriptor();
+          const scratchWorkspaceRoot = yield* resolveScratchWorkspaceRoot;
           const availableEditors: ReadonlyArray<EditorId> = yield* resolveAvailableEditorsForConfig(
             externalLauncher.resolveAvailableEditors(),
           );
@@ -998,6 +1121,8 @@ const makeWsRpcLayer = (
             threadResumeCompletionMarker: true,
             threadSnapshotPagination: true,
             reasoningMessages: true,
+            ...(scratchWorkspaceRoot === undefined ? {} : { scratchWorkspaceRoot }),
+            newProjectsRoot,
           };
         });
 
@@ -1478,6 +1603,7 @@ const makeWsRpcLayer = (
                 ? providerRegistry.refreshWorkspaceSnapshot({
                     instanceId: input.instanceId,
                     cwd: input.cwd,
+                    fresh: input.fresh === true,
                   })
                 : input.instanceId !== undefined
                   ? providerRegistry.refreshInstance(input.instanceId)
@@ -2151,6 +2277,14 @@ const makeWsRpcLayer = (
             }),
             { "rpc.aggregate": "source-control" },
           ),
+        [WS_METHODS.projectsEnsureScratch]: () =>
+          observeRpcEffect(WS_METHODS.projectsEnsureScratch, ensureScratchProject, {
+            "rpc.aggregate": "orchestration",
+          }),
+        [WS_METHODS.projectsCreateNew]: (input) =>
+          observeRpcEffect(WS_METHODS.projectsCreateNew, createNewProject(input), {
+            "rpc.aggregate": "orchestration",
+          }),
         [WS_METHODS.projectCloneCancel]: (input) =>
           observeRpcEffect(
             WS_METHODS.projectCloneCancel,

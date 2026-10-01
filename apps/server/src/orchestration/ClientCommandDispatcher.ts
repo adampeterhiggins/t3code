@@ -16,6 +16,7 @@
  */
 import { assistantCitationsToPlainText } from "@t3tools/shared/assistantCitations";
 import { isTemporaryWorktreeBranch } from "@t3tools/shared/git";
+import { normalizeProjectPathForComparison } from "@t3tools/shared/path";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import {
   CommandId,
@@ -82,6 +83,11 @@ export interface ClientCommandDispatcherShape {
    * request caused them.
    */
   readonly forOrigin: (origin: OrchestrationClientOrigin | undefined) => ClientCommandDispatch;
+  /**
+   * Folder that holds threads without a project, or undefined when the data
+   * dir sits inside a Git work tree and Scratch is unavailable.
+   */
+  readonly scratchWorkspaceRoot: Effect.Effect<string | undefined>;
 }
 
 export class ClientCommandDispatcher extends Context.Service<
@@ -196,6 +202,142 @@ const make = Effect.gen(function* () {
   const serverEventId = randomUUID.pipe(Effect.map(EventId.make));
   const serverCommandId = (tag: string) =>
     randomUUID.pipe(Effect.map((uuid) => CommandId.make(`server:${tag}:${uuid}`)));
+
+  const config = yield* ServerConfig.ServerConfig;
+  const path = yield* Path.Path;
+  const fileSystem = yield* FileSystem.FileSystem;
+  // Scratch threads run in a plain folder under the data dir. Inside a
+  // checkout (a dev worktree's .t3, a dotfiles home) that folder would
+  // inherit the repo's git status and checkpoints, so it is only offered
+  // when the data dir is outside any work tree. Detection failures and
+  // defects fail closed and hide the folder, never the config.
+  // An interrupt stays an interrupt, so a probe cancelled midway
+  // invalidates the cache and the next caller probes again.
+  const [cachedScratchWorkspaceRoot, invalidateScratchWorkspaceRoot] =
+    yield* Effect.cachedInvalidateWithTTL(
+      gitWorkflow.isRepository(config.baseDir).pipe(
+        Effect.map((isRepository) =>
+          isRepository ? undefined : path.resolve(config.baseDir, "scratch"),
+        ),
+        Effect.catchCause((cause) =>
+          Cause.hasInterrupts(cause) ? Effect.interrupt : Effect.succeed(undefined),
+        ),
+      ),
+      Duration.infinity,
+    );
+  const resolveScratchWorkspaceRoot = cachedScratchWorkspaceRoot.pipe(
+    Effect.onInterrupt(() => invalidateScratchWorkspaceRoot),
+  );
+
+  // Each Scratch thread gets its own folder under the Scratch root, named
+  // from its date, first words, and id. It rides in worktreePath like any
+  // thread that runs outside its project root, so the provider, terminal,
+  // and file tree all use it. Threads that already name a folder keep it.
+  const scratchThreadFolder = (input: {
+    readonly threadId: ThreadId;
+    readonly projectId: ProjectId;
+    readonly worktreePath: string | null;
+    readonly createdAt: string;
+    readonly text: string;
+  }): Effect.Effect<string | null, OrchestrationDispatchCommandError> =>
+    Effect.gen(function* () {
+      if (input.worktreePath !== null) return null;
+      const scratchRoot = yield* resolveScratchWorkspaceRoot;
+      if (scratchRoot === undefined) return null;
+      const project = yield* projectionSnapshotQuery.getProjectShellById(input.projectId).pipe(
+        Effect.mapError(
+          (cause) =>
+            new OrchestrationDispatchCommandError({
+              message: "Failed to look up the thread's project.",
+              cause,
+            }),
+        ),
+      );
+      if (
+        Option.isNone(project) ||
+        normalizeProjectPathForComparison(project.value.workspaceRoot) !==
+          normalizeProjectPathForComparison(scratchRoot)
+      ) {
+        return null;
+      }
+      // Only [a-z0-9] reaches the name, so it stays one path segment inside
+      // the scratch root, and the words are capped so pasted data cannot
+      // outgrow a file name. Each leaf is created without `recursive`, so
+      // the create itself claims it: a taken short name falls back to the
+      // full id, which only the same thread can already hold.
+      const words = input.text
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter(Boolean)
+        .slice(0, 5)
+        .join("-")
+        .slice(0, 48)
+        .replace(/-+$/, "");
+      const id = input.threadId.toLowerCase().replace(/[^a-z0-9]/g, "");
+      const folderFor = (idPart: string) =>
+        path.join(
+          scratchRoot,
+          [input.createdAt.slice(0, 10), words, idPart].filter(Boolean).join("-"),
+        );
+      yield* fileSystem.makeDirectory(scratchRoot, { recursive: true }).pipe(
+        Effect.mapError(
+          (cause) =>
+            new OrchestrationDispatchCommandError({
+              message: "Failed to create the folder for threads without a project.",
+              cause,
+            }),
+        ),
+      );
+      const claim = (folder: string) =>
+        fileSystem.makeDirectory(folder).pipe(
+          Effect.as(true),
+          Effect.catchIf(
+            (error) => error.reason._tag === "AlreadyExists",
+            () => Effect.succeed(false),
+          ),
+          Effect.mapError(
+            (cause) =>
+              new OrchestrationDispatchCommandError({
+                message: "Failed to create the thread's folder.",
+                cause,
+              }),
+          ),
+        );
+      const shortFolder = folderFor(id.slice(0, 8));
+      if (yield* claim(shortFolder)) return shortFolder;
+      const fullFolder = folderFor(id);
+      yield* claim(fullFolder);
+      return fullFolder;
+    });
+  const withScratchThreadFolder = (
+    command: OrchestrationCommand,
+  ): Effect.Effect<OrchestrationCommand, OrchestrationDispatchCommandError> => {
+    if (command.type === "thread.create") {
+      return scratchThreadFolder({ ...command, text: command.title }).pipe(
+        Effect.map((worktreePath) =>
+          worktreePath === null ? command : { ...command, worktreePath },
+        ),
+      );
+    }
+    if (command.type !== "thread.turn.start") return Effect.succeed(command);
+    const bootstrap = command.bootstrap;
+    const createThread = bootstrap?.createThread;
+    if (bootstrap === undefined || createThread === undefined) return Effect.succeed(command);
+    return scratchThreadFolder({
+      ...createThread,
+      threadId: command.threadId,
+      text: command.message.text,
+    }).pipe(
+      Effect.map((worktreePath) =>
+        worktreePath === null
+          ? command
+          : {
+              ...command,
+              bootstrap: { ...bootstrap, createThread: { ...createThread, worktreePath } },
+            },
+      ),
+    );
+  };
 
   const refreshGitStatus = (cwd: string) =>
     vcsStatusBroadcaster
@@ -1352,7 +1494,7 @@ const make = Effect.gen(function* () {
         ),
       );
 
-    const dispatchNormalizedCommand = (
+    const dispatchPreparedCommand = (
       normalizedCommand: OrchestrationCommand,
     ): Effect.Effect<{ readonly sequence: number }, OrchestrationDispatchCommandError> => {
       const dispatchEffect =
@@ -1383,6 +1525,11 @@ const make = Effect.gen(function* () {
           ),
         );
     };
+
+    const dispatchNormalizedCommand = (
+      command: OrchestrationCommand,
+    ): Effect.Effect<{ readonly sequence: number }, OrchestrationDispatchCommandError> =>
+      withScratchThreadFolder(command).pipe(Effect.flatMap(dispatchPreparedCommand));
 
     const dispatch: ClientCommandDispatch["dispatch"] = (normalizedCommand) =>
       Effect.gen(function* () {
@@ -1460,7 +1607,10 @@ const make = Effect.gen(function* () {
     return { dispatch };
   };
 
-  return ClientCommandDispatcher.of({ forOrigin });
+  return ClientCommandDispatcher.of({
+    forOrigin,
+    scratchWorkspaceRoot: resolveScratchWorkspaceRoot,
+  });
 });
 
 export const layer = Layer.effect(ClientCommandDispatcher, make);
