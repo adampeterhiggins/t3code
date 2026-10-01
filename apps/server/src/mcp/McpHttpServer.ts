@@ -18,6 +18,7 @@ import { PreviewAutomationError } from "@t3tools/contracts";
 import packageJson from "../../package.json" with { type: "json" };
 import * as ServerConfig from "../config.ts";
 import * as DeviceService from "../device/DeviceService.ts";
+import * as McpActor from "./McpActor.ts";
 import * as McpInvocationContext from "./McpInvocationContext.ts";
 import * as McpSessionRegistry from "./McpSessionRegistry.ts";
 import * as PreviewAutomationBroker from "./PreviewAutomationBroker.ts";
@@ -30,6 +31,8 @@ import {
   PreviewSnapshotToolkit,
   PreviewStandardToolkit,
 } from "./toolkits/preview/tools.ts";
+import { OperateToolkitHandlersLive } from "./toolkits/operate/handlers.ts";
+import { OperateToolkit } from "./toolkits/operate/tools.ts";
 import { PullRequestsToolkitHandlersLive } from "./toolkits/pullRequests/handlers.ts";
 import { PullRequestsToolkit } from "./toolkits/pullRequests/tools.ts";
 import {
@@ -59,7 +62,7 @@ const unauthorized = HttpServerResponse.jsonUnsafe(
 type AuthenticatedHttpEffect = Effect.Effect<
   HttpServerResponse.HttpServerResponse,
   Types.unhandled,
-  McpInvocationContext.McpInvocationContext
+  McpInvocationContext.McpInvocationContext | McpActor.McpActor
 >;
 
 type McpAuthMiddleware = (
@@ -103,6 +106,7 @@ const makeMcpAuthMiddleware = McpSessionRegistry.McpSessionRegistry.pipe(
       }
       return yield* httpEffect.pipe(
         Effect.provideService(McpInvocationContext.McpInvocationContext, invocation),
+        Effect.provideService(McpActor.McpActor, McpActor.fromInvocation(invocation)),
         Effect.map(normalizeMcpHttpResponse),
       );
     }),
@@ -111,7 +115,7 @@ const makeMcpAuthMiddleware = McpSessionRegistry.McpSessionRegistry.pipe(
 );
 
 const McpAuthMiddlewareLive = HttpRouter.middleware<{
-  provides: McpInvocationContext.McpInvocationContext;
+  provides: McpInvocationContext.McpInvocationContext | McpActor.McpActor;
 }>()(makeMcpAuthMiddleware).layer;
 
 /**
@@ -647,6 +651,11 @@ export const PullRequestsToolkitRegistrationLive = McpServer.toolkit(PullRequest
   Layer.provide(PullRequestsToolkitHandlersLive),
 );
 
+/** Listed only to credentials that may drive threads; see McpActor.operateToolsVisible. */
+export const OperateToolkitRegistrationLive = McpServer.toolkit(OperateToolkit).pipe(
+  Layer.provide(OperateToolkitHandlersLive),
+);
+
 const DeviceStandardToolkitRegistrationLive = McpServer.toolkit(DeviceStandardToolkit).pipe(
   Layer.provide(DeviceStandardToolkitHandlersLive),
 );
@@ -671,4 +680,5 @@ export const layer = Layer.mergeAll(
   PreviewToolkitRegistrationLive,
   PullRequestsToolkitRegistrationLive,
   DeviceToolkitRegistrationLive,
+  OperateToolkitRegistrationLive,
 ).pipe(Layer.provideMerge(McpTransportLive));
