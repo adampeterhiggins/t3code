@@ -598,7 +598,10 @@ the persisted-message restatement in `apps/server/src/orchestration/decider.ts`,
 
 Pasting a Linear issue, GitHub issue, pull request, or GitHub repository root link into the web or
 desktop composer, or typing one followed by whitespace, turns it into the chip its attach picker
-makes. The text goes in as usual, then each link becomes a chip once its object loads. A link that
+makes. A pull request link to one comment (`#issuecomment-…`, `#discussion_r…`, `#r…`) becomes a
+chip for that comment instead, anchored to its line with the earlier replies when it is in a review
+thread; a comment the read did not return falls back to the pull request chip. The text goes in as
+usual, then each link becomes a chip once its object loads. A link that
 cannot be read, or that was edited away meanwhile, stays as text. Paste-as-text (`Cmd+Shift+V`)
 skips it, and typing never retries a link the draft already converted or tried, so undo and a
 deleted chip stick. Mobile does not convert links.

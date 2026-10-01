@@ -20,6 +20,7 @@ import {
   buildAddSelectionToAgentHandoff,
   buildAskAboutPullRequestHandoff,
   buildExplainPullRequestHandoff,
+  buildPullRequestCommentReferenceContext,
   buildPullRequestReferenceContext,
   buildFixFindingHandoff,
   buildFixFindingsHandoff,
@@ -1798,4 +1799,97 @@ describe("single-PR merge compatibility during stack discovery", () => {
       ).toBe(allowed);
     },
   );
+});
+
+describe("pasting a link to one pull request comment", () => {
+  const pullRequest = {
+    number: 42,
+    title: "Add the pull requests page",
+    url: "https://github.com/pingdotgg/t3code/pull/42",
+    headBranch: "feat/page",
+    baseBranch: "main",
+    state: "open" as const,
+    isDraft: false,
+  };
+  const author = (login: string) => ({ login, name: null, avatarUrl: null });
+  const issueComment: PullRequestComment = {
+    id: "IC_1",
+    kind: "issue-comment",
+    author: author("julius"),
+    body: "can we split this up?",
+    createdAt: "2026-07-01T00:00:00Z",
+    url: `${pullRequest.url}#issuecomment-100`,
+    path: null,
+    reviewState: null,
+  };
+  const thread: PullRequestReviewThread = {
+    id: "t1",
+    path: "apps/web/src/page.tsx",
+    line: 12,
+    side: "right",
+    isResolved: false,
+    isOutdated: false,
+    comments: [
+      {
+        id: "RC_1",
+        author: author("reviewer"),
+        body: "rename the helper",
+        createdAt: "2026-07-02T00:00:00Z",
+        url: `${pullRequest.url}#discussion_r200`,
+      },
+      {
+        id: "RC_2",
+        author: author("theo"),
+        body: "agreed, call it loadPage",
+        createdAt: "2026-07-03T00:00:00Z",
+        url: `${pullRequest.url}#discussion_r201`,
+      },
+      {
+        id: "RC_3",
+        author: author("reviewer"),
+        body: "done in the next commit",
+        createdAt: "2026-07-04T00:00:00Z",
+        url: `${pullRequest.url}#discussion_r202`,
+      },
+    ],
+  };
+  const activity = { comments: [issueComment], reviewThreads: [thread] };
+
+  it("attaches the linked conversation comment rather than the whole pull request", () => {
+    const context = buildPullRequestCommentReferenceContext(
+      pullRequest,
+      activity,
+      `${pullRequest.url}#issuecomment-100`,
+    );
+    expect(context).toMatchObject({ filePath: "PR #42", rangeLabel: "comment by julius" });
+    expect(context?.pullRequest).toBeUndefined();
+    expect(context?.text).toContain("julius: can we split this up?");
+    expect(reviewCommentContextReference(context!).label).toBe("PR #42 comment by julius");
+  });
+
+  it("attaches a review comment on its line, with the replies that led up to it", () => {
+    // GitHub's Files tab names the remark `#r201`; its own link says `#discussion_r201`.
+    const context = buildPullRequestCommentReferenceContext(
+      pullRequest,
+      activity,
+      `${pullRequest.url}/files#r201`,
+    );
+    expect(context).toMatchObject({ filePath: "apps/web/src/page.tsx", rangeLabel: "L12" });
+    expect(context?.text).toContain("reviewer: rename the helper");
+    expect(context?.text).toContain("theo: agreed, call it loadPage");
+    expect(context?.text).not.toContain("done in the next commit");
+  });
+
+  it("leaves a link to the page, or to a comment this read missed, to the pull request chip", () => {
+    expect(buildPullRequestCommentReferenceContext(pullRequest, activity, pullRequest.url)).toBe(
+      null,
+    );
+    expect(
+      buildPullRequestCommentReferenceContext(
+        pullRequest,
+        activity,
+        `${pullRequest.url}#issuecomment-999`,
+      ),
+    ).toBe(null);
+  });
 });

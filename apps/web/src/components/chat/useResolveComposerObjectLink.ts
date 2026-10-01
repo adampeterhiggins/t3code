@@ -19,7 +19,10 @@ import { pullRequestEnvironment } from "~/state/pullRequests";
 import { serverEnvironment } from "~/state/server";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { useAtomQueryRunner } from "~/state/use-atom-query-runner";
-import { buildPullRequestReferenceContext } from "../pullRequest/pullRequestDetail.logic";
+import {
+  buildPullRequestCommentReferenceContext,
+  buildPullRequestReferenceContext,
+} from "../pullRequest/pullRequestDetail.logic";
 
 export interface ResolvedComposerObjectLink {
   readonly reference: ComposerContextReference;
@@ -41,6 +44,9 @@ export function useResolveComposerObjectLink(input: {
   const getLinearIssue = useAtomCommand(linearEnvironment.getIssue, { reportFailure: false });
   const getGitHubIssue = useAtomCommand(githubIssueEnvironment.getIssue, { reportFailure: false });
   const getPullRequest = useAtomQueryRunner(pullRequestEnvironment.detail, {
+    reportFailure: false,
+  });
+  const getPullRequestActivity = useAtomQueryRunner(pullRequestEnvironment.activity, {
     reportFailure: false,
   });
   const projects = useProjects();
@@ -76,9 +82,16 @@ export function useResolveComposerObjectLink(input: {
             url: link.url,
           });
           if (target === null) return null;
-          const result = await getPullRequest(target);
+          // A link to one remark (`#issuecomment-1`) attaches that remark, not the whole change.
+          const [result, activity] = await Promise.all([
+            getPullRequest(target),
+            new URL(link.url).hash.length > 1 ? getPullRequestActivity(target) : null,
+          ]);
           if (result._tag === "Failure") return null;
-          const comment = buildPullRequestReferenceContext(result.value);
+          const comment =
+            (activity?._tag === "Success"
+              ? buildPullRequestCommentReferenceContext(result.value, activity.value, link.url)
+              : null) ?? buildPullRequestReferenceContext(result.value);
           return {
             reference: reviewCommentContextReference(comment),
             commit: () =>
@@ -102,6 +115,7 @@ export function useResolveComposerObjectLink(input: {
       getGitHubIssue,
       getLinearIssue,
       getPullRequest,
+      getPullRequestActivity,
       projects,
       pullRequestsEnabled,
       threadRef.threadId,
