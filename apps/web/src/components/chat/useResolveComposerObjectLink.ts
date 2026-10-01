@@ -22,6 +22,7 @@ import { useAtomQueryRunner } from "~/state/use-atom-query-runner";
 import {
   buildPullRequestCommentReferenceContext,
   buildPullRequestReferenceContext,
+  findPullRequestComment,
 } from "../pullRequest/pullRequestDetail.logic";
 
 export interface ResolvedComposerObjectLink {
@@ -88,10 +89,12 @@ export function useResolveComposerObjectLink(input: {
             new URL(link.url).hash.length > 1 ? getPullRequestActivity(target) : null,
           ]);
           if (result._tag === "Failure") return null;
+          const linked =
+            activity?._tag === "Success" ? findPullRequestComment(activity.value, link.url) : null;
           const comment =
-            (activity?._tag === "Success"
-              ? buildPullRequestCommentReferenceContext(result.value, activity.value, link.url)
-              : null) ?? buildPullRequestReferenceContext(result.value);
+            linked === null
+              ? buildPullRequestReferenceContext(result.value)
+              : buildPullRequestCommentReferenceContext(result.value, linked);
           return {
             reference: reviewCommentContextReference(comment),
             commit: () =>

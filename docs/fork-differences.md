@@ -406,7 +406,9 @@ switcher (`apps/mobile/src/features/threads/ThreadLinearLink.tsx`).
 The attach menu's pull request option, also in the web command palette, opens a searchable picker
 ([`PullRequestAttachPicker.tsx`](../apps/web/src/components/chat/PullRequestAttachPicker.tsx)) and
 inserts the same context chip as picking the pull request from the `#` menu. It is not a thread
-link.
+link. Right-clicking a row offers **Attach a comment…**, which lists that pull request's comments
+(Backspace on an empty search goes back) and attaches the picked one as the same chip a pasted
+comment link makes.
 
 Code: `apps/server/src/linear/`, `packages/contracts/src/linear.ts`, `LinearIssueContextRecord` in
 `packages/contracts/src/composerContext.ts`, `packages/client-runtime/src/state/linear.ts`,
