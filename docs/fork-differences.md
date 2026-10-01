@@ -620,20 +620,22 @@ Code: `packages/client-runtime/src/work-log/commandDisplay.ts`,
 
 ## Agent access over MCP
 
-A second MCP server at `/mcp/query` gives agents outside T3 Code read-only access to the
+Two more MCP servers serve agents outside T3 Code. `/mcp/query` gives read-only access to the
 environment's history: projects, threads, turns, messages, activities, plans, turn diffs, linked
 pull requests, and usage. Its tools page with cursors, take `since`/`until` bounds, and cap text.
-It authenticates with an environment bearer token that has `orchestration:read`, never a cookie,
-and lists only its own tools.
+`/mcp/operate` adds the thread tools (`create_thread`, `send_message`, `wait_for_thread`,
+`interrupt_turn`, `list_models`) and acts as the user, so threads it starts record the token's label.
+Both authenticate with an environment bearer token, never a cookie: `/mcp/query` needs
+`orchestration:read`, `/mcp/operate` also `orchestration:operate`.
 
-Tokens come from **Settings → Connections → Agent access** (`POST /api/auth/agent-access-tokens`)
-or `t3 auth session issue --read-only`. Each token is a normal client session, so revoking it works
-like revoking any client. Web and desktop only.
+Tokens come from **Settings → Connections → Agent access** (`POST /api/auth/agent-access-tokens`,
+`access: "read" | "operate"`) or `t3 auth session issue --read-only` / `--operate`. Each token is a
+normal client session, so revoking it works like revoking any client. Web and desktop only.
 
 Code: `apps/server/src/mcp/query/`, the `agentAccessToken` handler in
-`apps/server/src/auth/http.ts`, `AuthReadOnlyClientScopes` in `packages/contracts/src/auth.ts`, and
-`apps/web/src/components/settings/AgentAccessSettings.tsx`. User guide:
-[agent-access.md](./user/agent-access.md).
+`apps/server/src/auth/http.ts`, `AuthReadOnlyClientScopes` and `AuthAgentOperateScopes` in
+`packages/contracts/src/auth.ts`, and `apps/web/src/components/settings/AgentAccessSettings.tsx`.
+User guide: [agent-access.md](./user/agent-access.md).
 
 ## Agents start and drive threads
 

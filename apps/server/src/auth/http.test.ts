@@ -135,7 +135,7 @@ it.effect("sets the selected browser session cookies through the HTTP route", ()
   }).pipe(Effect.provide(NodeServices.layer)),
 );
 
-it.effect("issues read-only agent access tokens only to access managers", () =>
+it.effect("issues read and operate agent access tokens only to access managers", () =>
   Effect.gen(function* () {
     const crypto = yield* Crypto.Crypto;
     const unusedSecretStore = ServerSecretStore.ServerSecretStore.of({
@@ -201,6 +201,22 @@ it.effect("issues read-only agent access tokens only to access managers", () =>
             requestContext,
           );
           expect(escalation.status).toBe(403);
+
+          const operate = await environment.handler(
+            postJson(
+              "/api/auth/agent-access-tokens",
+              { label: "Nightly triage", expiresInDays: 30, access: "operate" },
+              { cookie: adminCookie },
+            ),
+            requestContext,
+          );
+          expect(operate.status).toBe(200);
+          const operateIssued = (await operate.json()) as {
+            scopes: ReadonlyArray<string>;
+            mcpUrl: string;
+          };
+          expect(operateIssued.scopes).toEqual(["orchestration:read", "orchestration:operate"]);
+          expect(operateIssued.mcpUrl).toMatch(/\/mcp\/operate$/);
         }),
       (environment) => Effect.promise(() => environment.dispose()),
     );

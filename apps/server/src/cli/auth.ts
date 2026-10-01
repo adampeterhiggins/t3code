@@ -1,5 +1,6 @@
 import {
   AuthAdministrativeScopes,
+  AuthAgentOperateScopes,
   AuthReadOnlyClientScopes,
   AuthSessionId,
   AuthStandardClientScopes,
@@ -89,6 +90,13 @@ const readOnlyFlag = Flag.Boolean("read-only").pipe(
   Flag.withDefault(false),
 );
 
+const operateFlag = Flag.Boolean("operate").pipe(
+  Flag.withDescription(
+    "Grant `orchestration:read` and `orchestration:operate`, for agents that start and drive threads over `/mcp/operate`.",
+  ),
+  Flag.withDefault(false),
+);
+
 const pairingCreateCommand = Command.make("create", {
   ...authLocationFlags,
   ttl: ttlFlag,
@@ -173,6 +181,7 @@ const sessionIssueCommand = Command.make("issue", {
   label: labelFlag,
   subject: subjectFlag,
   readOnly: readOnlyFlag,
+  operate: operateFlag,
   tokenOnly: tokenOnlyFlag,
   json: jsonFlag,
 }).pipe(
@@ -183,7 +192,11 @@ const sessionIssueCommand = Command.make("issue", {
       (environmentAuth) =>
         Effect.gen(function* () {
           const issued = yield* environmentAuth.issueSession({
-            scopes: flags.readOnly ? AuthReadOnlyClientScopes : AuthAdministrativeScopes,
+            scopes: flags.readOnly
+              ? AuthReadOnlyClientScopes
+              : flags.operate
+                ? AuthAgentOperateScopes
+                : AuthAdministrativeScopes,
             ...(Option.isSome(flags.ttl) ? { ttl: flags.ttl.value } : {}),
             ...(Option.isSome(flags.label) ? { label: flags.label.value } : {}),
             ...(Option.isSome(flags.subject) ? { subject: flags.subject.value } : {}),

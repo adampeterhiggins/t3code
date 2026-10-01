@@ -1,4 +1,9 @@
-import { AuthOrchestrationReadScope, type AuthAgentAccessTokenResult } from "@t3tools/contracts";
+import {
+  type AgentAccessLevel,
+  AuthOrchestrationOperateScope,
+  AuthOrchestrationReadScope,
+  type AuthAgentAccessTokenResult,
+} from "@t3tools/contracts";
 import { PlusIcon } from "lucide-react";
 import { useState } from "react";
 
@@ -32,17 +37,47 @@ const EXPIRY_OPTIONS = [
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
 
-/** Agent tokens are read-only bot sessions, whether made here or with `t3 auth session issue --read-only`. */
-function isAgentAccessToken(session: ServerClientSessionRecord): boolean {
-  return (
-    session.client.deviceType === "bot" &&
-    session.scopes.length === 1 &&
-    session.scopes[0] === AuthOrchestrationReadScope
-  );
+const ACCESS_OPTIONS: ReadonlyArray<{
+  readonly access: AgentAccessLevel;
+  readonly label: string;
+  readonly description: string;
+}> = [
+  {
+    access: "read",
+    label: "Read history",
+    description: "Can read your history. Cannot change anything.",
+  },
+  {
+    access: "operate",
+    label: "Read and drive threads",
+    description: "Can also start threads, message them, and wait for their results.",
+  },
+];
+
+/**
+ * Agent tokens are bot sessions that can read history and, for operate tokens, drive
+ * threads, whether made here or with `t3 auth session issue --read-only` or `--operate`.
+ */
+function agentAccessLevel(session: ServerClientSessionRecord): AgentAccessLevel | null {
+  if (session.client.deviceType !== "bot") return null;
+  const scopes = new Set(session.scopes);
+  if (scopes.size === 1 && scopes.has(AuthOrchestrationReadScope)) return "read";
+  if (
+    scopes.size === 2 &&
+    scopes.has(AuthOrchestrationReadScope) &&
+    scopes.has(AuthOrchestrationOperateScope)
+  ) {
+    return "operate";
+  }
+  return null;
 }
 
-function claudeMcpAddCommand(created: Pick<AuthAgentAccessTokenResult, "mcpUrl" | "token">) {
-  return `claude mcp add --transport http t3-code-history ${created.mcpUrl} --header "Authorization: Bearer ${created.token}"`;
+function claudeMcpAddCommand(
+  created: Pick<AuthAgentAccessTokenResult, "mcpUrl" | "token">,
+  access: AgentAccessLevel,
+) {
+  const name = access === "operate" ? "t3-code-control" : "t3-code-history";
+  return `claude mcp add --transport http ${name} ${created.mcpUrl} --header "Authorization: Bearer ${created.token}"`;
 }
 
 async function copy(value: string, what: string) {
@@ -63,8 +98,9 @@ async function copy(value: string, what: string) {
 
 /**
  * Settings → Connections → Agent access. Tokens let agents outside T3 Code,
- * such as a scheduled Claude Code run, read history through `/mcp/query`.
- * They appear in the authorized clients list too; revoking works from either.
+ * such as a scheduled Claude Code run, read history through `/mcp/query`, or
+ * also drive threads through `/mcp/operate`. They appear in the authorized
+ * clients list too; revoking works from either.
  */
 export function AgentAccessSection({
   clientSessions,
@@ -75,21 +111,24 @@ export function AgentAccessSection({
   readonly revokingSessionId: string | null;
   readonly onRevoke: (sessionId: ServerClientSessionRecord["sessionId"]) => void;
 }) {
-  const tokens = clientSessions.filter(isAgentAccessToken);
+  const tokens = clientSessions.flatMap((session) => {
+    const access = agentAccessLevel(session);
+    return access === null ? [] : [{ session, access }];
+  });
   return (
     <SettingsSection
       {...searchableSetting("agent-access")}
       headerAction={<CreateAgentTokenDialog />}
     >
       <SettingsRow
-        title="Query MCP server"
-        description="Agents with a token can read your projects, threads, turns, plans, diffs and pull requests. They cannot change anything."
+        title="Agent MCP servers"
+        description="Agents with a token can read your projects, threads, turns, plans, diffs and pull requests. A token that can drive threads can also start and message threads as you would."
       />
-      {tokens.map((token) => (
+      {tokens.map(({ session: token, access }) => (
         <SettingsRow
           key={token.sessionId}
           title={token.client.label ?? "Agent token"}
-          description={`Created ${dateFormatter.format(new Date(token.issuedAt))} · Expires ${dateFormatter.format(new Date(token.expiresAt))}`}
+          description={`${access === "operate" ? "Reads and drives threads" : "Reads history"} · Created ${dateFormatter.format(new Date(token.issuedAt))} · Expires ${dateFormatter.format(new Date(token.expiresAt))}`}
           control={
             <Button
               size="xs"
@@ -110,19 +149,21 @@ function CreateAgentTokenDialog() {
   const [open, setOpen] = useState(false);
   const [label, setLabel] = useState("");
   const [expiresInDays, setExpiresInDays] = useState<number>(365);
+  const [access, setAccess] = useState<AgentAccessLevel>("read");
   const [creating, setCreating] = useState(false);
   const [created, setCreated] = useState<AuthAgentAccessTokenResult | null>(null);
 
   const reset = () => {
     setLabel("");
     setExpiresInDays(365);
+    setAccess("read");
     setCreated(null);
   };
 
   const create = async () => {
     setCreating(true);
     try {
-      setCreated(await createServerAgentAccessToken({ label, expiresInDays }));
+      setCreated(await createServerAgentAccessToken({ label, expiresInDays, access }));
     } catch (error) {
       toastManager.add({
         type: "error",
@@ -134,6 +175,8 @@ function CreateAgentTokenDialog() {
     }
   };
 
+  const accessOption =
+    ACCESS_OPTIONS.find((option) => option.access === access) ?? ACCESS_OPTIONS[0]!;
   const expiryLabel =
     EXPIRY_OPTIONS.find((option) => option.days === expiresInDays)?.label ??
     `${expiresInDays} days`;
@@ -160,8 +203,8 @@ function CreateAgentTokenDialog() {
             <DialogHeader>
               <DialogTitle>Create agent token</DialogTitle>
               <DialogDescription>
-                A read-only token for an agent outside T3 Code, such as a scheduled Claude Code run,
-                to query your history over MCP.
+                A token for an agent outside T3 Code, such as a scheduled Claude Code run, to reach
+                this server over MCP.
               </DialogDescription>
             </DialogHeader>
             <DialogPanel>
@@ -174,6 +217,27 @@ function CreateAgentTokenDialog() {
                   disabled={creating}
                   autoFocus
                 />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-medium text-foreground">Access</span>
+                <Select
+                  value={access}
+                  onValueChange={(value) => setAccess(value as AgentAccessLevel)}
+                >
+                  <SelectTrigger aria-label="Access">
+                    <SelectValue>{accessOption.label}</SelectValue>
+                  </SelectTrigger>
+                  <SelectPopup alignItemWithTrigger={false}>
+                    {ACCESS_OPTIONS.map((option) => (
+                      <SelectItem hideIndicator key={option.access} value={option.access}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectPopup>
+                </Select>
+                <span className="mt-1.5 block text-xs text-muted-foreground">
+                  {accessOption.description}
+                </span>
               </label>
               <label className="block">
                 <span className="mb-1.5 block text-xs font-medium text-foreground">
@@ -213,15 +277,15 @@ function CreateAgentTokenDialog() {
             <DialogHeader>
               <DialogTitle>Copy your token now</DialogTitle>
               <DialogDescription>
-                It won't be shown again. Treat it like a password: anyone with it can read your
-                threads.
+                It won't be shown again. Treat it like a password: anyone with it can{" "}
+                {access === "operate" ? "read and drive" : "read"} your threads.
               </DialogDescription>
             </DialogHeader>
             <DialogPanel>
               <CopyableValue label="Token" value={created.token} what="token" />
               <CopyableValue
                 label="Add to Claude Code"
-                value={claudeMcpAddCommand(created)}
+                value={claudeMcpAddCommand(created, access)}
                 what="command"
               />
               <p className="text-xs text-muted-foreground">

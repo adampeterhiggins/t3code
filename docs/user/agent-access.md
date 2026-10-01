@@ -1,22 +1,26 @@
 # Agent access
 
-Let an agent outside T3 Code read what you've done in it. A scheduled Claude Code run, for
-example, can find the threads you worked in today, what you asked for, what the agents changed,
-and which pull requests came out of it. It can't change anything.
+Let an agent outside T3 Code read what you've done in it, or work in it alongside you. A scheduled
+Claude Code run, for example, can find the threads you worked in today, what you asked for, what
+the agents changed, and which pull requests came out of it. With a token that can drive threads,
+it can also start threads, message them, and wait for their results.
 
 ## Create a token
 
 1. Open **Settings → Connections** and find **Agent access**.
-2. Click **Create token**, give it a label, and choose when it expires.
+2. Click **Create token**, give it a label, and choose its access and when it expires. **Read
+   history** can't change anything. **Read and drive threads** can also start and message threads.
 3. Copy the token, or the ready-made `claude mcp add` command. T3 Code shows the token only once.
 
 From a terminal on the server, `t3 auth session issue --read-only --label "EOD brief" --ttl 365d`
-does the same.
+does the same. Use `--operate` instead of `--read-only` for a token that can drive threads.
 
 ## Connect an agent
 
-The server is at `/mcp/query` on the same address as the app, for example
-`http://127.0.0.1:3773/mcp/query` on a desktop install. Send the token as a bearer token:
+A read token connects to `/mcp/query` on the same address as the app, for example
+`http://127.0.0.1:3773/mcp/query` on a desktop install. A token that can drive threads connects to
+`/mcp/operate`, which has the same history tools and the thread tools. Send the token as a bearer
+token:
 
 ```bash
 claude mcp add --transport http t3-code-history http://127.0.0.1:3773/mcp/query \
@@ -42,6 +46,13 @@ contents are not available.
 Every list takes a time range. An agent that passes an end time sees nothing after it, which lets
 you replay a past day. Titles, archive state, and pull request state are always current.
 
+## Drive threads from outside
+
+An agent connected to `/mcp/operate` can start a thread in any project with `create_thread`, send a
+thread a message, wait for it to finish, and stop its turn. It acts as you would: the threads it
+starts appear in your sidebar marked with the token's name, in whichever permission mode it asks
+for.
+
 ## Let agents start threads
 
 An agent working in a thread can also start other threads, message them, and wait for their
@@ -60,4 +71,5 @@ Click **Revoke** next to the token under **Agent access**. The agent loses acces
 Tokens also appear under **Authorized clients** when network access is on, and
 `t3 auth session list` and `t3 auth session revoke` manage them from a terminal.
 
-Treat a token like a password. Anyone with it can read your threads.
+Treat a token like a password. Anyone with it can read your threads, and a token that can drive
+threads can start work on your machine.
