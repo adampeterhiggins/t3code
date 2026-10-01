@@ -125,6 +125,22 @@ const CommandLookupEnvConfig = Config.all({
 
 const readBrowserLaunchEnv = BrowserLaunchEnvConfig.pipe(Effect.orElseSucceed(() => ({})));
 const readCommandLookupEnv = CommandLookupEnvConfig.pipe(Effect.orElseSucceed(() => ({})));
+const readUserShell = Config.String("SHELL").pipe(Effect.orElseSucceed(() => "/bin/sh"));
+
+/**
+ * Runs `command` in the user's interactive login shell so rc-defined functions
+ * and aliases resolve. Arguments stay positional (`$@`, or `$argv` in fish) so
+ * paths are never re-parsed by the shell.
+ */
+function shellCustomEditorArgs(
+  shell: string,
+  command: string,
+  label: string,
+  args: ReadonlyArray<string>,
+): ReadonlyArray<string> {
+  const isFish = /(^|\/)fish$/.test(shell);
+  return ["-ilc", `${command} ${isFish ? "$argv" : '"$@"'}`, ...(isFish ? [] : [label]), ...args];
+}
 
 function parseTargetPathAndPosition(target: string): Option.Option<TargetPathAndPosition> {
   const match = TARGET_WITH_POSITION_PATTERN.exec(target);
@@ -531,18 +547,23 @@ const resolveEditorLaunch = Effect.fn("resolveEditorLaunch")(function* (
   if (input.editor.startsWith("custom:")) {
     const editor = customEditors.find((candidate) => candidate.id === input.editor);
     if (!editor) return yield* new ExternalLauncherUnknownEditorError({ editor: input.editor });
-    return {
-      editor: editor.id,
-      target: input.cwd,
-      command: editor.command,
-      args: [
-        ...editor.args,
-        Option.match(parseTargetPathAndPosition(input.cwd), {
-          onNone: () => input.cwd,
-          onSome: (target) => target.path,
-        }),
-      ],
-    };
+    const args = [
+      ...editor.args,
+      Option.match(parseTargetPathAndPosition(input.cwd), {
+        onNone: () => input.cwd,
+        onSome: (target) => target.path,
+      }),
+    ];
+    if (editor.runInShell === true && platform !== "win32") {
+      const shell = yield* readUserShell;
+      return {
+        editor: editor.id,
+        target: input.cwd,
+        command: shell,
+        args: shellCustomEditorArgs(shell, editor.command, editor.label, args),
+      };
+    }
+    return { editor: editor.id, target: input.cwd, command: editor.command, args };
   }
   const editorDef = EDITORS.find((editor) => editor.id === input.editor);
   if (!editorDef) {

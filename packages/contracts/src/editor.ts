@@ -86,12 +86,18 @@ export const CustomEditorId = Schema.TemplateLiteral(["custom:", Schema.String])
 export const EditorId = Schema.Union([Schema.Literals(EDITORS.map((e) => e.id)), CustomEditorId]);
 export type EditorId = typeof EditorId.Type;
 
-/** Commands run on the environment host, with the file path as a separate argument. */
+/**
+ * Commands run on the environment host, with the file path as a separate argument.
+ * `runInShell` runs `command` through the host user's interactive login shell
+ * (macOS and Linux) so shell functions, aliases, and rc-file PATH entries resolve;
+ * `args` and the path are passed as positional parameters, never interpolated.
+ */
 export const CustomEditor = Schema.Struct({
   id: CustomEditorId,
   label: TrimmedNonEmptyString,
   command: TrimmedNonEmptyString,
   args: Schema.Array(Schema.String),
+  runInShell: Schema.optionalKey(Schema.Boolean),
 });
 export type CustomEditor = typeof CustomEditor.Type;
 

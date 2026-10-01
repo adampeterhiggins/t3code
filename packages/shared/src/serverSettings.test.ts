@@ -807,4 +807,27 @@ describe("application preferences", () => {
     expect(cleared.fileOpenRules).toEqual([]);
     expect(cleared.fileOpenDefault).toBe("t3");
   });
+
+  it("pins and unpins the workspace Open default and turns shell mode off", () => {
+    const opencursor = {
+      id: "custom:opencursor" as const,
+      label: "opencursor",
+      command: "opencursor",
+      args: [],
+      runInShell: true,
+    };
+    expect(DEFAULT_SERVER_SETTINGS.workspaceOpenDefault).toBeNull();
+    const pinned = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, {
+      customEditors: [opencursor],
+      workspaceOpenDefault: opencursor.id,
+    });
+    expect(pinned.workspaceOpenDefault).toBe("custom:opencursor");
+    const { runInShell: _runInShell, ...direct } = opencursor;
+    const unpinned = applyServerSettingsPatch(pinned, {
+      customEditors: [direct],
+      workspaceOpenDefault: null,
+    });
+    expect(unpinned.workspaceOpenDefault).toBeNull();
+    expect(unpinned.customEditors[0]?.runInShell).toBeUndefined();
+  });
 });

@@ -19,9 +19,11 @@ is in [AGENTS.md](../AGENTS.md#fork-differences).
 
 Settings → Integrations → Open in can add, edit, and remove applications for one environment,
 choose a default for chat file links, and override it by file extension. Custom applications
-appear in the workspace Open in picker and file Open with menus. Commands run on the environment
-hosting the file. Remote workspace menus offer custom applications on that host alongside
-editors that support SSH links.
+appear in the workspace Open in picker and file Open with menus, and can run through the user's
+interactive login shell so shell functions and aliases work. The workspace Open button can be
+pinned to any application instead of following the last-used pick. Commands run on the
+environment hosting the file. Remote workspace menus offer custom applications on that host
+alongside editors that support SSH links.
 
 See [the user guide](user/composer.md#opening-file-links),
 [settings](../apps/web/src/components/settings/OpenInSettings.tsx), and
