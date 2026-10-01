@@ -21,6 +21,8 @@ import {
   buildAskAboutPullRequestHandoff,
   buildExplainPullRequestHandoff,
   buildPullRequestCommentReferenceContext,
+  findPullRequestComment,
+  pullRequestCommentChoices,
   buildPullRequestReferenceContext,
   buildFixFindingHandoff,
   buildFixFindingsHandoff,
@@ -1855,12 +1857,13 @@ describe("pasting a link to one pull request comment", () => {
   };
   const activity = { comments: [issueComment], reviewThreads: [thread] };
 
+  const attach = (url: string) => {
+    const choice = findPullRequestComment(activity, url);
+    return choice === null ? null : buildPullRequestCommentReferenceContext(pullRequest, choice);
+  };
+
   it("attaches the linked conversation comment rather than the whole pull request", () => {
-    const context = buildPullRequestCommentReferenceContext(
-      pullRequest,
-      activity,
-      `${pullRequest.url}#issuecomment-100`,
-    );
+    const context = attach(`${pullRequest.url}#issuecomment-100`);
     expect(context).toMatchObject({ filePath: "PR #42", rangeLabel: "comment by julius" });
     expect(context?.pullRequest).toBeUndefined();
     expect(context?.text).toContain("julius: can we split this up?");
@@ -1869,11 +1872,7 @@ describe("pasting a link to one pull request comment", () => {
 
   it("attaches a review comment on its line, with the replies that led up to it", () => {
     // GitHub's Files tab names the remark `#r201`; its own link says `#discussion_r201`.
-    const context = buildPullRequestCommentReferenceContext(
-      pullRequest,
-      activity,
-      `${pullRequest.url}/files#r201`,
-    );
+    const context = attach(`${pullRequest.url}/files#r201`);
     expect(context).toMatchObject({ filePath: "apps/web/src/page.tsx", rangeLabel: "L12" });
     expect(context?.text).toContain("reviewer: rename the helper");
     expect(context?.text).toContain("theo: agreed, call it loadPage");
@@ -1881,15 +1880,25 @@ describe("pasting a link to one pull request comment", () => {
   });
 
   it("leaves a link to the page, or to a comment this read missed, to the pull request chip", () => {
-    expect(buildPullRequestCommentReferenceContext(pullRequest, activity, pullRequest.url)).toBe(
-      null,
-    );
-    expect(
-      buildPullRequestCommentReferenceContext(
-        pullRequest,
-        activity,
-        `${pullRequest.url}#issuecomment-999`,
-      ),
-    ).toBe(null);
+    expect(attach(pullRequest.url)).toBe(null);
+    expect(attach(`${pullRequest.url}#issuecomment-999`)).toBe(null);
+  });
+
+  it("offers each remark once, oldest first, skipping ones with nothing to say", () => {
+    const choices = pullRequestCommentChoices({
+      comments: [
+        issueComment,
+        // The flat conversation repeats a thread's review comment; it is offered from the thread.
+        { ...issueComment, id: "RC_1", kind: "review-comment", createdAt: "2026-07-02T00:00:00Z" },
+        { ...issueComment, id: "R_1", kind: "review", body: "", createdAt: "2026-07-05T00:00:00Z" },
+      ],
+      reviewThreads: [thread],
+    });
+    expect(choices.map((choice) => [choice.kind, choice.comment.id])).toEqual([
+      ["comment", "IC_1"],
+      ["thread", "RC_1"],
+      ["thread", "RC_2"],
+      ["thread", "RC_3"],
+    ]);
   });
 });
