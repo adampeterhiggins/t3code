@@ -196,6 +196,12 @@ by any part of its pull request numbers. A complete number is also resolved dire
 pull request is older than the recent list. Type a single word after `#` to search pull requests in
 the repository by text. Choose a result to insert it as a chip.
 
+On web and desktop, pasting a link to a Linear issue, a GitHub issue, a pull request, or a GitHub
+repository turns the link into the same chip attaching it would make. The chip replaces the link
+once the item loads. A link T3 Code cannot read stays as text: a Linear issue before you connect
+Linear, or a pull request from a repository none of your projects is checked out from. Paste with
+`Cmd+Shift+V` (`Ctrl+Shift+V` elsewhere) to keep the link as text.
+
 Images keep their thumbnail shelf above the text and also get a chip at your cursor, so you can
 say exactly which image you mean. Deleting an image chip leaves the image on the shelf; removing
 the thumbnail asks first when the image is still mentioned in your text, then removes both. Files

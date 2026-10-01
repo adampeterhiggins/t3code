@@ -187,6 +187,10 @@ import {
 import { useComposerPathSearch } from "../../lib/composerPathSearchState";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 import {
+  findComposerObjectLinks,
+  locateComposerObjectLink,
+} from "@t3tools/client-runtime/composer-object-links";
+import {
   getRestingComposerImagePreviewCounts,
   resolveRestingComposerControlsLayout,
   shouldAnimateComposerRestingTransition,
@@ -264,6 +268,7 @@ import { ComposerAttachMenu } from "./ComposerAttachMenu";
 import { useAttachGitHubIssue } from "./GitHubIssuePicker";
 import { useAttachLinearIssue } from "./LinearIssuePicker";
 import { useComposerGitHubIssueItems } from "./useComposerGitHubIssueItems";
+import { useResolveComposerObjectLink } from "./useResolveComposerObjectLink";
 import {
   type ComposerReferenceTab,
   defaultComposerReferenceTab,
@@ -2447,6 +2452,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   );
   const showGitHubIssues = githubIssueMenu.enabled && referenceTab === "github-issues";
   const attachGitHubIssue = useAttachGitHubIssue();
+  const resolveComposerObjectLink = useResolveComposerObjectLink({
+    threadRef: routeThreadRef,
+    draftTarget: composerDraftTarget,
+  });
   const referenceMenuTabs = REFERENCE_MENU_TABS.filter(
     (tab) =>
       tab.id === "pull-requests" ||
@@ -5923,6 +5932,44 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     return true;
   };
 
+  /**
+   * Swaps links to issues, pull requests, and repositories in pasted text for the chips their
+   * attach pickers make. The text pastes as usual; each link becomes a chip once its object
+   * loads, and stays a link if it cannot be read or was edited away meanwhile.
+   */
+  const convertPastedObjectLinks = (pastedText: string) => {
+    const links = findComposerObjectLinks(pastedText);
+    if (links.length === 0) return;
+    // Only a hint for which copy of a link to swap when the prompt holds it more than once.
+    const pasteStart = readComposerSnapshot().expandedCursor;
+    const targetKey = composerDraftTargetKeyRef.current;
+    for (const { link, index } of links) {
+      void resolveComposerObjectLink(link).then((resolved) => {
+        if (resolved === null || composerDraftTargetKeyRef.current !== targetKey) return;
+        const prompt = promptRef.current;
+        const range = locateComposerObjectLink(prompt, link.url, pasteStart + index);
+        if (range === null) return;
+        const edit = inlineContextReferenceReplacement(prompt, range, [resolved.reference]);
+        // Keep the caret where the user left it, shifted past the chip if it was after the link.
+        const cursor = readComposerSnapshot().expandedCursor;
+        const cursorAfter =
+          cursor <= edit.start
+            ? cursor
+            : cursor >= edit.end
+              ? cursor + edit.text.length - (edit.end - edit.start)
+              : edit.start + edit.text.length;
+        const activeElement = document.activeElement;
+        const applied = applyPromptReplacement(edit.start, edit.end, edit.text, {
+          expandedCursorAfterReplace: cursorAfter,
+          focusEditorAfterReplace:
+            activeElement instanceof Node &&
+            composerFormRef.current?.contains(activeElement) === true,
+        });
+        if (applied) resolved.commit();
+      });
+    }
+  };
+
   const onComposerPaste = (event: React.ClipboardEvent<HTMLElement>) => {
     const files = Array.from(event.clipboardData.files);
     const plainText = event.clipboardData.getData("text/plain");
@@ -5946,6 +5993,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     // Copied T3 chips need the structured importer to bring their records and files along.
     if ((readPastedComposerContext(event.clipboardData)?.records.length ?? 0) > 0) return;
     if (!foldPastedText(plainText, bypassAutoAttachment)) {
+      if (!bypassAutoAttachment) convertPastedObjectLinks(plainText);
       return;
     }
 
