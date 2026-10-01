@@ -376,6 +376,7 @@ const withLiveProjectCliServer = <A, E, R>(baseDir: string, run: () => Effect.Ef
               ClientCommandDispatcher.ClientCommandDispatcher,
               Effect.map(OrchestrationEngine.OrchestrationEngineService, (engine) =>
                 ClientCommandDispatcher.ClientCommandDispatcher.of({
+                  scratchWorkspaceRoot: Effect.succeed(undefined),
                   forOrigin: () => ({
                     dispatch: (command) =>
                       engine.dispatch(command).pipe(
