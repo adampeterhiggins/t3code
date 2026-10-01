@@ -135,6 +135,9 @@ export const ThreadSummary = Schema.Struct({
   tabGroupId: Schema.NullOr(Schema.String).annotate({
     description: "Threads that share a tab group are chat tabs over one workspace.",
   }),
+  startedByThreadId: Schema.NullOr(Schema.String).annotate({
+    description: "Set when an agent in that thread started this one.",
+  }),
   pullRequests: Schema.Array(PullRequestBrief).annotate({
     description: "The ten most recently linked; list_pull_requests with threadId has them all.",
   }),

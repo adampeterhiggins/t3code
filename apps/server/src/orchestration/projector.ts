@@ -456,6 +456,7 @@ export function projectEvent(
             unsettledAt: null,
             activeOrderKey: null,
             autoSettleDisabledAt: null,
+            createdBy: payload.createdBy ?? null,
             snoozedUntil: null,
             snoozedAt: null,
             deletedAt: null,

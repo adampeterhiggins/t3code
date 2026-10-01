@@ -709,6 +709,17 @@ export type ThreadTitleRegeneration = typeof ThreadTitleRegeneration.Type;
  * request (see `@t3tools/shared/threadPullRequests`) so clients from before
  * `pullRequests` keep working independently of their release schedule.
  */
+/**
+ * Who started a thread when it was not the user in a client: an agent in
+ * another thread, through its MCP toolkit, or an external agent holding an
+ * agent access token.
+ */
+export const ThreadCreatedBy = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("thread"), threadId: ThreadId }),
+  Schema.Struct({ kind: Schema.Literal("agent-access"), label: Schema.String }),
+]);
+export type ThreadCreatedBy = typeof ThreadCreatedBy.Type;
+
 export const ThreadLinkedPullRequest = Schema.Struct({
   projectId: ProjectId,
   repository: TrimmedNonEmptyString,
@@ -843,6 +854,8 @@ export const OrchestrationThread = Schema.Struct({
   // Survives manual settle, un-settle, and activity: only the user clears it.
   // Optional so payloads from older servers still decode.
   autoSettleDisabledAt: Schema.optional(Schema.NullOr(IsoDateTime)),
+  // Set when an agent started the thread. Optional so older servers still decode.
+  createdBy: Schema.optional(Schema.NullOr(ThreadCreatedBy)),
   // Pending-only state. Optional so older servers remain compatible.
   titleRegeneration: Schema.optional(Schema.NullOr(ThreadTitleRegeneration)),
   titleState: Schema.optional(Schema.NullOr(ThreadTitleState)),
@@ -914,6 +927,7 @@ export const OrchestrationThreadShell = Schema.Struct({
   pinOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   activeOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   autoSettleDisabledAt: Schema.optional(Schema.NullOr(IsoDateTime)),
+  createdBy: Schema.optional(Schema.NullOr(ThreadCreatedBy)),
   titleRegeneration: Schema.optional(Schema.NullOr(ThreadTitleRegeneration)),
   titleState: Schema.optional(Schema.NullOr(ThreadTitleState)),
   session: Schema.NullOr(OrchestrationSession),
@@ -1132,6 +1146,7 @@ const ThreadCreateCommand = Schema.Struct({
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
   createdAt: IsoDateTime,
   historyImport: Schema.optional(Schema.Literal(true)),
+  createdBy: Schema.optional(ThreadCreatedBy),
 });
 
 const ThreadDeleteCommand = Schema.Struct({
@@ -1299,6 +1314,7 @@ const ThreadTurnStartBootstrapCreateThread = Schema.Struct({
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
   createdAt: IsoDateTime,
+  createdBy: Schema.optional(ThreadCreatedBy),
 });
 
 const ThreadTurnStartBootstrapPrepareWorktree = Schema.Struct({
@@ -1798,6 +1814,7 @@ export const ThreadCreatedPayload = Schema.Struct({
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
+  createdBy: Schema.optional(ThreadCreatedBy),
 });
 
 export const ThreadDeletedPayload = Schema.Struct({
