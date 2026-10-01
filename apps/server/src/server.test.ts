@@ -12506,6 +12506,72 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  it.effect("bootstraps a first turn dispatched over HTTP like one sent over the WebSocket", () =>
+    Effect.gen(function* () {
+      const dispatchedCommands: Array<OrchestrationCommand> = [];
+
+      yield* buildAppUnderTest({
+        layers: {
+          orchestrationEngine: {
+            dispatch: (command) =>
+              Effect.sync(() => {
+                dispatchedCommands.push(command);
+                return { sequence: dispatchedCommands.length };
+              }),
+            readEvents: () => Stream.empty,
+          },
+        },
+      });
+
+      const createdAt = "2026-01-01T00:00:00.000Z";
+      const response = yield* fetchEffect(yield* getHttpServerUrl("/api/orchestration/dispatch"), {
+        method: "POST",
+        headers: {
+          cookie: yield* getAuthenticatedSessionCookieHeader(),
+          "content-type": "application/json",
+        },
+        body: jsonRequestBody({
+          type: "thread.turn.start",
+          commandId: CommandId.make("cmd-http-bootstrap"),
+          threadId: ThreadId.make("thread-http-bootstrap"),
+          message: {
+            messageId: MessageId.make("msg-http-bootstrap"),
+            role: "user",
+            text: "hello",
+            attachments: [],
+          },
+          modelSelection: defaultModelSelection,
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          bootstrap: {
+            createThread: {
+              projectId: defaultProjectId,
+              title: "Bootstrap Thread",
+              modelSelection: defaultModelSelection,
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              branch: null,
+              worktreePath: null,
+              createdAt,
+            },
+          },
+          createdAt,
+        }),
+      });
+
+      assert.equal(response.status, 200);
+      assert.deepEqual(
+        dispatchedCommands.map((command) => command.type),
+        ["thread.create", "thread.message.user.append", "thread.turn.start"],
+      );
+      const finalCommand = dispatchedCommands[2];
+      assertTrue(finalCommand?.type === "thread.turn.start");
+      if (finalCommand?.type === "thread.turn.start") {
+        assert.equal(finalCommand.bootstrap, undefined);
+      }
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("falls back to the project checkout when the worktree base has no commit", () =>
     Effect.gen(function* () {
       const dispatchedCommands: Array<OrchestrationCommand> = [];

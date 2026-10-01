@@ -303,7 +303,7 @@ the final branch; upstream renames the `t3code/<id>` placeholder after the first
 The placeholder remains only when naming outlasts checkout by more than a few seconds.
 
 Code: `generateWorktreeBranchName` in `apps/server/src/git/worktreeBranchName.ts`, its bootstrap
-call in `apps/server/src/ws.ts`, and `worktreeBranchPrefix` in `packages/contracts/src/settings.ts`. User guide:
+call in `apps/server/src/orchestration/ClientCommandDispatcher.ts`, and `worktreeBranchPrefix` in `packages/contracts/src/settings.ts`. User guide:
 [project-settings.md](./user/project-settings.md#defaults-and-inheritance).
 
 ## Sidebar resource pill
@@ -504,7 +504,7 @@ models, or a server without the `deferredBootstrapTurn` capability, keeps the pl
 Mobile does not offer it.
 
 Code: `bootstrap.deferTurn` in `packages/contracts/src/orchestration.ts`, handled by
-`dispatchBootstrapTurnStart` in `apps/server/src/ws.ts`; `createThreadWithoutMessage` in
+`dispatchBootstrapTurnStart` in `apps/server/src/orchestration/ClientCommandDispatcher.ts`; `createThreadWithoutMessage` in
 `apps/web/src/components/ChatView.tsx` and the pill in `ComposerPrimaryActions.tsx`. User guide:
 [thread-sidebar.md](./user/thread-sidebar.md#start-a-thread).
 
@@ -569,7 +569,7 @@ has the same picker, without the recently attached ranking.
 
 Code: `apps/server/src/contextRepositories/ContextRepositories.ts`,
 `packages/contracts/src/contextRepositories.ts`, `RepositoryContextRecord` in
-`packages/contracts/src/composerContext.ts`, the context-repository step in `apps/server/src/ws.ts`,
+`packages/contracts/src/composerContext.ts`, the context-repository step in `apps/server/src/orchestration/ClientCommandDispatcher.ts`,
 the persisted-message restatement in `apps/server/src/orchestration/decider.ts`,
 `packages/client-runtime/src/contextRepositories.ts`, and
 `apps/web/src/components/chat/RepositoryAttachPicker.tsx`,

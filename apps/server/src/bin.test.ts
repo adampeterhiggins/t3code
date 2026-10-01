@@ -10,6 +10,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   CommandId,
   EnvironmentOrchestrationHttpApi,
+  OrchestrationDispatchCommandError,
   ProviderInstanceId,
   ThreadId,
 } from "@t3tools/contracts";
@@ -38,10 +39,10 @@ import {
 import * as ServerConfig from "./config.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
+import * as ClientCommandDispatcher from "./orchestration/ClientCommandDispatcher.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import { OrchestrationLayerLive } from "./orchestration/runtimeLayer.ts";
 import { orchestrationHttpApiLayer } from "./orchestration/http.ts";
-import * as ProjectCloneTracker from "./project/ProjectCloneTracker.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "./persistence/Layers/Sqlite.ts";
 import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
 import {
@@ -369,11 +370,27 @@ const withLiveProjectCliServer = <A, E, R>(baseDir: string, run: () => Effect.Ef
     const routesLayer = HttpApiBuilder.layer(ProjectCliHttpApi).pipe(
       Layer.provide(
         orchestrationHttpApiLayer.pipe(
+          // Project commands need none of the bootstrap services, so dispatch goes straight to the engine.
           Layer.provide(
-            Layer.mock(ProjectCloneTracker.ProjectCloneTracker)({
-              get: () => Effect.succeed(null),
-              discard: () => Effect.void,
-            }),
+            Layer.effect(
+              ClientCommandDispatcher.ClientCommandDispatcher,
+              Effect.map(OrchestrationEngine.OrchestrationEngineService, (engine) =>
+                ClientCommandDispatcher.ClientCommandDispatcher.of({
+                  forOrigin: () => ({
+                    dispatch: (command) =>
+                      engine.dispatch(command).pipe(
+                        Effect.mapError(
+                          (cause) =>
+                            new OrchestrationDispatchCommandError({
+                              message: "Failed to dispatch orchestration command",
+                              cause,
+                            }),
+                        ),
+                      ),
+                  }),
+                }),
+              ),
+            ),
           ),
         ),
       ),
