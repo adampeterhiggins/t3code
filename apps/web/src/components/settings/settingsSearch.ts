@@ -618,6 +618,15 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["allow disable enable open drive preview tools sessions project override"],
   },
   {
+    id: "agent-thread-control",
+    title: "Agent thread control",
+    to: "/settings/integrations",
+    scope: "project-defaults",
+    searchTerms: [
+      "allow enable start spawn create message wait threads agents mcp project override",
+    ],
+  },
+  {
     id: "open-in",
     title: "Open in applications and file links",
     to: "/settings/integrations",

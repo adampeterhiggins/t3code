@@ -19,7 +19,7 @@ import {
   type PageRequest,
   type Window,
 } from "./store.ts";
-import { QueryToolError, QueryToolkit } from "./tools.ts";
+import { QueryToolError, QueryToolkit, ThreadReadToolkit } from "./tools.ts";
 
 const GUIDE = [
   "All tools are read-only and see what the user sees in T3 Code.",
@@ -443,3 +443,17 @@ const make = Effect.gen(function* () {
 });
 
 export const QueryToolkitHandlersLive = QueryToolkit.toLayer(make);
+
+export const ThreadReadToolkitHandlersLive = ThreadReadToolkit.toLayer(
+  make.pipe(
+    Effect.map((handlers) =>
+      ThreadReadToolkit.of({
+        list_projects: handlers.list_projects,
+        list_threads: handlers.list_threads,
+        get_thread: handlers.get_thread,
+        list_messages: handlers.list_messages,
+        search: handlers.search,
+      }),
+    ),
+  ),
+);

@@ -31,6 +31,8 @@ import {
   PreviewSnapshotToolkit,
   PreviewStandardToolkit,
 } from "./toolkits/preview/tools.ts";
+import { ThreadReadToolkitHandlersLive } from "./query/handlers.ts";
+import { ThreadReadToolkit } from "./query/tools.ts";
 import { OperateToolkitHandlersLive } from "./toolkits/operate/handlers.ts";
 import { OperateToolkit } from "./toolkits/operate/tools.ts";
 import { PullRequestsToolkitHandlersLive } from "./toolkits/pullRequests/handlers.ts";
@@ -652,8 +654,9 @@ export const PullRequestsToolkitRegistrationLive = McpServer.toolkit(PullRequest
 );
 
 /** Listed only to credentials that may drive threads; see McpActor.operateToolsVisible. */
-export const OperateToolkitRegistrationLive = McpServer.toolkit(OperateToolkit).pipe(
-  Layer.provide(OperateToolkitHandlersLive),
+export const OperateToolkitRegistrationLive = Layer.mergeAll(
+  McpServer.toolkit(OperateToolkit).pipe(Layer.provide(OperateToolkitHandlersLive)),
+  McpServer.toolkit(ThreadReadToolkit).pipe(Layer.provide(ThreadReadToolkitHandlersLive)),
 );
 
 const DeviceStandardToolkitRegistrationLive = McpServer.toolkit(DeviceStandardToolkit).pipe(

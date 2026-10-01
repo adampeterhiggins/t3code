@@ -95,6 +95,16 @@ const T3_MCP_TOOL_LABELS: Record<
   t3_thread_interrupt: ["Interrupt", "Interrupting", "Interrupted", "a T3 thread"],
   t3_worktree_handoff: ["Hand off", "Handing off", "Handed off", "thread to a git worktree"],
   t3_worktree_status: ["Get", "Getting", "Got", "thread worktree status"],
+  create_thread: ["Start", "Starting", "Started", "a thread"],
+  send_message: ["Message", "Messaging", "Messaged", "a thread"],
+  wait_for_thread: ["Wait", "Waiting", "Waited", "for a thread"],
+  interrupt_turn: ["Stop", "Stopping", "Stopped", "a thread's turn"],
+  list_models: ["List", "Listing", "Listed", "models"],
+  list_projects: ["List", "Listing", "Listed", "projects"],
+  list_threads: ["List", "Listing", "Listed", "threads"],
+  get_thread: ["Read", "Reading", "Read", "a thread"],
+  list_messages: ["Read", "Reading", "Read", "thread messages"],
+  search: ["Search", "Searching", "Searched", "threads"],
   preview_status: ["Get", "Getting", "Got", "preview browser status"],
   preview_open: ["Open", "Opening", "Opened", "a page in the preview browser"],
   preview_navigate: ["Navigate", "Navigating", "Navigated", "the preview browser"],
@@ -125,6 +135,21 @@ const T3_MCP_TOOL_LABELS: Record<
   device_close: ["Close", "Closing", "Closed", "a device"],
 };
 
+/**
+ * Names other agents' tools use too. They only count as T3's when the call
+ * names the t3-code server, so a provider's own "search" keeps its label.
+ */
+const T3_MCP_TOOLS_NEEDING_SERVER = new Set([
+  "send_message",
+  "interrupt_turn",
+  "list_models",
+  "list_projects",
+  "list_threads",
+  "get_thread",
+  "list_messages",
+  "search",
+]);
+
 const PR_TOOL_ACTIONS: Readonly<Record<string, ToolGroupAction>> = {
   link_pull_request: "link-pr",
   unlink_pull_request: "unlink-pr",
@@ -137,11 +162,13 @@ function resolveT3McpToolPresentation(
   data?: unknown,
 ) {
   if (!value) return null;
-  const name = normalizeCompactToolLabel(value).replace(
+  const label = normalizeCompactToolLabel(value);
+  const name = label.replace(
     /^(?:mcp__(?:t3-code|t3_code|t3code)__|(?:t3-code|t3_code|t3code)(?:[.:/]|\s*·\s*))/i,
     "",
   );
   if (!Object.hasOwn(T3_MCP_TOOL_LABELS, name)) return null;
+  if (name === label && T3_MCP_TOOLS_NEEDING_SERVER.has(name)) return null;
 
   const [action, running, completed, detail] = T3_MCP_TOOL_LABELS[name]!;
   const verb =

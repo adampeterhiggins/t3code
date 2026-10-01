@@ -624,7 +624,7 @@ A second MCP server at `/mcp/query` gives agents outside T3 Code read-only acces
 environment's history: projects, threads, turns, messages, activities, plans, turn diffs, linked
 pull requests, and usage. Its tools page with cursors, take `since`/`until` bounds, and cap text.
 It authenticates with an environment bearer token that has `orchestration:read`, never a cookie,
-and lists only its own tools. The thread-scoped `/mcp` server is unchanged.
+and lists only its own tools.
 
 Tokens come from **Settings → Connections → Agent access** (`POST /api/auth/agent-access-tokens`)
 or `t3 auth session issue --read-only`. Each token is a normal client session, so revoking it works
@@ -634,6 +634,23 @@ Code: `apps/server/src/mcp/query/`, the `agentAccessToken` handler in
 `apps/server/src/auth/http.ts`, `AuthReadOnlyClientScopes` in `packages/contracts/src/auth.ts`, and
 `apps/web/src/components/settings/AgentAccessSettings.tsx`. User guide:
 [agent-access.md](./user/agent-access.md).
+
+## Agents start and drive threads
+
+With **Agent thread control** on (off by default; environment setting with project overrides), a
+thread's `t3-code` MCP server also lists `create_thread`, `send_message`, `wait_for_thread`,
+`interrupt_turn`, `list_models`, and the history tools `list_projects`, `list_threads`,
+`get_thread`, `list_messages`, and `search`. Credentials without it never see them. A thread an
+agent starts records `createdBy`. Its runtime mode cannot exceed the starting thread's, chains stop
+two levels deep, a thread keeps at most five live children, and no tool answers another thread's
+approvals or questions. Web, desktop, and mobile settings all carry the toggle.
+
+Code: `apps/server/src/mcp/toolkits/operate/`, `apps/server/src/mcp/McpActor.ts`,
+`ThreadReadToolkit` in `apps/server/src/mcp/query/tools.ts`, `agentAccessCapabilities` in
+`apps/server/src/provider/Layers/ProviderService.ts`, `ThreadCreatedBy` in
+`packages/contracts/src/orchestration.ts`, and
+`apps/server/src/orchestration/ClientCommandDispatcher.ts`. User guide:
+[agent-access.md](./user/agent-access.md#let-agents-start-threads).
 
 ## Attention inbox
 
