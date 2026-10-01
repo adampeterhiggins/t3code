@@ -38,6 +38,7 @@ import ProjectScriptsControl, {
 import { OpenInPicker } from "./OpenInPicker";
 import { GitHubIssueThreadLinkChip } from "./GitHubIssueThreadLink";
 import { LinearThreadLinkChip } from "./LinearThreadLink";
+import { StartedByChip } from "./StartedByChip";
 import { ThreadTabMenu } from "./ThreadTabs";
 import { useSplitPaneFocus, useSplitViewActions } from "./splitPane";
 import { useThreadShell } from "../../state/entities";
@@ -536,6 +537,7 @@ export const ChatHeader = memo(function ChatHeader({
       <LinearThreadLinkChip
         threadRef={scopeThreadRef(activeThreadEnvironmentId, currentThreadId)}
       />
+      <StartedByChip threadRef={scopeThreadRef(activeThreadEnvironmentId, currentThreadId)} />
       <GitHubIssueThreadLinkChip
         threadRef={scopeThreadRef(activeThreadEnvironmentId, currentThreadId)}
       />

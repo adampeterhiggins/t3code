@@ -60,7 +60,8 @@ results, for example to split a large change into parallel pieces. Turn on **Age
 control** in **Settings → Integrations**, or for one project with that project selected. It is
 off by default and applies when an agent session next starts.
 
-Threads an agent starts appear in your sidebar like any other. An agent cannot give a thread more
+Threads an agent starts appear in your sidebar like any other, and their header shows which thread
+started them. An agent cannot give a thread more
 freedom than its own permission mode allows. It can start threads two levels deep, and keep at
 most five of its own going at once until they settle or you archive them. It cannot answer
 approvals or questions in other threads; those still come to you.

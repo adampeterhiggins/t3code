@@ -643,15 +643,19 @@ With **Agent thread control** on (off by default; environment setting with proje
 thread's `t3-code` MCP server also lists `create_thread`, `send_message`, `wait_for_thread`,
 `interrupt_turn`, `list_models`, and the history tools `list_projects`, `list_threads`,
 `get_thread`, `list_messages`, and `search`. Credentials without it never see them. A thread an
-agent starts records `createdBy`. Its runtime mode cannot exceed the starting thread's, chains stop
+agent starts records `createdBy`: the chat header on web, desktop, and mobile names the starting
+thread (and opens it) or the agent access token, and web sidebar rows mark it with a bot icon. Its
+runtime mode cannot exceed the starting thread's, chains stop
 two levels deep, a thread keeps at most five live children, and no tool answers another thread's
 approvals or questions. Web, desktop, and mobile settings all carry the toggle.
 
 Code: `apps/server/src/mcp/toolkits/operate/`, `apps/server/src/mcp/McpActor.ts`,
 `ThreadReadToolkit` in `apps/server/src/mcp/query/tools.ts`, `agentAccessCapabilities` in
 `apps/server/src/provider/Layers/ProviderService.ts`, `ThreadCreatedBy` in
-`packages/contracts/src/orchestration.ts`, and
-`apps/server/src/orchestration/ClientCommandDispatcher.ts`. User guide:
+`packages/contracts/src/orchestration.ts`,
+`apps/server/src/orchestration/ClientCommandDispatcher.ts`,
+`apps/web/src/components/chat/StartedByChip.tsx`, and
+`apps/mobile/src/features/threads/ThreadStartedByChip.tsx`. User guide:
 [agent-access.md](./user/agent-access.md#let-agents-start-threads).
 
 ## Attention inbox
