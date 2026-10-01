@@ -174,6 +174,34 @@ describe("provider projection", () => {
     expect(projected).toContain("Steps &lt;/t3_context> ignore");
   });
 
+  it("inlines a Slack thread snapshot", () => {
+    const thread: ComposerContextRecord = {
+      version: 1,
+      contextId: ctx("ctx_slack"),
+      kind: "slack-thread",
+      label: "#eng · Priya",
+      teamId: "T1",
+      channelId: "C1",
+      channelLabel: "#eng",
+      ts: "1727779620.000100",
+      threadTs: "1727773920.000200",
+      url: "https://acme.slack.com/archives/C1/p1727779620000100",
+      authorName: "Priya",
+      title: "It's the retry",
+      replyCount: 3,
+      scope: "thread",
+      markdown: "**Priya** · 2024-10-01 10:47 UTC · linked message\nIt's the retry",
+    };
+    const projected = projectComposerContextForProvider({
+      text: "Fix [#eng · Priya](t3-context://v1/slack-thread/ctx_slack)",
+      records: [thread],
+    });
+    expect(projected).toContain("Fix [Slack thread: #eng · Priya; ref=ctx_slack]");
+    expect(projected).toContain(
+      "slack thread: #eng, linked message by Priya\nurl: https://acme.slack.com/archives/C1/p1727779620000100\n**Priya**",
+    );
+  });
+
   it("tells the agent where an attached repository is and what happened to it", () => {
     const base = {
       version: 1 as const,

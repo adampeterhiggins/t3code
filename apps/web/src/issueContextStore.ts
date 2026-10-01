@@ -3,16 +3,20 @@ import { create } from "zustand";
 import type {
   GitHubIssueContextRecord,
   LinearIssueContextRecord,
+  SlackThreadContextRecord,
   ThreadId,
 } from "@t3tools/contracts";
 
-/** An attached issue's snapshot, from Linear or GitHub. */
-export type IssueContextRecord = LinearIssueContextRecord | GitHubIssueContextRecord;
+/** An attached snapshot fetched from another service: a Linear or GitHub issue, or a Slack thread. */
+export type IssueContextRecord =
+  | LinearIssueContextRecord
+  | GitHubIssueContextRecord
+  | SlackThreadContextRecord;
 
 const EMPTY: ReadonlyArray<IssueContextRecord> = [];
 
 /**
- * Issue snapshots attached to a draft, keyed by the thread being composed in. The prompt owns
+ * Issue and Slack snapshots attached to a draft, keyed by the thread being composed in. The prompt owns
  * where each chip sits; this holds the payload behind it. In-memory on purpose, like chat tab
  * summaries: a reloaded draft shows the chip as unavailable rather than a stale issue.
  */

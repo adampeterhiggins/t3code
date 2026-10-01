@@ -48,6 +48,17 @@ import {
   LinearUnlinkThreadInput,
 } from "./linear.ts";
 import {
+  SlackCancelLoginInput,
+  SlackCompleteLoginInput,
+  SlackConnectionState,
+  SlackError,
+  SlackGetThreadInput,
+  SlackSearchMessagesInput,
+  SlackSearchMessagesResult,
+  SlackStartLoginInput,
+  SlackThreadContext,
+} from "./slack.ts";
+import {
   GitHubGetIssueInput,
   GitHubIssueContext,
   GitHubIssueError,
@@ -504,6 +515,15 @@ export const WS_METHODS = {
   linearLinkThread: "linear.linkThread",
   linearUnlinkThread: "linear.unlinkThread",
 
+  // Slack methods
+  slackSubscribeState: "slack.subscribeState",
+  slackStartLogin: "slack.startLogin",
+  slackCompleteLogin: "slack.completeLogin",
+  slackCancelLogin: "slack.cancelLogin",
+  slackDisconnect: "slack.disconnect",
+  slackSearchMessages: "slack.searchMessages",
+  slackGetThread: "slack.getThread",
+
   // GitHub issue methods
   githubIssuesList: "githubIssues.list",
   githubIssuesGet: "githubIssues.get",
@@ -800,6 +820,51 @@ const WsLinearUnlinkThreadRpc = Rpc.make(WS_METHODS.linearUnlinkThread, {
   payload: LinearUnlinkThreadInput,
   success: Schema.Struct({}),
   error: LinearRpcError,
+});
+
+const SlackRpcError = Schema.Union([SlackError, EnvironmentAuthorizationError]);
+
+const WsSlackSubscribeStateRpc = Rpc.make(WS_METHODS.slackSubscribeState, {
+  payload: Schema.Struct({}),
+  success: SlackConnectionState,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
+const WsSlackStartLoginRpc = Rpc.make(WS_METHODS.slackStartLogin, {
+  payload: SlackStartLoginInput,
+  success: SlackConnectionState,
+  error: SlackRpcError,
+});
+
+const WsSlackCompleteLoginRpc = Rpc.make(WS_METHODS.slackCompleteLogin, {
+  payload: SlackCompleteLoginInput,
+  success: SlackConnectionState,
+  error: SlackRpcError,
+});
+
+const WsSlackCancelLoginRpc = Rpc.make(WS_METHODS.slackCancelLogin, {
+  payload: SlackCancelLoginInput,
+  success: SlackConnectionState,
+  error: SlackRpcError,
+});
+
+const WsSlackDisconnectRpc = Rpc.make(WS_METHODS.slackDisconnect, {
+  payload: Schema.Struct({}),
+  success: SlackConnectionState,
+  error: SlackRpcError,
+});
+
+const WsSlackSearchMessagesRpc = Rpc.make(WS_METHODS.slackSearchMessages, {
+  payload: SlackSearchMessagesInput,
+  success: SlackSearchMessagesResult,
+  error: SlackRpcError,
+});
+
+const WsSlackGetThreadRpc = Rpc.make(WS_METHODS.slackGetThread, {
+  payload: SlackGetThreadInput,
+  success: SlackThreadContext,
+  error: SlackRpcError,
 });
 
 const GitHubIssueRpcError = Schema.Union([GitHubIssueError, EnvironmentAuthorizationError]);
@@ -1781,6 +1846,13 @@ export const WsRpcGroup = RpcGroup.make(
   WsLinearSubscribeThreadLinksRpc,
   WsLinearLinkThreadRpc,
   WsLinearUnlinkThreadRpc,
+  WsSlackSubscribeStateRpc,
+  WsSlackStartLoginRpc,
+  WsSlackCompleteLoginRpc,
+  WsSlackCancelLoginRpc,
+  WsSlackDisconnectRpc,
+  WsSlackSearchMessagesRpc,
+  WsSlackGetThreadRpc,
   WsGitHubIssuesListRpc,
   WsGitHubIssuesGetRpc,
   WsGitHubIssuesGetSummaryRpc,

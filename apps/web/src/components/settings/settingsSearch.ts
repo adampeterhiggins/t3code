@@ -649,6 +649,16 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["linear app desktop open in linear links browser"],
   },
   {
+    id: "slack",
+    title: "Slack",
+    to: "/settings/integrations",
+    searchTerms: [
+      "slack messages threads channels connect account sign in oauth app manifest client id attach context",
+    ],
+    environmentOnly: true,
+    scope: "environment-defaults",
+  },
+  {
     id: "device-hosts",
     title: "Device hosts",
     to: "/settings/integrations",

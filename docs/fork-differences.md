@@ -425,6 +425,31 @@ Code: `apps/server/src/linear/`, `packages/contracts/src/linear.ts`, `LinearIssu
 `apps/mobile/src/features/settings/SettingsLinearRouteScreen.tsx`. User guide:
 [linear.md](./user/linear.md).
 
+## Slack messages and threads
+
+**Settings > Integrations > Slack** connects a Slack account to the environment with OAuth (PKCE,
+read-only user scopes, no client secret). There is no built-in Slack app: Slack limits apps that
+are distributed without Marketplace approval to one `conversations.replies` call a minute, 15
+messages each. Each workspace makes its own app from a manifest the settings section copies
+(`slackAppManifest` in `packages/contracts/src/slack.ts`), and the user enters its client ID. The
+server keeps that client ID across disconnects, and `T3CODE_SLACK_CLIENT_ID` can supply one. The
+redirect is `http://localhost:47832/callback`, since Slack only treats `localhost` as a desktop
+redirect, with the same paste-back path as Linear for remote browsers.
+
+A message or its whole thread attaches as a `slack-thread` context chip: from a pasted or typed
+permalink, the attach menu's picker (Slack search syntax, right-click for the message alone), a
+`#` menu tab shown once Slack is connected, the command palette, and the mobile attach menu. The
+server renders the thread to capped markdown when it is attached. That markdown always keeps the
+first message and the linked one, fills the rest newest first, and resolves mentions to names.
+The snapshot is inlined into the prompt for every provider. Slack has no thread links.
+
+Code: `apps/server/src/slack/`, `packages/contracts/src/slack.ts`, `SlackThreadContextRecord` in
+`packages/contracts/src/composerContext.ts`, `packages/client-runtime/src/state/slack.ts`,
+`apps/web/src/components/settings/SlackSettings.tsx`,
+`apps/web/src/components/chat/SlackMessagePicker.tsx`,
+`apps/web/src/components/chat/useComposerSlackItems.ts`, and
+`apps/mobile/src/components/SlackMessagePickerSheet.tsx`. User guide: [slack.md](./user/slack.md).
+
 ## GitHub issues
 
 GitHub issues attach to messages as a `github-issue` context chip, the same way Linear issues do:
@@ -600,8 +625,8 @@ the persisted-message restatement in `apps/server/src/orchestration/decider.ts`,
 
 ## Pasted and typed links become chips
 
-Pasting a Linear issue, GitHub issue, pull request, or GitHub repository root link into the web or
-desktop composer, or typing one followed by whitespace, turns it into the chip its attach picker
+Pasting a Linear issue, GitHub issue, pull request, GitHub repository root, or Slack message link
+into the web or desktop composer, or typing one followed by whitespace, turns it into the chip its attach picker
 makes. A pull request link to one comment (`#issuecomment-…`, `#discussion_r…`, `#r…`) becomes a
 chip for that comment instead, anchored to its line with the earlier replies when it is in a review
 thread; a comment the read did not return falls back to the pull request chip. The text goes in as
@@ -612,7 +637,8 @@ deleted chip stick. Mobile does not convert links.
 
 A bare link of one of those kinds that is still a link when the message renders, in any message on
 web, desktop, or mobile, shows its short name instead of the URL: `owner/repo#162` for a pull
-request or GitHub issue, `ENG-123` for a Linear issue, and `owner/repo` for a repository. It still
+request or GitHub issue, `ENG-123` for a Linear issue, `owner/repo` for a repository, and
+`Slack · workspace` for a Slack message. It still
 opens, previews, and copies as the full URL. Link text the writer chose is left alone.
 
 Code: `packages/client-runtime/src/composerObjectLinks.ts`,

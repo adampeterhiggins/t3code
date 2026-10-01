@@ -1,6 +1,6 @@
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { FolderGit2Icon, MessageSquareIcon, PaperclipIcon } from "lucide-react";
-import { GitHubIcon, LinearIcon } from "../Icons";
+import { GitHubIcon, LinearIcon, SlackIcon } from "../Icons";
 import { memo } from "react";
 
 import { Button } from "../ui/button";
@@ -11,10 +11,12 @@ import { openLinearIssuePicker } from "./LinearIssuePicker";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { openPullRequestAttachPicker } from "./PullRequestAttachPicker";
 import { openRepositoryAttachPicker } from "./RepositoryAttachPicker";
+import { openSlackMessagePicker } from "./SlackMessagePicker";
 import { openThreadAttachPicker } from "./ThreadAttachPicker";
 
 /**
- * The composer's attach button: files, thread summaries, issues, pull requests, and repositories.
+ * The composer's attach button: files, thread summaries, issues, Slack messages, pull requests,
+ * and repositories.
  */
 export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
   threadRef: ScopedThreadRef;
@@ -44,6 +46,10 @@ export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
         <MenuItem onClick={() => openLinearIssuePicker(props.threadRef)}>
           <LinearIcon />
           Linear issue
+        </MenuItem>
+        <MenuItem onClick={() => openSlackMessagePicker(props.threadRef)}>
+          <SlackIcon />
+          Slack message
         </MenuItem>
         {props.githubIssuesAvailable ? (
           <MenuItem onClick={() => openGitHubIssuePicker(props.threadRef)}>

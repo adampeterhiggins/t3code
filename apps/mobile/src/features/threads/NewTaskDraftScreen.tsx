@@ -59,6 +59,7 @@ import {
   takeStartFromGitHubIssue,
   useGitHubIssuePicker,
 } from "../../components/GitHubIssuePickerSheet";
+import { useSlackMessagePicker } from "../../components/SlackMessagePickerSheet";
 import { useRepositoryPicker } from "../../components/RepositoryPickerSheet";
 import { ControlPillMenu } from "../../components/ControlPillMenu";
 import { gitHubIssueEnvironment } from "../../state/githubIssues";
@@ -990,6 +991,11 @@ export function NewTaskDraftScreen(props: {
       ? { environmentId: flow.selectedEnvironmentId, draftKey: flow.draftKey }
       : null,
   );
+  const slackMessagePicker = useSlackMessagePicker(
+    flow.draftKey && flow.selectedEnvironmentId
+      ? { environmentId: flow.selectedEnvironmentId, draftKey: flow.draftKey }
+      : null,
+  );
   const startFromIssuePicker = useLinearIssuePicker(
     flow.draftKey && selectedProject
       ? {
@@ -1823,6 +1829,11 @@ export function NewTaskDraftScreen(props: {
                     onPickGitHubIssue={
                       flow.draftKey && selectedProject ? gitHubIssuePicker.open : undefined
                     }
+                    onPickSlackMessage={
+                      flow.draftKey && flow.selectedEnvironmentId
+                        ? slackMessagePicker.open
+                        : undefined
+                    }
                     onPickRepository={flow.draftKey ? repositoryPicker.open : undefined}
                   />
                   <View className="min-w-0 flex-1 flex-row items-center justify-end gap-2">
@@ -1908,6 +1919,7 @@ export function NewTaskDraftScreen(props: {
       {startFromIssuePicker.sheet}
       {gitHubIssuePicker.sheet}
       {startFromGitHubIssuePicker.sheet}
+      {slackMessagePicker.sheet}
       {startFromPullRequestPicker.sheet}
       {repositoryPicker.sheet}
     </View>

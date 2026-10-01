@@ -59,6 +59,8 @@ import { ProviderAuthServiceLive } from "./provider/Layers/ProviderAuthService.t
 import * as LinearApi from "./linear/LinearApi.ts";
 import * as LinearAuth from "./linear/LinearAuth.ts";
 import * as LinearThreadLinks from "./linear/LinearThreadLinks.ts";
+import * as SlackApi from "./slack/SlackApi.ts";
+import * as SlackAuth from "./slack/SlackAuth.ts";
 import * as GitHubIssues from "./githubIssues/GitHubIssues.ts";
 import * as GitHubIssueThreadLinks from "./githubIssues/GitHubIssueThreadLinks.ts";
 import { CodexInstallation } from "./provider/CodexInstallation.ts";
@@ -558,6 +560,7 @@ const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
       Layer.provideMerge(LinearAuth.layer),
     ),
   ),
+  Layer.provideMerge(SlackApi.layer.pipe(Layer.provideMerge(SlackAuth.layer))),
   Layer.provideMerge(GitHubIssueThreadLinks.layer.pipe(Layer.provideMerge(GitHubIssues.layer))),
   // Core Services
   Layer.provideMerge(ServerSettingsLayerLive),

@@ -33,6 +33,26 @@ describe("parseComposerObjectLink", () => {
     });
   });
 
+  it("reads a Slack message permalink, with its thread when it is a reply", () => {
+    expect(
+      parseComposerObjectLink("https://acme.slack.com/archives/C04ABCD12/p1727779620000100"),
+    ).toMatchObject({
+      kind: "slack-message",
+      workspace: "acme",
+      channelId: "C04ABCD12",
+      ts: "1727779620.000100",
+      threadTs: null,
+    });
+    expect(
+      parseComposerObjectLink(
+        "https://acme.enterprise.slack.com/archives/C04ABCD12/p1727779620000100?thread_ts=1727773920.000200&cid=C04ABCD12",
+      ),
+    ).toMatchObject({ kind: "slack-message", threadTs: "1727773920.000200" });
+    // A channel, not a message.
+    expect(parseComposerObjectLink("https://acme.slack.com/archives/C04ABCD12")).toBeNull();
+    expect(parseComposerObjectLink("https://app.slack.com/client/T1/C04ABCD12")).toBeNull();
+  });
+
   it("leaves ordinary links alone", () => {
     expect(parseComposerObjectLink("https://github.com/acme/api/blob/main/README.md")).toBeNull();
     expect(parseComposerObjectLink("https://github.com/acme")).toBeNull();
@@ -50,6 +70,9 @@ describe("objectLinkLabel", () => {
     expect(objectLinkLabel("https://github.com/acme/api/issues/12")).toBe("acme/api#12");
     expect(objectLinkLabel("https://linear.app/acme/issue/eng-123/fix-the-thing")).toBe("ENG-123");
     expect(objectLinkLabel("https://github.com/acme/api.git")).toBe("acme/api");
+    expect(objectLinkLabel("https://acme.slack.com/archives/C04ABCD12/p1727779620000100")).toBe(
+      "Slack · acme",
+    );
   });
 
   it("has no label for ordinary links", () => {
