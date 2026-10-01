@@ -70,17 +70,19 @@ export function SidebarAttentionInbox() {
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger render={<SidebarHeaderIconButton label={label} />}>
-        <InboxIcon />
+      <div className="relative shrink-0">
+        <PopoverTrigger render={<SidebarHeaderIconButton label={label} />}>
+          <InboxIcon />
+        </PopoverTrigger>
         {entries.length > 0 ? (
           <span
             aria-hidden
-            className="pointer-events-none absolute -right-0.5 -top-0.5 min-w-3.5 rounded-full bg-primary px-1 text-center text-3xs font-medium leading-3.5 text-primary-foreground tabular-nums"
+            className="pointer-events-none absolute -right-1 -top-1 flex h-3 min-w-3 items-center justify-center rounded-full bg-primary px-0.5 text-4xs font-medium leading-none text-primary-foreground ring-2 ring-sidebar tabular-nums"
           >
             {entries.length > 99 ? "99+" : entries.length}
           </span>
         ) : null}
-      </PopoverTrigger>
+      </div>
       <PopoverPopup align="start" width="md" padding="compact" aria-label="Needs attention">
         <AttentionInboxList entries={entries} onOpenEntry={() => setOpen(false)} />
       </PopoverPopup>
