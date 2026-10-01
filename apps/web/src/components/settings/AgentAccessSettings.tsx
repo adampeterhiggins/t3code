@@ -50,7 +50,7 @@ const ACCESS_OPTIONS: ReadonlyArray<{
   {
     access: "operate",
     label: "Read and drive threads",
-    description: "Can also start threads, message them, and wait for their results.",
+    description: "Can also start and message threads, and answer their approvals and questions.",
   },
 ];
 

@@ -623,8 +623,8 @@ Code: `packages/client-runtime/src/work-log/commandDisplay.ts`,
 Two more MCP servers serve agents outside T3 Code. `/mcp/query` gives read-only access to the
 environment's history: projects, threads, turns, messages, activities, plans, turn diffs, linked
 pull requests, and usage. Its tools page with cursors, take `since`/`until` bounds, and cap text.
-`/mcp/operate` adds the thread tools (`create_thread`, `send_message`, `wait_for_thread`,
-`interrupt_turn`, `list_models`) and acts as the user, so threads it starts record the token's label.
+`/mcp/operate` adds the thread tools, plus `respond_to_request` for answering a thread's approvals
+and questions, and acts as the user, so threads it starts record the token's label.
 Both authenticate with an environment bearer token, never a cookie: `/mcp/query` needs
 `orchestration:read`, `/mcp/operate` also `orchestration:operate`.
 
@@ -641,13 +641,13 @@ User guide: [agent-access.md](./user/agent-access.md).
 
 With **Agent thread control** on (off by default; environment setting with project overrides), a
 thread's `t3-code` MCP server also lists `create_thread`, `send_message`, `wait_for_thread`,
-`interrupt_turn`, `list_models`, and the history tools `list_projects`, `list_threads`,
+`interrupt_turn`, `list_models`, `update_thread`, `set_thread_state`, and the history tools `list_projects`, `list_threads`,
 `get_thread`, `list_messages`, and `search`. Credentials without it never see them. A thread an
 agent starts records `createdBy`: the chat header on web, desktop, and mobile names the starting
 thread (and opens it) or the agent access token, and web sidebar rows mark it with a bot icon. Its
 runtime mode cannot exceed the starting thread's, chains stop
-two levels deep, a thread keeps at most five live children, and no tool answers another thread's
-approvals or questions. Web, desktop, and mobile settings all carry the toggle.
+two levels deep, a thread keeps at most five live children, and a thread's agent cannot answer
+another thread's approvals or questions. Web, desktop, and mobile settings all carry the toggle.
 
 Code: `apps/server/src/mcp/toolkits/operate/`, `apps/server/src/mcp/McpActor.ts`,
 `ThreadReadToolkit` in `apps/server/src/mcp/query/tools.ts`, `agentAccessCapabilities` in

@@ -178,6 +178,8 @@ it.effect("authenticates /mcp/query and /mcp/operate by the token's scopes", () 
       expect(operateTools).toContain("create_thread");
       expect(operateTools).toContain("wait_for_thread");
       expect(operateTools).toContain("get_activity_timeline");
+      // Answering another thread's approvals is for the user's own token only.
+      expect(operateTools).toContain("respond_to_request");
       expect(queryTools).not.toContain("create_thread");
     }),
   ).pipe(Effect.provide(NodeHttpServer.layerTest)),

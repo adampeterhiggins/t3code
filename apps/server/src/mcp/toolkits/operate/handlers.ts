@@ -3,7 +3,10 @@ import * as NodeCrypto from "node:crypto";
 import {
   CommandId,
   MessageId,
+  ApprovalRequestId,
   type ModelSelection,
+  type OrchestrationThread,
+  type OrchestrationThreadActivity,
   type OrchestrationThreadShell,
   ProjectId,
   ProviderInstanceId,
@@ -27,6 +30,7 @@ import * as ClientCommandDispatcher from "../../../orchestration/ClientCommandDi
 import * as OrchestrationEngine from "../../../orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "../../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { threadHasQueuedTurnStart } from "../../../orchestration/ThreadSettlementPolicy.ts";
+import { openRequests } from "../../../orchestration/decider.ts";
 import * as ProviderRegistry from "../../../provider/Services/ProviderRegistry.ts";
 import * as ServerSettings from "../../../serverSettings.ts";
 import * as McpActor from "../../McpActor.ts";
@@ -35,7 +39,11 @@ import {
   type CreateThreadInput,
   OperateToolError,
   OperateToolkit,
+  type PendingRequest,
+  type RespondToRequestInput,
+  type SetThreadStateInput,
   type ThreadStatusResult,
+  type UpdateThreadInput,
 } from "./tools.ts";
 
 /**
@@ -54,6 +62,57 @@ const fail = (reason: string) => Effect.fail(new OperateToolError({ reason }));
 /** Dispatch and read failures are server faults the agent can only report, so their text is enough. */
 const asToolError = (cause: { readonly message: string }) =>
   new OperateToolError({ reason: cause.message });
+
+const asRecord = (value: unknown): Record<string, unknown> =>
+  typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+
+/** An open approval or question as an agent answering it needs to see it. */
+export function pendingRequestOf(activity: OrchestrationThreadActivity): PendingRequest | null {
+  const payload = asRecord(activity.payload);
+  if (typeof payload.requestId !== "string") return null;
+  if (activity.kind === "approval.requested") {
+    const options = Array.isArray(payload.options) ? payload.options.map(asRecord) : [];
+    const decisions = options.flatMap((option) =>
+      typeof option.decision === "string" ? [option.decision] : [],
+    );
+    return {
+      requestId: payload.requestId,
+      kind: "approval",
+      summary: activity.summary,
+      detail: typeof payload.detail === "string" ? payload.detail : null,
+      decisions: decisions.length > 0 ? decisions : ["accept", "decline"],
+      questions: [],
+    };
+  }
+  const questions = Array.isArray(payload.questions) ? payload.questions.map(asRecord) : [];
+  return {
+    requestId: payload.requestId,
+    kind: "question",
+    summary: activity.summary,
+    detail: null,
+    decisions: [],
+    questions: questions.flatMap((question) =>
+      typeof question.id === "string" && typeof question.question === "string"
+        ? [
+            {
+              id: question.id,
+              question: question.question,
+              options: (Array.isArray(question.options) ? question.options : [])
+                .map(asRecord)
+                .flatMap((option) =>
+                  typeof option.value === "string"
+                    ? [option.value]
+                    : typeof option.label === "string"
+                      ? [option.label]
+                      : [],
+                ),
+              multiSelect: question.multiSelect === true,
+            },
+          ]
+        : [],
+    ),
+  };
+}
 
 /** What a thread is doing, as an agent waiting on it needs to know. */
 export function threadStatusOf(
@@ -271,42 +330,43 @@ const make = Effect.gen(function* () {
     return { threadId: thread.id, messageId };
   });
 
-  const lastAssistantMessage = (threadId: ThreadId) =>
+  /** The latest reply and open requests, read from the thread's newest turn. */
+  const recentDetail = (threadId: ThreadId) =>
     snapshots.getThreadDetailSnapshot(threadId, { turnLimit: 1 }).pipe(
-      Effect.map(
-        Option.flatMap(({ thread }) =>
-          Option.fromNullishOr(
-            thread.messages.findLast((message) => message.role === "assistant")?.text,
-          ),
-        ),
-      ),
-      Effect.map(
-        Option.match({
-          onNone: () => null,
-          onSome: (text) =>
-            text.length > MAX_ASSISTANT_MESSAGE_CHARS
-              ? `${text.slice(0, MAX_ASSISTANT_MESSAGE_CHARS)}…`
-              : text,
-        }),
-      ),
-      Effect.orElseSucceed(() => null),
+      Effect.map(Option.map(({ thread }) => thread)),
+      Effect.map(Option.getOrNull),
+      Effect.orElseSucceed((): OrchestrationThread | null => null),
     );
 
   const statusResult = (thread: OrchestrationThreadShell, status: ThreadStatusResult["status"]) =>
-    lastAssistantMessage(thread.id).pipe(
-      Effect.map((text): ThreadStatusResult => ({
-        threadId: thread.id,
-        title: thread.title,
-        status,
-        latestTurn:
-          thread.latestTurn === null
-            ? null
-            : { state: thread.latestTurn.state, completedAt: thread.latestTurn.completedAt },
-        lastAssistantMessage: text,
-        lastError: thread.session?.lastError ?? null,
-        branch: thread.branch,
-        worktreePath: thread.worktreePath,
-      })),
+    recentDetail(thread.id).pipe(
+      Effect.map((detail): ThreadStatusResult => {
+        const text =
+          detail?.messages.findLast((message) => message.role === "assistant")?.text ?? null;
+        return {
+          threadId: thread.id,
+          title: thread.title,
+          status,
+          latestTurn:
+            thread.latestTurn === null
+              ? null
+              : { state: thread.latestTurn.state, completedAt: thread.latestTurn.completedAt },
+          lastAssistantMessage:
+            text !== null && text.length > MAX_ASSISTANT_MESSAGE_CHARS
+              ? `${text.slice(0, MAX_ASSISTANT_MESSAGE_CHARS)}…`
+              : text,
+          lastError: thread.session?.lastError ?? null,
+          pendingRequests:
+            detail === null
+              ? []
+              : [...openRequests(detail).values()].flatMap((activity) => {
+                  const request = pendingRequestOf(activity);
+                  return request === null ? [] : [request];
+                }),
+          branch: thread.branch,
+          worktreePath: thread.worktreePath,
+        };
+      }),
     );
 
   const waitForThread = Effect.fn("OperateToolkit.waitForThread")(function* (input: {
@@ -367,6 +427,161 @@ const make = Effect.gen(function* () {
     return { threadId: thread.id, interrupted: true };
   });
 
+  const updateThread = Effect.fn("OperateToolkit.updateThread")(function* (
+    input: UpdateThreadInput,
+  ) {
+    const actor = yield* requireOperator;
+    const thread = yield* targetShell(actor, input.threadId);
+    const createdAt = yield* nowIso;
+    if (input.runtimeMode !== undefined) {
+      const caller = Option.getOrUndefined(yield* callerShell(actor));
+      const runtime = resolveRuntimeMode(input.runtimeMode, caller?.runtimeMode ?? "full-access");
+      if ("refused" in runtime) return yield* fail(runtime.refused);
+    }
+    if (input.title !== undefined || input.model !== undefined) {
+      yield* dispatcher
+        .dispatch({
+          type: "thread.meta.update",
+          commandId: yield* commandId("update-thread"),
+          threadId: thread.id,
+          ...(input.title !== undefined ? { title: input.title } : {}),
+          ...(input.model !== undefined
+            ? {
+                modelSelection: {
+                  instanceId: ProviderInstanceId.make(input.model.instanceId),
+                  model: input.model.model,
+                },
+              }
+            : {}),
+        })
+        .pipe(Effect.mapError(asToolError));
+    }
+    if (input.runtimeMode !== undefined) {
+      yield* dispatcher
+        .dispatch({
+          type: "thread.runtime-mode.set",
+          commandId: yield* commandId("runtime-mode"),
+          threadId: thread.id,
+          runtimeMode: input.runtimeMode,
+          createdAt,
+        })
+        .pipe(Effect.mapError(asToolError));
+    }
+    if (input.interactionMode !== undefined) {
+      yield* dispatcher
+        .dispatch({
+          type: "thread.interaction-mode.set",
+          commandId: yield* commandId("interaction-mode"),
+          threadId: thread.id,
+          interactionMode: input.interactionMode,
+          createdAt,
+        })
+        .pipe(Effect.mapError(asToolError));
+    }
+    return { threadId: thread.id };
+  });
+
+  const setThreadState = Effect.fn("OperateToolkit.setThreadState")(function* (
+    input: SetThreadStateInput,
+  ) {
+    const actor = yield* requireOperator;
+    const threadId = ThreadId.make(input.threadId);
+    const refusal = selfTargetRefusal(actor.kind === "thread" ? actor.threadId : null, threadId);
+    if (refusal !== null) return yield* fail(refusal);
+    // Archived threads have no active shell, so unarchive goes straight to the decider.
+    if (input.action !== "unarchive") yield* threadShell(input.threadId);
+    const id = yield* commandId(`thread-${input.action}`);
+    const command = yield* Effect.gen(function* () {
+      switch (input.action) {
+        case "archive":
+          return { type: "thread.archive" as const, commandId: id, threadId };
+        case "unarchive":
+          return { type: "thread.unarchive" as const, commandId: id, threadId };
+        case "settle":
+          return { type: "thread.settle" as const, commandId: id, threadId };
+        case "unsettle":
+          return {
+            type: "thread.unsettle" as const,
+            commandId: id,
+            threadId,
+            reason: "user" as const,
+          };
+        case "pin":
+          return { type: "thread.pin" as const, commandId: id, threadId };
+        case "unpin":
+          return { type: "thread.unpin" as const, commandId: id, threadId };
+        case "unsnooze":
+          return {
+            type: "thread.unsnooze" as const,
+            commandId: id,
+            threadId,
+            reason: "user" as const,
+          };
+        case "stop":
+          return {
+            type: "thread.session.stop" as const,
+            commandId: id,
+            threadId,
+            createdAt: yield* nowIso,
+          };
+        case "snooze": {
+          const until =
+            input.snoozeUntil === undefined ? undefined : DateTime.make(input.snoozeUntil);
+          if (until === undefined || Option.isNone(until)) {
+            return yield* fail("Pass snoozeUntil as an ISO time to snooze.");
+          }
+          return {
+            type: "thread.snooze" as const,
+            commandId: id,
+            threadId,
+            snoozedUntil: DateTime.formatIso(until.value),
+          };
+        }
+      }
+    });
+    yield* dispatcher.dispatch(command).pipe(Effect.mapError(asToolError));
+    return { threadId };
+  });
+
+  const respondToRequest = Effect.fn("OperateToolkit.respondToRequest")(function* (
+    input: RespondToRequestInput,
+  ) {
+    const actor = yield* requireOperator;
+    // Answering approves on the user's behalf, which only the user's own token may do.
+    if (actor.kind !== "token") {
+      return yield* fail("Only the user can answer another thread's approvals and questions.");
+    }
+    const thread = yield* threadShell(input.threadId);
+    const createdAt = yield* nowIso;
+    const requestId = ApprovalRequestId.make(input.requestId);
+    if (input.decision !== undefined) {
+      yield* dispatcher
+        .dispatch({
+          type: "thread.approval.respond",
+          commandId: yield* commandId("approval-respond"),
+          threadId: thread.id,
+          requestId,
+          decision: input.decision,
+          createdAt,
+        })
+        .pipe(Effect.mapError(asToolError));
+    } else if (input.answers !== undefined) {
+      yield* dispatcher
+        .dispatch({
+          type: "thread.user-input.respond",
+          commandId: yield* commandId("user-input-respond"),
+          threadId: thread.id,
+          requestId,
+          answers: input.answers,
+          createdAt,
+        })
+        .pipe(Effect.mapError(asToolError));
+    } else {
+      return yield* fail("Pass decision for an approval, or answers for a question.");
+    }
+    return { threadId: thread.id };
+  });
+
   const listModels = Effect.fn("OperateToolkit.listModels")(function* (input: {
     readonly includeDisabled?: boolean | undefined;
   }) {
@@ -398,6 +613,9 @@ const make = Effect.gen(function* () {
     wait_for_thread: waitForThread,
     interrupt_turn: interruptTurn,
     list_models: listModels,
+    update_thread: updateThread,
+    set_thread_state: setThreadState,
+    respond_to_request: respondToRequest,
   });
 });
 
