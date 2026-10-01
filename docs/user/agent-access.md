@@ -49,7 +49,9 @@ you replay a past day. Titles, archive state, and pull request state are always 
 ## Drive threads from outside
 
 An agent connected to `/mcp/operate` can start a thread in any project with `create_thread`, send a
-thread a message, wait for it to finish, and stop its turn. It acts as you would: the threads it
+thread a message, wait for it to finish, and stop its turn. It can rename a thread or change its
+model, archive, settle, pin, or snooze it, and answer the approvals and questions a thread is
+waiting on. It acts as you would: the threads it
 starts appear in your sidebar marked with the token's name, in whichever permission mode it asks
 for.
 
@@ -63,8 +65,9 @@ off by default and applies when an agent session next starts.
 Threads an agent starts appear in your sidebar like any other, and their header shows which thread
 started them. An agent cannot give a thread more
 freedom than its own permission mode allows. It can start threads two levels deep, and keep at
-most five of its own going at once until they settle or you archive them. It cannot answer
-approvals or questions in other threads; those still come to you.
+most five of its own going at once until they settle or you archive them. It can rename,
+settle, archive, pin, or snooze other threads, but it cannot answer their approvals or questions;
+those still come to you.
 
 ## Revoke a token
 

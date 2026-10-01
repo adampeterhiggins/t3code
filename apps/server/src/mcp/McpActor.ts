@@ -52,3 +52,12 @@ export const operateToolsVisible = (): boolean => {
     Option.match({ onNone: () => false, onSome: canOperate }),
   );
 };
+
+/** The `EnabledWhen` predicate for tools only an agent access token may use, such as answering approvals. */
+export const tokenToolsVisible = (): boolean => {
+  const fiber = Fiber.getCurrent();
+  if (fiber === undefined) return false;
+  return Context.getOption(fiber.context, McpActor).pipe(
+    Option.match({ onNone: () => false, onSome: (actor) => actor.kind === "token" }),
+  );
+};

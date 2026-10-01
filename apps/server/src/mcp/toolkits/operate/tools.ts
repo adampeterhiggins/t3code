@@ -1,4 +1,9 @@
-import { ProviderInteractionMode, RuntimeMode, TrimmedNonEmptyString } from "@t3tools/contracts";
+import {
+  ProviderApprovalDecision,
+  ProviderInteractionMode,
+  RuntimeMode,
+  TrimmedNonEmptyString,
+} from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { McpSchema } from "effect/unstable/ai";
 import * as Tool from "effect/unstable/ai/Tool";
@@ -114,6 +119,27 @@ export const ThreadStatusInput = Schema.Struct({
 });
 export type ThreadStatusInput = typeof ThreadStatusInput.Type;
 
+export const PendingRequest = Schema.Struct({
+  requestId: Schema.String,
+  kind: Schema.Literals(["approval", "question"]),
+  summary: Schema.String,
+  detail: Schema.NullOr(Schema.String).annotate({
+    description: "What the agent wants to do, such as the command it would run.",
+  }),
+  decisions: Schema.Array(Schema.String).annotate({
+    description: "For an approval, the decisions respond_to_request accepts.",
+  }),
+  questions: Schema.Array(
+    Schema.Struct({
+      id: Schema.String,
+      question: Schema.String,
+      options: Schema.Array(Schema.String),
+      multiSelect: Schema.Boolean,
+    }),
+  ),
+});
+export type PendingRequest = typeof PendingRequest.Type;
+
 export const ThreadStatusResult = Schema.Struct({
   threadId: Schema.String,
   title: Schema.String,
@@ -131,10 +157,69 @@ export const ThreadStatusResult = Schema.Struct({
     description: "The agent's latest reply, cut to 4000 characters.",
   }),
   lastError: Schema.NullOr(Schema.String),
+  pendingRequests: Schema.Array(PendingRequest).annotate({
+    description: "Approvals and questions waiting on the user, when status is needs-attention.",
+  }),
   branch: Schema.NullOr(Schema.String),
   worktreePath: Schema.NullOr(Schema.String),
 });
 export type ThreadStatusResult = typeof ThreadStatusResult.Type;
+
+export const UpdateThreadInput = Schema.Struct({
+  threadId,
+  title: Schema.optional(TrimmedNonEmptyString),
+  model: Schema.optional(ModelInput.annotate({ description: "Used from the thread's next turn." })),
+  runtimeMode: Schema.optional(
+    RuntimeMode.annotate({ description: "Cannot exceed this thread's own mode." }),
+  ),
+  interactionMode: Schema.optional(ProviderInteractionMode),
+});
+export type UpdateThreadInput = typeof UpdateThreadInput.Type;
+
+export const ThreadStateAction = Schema.Literals([
+  "archive",
+  "unarchive",
+  "settle",
+  "unsettle",
+  "pin",
+  "unpin",
+  "snooze",
+  "unsnooze",
+  "stop",
+]);
+export type ThreadStateAction = typeof ThreadStateAction.Type;
+
+export const SetThreadStateInput = Schema.Struct({
+  threadId,
+  action: ThreadStateAction.annotate({
+    description:
+      "archive hides the thread and stops its agent; unarchive brings it back. settle moves finished work out of the active list; unsettle returns it. pin and unpin keep it at the top. snooze hides it until snoozeUntil; unsnooze ends that early. stop ends the agent's session.",
+  }),
+  snoozeUntil: Schema.optional(
+    TrimmedNonEmptyString.annotate({ description: "ISO time; required for snooze." }),
+  ),
+});
+export type SetThreadStateInput = typeof SetThreadStateInput.Type;
+
+export const RespondToRequestInput = Schema.Struct({
+  threadId,
+  requestId: TrimmedNonEmptyString.annotate({
+    description: "From wait_for_thread's pendingRequests.",
+  }),
+  decision: Schema.optional(ProviderApprovalDecision.annotate({ description: "For an approval." })),
+  answers: Schema.optional(
+    Schema.Record(
+      Schema.String,
+      Schema.Union([Schema.String, Schema.Array(Schema.String)]),
+    ).annotate({
+      description:
+        "For a question: each question id mapped to the chosen option, several for multiSelect, or your own text where allowed.",
+    }),
+  ),
+});
+export type RespondToRequestInput = typeof RespondToRequestInput.Type;
+
+export const ThreadActionResult = Schema.Struct({ threadId: Schema.String });
 
 export const InterruptTurnResult = Schema.Struct({
   threadId: Schema.String,
@@ -243,10 +328,57 @@ const ListModelsTool = Tool.make("list_models", {
   .annotate(Tool.OpenWorld, false)
   .annotate(McpSchema.EnabledWhen, McpActor.operateToolsVisible);
 
+const UpdateThreadTool = Tool.make("update_thread", {
+  description: "Rename another thread, or change the model and modes its next turn uses.",
+  parameters: UpdateThreadInput,
+  success: ThreadActionResult,
+  failure: OperateToolError,
+  dependencies,
+})
+  .annotate(Tool.Title, "Update a thread")
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false)
+  .annotate(McpSchema.EnabledWhen, McpActor.operateToolsVisible);
+
+const SetThreadStateTool = Tool.make("set_thread_state", {
+  description:
+    "Archive, settle, pin, snooze, or stop another thread, or undo any of those, as the user can from the sidebar.",
+  parameters: SetThreadStateInput,
+  success: ThreadActionResult,
+  failure: OperateToolError,
+  dependencies,
+})
+  .annotate(Tool.Title, "Change a thread's state")
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false)
+  .annotate(McpSchema.EnabledWhen, McpActor.operateToolsVisible);
+
+const RespondToRequestTool = Tool.make("respond_to_request", {
+  description:
+    "Answer an approval or question a thread's agent is waiting on, as the user would. Pass decision for an approval, answers for a question.",
+  parameters: RespondToRequestInput,
+  success: ThreadActionResult,
+  failure: OperateToolError,
+  dependencies,
+})
+  .annotate(Tool.Title, "Answer a thread's request")
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, false)
+  .annotate(McpSchema.EnabledWhen, McpActor.tokenToolsVisible);
+
 export const OperateToolkit = Toolkit.make(
   CreateThreadTool,
   SendMessageTool,
   WaitForThreadTool,
   InterruptTurnTool,
   ListModelsTool,
+  UpdateThreadTool,
+  SetThreadStateTool,
+  RespondToRequestTool,
 );

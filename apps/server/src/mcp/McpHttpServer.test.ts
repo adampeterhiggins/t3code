@@ -992,6 +992,8 @@ it.effect("lists thread-control tools only to credentials that may drive threads
         "list_threads",
         "search",
         "send_message",
+        "set_thread_state",
+        "update_thread",
         "wait_for_thread",
       ]);
     }),

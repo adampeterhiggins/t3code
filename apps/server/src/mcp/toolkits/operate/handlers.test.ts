@@ -7,6 +7,7 @@ import {
   type OrchestrationCommand,
   type OrchestrationEvent,
   type OrchestrationProjectShell,
+  type OrchestrationThread,
   type OrchestrationThreadShell,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
@@ -87,6 +88,7 @@ const makeHarness = Effect.fn("makeOperateHarness")(function* () {
     ]),
   );
   const events = yield* PubSub.unbounded<OrchestrationEvent>();
+  const details = yield* Ref.make<ReadonlyMap<ThreadId, OrchestrationThread>>(new Map());
   const dependencies = Layer.mergeAll(
     Layer.succeed(
       ClientCommandDispatcher.ClientCommandDispatcher,
@@ -113,7 +115,15 @@ const makeHarness = Effect.fn("makeOperateHarness")(function* () {
             updatedAt: NOW,
           })),
         ),
-      getThreadDetailSnapshot: () => Effect.succeedNone,
+      getThreadDetailSnapshot: (threadId) =>
+        Ref.get(details).pipe(
+          Effect.map((all) => {
+            const thread = all.get(threadId);
+            return thread === undefined
+              ? Option.none()
+              : Option.some({ snapshotSequence: 1, thread });
+          }),
+        ),
     }),
     Layer.mock(OrchestrationEngineService)({
       subscribeDomainEvents: PubSub.subscribe(events).pipe(Effect.map(Stream.fromSubscription)),
@@ -166,7 +176,9 @@ const makeHarness = Effect.fn("makeOperateHarness")(function* () {
       correlationId: null,
       metadata: {},
     } as unknown as OrchestrationEvent);
-  return { commands, call, setThread, publish };
+  const setDetail = (thread: OrchestrationThread) =>
+    Ref.update(details, (all) => new Map(all).set(thread.id, thread));
+  return { commands, call, setThread, setDetail, publish };
 });
 
 describe("operate toolkit handlers", () => {
@@ -321,6 +333,116 @@ describe("operate toolkit handlers", () => {
         timeoutSeconds: 0,
       });
       expect(result.status).toBe("working");
+    }),
+  );
+
+  it.effect("lists an open approval, which only the user's token may answer", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      const shell = makeThread(OTHER_ID, { hasPendingApprovals: true });
+      yield* harness.setThread(shell);
+      yield* harness.setDetail({
+        ...shell,
+        deletedAt: null,
+        messages: [],
+        proposedPlans: [],
+        checkpoints: [],
+        activities: [
+          {
+            id: EventId.make("activity-approval"),
+            tone: "approval",
+            kind: "approval.requested",
+            summary: "Command approval requested",
+            payload: {
+              requestId: "request-1",
+              requestKind: "command",
+              detail: "rm -rf build",
+              options: [
+                { decision: "accept", label: "Run" },
+                { decision: "decline", label: "Skip" },
+              ],
+            },
+            turnId: null,
+            createdAt: NOW,
+          },
+        ],
+      });
+      const status = yield* harness.call("wait_for_thread", {
+        threadId: OTHER_ID,
+        timeoutSeconds: 0,
+      });
+      expect(status.pendingRequests).toEqual([
+        {
+          requestId: "request-1",
+          kind: "approval",
+          summary: "Command approval requested",
+          detail: "rm -rf build",
+          decisions: ["accept", "decline"],
+          questions: [],
+        },
+      ]);
+
+      const refused = yield* harness
+        .call("respond_to_request", {
+          threadId: OTHER_ID,
+          requestId: "request-1",
+          decision: "accept",
+        })
+        .pipe(Effect.flip);
+      expect(refused.reason).toMatch(/Only the user/);
+
+      yield* harness.call(
+        "respond_to_request",
+        { threadId: OTHER_ID, requestId: "request-1", decision: "accept" },
+        { kind: "token", label: "Supervisor" },
+      );
+      expect(yield* Ref.get(harness.commands)).toMatchObject([
+        {
+          type: "thread.approval.respond",
+          threadId: OTHER_ID,
+          requestId: "request-1",
+          decision: "accept",
+        },
+      ]);
+    }),
+  );
+
+  it.effect("changes another thread's state, and needs a time to snooze", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      yield* harness.call("set_thread_state", { threadId: OTHER_ID, action: "archive" });
+      const missing = yield* harness
+        .call("set_thread_state", { threadId: OTHER_ID, action: "snooze" })
+        .pipe(Effect.flip);
+      expect(missing.reason).toMatch(/snoozeUntil/);
+      yield* harness.call("set_thread_state", {
+        threadId: OTHER_ID,
+        action: "snooze",
+        snoozeUntil: "2026-08-02T09:00:00.000Z",
+      });
+      expect(yield* Ref.get(harness.commands)).toMatchObject([
+        { type: "thread.archive", threadId: OTHER_ID },
+        { type: "thread.snooze", threadId: OTHER_ID, snoozedUntil: "2026-08-02T09:00:00.000Z" },
+      ]);
+    }),
+  );
+
+  it.effect("updates another thread, but not past the caller's runtime mode", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      const refused = yield* harness
+        .call("update_thread", { threadId: OTHER_ID, runtimeMode: "full-access" })
+        .pipe(Effect.flip);
+      expect(refused.reason).toMatch(/cannot use full-access/);
+      yield* harness.call("update_thread", {
+        threadId: OTHER_ID,
+        title: "Login fix",
+        interactionMode: "plan",
+      });
+      expect(yield* Ref.get(harness.commands)).toMatchObject([
+        { type: "thread.meta.update", threadId: OTHER_ID, title: "Login fix" },
+        { type: "thread.interaction-mode.set", threadId: OTHER_ID, interactionMode: "plan" },
+      ]);
     }),
   );
 });
