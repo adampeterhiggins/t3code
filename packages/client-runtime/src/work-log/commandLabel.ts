@@ -1367,3 +1367,36 @@ function commandProgramNameInternal(
 export function commandProgramName(command: string, depth = 0): string | null {
   return commandProgramNameInternal(command, depth, "shell", MAX_COMMAND_SEGMENTS);
 }
+
+function shellWrapperScript(command: string): string | null {
+  const tokens = tokenizeShellCommand(command);
+  const program = tokens?.[0]
+    ?.split(/[\\/]/)
+    .at(-1)
+    ?.replace(/\.exe$/i, "");
+  if (!tokens || !program || !SHELL_PROGRAMS.has(program)) return null;
+  const index = shellCommandArgumentIndex(tokens, 1);
+  if (index !== tokens.length - 1) return null;
+  const script = tokens[index]!.trim();
+  return script.length > 0 ? script : null;
+}
+
+/**
+ * The script inside a `/bin/zsh -lc '<script>'`-style launch, which Codex
+ * wraps around every command, or the command unchanged. A preview cut short
+ * with a trailing "..." still unwraps and keeps its ellipsis.
+ */
+export function unwrapShellCommand(command: string): string {
+  const trimmed = command.trim();
+  const script = shellWrapperScript(trimmed);
+  if (script !== null) return script;
+  if (!trimmed.endsWith("...")) return command;
+  // The cut can land mid-escape, where a dangling backslash would swallow the
+  // closing quote.
+  const cut = trimmed.slice(0, -3).replace(/\\$/, "");
+  for (const quote of ["'", '"']) {
+    const partial = shellWrapperScript(cut + quote);
+    if (partial !== null) return `${partial}...`;
+  }
+  return command;
+}

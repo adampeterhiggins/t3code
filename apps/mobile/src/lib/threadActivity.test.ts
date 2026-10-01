@@ -2825,7 +2825,7 @@ describe("buildThreadFeed", () => {
     expect(rows[0]).toMatchObject({ live: false, shimmer: false });
   });
 
-  it("preserves serialized shell wrappers with non-matching boundary quotes", () => {
+  it("unwraps shell scripts that splice quoting styles", () => {
     const turnId = TurnId.make("turn-serialized-shell-wrapper");
     const command =
       "/bin/zsh -lc 'git status\nsed -n '\"'1,20p' apps/web/src/components/DiffPanel.tsx\"";
@@ -2861,11 +2861,15 @@ describe("buildThreadFeed", () => {
     const feed = buildThreadFeed(thread);
     expect(feed[0]).toMatchObject({
       type: "activity-group",
-      activities: [{ workEntry: { command } }],
+      activities: [
+        {
+          workEntry: {
+            command: "git status\nsed -n '1,20p' apps/web/src/components/DiffPanel.tsx",
+            rawCommand: command,
+          },
+        },
+      ],
     });
-    if (feed[0]?.type === "activity-group") {
-      expect(feed[0].activities[0]?.workEntry.rawCommand).toBeUndefined();
-    }
   });
 
   it.each([

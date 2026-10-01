@@ -240,6 +240,24 @@ describe("deriveSubagentToolLog kinds and commands", () => {
       "Ran command\n\nvp test run\n\nvp test run src/a.test.ts --reporter verbose",
     );
   });
+
+  it("drops the shell wrapper from commands and their truncated detail", () => {
+    const [entry] = deriveSubagentToolLog(
+      [
+        activity("tool.completed", {
+          agentId: "alpha",
+          toolCallId: "c1",
+          itemType: "command_execution",
+          title: "Ran command",
+          detail: `/bin/zsh -lc "python3 - <<'PY' import ast...`,
+          data: { item: { command: `/bin/zsh -lc "python3 - <<'PY'\nimport ast\nPY"` } },
+        }),
+      ],
+      "alpha",
+    );
+    expect(entry?.detail).toBe("python3 - <<'PY' import ast...");
+    expect(entry?.command).toBe("python3 - <<'PY'\nimport ast\nPY");
+  });
 });
 
 describe("deriveSubagentToolLog workspace paths", () => {

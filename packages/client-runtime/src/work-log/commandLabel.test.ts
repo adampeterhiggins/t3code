@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { commandProgramName } from "./commandLabel.ts";
+import { commandProgramName, unwrapShellCommand } from "./commandLabel.ts";
 
 describe("commandProgramName", () => {
   it.each([
@@ -475,5 +475,35 @@ describe("commandProgramName", () => {
 
   it("bounds nested command wrappers", () => {
     expect(commandProgramName(`${"command ".repeat(9)}git status`)).toBeNull();
+  });
+});
+
+describe("unwrapShellCommand", () => {
+  it.each([
+    ["/bin/zsh -lc 'git status --short'", "git status --short"],
+    [
+      '/bin/zsh -lc "rg -n \'\\\\bcalc\\\\b\' src && echo \\"done\\""',
+      "rg -n '\\bcalc\\b' src && echo \"done\"",
+    ],
+    ["/bin/zsh -lc 'git status\nsed -n '\"'1,20p' file.ts\"", "git status\nsed -n '1,20p' file.ts"],
+    ["/bin/bash --noprofile --norc -l -c 'vp test run'", "vp test run"],
+    ['"C:\\Program Files\\Git\\bin\\bash.exe" -lc "git status"', "git status"],
+    ["/bin/zsh -lc \"python3 - <<'PY' import ast...", "python3 - <<'PY' import ast..."],
+    ["/bin/zsh -lc 'sed -n 1,20p src/clients/...", "sed -n 1,20p src/clients/..."],
+    ['/bin/zsh -lc "rg -i \\"effort|fast\\...', 'rg -i "effort|fast...'],
+  ])("unwraps the script: %s", (command, script) => {
+    expect(unwrapShellCommand(command)).toBe(script);
+  });
+
+  it.each([
+    "git status",
+    "zsh script.sh",
+    "zsh -lc ''",
+    "zsh -lc 'git status",
+    "zsh -c 'git status' argv0",
+    "my-shell -c 'git status'",
+    "echo 'wait...",
+  ])("leaves anything else alone: %s", (command) => {
+    expect(unwrapShellCommand(command)).toBe(command);
   });
 });
