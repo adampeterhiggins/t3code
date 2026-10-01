@@ -55,7 +55,7 @@ export function openRepositoryAttachPicker(threadRef: ScopedThreadRef): void {
   appAtomRegistry.set(repositoryAttachPickerThreadAtom, threadRef);
 }
 
-function readRecents(): ReadonlyArray<string> {
+export function readRepositoryRecents(): ReadonlyArray<string> {
   try {
     const parsed: unknown = JSON.parse(localStorage.getItem(RECENTS_STORAGE_KEY) ?? "[]");
     return Array.isArray(parsed) ? parsed.filter((entry) => typeof entry === "string") : [];
@@ -67,7 +67,10 @@ function readRecents(): ReadonlyArray<string> {
 /** Most recent first, like ctxclone's completion ranking. */
 function recordRecent(nameWithOwner: string): void {
   try {
-    const next = [nameWithOwner, ...readRecents().filter((entry) => entry !== nameWithOwner)];
+    const next = [
+      nameWithOwner,
+      ...readRepositoryRecents().filter((entry) => entry !== nameWithOwner),
+    ];
     localStorage.setItem(RECENTS_STORAGE_KEY, JSON.stringify(next.slice(0, MAX_RECENTS)));
   } catch {
     // Ranking is a nicety; a full or blocked storage just loses it.
@@ -75,7 +78,7 @@ function recordRecent(nameWithOwner: string): void {
 }
 
 /** Drops a repository chip into the thread's composer; the clone happens when the message sends. */
-function attachRepository(
+export function attachRepository(
   threadRef: ScopedThreadRef,
   input: { nameWithOwner: string; remoteUrl: string },
 ): void {
@@ -177,7 +180,7 @@ function RepositoryAttachPickerDialog(props: {
   const candidates = listQuery.data?.repositories ?? EMPTY_CANDIDATES;
   // Read once per open: attaching closes the picker, so the ranking cannot go stale here.
   const [recentRank] = useState(
-    () => new Map(readRecents().map((name, index) => [name, index] as const)),
+    () => new Map(readRepositoryRecents().map((name, index) => [name, index] as const)),
   );
   const shown = rankContextRepositoryCandidates(candidates, filter, recentRank);
 

@@ -171,6 +171,11 @@ default GitHub owner in
 different owner, or paste `owner/repo` or a clone URL. The list notes repositories already cloned
 into this thread's workspace, with their branch and how far behind they are.
 
+On web and desktop you can also type `#` and a repository's name in your message, then pick it from
+the `#` menu's **Repositories** tab. `#my-repo` searches your default owner and `#another-org/repo`
+searches that owner. A name with a hyphen or slash opens the Repositories tab straight away; for a
+one-word name, switch to the tab.
+
 When you send, T3 Code clones each attached repository into the workspace's `.context/` folder
 before the agent starts. The folder can be changed in **Settings > General > Repository folder**.
 On a new worktree the clone is a step of the setup progress. A repository that is already there is
