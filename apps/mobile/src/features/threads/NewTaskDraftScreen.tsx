@@ -51,7 +51,14 @@ import {
 import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
 import { MaterialScreenContent } from "../../components/MaterialScreenContent";
 import { ComposerAttachmentButton } from "../../components/ComposerAttachmentButton";
-import { useLinearIssuePicker } from "../../components/LinearIssuePickerSheet";
+import {
+  takeStartFromLinearIssue,
+  useLinearIssuePicker,
+} from "../../components/LinearIssuePickerSheet";
+import { useRepositoryPicker } from "../../components/RepositoryPickerSheet";
+import { ControlPillMenu } from "../../components/ControlPillMenu";
+import { linearEnvironment } from "../../state/linear";
+import { useStartFromPullRequestPicker } from "./StartFromPullRequestSheet";
 import { ComposerAttachmentStrip } from "../../components/ComposerAttachmentStrip";
 import { composerStripAttachments } from "../../lib/composerImages";
 import { EnvironmentMachineSymbol } from "../../components/EnvironmentMachineSymbol";
@@ -978,6 +985,48 @@ export function NewTaskDraftScreen(props: {
       ? { environmentId: flow.selectedEnvironmentId, draftKey: flow.draftKey }
       : null,
   );
+  const startFromIssuePicker = useLinearIssuePicker(
+    flow.draftKey && selectedProject
+      ? {
+          environmentId: selectedProject.environmentId,
+          draftKey: flow.draftKey,
+          startFrom: { projectId: selectedProject.id },
+        }
+      : null,
+  );
+  const startFromPullRequestPicker = useStartFromPullRequestPicker(
+    flow.draftKey && selectedProject
+      ? {
+          environmentId: selectedProject.environmentId,
+          projectId: selectedProject.id,
+          workspaceRoot: selectedProject.workspaceRoot,
+          onCheckout: ({ branch, worktreePath }) => {
+            if (!flow.draftKey) return;
+            // Like a route-opened branch: local mode runs in the worktree the pull request is on.
+            updateComposerDraftSettings(flow.draftKey, {
+              workspaceSelection: { mode: "local", branch, worktreePath, startFromOrigin: false },
+            });
+          },
+        }
+      : null,
+  );
+  const repositoryPicker = useRepositoryPicker(
+    flow.draftKey && selectedProject
+      ? {
+          environmentId: selectedProject.environmentId,
+          draftKey: flow.draftKey,
+          // A new worktree does not exist yet, so nothing is cloned into it.
+          workspaceCwd:
+            flow.workspaceMode === "local"
+              ? (flow.selectedWorktreePath ?? selectedProject.workspaceRoot)
+              : null,
+        }
+      : null,
+  );
+  const linkThreadToIssue = useAtomCommand(linearEnvironment.linkThread, {
+    label: "linear thread link",
+    reportFailure: false,
+  });
   const selectedEnvironmentLabel =
     flow.environments.find(
       (environment) => environment.environmentId === flow.selectedEnvironmentId,
@@ -1306,6 +1355,14 @@ export function NewTaskDraftScreen(props: {
       flow.setSubmitting(false);
     }
     const draftSnapshot = getComposerDraftSnapshot(draftKey);
+    // Linking needs no thread yet: a thread outside a tab group is its own group.
+    const startedFromIssueId = takeStartFromLinearIssue(draftKey, draftSnapshot.context);
+    if (startedFromIssueId) {
+      void linkThreadToIssue({
+        environmentId: message.environmentId,
+        input: { threadId: message.threadId, issueId: startedFromIssueId },
+      });
+    }
     if (editingPendingTask) {
       flow.finishEditingPendingTask();
     } else {
@@ -1555,6 +1612,35 @@ export function NewTaskDraftScreen(props: {
         maxWidth={190}
         onPress={() => openContextPicker("NewTaskBranch")}
       />
+      <View className="min-w-0 flex-1" />
+      <ControlPillMenu
+        accessible
+        accessibilityLabel="Start from"
+        accessibilityRole="button"
+        title="Start from"
+        actions={[
+          { id: "pull-request", title: "Pull request", image: "arrow.triangle.pull" },
+          { id: "issue", title: "Linear issue", image: "ticket" },
+        ]}
+        onPressAction={({ nativeEvent }) => {
+          if (nativeEvent.event === "pull-request") startFromPullRequestPicker.open();
+          else if (nativeEvent.event === "issue") startFromIssuePicker.open();
+        }}
+      >
+        <Pressable
+          accessibilityLabel="Start from a pull request or issue"
+          accessibilityRole="button"
+          className="size-11 items-center justify-center rounded-xl active:bg-subtle disabled:opacity-45"
+          disabled={isComposerInteractionLocked}
+        >
+          <SymbolView
+            name="ellipsis"
+            size={16}
+            tintColorClassName="accent-icon-muted"
+            type="monochrome"
+          />
+        </Pressable>
+      </ControlPillMenu>
     </View>
   );
 
@@ -1696,6 +1782,7 @@ export function NewTaskDraftScreen(props: {
                         ? linearIssuePicker.open
                         : undefined
                     }
+                    onPickRepository={flow.draftKey ? repositoryPicker.open : undefined}
                   />
                   <View className="min-w-0 flex-1 flex-row items-center justify-end gap-2">
                     <View className="min-w-0 shrink">
@@ -1777,6 +1864,9 @@ export function NewTaskDraftScreen(props: {
       <VideoPreviewModal source={previewVideo} onRequestClose={closeMediaPreview} />
       <FilePreviewModal source={previewFile} onRequestClose={closeMediaPreview} />
       {linearIssuePicker.sheet}
+      {startFromIssuePicker.sheet}
+      {startFromPullRequestPicker.sheet}
+      {repositoryPicker.sheet}
     </View>
   );
 

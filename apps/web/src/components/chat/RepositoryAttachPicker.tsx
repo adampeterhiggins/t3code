@@ -2,8 +2,10 @@ import { useAtomValue } from "@effect/atom-react";
 import {
   describeContextRepositoryGitStatus,
   findContextRepositoryClone,
-  parseRepositoryInput,
+  pastedContextRepositoryEntry,
+  rankContextRepositoryCandidates,
   repositoryContextRecord,
+  splitContextRepositoryOwnerQuery,
 } from "@t3tools/client-runtime/context-repositories";
 import type {
   ContextRepositoryCandidate,
@@ -36,7 +38,6 @@ import {
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 const OWNER_DEBOUNCE_MS = 300;
-const MAX_SHOWN = 50;
 const RECENTS_STORAGE_KEY = "t3code:context-repository-recents";
 const MAX_RECENTS = 30;
 const EMPTY_CANDIDATES: ReadonlyArray<ContextRepositoryCandidate> = [];
@@ -141,34 +142,6 @@ function OpenRepositoryButton(props: { threadRef: ScopedThreadRef; url: string }
   );
 }
 
-/** Recently attached first, then the server's order (most recently pushed). */
-function rankCandidates(
-  candidates: ReadonlyArray<ContextRepositoryCandidate>,
-  filter: string,
-  recentRank: ReadonlyMap<string, number>,
-): ReadonlyArray<ContextRepositoryCandidate> {
-  return candidates
-    .filter(
-      (candidate) =>
-        filter.length === 0 ||
-        candidate.name.toLowerCase().includes(filter) ||
-        (candidate.description?.toLowerCase().includes(filter) ?? false),
-    )
-    .toSorted(
-      (left, right) =>
-        (recentRank.get(left.nameWithOwner) ?? Infinity) -
-        (recentRank.get(right.nameWithOwner) ?? Infinity),
-    )
-    .slice(0, MAX_SHOWN);
-}
-
-/** `org/` or `org/partial-name` searches another owner; anything else searches the default. */
-function splitOwnerQuery(query: string, defaultOwner: string) {
-  const match = /^([A-Za-z0-9_.-]+)\/(.*)$/.exec(query);
-  if (match) return { owner: match[1]!, filter: match[2]!.toLowerCase() };
-  return { owner: defaultOwner, filter: query.toLowerCase() };
-}
-
 function RepositoryAttachPickerDialog(props: {
   threadRef: ScopedThreadRef;
   workspaceCwd: string | null;
@@ -183,7 +156,7 @@ function RepositoryAttachPickerDialog(props: {
   );
   const [query, setQuery] = useState("");
   const trimmedQuery = query.trim();
-  const { owner, filter } = splitOwnerQuery(trimmedQuery, defaultOwner);
+  const { owner, filter } = splitContextRepositoryOwnerQuery(trimmedQuery, defaultOwner);
   const debouncedOwner = useDebouncedValue(owner, OWNER_DEBOUNCE_MS);
   const listQuery = useEnvironmentQuery(
     debouncedOwner.length > 0
@@ -202,25 +175,13 @@ function RepositoryAttachPickerDialog(props: {
       : null,
   );
   const candidates = listQuery.data?.repositories ?? EMPTY_CANDIDATES;
-  const pasted = parseRepositoryInput(trimmedQuery);
   // Read once per open: attaching closes the picker, so the ranking cannot go stale here.
   const [recentRank] = useState(
     () => new Map(readRecents().map((name, index) => [name, index] as const)),
   );
-  const shown = rankCandidates(candidates, filter, recentRank);
+  const shown = rankContextRepositoryCandidates(candidates, filter, recentRank);
 
-  // A pasted URL, or an owner/repo the list does not (yet) contain, is still attachable.
-  const pastedEntry =
-    pasted &&
-    (pasted.remoteUrl !== null ||
-      !shown.some(
-        (candidate) => candidate.nameWithOwner.toLowerCase() === pasted.nameWithOwner.toLowerCase(),
-      ))
-      ? {
-          nameWithOwner: pasted.nameWithOwner,
-          remoteUrl: pasted.remoteUrl ?? `https://github.com/${pasted.nameWithOwner}`,
-        }
-      : null;
+  const pastedEntry = pastedContextRepositoryEntry(trimmedQuery, shown);
 
   function select(input: { nameWithOwner: string; remoteUrl: string }) {
     attachRepository(threadRef, input);

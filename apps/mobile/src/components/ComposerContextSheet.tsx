@@ -373,6 +373,13 @@ export function ComposerContextSheet(props: {
                     </Text>
                   </View>
                 ) : null}
+                {record.kind === "thread-tab" ? (
+                  <View className="gap-3">
+                    <ContextField label="Chat" value={record.title} />
+                    {/* Exactly what the agent receives in place of the other chat. */}
+                    <ContextField label="Summary" value={record.summary} />
+                  </View>
+                ) : null}
                 {record.kind === "repository" ? (
                   <View className="gap-3">
                     <ContextField label="Repository" value={record.nameWithOwner} />

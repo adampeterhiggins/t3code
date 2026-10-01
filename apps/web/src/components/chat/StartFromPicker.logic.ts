@@ -12,28 +12,6 @@ function newestFirst<T extends ThreadCandidate>(threads: ReadonlyArray<T>): T[] 
   return threads.toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
-/**
- * Live threads already working on a pull request: linked to it, or on its head branch. The
- * picker asks before starting another one beside them.
- */
-export function threadsForPullRequest<T extends ThreadCandidate>(
-  threads: ReadonlyArray<T>,
-  pullRequest: { readonly url: string; readonly headBranch: string },
-): T[] {
-  return newestFirst(
-    threads.filter(
-      (thread) =>
-        thread.archivedAt === null &&
-        (thread.branch === pullRequest.headBranch ||
-          thread.linkedPullRequest?.url === pullRequest.url ||
-          thread.branchPullRequest?.url === pullRequest.url ||
-          thread.pullRequests.some(
-            (link) => link.url === pullRequest.url && link.source !== "stack-dismissed",
-          )),
-    ),
-  );
-}
-
 /** The local name a branch is worked on under; `origin/foo` is worked on as `foo`. */
 export function localBranchName(ref: Pick<VcsRef, "name" | "isRemote">): string {
   return ref.isRemote ? deriveLocalBranchNameFromRemoteRef(ref.name) : ref.name;

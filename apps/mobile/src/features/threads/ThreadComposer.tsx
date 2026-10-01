@@ -65,6 +65,7 @@ import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { AppText as Text } from "../../components/AppText";
 import { ComposerAttachmentButton } from "../../components/ComposerAttachmentButton";
 import { useLinearIssuePicker } from "../../components/LinearIssuePickerSheet";
+import { useRepositoryPicker } from "../../components/RepositoryPickerSheet";
 import {
   ComposerAttachmentStrip,
   ComposerAttachmentThumbnail,
@@ -337,6 +338,11 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   const linearIssuePicker = useLinearIssuePicker({
     environmentId: props.environmentId,
     draftKey: composerOwnerKey,
+  });
+  const repositoryPicker = useRepositoryPicker({
+    environmentId: props.environmentId,
+    draftKey: composerOwnerKey,
+    workspaceCwd: props.selectedThread.worktreePath ?? props.projectCwd,
   });
   const openDraftDocument = (attachment: ComposerDocumentAttachment) => {
     Keyboard.dismiss();
@@ -725,6 +731,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                 onPickMedia={props.onPickDraftMedia}
                 onPickFiles={props.onPickDraftFiles}
                 onPickLinearIssue={linearIssuePicker.open}
+                onPickRepository={repositoryPicker.open}
               />
             ) : null}
             {isExpanded && stripAttachments.length > 0 ? (
@@ -977,6 +984,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                       onPickMedia={props.onPickDraftMedia}
                       onPickFiles={props.onPickDraftFiles}
                       onPickLinearIssue={linearIssuePicker.open}
+                      onPickRepository={repositoryPicker.open}
                     />
                     <View className="min-w-0 shrink">
                       <ComposerInlineControl
@@ -1027,6 +1035,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       <VideoPreviewModal source={previewVideo} onRequestClose={closePreview} />
       <FilePreviewModal source={previewFile} onRequestClose={closePreview} />
       {linearIssuePicker.sheet}
+      {repositoryPicker.sheet}
     </Animated.View>
   );
 });

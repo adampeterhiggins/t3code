@@ -1,24 +1,42 @@
-import { createThreadTab, listThreadTabs } from "@t3tools/client-runtime/thread-tabs";
 import {
+  createThreadTab,
+  listThreadTabs,
+  prepareThreadTabHandoff,
+} from "@t3tools/client-runtime/thread-tabs";
+import {
+  COMPOSER_CONTEXT_THREAD_TAB_SUMMARY_MAX_CHARS,
+  type ComposerContextId,
   type EnvironmentId,
   type ModelSelection,
   ThreadId,
+  type ThreadTabContextRecord,
   type ThreadTabGroup,
 } from "@t3tools/contracts";
+import {
+  formatComposerContextReference,
+  sanitizeComposerContextLabel,
+} from "@t3tools/shared/composerContextReferences";
 import { useNavigation } from "@react-navigation/native";
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, ScrollView, Text, View } from "react-native";
 
 import { SymbolView } from "../../components/AppSymbol";
 import { ControlPillMenu } from "../../components/ControlPillMenu";
 import { useLinearIssuePicker } from "../../components/LinearIssuePickerSheet";
+import { buildModelOptions, groupByProvider, type ModelOption } from "../../lib/modelOptions";
 import { runtime } from "../../lib/runtime";
+import { scopedThreadKey } from "../../lib/scopedEntities";
 import { uuidv4 } from "../../lib/uuid";
+import { useEnvironmentServerConfig } from "../../state/entities";
 import { usePreparedConnection } from "../../state/session";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
+import {
+  getComposerDraftSnapshot,
+  insertComposerDraftContext,
+} from "../../state/use-composer-drafts";
 import { refreshArchivedThreadsForEnvironment } from "../archive/useArchivedThreadSnapshots";
 import {
   ThreadLinearLinkButton,
@@ -29,6 +47,7 @@ import {
 const NEW_TAB_ACTION = "tab:new";
 const CLOSE_TAB_ACTION = "tab:close";
 const LINK_LINEAR_ACTION = "tab:link-linear";
+const HAND_OFF_PREFIX = "tab:hand-off:";
 
 const selectedSources = new Map<string, ReadonlyArray<ThreadId>>();
 
@@ -41,8 +60,10 @@ export function clearSelectedThreadTabSources(threadId: ThreadId): void {
 }
 
 /**
- * Switches, opens, and closes a thread's chat tabs; empty tabs also pick sibling context. The
- * group's linked Linear issue sits beside the switcher.
+ * Switches, opens, and closes a thread's chat tabs; empty tabs also pick sibling context. A
+ * started chat can hand off to any model: a new tab on that model whose draft starts with a
+ * summary of this chat, followed by this chat's unsent draft. The group's linked Linear issue
+ * sits beside the switcher.
  */
 export function ThreadTabs({
   environmentId,
@@ -69,6 +90,16 @@ export function ThreadTabs({
   const [busy, setBusy] = useState(false);
   const linear = useThreadLinearLink(environmentId, threadId);
   const linearPicker = useLinearIssuePicker({ mode: "link", environmentId, threadId });
+  const serverConfig = useEnvironmentServerConfig(environmentId);
+  const handOffModels = useMemo(
+    () =>
+      groupByProvider(
+        buildModelOptions(serverConfig, modelSelection).filter(
+          (option) => !option.isLegacy && !option.isUnavailable,
+        ),
+      ),
+    [modelSelection, serverConfig],
+  );
 
   useEffect(() => {
     if (Option.isNone(prepared)) return;
@@ -111,6 +142,52 @@ export function ThreadTabs({
       setBusy(false);
     }
   };
+  const handOff = async (option: ModelOption) => {
+    setBusy(true);
+    try {
+      const next = ThreadId.make(uuidv4());
+      await runtime.runPromise(
+        createThreadTab(prepared.value, threadId, {
+          threadId: next,
+          modelSelection: option.selection,
+        }),
+      );
+      const handoff = await runtime.runPromise(
+        prepareThreadTabHandoff(prepared.value, next, { sourceThreadIds: [threadId] }),
+      );
+      const summary = handoff.text.slice(0, COMPOSER_CONTEXT_THREAD_TAB_SUMMARY_MAX_CHARS);
+      const record: ThreadTabContextRecord | null = summary
+        ? {
+            version: 1,
+            kind: "thread-tab",
+            // Thread ids are UUIDs, which already fit the context id pattern.
+            contextId: `thread-tab_${threadId}` as ComposerContextId,
+            label: sanitizeComposerContextLabel(title, "thread-tab"),
+            threadId,
+            title: title.slice(0, 2_048),
+            summary,
+          }
+        : null;
+      // The unsent draft follows the summary; its attachments are shared, not moved.
+      const source = getComposerDraftSnapshot(scopedThreadKey(environmentId, threadId));
+      const records = [...(record ? [record] : []), ...(source.context?.records ?? [])];
+      const text = [record ? formatComposerContextReference(record) : "", source.text]
+        .filter((part) => part.trim().length > 0)
+        .join("\n\n");
+      if (text.length > 0) {
+        insertComposerDraftContext(scopedThreadKey(environmentId, next), {
+          text,
+          context: { version: 1, records },
+          attachments: source.attachments,
+        });
+      }
+      navigateTo(next);
+    } catch (cause) {
+      Alert.alert("Could not hand off", cause instanceof Error ? cause.message : undefined);
+    } finally {
+      setBusy(false);
+    }
+  };
   // Closing archives the tab's thread, so the archived-threads list can reopen it.
   const close = async () => {
     const index = group.tabs.findIndex((tab) => tab.threadId === threadId);
@@ -141,7 +218,13 @@ export function ThreadTabs({
     if (id === NEW_TAB_ACTION) void create();
     else if (id === CLOSE_TAB_ACTION) void close();
     else if (id === LINK_LINEAR_ACTION) linearPicker.open();
-    else if (id !== threadId) navigateTo(ThreadId.make(id));
+    else if (id.startsWith(HAND_OFF_PREFIX)) {
+      const key = id.slice(HAND_OFF_PREFIX.length);
+      const option = handOffModels
+        .flatMap((group) => group.models)
+        .find((model) => model.key === key);
+      if (option) void handOff(option);
+    } else if (id !== threadId) navigateTo(ThreadId.make(id));
   };
   const toggle = (sourceId: ThreadId) => {
     if (!selected.includes(sourceId) && selected.length >= 8) {
@@ -206,6 +289,42 @@ export function ThreadTabs({
             </Pressable>
           </ControlPillMenu>
         )}
+        {!empty && handOffModels.length > 0 ? (
+          <ControlPillMenu
+            accessible
+            accessibilityRole="button"
+            accessibilityLabel="Hand off to another model"
+            title="Continue in a new tab with"
+            actions={handOffModels.map((group) => ({
+              id: `tab:hand-off-provider:${group.providerKey}`,
+              title: group.providerLabel,
+              subactions: group.models.map((model) => ({
+                id: `${HAND_OFF_PREFIX}${model.key}`,
+                title: model.label,
+                state:
+                  model.selection.instanceId === modelSelection.instanceId &&
+                  model.selection.model === modelSelection.model
+                    ? ("on" as const)
+                    : ("off" as const),
+              })),
+            }))}
+            onPressAction={({ nativeEvent }) => onMenuAction(nativeEvent.event)}
+          >
+            <Pressable
+              accessibilityLabel="Hand off to another model"
+              accessibilityRole="button"
+              disabled={busy}
+              className="shrink-0 flex-row items-center gap-1.5 self-start rounded-full bg-subtle px-3 py-1.5 active:opacity-70 disabled:opacity-50"
+            >
+              <SymbolView
+                name="arrow.triangle.branch"
+                size={13}
+                tintColorClassName="accent-foreground"
+              />
+              <Text className="text-sm font-medium text-foreground">Hand off</Text>
+            </Pressable>
+          </ControlPillMenu>
+        ) : null}
         {linear.link ? (
           <ThreadLinearLinkChip
             environmentId={environmentId}
