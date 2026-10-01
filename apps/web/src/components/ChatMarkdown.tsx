@@ -190,6 +190,7 @@ import {
   resolvePullRequestPreviewTarget,
   useOpenChangeRequestLink,
 } from "~/lib/openPullRequestLink";
+import { objectLinkLabel } from "@t3tools/client-runtime/composer-object-links";
 import { useOpenLink } from "../browser/useOpenLink";
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
 import { isPreviewSupportedInRuntime } from "../previewStateStore";
@@ -3023,6 +3024,10 @@ const CHAT_MARKDOWN_COMPONENTS = {
             ? plainHastText(node)
             : undefined;
       const isPullRequestAutolink = pullRequestCopy !== undefined;
+      const linkText = plainHastText(node);
+      // Only a bare link is renamed: link text the writer chose stays as written.
+      const objectLabel =
+        href && !isPullRequestAutolink && linkText === href ? objectLinkLabel(href) : null;
       const confirmBeforeOpen = pullRequestAutolink === "reference";
       const pullRequestCandidateUrl =
         confirmBeforeOpen && href ? pullRequestCandidateUrlFromReferenceAutolink(href) : href;
@@ -3042,7 +3047,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
         <a
           {...props}
           className={cn(props.className, pullRequestAutolink === "commit" && "font-mono")}
-          data-markdown-copy={pullRequestCopy}
+          data-markdown-copy={pullRequestCopy ?? (objectLabel === null ? undefined : href)}
           href={href}
           target={isSameDocumentLink ? undefined : "_blank"}
           rel={isSameDocumentLink ? undefined : "noopener noreferrer"}
@@ -3162,7 +3167,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
           }}
         >
           {faviconHost && hastHasText(node) && !isPullRequestAutolink ? (
-            <MarkdownExternalLinkContent host={faviconHost} plainText={plainHastText(node)}>
+            <MarkdownExternalLinkContent host={faviconHost} plainText={objectLabel ?? linkText}>
               {linkChildren}
             </MarkdownExternalLinkContent>
           ) : (

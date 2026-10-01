@@ -4,6 +4,7 @@ import {
   findComposerObjectLinks,
   findTypedComposerObjectLink,
   locateComposerObjectLink,
+  objectLinkLabel,
   parseComposerObjectLink,
 } from "./composerObjectLinks.ts";
 
@@ -37,6 +38,23 @@ describe("parseComposerObjectLink", () => {
     expect(parseComposerObjectLink("https://github.com/acme")).toBeNull();
     expect(parseComposerObjectLink("https://sentry.io/organizations/acme/issues/123")).toBeNull();
     expect(parseComposerObjectLink("https://example.com/acme/api")).toBeNull();
+  });
+});
+
+describe("objectLinkLabel", () => {
+  it("names pull requests, issues, Linear issues, and repositories", () => {
+    expect(objectLinkLabel("https://github.com/Acme/API/pull/7/files")).toBe("Acme/API#7");
+    expect(objectLinkLabel("https://gitlab.com/acme/group/api/-/merge_requests/3")).toBe(
+      "acme/group/api#3",
+    );
+    expect(objectLinkLabel("https://github.com/acme/api/issues/12")).toBe("acme/api#12");
+    expect(objectLinkLabel("https://linear.app/acme/issue/eng-123/fix-the-thing")).toBe("ENG-123");
+    expect(objectLinkLabel("https://github.com/acme/api.git")).toBe("acme/api");
+  });
+
+  it("has no label for ordinary links", () => {
+    expect(objectLinkLabel("https://github.com/acme/api/blob/main/README.md")).toBeNull();
+    expect(objectLinkLabel("https://example.com/acme/api")).toBeNull();
   });
 });
 

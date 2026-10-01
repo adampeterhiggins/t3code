@@ -147,6 +147,7 @@ import {
   resolveMarkdownLinkIcon,
   resolveMarkdownLinkPresentation,
 } from "@t3tools/mobile-markdown-text/links";
+import { markdownObjectLinkLabel } from "@t3tools/mobile-markdown-text/markdown";
 import {
   deriveThreadFeedPresentation,
   deriveUnsettledTurnId,
@@ -1082,7 +1083,7 @@ function useMarkdownStyles(
       preserveSoftBreaks: boolean,
       highlightCode: boolean,
     ): CustomRenderers => ({
-      link: ({ children, href = "" }) => {
+      link: ({ children, href = "", node }) => {
         const presentation = resolveMarkdownLinkPresentation(href);
         if (presentation.kind === "file") {
           return (
@@ -1108,7 +1109,7 @@ function useMarkdownStyles(
                 color={markdownLinkColor}
                 onPress={onLinkPress}
               >
-                {children}
+                {markdownObjectLinkLabel(node) ?? children}
               </MarkdownExternalLink>
             </MarkdownLinkLabelContext.Provider>
           );

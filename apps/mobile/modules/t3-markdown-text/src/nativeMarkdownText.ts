@@ -100,6 +100,7 @@ export function contextChipPresentation(
     : CONTEXT_CHIP_PRESENTATIONS.file;
 }
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
+import { objectLinkLabel } from "@t3tools/client-runtime/composer-object-links";
 import {
   formatComposerContextReference,
   parseComposerContextHref,
@@ -128,9 +129,11 @@ export function nativeMarkdownContextCopyRanges(
       ? formatComposerContextReference({ ...reference, label: run.text })
       : run.skillName
         ? `$${run.skillName}`
-        : run.fileIcon && run.href
-          ? (run.sourceText ?? `[${run.text}](<${run.href}>)`)
-          : null;
+        : run.sourceText !== undefined
+          ? run.sourceText
+          : run.fileIcon && run.href
+            ? `[${run.text}](<${run.href}>)`
+            : null;
     return source === null ? [] : [{ start, end: offset, text: source }];
   });
 }
@@ -281,6 +284,7 @@ function sameRunStyle(left: NativeMarkdownTextRun, right: NativeMarkdownTextRun)
     left.fileIcon === right.fileIcon &&
     left.skillName === right.skillName &&
     left.skillLabel === right.skillLabel &&
+    left.sourceText === right.sourceText &&
     left.role === right.role &&
     left.headingLevel === right.headingLevel &&
     left.depth === right.depth &&
@@ -443,6 +447,14 @@ function nodeTextContent(node: MarkdownNode): string {
   return (node.children ?? []).map(nodeTextContent).join("");
 }
 
+/**
+ * The short name a bare pull request, issue, Linear issue, or repository link shows in place of
+ * its URL. Null for anything else, including link text the writer chose.
+ */
+export function markdownObjectLinkLabel(node: MarkdownNode): string | null {
+  return node.href && nodeTextContent(node) === node.href ? objectLinkLabel(node.href) : null;
+}
+
 function appendNode(
   runs: NativeMarkdownTextRun[],
   node: MarkdownNode,
@@ -500,6 +512,16 @@ function appendNode(
         });
       }
       if (presentation.kind === "external") {
+        const label = markdownObjectLinkLabel(node);
+        if (label !== null) {
+          const labelRun = appendRun([], label, {
+            ...context,
+            href: presentation.href,
+            externalHost: presentation.host,
+          })[0]!;
+          runs.push({ ...labelRun, sourceText: node.href! });
+          return runs;
+        }
         return appendChildren(runs, node, {
           ...context,
           href: presentation.href,

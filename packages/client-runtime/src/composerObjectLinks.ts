@@ -63,6 +63,37 @@ export function parseComposerObjectLink(url: string): ComposerObjectLink | null 
   return null;
 }
 
+/**
+ * The short name a bare link reads as once it is recognised: `owner/repo#7` for a pull request
+ * or issue, `ENG-123` for a Linear issue, `owner/repo` for a repository. Null for ordinary links.
+ */
+export function objectLinkLabel(url: string): string | null {
+  const link = parseComposerObjectLink(url);
+  switch (link?.kind) {
+    case undefined:
+      return null;
+    case "linear-issue":
+      return link.identifier;
+    case "repository":
+      return link.nameWithOwner;
+    case "github-issue": {
+      const issue = parseGitHubIssueUrl(url);
+      return issue === null ? null : `${issue.repository}#${issue.number}`;
+    }
+    case "pull-request": {
+      const changeRequest = parseChangeRequestUrl(url);
+      if (changeRequest === null) return null;
+      // The parsed repository is lower-cased for matching; show it as the link writes it.
+      const repository = new URL(url).pathname
+        .split("/")
+        .filter(Boolean)
+        .slice(0, changeRequest.repository.split("/").length)
+        .join("/");
+      return `${repository}#${changeRequest.number}`;
+    }
+  }
+}
+
 /** Every attachable link in `text`, in order, with where it sits. */
 export function findComposerObjectLinks(
   text: string,
