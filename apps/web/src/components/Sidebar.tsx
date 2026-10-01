@@ -80,6 +80,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
+import { flushSync } from "react-dom";
 import { useParams, useRouter } from "@tanstack/react-router";
 
 import { useRightPanelStore } from "../rightPanelStore";
@@ -2172,7 +2173,10 @@ function SidebarDisclosure(props: {
       onSettled?.();
     };
     if (animation === null) settle();
-    else animation.addEventListener("finish", settle, { once: true });
+    // A finished animation stops holding the collapsed height, so the unmount
+    // must commit before the next paint or the full list flashes back for a
+    // frame. Committing first also lets onSettled measure the settled layout.
+    else animation.addEventListener("finish", () => flushSync(settle), { once: true });
   }, [open, onSettled]);
   useEffect(() => () => animationRef.current?.cancel(), []);
   if (!mounted) return null;
