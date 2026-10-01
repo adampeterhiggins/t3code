@@ -68,6 +68,24 @@ export type SidebarThreadSortOrder = typeof SidebarThreadSortOrder.Type;
 // wire field keeps its decoding default below.
 const DEFAULT_SIDEBAR_THREAD_SORT_ORDER: SidebarThreadSortOrder = "updated_at";
 
+// How a chat's tabs are ordered under its sidebar row. Manual is the order tabs were
+// opened in until one is dragged; the rest re-sort as tabs change.
+export const SidebarTabSortOrder = Schema.Literals([
+  "manual",
+  "created_at",
+  "latest_response",
+  "last_opened",
+]);
+export type SidebarTabSortOrder = typeof SidebarTabSortOrder.Type;
+export const SidebarTabSortDirection = Schema.Literals(["desc", "asc"]);
+export type SidebarTabSortDirection = typeof SidebarTabSortDirection.Type;
+export const MIN_SIDEBAR_TAB_LIMIT = 1;
+export const MAX_SIDEBAR_TAB_LIMIT = 50;
+export const SidebarTabLimit = Schema.Int.check(
+  Schema.isBetween({ minimum: MIN_SIDEBAR_TAB_LIMIT, maximum: MAX_SIDEBAR_TAB_LIMIT }),
+);
+export type SidebarTabLimit = typeof SidebarTabLimit.Type;
+
 export const SidebarProjectGroupingMode = Schema.Literals([
   "repository",
   "repository_path",
@@ -496,6 +514,16 @@ export const ClientSettingsSchema = Schema.Struct({
   ),
   // Off: a chat's tabs share one sidebar row. On: each tab is listed under it.
   sidebarShowTabs: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  // How many listed tabs show before the rest fold behind a "more" row; null shows all.
+  sidebarTabLimit: Schema.NullOr(SidebarTabLimit).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
+  sidebarTabSortOrder: SidebarTabSortOrder.pipe(
+    Schema.withDecodingDefault(Effect.succeed("manual" as const)),
+  ),
+  sidebarTabSortDirection: SidebarTabSortDirection.pipe(
+    Schema.withDecodingDefault(Effect.succeed("desc" as const)),
+  ),
   timestampFormat: TimestampFormat.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_TIMESTAMP_FORMAT)),
   ),
@@ -1881,6 +1909,9 @@ export const ClientSettingsPatch = Schema.Struct({
   sidebarThreadSortOrder: Schema.optionalKey(SidebarThreadSortOrder),
   sidebarThreadPreviewCount: Schema.optionalKey(SidebarThreadPreviewCount),
   sidebarShowTabs: Schema.optionalKey(Schema.Boolean),
+  sidebarTabLimit: Schema.optionalKey(Schema.NullOr(SidebarTabLimit)),
+  sidebarTabSortOrder: Schema.optionalKey(SidebarTabSortOrder),
+  sidebarTabSortDirection: Schema.optionalKey(SidebarTabSortDirection),
   timestampFormat: Schema.optionalKey(TimestampFormat),
   snapShotEnabled: Schema.optionalKey(Schema.Boolean),
   snapShotIncludeAccessibility: Schema.optionalKey(Schema.Boolean),

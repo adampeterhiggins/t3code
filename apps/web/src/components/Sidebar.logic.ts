@@ -8,7 +8,12 @@ import {
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
 import { hasUnseenCompletion as hasUnseenTurnCompletion } from "@t3tools/client-runtime/state/attention-inbox";
 import type { ContextMenuItem, EnvironmentId, ThreadId } from "@t3tools/contracts";
-import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from "@t3tools/contracts/settings";
+import type {
+  SidebarProjectSortOrder,
+  SidebarTabSortDirection,
+  SidebarTabSortOrder,
+  SidebarThreadSortOrder,
+} from "@t3tools/contracts/settings";
 import type { AsyncResult } from "effect/unstable/reactivity";
 import { planPinnedReorder } from "@t3tools/client-runtime/state/thread-sort";
 import {
@@ -811,13 +816,149 @@ export function sidebarTabNeighbourKey(
   return keys[index + 1] ?? keys[index - 1] ?? null;
 }
 
-/** Rows in the order the sidebar shows them: each group's row followed by its tabs. */
+/**
+ * Rows in the order the sidebar shows them: each group's row followed by its tabs. Where the
+ * tab list includes the row's own thread (`replacesRow`), the list stands in for the row,
+ * wherever the sort put that thread or even when it is folded past the limit.
+ */
 export function withSidebarTabThreads<T>(
   rows: readonly T[],
   getKey: (row: T) => string,
   tabsByRowKey: ReadonlyMap<string, readonly T[]>,
+  replacesRow: (rowKey: string) => boolean = () => false,
 ): T[] {
-  return rows.flatMap((row) => [row, ...(tabsByRowKey.get(getKey(row)) ?? [])]);
+  return rows.flatMap((row) => {
+    const rowKey = getKey(row);
+    const tabs = tabsByRowKey.get(rowKey);
+    if (tabs === undefined) return [row];
+    return replacesRow(rowKey) ? tabs : [row, ...tabs];
+  });
+}
+
+/**
+ * What a tab sorts by: when its latest turn finished, or was sent while it is still running,
+ * when it was created, or when you last opened it here. Null sorts last either way.
+ */
+export function sidebarTabSortTimestamp(
+  thread: Pick<SidebarThreadSummary, "createdAt" | "latestTurn">,
+  order: Exclude<SidebarTabSortOrder, "manual">,
+  openedAt: number | undefined,
+): number | null {
+  if (order === "last_opened") return openedAt ?? null;
+  const timestamp =
+    order === "created_at"
+      ? thread.createdAt
+      : (thread.latestTurn?.completedAt ?? thread.latestTurn?.requestedAt ?? null);
+  const ms = timestamp === null ? Number.NaN : Date.parse(timestamp);
+  return Number.isNaN(ms) ? null : ms;
+}
+
+/**
+ * A group's tabs in display order. Manual follows the dragged ranks, with tabs never dragged
+ * after them in the order they were opened; the timed orders keep that order for ties.
+ */
+export function sortSidebarTabs<T>(
+  tabs: readonly T[],
+  input: {
+    order: SidebarTabSortOrder;
+    direction: SidebarTabSortDirection;
+    getKey: (tab: T) => string;
+    getTimestamp: (tab: T, order: Exclude<SidebarTabSortOrder, "manual">) => number | null;
+    manualRanks: Readonly<Record<string, number>>;
+  },
+): T[] {
+  const { order, direction, getKey, getTimestamp, manualRanks } = input;
+  if (order === "manual") {
+    const rank = (tab: T) => manualRanks[getKey(tab)] ?? Number.POSITIVE_INFINITY;
+    return tabs.toSorted((left, right) => {
+      const delta = rank(left) - rank(right);
+      return Number.isNaN(delta) ? 0 : delta;
+    });
+  }
+  const sign = direction === "desc" ? -1 : 1;
+  const timestamps = new Map(tabs.map((tab) => [tab, getTimestamp(tab, order)]));
+  return tabs.toSorted((left, right) => {
+    const a = timestamps.get(left) ?? null;
+    const b = timestamps.get(right) ?? null;
+    if (a === null || b === null) return a === b ? 0 : a === null ? 1 : -1;
+    return (a - b) * sign;
+  });
+}
+
+/**
+ * Keeps an order the pointer is resting on, so a live sort never moves a tab out from under a
+ * click. Tabs that joined since stay in sorted order after the held ones.
+ */
+export function holdSidebarTabOrder<T>(
+  sorted: readonly T[],
+  heldKeys: readonly string[],
+  getKey: (tab: T) => string,
+): T[] {
+  const heldIndex = new Map(heldKeys.map((key, index) => [key, index]));
+  const position = (tab: T) => heldIndex.get(getKey(tab)) ?? Number.POSITIVE_INFINITY;
+  return sorted.toSorted((left, right) => {
+    const delta = position(left) - position(right);
+    return Number.isNaN(delta) ? 0 : delta;
+  });
+}
+
+/**
+ * The tabs a group lists before its "more" row. The open tab always shows: past the limit it
+ * takes the last slot, so the group stays exactly `limit` rows tall.
+ */
+export function limitSidebarTabs<T>(
+  ordered: readonly T[],
+  limit: number | null,
+  activeKey: string | null,
+  getKey: (tab: T) => string,
+): { shown: readonly T[]; hidden: readonly T[] } {
+  if (limit === null || ordered.length <= limit) return { shown: ordered, hidden: [] };
+  let shown = ordered.slice(0, limit);
+  const active = activeKey === null ? undefined : ordered.find((tab) => getKey(tab) === activeKey);
+  if (active !== undefined && !shown.includes(active)) {
+    shown = [...shown.slice(0, limit - 1), active];
+  }
+  const shownSet = new Set(shown);
+  return { shown, hidden: ordered.filter((tab) => !shownSet.has(tab)) };
+}
+
+/**
+ * A group's full order after dropping `activeKey` on `overKey` among the shown tabs. Hidden
+ * tabs keep their places; the dropped tab lands next to the shown tab it moved past.
+ */
+export function moveSidebarTab(
+  orderedKeys: readonly string[],
+  shownKeys: readonly string[],
+  activeKey: string,
+  overKey: string,
+): string[] {
+  const from = shownKeys.indexOf(activeKey);
+  const to = shownKeys.indexOf(overKey);
+  if (from === -1 || to === -1 || from === to) return [...orderedKeys];
+  const shown = shownKeys.filter((key) => key !== activeKey);
+  shown.splice(to, 0, activeKey);
+  const rest = orderedKeys.filter((key) => key !== activeKey);
+  // Moving down lands just after the tab it passed; moving up, just before it.
+  const anchor = from < to ? shown[to - 1]! : shown[to + 1]!;
+  rest.splice(rest.indexOf(anchor) + (from < to ? 1 : 0), 0, activeKey);
+  return rest;
+}
+
+/**
+ * Stores a group's manual order as ranks. Ranks only compare within a group, so other groups'
+ * entries stay as they were; entries for threads that no longer exist are dropped.
+ */
+export function withSidebarTabRanks(
+  ranks: Readonly<Record<string, number>>,
+  orderedKeys: readonly string[],
+  liveKeys: ReadonlySet<string>,
+): Record<string, number> {
+  const next: Record<string, number> = {};
+  for (const [key, rank] of Object.entries(ranks)) {
+    if (liveKeys.has(key)) next[key] = rank;
+  }
+  for (const [index, key] of orderedKeys.entries()) next[key] = index;
+  return next;
 }
 
 export function getSidebarThreadIdsToPrewarm<TThreadId>(

@@ -51,6 +51,12 @@ import {
   shouldNavigateAfterThreadPark,
   THREAD_JUMP_HINT_SHOW_DELAY_MS,
   withSidebarTabThreads,
+  holdSidebarTabOrder,
+  limitSidebarTabs,
+  moveSidebarTab,
+  sidebarTabSortTimestamp,
+  sortSidebarTabs,
+  withSidebarTabRanks,
   type SidebarListItem,
   type SidebarListMarker,
   type SidebarSection,
@@ -64,6 +70,7 @@ import {
   ProjectId,
   ProviderInstanceId,
   ThreadId,
+  TurnId,
 } from "@t3tools/contracts";
 
 import {
@@ -644,6 +651,121 @@ describe("sidebar tab rows", () => {
     expect(sidebarTabNeighbourKey("local:a2", tabs)).toBe("local:a3");
     expect(sidebarTabNeighbourKey("local:a3", tabs)).toBe("local:a2");
     expect(sidebarTabNeighbourKey("local:b", tabs)).toBeNull();
+  });
+
+  it("lists a card's sorted tabs in place of its row, even with the row's thread folded away", () => {
+    const tabsByRowKey = new Map([
+      ["local:a", ["local:a2", "local:a", "local:a3"]],
+      ["local:c", ["local:c2"]],
+    ]);
+    const isCard = (key: string) => key === "local:a" || key === "local:c";
+    expect(
+      withSidebarTabThreads(["local:b", "local:a", "local:c"], (key) => key, tabsByRowKey, isCard),
+    ).toEqual(["local:b", "local:a2", "local:a", "local:a3", "local:c2"]);
+  });
+});
+
+describe("sidebar tab order", () => {
+  const tab = (
+    key: string,
+    createdAt: string,
+    latestTurn: OrchestrationLatestTurn | null = null,
+  ) => ({
+    key,
+    createdAt,
+    latestTurn,
+  });
+  const turn = (
+    requestedAt: string,
+    completedAt: string | null,
+  ): OrchestrationLatestTurn | null => ({
+    turnId: TurnId.make(`turn-${requestedAt}`),
+    state: completedAt === null ? "running" : "completed",
+    requestedAt,
+    startedAt: requestedAt,
+    completedAt,
+    assistantMessageId: null,
+  });
+  const tabs = [
+    tab(
+      "a",
+      "2026-01-01T00:00:00.000Z",
+      turn("2026-01-05T00:00:00.000Z", "2026-01-05T00:01:00.000Z"),
+    ),
+    tab("b", "2026-01-02T00:00:00.000Z", turn("2026-01-09T00:00:00.000Z", null)),
+    tab("c", "2026-01-03T00:00:00.000Z"),
+  ];
+  const openedAt: Record<string, number> = { a: 3, c: 9 };
+  const sort = (
+    order: Parameters<typeof sortSidebarTabs>[1]["order"],
+    direction: "desc" | "asc" = "desc",
+    manualRanks: Record<string, number> = {},
+  ) =>
+    sortSidebarTabs(tabs, {
+      order,
+      direction,
+      manualRanks,
+      getKey: (t) => t.key,
+      getTimestamp: (t, by) => sidebarTabSortTimestamp(t, by, openedAt[t.key]),
+    }).map((t) => t.key);
+
+  it("orders by creation either way", () => {
+    expect(sort("created_at")).toEqual(["c", "b", "a"]);
+    expect(sort("created_at", "asc")).toEqual(["a", "b", "c"]);
+  });
+
+  it("orders by latest response, counting a running turn from when it was sent", () => {
+    expect(sort("latest_response")).toEqual(["b", "a", "c"]);
+    // A tab that never had a turn sorts last in both directions.
+    expect(sort("latest_response", "asc")).toEqual(["a", "b", "c"]);
+  });
+
+  it("orders by when each tab was last opened here, unopened tabs last", () => {
+    expect(sort("last_opened")).toEqual(["c", "a", "b"]);
+    expect(sort("last_opened", "asc")).toEqual(["a", "c", "b"]);
+  });
+
+  it("follows dragged ranks in manual order, with undragged tabs after in opening order", () => {
+    expect(sort("manual")).toEqual(["a", "b", "c"]);
+    expect(sort("manual", "desc", { c: 0, a: 1 })).toEqual(["c", "a", "b"]);
+  });
+
+  it("holds the order under the pointer, adding new tabs after it", () => {
+    expect(holdSidebarTabOrder(["b", "a", "d", "c"], ["a", "b", "gone", "c"], (k) => k)).toEqual([
+      "a",
+      "b",
+      "c",
+      "d",
+    ]);
+  });
+
+  it("limits a group to N rows, the open tab taking the last slot when it would be hidden", () => {
+    const keys = ["a", "b", "c", "d", "e"];
+    expect(limitSidebarTabs(keys, null, "e", (k) => k)).toEqual({ shown: keys, hidden: [] });
+    expect(limitSidebarTabs(keys, 5, "e", (k) => k)).toEqual({ shown: keys, hidden: [] });
+    expect(limitSidebarTabs(keys, 3, "b", (k) => k)).toEqual({
+      shown: ["a", "b", "c"],
+      hidden: ["d", "e"],
+    });
+    expect(limitSidebarTabs(keys, 3, "e", (k) => k)).toEqual({
+      shown: ["a", "b", "e"],
+      hidden: ["c", "d"],
+    });
+  });
+
+  it("places a dropped tab beside the shown tab it lands next to", () => {
+    const order = ["a", "b", "c", "d", "e"];
+    // Shown a, b, e (e is open past the limit); hidden c, d keep their places.
+    expect(moveSidebarTab(order, ["a", "b", "e"], "a", "b")).toEqual(["b", "a", "c", "d", "e"]);
+    expect(moveSidebarTab(order, ["a", "b", "e"], "e", "a")).toEqual(["e", "a", "b", "c", "d"]);
+    expect(moveSidebarTab(order, ["a", "b", "e"], "a", "e")).toEqual(["b", "c", "d", "e", "a"]);
+    expect(moveSidebarTab(order, ["a", "b", "e"], "a", "a")).toEqual(order);
+  });
+
+  it("stores a group's ranks, dropping ranks for threads that are gone", () => {
+    expect(
+      withSidebarTabRanks({ x: 0, gone: 1, a: 4 }, ["b", "a"], new Set(["x", "a", "b"])),
+    ).toEqual({ x: 0, a: 1, b: 0 });
   });
 });
 
