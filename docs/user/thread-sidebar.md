@@ -28,12 +28,23 @@ Each tab has its own provider and conversation. Closing a tab archives it, so un
 with a count of its tabs, and opening that row returns to the tab you last had open.
 
 On web and desktop, press `Cmd+Option+T` on macOS or `Ctrl+Alt+T` on Windows and Linux to list
-each tab under its chat instead, with its own status, provider, and time since your last message.
-The tabs button in the sidebar header, the command palette, and **Settings → General** toggle the
-same view for every chat. To list or fold one chat's tabs on their own, click the tab count on its
-row. Changing the view for every chat resets those choices. Moving, pinning, or settling the chat's
-row applies to the row, and its tabs stay under it. Hover a listed tab and click **×**, or
-right-click it and choose **Close tab**, to close it.
+each tab under its chat instead, with its own status, provider, and time. Clicking the tabs
+button in the sidebar header does the same. Right-click it for a menu that hides tabs, lists every
+tab, or lists up to a number of them per chat. Past that number the rest fold behind a **more** row, which also shows when a hidden tab is
+working or needs you. Expand it to see them all; it folds again when you open a tab or thread. The
+tab you have open always stays listed. The same shortcut switches between hiding tabs and your
+last choice, and the command palette and **Settings → General → Tabs in sidebar** set it too.
+
+The same menu, or **Settings → General → Sort tabs by**, orders tabs by latest response, when
+they were created, or when you last opened them, newest or oldest first. These orders update as
+replies arrive, but hold still while your pointer is over the list. Drag a tab to put it where you
+want; that switches to **Manual** order, and the notice that appears can undo the switch. Manual
+order is kept in this browser or desktop app.
+
+To list or fold one chat's tabs on their own, click the tab count on its row. Changing the view for
+every chat resets those choices. Moving, pinning, or settling the chat's row applies to the row,
+and its tabs stay under it. Hover a listed tab and click **×**, or right-click it and choose
+**Close tab**, to close it.
 
 To bring in another tab's conversation, type `@` in the composer and pick the tab; its summary
 lands as a chip at the cursor. On web and desktop, the same menu also lists other threads on that

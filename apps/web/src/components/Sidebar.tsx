@@ -5,6 +5,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 import * as Schema from "effect/Schema";
 import {
+  closestCenter,
   DndContext,
   useSensor,
   useSensors,
@@ -13,8 +14,12 @@ import {
   type DragStartEvent,
   type Modifier,
 } from "@dnd-kit/core";
-import { SortableContext, useSortable } from "@dnd-kit/sortable";
-import { restrictToFirstScrollableAncestor, restrictToVerticalAxis } from "@dnd-kit/modifiers";
+import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import {
+  restrictToFirstScrollableAncestor,
+  restrictToParentElement,
+  restrictToVerticalAxis,
+} from "@dnd-kit/modifiers";
 import { CSS } from "@dnd-kit/utilities";
 import {
   canSnooze,
@@ -46,12 +51,17 @@ import {
   type ScopedThreadRef,
   type ThreadId,
 } from "@t3tools/contracts";
-import type { TimestampFormat } from "@t3tools/contracts/settings";
+import type {
+  SidebarTabSortDirection,
+  SidebarTabSortOrder,
+  TimestampFormat,
+} from "@t3tools/contracts/settings";
 import {
   AlarmClockIcon,
   AlarmClockOffIcon,
   CheckIcon,
   ChevronDownIcon,
+  ChevronUpIcon,
   CircleAlertIcon,
   CircleCheckIcon,
   ClockIcon,
@@ -127,7 +137,11 @@ import { useThreadActions } from "../hooks/useThreadActions";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
 import { startNewThreadFromContext } from "../lib/chatThreadActions";
-import { useClientSettings, useUpdateClientSettings } from "../hooks/useSettings";
+import {
+  useClientSettings,
+  useClientSettingsHydrated,
+  useUpdateClientSettings,
+} from "../hooks/useSettings";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { useNowMinute } from "../hooks/useNowMinute";
@@ -174,7 +188,13 @@ import {
   setSidebarTabGroupOverride,
   type SidebarTabGroupOverrides,
   hasUnseenCompletion,
+  holdSidebarTabOrder,
+  limitSidebarTabs,
+  moveSidebarTab,
   sidebarTabNeighbourKey,
+  sidebarTabSortTimestamp,
+  sortSidebarTabs,
+  withSidebarTabRanks,
   isSidebarNestedLinkClick,
   isTrailingDoubleClick,
   orderItemsByPreferredIds,
@@ -254,6 +274,11 @@ import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { SidebarAttentionInbox } from "./sidebar/SidebarAttentionInbox";
 import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
+import {
+  SIDEBAR_TAB_SORT_ORDER_LABELS,
+  sidebarTabSortDirectionLabel,
+  SidebarTabsMenu,
+} from "./sidebar/SidebarTabsMenu";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuShortcut, MenuTrigger } from "./ui/menu";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { MiddleTruncate } from "./ui/middle-truncate";
@@ -284,6 +309,11 @@ const TabGroupOverridesSchema = Schema.Struct({
 });
 const NO_TAB_GROUP_OVERRIDES: SidebarTabGroupOverrides = {};
 const INITIAL_TAB_GROUP_OVERRIDES = { showTabs: false, groups: NO_TAB_GROUP_OVERRIDES };
+// Dragged tab order, as each tab's rank within its group. Client-local for the same reason:
+// the server's tab positions also decide which tab stands for the group's row.
+const TAB_MANUAL_RANKS_KEY = "t3code:sidebar:tab-manual-ranks";
+const TabManualRanksSchema = Schema.Record(Schema.String, Schema.Number);
+const NO_TAB_MANUAL_RANKS: Readonly<Record<string, number>> = {};
 
 function compactSidebarTimeLabel(label: string): string {
   if (label === "just now") return "now";
@@ -293,6 +323,19 @@ function compactSidebarTimeLabel(label: string): string {
 function threadTimeLabel(thread: SidebarThreadSummary): string {
   const timestamp = thread.latestUserMessageAt ?? thread.updatedAt;
   return compactSidebarTimeLabel(formatRelativeTimeLabel(timestamp));
+}
+
+/** A tab's label under a timed sort reads the time it sorted by; manual keeps the default. */
+function tabSortTimeLabel(
+  thread: SidebarThreadSummary,
+  order: SidebarTabSortOrder,
+  openedAt: number | undefined,
+): string | undefined {
+  if (order === "manual") return undefined;
+  const ms = sidebarTabSortTimestamp(thread, order, openedAt);
+  return ms === null
+    ? ""
+    : compactSidebarTimeLabel(formatRelativeTimeLabel(new Date(ms).toISOString()));
 }
 
 // Settled rows read "how long ago did this wrap up", matching their sort
@@ -2187,15 +2230,173 @@ function SidebarDisclosure(props: {
   );
 }
 
-/** A group's tabs under its header, including the thread the row stands for. */
-function SidebarTabList(props: { children: ReactNode }) {
+/**
+ * A group's tabs under its header, including the thread the row stands for. Tabs drag within
+ * the list in their own drag context, so picking one up never drags the whole group, and they
+ * move with the thread list's motion when a sort, the limit or a drop changes their order.
+ */
+function SidebarTabList(props: {
+  /** Sortable ids of the rendered tabs, in display order. */
+  tabKeys: readonly string[];
+  /** Changes when the "more" row appears, disappears or flips, so its move animates too. */
+  overflowKey: string;
+  onReorder: (activeKey: string, overKey: string) => void;
+  /** The pointer entered or left the list; a live sort holds still while it rests here. */
+  onPointerRestChange: (resting: boolean) => void;
+  /** The list's height may have changed; rows below it re-measure and glide. */
+  onLayoutChange: () => void;
+  children: ReactNode;
+}) {
+  const { onLayoutChange, onReorder } = props;
+  const motionRef = useRef<ReturnType<typeof createSidebarListMotion> | null>(null);
+  const attachMotionRef = useCallback((node: HTMLUListElement | null) => {
+    motionRef.current?.dispose();
+    motionRef.current = node === null ? null : createSidebarListMotion(node);
+    motionRef.current?.update(false);
+  }, []);
+  const [dragging, setDragging] = useState(false);
+  const sensorRef = useRef<SidebarPointerSensor | null>(null);
+  const finishDrag = useCallback((started: boolean) => {
+    sensorRef.current = null;
+    if (!started) return;
+    // Rows glide from where the drag left them into their committed slots.
+    motionRef.current?.release();
+    setDragging(false);
+  }, []);
+  const attachSensor = useCallback((sensor: SidebarPointerSensor) => {
+    sensorRef.current = sensor;
+  }, []);
+  useEffect(() => () => sensorRef.current?.cancel(), []);
+  const sensors = useSensors(
+    useSensor(SidebarPointerSensor, {
+      distance: 6,
+      onAttach: attachSensor,
+      onFinish: finishDrag,
+    }),
+  );
+  const orderKey = `${props.tabKeys.join("\0")}\0${props.overflowKey}`;
+  // A list that just mounted is opening inside its disclosure, which owns that height change.
+  const mountedRef = useRef(false);
+  useLayoutEffect(() => {
+    void orderKey;
+    if (dragging) return;
+    motionRef.current?.update(true);
+    if (mountedRef.current) onLayoutChange();
+    mountedRef.current = true;
+  }, [dragging, onLayoutChange, orderKey]);
   return (
-    <ul
-      role="presentation"
-      className="ms-[calc(var(--sidebar-row-content-inset)+0.4375rem)] flex flex-col gap-px border-s border-sidebar-border ps-1 pb-0.5"
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      modifiers={[restrictToVerticalAxis, restrictToParentElement]}
+      onDragStart={() => {
+        motionRef.current?.suspend();
+        setDragging(true);
+      }}
+      onDragEnd={(event) => {
+        if (event.over !== null && event.over.id !== event.active.id) {
+          onReorder(String(event.active.id), String(event.over.id));
+        }
+      }}
     >
-      {props.children}
-    </ul>
+      <SortableContext items={[...props.tabKeys]} strategy={verticalListSortingStrategy}>
+        <ul
+          ref={attachMotionRef}
+          role="presentation"
+          onPointerEnter={() => props.onPointerRestChange(true)}
+          onPointerLeave={() => props.onPointerRestChange(false)}
+          className="relative ms-[calc(var(--sidebar-row-content-inset)+0.4375rem)] flex flex-col gap-px border-s border-sidebar-border ps-1 pb-0.5"
+        >
+          {props.children}
+        </ul>
+      </SortableContext>
+    </DndContext>
+  );
+}
+
+/**
+ * Stands in for a group's tabs past the limit. It names what it hides that needs you, and the
+ * providers behind them, so folding tabs away never hides work in progress.
+ */
+function SidebarTabOverflowRow(props: {
+  hidden: readonly SidebarThreadSummary[];
+  expanded: boolean;
+  providerEntriesByEnvironment: ReadonlyMap<string, ReadonlyMap<string, ProviderInstanceEntry>>;
+  onToggle: () => void;
+}) {
+  const { hidden, providerEntriesByEnvironment } = props;
+  const summary = useMemo(() => {
+    // Most urgent first, the same precedence as a row's own status.
+    const precedence = ["approval", "input", "failed", "working", "monitoring"] as const;
+    const counts = new Map<string, number>();
+    for (const thread of hidden) {
+      const status = resolveSidebarThreadStatus(thread);
+      counts.set(status, (counts.get(status) ?? 0) + 1);
+    }
+    const status = precedence.find((candidate) => counts.has(candidate)) ?? null;
+    const topStatus = status === null ? null : resolveSidebarTopStatus(status, false, false);
+    const providers = new Map<
+      string,
+      { driverKind: ProviderInstanceEntry["driverKind"]; displayName: string }
+    >();
+    for (const thread of hidden) {
+      const instanceId = thread.session?.providerInstanceId ?? thread.modelSelection.instanceId;
+      const entry = providerEntriesByEnvironment.get(thread.environmentId)?.get(instanceId);
+      if (entry && !providers.has(entry.driverKind)) {
+        providers.set(entry.driverKind, {
+          driverKind: entry.driverKind,
+          displayName: entry.displayName,
+        });
+      }
+    }
+    return {
+      topStatus,
+      statusCount: status === null ? 0 : (counts.get(status) ?? 0),
+      providers: [...providers.values()].slice(0, 3),
+    };
+  }, [hidden, providerEntriesByEnvironment]);
+  const label = props.expanded ? "Show less" : `${hidden.length} more`;
+  return (
+    <li className="list-none">
+      <button
+        type="button"
+        data-testid="sidebar-tab-overflow"
+        aria-expanded={props.expanded}
+        onClick={props.onToggle}
+        className="flex h-7 w-full cursor-pointer items-center gap-1.5 rounded-md px-2 text-left text-secondary-label text-xs outline-none hover:bg-sidebar-row-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      >
+        {props.expanded ? (
+          <ChevronUpIcon aria-hidden className="size-3 shrink-0" />
+        ) : (
+          <ChevronDownIcon aria-hidden className="size-3 shrink-0" />
+        )}
+        <span className="shrink-0">{label}</span>
+        {!props.expanded && summary.topStatus ? (
+          <span
+            className={cn(
+              "inline-flex min-w-0 items-center gap-1 truncate font-medium",
+              summary.topStatus.className,
+            )}
+          >
+            <SidebarTopStatusIcon icon={summary.topStatus.icon} className="size-3 shrink-0" />
+            {summary.statusCount} {summary.topStatus.label.toLowerCase()}
+          </span>
+        ) : null}
+        {!props.expanded && summary.providers.length > 0 ? (
+          <span aria-hidden className="ml-auto inline-flex shrink-0 items-center gap-1">
+            {summary.providers.map((provider) => (
+              <ProviderInstanceIcon
+                key={provider.driverKind}
+                driverKind={provider.driverKind}
+                displayName={provider.displayName}
+                showBadge={false}
+                iconClassName="size-3 opacity-45"
+              />
+            ))}
+          </span>
+        ) : null}
+      </button>
+    </li>
   );
 }
 
@@ -2229,8 +2430,11 @@ const SidebarTabRow = memo(function SidebarTabRow(props: {
    * and repeating it would make the first tab row unlike the others.
    */
   showStatus?: boolean;
+  /** The sorted-by time, so labels read in the list's order. Defaults to your last message. */
+  timeLabel?: string | undefined;
+  sortable?: SortableThreadRowBag | undefined;
 }) {
-  const { thread, onFileDropThreads } = props;
+  const { thread, onFileDropThreads, sortable } = props;
   const threadRef = useMemo(
     () => scopeThreadRef(thread.environmentId, thread.id),
     [thread.environmentId, thread.id],
@@ -2296,8 +2500,20 @@ const SidebarTabRow = memo(function SidebarTabRow(props: {
   });
 
   return (
-    <li className="list-none">
-      <Tooltip>
+    <li
+      ref={sortable?.setNodeRef}
+      style={
+        sortable
+          ? {
+              transform: CSS.Translate.toString(sortable.transform),
+              transition: sortable.transition,
+            }
+          : undefined
+      }
+      {...sortable?.listeners}
+      className={cn("list-none", sortable?.isDragging && "relative z-20")}
+    >
+      <Tooltip disabled={sortable?.isDragging}>
         <TooltipTrigger
           render={
             <div
@@ -2316,6 +2532,9 @@ const SidebarTabRow = memo(function SidebarTabRow(props: {
                     : "text-sidebar-foreground hover:bg-sidebar-row-hover",
                 isFileDragOver && "ring-1 ring-inset ring-primary/70",
                 isFileDragOver && !props.isActive && !isSelected && "bg-sidebar-row-hover",
+                // Lifted like a dragged thread: an opaque card over the rows beneath.
+                sortable?.isDragging &&
+                  "bg-sidebar bg-linear-to-b from-sidebar-row-active to-sidebar-row-active text-sidebar-foreground shadow-lg",
               )}
               onClick={(event) => props.onThreadClick(event, threadRef)}
               onDoubleClick={(event) => {
@@ -2378,7 +2597,7 @@ const SidebarTabRow = memo(function SidebarTabRow(props: {
             </span>
           ) : null}
           <span className="shrink-0 text-xs tabular-nums text-secondary-label group-hover/sidebar-row:hidden group-focus-visible/sidebar-row:hidden group-has-[:focus-visible]/sidebar-row:hidden">
-            {threadTimeLabel(thread)}
+            {props.timeLabel ?? threadTimeLabel(thread)}
           </span>
           <button
             type="button"
@@ -2603,6 +2822,21 @@ export default function Sidebar() {
   const { createTab, closeTab } = useThreadTabActions();
   const splitViewActions = useSplitViewActions();
   const showTabs = useClientSettings((s) => s.sidebarShowTabs);
+  const tabLimit = useClientSettings((s) => s.sidebarTabLimit);
+  const tabSortOrder = useClientSettings((s) => s.sidebarTabSortOrder);
+  const tabSortDirection = useClientSettings((s) => s.sidebarTabSortDirection);
+  const [tabManualRanks, setTabManualRanks] = useLocalStorage(
+    TAB_MANUAL_RANKS_KEY,
+    NO_TAB_MANUAL_RANKS,
+    TabManualRanksSchema,
+  );
+  // The group whose tabs past the limit are showing. Any click into a tab or thread folds it.
+  const [expandedTabRowKey, setExpandedTabRowKey] = useState<string | null>(null);
+  // The order a resting pointer holds, so a live sort cannot move a tab out from under it.
+  const [heldTabOrder, setHeldTabOrder] = useState<{
+    readonly rowKey: string;
+    readonly keys: readonly string[];
+  } | null>(null);
   const openedAtByThreadKey = useThreadTabRecencyStore((s) => s.openedAtByThreadKey);
   const updateClientSettings = useUpdateClientSettings();
   const [storedTabGroupOverrides, setStoredTabGroupOverrides] = useLocalStorage(
@@ -2614,6 +2848,19 @@ export default function Sidebar() {
     storedTabGroupOverrides.showTabs === showTabs
       ? storedTabGroupOverrides.groups
       : NO_TAB_GROUP_OVERRIDES;
+  // Changing Show tabs from anywhere overrides every group's own choice for good: dropped here,
+  // a toggle back would otherwise revive them. Only once settings load, so a page load that
+  // briefly reads the default never wipes them.
+  const clientSettingsHydrated = useClientSettingsHydrated();
+  useEffect(() => {
+    if (!clientSettingsHydrated || storedTabGroupOverrides.showTabs === showTabs) return;
+    setStoredTabGroupOverrides({ showTabs, groups: NO_TAB_GROUP_OVERRIDES });
+  }, [
+    clientSettingsHydrated,
+    setStoredTabGroupOverrides,
+    showTabs,
+    storedTabGroupOverrides.showTabs,
+  ]);
   // Listed tabs open themselves; hidden tabs fold into their group's row, which reopens the
   // tab you last had open. Each group follows Show tabs unless its badge was toggled.
   const hiddenTabThreads = useMemo(
@@ -3300,19 +3547,92 @@ export default function Sidebar() {
     return routeThread === undefined ? EMPTY_THREADS : [routeThread];
   }, [sidebarRouteThreadKey, snoozedShelfExpanded, snoozedThreads]);
 
+  // Navigating anywhere folds an expanded tab list back to its limit.
+  const [expandedForRouteKey, setExpandedForRouteKey] = useState(routeThreadKey);
+  if (expandedForRouteKey !== routeThreadKey) {
+    setExpandedForRouteKey(routeThreadKey);
+    setExpandedTabRowKey(null);
+  }
+  // Each listed group's tabs as the sidebar shows them: sorted, held still under a resting
+  // pointer, then cut to the limit. A card lists its own thread among its tabs; a slim row
+  // stands for its thread and lists only the others.
+  const tabLayoutByRowKey = useMemo(() => {
+    const layouts = new Map<
+      string,
+      {
+        readonly ordered: readonly EnvironmentThreadShell[];
+        readonly shown: readonly EnvironmentThreadShell[];
+        readonly hidden: readonly EnvironmentThreadShell[];
+        /** Past the limit and showing everything; the "more" row reads Show less. */
+        readonly expanded: boolean;
+        /** A card lists its own thread as a tab, so the list stands in for the row. */
+        readonly listsRow: boolean;
+      }
+    >();
+    if (listedTabsByRowKey.size === 0) return layouts;
+    const cardByKey = new Map(
+      [...pinnedThreads, ...activeThreads].map((thread) => [sidebarThreadKey(thread), thread]),
+    );
+    for (const [rowKey, rowTabs] of listedTabsByRowKey) {
+      const card = cardByKey.get(rowKey);
+      const sorted = sortSidebarTabs(card ? [card, ...rowTabs] : rowTabs, {
+        order: tabSortOrder,
+        direction: tabSortDirection,
+        getKey: sidebarThreadKey,
+        getTimestamp: (tab, order) =>
+          sidebarTabSortTimestamp(tab, order, openedAtByThreadKey[sidebarThreadKey(tab)]),
+        manualRanks: tabManualRanks,
+      });
+      const ordered =
+        heldTabOrder?.rowKey === rowKey
+          ? holdSidebarTabOrder(sorted, heldTabOrder.keys, sidebarThreadKey)
+          : sorted;
+      const expanded =
+        expandedTabRowKey === rowKey && tabLimit !== null && ordered.length > tabLimit;
+      const { shown, hidden } = expanded
+        ? { shown: ordered, hidden: [] }
+        : limitSidebarTabs(ordered, tabLimit, highlightedRouteThreadKey, sidebarThreadKey);
+      layouts.set(rowKey, { ordered, shown, hidden, expanded, listsRow: card !== undefined });
+    }
+    return layouts;
+  }, [
+    activeThreads,
+    expandedTabRowKey,
+    heldTabOrder,
+    highlightedRouteThreadKey,
+    listedTabsByRowKey,
+    openedAtByThreadKey,
+    pinnedThreads,
+    tabLimit,
+    tabManualRanks,
+    tabSortDirection,
+    tabSortOrder,
+  ]);
+  const tabLayoutByRowKeyRef = useRef(tabLayoutByRowKey);
+  tabLayoutByRowKeyRef.current = tabLayoutByRowKey;
+  const shownTabsByRowKey = useMemo(
+    () =>
+      tabLayoutByRowKey.size === 0
+        ? EMPTY_TABS_BY_ROW
+        : new Map([...tabLayoutByRowKey].map(([rowKey, layout]) => [rowKey, layout.shown])),
+    [tabLayoutByRowKey],
+  );
+
   const orderedThreads = useMemo(
     () =>
       withSidebarTabThreads(
         [...pinnedThreads, ...activeThreads, ...visibleSnoozedThreads, ...renderedSettledThreads],
         sidebarThreadKey,
-        listedTabsByRowKey,
+        shownTabsByRowKey,
+        (rowKey) => tabLayoutByRowKey.get(rowKey)?.listsRow === true,
       ),
     [
       pinnedThreads,
       activeThreads,
       visibleSnoozedThreads,
       renderedSettledThreads,
-      listedTabsByRowKey,
+      shownTabsByRowKey,
+      tabLayoutByRowKey,
     ],
   );
   const orderedThreadKeys = useMemo(
@@ -3416,13 +3736,18 @@ export default function Sidebar() {
   );
   const handleCloseTab = useCallback(
     (threadRef: ScopedThreadRef) => {
-      const nextKey = sidebarTabNeighbourKey(
-        scopedThreadKey(threadRef),
-        tabThreadGroupsRef.current,
-      );
-      const next = nextKey === null ? undefined : threadByKeyRef.current.get(nextKey);
-      if (!next) return;
-      void closeTab(threadRef, scopeThreadRef(next.environmentId, next.id));
+      // The next tab down the list as sorted, else the one above; it may sit past the limit.
+      const threadKey = scopedThreadKey(threadRef);
+      const rowKey = tabThreadGroupsRef.current.get(threadKey) ?? threadKey;
+      const ordered = tabLayoutByRowKeyRef.current.get(rowKey)?.ordered.map(sidebarThreadKey);
+      const index = ordered?.indexOf(threadKey) ?? -1;
+      const nextKey =
+        ordered !== undefined && index !== -1
+          ? (ordered[index + 1] ?? ordered[index - 1] ?? null)
+          : sidebarTabNeighbourKey(threadKey, tabThreadGroupsRef.current);
+      const nextRef = nextKey === null ? null : parseScopedThreadKey(nextKey);
+      if (nextRef === null || readThreadShell(nextRef) === null) return;
+      void closeTab(threadRef, nextRef);
     },
     [closeTab],
   );
@@ -3590,6 +3915,7 @@ export default function Sidebar() {
       if (isTrailingDoubleClick(event.detail)) {
         return;
       }
+      setExpandedTabRowKey(null);
       navigateToThread(threadRef);
     },
     [navigateToThread, rangeSelectTo, toggleThreadSelection],
@@ -3723,6 +4049,12 @@ export default function Sidebar() {
   // A group's tabs resize its row in place. Re-baseline without animating so
   // the next list change measures from where rows actually are.
   const refreshListMotion = useCallback(() => listMotionRef.current?.update(false), []);
+  // A group's tab list changed height in place (its "more" row, a limit, a new tab), so the
+  // rows below glide to where it pushed them. Never mid-drag, which owns every row's position.
+  const listMotionPausedRef = useRef(false);
+  const animateListMotion = useCallback(() => {
+    if (!listMotionPausedRef.current) listMotionRef.current?.update(true);
+  }, []);
 
   // Hold the chosen section and order until every key write arrives. This
   // also covers first-time ordering, which assigns keys to keyless neighbors.
@@ -3974,6 +4306,7 @@ export default function Sidebar() {
     }
   }, [cancelThreadDrag, dragState, sidebarListItems]);
   const listMotionPaused = dragState !== null;
+  listMotionPausedRef.current = listMotionPaused;
   // Every shell event rebuilds sidebarListItems, but rows only move when the
   // rendered order or a row's section changes. Keying the motion pass on that
   // keeps ordinary updates from forcing a layout read and animating rows
@@ -4913,6 +5246,78 @@ export default function Sidebar() {
     [setStoredTabGroupOverrides, showTabs],
   );
   const toggleTabsShortcutLabel = shortcutLabelForCommand(keybindings, "sidebar.toggleTabs");
+  const toggleTabOverflow = useCallback((rowKey: string) => {
+    setExpandedTabRowKey((current) => (current === rowKey ? null : rowKey));
+  }, []);
+  const tabSortOrderRef = useRef(tabSortOrder);
+  tabSortOrderRef.current = tabSortOrder;
+  const handleTabPointerRest = useCallback((rowKey: string, resting: boolean) => {
+    if (!resting) {
+      setHeldTabOrder((held) => (held?.rowKey === rowKey ? null : held));
+      return;
+    }
+    // Manual order only changes when you drop a tab, so there is nothing to hold.
+    if (tabSortOrderRef.current === "manual") return;
+    const ordered = tabLayoutByRowKeyRef.current.get(rowKey)?.ordered;
+    if (ordered) setHeldTabOrder({ rowKey, keys: ordered.map(sidebarThreadKey) });
+  }, []);
+  const threadsRef = useRef(threads);
+  threadsRef.current = threads;
+  // A drop in a timed order switches to Manual, starting from the order you were looking at.
+  const handleTabReorder = useCallback(
+    (rowKey: string, activeKey: string, overKey: string) => {
+      const layout = tabLayoutByRowKeyRef.current.get(rowKey);
+      if (!layout) return;
+      const orderedKeys = moveSidebarTab(
+        layout.ordered.map(sidebarThreadKey),
+        layout.shown.map(sidebarThreadKey),
+        activeKey,
+        overKey,
+      );
+      const liveKeys = new Set(threadsRef.current.map(sidebarThreadKey));
+      setTabManualRanks((ranks) => withSidebarTabRanks(ranks, orderedKeys, liveKeys));
+      setHeldTabOrder(null);
+      if (tabSortOrder === "manual") return;
+      const previous = {
+        sidebarTabSortOrder: tabSortOrder,
+        sidebarTabSortDirection: tabSortDirection,
+      };
+      void updateClientSettings({ sidebarTabSortOrder: "manual" });
+      const toastId = toastManager.add(
+        stackedThreadToast({
+          type: "info",
+          title: "Tab order set to Manual",
+          description: `Was ${SIDEBAR_TAB_SORT_ORDER_LABELS[tabSortOrder]}, ${sidebarTabSortDirectionLabel(
+            tabSortOrder,
+            tabSortDirection,
+          ).toLowerCase()}.`,
+          actionProps: {
+            children: "Undo",
+            onClick: () => {
+              toastManager.close(toastId);
+              void updateClientSettings(previous);
+            },
+          },
+        }),
+      );
+    },
+    [setTabManualRanks, tabSortDirection, tabSortOrder, updateClientSettings],
+  );
+  const handleTabsShownChange = useCallback(
+    (shown: boolean, limit: number | null) => {
+      void updateClientSettings({ sidebarShowTabs: shown, sidebarTabLimit: limit });
+    },
+    [updateClientSettings],
+  );
+  const handleTabSortOrderChange = useCallback(
+    (order: SidebarTabSortOrder) => void updateClientSettings({ sidebarTabSortOrder: order }),
+    [updateClientSettings],
+  );
+  const handleTabSortDirectionChange = useCallback(
+    (direction: SidebarTabSortDirection) =>
+      void updateClientSettings({ sidebarTabSortDirection: direction }),
+    [updateClientSettings],
+  );
 
   // Thread jump (cmd+1..9) and prev/next traversal reuse the same commands as
   // v1 — the keybinding layer is shared, only the ordered list differs.
@@ -5196,14 +5601,20 @@ export default function Sidebar() {
               searchResultCount={threadSearchResults.length}
               activeSearchResultIndex={activeSearchResultIndex}
               onClearSearch={clearThreadSearch}
-              tabsToggle={
-                tabsByRowKey.size > 0 || showTabs
-                  ? {
-                      shown: showTabs,
-                      shortcutLabel: toggleTabsShortcutLabel,
-                      onToggle: toggleShowTabs,
-                    }
-                  : null
+              tabsMenu={
+                tabsByRowKey.size > 0 || showTabs ? (
+                  <SidebarTabsMenu
+                    shown={showTabs}
+                    limit={tabLimit}
+                    sortOrder={tabSortOrder}
+                    sortDirection={tabSortDirection}
+                    shortcutLabel={toggleTabsShortcutLabel}
+                    onToggle={toggleShowTabs}
+                    onShownChange={handleTabsShownChange}
+                    onSortOrderChange={handleTabSortOrderChange}
+                    onSortDirectionChange={handleTabSortDirectionChange}
+                  />
+                ) : null
               }
             />
           </SidebarGroup>
@@ -5327,6 +5738,9 @@ export default function Sidebar() {
                         const rowVariant = isCard ? "card" : "slim";
                         const rowTabs = tabsByRowKey.get(threadKey);
                         const rowTabsOpen = listedTabsByRowKey.has(threadKey);
+                        const rowTabLayout = tabLayoutByRowKey.get(threadKey);
+                        const rowTabList =
+                          rowTabLayout?.shown ?? (isCard ? [thread, ...(rowTabs ?? [])] : rowTabs);
                         const displayThread = displayTabsByRowKey.get(threadKey) ?? thread;
                         const displayThreadKey = sidebarThreadKey(displayThread);
                         return (
@@ -5441,52 +5855,89 @@ export default function Sidebar() {
                             onTabsResized={refreshListMotion}
                             tabs={
                               rowTabs ? (
-                                <SidebarTabList>
-                                  {(isCard ? [thread, ...rowTabs] : rowTabs).map((tab) => {
+                                <SidebarTabList
+                                  tabKeys={(rowTabList ?? []).map(sidebarThreadKey)}
+                                  overflowKey={
+                                    rowTabLayout === undefined
+                                      ? ""
+                                      : `${rowTabLayout.hidden.length}:${rowTabLayout.expanded}`
+                                  }
+                                  onReorder={(activeKey, overKey) =>
+                                    handleTabReorder(threadKey, activeKey, overKey)
+                                  }
+                                  onPointerRestChange={(resting) =>
+                                    handleTabPointerRest(threadKey, resting)
+                                  }
+                                  onLayoutChange={animateListMotion}
+                                >
+                                  {(rowTabList ?? []).map((tab) => {
                                     const tabKey = sidebarThreadKey(tab);
                                     const tabProjectKey =
                                       `${tab.environmentId}:${tab.projectId}` as const;
                                     return (
-                                      <SidebarTabRow
+                                      <SortableThreadRow
                                         key={tabKey}
-                                        thread={tab}
-                                        showStatus={tabKey !== threadKey}
-                                        isActive={highlightedRouteThreadKey === tabKey}
-                                        jumpLabel={
-                                          showThreadJumpHints
-                                            ? (jumpLabelByKey.get(tabKey) ?? null)
-                                            : null
-                                        }
-                                        environmentLabel={
-                                          environmentLabelById.get(tab.environmentId) ?? null
-                                        }
-                                        environmentMachine={
-                                          environmentMachineById.get(tab.environmentId) ?? "server"
-                                        }
-                                        project={projectByKey.get(tabProjectKey) ?? null}
-                                        projectDisplayName={
-                                          projectDisplayNameByKey.get(tabProjectKey) ?? null
-                                        }
-                                        providerEntryByInstanceId={
-                                          providerEntriesByEnvironment.get(tab.environmentId) ??
-                                          EMPTY_PROVIDER_ENTRIES
-                                        }
-                                        isRenaming={renamingThreadKey === tabKey}
-                                        renamingTitle={
-                                          renamingThreadKey === tabKey ? renamingTitle : ""
-                                        }
-                                        onThreadClick={handleThreadClick}
-                                        onThreadActivate={navigateToThread}
-                                        onStartRename={startThreadRename}
-                                        onRenameTitleChange={setRenamingTitle}
-                                        onCommitRename={commitThreadRename}
-                                        onCancelRename={cancelThreadRename}
-                                        onContextMenu={handleThreadContextMenu}
-                                        onFileDropThreads={handleThreadFileDrop}
-                                        onCloseTab={handleCloseTab}
-                                      />
+                                        id={tabKey}
+                                        disabled={renamingThreadKey === tabKey}
+                                      >
+                                        {(bag) => (
+                                          <SidebarTabRow
+                                            sortable={bag}
+                                            timeLabel={tabSortTimeLabel(
+                                              tab,
+                                              tabSortOrder,
+                                              openedAtByThreadKey[tabKey],
+                                            )}
+                                            thread={tab}
+                                            showStatus={tabKey !== threadKey}
+                                            isActive={highlightedRouteThreadKey === tabKey}
+                                            jumpLabel={
+                                              showThreadJumpHints
+                                                ? (jumpLabelByKey.get(tabKey) ?? null)
+                                                : null
+                                            }
+                                            environmentLabel={
+                                              environmentLabelById.get(tab.environmentId) ?? null
+                                            }
+                                            environmentMachine={
+                                              environmentMachineById.get(tab.environmentId) ??
+                                              "server"
+                                            }
+                                            project={projectByKey.get(tabProjectKey) ?? null}
+                                            projectDisplayName={
+                                              projectDisplayNameByKey.get(tabProjectKey) ?? null
+                                            }
+                                            providerEntryByInstanceId={
+                                              providerEntriesByEnvironment.get(tab.environmentId) ??
+                                              EMPTY_PROVIDER_ENTRIES
+                                            }
+                                            isRenaming={renamingThreadKey === tabKey}
+                                            renamingTitle={
+                                              renamingThreadKey === tabKey ? renamingTitle : ""
+                                            }
+                                            onThreadClick={handleThreadClick}
+                                            onThreadActivate={navigateToThread}
+                                            onStartRename={startThreadRename}
+                                            onRenameTitleChange={setRenamingTitle}
+                                            onCommitRename={commitThreadRename}
+                                            onCancelRename={cancelThreadRename}
+                                            onContextMenu={handleThreadContextMenu}
+                                            onFileDropThreads={handleThreadFileDrop}
+                                            onCloseTab={handleCloseTab}
+                                          />
+                                        )}
+                                      </SortableThreadRow>
                                     );
                                   })}
+                                  {rowTabLayout &&
+                                  (rowTabLayout.hidden.length > 0 || rowTabLayout.expanded) ? (
+                                    <SidebarTabOverflowRow
+                                      hidden={rowTabLayout.hidden}
+                                      expanded={rowTabLayout.expanded}
+                                      providerEntriesByEnvironment={providerEntriesByEnvironment}
+                                      onToggle={() => toggleTabOverflow(threadKey)}
+                                    />
+                                  ) : null}
                                 </SidebarTabList>
                               ) : null
                             }

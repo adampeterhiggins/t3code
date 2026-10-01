@@ -179,12 +179,16 @@ is its own conversation and provider.
   and both mobile thread lists (`useHiddenTabThreads`). The group's row stays highlighted while any
   of its tabs is open, and opening it returns to the tab last left open
   (`apps/web/src/threadTabRecencyStore.ts`). With tabs hidden on web and desktop, the row shows
-  that tab’s title, model, and details (`apps/web/src/components/Sidebar.tsx`). On web and desktop, **Settings → General → Show tabs
-  in sidebar** — also the sidebar button, the command palette, and `Cmd+Option+T` on macOS or
-  `Ctrl+Alt+T` on Windows and Linux — lists each tab under that row. The row's tab count opens or
-  folds just that group; those choices stay in the browser and reset when the setting changes. The
-  row's hover actions add a
-  **+** that opens a new tab, and each listed tab has a hover **×** that closes it.
+  that tab’s title, model, and details (`apps/web/src/components/Sidebar.tsx`). On web and desktop, **Settings → General → Tabs in
+  sidebar**, the sidebar header's tabs button (click to toggle, right-click for a menu;
+  `sidebar/SidebarTabsMenu.tsx`), the command palette,
+  and `Cmd+Option+T` on macOS or `Ctrl+Alt+T` on Windows and Linux list each tab under that row:
+  all of them, or up to a chosen number with the rest behind a **more** row that keeps the open tab
+  listed. **Sort tabs by** orders them by latest response, creation, or last opened, either way, or
+  manually by dragging, which switches to Manual. Manual order is client-local, because the
+  server's tab positions also pick the group's row. The row's tab count opens or folds just that
+  group; those choices stay in the browser and reset when the setting changes. The row's hover
+  actions add a **+** that opens a new tab, and each listed tab has a hover **×** that closes it.
 - **Menus.** The thread right-click menu in both sidebars and the header's thread menu offer
   **New tab**. The sidebar's menu also offers **Close tab** on a thread that has a sibling tab.
   Closing archives the tab's thread and lands on its neighbour (`useThreadTabActions` in

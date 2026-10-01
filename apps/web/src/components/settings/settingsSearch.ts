@@ -277,9 +277,15 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "sidebar-tabs",
-    title: "Show tabs in sidebar",
+    title: "Tabs in sidebar",
     to: "/settings/general",
-    searchTerms: ["chat tabs group threads sidebar list"],
+    searchTerms: ["show hide chat tabs group threads sidebar list limit more"],
+  },
+  {
+    id: "sidebar-tab-order",
+    title: "Sort tabs by",
+    to: "/settings/general",
+    searchTerms: ["chat tabs order sort sidebar manual drag created latest response opened"],
   },
   {
     id: "auto-settle-inactive-threads",

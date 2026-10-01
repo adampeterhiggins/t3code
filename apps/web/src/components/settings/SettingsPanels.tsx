@@ -33,6 +33,7 @@ import {
   MAX_PANEL_ANIMATION_DURATION_MS,
   MAX_PROMPT_FONT_SIZE,
   MAX_SIDEBAR_AUTO_SETTLE_AFTER_DAYS,
+  MAX_SIDEBAR_TAB_LIMIT,
   MAX_TERMINAL_FONT_SIZE,
   MIN_CODE_FONT_SIZE,
   MIN_APPEARANCE_CONTRAST,
@@ -41,10 +42,17 @@ import {
   MIN_PANEL_ANIMATION_DURATION_MS,
   MIN_PROMPT_FONT_SIZE,
   MIN_SIDEBAR_AUTO_SETTLE_AFTER_DAYS,
+  MIN_SIDEBAR_TAB_LIMIT,
   type ResponseStreamingMode,
   MIN_TERMINAL_FONT_SIZE,
   type QuitConfirmationMode,
 } from "@t3tools/contracts/settings";
+import {
+  DEFAULT_SIDEBAR_TAB_LIMIT,
+  SIDEBAR_TAB_SORT_ORDER_LABELS,
+  SIDEBAR_TAB_SORT_ORDERS,
+  sidebarTabSortDirectionLabel,
+} from "../sidebar/SidebarTabsMenu";
 import { resolveServerBackgroundActivitySettings } from "@t3tools/shared/backgroundActivitySettings";
 import { createModelSelection } from "@t3tools/shared/model";
 import * as Duration from "effect/Duration";
@@ -569,8 +577,13 @@ export function useSettingsRestore(onRestored?: () => void) {
       DEFAULT_UNIFIED_SETTINGS.sidebarProjectGroupingMode
         ? ["Project Grouping"]
         : []),
-      ...(settings.sidebarShowTabs !== DEFAULT_UNIFIED_SETTINGS.sidebarShowTabs
-        ? ["Show tabs in sidebar"]
+      ...(settings.sidebarShowTabs !== DEFAULT_UNIFIED_SETTINGS.sidebarShowTabs ||
+      settings.sidebarTabLimit !== DEFAULT_UNIFIED_SETTINGS.sidebarTabLimit
+        ? ["Tabs in sidebar"]
+        : []),
+      ...(settings.sidebarTabSortOrder !== DEFAULT_UNIFIED_SETTINGS.sidebarTabSortOrder ||
+      settings.sidebarTabSortDirection !== DEFAULT_UNIFIED_SETTINGS.sidebarTabSortDirection
+        ? ["Sort tabs by"]
         : []),
       ...(settings.sidebarAutoSettleAfterDays !==
       DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays
@@ -711,6 +724,9 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.sidebarAutoSettleOnMerge,
       settings.sidebarProjectGroupingMode,
       settings.sidebarShowTabs,
+      settings.sidebarTabLimit,
+      settings.sidebarTabSortOrder,
+      settings.sidebarTabSortDirection,
       settings.sidebarThreadPreviewCount,
       settings.showSkillsInSlashMenu,
       settings.timestampFormat,
@@ -810,6 +826,9 @@ export function useSettingsRestore(onRestored?: () => void) {
       sidebarThreadPreviewCount: DEFAULT_UNIFIED_SETTINGS.sidebarThreadPreviewCount,
       sidebarProjectGroupingMode: DEFAULT_UNIFIED_SETTINGS.sidebarProjectGroupingMode,
       sidebarShowTabs: DEFAULT_UNIFIED_SETTINGS.sidebarShowTabs,
+      sidebarTabLimit: DEFAULT_UNIFIED_SETTINGS.sidebarTabLimit,
+      sidebarTabSortOrder: DEFAULT_UNIFIED_SETTINGS.sidebarTabSortOrder,
+      sidebarTabSortDirection: DEFAULT_UNIFIED_SETTINGS.sidebarTabSortDirection,
       sidebarAutoSettleAfterDays: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays,
       sidebarAutoSettleOnMerge: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleOnMerge,
       responseStreamingMode: DEFAULT_UNIFIED_SETTINGS.responseStreamingMode,
@@ -2305,27 +2324,176 @@ export function GeneralSettingsPanel() {
         />
 
         {settings.legacySidebarEnabled ? null : (
-          <SettingsRow
-            {...searchableSetting("sidebar-tabs")}
-            description="List each tab under its chat in the sidebar instead of one row per chat."
-            resetAction={
-              settings.sidebarShowTabs !== DEFAULT_UNIFIED_SETTINGS.sidebarShowTabs ? (
-                <SettingResetButton
-                  label="sidebar tabs"
-                  onClick={() =>
-                    updateSettings({ sidebarShowTabs: DEFAULT_UNIFIED_SETTINGS.sidebarShowTabs })
-                  }
-                />
-              ) : null
-            }
-            control={
-              <Switch
-                checked={settings.sidebarShowTabs}
-                onCheckedChange={(checked) => updateSettings({ sidebarShowTabs: Boolean(checked) })}
-                aria-label="Show tabs in sidebar"
-              />
-            }
-          />
+          <>
+            <SettingsRow
+              {...searchableSetting("sidebar-tabs")}
+              description={`List a chat's tabs under it in the sidebar. Past the limit, the rest fold behind a "more" row.`}
+              resetAction={
+                settings.sidebarShowTabs !== DEFAULT_UNIFIED_SETTINGS.sidebarShowTabs ||
+                settings.sidebarTabLimit !== DEFAULT_UNIFIED_SETTINGS.sidebarTabLimit ? (
+                  <SettingResetButton
+                    label="sidebar tabs"
+                    onClick={() =>
+                      updateSettings({
+                        sidebarShowTabs: DEFAULT_UNIFIED_SETTINGS.sidebarShowTabs,
+                        sidebarTabLimit: DEFAULT_UNIFIED_SETTINGS.sidebarTabLimit,
+                      })
+                    }
+                  />
+                ) : null
+              }
+              control={
+                <div className="flex w-full items-center gap-2 sm:w-auto">
+                  <Select
+                    value={
+                      !settings.sidebarShowTabs
+                        ? "hide"
+                        : settings.sidebarTabLimit === null
+                          ? "all"
+                          : "limit"
+                    }
+                    onValueChange={(value) => {
+                      if (value === "hide") updateSettings({ sidebarShowTabs: false });
+                      if (value === "all") {
+                        updateSettings({ sidebarShowTabs: true, sidebarTabLimit: null });
+                      }
+                      if (value === "limit") {
+                        updateSettings({
+                          sidebarShowTabs: true,
+                          sidebarTabLimit: settings.sidebarTabLimit ?? DEFAULT_SIDEBAR_TAB_LIMIT,
+                        });
+                      }
+                    }}
+                  >
+                    <SelectTrigger
+                      size="sm"
+                      className="w-full sm:w-36"
+                      aria-label="Tabs in sidebar"
+                    >
+                      <SelectValue>
+                        {!settings.sidebarShowTabs
+                          ? "Hide"
+                          : settings.sidebarTabLimit === null
+                            ? "Show all"
+                            : "Show up to"}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectPopup align="end" alignItemWithTrigger={false}>
+                      <SelectItem hideIndicator value="hide">
+                        Hide
+                      </SelectItem>
+                      <SelectItem hideIndicator value="limit">
+                        Show up to
+                      </SelectItem>
+                      <SelectItem hideIndicator value="all">
+                        Show all
+                      </SelectItem>
+                    </SelectPopup>
+                  </Select>
+                  {settings.sidebarShowTabs && settings.sidebarTabLimit !== null ? (
+                    <NumberField
+                      value={settings.sidebarTabLimit}
+                      min={MIN_SIDEBAR_TAB_LIMIT}
+                      max={MAX_SIDEBAR_TAB_LIMIT}
+                      step={1}
+                      size="sm"
+                      className="w-28"
+                      onValueChange={(value) => {
+                        if (value === null || !Number.isFinite(value)) return;
+                        updateSettings({
+                          sidebarTabLimit: Math.min(
+                            MAX_SIDEBAR_TAB_LIMIT,
+                            Math.max(MIN_SIDEBAR_TAB_LIMIT, Math.round(value)),
+                          ),
+                        });
+                      }}
+                    >
+                      <NumberFieldGroup>
+                        <NumberFieldDecrement aria-label="Show fewer tabs" />
+                        <NumberFieldInput aria-label="Tabs shown per chat" />
+                        <NumberFieldIncrement aria-label="Show more tabs" />
+                      </NumberFieldGroup>
+                    </NumberField>
+                  ) : null}
+                </div>
+              }
+            />
+            <SettingsRow
+              {...searchableSetting("sidebar-tab-order")}
+              description="Timed orders update as tabs change. Dragging a tab switches to Manual."
+              resetAction={
+                settings.sidebarTabSortOrder !== DEFAULT_UNIFIED_SETTINGS.sidebarTabSortOrder ||
+                settings.sidebarTabSortDirection !==
+                  DEFAULT_UNIFIED_SETTINGS.sidebarTabSortDirection ? (
+                  <SettingResetButton
+                    label="tab order"
+                    onClick={() =>
+                      updateSettings({
+                        sidebarTabSortOrder: DEFAULT_UNIFIED_SETTINGS.sidebarTabSortOrder,
+                        sidebarTabSortDirection: DEFAULT_UNIFIED_SETTINGS.sidebarTabSortDirection,
+                      })
+                    }
+                  />
+                ) : null
+              }
+              control={
+                <div className="flex w-full items-center gap-2 sm:w-auto">
+                  <Select
+                    value={settings.sidebarTabSortOrder}
+                    onValueChange={(value) => {
+                      const order = SIDEBAR_TAB_SORT_ORDERS.find(
+                        (candidate) => candidate === value,
+                      );
+                      if (order) updateSettings({ sidebarTabSortOrder: order });
+                    }}
+                  >
+                    <SelectTrigger size="sm" className="w-full sm:w-40" aria-label="Sort tabs by">
+                      <SelectValue>
+                        {SIDEBAR_TAB_SORT_ORDER_LABELS[settings.sidebarTabSortOrder]}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectPopup align="end" alignItemWithTrigger={false}>
+                      {SIDEBAR_TAB_SORT_ORDERS.map((order) => (
+                        <SelectItem key={order} hideIndicator value={order}>
+                          {SIDEBAR_TAB_SORT_ORDER_LABELS[order]}
+                        </SelectItem>
+                      ))}
+                    </SelectPopup>
+                  </Select>
+                  {settings.sidebarTabSortOrder === "manual" ? null : (
+                    <Select
+                      value={settings.sidebarTabSortDirection}
+                      onValueChange={(value) => {
+                        if (value === "desc" || value === "asc") {
+                          updateSettings({ sidebarTabSortDirection: value });
+                        }
+                      }}
+                    >
+                      <SelectTrigger
+                        size="sm"
+                        className="w-full sm:w-40"
+                        aria-label="Tab order direction"
+                      >
+                        <SelectValue>
+                          {sidebarTabSortDirectionLabel(
+                            settings.sidebarTabSortOrder,
+                            settings.sidebarTabSortDirection,
+                          )}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectPopup align="end" alignItemWithTrigger={false}>
+                        {(["desc", "asc"] as const).map((direction) => (
+                          <SelectItem key={direction} hideIndicator value={direction}>
+                            {sidebarTabSortDirectionLabel(settings.sidebarTabSortOrder, direction)}
+                          </SelectItem>
+                        ))}
+                      </SelectPopup>
+                    </Select>
+                  )}
+                </div>
+              }
+            />
+          </>
         )}
 
         {supportsAutoSettlement ? (
