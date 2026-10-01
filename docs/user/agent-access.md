@@ -50,8 +50,8 @@ you replay a past day. Titles, archive state, and pull request state are always 
 
 An agent connected to `/mcp/operate` can start a thread in any project with `create_thread`, send a
 thread a message, wait for it to finish, and stop its turn. It can rename a thread or change its
-model, archive, settle, pin, or snooze it, and answer the approvals and questions a thread is
-waiting on. It acts as you would: the threads it
+model, archive, settle, pin, or snooze it, answer the approvals and questions a thread is waiting
+on, and add a folder as a new project or change a project's defaults. It acts as you would: the threads it
 starts appear in your sidebar marked with the token's name, in whichever permission mode it asks
 for.
 

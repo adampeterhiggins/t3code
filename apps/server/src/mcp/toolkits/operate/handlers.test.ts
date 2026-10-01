@@ -21,12 +21,14 @@ import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import type { Tool } from "effect/unstable/ai";
 
+import * as ServerConfig from "../../../config.ts";
 import * as GitWorkflowService from "../../../git/GitWorkflowService.ts";
 import * as ClientCommandDispatcher from "../../../orchestration/ClientCommandDispatcher.ts";
 import { OrchestrationEngineService } from "../../../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as ProviderRegistry from "../../../provider/Services/ProviderRegistry.ts";
 import * as ServerSettings from "../../../serverSettings.ts";
+import * as WorkspacePaths from "../../../workspace/WorkspacePaths.ts";
 import * as McpActor from "../../McpActor.ts";
 import { OperateToolkitHandlersLive } from "./handlers.ts";
 import { OperateToolkit } from "./tools.ts";
@@ -143,8 +145,9 @@ const makeHarness = Effect.fn("makeOperateHarness")(function* () {
           workingTree: { files: [], insertions: 0, deletions: 0 },
         }),
     }),
-    NodeServices.layer,
-  );
+    WorkspacePaths.layer,
+    ServerConfig.layerTest(process.cwd(), { prefix: "t3-operate-handlers-" }),
+  ).pipe(Layer.provideMerge(NodeServices.layer));
   const toolkit = yield* OperateToolkit.pipe(
     Effect.provide(OperateToolkitHandlersLive.pipe(Layer.provide(dependencies))),
   );
@@ -443,6 +446,23 @@ describe("operate toolkit handlers", () => {
         { type: "thread.meta.update", threadId: OTHER_ID, title: "Login fix" },
         { type: "thread.interaction-mode.set", threadId: OTHER_ID, interactionMode: "plan" },
       ]);
+    }),
+  );
+
+  it.effect("adds an existing folder as a project, named after it", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      const result = yield* harness.call("create_project", { workspaceRoot: process.cwd() });
+      const folder = process.cwd().split("/").at(-1);
+      expect(result.title).toBe(folder);
+      expect(yield* Ref.get(harness.commands)).toMatchObject([
+        { type: "project.create", projectId: result.projectId, title: folder },
+      ]);
+
+      const missing = yield* harness
+        .call("create_project", { workspaceRoot: `${process.cwd()}/does-not-exist-operate-test` })
+        .pipe(Effect.flip);
+      expect(missing._tag).toBe("OperateToolError");
     }),
   );
 });

@@ -24,6 +24,7 @@ import * as GitWorkflowService from "../git/GitWorkflowService.ts";
 import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
 import { ProviderService } from "../provider/Services/ProviderService.ts";
 import { UsageService } from "../usage/UsageService.ts";
+import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import * as ClientCommandDispatcher from "../orchestration/ClientCommandDispatcher.ts";
 import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
 import * as ProviderRegistry from "../provider/Services/ProviderRegistry.ts";
@@ -933,8 +934,9 @@ it.effect("lists thread-control tools only to credentials that may drive threads
             Layer.mock(ServerEnvironment.ServerEnvironment)({}),
             Layer.mock(UsageService)({}),
             SqlitePersistenceMemory,
-            NodeServices.layer,
-          ),
+            WorkspacePaths.layer,
+            ServerConfig.layerTest(process.cwd(), { prefix: "t3-mcp-visibility-" }),
+          ).pipe(Layer.provideMerge(NodeServices.layer)),
         ),
       );
       yield* HttpRouter.serve(serverLayer, { disableListenLog: true, disableLogger: true }).pipe(
@@ -983,6 +985,7 @@ it.effect("lists thread-control tools only to credentials that may drive threads
 
       expect(yield* listToolNames("off")).toEqual([]);
       expect(yield* listToolNames("on")).toEqual([
+        "create_project",
         "create_thread",
         "get_thread",
         "interrupt_turn",
@@ -993,6 +996,7 @@ it.effect("lists thread-control tools only to credentials that may drive threads
         "search",
         "send_message",
         "set_thread_state",
+        "update_project",
         "update_thread",
         "wait_for_thread",
       ]);
