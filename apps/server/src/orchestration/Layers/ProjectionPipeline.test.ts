@@ -4582,6 +4582,64 @@ engineLayer("OrchestrationProjectionPipeline via engine dispatch", (it) => {
     }),
   );
 
+  it.effect("keeps who started a thread through later thread updates", () =>
+    Effect.gen(function* () {
+      const engine = yield* OrchestrationEngineService;
+      const snapshotQuery = yield* ProjectionSnapshotQuery;
+      const createdAt = "2026-01-01T00:00:00.000Z";
+      const projectId = ProjectId.make("project-created-by");
+      const parentThreadId = ThreadId.make("thread-created-by-parent");
+      const childThreadId = ThreadId.make("thread-created-by-child");
+      const modelSelection = {
+        instanceId: ProviderInstanceId.make("codex"),
+        model: "gpt-5-codex",
+      };
+      yield* engine.dispatch({
+        type: "project.create",
+        commandId: CommandId.make("cmd-created-by-project"),
+        projectId,
+        title: "Created By Project",
+        workspaceRoot: "/tmp/project-created-by",
+        defaultModelSelection: modelSelection,
+        createdAt,
+      });
+      const createThread = (
+        threadId: ThreadId,
+        createdBy?: { kind: "thread"; threadId: ThreadId },
+      ) =>
+        engine.dispatch({
+          type: "thread.create",
+          commandId: CommandId.make(`cmd-created-by-${threadId}`),
+          threadId,
+          projectId,
+          title: "Thread",
+          modelSelection,
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: null,
+          createdAt,
+          ...(createdBy ? { createdBy } : {}),
+        });
+      yield* createThread(parentThreadId);
+      yield* createThread(childThreadId, { kind: "thread", threadId: parentThreadId });
+      yield* engine.dispatch({
+        type: "thread.meta.update",
+        commandId: CommandId.make("cmd-created-by-rename"),
+        threadId: childThreadId,
+        title: "Renamed child",
+      });
+
+      const parent = yield* snapshotQuery.getThreadShellById(parentThreadId);
+      const child = yield* snapshotQuery.getThreadShellById(childThreadId);
+      assert.isNull(Option.getOrThrow(parent).createdBy ?? null);
+      assert.deepEqual(Option.getOrThrow(child).createdBy, {
+        kind: "thread",
+        threadId: parentThreadId,
+      });
+    }),
+  );
+
   it.effect("re-creating a deleted thread id starts from an empty projection", () =>
     Effect.gen(function* () {
       const engine = yield* OrchestrationEngineService;

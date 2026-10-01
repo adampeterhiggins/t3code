@@ -205,6 +205,7 @@ interface ThreadRow {
   readonly pendingUserInputCount: number;
   readonly hasActionableProposedPlan: number;
   readonly tabGroupId: string | null;
+  readonly startedByThreadId: string | null;
   readonly windowFirstAt?: string | null;
   readonly windowLastAt?: string | null;
   readonly sortAt: string;
@@ -302,7 +303,8 @@ export const makeQueryStore = Effect.gen(function* () {
       t.pending_approval_count AS "pendingApprovalCount",
       t.pending_user_input_count AS "pendingUserInputCount",
       t.has_actionable_proposed_plan AS "hasActionableProposedPlan",
-      tabs.group_id AS "tabGroupId"
+      tabs.group_id AS "tabGroupId",
+      json_extract(t.created_by_json, '$.threadId') AS "startedByThreadId"
     FROM projection_threads AS t
     JOIN projection_projects AS p ON p.project_id = t.project_id
     LEFT JOIN projection_thread_sessions AS s ON s.thread_id = t.thread_id
@@ -460,6 +462,7 @@ export const makeQueryStore = Effect.gen(function* () {
         pendingUserInputCount: row.pendingUserInputCount,
         hasActionableProposedPlan: row.hasActionableProposedPlan === 1,
         tabGroupId: row.tabGroupId,
+        startedByThreadId: row.startedByThreadId,
         pullRequests: (pullRequests.get(row.threadId) ?? []).slice(0, MAX_THREAD_PULL_REQUESTS),
         pullRequestCount: pullRequests.get(row.threadId)?.length ?? 0,
         ...(stats === null || !row.windowFirstAt || !row.windowLastAt
