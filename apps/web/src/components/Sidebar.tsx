@@ -66,6 +66,7 @@ import {
   CircleCheckIcon,
   ClockIcon,
   FolderIcon,
+  BotIcon,
   GitBranchIcon,
   LayersIcon,
   PinIcon,
@@ -1656,6 +1657,16 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     )
   ) : null;
 
+  // An agent started this thread; the chat header says which one.
+  const agentIndicator =
+    props.thread.createdBy != null ? (
+      <BotIcon
+        aria-label="Started by an agent"
+        role="img"
+        className="size-3 shrink-0 text-muted-foreground/65"
+      />
+    ) : null;
+
   if (variant === "slim") {
     return (
       <li
@@ -1702,6 +1713,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
             {draftIndicator}
             {title}
             {tabCountBadge}
+            {agentIndicator}
             {pinIndicator}
             {terminalStatusIcon}
             {isRegeneratingTitle ? (
@@ -1868,6 +1880,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
               ) : (
                 <span className="flex-1" />
               )}
+              {agentIndicator}
               {pinIndicator}
               {/* The visible state owns this slot's width: status at rest,
                   actions on hover/keyboard focus or while the popover is open. Keeping
