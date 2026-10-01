@@ -8,6 +8,11 @@ import { ControlPillMenu } from "./ControlPill";
 const PHOTOS_ACTION: MenuAction = { id: "photos", title: "Photo Library", image: "photo" };
 const FILES_ACTION: MenuAction = { id: "files", title: "Choose Files", image: "folder" };
 const LINEAR_ACTION: MenuAction = { id: "linear", title: "Linear issue", image: "ticket" };
+const REPOSITORY_ACTION: MenuAction = {
+  id: "repository",
+  title: "Repository",
+  image: "arrow.triangle.branch",
+};
 
 export function ComposerAttachmentButton(props: {
   readonly disabled?: boolean;
@@ -16,12 +21,15 @@ export function ComposerAttachmentButton(props: {
   readonly onPickFiles: () => Promise<void>;
   /** Omit to hide the Linear action. See `useLinearIssuePicker`. */
   readonly onPickLinearIssue?: () => void;
+  /** Omit to hide the repository action. See `useRepositoryPicker`. */
+  readonly onPickRepository?: () => void;
 }) {
   const { scale } = useAndroidControlSizing();
   const actions = [
     PHOTOS_ACTION,
     ...(props.supportsFiles ? [FILES_ACTION] : []),
     ...(props.onPickLinearIssue ? [LINEAR_ACTION] : []),
+    ...(props.onPickRepository ? [REPOSITORY_ACTION] : []),
   ];
   const usesMenu = !props.disabled && actions.length > 1;
   const button = (
@@ -60,6 +68,8 @@ export function ComposerAttachmentButton(props: {
           void props.onPickFiles();
         } else if (nativeEvent.event === "linear") {
           props.onPickLinearIssue?.();
+        } else if (nativeEvent.event === "repository") {
+          props.onPickRepository?.();
         }
       }}
     >

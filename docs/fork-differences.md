@@ -226,7 +226,9 @@ is its own conversation and provider.
   - The account picker forks the same way when the chosen account cannot take over the tab.
 - **Mobile.** A switcher menu switches, creates, and closes tabs
   (`apps/mobile/src/features/threads/ThreadTabs.tsx`). An empty tab can attach sibling context when
-  sending. Mobile does not have the header crumb, the `@` chip, forking, or the sidebar tab list.
+  sending. A started chat's **Hand off** menu forks it into a new tab on any provider's model, the
+  same way as the web model picker's fork button. Mobile does not have the header crumb, the `@`
+  chip, forking from a message, or the sidebar tab list.
 
 User guide: [thread-sidebar.md](./user/thread-sidebar.md#continue-in-another-tab).
 
@@ -418,10 +420,16 @@ A pull request or branch that a live thread is already on, or an issue linked to
 is marked **In use**. Picking it asks whether to open that thread or start a second one. The
 default branch never counts as in use. Hovering a row previews it: a pull request's description,
 a branch's full name and where it would run (both listing threads already on it), or the issue
-snapshot an attached chip would carry. Mobile does not have the picker.
+snapshot an attached chip would carry.
+
+On mobile, a new thread's **⋯** button offers **Pull request** and **Linear issue**, with the same
+checkout, linking, and **In use** rules; the existing branch picker covers branches. The pull
+request's worktree is checked out before the thread exists, so mobile does not run the project's
+setup script in it. The issue is linked once the draft sends.
 
 Code: `apps/web/src/components/chat/StartFromPicker.tsx`, `StartFromPicker.logic.ts` and
-`StartFromPreviews.tsx`, the button
+`StartFromPreviews.tsx`, `apps/mobile/src/features/threads/StartFromPullRequestSheet.tsx`, the
+`startFrom` target in `apps/mobile/src/components/LinearIssuePickerSheet.tsx`, the button
 in `ChatComposer.tsx`, and `chat.startFrom` in `packages/contracts/src/keybindings.ts`. User guide:
 [source-control.md](./user/source-control.md#start-a-thread-from-a-pull-request-branch-or-issue).
 
@@ -519,15 +527,16 @@ Otherwise it runs before the turn is recorded, with a work log row showing progr
 written back onto the message. The chip shows them, and the agent's prompt includes them, so the
 agent knows what is there. A failed clone is a warning and the agent still starts. The server adds
 the folder to the repository's `info/exclude` so checkpoints and diffs ignore the clones. The
-default owner and the folder are server settings in **Settings > General**. Mobile shows the chips
-and the setup step, but has no picker.
+default owner and the folder are server settings in **Settings > General**. Mobile's attach menu
+has the same picker, without the recently attached ranking.
 
 Code: `apps/server/src/contextRepositories/ContextRepositories.ts`,
 `packages/contracts/src/contextRepositories.ts`, `RepositoryContextRecord` in
 `packages/contracts/src/composerContext.ts`, the context-repository step in `apps/server/src/ws.ts`,
 the persisted-message restatement in `apps/server/src/orchestration/decider.ts`,
 `packages/client-runtime/src/contextRepositories.ts`, and
-`apps/web/src/components/chat/RepositoryAttachPicker.tsx`. User guide:
+`apps/web/src/components/chat/RepositoryAttachPicker.tsx`, and
+`apps/mobile/src/components/RepositoryPickerSheet.tsx`. User guide:
 [composer.md](./user/composer.md#attach-repositories).
 
 ## Desktop mock-update loop

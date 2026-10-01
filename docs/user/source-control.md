@@ -112,7 +112,10 @@ run **New thread from PR, branch, or issue** from the command palette.
   connected Linear account (see [Linear](./linear.md#link-an-issue-to-a-thread)).
 
 If a pull request, branch, or linked issue already has a thread, T3 Code asks whether to open it or start a
-second thread. This is web and desktop.
+second thread.
+
+On mobile, tap **⋯** beside the branch control of a new thread and choose **Pull request** or
+**Linear issue**. They work as on web and desktop; pick a branch with the branch control.
 
 ## Review and merge
 

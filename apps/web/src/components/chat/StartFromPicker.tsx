@@ -1,6 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { threadsForLinearIssue } from "@t3tools/client-runtime/state/linear";
+import { threadsForPullRequest } from "@t3tools/client-runtime/state/pull-requests";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -60,12 +61,7 @@ import {
 } from "./LinearIssueFilters";
 import { useAttachLinearIssue, useLinkLinearIssue } from "./LinearIssuePicker";
 import { useLinearThreadLinks } from "./LinearThreadLink";
-import {
-  localBranchName,
-  resolveBranchStart,
-  threadsForBranch,
-  threadsForPullRequest,
-} from "./StartFromPicker.logic";
+import { localBranchName, resolveBranchStart, threadsForBranch } from "./StartFromPicker.logic";
 import { SourceTabs } from "./SourceTabs";
 import {
   DEFAULT_PULL_REQUEST_PICKER_VIEW,

@@ -1,6 +1,7 @@
 import {
   contextRepositoryRemoteKey,
   type ComposerContextId,
+  type ContextRepositoryCandidate,
   type ContextRepositoryClone,
   type ContextRepositoryGitStatus,
   type ContextRepositoryOutcome,
@@ -69,6 +70,56 @@ export function parseRepositoryInput(
   return {
     nameWithOwner: path,
     remoteUrl: isGitHub ? `https://github.com/${path}` : url.toString().replace(/\/+$/, ""),
+  };
+}
+
+const MAX_SHOWN_CANDIDATES = 50;
+
+/** `org/` or `org/partial-name` searches another owner; anything else searches the default. */
+export function splitContextRepositoryOwnerQuery(query: string, defaultOwner: string) {
+  const match = /^([A-Za-z0-9_.-]+)\/(.*)$/.exec(query);
+  if (match) return { owner: match[1]!, filter: match[2]!.toLowerCase() };
+  return { owner: defaultOwner, filter: query.toLowerCase() };
+}
+
+/** Recently attached first, then the server's order (most recently pushed). */
+export function rankContextRepositoryCandidates(
+  candidates: ReadonlyArray<ContextRepositoryCandidate>,
+  filter: string,
+  recentRank: ReadonlyMap<string, number>,
+): ReadonlyArray<ContextRepositoryCandidate> {
+  return candidates
+    .filter(
+      (candidate) =>
+        filter.length === 0 ||
+        candidate.name.toLowerCase().includes(filter) ||
+        (candidate.description?.toLowerCase().includes(filter) ?? false),
+    )
+    .sort(
+      (left, right) =>
+        (recentRank.get(left.nameWithOwner) ?? Infinity) -
+        (recentRank.get(right.nameWithOwner) ?? Infinity),
+    )
+    .slice(0, MAX_SHOWN_CANDIDATES);
+}
+
+/**
+ * A pasted URL, or an `owner/repo` the shown list does not (yet) contain, is still attachable.
+ * Null when the query is neither, or names a repository already listed.
+ */
+export function pastedContextRepositoryEntry(
+  query: string,
+  shown: ReadonlyArray<Pick<ContextRepositoryCandidate, "nameWithOwner">>,
+): { readonly nameWithOwner: string; readonly remoteUrl: string } | null {
+  const pasted = parseRepositoryInput(query);
+  if (!pasted) return null;
+  const listed = shown.some(
+    (candidate) => candidate.nameWithOwner.toLowerCase() === pasted.nameWithOwner.toLowerCase(),
+  );
+  if (pasted.remoteUrl === null && listed) return null;
+  return {
+    nameWithOwner: pasted.nameWithOwner,
+    remoteUrl: pasted.remoteUrl ?? `https://github.com/${pasted.nameWithOwner}`,
   };
 }
 

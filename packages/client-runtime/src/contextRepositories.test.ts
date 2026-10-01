@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { parseRepositoryInput, repositoryContextRecord } from "./contextRepositories.ts";
+import {
+  parseRepositoryInput,
+  pastedContextRepositoryEntry,
+  repositoryContextRecord,
+  splitContextRepositoryOwnerQuery,
+} from "./contextRepositories.ts";
 
 describe("parseRepositoryInput", () => {
   it("reads owner/repo shorthand without guessing a remote", () => {
@@ -49,5 +54,34 @@ describe("repositoryContextRecord", () => {
     expect(record.directoryName).toBe("Platform.API");
     expect(record.contextId).toBe("repository_acme-platform-api");
     expect(record.label).toBe("Acme/Platform.API");
+  });
+});
+
+describe("splitContextRepositoryOwnerQuery", () => {
+  it("searches another owner after a slash, and the default owner otherwise", () => {
+    expect(splitContextRepositoryOwnerQuery("acme/Api", "me")).toEqual({
+      owner: "acme",
+      filter: "api",
+    });
+    expect(splitContextRepositoryOwnerQuery("Web", "me")).toEqual({ owner: "me", filter: "web" });
+  });
+});
+
+describe("pastedContextRepositoryEntry", () => {
+  it("offers an owner/repo the list does not contain, on GitHub", () => {
+    expect(pastedContextRepositoryEntry("acme/api", [])).toEqual({
+      nameWithOwner: "acme/api",
+      remoteUrl: "https://github.com/acme/api",
+    });
+  });
+
+  it("leaves an owner/repo that is already listed to its row", () => {
+    expect(pastedContextRepositoryEntry("acme/api", [{ nameWithOwner: "Acme/API" }])).toBeNull();
+  });
+
+  it("always offers a pasted clone URL", () => {
+    expect(
+      pastedContextRepositoryEntry("git@gitlab.com:acme/api.git", [{ nameWithOwner: "acme/api" }]),
+    ).toEqual({ nameWithOwner: "acme/api", remoteUrl: "git@gitlab.com:acme/api.git" });
   });
 });

@@ -63,6 +63,7 @@ click the fork button on a model. A new tab opens on that model, with a summary 
 a copy of what you had typed. Models from other providers are listed too. A chat cannot switch to
 them in place, so clicking the row does nothing; use its fork button. Picking another account in
 the composer's account picker works the same way, and those accounts are marked **New tab**.
+On mobile, tap **Hand off** beside the tab switcher and pick a provider and model.
 
 ### View two chats side by side
 

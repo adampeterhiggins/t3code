@@ -1,16 +1,26 @@
-import type { EnvironmentId, LinearIssueSummary, ThreadId } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  LinearIssueSummary,
+  OrchestrationMessageContext,
+  ProjectId,
+  ThreadId,
+} from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
-import { linearIssueContextRecord } from "@t3tools/client-runtime/state/linear";
+import {
+  linearIssueContextRecord,
+  threadsForLinearIssue,
+} from "@t3tools/client-runtime/state/linear";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/unstable/reactivity";
-import { useNavigation } from "@react-navigation/native";
+import { StackActions, useNavigation } from "@react-navigation/native";
 import { useState, type ReactNode } from "react";
-import { ActivityIndicator, Alert, FlatList, Modal, Platform, Pressable, View } from "react-native";
+import { ActivityIndicator, Alert, FlatList, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { useThreadShells } from "../state/entities";
 import { linearEnvironment } from "../state/linear";
 import { useDebouncedValue } from "../state/queries";
 import { useEnvironmentQuery } from "../state/query";
@@ -20,7 +30,9 @@ import {
   insertComposerDraftContext,
   type ComposerDraftInsertion,
 } from "../state/use-composer-drafts";
+import { confirmOpenExistingThread } from "./confirmOpenExistingThread";
 import { AppText as Text, AppTextInput } from "./AppText";
+import { PickerSheet } from "./PickerSheet";
 
 /** Linear allows 30 searches a minute, so typing settles before it queries. */
 const SEARCH_DEBOUNCE_MS = 300;
@@ -36,12 +48,17 @@ function linearErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message.trim() ? error.message : fallback;
 }
 
-/** Attach inserts the issue into a composer draft; link links it to the thread's tab group. */
+/**
+ * Attach inserts the issue into a composer draft; link links it to the thread's tab group. An
+ * attach with `startFrom` starts a new thread from the issue: it first offers threads already
+ * linked to it, and the thread the draft creates is linked once it sends.
+ */
 export type LinearIssuePickerTarget =
   | {
       readonly mode?: "attach";
       readonly environmentId: EnvironmentId;
       readonly draftKey: string;
+      readonly startFrom?: { readonly projectId: ProjectId };
     }
   | {
       readonly mode: "link";
@@ -54,9 +71,30 @@ type OpenedLinearIssuePicker =
       readonly mode: "attach";
       readonly environmentId: EnvironmentId;
       readonly draftKey: string;
+      readonly startFrom?: { readonly projectId: ProjectId };
       readonly insertion: ComposerDraftInsertion;
     }
   | { readonly mode: "link"; readonly environmentId: EnvironmentId; readonly threadId: ThreadId };
+
+/** Issues picked to start a draft's thread from, by draft key, until the draft sends. */
+const startFromIssueIds = new Map<string, string>();
+
+/**
+ * The issue the draft was started from, if its chip is still in the draft. Clears it: the caller
+ * links the thread the draft just created.
+ */
+export function takeStartFromLinearIssue(
+  draftKey: string,
+  context: OrchestrationMessageContext | undefined,
+): string | null {
+  const issueId = startFromIssueIds.get(draftKey);
+  startFromIssueIds.delete(draftKey);
+  if (issueId === undefined) return null;
+  const attached = context?.records.some(
+    (record) => record.kind === "linear-issue" && "issueId" in record && record.issueId === issueId,
+  );
+  return attached ? issueId : null;
+}
 
 /**
  * A Linear issue picker. The owner renders `sheet` somewhere that outlives composer focus:
@@ -104,49 +142,48 @@ export function useLinearIssuePicker(target: LinearIssuePickerTarget | null): {
  * the thread's tab group.
  */
 function LinearIssuePickerSheet(props: OpenedLinearIssuePicker & { readonly onClose: () => void }) {
-  const insets = useSafeAreaInsets();
   const connection = useEnvironmentQuery(
     linearEnvironment.connection({ environmentId: props.environmentId, input: {} }),
   );
   const phase = connection.data?.phase;
   return (
-    <Modal presentationStyle="pageSheet" animationType="slide" onRequestClose={props.onClose}>
-      <View
-        className="flex-1 bg-sheet-solid"
-        style={
-          Platform.OS === "android"
-            ? { paddingTop: insets.top, paddingBottom: insets.bottom }
-            : undefined
-        }
-      >
-        <View className="flex-row items-center justify-between p-4">
-          <Text className="text-lg text-foreground">
-            {props.mode === "link" ? "Link Linear issue" : "Linear issue"}
-          </Text>
-          <Pressable accessibilityRole="button" onPress={props.onClose} className="p-3">
-            <Text className="text-foreground">Cancel</Text>
-          </Pressable>
+    <PickerSheet
+      title={
+        props.mode === "link"
+          ? "Link Linear issue"
+          : props.startFrom
+            ? "Start from issue"
+            : "Linear issue"
+      }
+      onClose={props.onClose}
+    >
+      {phase === "connected" ? (
+        <LinearIssueSearch {...props} />
+      ) : (
+        <View className="flex-1 items-center justify-center p-6">
+          {phase === undefined && !connection.error ? (
+            <ActivityIndicator />
+          ) : (
+            <Text className="text-center text-foreground-muted">
+              {connection.error ?? "Linear is not connected. Connect it in Settings > Linear."}
+            </Text>
+          )}
         </View>
-        {phase === "connected" ? (
-          <LinearIssueSearch {...props} />
-        ) : (
-          <View className="flex-1 items-center justify-center p-6">
-            {phase === undefined && !connection.error ? (
-              <ActivityIndicator />
-            ) : (
-              <Text className="text-center text-foreground-muted">
-                {connection.error ?? "Linear is not connected. Connect it in Settings > Linear."}
-              </Text>
-            )}
-          </View>
-        )}
-      </View>
-    </Modal>
+      )}
+    </PickerSheet>
   );
 }
 
 function LinearIssueSearch(props: OpenedLinearIssuePicker & { readonly onClose: () => void }) {
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
+  const startFrom = props.mode === "attach" ? props.startFrom : undefined;
+  const threadShells = useThreadShells();
+  const threadLinks = useEnvironmentQuery(
+    startFrom
+      ? linearEnvironment.threadLinks({ environmentId: props.environmentId, input: {} })
+      : null,
+  ).data;
   const [query, setQuery] = useState("");
   const trimmed = query.trim();
   const settled = useDebouncedValue(trimmed, SEARCH_DEBOUNCE_MS);
@@ -173,8 +210,35 @@ function LinearIssueSearch(props: OpenedLinearIssuePicker & { readonly onClose: 
       ? linearErrorMessage(Cause.squash(result.cause), "Could not load Linear issues.")
       : null;
 
-  const attach = async (issue: LinearIssueSummary) => {
+  const pick = async (issue: LinearIssueSummary) => {
     if (attaching) return;
+    if (startFrom) {
+      const existing = threadsForLinearIssue(
+        threadShells.filter(
+          (thread) =>
+            thread.environmentId === props.environmentId &&
+            thread.projectId === startFrom.projectId,
+        ),
+        threadLinks,
+        issue.id,
+      );
+      const choice = await confirmOpenExistingThread(issue.identifier, existing);
+      if (choice === "cancel") return;
+      if (choice !== "start") {
+        props.onClose();
+        navigation.dispatch(
+          StackActions.replace("Thread", {
+            environmentId: String(choice.environmentId),
+            threadId: String(choice.id),
+          }),
+        );
+        return;
+      }
+    }
+    await attach(issue);
+  };
+
+  const attach = async (issue: LinearIssueSummary) => {
     setAttaching(issue.id);
     try {
       if (props.mode === "link") {
@@ -217,6 +281,7 @@ function LinearIssueSearch(props: OpenedLinearIssuePicker & { readonly onClose: 
         Alert.alert("Too many context items", "Remove some context from the draft and try again.");
         return;
       }
+      if (startFrom) startFromIssueIds.set(props.draftKey, issue.id);
       props.onClose();
     } finally {
       setAttaching(null);
@@ -269,7 +334,7 @@ function LinearIssueSearch(props: OpenedLinearIssuePicker & { readonly onClose: 
             accessibilityRole="button"
             accessibilityLabel={`${item.identifier} ${item.title}, ${item.stateName}`}
             disabled={attaching !== null}
-            onPress={() => void attach(item)}
+            onPress={() => void pick(item)}
             className="flex-row items-center gap-3 px-4 py-3 active:bg-subtle disabled:opacity-60"
           >
             <View className="min-w-0 flex-1 gap-0.5">

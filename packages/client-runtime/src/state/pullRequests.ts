@@ -1,6 +1,7 @@
 import {
   WS_METHODS,
   type EnvironmentId,
+  type OrchestrationThreadShell,
   type PullRequestActor,
   type PullRequestDetail,
   type PullRequestDiffInput,
@@ -141,6 +142,38 @@ export function pullRequestDetailToVcsStatus(
     ...(detail.isDraft === true ? { isDraft: true } : {}),
     updatedAt: detail.updatedAt,
   };
+}
+
+/**
+ * Live threads already working on a pull request: linked to it, or on its head branch, newest
+ * first. Start-from pickers ask before starting another one beside them.
+ */
+export function threadsForPullRequest<
+  T extends Pick<
+    OrchestrationThreadShell,
+    | "branch"
+    | "archivedAt"
+    | "updatedAt"
+    | "pullRequests"
+    | "linkedPullRequest"
+    | "branchPullRequest"
+  >,
+>(
+  threads: ReadonlyArray<T>,
+  pullRequest: { readonly url: string; readonly headBranch: string },
+): T[] {
+  return threads
+    .filter(
+      (thread) =>
+        thread.archivedAt === null &&
+        (thread.branch === pullRequest.headBranch ||
+          thread.linkedPullRequest?.url === pullRequest.url ||
+          thread.branchPullRequest?.url === pullRequest.url ||
+          thread.pullRequests.some(
+            (link) => link.url === pullRequest.url && link.source !== "stack-dismissed",
+          )),
+    )
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
 /**

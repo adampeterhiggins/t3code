@@ -163,7 +163,8 @@ provider supports it. Web and desktop also offer compaction from the context met
 ## Attach repositories
 
 Give the agent another repository's source to read by attaching it: choose **Repository** from the
-paperclip menu, or **Attach repository** in the command palette. Set a default GitHub owner in
+paperclip menu (the **+** menu on mobile), or **Attach repository** in the command palette. Set a
+default GitHub owner in
 **Settings > General > Repository owner** so the list opens ready. Type `another-org/` to list a
 different owner, or paste `owner/repo` or a clone URL. The list notes repositories already cloned
 into this thread's workspace, with their branch and how far behind they are.
