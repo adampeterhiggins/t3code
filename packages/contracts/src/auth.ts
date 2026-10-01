@@ -115,6 +115,11 @@ export const AuthAdministrativeScopes = [
 ] as const;
 /** Agent access tokens: enough to read history over `/mcp/query`, nothing that changes state. */
 export const AuthReadOnlyClientScopes = [AuthOrchestrationReadScope] as const;
+/** An agent outside T3 Code that may also start and drive threads over `/mcp/operate`. */
+export const AuthAgentOperateScopes = [
+  AuthOrchestrationReadScope,
+  AuthOrchestrationOperateScope,
+] as const;
 
 export const AuthTokenExchangeGrantType =
   "urn:ietf:params:oauth:grant-type:token-exchange" as const;
@@ -347,9 +352,14 @@ export const AuthCreatePairingCredentialInput = Schema.Struct({
 });
 export type AuthCreatePairingCredentialInput = typeof AuthCreatePairingCredentialInput.Type;
 
+export const AgentAccessLevel = Schema.Literals(["read", "operate"]);
+export type AgentAccessLevel = typeof AgentAccessLevel.Type;
+
 export const AuthCreateAgentAccessTokenInput = Schema.Struct({
   label: TrimmedNonEmptyString.check(Schema.isMaxLength(100)),
   expiresInDays: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 3650 })),
+  /** read (the default) reaches `/mcp/query`; operate reaches `/mcp/operate` and can drive threads. */
+  access: Schema.optionalKey(AgentAccessLevel),
 });
 export type AuthCreateAgentAccessTokenInput = typeof AuthCreateAgentAccessTokenInput.Type;
 
@@ -360,7 +370,7 @@ export const AuthAgentAccessTokenResult = Schema.Struct({
   label: TrimmedNonEmptyString,
   scopes: AuthEnvironmentScopes,
   expiresAt: Schema.DateTimeUtc,
-  /** The query MCP endpoint as this server reaches itself; remote agents swap in a reachable host. */
+  /** The token's MCP endpoint as this server reaches itself; remote agents swap in a reachable host. */
   mcpUrl: TrimmedNonEmptyString,
 });
 export type AuthAgentAccessTokenResult = typeof AuthAgentAccessTokenResult.Type;

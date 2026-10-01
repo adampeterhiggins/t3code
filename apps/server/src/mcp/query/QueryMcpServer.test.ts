@@ -7,7 +7,15 @@ import * as Schema from "effect/Schema";
 import { McpProtocol, McpServer, Tool, Toolkit } from "effect/unstable/ai";
 import { HttpBody, HttpClient, HttpRouter } from "effect/unstable/http";
 
+import * as Crypto from "effect/Crypto";
+
 import * as EnvironmentAuth from "../../auth/EnvironmentAuth.ts";
+import * as GitWorkflowService from "../../git/GitWorkflowService.ts";
+import * as ClientCommandDispatcher from "../../orchestration/ClientCommandDispatcher.ts";
+import { OrchestrationEngineService } from "../../orchestration/Services/OrchestrationEngine.ts";
+import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
+import * as ProviderRegistry from "../../provider/Services/ProviderRegistry.ts";
+import * as ServerSettings from "../../serverSettings.ts";
 import * as CheckpointDiffQuery from "../../checkpointing/CheckpointDiffQuery.ts";
 import * as ServerEnvironment from "../../environment/ServerEnvironment.ts";
 import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
@@ -15,7 +23,9 @@ import { ProviderService } from "../../provider/Services/ProviderService.ts";
 import { UsageService } from "../../usage/UsageService.ts";
 import * as QueryMcpServer from "./QueryMcpServer.ts";
 
-const session = (scopes: ReadonlyArray<"orchestration:read" | "access:read">) => ({
+const session = (
+  scopes: ReadonlyArray<"orchestration:read" | "orchestration:operate" | "access:read">,
+) => ({
   sessionId: AuthSessionId.make("session-query-test"),
   subject: "agent-access-token",
   method: "bearer-access-token" as const,
@@ -30,6 +40,8 @@ const FakeEnvironmentAuth = Layer.mock(EnvironmentAuth.EnvironmentAuth)({
     switch (request.headers.authorization) {
       case "Bearer read-token":
         return Effect.succeed(session(["orchestration:read"]));
+      case "Bearer operate-token":
+        return Effect.succeed(session(["orchestration:read", "orchestration:operate"]));
       case "Bearer access-only-token":
         return Effect.succeed(session(["access:read"]));
       default:
@@ -72,6 +84,21 @@ const RoutesLive = Layer.mergeAll(QueryMcpServer.layer, ThreadMcpLive).pipe(
       Layer.mock(CheckpointDiffQuery.CheckpointDiffQuery)({}),
       Layer.mock(ProviderService)({}),
       Layer.mock(UsageService)({}),
+      Layer.mock(ClientCommandDispatcher.ClientCommandDispatcher)({
+        forOrigin: () => ({ dispatch: () => Effect.die("unused") }),
+      }),
+      Layer.mock(OrchestrationEngineService)({}),
+      Layer.mock(ProjectionSnapshotQuery)({}),
+      Layer.mock(ProviderRegistry.ProviderRegistry)({}),
+      Layer.mock(ServerSettings.ServerSettingsService)({}),
+      Layer.mock(GitWorkflowService.GitWorkflowService)({}),
+      Layer.succeed(
+        Crypto.Crypto,
+        Crypto.make({
+          randomBytes: (size) => new Uint8Array(size),
+          digest: (_algorithm, data) => Effect.succeed(data),
+        }),
+      ),
       Layer.fresh(SqlitePersistenceMemory),
     ),
   ),
@@ -107,7 +134,7 @@ const listTools = (path: string, headers: Record<string, string>) =>
     return body.result.tools.map((tool) => tool.name);
   });
 
-it.effect("authenticates /mcp/query with a read-scoped Authorization header only", () =>
+it.effect("authenticates /mcp/query and /mcp/operate by the token's scopes", () =>
   Effect.scoped(
     Effect.gen(function* () {
       yield* HttpRouter.serve(RoutesLive, { disableListenLog: true, disableLogger: true }).pipe(
@@ -139,6 +166,19 @@ it.effect("authenticates /mcp/query with a read-scoped Authorization header only
 
       const threadTools = yield* listTools("/mcp", {});
       expect(threadTools).toEqual(["thread_only_tool"]);
+
+      // A read-only token cannot drive threads; an operate token gets both toolkits.
+      const readOnOperate = yield* post("/mcp/operate", INITIALIZE, {
+        authorization: "Bearer read-token",
+      });
+      expect(readOnOperate.status).toBe(403);
+      const operateTools = yield* listTools("/mcp/operate", {
+        authorization: "Bearer operate-token",
+      });
+      expect(operateTools).toContain("create_thread");
+      expect(operateTools).toContain("wait_for_thread");
+      expect(operateTools).toContain("get_activity_timeline");
+      expect(queryTools).not.toContain("create_thread");
     }),
   ).pipe(Effect.provide(NodeHttpServer.layerTest)),
 );

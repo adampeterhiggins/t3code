@@ -70,6 +70,8 @@ export interface AuthenticatedSession {
   readonly scopes: ReadonlyArray<AuthEnvironmentScope>;
   readonly proofKeyThumbprint?: string;
   readonly expiresAt?: DateTime.DateTime;
+  /** The client's label, such as an agent access token's name. */
+  readonly label?: string;
 }
 
 const serverAuthInternalErrorContext = {
@@ -631,6 +633,7 @@ export const make = Effect.gen(function* () {
         scopes: session.scopes,
         ...(session.proofKeyThumbprint ? { proofKeyThumbprint: session.proofKeyThumbprint } : {}),
         ...(session.expiresAt ? { expiresAt: session.expiresAt } : {}),
+        ...(session.client.label ? { label: session.client.label } : {}),
       })),
       mapSessionVerificationErrors,
     );

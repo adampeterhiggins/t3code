@@ -1,6 +1,7 @@
 import {
   AuthAccessReadScope,
   AuthAccessWriteScope,
+  AuthAgentOperateScopes,
   AuthReadOnlyClientScopes,
   AuthStandardClientScopes,
   AuthOrchestrationOperateScope,
@@ -39,6 +40,7 @@ import * as HttpApiBuilder from "effect/unstable/httpapi/HttpApiBuilder";
 
 import * as ServerConfig from "../config.ts";
 import { localMcpEndpointUrl } from "../mcp/McpSessionRegistry.ts";
+import { OPERATE_MCP_PATH, QUERY_MCP_PATH } from "../mcp/paths.ts";
 import * as EnvironmentAuth from "./EnvironmentAuth.ts";
 import * as SessionStore from "./SessionStore.ts";
 import { traceAuthenticatedRelayRequest, traceRelayRequest } from "../cloud/traceRelayRequest.ts";
@@ -437,17 +439,19 @@ export const authHttpApiLayer = HttpApiBuilder.group(
           function* (args) {
             yield* annotateEnvironmentRequest(args.endpoint.name);
             yield* requireEnvironmentScope(AuthAccessWriteScope);
+            const operate = args.payload.access === "operate";
             const issued = yield* serverAuth.issueSession({
-              scopes: AuthReadOnlyClientScopes,
+              scopes: operate ? AuthAgentOperateScopes : AuthReadOnlyClientScopes,
               subject: AGENT_ACCESS_TOKEN_SUBJECT,
               label: args.payload.label,
               ttl: Duration.days(args.payload.expiresInDays),
             });
+            const path = operate ? OPERATE_MCP_PATH : QUERY_MCP_PATH;
             const httpServer = yield* Effect.serviceOption(HttpServer.HttpServer);
             // Tests build these routes without a listener; the server always has one.
             const mcpUrl = Option.isSome(httpServer)
-              ? localMcpEndpointUrl(httpServer.value.address, "/mcp/query")
-              : `http://127.0.0.1:${config.port}/mcp/query`;
+              ? localMcpEndpointUrl(httpServer.value.address, path)
+              : `http://127.0.0.1:${config.port}${path}`;
             yield* appendCredentialResponseHeaders;
             return {
               sessionId: issued.sessionId,

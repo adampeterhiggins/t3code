@@ -1,4 +1,5 @@
 import type {
+  AgentAccessLevel,
   AuthAgentAccessTokenResult,
   AuthBrowserSessionResult,
   AuthClientMetadata,
@@ -383,6 +384,7 @@ export async function createServerPairingCredential(input?: {
 export async function createServerAgentAccessToken(input: {
   readonly label: string;
   readonly expiresInDays: number;
+  readonly access: AgentAccessLevel;
 }): Promise<AuthAgentAccessTokenResult> {
   try {
     return await runPrimaryHttp(
@@ -390,7 +392,11 @@ export async function createServerAgentAccessToken(input: {
         Effect.flatMap((client) =>
           client.auth.agentAccessToken({
             headers: {},
-            payload: { label: input.label.trim(), expiresInDays: input.expiresInDays },
+            payload: {
+              label: input.label.trim(),
+              expiresInDays: input.expiresInDays,
+              access: input.access,
+            },
           }),
         ),
       ),

@@ -111,9 +111,7 @@ const make = Effect.gen(function* () {
     );
 
   const callerShell = (actor: McpActor.McpActorValue) =>
-    actor.kind === "thread"
-      ? threadShell(actor.threadId).pipe(Effect.map(Option.some))
-      : Effect.succeedNone;
+    actor.kind === "thread" ? threadShell(actor.threadId).pipe(Effect.asSome) : Effect.succeedNone;
 
   /** A thread the caller may act on: any other thread. */
   const targetShell = Effect.fn("OperateToolkit.targetShell")(function* (

@@ -1,4 +1,8 @@
-import { AuthOrchestrationReadScope } from "@t3tools/contracts";
+import {
+  AuthOrchestrationOperateScope,
+  AuthOrchestrationReadScope,
+  type AuthEnvironmentScope,
+} from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type * as Types from "effect/Types";
@@ -7,20 +11,24 @@ import { Headers, HttpRouter, HttpServerRequest, HttpServerResponse } from "effe
 
 import packageJson from "../../../package.json" with { type: "json" };
 import * as EnvironmentAuth from "../../auth/EnvironmentAuth.ts";
+import * as McpActor from "../McpActor.ts";
 import { normalizeMcpHttpResponse } from "../McpHttpServer.ts";
+import { OPERATE_MCP_PATH, QUERY_MCP_PATH } from "../paths.ts";
+import { OperateToolkitHandlersLive } from "../toolkits/operate/handlers.ts";
+import { OperateToolkit } from "../toolkits/operate/tools.ts";
 import { QueryToolkitHandlersLive } from "./handlers.ts";
 import { QueryToolkit } from "./tools.ts";
 
 /**
- * `/mcp/query` serves read-only history to agents outside T3 Code, such as a
- * scheduled Claude Code run. It is a separate MCP server from `/mcp` on
+ * `/mcp/query` and `/mcp/operate` serve agents outside T3 Code, such as a
+ * scheduled Claude Code run. They are separate MCP servers from `/mcp` on
  * purpose: `/mcp` is how an agent inside one thread acts, scoped to that
- * thread by a per-session token, and must never see other threads. This
- * endpoint instead takes an environment access token with
- * `orchestration:read`, the same credential and revocation as any paired
- * client, and lists only the query tools.
+ * thread by a per-session token. These take an environment access token, the
+ * same credential and revocation as any paired client. `/mcp/query` needs
+ * `orchestration:read` and lists only the history tools; `/mcp/operate` needs
+ * `orchestration:operate` too and adds the tools that start and drive threads.
  */
-export const QUERY_MCP_PATH = "/mcp/query";
+export { OPERATE_MCP_PATH, QUERY_MCP_PATH };
 
 const failure = (status: 401 | 403, error: string, message: string) =>
   HttpServerResponse.jsonUnsafe(
@@ -34,51 +42,71 @@ const failure = (status: 401 | 403, error: string, message: string) =>
     },
   );
 
-const unauthorized = failure(
-  401,
-  "invalid_token",
-  "A T3 Code access token with orchestration:read is required. Create one in Settings → Connections → Agent access, or run `t3 auth session issue --read-only`.",
-);
+const unauthorized = (scope: AuthEnvironmentScope, flag: string) =>
+  failure(
+    401,
+    "invalid_token",
+    `A T3 Code access token with ${scope} is required. Create one in Settings → Connections → Agent access, or run \`t3 auth session issue ${flag}\`.`,
+  );
 
-const forbidden = failure(
-  403,
-  "insufficient_scope",
-  "This access token cannot read orchestration history. Create a token with orchestration:read.",
-);
+const forbidden = (scope: AuthEnvironmentScope, what: string) =>
+  failure(
+    403,
+    "insufficient_scope",
+    `This access token cannot ${what}. Create a token with ${scope}.`,
+  );
 
-type QueryHttpEffect = Effect.Effect<HttpServerResponse.HttpServerResponse, Types.unhandled>;
+type TokenHttpEffect = Effect.Effect<
+  HttpServerResponse.HttpServerResponse,
+  Types.unhandled,
+  McpActor.McpActor
+>;
 
-const QueryAuthMiddlewareLive = HttpRouter.middleware()(
-  EnvironmentAuth.EnvironmentAuth.pipe(
-    Effect.map((auth) =>
-      Effect.fn("QueryMcpServer.authenticateRequest")(function* (httpEffect: QueryHttpEffect) {
-        const request = yield* HttpServerRequest.HttpServerRequest;
-        // Only an explicit Authorization header counts. A browser that visits
-        // this origin carries the session cookie, and must not be able to read
-        // history through it from another page.
-        if (request.headers.authorization === undefined) {
-          return unauthorized;
-        }
-        const headerOnly = request.modify({
-          headers: Headers.remove(request.headers, "cookie"),
-        });
-        const session = yield* auth.authenticateHttpRequest(headerOnly).pipe(
-          Effect.tapError((error) =>
-            Effect.logWarning("rejected query MCP request", { errorTag: error._tag }),
-          ),
-          Effect.option,
-        );
-        if (session._tag === "None") {
-          return unauthorized;
-        }
-        if (!session.value.scopes.includes(AuthOrchestrationReadScope)) {
-          return forbidden;
-        }
-        return yield* httpEffect.pipe(Effect.map(normalizeMcpHttpResponse));
-      }),
+const tokenAuthMiddleware = (options: {
+  readonly requiredScope: AuthEnvironmentScope;
+  readonly cliFlag: string;
+  readonly what: string;
+}) =>
+  HttpRouter.middleware<{ provides: McpActor.McpActor }>()(
+    EnvironmentAuth.EnvironmentAuth.pipe(
+      Effect.map((auth) =>
+        Effect.fn("TokenMcpServer.authenticateRequest")(function* (httpEffect: TokenHttpEffect) {
+          const request = yield* HttpServerRequest.HttpServerRequest;
+          // Only an explicit Authorization header counts. A browser that visits
+          // this origin carries the session cookie, and must not be able to
+          // reach these tools through it from another page.
+          if (request.headers.authorization === undefined) {
+            return unauthorized(options.requiredScope, options.cliFlag);
+          }
+          const headerOnly = request.modify({
+            headers: Headers.remove(request.headers, "cookie"),
+          });
+          const session = yield* auth.authenticateHttpRequest(headerOnly).pipe(
+            Effect.tapError((error) =>
+              Effect.logWarning("rejected token MCP request", { errorTag: error._tag }),
+            ),
+            Effect.option,
+          );
+          if (session._tag === "None") {
+            return unauthorized(options.requiredScope, options.cliFlag);
+          }
+          if (
+            !session.value.scopes.includes(AuthOrchestrationReadScope) ||
+            !session.value.scopes.includes(options.requiredScope)
+          ) {
+            return forbidden(options.requiredScope, options.what);
+          }
+          return yield* httpEffect.pipe(
+            Effect.provideService(McpActor.McpActor, {
+              kind: "token",
+              label: session.value.label ?? "Agent access token",
+            }),
+            Effect.map(normalizeMcpHttpResponse),
+          );
+        }),
+      ),
     ),
-  ),
-).layer;
+  ).layer;
 
 const QueryTransportLive = McpServer.layerHttp({
   name: "T3 Code history",
@@ -87,16 +115,49 @@ const QueryTransportLive = McpServer.layerHttp({
     "Read-only access to this T3 Code environment's projects, threads, turns, messages, plans, diffs and pull requests.",
   path: QUERY_MCP_PATH,
   protocols: [McpProtocol.v2025_06_18],
-}).pipe(Layer.provide(QueryAuthMiddlewareLive));
+}).pipe(
+  Layer.provide(
+    tokenAuthMiddleware({
+      requiredScope: AuthOrchestrationReadScope,
+      cliFlag: "--read-only",
+      what: "read orchestration history",
+    }),
+  ),
+);
+
+const OperateTransportLive = McpServer.layerHttp({
+  name: "T3 Code control",
+  version: packageJson.version,
+  description:
+    "Read this T3 Code environment's history, and start, message, and wait on its threads as the user would.",
+  path: OPERATE_MCP_PATH,
+  protocols: [McpProtocol.v2025_06_18],
+}).pipe(
+  Layer.provide(
+    tokenAuthMiddleware({
+      requiredScope: AuthOrchestrationOperateScope,
+      cliFlag: "--operate",
+      what: "drive threads",
+    }),
+  ),
+);
 
 /**
- * Fresh so this MCP server gets its own `McpServer` instance: layers are
+ * Each server is fresh so it gets its own `McpServer` instance: layers are
  * memoized by reference, and sharing the one behind `/mcp` would list the
- * thread tools here and the query tools there.
+ * thread tools here and these tools there.
  */
-export const layer = Layer.fresh(
-  McpServer.toolkit(QueryToolkit).pipe(
-    Layer.provide(QueryToolkitHandlersLive),
-    Layer.provideMerge(QueryTransportLive),
+export const layer = Layer.mergeAll(
+  Layer.fresh(
+    McpServer.toolkit(QueryToolkit).pipe(
+      Layer.provide(QueryToolkitHandlersLive),
+      Layer.provideMerge(QueryTransportLive),
+    ),
+  ),
+  Layer.fresh(
+    Layer.mergeAll(
+      McpServer.toolkit(QueryToolkit).pipe(Layer.provide(QueryToolkitHandlersLive)),
+      McpServer.toolkit(OperateToolkit).pipe(Layer.provide(OperateToolkitHandlersLive)),
+    ).pipe(Layer.provideMerge(OperateTransportLive)),
   ),
 );
