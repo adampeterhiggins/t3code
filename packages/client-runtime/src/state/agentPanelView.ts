@@ -225,6 +225,72 @@ export function subagentResultChatContext(
   return sections.filter((section) => section !== null).join("\n\n");
 }
 
+const CONTINUATION_PROMPT_CHAR_LIMIT = 6_000;
+const CONTINUATION_OUTCOME_CHAR_LIMIT = 16_000;
+const CONTINUATION_TOOL_CALL_LIMIT = 40;
+const CONTINUATION_TOOL_LINE_CHAR_LIMIT = 200;
+
+function clip(text: string, limit: number): string {
+  return text.length <= limit ? text : `${text.slice(0, limit - 1)}…`;
+}
+
+function continuationStatusLine(name: string, status: RuntimeSubagentStatus): string {
+  switch (status) {
+    case "completed":
+      return `The "${name}" subagent finished.`;
+    case "failed":
+      return `The "${name}" subagent failed.`;
+    case "cancelled":
+    case "interrupted":
+      return `The "${name}" subagent was stopped before it finished.`;
+    case "idle":
+      return `The "${name}" subagent is idle.`;
+    default:
+      return `The "${name}" subagent was still working when this was captured.`;
+  }
+}
+
+/**
+ * Everything needed to pick up where an agent left off in a fresh chat: its assignment, its
+ * outcome, and the tool calls it made (the latest ones when there are many). Unlike
+ * `subagentResultChatContext`, this also works mid-run. Null when the agent left nothing to go on.
+ */
+export function subagentContinuationContext(
+  agent: Pick<
+    RuntimeSubagent,
+    "title" | "role" | "status" | "prompt" | "result" | "error" | "progress"
+  >,
+  toolLog: ReadonlyArray<SubagentToolLogEntry>,
+): string | null {
+  const prompt = agent.prompt?.trim();
+  const live = isActiveSubagentStatus(agent.status);
+  const outcome = (agent.error ?? (live ? null : agent.result))?.trim();
+  if (!prompt && !outcome && toolLog.length === 0) return null;
+  const name = agent.role ? `${agent.title} (${agent.role})` : agent.title;
+  const calls = toolLog.slice(-CONTINUATION_TOOL_CALL_LIMIT).map((entry) => {
+    const detail = entry.detail ?? entry.command;
+    const line = detail ? `${entry.title}: ${detail}` : entry.title;
+    const status = entry.status === "completed" ? "" : ` (${entry.status})`;
+    return `- ${clip(line.replace(/\s+/g, " "), CONTINUATION_TOOL_LINE_CHAR_LIMIT)}${status}`;
+  });
+  const sections = [
+    `${continuationStatusLine(name, agent.status)} Continue from its work.`,
+    prompt ? `Task:\n${clip(prompt, CONTINUATION_PROMPT_CHAR_LIMIT)}` : null,
+    live && agent.progress?.trim() ? `Latest progress:\n${agent.progress.trim()}` : null,
+    outcome
+      ? `${agent.error ? "Error" : "Result"}:\n${clip(outcome, CONTINUATION_OUTCOME_CHAR_LIMIT)}`
+      : null,
+    calls.length > 0
+      ? `Tool calls (${
+          toolLog.length > calls.length
+            ? `latest ${calls.length} of ${toolLog.length}`
+            : `${calls.length}`
+        }):\n${calls.join("\n")}`
+      : null,
+  ];
+  return sections.filter((section) => section !== null).join("\n\n");
+}
+
 /** The tool families the log groups calls into, for icons and filtering. */
 export type SubagentToolKind = "command" | "read" | "edit" | "search" | "web" | "other";
 

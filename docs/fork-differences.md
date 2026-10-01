@@ -147,6 +147,10 @@ Upstream's panel is a fixed list with one summary line per agent. To feed it:
   serves it with `retainedAt` once the provider can no longer answer.
 - **Attach result to chat** (detail view and list right-click) pastes the agent's task and
   result into the composer; `subagentResultChatContext` builds the text.
+- **Continue in chat** (detail view and list right-click) opens a new chat tab of the thread whose
+  draft carries the agent's task, result or error, and latest tool calls as a chat-summary chip;
+  `subagentContinuationContext` builds the text. It starts a fresh conversation rather than
+  resuming the agent's provider session.
 
 Code: `apps/web/src/components/AgentsPanel.tsx`, `AgentDetailView.tsx`,
 `apps/web/src/rightPanelStore.ts`, `packages/client-runtime/src/state/agentPanelView.ts`,

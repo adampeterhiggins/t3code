@@ -489,18 +489,30 @@ async function captureThreadTabContext(
     summary?: string;
   },
 ): Promise<ComposerContextReference> {
-  const { threadId, sourceThreadId, title } = input;
   const summary = input.summary ?? (await fetchThreadTabSummary(connection, input));
-  const contextId = toKindScopedComposerContextId("thread-tab", sourceThreadId);
-  const label = sanitizeComposerContextLabel(title, "thread-tab");
+  return storeThreadTabContext(input.threadId, {
+    producerId: input.sourceThreadId,
+    sourceThreadId: input.sourceThreadId,
+    title: input.title,
+    summary,
+  });
+}
+
+/** Holds `summary` behind a chat-summary chip in the draft of `threadId`. */
+function storeThreadTabContext(
+  threadId: ThreadId,
+  input: { producerId: string; sourceThreadId: ThreadId; title: string; summary: string },
+): ComposerContextReference {
+  const contextId = toKindScopedComposerContextId("thread-tab", input.producerId);
+  const label = sanitizeComposerContextLabel(input.title, "thread-tab");
   useThreadTabContextStore.getState().upsert(threadId, {
     version: 1,
     kind: "thread-tab",
     contextId,
     label,
-    threadId: sourceThreadId,
-    title: title.slice(0, 2_048),
-    summary,
+    threadId: input.sourceThreadId,
+    title: input.title.slice(0, 2_048),
+    summary: input.summary.slice(0, COMPOSER_CONTEXT_THREAD_TAB_SUMMARY_MAX_CHARS),
   });
   return { kind: "thread-tab", contextId, label } satisfies ComposerContextReference;
 }
@@ -546,6 +558,11 @@ export async function forkThreadTab(
     prompt: string;
     /** False when forking from the chat's first message, which leaves nothing to summarize. */
     hasHistory: boolean;
+    /**
+     * Context captured by the caller, such as a subagent's work, attached in place of the source
+     * chat's summary. `producerId` keeps its chip distinct from the chat's own.
+     */
+    context?: { producerId: string; title: string; summary: string };
   },
 ): Promise<ScopedThreadRef> {
   const threadId = newThreadId();
@@ -557,15 +574,17 @@ export async function forkThreadTab(
   );
   const threadRef = scopeThreadRef(input.environmentId, threadId);
   carryRightPanelVisibility(scopeThreadRef(input.environmentId, input.sourceThreadId), threadRef);
-  const reference = input.hasHistory
-    ? await captureThreadTabContext(connection, {
-        threadId,
-        sourceThreadId: input.sourceThreadId,
-        title: input.sourceTitle,
-        ...(input.beforeMessageId ? { beforeMessageId: input.beforeMessageId } : {}),
-        ...(input.afterMessageId ? { afterMessageId: input.afterMessageId } : {}),
-      })
-    : null;
+  const reference = input.context
+    ? storeThreadTabContext(threadId, { ...input.context, sourceThreadId: input.sourceThreadId })
+    : input.hasHistory
+      ? await captureThreadTabContext(connection, {
+          threadId,
+          sourceThreadId: input.sourceThreadId,
+          title: input.sourceTitle,
+          ...(input.beforeMessageId ? { beforeMessageId: input.beforeMessageId } : {}),
+          ...(input.afterMessageId ? { afterMessageId: input.afterMessageId } : {}),
+        })
+      : null;
   useComposerDraftStore
     .getState()
     .setPrompt(

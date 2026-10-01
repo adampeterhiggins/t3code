@@ -41,6 +41,7 @@ import {
   ListFilterIcon,
   MessageCircleIcon,
   MessageSquarePlusIcon,
+  MessageSquareShareIcon,
   SquareArrowOutUpRightIcon,
   RefreshCw,
   SearchIcon,
@@ -635,6 +636,7 @@ export function AgentDetailView(props: {
   initialToolCallId?: string | null;
   onBack: () => void;
   onOpenInTab?: (() => void) | undefined;
+  onContinueInChat?: (() => void) | undefined;
 }) {
   const { agent } = props;
   const { timestampFormat } = useClientSettings();
@@ -680,6 +682,23 @@ export function AgentDetailView(props: {
                   <SquareArrowOutUpRightIcon aria-hidden />
                 </TooltipTrigger>
                 <TooltipPopup side="bottom">Open in new tab</TooltipPopup>
+              </Tooltip>
+            ) : null}
+            {props.onContinueInChat ? (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      size="icon-micro"
+                      variant="ghost-muted"
+                      aria-label="Continue in chat"
+                      onClick={props.onContinueInChat}
+                    />
+                  }
+                >
+                  <MessageSquareShareIcon aria-hidden />
+                </TooltipTrigger>
+                <TooltipPopup side="bottom">Continue in chat</TooltipPopup>
               </Tooltip>
             ) : null}
           </div>
