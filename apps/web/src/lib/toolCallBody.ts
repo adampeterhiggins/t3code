@@ -10,7 +10,11 @@ export function parseToolCallBody(text: string) {
     .map((block) => {
       if (block.startsWith("Diff\n")) {
         try {
-          const patch = `${block.slice(5).trimEnd()}\n`;
+          // A blank line in the file is one diff line whose only character is a
+          // space. trimEnd() deletes that line when it closes the hunk, and the
+          // parser then rejects the patch for having too few lines.
+          const patchBody = block.slice("Diff\n".length);
+          const patch = patchBody.endsWith("\n") ? patchBody : `${patchBody}\n`;
           // Worker-highlighted diffs are matched to their results by cache key.
           const files = parsePatchFiles(
             patch,
