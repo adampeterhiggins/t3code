@@ -44,6 +44,36 @@ describe("parseToolCallBody", () => {
     expect(summary).toContain("src/new.py\n\n+2, −0 lines");
   });
 
+  it("parses a hunk that ends on a blank line", () => {
+    const summary = summarizeToolActivityInput({
+      content: [
+        {
+          type: "diff",
+          path: "src/domain/fieldwork.py",
+          oldText: [
+            "Increments = Annotated[",
+            "    Daily | Weekly | Monthly,",
+            '    ScalaSealed({"Daily": Daily}),',
+            "]",
+            "",
+            "",
+          ].join("\n"),
+          newText: [
+            "Increments = Annotated[",
+            "    Daily | Weekly | Monthly,",
+            '    ScalaSealed(cases={"Daily": Daily}),',
+            "]",
+            "",
+            "",
+          ].join("\n"),
+        },
+      ],
+    })!;
+    const diff = parseToolCallBody(summary).find((block) => block.kind === "diff");
+    expect(diff?.files[0]?.hunks[0]).toMatchObject({ additionLines: 1, deletionLines: 1 });
+    expect(summary).toContain("\n ]\n \n");
+  });
+
   it("keeps malformed provider patches readable", () => {
     expect(parseToolCallBody("Diff\nnot a patch")).toEqual([
       { kind: "text", text: "Diff\nnot a patch" },
