@@ -322,6 +322,25 @@ describe("resolveWorkEntryToolPresentation", () => {
     ).toEqual({ displayName: "Getting delegated task status", icon: "t3-code" });
   });
 
+  it("labels thread control tools, but only names other servers share when T3's server is named", () => {
+    expect(
+      resolveWorkEntryToolPresentation({ label: "mcp__t3-code__create_thread" }, "completed"),
+    ).toEqual({ displayName: "Started a thread", icon: "t3-code" });
+    expect(
+      resolveWorkEntryToolPresentation({
+        label: "MCP tool call",
+        toolData: { server: "t3-code", tool: "search" },
+      }),
+    ).toEqual({ displayName: "Searching threads", icon: "t3-code" });
+    expect(resolveWorkEntryToolPresentation({ label: "search" })).toBeNull();
+    expect(
+      resolveWorkEntryToolPresentation({
+        label: "MCP tool call",
+        toolData: { server: "github", tool: "search" },
+      }),
+    ).toBeNull();
+  });
+
   it("does not brand unknown tools or another server's matching tool name", () => {
     for (const label of [
       "mcp__github__preview_click",

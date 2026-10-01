@@ -42,6 +42,18 @@ contents are not available.
 Every list takes a time range. An agent that passes an end time sees nothing after it, which lets
 you replay a past day. Titles, archive state, and pull request state are always current.
 
+## Let agents start threads
+
+An agent working in a thread can also start other threads, message them, and wait for their
+results, for example to split a large change into parallel pieces. Turn on **Agent thread
+control** in **Settings → Integrations**, or for one project with that project selected. It is
+off by default and applies when an agent session next starts.
+
+Threads an agent starts appear in your sidebar like any other. An agent cannot give a thread more
+freedom than its own permission mode allows. It can start threads two levels deep, and keep at
+most five of its own going at once until they settle or you archive them. It cannot answer
+approvals or questions in other threads; those still come to you.
+
 ## Revoke a token
 
 Click **Revoke** next to the token under **Agent access**. The agent loses access immediately.

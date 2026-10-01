@@ -18,7 +18,12 @@ import {
   HttpServerResponse,
 } from "effect/unstable/http";
 
+import * as CheckpointDiffQuery from "../checkpointing/CheckpointDiffQuery.ts";
+import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as GitWorkflowService from "../git/GitWorkflowService.ts";
+import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
+import { ProviderService } from "../provider/Services/ProviderService.ts";
+import { UsageService } from "../usage/UsageService.ts";
 import * as ClientCommandDispatcher from "../orchestration/ClientCommandDispatcher.ts";
 import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
 import * as ProviderRegistry from "../provider/Services/ProviderRegistry.ts";
@@ -923,6 +928,11 @@ it.effect("lists thread-control tools only to credentials that may drive threads
             Layer.mock(ProviderRegistry.ProviderRegistry)({}),
             Layer.mock(ServerSettings.ServerSettingsService)({}),
             Layer.mock(GitWorkflowService.GitWorkflowService)({}),
+            Layer.mock(CheckpointDiffQuery.CheckpointDiffQuery)({}),
+            Layer.mock(ProviderService)({}),
+            Layer.mock(ServerEnvironment.ServerEnvironment)({}),
+            Layer.mock(UsageService)({}),
+            SqlitePersistenceMemory,
             NodeServices.layer,
           ),
         ),
@@ -974,8 +984,13 @@ it.effect("lists thread-control tools only to credentials that may drive threads
       expect(yield* listToolNames("off")).toEqual([]);
       expect(yield* listToolNames("on")).toEqual([
         "create_thread",
+        "get_thread",
         "interrupt_turn",
+        "list_messages",
         "list_models",
+        "list_projects",
+        "list_threads",
+        "search",
         "send_message",
         "wait_for_thread",
       ]);

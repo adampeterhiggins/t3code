@@ -7,7 +7,9 @@ import {
   UsageSummaryInput,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
-import { Tool, Toolkit } from "effect/unstable/ai";
+import { McpSchema, Tool, Toolkit } from "effect/unstable/ai";
+
+import * as McpActor from "../McpActor.ts";
 
 /**
  * The read-only history toolkit served at `/mcp/query`. Every tool is a
@@ -783,4 +785,17 @@ export const QueryToolkit = Toolkit.make(
   readOnly(ListPullRequestsTool, "List pull requests"),
   readOnly(GetPullRequestTool, "Get pull request"),
   readOnly(GetUsageSummaryTool, "Get usage summary"),
+);
+
+/**
+ * The history tools an agent inside a thread gets with thread control: enough
+ * to find a project and read what other threads did. Listed only to
+ * credentials that may drive threads, like the operate tools.
+ */
+export const ThreadReadToolkit = Toolkit.make(
+  QueryToolkit.tools.list_projects.annotate(McpSchema.EnabledWhen, McpActor.operateToolsVisible),
+  QueryToolkit.tools.list_threads.annotate(McpSchema.EnabledWhen, McpActor.operateToolsVisible),
+  QueryToolkit.tools.get_thread.annotate(McpSchema.EnabledWhen, McpActor.operateToolsVisible),
+  QueryToolkit.tools.list_messages.annotate(McpSchema.EnabledWhen, McpActor.operateToolsVisible),
+  QueryToolkit.tools.search.annotate(McpSchema.EnabledWhen, McpActor.operateToolsVisible),
 );

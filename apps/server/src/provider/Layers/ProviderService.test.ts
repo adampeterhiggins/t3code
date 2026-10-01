@@ -5217,14 +5217,20 @@ describe("agent browser access", () => {
   const projectId = ProjectId.make("project-browser-access");
 
   const startSessionWith = (
-    access: boolean | { readonly browser: boolean; readonly device: boolean },
+    access:
+      | boolean
+      | { readonly browser: boolean; readonly device: boolean; readonly control?: boolean },
     threadId: ThreadId,
-    projectOverride?: boolean | { readonly browser?: boolean; readonly device?: boolean },
+    projectOverride?:
+      | boolean
+      | { readonly browser?: boolean; readonly device?: boolean; readonly control?: boolean },
     options?: { readonly withoutOrchestration?: boolean },
   ) =>
     Effect.gen(function* () {
       const enableAgentBrowserAccess = typeof access === "boolean" ? access : access.browser;
       const enableAgentDeviceAccess = typeof access === "boolean" ? access : access.device;
+      const enableAgentThreadControl =
+        typeof access === "boolean" ? false : access.control === true;
       const issued: Array<{ threadId: ThreadId; capabilities: ReadonlyArray<string> }> = [];
       const codex = makeFakeCodexAdapter();
       const providerAdapterLayer = Layer.succeed(
@@ -5302,6 +5308,7 @@ describe("agent browser access", () => {
           ServerSettings.ServerSettingsService.layerTest({
             enableAgentBrowserAccess,
             enableAgentDeviceAccess,
+            enableAgentThreadControl,
             projectSettingsOverrides:
               projectOverride === undefined
                 ? {}
@@ -5314,6 +5321,9 @@ describe("agent browser access", () => {
                           : {}),
                         ...(projectOverride.device !== undefined
                           ? { enableAgentDeviceAccess: projectOverride.device }
+                          : {}),
+                        ...(projectOverride.control !== undefined
+                          ? { enableAgentThreadControl: projectOverride.control }
                           : {}),
                       },
                     },
@@ -5398,6 +5408,23 @@ describe("agent browser access", () => {
       const threadId = asThreadId("thread-project-browser-on");
       const issued = yield* startSessionWith({ browser: false, device: false }, threadId, true);
       assert.deepEqual(issued, [{ threadId, capabilities: ["preview", "pull-requests"] }]);
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("grants thread control only when it is turned on, and a project can turn it off", () =>
+    Effect.gen(function* () {
+      const on = asThreadId("thread-control-on");
+      assert.deepEqual(
+        yield* startSessionWith({ browser: false, device: false, control: true }, on),
+        [{ threadId: on, capabilities: ["orchestration", "pull-requests"] }],
+      );
+      const projectOff = asThreadId("thread-control-project-off");
+      assert.deepEqual(
+        yield* startSessionWith({ browser: false, device: false, control: true }, projectOff, {
+          control: false,
+        }),
+        [{ threadId: projectOff, capabilities: ["pull-requests"] }],
+      );
     }).pipe(Effect.provide(NodeServices.layer)),
   );
 
