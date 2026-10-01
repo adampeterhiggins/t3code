@@ -244,6 +244,13 @@ function formatComposerContextProviderPayload(record: KnownComposerContextRecord
         `state: ${record.stateName}`,
         record.markdown,
       ].join("\n");
+    case "github-issue":
+      return [
+        `github issue: ${record.repository}#${record.number}`,
+        `url: ${record.url}`,
+        `state: ${record.state}`,
+        record.markdown,
+      ].join("\n");
     case "repository":
       return formatRepositoryPayload(record);
   }

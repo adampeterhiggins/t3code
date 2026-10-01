@@ -65,6 +65,7 @@ import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { AppText as Text } from "../../components/AppText";
 import { ComposerAttachmentButton } from "../../components/ComposerAttachmentButton";
 import { useLinearIssuePicker } from "../../components/LinearIssuePickerSheet";
+import { useGitHubIssuePicker } from "../../components/GitHubIssuePickerSheet";
 import { useRepositoryPicker } from "../../components/RepositoryPickerSheet";
 import {
   ComposerAttachmentStrip,
@@ -339,10 +340,16 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     environmentId: props.environmentId,
     draftKey: composerOwnerKey,
   });
+  const workspaceCwd = props.selectedThread.worktreePath ?? props.projectCwd;
+  const gitHubIssuePicker = useGitHubIssuePicker(
+    workspaceCwd
+      ? { environmentId: props.environmentId, draftKey: composerOwnerKey, cwd: workspaceCwd }
+      : null,
+  );
   const repositoryPicker = useRepositoryPicker({
     environmentId: props.environmentId,
     draftKey: composerOwnerKey,
-    workspaceCwd: props.selectedThread.worktreePath ?? props.projectCwd,
+    workspaceCwd,
   });
   const openDraftDocument = (attachment: ComposerDocumentAttachment) => {
     Keyboard.dismiss();
@@ -731,6 +738,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                 onPickMedia={props.onPickDraftMedia}
                 onPickFiles={props.onPickDraftFiles}
                 onPickLinearIssue={linearIssuePicker.open}
+                onPickGitHubIssue={workspaceCwd ? gitHubIssuePicker.open : undefined}
                 onPickRepository={repositoryPicker.open}
               />
             ) : null}
@@ -984,6 +992,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                       onPickMedia={props.onPickDraftMedia}
                       onPickFiles={props.onPickDraftFiles}
                       onPickLinearIssue={linearIssuePicker.open}
+                      onPickGitHubIssue={workspaceCwd ? gitHubIssuePicker.open : undefined}
                       onPickRepository={repositoryPicker.open}
                     />
                     <View className="min-w-0 shrink">
@@ -1035,6 +1044,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       <VideoPreviewModal source={previewVideo} onRequestClose={closePreview} />
       <FilePreviewModal source={previewFile} onRequestClose={closePreview} />
       {linearIssuePicker.sheet}
+      {gitHubIssuePicker.sheet}
       {repositoryPicker.sheet}
     </Animated.View>
   );

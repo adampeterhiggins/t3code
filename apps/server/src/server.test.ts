@@ -140,6 +140,8 @@ import { ProviderAuthService } from "./provider/Services/ProviderAuthService.ts"
 import { LinearApi } from "./linear/LinearApi.ts";
 import { LinearThreadLinks } from "./linear/LinearThreadLinks.ts";
 import { LinearAuth } from "./linear/LinearAuth.ts";
+import { GitHubIssues } from "./githubIssues/GitHubIssues.ts";
+import { GitHubIssueThreadLinks } from "./githubIssues/GitHubIssueThreadLinks.ts";
 import { ProviderInstanceRegistry } from "./provider/Services/ProviderInstanceRegistry.ts";
 import {
   AntigravityInstallation,
@@ -837,6 +839,8 @@ const buildAppUnderTest = (options?: {
           Layer.mock(LinearAuth)({}),
           Layer.mock(LinearApi)({}),
           Layer.mock(LinearThreadLinks)({ refresh: Effect.void }),
+          Layer.mock(GitHubIssues)({}),
+          Layer.mock(GitHubIssueThreadLinks)({ refresh: Effect.void }),
           Layer.mock(ProviderInstanceRegistry)({
             getInstance: () => Effect.undefined,
             listInstances: Effect.succeed([]),

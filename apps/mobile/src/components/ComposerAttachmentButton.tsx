@@ -8,6 +8,11 @@ import { ControlPillMenu } from "./ControlPill";
 const PHOTOS_ACTION: MenuAction = { id: "photos", title: "Photo Library", image: "photo" };
 const FILES_ACTION: MenuAction = { id: "files", title: "Choose Files", image: "folder" };
 const LINEAR_ACTION: MenuAction = { id: "linear", title: "Linear issue", image: "ticket" };
+const GITHUB_ISSUE_ACTION: MenuAction = {
+  id: "github-issue",
+  title: "GitHub issue",
+  image: "smallcircle.filled.circle",
+};
 const REPOSITORY_ACTION: MenuAction = {
   id: "repository",
   title: "Repository",
@@ -21,6 +26,8 @@ export function ComposerAttachmentButton(props: {
   readonly onPickFiles: () => Promise<void>;
   /** Omit to hide the Linear action. See `useLinearIssuePicker`. */
   readonly onPickLinearIssue?: () => void;
+  /** Omit to hide the GitHub issue action. See `useGitHubIssuePicker`. */
+  readonly onPickGitHubIssue?: () => void;
   /** Omit to hide the repository action. See `useRepositoryPicker`. */
   readonly onPickRepository?: () => void;
 }) {
@@ -29,6 +36,7 @@ export function ComposerAttachmentButton(props: {
     PHOTOS_ACTION,
     ...(props.supportsFiles ? [FILES_ACTION] : []),
     ...(props.onPickLinearIssue ? [LINEAR_ACTION] : []),
+    ...(props.onPickGitHubIssue ? [GITHUB_ISSUE_ACTION] : []),
     ...(props.onPickRepository ? [REPOSITORY_ACTION] : []),
   ];
   const usesMenu = !props.disabled && actions.length > 1;
@@ -68,6 +76,8 @@ export function ComposerAttachmentButton(props: {
           void props.onPickFiles();
         } else if (nativeEvent.event === "linear") {
           props.onPickLinearIssue?.();
+        } else if (nativeEvent.event === "github-issue") {
+          props.onPickGitHubIssue?.();
         } else if (nativeEvent.event === "repository") {
           props.onPickRepository?.();
         }

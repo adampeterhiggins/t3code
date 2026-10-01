@@ -1,5 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { threadsForGitHubIssue } from "@t3tools/client-runtime/state/github-issues";
 import { threadsForLinearIssue } from "@t3tools/client-runtime/state/linear";
 import { threadsForPullRequest } from "@t3tools/client-runtime/state/pull-requests";
 import {
@@ -8,6 +9,8 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import type {
   EnvironmentId,
+  GitHubIssueStateFilter,
+  GitHubIssueSummary,
   LinearIssueSummary,
   ProjectId,
   ScopedProjectRef,
@@ -53,6 +56,15 @@ import {
   CommandList,
 } from "../ui/command";
 import { toastManager } from "../ui/toast";
+import { GitHubIssueHoverPreview } from "./GitHubIssueHoverPreview";
+import {
+  GitHubIssueRow,
+  GitHubIssueStateTabs,
+  useAttachGitHubIssue,
+  useGitHubIssueList,
+  useLinkGitHubIssue,
+} from "./GitHubIssuePicker";
+import { useGitHubIssueThreadLinks } from "./GitHubIssueThreadLink";
 import { LinearIssueHoverPreview } from "./LinearIssueHoverPreview";
 import {
   LinearIssueFilterBar,
@@ -70,16 +82,20 @@ import {
 } from "./StartFromPullRequestFilters";
 import { BranchHoverPreview, PullRequestHoverPreview } from "./StartFromPreviews";
 
-type StartFromTab = "pull-requests" | "branches" | "issues";
-const TABS: ReadonlyArray<{ id: StartFromTab; label: string }> = [
+type StartFromTab = "pull-requests" | "branches" | "issues" | "linear";
+const ALL_TABS: ReadonlyArray<{ id: StartFromTab; label: string }> = [
   { id: "pull-requests", label: "PRs" },
   { id: "branches", label: "Branches" },
   { id: "issues", label: "Issues" },
+  { id: "linear", label: "Linear" },
 ];
+// Without GitHub, the project has no issues tab of its own.
+const TABS_WITHOUT_GITHUB_ISSUES = ALL_TABS.filter((entry) => entry.id !== "issues");
 const PLACEHOLDERS: Record<StartFromTab, string> = {
   "pull-requests": "Search pull requests by title, number, or author",
   branches: "Search branches",
-  issues: "Search Linear issues, or paste ENG-123 or an issue link",
+  issues: "Search GitHub issues, or paste #123 or an issue link",
+  linear: "Search Linear issues, or paste ENG-123 or an issue link",
 };
 const SEARCH_DEBOUNCE_MS = 300;
 const PULL_REQUEST_LIMIT = 50;
@@ -108,7 +124,9 @@ interface StartFromPickerProps {
   readonly projectRef: ScopedProjectRef;
   readonly projectId: ProjectId;
   readonly workspaceRoot: string;
-  /** The draft's thread, which a picked Linear issue is attached and linked to. */
+  /** Whether the project is a GitHub repository, whose issues get their own tab. */
+  readonly githubIssuesAvailable: boolean;
+  /** The draft's thread, which a picked issue is attached and linked to. */
   readonly threadRef: ScopedThreadRef;
   /** Point the draft at a checkout: a picked branch's, or a picked pull request's. */
   readonly onCheckout: (checkout: ReturnType<typeof resolveBranchStart>) => void;
@@ -132,6 +150,9 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
   const navigate = useNavigate();
   const attachIssue = useAttachLinearIssue();
   const linkIssue = useLinkLinearIssue();
+  const attachGitHubIssue = useAttachGitHubIssue();
+  const linkGitHubIssue = useLinkGitHubIssue();
+  const tabs = props.githubIssuesAvailable ? ALL_TABS : TABS_WITHOUT_GITHUB_ISSUES;
   const [tab, setTab] = useState<StartFromTab>("pull-requests");
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
@@ -187,20 +208,29 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
     query: debouncedQuery,
   });
 
+  const [githubIssueState, setGitHubIssueState] = useState<GitHubIssueStateFilter>("open");
+  const githubIssues = useGitHubIssueList({
+    environmentId,
+    cwd: tab === "issues" ? workspaceRoot : null,
+    query,
+    state: githubIssueState,
+  });
+  const githubLinks = useGitHubIssueThreadLinks(tab === "issues" ? environmentId : null);
+
   const linearConnection = useEnvironmentQuery(
-    tab === "issues" ? linearEnvironment.connection({ environmentId, input: {} }) : null,
+    tab === "linear" ? linearEnvironment.connection({ environmentId, input: {} }) : null,
   );
   const linearConnected = linearConnection.data?.phase === "connected";
   // Shared with the attach picker, so a view set up in one carries over to the other.
   const issueView = useLinearIssuePickerView(environmentId);
   const setIssueView = useLinearIssuePickerViewStore((state) => state.setView);
   const issueFilterOptions = useEnvironmentQuery(
-    tab === "issues" && linearConnected
+    tab === "linear" && linearConnected
       ? linearEnvironment.filterOptions({ environmentId, input: {} })
       : null,
   );
   const issuesQuery = useEnvironmentQuery(
-    tab === "issues" && linearConnected
+    tab === "linear" && linearConnected
       ? linearEnvironment.issues({
           environmentId,
           input: { query: debouncedQuery, filters: issueView.filters, sort: issueView.sort },
@@ -212,7 +242,7 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
   const latestIssues = issuesQuery.data?.issues;
   if (latestIssues !== undefined && latestIssues !== shownIssues) setShownIssues(latestIssues);
   const issues = latestIssues ?? shownIssues;
-  const linearLinks = useLinearThreadLinks(tab === "issues" ? environmentId : null);
+  const linearLinks = useLinearThreadLinks(tab === "linear" ? environmentId : null);
 
   const close = () => {
     if (!busy) closeStartFromPicker();
@@ -293,6 +323,17 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
       })();
     });
 
+  const selectGitHubIssue = (issue: GitHubIssueSummary) =>
+    startOrAsk(`#${issue.number}`, threadsForGitHubIssue(threads, githubLinks, issue.url), () => {
+      void (async () => {
+        setBusy(true);
+        const attached = await attachGitHubIssue(threadRef, issue.url);
+        if (attached) await linkGitHubIssue(threadRef, issue.url);
+        setBusy(false);
+        if (attached) closeStartFromPicker();
+      })();
+    });
+
   const openExistingThread = (thread: EnvironmentThreadShell) => {
     setPrompt(null);
     closeStartFromPicker();
@@ -305,8 +346,8 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
   const cycleTab = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key !== "Tab") return;
     event.preventDefault();
-    const index = TABS.findIndex((entry) => entry.id === tab);
-    const next = TABS[(index + (event.shiftKey ? TABS.length - 1 : 1)) % TABS.length];
+    const index = tabs.findIndex((entry) => entry.id === tab);
+    const next = tabs[(index + (event.shiftKey ? tabs.length - 1 : 1)) % tabs.length];
     if (next) setTab(next.id);
   };
 
@@ -422,6 +463,34 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
         </CommandCollection>
       </CommandGroup>,
     );
+  } else if (tab === "issues") {
+    content = listOrStatus(
+      githubIssues.status,
+      <CommandGroup items={[...githubIssues.issues]}>
+        <CommandCollection>
+          {(issue: GitHubIssueSummary) => {
+            const inUse = threadsForGitHubIssue(threads, githubLinks, issue.url);
+            return (
+              <CommandItem
+                key={issue.url}
+                value={issue.url}
+                disabled={busy}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => selectGitHubIssue(issue)}
+              >
+                <GitHubIssueHoverPreview
+                  environmentId={environmentId}
+                  url={issue.url}
+                  threadRef={threadRef}
+                  threads={inUse}
+                  trigger={<GitHubIssueRow issue={issue} inUse={inUse.length > 0} />}
+                />
+              </CommandItem>
+            );
+          }}
+        </CommandCollection>
+      </CommandGroup>,
+    );
   } else if (linearConnection.data !== null && !linearConnected) {
     content = (
       <div className="flex flex-col items-center gap-3 px-6 py-10 text-center text-sm">
@@ -503,7 +572,7 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
             inputAccessory={
               <>
                 <SourceTabs
-                  options={TABS}
+                  options={tabs}
                   activeId={tab}
                   onSelect={setTab}
                   className="flex gap-1 px-3 pb-2"
@@ -515,7 +584,10 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
                     onChange={setPullRequestView}
                   />
                 ) : null}
-                {tab === "issues" && linearConnected ? (
+                {tab === "issues" ? (
+                  <GitHubIssueStateTabs state={githubIssueState} onChange={setGitHubIssueState} />
+                ) : null}
+                {tab === "linear" && linearConnected ? (
                   <LinearIssueFilterBar
                     options={issueFilterOptions.data}
                     view={issueView}
@@ -526,7 +598,7 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
               </>
             }
             footerActionLabel={
-              tab === "issues"
+              tab === "issues" || tab === "linear"
                 ? busy
                   ? "Attaching…"
                   : "Attach"

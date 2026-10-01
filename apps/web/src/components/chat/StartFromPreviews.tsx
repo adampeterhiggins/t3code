@@ -19,18 +19,36 @@ import { localBranchName } from "./StartFromPicker.logic";
 
 const LISTED_THREADS = 3;
 
-/** Threads already working on the hovered row, which the picker would offer to open instead. */
-function ThreadsInUse(props: { threads: ReadonlyArray<EnvironmentThreadShell> }) {
+/**
+ * Threads already working on the hovered row, which the picker would offer to open instead. With
+ * `onOpenThread`, each title opens its thread.
+ */
+export function ThreadsInUse(props: {
+  threads: ReadonlyArray<EnvironmentThreadShell>;
+  onOpenThread?: (thread: EnvironmentThreadShell) => void;
+}) {
+  const { onOpenThread } = props;
   if (props.threads.length === 0) return null;
   const extra = props.threads.length - LISTED_THREADS;
   return (
     <div className="flex flex-col gap-0.5 border-t pt-2 text-muted-foreground">
       <span>Already in use by</span>
-      {props.threads.slice(0, LISTED_THREADS).map((thread) => (
-        <span key={thread.id} className="truncate text-foreground">
-          {thread.title}
-        </span>
-      ))}
+      {props.threads.slice(0, LISTED_THREADS).map((thread) =>
+        onOpenThread ? (
+          <button
+            key={thread.id}
+            type="button"
+            className="truncate text-start text-foreground underline-offset-2 hover:underline"
+            onClick={() => onOpenThread(thread)}
+          >
+            {thread.title}
+          </button>
+        ) : (
+          <span key={thread.id} className="truncate text-foreground">
+            {thread.title}
+          </span>
+        ),
+      )}
       {extra > 0 ? <span>and {extra} more</span> : null}
     </div>
   );

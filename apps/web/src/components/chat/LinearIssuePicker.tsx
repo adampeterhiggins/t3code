@@ -11,7 +11,7 @@ import { LinearIcon } from "../Icons";
 import { useCallback, useState } from "react";
 
 import { useComposerDraftStore } from "~/composerDraftStore";
-import { useLinearIssueContextStore } from "~/linearIssueContextStore";
+import { useIssueContextStore } from "~/issueContextStore";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { linearEnvironment } from "~/state/linear";
 import { useDebouncedValue } from "~/state/queries";
@@ -83,7 +83,7 @@ export function useAttachLinearIssue() {
         return false;
       }
       const record = linearIssueContextRecord(result.value);
-      useLinearIssueContextStore.getState().upsert(threadRef.threadId, record);
+      useIssueContextStore.getState().upsert(threadRef.threadId, record);
       useComposerDraftStore.getState().insertContextReference(threadRef, {
         kind: "linear-issue",
         contextId: record.contextId,

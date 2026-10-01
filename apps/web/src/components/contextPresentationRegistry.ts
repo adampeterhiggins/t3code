@@ -53,6 +53,10 @@ const DEFINITIONS = [
     capabilities: { details: "popover", expanded: "none", defaultDraftView: "compact" },
   },
   {
+    kind: "github-issue",
+    capabilities: { details: "popover", expanded: "none", defaultDraftView: "compact" },
+  },
+  {
     kind: "repository",
     capabilities: { details: "popover", expanded: "none", defaultDraftView: "compact" },
   },

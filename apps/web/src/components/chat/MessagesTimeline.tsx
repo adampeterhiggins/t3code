@@ -1,6 +1,6 @@
 import { ToolCallBody } from "../ToolCallBody";
 import { ArrowUpIcon, ClockIcon } from "lucide-react";
-import { LinearIcon } from "../Icons";
+import { GitHubIcon, LinearIcon } from "../Icons";
 import { ReadOnlySourcePreview } from "../files/AttachmentFilePreview";
 import { useRightPanelStore } from "~/rightPanelStore";
 import {
@@ -149,6 +149,7 @@ import type {
   ComposerContextId,
   ComposerContextRecord,
   KnownComposerContextRecord,
+  GitHubIssueContextRecord,
   LinearIssueContextRecord,
   RepositoryContextRecord,
 } from "@t3tools/contracts";
@@ -233,6 +234,7 @@ import {
   PULL_REQUEST_CHIP_KINDS,
   PullRequestChip,
   ThreadTabSummaryDetails,
+  GitHubIssueDetails,
   LinearIssueDetails,
   RepositoryDetails,
   UnresolvedChip,
@@ -3983,6 +3985,24 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
         ),
     },
     {
+      kind: "github-issue",
+      canRender: (record) => record.kind === "github-issue",
+      render: (record, context) =>
+        record.kind === "github-issue" ? (
+          <UserMessageContextPopover
+            copyMarkdown={context.copyMarkdown}
+            accessibleLabel={`GitHub issue, ${record.label}`}
+            kind="github-issue"
+            icon={<GitHubIcon />}
+            label={record.label}
+          >
+            <UserMessageGitHubIssueDetails record={record} />
+          </UserMessageContextPopover>
+        ) : (
+          <UnavailableUserMessageContextChip {...context} />
+        ),
+    },
+    {
       kind: "repository",
       canRender: (record) => record.kind === "repository",
       render: (record, context) =>
@@ -4021,6 +4041,11 @@ function UserMessageLinearIssueDetails({ record }: { record: LinearIssueContextR
       onOpenLink={openLink}
     />
   );
+}
+
+function UserMessageGitHubIssueDetails({ record }: { record: GitHubIssueContextRecord }) {
+  const { threadRef } = use(TimelineRowCtx);
+  return <GitHubIssueDetails record={record} onOpenLink={useLinkClickHandler(threadRef)} />;
 }
 
 /** One inline context chip in a sent message, dispatched by the shared presentation registry. */

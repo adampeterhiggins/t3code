@@ -8,6 +8,7 @@ import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import { runMigrations } from "../Migrations.ts";
 import { ensureThreadTabsSchema } from "../../threadTabs/schema.ts";
 import { ensureLinearThreadLinksSchema } from "../../linear/threadLinksSchema.ts";
+import { ensureGitHubIssueThreadLinksSchema } from "../../githubIssues/threadLinksSchema.ts";
 import { ensurePullRequestWatchSchema } from "../../pullRequestWatch/store.ts";
 import { ensureSubagentTranscriptSchema } from "../../provider/SubagentTranscriptStore.ts";
 import { ServerConfig } from "../../config.ts";
@@ -28,6 +29,7 @@ const setup = Layer.effectDiscard(
     yield* runMigrations();
     yield* ensureThreadTabsSchema();
     yield* ensureLinearThreadLinksSchema();
+    yield* ensureGitHubIssueThreadLinksSchema();
     yield* ensurePullRequestWatchSchema();
     yield* ensureSubagentTranscriptSchema();
   }),

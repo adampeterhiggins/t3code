@@ -7,6 +7,7 @@ import {
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
 import { ContextRepositoryDirectoryName, ContextRepositoryOutcome } from "./contextRepositories.ts";
+import { GITHUB_ISSUE_MARKDOWN_MAX_CHARS } from "./githubIssues.ts";
 import { LINEAR_ISSUE_MARKDOWN_MAX_CHARS } from "./linear.ts";
 
 /**
@@ -29,6 +30,7 @@ export const COMPOSER_CONTEXT_KINDS = [
   "skill",
   "thread-tab",
   "linear-issue",
+  "github-issue",
   "repository",
 ] as const;
 export type KnownComposerContextKind = (typeof COMPOSER_CONTEXT_KINDS)[number];
@@ -245,6 +247,20 @@ export const LinearIssueContextRecord = Schema.Struct({
 });
 export type LinearIssueContextRecord = typeof LinearIssueContextRecord.Type;
 
+/** A GitHub issue with its description and comments, rendered when the chip was inserted. */
+export const GitHubIssueContextRecord = Schema.Struct({
+  ...recordBase,
+  kind: Schema.Literal("github-issue"),
+  /** `owner/repo`. */
+  repository: TrimmedNonEmptyString.check(Schema.isMaxLength(255)),
+  number: PositiveInt,
+  title: ShortString,
+  url: ShortString,
+  state: Schema.Literals(["open", "closed"]),
+  markdown: BoundedString(GITHUB_ISSUE_MARKDOWN_MAX_CHARS),
+});
+export type GitHubIssueContextRecord = typeof GitHubIssueContextRecord.Type;
+
 /**
  * A repository to clone into the workspace's context directory. The server fills `outcome`
  * before the turn starts; a draft never carries one.
@@ -292,6 +308,7 @@ export const KnownComposerContextRecord = Schema.Union([
   SkillContextRecord,
   ThreadTabContextRecord,
   LinearIssueContextRecord,
+  GitHubIssueContextRecord,
   RepositoryContextRecord,
 ]);
 export type KnownComposerContextRecord = typeof KnownComposerContextRecord.Type;

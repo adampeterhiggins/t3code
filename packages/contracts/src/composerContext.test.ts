@@ -126,6 +126,17 @@ const knownRecords: Record<(typeof COMPOSER_CONTEXT_KINDS)[number], Record<strin
     stateName: "In Progress",
     markdown: "# ENG-123: Fix login\n\n## Description\nThe button does nothing.",
   },
+  "github-issue": {
+    ...base,
+    kind: "github-issue",
+    label: "#42",
+    repository: "acme/api",
+    number: 42,
+    title: "Fix login",
+    url: "https://github.com/acme/api/issues/42",
+    state: "open",
+    markdown: "# acme/api#42: Fix login\n\n## Description\nThe button does nothing.",
+  },
   repository: {
     ...base,
     kind: "repository",

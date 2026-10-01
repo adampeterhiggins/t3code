@@ -108,14 +108,41 @@ run **New thread from PR, branch, or issue** from the command palette.
   reusing the one it is already checked out in, and points the new thread there.
 - **Branches** works on a branch where it is already checked out. A branch that isn't checked out
   anywhere becomes the base of a new worktree, so your main checkout is never switched.
-- **Issues** attaches a Linear issue to the message and links it to the thread. This needs a
-  connected Linear account (see [Linear](./linear.md#link-an-issue-to-a-thread)).
+- **Issues** lists the project's GitHub issues. Picking one attaches it to the message and links it
+  to the thread (see [Attach a GitHub issue](#attach-a-github-issue)).
+- **Linear** does the same for a Linear issue. This needs a connected Linear account (see
+  [Linear](./linear.md#link-an-issue-to-a-thread)).
 
 If a pull request, branch, or linked issue already has a thread, T3 Code asks whether to open it or start a
 second thread.
 
-On mobile, tap **⋯** beside the branch control of a new thread and choose **Pull request** or
-**Linear issue**. They work as on web and desktop; pick a branch with the branch control.
+On mobile, tap **⋯** beside the branch control of a new thread and choose **Pull request**,
+**Linear issue**, or **GitHub issue**. They work as on web and desktop; pick a branch with the branch control.
+
+## Attach a GitHub issue
+
+Attach a GitHub issue to a message so the agent gets its description and discussion without you
+pasting them in. Issues come from the repository the project is checked out from, using the GitHub
+CLI (`gh`) on the computer running T3 Code, so it needs to be installed and signed in there. It's
+offered for projects whose remote is on GitHub.
+
+- Click the paperclip in the composer and choose **GitHub issue**. Search, switch between open,
+  closed, and all issues, or paste a number like `#123` or an issue link.
+- Type `#` in the composer and switch to the **GitHub issues** tab.
+- On web and desktop, run **Attach GitHub issue** from the command palette.
+- On mobile, tap **+** in the composer and choose **GitHub issue**.
+
+The agent receives the issue's state, author, assignees, labels, milestone, description, and
+comments. Hidden comments and comments that only say "+1" or react with an emoji are left out, and
+comments from the issue's author and the repository's maintainers are marked. Long issues are
+trimmed, dropping the oldest comments first. The issue is copied when you attach it, so later edits
+on GitHub don't change a message you already sent.
+
+Starting a thread from an issue links the issue to the thread and its chat tabs. The chat header (on
+mobile, the tab switcher) shows its number and whether it is open or closed; click or tap it to open
+the issue on GitHub or unlink it. Pickers mark an issue that another live thread is linked to as
+**In use**, and starting from it asks whether to open that thread or start a new one. On web and
+desktop, hovering an issue in the attach picker lists those threads; click one to open it.
 
 ## Review and merge
 

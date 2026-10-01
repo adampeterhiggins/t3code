@@ -203,7 +203,7 @@ import {
 } from "../composerContextPresentation";
 import { useOpenPrLink } from "~/lib/openPullRequestLink";
 import { useThreadTabContextRecords } from "~/threadTabContextStore";
-import { useLinearIssueContextRecords } from "~/linearIssueContextStore";
+import { useIssueContextRecords } from "~/issueContextStore";
 import { useRepositoryContextRecords } from "~/repositoryContextStore";
 import { useLinkClickHandler } from "~/browser/useOpenLink";
 import {
@@ -261,7 +261,9 @@ import { useCaptureThreadTabContext } from "./ThreadTabs";
 import { composerThreadReferenceItems } from "./composerThreadReferences";
 import { readProjects, readThreadShells } from "../../state/entities";
 import { ComposerAttachMenu } from "./ComposerAttachMenu";
+import { useAttachGitHubIssue } from "./GitHubIssuePicker";
 import { useAttachLinearIssue } from "./LinearIssuePicker";
+import { useComposerGitHubIssueItems } from "./useComposerGitHubIssueItems";
 import {
   type ComposerReferenceTab,
   defaultComposerReferenceTab,
@@ -342,10 +344,11 @@ import {
 } from "./composerScrollGesture";
 import { prepareVideoFirstFrame } from "../../lib/videoFirstFrame";
 
-const REFERENCE_MENU_TABS = [
+const REFERENCE_MENU_TABS: ReadonlyArray<{ id: ComposerReferenceTab; label: string }> = [
   { id: "pull-requests", label: "Pull requests" },
+  { id: "github-issues", label: "GitHub issues" },
   { id: "linear-issues", label: "Linear issues" },
-] as const;
+];
 
 function ComposerVideoThumbnail({ file }: { file: File }) {
   const setVideo = useCallback(
@@ -1454,6 +1457,8 @@ export interface ChatComposerProps {
   gitCwd: string | null;
   pullRequestProjectId: ProjectId | null;
   pullRequestRepository: string | null;
+  /** The checkout GitHub issues are listed from; null when the project is not on GitHub. */
+  githubIssueCwd: string | null;
   restingControlsHost: HTMLDivElement | null;
   restingControlsHaveLeadingContext: boolean;
   onRestingControlsVisibilityChange: (visible: boolean) => void;
@@ -1585,6 +1590,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     gitCwd,
     pullRequestProjectId,
     pullRequestRepository,
+    githubIssueCwd,
     restingControlsHost,
     restingControlsHaveLeadingContext,
     onRestingControlsVisibilityChange,
@@ -1753,7 +1759,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     ],
   );
   const composerThreadTabContexts = useThreadTabContextRecords(routeThreadRef?.threadId);
-  const composerLinearIssueContexts = useLinearIssueContextRecords(routeThreadRef?.threadId);
+  const composerIssueContexts = useIssueContextRecords(routeThreadRef?.threadId);
   const composerRepositoryContexts = useRepositoryContextRecords(routeThreadRef?.threadId);
   const composerContextRecords = useMemo(
     () =>
@@ -1762,7 +1768,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         reviewComments: composerReviewComments,
         previewAnnotations: composerPreviewAnnotations,
         threadTabs: composerThreadTabContexts,
-        linearIssues: composerLinearIssueContexts,
+        issues: composerIssueContexts,
         repositories: composerRepositoryContexts,
         images: composerImages,
         files: composerFiles,
@@ -1775,7 +1781,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       composerReviewComments,
       composerTerminalContexts,
       composerThreadTabContexts,
-      composerLinearIssueContexts,
+      composerIssueContexts,
       composerRepositoryContexts,
       uploadsByImageId,
     ],
@@ -2433,11 +2439,27 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   );
   const showLinearIssues = linearIssueMenu.enabled && referenceTab === "linear-issues";
   const attachLinearIssue = useAttachLinearIssue();
+  const githubIssueMenu = useComposerGitHubIssueItems(
+    environmentId,
+    githubIssueCwd,
+    composerTrigger,
+    referenceTab === "github-issues",
+  );
+  const showGitHubIssues = githubIssueMenu.enabled && referenceTab === "github-issues";
+  const attachGitHubIssue = useAttachGitHubIssue();
+  const referenceMenuTabs = REFERENCE_MENU_TABS.filter(
+    (tab) =>
+      tab.id === "pull-requests" ||
+      (tab.id === "linear-issues" ? linearIssueMenu.enabled : githubIssueMenu.enabled),
+  );
   const captureThreadTabContext = useCaptureThreadTabContext(environmentId, activeThreadId);
   const composerMenuItems = useMemo<ComposerCommandItem[]>(() => {
     if (!composerTrigger) return [];
     if (composerTrigger.kind === "pull-request" && showLinearIssues) {
       return linearIssueMenu.items;
+    }
+    if (composerTrigger.kind === "pull-request" && showGitHubIssues) {
+      return githubIssueMenu.items;
     }
     if (composerTrigger.kind === "path") {
       const tabQuery = composerTrigger.query.trim().toLowerCase();
@@ -2610,6 +2632,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     compactSlashCommandAvailable,
     composerTrigger,
     exactPullRequestLookup.data,
+    githubIssueMenu.items,
     linearIssueMenu.items,
     planModeUiEnabled,
     pullRequestLookup.data,
@@ -2621,6 +2644,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     selectedProviderSlashCommands,
     selectedProviderStatus,
     settings.showSkillsInSlashMenu,
+    showGitHubIssues,
     showLinearIssues,
     threadTabGroup,
     activeThreadId,
@@ -2700,13 +2724,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     (composerTriggerKind === "path" && pathTriggerQuery.length > 0 && workspaceEntries.isPending) ||
     (composerTriggerKind === "pull-request" &&
       !showLinearIssues &&
+      !showGitHubIssues &&
       pullRequestProjectId !== null &&
       pullRequestRepository !== null &&
       (pullRequestLookup.isPending ||
         pullRequestTextQuery !== debouncedPullRequestTextQuery ||
         pullRequestTriggerNumber !== debouncedPullRequestNumber ||
         exactPullRequestLookup.isPending)) ||
-    (showLinearIssues && linearIssueMenu.isPending);
+    (showLinearIssues && linearIssueMenu.isPending) ||
+    (showGitHubIssues && githubIssueMenu.isPending);
   const composerMenuEmptyState = useMemo(() => {
     if (composerTriggerKind === "skill") {
       return "No skills found. Try / to browse provider commands.";
@@ -2716,6 +2742,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       return composerTrigger?.query
         ? `No Linear issue matches ${composerTrigger.query}.`
         : "No open Linear issues are assigned to you.";
+    }
+    if (showGitHubIssues) {
+      if (githubIssueMenu.error !== null) return githubIssueMenu.error;
+      return composerTrigger?.query
+        ? `No GitHub issue matches ${composerTrigger.query}.`
+        : "No open GitHub issues in this repository.";
     }
     if (composerTriggerKind === "pull-request") {
       if (pullRequestProjectId === null || pullRequestRepository === null) {
@@ -2737,7 +2769,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   }, [
     composerTrigger,
     composerTriggerKind,
+    githubIssueMenu.error,
     linearIssueMenu.error,
+    showGitHubIssues,
     showLinearIssues,
     pullRequestLookup.data?.errors,
     pullRequestLookup.error,
@@ -3783,6 +3817,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         void attachLinearIssue(routeThreadRef, item.issueId);
         return;
       }
+      if (item.type === "github-issue") {
+        const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
+          expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
+        });
+        if (!applied) return;
+        setComposerHighlightedItemId(null);
+        // The chip lands at the caret once the issue is fetched and snapshotted.
+        void attachGitHubIssue(routeThreadRef, item.url);
+        return;
+      }
       if (item.type === "slash-command") {
         if (item.command === "model") {
           const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
@@ -3886,6 +3930,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     [
       addComposerDraftReviewComment,
       applyPromptReplacement,
+      attachGitHubIssue,
       attachLinearIssue,
       captureThreadTabContext,
       composerDraftTarget,
@@ -6763,15 +6808,18 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     emptyStateText={composerMenuEmptyState}
                     environmentId={environmentId}
                     {...(showLinearIssues ? { loadingText: "Searching Linear issues..." } : {})}
-                    {...(linearIssueMenu.enabled && composerTrigger?.kind === "pull-request"
+                    {...(showGitHubIssues ? { loadingText: "Searching GitHub issues..." } : {})}
+                    {...(referenceMenuTabs.length > 1 && composerTrigger?.kind === "pull-request"
                       ? {
                           tabs: {
-                            options: REFERENCE_MENU_TABS,
+                            options: referenceMenuTabs,
                             activeId: referenceTab,
                             onSelect: (tab: string) =>
                               setReferenceTabChoice({
                                 rangeStart: composerTrigger.rangeStart,
-                                tab: tab === "linear-issues" ? "linear-issues" : "pull-requests",
+                                tab:
+                                  referenceMenuTabs.find((option) => option.id === tab)?.id ??
+                                  "pull-requests",
                               }),
                           },
                         }
@@ -7313,6 +7361,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       <ComposerAttachMenu
                         threadRef={routeThreadRef}
                         pullRequestsAvailable={pullRequestProjectId !== null}
+                        githubIssuesAvailable={githubIssueCwd !== null}
                         onAttachFiles={() => attachmentInputRef.current?.click()}
                       />
                     </>

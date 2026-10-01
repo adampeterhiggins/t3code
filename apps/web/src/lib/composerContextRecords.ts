@@ -17,7 +17,6 @@ import type {
   TerminalContextRecord,
   ThreadId,
   ThreadTabContextRecord,
-  LinearIssueContextRecord,
   RepositoryContextRecord,
 } from "@t3tools/contracts";
 import { upgradeLegacyContextMessage } from "@t3tools/shared/composerContextLegacy";
@@ -33,6 +32,7 @@ import {
   toKindScopedComposerContextId,
 } from "./composerContextReferences";
 import type { ComposerFileAttachment, ComposerImageAttachment } from "~/composerDraftStore";
+import type { IssueContextRecord } from "~/issueContextStore";
 import type { AttachmentUploadState } from "./attachmentUploadState";
 import { normalizeElementContextSelection } from "./elementContext";
 import {
@@ -299,7 +299,7 @@ export function buildMessageContext(input: {
   reviewComments: ReadonlyArray<ReviewCommentContext>;
   previewAnnotations: ReadonlyArray<PreviewAnnotationPayload>;
   threadTabs?: ReadonlyArray<ThreadTabContextRecord>;
-  linearIssues?: ReadonlyArray<LinearIssueContextRecord>;
+  issues?: ReadonlyArray<IssueContextRecord>;
   repositories?: ReadonlyArray<RepositoryContextRecord>;
   attachments?: ReadonlyArray<BoundComposerAttachment>;
 }): OrchestrationMessageContext | undefined {
@@ -318,7 +318,7 @@ export function buildMessageContext(input: {
       }),
     ),
     ...(input.threadTabs ?? []),
-    ...(input.linearIssues ?? []),
+    ...(input.issues ?? []),
     ...(input.repositories ?? []),
     ...(input.attachments ?? []).map(attachmentContextRecord),
   ];

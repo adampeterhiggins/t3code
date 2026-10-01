@@ -39,6 +39,7 @@ import {
   resolveEnvironmentMachineKind,
 } from "@t3tools/contracts";
 import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
+import { openGitHubIssuePicker } from "./chat/GitHubIssuePicker";
 import { openLinearIssuePicker } from "./chat/LinearIssuePicker";
 import { useThreadLinearLink, useUnlinkLinearIssue } from "./chat/LinearThreadLink";
 import { openThreadAttachPicker } from "./chat/ThreadAttachPicker";
@@ -113,6 +114,7 @@ import { useAtomCommand } from "../state/use-atom-command";
 import { useAtomQueryRunner } from "../state/use-atom-query-runner";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
 import { useProjects, useServerConfigs, useThreadShells, waitForProject } from "../state/entities";
+import { isGitHubProject } from "../state/githubIssues";
 import { useThreadSearch } from "../state/queries";
 import { resolveThreadActionProjectRef, startNewThreadFromContext } from "../lib/chatThreadActions";
 import {
@@ -1968,6 +1970,22 @@ function OpenCommandPaletteDialog(props: {
         openLinearIssuePicker(composerThreadRef);
       },
     });
+    // The picker is mounted by a chat view whose project is on GitHub, so only offer it there.
+    const composerProject = projectByKey.get(
+      `${composerThreadRef.environmentId}:${currentProjectId ?? ""}`,
+    );
+    if (isGitHubProject(composerProject)) {
+      actionItems.push({
+        kind: "action",
+        value: "action:attach-github-issue",
+        searchTerms: ["github", "issue", "ticket", "attach", "context"],
+        title: "Attach GitHub issue",
+        icon: <GitHubIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          openGitHubIssuePicker(composerThreadRef);
+        },
+      });
+    }
     actionItems.push({
       kind: "action",
       value: "action:link-linear-issue",

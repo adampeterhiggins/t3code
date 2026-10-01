@@ -226,6 +226,7 @@ import { PullRequestsUnavailableState } from "./pullRequest/PullRequestsUnavaila
 import { RightPanelTabs } from "./RightPanelTabs";
 import { AgentsPanel } from "./AgentsPanel";
 import { LinkPullRequestDialogHost } from "./pullRequest/LinkPullRequestDialog";
+import { GitHubIssuePickerHost } from "./chat/GitHubIssuePicker";
 import { LinearIssuePickerHost } from "./chat/LinearIssuePicker";
 import { ThreadAttachPickerHost } from "./chat/ThreadAttachPicker";
 import { RepositoryAttachPickerHost } from "./chat/RepositoryAttachPicker";
@@ -233,6 +234,7 @@ import { PullRequestAttachPickerHost } from "./chat/PullRequestAttachPicker";
 import { openStartFromPicker, StartFromPickerHost } from "./chat/StartFromPicker";
 import { ThreadPullRequestsPanel } from "./pullRequest/ThreadPullRequestsPanel";
 import { useDeviceState } from "~/state/device";
+import { isGitHubProject } from "~/state/githubIssues";
 import { DeviceSetup } from "./device/DeviceSetup";
 import { Dialog } from "./ui/dialog";
 import { WizardPopup } from "./ui/wizard";
@@ -339,10 +341,7 @@ import {
   stripInlineContextReferences,
 } from "../lib/composerContextReferences";
 import { readThreadTabContextRecords, useThreadTabContextStore } from "../threadTabContextStore";
-import {
-  readLinearIssueContextRecords,
-  useLinearIssueContextStore,
-} from "../linearIssueContextStore";
+import { readIssueContextRecords, useIssueContextStore } from "../issueContextStore";
 import { readRepositoryContextRecords, useRepositoryContextStore } from "../repositoryContextStore";
 import { useThreadTabRecencyStore } from "../threadTabRecencyStore";
 import { serializeLegacyContextMessage } from "@t3tools/shared/composerContextLegacySend";
@@ -3812,6 +3811,9 @@ export default function ChatView(props: ChatViewProps) {
   const activeProjectCwd = activeProject?.workspaceRoot ?? null;
   const activeThreadWorktreePath = activeThread?.worktreePath ?? null;
   const activeWorkspaceRoot = activeThreadWorktreePath ?? activeProjectCwd ?? undefined;
+  // GitHub issues are listed with `gh` in the thread's checkout; any checkout of the repository
+  // answers the same, so a draft headed for a new worktree uses the project folder.
+  const githubIssueCwd = isGitHubProject(activeProject) ? (activeWorkspaceRoot ?? null) : null;
   useLayoutEffect(() => {
     if (
       threadDetailLoading ||
@@ -7539,7 +7541,7 @@ export default function ChatView(props: ChatViewProps) {
       const store = useComposerDraftStore.getState();
       const draft = store.getComposerDraft(composerDraftTarget);
       const tabContexts = readThreadTabContextRecords(activeThread.id);
-      const linearIssueContexts = readLinearIssueContextRecords(activeThread.id);
+      const issueContexts = readIssueContextRecords(activeThread.id);
       const repositoryContexts = readRepositoryContextRecords(activeThread.id);
       const tabRef = await forkThreadTab(connection, {
         environmentId,
@@ -7553,8 +7555,8 @@ export default function ChatView(props: ChatViewProps) {
       for (const record of tabContexts) {
         useThreadTabContextStore.getState().upsert(tabRef.threadId, record);
       }
-      for (const record of linearIssueContexts) {
-        useLinearIssueContextStore.getState().upsert(tabRef.threadId, record);
+      for (const record of issueContexts) {
+        useIssueContextStore.getState().upsert(tabRef.threadId, record);
       }
       for (const record of repositoryContexts) {
         useRepositoryContextStore.getState().upsert(tabRef.threadId, record);
@@ -8281,12 +8283,12 @@ export default function ChatView(props: ChatViewProps) {
     const composerPreviewAnnotationsSnapshot = [...composerPreviewAnnotations];
     const composerReviewCommentsSnapshot: ReviewCommentContext[] = [...composerReviewComments];
     const referencedContextIds = new Set(collectInlineContextIds(promptForSend));
-    // Chat summaries and Linear issues also attach to a draft thread's first message.
+    // Chat summaries and issues also attach to a draft thread's first message.
     const composerThreadTabsSnapshot = readThreadTabContextRecords(threadIdForSend).filter(
       (record) => referencedContextIds.has(record.contextId),
     );
-    const composerLinearIssuesSnapshot = readLinearIssueContextRecords(threadIdForSend).filter(
-      (record) => referencedContextIds.has(record.contextId),
+    const composerIssuesSnapshot = readIssueContextRecords(threadIdForSend).filter((record) =>
+      referencedContextIds.has(record.contextId),
     );
     const composerRepositoriesSnapshot = readRepositoryContextRecords(threadIdForSend).filter(
       (record) => referencedContextIds.has(record.contextId),
@@ -8309,7 +8311,7 @@ export default function ChatView(props: ChatViewProps) {
         reviewComments: composerReviewCommentsSnapshot,
         previewAnnotations: composerPreviewAnnotationsSnapshot,
         threadTabs: composerThreadTabsSnapshot,
-        linearIssues: composerLinearIssuesSnapshot,
+        issues: composerIssuesSnapshot,
         repositories: composerRepositoriesSnapshot,
         attachments: composerAttachmentsSnapshot.map((attachment, index) => ({
           attachment,
@@ -8990,7 +8992,7 @@ export default function ChatView(props: ChatViewProps) {
       } else {
         turnStartSucceeded = true;
         useThreadTabContextStore.getState().clear(threadIdForSend);
-        useLinearIssueContextStore.getState().clear(threadIdForSend);
+        useIssueContextStore.getState().clear(threadIdForSend);
         useRepositoryContextStore.getState().clear(threadIdForSend);
         // The turn is under way and will spend quota, so that thread's limits
         // snapshot is stale. Uploads may have outlasted a navigation, so only
@@ -10747,6 +10749,7 @@ export default function ChatView(props: ChatViewProps) {
                             pullRequestRepository={
                               supportsPullRequests ? activeProjectRepository : null
                             }
+                            githubIssueCwd={githubIssueCwd}
                             restingControlsHost={restingComposerControlsHost}
                             restingControlsHaveLeadingContext={
                               isGitRepo || showComposerEnvironmentIndicator
@@ -11085,6 +11088,9 @@ export default function ChatView(props: ChatViewProps) {
       </AlertDialog>
       <LinkPullRequestDialogHost />
       <LinearIssuePickerHost />
+      {githubIssueCwd !== null && activeProjectRef ? (
+        <GitHubIssuePickerHost projectRef={activeProjectRef} cwd={githubIssueCwd} />
+      ) : null}
       <ThreadAttachPickerHost />
       <RepositoryAttachPickerHost
         workspaceCwd={activeWorktreePath ?? (sendEnvMode === "worktree" ? null : activeProjectCwd)}
@@ -11101,6 +11107,7 @@ export default function ChatView(props: ChatViewProps) {
           projectRef={activeProjectRef}
           projectId={activeProject.id}
           workspaceRoot={activeProject.workspaceRoot}
+          githubIssuesAvailable={isGitHubProject(activeProject)}
           threadRef={routeThreadRef}
           onCheckout={pointDraftAtCheckout}
         />

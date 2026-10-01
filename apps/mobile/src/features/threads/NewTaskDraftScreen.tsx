@@ -55,8 +55,13 @@ import {
   takeStartFromLinearIssue,
   useLinearIssuePicker,
 } from "../../components/LinearIssuePickerSheet";
+import {
+  takeStartFromGitHubIssue,
+  useGitHubIssuePicker,
+} from "../../components/GitHubIssuePickerSheet";
 import { useRepositoryPicker } from "../../components/RepositoryPickerSheet";
 import { ControlPillMenu } from "../../components/ControlPillMenu";
+import { gitHubIssueEnvironment } from "../../state/githubIssues";
 import { linearEnvironment } from "../../state/linear";
 import { useStartFromPullRequestPicker } from "./StartFromPullRequestSheet";
 import { ComposerAttachmentStrip } from "../../components/ComposerAttachmentStrip";
@@ -994,6 +999,26 @@ export function NewTaskDraftScreen(props: {
         }
       : null,
   );
+  // Issues belong to the repository, so the project's own checkout lists them in either mode.
+  const gitHubIssuePicker = useGitHubIssuePicker(
+    flow.draftKey && selectedProject
+      ? {
+          environmentId: selectedProject.environmentId,
+          draftKey: flow.draftKey,
+          cwd: selectedProject.workspaceRoot,
+        }
+      : null,
+  );
+  const startFromGitHubIssuePicker = useGitHubIssuePicker(
+    flow.draftKey && selectedProject
+      ? {
+          environmentId: selectedProject.environmentId,
+          draftKey: flow.draftKey,
+          cwd: selectedProject.workspaceRoot,
+          startFrom: { projectId: selectedProject.id },
+        }
+      : null,
+  );
   const startFromPullRequestPicker = useStartFromPullRequestPicker(
     flow.draftKey && selectedProject
       ? {
@@ -1025,6 +1050,10 @@ export function NewTaskDraftScreen(props: {
   );
   const linkThreadToIssue = useAtomCommand(linearEnvironment.linkThread, {
     label: "linear thread link",
+    reportFailure: false,
+  });
+  const linkThreadToGitHubIssue = useAtomCommand(gitHubIssueEnvironment.linkThread, {
+    label: "github issue thread link",
     reportFailure: false,
   });
   const selectedEnvironmentLabel =
@@ -1363,6 +1392,13 @@ export function NewTaskDraftScreen(props: {
         input: { threadId: message.threadId, issueId: startedFromIssueId },
       });
     }
+    const startedFromGitHubIssueUrl = takeStartFromGitHubIssue(draftKey, draftSnapshot.context);
+    if (startedFromGitHubIssueUrl) {
+      void linkThreadToGitHubIssue({
+        environmentId: message.environmentId,
+        input: { threadId: message.threadId, url: startedFromGitHubIssueUrl },
+      });
+    }
     if (editingPendingTask) {
       flow.finishEditingPendingTask();
     } else {
@@ -1621,10 +1657,12 @@ export function NewTaskDraftScreen(props: {
         actions={[
           { id: "pull-request", title: "Pull request", image: "arrow.triangle.pull" },
           { id: "issue", title: "Linear issue", image: "ticket" },
+          { id: "github-issue", title: "GitHub issue", image: "smallcircle.filled.circle" },
         ]}
         onPressAction={({ nativeEvent }) => {
           if (nativeEvent.event === "pull-request") startFromPullRequestPicker.open();
           else if (nativeEvent.event === "issue") startFromIssuePicker.open();
+          else if (nativeEvent.event === "github-issue") startFromGitHubIssuePicker.open();
         }}
       >
         <Pressable
@@ -1782,6 +1820,9 @@ export function NewTaskDraftScreen(props: {
                         ? linearIssuePicker.open
                         : undefined
                     }
+                    onPickGitHubIssue={
+                      flow.draftKey && selectedProject ? gitHubIssuePicker.open : undefined
+                    }
                     onPickRepository={flow.draftKey ? repositoryPicker.open : undefined}
                   />
                   <View className="min-w-0 flex-1 flex-row items-center justify-end gap-2">
@@ -1865,6 +1906,8 @@ export function NewTaskDraftScreen(props: {
       <FilePreviewModal source={previewFile} onRequestClose={closeMediaPreview} />
       {linearIssuePicker.sheet}
       {startFromIssuePicker.sheet}
+      {gitHubIssuePicker.sheet}
+      {startFromGitHubIssuePicker.sheet}
       {startFromPullRequestPicker.sheet}
       {repositoryPicker.sheet}
     </View>

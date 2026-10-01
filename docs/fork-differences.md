@@ -404,21 +404,48 @@ Code: `apps/server/src/linear/`, `packages/contracts/src/linear.ts`, `LinearIssu
 `apps/mobile/src/features/settings/SettingsLinearRouteScreen.tsx`. User guide:
 [linear.md](./user/linear.md).
 
+## GitHub issues
+
+GitHub issues attach to messages as a `github-issue` context chip, the same way Linear issues do:
+from the composer's attach menu, the `#` menu's **GitHub issues** tab, the web command palette, and
+the mobile attach menu. They are offered for projects whose remote is on GitHub and read with the
+environment's `gh` CLI, listing the repository the
+project or worktree is checked out from; a number, `#123`, or issue URL is looked up directly. The
+server renders the issue to capped markdown when it is attached: the description, then comments
+newest first, dropping hidden (minimized), empty, "+1", and reaction-only comments and marking the
+issue author's and maintainers' comments. That snapshot is inlined into the prompt for every
+provider.
+
+Starting a thread from a GitHub issue links it to the thread's chat-tab group, in the fork-owned
+`fork_github_issue_thread_links` table, streamed over `githubIssues.subscribeThreadLinks`. A group
+can hold one GitHub link beside its Linear link. The web chat header and the mobile tab switcher
+show `#123` with its live open or closed state, and offer open and unlink. Pickers mark a linked
+issue **In use**; the web attach picker's hover preview lists those threads and opens one on click.
+
+Code: `apps/server/src/githubIssues/`, `packages/contracts/src/githubIssues.ts`,
+`GitHubIssueContextRecord` in `packages/contracts/src/composerContext.ts`,
+`packages/client-runtime/src/state/githubIssues.ts`,
+`apps/web/src/components/chat/GitHubIssuePicker.tsx`,
+`apps/web/src/components/chat/GitHubIssueThreadLink.tsx`,
+`apps/mobile/src/components/GitHubIssuePickerSheet.tsx`, and
+`apps/mobile/src/features/threads/ThreadGitHubIssueLink.tsx`. User guide:
+[source-control.md](./user/source-control.md#attach-a-github-issue).
+
 ## Start a thread from a pull request, branch, or issue
 
 On web and desktop, a new thread's composer has a **⋯** button in its top-right corner. It opens a
-picker with PRs, Branches, and Issues tabs. The same picker opens from the command palette and from
+picker with PRs, Branches, Issues, and Linear tabs. The same picker opens from the command palette and from
 `chat.startFrom` (`mod+shift+b`); both of those start a new thread first. The PRs tab filters and
-sorts with the pull requests page's filter menu, and the Issues tab with the Linear attach picker's
-filter bar, whose view it shares.
+sorts with the pull requests page's filter menu, the Issues tab lists the project's GitHub issues
+by state, and the Linear tab uses the Linear attach picker's filter bar, whose view it shares.
 
 - A pull request is checked out in a new worktree, or the worktree it is already checked out in,
   and the draft is pointed there. Upstream's checkout dialog, with its Local and Worktree choice,
   is skipped. A branch already checked out in the project's own checkout is refused.
 - A branch is worked on where it is already checked out. Any other branch becomes the base of a new
   worktree.
-- An issue is attached as a Linear context chip and linked to the new thread (see
-  [Linear integration](#linear-integration)). Only Linear issues are offered.
+- A GitHub or Linear issue is attached as a context chip and linked to the new thread (see
+  [GitHub issues](#github-issues) and [Linear integration](#linear-integration)).
 
 A pull request or branch that a live thread is already on, or an issue linked to a live thread,
 is marked **In use**. Picking it asks whether to open that thread or start a second one. The
@@ -426,14 +453,16 @@ default branch never counts as in use. Hovering a row previews it: a pull reques
 a branch's full name and where it would run (both listing threads already on it), or the issue
 snapshot an attached chip would carry.
 
-On mobile, a new thread's **⋯** button offers **Pull request** and **Linear issue**, with the same
+On mobile, a new thread's **⋯** button offers **Pull request**, **Linear issue**, and
+**GitHub issue**, with the same
 checkout, linking, and **In use** rules; the existing branch picker covers branches. The pull
 request's worktree is checked out before the thread exists, so mobile does not run the project's
 setup script in it. The issue is linked once the draft sends.
 
 Code: `apps/web/src/components/chat/StartFromPicker.tsx`, `StartFromPicker.logic.ts` and
 `StartFromPreviews.tsx`, `apps/mobile/src/features/threads/StartFromPullRequestSheet.tsx`, the
-`startFrom` target in `apps/mobile/src/components/LinearIssuePickerSheet.tsx`, the button
+`startFrom` targets in `apps/mobile/src/components/LinearIssuePickerSheet.tsx` and
+`GitHubIssuePickerSheet.tsx`, the button
 in `ChatComposer.tsx`, and `chat.startFrom` in `packages/contracts/src/keybindings.ts`. User guide:
 [source-control.md](./user/source-control.md#start-a-thread-from-a-pull-request-branch-or-issue).
 
