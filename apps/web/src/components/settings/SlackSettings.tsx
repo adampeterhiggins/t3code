@@ -28,7 +28,7 @@ import { useSettingsScope } from "./SettingsScopeContext";
 /**
  * Connects the selected environment's Slack account. Like Linear, the account belongs to the
  * environment, so every client of that environment can attach messages. Each workspace signs in
- * through its own Slack app, made from the manifest this section copies.
+ * through a configured Slack app or its own app made from the copied manifest.
  */
 export function SlackSettingsSection() {
   const { environment: scopedEnvironment } = useSettingsScope();
@@ -92,6 +92,7 @@ function SlackConnectionRows({
   const [error, setError] = useState<string | null>(null);
   // Null until edited, so the field shows the client ID the server last signed in with.
   const [clientIdDraft, setClientIdDraft] = useState<string | null>(null);
+  const [editingApp, setEditingApp] = useState(false);
   const [pasted, setPasted] = useState({ flowId: null as string | null, value: "" });
   const clientId = (clientIdDraft ?? state?.clientId ?? "").trim();
   const flowId = state?.phase === "waiting" ? state.flowId : null;
@@ -131,6 +132,10 @@ function SlackConnectionRows({
     const next = await run(() =>
       startLogin({ environmentId, input: clientId.length > 0 ? { clientId } : {} }),
     );
+    if (next) {
+      setClientIdDraft(null);
+      setEditingApp(false);
+    }
     // Only the desktop shell can open a tab after an await; browsers block
     // it as a popup, so the web build relies on the Open Slack button.
     if (isElectron && next?.authorizationUrl) await openAuthorization(next.authorizationUrl);
@@ -154,6 +159,7 @@ function SlackConnectionRows({
   const status = error ?? describeConnection(state);
   const statusClass = error !== null || state?.phase === "failed" ? "text-destructive" : undefined;
   const signedOut = state?.phase === "disconnected" || state?.phase === "failed";
+  const hasConfiguredApp = Boolean(state?.clientId?.trim());
 
   return (
     <>
@@ -199,15 +205,32 @@ function SlackConnectionRows({
           )
         }
       />
-      {signedOut ? (
+      {signedOut && hasConfiguredApp && !editingApp ? (
         <SettingsRow
           title="Slack app"
-          description="Slack signs in through an app in your own workspace. At api.slack.com/apps, choose Create New App → From a manifest, paste the copied manifest, then enter the app's Client ID here."
+          description="An app is already configured for this environment. Connect Slack to sign in with your account. Your workspace may require an owner to approve the app."
+          control={
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={pending}
+              onClick={() => setEditingApp(true)}
+            >
+              Change app
+            </Button>
+          }
+        />
+      ) : null}
+      {signedOut && (!hasConfiguredApp || editingApp) ? (
+        <SettingsRow
+          title="Slack app"
+          description="Enter a shared app's Client ID, or create a workspace app at api.slack.com/apps: choose Create New App → From a manifest and paste the copied manifest. Your workspace may require owner approval."
           control={
             <div className="flex w-full flex-wrap gap-2 sm:w-auto">
               <Input
                 size="sm"
                 aria-label="Slack app client ID"
+                disabled={pending}
                 placeholder="Client ID, e.g. 1234567890.1234567890"
                 className="min-w-0 flex-1 sm:w-64"
                 value={clientIdDraft ?? state?.clientId ?? ""}
@@ -230,6 +253,19 @@ function SlackConnectionRows({
                 Create Slack app
                 <ExternalLinkIcon className="size-3.5" aria-hidden="true" />
               </Button>
+              {hasConfiguredApp ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={pending}
+                  onClick={() => {
+                    setClientIdDraft(null);
+                    setEditingApp(false);
+                  }}
+                >
+                  Cancel
+                </Button>
+              ) : null}
             </div>
           }
         />

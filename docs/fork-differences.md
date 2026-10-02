@@ -429,11 +429,14 @@ Code: `apps/server/src/linear/`, `packages/contracts/src/linear.ts`, `LinearIssu
 ## Slack messages and threads
 
 **Settings > Integrations > Slack** connects a Slack account to the environment with OAuth (PKCE,
-read-only user scopes, no client secret). There is no built-in Slack app: Slack limits apps that
-are distributed without Marketplace approval to one `conversations.replies` call a minute, 15
-messages each. Each workspace makes its own app from a manifest the settings section copies
-(`slackAppManifest` in `packages/contracts/src/slack.ts`), and the user enters its client ID. The
-server keeps that client ID across disconnects, and `T3CODE_SLACK_CLIENT_ID` can supply one. The
+read-only user scopes, no client secret). When an app client ID is already configured, users can
+connect their account directly; **Change app** keeps workspace-specific setup available. There
+is no bundled shared app registration. An operator can supply a shared app's client ID through
+`T3CODE_SLACK_CLIENT_ID`, or users can enter it in Settings. Shared apps must enable distribution
+and register T3 Code's PKCE redirect. Commercially distributed apps without Marketplace approval
+have restrictive thread-reading limits; workspace app approval still applies. Users can also
+make a workspace app from the copied manifest (`slackAppManifest` in
+`packages/contracts/src/slack.ts`). The server keeps the client ID across disconnects. The
 redirect is `http://localhost:47832/callback`, since Slack only treats `localhost` as a desktop
 redirect, with the same paste-back path as Linear for remote browsers.
 
