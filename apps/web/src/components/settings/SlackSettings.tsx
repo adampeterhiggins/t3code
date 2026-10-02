@@ -9,6 +9,7 @@ import {
   slackAppManifest,
   type SlackConnectionState,
 } from "@t3tools/contracts";
+import { ExternalLinkIcon } from "lucide-react";
 import { useRef, useState } from "react";
 
 import { isElectron } from "../../env";
@@ -203,11 +204,12 @@ function SlackConnectionRows({
           title="Slack app"
           description="Slack signs in through an app in your own workspace. At api.slack.com/apps, choose Create New App → From a manifest, paste the copied manifest, then enter the app's Client ID here."
           control={
-            <div className="flex w-full gap-2 sm:w-80">
+            <div className="flex w-full flex-wrap gap-2 sm:w-auto">
               <Input
                 size="sm"
                 aria-label="Slack app client ID"
                 placeholder="Client ID, e.g. 1234567890.1234567890"
+                className="min-w-0 flex-1 sm:w-64"
                 value={clientIdDraft ?? state?.clientId ?? ""}
                 onChange={(event) => setClientIdDraft(event.target.value)}
               />
@@ -217,6 +219,16 @@ function SlackConnectionRows({
                 onClick={() => writeTextToClipboard(slackAppManifest(), "Slack app manifest")}
               >
                 Copy manifest
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  void ensureLocalApi().shell.openExternal("https://api.slack.com/apps")
+                }
+              >
+                Create Slack app
+                <ExternalLinkIcon className="size-3.5" aria-hidden="true" />
               </Button>
             </div>
           }
