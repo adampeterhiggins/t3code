@@ -1,4 +1,3 @@
-import { FileTextIcon } from "lucide-react";
 ("use client");
 
 import { threadPullRequestLinkMode } from "@t3tools/client-runtime/thread-pull-request-compatibility";
@@ -82,7 +81,7 @@ import {
   SunIcon,
   TextSearchIcon,
 } from "lucide-react";
-import { LinearIcon, SlackIcon } from "./Icons";
+import { LinearIcon, NotionIcon, SlackIcon } from "./Icons";
 import {
   useCallback,
   useDeferredValue,
@@ -2121,7 +2120,7 @@ function OpenCommandPaletteDialog(props: {
       value: "action:attach-notion-page",
       searchTerms: ["notion", "page", "document", "attach", "context"],
       title: "Attach Notion page",
-      icon: <FileTextIcon className={ITEM_ICON_CLASS} />,
+      icon: <NotionIcon className={ITEM_ICON_CLASS} />,
       run: async () => {
         openNotionPagePicker(composerThreadRef);
       },

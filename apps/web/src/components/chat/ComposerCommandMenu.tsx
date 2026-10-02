@@ -1,4 +1,3 @@
-import { FileTextIcon } from "lucide-react";
 import {
   formatProviderSkillDisplayName,
   resolveProviderSkillSourceKind,
@@ -24,7 +23,7 @@ import {
   UserRoundIcon,
   type LucideIcon,
 } from "lucide-react";
-import { GitHubIcon, LinearIcon, SlackIcon } from "../Icons";
+import { GitHubIcon, LinearIcon, NotionIcon, SlackIcon } from "../Icons";
 import { memo, useCallback, useLayoutEffect, useRef } from "react";
 
 import { type ComposerSlashCommand, type ComposerTriggerKind } from "../../composer-logic";
@@ -357,7 +356,7 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
         <GitHubIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
       ) : null}
       {props.item.type === "notion-page" ? (
-        <FileTextIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+        <NotionIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
       ) : null}
       {props.item.type === "slack-message" ? (
         <SlackIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />

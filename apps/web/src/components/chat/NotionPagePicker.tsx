@@ -1,9 +1,9 @@
+import { NotionIcon } from "../Icons";
 import { useAtomValue } from "@effect/atom-react";
 import { notionPageContextRecord } from "@t3tools/client-runtime/state/notion";
 import type { ScopedThreadRef, NotionPageSummary } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/unstable/reactivity";
-import { FileTextIcon } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { useIssueContextStore } from "~/issueContextStore";
@@ -93,7 +93,7 @@ function NotionPagePickerDialog({ threadRef }: { threadRef: ScopedThreadRef }) {
           <CommandPaletteContent
             inputProps={{
               placeholder: "Search Notion pages or paste a page link",
-              startAddon: <FileTextIcon />,
+              startAddon: <NotionIcon />,
             }}
             footerActionLabel={attaching ? "Attaching…" : "Attach page"}
             mode="none"

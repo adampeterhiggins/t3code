@@ -1,5 +1,4 @@
 import type { NotionPageContextRecord } from "@t3tools/contracts";
-import { FileTextIcon } from "lucide-react";
 import ChatMarkdown from "./ChatMarkdown";
 import { ReadOnlySourcePreview } from "./files/AttachmentFilePreview";
 import type {
@@ -18,7 +17,7 @@ import {
   MessagesSquareIcon,
   MousePointerClickIcon,
 } from "lucide-react";
-import { GitHubIcon, LinearIcon, SlackIcon } from "./Icons";
+import { GitHubIcon, LinearIcon, NotionIcon, SlackIcon } from "./Icons";
 import { createContext, type MouseEvent, type ReactElement, type ReactNode, use } from "react";
 import type { EnvironmentId } from "@t3tools/contracts";
 
@@ -538,7 +537,7 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
       render: (entry, context, definition) =>
         entry.kind === "notion-page" ? (
           <ContextChip
-            icon={<FileTextIcon />}
+            icon={<NotionIcon />}
             label={entry.record.label}
             kindLabel="Notion page"
             details={<ComposerNotionPageDetails record={entry.record} />}

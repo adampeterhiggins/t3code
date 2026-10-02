@@ -1,8 +1,7 @@
 import type { NotionPageContextRecord } from "@t3tools/contracts";
-import { FileTextIcon } from "lucide-react";
 import { ToolCallBody } from "../ToolCallBody";
 import { ArrowUpIcon, ClockIcon } from "lucide-react";
-import { GitHubIcon, LinearIcon, SlackIcon } from "../Icons";
+import { GitHubIcon, LinearIcon, NotionIcon, SlackIcon } from "../Icons";
 import { ReadOnlySourcePreview } from "../files/AttachmentFilePreview";
 import { useRightPanelStore } from "~/rightPanelStore";
 import {
@@ -4034,7 +4033,7 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
             copyMarkdown={context.copyMarkdown}
             accessibleLabel={`Notion page, ${record.label}`}
             kind="notion-page"
-            icon={<FileTextIcon />}
+            icon={<NotionIcon />}
             label={record.label}
           >
             <UserMessageNotionPageDetails record={record} />

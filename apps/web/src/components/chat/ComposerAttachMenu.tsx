@@ -1,6 +1,6 @@
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { FolderGit2Icon, MessageSquareIcon, PaperclipIcon } from "lucide-react";
-import { GitHubIcon, LinearIcon, SlackIcon } from "../Icons";
+import { GitHubIcon, LinearIcon, NotionIcon, SlackIcon } from "../Icons";
 import { memo } from "react";
 
 import { Button } from "../ui/button";
@@ -12,7 +12,6 @@ import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { openPullRequestAttachPicker } from "./PullRequestAttachPicker";
 import { openRepositoryAttachPicker } from "./RepositoryAttachPicker";
 import { openNotionPagePicker } from "./NotionPagePicker";
-import { FileTextIcon } from "lucide-react";
 import { openSlackMessagePicker } from "./SlackMessagePicker";
 import { openThreadAttachPicker } from "./ThreadAttachPicker";
 
@@ -50,7 +49,7 @@ export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
           Linear issue
         </MenuItem>
         <MenuItem onClick={() => openNotionPagePicker(props.threadRef)}>
-          <FileTextIcon />
+          <NotionIcon />
           Notion page
         </MenuItem>
         <MenuItem onClick={() => openSlackMessagePicker(props.threadRef)}>
