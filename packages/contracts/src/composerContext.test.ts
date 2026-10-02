@@ -137,6 +137,15 @@ const knownRecords: Record<(typeof COMPOSER_CONTEXT_KINDS)[number], Record<strin
     state: "open",
     markdown: "# acme/api#42: Fix login\n\n## Description\nThe button does nothing.",
   },
+  "notion-page": {
+    ...base,
+    kind: "notion-page",
+    label: "Design",
+    pageId: "aabbcc",
+    title: "Design",
+    url: "https://notion.so/aabbcc",
+    markdown: "# Design\nDetails",
+  },
   "slack-thread": {
     ...base,
     kind: "slack-thread",

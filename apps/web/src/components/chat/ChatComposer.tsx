@@ -277,6 +277,8 @@ import { useAttachGitHubIssue } from "./GitHubIssuePicker";
 import { useAttachLinearIssue } from "./LinearIssuePicker";
 import { useComposerGitHubIssueItems } from "./useComposerGitHubIssueItems";
 import { useComposerSlackItems } from "./useComposerSlackItems";
+import { useAttachNotionPage } from "./NotionPagePicker";
+import { useComposerNotionItems } from "./useComposerNotionItems";
 import { slackGetThreadInput, useAttachSlackMessage } from "./SlackMessagePicker";
 import { useResolveComposerObjectLink } from "./useResolveComposerObjectLink";
 import { useComposerRepositoryItems } from "./useComposerRepositoryItems";
@@ -366,6 +368,7 @@ const REFERENCE_MENU_TABS: ReadonlyArray<{ id: ComposerReferenceTab; label: stri
   { id: "github-issues", label: "GitHub issues" },
   { id: "linear-issues", label: "Linear issues" },
   { id: "slack-messages", label: "Slack" },
+  { id: "notion-pages", label: "Notion" },
   { id: "repositories", label: "Repositories" },
 ];
 
@@ -2464,6 +2467,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   );
   const showLinearIssues = linearIssueMenu.enabled && referenceTab === "linear-issues";
   const attachLinearIssue = useAttachLinearIssue();
+  const notionMenu = useComposerNotionItems(
+    environmentId,
+    composerTrigger,
+    referenceTab === "notion-pages",
+  );
+  const showNotionPages = notionMenu.enabled && referenceTab === "notion-pages";
+  const attachNotionPage = useAttachNotionPage();
   const slackMenu = useComposerSlackItems(
     environmentId,
     composerTrigger,
@@ -2491,17 +2501,20 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   );
   const showRepositories = repositoryMenu.enabled && referenceTab === "repositories";
   const referenceMenuTabs = REFERENCE_MENU_TABS.filter((tab) =>
-    tab.id === "linear-issues"
-      ? linearIssueMenu.enabled
-      : tab.id === "slack-messages"
-        ? slackMenu.enabled
-        : tab.id === "github-issues"
-          ? githubIssueMenu.enabled
-          : true,
+    tab.id === "notion-pages"
+      ? notionMenu.enabled
+      : tab.id === "linear-issues"
+        ? linearIssueMenu.enabled
+        : tab.id === "slack-messages"
+          ? slackMenu.enabled
+          : tab.id === "github-issues"
+            ? githubIssueMenu.enabled
+            : true,
   );
   const captureThreadTabContext = useCaptureThreadTabContext(environmentId, activeThreadId);
   const composerMenuItems = useMemo<ComposerCommandItem[]>(() => {
     if (!composerTrigger) return [];
+    if (composerTrigger.kind === "pull-request" && showNotionPages) return notionMenu.items;
     if (composerTrigger.kind === "pull-request" && showLinearIssues) {
       return linearIssueMenu.items;
     }
@@ -2693,6 +2706,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     pullRequestRepository,
     pullRequestTriggerNumber,
     repositoryMenu.items,
+    notionMenu.items,
+    showNotionPages,
     slackMenu.items,
     selectedProvider,
     selectedProviderSkills,
@@ -2786,6 +2801,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       !showGitHubIssues &&
       !showRepositories &&
       !showSlackMessages &&
+      !showNotionPages &&
       pullRequestProjectId !== null &&
       pullRequestRepository !== null &&
       (pullRequestLookup.isPending ||
@@ -2795,7 +2811,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     (showLinearIssues && linearIssueMenu.isPending) ||
     (showGitHubIssues && githubIssueMenu.isPending) ||
     (showRepositories && repositoryMenu.isPending) ||
-    (showSlackMessages && slackMenu.isPending);
+    (showSlackMessages && slackMenu.isPending) ||
+    (showNotionPages && notionMenu.isPending);
   const composerMenuEmptyState = useMemo(() => {
     if (composerTriggerKind === "skill") {
       return "No skills found. Try / to browse provider commands.";
@@ -2806,6 +2823,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         ? `No Linear issue matches ${composerTrigger.query}.`
         : "No open Linear issues are assigned to you.";
     }
+    if (showNotionPages)
+      return notionMenu.error ?? "No Notion pages found. Try searching by title.";
     if (showSlackMessages) {
       if (slackMenu.error !== null) return slackMenu.error;
       return composerTrigger?.query
@@ -2853,6 +2872,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     showLinearIssues,
     showRepositories,
     showSlackMessages,
+    notionMenu.error,
+    showNotionPages,
     slackMenu.error,
     pullRequestLookup.data?.errors,
     pullRequestLookup.error,
@@ -3914,6 +3935,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         void attachGitHubIssue(routeThreadRef, item.url);
         return;
       }
+      if (item.type === "notion-page") {
+        const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
+          expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
+        });
+        if (!applied) return;
+        setComposerHighlightedItemId(null);
+        void attachNotionPage(routeThreadRef, item.pageId);
+        return;
+      }
       if (item.type === "slack-message") {
         const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
           expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
@@ -4040,6 +4070,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       addComposerDraftReviewComment,
       applyPromptReplacement,
       attachGitHubIssue,
+      attachNotionPage,
       attachSlackMessage,
       attachLinearIssue,
       captureThreadTabContext,

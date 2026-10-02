@@ -15,6 +15,7 @@ const LINEAR_IDENTIFIER_PATTERN = /^[a-z][a-z0-9_]*-\d+$/i;
 export type ComposerReferenceTab =
   | "pull-requests"
   | "linear-issues"
+  | "notion-pages"
   | "slack-messages"
   | "github-issues"
   | "repositories";

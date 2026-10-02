@@ -1,3 +1,4 @@
+import { FileTextIcon } from "lucide-react";
 import {
   formatProviderSkillDisplayName,
   resolveProviderSkillSourceKind,
@@ -42,6 +43,7 @@ import { resolvePullRequestState } from "../pullRequest/pullRequestPresentation"
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 
 export type ComposerCommandItem =
+  | { id: string; type: "notion-page"; pageId: string; label: string; description: string }
   | {
       id: string;
       type: "path";
@@ -353,6 +355,9 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
       ) : null}
       {props.item.type === "github-issue" ? (
         <GitHubIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+      ) : null}
+      {props.item.type === "notion-page" ? (
+        <FileTextIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
       ) : null}
       {props.item.type === "slack-message" ? (
         <SlackIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />

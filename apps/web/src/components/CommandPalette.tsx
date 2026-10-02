@@ -1,4 +1,5 @@
-"use client";
+import { FileTextIcon } from "lucide-react";
+("use client");
 
 import { threadPullRequestLinkMode } from "@t3tools/client-runtime/thread-pull-request-compatibility";
 import { visibleThreadPullRequests } from "@t3tools/shared/threadPullRequests";
@@ -43,6 +44,7 @@ import {
 } from "@t3tools/contracts";
 import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
 import { openGitHubIssuePicker } from "./chat/GitHubIssuePicker";
+import { openNotionPagePicker } from "./chat/NotionPagePicker";
 import { openSlackMessagePicker } from "./chat/SlackMessagePicker";
 import { openLinearIssuePicker } from "./chat/LinearIssuePicker";
 import { useThreadLinearLink, useUnlinkLinearIssue } from "./chat/LinearThreadLink";
@@ -2112,6 +2114,16 @@ function OpenCommandPaletteDialog(props: {
       icon: <LinearIcon className={ITEM_ICON_CLASS} />,
       run: async () => {
         openLinearIssuePicker(composerThreadRef);
+      },
+    });
+    actionItems.push({
+      kind: "action",
+      value: "action:attach-notion-page",
+      searchTerms: ["notion", "page", "document", "attach", "context"],
+      title: "Attach Notion page",
+      icon: <FileTextIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        openNotionPagePicker(composerThreadRef);
       },
     });
     actionItems.push({

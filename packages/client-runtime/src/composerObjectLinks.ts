@@ -1,11 +1,12 @@
-import { parseGitHubIssueUrl } from "@t3tools/contracts";
+import { parseNotionPageId, parseGitHubIssueUrl } from "@t3tools/contracts";
 import { parseChangeRequestUrl } from "@t3tools/shared/changeRequestUrl";
 
 /**
  * A link in composer text to something the composer can attach as a chip instead: a Linear
- * issue, a GitHub issue, a pull request, a GitHub repository root, or a Slack message.
+ * issue, a GitHub issue, a pull request, a GitHub repository root, a Slack message, or a Notion page.
  */
 export type ComposerObjectLink =
+  | { readonly kind: "notion-page"; readonly url: string; readonly pageId: string }
   | { readonly kind: "linear-issue"; readonly url: string; readonly identifier: string }
   | {
       readonly kind: "slack-message";
@@ -74,6 +75,8 @@ export function parseComposerObjectLink(url: string): ComposerObjectLink | null 
     return null;
   }
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+  const notionPageId = parseNotionPageId(url);
+  if (notionPageId !== null) return { kind: "notion-page", url, pageId: notionPageId };
   const segments = parsed.pathname.split("/").filter(Boolean);
 
   // https://linear.app/<workspace>/issue/<ENG-123>/<slug>
@@ -112,6 +115,8 @@ export function objectLinkLabel(url: string): string | null {
   switch (link?.kind) {
     case undefined:
       return null;
+    case "notion-page":
+      return "Notion page";
     case "linear-issue":
       return link.identifier;
     case "slack-message":

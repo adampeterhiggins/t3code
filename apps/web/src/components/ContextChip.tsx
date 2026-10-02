@@ -48,6 +48,7 @@ const contextChipVariants = cva(
         "linear-issue": "[--context-chip-accent:oklch(0.62_0.16_270)]",
         "github-issue": "[--context-chip-accent:oklch(0.62_0.02_259)]",
         repository: "[--context-chip-accent:oklch(0.62_0.12_195)]",
+        "notion-page": "[--context-chip-accent:oklch(0.62_0.02_259)]",
         "slack-thread": "[--context-chip-accent:oklch(0.62_0.16_345)]",
       },
       // Colors live in compoundVariants below so they come after the kind colors.
@@ -78,6 +79,7 @@ const contextChipVariants = cva(
           "linear-issue",
           "github-issue",
           "repository",
+          "notion-page",
           "slack-thread",
         ],
         className:

@@ -113,6 +113,8 @@ import { ProviderAuthService } from "./provider/Services/ProviderAuthService.ts"
 import { LinearApi } from "./linear/LinearApi.ts";
 import { LinearAuth } from "./linear/LinearAuth.ts";
 import { LinearThreadLinks } from "./linear/LinearThreadLinks.ts";
+import { NotionApi } from "./notion/NotionApi.ts";
+import { NotionAuth } from "./notion/NotionAuth.ts";
 import { SlackApi } from "./slack/SlackApi.ts";
 import { SlackAuth } from "./slack/SlackAuth.ts";
 import { GitHubIssues } from "./githubIssues/GitHubIssues.ts";
@@ -547,6 +549,8 @@ const makeWsRpcLayer = (
       const linearThreadLinks = yield* LinearThreadLinks;
       const slackAuth = yield* SlackAuth;
       const slackApi = yield* SlackApi;
+      const notionApi = yield* NotionApi;
+      const notionAuth = yield* NotionAuth;
       const githubIssues = yield* GitHubIssues;
       const githubIssueThreadLinks = yield* GitHubIssueThreadLinks;
       const providerInstances = yield* ProviderInstanceRegistry;
@@ -2357,6 +2361,34 @@ const makeWsRpcLayer = (
             linearThreadLinks.unlink(input).pipe(Effect.as({})),
             { "rpc.aggregate": "linear" },
           ),
+        [WS_METHODS.notionSubscribeState]: (_input) =>
+          observeRpcStream(WS_METHODS.notionSubscribeState, notionAuth.state, {
+            "rpc.aggregate": "notion",
+          }),
+        [WS_METHODS.notionStartLogin]: (_input) =>
+          observeRpcEffect(WS_METHODS.notionStartLogin, notionAuth.startLogin, {
+            "rpc.aggregate": "notion",
+          }),
+        [WS_METHODS.notionCompleteLogin]: (input) =>
+          observeRpcEffect(WS_METHODS.notionCompleteLogin, notionAuth.completeLogin(input), {
+            "rpc.aggregate": "notion",
+          }),
+        [WS_METHODS.notionCancelLogin]: (input) =>
+          observeRpcEffect(WS_METHODS.notionCancelLogin, notionAuth.cancelLogin(input), {
+            "rpc.aggregate": "notion",
+          }),
+        [WS_METHODS.notionDisconnect]: (_input) =>
+          observeRpcEffect(WS_METHODS.notionDisconnect, notionAuth.disconnect, {
+            "rpc.aggregate": "notion",
+          }),
+        [WS_METHODS.notionSearchPages]: (input) =>
+          observeRpcEffect(WS_METHODS.notionSearchPages, notionApi.searchPages(input), {
+            "rpc.aggregate": "notion",
+          }),
+        [WS_METHODS.notionGetPage]: (input) =>
+          observeRpcEffect(WS_METHODS.notionGetPage, notionApi.getPage(input), {
+            "rpc.aggregate": "notion",
+          }),
         [WS_METHODS.slackSubscribeState]: (_input) =>
           observeRpcStream(WS_METHODS.slackSubscribeState, slackAuth.state, {
             "rpc.aggregate": "slack",

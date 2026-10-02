@@ -1,4 +1,14 @@
 import {
+  NotionError,
+  NotionConnectionState,
+  NotionCompleteLoginInput,
+  NotionCancelLoginInput,
+  NotionSearchPagesInput,
+  NotionSearchPagesResult,
+  NotionGetPageInput,
+  NotionPageContext,
+} from "./notion.ts";
+import {
   ChatGptReconnectProfileInput,
   ChatGptReconnectProfile,
   ChatGptImportProfileInput,
@@ -516,6 +526,13 @@ export const WS_METHODS = {
   linearUnlinkThread: "linear.unlinkThread",
 
   // Slack methods
+  notionSubscribeState: "notion.subscribeState",
+  notionStartLogin: "notion.startLogin",
+  notionCompleteLogin: "notion.completeLogin",
+  notionCancelLogin: "notion.cancelLogin",
+  notionDisconnect: "notion.disconnect",
+  notionSearchPages: "notion.searchPages",
+  notionGetPage: "notion.getPage",
   slackSubscribeState: "slack.subscribeState",
   slackStartLogin: "slack.startLogin",
   slackCompleteLogin: "slack.completeLogin",
@@ -820,6 +837,44 @@ const WsLinearUnlinkThreadRpc = Rpc.make(WS_METHODS.linearUnlinkThread, {
   payload: LinearUnlinkThreadInput,
   success: Schema.Struct({}),
   error: LinearRpcError,
+});
+
+const NotionRpcError = Schema.Union([NotionError, EnvironmentAuthorizationError]);
+const WsNotionSubscribeStateRpc = Rpc.make(WS_METHODS.notionSubscribeState, {
+  payload: Schema.Struct({}),
+  success: NotionConnectionState,
+  error: NotionRpcError,
+  stream: true,
+});
+const WsNotionStartLoginRpc = Rpc.make(WS_METHODS.notionStartLogin, {
+  payload: Schema.Struct({}),
+  success: NotionConnectionState,
+  error: NotionRpcError,
+});
+const WsNotionCompleteLoginRpc = Rpc.make(WS_METHODS.notionCompleteLogin, {
+  payload: NotionCompleteLoginInput,
+  success: NotionConnectionState,
+  error: NotionRpcError,
+});
+const WsNotionCancelLoginRpc = Rpc.make(WS_METHODS.notionCancelLogin, {
+  payload: NotionCancelLoginInput,
+  success: NotionConnectionState,
+  error: NotionRpcError,
+});
+const WsNotionDisconnectRpc = Rpc.make(WS_METHODS.notionDisconnect, {
+  payload: Schema.Struct({}),
+  success: NotionConnectionState,
+  error: NotionRpcError,
+});
+const WsNotionSearchPagesRpc = Rpc.make(WS_METHODS.notionSearchPages, {
+  payload: NotionSearchPagesInput,
+  success: NotionSearchPagesResult,
+  error: NotionRpcError,
+});
+const WsNotionGetPageRpc = Rpc.make(WS_METHODS.notionGetPage, {
+  payload: NotionGetPageInput,
+  success: NotionPageContext,
+  error: NotionRpcError,
 });
 
 const SlackRpcError = Schema.Union([SlackError, EnvironmentAuthorizationError]);
@@ -1846,6 +1901,13 @@ export const WsRpcGroup = RpcGroup.make(
   WsLinearSubscribeThreadLinksRpc,
   WsLinearLinkThreadRpc,
   WsLinearUnlinkThreadRpc,
+  WsNotionSubscribeStateRpc,
+  WsNotionStartLoginRpc,
+  WsNotionCompleteLoginRpc,
+  WsNotionCancelLoginRpc,
+  WsNotionDisconnectRpc,
+  WsNotionSearchPagesRpc,
+  WsNotionGetPageRpc,
   WsSlackSubscribeStateRpc,
   WsSlackStartLoginRpc,
   WsSlackCompleteLoginRpc,

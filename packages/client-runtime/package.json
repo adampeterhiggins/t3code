@@ -346,6 +346,10 @@
     "./device/duo-control": {
       "types": "./src/device/duoControl.ts",
       "default": "./src/device/duoControl.ts"
+    },
+    "./state/notion": {
+      "types": "./src/state/notion.ts",
+      "default": "./src/state/notion.ts"
     }
   },
   "scripts": {

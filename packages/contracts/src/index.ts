@@ -28,6 +28,7 @@ export * from "./git.ts";
 export * from "./vcs.ts";
 export * from "./sourceControl.ts";
 export * from "./linear.ts";
+export * from "./notion.ts";
 export * from "./slack.ts";
 export * from "./githubIssues.ts";
 export * from "./contextRepositories.ts";

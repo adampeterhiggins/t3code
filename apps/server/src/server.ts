@@ -59,6 +59,8 @@ import { ProviderAuthServiceLive } from "./provider/Layers/ProviderAuthService.t
 import * as LinearApi from "./linear/LinearApi.ts";
 import * as LinearAuth from "./linear/LinearAuth.ts";
 import * as LinearThreadLinks from "./linear/LinearThreadLinks.ts";
+import * as NotionApi from "./notion/NotionApi.ts";
+import * as NotionAuth from "./notion/NotionAuth.ts";
 import * as SlackApi from "./slack/SlackApi.ts";
 import * as SlackAuth from "./slack/SlackAuth.ts";
 import * as GitHubIssues from "./githubIssues/GitHubIssues.ts";
@@ -560,6 +562,7 @@ const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
       Layer.provideMerge(LinearAuth.layer),
     ),
   ),
+  Layer.provideMerge(NotionApi.layer.pipe(Layer.provideMerge(NotionAuth.layer))),
   Layer.provideMerge(SlackApi.layer.pipe(Layer.provideMerge(SlackAuth.layer))),
   Layer.provideMerge(GitHubIssueThreadLinks.layer.pipe(Layer.provideMerge(GitHubIssues.layer))),
   // Core Services

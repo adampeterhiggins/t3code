@@ -403,6 +403,32 @@ export function ComposerContextSheet(props: {
                     </Text>
                   </View>
                 ) : null}
+                {record.kind === "notion-page" ? (
+                  <View className="gap-3">
+                    <View className="gap-1">
+                      <Text selectable className="text-lg font-t3-semibold text-foreground">
+                        {record.title}
+                      </Text>
+                    </View>
+                    {/^https?:\/\//i.test(record.url) ? (
+                      <Pressable
+                        accessibilityRole="link"
+                        onPress={() => {
+                          void tryOpenExternalUrl(record.url, "markdown-link").then((opened) => {
+                            if (!opened) Alert.alert("Could not open Notion", "Try again later.");
+                          });
+                        }}
+                        className="rounded-xl bg-subtle p-4"
+                      >
+                        <Text className="text-foreground">Open in Notion</Text>
+                      </Pressable>
+                    ) : null}
+                    {/* Plain text like the other captured context here: exactly what the agent received. */}
+                    <Text selectable className="text-sm text-foreground">
+                      {record.markdown}
+                    </Text>
+                  </View>
+                ) : null}
                 {record.kind === "slack-thread" ? (
                   <View className="gap-3">
                     <View className="gap-1">

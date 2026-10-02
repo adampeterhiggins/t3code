@@ -6,6 +6,8 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
+import { notionPageContextRecord } from "@t3tools/client-runtime/state/notion";
+import { notionEnvironment } from "~/state/notion";
 import { slackThreadContextRecord } from "@t3tools/client-runtime/state/slack";
 import type { ScopedThreadRef, SlackErrorReason } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
@@ -76,6 +78,7 @@ export function useResolveComposerObjectLink(input: {
   const environmentId = threadRef.environmentId;
   const getLinearIssue = useAtomCommand(linearEnvironment.getIssue, { reportFailure: false });
   const getGitHubIssue = useAtomCommand(githubIssueEnvironment.getIssue, { reportFailure: false });
+  const getNotionPage = useAtomCommand(notionEnvironment.getPage, { reportFailure: false });
   const getSlackThread = useAtomCommand(slackEnvironment.getThread, { reportFailure: false });
   const getPullRequest = useAtomQueryRunner(pullRequestEnvironment.detail, {
     reportFailure: false,
@@ -90,6 +93,24 @@ export function useResolveComposerObjectLink(input: {
   return useCallback(
     async (link: ComposerObjectLink): Promise<ResolvedComposerObjectLink | null> => {
       switch (link.kind) {
+        case "notion-page": {
+          const result = await getNotionPage({ environmentId, input: { id: link.pageId } });
+          if (result._tag === "Failure") {
+            if (!isAtomCommandInterrupted(result))
+              toastManager.add({
+                type: "info",
+                title: "Could not attach that Notion page",
+                description:
+                  "The link was kept. Connect Notion in Settings → Integrations and share this page with the connection.",
+              });
+            return null;
+          }
+          const record = notionPageContextRecord(result.value);
+          return {
+            reference: { kind: record.kind, contextId: record.contextId, label: record.label },
+            commit: () => useIssueContextStore.getState().upsert(threadRef.threadId, record),
+          };
+        }
         case "linear-issue": {
           const result = await getLinearIssue({ environmentId, input: { id: link.identifier } });
           if (result._tag === "Failure") return null;
@@ -175,6 +196,7 @@ export function useResolveComposerObjectLink(input: {
       getLinearIssue,
       getPullRequest,
       getPullRequestActivity,
+      getNotionPage,
       getSlackThread,
       projects,
       pullRequestsEnabled,

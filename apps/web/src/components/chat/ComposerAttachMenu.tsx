@@ -11,6 +11,8 @@ import { openLinearIssuePicker } from "./LinearIssuePicker";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { openPullRequestAttachPicker } from "./PullRequestAttachPicker";
 import { openRepositoryAttachPicker } from "./RepositoryAttachPicker";
+import { openNotionPagePicker } from "./NotionPagePicker";
+import { FileTextIcon } from "lucide-react";
 import { openSlackMessagePicker } from "./SlackMessagePicker";
 import { openThreadAttachPicker } from "./ThreadAttachPicker";
 
@@ -46,6 +48,10 @@ export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
         <MenuItem onClick={() => openLinearIssuePicker(props.threadRef)}>
           <LinearIcon />
           Linear issue
+        </MenuItem>
+        <MenuItem onClick={() => openNotionPagePicker(props.threadRef)}>
+          <FileTextIcon />
+          Notion page
         </MenuItem>
         <MenuItem onClick={() => openSlackMessagePicker(props.threadRef)}>
           <SlackIcon />
