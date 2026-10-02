@@ -808,6 +808,25 @@ describe("application preferences", () => {
     expect(cleared.fileOpenDefault).toBe("t3");
   });
 
+  it("persists icon changes and restores the folder default when cleared", () => {
+    const application = {
+      id: "custom:opencursor" as const,
+      label: "opencursor",
+      command: "opencursor",
+      args: [],
+    };
+    const configured = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, {
+      customEditors: [{ ...application, icon: "cursor" }],
+    });
+    expect(configured.customEditors[0]?.icon).toBe("cursor");
+    const edited = applyServerSettingsPatch(configured, {
+      customEditors: [{ ...application, icon: "terminal" }],
+    });
+    expect(edited.customEditors[0]?.icon).toBe("terminal");
+    const cleared = applyServerSettingsPatch(edited, { customEditors: [application] });
+    expect(cleared.customEditors[0]?.icon).toBeUndefined();
+  });
+
   it("pins and unpins the workspace Open default and turns shell mode off", () => {
     const opencursor = {
       id: "custom:opencursor" as const,

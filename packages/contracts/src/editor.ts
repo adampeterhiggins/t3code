@@ -86,6 +86,16 @@ export const CustomEditorId = Schema.TemplateLiteral(["custom:", Schema.String])
 export const EditorId = Schema.Union([Schema.Literals(EDITORS.map((e) => e.id)), CustomEditorId]);
 export type EditorId = typeof EditorId.Type;
 
+/** Local icon identifiers; application logos can be used without changing the launch command. */
+export const CustomEditorIcon = Schema.Literals([
+  "folder",
+  "terminal",
+  "code",
+  "globe",
+  ...EDITORS.map((editor) => editor.id),
+]);
+export type CustomEditorIcon = typeof CustomEditorIcon.Type;
+
 /**
  * Commands run on the environment host, with the file path as a separate argument.
  * `runInShell` runs `command` through the host user's interactive login shell
@@ -98,6 +108,7 @@ export const CustomEditor = Schema.Struct({
   command: TrimmedNonEmptyString,
   args: Schema.Array(Schema.String),
   runInShell: Schema.optionalKey(Schema.Boolean),
+  icon: Schema.optionalKey(CustomEditorIcon),
 });
 export type CustomEditor = typeof CustomEditor.Type;
 
