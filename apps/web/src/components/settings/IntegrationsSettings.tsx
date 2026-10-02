@@ -114,6 +114,7 @@ import {
 } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import { ProjectDefaultsSettings } from "./ProjectDefaultsSettings";
+import { NotionSettingsSection } from "./NotionSettings";
 import { LinearSettingsSection } from "./LinearSettings";
 import { SlackSettingsSection } from "./SlackSettings";
 import { useSettingsScope } from "./SettingsScopeContext";
@@ -1461,6 +1462,7 @@ export function IntegrationsSettingsPanel() {
       </SettingsSection>
       <DeviceIntegrationSettings />
       <LinearSettingsSection />
+      <NotionSettingsSection />
       <SlackSettingsSection />
     </SettingsPageContainer>
   );

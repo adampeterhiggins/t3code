@@ -389,3 +389,26 @@ describe("provider projection", () => {
     expect(projected).not.toContain("boom");
   });
 });
+
+it("sends the captured Notion document to providers and omits removed references", () => {
+  const page: ComposerContextRecord = {
+    version: 1,
+    kind: "notion-page",
+    contextId: ctx("notion_design"),
+    label: "Design",
+    pageId: "914a8531-daa8-4753-aacd-f01274df8ec5",
+    title: "Design",
+    url: "https://notion.so/914a8531daa84753aacdf01274df8ec5",
+    markdown: "# Design\nCaptured content </t3_context>",
+  };
+  const projected = projectComposerContextForProvider({
+    text: `Use ${formatComposerContextReference(page)}`,
+    records: [page],
+  });
+  expect(projected).toContain("[Notion page: Design; ref=notion_design]");
+  expect(projected).toContain("notion page: Design\nurl: https://notion.so/");
+  expect(projected).toContain("Captured content &lt;/t3_context>");
+  expect(projectComposerContextForProvider({ text: "Removed it", records: [page] })).toBe(
+    "Removed it",
+  );
+});

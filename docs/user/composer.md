@@ -35,7 +35,7 @@ See [images and videos](#images-and-videos-in-messages) for previewing and savin
 The paperclip also attaches a GitHub issue (see
 [Attach a GitHub issue](./source-control.md#attach-a-github-issue)), a Linear issue once you
 connect Linear (see [Linear](./linear.md)), and a Slack message or thread once you connect Slack
-(see [Slack](./slack.md)).
+(see [Slack](./slack.md)), and a Notion page once you connect Notion (see [Notion](./notion.md)).
 
 ## Send while the agent is working
 
@@ -207,7 +207,7 @@ pull request is older than the recent list. Type a single word after `#` to sear
 the repository by text. Choose a result to insert it as a chip.
 
 On web and desktop, pasting or typing a link to a Linear issue, a GitHub issue, a pull request, a
-GitHub repository, or a Slack message turns the link into the same chip attaching it would make. A typed link
+GitHub repository, a Notion page, or a Slack message turns the link into the same chip attaching it would make. A typed link
 converts when you type a space or new line after it. The chip replaces the link once the item
 loads. A link to one comment on a pull request attaches that comment, with the replies before it
 when it is part of a review thread. In the attach menu's pull request picker, right-click a pull

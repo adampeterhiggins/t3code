@@ -66,6 +66,7 @@ import { AppText as Text } from "../../components/AppText";
 import { ComposerAttachmentButton } from "../../components/ComposerAttachmentButton";
 import { useLinearIssuePicker } from "../../components/LinearIssuePickerSheet";
 import { useGitHubIssuePicker } from "../../components/GitHubIssuePickerSheet";
+import { useNotionPagePicker } from "../../components/NotionPagePickerSheet";
 import { useSlackMessagePicker } from "../../components/SlackMessagePickerSheet";
 import { useRepositoryPicker } from "../../components/RepositoryPickerSheet";
 import {
@@ -338,6 +339,10 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   }, [props.serverConfig, props.selectedThread.modelSelection.instanceId]);
   const composerOwnerKey = scopedThreadKey(props.environmentId, props.selectedThread.id);
   const linearIssuePicker = useLinearIssuePicker({
+    environmentId: props.environmentId,
+    draftKey: composerOwnerKey,
+  });
+  const notionPagePicker = useNotionPagePicker({
     environmentId: props.environmentId,
     draftKey: composerOwnerKey,
   });
@@ -744,6 +749,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                 onPickFiles={props.onPickDraftFiles}
                 onPickLinearIssue={linearIssuePicker.open}
                 onPickGitHubIssue={workspaceCwd ? gitHubIssuePicker.open : undefined}
+                onPickNotionPage={notionPagePicker.open}
                 onPickSlackMessage={slackMessagePicker.open}
                 onPickRepository={repositoryPicker.open}
               />
@@ -999,6 +1005,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                       onPickFiles={props.onPickDraftFiles}
                       onPickLinearIssue={linearIssuePicker.open}
                       onPickGitHubIssue={workspaceCwd ? gitHubIssuePicker.open : undefined}
+                      onPickNotionPage={notionPagePicker.open}
                       onPickSlackMessage={slackMessagePicker.open}
                       onPickRepository={repositoryPicker.open}
                     />
@@ -1053,6 +1060,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       {linearIssuePicker.sheet}
       {gitHubIssuePicker.sheet}
       {slackMessagePicker.sheet}
+      {notionPagePicker.sheet}
       {repositoryPicker.sheet}
     </Animated.View>
   );

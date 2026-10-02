@@ -1,3 +1,4 @@
+import type { NotionPageContextRecord } from "@t3tools/contracts";
 import {
   contextRepositoryOutcomeLabel,
   describeContextRepositoryGitStatus,
@@ -490,5 +491,25 @@ export function UnresolvedChip(props: { label: string; tooltip: string; copyMark
       data-markdown-copy={props.copyMarkdown}
       tooltip={props.tooltip}
     />
+  );
+}
+
+export function NotionPageDetails({
+  record,
+  onOpenLink,
+}: {
+  record: NotionPageContextRecord;
+  onOpenLink: (event: MouseEvent<HTMLElement>, url: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <IssueDetailsHeader
+        summary={record.title}
+        url={record.url}
+        linkLabel="Open in Notion"
+        onOpenLink={onOpenLink}
+      />
+      <IssueMarkdownBody text={record.markdown} />
+    </div>
   );
 }

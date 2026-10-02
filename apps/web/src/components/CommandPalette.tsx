@@ -1,4 +1,4 @@
-"use client";
+("use client");
 
 import { threadPullRequestLinkMode } from "@t3tools/client-runtime/thread-pull-request-compatibility";
 import { visibleThreadPullRequests } from "@t3tools/shared/threadPullRequests";
@@ -43,6 +43,7 @@ import {
 } from "@t3tools/contracts";
 import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
 import { openGitHubIssuePicker } from "./chat/GitHubIssuePicker";
+import { openNotionPagePicker } from "./chat/NotionPagePicker";
 import { openSlackMessagePicker } from "./chat/SlackMessagePicker";
 import { openLinearIssuePicker } from "./chat/LinearIssuePicker";
 import { useThreadLinearLink, useUnlinkLinearIssue } from "./chat/LinearThreadLink";
@@ -80,7 +81,7 @@ import {
   SunIcon,
   TextSearchIcon,
 } from "lucide-react";
-import { LinearIcon, SlackIcon } from "./Icons";
+import { LinearIcon, NotionIcon, SlackIcon } from "./Icons";
 import {
   useCallback,
   useDeferredValue,
@@ -2112,6 +2113,16 @@ function OpenCommandPaletteDialog(props: {
       icon: <LinearIcon className={ITEM_ICON_CLASS} />,
       run: async () => {
         openLinearIssuePicker(composerThreadRef);
+      },
+    });
+    actionItems.push({
+      kind: "action",
+      value: "action:attach-notion-page",
+      searchTerms: ["notion", "page", "document", "attach", "context"],
+      title: "Attach Notion page",
+      icon: <NotionIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        openNotionPagePicker(composerThreadRef);
       },
     });
     actionItems.push({

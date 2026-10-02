@@ -9,6 +9,7 @@ import {
 import { ContextRepositoryDirectoryName, ContextRepositoryOutcome } from "./contextRepositories.ts";
 import { GITHUB_ISSUE_MARKDOWN_MAX_CHARS } from "./githubIssues.ts";
 import { LINEAR_ISSUE_MARKDOWN_MAX_CHARS } from "./linear.ts";
+import { NOTION_PAGE_MARKDOWN_MAX_CHARS } from "./notion.ts";
 import { SLACK_THREAD_MARKDOWN_MAX_CHARS } from "./slack.ts";
 
 /**
@@ -34,6 +35,7 @@ export const COMPOSER_CONTEXT_KINDS = [
   "github-issue",
   "repository",
   "slack-thread",
+  "notion-page",
 ] as const;
 export type KnownComposerContextKind = (typeof COMPOSER_CONTEXT_KINDS)[number];
 
@@ -320,6 +322,16 @@ export const UnknownContextRecord = Schema.Struct({
 });
 export type UnknownContextRecord = typeof UnknownContextRecord.Type;
 
+export const NotionPageContextRecord = Schema.Struct({
+  ...recordBase,
+  kind: Schema.Literal("notion-page"),
+  pageId: TrimmedNonEmptyString.check(Schema.isMaxLength(128)),
+  title: ShortString,
+  url: ShortString,
+  markdown: BoundedString(NOTION_PAGE_MARKDOWN_MAX_CHARS),
+});
+export type NotionPageContextRecord = typeof NotionPageContextRecord.Type;
+
 export const KnownComposerContextRecord = Schema.Union([
   ImageContextRecord,
   FileContextRecord,
@@ -334,6 +346,7 @@ export const KnownComposerContextRecord = Schema.Union([
   GitHubIssueContextRecord,
   RepositoryContextRecord,
   SlackThreadContextRecord,
+  NotionPageContextRecord,
 ]);
 export type KnownComposerContextRecord = typeof KnownComposerContextRecord.Type;
 

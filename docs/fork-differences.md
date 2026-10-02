@@ -766,6 +766,12 @@ and `apps/mobile/src/features/threads/UsageLimitRecoveryNotice.tsx`. User guides
 [providers-codex.md](./user/providers-codex.md#codex-says-i-hit-a-usage-limit) and
 [providers-claude.md](./user/providers-claude.md#usage-limits).
 
+## Notion page context
+
+Web and desktop support Notion OAuth sign-in in Integrations settings, page attachments from the paperclip picker and command palette, a Notion tab in the `#` menu, and conversion of pasted page links to context chips. Mobile can pick pages using the environment's connection and inspect captured page contents. Pages are captured as bounded Markdown snapshots and sent through the shared context projection to every provider. Remote sign-in supports pasting the OAuth redirect URL back into settings.
+
+Code: [NotionAuth](../apps/server/src/notion/NotionAuth.ts), [NotionApi](../apps/server/src/notion/NotionApi.ts), [NotionPagePicker](../apps/web/src/components/chat/NotionPagePicker.tsx), and [NotionPagePickerSheet](../apps/mobile/src/components/NotionPagePickerSheet.tsx). User guide: [Notion](./user/notion.md).
+
 ## Keeping this page current
 
 Update this page in the same change that adds, changes, or removes a user-visible fork-only

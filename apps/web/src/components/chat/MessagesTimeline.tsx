@@ -1,6 +1,7 @@
+import type { NotionPageContextRecord } from "@t3tools/contracts";
 import { ToolCallBody } from "../ToolCallBody";
 import { ArrowUpIcon, ClockIcon } from "lucide-react";
-import { GitHubIcon, LinearIcon, SlackIcon } from "../Icons";
+import { GitHubIcon, LinearIcon, NotionIcon, SlackIcon } from "../Icons";
 import { ReadOnlySourcePreview } from "../files/AttachmentFilePreview";
 import { useRightPanelStore } from "~/rightPanelStore";
 import {
@@ -239,6 +240,7 @@ import {
   LinearIssueDetails,
   RepositoryDetails,
   SlackThreadDetails,
+  NotionPageDetails,
   UnresolvedChip,
 } from "../contextChipParts";
 import {
@@ -4023,6 +4025,24 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
         ),
     },
     {
+      kind: "notion-page",
+      canRender: (record) => record.kind === "notion-page",
+      render: (record, context) =>
+        record.kind === "notion-page" ? (
+          <UserMessageContextPopover
+            copyMarkdown={context.copyMarkdown}
+            accessibleLabel={`Notion page, ${record.label}`}
+            kind="notion-page"
+            icon={<NotionIcon />}
+            label={record.label}
+          >
+            <UserMessageNotionPageDetails record={record} />
+          </UserMessageContextPopover>
+        ) : (
+          <UnavailableUserMessageContextChip {...context} />
+        ),
+    },
+    {
       kind: "slack-thread",
       canRender: (record) => record.kind === "slack-thread",
       render: (record, context) =>
@@ -5206,4 +5226,9 @@ function QuestionAnswerHistory({
       ))}
     </div>
   );
+}
+
+function UserMessageNotionPageDetails({ record }: { record: NotionPageContextRecord }) {
+  const { threadRef } = use(TimelineRowCtx);
+  return <NotionPageDetails record={record} onOpenLink={useLinkClickHandler(threadRef)} />;
 }

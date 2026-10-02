@@ -59,6 +59,7 @@ import {
   takeStartFromGitHubIssue,
   useGitHubIssuePicker,
 } from "../../components/GitHubIssuePickerSheet";
+import { useNotionPagePicker } from "../../components/NotionPagePickerSheet";
 import { useSlackMessagePicker } from "../../components/SlackMessagePickerSheet";
 import { useRepositoryPicker } from "../../components/RepositoryPickerSheet";
 import { ControlPillMenu } from "../../components/ControlPillMenu";
@@ -991,6 +992,11 @@ export function NewTaskDraftScreen(props: {
       ? { environmentId: flow.selectedEnvironmentId, draftKey: flow.draftKey }
       : null,
   );
+  const notionPagePicker = useNotionPagePicker(
+    flow.draftKey && flow.selectedEnvironmentId
+      ? { environmentId: flow.selectedEnvironmentId, draftKey: flow.draftKey }
+      : null,
+  );
   const slackMessagePicker = useSlackMessagePicker(
     flow.draftKey && flow.selectedEnvironmentId
       ? { environmentId: flow.selectedEnvironmentId, draftKey: flow.draftKey }
@@ -1829,6 +1835,11 @@ export function NewTaskDraftScreen(props: {
                     onPickGitHubIssue={
                       flow.draftKey && selectedProject ? gitHubIssuePicker.open : undefined
                     }
+                    onPickNotionPage={
+                      flow.draftKey && flow.selectedEnvironmentId
+                        ? notionPagePicker.open
+                        : undefined
+                    }
                     onPickSlackMessage={
                       flow.draftKey && flow.selectedEnvironmentId
                         ? slackMessagePicker.open
@@ -1920,6 +1931,7 @@ export function NewTaskDraftScreen(props: {
       {gitHubIssuePicker.sheet}
       {startFromGitHubIssuePicker.sheet}
       {slackMessagePicker.sheet}
+      {notionPagePicker.sheet}
       {startFromPullRequestPicker.sheet}
       {repositoryPicker.sheet}
     </View>

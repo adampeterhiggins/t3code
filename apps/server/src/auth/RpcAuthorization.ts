@@ -127,6 +127,13 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.linearDisconnect]: AuthOrchestrationOperateScope,
   // Reading messages is a read; connecting or disconnecting the environment's
   // Slack account changes what every client of this environment can reach.
+  [WS_METHODS.notionSubscribeState]: AuthOrchestrationReadScope,
+  [WS_METHODS.notionStartLogin]: AuthOrchestrationOperateScope,
+  [WS_METHODS.notionCompleteLogin]: AuthOrchestrationOperateScope,
+  [WS_METHODS.notionCancelLogin]: AuthOrchestrationOperateScope,
+  [WS_METHODS.notionDisconnect]: AuthOrchestrationOperateScope,
+  [WS_METHODS.notionSearchPages]: AuthOrchestrationReadScope,
+  [WS_METHODS.notionGetPage]: AuthOrchestrationReadScope,
   [WS_METHODS.slackSubscribeState]: AuthOrchestrationReadScope,
   [WS_METHODS.slackSearchMessages]: AuthOrchestrationReadScope,
   [WS_METHODS.slackGetThread]: AuthOrchestrationReadScope,

@@ -237,6 +237,8 @@ function formatComposerContextProviderPayload(record: KnownComposerContextRecord
       return `name: ${record.name}`;
     case "thread-tab":
       return [`chat: ${record.title}`, `threadId: ${record.threadId}`, record.summary].join("\n");
+    case "notion-page":
+      return [`notion page: ${record.title}`, `url: ${record.url}`, record.markdown].join("\n");
     case "linear-issue":
       return [
         `linear issue: ${record.identifier}`,

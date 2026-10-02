@@ -143,6 +143,8 @@ import { ProviderAuthService } from "./provider/Services/ProviderAuthService.ts"
 import { LinearApi } from "./linear/LinearApi.ts";
 import { LinearThreadLinks } from "./linear/LinearThreadLinks.ts";
 import { LinearAuth } from "./linear/LinearAuth.ts";
+import { NotionApi } from "./notion/NotionApi.ts";
+import { NotionAuth } from "./notion/NotionAuth.ts";
 import { SlackApi } from "./slack/SlackApi.ts";
 import { SlackAuth } from "./slack/SlackAuth.ts";
 import { GitHubIssues } from "./githubIssues/GitHubIssues.ts";
@@ -846,6 +848,8 @@ const buildAppUnderTest = (options?: {
           Layer.mock(LinearThreadLinks)({ refresh: Effect.void }),
           Layer.mock(SlackAuth)({}),
           Layer.mock(SlackApi)({}),
+          Layer.mock(NotionApi)({}),
+          Layer.mock(NotionAuth)({}),
           Layer.mock(GitHubIssues)({}),
           Layer.mock(GitHubIssueThreadLinks)({ refresh: Effect.void }),
           Layer.mock(ProviderInstanceRegistry)({

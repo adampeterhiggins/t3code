@@ -135,3 +135,13 @@ describe("findTypedComposerObjectLink", () => {
     expect(findTypedComposerObjectLink(`${url} and `, url.length + 5)).toBeNull();
   });
 });
+
+it("recognizes Notion page links in pasted prose", () => {
+  const url = "https://www.notion.so/acme/Design-914a8531daa84753aacdf01274df8ec5";
+  expect(parseComposerObjectLink(url)).toMatchObject({
+    kind: "notion-page",
+    pageId: "914a8531-daa8-4753-aacd-f01274df8ec5",
+  });
+  expect(objectLinkLabel(url)).toBe("Notion page");
+  expect(findComposerObjectLinks(`Read ${url}.`)).toHaveLength(1);
+});

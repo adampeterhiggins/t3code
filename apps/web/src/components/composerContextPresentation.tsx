@@ -1,3 +1,4 @@
+import type { NotionPageContextRecord } from "@t3tools/contracts";
 import ChatMarkdown from "./ChatMarkdown";
 import { ReadOnlySourcePreview } from "./files/AttachmentFilePreview";
 import type {
@@ -16,7 +17,7 @@ import {
   MessagesSquareIcon,
   MousePointerClickIcon,
 } from "lucide-react";
-import { GitHubIcon, LinearIcon, SlackIcon } from "./Icons";
+import { GitHubIcon, LinearIcon, NotionIcon, SlackIcon } from "./Icons";
 import { createContext, type MouseEvent, type ReactElement, type ReactNode, use } from "react";
 import type { EnvironmentId } from "@t3tools/contracts";
 
@@ -61,6 +62,7 @@ import {
   LinearIssueDetails,
   RepositoryDetails,
   SlackThreadDetails,
+  NotionPageDetails,
   PULL_REQUEST_CHIP_KINDS,
   PullRequestChip,
   ThreadTabSummaryDetails,
@@ -72,6 +74,7 @@ import {
  * shape; the editor only needs a way to look one up by id.
  */
 export type ComposerDraftContextRecord =
+  | { kind: "notion-page"; record: NotionPageContextRecord }
   | { kind: "terminal"; record: TerminalContextDraft }
   | { kind: "review-comment"; record: ReviewCommentContext }
   | { kind: "preview-annotation"; record: PreviewAnnotationPayload }
@@ -166,6 +169,8 @@ export function composerContextRecordsFromDraft(input: {
 
 function issueDraftContextRecord(record: IssueContextRecord): ComposerDraftContextRecord {
   switch (record.kind) {
+    case "notion-page":
+      return { kind: "notion-page", record };
     case "linear-issue":
       return { kind: "linear-issue", record };
     case "github-issue":
@@ -527,6 +532,23 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
         ),
     },
     {
+      kind: "notion-page",
+      canRender: (entry) => entry.kind === "notion-page",
+      render: (entry, context, definition) =>
+        entry.kind === "notion-page" ? (
+          <ContextChip
+            icon={<NotionIcon />}
+            label={entry.record.label}
+            kindLabel="Notion page"
+            details={<ComposerNotionPageDetails record={entry.record} />}
+            detailsMode={definition.capabilities.details}
+            kind="notion-page"
+          />
+        ) : (
+          <UnresolvedContextChip label={context.label} />
+        ),
+    },
+    {
       kind: "slack-thread",
       canRender: (entry) => entry.kind === "slack-thread",
       render: (entry, context, definition) =>
@@ -586,4 +608,9 @@ export function ComposerContextReferenceChip(props: {
   return composerContextPresentationRegistry.render(props.kind, records.get(props.contextId), {
     label: props.label,
   });
+}
+
+function ComposerNotionPageDetails({ record }: { record: NotionPageContextRecord }) {
+  const actions = use(ComposerContextActionsContext);
+  return <NotionPageDetails record={record} onOpenLink={actions.openLink} />;
 }

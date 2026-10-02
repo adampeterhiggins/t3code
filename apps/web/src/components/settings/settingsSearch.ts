@@ -649,6 +649,16 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["linear app desktop open in linear links browser"],
   },
   {
+    id: "notion",
+    title: "Notion",
+    to: "/settings/integrations",
+    searchTerms: [
+      "notion pages documents connect account sign in oauth client id client secret attach context",
+    ],
+    environmentOnly: true,
+    scope: "environment-defaults",
+  },
+  {
     id: "slack",
     title: "Slack",
     to: "/settings/integrations",
