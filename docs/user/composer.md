@@ -284,8 +284,10 @@ Right-click a file link and choose **Open in T3 file viewer** to preview it with
 its default.
 
 Add a custom application with a name, executable command, and optional arguments, one per line.
-T3 appends the file path automatically. For Typora on macOS, use `open` as the command and enter
-`-a` and `Typora` on separate argument lines, then save a `.md` rule targeting Typora.
+Choose an **Icon** to identify it in the workspace Open button and picker; use **Folder (default)**
+to restore the default icon. T3 appends the file path automatically. For Typora on macOS, use `open`
+as the command and enter `-a` and `Typora` on separate argument lines, then save a `.md` rule
+targeting Typora.
 You can edit or remove an application later; removal resets its file rules to the default and
 its default selection to the T3 viewer.
 

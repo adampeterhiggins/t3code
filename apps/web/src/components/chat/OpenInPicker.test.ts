@@ -1,7 +1,7 @@
-import { FolderClosedIcon } from "lucide-react";
+import { FolderClosedIcon, TerminalIcon } from "lucide-react";
 import { describe, expect, it } from "vite-plus/test";
 
-import { FileExplorerIcon, FinderIcon } from "../Icons";
+import { CursorIcon, FileExplorerIcon, FinderIcon, VisualStudioCode } from "../Icons";
 import { resolveOpenInOptions, resolveOpenInEditorIds } from "./OpenInPicker";
 
 describe("resolveOpenInOptions", () => {
@@ -48,4 +48,25 @@ it("keeps host applications available remotely without inventing SSH support", (
   expect(resolveOpenInEditorIds("remote-unavailable", ["idea"], ["vscode"], customEditors)).toEqual(
     ["custom:typora"],
   );
+});
+
+it.each([
+  [undefined, FolderClosedIcon, "generic"],
+  ["folder", FolderClosedIcon, "generic"],
+  ["cursor", CursorIcon, "brand"],
+  ["vscode", VisualStudioCode, "brand"],
+  ["terminal", TerminalIcon, "generic"],
+] as const)("uses the configured custom application icon %s", (icon, Icon, kind) => {
+  const customEditors = [
+    {
+      id: "custom:opencursor" as const,
+      label: "opencursor",
+      command: "opencursor",
+      args: [],
+      ...(icon ? { icon } : {}),
+    },
+  ];
+  expect(resolveOpenInOptions("MacIntel", ["custom:opencursor"], customEditors)).toEqual([
+    { value: "custom:opencursor", label: "opencursor", Icon, kind },
+  ]);
 });

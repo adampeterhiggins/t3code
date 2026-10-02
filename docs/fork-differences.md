@@ -18,7 +18,8 @@ is in [AGENTS.md](../AGENTS.md#fork-differences).
 ## Custom file applications
 
 Settings → Integrations → Open in can add, edit, and remove applications for one environment,
-choose a default for chat file links, and override it by file extension. Custom applications
+choose a default for chat file links, and override it by file extension. Each custom application
+can use an application logo or a general icon in the workspace Open button and picker. Custom applications
 appear in the workspace Open in picker and file Open with menus, and can run through the user's
 interactive login shell so shell functions and aliases work. The workspace Open button can be
 pinned to any application instead of following the last-used pick. Commands run on the

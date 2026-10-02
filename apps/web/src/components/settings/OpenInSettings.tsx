@@ -1,4 +1,11 @@
-import { EDITORS, type EditorId, type CustomEditor, type FileOpenTarget } from "@t3tools/contracts";
+import {
+  EDITORS,
+  type EditorId,
+  type CustomEditor,
+  type CustomEditorIcon,
+  type FileOpenTarget,
+} from "@t3tools/contracts";
+import { resolveCustomEditorIcon, resolveCustomEditorIconOptions } from "../editorIcons";
 import { randomUUID } from "../../lib/utils";
 import { editorLabelForPlatform } from "../../editorLabels";
 import { Textarea } from "../ui/textarea";
@@ -23,6 +30,9 @@ export function OpenInSettings() {
   const [label, setLabel] = useState("");
   const [command, setCommand] = useState("");
   const [args, setArgs] = useState("");
+  const [icon, setIcon] = useState<CustomEditorIcon>("folder");
+  const iconOptions = resolveCustomEditorIconOptions(navigator.platform);
+  const selectedIcon = resolveCustomEditorIcon(icon, navigator.platform);
   const [runInShell, setRunInShell] = useState(false);
   const [editingId, setEditingId] = useState<CustomEditor["id"] | null>(null);
   const [extension, setExtension] = useState("");
@@ -95,6 +105,7 @@ export function OpenInSettings() {
     setCommand("");
     setArgs("");
     setRunInShell(false);
+    setIcon("folder");
   }
   return (
     <SettingsSection id="open-in" title="Open in">
@@ -202,37 +213,93 @@ export function OpenInSettings() {
         }
       >
         <div className="space-y-2">
-          {settings.customEditors.map((editor) => (
-            <div key={editor.id} className="flex items-center gap-2">
-              <span className="flex-1 text-sm">
-                {editor.label} · {editor.command}
-                {editor.runInShell ? " (shell)" : ""}
-              </span>
-              <Button
-                size="xs"
-                variant="outline"
-                disabled={disabled}
-                onClick={() => {
-                  setEditingId(editor.id);
-                  setLabel(editor.label);
-                  setCommand(editor.command);
-                  setArgs(editor.args.join("\n"));
-                  setRunInShell(editor.runInShell === true);
-                }}
-              >
-                Edit
-              </Button>
-              <Button
-                size="xs"
-                variant="outline"
-                disabled={disabled}
-                aria-label={`Remove ${editor.label}`}
-                onClick={() => removeEditor(editor.id)}
-              >
-                Remove
-              </Button>
-            </div>
-          ))}
+          {settings.customEditors.map((editor) => {
+            const { Icon, kind } = resolveCustomEditorIcon(editor.icon, navigator.platform);
+            return (
+              <div key={editor.id} className="flex items-center gap-2">
+                <Icon
+                  aria-hidden="true"
+                  className={
+                    kind === "brand"
+                      ? "size-4 text-foreground opacity-100"
+                      : "size-4 text-muted-foreground"
+                  }
+                />
+                <span className="flex-1 text-sm">
+                  {editor.label} · {editor.command}
+                  {editor.runInShell ? " (shell)" : ""}
+                </span>
+                <Button
+                  size="xs"
+                  variant="outline"
+                  disabled={disabled}
+                  onClick={() => {
+                    setEditingId(editor.id);
+                    setLabel(editor.label);
+                    setCommand(editor.command);
+                    setArgs(editor.args.join("\n"));
+                    setRunInShell(editor.runInShell === true);
+                    setIcon(editor.icon ?? "folder");
+                  }}
+                >
+                  Edit
+                </Button>
+                <Button
+                  size="xs"
+                  variant="outline"
+                  disabled={disabled}
+                  aria-label={`Remove ${editor.label}`}
+                  onClick={() => removeEditor(editor.id)}
+                >
+                  Remove
+                </Button>
+              </div>
+            );
+          })}
+          <div className="space-y-1 text-sm">
+            <span>Icon</span>
+            <Select
+              value={icon}
+              disabled={disabled}
+              onValueChange={(next) => {
+                const option = iconOptions.find((candidate) => candidate.value === next);
+                if (option) setIcon(option.value);
+              }}
+            >
+              <SelectTrigger aria-label="Application icon">
+                <SelectValue>
+                  <span className="flex items-center gap-2">
+                    <selectedIcon.Icon
+                      aria-hidden="true"
+                      className={
+                        selectedIcon.kind === "brand"
+                          ? "size-4 text-foreground opacity-100"
+                          : "size-4 text-muted-foreground"
+                      }
+                    />
+                    {selectedIcon.label}
+                  </span>
+                </SelectValue>
+              </SelectTrigger>
+              <SelectPopup>
+                {iconOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    <span className="flex items-center gap-2">
+                      <option.Icon
+                        aria-hidden="true"
+                        className={
+                          option.kind === "brand"
+                            ? "size-4 text-foreground opacity-100"
+                            : "size-4 text-muted-foreground"
+                        }
+                      />
+                      {option.label}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectPopup>
+            </Select>
+          </div>
           <Input
             aria-label="Application name"
             placeholder="Typora"
@@ -275,6 +342,7 @@ export function OpenInSettings() {
                     label: label.trim(),
                     command: command.trim(),
                     args: parsedArgs,
+                    ...(icon === "folder" ? {} : { icon }),
                     ...(runInShell ? { runInShell: true } : {}),
                   },
                 ],

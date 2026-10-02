@@ -4,6 +4,7 @@ import { CustomEditor, EditorId, resolveFileOpenTarget } from "./editor.ts";
 
 const isEditorId = Schema.is(EditorId);
 const isCustomEditor = Schema.is(CustomEditor);
+const decodeCustomEditor = Schema.decodeUnknownSync(CustomEditor);
 
 describe("file opening preferences", () => {
   it("uses case-insensitive extension overrides on POSIX and Windows paths", () => {
@@ -35,5 +36,30 @@ describe("file opening preferences", () => {
         args: ["-a", "Typora"],
       }),
     ).toBe(true);
+  });
+});
+
+describe("custom application icons", () => {
+  const application = {
+    id: "custom:opencursor",
+    label: "opencursor",
+    command: "opencursor",
+    args: [],
+  };
+
+  it("decodes existing applications without an icon", () => {
+    expect(decodeCustomEditor(application)).toEqual(application);
+  });
+
+  it.each(["cursor", "vscode", "file-manager", "folder", "terminal", "code", "globe"])(
+    "preserves the icon %s when decoding settings",
+    (icon) => {
+      expect(decodeCustomEditor({ ...application, icon }).icon).toBe(icon);
+    },
+  );
+
+  it("rejects unregistered icon identifiers and URLs", () => {
+    expect(isCustomEditor({ ...application, icon: "custom:other" })).toBe(false);
+    expect(isCustomEditor({ ...application, icon: "https://example.com/icon.svg" })).toBe(false);
   });
 });
