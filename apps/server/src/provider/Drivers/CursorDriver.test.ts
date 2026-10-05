@@ -8,7 +8,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import { vi } from "vite-plus/test";
-import { HttpClient } from "effect/unstable/http";
+import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 
 import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
@@ -95,7 +95,28 @@ it.layer(testLayer)("CursorDriver", (it) => {
         };
         const openedKeys: Array<string | undefined> = [];
         let closed = 0;
+        // Usage limits are read with the instance's own key, never a shared CLI login.
+        const usageKeys: Array<string | undefined> = [];
+        const usageClient = HttpClient.make((request) => {
+          if (request.url.endsWith("/auth/exchange_user_api_key")) {
+            usageKeys.push(request.headers.authorization);
+            return Effect.succeed(
+              HttpClientResponse.fromWeb(request, Response.json({ accessToken: "browser-token" })),
+            );
+          }
+          expect(request.url).toBe(
+            "https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage",
+          );
+          expect(request.headers.authorization).toBe("Bearer browser-token");
+          return Effect.succeed(
+            HttpClientResponse.fromWeb(
+              request,
+              Response.json({ planUsage: { totalPercentUsed: 25 } }),
+            ),
+          );
+        });
         const instance = yield* CursorDriver.create(input).pipe(
+          Effect.provideService(HttpClient.HttpClient, usageClient),
           Effect.provideService(CursorAgentSdk.CursorAgentSdkRunner, {
             assertComplete: Effect.void,
             open: (request) =>
@@ -130,6 +151,10 @@ it.layer(testLayer)("CursorDriver", (it) => {
           },
           setup: { canAuthenticate: true, canInstall: false },
         });
+        expect((yield* instance.snapshot.getSnapshot).usageLimits?.windows[0]?.usedPercent).toBe(
+          25,
+        );
+        expect(new Set(usageKeys)).toEqual(new Set(["Bearer instance-browser-key"]));
         const threadId = ThreadId.make("cursor-browser-thread");
         const modelSelection = { instanceId: input.instanceId, model: "auto" };
         const runtimePolicy = ProviderAdapterV2RuntimePolicy.make({
@@ -146,7 +171,9 @@ it.layer(testLayer)("CursorDriver", (it) => {
         yield* runtime.ensureThread({ threadId, modelSelection, runtimePolicy });
         expect(openedKeys).toEqual(["instance-browser-key"]);
         expect(closed).toBe(0);
-        const recreated = yield* CursorDriver.create(input);
+        const recreated = yield* CursorDriver.create(input).pipe(
+          Effect.provideService(HttpClient.HttpClient, usageClient),
+        );
         expect((yield* recreated.snapshot.refresh).auth.status).toBe("authenticated");
         yield* instance.auth!.logout(Effect.void);
         expect(closed).toBe(1);

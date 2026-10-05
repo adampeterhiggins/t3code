@@ -27,8 +27,10 @@ import * as Layer from "effect/Layer";
 import * as Scheduler from "effect/Scheduler";
 import * as Schema from "effect/Schema";
 import * as TestClock from "effect/testing/TestClock";
-import { HttpClient, HttpClientResponse } from "effect/unstable/http";
+import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http";
 
+import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
+import * as ProviderCredentialStore from "../provider/ProviderCredentialStore.ts";
 import * as ServerConfig from "../config.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as UsageService from "./UsageService.ts";
@@ -87,8 +89,11 @@ const serviceLayers = (input: {
   readonly ratesDocument?: unknown;
   readonly environment?: NodeJS.ProcessEnv;
   readonly platform?: NodeJS.Platform;
+  /** Answers the Cursor SDK key exchange; the default refuses every key. */
+  readonly onCursorRequest?: (request: HttpClientRequest.HttpClientRequest) => Response | undefined;
 }) =>
-  ServerConfig.layerTest(process.cwd(), { prefix: input.prefix }).pipe(
+  ServerSecretStore.layer.pipe(
+    Layer.provideMerge(ServerConfig.layerTest(process.cwd(), { prefix: input.prefix })),
     Layer.provideMerge(NodeServices.layer),
     Layer.provideMerge(Layer.succeed(HostProcessPlatform, input.platform ?? "linux")),
     Layer.provideMerge(ServerSettings.layerTest(input.settings)),
@@ -97,6 +102,12 @@ const serviceLayers = (input: {
         HttpClient.HttpClient,
         HttpClient.make((request) =>
           Effect.sync(() => {
+            if (request.url.includes("cursor")) {
+              return HttpClientResponse.fromWeb(
+                request,
+                input.onCursorRequest?.(request) ?? new Response("{}", { status: 401 }),
+              );
+            }
             input.onRatesFetch?.();
             // Unparsable rates: every scan retries the fetch, which makes the
             // fetch count a boundary-level observation of how many scans ran.
@@ -421,11 +432,111 @@ describe("UsageService", () => {
           ),
         );
         const summary = yield* service.readSummary(WINDOW);
-        const cursor = summary.sources.find((source) => source.fingerprint.provider === "cursor");
-        assert.strictEqual(cursor?.status, "missing");
-        assert.include(cursor?.message ?? "", "Cursor CLI login");
+        // An explicit API key is also tried as the default instance's own sign-in; here the
+        // exchange refuses it, so it adds a notice of its own and no history.
+        const cursor = summary.sources.filter((source) => source.fingerprint.provider === "cursor");
+        assert.isTrue(cursor.every((source) => source.status === "missing"));
+        assert.isTrue(cursor.some((source) => source.message?.includes("Cursor CLI login")));
         assert.isFalse(summary.buckets.some((bucket) => bucket.provider === "cursor"));
       }
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("reads each Cursor instance's own sign-in and counts one account once", () =>
+    Effect.gen(function* () {
+      const { settings, home } = yield* setup;
+      const jwt = (subject: string) =>
+        `header.${Buffer.from(JSON.stringify({ sub: subject })).toString("base64url")}.signature`;
+      const accounts: Record<string, string> = {
+        "key-work": "auth0|user_shared",
+        "key-work-again": "auth0|user_shared",
+        "key-personal": "auth0|user_personal",
+      };
+      const dashboardCookies: Array<string> = [];
+      // The account history is read with fetch; stub it for this test only.
+      yield* Effect.acquireRelease(
+        Effect.sync(() => {
+          const original = globalThis.fetch;
+          globalThis.fetch = (async (_input: unknown, init?: RequestInit) => {
+            const cookie = decodeURIComponent(
+              String(new Headers(init?.headers).get("Cookie")).split("=")[1] ?? "",
+            );
+            dashboardCookies.push(cookie.split("::")[0] ?? "");
+            const output = cookie.startsWith("user_shared") ? 7 : 11;
+            return Response.json({
+              totalUsageEventsCount: 1,
+              usageEventsDisplay: [
+                {
+                  timestamp: String(Date.parse("2026-08-01T10:00:00Z")),
+                  model: "claude-4-sonnet",
+                  tokenUsage: { inputTokens: 1, outputTokens: output },
+                },
+              ],
+            });
+          }) as typeof globalThis.fetch;
+          return original;
+        }),
+        (original) =>
+          Effect.sync(() => {
+            globalThis.fetch = original;
+          }),
+      );
+      const summary = yield* Effect.gen(function* () {
+        for (const [instanceId, apiKey] of [
+          ["cursor", "key-work"],
+          ["cursor-again", "key-work-again"],
+          ["cursor-personal", "key-personal"],
+        ] as const) {
+          const store = yield* ProviderCredentialStore.make("cursor", instanceId);
+          yield* store.set(
+            new TextEncoder().encode(
+              encodeUnknownJsonString({
+                version: 1,
+                backendUrl: "https://api2.cursor.sh",
+                apiKey,
+                createdAtMs: 0,
+              }),
+            ),
+          );
+        }
+        const service = yield* UsageService.make;
+        return yield* service.readSummary(WINDOW);
+      }).pipe(
+        Effect.provide(
+          serviceLayers({
+            prefix: "usage-service-cursor-instances",
+            home,
+            settings: {
+              ...settings,
+              providerInstances: Object.fromEntries(
+                ["cursor-again", "cursor-personal", "cursor-signed-out"].map((id) => [
+                  ProviderInstanceId.make(id),
+                  { driver: ProviderDriverKind.make("cursor"), config: {} },
+                ]),
+              ),
+            },
+            onCursorRequest: (request) => {
+              assert.equal(request.url, "https://api2.cursor.sh/auth/exchange_user_api_key");
+              const key = request.headers.authorization?.replace("Bearer ", "") ?? "";
+              const subject = accounts[key];
+              return subject === undefined
+                ? undefined
+                : Response.json({ accessToken: jwt(subject) });
+            },
+          }),
+        ),
+      );
+      const cursor = summary.sources.filter((source) => source.fingerprint.provider === "cursor");
+      assert.deepEqual(
+        cursor.map((source) => source.status),
+        ["ok", "ok"],
+      );
+      // The second sign-in to the shared account is recognised before its history is read.
+      assert.deepEqual(dashboardCookies.toSorted(), ["user_personal", "user_shared"]);
+      const output = summary.buckets
+        .filter((bucket) => bucket.provider === "cursor")
+        .reduce((sum, bucket) => sum + bucket.totals.outputTokens, 0);
+      assert.equal(output, 7 + 11);
     }).pipe(Effect.scoped),
   );
 

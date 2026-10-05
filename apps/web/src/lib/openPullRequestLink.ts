@@ -11,6 +11,7 @@ import {
 } from "@t3tools/shared/sourceControl";
 
 import { useOpenLink } from "../browser/useOpenLink";
+import { useClientSettings } from "../hooks/useSettings";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
 import { useRightPanelStore } from "../rightPanelStore";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
@@ -354,5 +355,46 @@ export function useOpenPrLink(threadRef?: ScopedThreadRef) {
       return false;
     },
     [openChangeRequest, openLink],
+  );
+}
+
+/**
+ * Opens the thread's own pull request (the details panel rows and the composer badge) where
+ * Settings → General → Open pull requests in says. "Side panel" is useOpenPrLink. "Browser"
+ * swaps the two: a click goes to the browser "Open links in" picks, and Cmd/Ctrl-click opens
+ * the side panel, so the other destination stays one modifier away.
+ */
+export function usePreferredOpenPrLink(threadRef?: ScopedThreadRef) {
+  const openPrLink = useOpenPrLink(threadRef);
+  const openChangeRequest = useOpenChangeRequestLink(threadRef);
+  const openLink = useOpenLink(threadRef);
+  const target = useClientSettings((settings) => settings.pullRequestOpenTarget);
+  return useCallback(
+    (event: MouseEvent<HTMLElement>, prUrl: string, targetThreadRef?: ScopedThreadRef) => {
+      if (target !== "browser") return openPrLink(event, prUrl, targetThreadRef);
+      event.stopPropagation();
+      event.preventDefault();
+      if (shouldOpenPullRequestExternally(event)) {
+        const panelEvent = {
+          preventDefault: () => event.preventDefault(),
+          stopPropagation: () => event.stopPropagation(),
+          metaKey: false,
+          ctrlKey: false,
+        };
+        if (openChangeRequest(panelEvent, prUrl, targetThreadRef)) return true;
+      }
+      void openLink(prUrl, { threadRef: targetThreadRef }).catch((error: unknown) => {
+        console.error(error);
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Unable to open pull request link",
+            description: error instanceof Error ? error.message : "An error occurred.",
+          }),
+        );
+      });
+      return false;
+    },
+    [openChangeRequest, openLink, openPrLink, target],
   );
 }

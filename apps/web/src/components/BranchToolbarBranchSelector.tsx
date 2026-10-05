@@ -26,7 +26,7 @@ import {
 import { useComposerDraftStore, type DraftId } from "../composerDraftStore";
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
 import { readLocalApi } from "../localApi";
-import { useOpenPrLink } from "../lib/openPullRequestLink";
+import { usePreferredOpenPrLink } from "../lib/openPullRequestLink";
 import { usePaginatedBranches } from "../state/queries";
 import { useProject, useThreadShell } from "../state/entities";
 import { useEnvironmentQuery } from "../state/query";
@@ -583,7 +583,7 @@ export function BranchToolbarBranchSelector({
   );
   const prNumber = currentLinkedPr?.number ?? displayedPr?.number;
   const prUrl = currentLinkedPr?.url ?? displayedPr?.url;
-  const openPrLink = useOpenPrLink(threadRef);
+  const openPrLink = usePreferredOpenPrLink(threadRef);
   const panelPrLabel =
     prNumber === undefined
       ? ""

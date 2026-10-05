@@ -119,9 +119,11 @@ describe("Cursor usage limits", () => {
                   AGENT_CLI_CREDENTIAL_STORE: platform === "linux" ? "memory" : "default",
                   ...(token ? { CURSOR_AUTH_TOKEN: token } : {}),
                 },
-                false,
-                async () => {
-                  throw new Error("must not read Keychain before opt-in");
+                {
+                  allowKeychain: false,
+                  keychainToken: async () => {
+                    throw new Error("must not read Keychain before opt-in");
+                  },
                 },
               ).pipe(
                 Effect.provideService(HostProcessPlatform, platform),
@@ -194,7 +196,11 @@ describe("Cursor usage limits", () => {
   it.effect("reads the default macOS Cursor login from Keychain for limits", () =>
     Effect.gen(function* () {
       const limits = yield* withNodeServices(
-        readCursorUsageLimits({ apiEndpoint: "" }, {}, true, async () => "keychain-token").pipe(
+        readCursorUsageLimits(
+          { apiEndpoint: "" },
+          {},
+          { allowKeychain: true, keychainToken: async () => "keychain-token" },
+        ).pipe(
           Effect.provideService(HostProcessPlatform, "darwin"),
           Effect.provideService(
             FileSystem.FileSystem,
@@ -223,9 +229,16 @@ describe("Cursor usage limits", () => {
   it.effect("reports a Keychain initialization failure without failing the provider refresh", () =>
     Effect.gen(function* () {
       const limits = yield* withNodeServices(
-        readCursorUsageLimits({ apiEndpoint: "" }, {}, true, async () => {
-          throw new Error("Keychain initialization failed");
-        }).pipe(
+        readCursorUsageLimits(
+          { apiEndpoint: "" },
+          {},
+          {
+            allowKeychain: true,
+            keychainToken: async () => {
+              throw new Error("Keychain initialization failed");
+            },
+          },
+        ).pipe(
           Effect.provideService(HostProcessPlatform, "darwin"),
           Effect.provideService(
             HttpClient.HttpClient,
@@ -246,8 +259,11 @@ describe("Cursor usage limits", () => {
         ["", { CURSOR_API_ENDPOINT: "https://cursor-proxy.example" }],
       ] as const) {
         const limits = yield* withNodeServices(
-          readCursorUsageLimits({ apiEndpoint }, environment, true, async () => {
-            throw new Error("must not read Keychain for a custom endpoint");
+          readCursorUsageLimits({ apiEndpoint }, environment, {
+            allowKeychain: true,
+            keychainToken: async () => {
+              throw new Error("must not read Keychain for a custom endpoint");
+            },
           }).pipe(
             Effect.provideService(HostProcessPlatform, "darwin"),
             Effect.provideService(
@@ -259,6 +275,123 @@ describe("Cursor usage limits", () => {
         expect(limits.unavailable?.reason).toBe("unsupported");
         expect(limits.unavailable?.message).toContain("default Cursor endpoint");
       }
+    }),
+  );
+  it.effect("reads each instance's limits with its own SDK key, never a shared login", () =>
+    Effect.gen(function* () {
+      const requests: Array<{ url: string; authorization: string | undefined }> = [];
+      const client = HttpClient.make((request) => {
+        requests.push({ url: request.url, authorization: request.headers.authorization });
+        if (request.url.endsWith("/auth/exchange_user_api_key")) {
+          const key = request.headers.authorization?.replace("Bearer ", "");
+          return Effect.succeed(
+            HttpClientResponse.fromWeb(request, Response.json({ accessToken: `token-for-${key}` })),
+          );
+        }
+        const percent = request.headers.authorization === "Bearer token-for-key-a" ? 12 : 88;
+        return Effect.succeed(
+          HttpClientResponse.fromWeb(
+            request,
+            Response.json({ planUsage: { totalPercentUsed: percent } }),
+          ),
+        );
+      });
+      const read = (credential: { apiKey: string; backendUrl?: string }) =>
+        withNodeServices(
+          readCursorUsageLimits(
+            { apiEndpoint: "" },
+            // A host token and API key must not stand in for the instance's own sign-in.
+            { CURSOR_AUTH_TOKEN: "host-token", CURSOR_API_KEY: "host-key" },
+            {
+              allowKeychain: true,
+              keychainToken: async () => {
+                throw new Error("must not read the shared Keychain login");
+              },
+              sdkCredential: credential,
+              sharedLogin: false,
+            },
+          ).pipe(
+            Effect.provideService(HostProcessPlatform, "darwin"),
+            Effect.provideService(HttpClient.HttpClient, client),
+          ),
+        );
+
+      const first = yield* read({ apiKey: "key-a", backendUrl: "https://api2.cursor.sh/" });
+      const second = yield* read({ apiKey: "key-b" });
+      expect(first.windows[0]?.usedPercent).toBe(12);
+      expect(second.windows[0]?.usedPercent).toBe(88);
+      expect(requests).toEqual([
+        {
+          url: "https://api2.cursor.sh/auth/exchange_user_api_key",
+          authorization: "Bearer key-a",
+        },
+        {
+          url: "https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage",
+          authorization: "Bearer token-for-key-a",
+        },
+        {
+          url: "https://api2.cursor.sh/auth/exchange_user_api_key",
+          authorization: "Bearer key-b",
+        },
+        {
+          url: "https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage",
+          authorization: "Bearer token-for-key-b",
+        },
+      ]);
+    }),
+  );
+
+  it.effect("reports a rejected SDK key as a failed read, not another account's usage", () =>
+    Effect.gen(function* () {
+      const limits = yield* withNodeServices(
+        readCursorUsageLimits(
+          { apiEndpoint: "" },
+          {},
+          {
+            allowKeychain: true,
+            keychainToken: async () => "shared-keychain-token",
+            sdkCredential: { apiKey: "revoked" },
+            sharedLogin: true,
+          },
+        ).pipe(
+          Effect.provideService(HostProcessPlatform, "darwin"),
+          Effect.provideService(
+            HttpClient.HttpClient,
+            HttpClient.make((request) => {
+              expect(request.url).toBe("https://api2.cursor.sh/auth/exchange_user_api_key");
+              return Effect.succeed(
+                HttpClientResponse.fromWeb(request, new Response("{}", { status: 401 })),
+              );
+            }),
+          ),
+        ),
+      );
+      expect(limits.unavailable?.reason).toBe("probeFailed");
+    }),
+  );
+
+  it.effect("gives an added instance without a sign-in no shared login", () =>
+    Effect.gen(function* () {
+      const limits = yield* withNodeServices(
+        readCursorUsageLimits(
+          { apiEndpoint: "" },
+          {},
+          {
+            allowKeychain: true,
+            keychainToken: async () => {
+              throw new Error("must not read the shared Keychain login");
+            },
+            sharedLogin: false,
+          },
+        ).pipe(
+          Effect.provideService(HostProcessPlatform, "darwin"),
+          Effect.provideService(
+            HttpClient.HttpClient,
+            HttpClient.make(() => Effect.die("must not request usage")),
+          ),
+        ),
+      );
+      expect(limits.unavailable?.reason).toBe("unsupported");
     }),
   );
 });

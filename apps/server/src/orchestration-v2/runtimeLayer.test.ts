@@ -63,6 +63,7 @@ import * as ProviderRuntimeRecoveryService from "./ProviderRuntimeRecoveryServic
 import * as ProjectionMaintenance from "./ProjectionMaintenance.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as PullRequestWatchReactor from "./PullRequestWatchReactor.ts";
+import { importForkPullRequestWatches } from "./forkPullRequestWatchImport.ts";
 import * as PullRequestService from "../pullRequest/PullRequestService.ts";
 import * as ProjectStore from "./ProjectStore.ts";
 import type { ProviderAdapterV2SessionRuntime, ProviderAdapterV2Shape } from "./ProviderAdapter.ts";
@@ -1425,6 +1426,58 @@ it.layer(TestLayer)("OrchestrationV2LayerLive", (it) => {
 });
 
 it.layer(LegacyImportTestLayer)("OrchestrationV2 legacy import", (it) => {
+  it.effect("moves pre-v2 fork pull request watches onto their links", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const sql = yield* SqlClient.SqlClient;
+      const threadId = ThreadId.make("runtime-pull-request-watch-import");
+      yield* orchestrator.dispatch({
+        type: "thread.create",
+        createdBy: "user",
+        creationSource: "web",
+        commandId: CommandId.make("pr-watch-import-create"),
+        threadId,
+        projectId: ProjectId.make("pr-watch-import-project"),
+        title: "Watch import",
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+      });
+      const key = { host: "github.com", repository: "pingdotgg/t3code", number: 11 };
+      yield* orchestrator.dispatch({
+        type: "thread.pull-request.link",
+        commandId: CommandId.make("pr-watch-import-link"),
+        threadId,
+        ...key,
+        url: "https://github.com/pingdotgg/t3code/pull/11",
+        source: "manual",
+      });
+      yield* sql`
+        CREATE TABLE fork_pull_request_watches (
+          thread_id TEXT NOT NULL, host TEXT NOT NULL, repository TEXT NOT NULL,
+          number INTEGER NOT NULL, status TEXT NOT NULL, attempts_used INTEGER NOT NULL,
+          handled_json TEXT NOT NULL, updated_at TEXT NOT NULL
+        )
+      `;
+      yield* sql`
+        INSERT INTO fork_pull_request_watches VALUES
+          (${threadId}, 'github.com', 'pingdotgg/t3code', 11, 'paused', 2, '[]', '2026-10-01T00:00:00.000Z'),
+          ('missing-thread', 'github.com', 'pingdotgg/t3code', 12, 'active', 0, '[]', '2026-10-01T00:00:00.000Z')
+      `;
+
+      yield* importForkPullRequestWatches;
+
+      const watch = (yield* orchestrator.getThreadShell(threadId))?.pullRequests?.[0]?.watch;
+      assert.isTrue(watch?.paused);
+      const table = yield* sql`
+        SELECT name FROM sqlite_master WHERE name = 'fork_pull_request_watches'
+      `;
+      assert.deepEqual(table, []);
+    }),
+  );
+
   it.effect("hydrates imported transcripts before commands and propagates hydration failures", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
@@ -2543,6 +2596,166 @@ it.layer(TestLayer)("OrchestrationV2LayerLive lifecycle", (it) => {
         { headSha: watch?.headSha, failedChecks: watch?.failedChecks, wakes: watch?.wakes },
         { headSha: "abc1234def", failedChecks: ["lint"], wakes: incomplete ? 1 : 0 },
       );
+    }),
+  );
+
+  it.effect("keeps watching a settled thread, and reads nothing while paused", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const threadId = ThreadId.make("runtime-pull-request-watch-pause");
+      const projectId = ProjectId.make("pr-watch-pause-project");
+      yield* seedProject({
+        projectId,
+        title: "Watch pause",
+        workspaceRoot: "/workspace/watch-pause",
+        defaultModelSelection: null,
+        createdAt: "2026-10-01T00:00:00.000Z",
+      });
+      yield* orchestrator.dispatch({
+        type: "thread.create",
+        createdBy: "user",
+        creationSource: "web",
+        commandId: CommandId.make("pr-watch-pause-create"),
+        threadId,
+        projectId,
+        title: "Watch pause",
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+      });
+      const key = { host: "github.com", repository: "pingdotgg/t3code", number: 9 };
+      const url = "https://github.com/pingdotgg/t3code/pull/9";
+      const setWatch = (id: string, paused?: boolean) =>
+        orchestrator.dispatch({
+          type: "thread.pull-request.watch",
+          commandId: CommandId.make(`pr-watch-pause-${id}`),
+          threadId,
+          ...key,
+          watching: true,
+          ...(paused === undefined ? {} : { paused }),
+          link: { url, source: "manual" },
+        });
+      const watchOf = Effect.map(
+        orchestrator.getThreadShell(threadId),
+        (thread) => thread?.pullRequests?.[0]?.watch,
+      );
+      yield* setWatch("start");
+      yield* orchestrator.dispatch({
+        type: "thread.settle",
+        commandId: CommandId.make("pr-watch-pause-settle"),
+        threadId,
+      });
+
+      let reads = 0;
+      const at = "2026-10-02T12:00:00.000Z";
+      const reactor = yield* PullRequestWatchReactor.make.pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            NodeServices.layer,
+            Layer.mock(PullRequestService.PullRequestService)({
+              detail: (input) => {
+                // The runtime is shared, so other tests' watches are swept too.
+                if (input.projectId === projectId) reads += 1;
+                return Effect.succeed({
+                  provider: "github",
+                  capabilities: {
+                    diff: true,
+                    comment: true,
+                    actions: [],
+                    mergeMethods: [],
+                    search: false,
+                    review: { inlineComment: false, reply: false, resolve: false, verdicts: [] },
+                    reviewers: { request: false, listCandidates: false },
+                  },
+                  viewerPermissions: {
+                    actions: [],
+                    comment: true,
+                    resolve: true,
+                    verdicts: [],
+                    requestReviewers: false,
+                  },
+                  projectId,
+                  projectTitle: "Watch pause",
+                  workspaceRoot: "/workspace/watch-pause",
+                  repository: key.repository,
+                  number: key.number,
+                  title: "Watched pull request",
+                  body: "",
+                  url,
+                  author: { login: "agent-user", name: null, avatarUrl: null },
+                  state: "open",
+                  isDraft: false,
+                  mergeability: "mergeable",
+                  additions: 1,
+                  deletions: 0,
+                  changedFiles: 1,
+                  headBranch: "feature",
+                  headSha: `head-${reads}`,
+                  baseBranch: "main",
+                  createdAt: at,
+                  updatedAt: at,
+                  mergedAt: null,
+                  closedAt: null,
+                  reviewers: [],
+                  labels: [],
+                  checks: [{ name: "lint", status: "failure", description: null, url: null }],
+                  mergeCapabilities: { merge: true, squash: true, rebase: true },
+                  viewer: "agent-user",
+                } satisfies PullRequestDetail);
+              },
+              activity: () =>
+                Effect.succeed({
+                  comments: [],
+                  commentCount: 0,
+                  commentsTruncated: false,
+                  reviewThreads: [],
+                  commits: [],
+                }),
+            }),
+          ),
+        ),
+      );
+
+      // A settled thread is still watched: the wake brings it back with a follow-up.
+      yield* reactor.sweep;
+      const woken = yield* orchestrator.getThreadShell(threadId);
+      assert.isNull(woken?.settledAt ?? null);
+      assert.equal(woken?.pullRequests?.[0]?.watch?.followUps, 1);
+      const { messages } = yield* orchestrator.getThreadRecords(threadId, ["messages"]);
+      assert.include(messages.at(-1)?.text ?? "", "automatic follow-up 1 of 3");
+
+      // Paused, the watch reads nothing, and a pass that read the host before the pause
+      // cannot record over it.
+      const beforePause = yield* watchOf;
+      yield* TestClock.adjust("1 second");
+      yield* setWatch("pause", true);
+      assert.isTrue((yield* watchOf)?.paused);
+      if (beforePause !== undefined) {
+        const stale = yield* orchestrator
+          .dispatch({
+            type: "thread.pull-request-watch.sync",
+            commandId: CommandId.make("pr-watch-pause-stale-record"),
+            threadId,
+            ...key,
+            startedAt: beforePause.startedAt,
+            watch: { ...beforePause, wakes: 1 },
+          })
+          .pipe(Effect.flip);
+        assert.equal(stale._tag, "OrchestratorDispatchError");
+        assert.isTrue((yield* watchOf)?.paused);
+      }
+      const readsWhilePaused = reads;
+      yield* reactor.sweep;
+      assert.equal(reads, readsWhilePaused);
+
+      // Resuming restores the budget and keeps what the agent was told.
+      yield* setWatch("resume", false);
+      const resumed = yield* watchOf;
+      assert.isFalse(resumed?.paused);
+      assert.equal(resumed?.followUps, 0);
+      assert.deepEqual(resumed?.failedChecks, ["lint"]);
     }),
   );
 

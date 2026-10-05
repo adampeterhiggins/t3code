@@ -1,5 +1,9 @@
 import type { ScopedThreadRef, ThreadPullRequestLink } from "@t3tools/contracts";
 import {
+  PULL_REQUEST_WATCH_FOLLOW_UP_LIMIT,
+  pullRequestWatchStatusLabel,
+} from "@t3tools/shared/pullRequestWatch";
+import {
   pullRequestListLines,
   visibleThreadPullRequests,
   type PullRequestListLine,
@@ -10,9 +14,11 @@ import {
   EyeOffIcon,
   LinkIcon,
   MoreHorizontalIcon,
+  PauseIcon,
+  PlayIcon,
   PlusIcon,
 } from "lucide-react";
-import { useCallback, useMemo } from "react";
+import { Fragment, useCallback, useMemo } from "react";
 
 import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { useOpenPrLink } from "~/lib/openPullRequestLink";
@@ -71,23 +77,53 @@ function ChecksGlyph({
   );
 }
 
+type WatchAction = "watch" | "pause" | "resume" | "stop";
+
+/** Fork: what an open pull request's watch is waiting on, with the follow-ups it has spent. */
+function WatchStatusLine({ line: { link, depth } }: { line: PullRequestListLine }) {
+  const watch = link.watch;
+  if (watch === undefined || (link.snapshot !== null && link.snapshot.state !== "open")) {
+    return null;
+  }
+  return (
+    <div
+      className="flex items-center gap-1.5 pr-2 pb-1 text-2xs text-muted-foreground"
+      style={{ paddingLeft: `${2 + Math.min(depth, 8) * 0.75}rem` }}
+    >
+      {watch.paused === true ? (
+        <PauseIcon aria-label="Watch paused" className="size-3 shrink-0" />
+      ) : (
+        <EyeIcon aria-label="Watching" className="size-3 shrink-0" />
+      )}
+      <span className="min-w-0 truncate">{pullRequestWatchStatusLabel(watch, link.snapshot)}</span>
+      <span className="ml-auto shrink-0 tabular-nums">
+        {watch.followUps ?? 0}/{PULL_REQUEST_WATCH_FOLLOW_UP_LIMIT} follow-ups
+      </span>
+    </div>
+  );
+}
+
 function LinkRow({
   line,
   threadRef,
   onUnlink,
-  onSetWatching,
+  onWatch,
+  canPause,
 }: {
   line: PullRequestListLine;
   threadRef: ScopedThreadRef;
   onUnlink: (link: ThreadPullRequestLink) => void;
   /** Null when the environment cannot watch pull requests. */
-  onSetWatching: ((link: ThreadPullRequestLink, watching: boolean) => void) | null;
+  onWatch: ((link: ThreadPullRequestLink, action: WatchAction) => void) | null;
+  /** The environment can pause a watch, and shows its status line (fork servers). */
+  canPause: boolean;
 }) {
   const openPrLink = useOpenPrLink(threadRef);
   const { link, depth, stack } = line;
   const snapshot = link.snapshot;
   const open = snapshot === null || snapshot.state === "open";
   const watching = link.watch !== undefined;
+  const paused = link.watch?.paused === true;
   return (
     <div
       className={cn(PULL_REQUEST_ROW_CLASS, "relative hover:bg-accent/60")}
@@ -129,7 +165,7 @@ function LinkRow({
           signals={
             open ? (
               <>
-                {watching ? (
+                {watching && !canPause ? (
                   <Tooltip>
                     <TooltipTrigger render={<span className="inline-flex shrink-0" />}>
                       <EyeIcon role="img" aria-label="Watching" className="size-3.5" />
@@ -242,10 +278,22 @@ function LinkRow({
               <ArrowUpRightIcon className="size-3.5" />
               Open
             </MenuItem>
-            {onSetWatching !== null && open ? (
-              <MenuItem onClick={() => onSetWatching(link, !watching)}>
-                {watching ? <EyeOffIcon className="size-3.5" /> : <EyeIcon className="size-3.5" />}
-                {watching ? "Stop watching" : "Watch for changes"}
+            {onWatch !== null && open && !watching ? (
+              <MenuItem onClick={() => onWatch(link, "watch")}>
+                <EyeIcon className="size-3.5" />
+                {canPause ? "Watch and follow up" : "Watch for changes"}
+              </MenuItem>
+            ) : null}
+            {onWatch !== null && watching && canPause ? (
+              <MenuItem onClick={() => onWatch(link, paused ? "resume" : "pause")}>
+                {paused ? <PlayIcon className="size-3.5" /> : <PauseIcon className="size-3.5" />}
+                {paused ? "Resume watching" : "Pause watching"}
+              </MenuItem>
+            ) : null}
+            {onWatch !== null && watching ? (
+              <MenuItem onClick={() => onWatch(link, "stop")}>
+                <EyeOffIcon className="size-3.5" />
+                Stop watching
               </MenuItem>
             ) : null}
             <MenuItem onClick={() => onUnlink(link)}>
@@ -277,9 +325,9 @@ function EnabledThreadPullRequestsPanel({ threadRef }: { threadRef: ScopedThread
   const openLinkDialog = useCallback(() => openLinkPullRequestDialog(threadRef), [threadRef]);
   const unlink = useAtomCommand(threadEnvironment.unlinkPullRequest, { reportFailure: true });
   const watch = useAtomCommand(threadEnvironment.watchPullRequest, { reportFailure: true });
-  const supportsWatch =
-    useServerConfigs().get(threadRef.environmentId)?.environment.capabilities
-      .threadPullRequestWatch === true;
+  const capabilities = useServerConfigs().get(threadRef.environmentId)?.environment.capabilities;
+  const supportsWatch = capabilities?.threadPullRequestWatch === true;
+  const supportsWatchPause = capabilities?.threadPullRequestWatchPause === true;
   const links = useMemo(() => visibleThreadPullRequests(thread?.pullRequests ?? []), [thread]);
   const lines = useMemo(() => pullRequestListLines(links), [links]);
   const handleUnlink = useCallback(
@@ -296,8 +344,8 @@ function EnabledThreadPullRequestsPanel({ threadRef }: { threadRef: ScopedThread
     },
     [threadRef, unlink],
   );
-  const handleSetWatching = useCallback(
-    (link: ThreadPullRequestLink, watching: boolean) => {
+  const handleWatch = useCallback(
+    (link: ThreadPullRequestLink, action: WatchAction) => {
       void watch({
         environmentId: threadRef.environmentId,
         input: {
@@ -305,7 +353,8 @@ function EnabledThreadPullRequestsPanel({ threadRef }: { threadRef: ScopedThread
           host: link.host,
           repository: link.repository,
           number: link.number,
-          watching,
+          watching: action !== "stop",
+          ...(action === "pause" ? { paused: true } : action === "resume" ? { paused: false } : {}),
         },
       });
     },
@@ -346,13 +395,16 @@ function EnabledThreadPullRequestsPanel({ threadRef }: { threadRef: ScopedThread
       <ScrollArea className="min-h-0 flex-1">
         <div className="flex flex-col p-1.5">
           {lines.map((line) => (
-            <LinkRow
-              key={`${line.link.host}/${line.link.repository}#${line.link.number}`}
-              line={line}
-              threadRef={threadRef}
-              onUnlink={handleUnlink}
-              onSetWatching={supportsWatch ? handleSetWatching : null}
-            />
+            <Fragment key={`${line.link.host}/${line.link.repository}#${line.link.number}`}>
+              <LinkRow
+                line={line}
+                threadRef={threadRef}
+                onUnlink={handleUnlink}
+                onWatch={supportsWatch ? handleWatch : null}
+                canPause={supportsWatchPause}
+              />
+              {supportsWatchPause ? <WatchStatusLine line={line} /> : null}
+            </Fragment>
           ))}
         </div>
       </ScrollArea>

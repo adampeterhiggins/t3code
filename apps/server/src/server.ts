@@ -5,6 +5,7 @@ import * as Semaphore from "effect/Semaphore";
 import * as StorageCleanup from "./storageCleanup.ts";
 import * as PullRequestSyncReactor from "./orchestration-v2/PullRequestSyncReactor.ts";
 import * as PullRequestWatchReactor from "./orchestration-v2/PullRequestWatchReactor.ts";
+import { importForkPullRequestWatches } from "./orchestration-v2/forkPullRequestWatchImport.ts";
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeHttp from "node:http";
 
@@ -239,7 +240,10 @@ const BackgroundLayerLive = BackgroundPolicy.layer.pipe(
   Layer.provideMerge(ServerSettingsLayerLive),
 );
 
-const UsageLayerLive = UsageService.layer.pipe(Layer.provide(ServerSettingsLayerLive));
+const UsageLayerLive = UsageService.layer.pipe(
+  Layer.provide(ServerSettingsLayerLive),
+  Layer.provide(ServerSecretStore.layer),
+);
 
 const ResourceDiagnosticsLayerLive = Layer.mergeAll(
   HostResources.layer,
@@ -550,6 +554,8 @@ const RuntimeCoreDependenciesBaseLive = Layer.mergeAll(
   ),
   Layer.effectDiscard(
     Effect.gen(function* () {
+      // Fork: watches made before orchestration v2 move onto their links first.
+      yield* importForkPullRequestWatches;
       const service = yield* PullRequestWatchReactor.PullRequestWatchReactor;
       yield* service.start();
     }),

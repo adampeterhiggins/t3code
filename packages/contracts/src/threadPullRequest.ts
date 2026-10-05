@@ -113,6 +113,15 @@ export const ThreadPullRequestWatch = Schema.Struct({
   conflicting: Schema.Boolean,
   /** Comment-only wakes in a row. Watching stops at a limit, so bots cannot loop it. */
   wakes: NonNegativeInt,
+  /** Fork: the agent was told a reviewer requested changes; re-arms once the decision clears. */
+  changesRequested: Schema.optional(Schema.Boolean),
+  /**
+   * Fork: wakes that asked the agent to fix something (failing checks, requested changes, a
+   * conflict) since the watch started or was last resumed. The watch pauses at a budget.
+   */
+  followUps: Schema.optional(NonNegativeInt),
+  /** Fork: a paused watch reads nothing and wakes no one until it is resumed. */
+  paused: Schema.optional(Schema.Boolean),
 });
 export type ThreadPullRequestWatch = typeof ThreadPullRequestWatch.Type;
 

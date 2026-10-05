@@ -229,9 +229,10 @@ closed reviews refresh periodically so reopening one on the host is detected. Me
 when requested. With **Auto-settle merged threads** enabled, a thread can settle after every linked
 review is terminal. An open or unsynced link keeps it active.
 
-Ask the agent to watch, monitor, or babysit a pull request and it calls `watch_pull_request`. While
-the thread is active, the server checks the pull request every minute and wakes the agent when a check
-fails, the required checks pass, someone else comments or reviews, or the branch starts to conflict.
+Ask the agent to watch, monitor, or babysit a pull request and it calls `watch_pull_request`. The
+server checks the pull request every minute and wakes the agent when a check fails, the required
+checks pass, someone else comments or reviews, a reviewer requests changes, or the branch starts to
+conflict.
 Comments from your own account do not wake it. Watching ends when the pull request merges or closes,
 after 10 wakes in a row that bring only comments, or when the server cannot read the pull request for
 15 minutes. To start or stop it yourself, use the row menu in the **Linked pull requests** panel.
@@ -242,15 +243,19 @@ out from the matching organization and repository.
 ### Watch a pull request
 
 Choose **Watch and follow up** from a linked pull request's row menu to have the agent keep working
-on it. When the pull request reports failing checks, requested changes, or merge conflicts, T3 Code
-starts a follow-up turn in the thread once the agent is idle. The server does the watching, so it
-continues with every client closed.
+on it. When the pull request reports failing checks, requested changes, or a merge conflict, the
+wake asks the agent to fix it: read the failing logs, address the review, or rebase. A wake that
+arrives while the agent is busy waits for its turn to finish. The server does the watching, so it
+continues with every client closed, and it keeps watching a settled thread; a wake brings the thread
+back.
 
-A watch starts at most 3 follow-ups. It asks about a problem once: failing checks come back after
-a new push, and requested changes or conflicts come back only after they have cleared. The row shows
-what the watch is waiting for. **Pause watching**, **Resume watching** (which also restores the
-follow-up budget), and **Stop watching** are in the same menu. A watch ends when its pull request
-merges or closes. Watches are set up from web and desktop; follow-up turns appear on every client.
+Wakes that ask for a fix count toward 3 follow-ups; comment and passing-check updates do not. When a
+fourth would be needed, the watch pauses instead. Each problem is raised once: failing checks come
+back after a new push, and requested changes or conflicts come back only after they have cleared.
+The row shows what the watch is waiting for and how many follow-ups it has used. **Pause watching**,
+**Resume watching** (which also restores the follow-up budget), and **Stop watching** are in the
+same menu. Resuming reports anything that changed while the watch was paused. Watches are set up from
+web and desktop; mobile's Git overview shows whether a pull request is watched or paused.
 
 ## GitHub stacks
 

@@ -334,7 +334,7 @@ export function GitOverviewSheet(props: GitOverviewSheetProps) {
                   <SheetListRow
                     icon="arrow.triangle.pull"
                     title={`#${link.number} ${link.snapshot?.title ?? "Pull request"}`}
-                    subtitle={`${link.repository} · ${status}${stackLabel === null ? "" : ` · ${stackLabel}`}${link.watch === undefined ? "" : " · Watching"}`}
+                    subtitle={`${link.repository} · ${status}${stackLabel === null ? "" : ` · ${stackLabel}`}${link.watch === undefined ? "" : link.watch.paused === true ? " · Watch paused" : " · Watching"}`}
                     onPress={() => {
                       void tryOpenExternalUrl(link.url, "pull-request").then((opened) => {
                         if (!opened)

@@ -28,11 +28,11 @@ OpenCode reads its SQLite database and older JSON history. Antigravity reads loc
 databases, including T3-managed profiles. Set `OPENCODE_DATA_DIR` or `ANTIGRAVITY_DATA_DIR` on the
 server to read a different data directory; comma-separated paths read multiple directories.
 
-Cursor reads account usage from Cursor's dashboard API using the CLI login saved on the server.
-This includes headless T3 sessions and desktop usage across machines; the same account counts
-once across connected environments. Cursor accounts with their own home directory add their own
-login, and an account signed in more than once still counts once. Without an accessible CLI login, T3 shows a
-notice instead of incomplete local totals. T3 does not estimate missing tokens from conversation text.
+Cursor reads account usage from Cursor's dashboard API with each Cursor account's own sign-in or
+`CURSOR_API_KEY`, and with the CLI login saved on the server. This includes headless T3 sessions and
+desktop usage across machines; the same account counts once, however many accounts or connected
+environments are signed in to it. Without a readable sign-in or CLI login, T3 shows a notice instead
+of incomplete local totals. T3 does not estimate missing tokens from conversation text.
 On macOS, choose **Enable Cursor usage** on Usage to allow T3 to read your existing CLI login
 from Keychain. You can turn it off in **Settings → Providers → Usage providers**. macOS may ask
 you to allow access on the server Mac.
@@ -111,10 +111,8 @@ anything. The command is offered only for providers that appear under **Usage �
 OpenCode Go reports its session, weekly, and monthly allowance when OpenCode runs locally in
 the environment. T3 cannot report limits for external OpenCode servers because their credentials
 belong to the remote server. Cursor reports
-its monthly allowance, including separate Auto and API usage, using the CLI login or
-`CURSOR_AUTH_TOKEN`. On macOS, this includes the default Keychain login after you enable Cursor
-usage. Keychain login is used for limits only with Cursor's default API endpoint. If you configure
-a custom Cursor endpoint, use an explicit token or file-based CLI login for limits.
+its monthly allowance, including separate Auto and API usage, for each Cursor account using that
+account's own sign-in or `CURSOR_API_KEY`, so two accounts show their own limits.
 
 Grok reports the remaining subscription allowance and reset time for its current billing period
 after signing in with `grok login`. Explicit `XAI_API_KEY` connections and custom authentication

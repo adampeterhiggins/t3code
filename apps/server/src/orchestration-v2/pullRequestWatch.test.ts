@@ -5,6 +5,7 @@ import type {
   ThreadPullRequestWatch,
 } from "@t3tools/contracts";
 import { assert, describe, it } from "@effect/vitest";
+import { PULL_REQUEST_WATCH_FOLLOW_UP_LIMIT } from "@t3tools/shared/pullRequestWatch";
 
 import {
   PULL_REQUEST_WATCH_WAKE_LIMIT,
@@ -170,6 +171,59 @@ describe("evaluatePullRequestWatch", () => {
     ]);
   });
 
+  it("reports requested changes once, until the review decision clears", () => {
+    const requested = detail({ reviewDecision: "changes-requested" });
+    const first = evaluatePullRequestWatch(watch(), requested, noRemarks);
+    assert.deepEqual(first.changes, [{ kind: "changes-requested" }]);
+    assert.deepEqual(evaluatePullRequestWatch(first.next, requested, noRemarks).changes, []);
+    const approved = evaluatePullRequestWatch(
+      first.next,
+      detail({ reviewDecision: "approved" }),
+      noRemarks,
+    );
+    assert.deepEqual(evaluatePullRequestWatch(approved.next, requested, noRemarks).changes, [
+      { kind: "changes-requested" },
+    ]);
+  });
+
+  it("pauses once the follow-up budget is spent, keeping the news for a resume", () => {
+    let current = watch({ headSha: "aaaaaaaaaa" });
+    for (let attempt = 1; attempt <= PULL_REQUEST_WATCH_FOLLOW_UP_LIMIT; attempt += 1) {
+      // Each push fails again, which asks the agent for another fix.
+      const failing = detail({
+        headSha: `head-${attempt}`,
+        checks: [check("lint", "failure")],
+      });
+      const report = evaluatePullRequestWatch(current, failing, noRemarks);
+      assert.equal(report.followUp, attempt);
+      current = report.next;
+    }
+    const failing = detail({ headSha: "head-last", checks: [check("lint", "failure")] });
+    const spent = evaluatePullRequestWatch(current, failing, noRemarks);
+    assert.deepEqual(spent.changes, []);
+    assert.isNull(spent.followUp);
+    assert.deepEqual(spent.next, { ...current, paused: true });
+
+    // Resuming restores the budget; the failure it held back is still news.
+    const resumed = evaluatePullRequestWatch(
+      { ...spent.next, paused: false, followUps: 0 },
+      failing,
+      noRemarks,
+    );
+    assert.equal(resumed.changes[0]?.kind, "checks-failed");
+    assert.equal(resumed.followUp, 1);
+  });
+
+  it("does not spend the follow-up budget on news", () => {
+    const spentWatch = watch({ followUps: PULL_REQUEST_WATCH_FOLLOW_UP_LIMIT });
+    const report = evaluatePullRequestWatch(spentWatch, detail(), [
+      remark("reviewer", "2026-10-02T12:10:00Z"),
+    ]);
+    assert.equal(report.changes[0]?.kind, "remarks");
+    assert.isNull(report.followUp);
+    assert.equal(report.next.followUps, PULL_REQUEST_WATCH_FOLLOW_UP_LIMIT);
+  });
+
   it("does not spend the comment wake limit on check results", () => {
     const tired = watch({ headSha: "aaaaaaaaaa", wakes: PULL_REQUEST_WATCH_WAKE_LIMIT - 1 });
     const result = evaluatePullRequestWatch(
@@ -199,6 +253,7 @@ describe("pullRequestWatchMessage", () => {
       [remark("reviewer", "2026-10-02T12:10:00Z", "<!-- bot -->Needs a test.")],
     );
     const message = pullRequestWatchMessage({
+      host: "github.com",
       number: 12,
       url: "https://github.com/o/r/pull/12",
       baseBranch: "main",
@@ -213,5 +268,45 @@ describe("pullRequestWatchMessage", () => {
       outcome: "failed",
       summary: "#12: checks failed, new comments",
     });
+    // A failure asks for a fix, with how to look and which follow-up this is.
+    assert.include(
+      message.text,
+      "- Failing checks: read the failing logs, fix the cause, and push.",
+    );
+    assert.include(message.text, "`gh pr view 12 --comments` and `gh pr checks 12`");
+    assert.include(message.text, `automatic follow-up 1 of ${PULL_REQUEST_WATCH_FOLLOW_UP_LIMIT}`);
+  });
+
+  it("asks for a rebase on a conflict and leaves news without instructions", () => {
+    const conflict = evaluatePullRequestWatch(
+      watch(),
+      detail({ mergeability: "conflicting", reviewDecision: "changes-requested" }),
+      noRemarks,
+    );
+    const conflictText = pullRequestWatchMessage({
+      host: "gitlab.com",
+      number: 3,
+      url: "https://gitlab.com/o/r/-/merge_requests/3",
+      baseBranch: "develop",
+      headSha: null,
+      report: conflict,
+    }).text;
+    assert.include(conflictText, "- Merge conflict: rebase on or merge develop");
+    assert.include(conflictText, "- Requested changes: read the review comments");
+    assert.include(conflictText, "the host's CLI or API");
+
+    const news = evaluatePullRequestWatch(watch(), detail(), [
+      remark("reviewer", "2026-10-02T12:10:00Z"),
+    ]);
+    const newsText = pullRequestWatchMessage({
+      host: "github.com",
+      number: 3,
+      url: "https://github.com/o/r/pull/3",
+      baseBranch: "main",
+      headSha: null,
+      report: news,
+    }).text;
+    assert.notInclude(newsText, "Fix these");
+    assert.notInclude(newsText, "automatic follow-up");
   });
 });

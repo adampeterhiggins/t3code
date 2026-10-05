@@ -6,7 +6,12 @@
  *
  * @module provider/Drivers/CursorDriver
  */
-import { CursorSettings, ProviderDriverKind, ProviderSetupError } from "@t3tools/contracts";
+import {
+  CursorSettings,
+  defaultInstanceIdForDriver,
+  ProviderDriverKind,
+  ProviderSetupError,
+} from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Crypto from "effect/Crypto";
 import * as FileSystem from "effect/FileSystem";
@@ -198,14 +203,14 @@ export const CursorDriver: ProviderDriver<CursorSettings, CursorDriverEnv> = {
         auth.withAccess,
       );
 
-      const checkProvider = auth.readApiKey.pipe(
+      const checkProvider = auth.readCredential.pipe(
         Effect.orElseSucceed(() => undefined),
-        Effect.flatMap((apiKey) =>
+        Effect.flatMap((credential) =>
           checkCursorProviderStatus(
             effectiveConfig,
             {
               ...processEnv,
-              CURSOR_API_KEY: apiKey,
+              CURSOR_API_KEY: credential?.apiKey,
             },
             auth.usesApiKey ? "api-key" : "browser",
           ).pipe(
@@ -215,11 +220,13 @@ export const CursorDriver: ProviderDriver<CursorSettings, CursorDriverEnv> = {
               snapshot.auth.status === "authenticated"
                 ? serverSettings.getSettings.pipe(
                     Effect.flatMap((settings) =>
-                      readCursorUsageLimits(
-                        effectiveConfig,
-                        { ...processEnv, CURSOR_API_KEY: apiKey },
-                        settings.cursorKeychainUsageEnabled,
-                      ),
+                      // Each instance reads its own account's limits with its own key; only the
+                      // default instance may fall back to the host's shared CLI login.
+                      readCursorUsageLimits(effectiveConfig, processEnv, {
+                        allowKeychain: settings.cursorKeychainUsageEnabled,
+                        sdkCredential: credential,
+                        sharedLogin: instanceId === defaultInstanceIdForDriver(DRIVER_KIND),
+                      }),
                     ),
                     Effect.map((usageLimits) => ({ ...snapshot, usageLimits })),
                   )

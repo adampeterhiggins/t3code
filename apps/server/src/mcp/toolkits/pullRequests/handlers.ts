@@ -128,6 +128,7 @@ function entryOf(
     url: link.url,
     source: link.source,
     watching: link.watch !== undefined,
+    ...(link.watch?.paused === true ? { watchPaused: true } : {}),
     state: link.snapshot?.state ?? null,
     title: link.snapshot?.title ?? null,
     headBranch: link.snapshot?.headBranch ?? null,
