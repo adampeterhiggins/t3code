@@ -1,16 +1,22 @@
-import type { OrchestrationCheckpointFile } from "@t3tools/contracts";
-import { threadPullRequestKeysEqual } from "@t3tools/shared/threadPullRequests";
+import {
+  legacyThreadPullRequestKey,
+  threadPullRequestKeysEqual,
+} from "@t3tools/shared/threadPullRequests";
 import * as Effect from "effect/Effect";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import type { Fragment } from "effect/unstable/sql/Statement";
 
 import type {
   ActivityEntry,
+  FileChange,
   MessageEntry,
   PlanEntry,
   ProjectSummary,
   PullRequestBrief,
   PullRequestEntry,
+  SubagentTranscript,
+  SubagentTranscriptEntry,
+  ThreadStartedBy,
   ThreadSummary,
   TimelineEntry,
   TimelineKind,
@@ -18,10 +24,18 @@ import type {
 } from "./tools.ts";
 
 /**
- * SQL behind the query toolkit. Everything reads the projection tables the
- * app renders from, so what an agent sees matches what the user saw. Deleted
- * threads and projects never appear. Times are the projections' own ISO UTC
- * strings, which compare correctly as text.
+ * SQL behind the query toolkit. Everything reads the orchestration V2
+ * projections the app renders from (plus `projection_projects`, which is still
+ * the live project store), so what an agent sees matches what the user saw.
+ * The V1 `projection_thread*` and `projection_turns` tables stopped updating at
+ * the V2 cutover and are never read here.
+ *
+ * Mapping from the V1 shapes the tools kept: a turn is a V2 run (`turnId` is
+ * the run id), an activity is a turn item other than a message or reasoning,
+ * and a turn's `turnCount` is its checkpoint's `app_run_ordinal`, which is what
+ * CheckpointDiffQuery diffs by. Deleted threads and projects never appear, and
+ * subagent threads are left out of unscoped lists the way the sidebar hides
+ * them. Times are ISO UTC strings, which compare correctly as text.
  */
 
 export type Order = "asc" | "desc";
@@ -54,9 +68,56 @@ const MAX_THREAD_PULL_REQUESTS = 10;
 const TIMELINE_PROMPT_CHARS = 280;
 const TIMELINE_SUMMARY_CHARS = 200;
 const DETAIL_CHARS = 300;
+const TRANSCRIPT_ENTRIES = 200;
+const TRANSCRIPT_TEXT_CHARS = 2_000;
+
+/** Runtime request kinds the user approves; `user_input` is a question. */
+const APPROVAL_KINDS = ["command", "file-read", "file-change", "mcp-elicitation", "permission"];
+/** Turn items that are conversation, not work; list_messages covers them. */
+const MESSAGE_ITEM_TYPES = ["user_message", "assistant_message", "reasoning"];
+const TOOL_ITEM_TYPES = [
+  "command_execution",
+  "file_change",
+  "dynamic_tool",
+  "file_search",
+  "web_search",
+  "subagent",
+];
+const NOTABLE_ITEM_TYPES = [
+  ...TOOL_ITEM_TYPES,
+  "todo_list",
+  "proposed_plan",
+  "approval_request",
+  "user_input_request",
+  "notification",
+];
+const ACTIVE_RUN_STATUSES = ["preparing", "starting", "running", "waiting"];
+
+const ACTIVITY_LABELS: Record<string, string> = {
+  command_execution: "Command",
+  file_change: "File change",
+  dynamic_tool: "Tool call",
+  file_search: "File search",
+  web_search: "Web search",
+  subagent: "Subagent",
+  error: "Error",
+  approval_request: "Approval requested",
+  user_input_request: "Question",
+  todo_list: "Task list updated",
+  proposed_plan: "Plan proposed",
+  notification: "Notification",
+  checkpoint: "Checkpoint",
+  compaction: "Context compacted",
+  handoff: "Provider handoff",
+  fork: "Forked",
+  thread_created: "Thread created",
+  system_notice: "Notice",
+  run_interrupt_request: "Interrupt requested",
+  run_interrupt_result: "Interrupted",
+};
 
 /** Escapes LIKE wildcards; queries pass `ESCAPE '!'`. */
-export const likePattern = (text: string) => `%${text.replace(/[!%_]/g, (char) => `!${char}`)}%`;
+const likePattern = (text: string) => `%${text.replace(/[!%_]/g, (char) => `!${char}`)}%`;
 
 const cut = (text: string | null, max: number) =>
   text === null
@@ -64,6 +125,8 @@ const cut = (text: string | null, max: number) =>
     : text.length > max
       ? { text: `${text.slice(0, max)}…`, truncated: true }
       : { text, truncated: false };
+
+const oneLine = (text: string) => text.replace(/\s+/g, " ").trim();
 
 const parseJson = (text: string | null): unknown => {
   if (text === null) return null;
@@ -82,27 +145,25 @@ const stringField = (value: Record<string, unknown>, key: string) =>
 const intField = (value: Record<string, unknown>, key: string) =>
   typeof value[key] === "number" ? Math.trunc(value[key] as number) : null;
 
-export const parseFiles = (json: string | null): ReadonlyArray<OrchestrationCheckpointFile> => {
+const parseFiles = (json: string | null): ReadonlyArray<FileChange> => {
   const parsed = parseJson(json);
   if (!Array.isArray(parsed)) return [];
-  return parsed.flatMap((entry): ReadonlyArray<OrchestrationCheckpointFile> => {
+  return parsed.flatMap((entry): ReadonlyArray<FileChange> => {
     if (!isRecord(entry) || typeof entry.path !== "string") return [];
     return [
       {
         path: entry.path,
-        kind: typeof entry.kind === "string" ? entry.kind : "modified",
+        kind: stringField(entry, "kind") ?? "modified",
         additions: intField(entry, "additions") ?? 0,
         deletions: intField(entry, "deletions") ?? 0,
-      } as OrchestrationCheckpointFile,
+      },
     ];
   });
 };
 
 /** Sums file changes across turns, oldest first, so the latest kind wins. */
-export const mergeFiles = (
-  turns: ReadonlyArray<ReadonlyArray<OrchestrationCheckpointFile>>,
-): ReadonlyArray<OrchestrationCheckpointFile> => {
-  const byPath = new Map<string, OrchestrationCheckpointFile>();
+const mergeFiles = (turns: ReadonlyArray<ReadonlyArray<FileChange>>): ReadonlyArray<FileChange> => {
+  const byPath = new Map<string, FileChange>();
   for (const files of turns) {
     for (const file of files) {
       const previous = byPath.get(file.path);
@@ -116,6 +177,11 @@ export const mergeFiles = (
   return [...byPath.values()].toSorted((left, right) => left.path.localeCompare(right.path));
 };
 
+const fileTotals = (files: ReadonlyArray<FileChange>) => ({
+  additions: files.reduce((total, file) => total + file.additions, 0),
+  deletions: files.reduce((total, file) => total + file.deletions, 0),
+});
+
 const planTitle = (markdown: string) => {
   const line = markdown
     .split("\n")
@@ -124,29 +190,21 @@ const planTitle = (markdown: string) => {
   return cut(line ?? "Untitled plan", 120).text ?? "Untitled plan";
 };
 
-const pullRequestOf = (row: {
-  readonly host: string;
-  readonly repository: string;
-  readonly number: number;
-  readonly url: string;
-  readonly snapshotJson: string | null;
-}) => {
-  const parsed = parseJson(row.snapshotJson);
-  const snapshot = isRecord(parsed) ? parsed : {};
-  return {
-    host: row.host,
-    repository: row.repository,
-    number: row.number,
-    url: row.url,
-    title: stringField(snapshot, "title"),
-    state: stringField(snapshot, "state"),
-    isDraft: typeof snapshot.isDraft === "boolean" ? snapshot.isDraft : null,
-    snapshot,
-  };
+const startedByOf = (json: string | null): ThreadStartedBy | null => {
+  const parsed = parseJson(json);
+  if (!isRecord(parsed)) return null;
+  const threadId = stringField(parsed, "threadId");
+  if (parsed.kind === "thread" && threadId !== null) return { kind: "thread", threadId };
+  const label = stringField(parsed, "label");
+  if (parsed.kind === "agent-access" && label !== null) return { kind: "agent-access", label };
+  return null;
 };
 
+const activitySummary = (row: { readonly kind: string; readonly title: string | null }) =>
+  row.title ?? ACTIVITY_LABELS[row.kind] ?? row.kind;
+
 interface PullRequestRow {
-  readonly host: string;
+  readonly host: string | null;
   readonly repository: string;
   readonly number: number;
   readonly url: string;
@@ -158,8 +216,26 @@ interface PullRequestRow {
   readonly projectId: string;
 }
 
+const pullRequestOf = (row: PullRequestRow) => {
+  const parsed = parseJson(row.snapshotJson);
+  const snapshot = isRecord(parsed) ? parsed : {};
+  return {
+    brief: {
+      // Links written before `pullRequests` carry no host; recover it the way the app does.
+      host: row.host ?? legacyThreadPullRequestKey(row).host,
+      repository: row.repository,
+      number: row.number,
+      url: row.url,
+      title: stringField(snapshot, "title"),
+      state: stringField(snapshot, "state"),
+      isDraft: typeof snapshot.isDraft === "boolean" ? snapshot.isDraft : null,
+    } satisfies PullRequestBrief,
+    snapshot,
+  };
+};
+
 const pullRequestEntryOf = (row: PullRequestRow): PullRequestEntry => {
-  const { snapshot, ...brief } = pullRequestOf(row);
+  const { brief, snapshot } = pullRequestOf(row);
   return {
     ...brief,
     headBranch: stringField(snapshot, "headBranch"),
@@ -188,7 +264,6 @@ interface ThreadRow {
   readonly branch: string | null;
   readonly worktreePath: string | null;
   readonly provider: string | null;
-  readonly providerName: string | null;
   readonly model: string | null;
   readonly runtimeMode: string;
   readonly interactionMode: string;
@@ -199,13 +274,14 @@ interface ThreadRow {
   readonly settledOverride: string | null;
   readonly pinnedAt: string | null;
   readonly snoozedUntil: string | null;
-  readonly sessionStatus: string | null;
+  readonly sessionStatus: string;
   readonly turnCount: number;
   readonly pendingApprovalCount: number;
   readonly pendingUserInputCount: number;
   readonly hasActionableProposedPlan: number;
   readonly tabGroupId: string | null;
-  readonly startedByThreadId: string | null;
+  readonly startedByJson: string | null;
+  readonly historyOrigin: string | null;
   readonly windowFirstAt?: string | null;
   readonly windowLastAt?: string | null;
   readonly sortAt: string;
@@ -221,6 +297,11 @@ export interface ThreadFilter {
   readonly provider?: string | undefined;
   readonly branch?: string | undefined;
   readonly titleContains?: string | undefined;
+}
+
+interface Scope {
+  readonly threadId?: string | undefined;
+  readonly projectId?: string | undefined;
 }
 
 export const makeQueryStore = Effect.gen(function* () {
@@ -250,27 +331,51 @@ export const makeQueryStore = Effect.gen(function* () {
   const idsIn = (column: string, ids: ReadonlyArray<string>) =>
     ids.length === 0 ? sql`1 = 0` : sql.in(column, ids);
 
+  const liveThreads = sql`t.deleted_at IS NULL AND p.deleted_at IS NULL`;
+  const notSubagent = sql`json_extract(t.payload_json, '$.lineage.relationshipToParent') IS NOT 'subagent'`;
+  /** Threads a query covers: the named one, or every listed one in scope. */
+  const scopeConditions = (scope: Scope): ReadonlyArray<Fragment> => [
+    liveThreads,
+    scope.threadId === undefined ? notSubagent : sql`t.thread_id = ${scope.threadId}`,
+    ...(scope.projectId === undefined ? [] : [sql`t.project_id = ${scope.projectId}`]),
+  ];
+  const threadsFrom = sql`
+    FROM orchestration_v2_projection_threads AS t
+    JOIN projection_projects AS p ON p.project_id = t.project_id
+  `;
+
   const lastActivitySql = sql`MAX(
-    COALESCE(t.latest_user_message_at, t.created_at),
     COALESCE(
-      (SELECT MAX(COALESCE(tu.completed_at, tu.started_at, tu.requested_at))
-        FROM projection_turns AS tu WHERE tu.thread_id = t.thread_id),
+      (SELECT MAX(um.created_at) FROM orchestration_v2_projection_messages AS um
+        WHERE um.thread_id = t.thread_id AND um.role = 'user'),
+      t.created_at
+    ),
+    COALESCE(
+      (SELECT MAX(COALESCE(ru.completed_at, ru.requested_at)) FROM orchestration_v2_projection_runs AS ru
+        WHERE ru.thread_id = t.thread_id),
       t.created_at
     )
   )`;
 
-  const liveThreads = sql`t.deleted_at IS NULL AND p.deleted_at IS NULL`;
-
-  /** Threads with a prompt, a turn start, or a turn finish inside the window. */
+  /** Threads with a prompt, a turn request, or a turn finish inside the window. */
   const activitySql = (window: Window) => sql`
-    SELECT thread_id, created_at AS at FROM projection_thread_messages
+    SELECT thread_id, created_at AS at FROM orchestration_v2_projection_messages
       WHERE role = 'user' AND created_at >= ${window.since} AND created_at < ${window.until}
     UNION ALL
-    SELECT thread_id, requested_at FROM projection_turns
+    SELECT thread_id, requested_at FROM orchestration_v2_projection_runs
       WHERE requested_at >= ${window.since} AND requested_at < ${window.until}
     UNION ALL
-    SELECT thread_id, completed_at FROM projection_turns
+    SELECT thread_id, completed_at FROM orchestration_v2_projection_runs
       WHERE completed_at >= ${window.since} AND completed_at < ${window.until}
+  `;
+
+  /** A run's own checkpoint (baselines have no run); join as `cp`. */
+  const runCheckpointJoin = sql`
+    LEFT JOIN orchestration_v2_projection_checkpoints AS cp ON cp.checkpoint_id = (
+      SELECT c.checkpoint_id FROM orchestration_v2_projection_checkpoints AS c
+      WHERE c.thread_id = r.thread_id AND c.run_id = r.run_id AND c.app_run_ordinal IS NOT NULL
+      ORDER BY c.captured_at DESC, c.checkpoint_id DESC LIMIT 1
+    )
   `;
 
   const threadSelect = sql`
@@ -279,89 +384,114 @@ export const makeQueryStore = Effect.gen(function* () {
       t.project_id AS "projectId",
       p.title AS "projectTitle",
       t.title,
-      t.branch,
-      t.worktree_path AS "worktreePath",
-      COALESCE(
-        json_extract(t.model_selection_json, '$.instanceId'),
-        json_extract(t.model_selection_json, '$.provider'),
-        s.provider_instance_id,
-        s.provider_name
-      ) AS provider,
-      s.provider_name AS "providerName",
-      json_extract(t.model_selection_json, '$.model') AS model,
+      json_extract(t.payload_json, '$.branch') AS branch,
+      json_extract(t.payload_json, '$.worktreePath') AS "worktreePath",
+      t.provider_instance_id AS provider,
+      json_extract(t.payload_json, '$.modelSelection.model') AS model,
       t.runtime_mode AS "runtimeMode",
       t.interaction_mode AS "interactionMode",
       t.created_at AS "createdAt",
       ${lastActivitySql} AS "lastActivityAt",
       t.archived_at AS "archivedAt",
-      t.settled_at AS "settledAt",
-      t.settled_override AS "settledOverride",
-      t.pinned_at AS "pinnedAt",
-      t.snoozed_until AS "snoozedUntil",
-      s.status AS "sessionStatus",
-      (SELECT COUNT(*) FROM projection_turns AS tu WHERE tu.thread_id = t.thread_id) AS "turnCount",
-      t.pending_approval_count AS "pendingApprovalCount",
-      t.pending_user_input_count AS "pendingUserInputCount",
-      t.has_actionable_proposed_plan AS "hasActionableProposedPlan",
+      json_extract(t.payload_json, '$.settledAt') AS "settledAt",
+      json_extract(t.payload_json, '$.settledOverride') AS "settledOverride",
+      json_extract(t.payload_json, '$.pinnedAt') AS "pinnedAt",
+      json_extract(t.payload_json, '$.snoozedUntil') AS "snoozedUntil",
+      COALESCE((
+        SELECT ru.status FROM orchestration_v2_projection_runs AS ru
+        WHERE ru.thread_id = t.thread_id
+          AND NOT (ru.status = 'queued' AND json_extract(ru.payload_json, '$.queueHeld') IS 1)
+        ORDER BY ru.ordinal DESC LIMIT 1
+      ), 'idle') AS "sessionStatus",
+      (SELECT COUNT(*) FROM orchestration_v2_projection_runs AS ru
+        WHERE ru.thread_id = t.thread_id AND ru.status <> 'rolled_back') AS "turnCount",
+      (SELECT COUNT(*) FROM orchestration_v2_projection_runtime_requests AS rq
+        WHERE rq.thread_id = t.thread_id AND rq.status = 'pending'
+          AND ${sql.in("rq.kind", APPROVAL_KINDS)}) AS "pendingApprovalCount",
+      (SELECT COUNT(*) FROM orchestration_v2_projection_runtime_requests AS rq
+        WHERE rq.thread_id = t.thread_id AND rq.status = 'pending'
+          AND rq.kind = 'user_input') AS "pendingUserInputCount",
+      EXISTS (
+        SELECT 1 FROM orchestration_v2_projection_plans AS pl
+        WHERE pl.thread_id = t.thread_id AND pl.kind = 'proposed_plan' AND pl.status = 'active'
+      ) AS "hasActionableProposedPlan",
       tabs.group_id AS "tabGroupId",
-      json_extract(t.created_by_json, '$.threadId') AS "startedByThreadId"
-    FROM projection_threads AS t
-    JOIN projection_projects AS p ON p.project_id = t.project_id
-    LEFT JOIN projection_thread_sessions AS s ON s.thread_id = t.thread_id
+      json_extract(t.payload_json, '$.startedBy') AS "startedByJson",
+      json_extract(t.payload_json, '$.historyOrigin') AS "historyOrigin"
+    ${threadsFrom}
     LEFT JOIN fork_thread_tabs AS tabs ON tabs.thread_id = t.thread_id
   `;
 
+  const hasPullRequestSql = sql`(
+    EXISTS (
+      SELECT 1 FROM json_each(t.payload_json, '$.pullRequests') AS link
+      WHERE json_extract(link.value, '$.source') IS NOT 'stack-dismissed'
+    )
+    OR (
+      json_type(t.payload_json, '$.pullRequests') IS NULL
+      AND json_type(t.payload_json, '$.linkedPullRequest') = 'object'
+    )
+  )`;
+
   const threadConditions = (filter: ThreadFilter): Fragment =>
     sql.and([
-      liveThreads,
-      ...(filter.threadId === undefined ? [] : [sql`t.thread_id = ${filter.threadId}`]),
-      ...(filter.projectId === undefined ? [] : [sql`t.project_id = ${filter.projectId}`]),
+      ...scopeConditions(filter),
       ...(filter.archived === "only"
         ? [sql`t.archived_at IS NOT NULL`]
         : filter.archived === "include"
           ? []
           : [sql`t.archived_at IS NULL`]),
-      ...(filter.needsAttention === undefined
-        ? []
-        : [
-            filter.needsAttention
-              ? sql`(t.pending_approval_count > 0 OR t.pending_user_input_count > 0 OR t.has_actionable_proposed_plan = 1)`
-              : sql`(t.pending_approval_count = 0 AND t.pending_user_input_count = 0 AND t.has_actionable_proposed_plan = 0)`,
-          ]),
       ...(filter.hasPullRequest === undefined
         ? []
-        : [
-            sql`${filter.hasPullRequest ? sql`` : sql`NOT`} EXISTS (
-              SELECT 1 FROM projection_thread_pull_requests AS pr
-              WHERE pr.thread_id = t.thread_id AND pr.source != 'stack-dismissed'
-            )`,
-          ]),
-      ...(filter.branch === undefined ? [] : [sql`t.branch = ${filter.branch}`]),
+        : [filter.hasPullRequest ? hasPullRequestSql : sql`NOT ${hasPullRequestSql}`]),
+      ...(filter.branch === undefined
+        ? []
+        : [sql`json_extract(t.payload_json, '$.branch') = ${filter.branch}`]),
       ...(filter.titleContains === undefined
         ? []
         : [sql`t.title LIKE ${likePattern(filter.titleContains)} ESCAPE '!'`]),
     ]);
 
+  /**
+   * Live pull request links, one row per thread and pull request. Threads
+   * whose payload predates `pullRequests` carry a single `linkedPullRequest`.
+   */
+  const pullRequestRows = (conditions: ReadonlyArray<Fragment>) => sql`
+    SELECT json_extract(link.value, '$.host') AS host,
+      json_extract(link.value, '$.repository') AS repository,
+      json_extract(link.value, '$.number') AS number,
+      json_extract(link.value, '$.url') AS url,
+      json_extract(link.value, '$.source') AS source,
+      json_extract(link.value, '$.linkedAt') AS "linkedAt",
+      json_extract(link.value, '$.snapshot') AS "snapshotJson",
+      t.thread_id AS "threadId", t.title AS "threadTitle", t.project_id AS "projectId"
+    ${threadsFrom}
+    JOIN json_each(t.payload_json, '$.pullRequests') AS link
+    WHERE ${sql.and([...conditions, sql`json_extract(link.value, '$.source') IS NOT 'stack-dismissed'`])}
+    UNION ALL
+    SELECT NULL, json_extract(t.payload_json, '$.linkedPullRequest.repository'),
+      json_extract(t.payload_json, '$.linkedPullRequest.number'),
+      json_extract(t.payload_json, '$.linkedPullRequest.url'),
+      'manual', '1970-01-01T00:00:00.000Z', NULL,
+      t.thread_id, t.title, t.project_id
+    ${threadsFrom}
+    WHERE ${sql.and([
+      ...conditions,
+      sql`json_type(t.payload_json, '$.pullRequests') IS NULL`,
+      sql`json_type(t.payload_json, '$.linkedPullRequest') = 'object'`,
+    ])}
+  `;
+
   const pullRequestBriefs = Effect.fn("QueryStore.pullRequestBriefs")(function* (
     threadIds: ReadonlyArray<string>,
   ) {
-    const rows = yield* sql<{
-      readonly threadId: string;
-      readonly host: string;
-      readonly repository: string;
-      readonly number: number;
-      readonly url: string;
-      readonly snapshotJson: string | null;
-    }>`
-      SELECT thread_id AS "threadId", host, repository, number, url, snapshot_json AS "snapshotJson"
-      FROM projection_thread_pull_requests
-      WHERE ${idsIn("thread_id", threadIds)} AND source != 'stack-dismissed'
-      ORDER BY linked_at DESC
+    const rows = yield* sql<PullRequestRow>`
+      SELECT * FROM (${pullRequestRows([liveThreads, idsIn("t.thread_id", threadIds)])})
+      ORDER BY "linkedAt" DESC, url DESC
     `;
     const byThread = new Map<string, Array<PullRequestBrief>>();
     for (const row of rows) {
-      const { snapshot: _snapshot, ...brief } = pullRequestOf(row);
-      byThread.set(row.threadId, [...(byThread.get(row.threadId) ?? []), brief]);
+      byThread.set(row.threadId, [...(byThread.get(row.threadId) ?? []), pullRequestOf(row).brief]);
     }
     return byThread;
   });
@@ -371,19 +501,21 @@ export const makeQueryStore = Effect.gen(function* () {
     window: Window,
   ) {
     const prompts = yield* sql<{ readonly threadId: string; readonly count: number }>`
-      SELECT thread_id AS "threadId", COUNT(*) AS count FROM projection_thread_messages
+      SELECT thread_id AS "threadId", COUNT(*) AS count FROM orchestration_v2_projection_messages
       WHERE ${idsIn("thread_id", threadIds)} AND role = 'user'
         AND created_at >= ${window.since} AND created_at < ${window.until}
       GROUP BY thread_id
     `;
     const turns = yield* sql<{ readonly threadId: string; readonly filesJson: string | null }>`
-      SELECT thread_id AS "threadId", checkpoint_files_json AS "filesJson" FROM projection_turns
-      WHERE ${idsIn("thread_id", threadIds)}
-        AND completed_at >= ${window.since} AND completed_at < ${window.until}
-      ORDER BY completed_at ASC
+      SELECT r.thread_id AS "threadId", json_extract(cp.payload_json, '$.files') AS "filesJson"
+      FROM orchestration_v2_projection_runs AS r
+      ${runCheckpointJoin}
+      WHERE ${idsIn("r.thread_id", threadIds)}
+        AND r.completed_at >= ${window.since} AND r.completed_at < ${window.until}
+      ORDER BY r.completed_at ASC
     `;
     const promptCounts = new Map(prompts.map((row) => [row.threadId, row.count]));
-    const turnFiles = new Map<string, Array<ReadonlyArray<OrchestrationCheckpointFile>>>();
+    const turnFiles = new Map<string, Array<ReadonlyArray<FileChange>>>();
     for (const row of turns) {
       turnFiles.set(row.threadId, [
         ...(turnFiles.get(row.threadId) ?? []),
@@ -396,8 +528,7 @@ export const makeQueryStore = Effect.gen(function* () {
         prompts: promptCounts.get(threadId) ?? 0,
         turnsCompleted: turnFiles.get(threadId)?.length ?? 0,
         filesChanged: files.length,
-        additions: files.reduce((total, file) => total + file.additions, 0),
-        deletions: files.reduce((total, file) => total + file.deletions, 0),
+        ...fileTotals(files),
       };
     };
   });
@@ -421,10 +552,22 @@ export const makeQueryStore = Effect.gen(function* () {
             FROM base JOIN windowed ON windowed.thread_id = base."threadId"`
       }
       WHERE ${sql.and([
+        ...(filter.needsAttention === undefined
+          ? []
+          : [
+              filter.needsAttention
+                ? sql`(base."pendingApprovalCount" > 0 OR base."pendingUserInputCount" > 0 OR base."hasActionableProposedPlan" = 1)`
+                : sql`(base."pendingApprovalCount" = 0 AND base."pendingUserInputCount" = 0 AND base."hasActionableProposedPlan" = 0)`,
+            ]),
         ...(filter.provider === undefined
           ? []
           : [
-              sql`(base.provider = ${filter.provider} OR base."providerName" = ${filter.provider})`,
+              sql`(base.provider = ${filter.provider} OR EXISTS (
+                SELECT 1 FROM orchestration_v2_projection_provider_session_bindings AS b
+                JOIN orchestration_v2_projection_provider_sessions AS s
+                  ON s.provider_session_id = b.provider_session_id
+                WHERE b.thread_id = base."threadId" AND s.driver = ${filter.provider}
+              ))`,
             ]),
         after(sql`"sortAt", base."threadId"`, page),
       ])}
@@ -438,44 +581,225 @@ export const makeQueryStore = Effect.gen(function* () {
       rows,
       page,
       (row) => [row.sortAt, row.threadId],
-      (row): ThreadSummary => ({
-        threadId: row.threadId,
-        projectId: row.projectId,
-        projectTitle: row.projectTitle,
-        title: row.title,
-        branch: row.branch,
-        worktreePath: row.worktreePath,
-        provider: row.provider,
-        model: row.model,
-        runtimeMode: row.runtimeMode,
-        interactionMode: row.interactionMode,
-        createdAt: row.createdAt,
-        lastActivityAt: row.lastActivityAt,
-        archivedAt: row.archivedAt,
-        settledAt: row.settledAt,
-        settledOverride: row.settledOverride,
-        pinnedAt: row.pinnedAt,
-        snoozedUntil: row.snoozedUntil,
-        sessionStatus: row.sessionStatus,
-        turnCount: row.turnCount,
-        pendingApprovalCount: row.pendingApprovalCount,
-        pendingUserInputCount: row.pendingUserInputCount,
-        hasActionableProposedPlan: row.hasActionableProposedPlan === 1,
-        tabGroupId: row.tabGroupId,
-        startedByThreadId: row.startedByThreadId,
-        pullRequests: (pullRequests.get(row.threadId) ?? []).slice(0, MAX_THREAD_PULL_REQUESTS),
-        pullRequestCount: pullRequests.get(row.threadId)?.length ?? 0,
-        ...(stats === null || !row.windowFirstAt || !row.windowLastAt
-          ? {}
-          : {
-              window: {
-                firstActivityAt: row.windowFirstAt,
-                lastActivityAt: row.windowLastAt,
-                ...stats(row.threadId),
-              },
-            }),
-      }),
+      (row): ThreadSummary => {
+        const startedBy = startedByOf(row.startedByJson);
+        return {
+          threadId: row.threadId,
+          projectId: row.projectId,
+          projectTitle: row.projectTitle,
+          title: row.title,
+          branch: row.branch,
+          worktreePath: row.worktreePath,
+          provider: row.provider,
+          model: row.model,
+          runtimeMode: row.runtimeMode,
+          interactionMode: row.interactionMode,
+          createdAt: row.createdAt,
+          lastActivityAt: row.lastActivityAt,
+          archivedAt: row.archivedAt,
+          settledAt: row.settledAt,
+          settledOverride: row.settledOverride,
+          pinnedAt: row.pinnedAt,
+          snoozedUntil: row.snoozedUntil,
+          sessionStatus: row.sessionStatus,
+          turnCount: row.turnCount,
+          pendingApprovalCount: row.pendingApprovalCount,
+          pendingUserInputCount: row.pendingUserInputCount,
+          hasActionableProposedPlan: row.hasActionableProposedPlan === 1,
+          tabGroupId: row.tabGroupId,
+          startedByThreadId: startedBy?.kind === "thread" ? startedBy.threadId : null,
+          startedBy,
+          importedFromV1: row.historyOrigin === "v1_import",
+          pullRequests: (pullRequests.get(row.threadId) ?? []).slice(0, MAX_THREAD_PULL_REQUESTS),
+          pullRequestCount: pullRequests.get(row.threadId)?.length ?? 0,
+          ...(stats === null || !row.windowFirstAt || !row.windowLastAt
+            ? {}
+            : {
+                window: {
+                  firstActivityAt: row.windowFirstAt,
+                  lastActivityAt: row.windowLastAt,
+                  ...stats(row.threadId),
+                },
+              }),
+        };
+      },
     );
+  });
+
+  /** Files changed by completed turns with a ready checkpoint, as CheckpointDiffQuery diffs them. */
+  const filesBetween = Effect.fn("QueryStore.filesBetween")(function* (input: {
+    readonly threadId: string;
+    readonly fromTurnCount: number;
+    readonly toTurnCount: number;
+  }) {
+    const rows = yield* sql<{ readonly filesJson: string | null }>`
+      SELECT json_extract(c.payload_json, '$.files') AS "filesJson"
+      FROM orchestration_v2_projection_checkpoints AS c
+      JOIN orchestration_v2_projection_runs AS r ON r.run_id = c.run_id
+      WHERE c.thread_id = ${input.threadId} AND c.status = 'ready' AND r.status = 'completed'
+        AND c.app_run_ordinal > ${input.fromTurnCount}
+        AND c.app_run_ordinal <= ${input.toTurnCount}
+      ORDER BY c.app_run_ordinal ASC, c.captured_at ASC
+    `;
+    return mergeFiles(rows.map((row) => parseFiles(row.filesJson)));
+  });
+
+  const toneSql = sql`CASE
+    WHEN i.type = 'error' THEN 'error'
+    WHEN i.type IN ('approval_request', 'user_input_request') THEN 'approval'
+    WHEN ${sql.in("i.type", TOOL_ITEM_TYPES)} THEN 'tool'
+    ELSE 'info'
+  END`;
+  const itemAtSql = sql`COALESCE(json_extract(i.payload_json, '$.startedAt'), i.updated_at)`;
+  const detailSql = sql`substr(COALESCE(
+    CASE i.type
+      WHEN 'command_execution' THEN json_extract(i.payload_json, '$.input')
+      WHEN 'file_change' THEN json_extract(i.payload_json, '$.fileName')
+      WHEN 'dynamic_tool' THEN COALESCE(json_extract(i.payload_json, '$.toolName'), 'tool')
+        || COALESCE(' ' || json_extract(i.payload_json, '$.input'), '')
+      WHEN 'subagent' THEN json_extract(i.payload_json, '$.prompt')
+      WHEN 'error' THEN json_extract(i.payload_json, '$.failure.message')
+      WHEN 'approval_request' THEN json_extract(i.payload_json, '$.prompt')
+      WHEN 'user_input_request' THEN json_extract(i.payload_json, '$.questions[0].question')
+      WHEN 'notification' THEN json_extract(i.payload_json, '$.summary')
+      WHEN 'proposed_plan' THEN json_extract(i.payload_json, '$.markdown')
+      WHEN 'todo_list' THEN json_extract(i.payload_json, '$.explanation')
+      WHEN 'file_search' THEN json_extract(i.payload_json, '$.pattern')
+      WHEN 'web_search' THEN json_extract(i.payload_json, '$.patterns[0]')
+      WHEN 'compaction' THEN json_extract(i.payload_json, '$.summary')
+      WHEN 'handoff' THEN json_extract(i.payload_json, '$.summary')
+    END,
+    json_extract(i.payload_json, '$.message')
+  ), 1, ${DETAIL_CHARS})`;
+  const activityColumns = sql`
+    i.turn_item_id AS "activityId", i.thread_id AS "threadId", i.run_id AS "turnId",
+    ${toneSql} AS tone, i.type AS kind, i.status, json_extract(i.payload_json, '$.title') AS title,
+    ${detailSql} AS detail, ${itemAtSql} AS "createdAt"
+  `;
+  type ActivityRow = Omit<ActivityEntry, "summary"> & { readonly title: string | null };
+  const activityEntryOf = ({ title, ...row }: ActivityRow): ActivityEntry => ({
+    ...row,
+    summary: activitySummary({ kind: row.kind, title }),
+  });
+  const workItems = sql`NOT (${sql.in("i.type", MESSAGE_ITEM_TYPES)})`;
+
+  interface PlanRow {
+    readonly planId: string;
+    readonly threadId: string;
+    readonly threadTitle: string;
+    readonly projectId: string;
+    readonly turnId: string | null;
+    readonly status: string;
+    readonly markdown: string | null;
+    readonly markdownLength: number | null;
+    readonly createdAt: string;
+    readonly updatedAt: string;
+    readonly implementedAt: string | null;
+    readonly implementationThreadId: string | null;
+  }
+
+  /**
+   * Proposed plans with their times and implementation. Plans carry no times
+   * of their own: they come from the turn item that streamed the plan, else
+   * its run. A plan was implemented when a run started from it
+   * (`sourcePlanRef`), which is also when the plan moved to `completed`.
+   */
+  const planRows = (input: {
+    readonly maxChars: number;
+    readonly itemScope: Fragment;
+    readonly conditions: ReadonlyArray<Fragment>;
+  }) => sql`
+    SELECT pl.plan_id AS "planId", pl.thread_id AS "threadId", t.title AS "threadTitle",
+      t.project_id AS "projectId", pl.run_id AS "turnId", pl.status,
+      substr(json_extract(pl.payload_json, '$.markdown'), 1, ${input.maxChars}) AS markdown,
+      length(json_extract(pl.payload_json, '$.markdown')) AS "markdownLength",
+      COALESCE(item.created_at, run.requested_at, t.created_at) AS "createdAt",
+      COALESCE(item.updated_at, run.completed_at, run.requested_at, t.created_at) AS "updatedAt",
+      impl.at AS "implementedAt", impl.thread_id AS "implementationThreadId"
+    FROM orchestration_v2_projection_plans AS pl
+    JOIN orchestration_v2_projection_threads AS t ON t.thread_id = pl.thread_id
+    JOIN projection_projects AS p ON p.project_id = t.project_id
+    LEFT JOIN orchestration_v2_projection_runs AS run ON run.run_id = pl.run_id
+    LEFT JOIN (
+      SELECT i.thread_id, json_extract(i.payload_json, '$.planId') AS plan_id,
+        MIN(${itemAtSql}) AS created_at, MAX(i.updated_at) AS updated_at
+      FROM orchestration_v2_projection_turn_items AS i
+      WHERE i.type = 'proposed_plan' AND ${input.itemScope}
+      GROUP BY i.thread_id, plan_id
+    ) AS item ON item.thread_id = pl.thread_id AND item.plan_id = pl.plan_id
+    LEFT JOIN (
+      SELECT json_extract(source.payload_json, '$.sourcePlanRef.planId') AS plan_id,
+        MIN(source.requested_at) AS at, source.thread_id
+      FROM orchestration_v2_projection_runs AS source
+      WHERE json_extract(source.payload_json, '$.sourcePlanRef.planId') IS NOT NULL
+      GROUP BY plan_id
+    ) AS impl ON impl.plan_id = pl.plan_id
+    WHERE ${sql.and([sql`pl.kind = 'proposed_plan'`, ...input.conditions])}
+  `;
+
+  const planEntryOf = (row: PlanRow): PlanEntry => ({
+    planId: row.planId,
+    threadId: row.threadId,
+    threadTitle: row.threadTitle,
+    turnId: row.turnId,
+    title: planTitle(row.markdown ?? ""),
+    preview: cut(row.markdown ?? "", 300).text ?? "",
+    status: row.status,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    implementedAt: row.implementedAt,
+    implementationThreadId: row.implementationThreadId,
+  });
+
+  const listPlans = Effect.fn("QueryStore.listPlans")(function* (
+    input: {
+      readonly threadId?: string | undefined;
+      readonly projectId?: string | undefined;
+      readonly implemented?: boolean | undefined;
+      readonly window?: Window | undefined;
+    },
+    page: PageRequest,
+  ) {
+    const window = input.window ?? OPEN_WINDOW;
+    const rows = yield* sql<PlanRow>`
+      SELECT * FROM (${planRows({
+        maxChars: 600,
+        itemScope: input.threadId === undefined ? sql`1 = 1` : sql`i.thread_id = ${input.threadId}`,
+        conditions: scopeConditions(input),
+      })})
+      WHERE ${sql.and([
+        ...(input.implemented === undefined
+          ? []
+          : [input.implemented ? sql`"implementedAt" IS NOT NULL` : sql`"implementedAt" IS NULL`]),
+        sql`"createdAt" >= ${window.since}`,
+        sql`"createdAt" < ${window.until}`,
+        after(sql`"createdAt", "planId"`, page),
+      ])}
+      ORDER BY "createdAt" ${direction(page.order)}, "planId" ${direction(page.order)}
+      LIMIT ${page.limit + 1}
+    `;
+    return pageOf(rows, page, (row) => [row.createdAt, row.planId], planEntryOf);
+  });
+
+  const getPlan = Effect.fn("QueryStore.getPlan")(function* (planId: string, maxChars: number) {
+    const rows = yield* sql<PlanRow>`
+      ${planRows({
+        maxChars,
+        itemScope: sql`i.thread_id = (
+          SELECT thread_id FROM orchestration_v2_projection_plans WHERE plan_id = ${planId}
+        )`,
+        conditions: [liveThreads, sql`pl.plan_id = ${planId}`],
+      })}
+    `;
+    const row = rows[0];
+    if (row === undefined) return null;
+    const markdown = row.markdown ?? "";
+    const truncated = (row.markdownLength ?? 0) > maxChars;
+    return {
+      plan: planEntryOf(row),
+      markdown: truncated ? `${markdown}…` : markdown,
+      truncated,
+    };
   });
 
   const getThreadDetail = Effect.fn("QueryStore.getThreadDetail")(function* (threadId: string) {
@@ -488,40 +812,67 @@ export const makeQueryStore = Effect.gen(function* () {
     const sessions = yield* sql<{
       readonly status: string;
       readonly provider: string | null;
-      readonly activeTurnId: string | null;
       readonly lastError: string | null;
       readonly updatedAt: string;
     }>`
-      SELECT status, COALESCE(provider_instance_id, provider_name) AS provider,
-        active_turn_id AS "activeTurnId", last_error AS "lastError", updated_at AS "updatedAt"
-      FROM projection_thread_sessions WHERE thread_id = ${threadId}
+      SELECT s.status, s.provider_instance_id AS provider,
+        json_extract(s.payload_json, '$.lastError') AS "lastError", s.updated_at AS "updatedAt"
+      FROM orchestration_v2_projection_provider_sessions AS s
+      JOIN orchestration_v2_projection_provider_session_bindings AS b
+        ON b.provider_session_id = s.provider_session_id
+      WHERE b.thread_id = ${threadId}
+      ORDER BY s.updated_at DESC, s.provider_session_id DESC LIMIT 1
+    `;
+    const activeRuns = yield* sql<{ readonly runId: string }>`
+      SELECT run_id AS "runId" FROM orchestration_v2_projection_runs
+      WHERE thread_id = ${threadId} AND ${sql.in("status", ACTIVE_RUN_STATUSES)}
+      ORDER BY ordinal DESC LIMIT 1
     `;
     const messageCounts = yield* sql<{ readonly role: string; readonly count: number }>`
-      SELECT role, COUNT(*) AS count FROM projection_thread_messages
+      SELECT role, COUNT(*) AS count FROM orchestration_v2_projection_messages
       WHERE thread_id = ${threadId} GROUP BY role
     `;
     const activityCounts = yield* sql<{ readonly tone: string; readonly count: number }>`
-      SELECT tone, COUNT(*) AS count FROM projection_thread_activities
-      WHERE thread_id = ${threadId} GROUP BY tone
+      SELECT ${toneSql} AS tone, COUNT(*) AS count FROM orchestration_v2_projection_turn_items AS i
+      WHERE i.thread_id = ${threadId} AND ${workItems} GROUP BY tone
     `;
-    const firstPrompt = yield* sql<{ readonly text: string }>`
-      SELECT substr(text, 1, 2001) AS text FROM projection_thread_messages
+    const firstPrompt = yield* sql<{ readonly text: string | null }>`
+      SELECT substr(json_extract(payload_json, '$.text'), 1, 2001) AS text
+      FROM orchestration_v2_projection_messages
       WHERE thread_id = ${threadId} AND role = 'user'
       ORDER BY created_at ASC, message_id ASC LIMIT 1
     `;
-    const latestResponse = yield* sql<{ readonly text: string }>`
-      SELECT substr(text, 1, 2001) AS text FROM projection_thread_messages
+    const latestResponse = yield* sql<{ readonly text: string | null }>`
+      SELECT substr(json_extract(payload_json, '$.text'), 1, 2001) AS text
+      FROM orchestration_v2_projection_messages
       WHERE thread_id = ${threadId} AND role = 'assistant'
       ORDER BY created_at DESC, message_id DESC LIMIT 1
     `;
     const pendingApprovals = yield* sql<{
       readonly requestId: string;
       readonly turnId: string | null;
+      readonly kind: string;
+      readonly prompt: string | null;
+      readonly optionsJson: string | null;
       readonly createdAt: string;
     }>`
-      SELECT request_id AS "requestId", turn_id AS "turnId", created_at AS "createdAt"
-      FROM projection_pending_approvals WHERE thread_id = ${threadId} AND status = 'pending'
-      ORDER BY created_at ASC
+      SELECT rq.runtime_request_id AS "requestId", n.run_id AS "turnId", rq.kind,
+        (SELECT COALESCE(json_extract(i.payload_json, '$.prompt'), json_extract(i.payload_json, '$.title'))
+          FROM orchestration_v2_projection_turn_items AS i
+          WHERE i.thread_id = rq.thread_id AND i.type = 'approval_request'
+            AND json_extract(i.payload_json, '$.requestId') = rq.runtime_request_id
+          ORDER BY i.updated_at DESC LIMIT 1) AS prompt,
+        (SELECT json_extract(i.payload_json, '$.options')
+          FROM orchestration_v2_projection_turn_items AS i
+          WHERE i.thread_id = rq.thread_id AND i.type = 'approval_request'
+            AND json_extract(i.payload_json, '$.requestId') = rq.runtime_request_id
+          ORDER BY i.updated_at DESC LIMIT 1) AS "optionsJson",
+        rq.created_at AS "createdAt"
+      FROM orchestration_v2_projection_runtime_requests AS rq
+      LEFT JOIN orchestration_v2_projection_nodes AS n ON n.node_id = rq.node_id
+      WHERE rq.thread_id = ${threadId} AND rq.status = 'pending'
+        AND ${sql.in("rq.kind", APPROVAL_KINDS)}
+      ORDER BY rq.created_at ASC, rq.runtime_request_id ASC
     `;
     const plans = yield* listPlans({ threadId }, { order: "desc", limit: 20, after: null });
     const tabs = yield* sql<{
@@ -531,27 +882,31 @@ export const makeQueryStore = Effect.gen(function* () {
     }>`
       SELECT tabs.thread_id AS "threadId", t.title, tabs.position
       FROM fork_thread_tabs AS tabs
-      JOIN projection_threads AS t ON t.thread_id = tabs.thread_id
+      JOIN orchestration_v2_projection_threads AS t ON t.thread_id = tabs.thread_id
       WHERE tabs.group_id = (SELECT group_id FROM fork_thread_tabs WHERE thread_id = ${threadId})
         AND t.deleted_at IS NULL
       ORDER BY tabs.position ASC, tabs.created_at ASC
     `;
-    const turns = yield* sql<{ readonly filesJson: string | null }>`
-      SELECT checkpoint_files_json AS "filesJson" FROM projection_turns
-      WHERE thread_id = ${threadId} ORDER BY requested_at ASC, row_id ASC
-    `;
-    const changedFiles = mergeFiles(turns.map((row) => parseFiles(row.filesJson)));
+    const changedFiles = yield* filesBetween({
+      threadId,
+      fromTurnCount: 0,
+      toTurnCount: Number.MAX_SAFE_INTEGER,
+    });
     const session = sessions[0];
     return {
       thread,
-      session: session ?? null,
+      session:
+        session === undefined ? null : { ...session, activeTurnId: activeRuns[0]?.runId ?? null },
       counts: {
         messagesByRole: Object.fromEntries(messageCounts.map((row) => [row.role, row.count])),
         activitiesByTone: Object.fromEntries(activityCounts.map((row) => [row.tone, row.count])),
       },
       firstPrompt: cut(firstPrompt[0]?.text ?? null, 2000).text,
       latestResponse: cut(latestResponse[0]?.text ?? null, 2000).text,
-      pendingApprovals,
+      pendingApprovals: pendingApprovals.map(({ optionsJson, ...approval }) => ({
+        ...approval,
+        options: parseJson(optionsJson),
+      })),
       plans: plans.items,
       tabs,
       changedFiles: changedFiles.slice(0, MAX_CHANGED_FILES),
@@ -593,7 +948,8 @@ export const makeQueryStore = Effect.gen(function* () {
         p.default_model_selection_json AS "defaultModelSelectionJson",
         p.scripts_json AS "scriptsJson"
       FROM projection_projects AS p
-      LEFT JOIN projection_threads AS t ON t.project_id = p.project_id AND t.deleted_at IS NULL
+      LEFT JOIN orchestration_v2_projection_threads AS t
+        ON t.project_id = p.project_id AND t.deleted_at IS NULL AND ${notSubagent}
       WHERE ${sql.and([
         sql`p.deleted_at IS NULL`,
         ...(input.projectId === undefined ? [] : [sql`p.project_id = ${input.projectId}`]),
@@ -601,7 +957,7 @@ export const makeQueryStore = Effect.gen(function* () {
           ? []
           : [
               sql`p.project_id IN (
-                SELECT active.project_id FROM projection_threads AS active
+                SELECT active.project_id FROM orchestration_v2_projection_threads AS active
                 WHERE active.deleted_at IS NULL
                   AND active.thread_id IN (SELECT thread_id FROM (${activitySql(input.window)}))
               )`,
@@ -666,22 +1022,13 @@ export const makeQueryStore = Effect.gen(function* () {
     }>`
       SELECT
         (SELECT COUNT(*) FROM projection_projects WHERE deleted_at IS NULL) AS projects,
-        (SELECT COUNT(*) FROM projection_threads AS t
-          JOIN projection_projects AS p ON p.project_id = t.project_id
-          WHERE ${liveThreads} AND t.archived_at IS NULL) AS threads,
-        (SELECT COUNT(*) FROM projection_threads AS t
-          JOIN projection_projects AS p ON p.project_id = t.project_id
-          WHERE ${liveThreads} AND t.archived_at IS NOT NULL) AS "archivedThreads"
+        (SELECT COUNT(*) ${threadsFrom}
+          WHERE ${liveThreads} AND ${notSubagent} AND t.archived_at IS NULL) AS threads,
+        (SELECT COUNT(*) ${threadsFrom}
+          WHERE ${liveThreads} AND ${notSubagent} AND t.archived_at IS NOT NULL) AS "archivedThreads"
     `;
     return rows[0] ?? { projects: 0, threads: 0, archivedThreads: 0 };
   });
-
-  const detailSql = sql`substr(CASE WHEN json_valid(a.payload_json) THEN COALESCE(
-    json_extract(a.payload_json, '$.detail'),
-    json_extract(a.payload_json, '$.message'),
-    json_extract(a.payload_json, '$.prompt'),
-    json_extract(a.payload_json, '$.title')
-  ) END, 1, ${DETAIL_CHARS})`;
 
   const timeline = Effect.fn("QueryStore.timeline")(function* (
     input: {
@@ -693,72 +1040,77 @@ export const makeQueryStore = Effect.gen(function* () {
     page: PageRequest,
   ) {
     const { since, until } = input.window;
-    const rows = yield* sql<Omit<TimelineEntry, "kind"> & { readonly kind: TimelineKind }>`
+    const inWindow = (column: Fragment) => sql`${column} >= ${since} AND ${column} < ${until}`;
+    const rows = yield* sql<TimelineEntry>`
       WITH feed AS (
         SELECT t.created_at AS at, 'thread.created' AS kind, t.thread_id AS id,
           t.thread_id AS thread_id, NULL AS turn_id, t.title AS summary
-        FROM projection_threads AS t WHERE t.created_at >= ${since} AND t.created_at < ${until}
+        FROM orchestration_v2_projection_threads AS t WHERE ${inWindow(sql`t.created_at`)}
         UNION ALL
-        SELECT m.created_at, 'prompt', m.message_id, m.thread_id, NULL,
-          substr(m.text, 1, ${TIMELINE_PROMPT_CHARS})
-        FROM projection_thread_messages AS m
-        WHERE m.role = 'user' AND m.created_at >= ${since} AND m.created_at < ${until}
+        SELECT m.created_at, 'prompt', m.message_id, m.thread_id, m.run_id,
+          substr(json_extract(m.payload_json, '$.text'), 1, ${TIMELINE_PROMPT_CHARS})
+        FROM orchestration_v2_projection_messages AS m
+        WHERE m.role = 'user' AND ${inWindow(sql`m.created_at`)}
         UNION ALL
-        SELECT tu.completed_at, 'turn.completed', tu.turn_id, tu.thread_id, tu.turn_id,
-          tu.state || ' · ' || json_array_length(tu.checkpoint_files_json) || ' files +'
-            || (SELECT COALESCE(SUM(json_extract(value, '$.additions')), 0) FROM json_each(tu.checkpoint_files_json))
+        SELECT r.completed_at, 'turn.completed', r.run_id, r.thread_id, r.run_id,
+          r.status || ' · ' || COALESCE(json_array_length(cp.payload_json, '$.files'), 0) || ' files +'
+            || (SELECT COALESCE(SUM(json_extract(value, '$.additions')), 0) FROM json_each(cp.payload_json, '$.files'))
             || ' -'
-            || (SELECT COALESCE(SUM(json_extract(value, '$.deletions')), 0) FROM json_each(tu.checkpoint_files_json))
-            || COALESCE(' · ' || substr(reply.text, 1, ${TIMELINE_SUMMARY_CHARS}), '')
-        FROM projection_turns AS tu
-        LEFT JOIN projection_thread_messages AS reply ON reply.message_id = tu.assistant_message_id
-        WHERE tu.turn_id IS NOT NULL AND json_valid(tu.checkpoint_files_json)
-          AND tu.completed_at >= ${since} AND tu.completed_at < ${until}
+            || (SELECT COALESCE(SUM(json_extract(value, '$.deletions')), 0) FROM json_each(cp.payload_json, '$.files'))
+            || COALESCE(' · ' || substr((
+              SELECT json_extract(reply.payload_json, '$.text') FROM orchestration_v2_projection_messages AS reply
+              WHERE reply.run_id = r.run_id AND reply.role = 'assistant'
+              ORDER BY reply.created_at DESC, reply.message_id DESC LIMIT 1
+            ), 1, ${TIMELINE_SUMMARY_CHARS}), '')
+        FROM orchestration_v2_projection_runs AS r
+        ${runCheckpointJoin}
+        WHERE ${inWindow(sql`r.completed_at`)}
         UNION ALL
-        SELECT pl.created_at, 'plan.proposed', pl.plan_id, pl.thread_id, pl.turn_id,
-          substr(pl.plan_markdown, 1, ${TIMELINE_SUMMARY_CHARS})
-        FROM projection_thread_proposed_plans AS pl
-        WHERE pl.created_at >= ${since} AND pl.created_at < ${until}
+        SELECT plan."createdAt", 'plan.proposed', plan."planId", plan."threadId", plan."turnId",
+          plan.markdown
+        FROM (${planRows({ maxChars: TIMELINE_SUMMARY_CHARS, itemScope: sql`1 = 1`, conditions: [] })}) AS plan
+        WHERE ${inWindow(sql`plan."createdAt"`)}
         UNION ALL
-        SELECT pl.implemented_at, 'plan.implemented', pl.plan_id, pl.thread_id, pl.turn_id,
-          substr(pl.plan_markdown, 1, ${TIMELINE_SUMMARY_CHARS})
-        FROM projection_thread_proposed_plans AS pl
-        WHERE pl.implemented_at >= ${since} AND pl.implemented_at < ${until}
+        SELECT plan."implementedAt", 'plan.implemented', plan."planId", plan."threadId", plan."turnId",
+          plan.markdown
+        FROM (${planRows({ maxChars: TIMELINE_SUMMARY_CHARS, itemScope: sql`1 = 1`, conditions: [] })}) AS plan
+        WHERE ${inWindow(sql`plan."implementedAt"`)}
         UNION ALL
-        SELECT pr.linked_at, 'pull_request.linked', pr.url, pr.thread_id, NULL,
-          pr.repository || '#' || pr.number || COALESCE(' ' || json_extract(
-            CASE WHEN json_valid(pr.snapshot_json) THEN pr.snapshot_json END, '$.title'), '')
-        FROM projection_thread_pull_requests AS pr
-        WHERE pr.source != 'stack-dismissed' AND pr.linked_at >= ${since} AND pr.linked_at < ${until}
+        SELECT pr."linkedAt", 'pull_request.linked', pr.url, pr."threadId", NULL,
+          pr.repository || '#' || pr.number || COALESCE(' ' || json_extract(pr."snapshotJson", '$.title'), '')
+        FROM (${pullRequestRows([liveThreads])}) AS pr
+        WHERE ${inWindow(sql`pr."linkedAt"`)}
         UNION ALL
-        SELECT ap.created_at, 'approval.requested', ap.request_id, ap.thread_id, ap.turn_id,
-          'Approval requested' || COALESCE(' · ' || ap.decision, '')
-        FROM projection_pending_approvals AS ap
-        WHERE ap.created_at >= ${since} AND ap.created_at < ${until}
+        SELECT rq.created_at, 'approval.requested', rq.runtime_request_id, rq.thread_id, n.run_id,
+          'Approval requested · ' || rq.kind
+            || COALESCE(' · ' || json_extract(rq.payload_json, '$.decision'), '')
+        FROM orchestration_v2_projection_runtime_requests AS rq
+        LEFT JOIN orchestration_v2_projection_nodes AS n ON n.node_id = rq.node_id
+        WHERE ${sql.in("rq.kind", APPROVAL_KINDS)} AND ${inWindow(sql`rq.created_at`)}
         UNION ALL
-        SELECT a.created_at, 'error', a.activity_id, a.thread_id, a.turn_id,
-          a.summary || COALESCE(': ' || ${detailSql}, '')
-        FROM projection_thread_activities AS a
-        WHERE a.tone = 'error' AND a.created_at >= ${since} AND a.created_at < ${until}
+        SELECT ${itemAtSql}, 'error', i.turn_item_id, i.thread_id, i.run_id,
+          COALESCE(json_extract(i.payload_json, '$.title'), 'Error')
+            || COALESCE(': ' || substr(json_extract(i.payload_json, '$.failure.message'), 1, ${DETAIL_CHARS}), '')
+        FROM orchestration_v2_projection_turn_items AS i
+        WHERE i.type = 'error' AND ${inWindow(itemAtSql)}
         UNION ALL
         SELECT t.archived_at, 'thread.archived', t.thread_id, t.thread_id, NULL, t.title
-        FROM projection_threads AS t WHERE t.archived_at >= ${since} AND t.archived_at < ${until}
+        FROM orchestration_v2_projection_threads AS t WHERE ${inWindow(sql`t.archived_at`)}
         UNION ALL
-        SELECT t.settled_at, 'thread.settled', t.thread_id, t.thread_id, NULL, t.title
-        FROM projection_threads AS t
-        WHERE t.settled_override IS NOT 'active'
-          AND t.settled_at >= ${since} AND t.settled_at < ${until}
+        SELECT json_extract(t.payload_json, '$.settledAt'), 'thread.settled', t.thread_id, t.thread_id,
+          NULL, t.title
+        FROM orchestration_v2_projection_threads AS t
+        WHERE json_extract(t.payload_json, '$.settledOverride') IS NOT 'active'
+          AND ${inWindow(sql`json_extract(t.payload_json, '$.settledAt')`)}
       )
       SELECT feed.at, feed.kind, feed.id, feed.thread_id AS "threadId", t.title AS "threadTitle",
         t.project_id AS "projectId", p.title AS "projectTitle", feed.turn_id AS "turnId",
         COALESCE(feed.summary, '') AS summary
       FROM feed
-      JOIN projection_threads AS t ON t.thread_id = feed.thread_id
+      JOIN orchestration_v2_projection_threads AS t ON t.thread_id = feed.thread_id
       JOIN projection_projects AS p ON p.project_id = t.project_id
       WHERE ${sql.and([
-        liveThreads,
-        ...(input.projectId === undefined ? [] : [sql`t.project_id = ${input.projectId}`]),
-        ...(input.threadId === undefined ? [] : [sql`feed.thread_id = ${input.threadId}`]),
+        ...scopeConditions(input),
         ...(input.kinds === undefined || input.kinds.length === 0
           ? []
           : [sql.in("feed.kind", input.kinds)]),
@@ -772,14 +1124,14 @@ export const makeQueryStore = Effect.gen(function* () {
       rows,
       page,
       (row) => [row.at, row.kind, row.id],
-      (row): TimelineEntry => ({ ...row, summary: row.summary.replace(/\s+/g, " ").trim() }),
+      (row): TimelineEntry => ({ ...row, summary: oneLine(row.summary) }),
     );
   });
 
   interface TurnRow {
-    readonly rowId: number;
     readonly turnId: string;
     readonly threadId: string;
+    readonly ordinal: number;
     readonly turnCount: number | null;
     readonly state: string;
     readonly requestedAt: string;
@@ -792,15 +1144,21 @@ export const makeQueryStore = Effect.gen(function* () {
   }
 
   const turnSelect = (maxChars: number) => sql`
-    SELECT tu.row_id AS "rowId", tu.turn_id AS "turnId", tu.thread_id AS "threadId",
-      tu.checkpoint_turn_count AS "turnCount", tu.state, tu.requested_at AS "requestedAt",
-      tu.started_at AS "startedAt", tu.completed_at AS "completedAt",
-      substr(prompt.text, 1, ${maxChars + 1}) AS prompt,
-      substr(reply.text, 1, ${maxChars + 1}) AS response,
-      tu.checkpoint_files_json AS "filesJson", tu.source_proposed_plan_id AS "sourcePlanId"
-    FROM projection_turns AS tu
-    LEFT JOIN projection_thread_messages AS prompt ON prompt.message_id = tu.pending_message_id
-    LEFT JOIN projection_thread_messages AS reply ON reply.message_id = tu.assistant_message_id
+    SELECT r.run_id AS "turnId", r.thread_id AS "threadId", r.ordinal,
+      cp.app_run_ordinal AS "turnCount", r.status AS state, r.requested_at AS "requestedAt",
+      json_extract(r.payload_json, '$.startedAt') AS "startedAt", r.completed_at AS "completedAt",
+      substr(json_extract(prompt.payload_json, '$.text'), 1, ${maxChars + 1}) AS prompt,
+      substr((
+        SELECT json_extract(reply.payload_json, '$.text') FROM orchestration_v2_projection_messages AS reply
+        WHERE reply.run_id = r.run_id AND reply.role = 'assistant'
+        ORDER BY reply.created_at DESC, reply.message_id DESC LIMIT 1
+      ), 1, ${maxChars + 1}) AS response,
+      json_extract(cp.payload_json, '$.files') AS "filesJson",
+      json_extract(r.payload_json, '$.sourcePlanRef.planId') AS "sourcePlanId"
+    FROM orchestration_v2_projection_runs AS r
+    LEFT JOIN orchestration_v2_projection_messages AS prompt
+      ON prompt.message_id = json_extract(r.payload_json, '$.userMessageId')
+    ${runCheckpointJoin}
   `;
 
   const turnSummaryOf =
@@ -821,8 +1179,7 @@ export const makeQueryStore = Effect.gen(function* () {
         response: response.text,
         truncated: prompt.truncated || response.truncated,
         fileCount: files.length,
-        additions: files.reduce((total, file) => total + file.additions, 0),
-        deletions: files.reduce((total, file) => total + file.deletions, 0),
+        ...fileTotals(files),
         files,
         sourcePlanId: row.sourcePlanId,
       };
@@ -835,23 +1192,21 @@ export const makeQueryStore = Effect.gen(function* () {
     const rows = yield* sql<TurnRow>`
       ${turnSelect(input.maxChars)}
       WHERE ${sql.and([
-        sql`tu.thread_id = ${input.threadId}`,
-        sql`tu.turn_id IS NOT NULL`,
-        sql`tu.requested_at >= ${input.window.since}`,
-        sql`tu.requested_at < ${input.window.until}`,
-        after(sql`tu.requested_at, tu.row_id`, page),
+        sql`r.thread_id = ${input.threadId}`,
+        sql`r.requested_at >= ${input.window.since}`,
+        sql`r.requested_at < ${input.window.until}`,
+        after(sql`r.requested_at, r.ordinal`, page),
       ])}
-      ORDER BY tu.requested_at ${direction(page.order)}, tu.row_id ${direction(page.order)}
+      ORDER BY r.requested_at ${direction(page.order)}, r.ordinal ${direction(page.order)}
       LIMIT ${page.limit + 1}
     `;
-    return pageOf(rows, page, (row) => [row.requestedAt, row.rowId], turnSummaryOf(input.maxChars));
+    return pageOf(
+      rows,
+      page,
+      (row) => [row.requestedAt, row.ordinal],
+      turnSummaryOf(input.maxChars),
+    );
   });
-
-  const activitySelect = sql`
-    SELECT a.activity_id AS "activityId", a.thread_id AS "threadId", a.turn_id AS "turnId",
-      a.tone, a.kind, a.summary, ${detailSql} AS detail, a.created_at AS "createdAt"
-    FROM projection_thread_activities AS a
-  `;
 
   const getTurn = Effect.fn("QueryStore.getTurn")(function* (input: {
     readonly threadId: string;
@@ -860,27 +1215,25 @@ export const makeQueryStore = Effect.gen(function* () {
   }) {
     const rows = yield* sql<TurnRow>`
       ${turnSelect(input.maxChars)}
-      WHERE tu.thread_id = ${input.threadId} AND tu.turn_id = ${input.turnId}
+      WHERE r.thread_id = ${input.threadId} AND r.run_id = ${input.turnId}
     `;
     const row = rows[0];
     if (row === undefined) return null;
     const counts = yield* sql<{ readonly kind: string; readonly count: number }>`
-      SELECT kind, COUNT(*) AS count FROM projection_thread_activities
-      WHERE thread_id = ${input.threadId} AND turn_id = ${input.turnId} GROUP BY kind
+      SELECT i.type AS kind, COUNT(*) AS count FROM orchestration_v2_projection_turn_items AS i
+      WHERE i.thread_id = ${input.threadId} AND i.run_id = ${input.turnId} AND ${workItems}
+      GROUP BY i.type
     `;
-    const notable = yield* sql<ActivityEntry>`
-      ${activitySelect}
-      WHERE a.thread_id = ${input.threadId} AND a.turn_id = ${input.turnId}
-        AND (a.tone = 'error' OR a.kind IN (
-          'tool.completed', 'task.started', 'task.completed', 'turn.plan.updated',
-          'user-input.requested', 'runtime.error', 'runtime.warning'
-        ))
-      ORDER BY a.created_at DESC, a.activity_id DESC LIMIT 40
+    const notable = yield* sql<ActivityRow>`
+      SELECT ${activityColumns} FROM orchestration_v2_projection_turn_items AS i
+      WHERE i.thread_id = ${input.threadId} AND i.run_id = ${input.turnId}
+        AND (i.type = 'error' OR ${sql.in("i.type", NOTABLE_ITEM_TYPES)})
+      ORDER BY i.ordinal DESC, i.turn_item_id DESC LIMIT 40
     `;
     return {
       turn: turnSummaryOf(input.maxChars)(row),
       activityCounts: Object.fromEntries(counts.map((count) => [count.kind, count.count])),
-      notableActivities: notable.toReversed(),
+      notableActivities: notable.toReversed().map(activityEntryOf),
     };
   });
 
@@ -889,32 +1242,16 @@ export const makeQueryStore = Effect.gen(function* () {
     turnId: string,
   ) {
     const rows = yield* sql<{ readonly turnCount: number | null }>`
-      SELECT checkpoint_turn_count AS "turnCount" FROM projection_turns
-      WHERE thread_id = ${threadId} AND turn_id = ${turnId}
+      SELECT cp.app_run_ordinal AS "turnCount" FROM orchestration_v2_projection_runs AS r
+      ${runCheckpointJoin}
+      WHERE r.thread_id = ${threadId} AND r.run_id = ${turnId}
     `;
     return rows[0];
   });
 
-  const filesBetween = Effect.fn("QueryStore.filesBetween")(function* (input: {
-    readonly threadId: string;
-    readonly fromTurnCount: number;
-    readonly toTurnCount: number;
-  }) {
-    const rows = yield* sql<{ readonly filesJson: string | null }>`
-      SELECT checkpoint_files_json AS "filesJson" FROM projection_turns
-      WHERE thread_id = ${input.threadId}
-        AND checkpoint_turn_count > ${input.fromTurnCount}
-        AND checkpoint_turn_count <= ${input.toTurnCount}
-      ORDER BY checkpoint_turn_count ASC
-    `;
-    return mergeFiles(rows.map((row) => parseFiles(row.filesJson)));
-  });
-
   const threadExists = Effect.fn("QueryStore.threadExists")(function* (threadId: string) {
     const rows = yield* sql<{ readonly found: number }>`
-      SELECT 1 AS found FROM projection_threads AS t
-      JOIN projection_projects AS p ON p.project_id = t.project_id
-      WHERE t.thread_id = ${threadId} AND ${liveThreads}
+      SELECT 1 AS found ${threadsFrom} WHERE t.thread_id = ${threadId} AND ${liveThreads}
     `;
     return rows.length > 0;
   });
@@ -925,36 +1262,57 @@ export const makeQueryStore = Effect.gen(function* () {
     readonly threadTitle: string;
     readonly turnId: string | null;
     readonly role: string;
+    readonly createdBy: string | null;
     readonly createdAt: string;
     readonly isStreaming: number;
-    readonly text: string;
+    readonly text: string | null;
     readonly attachmentCount: number;
     readonly attachmentsJson: string | null;
     readonly contextJson: string | null;
   }
 
-  const messageSelect = (maxChars: number) => sql`
-    SELECT m.message_id AS "messageId", m.thread_id AS "threadId", t.title AS "threadTitle",
-      m.turn_id AS "turnId", m.role, m.created_at AS "createdAt", m.is_streaming AS "isStreaming",
-      substr(m.text, 1, ${maxChars + 1}) AS text,
+  /** Messages, plus reasoning turn items as role `reasoning` when asked. */
+  const messageSource = (includeReasoning: boolean) => sql`
+    SELECT message_id AS id, thread_id, run_id, role, streaming, created_at,
+      json_extract(payload_json, '$.text') AS text,
+      json_extract(payload_json, '$.createdBy') AS created_by,
+      json_extract(payload_json, '$.attachments') AS attachments_json,
+      json_extract(payload_json, '$.context') AS context_json
+    FROM orchestration_v2_projection_messages
+    ${
+      includeReasoning
+        ? sql`UNION ALL
+          SELECT i.turn_item_id, i.thread_id, i.run_id, 'reasoning',
+            CASE WHEN json_extract(i.payload_json, '$.streaming') THEN 1 ELSE 0 END, ${itemAtSql},
+            json_extract(i.payload_json, '$.text'), 'agent', NULL, NULL
+          FROM orchestration_v2_projection_turn_items AS i WHERE i.type = 'reasoning'`
+        : sql``
+    }
+  `;
+
+  const messageSelect = (maxChars: number, includeReasoning: boolean) => sql`
+    SELECT m.id AS "messageId", m.thread_id AS "threadId", t.title AS "threadTitle",
+      m.run_id AS "turnId", m.role, m.created_by AS "createdBy", m.created_at AS "createdAt",
+      m.streaming AS "isStreaming", substr(m.text, 1, ${maxChars + 1}) AS text,
       CASE WHEN json_valid(m.attachments_json) THEN json_array_length(m.attachments_json) ELSE 0 END
         AS "attachmentCount",
       m.attachments_json AS "attachmentsJson", m.context_json AS "contextJson"
-    FROM projection_thread_messages AS m
-    JOIN projection_threads AS t ON t.thread_id = m.thread_id
+    FROM (${messageSource(includeReasoning)}) AS m
+    JOIN orchestration_v2_projection_threads AS t ON t.thread_id = m.thread_id
     JOIN projection_projects AS p ON p.project_id = t.project_id
   `;
 
   const messageEntryOf =
     (maxChars: number) =>
     (row: MessageRow): MessageEntry => {
-      const text = cut(row.text, maxChars);
+      const text = cut(row.text ?? "", maxChars);
       return {
         messageId: row.messageId,
         threadId: row.threadId,
         threadTitle: row.threadTitle,
         turnId: row.turnId,
         role: row.role,
+        createdBy: row.createdBy,
         createdAt: row.createdAt,
         isStreaming: row.isStreaming === 1,
         text: text.text ?? "",
@@ -983,18 +1341,17 @@ export const makeQueryStore = Effect.gen(function* () {
     },
     page: PageRequest,
   ) {
+    const includeReasoning = input.includeReasoning && input.role !== "user";
     const rows = yield* sql<MessageRow>`
-      ${messageSelect(input.maxChars)}
+      ${messageSelect(input.maxChars, includeReasoning)}
       WHERE ${sql.and([
-        liveThreads,
-        roleCondition(input.role, input.includeReasoning),
-        ...(input.threadId === undefined ? [] : [sql`m.thread_id = ${input.threadId}`]),
-        ...(input.projectId === undefined ? [] : [sql`t.project_id = ${input.projectId}`]),
+        ...scopeConditions(input),
+        roleCondition(input.role, includeReasoning),
         sql`m.created_at >= ${input.window.since}`,
         sql`m.created_at < ${input.window.until}`,
-        after(sql`m.created_at, m.message_id`, page),
+        after(sql`m.created_at, m.id`, page),
       ])}
-      ORDER BY m.created_at ${direction(page.order)}, m.message_id ${direction(page.order)}
+      ORDER BY m.created_at ${direction(page.order)}, m.id ${direction(page.order)}
       LIMIT ${page.limit + 1}
     `;
     return pageOf(
@@ -1010,7 +1367,7 @@ export const makeQueryStore = Effect.gen(function* () {
     maxChars: number,
   ) {
     const rows = yield* sql<MessageRow>`
-      ${messageSelect(maxChars)} WHERE m.message_id = ${messageId} AND ${liveThreads}
+      ${messageSelect(maxChars, false)} WHERE m.id = ${messageId} AND ${liveThreads}
     `;
     const row = rows[0];
     if (row === undefined) return null;
@@ -1038,11 +1395,7 @@ export const makeQueryStore = Effect.gen(function* () {
     readonly limit: number;
   }) {
     const pattern = likePattern(input.query);
-    const scope = [
-      liveThreads,
-      ...(input.projectId === undefined ? [] : [sql`t.project_id = ${input.projectId}`]),
-      ...(input.threadId === undefined ? [] : [sql`t.thread_id = ${input.threadId}`]),
-    ];
+    const scope = scopeConditions(input);
     const threads = yield* sql<{
       readonly threadId: string;
       readonly title: string;
@@ -1051,8 +1404,7 @@ export const makeQueryStore = Effect.gen(function* () {
     }>`
       SELECT t.thread_id AS "threadId", t.title, p.title AS "projectTitle",
         ${lastActivitySql} AS "lastActivityAt"
-      FROM projection_threads AS t
-      JOIN projection_projects AS p ON p.project_id = t.project_id
+      ${threadsFrom}
       WHERE ${sql.and([...scope, sql`t.title LIKE ${pattern} ESCAPE '!'`])}
       ORDER BY "lastActivityAt" DESC LIMIT 10
     `;
@@ -1067,24 +1419,23 @@ export const makeQueryStore = Effect.gen(function* () {
       SELECT m.message_id AS "messageId", m.thread_id AS "threadId", t.title AS "threadTitle",
         m.role, m.created_at AS "createdAt",
         substr(m.text, MAX(1, instr(lower(m.text), lower(${input.query})) - 100), 240) AS snippet
-      FROM projection_thread_messages AS m
-      JOIN projection_threads AS t ON t.thread_id = m.thread_id
+      FROM (
+        SELECT message_id, thread_id, role, created_at, json_extract(payload_json, '$.text') AS text
+        FROM orchestration_v2_projection_messages
+        WHERE ${sql.and([
+          input.role === "any" ? sql`role IN ('user', 'assistant')` : sql`role = ${input.role}`,
+          sql`created_at >= ${input.window.since}`,
+          sql`created_at < ${input.window.until}`,
+        ])}
+      ) AS m
+      JOIN orchestration_v2_projection_threads AS t ON t.thread_id = m.thread_id
       JOIN projection_projects AS p ON p.project_id = t.project_id
-      WHERE ${sql.and([
-        ...scope,
-        input.role === "any" ? sql`m.role IN ('user', 'assistant')` : sql`m.role = ${input.role}`,
-        sql`m.created_at >= ${input.window.since}`,
-        sql`m.created_at < ${input.window.until}`,
-        sql`m.text LIKE ${pattern} ESCAPE '!'`,
-      ])}
+      WHERE ${sql.and([...scope, sql`m.text LIKE ${pattern} ESCAPE '!'`])}
       ORDER BY m.created_at DESC, m.message_id DESC LIMIT ${input.limit}
     `;
     return {
       threads,
-      messages: messages.map((message) => ({
-        ...message,
-        snippet: message.snippet.replace(/\s+/g, " ").trim(),
-      })),
+      messages: messages.map((message) => ({ ...message, snippet: oneLine(message.snippet) })),
     };
   });
 
@@ -1099,32 +1450,31 @@ export const makeQueryStore = Effect.gen(function* () {
     },
     page: PageRequest,
   ) {
-    const rows = yield* sql<ActivityEntry>`
-      ${activitySelect}
-      JOIN projection_threads AS t ON t.thread_id = a.thread_id
-      JOIN projection_projects AS p ON p.project_id = t.project_id
+    const rows = yield* sql<ActivityRow>`
+      SELECT * FROM (
+        SELECT ${activityColumns}
+        FROM orchestration_v2_projection_turn_items AS i
+        JOIN orchestration_v2_projection_threads AS t ON t.thread_id = i.thread_id
+        JOIN projection_projects AS p ON p.project_id = t.project_id
+        WHERE ${sql.and([
+          ...scopeConditions(input),
+          workItems,
+          ...(input.turnId === undefined ? [] : [sql`i.run_id = ${input.turnId}`]),
+          ...(input.kinds === undefined || input.kinds.length === 0
+            ? []
+            : [sql.in("i.type", input.kinds)]),
+        ])}
+      )
       WHERE ${sql.and([
-        liveThreads,
-        ...(input.threadId === undefined ? [] : [sql`a.thread_id = ${input.threadId}`]),
-        ...(input.turnId === undefined ? [] : [sql`a.turn_id = ${input.turnId}`]),
-        ...(input.projectId === undefined ? [] : [sql`t.project_id = ${input.projectId}`]),
-        ...(input.tone === undefined ? [] : [sql`a.tone = ${input.tone}`]),
-        ...(input.kinds === undefined || input.kinds.length === 0
-          ? []
-          : [sql.in("a.kind", input.kinds)]),
-        sql`a.created_at >= ${input.window.since}`,
-        sql`a.created_at < ${input.window.until}`,
-        after(sql`a.created_at, a.activity_id`, page),
+        ...(input.tone === undefined ? [] : [sql`tone = ${input.tone}`]),
+        sql`"createdAt" >= ${input.window.since}`,
+        sql`"createdAt" < ${input.window.until}`,
+        after(sql`"createdAt", "activityId"`, page),
       ])}
-      ORDER BY a.created_at ${direction(page.order)}, a.activity_id ${direction(page.order)}
+      ORDER BY "createdAt" ${direction(page.order)}, "activityId" ${direction(page.order)}
       LIMIT ${page.limit + 1}
     `;
-    return pageOf(
-      rows,
-      page,
-      (row) => [row.createdAt, row.activityId],
-      (row) => row,
-    );
+    return pageOf(rows, page, (row) => [row.createdAt, row.activityId], activityEntryOf);
   });
 
   const getActivity = Effect.fn("QueryStore.getActivity")(function* (
@@ -1132,119 +1482,159 @@ export const makeQueryStore = Effect.gen(function* () {
     maxChars: number,
   ) {
     const rows = yield* sql<
-      ActivityEntry & { readonly payload: string; readonly payloadLength: number }
+      ActivityRow & { readonly payload: string; readonly payloadLength: number }
     >`
-      SELECT a.activity_id AS "activityId", a.thread_id AS "threadId", a.turn_id AS "turnId",
-        a.tone, a.kind, a.summary, ${detailSql} AS detail, a.created_at AS "createdAt",
-        substr(a.payload_json, 1, ${maxChars}) AS payload, length(a.payload_json) AS "payloadLength"
-      FROM projection_thread_activities AS a
-      JOIN projection_threads AS t ON t.thread_id = a.thread_id
+      SELECT ${activityColumns},
+        substr(i.payload_json, 1, ${maxChars}) AS payload, length(i.payload_json) AS "payloadLength"
+      FROM orchestration_v2_projection_turn_items AS i
+      JOIN orchestration_v2_projection_threads AS t ON t.thread_id = i.thread_id
       JOIN projection_projects AS p ON p.project_id = t.project_id
-      WHERE a.activity_id = ${activityId} AND ${liveThreads}
+      WHERE i.turn_item_id = ${activityId} AND ${liveThreads} AND ${workItems}
     `;
     const row = rows[0];
     if (row === undefined) return null;
     const { payload, payloadLength, ...activity } = row;
     const truncated = payloadLength > maxChars;
     return {
-      activity,
+      activity: activityEntryOf(activity),
       payload: truncated ? `${payload}…` : parseJson(payload),
       truncated,
     };
   });
 
-  interface PlanRow {
-    readonly planId: string;
+  /**
+   * A subagent's conversation from the thread T3 Code keeps for it. `taskId`
+   * may be the subagent id, the subagent activity's id, or the child thread id.
+   */
+  const getSubagentTranscript = Effect.fn("QueryStore.getSubagentTranscript")(function* (input: {
     readonly threadId: string;
-    readonly threadTitle: string;
-    readonly turnId: string | null;
-    readonly markdown: string;
-    readonly markdownLength: number;
-    readonly createdAt: string;
-    readonly updatedAt: string;
-    readonly implementedAt: string | null;
-    readonly implementationThreadId: string | null;
-  }
-
-  const planSelect = (maxChars: number) => sql`
-    SELECT pl.plan_id AS "planId", pl.thread_id AS "threadId", t.title AS "threadTitle",
-      pl.turn_id AS "turnId", substr(pl.plan_markdown, 1, ${maxChars}) AS markdown,
-      length(pl.plan_markdown) AS "markdownLength", pl.created_at AS "createdAt",
-      pl.updated_at AS "updatedAt", pl.implemented_at AS "implementedAt",
-      pl.implementation_thread_id AS "implementationThreadId"
-    FROM projection_thread_proposed_plans AS pl
-    JOIN projection_threads AS t ON t.thread_id = pl.thread_id
-    JOIN projection_projects AS p ON p.project_id = t.project_id
-  `;
-
-  const planEntryOf = (row: PlanRow): PlanEntry => ({
-    planId: row.planId,
-    threadId: row.threadId,
-    threadTitle: row.threadTitle,
-    turnId: row.turnId,
-    title: planTitle(row.markdown),
-    preview: cut(row.markdown, 300).text ?? "",
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-    implementedAt: row.implementedAt,
-    implementationThreadId: row.implementationThreadId,
-  });
-
-  const listPlans = Effect.fn("QueryStore.listPlans")(function* (
-    input: {
-      readonly threadId?: string | undefined;
-      readonly projectId?: string | undefined;
-      readonly implemented?: boolean | undefined;
-      readonly window?: Window | undefined;
-    },
-    page: PageRequest,
-  ) {
-    const window = input.window ?? OPEN_WINDOW;
-    const rows = yield* sql<PlanRow>`
-      ${planSelect(600)}
-      WHERE ${sql.and([
-        liveThreads,
-        ...(input.threadId === undefined ? [] : [sql`pl.thread_id = ${input.threadId}`]),
-        ...(input.projectId === undefined ? [] : [sql`t.project_id = ${input.projectId}`]),
-        ...(input.implemented === undefined
-          ? []
-          : [
-              input.implemented
-                ? sql`pl.implemented_at IS NOT NULL`
-                : sql`pl.implemented_at IS NULL`,
-            ]),
-        sql`pl.created_at >= ${window.since}`,
-        sql`pl.created_at < ${window.until}`,
-        after(sql`pl.created_at, pl.plan_id`, page),
-      ])}
-      ORDER BY pl.created_at ${direction(page.order)}, pl.plan_id ${direction(page.order)}
-      LIMIT ${page.limit + 1}
+    readonly taskId: string;
+  }) {
+    const subagents = yield* sql<{
+      readonly subagentId: string;
+      readonly childThreadId: string | null;
+      readonly status: string;
+      readonly title: string | null;
+      readonly prompt: string | null;
+      readonly result: string | null;
+      readonly startedAt: string | null;
+      readonly completedAt: string | null;
+    }>`
+      SELECT s.subagent_id AS "subagentId", s.child_thread_id AS "childThreadId", s.status,
+        json_extract(s.payload_json, '$.title') AS title,
+        json_extract(s.payload_json, '$.prompt') AS prompt,
+        json_extract(s.payload_json, '$.result') AS result,
+        s.started_at AS "startedAt", s.completed_at AS "completedAt"
+      FROM orchestration_v2_projection_subagents AS s
+      WHERE s.thread_id = ${input.threadId}
+        AND (
+          s.subagent_id = ${input.taskId}
+          OR s.child_thread_id = ${input.taskId}
+          OR s.subagent_id = (
+            SELECT json_extract(i.payload_json, '$.subagentId')
+            FROM orchestration_v2_projection_turn_items AS i
+            WHERE i.turn_item_id = ${input.taskId} AND i.thread_id = ${input.threadId}
+          )
+        )
+      ORDER BY s.updated_at DESC LIMIT 1
     `;
-    return pageOf(rows, page, (row) => [row.createdAt, row.planId], planEntryOf);
-  });
-
-  const getPlan = Effect.fn("QueryStore.getPlan")(function* (planId: string, maxChars: number) {
-    const rows = yield* sql<PlanRow>`
-      ${planSelect(maxChars)} WHERE pl.plan_id = ${planId} AND ${liveThreads}
-    `;
-    const row = rows[0];
-    if (row === undefined) return null;
-    const truncated = row.markdownLength > maxChars;
-    return {
-      plan: planEntryOf(row),
-      markdown: truncated ? `${row.markdown}…` : row.markdown,
-      truncated,
+    const subagent = subagents[0];
+    if (subagent === undefined) return null;
+    const items =
+      subagent.childThreadId === null
+        ? []
+        : yield* sql<{
+            readonly type: string;
+            readonly status: string;
+            readonly title: string | null;
+            readonly text: string | null;
+            readonly toolName: string | null;
+            readonly input: string | null;
+            readonly output: string | null;
+            readonly at: string;
+          }>`
+            SELECT i.type, i.status, json_extract(i.payload_json, '$.title') AS title,
+              substr(json_extract(i.payload_json, '$.text'), 1, ${TRANSCRIPT_TEXT_CHARS + 1}) AS text,
+              CASE i.type
+                WHEN 'dynamic_tool' THEN json_extract(i.payload_json, '$.toolName')
+                WHEN 'command_execution' THEN 'command'
+                ELSE i.type
+              END AS "toolName",
+              substr(COALESCE(
+                CASE i.type
+                  WHEN 'file_change' THEN json_extract(i.payload_json, '$.fileName')
+                  WHEN 'subagent' THEN json_extract(i.payload_json, '$.prompt')
+                  WHEN 'file_search' THEN json_extract(i.payload_json, '$.pattern')
+                  WHEN 'web_search' THEN json_extract(i.payload_json, '$.patterns')
+                END,
+                json_extract(i.payload_json, '$.input')
+              ), 1, ${TRANSCRIPT_TEXT_CHARS + 1}) AS input,
+              substr(COALESCE(
+                json_extract(i.payload_json, '$.output'),
+                json_extract(i.payload_json, '$.result'),
+                json_extract(i.payload_json, '$.diffStr')
+              ), 1, ${TRANSCRIPT_TEXT_CHARS + 1}) AS output,
+              ${itemAtSql} AS at
+            FROM orchestration_v2_projection_turn_items AS i
+            WHERE i.thread_id = ${subagent.childThreadId}
+              AND ${sql.in("i.type", [...MESSAGE_ITEM_TYPES, ...TOOL_ITEM_TYPES])}
+            ORDER BY i.ordinal DESC, i.turn_item_id DESC
+            LIMIT ${TRANSCRIPT_ENTRIES + 1}
+          `;
+    let truncated = items.length > TRANSCRIPT_ENTRIES;
+    const capped = (text: string | null) => {
+      const result = cut(text, TRANSCRIPT_TEXT_CHARS);
+      truncated ||= result.truncated;
+      return result.text;
     };
+    const entries = items
+      .slice(0, TRANSCRIPT_ENTRIES)
+      .toReversed()
+      .map((item): SubagentTranscriptEntry => {
+        const kind =
+          item.type === "user_message"
+            ? "user"
+            : item.type === "assistant_message"
+              ? "assistant"
+              : item.type === "reasoning"
+                ? "reasoning"
+                : "tool";
+        if (kind !== "tool") return { kind, text: capped(item.text) ?? "", at: item.at };
+        const input = capped(item.input);
+        const output = capped(item.output);
+        return {
+          kind,
+          text: item.title ?? ACTIVITY_LABELS[item.type] ?? item.type,
+          ...(item.toolName === null ? {} : { toolName: item.toolName }),
+          ...(input === null ? {} : { input }),
+          ...(output === null ? {} : { output }),
+          status: item.status,
+          at: item.at,
+        };
+      });
+    const prompt = subagent.prompt ?? "";
+    return {
+      taskId: subagent.subagentId,
+      childThreadId: subagent.childThreadId,
+      title: subagent.title,
+      status: subagent.status,
+      prompt,
+      result: subagent.result,
+      startedAt: subagent.startedAt,
+      completedAt: subagent.completedAt,
+      // Without a thread of its own, the prompt and result are all that was kept.
+      entries:
+        entries.length > 0
+          ? entries
+          : [
+              { kind: "user" as const, text: capped(prompt) ?? "" },
+              ...(subagent.result === null
+                ? []
+                : [{ kind: "assistant" as const, text: capped(subagent.result) ?? "" }]),
+            ],
+      truncated,
+    } satisfies SubagentTranscript;
   });
-
-  const pullRequestSelect = sql`
-    SELECT pr.host, pr.repository, pr.number, pr.url, pr.source, pr.linked_at AS "linkedAt",
-      pr.snapshot_json AS "snapshotJson", pr.thread_id AS "threadId", t.title AS "threadTitle",
-      t.project_id AS "projectId"
-    FROM projection_thread_pull_requests AS pr
-    JOIN projection_threads AS t ON t.thread_id = pr.thread_id
-    JOIN projection_projects AS p ON p.project_id = t.project_id
-  `;
 
   const listPullRequests = Effect.fn("QueryStore.listPullRequests")(function* (
     input: {
@@ -1257,23 +1647,17 @@ export const makeQueryStore = Effect.gen(function* () {
   ) {
     const window = input.window ?? OPEN_WINDOW;
     const rows = yield* sql<PullRequestRow>`
-      ${pullRequestSelect}
+      SELECT * FROM (${pullRequestRows(scopeConditions(input))})
       WHERE ${sql.and([
-        liveThreads,
-        sql`pr.source != 'stack-dismissed'`,
-        ...(input.threadId === undefined ? [] : [sql`pr.thread_id = ${input.threadId}`]),
-        ...(input.projectId === undefined ? [] : [sql`t.project_id = ${input.projectId}`]),
         ...(input.state === undefined
           ? []
-          : [
-              sql`json_extract(CASE WHEN json_valid(pr.snapshot_json) THEN pr.snapshot_json END, '$.state') = ${input.state}`,
-            ]),
-        sql`pr.linked_at >= ${window.since}`,
-        sql`pr.linked_at < ${window.until}`,
-        after(sql`pr.linked_at, pr.thread_id, pr.url`, page),
+          : [sql`json_extract("snapshotJson", '$.state') = ${input.state}`]),
+        sql`"linkedAt" >= ${window.since}`,
+        sql`"linkedAt" < ${window.until}`,
+        after(sql`"linkedAt", "threadId", url`, page),
       ])}
-      ORDER BY pr.linked_at ${direction(page.order)}, pr.thread_id ${direction(page.order)},
-        pr.url ${direction(page.order)}
+      ORDER BY "linkedAt" ${direction(page.order)}, "threadId" ${direction(page.order)},
+        url ${direction(page.order)}
       LIMIT ${page.limit + 1}
     `;
     return pageOf(rows, page, (row) => [row.linkedAt, row.threadId, row.url], pullRequestEntryOf);
@@ -1285,19 +1669,20 @@ export const makeQueryStore = Effect.gen(function* () {
     readonly number: number;
   }) {
     const rows = yield* sql<PullRequestRow>`
-      ${pullRequestSelect}
-      WHERE ${liveThreads} AND pr.source != 'stack-dismissed'
-        AND lower(pr.repository) = ${key.repository.toLowerCase()} AND pr.number = ${key.number}
-      ORDER BY pr.linked_at ASC
+      SELECT * FROM (${pullRequestRows([liveThreads])})
+      WHERE lower(repository) = ${key.repository.toLowerCase()} AND number = ${key.number}
+      ORDER BY "linkedAt" ASC
     `;
     const host = key.host;
-    return rows
-      .filter(
-        (row) =>
-          host === null ||
-          threadPullRequestKeysEqual(row, { host, repository: key.repository, number: key.number }),
-      )
-      .map(pullRequestEntryOf);
+    return rows.map(pullRequestEntryOf).filter(
+      (entry) =>
+        host === null ||
+        threadPullRequestKeysEqual(entry, {
+          host,
+          repository: key.repository,
+          number: key.number,
+        }),
+    );
   });
 
   return {
@@ -1317,11 +1702,10 @@ export const makeQueryStore = Effect.gen(function* () {
     search,
     listActivities,
     getActivity,
+    getSubagentTranscript,
     listPlans,
     getPlan,
     listPullRequests,
     getPullRequest,
   };
 });
-
-export type QueryStore = Effect.Success<typeof makeQueryStore>;

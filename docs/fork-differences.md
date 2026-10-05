@@ -32,24 +32,34 @@ See [the user guide](user/composer.md#opening-file-links),
 
 ## Devin provider
 
-Adds Devin as a provider, driven through the local `devin` CLI's ACP server (`devin acp`).
+Adds a dedicated `devin` provider driven through the local `devin` CLI's ACP server
+(`devin acp`). Upstream can also run Devin as a generic ACP Registry agent; the dedicated driver
+uses the same shared ACP adapter and Devin protocol handling (subagent markers, message grouping,
+client-owned terminals) and adds the rest.
 
-- Sessions, steering, interrupts, permission requests, and form-mode elicitations run over the
-  shared ACP runtime. T3 runtime modes map onto Devin's session modes.
+- Each instance has its own binary path and, when added, a private `XDG_DATA_HOME` (see
+  [Provider sign-in methods](#provider-sign-in-methods)). T3 runtime modes map onto Devin's
+  `--permission-mode` at spawn and onto its session modes; plan turns switch to Devin's Plan mode.
 - Models come from `devin models list`. Devin encodes effort, speed, and context in each model id,
-  so the catalog groups variants into one picker row per model with effort/speed/context options.
-  Fusion is one row: lead and sidekick are chosen by model family, lead effort is the one Devin
-  advertises for that lead, and sidekick effort is selectable.
-- T3's MCP endpoint, `devin skills list` (`$skill` dispatch), token usage, and pricing are wired
-  in, so the context meter and the usage page cover Devin. The page can export the current window
-  as CSV. Conversation rewind is not supported. Usage prefers the CLI's `sessions.db`, which
-  includes sessions run outside T3. When that history is missing, T3 falls back to its own event
-  logs for sessions it drove. A `cog_...` service key with `ViewOrgConsumption` and `DEVIN_ORG_ID`
-  can show organization ACUs in a separate section; those are not mixed into token-cost estimates.
-- Devin also generates commit messages, PR content, branch names, and thread titles.
+  so the catalog groups variants into one picker row per model with effort/speed/context options,
+  and the session is switched to the matching variant. Fusion is one row: lead and sidekick are
+  chosen by model family, lead effort is the one Devin advertises for that lead, and sidekick
+  effort is selectable. The context meter uses the catalog's window when Devin does not report one.
+- T3's MCP tools reach Devin through the shared ACP stdio bridge. `devin skills list` feeds the
+  skill picker, and `$skill` mentions are sent as Devin's `@skills:name`.
+- The usage page covers Devin from the CLI's `sessions.db`, which includes sessions run outside
+  T3, priced from the provider snapshot. The page can export the current window as CSV. A
+  `cog_...` service key with `ViewOrgConsumption` and `DEVIN_ORG_ID` can show organization ACUs
+  in a separate section; those are not mixed into token-cost estimates. Conversation rewind is
+  not supported.
+- Devin also generates commit messages, PR content, branch names, and thread titles, updates
+  through `devin update`, and signs in by browser, saved login, or a pasted API key.
 - The welcome wizard lists Devin with an **Enable** action, since the provider is opt-in.
 
-Code: `apps/server/src/provider/**/Devin*`, `apps/server/src/provider/devinModelCatalog.ts`,
+Code: [`DevinDriver.ts`](../apps/server/src/provider/Drivers/DevinDriver.ts),
+[`DevinAdapterV2.ts`](../apps/server/src/orchestration-v2/Adapters/DevinAdapterV2.ts),
+[`DevinAcpSupport.ts`](../apps/server/src/provider/acp/DevinAcpSupport.ts),
+`apps/server/src/provider/**/Devin*`, `apps/server/src/provider/devinModelCatalog.ts`,
 `apps/server/src/textGeneration/DevinTextGeneration.ts`, `apps/server/src/usage/devinAccountUsage.ts`,
 `apps/server/src/usage/devinUsageReader.ts`, `apps/web/src/components/usage/usageExport.ts`, and
 `DevinSettings` in `packages/contracts/src/settings.ts`. User guides:
@@ -63,14 +73,18 @@ added instance is one agent; there is no default instance.
 
 - The health check opens a short ACP session and lists what the agent advertises: its models
   (the `model` config option, else session models), its other config options as model options,
-  and the plan toggle only when it has a plan mode. Slash commands come from its session updates.
-- Turns run over the shared ACP runtime. Approvals follow the permission mode and answer with
-  the agent's own option ids; form elicitations become questions. T3's MCP endpoint is offered
-  only to agents that accept HTTP MCP servers. Resume falls back to a fresh session when the
-  agent cannot load the old one.
+  and the plan toggle only when it has a `plan` or `architect` mode. Slash commands come from its
+  session updates, per workspace.
+- Turns run over the shared ACP adapter, so T3's MCP tools (stdio bridge), approvals with the
+  agent's own option ids, form elicitations as questions, and fresh-session recovery when a
+  session cannot be resumed work as for upstream's ACP agents. The selected model is applied
+  through the `model` config option or `session/set_model`, and T3 runtime modes map onto the
+  agent's matching session modes.
 - No sign-in flow, updates, text generation, rewind, or usage accounting.
 
-Code: `apps/server/src/provider/**/CustomAcp*`, `apps/server/src/provider/acp/AcpCommandCatalog.ts`,
+Code: [`CustomAcpDriver.ts`](../apps/server/src/provider/Drivers/CustomAcpDriver.ts),
+[`CustomAcpAdapterV2.ts`](../apps/server/src/orchestration-v2/Adapters/CustomAcpAdapterV2.ts),
+`apps/server/src/provider/**/CustomAcp*`, `apps/server/src/provider/acp/AcpCommandCatalog.ts`,
 and `CustomAcpSettings` in `packages/contracts/src/settings.ts`. User guide:
 [providers-custom-acp.md](./user/providers-custom-acp.md).
 
@@ -82,18 +96,34 @@ Codex defaults to the browser flow.
 
 An added instance with a blank home gets a private directory under T3's data (`provider-homes`),
 so a second login does not replace the default. The default instance keeps the CLI's normal home.
-Cursor ignores `CURSOR_CONFIG_DIR` for its login, so its private home is a shadow `HOME`:
-`.cursor` (and `.config/cursor` on Linux) stays private, and everything else is symlinked back to
-the real home. Devin and OpenCode use `XDG_DATA_HOME`. Cursor usage reads each instance's own CLI
-login; the same account still counts once.
+Grok uses `GROK_HOME`; Devin and OpenCode use `XDG_DATA_HOME`. Cursor is not covered: upstream signs each
+Cursor instance in through the Cursor SDK and keeps every instance's sign-in separately.
+
+Cursor usage follows each instance's own sign-in. Upstream reads limits only from the host's shared
+CLI login and shows none for an SDK sign-in. In the fork, each instance trades its SDK key (or
+`CURSOR_API_KEY`) for an access token, as the SDK does, and reads its own limits; only the default
+instance may fall back to the CLI login. The usage page reads every instance's account as well as the
+CLI login, and one account counts once. Code:
+[`cursorUsageLimits.ts`](../apps/server/src/provider/Layers/cursorUsageLimits.ts),
+`readCursorSdkCredential` in
+[`CursorCredentialStore.ts`](../apps/server/src/provider/CursorCredentialStore.ts), and the Cursor
+scan in [`UsageService.ts`](../apps/server/src/usage/UsageService.ts). User guide:
+[usage.md](./user/usage.md).
+
+Cursor turns also record their token usage. Upstream's Cursor adapter ignores the usage the SDK
+returns with each finished run, so Cursor provider turns carry none. The fork maps it onto the
+turn's `turnTokenUsage` (cache reads and writes counted inside input, as for Claude), which feeds
+turn analytics and the usage of delegated tasks run on Cursor
+([`CursorTurnTokenUsage.ts`](../apps/server/src/provider/CursorTurnTokenUsage.ts)). It is a sum
+over the run's model calls, not context occupancy, so Cursor threads still have no context meter.
+The usage page keeps reading Cursor's account history, so nothing is counted twice.
 
 Code: `apps/web/src/components/settings/ProviderAuthSection.tsx`,
 `apps/server/src/provider/Services/ProviderAuthService.ts`,
-`apps/server/src/provider/ProviderInstanceEnvironment.ts`,
-`apps/server/src/provider/Drivers/CursorHome.ts`, and
+`apps/server/src/provider/ProviderInstanceEnvironment.ts`, and
 `packages/contracts/src/providerSetup.ts`. User guides:
-[providers-cursor.md](./user/providers-cursor.md), [providers-devin.md](./user/providers-devin.md),
-and [providers-opencode.md](./user/providers-opencode.md).
+[providers-devin.md](./user/providers-devin.md) and
+[providers-opencode.md](./user/providers-opencode.md).
 
 ## Provider account picker
 
@@ -109,61 +139,112 @@ Code: `apps/web/src/components/chat/ProviderAccountPicker.tsx` and
 `apps/web/src/components/chat/providerAccountSelection.ts`. User guide:
 [providers-codex.md](./user/providers-codex.md#switch-accounts-in-an-existing-thread).
 
-## Cursor subagents in Agents
-
-Cursor subagents show up in the Agents panel and the conversation's agent launch row, like
-Claude's. Upstream never asks Cursor for subagent updates, so Cursor threads leave Agents empty.
-The server opts in with `clientCapabilities._meta.subagents` and maps Cursor's
-`subagent_spawned`, `subagent_state_update`, and child-session updates onto `task.*` events.
-`effect-acp` delivers `session/update` kinds its schema does not define as extension
-notifications instead of closing the connection.
-
-Code: `apps/server/src/provider/acp/CursorSubagents.ts`, the subagent handlers in
-`apps/server/src/provider/Layers/CursorAdapter.ts`, and `isUnknownSessionUpdate` in
-`packages/effect-acp/src/protocol.ts`. User guide:
-[providers-cursor.md](./user/providers-cursor.md#subagents).
-
 ## Agents panel drilldowns
 
-The Agents panel has search, a status filter, sorting, compact rows that show a working agent's
-latest tool call, and hover previews of each agent. Each agent opens a detail view with
-its launch prompt, full result or error, searchable and filterable tool calls or an on-demand
-transcript, and a usage footer. Tool previews include bounded unified edit diffs and line counts,
-read ranges, search arguments, working directories, and exit codes when the provider supplies them.
-The same details appear in chat tool expansions on web, desktop, and mobile. On web and desktop,
-collapsed tool calls in the main chat also preview their full label and details on hover; clicking
-still expands them inline. Previews follow the agent tool-call layout: a tool heading,
-syntax-highlighted command with preserved whitespace, then output and details. Time, status,
-working directory, and exit code appear in a compact footer
-([`MessagesTimeline.tsx`](../apps/web/src/components/chat/MessagesTimeline.tsx)).
-Right-click an agent in the list and choose **Open in new tab**, or use the same action in its
-detail view, to keep it in its own thread-scoped sidebar tab alongside the fleet and other agents.
-Agent tabs can be closed and reopened the same way, and are restored when the app restarts.
-Upstream's panel is a fixed list with one summary line per agent. To feed it:
+Upstream makes every subagent a child thread, lists a thread's subagents under **Lineage** in the
+thread details panel, one row each, newest first, and removed the right-panel Agents surface
+(its store migration dropped persisted `agents` tabs). The fork keeps Lineage and brings the
+**Agents** panel back beside it, both over the child threads:
 
-- Adapters put the launch prompt on `task.started` (`prompt`) and emit a subagent's own tool calls
-  as `item.*` events tagged with `agentId`, as Claude already did upstream. Codex, Cursor,
-  OpenCode, and Devin do this in the fork.
-- OpenCode child sessions, Grok subagents, and Devin subagents join the panel at all; upstream
-  shows none of them. Devin reports subagents inside the root ACP session as `_meta` markers on
-  tool call notifications (`cognition.ai/subagent_started`, `subagent_completed`, and
-  `subagent_context` on the child's calls); `DevinSubagents.ts` maps them onto `task.*` events.
-- `orchestration.getSubagentTranscript` reads a subagent's history through the adapter's
-  `readSubagentTranscript` (Claude, Codex, OpenCode) while the session is running.
-  ProviderService keeps the last bounded read per agent in the fork-owned
-  `fork_subagent_transcripts` table, captured on `task.completed` and on every live read, and
-  serves it with `retainedAt` once the provider can no longer answer.
-- **Attach result to chat** (detail view and list right-click) pastes the agent's task and
+- **Agents panel.** A right-panel surface with the thread's whole fleet: one line per agent with a
+  status dot, token total, and elapsed time, a second line with a working agent's latest tool call
+  (a static `…` while it runs, a `waiting` badge when the agent waits on the user) or a failed
+  agent's error, and hover previews (status, compact model with reasoning effort and `run N`,
+  prompt, result or error, the latest five tool calls, usage). Clicking a tool call in a preview
+  opens the agent on that call, expanded and scrolled into view (`agentDrillStore.ts`
+  `focusToolCall`). Agents spawned by an agent sit indented under it, found through child-thread
+  lineage in the thread shells (`deriveThreadAgentFleet`); a filter keeps a non-matching agent as
+  context when one below it matches. An agent recorded before its child thread exists still opens
+  (its prompt, result, and usage, without activity) and has the right-click menu. Spawn order is
+  the child thread's creation, so a resumed agent never moves (`subagentSpawnedAt`). The footer
+  counts agents by status and sums the usage they reported (input, cached share, output,
+  reasoning, tool calls; `summarizeAgentFleet`). Agents spawned by agents add no usage there:
+  their records live on their owners' projections, which the list does not subscribe to. Open the
+  panel from the right panel's launcher or **+** menu (badged with working agents, nested agents
+  and live follow-up runs included), the command palette (**Show agents**), the Lineage header, an
+  agent tab, **Details** or the bot button on an agent row in the conversation, or **Show in Agents
+  panel** in an agent's right-click menu. Clicking a row or its preview opens the agent's detail.
+  The panel links back to Lineage. Upstream's v14 right-panel migration dropped `agents`; v15
+  keeps it, so the surface is restored on restart again. Rows page in 50 at a time, and only
+  working rows on screen and open previews read a child thread.
+- **Lineage.** With two or more subagents, Lineage gets the same search, status filter, and sorting
+  by spawn order (the default, so rows never jump while they work), status, tokens, or duration,
+  and the same compact rows. Lineage and the panel share one filter and sort, kept per device
+  (`agentListViewStore.ts`), so switching between them shows the same list.
+- **Conversation rows.** Upstream's agent rows open the agent's thread. The fork adds **Details**,
+  which opens the Agents panel on that agent, and a bot button that opens the fleet
+  ([`V2LifecycleRow.tsx`](../apps/web/src/components/chat/V2LifecycleRow.tsx)).
+- **Record fields.** `OrchestrationV2Subagent` gains optional fork fields kept in the record's
+  payload JSON (no migration): `usage` (Claude's `task_progress`/`task_notification` usage, the
+  running token total of a Codex child thread, and, for app-owned tasks such as `delegate_task`
+  children on any provider, the sum of their own thread's provider-turn usage plus its tool calls,
+  written when the task finishes; `subagentUsageFromChildTurns` in
+  [`SubagentProjection.ts`](../apps/server/src/orchestration-v2/SubagentProjection.ts)),
+  `outputFile` (Claude's task output file), and `sessionUrl` (the http(s) remote session link a
+  Claude Workflow tool result names for its task). Every agent view (detail footer, rows, hover
+  cards, fleet footer) reads this one field. A running delegated task shows usage once it finishes,
+  and tasks that finished before this existed show none. Other native subagents leave these empty.
+- **Agent detail.** Clicking an agent in the Agents panel inspects it in place, with **Back** to
+  the fleet. The header has the agent's status, compact model with effort (from its child thread's
+  model selection), `run N` past its first run, elapsed time, the prompt clamped to four lines
+  with **Show all**, the result or error, **Artifacts** (output file, **Open remote session**), and
+  agents it started (click one to drill a level further; Back returns one level). Below it is the
+  agent's activity from its child thread: its **Tools** (the default), with status and kind
+  filters and sorting, or a live **Transcript** of its messages, reasoning summaries, tool calls,
+  and notices in order, each with its time. Both can be searched, and a narrowed view says
+  **Showing N of M**. Paths in both read relative to the checkout the agent works in: a Claude
+  `.claude/worktrees/agent-<id>` worktree or a sibling checkout its calls use
+  (`subagentWorkspaceRoot`). An empty Tools view says whether the agent made no calls or its
+  provider records none, showing progress while it works (`subagentEmptyToolCallsText`). The usage
+  breakdown adds **Runs** and **Attempt** from the child thread's runs and run attempts
+  (`subagentRunStats`). The transcript reuses the chat's timeline derivation
+  (`deriveTimelineEntriesFromVisibleTurnItemsWithState`), work-log rows, and `V2ItemInspector` for
+  expanded calls (output, diffs). It is virtualized and follows new activity only while scrolled
+  to the end. **Stop agent** appears when the agent's own thread has an interruptible run. It is
+  the same interrupt that thread offers in chat; native Claude subagents have none. The drill-in
+  is per thread and session-only (`agentDrillStore.ts`). **Show in Agents panel** opens the panel
+  on the agent. The child thread is read only while its detail is shown.
+- **Agent tab.** **Open in new tab** in the detail view, or right-click an agent in the panel, in
+  Lineage, or in the conversation, keeps it in a thread-scoped right-panel tab beside the fleet,
+  with the same detail view. Agent tabs close like other tabs, reopen the same way, and are
+  restored when the app restarts.
+- **Attach result to chat** (right-click or the agent detail) pastes a finished agent's task and
   result into the composer; `subagentResultChatContext` builds the text.
-- **Continue in chat** (detail view and list right-click) opens a new chat tab of the thread whose
+- **Continue in chat** (right-click or the agent detail) opens a new chat tab of the thread whose
   draft carries the agent's task, result or error, and latest tool calls as a chat-summary chip;
   `subagentContinuationContext` builds the text. It starts a fresh conversation rather than
   resuming the agent's provider session.
 
-Code: `apps/web/src/components/AgentsPanel.tsx`, `AgentDetailView.tsx`,
-`apps/web/src/rightPanelStore.ts`, `packages/client-runtime/src/state/agentPanelView.ts`,
-`apps/server/src/provider/acp/DevinSubagents.ts`, `apps/server/src/provider/subagentTranscript.ts`,
-and `apps/server/src/provider/SubagentTranscriptStore.ts`. User guide:
+Tool previews include bounded unified edit diffs and line counts, read ranges, search arguments,
+and exit codes when the provider supplies them, in the agent detail and in chat tool expansions on
+web, desktop, and mobile. Timelines carry an edit without its diff, so an expanded edit or its hover card fetches the
+stored item for its preview (`fileChangePreviewText`); the fork's `projectTurnItemForDetail` returns
+an edit's stored diff, bounded, where upstream withholds it there too. Claude's Edit results are only a
+success message, so the fork builds a Claude edit's diff and line counts from the tool's input
+(`claudeFileChangeDiff`), where upstream stores the message as the diff. Codex sends a new or deleted
+file as raw contents and an update as bare hunks; the fork stores every change in the item as one
+unified patch with line counts (`codexFileChangeDiff`), where upstream kept the first change's raw
+text. In the agent views a tool's preview also
+carries what it reported back, such as an `Error:` line, when its output came with the timeline;
+v2 command items record no working directory, so none is shown. On web and desktop, collapsed tool calls in
+the main chat also preview on hover; clicking still expands them inline. The card shows the tool
+heading, the workspace-relative syntax-highlighted command or full label, then the same details the
+row expands to (output loads only once the card opens, and a non-zero exit code shows with it), with
+time and status in a compact footer. Thoughts and answered questions do not preview
+([`MessagesTimeline.tsx`](../apps/web/src/components/chat/MessagesTimeline.tsx),
+[`toolCallPreview.ts`](../apps/web/src/lib/toolCallPreview.ts)).
+
+Code: [`agentListView.ts`](../packages/client-runtime/src/state/agentListView.ts),
+[`agentFleet.ts`](../packages/client-runtime/src/state/agentFleet.ts),
+[`AgentsPanel.tsx`](../apps/web/src/components/chat/AgentsPanel.tsx),
+[`ThreadRelationshipsControl.tsx`](../apps/web/src/components/chat/ThreadRelationshipsControl.tsx),
+[`AgentDetailPanel.tsx`](../apps/web/src/components/chat/AgentDetailPanel.tsx),
+[`agentTranscript.ts`](../apps/web/src/components/chat/agentTranscript.ts),
+[`agentDrillStore.ts`](../apps/web/src/agentDrillStore.ts),
+[`agentChatActions.ts`](../apps/web/src/components/chat/agentChatActions.ts), the `agents` and
+`agent` surfaces in [`rightPanelStore.ts`](../apps/web/src/rightPanelStore.ts), the record
+field mapping in `ClaudeAdapterV2.ts` and `CodexAdapterV2.ts`, and `finalizeAppOwnedSubagent` in
+[`Orchestrator.ts`](../apps/server/src/orchestration-v2/Orchestrator.ts). User guide:
 [thread-sidebar.md](./user/thread-sidebar.md#inspect-agent-work).
 
 ## Chat tabs
@@ -175,13 +256,17 @@ is its own conversation and provider.
   `fork_thread_tabs` table, created by `ensureThreadTabsSchema` in
   `apps/server/src/threadTabs/schema.ts`. It is versioned in a separate `fork_schema_migrations`
   table so upstream's numbered migrations are never touched.
-- **Server.** `apps/server/src/threadTabs/http.ts` serves the `threadTabs` HTTP group: list a
-  group, list all memberships, create a tab, and summarize sibling tabs. Checkpointing lets tab
-  siblings share a worktree (`sharedWorkspace.ts`, `CheckpointReactor.ts`).
+- **Server.** The `ThreadTabs` service (`apps/server/src/threadTabs/ThreadTabs.ts`) lists a group
+  and all memberships, creates a tab, forks a response into a tab, and summarizes other chats;
+  `http.ts` serves it as the `threadTabs` HTTP group. A new tab is an orchestration `thread.create`
+  on the source's branch and worktree. Each tab keeps its own checkpoints in the shared worktree.
+  Orchestration v2 does not follow a worktree's checked-out branch for any thread, so tabs keep
+  the branch they were created with.
 - **Settlement.** The group shows as one sidebar row, so it settles as a unit while upstream's
-  settle commands and auto-settle policy stay per thread. `settlement.ts` mirrors them: a turn or
-  unsettle in any tab wakes the group, and a settle in any tab settles the rest. A settle is undone
-  while another tab is working, or, for an automatic settle, while another tab has an open pull
+  settle commands and auto-settle policy stay per thread. `settlement.ts` follows the stored
+  orchestration events and mirrors them: a new run or unsettle in any tab wakes the group, and a
+  settle in any tab settles the rest. A settle is undone while another tab is working, waiting on
+  you, or holding background work, or, for an automatic settle, while another tab has an open pull
   request.
 - **Sidebars.** By default child tabs are hidden from the web sidebar, the legacy project sidebar,
   and both mobile thread lists (`useHiddenTabThreads`). The group's row stays highlighted while any
@@ -235,9 +320,10 @@ is its own conversation and provider.
   - A user message's hover actions include **Fork into new tab**. The summary stops before that
     message (`beforeMessageId` on the handoff request), and the message's text and attachments
     follow it.
-  - A completed agent response has the same fork action. Its summary includes that response
-    (`afterMessageId` on the handoff request); the new draft holds only the summary attachment,
-    ready for a follow-up.
+  - A completed agent response's **Fork from this response** opens upstream's native fork as a
+    new tab (`forkResponseIntoTab`, the `fork` endpoint), so the tab carries the conversation
+    itself rather than a summary. Against a server without tabs it forks a separate thread, as
+    upstream does.
   - Each model picker row has a hover fork button. The new tab runs that model, the whole chat is
     summarized, and the current draft (text, attachments, and context chips) is copied after it.
     Other providers, and models the provider cannot switch to mid-chat, stay listed instead of
@@ -274,16 +360,19 @@ own timeline, composer, right panel, and terminal.
 
 User guide: [thread-sidebar.md](./user/thread-sidebar.md#view-two-chats-side-by-side).
 
-## View an open pull request
+## Open the thread's pull request in the browser
 
-The git toolbar's primary action becomes **View PR** when the branch already has an open pull
-request, on web and mobile. On web and desktop, **Settings → General → Open pull requests in**
-chooses the side panel (the default) or the browser. The other destination stays in the actions
-menu. The browser is whichever one **Open links in** picks (see below).
+On web and desktop, **Settings → General → Open pull requests in** chooses where the thread's own
+pull request opens: the thread details panel's pull request rows, the composer's pull request badge,
+and the **View PR** button on the toast after a pull request is created. **Side panel** (the
+default) is upstream's behaviour, where Cmd/Ctrl-click opens the browser. **Browser** swaps them: a
+click opens the browser that **Open links in** picks (see below), and Cmd/Ctrl-click opens the side
+panel. Other pull request links are unaffected.
 
-Code: `packages/client-runtime/src/state/gitActions.ts`,
-`apps/web/src/components/GitActionsControl.tsx`, and `pullRequestOpenTarget` in
-`packages/contracts/src/settings.ts`.
+Code: `usePreferredOpenPrLink` in
+[`openPullRequestLink.ts`](../apps/web/src/lib/openPullRequestLink.ts),
+[`BranchToolbarBranchSelector.tsx`](../apps/web/src/components/BranchToolbarBranchSelector.tsx), and
+`pullRequestOpenTarget` in `packages/contracts/src/settings.ts`.
 
 ## Pull request host links follow Open links in
 
@@ -310,16 +399,19 @@ Code: `apps/server/src/storageCleanup.ts` and
 `apps/web/src/components/settings/StorageSettings.tsx`. User guide:
 [project-settings.md](./user/project-settings.md#storage-cleanup).
 
-## Worktree branch prefix
+## Worktree branch named before setup
 
-Generated worktree branch names use a configurable prefix instead of a fixed `t3code/`.
-**Settings → General → Branch prefix** takes any namespace, or none, and projects can override it.
-The name is generated while the worktree is checked out, so the agent and setup script start on
-the final branch; upstream renames the `t3code/<id>` placeholder after the first turn has started.
-The placeholder remains only when naming outlasts checkout by more than a few seconds.
+New worktree branches use upstream's naming (**Settings → Source Control → Worktree branch
+naming**), but the name is generated while the worktree is checked out, so the setup script and
+agent start on the final branch; upstream renames the `t3code/<id>` placeholder after the first
+turn has started. The placeholder remains only when naming outlasts checkout by more than a few
+seconds, and is then renamed in the background as upstream does. A static prefix the model repeats
+in its answer is not doubled. The fork's earlier **Branch prefix** setting (global and per project)
+moves into the static prefix once, the first time the server loads its settings.
 
-Code: `generateWorktreeBranchName` in `apps/server/src/git/worktreeBranchName.ts`, its bootstrap
-call in `apps/server/src/orchestration/ClientCommandDispatcher.ts`, and `worktreeBranchPrefix` in `packages/contracts/src/settings.ts`. User guide:
+Code: `prepareInBackground` in `apps/server/src/orchestration-v2/ThreadLaunchService.ts`,
+`formatGeneratedBranchName` in `packages/shared/src/git.ts`, and `foldLegacyWorktreeBranchPrefix`
+in `apps/server/src/serverSettings.ts`. User guide:
 [project-settings.md](./user/project-settings.md#defaults-and-inheritance).
 
 ## Sidebar resource pill
@@ -399,8 +491,9 @@ script (the T3 setup action or Conductor's `scripts.setup`) with the Conductor v
 script holds the subagent until it exits. Claude Code still creates and removes the worktree itself,
 so no archive script runs. Only the Claude adapter does this.
 
-Code: the `SubagentStart` hook in `apps/server/src/provider/Layers/ClaudeAdapter.ts` and
-`apps/server/src/project/SubagentWorktreeSetup.ts`. User guide:
+Code: `makeSubagentWorktreeSetupHooks` in
+[`ClaudeAdapterV2.ts`](../apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts) and
+[`SubagentWorktreeSetup.ts`](../apps/server/src/project/SubagentWorktreeSetup.ts). User guide:
 [project-settings.md](./user/project-settings.md#repositories-set-up-for-conductor).
 
 ## Linear integration
@@ -551,32 +644,46 @@ a single link keeps one row checked. See
 
 ## Watch a pull request
 
-A linked pull request's row menu can **Watch and follow up**. The server re-reads a watched thread
-when a linked pull request's snapshot syncs or its session changes. If the host reports failing
-checks, requested changes, or merge conflicts the agent has not been asked about, and the thread is
-idle, it starts a follow-up turn with instructions for that work. Each watch allows 3 follow-ups
-until resumed, can be paused or stopped, and ends when the pull request merges or closes. The row
-shows what the watch is waiting for.
+Upstream's pull request watch (`watch_pull_request`, or the row menu) wakes the agent with news.
+The fork adds to it:
 
-Watches live in the fork-owned `fork_pull_request_watches` table, versioned in
-`fork_schema_migrations`, and are served by the `pullRequestWatches` HTTP group. Code:
-[`pullRequestWatch/`](../apps/server/src/pullRequestWatch/reactor.ts),
-[`pullRequestWatch.ts`](../packages/shared/src/pullRequestWatch.ts) (when to follow up), and
+- The wake tells the agent what to do about failing checks, a merge conflict, and requested
+  changes (fix and push, rebase, address the review), with how to inspect the pull request.
+  A "changes requested" review decision is news of its own, raised once until it clears.
+- Wakes that ask for a fix spend a budget of 3 follow-ups, alongside upstream's limit on
+  comment-only wakes. When a fourth is needed the watch pauses instead.
+- **Pause watching** and **Resume watching** sit beside **Stop watching**. A paused watch reads
+  nothing; resuming restores the budget and reports what changed meanwhile.
+- Settled threads stay watched, and a wake brings the thread back; upstream skips them.
+- Each watched row on web shows a status line ("Waiting for checks", "Checks failed", "Changes
+  requested", ...) and the follow-ups used. Mobile's Git overview shows "Watching" or "Watch paused".
+
+The state rides on upstream's `ThreadPullRequestWatch` (`changesRequested`, `followUps`, `paused`)
+and `thread.pull-request.watch` takes `paused`, behind the `threadPullRequestWatchPause` capability.
+Watches from the fork's old `fork_pull_request_watches` table move onto their links at startup,
+without their follow-up counts. Code:
+[`pullRequestWatch.ts`](../apps/server/src/orchestration-v2/pullRequestWatch.ts),
+[`PullRequestWatchReactor.ts`](../apps/server/src/orchestration-v2/PullRequestWatchReactor.ts),
+[`pullRequestWatch.ts`](../packages/shared/src/pullRequestWatch.ts) (status line), and
 [`ThreadPullRequestsPanel.tsx`](../apps/web/src/components/pullRequest/ThreadPullRequestsPanel.tsx).
-Mobile has no controls yet. See [the user guide](user/source-control.md#watch-a-pull-request).
+See [the user guide](user/source-control.md#watch-a-pull-request).
 
 ## Create a thread before writing its first message
 
 On web and desktop, a new thread's empty composer shows **Create worktree** (or **Create thread**
-in Local mode) in place of the send arrow; Enter does the same. It creates the thread, prepares the
-worktree, and runs the setup script without starting a turn, then opens the thread with an empty
-composer so context can be added first. The first real message starts the turn and names the thread
-and branch. Chat tabs already share a workspace, so they never offer it. A selection of several
-models, or a server without the `deferredBootstrapTurn` capability, keeps the plain send arrow.
-Mobile does not offer it.
+in Local mode) in place of the send arrow; Enter does the same. It launches the thread without a
+message: the thread opens right away with an empty composer and the setup card while the worktree
+is checked out and the setup script runs, and no turn starts. Sending waits until that setup is
+done, and the server also holds a first message that arrives earlier, from any client. The first
+real message starts the turn, names the thread, and renames the temporary `t3code/<id>` branch.
+Chat tabs already share a workspace, so they never offer it. A selection of several models, or a
+server without the `deferredBootstrapTurn` capability, keeps the plain send arrow. Mobile does not
+offer it.
 
-Code: `bootstrap.deferTurn` in `packages/contracts/src/orchestration.ts`, handled by
-`dispatchBootstrapTurnStart` in `apps/server/src/orchestration/ClientCommandDispatcher.ts`; `createThreadWithoutMessage` in
+Code: `bootstrap.deferTurn` in `packages/client-runtime/src/operations/commands.ts`;
+`prepareMessageWorkspace` and `nameTemporaryBranch` in
+`apps/server/src/orchestration-v2/ThreadLaunchService.ts`, called from `dispatchCommand` in
+`apps/server/src/orchestration-v2/ThreadMessageIntake.ts`; `createThreadWithoutMessage` in
 `apps/web/src/components/ChatView.tsx` and the pill in `ComposerPrimaryActions.tsx`. User guide:
 [thread-sidebar.md](./user/thread-sidebar.md#start-a-thread).
 
@@ -586,11 +693,12 @@ On web and desktop, **Export transcript…** in a thread's menu (sidebar row, si
 header) or the command palette opens a dialog that previews the thread as Markdown. A thread with
 several chat tabs gets a tab picker, starting on the tab it was opened from. **Concise** keeps
 the prompts and replies; **Full** adds the work log (tool calls, commands, file edits) and proposed
-plans in time order. Reasoning is always left out. **Header** adds front matter with the project,
+plans in the order the thread's timeline shows them. Reasoning is always left out. **Header** adds front matter with the project,
 branch, provider, model, and dates. **Save…** writes a `.md` file on the device running the client:
 the native save dialog on desktop, the browser's save picker in Chromium, and a download elsewhere.
-**Copy** puts the same Markdown on the clipboard. The dialog loads the whole thread over HTTP, so it
-works for threads that are not open. Mobile does not offer it.
+**Copy** puts the same Markdown on the clipboard. The dialog loads the whole thread projection over
+HTTP (`loadFullThreadSnapshot`), so it works for threads that are not open. Mobile does not offer
+it.
 
 Code: [`threadTranscript.ts`](../apps/web/src/lib/threadTranscript.ts),
 [`TranscriptExportDialog.tsx`](../apps/web/src/components/TranscriptExportDialog.tsx), and
@@ -603,11 +711,15 @@ Upstream imports recent Claude Code and Codex history only in bulk, from the wel
 fork adds a per-project picker on web and desktop: **Import conversation into …** in the command
 palette, and **Import conversation…** in the legacy sidebar's project menu. `agentSessions.list`
 returns the project's conversations from the last 30 days (newest 50, with first prompt, message
-count, and dates), marking ones a live thread already resumes so the picker opens that thread
-instead. `agentSessions.import` takes an optional `session` to import just one, from a fresh scan,
-and returns its thread. The thread binds to the original session exactly like the wizard's import,
-so the next turn resumes it. The server advertises the picker with the `agentSessionPicker`
-capability. Cursor, Grok, OpenCode, Antigravity, Devin, and mobile have no import.
+count, and dates, and `truncated` when there are more). Each is marked with the thread already
+holding it, so the picker opens that thread instead: an earlier import, found by upstream's
+`import:<instance>:<session>` thread id, or any unarchived thread whose active provider thread
+resumes that session, including threads T3 started itself. `agentSessions.import` takes an
+optional `session` to import just one through upstream's importer, from a fresh scan, and returns
+its thread in `threadIds`. The thread binds to the original session exactly like the wizard's
+import, so the next turn resumes it. The server advertises the picker with the
+`agentSessionPicker` capability. Cursor, Grok, OpenCode, Antigravity, Devin, and mobile have no
+import.
 
 Code: `listProjectAgentSessions` in
 [`AgentSessionImporter.ts`](../apps/server/src/project/AgentSessionImporter.ts), the
@@ -631,9 +743,10 @@ name once a default owner is set, open that tab by default instead of pull reque
 A picked repository becomes a `repository` context chip. When the message sends, the server
 clones what is missing before the turn starts. It leaves an existing clone of the same remote
 alone (fetching only, so ahead/behind are current) and never overwrites a folder that belongs to
-something else. On a new worktree this runs as a step of the setup card, before the setup script.
-Otherwise it runs before the turn is recorded, with a work log row showing progress. Each record's clone outcome and git status are
-written back onto the message. The chip shows them, and the agent's prompt includes them, so the
+something else. On a new launch this runs as a step of the setup card, before the setup script,
+and the outcomes reach the already recorded message as its run is released. Otherwise it runs
+before the message is recorded, with a one-step setup card showing progress. Each record's clone
+outcome and git status are written back onto the message. The chip shows them, and the agent's prompt includes them, so the
 agent knows what is there. A failed clone is a warning and the agent still starts. The server adds
 the folder to the repository's `info/exclude` so checkpoints and diffs ignore the clones. The
 default owner and the folder are server settings in **Settings > General**. Mobile's attach menu
@@ -641,8 +754,11 @@ has the same picker, without the recently attached ranking.
 
 Code: `apps/server/src/contextRepositories/ContextRepositories.ts`,
 `packages/contracts/src/contextRepositories.ts`, `RepositoryContextRecord` in
-`packages/contracts/src/composerContext.ts`, the context-repository step in `apps/server/src/orchestration/ClientCommandDispatcher.ts`,
-the persisted-message restatement in `apps/server/src/orchestration/decider.ts`,
+`packages/contracts/src/composerContext.ts`,
+`apps/server/src/contextRepositories/messageContextRepositories.ts` (called from
+`apps/server/src/orchestration-v2/ThreadLaunchService.ts`), the `context` of `prepared-run.release`
+in `packages/contracts/src/orchestrationV2.ts` and its message restatement in
+`apps/server/src/orchestration-v2/Orchestrator.ts`,
 `packages/client-runtime/src/contextRepositories.ts`, and
 `apps/web/src/components/chat/RepositoryAttachPicker.tsx`,
 `apps/web/src/components/chat/useComposerRepositoryItems.ts`, and
@@ -684,7 +800,8 @@ install ad hoc–signed builds. Run `make` targets from the repository root, sta
 ## Commands and file paths shown relative to the workspace
 
 Tool calls in the web, desktop, and mobile timelines, and subagent tool calls in the web and
-desktop Agents panel, show paths inside the thread's working directory as relative. For commands, a leading `cd` to that directory is dropped. Rewriting a
+desktop agent tabs and agents list, show paths inside the thread's working directory as relative.
+For commands, a leading `cd` to that directory is dropped. Rewriting a
 command stops at the first `cd` somewhere else, because relative paths after it would point
 somewhere else. File, image, and other tool labels (`Read: src/index.ts`) get the same path
 treatment. A subagent working in a sibling checkout of that directory — another folder next to
@@ -695,19 +812,23 @@ the agent never reports it. Other paths stay absolute, and approval prompts stil
 command. The shared runtime instructions also tell every provider that shell commands already
 start in that directory.
 
-Code: `packages/client-runtime/src/work-log/commandDisplay.ts`,
-`packages/client-runtime/src/state/agentPanelView.ts`, and
+Code: `packages/client-runtime/src/work-log/commandDisplay.ts`, used by
+`apps/web/src/components/chat/MessagesTimeline.logic.ts` and by `buildThreadFeed` and
+`workEntryRowLabel` in `apps/mobile/src/lib/threadActivity.ts`;
+[`agentListView.ts`](../packages/client-runtime/src/state/agentListView.ts); and
 `apps/server/src/provider/RuntimeInstructions.ts`.
 
 ## Agent access over MCP
 
 Two more MCP servers serve agents outside T3 Code. `/mcp/query` gives read-only access to the
-environment's history: projects, threads, turns, messages, activities, plans, turn diffs, linked
+environment's history: projects, threads, turns, messages, the work log, plans, turn diffs, linked
 pull requests, and usage. Its tools page with cursors, take `since`/`until` bounds, and cap text.
-`/mcp/operate` adds the thread and project tools listed under
-[Agents start and drive threads](#agents-start-and-drive-threads), plus `respond_to_request` for
-answering a thread's approvals and questions. It acts as the user without the spawn limits, and
-threads it starts record the token's label.
+It reads the orchestration v2 projections; threads imported from before v2 carry only their
+messages. `/mcp/operate` adds upstream's orchestrator, thread, project, and environment tools,
+acting as a client caller labelled with the token's name, plus `t3_approval_respond` for
+answering a thread's approvals (upstream's `t3_pending_request_respond` answers questions but
+refuses approvals). It acts as the user, in any permission mode, without the spawn limits, and
+threads it starts with `t3_thread_launch` record the token's label.
 Both authenticate with an environment bearer token, never a cookie: `/mcp/query` needs
 `orchestration:read`, `/mcp/operate` also `orchestration:operate`.
 
@@ -715,34 +836,38 @@ Tokens come from **Settings → Connections → Agent access** (`POST /api/auth/
 `access: "read" | "operate"`) or `t3 auth session issue --read-only` / `--operate`. Each token is a
 normal client session, so revoking it works like revoking any client. Web and desktop only.
 
-Code: `apps/server/src/mcp/query/`, the `agentAccessToken` handler in
-`apps/server/src/auth/http.ts`, `AuthReadOnlyClientScopes` and `AuthAgentOperateScopes` in
-`packages/contracts/src/auth.ts`, and `apps/web/src/components/settings/AgentAccessSettings.tsx`.
+Code: [`AgentAccessMcpServer.ts`](../apps/server/src/mcp/AgentAccessMcpServer.ts),
+[`mcp/query/`](../apps/server/src/mcp/query/),
+[`toolkits/approval/`](../apps/server/src/mcp/toolkits/approval/), the `agentAccessToken`
+handler in [`auth/http.ts`](../apps/server/src/auth/http.ts), `AuthReadOnlyClientScopes` and
+`AuthAgentOperateScopes` in [`contracts/src/auth.ts`](../packages/contracts/src/auth.ts), and
+[`AgentAccessSettings.tsx`](../apps/web/src/components/settings/AgentAccessSettings.tsx).
 User guide: [agent-access.md](./user/agent-access.md).
 
 ## Agents start and drive threads
 
-With **Agent thread control** on (off by default; environment setting with project overrides), a
-thread's `t3-code` MCP server also lists the thread tools `create_thread`, `send_message`,
-`wait_for_thread`, `interrupt_turn`, `update_thread`, `set_thread_state`, and `list_models`; the
-project tools `create_project` and `update_project`; and the history tools `list_projects`,
-`list_threads`, `get_thread`, `list_messages`, and `search`. Credentials without it never see them.
-Web, desktop, and mobile settings all carry the toggle.
+Upstream gives every thread's agent its orchestration tools (`create_threads`, `delegate_task`,
+`t3_thread_launch`, `t3_thread_send`, and the rest). The fork adds limits for an agent inside a
+thread: chains of agent-started threads stop two levels deep, a thread keeps at most five started
+threads going at once (a started thread counts until it settles or is archived, a delegated task
+while its child runs), and `t3_thread_send`, `t3_thread_wait`, and `t3_thread_interrupt` refuse
+the caller's own thread. Metadata tools such as `t3_thread_update` still default to the caller's
+own thread, as upstream intends. A thread's agent never answers another thread's approvals.
 
-A thread's agent cannot give a thread it starts a runtime mode above its own, chains stop two
-levels deep, a thread keeps at most five live children, and it cannot act on its own thread or
-answer another thread's approvals or questions. A thread an agent starts records `createdBy`: the
-chat header on web, desktop, and mobile names the starting thread (and opens it) or the agent
-access token, and web sidebar rows mark it with a bot icon.
+A thread an agent starts with `create_threads` or `t3_thread_launch` records `startedBy` (the
+starting thread, or the agent access token's label). The chat header on web, desktop, and mobile
+names the starting thread (and opens it) or the token, and web sidebar rows mark the thread with a
+bot icon. A client cannot set `startedBy`; only the server's MCP paths do.
 
-Code: `apps/server/src/mcp/toolkits/operate/`, `apps/server/src/mcp/McpActor.ts`,
-`ThreadReadToolkit` in `apps/server/src/mcp/query/tools.ts`, `agentAccessCapabilities` in
-`apps/server/src/provider/Layers/ProviderService.ts`, `ThreadCreatedBy` in
-`packages/contracts/src/orchestration.ts`,
-`apps/server/src/orchestration/ClientCommandDispatcher.ts`,
-`apps/web/src/components/chat/StartedByChip.tsx`, and
-`apps/mobile/src/features/threads/ThreadStartedByChip.tsx`. User guide:
-[agent-access.md](./user/agent-access.md#let-agents-start-threads).
+Code: [`spawnPolicy.ts`](../apps/server/src/mcp/spawnPolicy.ts), its callers in
+[`OrchestratorMcpService.ts`](../apps/server/src/mcp/OrchestratorMcpService.ts) and
+[`toolkits/project/handlers.ts`](../apps/server/src/mcp/toolkits/project/handlers.ts),
+`OrchestrationV2ThreadStartedBy` in
+[`orchestrationV2.ts`](../packages/contracts/src/orchestrationV2.ts),
+[`state/startedBy.ts`](../packages/client-runtime/src/state/startedBy.ts),
+[`StartedByChip.tsx`](../apps/web/src/components/chat/StartedByChip.tsx), and
+[`ThreadStartedByChip.tsx`](../apps/mobile/src/features/threads/ThreadStartedByChip.tsx). User
+guide: [agent-access.md](./user/agent-access.md#let-agents-start-threads).
 
 ## Attention inbox
 
@@ -754,7 +879,7 @@ sidebar row would return to. Failures and completions leave the inbox once you o
 mark them read; **Mark unread** in the thread menu brings a completion back. Approvals and
 questions stay until answered. Archived threads are left out, and so are snoozed ones until they
 wake or raise their hand. The same list is **Needs attention** in the command palette
-(`mod+alt+n`, `attentionInbox.open`).
+(`mod+alt+shift+n`, `attentionInbox.open`).
 
 The inbox is derived on the client from thread shells and the client's existing read markers, so
 it adds no server state or payload. Mobile does not show it, because the mobile client does not
@@ -767,27 +892,29 @@ User guide: [thread-sidebar.md](./user/thread-sidebar.md#see-what-needs-you).
 
 ## Usage-limit recovery
 
-When Codex or Claude ends a turn because the account's usage allowance ran out, the thread shows a
-recovery banner instead of the plain error. Upstream only shows the error. The banner offers:
+Upstream shows a recovery banner when Codex or Claude ends a turn on a usage limit, with **Resume at
+reset**, **Cancel auto-resume**, and **Snooze until reset**. The fork adds:
 
-- **Resume when available**, only when the provider reported a reset time. It arms the server to
-  send "Continue where you left off." into the same session a minute after the reset, with no
-  client connected and across restarts. It covers that one stop and is off until chosen; **Cancel
-  auto-resume** disarms it.
-- **Resume now**, which sends the same message at once.
+- **Resume now**, on web, desktop, and mobile, which sends the same "Continue where you left off."
+  continuation into the same session at once. It is the `thread.usage-limit.resume-now` command, so
+  the server owns the message and any client or future agent tool can send it. Servers advertise it
+  with the `usageLimitResumeNow` capability; clients hide the button without it.
 - **Continue in new tab** on web and desktop, which forks the chat onto another ready account or
-  model through the [Chat tabs](#chat-tabs) fork.
+  model through the [Chat tabs](#chat-tabs) fork, with the continuation as the new tab's prompt.
+- A one-minute grace after the reported reset before an armed auto-resume is sent, since a request
+  at the reset can still be refused.
+- A notice in the stopped turn when auto-resume is scheduled or cancelled.
+- Cursor stops count too. Cursor reports an exhausted allowance only as run error text ("You're out
+  of usage…"), which upstream shows as a generic provider error; the fork recognizes it as a usage
+  limit, so Cursor threads get the same banner. Cursor gives no reset time, so there is no
+  auto-resume for them.
 
-Adapters mark the stop with `usageLimit` (and `resetsAt` when known) on `runtime.error`. Codex uses
-`usageLimitExceeded`; Claude uses a rejected rate-limit window or `blocking_limit`. Cursor, Grok,
-OpenCode, Antigravity, and Devin do not mark stops, so they keep the plain error. Arming and
-cancelling are the `thread.usage-limit.resume` command, recorded as thread activities. Mobile has
-the resume actions but not **Continue in new tab**.
-
-Code: `packages/shared/src/usageLimitRecovery.ts`,
-`apps/server/src/orchestration/UsageLimitResumeReactor.ts`, the `thread.usage-limit.resume` case in
-`apps/server/src/orchestration/decider.ts`, `apps/web/src/components/chat/UsageLimitRecoveryBanner.tsx`,
-and `apps/mobile/src/features/threads/UsageLimitRecoveryNotice.tsx`. User guides:
+Code: `cursorRunFailure` in
+[CursorAdapterV2](../apps/server/src/orchestration-v2/Adapters/CursorAdapterV2.ts), the `thread.usage-limit.resume-now` case and limit-recovery notice in
+[Orchestrator](../apps/server/src/orchestration-v2/Orchestrator.ts), the grace in
+[UsageLimitRecoveryWorker](../apps/server/src/orchestration-v2/UsageLimitRecoveryWorker.ts),
+[UsageLimitRecoveryBanner](../apps/web/src/components/chat/UsageLimitRecoveryBanner.tsx), and
+[UsageLimitRecoveryCard](../apps/mobile/src/features/threads/UsageLimitRecoveryCard.tsx). User guides:
 [providers-codex.md](./user/providers-codex.md#codex-says-i-hit-a-usage-limit) and
 [providers-claude.md](./user/providers-claude.md#usage-limits).
 

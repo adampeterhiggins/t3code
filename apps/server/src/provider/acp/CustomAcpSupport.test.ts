@@ -1,13 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
-import type * as EffectAcpSchema from "effect-acp/schema";
+import type * as EffectAcpSchema from "effect-acp/compat";
 
 import {
   customAcpModelsFromSession,
   customAcpSupportsPlanMode,
   parseCustomAcpArguments,
-  resolveCustomAcpConfigUpdates,
   resolveCustomAcpModeId,
-  resolveCustomAcpSessionModel,
+  resolveCustomAcpModelUpdate,
 } from "./CustomAcpSupport.ts";
 
 const modelOption = {
@@ -30,7 +29,7 @@ const effortOption = {
   currentValue: "medium",
   options: [
     {
-      group: "levels",
+      groupId: "levels",
       name: "Levels",
       options: [
         { value: "low", name: "Low" },
@@ -130,7 +129,7 @@ describe("customAcpModelsFromSession", () => {
 });
 
 describe("customAcpSupportsPlanMode", () => {
-  it("shows the plan toggle only for agents with a plan-like mode", () => {
+  it("shows the plan toggle only when the agent has a mode T3 can switch to", () => {
     expect(customAcpSupportsPlanMode({ sessionId: "s", modes: claudeModes })).toBe(true);
     expect(
       customAcpSupportsPlanMode({
@@ -138,6 +137,14 @@ describe("customAcpSupportsPlanMode", () => {
         modes: { currentModeId: "default", availableModes: [{ id: "default", name: "Default" }] },
       }),
     ).toBe(false);
+    expect(
+      customAcpSupportsPlanMode({
+        sessionId: "s",
+        configOptions: [
+          { ...modeOption, options: [...modeOption.options, { value: "plan", name: "Plan" }] },
+        ],
+      }),
+    ).toBe(true);
     expect(customAcpSupportsPlanMode({ sessionId: "s" })).toBe(false);
   });
 });
@@ -145,71 +152,29 @@ describe("customAcpSupportsPlanMode", () => {
 describe("resolveCustomAcpModeId", () => {
   const resolve = (
     runtimeMode: "approval-required" | "auto-accept-edits" | "auto" | "full-access",
-    interactionMode?: "plan" | "default",
     currentModeId = "default",
-  ) =>
-    resolveCustomAcpModeId({
-      runtimeMode,
-      interactionMode,
-      modeState: { ...claudeModes, currentModeId },
-    });
+  ) => resolveCustomAcpModeId({ runtimeMode, modeState: { ...claudeModes, currentModeId } });
 
   it("maps runtime modes onto the agent's matching modes", () => {
-    expect(resolve("approval-required")).toBe("default");
+    expect(resolve("approval-required", "acceptEdits")).toBe("default");
     expect(resolve("auto-accept-edits")).toBe("acceptEdits");
     expect(resolve("full-access")).toBe("bypassPermissions");
-    expect(resolve("auto-accept-edits", "plan")).toBe("plan");
+    expect(resolve("approval-required")).toBeUndefined();
   });
 
-  it("leaves the mode alone when nothing matches, unless leaving plan mode", () => {
+  it("leaves the mode alone when nothing matches, unless a plan mode is active", () => {
     expect(resolve("auto")).toBeUndefined();
-    expect(resolve("auto", "default", "plan")).toBe("default");
+    expect(resolve("auto", "plan")).toBe("default");
   });
 
   it("does nothing for agents without modes", () => {
     expect(
-      resolveCustomAcpModeId({
-        runtimeMode: "full-access",
-        interactionMode: "plan",
-        modeState: undefined,
-      }),
+      resolveCustomAcpModeId({ runtimeMode: "full-access", modeState: undefined }),
     ).toBeUndefined();
   });
 });
 
-describe("resolveCustomAcpConfigUpdates", () => {
-  it("writes only advertised values that differ from the current ones", () => {
-    expect(
-      resolveCustomAcpConfigUpdates({
-        configOptions: [modelOption, effortOption, thinkingOption, modeOption],
-        model: "opus",
-        selections: [
-          { id: "effort", value: "high" },
-          { id: "thinking", value: true },
-          { id: "effort", value: "extreme" },
-          { id: "unknown", value: "x" },
-          { id: "mode", value: "default" },
-        ],
-      }),
-    ).toEqual([
-      { configId: "model", value: "opus" },
-      { configId: "effort", value: "high" },
-      { configId: "thinking", value: true },
-    ]);
-  });
-
-  it("does not send models the agent did not advertise", () => {
-    expect(
-      resolveCustomAcpConfigUpdates({
-        configOptions: [modelOption],
-        model: "default",
-        selections: undefined,
-      }),
-    ).toEqual([]);
-  });
-});
-
-describe("resolveCustomAcpSessionModel", () => {
+describe("resolveCustomAcpModelUpdate", () => {
   const models = {
     currentModelId: "gemini-pro",
     availableModels: [
@@ -218,30 +183,27 @@ describe("resolveCustomAcpSessionModel", () => {
     ],
   };
 
-  it("uses session/set_model only when there is no model config option", () => {
+  it("switches through the model config option when the agent has one", () => {
     expect(
-      resolveCustomAcpSessionModel({
-        configOptions: [],
-        models,
-        currentModelId: "gemini-pro",
-        model: "gemini-flash",
-      }),
-    ).toBe("gemini-flash");
+      resolveCustomAcpModelUpdate({ configOptions: [modelOption], models, model: "opus" }),
+    ).toEqual({ type: "config", configId: "model", value: "opus" });
     expect(
-      resolveCustomAcpSessionModel({
-        configOptions: [modelOption],
-        models,
-        currentModelId: "gemini-pro",
-        model: "gemini-flash",
-      }),
+      resolveCustomAcpModelUpdate({ configOptions: [modelOption], models, model: "gemini-flash" }),
     ).toBeUndefined();
+  });
+
+  it("falls back to session/set_model for agents with only models state", () => {
     expect(
-      resolveCustomAcpSessionModel({
-        configOptions: [],
-        models,
-        currentModelId: "gemini-pro",
-        model: "default",
-      }),
+      resolveCustomAcpModelUpdate({ configOptions: [], models, model: "gemini-flash" }),
+    ).toEqual({ type: "session", modelId: "gemini-flash" });
+  });
+
+  it("sends nothing for the current model, the agent default, or an unknown model", () => {
+    for (const model of ["gemini-pro", "default", "unknown"]) {
+      expect(resolveCustomAcpModelUpdate({ configOptions: [], models, model })).toBeUndefined();
+    }
+    expect(
+      resolveCustomAcpModelUpdate({ configOptions: [modelOption], models, model: "sonnet" }),
     ).toBeUndefined();
   });
 });

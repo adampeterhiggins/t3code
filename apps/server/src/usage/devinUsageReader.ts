@@ -93,7 +93,7 @@ export async function readDevinUsage(root: string, sinceMs: number): Promise<Dev
         sessionId: text(row.session_id),
         totals,
         reportedCostUsd: null,
-        fast: false,
+        speed: "standard",
         dedupeKey: `devin:${id}`,
       });
     }

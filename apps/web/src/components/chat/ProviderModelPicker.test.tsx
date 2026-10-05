@@ -157,7 +157,8 @@ describe("ProviderModelPicker", () => {
     expect(markup).not.toContain(">missing-model<");
   });
 
-  it("keeps instance initials visible in the resting trigger", () => {
+  // The account picker names the instance, so the model trigger leaves its badge out.
+  it("leaves instance initials to the account picker", () => {
     const activeEntry = providerEntry("codex_personal", "codex");
     const markup = renderToStaticMarkup(
       <ProviderModelPicker
@@ -171,6 +172,6 @@ describe("ProviderModelPicker", () => {
       />,
     );
 
-    expect(markup).toContain(">CP</span>");
+    expect(markup).not.toContain(">CP</span>");
   });
 });

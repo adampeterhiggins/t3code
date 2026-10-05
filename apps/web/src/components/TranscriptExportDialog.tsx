@@ -1,7 +1,11 @@
 import { useAtomValue } from "@effect/atom-react";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { loadFullThreadSnapshot } from "@t3tools/client-runtime/state/threads";
-import type { OrchestrationThread, ScopedThreadRef, ThreadId } from "@t3tools/contracts";
+import type {
+  OrchestrationV2ThreadProjection,
+  ScopedThreadRef,
+  ThreadId,
+} from "@t3tools/contracts";
 import { CopyIcon, DownloadIcon } from "lucide-react";
 import { Atom } from "effect/unstable/reactivity";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -71,7 +75,7 @@ export function TranscriptExportDialogHost() {
 
 type LoadState =
   | { readonly status: "loading" }
-  | { readonly status: "ready"; readonly thread: OrchestrationThread }
+  | { readonly status: "ready"; readonly projection: OrchestrationV2ThreadProjection }
   | { readonly status: "failed"; readonly message: string };
 
 /** Full snapshots by thread, loaded on first view so switching tabs back is instant. */
@@ -87,7 +91,7 @@ function useFullThread(threadRef: ScopedThreadRef): LoadState {
     const settle = (state: LoadState) =>
       setLoaded((previous) => new Map(previous).set(threadId, state));
     void runtime.runPromise(loadFullThreadSnapshot(prepared, threadId)).then(
-      (snapshot) => settle({ status: "ready", thread: snapshot.thread }),
+      (snapshot) => settle({ status: "ready", projection: snapshot.projection }),
       (error: unknown) =>
         settle({
           status: "failed",
@@ -124,7 +128,8 @@ function TranscriptExportDialog({ threadRef: openedRef }: { threadRef: ScopedThr
     [environmentId, selectedThreadId],
   );
   const load = useFullThread(threadRef);
-  const thread = load.status === "ready" ? load.thread : null;
+  const projection = load.status === "ready" ? load.projection : null;
+  const thread = projection?.thread ?? null;
   const project = useProject(
     thread ? scopeProjectRef(threadRef.environmentId, thread.projectId) : null,
   );
@@ -137,16 +142,16 @@ function TranscriptExportDialog({ threadRef: openedRef }: { threadRef: ScopedThr
 
   const transcript = useMemo(
     () =>
-      thread
+      projection
         ? buildThreadTranscript({
-            thread,
+            projection,
             projectTitle: project?.title ?? null,
             detail,
             includeHeader,
             exportedAt: new Date(),
           })
         : null,
-    [thread, project?.title, detail, includeHeader],
+    [projection, project?.title, detail, includeHeader],
   );
   const title =
     thread?.title ?? tabs?.find((tab) => tab.threadId === selectedThreadId)?.title ?? null;

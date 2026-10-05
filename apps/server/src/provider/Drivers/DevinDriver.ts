@@ -10,6 +10,7 @@ import {
   type ServerProvider,
 } from "@t3tools/contracts";
 import { HostProcessWorkingDirectory } from "@t3tools/shared/hostProcess";
+import { resolveSelfInvocation } from "@t3tools/shared/nodeRuntime";
 import * as Schema from "effect/Schema";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
@@ -17,12 +18,15 @@ import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import { HttpClient } from "effect/unstable/http";
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
+import { AcpTransportError } from "effect-acp/errors";
 
 import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
 import { ServerConfig } from "../../config.ts";
+import * as IdAllocator from "../../orchestration-v2/IdAllocator.ts";
+import { makeDevinAdapterV2 } from "../../orchestration-v2/Adapters/DevinAdapterV2.ts";
 import * as ServerSettingsService from "../../serverSettings.ts";
 import { ProviderDriverError } from "../Errors.ts";
-import { makeDevinAdapter } from "../Layers/DevinAdapter.ts";
+import { makeAcpNativeLoggerFactory } from "../acp/AcpNativeLogging.ts";
 import { discoverDevinSkills } from "./DevinSkills.ts";
 import {
   buildInitialDevinProviderSnapshot,
@@ -94,6 +98,7 @@ export type DevinDriverEnv =
   | Crypto.Crypto
   | FileSystem.FileSystem
   | HttpClient.HttpClient
+  | IdAllocator.IdAllocatorV2
   | Path.Path
   | ProviderEventLoggers
   | ServerConfig
@@ -127,6 +132,10 @@ export const DevinDriver: ProviderDriver<DevinSettings, DevinDriverEnv> = {
       const httpClient = yield* HttpClient.HttpClient;
       const serverSettings = yield* ServerSettingsService.ServerSettingsService;
       const eventLoggers = yield* ProviderEventLoggers;
+      const serverConfig = yield* ServerConfig;
+      const idAllocator = yield* IdAllocator.IdAllocatorV2;
+      const selfInvocation = yield* resolveSelfInvocation();
+      const makeNativeLogger = yield* makeAcpNativeLoggerFactory();
       const processEnv = yield* mergeProviderHomePathEnvironment(
         config.homePath,
         ["XDG_DATA_HOME"],
@@ -155,10 +164,44 @@ export const DevinDriver: ProviderDriver<DevinSettings, DevinDriverEnv> = {
         ),
       );
 
-      const adapter = yield* makeDevinAdapter(effectiveConfig, {
-        environment: processEnv,
-        ...(eventLoggers.native ? { nativeEventLogger: eventLoggers.native } : {}),
+      // Re-read on each send that mentions a `$token`: skills are added and
+      // switched off mid-session. A failed probe sends the prompt unchanged.
+      const skillNames = (cwd: string) =>
+        discoverDevinSkills(effectiveConfig, processEnv, cwd).pipe(
+          Effect.map(
+            (skills): ReadonlySet<string> =>
+              new Set(
+                skills
+                  .filter((skill) => skill.enabled && skill.userInvocable !== false)
+                  .map((skill) => skill.name),
+              ),
+          ),
+          Effect.tapError((cause) =>
+            Effect.logDebug("Devin skill discovery failed; sending prompt unchanged", {
+              stage: cause.stage,
+            }),
+          ),
+          Effect.orElseSucceed((): ReadonlySet<string> => new Set()),
+          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+          Effect.provideService(Path.Path, path),
+        );
+      const orchestrationAdapter = makeDevinAdapterV2({
         instanceId,
+        settings: effectiveConfig,
+        environment: processEnv,
+        childProcessSpawner: spawner,
+        crypto,
+        fileSystem,
+        idAllocator,
+        serverConfig,
+        selfInvocation,
+        skillNames,
+        nativeLogging: (threadId) =>
+          makeNativeLogger({
+            nativeEventLogger: eventLoggers.native,
+            provider: DRIVER_KIND,
+            threadId,
+          }),
       });
       const textGeneration = yield* makeDevinTextGeneration(effectiveConfig, processEnv);
 
@@ -194,7 +237,16 @@ export const DevinDriver: ProviderDriver<DevinSettings, DevinDriverEnv> = {
                 return publishAuthorizationUrl(url);
               },
             }).pipe(
-              Effect.flatMap((runtime) => runtime.authenticate("devin-browser")),
+              Effect.flatMap((runtime) =>
+                runtime.authenticate === undefined
+                  ? Effect.fail(
+                      new AcpTransportError({
+                        detail: "Devin's ACP runtime cannot sign in.",
+                        cause: undefined,
+                      }),
+                    )
+                  : runtime.authenticate("devin-browser"),
+              ),
               Effect.provideService(Crypto.Crypto, crypto),
               Effect.mapError(
                 (cause) =>
@@ -337,7 +389,7 @@ export const DevinDriver: ProviderDriver<DevinSettings, DevinDriverEnv> = {
         enabled,
         snapshot,
         snapshotForCwd,
-        adapter,
+        orchestrationAdapter,
         textGeneration,
         auth,
       } satisfies ProviderInstance;

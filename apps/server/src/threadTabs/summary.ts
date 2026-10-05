@@ -1,9 +1,4 @@
-import type {
-  OrchestrationCheckpointSummary,
-  OrchestrationMessage,
-  OrchestrationProposedPlan,
-  OrchestrationThreadActivity,
-} from "@t3tools/contracts";
+import type { MessageId, OrchestrationV2TurnItem } from "@t3tools/contracts";
 
 const MAX_SUMMARY_CHARS = 16_000;
 const MAX_OPENING_TURN_CHARS = 4_000;
@@ -17,14 +12,16 @@ const MAX_FILES = 20;
 const MAX_PLAN_CHARS = 3_000;
 const MAX_ERROR_CHARS = 300;
 
+/**
+ * A chat as the summary reads it: its timeline items in display order, including history a fork
+ * inherited (`visibleTurnItems` of the v2 projection).
+ */
 export interface SiblingChatSource {
   readonly title: string;
   readonly worktreePath?: string | null;
-  readonly latestTurnState?: string | null;
-  readonly messages: ReadonlyArray<OrchestrationMessage>;
-  readonly activities?: ReadonlyArray<OrchestrationThreadActivity>;
-  readonly checkpoints?: ReadonlyArray<OrchestrationCheckpointSummary>;
-  readonly proposedPlans?: ReadonlyArray<OrchestrationProposedPlan>;
+  /** Status of the chat's latest run, shown as `Latest turn:`. */
+  readonly latestRunStatus?: string | null;
+  readonly items: ReadonlyArray<OrchestrationV2TurnItem>;
 }
 
 /**
@@ -33,86 +30,69 @@ export interface SiblingChatSource {
  */
 export function siblingChatBeforeMessage(
   source: SiblingChatSource,
-  messageId: string,
+  messageId: MessageId,
 ): SiblingChatSource | null {
-  const index = source.messages.findIndex((message) => message.id === messageId);
-  const cutoff = source.messages[index];
-  if (!cutoff || cutoff.role !== "user") return null;
-  const before = (at: string) => at < cutoff.createdAt;
-  return {
-    ...source,
-    // The latest turn is at or after the cutoff, so its state says nothing about this history.
-    latestTurnState: null,
-    messages: source.messages.slice(0, index),
-    activities: (source.activities ?? []).filter((activity) => before(activity.createdAt)),
-    checkpoints: (source.checkpoints ?? []).filter((checkpoint) => before(checkpoint.completedAt)),
-    proposedPlans: (source.proposedPlans ?? []).filter((plan) => before(plan.createdAt)),
-  };
+  const index = source.items.findIndex(
+    (item) => item.type === "user_message" && item.messageId === messageId,
+  );
+  if (index === -1) return null;
+  // The latest run is at or after the cutoff, so its status says nothing about this history.
+  return { ...source, latestRunStatus: null, items: source.items.slice(0, index) };
 }
 
 /** The chat through a completed assistant response, ready for a follow-up in a new tab. */
 export function siblingChatThroughMessage(
   source: SiblingChatSource,
-  messageId: string,
+  messageId: MessageId,
 ): SiblingChatSource | null {
-  const index = source.messages.findIndex((message) => message.id === messageId);
-  const cutoff = source.messages[index];
-  if (!cutoff || cutoff.role !== "assistant" || cutoff.streaming) return null;
-  const through = (at: string) => at <= cutoff.updatedAt;
+  const index = source.items.findIndex(
+    (item) => item.type === "assistant_message" && item.messageId === messageId,
+  );
+  const cutoff = source.items[index];
+  if (cutoff?.type !== "assistant_message" || cutoff.streaming) return null;
+  // The response's checkpoint lands after it, and its files belong to this history.
+  const checkpoints = source.items
+    .slice(index + 1)
+    .filter(
+      (item) => item.type === "checkpoint" && item.runId !== null && item.runId === cutoff.runId,
+    );
   return {
     ...source,
-    latestTurnState: null,
-    messages: source.messages.slice(0, index + 1),
-    activities: (source.activities ?? []).filter((activity) => through(activity.createdAt)),
-    checkpoints: (source.checkpoints ?? []).filter((checkpoint) => through(checkpoint.completedAt)),
-    proposedPlans: (source.proposedPlans ?? []).filter((plan) => through(plan.updatedAt)),
+    latestRunStatus: null,
+    items: [...source.items.slice(0, index + 1), ...checkpoints],
   };
 }
 
 type Entry =
-  | { readonly at: string; readonly kind: "message"; readonly message: OrchestrationMessage }
-  | { readonly at: string; readonly kind: "tool"; readonly label: string }
-  | { readonly at: string; readonly kind: "error"; readonly label: string };
+  | { readonly kind: "user" | "assistant" | "reasoning"; readonly text: string }
+  | { readonly kind: "tool" | "error"; readonly label: string };
 
 /**
- * A bounded, extractive handoff of a sibling tab: dialogue plus compact traces of reasoning,
+ * A bounded, extractive handoff of another chat: dialogue plus compact traces of reasoning,
  * tool calls, errors, changed files and the latest plan. The source chat remains the authority,
  * so when the budget runs out the oldest turns go first; the opening request always stays.
+ *
+ * The web attach picker parses this text for its preview (`parseThreadSummaryPreview` in
+ * `apps/web/src/components/chat/threadAttachPickerSummary.ts`), so keep the line prefixes stable.
  */
 export function summarizeSiblingChat(source: SiblingChatSource): string {
   const root = source.worktreePath;
   const shorten = (text: string) =>
     root ? text.replaceAll(`${root}/`, "").replaceAll(`cd ${root} && `, "") : text;
 
-  const entries: Entry[] = [
-    ...source.messages
-      .filter((message) => !message.streaming && message.text.trim().length > 0)
-      .filter((message) => message.role !== "system")
-      .map((message) => ({ at: message.createdAt, kind: "message" as const, message })),
-    ...(source.activities ?? []).flatMap((activity): Entry[] => {
-      if (activity.kind === "tool.completed") {
-        return [{ at: activity.createdAt, kind: "tool", label: toolLabel(activity, shorten) }];
-      }
-      if (activity.tone === "error") {
-        return [{ at: activity.createdAt, kind: "error", label: errorLabel(activity, shorten) }];
-      }
-      return [];
-    }),
-  ].toSorted((left, right) => left.at.localeCompare(right.at));
+  const entries = source.items.flatMap((item) => entryFor(item, shorten));
 
   // Each user message opens a turn; anything before the first one is its own preamble turn.
   const turns: Entry[][] = [];
   for (const entry of entries) {
-    if (turns.length === 0 || (entry.kind === "message" && entry.message.role === "user")) {
-      turns.push([]);
-    }
+    if (turns.length === 0 || entry.kind === "user") turns.push([]);
     turns.at(-1)!.push(entry);
   }
   const renderedTurns = turns.map(renderTurn).filter((turn) => turn.length > 0);
 
   const header = [`Related chat: ${source.title}`];
-  if (source.latestTurnState) header.push(`Latest turn: ${source.latestTurnState}`);
-  const files = changedFiles(source.checkpoints ?? []);
+  if (source.latestRunStatus) header.push(`Latest turn: ${source.latestRunStatus}`);
+  const files = changedFiles(source.items);
   if (files.length > 0) {
     header.push(
       `Files changed:\n${files
@@ -121,13 +101,11 @@ export function summarizeSiblingChat(source: SiblingChatSource): string {
         .join("\n")}${files.length > MAX_FILES ? `\n- …and ${files.length - MAX_FILES} more` : ""}`,
     );
   }
-  const plan = source.proposedPlans
-    ?.toSorted((a, b) => a.updatedAt.localeCompare(b.updatedAt))
-    .at(-1);
-  if (plan) {
-    header.push(
-      `Latest plan${plan.implementedAt ? " (implemented)" : ""}:\n${clip(plan.planMarkdown.trim(), MAX_PLAN_CHARS)}`,
-    );
+  const plan = source.items.findLast(
+    (item) => item.type === "proposed_plan" && !item.streaming && item.markdown.trim().length > 0,
+  );
+  if (plan?.type === "proposed_plan") {
+    header.push(`Latest plan:\n${clip(plan.markdown.trim(), MAX_PLAN_CHARS)}`);
   }
   const head = header.join("\n\n");
 
@@ -159,6 +137,55 @@ export function summarizeSiblingChat(source: SiblingChatSource): string {
   return [head, ...body].join("\n\n").slice(0, MAX_SUMMARY_CHARS);
 }
 
+function entryFor(item: OrchestrationV2TurnItem, shorten: (text: string) => string): Entry[] {
+  const failed = item.status === "failed" ? " (failed)" : "";
+  const tool = (label: string): Entry[] => [
+    { kind: "tool", label: oneLine(shorten(label), MAX_TOOL_LABEL_CHARS) + failed },
+  ];
+  switch (item.type) {
+    case "user_message":
+      return item.text.trim().length > 0 ? [{ kind: "user", text: item.text }] : [];
+    case "assistant_message":
+      return !item.streaming && item.text.trim().length > 0
+        ? [{ kind: "assistant", text: item.text }]
+        : [];
+    case "reasoning":
+      return !item.streaming && item.text.trim().length > 0
+        ? [{ kind: "reasoning", text: item.text }]
+        : [];
+    case "command_execution": {
+      const exitedNonZero = item.exitCode !== undefined && item.exitCode !== 0;
+      return [
+        {
+          kind: "tool",
+          label:
+            oneLine(
+              `Command: ${shorten(item.input.replace(/^(?:\/bin\/)?(?:ba|z)?sh -l?c /, ""))}`,
+              MAX_TOOL_LABEL_CHARS,
+            ) + (failed || exitedNonZero ? " (failed)" : ""),
+        },
+      ];
+    }
+    case "file_change":
+      return tool(`Edit: ${item.fileName}`);
+    case "file_search":
+      return tool(`Search: ${item.pattern ?? item.title ?? "files"}`);
+    case "web_search":
+      return tool(`Web search: ${item.patterns?.join(", ") ?? item.title ?? ""}`);
+    case "dynamic_tool": {
+      const input = toolInput(item.input);
+      const name = item.toolName ?? item.title ?? "Tool";
+      return tool(input ? `${name}: ${input}` : name);
+    }
+    case "subagent":
+      return tool(`Subagent: ${item.prompt}`);
+    case "error":
+      return [{ kind: "error", label: oneLine(shorten(item.failure.message), MAX_ERROR_CHARS) }];
+    default:
+      return [];
+  }
+}
+
 function renderTurn(turn: ReadonlyArray<Entry>): string {
   const lines: string[] = [];
   let tools: string[] = [];
@@ -172,26 +199,26 @@ function renderTurn(turn: ReadonlyArray<Entry>): string {
     tools = [];
   };
   for (const entry of turn) {
-    if (entry.kind === "tool") {
-      tools.push(entry.label);
-      continue;
-    }
-    flushTools();
-    if (entry.kind === "error") {
-      lines.push(`Error: ${entry.label}`);
-      continue;
-    }
-    const text = entry.message.text.trim();
-    switch (entry.message.role) {
+    switch (entry.kind) {
+      case "tool":
+        tools.push(entry.label);
+        continue;
+      case "error":
+        flushTools();
+        lines.push(`Error: ${entry.label}`);
+        continue;
       case "user":
-        lines.push(`User: ${clip(text, MAX_USER_CHARS)}`);
-        break;
+        flushTools();
+        lines.push(`User: ${clip(entry.text.trim(), MAX_USER_CHARS)}`);
+        continue;
       case "assistant":
-        lines.push(`Assistant: ${clip(text, MAX_ASSISTANT_CHARS)}`);
-        break;
+        flushTools();
+        lines.push(`Assistant: ${clip(entry.text.trim(), MAX_ASSISTANT_CHARS)}`);
+        continue;
       case "reasoning":
-        lines.push(`Reasoning (excerpt): ${clip(text, MAX_REASONING_CHARS)}`);
-        break;
+        flushTools();
+        lines.push(`Reasoning (excerpt): ${clip(entry.text.trim(), MAX_REASONING_CHARS)}`);
+        continue;
     }
   }
   flushTools();
@@ -212,59 +239,21 @@ function oneLine(text: string, max: number): string {
 
 const TOOL_INPUT_KEYS = ["command", "file_path", "path", "pattern", "url", "query", "description"];
 
-const asRecord = (value: unknown): Record<string, unknown> | undefined =>
-  typeof value === "object" && value !== null ? (value as Record<string, unknown>) : undefined;
-
-/** The most telling input field of a tool call, wherever this provider nests its input. */
-function toolInput(data: Record<string, unknown> | undefined): string | undefined {
-  for (const candidate of [data?.input, data?.rawInput, data?.item, data]) {
-    const record = asRecord(candidate);
-    const key = TOOL_INPUT_KEYS.find((entry) => typeof record?.[entry] === "string");
-    if (record && key) return record[key] as string;
-  }
-  return undefined;
+/** The most telling field of a dynamic tool's input, wherever the provider nests it. */
+function toolInput(input: unknown): string | undefined {
+  if (typeof input === "string") return input;
+  const record =
+    typeof input === "object" && input !== null ? (input as Record<string, unknown>) : undefined;
+  const key = TOOL_INPUT_KEYS.find((entry) => typeof record?.[entry] === "string");
+  return record && key ? (record[key] as string) : undefined;
 }
 
-/**
- * One short line per tool call. Providers disagree on where the useful part lives: some put it
- * in the summary ("Read a.ts (1 - 20)"), others behind a generic summary ("Command run") with a
- * truncated `detail` and the full input under `data`, which is preferred when present.
- */
-function toolLabel(
-  activity: OrchestrationThreadActivity,
-  shorten: (text: string) => string,
-): string {
-  const payload = asRecord(activity.payload) ?? {};
-  const data = asRecord(payload.data);
-  const detail = typeof payload.detail === "string" ? payload.detail : "";
-  const failed = payload.status === "failed" ? " (failed)" : "";
-  const summary = shorten(activity.summary);
-  if (!detail || summary.includes(detail)) return oneLine(summary, MAX_TOOL_LABEL_CHARS) + failed;
-
-  const toolName = typeof data?.toolName === "string" ? data.toolName : summary;
-  const input = (toolInput(data) ?? detail.replace(/^[\w.-]+: /, "")).replace(
-    /^(?:\/bin\/)?(?:ba|z)?sh -l?c /,
-    "",
-  );
-  return oneLine(`${toolName}: ${shorten(input)}`, MAX_TOOL_LABEL_CHARS) + failed;
-}
-
-function errorLabel(
-  activity: OrchestrationThreadActivity,
-  shorten: (text: string) => string,
-): string {
-  const payload = activity.payload as { readonly detail?: unknown } | null;
-  const detail = typeof payload?.detail === "string" ? payload.detail : "";
-  const label = detail ? `${activity.summary}: ${detail}` : activity.summary;
-  return oneLine(shorten(label), MAX_ERROR_CHARS);
-}
-
-/** Every file the window's checkpoints touched, most recently changed first. */
-function changedFiles(checkpoints: ReadonlyArray<OrchestrationCheckpointSummary>): string[] {
+/** Every file the chat's checkpoints touched, most recently changed first. */
+function changedFiles(items: ReadonlyArray<OrchestrationV2TurnItem>): string[] {
   const totals = new Map<string, { additions: number; deletions: number }>();
-  const newestFirst = checkpoints.toSorted((a, b) => b.completedAt.localeCompare(a.completedAt));
-  for (const checkpoint of newestFirst) {
-    for (const file of checkpoint.files) {
+  for (const item of items.toReversed()) {
+    if (item.type !== "checkpoint") continue;
+    for (const file of item.files) {
       const total = totals.get(file.path) ?? { additions: 0, deletions: 0 };
       total.additions += file.additions;
       total.deletions += file.deletions;

@@ -41,33 +41,35 @@ The agent sees what you see in the app. It can read projects, threads and their 
 messages, the work log of tool calls and subagents, plans, the files each turn changed and its
 patch, linked pull requests, and usage. Deleted threads are gone; archived threads are still
 there. Reasoning is left out unless the agent asks for it. Terminal output and attachment
-contents are not available.
+contents are not available. Threads carried over from before T3 Code's current orchestrator only
+have their messages: no turns, work log, plans, or diffs.
 
 Every list takes a time range. An agent that passes an end time sees nothing after it, which lets
 you replay a past day. Titles, archive state, and pull request state are always current.
 
 ## Drive threads from outside
 
-An agent connected to `/mcp/operate` can start a thread in any project with `create_thread`, send a
-thread a message, wait for it to finish, and stop its turn. It can rename a thread or change its
-model, archive, settle, pin, or snooze it, answer the approvals and questions a thread is waiting
-on, and add a folder as a new project or change a project's defaults. It acts as you would: the threads it
-starts appear in your sidebar marked with the token's name, in whichever permission mode it asks
-for.
+An agent connected to `/mcp/operate` has the history tools plus the thread, project, and
+environment tools an agent inside T3 Code has. It can start a thread in any project with
+`t3_thread_launch`, message a thread with `t3_thread_send`, wait for it with `t3_thread_wait`, and
+stop its turn with `t3_thread_interrupt`. It can rename a thread, change its model, archive,
+settle, pin, or snooze it, answer its questions with `t3_pending_request_respond` and its
+approvals with `t3_approval_respond`, and add or change projects. It acts as you would: the
+threads it starts appear in your sidebar with a bot icon, their header names the token, and they
+run in whichever permission mode it asks for.
 
 ## Let agents start threads
 
-An agent working in a thread can also start other threads, message them, and wait for their
-results, for example to split a large change into parallel pieces. Turn on **Agent thread
-control** in **Settings → Integrations**, or for one project with that project selected. It is
-off by default and applies when an agent session next starts.
+An agent working in a thread can start other threads with `create_threads` or `t3_thread_launch`,
+hand a task to a child agent with `delegate_task`, message threads, and wait for their results,
+for example to split a large change into parallel pieces. There is nothing to turn on.
 
-Threads an agent starts appear in your sidebar like any other, and their header shows which thread
-started them. An agent cannot give a thread more
-freedom than its own permission mode allows. It can start threads two levels deep, and keep at
-most five of its own going at once until they settle or you archive them. It can rename,
-settle, archive, pin, or snooze other threads, but it cannot answer their approvals or questions;
-those still come to you.
+Threads an agent starts appear in your sidebar with a bot icon, and their header shows which
+thread started them; click it to open that thread. An agent cannot give a thread more freedom
+than its own permission mode allows. It can start threads two levels deep, and keep at most five
+of its own going at once: a thread it started counts until it settles or you archive it, a
+delegated task until it finishes. It cannot message, wait on, or stop its own thread with these
+tools, and it cannot answer another thread's approvals; those still come to you.
 
 ## Revoke a token
 

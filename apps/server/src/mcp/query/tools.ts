@@ -1,15 +1,11 @@
 import {
-  OrchestrationCheckpointFile,
-  OrchestrationGetSubagentTranscriptResult,
   PositiveInt,
   TrimmedNonEmptyString,
   UsageSummary,
   UsageSummaryInput,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
-import { McpSchema, Tool, Toolkit } from "effect/unstable/ai";
-
-import * as McpActor from "../McpActor.ts";
+import { Tool, Toolkit } from "effect/unstable/ai";
 
 /**
  * The read-only history toolkit served at `/mcp/query`. Every tool is a
@@ -78,6 +74,9 @@ const optionalThreadId = Schema.optional(threadIdInput);
 const optionalProjectId = Schema.optional(
   TrimmedNonEmptyString.annotate({ description: "Project id from list_projects." }),
 );
+const turnIdField = Schema.NullOr(Schema.String).annotate({
+  description: "The turn (run) it belongs to, as list_turns returns it.",
+});
 
 const Page = {
   nextCursor: Schema.NullOr(Schema.String).annotate({
@@ -93,8 +92,19 @@ const readOnly = <T extends Tool.Any>(tool: T, title: string): T =>
     .annotate(Tool.Idempotent, true)
     .annotate(Tool.OpenWorld, false) as T;
 
+const IMPORTED_NOTE =
+  "Threads imported from before T3 Code's orchestration rewrite (importedFromV1) kept only their messages, so they have no turns, activities, plans or diffs.";
+
 // ---------------------------------------------------------------------------
 // Shared shapes
+
+export const FileChange = Schema.Struct({
+  path: Schema.String,
+  kind: Schema.String,
+  additions: Schema.Int,
+  deletions: Schema.Int,
+});
+export type FileChange = typeof FileChange.Type;
 
 export const PullRequestBrief = Schema.Struct({
   host: Schema.String,
@@ -107,6 +117,12 @@ export const PullRequestBrief = Schema.Struct({
 });
 export type PullRequestBrief = typeof PullRequestBrief.Type;
 
+export const ThreadStartedBy = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("thread"), threadId: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal("agent-access"), label: Schema.String }),
+]);
+export type ThreadStartedBy = typeof ThreadStartedBy.Type;
+
 export const ThreadSummary = Schema.Struct({
   threadId: Schema.String,
   projectId: Schema.String,
@@ -114,7 +130,7 @@ export const ThreadSummary = Schema.Struct({
   title: Schema.String,
   branch: Schema.NullOr(Schema.String),
   worktreePath: Schema.NullOr(Schema.String),
-  provider: Schema.NullOr(Schema.String),
+  provider: Schema.NullOr(Schema.String).annotate({ description: "Provider instance id." }),
   model: Schema.NullOr(Schema.String),
   runtimeMode: Schema.String,
   interactionMode: Schema.String.annotate({ description: "plan when the thread is in plan mode." }),
@@ -129,8 +145,13 @@ export const ThreadSummary = Schema.Struct({
   }),
   pinnedAt: Schema.NullOr(Schema.String),
   snoozedUntil: Schema.NullOr(Schema.String),
-  sessionStatus: Schema.NullOr(Schema.String),
-  turnCount: Schema.Int,
+  sessionStatus: Schema.NullOr(Schema.String).annotate({
+    description:
+      "Status of the thread's latest turn (running, waiting, completed, failed, interrupted, ...), or idle when it has none.",
+  }),
+  turnCount: Schema.Int.annotate({
+    description: "Turns in the thread, not counting rolled back ones.",
+  }),
   pendingApprovalCount: Schema.Int,
   pendingUserInputCount: Schema.Int,
   hasActionableProposedPlan: Schema.Boolean,
@@ -140,6 +161,11 @@ export const ThreadSummary = Schema.Struct({
   startedByThreadId: Schema.NullOr(Schema.String).annotate({
     description: "Set when an agent in that thread started this one.",
   }),
+  startedBy: Schema.NullOr(ThreadStartedBy).annotate({
+    description:
+      "Who started the thread when an agent did: another thread's agent, or an agent outside T3 Code holding the named agent access token. Null when the user started it.",
+  }),
+  importedFromV1: Schema.Boolean.annotate({ description: IMPORTED_NOTE }),
   pullRequests: Schema.Array(PullRequestBrief).annotate({
     description: "The ten most recently linked; list_pull_requests with threadId has them all.",
   }),
@@ -160,13 +186,14 @@ export const ThreadSummary = Schema.Struct({
 });
 export type ThreadSummary = typeof ThreadSummary.Type;
 
-const FileChange = OrchestrationCheckpointFile;
-
 export const TurnSummary = Schema.Struct({
-  turnId: Schema.String,
+  turnId: Schema.String.annotate({
+    description: "The turn's run id. Other tools take it wherever they ask for a turnId.",
+  }),
   threadId: Schema.String,
   turnCount: Schema.NullOr(Schema.Int).annotate({
-    description: "Checkpoint number of the turn; get_turn_diff takes it.",
+    description:
+      "Checkpoint number of the turn; get_turn_diff takes it. Null until the turn's checkpoint is captured.",
   }),
   state: Schema.String,
   requestedAt: Schema.String,
@@ -174,7 +201,7 @@ export const TurnSummary = Schema.Struct({
   completedAt: Schema.NullOr(Schema.String),
   prompt: Schema.NullOr(Schema.String).annotate({
     description:
-      "The user's message. Null when the agent started the turn itself, for example when background work finished.",
+      "The message that started the turn. When background work woke the agent, this is the server's notice rather than something the user typed.",
   }),
   response: Schema.NullOr(Schema.String),
   truncated: Schema.Boolean,
@@ -190,8 +217,12 @@ export const MessageEntry = Schema.Struct({
   messageId: Schema.String,
   threadId: Schema.String,
   threadTitle: Schema.String,
-  turnId: Schema.NullOr(Schema.String),
+  turnId: turnIdField,
   role: Schema.String,
+  createdBy: Schema.NullOr(Schema.String).annotate({
+    description:
+      "user, agent or system. A user-role message from an agent or the system is a message another agent sent or a wake from background work.",
+  }),
   createdAt: Schema.String,
   isStreaming: Schema.Boolean,
   text: Schema.String,
@@ -203,9 +234,10 @@ export type MessageEntry = typeof MessageEntry.Type;
 export const ActivityEntry = Schema.Struct({
   activityId: Schema.String,
   threadId: Schema.String,
-  turnId: Schema.NullOr(Schema.String),
+  turnId: turnIdField,
   tone: Schema.String,
   kind: Schema.String,
+  status: Schema.String,
   summary: Schema.String,
   detail: Schema.NullOr(Schema.String).annotate({
     description: "Short excerpt of the payload, such as the command a tool ran.",
@@ -218,9 +250,12 @@ export const PlanEntry = Schema.Struct({
   planId: Schema.String,
   threadId: Schema.String,
   threadTitle: Schema.String,
-  turnId: Schema.NullOr(Schema.String),
+  turnId: turnIdField,
   title: Schema.String,
   preview: Schema.String,
+  status: Schema.String.annotate({
+    description: "active while it can still be implemented; completed once it was.",
+  }),
   createdAt: Schema.String,
   updatedAt: Schema.String,
   implementedAt: Schema.NullOr(Schema.String),
@@ -275,7 +310,7 @@ export const TimelineEntry = Schema.Struct({
   threadTitle: Schema.String,
   projectId: Schema.String,
   projectTitle: Schema.String,
-  turnId: Schema.NullOr(Schema.String),
+  turnId: turnIdField,
   summary: Schema.String,
 });
 export type TimelineEntry = typeof TimelineEntry.Type;
@@ -403,7 +438,7 @@ export const ListThreadsInput = Schema.Struct({
   hasPullRequest: Schema.optional(Schema.Boolean),
   provider: Schema.optional(
     TrimmedNonEmptyString.annotate({
-      description: "Provider or instance id, for example codex or claudeAgent.",
+      description: "Provider instance id or driver, for example codex or claudeAgent.",
     }),
   ),
   branch: Schema.optional(TrimmedNonEmptyString),
@@ -416,7 +451,7 @@ export type ListThreadsInput = typeof ListThreadsInput.Type;
 
 const ListThreadsTool = Tool.make("list_threads", {
   description:
-    "List threads (conversations with a coding agent), most recently active first. With activeSince and/or activeUntil it keeps threads the user worked in during that range and adds a window summary: prompts sent, turns completed, and lines changed in that range. That is the best overview of a day's work. Follow up with get_thread, list_turns, or list_messages.",
+    "List threads (conversations with a coding agent), most recently active first. With activeSince and/or activeUntil it keeps threads the user worked in during that range and adds a window summary: prompts sent, turns completed, and lines changed in that range. That is the best overview of a day's work. Subagent threads are left out, as in the sidebar; get_subagent_transcript reads them. Follow up with get_thread, list_turns, or list_messages.",
   parameters: ListThreadsInput,
   success: Schema.Struct({ threads: Schema.Array(ThreadSummary), ...Page }),
   failure: QueryToolError,
@@ -424,7 +459,7 @@ const ListThreadsTool = Tool.make("list_threads", {
 
 const GetThreadTool = Tool.make("get_thread", {
   description:
-    "One thread in detail: its summary, provider session state and last error, message and activity counts, open approvals, plans, other tabs in its tab group, the first prompt, the latest reply, and every file its turns changed. list_pull_requests with threadId has its pull requests in full.",
+    "One thread in detail: its summary, provider session state and last error, message and activity counts, open approvals (with the requestId, kind and prompt t3_approval_respond on /mcp/operate needs), plans, other tabs in its tab group, the first prompt, the latest reply, and every file its turns changed. list_pull_requests with threadId has its pull requests in full.",
   parameters: Schema.Struct({ threadId: threadIdInput }),
   success: Schema.Struct({
     thread: ThreadSummary,
@@ -447,6 +482,15 @@ const GetThreadTool = Tool.make("get_thread", {
       Schema.Struct({
         requestId: Schema.String,
         turnId: Schema.NullOr(Schema.String),
+        kind: Schema.String.annotate({
+          description: "command, file-read, file-change, mcp-elicitation or permission.",
+        }),
+        prompt: Schema.NullOr(Schema.String).annotate({
+          description: "What the agent asked to do, as the app shows it.",
+        }),
+        options: Schema.NullOr(Schema.Unknown).annotate({
+          description: "Approval choices the provider advertised, when it did.",
+        }),
         createdAt: Schema.String,
       }),
     ),
@@ -477,8 +521,7 @@ export const ListTurnsInput = Schema.Struct({
 export type ListTurnsInput = typeof ListTurnsInput.Type;
 
 const ListTurnsTool = Tool.make("list_turns", {
-  description:
-    "List a thread's turns (one prompt and the agent's work on it), with a preview of the prompt and final reply and the files each turn changed.",
+  description: `List a thread's turns (one prompt and the agent's work on it), with a preview of the prompt and final reply and the files each turn changed. turnId is the turn's run id. ${IMPORTED_NOTE}`,
   parameters: ListTurnsInput,
   success: Schema.Struct({ turns: Schema.Array(TurnSummary), ...Page }),
   failure: QueryToolError,
@@ -486,7 +529,7 @@ const ListTurnsTool = Tool.make("list_turns", {
 
 const GetTurnTool = Tool.make("get_turn", {
   description:
-    "One turn in full: the prompt, the final reply, how many tool calls, tasks and errors it had, the most recent notable activities, and the files it changed.",
+    "One turn in full: the prompt, the final reply, how many work items of each kind it had, the most recent notable activities, and the files it changed.",
   parameters: Schema.Struct({
     threadId: threadIdInput,
     turnId: TrimmedNonEmptyString.annotate({ description: "Turn id from list_turns." }),
@@ -494,10 +537,12 @@ const GetTurnTool = Tool.make("get_turn", {
   }),
   success: Schema.Struct({
     turn: TurnSummary,
-    activityCounts: Schema.Record(Schema.String, Schema.Int),
+    activityCounts: Schema.Record(Schema.String, Schema.Int).annotate({
+      description: "Activities in the turn by kind.",
+    }),
     notableActivities: Schema.Array(ActivityEntry).annotate({
       description:
-        "Completed tool calls, tasks and errors, newest last. list_activities with turnId has the rest.",
+        "Tool calls, subagents, plan updates, questions, approvals and errors, newest last. list_activities with turnId has the rest.",
     }),
   }),
   failure: QueryToolError,
@@ -512,7 +557,10 @@ export const ListMessagesInput = Schema.Struct({
     }),
   ),
   includeReasoning: Schema.optional(
-    Schema.Boolean.annotate({ description: "Also return reasoning summaries. Off by default." }),
+    Schema.Boolean.annotate({
+      description:
+        "Also return reasoning summaries (role reasoning). Off by default; applies to role any and assistant.",
+    }),
   ),
   since,
   until,
@@ -525,7 +573,7 @@ export type ListMessagesInput = typeof ListMessagesInput.Type;
 
 const ListMessagesTool = Tool.make("list_messages", {
   description:
-    "List messages in one thread, one project, or everywhere, filtered by role and time. Use role=user with since/until to see everything the user asked for in a period.",
+    "List messages in one thread, one project, or everywhere, filtered by role and time. Use role=user with since/until to see everything the user asked for in a period; createdBy tells the user's own prompts from agent messages and wakes.",
   parameters: ListMessagesInput,
   success: Schema.Struct({ messages: Schema.Array(MessageEntry), ...Page }),
   failure: QueryToolError,
@@ -599,13 +647,14 @@ export const ListActivitiesInput = Schema.Struct({
   projectId: optionalProjectId,
   tone: Schema.optional(
     Schema.Literals(["info", "tool", "approval", "error"]).annotate({
-      description: "tool for tool calls, error for failures.",
+      description:
+        "tool: command_execution, file_change, dynamic_tool, file_search, web_search and subagent. approval: approval_request and user_input_request. error: error. info: everything else.",
     }),
   ),
   kinds: Schema.optional(
     Schema.Array(TrimmedNonEmptyString).annotate({
       description:
-        "Exact kinds, for example tool.completed, task.started, task.completed, runtime.error, user-input.requested, turn.plan.updated.",
+        "Exact kinds, for example command_execution, file_change, dynamic_tool, subagent, error, approval_request, user_input_request, todo_list, proposed_plan, notification, checkpoint, web_search, compaction.",
     }),
   ),
   since,
@@ -617,8 +666,7 @@ export const ListActivitiesInput = Schema.Struct({
 export type ListActivitiesInput = typeof ListActivitiesInput.Type;
 
 const ListActivitiesTool = Tool.make("list_activities", {
-  description:
-    "List the work log behind turns: tool calls, subagent tasks, plan updates, questions, approvals and errors. Filter by thread, turn, project, tone, kind and time.",
+  description: `List the work log behind turns: tool calls, file changes, subagents, plan updates, questions, approvals, notifications and errors. Filter by thread, turn, project, tone, kind and time. Messages and reasoning are not activities; list_messages has them. ${IMPORTED_NOTE}`,
   parameters: ListActivitiesInput,
   success: Schema.Struct({ activities: Schema.Array(ActivityEntry), ...Page }),
   failure: QueryToolError,
@@ -640,11 +688,41 @@ const GetActivityTool = Tool.make("get_activity", {
   failure: QueryToolError,
 });
 
+export const SubagentTranscriptEntry = Schema.Struct({
+  kind: Schema.Literals(["user", "assistant", "reasoning", "tool"]),
+  /** Message text, or the tool's title for tool entries. */
+  text: Schema.String,
+  toolName: Schema.optional(Schema.String),
+  input: Schema.optional(Schema.String),
+  output: Schema.optional(Schema.String),
+  status: Schema.optional(Schema.String),
+  at: Schema.optional(Schema.String),
+});
+export type SubagentTranscriptEntry = typeof SubagentTranscriptEntry.Type;
+
+export const SubagentTranscript = Schema.Struct({
+  taskId: Schema.String,
+  childThreadId: Schema.NullOr(Schema.String).annotate({
+    description: "The subagent's own thread; get_thread and list_messages read it too.",
+  }),
+  title: Schema.NullOr(Schema.String),
+  status: Schema.String,
+  prompt: Schema.String,
+  result: Schema.NullOr(Schema.String),
+  startedAt: Schema.NullOr(Schema.String),
+  completedAt: Schema.NullOr(Schema.String),
+  entries: Schema.Array(SubagentTranscriptEntry),
+  truncated: Schema.Boolean.annotate({
+    description: "True when older entries were dropped or long text was cut.",
+  }),
+});
+export type SubagentTranscript = typeof SubagentTranscript.Type;
+
 const GetSubagentTranscriptTool = Tool.make("get_subagent_transcript", {
   description:
-    "A subagent's own conversation. taskId comes from a task.started activity. Read from the provider while the thread's session is running; afterwards the server returns the bounded copy it kept (retainedAt is set). Not every provider supports it.",
+    "A subagent's own conversation, read from the thread T3 Code kept for it. taskId is the activityId of a subagent activity (list_activities with kinds [subagent]), or the subagent's child thread id. A subagent without a thread of its own returns just its prompt and result.",
   parameters: Schema.Struct({ threadId: threadIdInput, taskId: TrimmedNonEmptyString }),
-  success: OrchestrationGetSubagentTranscriptResult,
+  success: SubagentTranscript,
   failure: QueryToolError,
 });
 
@@ -668,7 +746,8 @@ export const ListPlansInput = Schema.Struct({
 export type ListPlansInput = typeof ListPlansInput.Type;
 
 const ListPlansTool = Tool.make("list_plans", {
-  description: "List plans agents proposed, with a title, a preview, and whether they were built.",
+  description:
+    "List plans agents proposed, with a title, a preview, and whether they were built (implementedAt, set when a turn started from the plan).",
   parameters: ListPlansInput,
   success: Schema.Struct({ plans: Schema.Array(PlanEntry), ...Page }),
   failure: QueryToolError,
@@ -705,7 +784,7 @@ export type GetTurnDiffInput = typeof GetTurnDiffInput.Type;
 
 const GetTurnDiffTool = Tool.make("get_turn_diff", {
   description:
-    "What a turn, or a range of turns, changed in the workspace: the files with lines added and removed, and optionally the patch read from T3 Code's checkpoints.",
+    "What a turn, or a range of turns, changed in the workspace: the files with lines added and removed, and optionally the patch read from T3 Code's checkpoints. Ranges use the turnCount values list_turns returns; only completed turns with a checkpoint count.",
   parameters: GetTurnDiffInput,
   success: Schema.Struct({
     threadId: Schema.String,
@@ -785,17 +864,4 @@ export const QueryToolkit = Toolkit.make(
   readOnly(ListPullRequestsTool, "List pull requests"),
   readOnly(GetPullRequestTool, "Get pull request"),
   readOnly(GetUsageSummaryTool, "Get usage summary"),
-);
-
-/**
- * The history tools an agent inside a thread gets with thread control: enough
- * to find a project and read what other threads did. Listed only to
- * credentials that may drive threads, like the operate tools.
- */
-export const ThreadReadToolkit = Toolkit.make(
-  QueryToolkit.tools.list_projects.annotate(McpSchema.EnabledWhen, McpActor.operateToolsVisible),
-  QueryToolkit.tools.list_threads.annotate(McpSchema.EnabledWhen, McpActor.operateToolsVisible),
-  QueryToolkit.tools.get_thread.annotate(McpSchema.EnabledWhen, McpActor.operateToolsVisible),
-  QueryToolkit.tools.list_messages.annotate(McpSchema.EnabledWhen, McpActor.operateToolsVisible),
-  QueryToolkit.tools.search.annotate(McpSchema.EnabledWhen, McpActor.operateToolsVisible),
 );

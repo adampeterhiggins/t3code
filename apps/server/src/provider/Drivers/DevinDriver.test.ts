@@ -15,6 +15,7 @@ import { HttpClient } from "effect/unstable/http";
 
 import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
 import { ServerConfig } from "../../config.ts";
+import * as IdAllocator from "../../orchestration-v2/IdAllocator.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { NoOpProviderEventLoggers, ProviderEventLoggers } from "../Layers/ProviderEventLoggers.ts";
 import { DevinDriver } from "./DevinDriver.ts";
@@ -25,6 +26,7 @@ const testLayer = ServerConfig.layerTest(process.cwd(), {
   prefix: "t3-devin-driver-skills-",
 }).pipe(
   Layer.provideMerge(NodeServices.layer),
+  Layer.provideMerge(IdAllocator.layer),
   Layer.provideMerge(ServerSettingsService.layerTest()),
   Layer.provideMerge(Layer.succeed(ProviderEventLoggers, NoOpProviderEventLoggers)),
   Layer.provideMerge(

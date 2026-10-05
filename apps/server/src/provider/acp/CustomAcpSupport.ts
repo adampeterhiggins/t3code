@@ -12,9 +12,7 @@ import {
   CUSTOM_ACP_DEFAULT_MODEL,
   type CustomAcpSettings,
   type ModelCapabilities,
-  type ProviderInteractionMode,
   type ProviderOptionDescriptor,
-  type ProviderOptionSelection,
   ProviderDriverKind,
   type RuntimeMode,
   type ServerProviderModel,
@@ -23,13 +21,13 @@ import { createModelCapabilities } from "@t3tools/shared/model";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Scope from "effect/Scope";
+import type * as Scope from "effect/Scope";
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 import type * as EffectAcpErrors from "effect-acp/errors";
-import type * as EffectAcpSchema from "effect-acp/schema";
+import type * as EffectAcpSchema from "effect-acp/compat";
 
 import { buildBooleanOptionDescriptor, buildSelectOptionDescriptor } from "../providerSnapshot.ts";
-import { findAcpModeByAliases } from "./AcpAdapterSupport.ts";
+import { findAcpModeByAliases } from "./AcpModeAliases.ts";
 import { type AcpSessionModeState, parseSessionModeState } from "./AcpRuntimeModel.ts";
 import * as AcpSessionRuntime from "./AcpSessionRuntime.ts";
 
@@ -61,15 +59,9 @@ export function buildCustomAcpSpawnInput(
   };
 }
 
-// T3 answers form elicitations as user-input questions; files and terminals
-// stay with the agent.
-const CUSTOM_ACP_CLIENT_CAPABILITIES = {
-  elicitation: { form: {} },
-} satisfies NonNullable<EffectAcpSchema.InitializeRequest["clientCapabilities"]>;
-
-interface CustomAcpRuntimeInput extends Omit<
+export interface CustomAcpRuntimeInput extends Omit<
   AcpSessionRuntime.AcpSessionRuntimeOptions,
-  "clientCapabilities" | "spawn"
+  "spawn"
 > {
   readonly childProcessSpawner: ChildProcessSpawner.ChildProcessSpawner["Service"];
   readonly settings: Pick<CustomAcpSettings, "binaryPath" | "arguments">;
@@ -84,15 +76,15 @@ export const makeCustomAcpRuntime = (
   Crypto.Crypto | Scope.Scope
 > =>
   Effect.gen(function* () {
+    const { childProcessSpawner, settings, environment, ...options } = input;
     const acpContext = yield* Layer.build(
       AcpSessionRuntime.layer({
-        ...input,
-        spawn: buildCustomAcpSpawnInput(input.settings, input.cwd, input.environment),
-        clientCapabilities: CUSTOM_ACP_CLIENT_CAPABILITIES,
+        ...options,
+        spawn: buildCustomAcpSpawnInput(settings, input.cwd, environment),
+        // Files and terminals stay with the agent.
+        clientCapabilities: options.clientCapabilities ?? { elicitation: { form: {} } },
       }).pipe(
-        Layer.provide(
-          Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, input.childProcessSpawner),
-        ),
+        Layer.provide(Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, childProcessSpawner)),
       ),
     );
     return yield* Effect.service(AcpSessionRuntime.AcpSessionRuntime).pipe(
@@ -229,7 +221,24 @@ export function customAcpModelsFromSession(
   ];
 }
 
-const PLAN_MODE_ALIASES = ["plan", "architect"];
+// The plan ids the shared ACP adapter switches to for T3's plan toggle.
+const PLAN_MODE_IDS = new Set(["plan", "architect"]);
+
+/**
+ * Whether T3's plan toggle can drive this agent: it advertises a `plan` or
+ * `architect` session mode, or a mode config option with that choice.
+ */
+export function customAcpSupportsPlanMode(setup: CustomAcpSessionSetup): boolean {
+  const modes = parseSessionModeState(setup)?.availableModes ?? [];
+  if (modes.some((mode) => PLAN_MODE_IDS.has(mode.id))) return true;
+  return (setup.configOptions ?? []).some(
+    (option) =>
+      option.type === "select" &&
+      (option.category === "mode" || option.category === "collaboration_mode") &&
+      flattenSelectValues(option).some((entry) => PLAN_MODE_IDS.has(entry.value)),
+  );
+}
+
 // First advertised match wins. The names cover the common agents: Claude Code
 // (default, acceptEdits, bypassPermissions), Gemini CLI (default, autoEdit,
 // yolo), and Cursor-style (ask, code, agent).
@@ -241,96 +250,54 @@ const MODE_ALIASES_BY_RUNTIME_MODE: Record<RuntimeMode, ReadonlyArray<string>> =
 };
 const IMPLEMENT_MODE_ALIASES = ["code", "agent", "default", "implement", "chat"];
 
-export function customAcpSupportsPlanMode(setup: CustomAcpSessionSetup): boolean {
-  const modes = parseSessionModeState(setup)?.availableModes ?? [];
-  return findAcpModeByAliases(modes, PLAN_MODE_ALIASES) !== undefined;
-}
-
 /**
- * The advertised mode that best matches T3's plan toggle and runtime mode.
- * Leaving plan mode falls back to an implementation mode. Undefined leaves
- * the agent's mode alone; permission requests still follow the runtime mode.
+ * The advertised build mode that best matches T3's runtime mode. A plan mode
+ * left active falls back to an implementation mode. Undefined leaves the
+ * agent's mode alone; permission requests still follow the runtime mode.
+ * The shared ACP adapter switches plan mode on top of this.
  */
 export function resolveCustomAcpModeId(input: {
-  readonly interactionMode: ProviderInteractionMode | undefined;
   readonly runtimeMode: RuntimeMode;
   readonly modeState: AcpSessionModeState | undefined;
 }): string | undefined {
   const modes = input.modeState?.availableModes;
   if (!modes || modes.length === 0) return undefined;
-  if (input.interactionMode === "plan") {
-    return findAcpModeByAliases(modes, PLAN_MODE_ALIASES)?.id;
-  }
-  const isPlan = (mode: { readonly id: string; readonly name: string }) =>
-    findAcpModeByAliases([mode], PLAN_MODE_ALIASES) !== undefined;
-  const buildModes = modes.filter((mode) => !isPlan(mode));
+  const buildModes = modes.filter((mode) => !PLAN_MODE_IDS.has(mode.id));
+  const current = input.modeState?.currentModeId;
   const matched = findAcpModeByAliases(buildModes, MODE_ALIASES_BY_RUNTIME_MODE[input.runtimeMode]);
-  if (matched) return matched.id;
-  const current = modes.find((mode) => mode.id === input.modeState?.currentModeId);
-  if (current && !isPlan(current)) return undefined;
-  return (findAcpModeByAliases(buildModes, IMPLEMENT_MODE_ALIASES) ?? buildModes[0])?.id;
+  const resolved =
+    matched?.id ??
+    (current !== undefined && !PLAN_MODE_IDS.has(current)
+      ? undefined
+      : (findAcpModeByAliases(buildModes, IMPLEMENT_MODE_ALIASES) ?? buildModes[0])?.id);
+  return resolved === current ? undefined : resolved;
 }
 
-interface CustomAcpConfigUpdate {
-  readonly configId: string;
-  readonly value: string | boolean;
-}
-
-/**
- * Config writes for a model selection: the model through the `model` config
- * option when there is one, then each option the user picked that names an
- * advertised config option and value. Current values are skipped.
- */
-export function resolveCustomAcpConfigUpdates(input: {
-  readonly configOptions: ReadonlyArray<EffectAcpSchema.SessionConfigOption>;
-  readonly model: string | undefined;
-  readonly selections: ReadonlyArray<ProviderOptionSelection> | null | undefined;
-}): ReadonlyArray<CustomAcpConfigUpdate> {
-  const updates: Array<CustomAcpConfigUpdate> = [];
-  const modelOption = findModelConfigOption(input.configOptions);
-  if (
-    modelOption &&
-    input.model !== undefined &&
-    input.model !== modelOption.currentValue.trim() &&
-    flattenSelectValues(modelOption).some((entry) => entry.value.trim() === input.model)
-  ) {
-    updates.push({ configId: modelOption.id, value: input.model });
-  }
-  for (const selection of input.selections ?? []) {
-    const option = optionConfigOptions(input.configOptions).find(
-      (candidate) => candidate.id.trim() === selection.id,
-    );
-    if (!option) continue;
-    if (option.type === "boolean") {
-      if (typeof selection.value === "boolean" && selection.value !== option.currentValue) {
-        updates.push({ configId: option.id, value: selection.value });
-      }
-      continue;
-    }
-    if (
-      typeof selection.value === "string" &&
-      selection.value !== option.currentValue.trim() &&
-      flattenSelectValues(option).some((entry) => entry.value.trim() === selection.value)
-    ) {
-      updates.push({ configId: option.id, value: selection.value });
-    }
-  }
-  return updates;
-}
+export type CustomAcpModelUpdate =
+  | { readonly type: "config"; readonly configId: string; readonly value: string }
+  | { readonly type: "session"; readonly modelId: string };
 
 /**
- * The model to send through `session/set_model`, for agents that advertise
- * `models` state but no `model` config option.
+ * How to switch to `model`: through the `model` config option when there is
+ * one, else `session/set_model` for agents that advertise `models` state.
+ * Undefined for the agent-default row, the current model, or a model the
+ * agent did not advertise.
  */
-export function resolveCustomAcpSessionModel(input: {
+export function resolveCustomAcpModelUpdate(input: {
   readonly configOptions: ReadonlyArray<EffectAcpSchema.SessionConfigOption>;
   readonly models: EffectAcpSchema.SessionModelState | null | undefined;
-  readonly currentModelId: string | undefined;
-  readonly model: string | undefined;
-}): string | undefined {
-  if (input.model === undefined || findModelConfigOption(input.configOptions)) return undefined;
-  if (input.model === input.currentModelId) return undefined;
-  return input.models?.availableModels.some((model) => model.modelId.trim() === input.model)
-    ? input.model
+  readonly model: string;
+}): CustomAcpModelUpdate | undefined {
+  if (input.model === CUSTOM_ACP_DEFAULT_MODEL) return undefined;
+  const modelOption = findModelConfigOption(input.configOptions);
+  if (modelOption) {
+    return input.model !== modelOption.currentValue.trim() &&
+      flattenSelectValues(modelOption).some((entry) => entry.value.trim() === input.model)
+      ? { type: "config", configId: modelOption.id, value: input.model }
+      : undefined;
+  }
+  return input.model !== input.models?.currentModelId &&
+    input.models?.availableModels.some((model) => model.modelId.trim() === input.model) === true
+    ? { type: "session", modelId: input.model }
     : undefined;
 }

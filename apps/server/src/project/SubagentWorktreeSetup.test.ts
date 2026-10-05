@@ -1,11 +1,11 @@
-import { ProjectId, ThreadId, type OrchestrationThreadShell } from "@t3tools/contracts";
+import { ProjectId, ThreadId, type OrchestrationV2ThreadShell } from "@t3tools/contracts";
 import { assert, describe, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 
-import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
 import * as ProjectSetupScriptRunner from "./ProjectSetupScriptRunner.ts";
 import * as SubagentWorktreeSetup from "./SubagentWorktreeSetup.ts";
 
@@ -20,9 +20,9 @@ function makeLayer(input: {
   return SubagentWorktreeSetup.installLive.pipe(
     Layer.provideMerge(SubagentWorktreeSetup.layer),
     Layer.provide(
-      Layer.mock(ProjectionSnapshotQuery.ProjectionSnapshotQuery)({
-        getThreadShellById: () =>
-          Effect.succeedSome({ projectId: PROJECT_ID } as OrchestrationThreadShell),
+      Layer.mock(ProjectionStore.ProjectionStoreV2)({
+        getThreadShell: () =>
+          Effect.succeed({ projectId: PROJECT_ID } as OrchestrationV2ThreadShell),
       }),
     ),
     Layer.provide(

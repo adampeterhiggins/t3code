@@ -11,24 +11,18 @@
  *
  * @module DevinAcpSupport
  */
-import {
-  type DevinSettings,
-  type ProviderOptionSelection,
-  type RuntimeMode,
-} from "@t3tools/contracts";
+import type { DevinSettings, ProviderOptionSelection, RuntimeMode } from "@t3tools/contracts";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Scope from "effect/Scope";
+import type * as Scope from "effect/Scope";
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 import type * as EffectAcpErrors from "effect-acp/errors";
-import type * as EffectAcpSchema from "effect-acp/schema";
 
-import { findAcpModeByAliases } from "./AcpAdapterSupport.ts";
-import type { AcpSessionModeState } from "./AcpRuntimeModel.ts";
-import { collectSessionConfigOptionValues } from "./AcpRuntimeModel.ts";
+import { findAcpModeByAliases } from "./AcpModeAliases.ts";
+import { type AcpSessionModeState, collectSessionConfigOptionValues } from "./AcpRuntimeModel.ts";
 import * as AcpSessionRuntime from "./AcpSessionRuntime.ts";
-import { isDevinModelDimOptionId, resolveDevinModelUid } from "../devinModelCatalog.ts";
+import { resolveDevinModelUid } from "../devinModelCatalog.ts";
 
 type DevinAcpRuntimeDevinSettings = Pick<DevinSettings, "binaryPath">;
 
@@ -51,35 +45,6 @@ function devinAcpPermissionArgs(runtimeMode?: RuntimeMode): ReadonlyArray<string
   }
 }
 
-export interface DevinAcpRuntimeInput extends Omit<
-  AcpSessionRuntime.AcpSessionRuntimeOptions,
-  "clientCapabilities" | "spawn"
-> {
-  readonly childProcessSpawner: ChildProcessSpawner.ChildProcessSpawner["Service"];
-  readonly devinSettings: DevinAcpRuntimeDevinSettings | null | undefined;
-  readonly environment?: NodeJS.ProcessEnv;
-  readonly runtimeMode?: RuntimeMode;
-}
-
-export interface DevinAcpModelSelectionErrorContext {
-  readonly cause: EffectAcpErrors.AcpError;
-  readonly step: "set-config-option" | "set-model";
-  readonly configId?: string;
-}
-
-// Devin reads and writes the workspace itself; T3 does not proxy fs or
-// terminal I/O for it. The `_meta` flags advertise support for Devin's
-// private MCP extension (see DevinMcp.ts) — session/new.mcpServers is
-// ignored by the agent, so T3's tools connect through that channel instead.
-export const DEVIN_ACP_CLIENT_CAPABILITIES = {
-  fs: { readTextFile: false, writeTextFile: false },
-  terminal: false,
-  _meta: {
-    "cognition.ai/mcp": true,
-    "cognition.ai/mcpWorkspaceDirs": true,
-  },
-} satisfies NonNullable<EffectAcpSchema.InitializeRequest["clientCapabilities"]>;
-
 export function buildDevinAcpSpawnInput(
   devinSettings: DevinAcpRuntimeDevinSettings | null | undefined,
   cwd: string,
@@ -94,6 +59,26 @@ export function buildDevinAcpSpawnInput(
   };
 }
 
+/**
+ * Devin's extension flags for runtimes T3 starts outside a chat session
+ * (sign-in, text generation): subagent markers and streamed message grouping.
+ * Chat sessions get the same flags from the adapter flavor.
+ */
+export const DEVIN_ACP_CLIENT_CAPABILITIES_META = {
+  "cognition.ai/subagentSupport": true,
+  "cognition.ai/messageGrouping": true,
+} as const;
+
+export interface DevinAcpRuntimeInput extends Omit<
+  AcpSessionRuntime.AcpSessionRuntimeOptions,
+  "spawn"
+> {
+  readonly childProcessSpawner: ChildProcessSpawner.ChildProcessSpawner["Service"];
+  readonly devinSettings: DevinAcpRuntimeDevinSettings | null | undefined;
+  readonly environment?: NodeJS.ProcessEnv;
+  readonly runtimeMode?: RuntimeMode;
+}
+
 export const makeDevinAcpRuntime = (
   input: DevinAcpRuntimeInput,
 ): Effect.Effect<
@@ -102,20 +87,18 @@ export const makeDevinAcpRuntime = (
   Crypto.Crypto | Scope.Scope
 > =>
   Effect.gen(function* () {
+    const { childProcessSpawner, devinSettings, environment, runtimeMode, ...options } = input;
     const acpContext = yield* Layer.build(
       AcpSessionRuntime.layer({
-        ...input,
-        spawn: buildDevinAcpSpawnInput(
-          input.devinSettings,
-          input.cwd,
-          input.environment,
-          input.runtimeMode,
-        ),
-        clientCapabilities: DEVIN_ACP_CLIENT_CAPABILITIES,
+        ...options,
+        spawn: buildDevinAcpSpawnInput(devinSettings, input.cwd, environment, runtimeMode),
+        clientCapabilities: options.clientCapabilities ?? {
+          fs: { readTextFile: false, writeTextFile: false },
+          terminal: false,
+          _meta: DEVIN_ACP_CLIENT_CAPABILITIES_META,
+        },
       }).pipe(
-        Layer.provide(
-          Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, input.childProcessSpawner),
-        ),
+        Layer.provide(Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, childProcessSpawner)),
       ),
     );
     return yield* Effect.service(AcpSessionRuntime.AcpSessionRuntime).pipe(
@@ -123,7 +106,6 @@ export const makeDevinAcpRuntime = (
     );
   });
 
-const DEVIN_PLAN_MODE_ALIASES = ["plan", "architect"];
 const DEVIN_READ_ONLY_MODE_IDS = new Set(["plan", "ask"]);
 // First match in the session's advertised modes wins.
 const DEVIN_MODE_BY_RUNTIME_MODE: Partial<Record<RuntimeMode, ReadonlyArray<string>>> = {
@@ -133,11 +115,11 @@ const DEVIN_MODE_BY_RUNTIME_MODE: Partial<Record<RuntimeMode, ReadonlyArray<stri
 };
 
 /**
- * Resolve the Devin session mode for a turn. Returns `undefined` when the
- * current mode already expresses the requested posture, leaving it alone.
+ * The Devin session mode for a runtime mode. Returns `undefined` when the
+ * current mode already expresses the requested posture. Plan mode is applied
+ * on top of this by the shared ACP adapter.
  */
 export function resolveDevinModeId(input: {
-  readonly interactionMode: "default" | "plan" | undefined;
   readonly runtimeMode: RuntimeMode;
   readonly modeState: AcpSessionModeState | undefined;
 }): string | undefined {
@@ -145,101 +127,58 @@ export function resolveDevinModeId(input: {
   if (!modeState) {
     return undefined;
   }
-
-  if (input.interactionMode === "plan") {
-    return findAcpModeByAliases(modeState.availableModes, DEVIN_PLAN_MODE_ALIASES)?.id;
-  }
-
   const preferredIds = DEVIN_MODE_BY_RUNTIME_MODE[input.runtimeMode];
-  if (preferredIds !== undefined) {
-    return findAcpModeByAliases(modeState.availableModes, preferredIds)?.id;
-  }
-
-  // approval-required: `normal` is spawn-flag only. If an earlier plan/ask
-  // turn left a read-only mode active, restore the least-privileged writable
-  // mode so the agent can keep working under supervision.
-  if (DEVIN_READ_ONLY_MODE_IDS.has(modeState.currentModeId)) {
-    return (
-      findAcpModeByAliases(modeState.availableModes, ["accept-edits", "code"])?.id ??
-      modeState.availableModes.find((mode) => !DEVIN_READ_ONLY_MODE_IDS.has(mode.id))?.id
-    );
-  }
-  return undefined;
+  const resolved =
+    preferredIds !== undefined
+      ? findAcpModeByAliases(modeState.availableModes, preferredIds)?.id
+      : // approval-required: `normal` is spawn-flag only. If an earlier plan/ask
+        // turn left a read-only mode active, restore the least-privileged
+        // writable mode so the agent can keep working under supervision.
+        DEVIN_READ_ONLY_MODE_IDS.has(modeState.currentModeId)
+        ? (findAcpModeByAliases(modeState.availableModes, ["accept-edits", "code"])?.id ??
+          modeState.availableModes.find((mode) => !DEVIN_READ_ONLY_MODE_IDS.has(mode.id))?.id)
+        : undefined;
+  return resolved === modeState.currentModeId ? undefined : resolved;
 }
 
-interface DevinAcpModelSelectionRuntime {
-  readonly getConfigOptions: AcpSessionRuntime.AcpSessionRuntime["Service"]["getConfigOptions"];
-  readonly setConfigOption: (
-    configId: string,
-    value: string | boolean,
-  ) => Effect.Effect<unknown, EffectAcpErrors.AcpError>;
-  readonly setModel: (model: string) => Effect.Effect<unknown, EffectAcpErrors.AcpError>;
-}
-
-export function applyDevinAcpModelSelection<E>(input: {
-  readonly runtime: DevinAcpModelSelectionRuntime;
+/**
+ * Applies a grouped Devin model selection. The picker groups variants into
+ * one row per family with effort/speed/context options, so those dims are
+ * resolved back to a concrete advertised uid before `set_model`. Returns the
+ * uid the session now runs on.
+ */
+export const applyDevinAcpModelSelection = Effect.fn("applyDevinAcpModelSelection")(function* <
+  E,
+>(input: {
+  readonly runtime: Pick<AcpSessionRuntime.AcpSessionRuntime["Service"], "getConfigOptions"> & {
+    readonly setModel: (model: string) => Effect.Effect<unknown, EffectAcpErrors.AcpError>;
+  };
   readonly model: string | null | undefined;
   readonly selections: ReadonlyArray<ProviderOptionSelection> | null | undefined;
-  readonly mapError: (context: DevinAcpModelSelectionErrorContext) => E;
-}): Effect.Effect<void, E> {
-  return Effect.gen(function* () {
-    // Devin's session config surface is just `model` + `mode`. The picker
-    // groups variants into one row per family with effort/speed/context
-    // options, so resolve those dims back to a concrete advertised uid
-    // before applying the model.
-    const configOptions = yield* input.runtime.getConfigOptions;
-    const modelOption =
-      configOptions.find((candidate) => candidate.category === "model") ??
-      configOptions.find((candidate) => candidate.id === "model");
-    const advertisedModelValues = modelOption ? collectSessionConfigOptionValues(modelOption) : [];
-
-    const model = input.model?.trim();
-    if (model) {
-      const resolvedModel =
-        advertisedModelValues.length > 0
-          ? resolveDevinModelUid({
-              model,
-              selections: input.selections,
-              advertisedValues: advertisedModelValues,
-              currentValue:
-                modelOption && "currentValue" in modelOption
-                  ? typeof modelOption.currentValue === "string"
-                    ? modelOption.currentValue
-                    : undefined
-                  : undefined,
-            })
-          : model;
-      yield* input.runtime.setModel(resolvedModel).pipe(
-        Effect.mapError((cause) =>
-          input.mapError({
-            cause,
-            step: "set-model",
-          }),
-        ),
-      );
-    }
-
-    // Model-dim selections are already folded into the uid; apply any other
-    // selection that matches an advertised config option so future Devin
-    // options light up without an adapter change.
-    for (const selection of input.selections ?? []) {
-      if (isDevinModelDimOptionId(selection.id)) continue;
-      const option = configOptions.find((candidate) => candidate.id === selection.id);
-      if (!option || option.id === "model") continue;
-      yield* input.runtime
-        .setConfigOption(
-          option.id,
-          typeof selection.value === "boolean" ? selection.value : String(selection.value),
-        )
-        .pipe(
-          Effect.mapError((cause) =>
-            input.mapError({
-              cause,
-              step: "set-config-option",
-              configId: option.id,
-            }),
-          ),
-        );
-    }
-  });
-}
+  readonly mapError: (cause: EffectAcpErrors.AcpError) => E;
+}): Effect.fn.Return<string | undefined, E> {
+  const configOptions = yield* input.runtime.getConfigOptions;
+  const modelOption =
+    configOptions.find((candidate) => candidate.category === "model") ??
+    configOptions.find((candidate) => candidate.id === "model");
+  const currentValue =
+    modelOption?.type === "select" && typeof modelOption.currentValue === "string"
+      ? modelOption.currentValue
+      : undefined;
+  const model = input.model?.trim();
+  if (!model) return currentValue;
+  const advertisedValues = modelOption ? collectSessionConfigOptionValues(modelOption) : [];
+  const resolved =
+    advertisedValues.length > 0
+      ? resolveDevinModelUid({
+          model,
+          selections: input.selections,
+          advertisedValues,
+          currentValue,
+        })
+      : model;
+  if (resolved !== currentValue) {
+    yield* input.runtime.setModel(resolved).pipe(Effect.mapError(input.mapError));
+  }
+  return resolved;
+});

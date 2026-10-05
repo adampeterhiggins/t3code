@@ -26,11 +26,6 @@ export const AgentSessionImportSource = Schema.Struct({
 });
 export type AgentSessionImportSource = typeof AgentSessionImportSource.Type;
 
-/** Imported message ids retain their origin after event metadata is projected into SQLite. */
-export function isImportedAgentSessionMessageId(messageId: string): boolean {
-  return messageId.startsWith("import:");
-}
-
 /**
  * Empty for now. Kept as a struct so future scan options (source filters,
  * explicit roots) can be added without a new method.
@@ -115,7 +110,7 @@ export class AgentSessionImportProjectChangedError extends Schema.TaggedError<Ag
 export const AgentSessionImportResult = Schema.Struct({
   importedCount: NonNegativeInt,
   skippedCount: NonNegativeInt,
-  /** Threads holding the imported sessions. Missing on servers from before single-session import. */
+  /** Threads holding the imported session. Set only for a single-session import. */
   threadIds: Schema.optionalKey(Schema.Array(ThreadId)),
 });
 export type AgentSessionImportResult = typeof AgentSessionImportResult.Type;
@@ -125,7 +120,7 @@ export type AgentSessionListInput = typeof AgentSessionListInput.Type;
 
 /**
  * A Claude Code or Codex conversation recorded for a project's directory.
- * `threadId` is the live T3 thread already bound to the session, either an
+ * `threadId` is the live T3 thread already holding the session, either an
  * earlier import or a thread T3 started itself; opening it beats a duplicate.
  */
 export const AgentSessionSummary = Schema.Struct({

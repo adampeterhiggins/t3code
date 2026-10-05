@@ -21,7 +21,7 @@ function useThreadProviderLabel(environmentId: EnvironmentId, threadId: ThreadId
       serverConfigs.get(environmentId)?.providers ?? [],
     ).find((entry) => entry.instanceId === instanceId);
     const selected = provider?.models.find((entry) => entry.slug === model);
-    return `${provider?.displayName ?? thread.session?.providerName ?? instanceId} · ${
+    return `${provider?.displayName ?? thread.runtime?.providerName ?? instanceId} · ${
       selected ? getTriggerDisplayModelLabel(selected) : model
     }`;
   }, [thread, serverConfigs, environmentId]);

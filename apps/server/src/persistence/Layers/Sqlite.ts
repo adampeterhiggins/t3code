@@ -6,12 +6,11 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 
 import { runMigrations } from "../Migrations.ts";
+import { initializeV2Database } from "../initializeV2Database.ts";
 import { ensureThreadTabsSchema } from "../../threadTabs/schema.ts";
 import { ensureLinearThreadLinksSchema } from "../../linear/threadLinksSchema.ts";
 import { ensureGitHubIssueThreadLinksSchema } from "../../githubIssues/threadLinksSchema.ts";
-import { ensurePullRequestWatchSchema } from "../../pullRequestWatch/store.ts";
-import { ensureSubagentTranscriptSchema } from "../../provider/SubagentTranscriptStore.ts";
-import { ServerConfig } from "../../config.ts";
+import * as ServerConfig from "../../config.ts";
 
 // Size the -wal file is cut back to on the first commit after a WAL reset.
 export const WAL_SIZE_LIMIT_BYTES = 32 * 1024 * 1024;
@@ -27,11 +26,10 @@ const setup = Layer.effectDiscard(
     // largest size until the last connection closes.
     yield* sql.unsafe(`PRAGMA journal_size_limit = ${WAL_SIZE_LIMIT_BYTES};`);
     yield* runMigrations();
+    // Fork tables live outside the upstream ledger; thread tabs creates fork_schema_migrations.
     yield* ensureThreadTabsSchema();
     yield* ensureLinearThreadLinksSchema();
     yield* ensureGitHubIssueThreadLinksSchema();
-    yield* ensurePullRequestWatchSchema();
-    yield* ensureSubagentTranscriptSchema();
   }),
 );
 
@@ -61,7 +59,8 @@ export const SqlitePersistenceMemory = Layer.provideMerge(
 
 export const layerConfig = Layer.unwrap(
   Effect.gen(function* () {
-    const { dbPath } = yield* ServerConfig;
+    const { dbPath } = yield* ServerConfig.ServerConfig;
+    yield* initializeV2Database(dbPath);
     return makeSqlitePersistenceLive(dbPath);
   }),
 );

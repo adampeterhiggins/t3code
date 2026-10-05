@@ -8,7 +8,7 @@ import type { UsageRecord } from "./usageTranscripts.ts";
 import {
   CursorKeychainTimeoutError,
   readMacCursorAccessToken,
-} from "../provider/cursorCredentialStore.ts";
+} from "../provider/cursorKeychainToken.ts";
 
 function object(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -52,6 +52,18 @@ function canonicalJson(value: unknown): string {
   return JSON.stringify(value) ?? "null";
 }
 
+/** The account an access token names, as the key its history is deduplicated by. */
+export function cursorAccountKey(accessToken: string): string | null {
+  try {
+    const subject = object(
+      JSON.parse(Buffer.from(accessToken.split(".")[1] ?? "", "base64url").toString("utf8")),
+    ).sub;
+    return typeof subject === "string" && subject ? accountHash(subject) : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Find the longest exact suffix/prefix overlap in linear time. */
 function boundaryOverlap(previous: readonly string[], current: readonly string[]): number {
   const sequence = [...current, "", ...previous];
@@ -65,9 +77,18 @@ function boundaryOverlap(previous: readonly string[], current: readonly string[]
   return lengths.at(-1) ?? 0;
 }
 
+/**
+ * Where the account's access token comes from: a CLI `auth.json`, the macOS Keychain CLI login,
+ * or a token already exchanged from an instance's own Cursor SDK key.
+ */
+export type CursorAccountCredentialSource =
+  | string
+  | { readonly kind: "keychain" }
+  | { readonly kind: "token"; readonly accessToken: string };
+
 /** Dashboard usage includes headless agents and reports fresh input separately from cache reads. */
 export async function readCursorAccountUsage(
-  credentialSource: string | { readonly kind: "keychain" },
+  credentialSource: CursorAccountCredentialSource,
   sinceMs: number,
   endDate: number,
   request: (url: string, init: RequestInit) => Promise<Response> = globalThis.fetch,
@@ -78,7 +99,9 @@ export async function readCursorAccountUsage(
     accessToken =
       typeof credentialSource === "string"
         ? object(JSON.parse(await NodeFSP.readFile(credentialSource, "utf8"))).accessToken
-        : await keychainToken();
+        : credentialSource.kind === "token"
+          ? credentialSource.accessToken
+          : await keychainToken();
   } catch (cause) {
     const missing = typeof credentialSource === "string" && object(cause).code === "ENOENT";
     return {
@@ -253,7 +276,7 @@ export async function readCursorAccountUsage(
           sessionId,
           totals,
           reportedCostUsd,
-          fast: false,
+          speed: "standard",
           dedupeKey: `cursor-account:${accountKey}:${key}:${occurrence}`,
         });
       }

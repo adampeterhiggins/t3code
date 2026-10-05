@@ -9,6 +9,7 @@
  * @module CustomAcpDriver
  */
 import { CustomAcpSettings, type ServerProvider, TextGenerationError } from "@t3tools/contracts";
+import { resolveSelfInvocation } from "@t3tools/shared/nodeRuntime";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -19,12 +20,14 @@ import { ChildProcessSpawner } from "effect/unstable/process";
 
 import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
 import { ServerConfig } from "../../config.ts";
+import { makeCustomAcpAdapterV2 } from "../../orchestration-v2/Adapters/CustomAcpAdapterV2.ts";
+import * as IdAllocator from "../../orchestration-v2/IdAllocator.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import type { TextGeneration } from "../../textGeneration/TextGeneration.ts";
 import { makeAcpCommandCatalog } from "../acp/AcpCommandCatalog.ts";
+import { makeAcpNativeLoggerFactory } from "../acp/AcpNativeLogging.ts";
 import { CUSTOM_ACP_DRIVER_KIND } from "../acp/CustomAcpSupport.ts";
 import { ProviderDriverError } from "../Errors.ts";
-import { makeCustomAcpAdapter } from "../Layers/CustomAcpAdapter.ts";
 import {
   buildInitialCustomAcpProviderSnapshot,
   checkCustomAcpProviderStatus,
@@ -68,6 +71,7 @@ export type CustomAcpDriverEnv =
   | ChildProcessSpawner.ChildProcessSpawner
   | Crypto.Crypto
   | FileSystem.FileSystem
+  | IdAllocator.IdAllocatorV2
   | Path.Path
   | ProviderEventLoggers
   | ServerConfig
@@ -85,8 +89,13 @@ export const CustomAcpDriver: ProviderDriver<CustomAcpSettings, CustomAcpDriverE
     Effect.gen(function* () {
       const crypto = yield* Crypto.Crypto;
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-      const { cwd } = yield* ServerConfig;
+      const serverConfig = yield* ServerConfig;
+      const { cwd } = serverConfig;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const idAllocator = yield* IdAllocator.IdAllocatorV2;
+      const selfInvocation = yield* resolveSelfInvocation();
       const eventLoggers = yield* ProviderEventLoggers;
+      const makeNativeLogger = yield* makeAcpNativeLoggerFactory();
       const processEnv = mergeProviderInstanceEnvironment(environment);
       const effectiveConfig = { ...config, enabled } satisfies CustomAcpSettings;
       const continuationIdentity = defaultProviderContinuationIdentity({
@@ -140,13 +149,25 @@ export const CustomAcpDriver: ProviderDriver<CustomAcpSettings, CustomAcpDriverE
       const { snapshot, onAvailableCommands, snapshotForCwd } =
         yield* makeAcpCommandCatalog(managedSnapshot);
 
-      const adapter = yield* makeCustomAcpAdapter(effectiveConfig, {
+      const orchestrationAdapter = makeCustomAcpAdapterV2({
         instanceId,
+        settings: effectiveConfig,
         harness: displayName ?? "Custom ACP agent",
         environment: processEnv,
-        ...(eventLoggers.native ? { nativeEventLogger: eventLoggers.native } : {}),
+        childProcessSpawner: spawner,
+        crypto,
+        fileSystem,
+        idAllocator,
+        serverConfig,
+        selfInvocation,
         onAvailableCommands: (commands, workspaceCwd) =>
           onAvailableCommands(commands, workspaceCwd, []),
+        nativeLogging: (threadId) =>
+          makeNativeLogger({
+            nativeEventLogger: eventLoggers.native,
+            provider: CUSTOM_ACP_DRIVER_KIND,
+            threadId,
+          }),
       });
 
       return {
@@ -158,7 +179,7 @@ export const CustomAcpDriver: ProviderDriver<CustomAcpSettings, CustomAcpDriverE
         enabled,
         snapshot,
         snapshotForCwd: (workspaceCwd) => snapshotForCwd(workspaceCwd, []),
-        adapter,
+        orchestrationAdapter,
         textGeneration: unsupportedTextGeneration,
       } satisfies ProviderInstance;
     }),

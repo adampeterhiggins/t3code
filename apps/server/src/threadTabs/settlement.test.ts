@@ -1,147 +1,140 @@
 import {
   CommandId,
   EventId,
-  MessageId,
   ProjectId,
   ProviderInstanceId,
+  RuntimeRequestId,
   ThreadId,
-  type OrchestrationCommand,
-  type OrchestrationEvent,
-  type OrchestrationThreadShell,
+  type OrchestrationV2ServerCommand,
+  type OrchestrationV2StoredEvent,
+  type OrchestrationV2ThreadShell,
+  type ThreadPullRequestLink,
 } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
-import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
-import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
-import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
+import { OrchestrationEventStore } from "../persistence/Services/OrchestrationEventStore.ts";
 import { ensureThreadTabsSchema } from "./schema.ts";
 import * as ThreadTabSettlementReactor from "./settlement.ts";
 
-const NOW = "2026-09-28T12:00:00.000Z";
+const NOW = DateTime.makeUnsafe("2026-10-05T12:00:00.000Z");
+const NOW_ISO = DateTime.formatIso(NOW);
 
 function makeThread(
   id: string,
-  settledOverride: OrchestrationThreadShell["settledOverride"],
-  overrides: Partial<OrchestrationThreadShell> = {},
-): OrchestrationThreadShell {
+  settledOverride: OrchestrationV2ThreadShell["settledOverride"],
+  overrides: Partial<OrchestrationV2ThreadShell> = {},
+): OrchestrationV2ThreadShell {
   return {
     id: ThreadId.make(id),
     projectId: ProjectId.make("project"),
     title: id,
-    modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },
+    providerInstanceId: ProviderInstanceId.make("codex"),
+    modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
     runtimeMode: "full-access",
     interactionMode: "default",
-    pullRequests: [],
     branch: null,
     worktreePath: null,
-    latestTurn: null,
+    pullRequests: [],
+    lineage: { rootThreadId: ThreadId.make(id), parentThreadId: null, relationshipToParent: null },
+    forkedFrom: null,
+    createdBy: "user",
+    creationSource: "web",
+    activeProviderThreadId: null,
+    latestRunId: null,
+    activeRunId: null,
+    activityRunStatus: null,
+    status: "idle",
+    pendingRuntimeRequest: null,
+    latestVisibleMessage: null,
+    latestUserMessageAt: null,
+    hasActionableProposedPlan: false,
+    pendingBackgroundTasks: [],
+    providerInstanceHistory: [],
+    itemCount: 0,
+    visibleItemCount: 0,
     createdAt: NOW,
     updatedAt: NOW,
     archivedAt: null,
     settledOverride,
     settledAt: settledOverride === "settled" ? NOW : null,
-    session: null,
-    latestUserMessageAt: null,
-    hasPendingApprovals: false,
-    hasPendingUserInput: false,
-    hasActionableProposedPlan: false,
+    deletedAt: null,
     ...overrides,
   };
 }
 
-const eventBase = (threadId: string, commandId: string | null = null) => ({
-  sequence: 1,
-  eventId: EventId.make(`event-${threadId}`),
-  aggregateKind: "thread" as const,
-  aggregateId: ThreadId.make(threadId),
-  occurredAt: NOW,
-  commandId: commandId === null ? null : CommandId.make(commandId),
-  causationEventId: null,
-  correlationId: null,
-  metadata: {},
-});
-
-function turnStartRequested(threadId: string): OrchestrationEvent {
+/**
+ * The reactor reads only an event's type, thread, and command id, so the fixtures leave the
+ * rest of each domain event out.
+ */
+function stored(
+  type: "run.created" | "thread.unsettled" | "thread.settled",
+  threadId: string,
+  commandId: string | null = null,
+): OrchestrationV2StoredEvent {
   return {
-    ...eventBase(threadId),
-    type: "thread.turn-start-requested",
-    payload: {
+    sequence: 1,
+    commandId: commandId === null ? null : CommandId.make(commandId),
+    event: {
+      id: EventId.make(`event-${type}-${threadId}`),
+      type,
       threadId: ThreadId.make(threadId),
-      messageId: MessageId.make(`message-${threadId}`),
-      runtimeMode: "full-access",
-      interactionMode: "default",
-      createdAt: NOW,
-    },
+      occurredAt: NOW,
+    } as unknown as OrchestrationV2StoredEvent["event"],
   };
 }
 
-function unsettled(threadId: string): OrchestrationEvent {
-  return {
-    ...eventBase(threadId),
-    type: "thread.unsettled",
-    payload: { threadId: ThreadId.make(threadId), reason: "user", updatedAt: NOW },
-  };
-}
-
-function settled(threadId: string, commandId: string): OrchestrationEvent {
-  return {
-    ...eventBase(threadId, commandId),
-    type: "thread.settled",
-    payload: { threadId: ThreadId.make(threadId), settledAt: NOW, updatedAt: NOW },
-  };
-}
-
-const openPullRequest: OrchestrationThreadShell["pullRequests"][number] = {
+const openPullRequest: ThreadPullRequestLink = {
   host: "github.com",
   repository: "owner/repo",
   number: 1,
   url: "https://github.com/owner/repo/pull/1",
   source: "agent",
-  linkedAt: NOW,
+  linkedAt: NOW_ISO,
   snapshot: {
     state: "open",
     title: "Open work",
     headBranch: "feature",
     baseBranch: "main",
     isDraft: false,
-    updatedAt: NOW,
-    syncedAt: NOW,
+    updatedAt: NOW_ISO,
+    syncedAt: NOW_ISO,
   },
   stack: null,
 };
 
 /**
- * Publishes events for a group of every thread except `standalone`, then asserts the reactor
+ * Streams events for a group of every thread except `standalone`, then asserts the reactor
  * dispatches exactly the expected `[type, threadId]` commands, in any order.
  */
 const expectDispatches = (
-  threads: ReadonlyArray<OrchestrationThreadShell>,
-  events: ReadonlyArray<OrchestrationEvent>,
+  threads: ReadonlyArray<OrchestrationV2ThreadShell>,
+  events: ReadonlyArray<OrchestrationV2StoredEvent>,
   expected: ReadonlyArray<readonly [string, string]>,
 ) =>
   Effect.scoped(
     Effect.gen(function* () {
-      const domainEvents = yield* PubSub.unbounded<OrchestrationEvent>();
-      const dispatched = yield* Queue.unbounded<OrchestrationCommand>();
+      const storedEvents = yield* Queue.unbounded<OrchestrationV2StoredEvent>();
+      const dispatched = yield* Queue.unbounded<OrchestrationV2ServerCommand>();
 
       const dependencies = Layer.mergeAll(
-        Layer.mock(ProjectionSnapshotQuery)({
-          getThreadShellById: (threadId) =>
-            Effect.succeed(Option.fromUndefinedOr(threads.find((t) => t.id === threadId))),
+        Layer.mock(Orchestrator.OrchestratorV2)({
+          getThreadShell: (threadId) =>
+            Effect.succeed(threads.find((thread) => thread.id === threadId) ?? null),
+          dispatch: (command) =>
+            Queue.offer(dispatched, command).pipe(Effect.as({ sequence: 1, storedEvents: [] })),
+          streamStoredEventsFrom: () => Stream.fromQueue(storedEvents),
         }),
-        Layer.mock(OrchestrationEngineService)({
-          dispatch: (command) => Queue.offer(dispatched, command).pipe(Effect.as({ sequence: 1 })),
-          subscribeDomainEvents: PubSub.subscribe(domainEvents).pipe(
-            Effect.map((subscription) => Stream.fromSubscription(subscription)),
-          ),
+        Layer.mock(OrchestrationEventStore)({
+          latestAgentSequence: () => Effect.succeed(0),
         }),
         NodeCrypto.layer,
       );
@@ -154,14 +147,14 @@ const expectDispatches = (
           (thread, position) =>
             sql`
               INSERT INTO fork_thread_tabs (thread_id, group_id, position, created_at)
-              VALUES (${thread.id}, 'primary', ${position}, ${NOW})
+              VALUES (${thread.id}, 'primary', ${position}, ${NOW_ISO})
             `,
           { discard: true },
         );
 
         const reactor = yield* ThreadTabSettlementReactor.ThreadTabSettlementReactor;
         yield* reactor.start();
-        yield* PubSub.publishAll(domainEvents, events);
+        yield* Queue.offerAll(storedEvents, events);
         const commands = yield* Effect.forEach(expected, () => Queue.take(dispatched));
         yield* reactor.drain;
         assert.deepStrictEqual(
@@ -181,7 +174,7 @@ const expectDispatches = (
     }),
   ).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" })));
 
-it.effect("a turn or unsettle in any tab wakes the settled tabs of its group", () =>
+it.effect("a new run or unsettle in any tab wakes the settled tabs of its group", () =>
   Effect.gen(function* () {
     const threads = [
       makeThread("primary", "settled"),
@@ -196,10 +189,14 @@ it.effect("a turn or unsettle in any tab wakes the settled tabs of its group", (
     ] as const;
     yield* expectDispatches(
       threads,
-      [turnStartRequested("standalone"), turnStartRequested("sent-tab")],
+      [stored("run.created", "standalone"), stored("run.created", "sent-tab")],
       woken,
     );
-    yield* expectDispatches(threads, [unsettled("standalone"), unsettled("sent-tab")], woken);
+    yield* expectDispatches(
+      threads,
+      [stored("thread.unsettled", "standalone"), stored("thread.unsettled", "sent-tab")],
+      woken,
+    );
   }),
 );
 
@@ -213,8 +210,8 @@ it.effect("settling any tab settles the rest of its group", () =>
       makeThread("standalone", null),
     ],
     [
-      settled("standalone", "server:auto-settle:standalone:1"),
-      settled("merged-tab", "server:auto-settle:merged-tab:1"),
+      stored("thread.settled", "standalone", "server:auto-settle:standalone:1"),
+      stored("thread.settled", "merged-tab", "server:auto-settle:merged-tab:1"),
     ],
     [
       ["thread.settle", "neutral-tab"],
@@ -224,25 +221,26 @@ it.effect("settling any tab settles the rest of its group", () =>
 );
 
 it.effect("a settle is undone while another tab in the group is working", () =>
-  expectDispatches(
-    [
-      makeThread("primary", "settled"),
-      makeThread("running-tab", null, {
-        session: {
-          threadId: ThreadId.make("running-tab"),
-          status: "running",
-          providerName: "codex",
-          runtimeMode: "full-access",
-          activeTurnId: null,
-          lastError: null,
-          updatedAt: NOW,
+  Effect.gen(function* () {
+    for (const working of [
+      makeThread("working-tab", null, { activityRunStatus: "running" }),
+      makeThread("working-tab", null, {
+        pendingRuntimeRequest: {
+          id: RuntimeRequestId.make("request-1"),
+          kind: "command",
+          createdAt: NOW,
         },
       }),
-      makeThread("idle-tab", null),
-    ],
-    [settled("primary", "client:settle:1")],
-    [["thread.unsettle", "primary"]],
-  ),
+      // A message the orchestrator has not started a run for yet (the test clock reads 0).
+      makeThread("working-tab", null, { latestUserMessageAt: DateTime.makeUnsafe(0) }),
+    ]) {
+      yield* expectDispatches(
+        [makeThread("primary", "settled"), working, makeThread("idle-tab", null)],
+        [stored("thread.settled", "primary", "client:settle:1")],
+        [["thread.unsettle", "primary"]],
+      );
+    }
+  }),
 );
 
 it.effect("only an automatic settle waits on another tab's open pull request", () =>
@@ -253,12 +251,12 @@ it.effect("only an automatic settle waits on another tab's open pull request", (
     ];
     yield* expectDispatches(
       threads,
-      [settled("primary", "server:auto-settle:primary:1")],
+      [stored("thread.settled", "primary", "server:auto-settle:primary:1")],
       [["thread.unsettle", "primary"]],
     );
     yield* expectDispatches(
       threads,
-      [settled("primary", "client:settle:1")],
+      [stored("thread.settled", "primary", "client:settle:1")],
       [["thread.settle", "open-pr-tab"]],
     );
   }),

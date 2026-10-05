@@ -19,6 +19,7 @@ export type SettingsPath =
   | "/settings/snap-shot"
   | "/settings/providers"
   | "/settings/integrations"
+  | "/settings/scheduled-tasks"
   | "/settings/source-control"
   | "/settings/storage"
   | "/settings/connections"
@@ -91,6 +92,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/snap-shot": "SnapShots",
   "/settings/providers": "Providers",
   "/settings/integrations": "Integrations",
+  "/settings/scheduled-tasks": "Scheduled Tasks",
   "/settings/source-control": "Source Control",
   "/settings/storage": "Storage",
   "/settings/connections": "Connections",
@@ -270,6 +272,11 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["long lines code blocks tables diffs file previews"],
   },
   {
+    id: "composer-context",
+    title: "Composer context",
+    to: "/settings/appearance",
+  },
+  {
     id: "project-grouping",
     title: "Project grouping",
     to: "/settings/general",
@@ -286,6 +293,24 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Sort tabs by",
     to: "/settings/general",
     searchTerms: ["chat tabs order sort sidebar manual drag created latest response opened"],
+  },
+  {
+    id: "project-order",
+    title: "Project order",
+    to: "/settings/general",
+    searchTerms: ["sort projects sidebar manual created recent"],
+  },
+  {
+    id: "snooze-limited-threads",
+    title: "Snooze limited threads",
+    to: "/settings/general",
+    searchTerms: ["usage quota rate limit reset wake recover continue"],
+  },
+  {
+    id: "auto-resume-limited-threads",
+    title: "Auto-resume limited threads",
+    to: "/settings/general",
+    searchTerms: ["usage quota rate limit reset recover continue"],
   },
   {
     id: "working-shelf",
@@ -365,7 +390,9 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "pull-request-open-target",
     title: "Open pull requests in",
     to: "/settings/general",
-    searchTerms: ["pr view browser github gitlab side panel sidebar default button external"],
+    searchTerms: [
+      "pr view browser github gitlab side panel sidebar default details badge toast external",
+    ],
   },
   {
     id: "proactive-panels",
@@ -448,13 +475,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/general",
     scope: "project-defaults",
     searchTerms: ["new worktrees latest matching remote branch local"],
-  },
-  {
-    id: "worktree-branch-prefix",
-    title: "Branch prefix",
-    to: "/settings/general",
-    scope: "project-defaults",
-    searchTerms: ["worktree branch name prefix namespace t3code git"],
   },
   {
     id: "add-project-starts-in",
@@ -624,15 +644,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["allow disable enable open drive preview tools sessions project override"],
   },
   {
-    id: "agent-thread-control",
-    title: "Agent thread control",
-    to: "/settings/integrations",
-    scope: "project-defaults",
-    searchTerms: [
-      "allow enable start spawn create message wait threads agents mcp project override",
-    ],
-  },
-  {
     id: "open-in",
     title: "Open in applications and file links",
     to: "/settings/integrations",
@@ -792,6 +803,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     ],
     environmentOnly: true,
     scope: "environment-defaults",
+  },
+  {
+    id: "worktree-branch-naming",
+    title: "Worktree branch naming",
+    to: "/settings/source-control",
+    searchTerms: ["static semantic prefix custom prompt instructions feat fix refactor chore"],
+    environmentOnly: true,
+    scope: "project-defaults",
   },
   {
     id: "bitbucket-credentials",
@@ -968,6 +987,7 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
   "/settings/storage": "project-defaults",
   "/settings/connections": "connections",
   "/settings/diagnostics": null,
+  "/settings/scheduled-tasks": null,
   "/settings/archived": "project-defaults",
 };
 

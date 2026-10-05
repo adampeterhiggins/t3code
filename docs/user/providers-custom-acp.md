@@ -42,7 +42,6 @@ switches to them too.
 
 - Custom ACP agents are not offered for text generation, so commit messages, pull request text,
   branch names, and thread titles keep using another provider.
-- T3 Code's tools reach the agent only if it accepts HTTP MCP servers.
 - Images are sent only to agents that accept image prompts. Other attachments arrive as file paths.
 - Conversation rewind is not supported. Resuming a thread reloads the agent's session when the
   agent supports it, and starts a new session otherwise.

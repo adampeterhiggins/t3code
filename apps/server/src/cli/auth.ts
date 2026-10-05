@@ -92,7 +92,7 @@ const readOnlyFlag = Flag.Boolean("read-only").pipe(
 
 const operateFlag = Flag.Boolean("operate").pipe(
   Flag.withDescription(
-    "Grant `orchestration:read` and `orchestration:operate`, for agents that start and drive threads over `/mcp/operate`.",
+    "Grant `orchestration:read` and `orchestration:operate`, for agents outside T3 Code that start, message, and answer threads over `/mcp/operate`.",
   ),
   Flag.withDefault(false),
 );

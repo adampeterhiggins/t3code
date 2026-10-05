@@ -3,8 +3,6 @@ import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useMemo } from "react";
 
 import { useSplitViewStore } from "../../splitViewStore";
-import { useThreadDetail, useThreadShell, useThreadStatus } from "../../state/entities";
-import { resolveThreadSyncPhase } from "../../threadSync";
 import { cn } from "~/lib/utils";
 import ChatView from "../ChatView";
 import { SplitPaneContext, useSplitViewActions } from "./splitPane";
@@ -20,14 +18,6 @@ function SplitPane({
   side: "start" | "end";
   onFocus: () => void;
 }) {
-  const shell = useThreadShell(threadRef);
-  const detail = useThreadDetail(threadRef);
-  const status = useThreadStatus(threadRef);
-  const threadSyncPhase = resolveThreadSyncPhase({
-    detailExists: detail !== null,
-    shellExists: shell !== null,
-    status,
-  });
   const context = useMemo(() => ({ focused }), [focused]);
   return (
     <SplitPaneContext.Provider value={context}>
@@ -56,7 +46,6 @@ function SplitPane({
           environmentId={threadRef.environmentId}
           threadId={threadRef.threadId}
           routeKind="server"
-          threadSyncPhase={threadSyncPhase}
           reserveTitleBarControlInset={side === "end"}
         />
       </div>
