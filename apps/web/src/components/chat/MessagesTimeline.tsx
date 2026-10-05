@@ -277,7 +277,11 @@ import { useMediaQuery } from "~/hooks/useMediaQuery";
 import { cn } from "~/lib/utils";
 import { useUiStateStore } from "~/uiStateStore";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
-import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
+import {
+  formatChatTimestampTooltip,
+  formatDayAwareTimestamp,
+  formatSecondsTimestamp,
+} from "../../timestampFormat";
 
 import { SkillChipIcon, SkillInlineText } from "./SkillInlineText";
 import { deriveAgentSpawnSummary } from "./agentSpawnSummary";
@@ -4677,6 +4681,7 @@ function ToolCallPreviewBody(props: {
   workspaceRoot: string | undefined;
   visibleLabel: string;
 }) {
+  const { timestampFormat } = use(TimelineRowCtx);
   const activityBody = toolActivityDataBody(props.workEntry);
   const preview =
     props.workEntry.itemType === "mcp_tool_call"
@@ -4692,24 +4697,32 @@ function ToolCallPreviewBody(props: {
   return (
     <>
       {body ? <ToolCallBody text={body} className="max-h-[50vh]" /> : null}
-      {preview.metadata.length > 0 ? (
-        <p className="flex flex-wrap gap-x-3 gap-y-1 border-t pt-2 font-mono text-3xs text-muted-foreground select-text">
-          {preview.metadata.map(({ label, value }) => (
-            <Tooltip key={`${label}:${value}`}>
-              <TooltipTrigger
-                render={
-                  <span>
-                    {label === "Working directory"
-                      ? `cwd: ${formatPathsForWorkspace(value, props.workspaceRoot)}`
-                      : `Exit: ${value}`}
-                  </span>
-                }
-              />
-              <TooltipPopup>{`${label}: ${value}`}</TooltipPopup>
-            </Tooltip>
-          ))}
-        </p>
-      ) : null}
+      <p className="flex flex-wrap gap-x-3 gap-y-1 font-mono text-3xs text-muted-foreground select-text">
+        <span>
+          {[
+            formatSecondsTimestamp(props.workEntry.createdAt, timestampFormat),
+            props.workEntry.toolLifecycleStatus === "inProgress"
+              ? "running"
+              : props.workEntry.toolLifecycleStatus,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </span>
+        {preview.metadata.map(({ label, value }) => (
+          <Tooltip key={`${label}:${value}`}>
+            <TooltipTrigger
+              render={
+                <span>
+                  {label === "Working directory"
+                    ? `cwd: ${formatPathsForWorkspace(value, props.workspaceRoot)}`
+                    : `Exit: ${value}`}
+                </span>
+              }
+            />
+            <TooltipPopup>{`${label}: ${value}`}</TooltipPopup>
+          </Tooltip>
+        ))}
+      </p>
     </>
   );
 }
@@ -5034,6 +5047,10 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
     : "";
   const previewText =
     displayLabel ?? (questionHeading || workEntryDisplayLabel(workEntry, workspaceRoot));
+  const previewTitle =
+    resolveWorkEntryToolPresentation(workEntry)?.displayName ??
+    workEntry.toolTitle ??
+    (workEntry.command ? "Command" : previewText);
   const answerPreview =
     workEntry.questionAnswer && hasQuestionAnswer(workEntry.questionAnswer)
       ? getQuestionAnswerPreview(workEntry.questionAnswer)
@@ -5223,7 +5240,7 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
     >
       <PreviewCardTrigger render={row} delay={300} closeDelay={150} />
       <PreviewCardPopup align="start" className="w-md max-w-[calc(100vw-2rem)]">
-        <div className="max-h-[60vh] space-y-1.5 overflow-auto p-3">
+        <div className="flex max-h-[60vh] flex-col gap-1.5 overflow-auto p-3">
           <div className="flex items-start gap-1.5 text-xs text-secondary-label">
             <ToolActivityIconView
               icon={entryToolIcon}
@@ -5231,16 +5248,15 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
               className={cn(iconWrapperClass, "mt-px size-3.5 shrink-0")}
               muted
             />
-            {workEntry.command ? (
-              <ToolCallCommand
-                command={formatCommandForWorkspace(workEntry.command, workspaceRoot)}
-              />
-            ) : (
-              <span className="min-w-0 whitespace-pre-wrap break-words select-text">
-                {previewText}
-              </span>
-            )}
+            <span className="min-w-0 break-all">{previewTitle}</span>
           </div>
+          {workEntry.command ? (
+            <ToolCallCommand
+              command={formatCommandForWorkspace(workEntry.command, workspaceRoot)}
+            />
+          ) : previewTitle !== previewText ? (
+            <ToolCallBody text={previewText} className="max-h-[50vh]" />
+          ) : null}
           <ToolCallPreviewBody
             workEntry={workEntry}
             workspaceRoot={workspaceRoot}

@@ -132,9 +132,10 @@ transcript, and a usage footer. Tool previews include bounded unified edit diffs
 read ranges, search arguments, working directories, and exit codes when the provider supplies them.
 The same details appear in chat tool expansions on web, desktop, and mobile. On web and desktop,
 collapsed tool calls in the main chat also preview their full label and details on hover; clicking
-still expands them inline. Commands use syntax-highlighted shell code with preserved whitespace.
-Command output comes first, with the working directory and exit code
-in a compact footer ([`MessagesTimeline.tsx`](../apps/web/src/components/chat/MessagesTimeline.tsx)).
+still expands them inline. Previews follow the agent tool-call layout: a tool heading,
+syntax-highlighted command with preserved whitespace, then output and details. Time, status,
+working directory, and exit code appear in a compact footer
+([`MessagesTimeline.tsx`](../apps/web/src/components/chat/MessagesTimeline.tsx)).
 Right-click an agent in the list and choose **Open in new tab**, or use the same action in its
 detail view, to keep it in its own thread-scoped sidebar tab alongside the fleet and other agents.
 Agent tabs can be closed and reopened the same way, and are restored when the app restarts.
