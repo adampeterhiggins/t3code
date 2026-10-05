@@ -5731,11 +5731,13 @@ export default function Sidebar() {
                             ) : null}
                             {project ? (
                               // Shown on the highlighted row: scope to just this
-                              // project and close, instead of toggling it.
+                              // project and close, instead of toggling it. Its
+                              // space is always reserved, so highlighting a row
+                              // truncates nothing new and never widens the popup.
                               <button
                                 type="button"
                                 tabIndex={-1}
-                                className="hidden shrink-0 cursor-pointer text-xs font-medium text-primary in-data-highlighted:inline hover:text-primary/80"
+                                className="invisible shrink-0 cursor-pointer text-xs font-medium text-primary in-data-highlighted:visible hover:text-primary/80"
                                 onPointerDown={(event) => event.stopPropagation()}
                                 onClick={(event) => {
                                   event.preventDefault();
