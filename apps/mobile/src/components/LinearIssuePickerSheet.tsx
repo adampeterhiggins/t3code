@@ -311,7 +311,7 @@ function LinearIssueSearch(props: OpenedLinearIssuePicker & { readonly onClose: 
         ListHeaderComponent={
           !trimmed && issues.length > 0 ? (
             <Text className="px-4 pb-2 text-sm text-foreground-muted">Assigned to you</Text>
-          ) : null
+          ) : undefined
         }
         ListEmptyComponent={
           <View className="items-center p-6">
