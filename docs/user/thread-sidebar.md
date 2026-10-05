@@ -386,7 +386,9 @@ tab opens with the agent's task, result, and tool calls attached, so you can ask
 or push the investigation further. The new chat starts fresh with that context; it does not resume
 the agent itself.
 
-Claude and Codex report each agent's token usage. Other providers show the usage as not reported.
+Claude and Codex report each agent's token usage. A delegated task's usage appears once it
+finishes, on any provider that reports usage for its own turns (Claude, Codex, Cursor, and
+OpenCode). Agents built into other providers show the usage as not reported.
 When a provider doesn't report an agent's tool calls, **Tools** says so and shows the agent's
 latest progress while it works.
 

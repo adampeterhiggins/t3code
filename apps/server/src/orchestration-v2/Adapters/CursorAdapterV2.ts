@@ -6,6 +6,7 @@ import type {
   RunResult,
   SDKUserMessage,
   SettingSource,
+  TokenUsage,
   ToolCall,
 } from "@cursor/sdk";
 import { formatReadToolLabel, formatSearchToolLabel } from "@t3tools/shared/toolActivity";
@@ -75,6 +76,7 @@ import {
   subagentThreadTitle,
 } from "../SubagentProjection.ts";
 import * as CursorAgentSdk from "./CursorAgentSdk.ts";
+import { normalizeCursorTurnTokenUsage } from "../../provider/CursorTurnTokenUsage.ts";
 export { cursorSdkModelSelection } from "../../provider/cursorSdkModel.ts";
 
 export const CURSOR_DRIVER_KIND = CursorAgentSdk.CURSOR_PROVIDER;
@@ -1984,6 +1986,8 @@ export function makeCursorAdapterV2(
           >;
           readonly failure?: OrchestrationV2ProviderFailure;
           readonly threadDisposition?: "reusable" | "broken";
+          /** The finished run's summed usage; absent when the run returned no result. */
+          readonly usage?: TokenUsage;
         }) {
           if (input.context.finalized) {
             return;
@@ -2018,11 +2022,20 @@ export function makeCursorAdapterV2(
           yield* emitProviderEvent({
             type: "provider_turn.updated",
             driver: CursorAgentSdk.CURSOR_PROVIDER,
-            providerTurn: providerTurnPayload({
-              context: input.context,
-              status: input.status,
-              completedAt,
-            }),
+            providerTurn: {
+              ...providerTurnPayload({
+                context: input.context,
+                status: input.status,
+                completedAt,
+              }),
+              // Run totals span every model call, so they are billable usage, not
+              // context occupancy; tokenUsage (the context meter) stays unset.
+              turnTokenUsage: normalizeCursorTurnTokenUsage(
+                input.usage,
+                input.context.subagents.size > 0,
+                input.status,
+              ),
+            },
           });
           yield* emitProviderEvent({
             type: "provider_thread.updated",
@@ -2323,6 +2336,7 @@ export function makeCursorAdapterV2(
                     yield* finalizeTurn({
                       context,
                       status,
+                      ...(result.usage === undefined ? {} : { usage: result.usage }),
                       ...(status === "failed"
                         ? {
                             failure:

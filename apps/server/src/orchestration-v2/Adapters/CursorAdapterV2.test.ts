@@ -114,6 +114,18 @@ describe("CursorAdapterV2", () => {
                         status,
                         model: { id: "composer-2.5" },
                         durationMs: 1,
+                        ...(status === "finished"
+                          ? {
+                              usage: {
+                                inputTokens: 100,
+                                outputTokens: 20,
+                                cacheReadTokens: 40,
+                                cacheWriteTokens: 0,
+                                totalTokens: 160,
+                                reasoningTokens: 5,
+                              },
+                            }
+                          : {}),
                       }),
                       cancel: Effect.void,
                     };
@@ -186,6 +198,26 @@ describe("CursorAdapterV2", () => {
           status === "finished" ? "idle" : status === "cancelled" ? "cancelled" : "failed",
         );
         assert.isNotNull(rows.at(-1)?.subagent.completedAt);
+        // The finished run's usage lands on the terminal provider turn, input including cache reads.
+        const terminalTurn = events
+          .filter((event) => event.type === "provider_turn.updated")
+          .at(-1)?.providerTurn;
+        assert.isUndefined(terminalTurn?.tokenUsage);
+        assert.deepStrictEqual(
+          terminalTurn?.turnTokenUsage,
+          status === "finished"
+            ? {
+                usageStatus: "complete",
+                usageScope: "main_agent",
+                inputTokens: 140,
+                cachedInputTokens: 40,
+                cacheCreationTokens: 0,
+                outputTokens: 20,
+                reasoningTokens: 5,
+                hasSubagents: true,
+              }
+            : { usageStatus: "unavailable", usageScope: "main_agent", hasSubagents: true },
+        );
       }).pipe(Effect.scoped, Effect.provide(Layer.merge(NodeServices.layer, IdAllocator.layer))),
   );
 
