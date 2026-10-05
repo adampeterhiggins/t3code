@@ -832,8 +832,13 @@ reset**, **Cancel auto-resume**, and **Snooze until reset**. The fork adds:
 - A one-minute grace after the reported reset before an armed auto-resume is sent, since a request
   at the reset can still be refused.
 - A notice in the stopped turn when auto-resume is scheduled or cancelled.
+- Cursor stops count too. Cursor reports an exhausted allowance only as run error text ("You're out
+  of usage…"), which upstream shows as a generic provider error; the fork recognizes it as a usage
+  limit, so Cursor threads get the same banner. Cursor gives no reset time, so there is no
+  auto-resume for them.
 
-Code: the `thread.usage-limit.resume-now` case and limit-recovery notice in
+Code: `cursorRunFailure` in
+[CursorAdapterV2](../apps/server/src/orchestration-v2/Adapters/CursorAdapterV2.ts), the `thread.usage-limit.resume-now` case and limit-recovery notice in
 [Orchestrator](../apps/server/src/orchestration-v2/Orchestrator.ts), the grace in
 [UsageLimitRecoveryWorker](../apps/server/src/orchestration-v2/UsageLimitRecoveryWorker.ts),
 [UsageLimitRecoveryBanner](../apps/web/src/components/chat/UsageLimitRecoveryBanner.tsx), and
