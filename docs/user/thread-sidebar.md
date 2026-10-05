@@ -355,12 +355,12 @@ Click an agent in the Agents panel to see what it is doing without leaving the p
 status, model and reasoning effort, how many times it has run, and its running time; the prompt it
 was given (choose **Show all** for a long one); its result or error; any files or remote session it
 left under **Artifacts**; and the agents it started. Click one of those to look inside it too.
-**Back** goes up one level, and from the top back to the list. Below the header, **Transcript**
+**Back** goes up one level, and from the top back to the list. Below the header, **Tools** lists
+the agent's tool calls; hover or click one to see its command, output, or diff. **Transcript**
 follows the agent live: its messages, the reasoning it shares, and each tool call as it runs, each
 with its time. Click a call or thought to expand its command, output, or diff. While you are at
-the bottom, new activity scrolls into view; scroll up to read and it stays put. Switch to **Tools**
-for only the tool calls, newest first, filtered by status or tool, or sorted oldest first or by
-duration. Search either view; a search or filter shows how many entries it kept. Paths read
+the bottom, new activity scrolls into view; scroll up to read and it stays put. **Tools** lists
+calls newest first; filter them by status or tool, or sort oldest first or by duration. Search either view; a search or filter shows how many entries it kept. Paths read
 relative to the checkout the agent works in, including a separate worktree it was given. The
 footer shows the agent's token usage, and its runs and retries when there were several; hover a
 number for its label, or the total for the full breakdown.

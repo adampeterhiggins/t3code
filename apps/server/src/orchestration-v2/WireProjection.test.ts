@@ -318,6 +318,22 @@ describe("orchestration V2 wire projection", () => {
     expect(failed).not.toHaveProperty("newStr");
   });
 
+  it("returns an opened edit's stored diff, bounded", () => {
+    const item = {
+      ...base,
+      type: "file_change" as const,
+      fileName: "/tmp/notes.txt",
+      additions: 1,
+      deletions: 0,
+      diffStr: "--- a/notes.txt\n+++ b/notes.txt\n@@ -1 +1,2 @@\n one\n+two",
+    };
+    expect(projectTurnItemForDetail(item)).toMatchObject({ diffStr: item.diffStr, additions: 1 });
+    const huge = projectTurnItemForDetail({ ...item, diffStr: "+".repeat(300 * 1024) });
+    expect(huge.type === "file_change" && (huge.diffStr?.length ?? 0) < 300 * 1024).toBe(true);
+    const { diffStr: _diff, ...withoutDiff } = item;
+    expect(projectTurnItemForDetail(withoutDiff)).not.toHaveProperty("diffStr");
+  });
+
   it("retains only result identities and failure metadata in live tool events", () => {
     const output = {
       isError: true,

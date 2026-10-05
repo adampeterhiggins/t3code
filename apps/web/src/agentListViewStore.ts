@@ -23,13 +23,19 @@ export const useAgentListViewStore = create<{
   persist(
     (set) => ({
       view: DEFAULT_AGENT_LIST_VIEW,
-      activityMode: "transcript",
+      activityMode: "tools",
       setView: (view) => set({ view }),
       setActivityMode: (activityMode) => set({ activityMode }),
     }),
     {
       // The fork's pre-v2 Agents panel key, so a saved filter carries over.
       name: "t3code:agents-panel:v1",
+      // Version 1 makes Tools the default once, replacing the "transcript" every device saved.
+      version: 1,
+      migrate: (persisted) => ({
+        ...(persisted as { view: AgentListView }),
+        activityMode: "tools" as AgentActivityMode,
+      }),
       storage: createJSONStorage(() =>
         resolveStorage(typeof window === "undefined" ? undefined : window.localStorage),
       ),

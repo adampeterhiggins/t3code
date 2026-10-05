@@ -176,9 +176,9 @@ thread details panel, one row each, newest first, and removed the right-panel Ag
   model selection), `run N` past its first run, elapsed time, the prompt clamped to four lines
   with **Show all**, the result or error, **Artifacts** (output file, **Open remote session**), and
   agents it started (click one to drill a level further; Back returns one level). Below it is the
-  agent's activity from its child thread: a live **Transcript** of its messages, reasoning
-  summaries, tool calls, and notices in order, each with its time, or only its **Tools**, with
-  status and kind filters and sorting. Both can be searched, and a narrowed view says
+  agent's activity from its child thread: its **Tools** (the default), with status and kind
+  filters and sorting, or a live **Transcript** of its messages, reasoning summaries, tool calls,
+  and notices in order, each with its time. Both can be searched, and a narrowed view says
   **Showing N of M**. Paths in both read relative to the checkout the agent works in: a Claude
   `.claude/worktrees/agent-<id>` worktree or a sibling checkout its calls use
   (`subagentWorkspaceRoot`). An empty Tools view says whether the agent made no calls or its
@@ -204,8 +204,9 @@ thread details panel, one row each, newest first, and removed the right-panel Ag
 
 Tool previews include bounded unified edit diffs and line counts, read ranges, search arguments,
 and exit codes when the provider supplies them, in the agent detail and in chat tool expansions on
-web, desktop, and mobile. Timelines carry an edit without its diff, so an expanded edit fetches the
-stored item for its preview (`fileChangePreviewText`). In the agent views a tool's preview also
+web, desktop, and mobile. Timelines carry an edit without its diff, so an expanded edit or its hover card fetches the
+stored item for its preview (`fileChangePreviewText`); the fork's `projectTurnItemForDetail` returns
+an edit's stored diff, bounded, where upstream withholds it there too. In the agent views a tool's preview also
 carries what it reported back, such as an `Error:` line, when its output came with the timeline;
 v2 command items record no working directory, so none is shown. On web and desktop, collapsed tool calls in
 the main chat also preview on hover; clicking still expands them inline. The card shows the tool

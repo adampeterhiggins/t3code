@@ -168,8 +168,23 @@ export function projectTurnItemForDetail(item: OrchestrationV2TurnItem): Orchest
         result:
           item.result === null ? null : (truncateDetail(item.result, MAX_ON_DEMAND_BYTES) ?? null),
       };
+    case "file_change": {
+      // Fork: an opened edit shows its diff. Edits outside a git checkout have no turn diff to
+      // read instead, so return the stored diff here, bounded like command output.
+      const { diffStr, oldStr, newStr, ...projected } = item;
+      const bounded = {
+        diffStr: truncateDetail(diffStr, MAX_ON_DEMAND_BYTES),
+        oldStr: truncateDetail(oldStr, MAX_ON_DEMAND_BYTES),
+        newStr: truncateDetail(newStr, MAX_ON_DEMAND_BYTES),
+      };
+      return {
+        ...projected,
+        ...(bounded.diffStr === undefined ? {} : { diffStr: bounded.diffStr }),
+        ...(bounded.oldStr === undefined ? {} : { oldStr: bounded.oldStr }),
+        ...(bounded.newStr === undefined ? {} : { newStr: bounded.newStr }),
+      };
+    }
     case "handoff":
-    case "file_change":
       return projectTurnItemForWire(item);
     default:
       return item;
