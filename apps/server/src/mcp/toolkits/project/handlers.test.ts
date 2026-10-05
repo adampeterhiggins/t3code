@@ -23,6 +23,13 @@ import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import { ProjectHandlersLive } from "./handlers.ts";
 import { ProjectToolkit } from "./tools.ts";
 
+const emptyShellSnapshot = {
+  schemaVersion: 1,
+  snapshotSequence: 0,
+  threads: [],
+  archivedThreads: [],
+};
+
 it.effect("attributes a launched thread's first message to the calling thread", () =>
   Effect.gen(function* () {
     const sourceThreadId = ThreadId.make("source-thread");
@@ -39,8 +46,10 @@ it.effect("attributes a launched thread's first message to the calling thread", 
       activeRunId: "active-run",
       archivedAt: null,
       deletedAt: null,
+      lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: sourceThreadId },
     } as OrchestrationV2ThreadShell;
     let launchedSender: ThreadId | undefined;
+    let launchedStartedBy: ThreadLaunch.ThreadLaunchInput["startedBy"];
     const dependencies = Layer.mergeAll(
       NodeCrypto.layer,
       Layer.succeed(McpInvocationContext.McpInvocationContext, {
@@ -57,10 +66,12 @@ it.effect("attributes a launched thread's first message to the calling thread", 
       }),
       Layer.mock(ThreadManagement.ThreadManagementService)({
         getThreadShell: () => Effect.succeed(caller),
+        getShellSnapshot: () => Effect.succeed(emptyShellSnapshot),
       }),
       Layer.mock(ThreadLaunch.ThreadLaunchService)({
         launch: (input) => {
           launchedSender = input.initialMessage?.senderThreadId;
+          launchedStartedBy = input.startedBy;
           return Effect.succeed({
             threadId: input.threadId,
             projection: {
@@ -86,6 +97,7 @@ it.effect("attributes a launched thread's first message to the calling thread", 
       .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
     expect(result.at(-1)?.result).toMatchObject({ projectId, modelSelection });
     expect(launchedSender).toBe(sourceThreadId);
+    expect(launchedStartedBy).toEqual({ kind: "thread", threadId: sourceThreadId });
   }),
 );
 
@@ -105,6 +117,7 @@ it.effect("launches a scratch thread into the Scratch project", () =>
       activeRunId: "active-run",
       archivedAt: null,
       deletedAt: null,
+      lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: sourceThreadId },
     } as OrchestrationV2ThreadShell;
     const launched: Array<ThreadLaunch.ThreadLaunchInput> = [];
     const dependencies = Layer.mergeAll(
@@ -123,6 +136,7 @@ it.effect("launches a scratch thread into the Scratch project", () =>
       }),
       Layer.mock(ThreadManagement.ThreadManagementService)({
         getThreadShell: () => Effect.succeed(caller),
+        getShellSnapshot: () => Effect.succeed(emptyShellSnapshot),
       }),
       Layer.mock(ThreadLaunch.ThreadLaunchService)({
         launch: (input) => {
@@ -186,6 +200,7 @@ it.effect("starts a project from just a title when workspaceRoot is omitted", ()
       activeRunId: "active-run",
       archivedAt: null,
       deletedAt: null,
+      lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: sourceThreadId },
     } as OrchestrationV2ThreadShell;
     const named: Array<string> = [];
     const registered: Array<string> = [];
@@ -215,6 +230,7 @@ it.effect("starts a project from just a title when workspaceRoot is omitted", ()
       }),
       Layer.mock(ThreadManagement.ThreadManagementService)({
         getThreadShell: () => Effect.succeed(caller),
+        getShellSnapshot: () => Effect.succeed(emptyShellSnapshot),
       }),
       Layer.mock(ThreadLaunch.ThreadLaunchService)({}),
       Layer.mock(Project.ProjectService)({
@@ -351,6 +367,7 @@ it.effect("a client launches at its ceiling with the project's default model", (
     expect(result.at(-1)?.result).toMatchObject({ projectId, modelSelection });
     expect(launched[0]?.runtimeMode).toBe("auto-accept-edits");
     expect(launched[0]?.initialMessage?.senderThreadId).toBeUndefined();
+    expect(launched[0]?.startedBy).toEqual({ kind: "agent-access", label: "Claude Code" });
 
     const escalated = yield* handle({ title: "Fix", projectId, runtimeMode: "full-access" });
     expect(escalated.at(-1)?.result).toMatchObject({ code: "runtime_mode_escalation_denied" });

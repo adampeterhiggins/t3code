@@ -38,12 +38,13 @@ transaction](../../apps/server/src/persistence/AuthSessions.ts); a failed
 replacement must leave the old credential usable. Pairing and browser sessions
 do not follow this replacement rule.
 
-The history MCP server at `/mcp/query` reuses these sessions instead of the
-per-thread credentials behind `/mcp`. It accepts only an `Authorization` header,
-never the session cookie, because any page a browser visits could otherwise
-reach it with that cookie attached. It is a separate MCP server so an agent
-inside one thread never lists or reaches tools that read every thread
-([`QueryMcpServer.ts`](../../apps/server/src/mcp/query/QueryMcpServer.ts)).
+The agent access MCP servers at `/mcp/query` and `/mcp/operate` reuse these
+sessions instead of the per-thread credentials behind `/mcp`. They accept only an
+`Authorization` header, never the session cookie, because any page a browser
+visits could otherwise reach them with that cookie attached. They are separate
+MCP servers so an agent inside one thread never lists or reaches tools that read
+every thread or act as the user
+([`AgentAccessMcpServer.ts`](../../apps/server/src/mcp/AgentAccessMcpServer.ts)).
 
 ### Reusable dev credential
 

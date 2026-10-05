@@ -474,6 +474,13 @@ describe("OrchestratorMcpService", () => {
   );
 });
 
+/** The reads delegate_task makes to check spawn limits, for a parent with no started threads. */
+const spawnPolicyReads = {
+  getThreadShell: () => Effect.succeed(null),
+  getShellSnapshot: () =>
+    Effect.succeed({ schemaVersion: 1, snapshotSequence: 0, threads: [], archivedThreads: [] }),
+};
+
 describe("OrchestratorMcpService provider resolution", () => {
   const parentThreadId = ThreadId.make("thread:mcp-providers-parent");
   const childThreadId = ThreadId.make("thread:mcp-providers-child");
@@ -747,6 +754,7 @@ describe("OrchestratorMcpService provider resolution", () => {
         const dependencies = Layer.mergeAll(
           NodeServices.layer,
           Layer.mock(ThreadManagementService.ThreadManagementService)({
+            ...spawnPolicyReads,
             getThreadRecords: (threadId) =>
               Effect.succeed(
                 threadId === parentThreadId
@@ -841,6 +849,7 @@ describe("OrchestratorMcpService provider resolution", () => {
       const dependencies = Layer.mergeAll(
         NodeServices.layer,
         Layer.mock(ThreadManagementService.ThreadManagementService)({
+          ...spawnPolicyReads,
           getThreadRecords: (threadId) =>
             Effect.succeed(
               threadId === parentThreadId
@@ -917,6 +926,7 @@ describe("OrchestratorMcpService provider resolution", () => {
       const dependencies = Layer.mergeAll(
         NodeServices.layer,
         Layer.mock(ThreadManagementService.ThreadManagementService)({
+          ...spawnPolicyReads,
           getThreadRecords: () => Effect.succeed(parentProjection([])),
         }),
         Layer.mock(ProviderRegistry.ProviderRegistry)({
@@ -1052,6 +1062,7 @@ describe("OrchestratorMcpService provider resolution", () => {
           const dependencies = Layer.mergeAll(
             NodeServices.layer,
             Layer.mock(ThreadManagementService.ThreadManagementService)({
+              ...spawnPolicyReads,
               getThreadRecords: (threadId) =>
                 Effect.succeed(
                   threadId === parentThreadId

@@ -27,6 +27,7 @@ import { toastManager } from "../ui/toast";
 import { Button } from "../ui/button";
 import { GitHubIssueThreadLinkChip } from "./GitHubIssueThreadLink";
 import { LinearThreadLinkChip } from "./LinearThreadLink";
+import { StartedByChip } from "./StartedByChip";
 import { ThreadTabMenu } from "./ThreadTabs";
 import { useSplitPaneFocus, useSplitViewActions } from "./splitPane";
 import { useThreadShell } from "../../state/entities";
@@ -375,6 +376,7 @@ export const ChatHeader = memo(function ChatHeader({
         ) : null}
       </WorkspaceBreadcrumb>
       <LinearThreadLinkChip threadRef={currentThreadRef} />
+      <StartedByChip threadRef={currentThreadRef} />
       <GitHubIssueThreadLinkChip threadRef={currentThreadRef} />
       {splitPaneFocus !== null ? (
         <Tooltip>

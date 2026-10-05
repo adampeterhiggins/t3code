@@ -57,11 +57,20 @@ export function resolveSidebarRowAccessibility(input: {
   readonly statusLabel: string | null;
   readonly projectDisplayName: string | null;
   readonly isActive: boolean;
+  /** Speaks the row's bot icon, which the row's own label otherwise hides. */
+  readonly startedByAgent?: boolean;
 }): { readonly label: string; readonly current: "page" | undefined } {
   return {
     // The title is the row's identity and must lead when users scan tasks.
     // Only static context belongs here; nested action labels remain separate controls.
-    label: [input.title, input.statusLabel, input.projectDisplayName].filter(Boolean).join(", "),
+    label: [
+      input.title,
+      input.statusLabel,
+      input.startedByAgent ? "Started by an agent" : null,
+      input.projectDisplayName,
+    ]
+      .filter(Boolean)
+      .join(", "),
     current: input.isActive ? "page" : undefined,
   };
 }

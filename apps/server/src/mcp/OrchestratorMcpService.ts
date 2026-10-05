@@ -73,6 +73,7 @@ import * as ThreadManagementService from "../orchestration-v2/ThreadManagementSe
 import * as ProjectService from "../project/ProjectService.ts";
 import * as ProviderRegistry from "../provider/Services/ProviderRegistry.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
+import { assertMaySpawn, assertNotSelf } from "./spawnPolicy.ts";
 import {
   type McpInvocationScope,
   type McpThreadInvocationScope,
@@ -1504,6 +1505,7 @@ const make = Effect.gen(function* () {
     delegateTask: (callerScope, input) =>
       Effect.gen(function* () {
         const { scope, parent } = yield* loadThreadCaller(callerScope, "delegate_task");
+        yield* assertMaySpawn(threadManagement, scope.thread.threadId, 1);
         const parentRun = parent.runs
           .filter(ThreadManagementService.isActiveRun)
           .toSorted((left, right) => right.ordinal - left.ordinal)[0];
@@ -1715,6 +1717,7 @@ const make = Effect.gen(function* () {
     createThreads: (callerScope, input) =>
       Effect.gen(function* () {
         const { scope, parent } = yield* loadThreadCaller(callerScope, "create_threads");
+        yield* assertMaySpawn(threadManagement, scope.thread.threadId, input.threads.length);
         const parentRun = ThreadManagementService.latestActiveRun(parent);
         if (
           parentRun === undefined ||
@@ -1762,6 +1765,7 @@ const make = Effect.gen(function* () {
                   type: "thread.create",
                   createdBy: "agent",
                   creationSource: "mcp",
+                  startedBy: { kind: "thread", threadId: scope.thread.threadId },
                   commandId: stableCommandId({
                     scope,
                     requestKey: key,
@@ -1994,6 +1998,7 @@ const make = Effect.gen(function* () {
       }),
     sendToThread: (scope, input) =>
       Effect.gen(function* () {
+        yield* assertNotSelf(scope.thread?.threadId, input.threadId);
         const { parent, limits, target } = yield* loadScopedThread(scope, input.threadId);
         yield* assertLiveCallerForOtherThread(scope, parent, target);
         yield* resolveRuntimeMode(limits.runtimeMode, target.thread.runtimeMode);
@@ -2043,6 +2048,8 @@ const make = Effect.gen(function* () {
       }),
     waitForThread: (scope, input) =>
       Effect.gen(function* () {
+        // Waiting on its own run would only block the agent until the timeout.
+        yield* assertNotSelf(scope.thread?.threadId, input.threadId);
         const { target } = yield* loadScopedThread(scope, input.threadId);
         const result = yield* threadManagement
           .waitForThread({
@@ -2064,6 +2071,7 @@ const make = Effect.gen(function* () {
       }),
     interruptThread: (scope, input) =>
       Effect.gen(function* () {
+        yield* assertNotSelf(scope.thread?.threadId, input.threadId);
         const { parent, limits, target } = yield* loadScopedThread(scope, input.threadId);
         yield* assertLiveCallerForOtherThread(scope, parent, target);
         // Stopping another thread's work is a write: it must run within the caller's modes.
