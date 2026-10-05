@@ -870,7 +870,6 @@ export function AgentDetailPanel(props: {
               label={subject.error ? "Error" : "Result"}
               preview={outcome}
               tone={subject.error ? "error" : undefined}
-              defaultOpen
             >
               <HeaderText text={outcome} tone={subject.error ? "error" : undefined} />
             </HeaderDisclosure>
