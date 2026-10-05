@@ -11,6 +11,7 @@ import {
   type ModelSelection,
   type ScopedThreadRef,
   type ThreadId,
+  type ThreadTab,
   type ThreadTabGroup,
 } from "@t3tools/contracts";
 import {
@@ -23,11 +24,14 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { sanitizeComposerContextLabel } from "@t3tools/shared/composerContextReferences";
+import { useAtomValue } from "@effect/atom-react";
 import * as Option from "effect/Option";
 import { useNavigate } from "@tanstack/react-router";
 import { Columns2Icon, PlusIcon, XIcon } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 
+import { useLocalStorage } from "../../hooks/useLocalStorage";
+import { useClientSettings } from "../../hooks/useSettings";
 import { useThreadActions } from "../../hooks/useThreadActions";
 import { useComposerDraftStore } from "../../composerDraftStore";
 import {
@@ -43,7 +47,17 @@ import {
   waitForThreadShell,
 } from "../../state/entities";
 import { selectThreadRightPanelState, useRightPanelStore } from "../../rightPanelStore";
+import { environmentServerConfigsAtom } from "../../state/server";
 import { readPreparedConnection, usePreparedConnection } from "../../state/session";
+import { useThreadTabRecencyStore } from "../../threadTabRecencyStore";
+import {
+  NO_SIDEBAR_TAB_MANUAL_RANKS,
+  SIDEBAR_TAB_MANUAL_RANKS_KEY,
+  SidebarTabManualRanksSchema,
+  sidebarSiblingTabs,
+  sidebarTabSortTimestamp,
+  sidebarThreadShelf,
+} from "../Sidebar.logic";
 import { splitPartnerKey, useSplitViewStore } from "../../splitViewStore";
 import { useThreadTabContextStore } from "../../threadTabContextStore";
 import { WorkspaceBreadcrumbText } from "../WorkspaceBreadcrumb";
@@ -599,7 +613,78 @@ export async function forkThreadTab(
 }
 
 /**
- * Sibling tabs an empty tab can pull context from. Clicking one captures that tab's transcript
+ * The other tabs of `group` in the sidebar's order, split where the sidebar folds the rest behind
+ * its "more" row, so each tab keeps the place it has there.
+ */
+function useSidebarSiblingTabs(
+  environmentId: EnvironmentId,
+  threadId: ThreadId,
+  group: ThreadTabGroup,
+) {
+  const shell = useThreadShell(scopeThreadRef(environmentId, threadId));
+  const projectShells = useThreadShellsForProjectRefs(
+    shell ? [scopeProjectRef(environmentId, shell.projectId)] : [],
+  );
+  const tabLimit = useClientSettings((s) => s.sidebarTabLimit);
+  const tabSortOrder = useClientSettings((s) => s.sidebarTabSortOrder);
+  const tabSortDirection = useClientSettings((s) => s.sidebarTabSortDirection);
+  const workingShelfEnabled = useClientSettings((s) => s.sidebarWorkingShelfEnabled);
+  const [manualRanks] = useLocalStorage(
+    SIDEBAR_TAB_MANUAL_RANKS_KEY,
+    NO_SIDEBAR_TAB_MANUAL_RANKS,
+    SidebarTabManualRanksSchema,
+  );
+  const openedAtByThreadKey = useThreadTabRecencyStore((s) => s.openedAtByThreadKey);
+  const capabilities = useAtomValue(environmentServerConfigsAtom).get(environmentId)?.environment
+    .capabilities;
+
+  return useMemo(() => {
+    const shellById = new Map(projectShells.map((thread) => [thread.id, thread]));
+    const tabKey = (tab: Pick<ThreadTab, "threadId">) =>
+      scopedThreadKey(scopeThreadRef(environmentId, tab.threadId));
+    // The group's first tab stands for it in the sidebar; its shelf decides card or slim row.
+    const row = group.tabs[0] ? shellById.get(group.tabs[0].threadId) : undefined;
+    const shelf = row
+      ? sidebarThreadShelf(row, {
+          supportsSnooze: capabilities?.threadSnooze === true,
+          supportsSettlement: capabilities?.threadSettlement === true,
+          workingShelfEnabled,
+          now: new Date().toISOString(),
+        })
+      : "active";
+    return sidebarSiblingTabs(group.tabs, {
+      listsRow: shelf === "pinned" || shelf === "active",
+      order: tabSortOrder,
+      direction: tabSortDirection,
+      getKey: tabKey,
+      getTimestamp: (tab, order) => {
+        const tabShell = shellById.get(tab.threadId);
+        return tabShell
+          ? sidebarTabSortTimestamp(tabShell, order, openedAtByThreadKey[tabKey(tab)])
+          : null;
+      },
+      manualRanks,
+      limit: tabLimit,
+      openKey: tabKey({ threadId }),
+    });
+  }, [
+    capabilities,
+    environmentId,
+    group,
+    manualRanks,
+    openedAtByThreadKey,
+    projectShells,
+    tabLimit,
+    tabSortDirection,
+    tabSortOrder,
+    threadId,
+    workingShelfEnabled,
+  ]);
+}
+
+/**
+ * Sibling tabs an empty tab can pull context from, in the sidebar's order and up to its tab
+ * limit, with the rest behind a "more" pill. Clicking one captures that tab's transcript
  * summary and hands back a chip reference for the composer to place at the caret.
  */
 export function ThreadTabContextPills({
@@ -624,8 +709,12 @@ export function ThreadTabContextPills({
   );
   const [loadingId, setLoadingId] = useState<ThreadId | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const siblings = group.tabs.filter((tab) => tab.threadId !== threadId);
-  if (siblings.length === 0 || threadTabContext === null || loadSummary === null) return null;
+  const [expanded, setExpanded] = useState(false);
+  const { shown, hidden } = useSidebarSiblingTabs(environmentId, threadId, group);
+  if (shown.length + hidden.length === 0 || threadTabContext === null || loadSummary === null) {
+    return null;
+  }
+  const siblings = expanded ? [...shown, ...hidden] : shown;
 
   const insert = async (sourceThreadId: ThreadId, title: string) => {
     setLoadingId(sourceThreadId);
@@ -656,6 +745,17 @@ export function ThreadTabContextPills({
             onSelect={(title) => void insert(tab.threadId, title)}
           />
         ))}
+        {hidden.length > 0 ? (
+          <Toggle
+            size="compact"
+            variant="pill"
+            pressed={false}
+            className="min-w-0"
+            onClick={() => setExpanded((value) => !value)}
+          >
+            <span className="truncate">{expanded ? "Show less" : `${hidden.length} more`}</span>
+          </Toggle>
+        ) : null}
       </div>
       {error ? (
         <p role="alert" className="pt-1 text-xs text-destructive">

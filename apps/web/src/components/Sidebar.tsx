@@ -193,14 +193,12 @@ import {
   setSidebarTabGroupOverride,
   type SidebarTabGroupOverrides,
   hasUnseenCompletion,
-  holdSidebarTabOrder,
-  limitSidebarTabs,
+  layoutSidebarTabs,
   sidebarTabToggleCount,
   sidebarTabToggleLabel,
   moveSidebarTab,
   sidebarTabNeighbourKey,
   sidebarTabSortTimestamp,
-  sortSidebarTabs,
   withSidebarTabRanks,
   isSidebarNestedLinkClick,
   isSidebarThreadWorking,
@@ -225,6 +223,10 @@ import {
   sortInboxThreadsByReturn,
   sortLogicalProjectsForSidebar,
   sortPinnedThreadsForSidebar,
+  NO_SIDEBAR_TAB_MANUAL_RANKS,
+  SIDEBAR_TAB_MANUAL_RANKS_KEY,
+  SidebarTabManualRanksSchema,
+  sidebarThreadShelf,
   sortThreadsForSidebar,
   useRetainedValue,
   useSidebarRowSubscriptionLease,
@@ -320,11 +322,6 @@ const TabGroupOverridesSchema = Schema.Struct({
 });
 const NO_TAB_GROUP_OVERRIDES: SidebarTabGroupOverrides = {};
 const INITIAL_TAB_GROUP_OVERRIDES = { showTabs: false, groups: NO_TAB_GROUP_OVERRIDES };
-// Dragged tab order, as each tab's rank within its group. Client-local for the same reason:
-// the server's tab positions also decide which tab stands for the group's row.
-const TAB_MANUAL_RANKS_KEY = "t3code:sidebar:tab-manual-ranks";
-const TabManualRanksSchema = Schema.Record(Schema.String, Schema.Number);
-const NO_TAB_MANUAL_RANKS: Readonly<Record<string, number>> = {};
 const WORKING_SHELF_EXPANDED_KEY = "t3code:sidebar:working-expanded";
 
 // Working beta: when this client saw each thread leave the Working shelf.
@@ -3112,9 +3109,9 @@ export default function Sidebar() {
   const tabSortOrder = useClientSettings((s) => s.sidebarTabSortOrder);
   const tabSortDirection = useClientSettings((s) => s.sidebarTabSortDirection);
   const [tabManualRanks, setTabManualRanks] = useLocalStorage(
-    TAB_MANUAL_RANKS_KEY,
-    NO_TAB_MANUAL_RANKS,
-    TabManualRanksSchema,
+    SIDEBAR_TAB_MANUAL_RANKS_KEY,
+    NO_SIDEBAR_TAB_MANUAL_RANKS,
+    SidebarTabManualRanksSchema,
   );
   // The group whose tabs past the limit are showing. Any click into a tab or thread folds it.
   const [expandedTabRowKey, setExpandedTabRowKey] = useState<string | null>(null);
@@ -3612,15 +3609,14 @@ export default function Sidebar() {
             ? projected
             : { ...projected, snoozedAt: thread.snoozedAt, snoozedUntil: thread.snoozedUntil },
         );
-      } else if (supportsSnooze && effectiveSnoozed(thread, { now: preciseNow })) {
-        // Snooze outranks settlement and pinning until the thread wakes.
-        snoozed.push(thread);
-      } else if (supportsSettlement && thread.settledOverride === "settled") {
-        settled.push(thread);
-      } else if (thread.pinnedAt != null) {
-        pinned.push(thread);
       } else {
-        inbox(thread).push(thread);
+        const shelf = sidebarThreadShelf(thread, {
+          supportsSnooze,
+          supportsSettlement,
+          workingShelfEnabled,
+          now: preciseNow,
+        });
+        ({ snoozed, settled, pinned, working, active })[shelf].push(thread);
       }
     }
     // One shared rule on every platform (see sortPinnedThreadsByOrderKey):
@@ -3897,24 +3893,19 @@ export default function Sidebar() {
     );
     for (const [rowKey, rowTabs] of listedTabsByRowKey) {
       const card = cardByKey.get(rowKey);
-      const sorted = sortSidebarTabs(card ? [card, ...rowTabs] : rowTabs, {
+      const layout = layoutSidebarTabs(card ? [card, ...rowTabs] : rowTabs, {
         order: tabSortOrder,
         direction: tabSortDirection,
         getKey: sidebarThreadKey,
         getTimestamp: (tab, order) =>
           sidebarTabSortTimestamp(tab, order, openedAtByThreadKey[sidebarThreadKey(tab)]),
         manualRanks: tabManualRanks,
+        heldKeys: heldTabOrder?.rowKey === rowKey ? heldTabOrder.keys : null,
+        limit: tabLimit,
+        activeKey: highlightedRouteThreadKey,
+        expanded: expandedTabRowKey === rowKey,
       });
-      const ordered =
-        heldTabOrder?.rowKey === rowKey
-          ? holdSidebarTabOrder(sorted, heldTabOrder.keys, sidebarThreadKey)
-          : sorted;
-      const expanded =
-        expandedTabRowKey === rowKey && tabLimit !== null && ordered.length > tabLimit;
-      const { shown, hidden } = expanded
-        ? { shown: ordered, hidden: [] }
-        : limitSidebarTabs(ordered, tabLimit, highlightedRouteThreadKey, sidebarThreadKey);
-      layouts.set(rowKey, { ordered, shown, hidden, expanded, listsRow: card !== undefined });
+      layouts.set(rowKey, { ...layout, listsRow: card !== undefined });
     }
     return layouts;
   }, [
