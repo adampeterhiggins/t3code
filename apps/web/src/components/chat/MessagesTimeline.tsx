@@ -1,5 +1,6 @@
 import type { NotionPageContextRecord } from "@t3tools/contracts";
 import { ToolCallBody } from "../ToolCallBody";
+import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
 import { ArrowUpIcon, ClockIcon } from "lucide-react";
 import { GitHubIcon, LinearIcon, NotionIcon, SlackIcon } from "../Icons";
 import { ReadOnlySourcePreview } from "../files/AttachmentFilePreview";
@@ -4664,6 +4665,21 @@ function buildToolCallExpandedBody(
 const toolCallExpandedBodyClassName =
   "max-h-64 cursor-text overflow-auto whitespace-pre-wrap break-words font-mono text-secondary-label text-(length:--font-size-code,var(--text-2xs)) leading-relaxed select-text";
 
+/** Build the preview details only when the hover card mounts. */
+function ToolCallPreviewBody(props: {
+  workEntry: TimelineWorkEntry;
+  workspaceRoot: string | undefined;
+  visibleLabel: string;
+}) {
+  const body = buildToolCallExpandedBody(
+    props.workEntry,
+    props.workspaceRoot,
+    props.visibleLabel,
+    null,
+  );
+  return body ? <ToolCallBody text={body} className="max-h-[50vh]" /> : null;
+}
+
 function workEntryIconName(workEntry: TimelineWorkEntry): WorkEntryIconName {
   if (
     workEntry.questionAnswer ||
@@ -4951,7 +4967,9 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
   const [expanded, setExpanded] = useState(
     () => groupView?.state.expandedEntries.has(workEntry.id) ?? false,
   );
+  const [previewOpen, setPreviewOpen] = useState(false);
   const toggleExpanded = () => {
+    setPreviewOpen(false);
     const next = !expanded;
     if (groupView) {
       groupView.onToggleEntry(!next);
@@ -5053,7 +5071,7 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
       }
     : {};
 
-  return (
+  const row = (
     <div
       className={cn(
         "group/timeline-row relative flex flex-col rounded-md px-0.5 transition-colors",
@@ -5159,6 +5177,36 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
         </div>
       ) : null}
     </div>
+  );
+
+  if (!canExpand || !workLogEntryIsToolLike(workEntry) || workEntry.questionAnswer) {
+    return row;
+  }
+  return (
+    <PreviewCard
+      open={!expanded && previewOpen}
+      onOpenChange={(open) => setPreviewOpen(!expanded && open)}
+    >
+      <PreviewCardTrigger render={row} delay={300} closeDelay={150} />
+      <PreviewCardPopup align="start" className="w-md max-w-[calc(100vw-2rem)]">
+        <div className="max-h-[60vh] space-y-1.5 overflow-auto p-3">
+          <p className="flex items-start gap-1.5 text-xs text-secondary-label">
+            <ToolActivityIconView
+              icon={entryToolIcon}
+              fallbackName={entryIconName}
+              className={cn(iconWrapperClass, "mt-px size-3.5 shrink-0")}
+              muted
+            />
+            <span className="min-w-0 whitespace-pre-wrap break-all select-text">{previewText}</span>
+          </p>
+          <ToolCallPreviewBody
+            workEntry={workEntry}
+            workspaceRoot={workspaceRoot}
+            visibleLabel={previewText}
+          />
+        </div>
+      </PreviewCardPopup>
+    </PreviewCard>
   );
 });
 
