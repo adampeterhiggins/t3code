@@ -458,6 +458,8 @@ import { subscribeSplitViewAction, useSplitPaneFocus, useSplitViewActions } from
 import { useSplitViewStore } from "../splitViewStore";
 import {
   ThreadTabContextPills,
+  forkResponseIntoTab,
+  forkThreadTab,
   useRightPanelFollowsTabSwitch,
   useThreadTabGroup,
 } from "./chat/ThreadTabs";
@@ -2131,6 +2133,8 @@ export default function ChatView(props: ChatViewProps) {
   const activeThread = isServerThread ? serverThread : localDraftThread;
   const threadTabGroup = useThreadTabGroup(environmentId, serverThread?.id ?? null);
   const openThreadTabId = threadTabGroup ? (serverThread?.id ?? null) : null;
+  // Upstream servers have no tab group, so tab-only actions fall back or stay hidden.
+  const hasThreadTabs = threadTabGroup !== null;
   // Split panes each keep their own right panel, so neither carries it across a tab switch.
   useRightPanelFollowsTabSwitch(
     environmentId,
@@ -8379,6 +8383,34 @@ export default function ChatView(props: ChatViewProps) {
   const onForkFromRun = useCallback(
     async (input: { readonly sourceThreadId: ThreadId; readonly runId: RunId }) => {
       if (!activeThread || activeEnvironmentUnavailable) return;
+      // A server with chat tabs opens the fork as a new tab of this thread; others (upstream
+      // servers report no tab group) fork it into a thread of its own.
+      if (hasThreadTabs) {
+        const connection = readPreparedConnection(environmentId);
+        if (!connection) {
+          setThreadError(activeThread.id, "The environment is not connected.");
+          return;
+        }
+        try {
+          const tabRef = await forkResponseIntoTab(connection, {
+            environmentId,
+            tabThreadId: activeThread.id,
+            sourceThreadId: input.sourceThreadId,
+            runId: input.runId,
+            title: `${activeThread.title} fork`,
+          });
+          await navigate({
+            to: "/$environmentId/$threadId",
+            params: buildThreadRouteParams(tabRef),
+          });
+        } catch (error) {
+          setThreadError(
+            activeThread.id,
+            error instanceof Error ? error.message : "Failed to fork this response.",
+          );
+        }
+        return;
+      }
       const targetThreadId = newThreadId();
       const targetThreadRef = scopeThreadRef(environmentId, targetThreadId);
       const result = await forkThreadFromRun({
@@ -8418,10 +8450,124 @@ export default function ChatView(props: ChatViewProps) {
       activeThread,
       environmentId,
       forkThreadFromRun,
+      hasThreadTabs,
       navigate,
       setThreadError,
     ],
   );
+
+  // Summary forks open a new tab of this thread whose draft starts with a summary of this tab:
+  // from before a user message, or onto a model or account this tab cannot switch to.
+  const forkInFlightRef = useRef(false);
+  const runFork = async (
+    fork: (connection: NonNullable<ReturnType<typeof readPreparedConnection>>) => Promise<void>,
+  ) => {
+    if (!activeThread || !isServerThread || forkInFlightRef.current) return;
+    const connection = readPreparedConnection(environmentId);
+    if (!connection) {
+      toastManager.add({ type: "error", title: "The environment is not connected." });
+      return;
+    }
+    forkInFlightRef.current = true;
+    try {
+      await fork(connection);
+    } catch (cause) {
+      toastManager.add({
+        type: "error",
+        title: "Could not fork into a new tab",
+        description: cause instanceof Error ? cause.message : undefined,
+      });
+    } finally {
+      forkInFlightRef.current = false;
+    }
+  };
+  const openForkedTab = (tabRef: ScopedThreadRef) =>
+    navigate({ to: "/$environmentId/$threadId", params: buildThreadRouteParams(tabRef) });
+
+  // The summary stops before the message, whose text and attachments follow it in the new tab.
+  const onForkFromMessage = (messageId: MessageId) =>
+    runFork(async (connection) => {
+      if (!activeThread || !serverProjection) return;
+      const source = serverProjection.messages.find((entry) => entry.id === messageId);
+      if (!source || source.role !== "user" || source.streaming) return;
+      const message = {
+        id: source.id,
+        role: source.role,
+        text: source.text,
+        attachments: source.attachments,
+        context: source.context,
+        runId: source.runId,
+        streaming: false,
+        createdAt: DateTime.formatIso(source.createdAt),
+        updatedAt: DateTime.formatIso(source.updatedAt),
+      };
+      const files = await prepareRevertedMessageAttachments({
+        message,
+        environmentId,
+        httpBaseUrl: connection.httpBaseUrl,
+        createAssetUrl: createAttachmentAssetUrl,
+      });
+      // Inherited history comes first in the timeline, and an older window may precede it.
+      const timelineIndex = serverProjection.visibleTurnItems.findIndex(
+        (entry) => entry.item.type === "user_message" && entry.item.messageId === messageId,
+      );
+      const hasHistory =
+        timelineIndex !== 0 ||
+        serverProjection.visibleTurnItems.length < (serverThread?.visibleItemCount ?? 0);
+      const tabRef = await forkThreadTab(connection, {
+        environmentId,
+        sourceThreadId: activeThread.id,
+        sourceTitle: activeThread.title,
+        modelSelection: activeThread.modelSelection,
+        beforeMessageId: messageId,
+        prompt: recallableComposerPrompt(message.text),
+        hasHistory,
+      });
+      restoreMessageAttachments(tabRef, message, files);
+      await openForkedTab(tabRef);
+    });
+
+  // From the model or account picker: the whole tab is summarized, the new tab runs the picked
+  // model, and this tab's draft is copied after the summary. The draft here is left as it was.
+  // `emptyDraftPrompt` stands in for the draft when there is none.
+  const onForkModel = (instanceId: ProviderInstanceId, model: string, emptyDraftPrompt = "") =>
+    runFork(async (connection) => {
+      if (!activeThread) return;
+      const store = useComposerDraftStore.getState();
+      const draft = store.getComposerDraft(composerDraftTarget);
+      const tabContexts = readThreadTabContextRecords(activeThread.id);
+      const issueContexts = readIssueContextRecords(activeThread.id);
+      const repositoryContexts = readRepositoryContextRecords(activeThread.id);
+      const tabRef = await forkThreadTab(connection, {
+        environmentId,
+        sourceThreadId: activeThread.id,
+        sourceTitle: activeThread.title,
+        modelSelection: createModelSelection(instanceId, model),
+        prompt: draft?.prompt.trim() || emptyDraftPrompt,
+        hasHistory: threadHasStarted(activeThread),
+      });
+      // Chips in the copied prompt resolve against these, so ids are kept.
+      for (const record of tabContexts) {
+        useThreadTabContextStore.getState().upsert(tabRef.threadId, record);
+      }
+      for (const record of issueContexts) {
+        useIssueContextStore.getState().upsert(tabRef.threadId, record);
+      }
+      for (const record of repositoryContexts) {
+        useRepositoryContextStore.getState().upsert(tabRef.threadId, record);
+      }
+      if (draft) {
+        store.addImages(tabRef, draft.images.map(cloneComposerImageForRetry), {
+          allowDuplicates: true,
+        });
+        store.addFiles(tabRef, draft.files, { allowDuplicates: true });
+        store.setTerminalContexts(tabRef, draft.terminalContexts);
+        store.setPreviewAnnotations(tabRef, draft.previewAnnotations);
+        store.setReviewComments(tabRef, draft.reviewComments);
+      }
+      await openForkedTab(tabRef);
+    });
+
   const onCompactContext = async () => {
     if (compactDisabled || !activeThread || !clientSettingsHydrated || sendInFlightRef.current) {
       return;
@@ -10470,22 +10616,35 @@ export default function ChatView(props: ChatViewProps) {
     composerRef,
   ]);
 
+  const getModelChangeBlockReason = useCallback(
+    (instanceId: ProviderInstanceId, model: string) =>
+      activeThread
+        ? getStartedThreadModelChangeBlockReason({
+            providers: providerStatuses,
+            hasStartedSession: activeRuntime !== null,
+            supportsProviderSwitchingViaHandoff,
+            currentModelSelection: activeThread.modelSelection,
+            currentProviderInstanceId: activeRuntime?.providerInstanceId ?? null,
+            nextModelSelection: { instanceId, model },
+          })
+        : null,
+    [activeRuntime, activeThread, providerStatuses, supportsProviderSwitchingViaHandoff],
+  );
+  // A started chat on a server with tabs can fork any model into a new tab, so models it
+  // cannot switch to in place stay pickable and fork instead of being disabled.
+  const canForkModel = isServerThread && lockedProvider !== null && hasThreadTabs;
   const getModelDisabledReason = useCallback(
     (instanceId: ProviderInstanceId, model: string): string | null => {
-      if (!activeThread) {
-        return null;
-      }
-      const reason = getStartedThreadModelChangeBlockReason({
-        providers: providerStatuses,
-        hasStartedSession: activeRuntime !== null,
-        supportsProviderSwitchingViaHandoff,
-        currentModelSelection: activeThread.modelSelection,
-        currentProviderInstanceId: activeRuntime?.providerInstanceId ?? null,
-        nextModelSelection: { instanceId, model },
-      });
+      if (canForkModel) return null;
+      const reason = getModelChangeBlockReason(instanceId, model);
       return reason ? `${reason.description} Start a new thread to use this model.` : null;
     },
-    [activeRuntime, activeThread, providerStatuses, supportsProviderSwitchingViaHandoff],
+    [canForkModel, getModelChangeBlockReason],
+  );
+  const modelRequiresFork = useCallback(
+    (instanceId: ProviderInstanceId, model: string) =>
+      getModelChangeBlockReason(instanceId, model) !== null,
+    [getModelChangeBlockReason],
   );
 
   const onProviderModelSelect = useCallback(
@@ -10724,6 +10883,16 @@ export default function ChatView(props: ChatViewProps) {
   onRevertToTurnCountRef.current = onRevertToTurnCount;
   const onRevertTimelineTurn = useCallback((targetTurnCount: number, messageId: MessageId) => {
     void onRevertToTurnCountRef.current(targetTurnCount, messageId);
+  }, []);
+  const onForkFromMessageRef = useRef(onForkFromMessage);
+  onForkFromMessageRef.current = onForkFromMessage;
+  const onForkTimelineMessage = useCallback((messageId: MessageId) => {
+    void onForkFromMessageRef.current(messageId);
+  }, []);
+  const onForkModelRef = useRef(onForkModel);
+  onForkModelRef.current = onForkModel;
+  const onForkComposerModel = useCallback((instanceId: ProviderInstanceId, model: string) => {
+    void onForkModelRef.current(instanceId, model);
   }, []);
   const pendingSidebarFileDrops = useSidebarPendingFileDropStore((state) => state.pending);
   const consumePendingFileDrop = useSidebarPendingFileDropStore(
@@ -11241,6 +11410,9 @@ export default function ChatView(props: ChatViewProps) {
                 {...(!paintOnlyDisplayedTimeline
                   ? { onUseArtifactTemplate: useArtifactTemplate }
                   : {})}
+                {...(isServerThread && hasThreadTabs && !paintOnlyDisplayedTimeline
+                  ? { onForkFromMessage: onForkTimelineMessage }
+                  : {})}
                 isRevertingCheckpoint={isRevertingCheckpoint}
                 onImageExpand={onExpandTimelineImage}
                 onFileOpen={paintOnlyDisplayedTimeline ? noopHeldAttachment : openFileAttachment}
@@ -11561,6 +11733,9 @@ export default function ChatView(props: ChatViewProps) {
                               onProviderModelSelect={onProviderModelSelect}
                               onOpenProviderSetup={openProviderSetup}
                               getModelDisabledReason={getModelDisabledReason}
+                              {...(canForkModel
+                                ? { onForkModel: onForkComposerModel, modelRequiresFork }
+                                : {})}
                               toggleInteractionMode={toggleInteractionMode}
                               handleRuntimeModeChange={handleRuntimeModeChange}
                               handleInteractionModeChange={handleInteractionModeChange}

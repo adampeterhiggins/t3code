@@ -46,6 +46,7 @@ import {
 import { Project, ProjectMutation, ProjectSnapshot } from "./project.ts";
 import {
   CreateThreadTabInput,
+  ForkThreadTabInput,
   ThreadTabGroup,
   ThreadTabMemberships,
   ThreadTabHandoff,
@@ -621,6 +622,15 @@ export class EnvironmentThreadTabsHttpApi extends HttpApiGroup.make("threadTabs"
       headers: OptionalBearerHeaders,
       params: ThreadTabParams,
       payload: CreateThreadTabInput,
+      success: ThreadTabGroup,
+      error: EnvironmentThreadTabsErrors,
+    }).middleware(EnvironmentAuthenticatedAuth),
+  )
+  .add(
+    HttpApiEndpoint.post("fork", "/api/thread-tabs/:threadId/fork", {
+      headers: OptionalBearerHeaders,
+      params: ThreadTabParams,
+      payload: ForkThreadTabInput,
       success: ThreadTabGroup,
       error: EnvironmentThreadTabsErrors,
     }).middleware(EnvironmentAuthenticatedAuth),
