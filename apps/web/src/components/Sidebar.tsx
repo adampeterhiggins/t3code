@@ -5729,6 +5729,24 @@ export default function Sidebar() {
                                 machineByEnvironmentId={environmentMachineById}
                               />
                             ) : null}
+                            {project ? (
+                              // Shown on the highlighted row: scope to just this
+                              // project and close, instead of toggling it.
+                              <button
+                                type="button"
+                                tabIndex={-1}
+                                className="hidden shrink-0 cursor-pointer text-xs font-medium text-primary in-data-highlighted:inline hover:text-primary/80"
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  setProjectScopeKeys([project.projectKey]);
+                                  dispatchProjectScopeMenu({ type: "open-changed", open: false });
+                                }}
+                              >
+                                Only
+                              </button>
+                            ) : null}
                             <CheckIcon
                               aria-hidden="true"
                               className={cn(
