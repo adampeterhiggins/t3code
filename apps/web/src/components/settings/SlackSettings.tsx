@@ -14,6 +14,7 @@ import { useRef, useState } from "react";
 
 import { isElectron } from "../../env";
 import { writeTextToClipboard } from "../../hooks/useCopyToClipboard";
+import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "../../hooks/useSettings";
 import { ensureLocalApi } from "../../localApi";
 import { usePrimaryEnvironment } from "../../state/environments";
 import { useEnvironmentQuery } from "../../state/query";
@@ -21,6 +22,7 @@ import { slackEnvironment } from "../../state/slack";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { Switch } from "../ui/switch";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import { useSettingsScope } from "./SettingsScopeContext";
@@ -47,13 +49,37 @@ export function SlackSettingsSection() {
           description="Connect to an environment to set up Slack."
         />
       ) : (
-        <SlackConnectionRows
+        <SlackIntegrationRows
           key={environmentId}
           environmentId={environmentId}
           environmentLabel={environment?.label ?? "this environment"}
         />
       )}
     </SettingsSection>
+  );
+}
+
+function SlackIntegrationRows(props: {
+  readonly environmentId: EnvironmentId;
+  readonly environmentLabel: string;
+}) {
+  const enabled = useEnvironmentSettings(props.environmentId, (s) => s.enableSlackIntegration);
+  const updateSettings = useUpdateEnvironmentSettings(props.environmentId);
+  return (
+    <>
+      <SettingsRow
+        title="Enable Slack integration"
+        description="Attach Slack messages and threads. Turn off to keep pasted Slack links as links without setup prompts. Your connected account is kept."
+        control={
+          <Switch
+            aria-label="Enable Slack integration"
+            checked={enabled}
+            onCheckedChange={(checked) => updateSettings({ enableSlackIntegration: checked })}
+          />
+        }
+      />
+      {enabled ? <SlackConnectionRows {...props} /> : null}
+    </>
   );
 }
 

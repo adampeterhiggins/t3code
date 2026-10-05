@@ -2,6 +2,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import { useMemo } from "react";
 
 import type { ComposerTrigger } from "~/composer-logic";
+import { useEnvironmentSettings } from "~/hooks/useSettings";
 import { useDebouncedValue } from "~/state/queries";
 import { useEnvironmentQuery } from "~/state/query";
 import { slackEnvironment } from "~/state/slack";
@@ -20,12 +21,14 @@ export function useComposerSlackItems(
   trigger: ComposerTrigger | null,
   active: boolean,
 ) {
+  const slackEnabled = useEnvironmentSettings(environmentId, (s) => s.enableSlackIntegration);
   const connection = useEnvironmentQuery(
-    trigger?.kind === "pull-request"
+    slackEnabled && trigger?.kind === "pull-request"
       ? slackEnvironment.connection({ environmentId, input: {} })
       : null,
   );
-  const enabled = trigger?.kind === "pull-request" && connection.data?.phase === "connected";
+  const enabled =
+    slackEnabled && trigger?.kind === "pull-request" && connection.data?.phase === "connected";
   const query = enabled && active && trigger.query.length > 0 ? trigger.query : null;
   const debouncedQuery = useDebouncedValue(query, SLACK_SEARCH_DEBOUNCE_MS);
   const settledQuery = query === debouncedQuery ? query : null;

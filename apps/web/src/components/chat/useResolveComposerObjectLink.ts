@@ -15,6 +15,7 @@ import { useCallback } from "react";
 
 import { type ComposerThreadTarget, useComposerDraftStore } from "~/composerDraftStore";
 import { useIssueContextStore } from "~/issueContextStore";
+import { useEnvironmentSettings } from "~/hooks/useSettings";
 import type { ComposerContextReference } from "~/lib/composerContextReferences";
 import { reviewCommentContextReference } from "~/lib/composerContextRecords";
 import { resolvePullRequestPreviewTarget } from "~/lib/openPullRequestLink";
@@ -76,6 +77,7 @@ export function useResolveComposerObjectLink(input: {
 }) {
   const { threadRef, draftTarget } = input;
   const environmentId = threadRef.environmentId;
+  const slackEnabled = useEnvironmentSettings(environmentId, (s) => s.enableSlackIntegration);
   const getLinearIssue = useAtomCommand(linearEnvironment.getIssue, { reportFailure: false });
   const getGitHubIssue = useAtomCommand(githubIssueEnvironment.getIssue, { reportFailure: false });
   const getNotionPage = useAtomCommand(notionEnvironment.getPage, { reportFailure: false });
@@ -121,6 +123,7 @@ export function useResolveComposerObjectLink(input: {
           };
         }
         case "slack-message": {
+          if (!slackEnabled) return null;
           const result = await getSlackThread({
             environmentId,
             input: {
@@ -200,6 +203,7 @@ export function useResolveComposerObjectLink(input: {
       getSlackThread,
       projects,
       pullRequestsEnabled,
+      slackEnabled,
       threadRef.threadId,
     ],
   );

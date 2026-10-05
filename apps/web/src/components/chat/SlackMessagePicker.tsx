@@ -12,6 +12,7 @@ import { useCallback, useState } from "react";
 
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { useIssueContextStore } from "~/issueContextStore";
+import { useEnvironmentSettings } from "~/hooks/useSettings";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { useDebouncedValue } from "~/state/queries";
 import { useEnvironmentQuery } from "~/state/query";
@@ -133,16 +134,19 @@ export function SlackMessagePickerHost() {
 function SlackMessagePickerDialog(props: { threadRef: ScopedThreadRef }) {
   const { threadRef } = props;
   const environmentId = threadRef.environmentId;
+  const slackEnabled = useEnvironmentSettings(environmentId, (s) => s.enableSlackIntegration);
   const navigate = useNavigate();
   const attachMessage = useAttachSlackMessage();
   const [query, setQuery] = useState("");
   const [attaching, setAttaching] = useState(false);
   const [menuMessage, setMenuMessage] = useState<SlackMessageSummary | null>(null);
   const debouncedQuery = useDebouncedValue(query.trim(), SEARCH_DEBOUNCE_MS);
-  const connection = useEnvironmentQuery(slackEnvironment.connection({ environmentId, input: {} }));
+  const connection = useEnvironmentQuery(
+    slackEnabled ? slackEnvironment.connection({ environmentId, input: {} }) : null,
+  );
   const connected = connection.data?.phase === "connected";
   const messagesQuery = useEnvironmentQuery(
-    connected && debouncedQuery.length > 0
+    slackEnabled && connected && debouncedQuery.length > 0
       ? slackEnvironment.messages({ environmentId, input: { query: debouncedQuery } })
       : null,
   );
@@ -156,6 +160,7 @@ function SlackMessagePickerDialog(props: { threadRef: ScopedThreadRef }) {
   const searching = messagesQuery.isPending || query.trim() !== debouncedQuery;
 
   async function select(message: SlackMessageSummary, scope: SlackGetThreadInput["scope"]) {
+    if (!slackEnabled) return;
     if (attaching) return;
     setAttaching(true);
     const done = await attachMessage(threadRef, slackGetThreadInput(message, scope));
@@ -176,6 +181,7 @@ function SlackMessagePickerDialog(props: { threadRef: ScopedThreadRef }) {
               : "No messages match."
             : null;
 
+  if (!slackEnabled) return null;
   return (
     <CommandDialog
       open

@@ -62,6 +62,11 @@ isn't connected, a notice says so.
 
 ## Disconnect
 
+To stop Slack setup prompts and automatic link attachments, turn off **Enable Slack integration**
+under **Settings > Integrations > Slack**. Slack links stay as links, and Slack attachment actions
+are hidden on web, desktop, and mobile for that server. Your connected account and messages already
+attached are kept. Turn the setting back on to use Slack again without reconnecting.
+
 Click **Disconnect** under **Settings > Integrations > Slack**. T3 Code revokes its token at
 Slack and deletes it. The client ID stays, so reconnecting is one click. Messages already attached
 stay as they were.

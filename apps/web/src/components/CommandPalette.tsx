@@ -2125,16 +2125,20 @@ function OpenCommandPaletteDialog(props: {
         openNotionPagePicker(composerThreadRef);
       },
     });
-    actionItems.push({
-      kind: "action",
-      value: "action:attach-slack-message",
-      searchTerms: ["slack", "message", "thread", "conversation", "attach", "context"],
-      title: "Attach Slack message",
-      icon: <SlackIcon className={ITEM_ICON_CLASS} />,
-      run: async () => {
-        openSlackMessagePicker(composerThreadRef);
-      },
-    });
+    if (
+      serverConfigs.get(composerThreadRef.environmentId)?.settings.enableSlackIntegration !== false
+    ) {
+      actionItems.push({
+        kind: "action",
+        value: "action:attach-slack-message",
+        searchTerms: ["slack", "message", "thread", "conversation", "attach", "context"],
+        title: "Attach Slack message",
+        icon: <SlackIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          openSlackMessagePicker(composerThreadRef);
+        },
+      });
+    }
     // The picker is mounted by a chat view whose project is on GitHub, so only offer it there.
     const composerProject = projectByKey.get(
       `${composerThreadRef.environmentId}:${currentProjectId ?? ""}`,

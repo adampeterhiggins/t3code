@@ -11,6 +11,7 @@ import { ActivityIndicator, Alert, FlatList, Pressable, View } from "react-nativ
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { relativeTime } from "../lib/time";
+import { useEnvironmentServerConfig } from "../state/entities";
 import { slackEnvironment } from "../state/slack";
 import { useDebouncedValue } from "../state/queries";
 import { useEnvironmentQuery } from "../state/query";
@@ -52,17 +53,22 @@ type OpenedSlackMessagePicker = SlackMessagePickerTarget & {
  * opening the sheet blurs the editor, which can unmount a focus-dependent toolbar.
  */
 export function useSlackMessagePicker(target: SlackMessagePickerTarget | null): {
-  readonly open: () => void;
+  readonly open: (() => void) | undefined;
   readonly sheet: ReactNode;
 } {
   const [opened, setOpened] = useState<OpenedSlackMessagePicker | null>(null);
+  const serverConfig = useEnvironmentServerConfig(target?.environmentId ?? null);
+  const enabled = serverConfig?.settings.enableSlackIntegration === true;
+  const openedServerConfig = useEnvironmentServerConfig(opened?.environmentId ?? null);
   return {
-    open: () => {
-      if (target) {
-        setOpened({ ...target, insertion: captureComposerDraftInsertion(target.draftKey) });
-      }
-    },
-    sheet: opened ? <SlackMessagePickerSheet {...opened} onClose={() => setOpened(null)} /> : null,
+    open:
+      target && enabled
+        ? () => setOpened({ ...target, insertion: captureComposerDraftInsertion(target.draftKey) })
+        : undefined,
+    sheet:
+      opened && openedServerConfig?.settings.enableSlackIntegration ? (
+        <SlackMessagePickerSheet {...opened} onClose={() => setOpened(null)} />
+      ) : null,
   };
 }
 
