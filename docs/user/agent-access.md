@@ -64,6 +64,12 @@ An agent working in a thread can start other threads with `create_threads` or `t
 hand a task to a child agent with `delegate_task`, message threads, and wait for their results,
 for example to split a large change into parallel pieces. There is nothing to turn on.
 
+A child agent works in its parent's checkout unless the agent asks for a worktree of its own. Then
+the child gets a new worktree (or an existing one), set up like a thread's worktree with your
+setup script, before it starts, so parallel children do not edit the same files. It still shows
+under its parent in Lineage and the Agents panel. Only a thread in full-access, non-plan mode can
+ask for one.
+
 Threads an agent starts appear in your sidebar with a bot icon, and their header shows which
 thread started them; click it to open that thread. An agent cannot give a thread more freedom
 than its own permission mode allows. It can start threads two levels deep, and keep at most five

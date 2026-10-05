@@ -7,12 +7,14 @@ import * as FileSystem from "effect/FileSystem";
 import * as ServerConfig from "../config.ts";
 import { createPendingAttachmentId, resolveAttachmentPath } from "../attachmentStore.ts";
 import * as ThreadMessageIntake from "./ThreadMessageIntake.ts";
-import { assert, it, vi } from "@effect/vitest";
+import { assert, describe, it, vi } from "@effect/vitest";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import {
   ORCHESTRATION_V2_WORKSPACE_PREPARATION_FAILURE_CODE,
   ChatAttachmentId,
   ComposerContextId,
+  EnvironmentId,
+  type OrchestrationV2DelegatedTaskWorkspaceStrategy,
   type ChatAttachment,
   CommandId,
   DEFAULT_SERVER_SETTINGS,
@@ -54,7 +56,10 @@ import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
 import * as CommandReceiptStore from "./CommandReceiptStore.ts";
 import * as EffectOutbox from "./EffectOutbox.ts";
+import * as EventSink from "./EventSink.ts";
 import * as IdAllocator from "./IdAllocator.ts";
+import type { McpInvocationScope } from "../mcp/McpInvocationContext.ts";
+import * as OrchestratorMcpService from "../mcp/OrchestratorMcpService.ts";
 import type { ProviderAdapterV2Shape } from "./ProviderAdapter.ts";
 import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
 import * as ThreadLaunch from "./ThreadLaunchService.ts";
@@ -189,6 +194,7 @@ function makeHarness(options: HarnessOptions = {}) {
     ServerSettings.layerTest(options.serverSettings),
     Layer.mock(ContextRepositories.ContextRepositories)({ ensure: ensureContextRepositories }),
     makeProviderRegistryLayer(options.providers),
+    registry,
     options.managedFolders ??
       Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
         namedProjectsRoot: "/projects",
@@ -226,6 +232,7 @@ function makeHarness(options: HarnessOptions = {}) {
     layer: Layer.mergeAll(
       launch,
       threadManagement,
+      orchestrator,
       titleRegeneration,
       outbox,
       database,
@@ -2032,6 +2039,7 @@ it.effect("shared intake preserves durable attachment bytes after a lost launch 
             ),
           ),
         retryPreparation: launches.retryPreparation,
+        prepareDeferredRun: launches.prepareDeferredRun,
         prepareMessageWorkspace: launches.prepareMessageWorkspace,
         nameTemporaryBranch: launches.nameTemporaryBranch,
       }),
@@ -2477,3 +2485,232 @@ it.effect(
     }).pipe(Effect.provide(Layer.merge(harness.layer, intakeFiles)));
   },
 );
+
+describe("delegated tasks with a workspace of their own", () => {
+  const codexProvider: ServerProvider = {
+    instanceId: modelSelection.instanceId,
+    driver: ProviderDriverKind.make("codex"),
+    enabled: true,
+    installed: true,
+    version: "test",
+    status: "ready",
+    auth: { status: "authenticated" },
+    checkedAt: "2026-10-05T00:00:00.000Z",
+    models: [
+      {
+        slug: modelSelection.model,
+        name: modelSelection.model,
+        isCustom: false,
+        capabilities: null,
+      },
+    ],
+    slashCommands: [],
+    skills: [],
+  };
+
+  /** The launch harness plus the MCP service an agent's delegate_task call reaches. */
+  function delegationHarness(options: HarnessOptions = {}) {
+    const harness = makeHarness({ ...options, providers: [codexProvider] });
+    const service = OrchestratorMcpService.layer.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          harness.layer,
+          NodeCrypto.layer,
+          Layer.mock(ScheduledTasks.ScheduledTaskService)({}),
+        ),
+      ),
+    );
+    return { ...harness, layer: Layer.merge(harness.layer, service) };
+  }
+
+  /** A parent thread in its own worktree with an active run, as an agent calling MCP sees it. */
+  const startParent = (name: string, runtimeMode: "full-access" | "approval-required") =>
+    Effect.gen(function* () {
+      const threads = yield* ThreadManagement.ThreadManagementService;
+      const threadId = ThreadId.make(`thread:${name}:parent`);
+      yield* threads.dispatch({
+        type: "thread.create",
+        commandId: CommandId.make(`command:${name}:parent`),
+        threadId,
+        projectId,
+        title: "Parent",
+        modelSelection,
+        runtimeMode,
+        interactionMode: "default",
+        branch: "parent-branch",
+        worktreePath: "/repo-worktrees/parent",
+        createdBy: "user",
+        creationSource: "web",
+      });
+      yield* threads.dispatch({
+        type: "message.dispatch",
+        commandId: CommandId.make(`command:${name}:parent-message`),
+        threadId,
+        messageId: MessageId.make(`message:${name}:parent`),
+        text: "Fan the work out",
+        attachments: [],
+        modelSelection,
+        dispatchMode: { type: "start_immediately" },
+        createdBy: "user",
+        creationSource: "web",
+      });
+      const scope: McpInvocationScope = {
+        environmentId: EnvironmentId.make("environment:delegate-workspace"),
+        requestNamespace: `provider-session:${name}`,
+        thread: {
+          threadId,
+          providerSessionId: `provider-session:${name}`,
+          providerInstanceId: modelSelection.instanceId,
+        },
+        client: undefined,
+        capabilities: new Set(["orchestration"]),
+        issuedAt: 1,
+      };
+      return { threadId, scope };
+    });
+
+  const delegate = (
+    name: string,
+    workspaceStrategy?: OrchestrationV2DelegatedTaskWorkspaceStrategy,
+  ) =>
+    Effect.gen(function* () {
+      const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+      const parent = yield* startParent(name, "full-access");
+      const result = yield* service.delegateTask(parent.scope, {
+        task: "Build the feature in its own checkout.",
+        mode: "async",
+        clientRequestId: `delegate:${name}`,
+        ...(workspaceStrategy === undefined ? {} : { workspaceStrategy }),
+      });
+      return { parent, result };
+    });
+
+  /** Resolves with the first persisted event that matches, replaying history first. */
+  const awaitEvent = (
+    threadId: ThreadId,
+    eventType: "run.updated" | "subagent.updated",
+    matches: (payload: Record<string, unknown>) => boolean,
+  ) =>
+    Effect.gen(function* () {
+      const events = yield* EventSink.EventSinkV2;
+      const found = yield* events.stream({ threadId, eventType }).pipe(
+        Stream.filter((stored) => matches(stored.event.payload as Record<string, unknown>)),
+        Stream.runHead,
+      );
+      assert.isTrue(Option.isSome(found));
+    });
+
+  it.effect("prepares and binds a new worktree before the child's agent starts", () => {
+    const harness = delegationHarness();
+    return Effect.gen(function* () {
+      const threads = yield* ThreadManagement.ThreadManagementService;
+      const { parent, result } = yield* delegate("worktree", { type: "worktree", baseRef: "main" });
+      assert.equal(result.status, "running");
+
+      yield* awaitEvent(result.childThreadId, "run.updated", (run) => run.status === "starting");
+      const child = yield* threads.getThreadProjection(result.childThreadId);
+      assert.equal(child.thread.worktreePath, "/repo-worktrees/feature");
+      // Named from the task before the setup script ran, as a launch is.
+      assert.equal(child.thread.branch, "generated-branch");
+      assert.equal(child.thread.lineage.parentThreadId, parent.threadId);
+      assert.equal(child.thread.lineage.relationshipToParent, "subagent");
+      assert.equal(child.runs[0]?.status, "starting");
+      assert.equal(child.checkpointScopes[0]?.cwd, "/repo-worktrees/feature");
+      assert.equal(harness.createWorktree.mock.calls[0]?.[0]?.baseRefName, "main");
+      assert.deepEqual(
+        harness.runSetup.mock.calls.map(([input]) => [input.threadId, input.worktreePath]),
+        [[result.childThreadId, "/repo-worktrees/feature"]],
+      );
+
+      // Still the caller's subagent, and the caller keeps its own checkout.
+      const parentProjection = yield* threads.getThreadProjection(parent.threadId);
+      assert.equal(parentProjection.thread.worktreePath, "/repo-worktrees/parent");
+      const task = parentProjection.subagents.find((candidate) => candidate.id === result.taskId);
+      assert.equal(task?.childThreadId, result.childThreadId);
+      assert.equal(task?.origin, "app_owned");
+    }).pipe(Effect.provide(harness.layer));
+  });
+
+  it.effect("binds an existing worktree without creating one", () => {
+    const harness = delegationHarness();
+    return Effect.gen(function* () {
+      const threads = yield* ThreadManagement.ThreadManagementService;
+      const { result } = yield* delegate("existing", {
+        type: "existing_worktree",
+        worktreePath: "/repo-worktrees/existing",
+        branch: "feature/existing",
+      });
+      yield* awaitEvent(result.childThreadId, "run.updated", (run) => run.status === "starting");
+      const child = yield* threads.getThreadProjection(result.childThreadId);
+      assert.equal(child.thread.worktreePath, "/repo-worktrees/existing");
+      assert.equal(child.thread.branch, "feature/existing");
+      assert.equal(harness.createWorktree.mock.calls.length, 0);
+    }).pipe(Effect.provide(harness.layer));
+  });
+
+  it.effect("shares the parent's checkout and starts at once without a workspace strategy", () => {
+    const harness = delegationHarness();
+    return Effect.gen(function* () {
+      const threads = yield* ThreadManagement.ThreadManagementService;
+      const { result } = yield* delegate("shared");
+      const child = yield* threads.getThreadProjection(result.childThreadId);
+      assert.equal(child.thread.worktreePath, "/repo-worktrees/parent");
+      assert.equal(child.thread.branch, "parent-branch");
+      assert.equal(child.runs[0]?.status, "starting");
+      assert.equal(harness.createWorktree.mock.calls.length, 0);
+      assert.equal(harness.runSetup.mock.calls.length, 0);
+    }).pipe(Effect.provide(harness.layer));
+  });
+
+  it.effect("fails the task with the preparation error and removes the partial worktree", () => {
+    const harness = delegationHarness({
+      createWorktree: (_input, options) =>
+        (options?.progress?.onWorktreeClaimed?.("/repo-worktrees/partial") ?? Effect.void).pipe(
+          Effect.andThen(Effect.fail(new Error("checkout failed") as never)),
+        ),
+    });
+    return Effect.gen(function* () {
+      const threads = yield* ThreadManagement.ThreadManagementService;
+      const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+      const { parent, result } = yield* delegate("failure", { type: "worktree", baseRef: "main" });
+
+      yield* awaitEvent(
+        parent.threadId,
+        "subagent.updated",
+        (task) => task.id === result.taskId && task.status === "failed",
+      );
+      const status = yield* service.taskStatus(parent.scope, result.taskId);
+      assert.equal(status.status, "failed");
+      assert.include(
+        status.summary ?? "",
+        "Workspace preparation failed during provision worktree",
+      );
+      assert.include(status.summary ?? "", "checkout failed");
+      const child = yield* threads.getThreadProjection(result.childThreadId);
+      assert.equal(child.thread.worktreePath, null);
+      assert.deepEqual(
+        harness.removeWorktree.mock.calls.map(([input]) => input.path),
+        ["/repo-worktrees/partial"],
+      );
+    }).pipe(Effect.provide(harness.layer));
+  });
+
+  it.effect("requires a full-access/default caller, as t3_thread_launch does", () => {
+    const harness = delegationHarness();
+    return Effect.gen(function* () {
+      const threads = yield* ThreadManagement.ThreadManagementService;
+      const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+      const parent = yield* startParent("denied", "approval-required");
+      const error = yield* service
+        .delegateTask(parent.scope, {
+          task: "Build the feature in its own checkout.",
+          workspaceStrategy: { type: "worktree", baseRef: "main" },
+        })
+        .pipe(Effect.flip);
+      assert.equal(error.code, "capability_denied");
+      const projection = yield* threads.getThreadProjection(parent.threadId);
+      assert.deepEqual(projection.subagents, []);
+      assert.equal(harness.createWorktree.mock.calls.length, 0);
+    }).pipe(Effect.provide(harness.layer));
+  });
+});

@@ -65,6 +65,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import * as ProviderAdapterRegistry from "../orchestration-v2/ProviderAdapterRegistry.ts";
+import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts";
 import {
   subagentResultForRun,
   delegatedTaskProgress,
@@ -770,6 +771,7 @@ const make = Effect.gen(function* () {
   const providerAdapters = yield* ProviderAdapterRegistry.ProviderAdapterRegistryV2;
   const scheduledTasks = yield* ScheduledTaskService.ScheduledTaskService;
   const projects = yield* ProjectService.ProjectService;
+  const threadLaunch = yield* ThreadLaunchService.ThreadLaunchService;
 
   /** A caller-named project, which must exist before anything is recorded against it. */
   const requireProject = (projectId: ProjectId) =>
@@ -1505,6 +1507,18 @@ const make = Effect.gen(function* () {
     delegateTask: (callerScope, input) =>
       Effect.gen(function* () {
         const { scope, parent } = yield* loadThreadCaller(callerScope, "delegate_task");
+        // A workspace of its own creates a checkout and runs the setup script,
+        // so it needs what t3_thread_launch needs of a calling thread.
+        if (
+          input.workspaceStrategy !== undefined &&
+          (parent.thread.runtimeMode !== "full-access" ||
+            parent.thread.interactionMode !== "default")
+        ) {
+          return yield* failure(
+            "capability_denied",
+            "A delegated task with its own workspaceStrategy requires a full-access/default calling thread. Omit workspaceStrategy to share this thread's checkout.",
+          );
+        }
         yield* assertMaySpawn(threadManagement, scope.thread.threadId, 1);
         const parentRun = parent.runs
           .filter(ThreadManagementService.isActiveRun)
@@ -1554,6 +1568,9 @@ const make = Effect.gen(function* () {
             // delegations deliver through the blocking tool call, so a wake is
             // only needed if the parent settled first (timeout, disconnect).
             completionWake: input.mode === "wait" ? "settled_only" : "always",
+            ...(input.workspaceStrategy === undefined
+              ? {}
+              : { workspaceStrategy: input.workspaceStrategy }),
           })
           .pipe(
             Effect.mapError((error) =>
@@ -1574,6 +1591,23 @@ const make = Effect.gen(function* () {
           );
         }
         const taskId = taskEvent.event.payload.id;
+        // The child's run waits in preparing until its workspace is ready.
+        // Preparation runs in the background; a failure fails the child run,
+        // which reaches this thread as a failed task like any other.
+        const childThreadId = taskEvent.event.payload.childThreadId;
+        if (input.workspaceStrategy !== undefined && childThreadId !== null) {
+          const childRun = result.storedEvents.find(
+            (stored) =>
+              stored.event.type === "run.created" && stored.event.threadId === childThreadId,
+          );
+          if (childRun?.event.type === "run.created") {
+            yield* threadLaunch.prepareDeferredRun({
+              commandId,
+              threadId: childThreadId,
+              runId: childRun.event.payload.id,
+            });
+          }
+        }
 
         if (input.mode !== "wait") {
           return yield* readTask(scope, taskId, false, true);
@@ -2125,4 +2159,5 @@ export const layer: Layer.Layer<
   | ProviderAdapterRegistry.ProviderAdapterRegistryV2
   | ScheduledTaskService.ScheduledTaskService
   | ProjectService.ProjectService
+  | ThreadLaunchService.ThreadLaunchService
 > = Layer.effect(OrchestratorMcpService, make);

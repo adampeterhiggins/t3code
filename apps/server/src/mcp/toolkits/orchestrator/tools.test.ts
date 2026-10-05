@@ -20,6 +20,16 @@ describe("orchestrator MCP tool guidance", () => {
     assert.include(DelegateTaskTool.description ?? "", "keep that taskId");
     assert.include(DelegateTaskTool.description ?? "", "call delegate_task again");
     assert.include(DelegateTaskTool.description ?? "", "childThreadId is backing storage");
+    // Subagents can get their own worktree without leaving the caller's lineage.
+    assert.include(DelegateTaskTool.description ?? "", "workspaceStrategy");
+    assert.include(
+      OrchestratorToolkit.tools.orchestrator_capabilities.description ?? "",
+      "use delegate_task with workspaceStrategy",
+    );
+    assert.property(
+      (Tool.getJsonSchema(DelegateTaskTool) as { readonly properties?: object }).properties ?? {},
+      "workspaceStrategy",
+    );
     assert.include(
       OrchestratorToolkit.tools.t3_thread_send.description ?? "",
       "Do not use a delegated task's childThreadId to start another review round",

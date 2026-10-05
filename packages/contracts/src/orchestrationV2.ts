@@ -522,25 +522,40 @@ export const OrchestrationV2RunBackgroundWorkCancelled = Schema.Struct({
 export type OrchestrationV2RunBackgroundWorkCancelled =
   typeof OrchestrationV2RunBackgroundWorkCancelled.Type;
 
+const ExistingWorktreeWorkspaceStrategy = Schema.Struct({
+  type: Schema.Literal("existing_worktree"),
+  worktreePath: TrimmedNonEmptyString,
+  branch: Schema.optional(TrimmedNonEmptyString),
+});
+const NewWorktreeWorkspaceStrategy = Schema.Struct({
+  type: Schema.Literal("worktree"),
+  baseRef: TrimmedNonEmptyString,
+  branch: Schema.optional(TrimmedNonEmptyString),
+  startFromOrigin: Schema.optional(Schema.Boolean),
+});
+
 export const OrchestrationV2ThreadLaunchWorkspaceStrategy = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("root"),
     branch: Schema.optional(TrimmedNonEmptyString),
   }),
-  Schema.Struct({
-    type: Schema.Literal("existing_worktree"),
-    worktreePath: TrimmedNonEmptyString,
-    branch: Schema.optional(TrimmedNonEmptyString),
-  }),
-  Schema.Struct({
-    type: Schema.Literal("worktree"),
-    baseRef: TrimmedNonEmptyString,
-    branch: Schema.optional(TrimmedNonEmptyString),
-    startFromOrigin: Schema.optional(Schema.Boolean),
-  }),
+  ExistingWorktreeWorkspaceStrategy,
+  NewWorktreeWorkspaceStrategy,
 ]);
 export type OrchestrationV2ThreadLaunchWorkspaceStrategy =
   typeof OrchestrationV2ThreadLaunchWorkspaceStrategy.Type;
+
+/**
+ * Where a delegated child runs when it should not share its parent's checkout:
+ * the worktree strategies of a launch. A delegated child has no project-root
+ * option; omitting the strategy shares the parent's checkout.
+ */
+export const OrchestrationV2DelegatedTaskWorkspaceStrategy = Schema.Union([
+  ExistingWorktreeWorkspaceStrategy,
+  NewWorktreeWorkspaceStrategy,
+]);
+export type OrchestrationV2DelegatedTaskWorkspaceStrategy =
+  typeof OrchestrationV2DelegatedTaskWorkspaceStrategy.Type;
 
 /** Failure code on the error item a failed workspace preparation leaves. */
 export const ORCHESTRATION_V2_WORKSPACE_PREPARATION_FAILURE_CODE = "workspace_preparation_failed";
@@ -2938,6 +2953,10 @@ export const OrchestrationV2Command = Schema.Union([
     // Omitted behaves as "settled_only" (no wake while the parent has a live
     // run); producers that want fire-and-forget wakes must set "always".
     completionWake: Schema.optional(Schema.Literals(["always", "settled_only"])),
+    // Omitted shares the parent's checkout and starts the child at once. Set,
+    // the child's run waits in preparing until ThreadLaunchService prepares
+    // and binds this workspace, then releases it.
+    workspaceStrategy: Schema.optional(OrchestrationV2DelegatedTaskWorkspaceStrategy),
     createdAt: Schema.optional(Schema.DateTimeUtc),
   }),
   Schema.Struct({

@@ -27,6 +27,7 @@ import { ThreadTitleRegeneration } from "./threadTitle.ts";
 import {
   OrchestrationV2Actor,
   OrchestrationV2CreationSource,
+  OrchestrationV2DelegatedTaskWorkspaceStrategy,
   OrchestrationV2RunStatus,
   OrchestrationV2TurnItemStatus,
 } from "./orchestrationV2.ts";
@@ -186,6 +187,12 @@ export const OrchestratorMcpDelegateTaskInput = Schema.Struct({
   clientRequestId: Schema.optional(OrchestratorMcpClientRequestId),
   runtimeMode: Schema.optional(OrchestratorMcpRuntimeMode),
   interactionMode: Schema.optional(OrchestratorMcpInteractionMode),
+  workspaceStrategy: Schema.optional(
+    OrchestrationV2DelegatedTaskWorkspaceStrategy.annotate({
+      description:
+        'Omit to share this thread\'s checkout. {type:"worktree",baseRef:"parent-branch",branch?:"new-branch",startFromOrigin?:false} creates and binds a new worktree for the child; existing_worktree binds worktreePath. The child starts after the worktree, Files to copy, and setup script are ready. Uncommitted changes are not copied. Requires a full-access/default calling thread.',
+    }),
+  ),
 });
 export type OrchestratorMcpDelegateTaskInput = typeof OrchestratorMcpDelegateTaskInput.Type;
 
