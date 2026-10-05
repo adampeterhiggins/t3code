@@ -32,24 +32,34 @@ See [the user guide](user/composer.md#opening-file-links),
 
 ## Devin provider
 
-Adds Devin as a provider, driven through the local `devin` CLI's ACP server (`devin acp`).
+Adds a dedicated `devin` provider driven through the local `devin` CLI's ACP server
+(`devin acp`). Upstream can also run Devin as a generic ACP Registry agent; the dedicated driver
+uses the same shared ACP adapter and Devin protocol handling (subagent markers, message grouping,
+client-owned terminals) and adds the rest.
 
-- Sessions, steering, interrupts, permission requests, and form-mode elicitations run over the
-  shared ACP runtime. T3 runtime modes map onto Devin's session modes.
+- Each instance has its own binary path and, when added, a private `XDG_DATA_HOME` (see
+  [Provider sign-in methods](#provider-sign-in-methods)). T3 runtime modes map onto Devin's
+  `--permission-mode` at spawn and onto its session modes; plan turns switch to Devin's Plan mode.
 - Models come from `devin models list`. Devin encodes effort, speed, and context in each model id,
-  so the catalog groups variants into one picker row per model with effort/speed/context options.
-  Fusion is one row: lead and sidekick are chosen by model family, lead effort is the one Devin
-  advertises for that lead, and sidekick effort is selectable.
-- T3's MCP endpoint, `devin skills list` (`$skill` dispatch), token usage, and pricing are wired
-  in, so the context meter and the usage page cover Devin. The page can export the current window
-  as CSV. Conversation rewind is not supported. Usage prefers the CLI's `sessions.db`, which
-  includes sessions run outside T3. When that history is missing, T3 falls back to its own event
-  logs for sessions it drove. A `cog_...` service key with `ViewOrgConsumption` and `DEVIN_ORG_ID`
-  can show organization ACUs in a separate section; those are not mixed into token-cost estimates.
-- Devin also generates commit messages, PR content, branch names, and thread titles.
+  so the catalog groups variants into one picker row per model with effort/speed/context options,
+  and the session is switched to the matching variant. Fusion is one row: lead and sidekick are
+  chosen by model family, lead effort is the one Devin advertises for that lead, and sidekick
+  effort is selectable. The context meter uses the catalog's window when Devin does not report one.
+- T3's MCP tools reach Devin through the shared ACP stdio bridge. `devin skills list` feeds the
+  skill picker, and `$skill` mentions are sent as Devin's `@skills:name`.
+- The usage page covers Devin from the CLI's `sessions.db`, which includes sessions run outside
+  T3, priced from the provider snapshot. The page can export the current window as CSV. A
+  `cog_...` service key with `ViewOrgConsumption` and `DEVIN_ORG_ID` can show organization ACUs
+  in a separate section; those are not mixed into token-cost estimates. Conversation rewind is
+  not supported.
+- Devin also generates commit messages, PR content, branch names, and thread titles, updates
+  through `devin update`, and signs in by browser, saved login, or a pasted API key.
 - The welcome wizard lists Devin with an **Enable** action, since the provider is opt-in.
 
-Code: `apps/server/src/provider/**/Devin*`, `apps/server/src/provider/devinModelCatalog.ts`,
+Code: [`DevinDriver.ts`](../apps/server/src/provider/Drivers/DevinDriver.ts),
+[`DevinAdapterV2.ts`](../apps/server/src/orchestration-v2/Adapters/DevinAdapterV2.ts),
+[`DevinAcpSupport.ts`](../apps/server/src/provider/acp/DevinAcpSupport.ts),
+`apps/server/src/provider/**/Devin*`, `apps/server/src/provider/devinModelCatalog.ts`,
 `apps/server/src/textGeneration/DevinTextGeneration.ts`, `apps/server/src/usage/devinAccountUsage.ts`,
 `apps/server/src/usage/devinUsageReader.ts`, `apps/web/src/components/usage/usageExport.ts`, and
 `DevinSettings` in `packages/contracts/src/settings.ts`. User guides:
@@ -63,14 +73,18 @@ added instance is one agent; there is no default instance.
 
 - The health check opens a short ACP session and lists what the agent advertises: its models
   (the `model` config option, else session models), its other config options as model options,
-  and the plan toggle only when it has a plan mode. Slash commands come from its session updates.
-- Turns run over the shared ACP runtime. Approvals follow the permission mode and answer with
-  the agent's own option ids; form elicitations become questions. T3's MCP endpoint is offered
-  only to agents that accept HTTP MCP servers. Resume falls back to a fresh session when the
-  agent cannot load the old one.
+  and the plan toggle only when it has a `plan` or `architect` mode. Slash commands come from its
+  session updates, per workspace.
+- Turns run over the shared ACP adapter, so T3's MCP tools (stdio bridge), approvals with the
+  agent's own option ids, form elicitations as questions, and fresh-session recovery when a
+  session cannot be resumed work as for upstream's ACP agents. The selected model is applied
+  through the `model` config option or `session/set_model`, and T3 runtime modes map onto the
+  agent's matching session modes.
 - No sign-in flow, updates, text generation, rewind, or usage accounting.
 
-Code: `apps/server/src/provider/**/CustomAcp*`, `apps/server/src/provider/acp/AcpCommandCatalog.ts`,
+Code: [`CustomAcpDriver.ts`](../apps/server/src/provider/Drivers/CustomAcpDriver.ts),
+[`CustomAcpAdapterV2.ts`](../apps/server/src/orchestration-v2/Adapters/CustomAcpAdapterV2.ts),
+`apps/server/src/provider/**/CustomAcp*`, `apps/server/src/provider/acp/AcpCommandCatalog.ts`,
 and `CustomAcpSettings` in `packages/contracts/src/settings.ts`. User guide:
 [providers-custom-acp.md](./user/providers-custom-acp.md).
 
@@ -132,7 +146,8 @@ Upstream's panel is a fixed list with one summary line per agent. To feed it:
 - OpenCode child sessions, Grok subagents, and Devin subagents join the panel at all; upstream
   shows none of them. Devin reports subagents inside the root ACP session as `_meta` markers on
   tool call notifications (`cognition.ai/subagent_started`, `subagent_completed`, and
-  `subagent_context` on the child's calls); `DevinSubagents.ts` maps them onto `task.*` events.
+  `subagent_context` on the child's calls); upstream's `DevinAcp.ts` maps them for the shared ACP
+  adapter.
 - `orchestration.getSubagentTranscript` reads a subagent's history through the adapter's
   `readSubagentTranscript` (Claude, Codex, OpenCode) while the session is running.
   ProviderService keeps the last bounded read per agent in the fork-owned
@@ -147,7 +162,7 @@ Upstream's panel is a fixed list with one summary line per agent. To feed it:
 
 Code: `apps/web/src/components/AgentsPanel.tsx`, `AgentDetailView.tsx`,
 `apps/web/src/rightPanelStore.ts`, `packages/client-runtime/src/state/agentPanelView.ts`,
-`apps/server/src/provider/acp/DevinSubagents.ts`, `apps/server/src/provider/subagentTranscript.ts`,
+`apps/server/src/provider/subagentTranscript.ts`,
 and `apps/server/src/provider/SubagentTranscriptStore.ts`. User guide:
 [thread-sidebar.md](./user/thread-sidebar.md#inspect-agent-work).
 

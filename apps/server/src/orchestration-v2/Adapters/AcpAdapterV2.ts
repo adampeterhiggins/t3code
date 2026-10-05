@@ -221,8 +221,10 @@ export interface AcpAdapterV2Flavor {
   readonly normalizeSessionUpdate?: (
     notification: EffectAcpSchema.SessionNotification,
   ) => EffectAcpSchema.SessionNotification;
+  /** `cwd` is the session's workspace, for drivers that scope commands per workspace. */
   readonly onAvailableCommandsUpdate?: (
     commands: ReadonlyArray<EffectAcpSchema.AvailableCommand>,
+    cwd: string,
   ) => Effect.Effect<void>;
   readonly onSessionConfigurationUpdate?: (
     configOptions: ReadonlyArray<EffectAcpSchema.SessionConfigOption>,
@@ -252,10 +254,24 @@ export interface AcpAdapterV2Flavor {
     readonly startResult: AcpSessionRuntime.AcpSessionRuntimeStartResult;
     readonly modelSelection: ModelSelection;
   }) => Effect.Effect<string | undefined, EffectAcpErrors.AcpError>;
-  /** Native session mode to select for a runtime policy (e.g. Antigravity `yolo`). */
+  /**
+   * Native session mode to select for a runtime policy (e.g. Antigravity
+   * `yolo`). `modeState` is what the session advertises, for agents whose
+   * mode ids are not fixed. Plan mode is applied separately afterwards.
+   */
   readonly sessionModeForPolicy?: (
     policy: ProviderAdapter.ProviderAdapterV2RuntimePolicy,
+    modeState: AcpSessionModeState | undefined,
   ) => string | undefined;
+  /**
+   * Rewrites the user's message text before it is sent (Devin turns `$skill`
+   * mentions into its own `@skills:` syntax). Failures should fall back to
+   * the original text.
+   */
+  readonly transformPromptText?: (input: {
+    readonly text: string;
+    readonly cwd: string | null;
+  }) => Effect.Effect<string>;
   /**
    * Opts the session into the ACP client `fs` capability. Agents read and write
    * files themselves under their own permission model unless a flavor sets
@@ -5437,8 +5453,10 @@ export function makeAcpAdapterV2(
                   );
             if (notification.update.sessionUpdate === "available_commands_update") {
               yield* (
-                flavor.onAvailableCommandsUpdate?.(notification.update.availableCommands) ??
-                  Effect.void
+                flavor.onAvailableCommandsUpdate?.(
+                  notification.update.availableCommands,
+                  input.runtimePolicy.cwd ?? process.cwd(),
+                ) ?? Effect.void
               );
             }
             if (
@@ -6329,7 +6347,10 @@ export function makeAcpAdapterV2(
               }),
             );
           }
-          const policyMode = flavor.sessionModeForPolicy?.(runtimePolicy);
+          const policyMode = flavor.sessionModeForPolicy?.(
+            runtimePolicy,
+            yield* runtime.getModeState,
+          );
           if (policyMode !== undefined) {
             yield* runtime.setMode(policyMode);
           }
@@ -6729,7 +6750,13 @@ export function makeAcpAdapterV2(
           } satisfies T3AcpInstructionState;
           const previousInstructionState = (yield* Ref.get(promptInstructionStates)).get(sessionId);
           const messageText = providerMessageTextWithAttachmentPaths({
-            text: turnInput.message.text,
+            text:
+              flavor.transformPromptText === undefined
+                ? turnInput.message.text
+                : yield* flavor.transformPromptText({
+                    text: turnInput.message.text,
+                    cwd: turnInput.runtimePolicy.cwd,
+                  }),
             attachments: turnInput.message.attachments,
             attachmentsDir: serverConfig.attachmentsDir,
           });

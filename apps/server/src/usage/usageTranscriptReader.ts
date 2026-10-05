@@ -17,7 +17,6 @@
  */
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
-import type * as NodeFS from "node:fs";
 import * as NodeStringDecoder from "node:string_decoder";
 
 import type { UsageProviderKind } from "@t3tools/contracts";
@@ -31,7 +30,6 @@ import {
   parseClaudeRecord,
   parseCodexLine,
   parseCodexRecord,
-  parseDevinCanonicalLogLine,
   parseGrokLine,
   parseGrokRecord,
   type CodexScanState,
@@ -212,47 +210,6 @@ export async function listTranscriptFiles(
 }
 
 /**
- * Lists T3 provider event logs (`events.<thread>.log`) and their rotated
- * siblings. Event logs are intentionally kept flat in one provider directory,
- * unlike CLI transcripts which use nested session folders.
- */
-export async function listProviderEventLogFiles(
-  root: string,
-  baseName: string,
-  sinceMs = Number.NEGATIVE_INFINITY,
-): Promise<readonly TranscriptFile[]> {
-  const found: TranscriptFile[] = [];
-  let entries: ReadonlyArray<NodeFS.Dirent>;
-  try {
-    entries = await NodeFSP.readdir(root, { withFileTypes: true });
-  } catch {
-    return found;
-  }
-
-  const prefix = `${baseName}.`;
-  for (const entry of entries) {
-    if (
-      !entry.isFile() ||
-      !entry.name.startsWith(prefix) ||
-      !/\.log(?:\.\d+)?$/u.test(entry.name)
-    ) {
-      continue;
-    }
-    const child = NodePath.join(root, entry.name);
-    try {
-      const stats = await NodeFSP.stat(child);
-      if (stats.mtimeMs >= sinceMs) {
-        found.push({ path: child, size: stats.size, mtimeMs: stats.mtimeMs });
-      }
-    } catch {
-      // Rotated logs may disappear between readdir and stat.
-    }
-  }
-
-  return found;
-}
-
-/**
  * Filesystem identity of a directory, as `device:inode`.
  *
  * Used to tell "two servers reading the same transcript directory" apart from
@@ -335,17 +292,6 @@ export async function readTranscriptRecords(
     }
 
     const parseLine = (line: string, state: CodexScanState, out: UsageRecord[]): void => {
-      if (provider === "devin") {
-        // Canonical event logs also contain native ACP and orchestration
-        // records. Avoid parsing those as JSON unless this line could be one
-        // of Devin's normalized usage events.
-        if (!line.includes('"thread.token-usage.updated"') || !line.includes('"devin"')) {
-          return;
-        }
-        const record = parseDevinCanonicalLogLine(line);
-        if (record !== null) out.push(record);
-        return;
-      }
       if (provider === "codex") {
         if (
           !mightCarryUsage(line, provider) &&
@@ -410,9 +356,7 @@ export async function readTranscriptRecords(
         const projected = streaming.finish();
         if (provider === "grok") {
           out.push(...parseGrokRecord(projected));
-        } else if (provider !== "devin") {
-          // Devin usage events are small canonical records; an oversized Devin
-          // line is ACP tool content and never carries usage.
+        } else {
           const record =
             provider === "codex"
               ? parseCodexRecord(projected, state)

@@ -14,8 +14,7 @@ split, such as a provider-reported cost for a model without public rates, shows 
 Select a model under **Breakdown** to see its trend, cache hit rate, and cost per million tokens.
 
 Devin records come from the Devin CLI's local session history, so they include sessions run
-outside T3. When that history is missing, T3 falls back to its own event logs, which only cover
-sessions driven through the selected T3 server. Use the provider filter above the breakdown to focus the chart and tables, and
+outside T3. Use the provider filter above the breakdown to focus the chart and tables, and
 use the download button to export the current window as CSV. The page can optionally show official
 Devin organization ACUs in a separate section when a `cog_...` service key with
 `ViewOrgConsumption` permission and `DEVIN_ORG_ID` are configured on the server; ACUs are never
