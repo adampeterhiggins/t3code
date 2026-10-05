@@ -10,7 +10,7 @@ import { RenderErrorBoundary } from "./RenderErrorBoundary";
 export function ToolCallCommand({ command }: { command: string }) {
   const { resolvedTheme } = useTheme();
   return (
-    <pre className="min-w-0 flex-1 overflow-auto rounded-md bg-muted/40 px-3 py-2 font-mono text-(length:--font-size-code,var(--text-2xs)) leading-relaxed whitespace-pre-wrap break-words select-text">
+    <pre className="min-w-0 flex-1 overflow-auto font-mono text-(length:--font-size-code,var(--text-2xs)) leading-relaxed whitespace-pre-wrap break-words select-text">
       <code>
         <RenderErrorBoundary fallback={command} resetKeys={[command, resolvedTheme]}>
           <Suspense fallback={command}>
