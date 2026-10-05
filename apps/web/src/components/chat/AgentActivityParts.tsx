@@ -77,9 +77,11 @@ export interface ToolCallSource {
   readonly workspaceRoot: string | null;
 }
 
-/** An expanded call. An edit whose diff the timeline left out fetches it while open. */
-function ExpandedToolCall(props: { call: SubagentToolCall; meta: string; source: ToolCallSource }) {
-  const { call, source } = props;
+/**
+ * The call's body text. Timelines carry an edit without its diff, so while the caller is mounted
+ * an edit fetches the stored item and shows its diff; until then it shows the line counts.
+ */
+function useToolCallBodyText(call: SubagentToolCall, source: ToolCallSource) {
   const detail = useTurnItemDetail(
     call.detailRevision === null
       ? null
@@ -95,19 +97,53 @@ function ExpandedToolCall(props: { call: SubagentToolCall; meta: string; source:
   const preview = fetchedPreview
     ? formatPathsForWorkspace(fetchedPreview, source.workspaceRoot)
     : call.preview;
+  return {
+    text: toolCallBodyText(call, preview),
+    loadingDiff: call.detailRevision !== null && detail.isPending,
+  };
+}
+
+/** An expanded call. */
+function ExpandedToolCall(props: { call: SubagentToolCall; meta: string; source: ToolCallSource }) {
+  const { call } = props;
+  const body = useToolCallBodyText(call, props.source);
   return (
     <div className="ms-6.5 mt-1 cursor-default rounded-md bg-muted/40 px-3 py-2">
       <ToolCallBody
-        text={toolCallBodyText(call, preview)}
+        text={body.text}
         className={cn(
           "max-h-64 cursor-text",
           call.status === "failed" ? "text-destructive-foreground" : "text-secondary-label",
         )}
       />
-      {call.detailRevision !== null && detail.isPending ? (
+      {body.loadingDiff ? (
         <p className="mt-1 text-3xs italic text-muted-foreground">Loading diff…</p>
       ) : null}
       <p className="mt-1.5 font-mono text-3xs text-muted-foreground">{props.meta}</p>
+    </div>
+  );
+}
+
+/** A collapsed call's hover card, mounted only while open so its diff is fetched on demand. */
+function ToolCallHoverContent(props: {
+  call: SubagentToolCall;
+  meta: string;
+  source: ToolCallSource;
+}) {
+  const { call } = props;
+  const Icon = TOOL_KIND_ICONS[call.kind];
+  const body = useToolCallBodyText(call, props.source);
+  return (
+    <div className="flex flex-col gap-1.5 p-3">
+      <p className="flex items-start gap-1.5 text-xs text-secondary-label">
+        <Icon aria-hidden className="mt-px size-3.5 shrink-0 text-icon-muted" />
+        <span className="min-w-0 break-all">{call.title}</span>
+      </p>
+      <ToolCallBody text={body.text} className="max-h-[50vh]" />
+      {body.loadingDiff ? (
+        <p className="text-3xs italic text-muted-foreground">Loading diff…</p>
+      ) : null}
+      <p className="font-mono text-3xs text-muted-foreground">{props.meta}</p>
     </div>
   );
 }
@@ -122,7 +158,6 @@ const ToolCallRow = memo(function ToolCallRow(props: {
   const [expanded, setExpanded] = useState(false);
   const Icon = TOOL_KIND_ICONS[call.kind];
   const failed = call.status === "failed";
-  const body = toolCallBodyText(call);
   const meta = toolCallMeta(call, props.timestampFormat);
   const toggle = () => setExpanded(!expanded);
   const line = (
@@ -173,14 +208,7 @@ const ToolCallRow = memo(function ToolCallRow(props: {
         <PreviewCard>
           <PreviewCardTrigger render={line} delay={300} closeDelay={150} />
           <PreviewCardPopup side="left" align="start" className="w-md max-w-[calc(100vw-2rem)]">
-            <div className="flex flex-col gap-1.5 p-3">
-              <p className="flex items-start gap-1.5 text-xs text-secondary-label">
-                <Icon aria-hidden className="mt-px size-3.5 shrink-0 text-icon-muted" />
-                <span className="min-w-0 break-all">{call.title}</span>
-              </p>
-              <ToolCallBody text={body} className="max-h-[50vh]" />
-              <p className="font-mono text-3xs text-muted-foreground">{meta}</p>
-            </div>
+            <ToolCallHoverContent call={call} meta={meta} source={props.source} />
           </PreviewCardPopup>
         </PreviewCard>
       )}

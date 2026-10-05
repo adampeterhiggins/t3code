@@ -420,43 +420,73 @@ describe("rightPanelStore", () => {
     });
   });
 
-  it.each([
-    { kind: "plan", isOpen: true },
-    { kind: "agents", isOpen: true },
-    { kind: "agents", isOpen: false },
-  ])("drops $kind with isOpen=$isOpen and falls back", ({ kind, isOpen }) => {
-    expect(
-      migratePersistedRightPanelState({
+  it.each([{ kind: "plan", isOpen: true }])(
+    "drops $kind with isOpen=$isOpen and falls back",
+    ({ kind, isOpen }) => {
+      expect(
+        migratePersistedRightPanelState({
+          byThreadKey: {
+            "env-1:thread-A": {
+              isOpen,
+              activeSurfaceId: kind,
+              surfaces: [{ id: kind, kind }],
+            },
+            "env-1:thread-B": {
+              isOpen,
+              activeSurfaceId: kind,
+              surfaces: [
+                { id: kind, kind },
+                { id: "diff", kind: "diff" },
+              ],
+            },
+          },
+        }),
+      ).toEqual({
         byThreadKey: {
           "env-1:thread-A": {
-            isOpen,
-            activeSurfaceId: kind,
-            surfaces: [{ id: kind, kind }],
+            isOpen: false,
+            activeSurfaceId: null,
+            surfaces: [],
           },
           "env-1:thread-B": {
             isOpen,
-            activeSurfaceId: kind,
-            surfaces: [
-              { id: kind, kind },
-              { id: "diff", kind: "diff" },
-            ],
+            activeSurfaceId: "diff",
+            surfaces: [{ id: "diff", kind: "diff" }],
           },
         },
-      }),
+        threadPanelVisibilityByThreadKey: {},
+      });
+    },
+  );
+
+  it("keeps the agents surface and its agent tabs across a restart", () => {
+    const threadState = {
+      isOpen: true,
+      activeSurfaceId: "agents",
+      surfaces: [
+        { id: "agents", kind: "agents" },
+        { id: "agent:child-1", kind: "agent", childThreadId: "child-1", title: "Scout" },
+      ],
+    };
+    expect(
+      migratePersistedRightPanelState({ byThreadKey: { "env-1:thread-A": threadState } }),
     ).toEqual({
-      byThreadKey: {
-        "env-1:thread-A": {
-          isOpen: false,
-          activeSurfaceId: null,
-          surfaces: [],
-        },
-        "env-1:thread-B": {
-          isOpen,
-          activeSurfaceId: "diff",
-          surfaces: [{ id: "diff", kind: "diff" }],
-        },
-      },
+      byThreadKey: { "env-1:thread-A": threadState },
       threadPanelVisibilityByThreadKey: {},
+    });
+  });
+
+  it("opens the agents surface beside agent tabs", () => {
+    const store = useRightPanelStore.getState();
+    store.openAgent(refA, { childThreadId: ThreadId.make("child-1"), title: "Scout" });
+    store.open(refA, "agents");
+
+    expect(
+      selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA),
+    ).toMatchObject({
+      isOpen: true,
+      activeSurfaceId: "agents",
+      surfaces: [{ id: "agent:child-1" }, { id: "agents", kind: "agents" }],
     });
   });
 

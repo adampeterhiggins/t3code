@@ -8,15 +8,13 @@ import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environ
 import {
   applyAgentListView,
   isAgentListViewFiltered,
-  latestSubagentToolCall,
   type AgentListSubject,
 } from "@t3tools/client-runtime/state/agent-list-view";
+import { edgeAgentStatus, liveSubagent } from "@t3tools/client-runtime/state/agent-fleet";
 import {
   formatSubagentTokenCount,
   isActiveSubagentStatus,
   projectedSubagentsToRuntime,
-  type RuntimeSubagent,
-  type RuntimeSubagentStatus,
 } from "@t3tools/client-runtime/state/subagentRuntime";
 import { formatSubagentDisplayTitle } from "@t3tools/client-runtime/state/subagent-display";
 import {
@@ -33,12 +31,7 @@ import {
   canDetachThreadProviderSession,
   resolveLatestMergeBackRun,
 } from "@t3tools/client-runtime/state/thread-workflows";
-import type {
-  EnvironmentId,
-  OrchestrationV2ThreadShell,
-  ScopedThreadRef,
-  ThreadId,
-} from "@t3tools/contracts";
+import type { EnvironmentId, OrchestrationV2ThreadShell, ThreadId } from "@t3tools/contracts";
 import { groupBy } from "effect/Array";
 import * as DateTime from "effect/DateTime";
 import { useNavigate } from "@tanstack/react-router";
@@ -49,6 +42,7 @@ import {
   GitForkIcon,
   LoaderCircleIcon,
   MoreHorizontalIcon,
+  PanelRightIcon,
   PlusIcon,
   UnplugIcon,
 } from "lucide-react";
@@ -56,6 +50,7 @@ import { useMemo, useState, type MouseEvent, type ReactNode } from "react";
 
 import { useAgentListViewStore } from "../../agentListViewStore";
 import { useArchivedThreadSnapshots } from "../../lib/archivedThreadsState";
+import { useRightPanelStore } from "../../rightPanelStore";
 import { buildThreadRouteParams } from "../../threadRoutes";
 import {
   useProjects,
@@ -66,7 +61,7 @@ import {
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { AgentElapsed } from "./AgentElapsed";
-import { TOOL_KIND_ICONS } from "./agentToolKinds";
+import { SubagentActivityLine } from "./SubagentActivityLine";
 import { AgentListToolbar } from "./AgentListToolbar";
 import { useAgentContextMenu } from "./agentContextMenu";
 import { ThreadRelationshipIcon, threadRelationshipStatusLabel } from "./ThreadRelationshipIcon";
@@ -186,91 +181,6 @@ function relationshipThreadTitle(input: {
 }): string {
   if (!input.isSubagent) return input.title;
   return formatSubagentDisplayTitle(input.title);
-}
-
-/**
- * A delegated task settles with its first run, but the parent can keep sending
- * the child follow-ups. While the child thread has a live run, the row's timer
- * and hover card follow that run instead of the settled task.
- */
-function liveSubagent<Agent extends RuntimeSubagent>(
-  agent: Agent | undefined,
-  childThread: OrchestrationV2ThreadShell | null | undefined,
-): Agent | undefined {
-  const liveStatus = childThread?.activityRunStatus;
-  if (!agent || !liveStatus) return agent;
-  const startedAt = childThread.activityRunStartedAt;
-  return {
-    ...agent,
-    status: liveStatus === "running" || liveStatus === "waiting" ? liveStatus : "pending",
-    startedAt: startedAt ? DateTime.formatIso(startedAt) : null,
-    completedAt: null,
-    // The settled task's output belongs to its first run, not this one.
-    progress: null,
-    result: null,
-    error: null,
-  };
-}
-
-/** A subagent row without a parent record still reads its status from the lineage edge. */
-function edgeAgentStatus(status: string | null): RuntimeSubagentStatus {
-  switch (status) {
-    case "pending":
-    case "preparing":
-    case "starting":
-      return "pending";
-    case "running":
-    case "waiting":
-    case "idle":
-    case "completed":
-    case "failed":
-    case "cancelled":
-    case "interrupted":
-      return status;
-    case "error":
-      return "failed";
-    default:
-      return "idle";
-  }
-}
-
-/**
- * Fork: a working agent's second line, its latest tool call read from its child thread, or the
- * provider's progress until the first call arrives. Mounted only for working rows on screen.
- */
-function SubagentActivityLine(props: {
-  readonly childRef: ScopedThreadRef;
-  readonly progress: string | null;
-  readonly workspaceRoot: string | null;
-}) {
-  const child = useThreadProjection(props.childRef)?.projection ?? null;
-  const latest = useMemo(
-    () =>
-      child === null
-        ? null
-        : latestSubagentToolCall(
-            child.turnItems.filter((item) => item.threadId === props.childRef.threadId),
-            props.workspaceRoot,
-          ),
-    [child, props.childRef.threadId, props.workspaceRoot],
-  );
-  if (latest === null) {
-    return (
-      <span className="block truncate text-left text-2xs font-normal text-muted-foreground">
-        {props.progress ?? "Starting…"}
-      </span>
-    );
-  }
-  const Icon = TOOL_KIND_ICONS[latest.kind];
-  return (
-    <span className="flex min-w-0 items-center gap-1 text-left text-2xs font-normal text-muted-foreground">
-      <Icon aria-hidden className="size-3 shrink-0" />
-      <span className={latest.detail ? "max-w-[45%] shrink-0 truncate" : "min-w-0 truncate"}>
-        {latest.title}
-      </span>
-      {latest.detail ? <span className="min-w-0 truncate font-mono">{latest.detail}</span> : null}
-    </span>
-  );
 }
 
 export function ThreadRelationshipsPanel(props: {
@@ -437,28 +347,51 @@ export function ThreadRelationshipsPanel(props: {
       title={runningCount > 0 ? `Lineage · ${runningCount} running` : "Lineage"}
       data-thread-relationships-panel
       actions={
-        canDetach ? (
-          <Menu>
-            <MenuTrigger
-              render={
-                <ThreadDetailsControl
-                  size="icon-xs"
-                  variant="ghost"
-                  part="icon"
-                  aria-label="More thread actions"
-                  disabled={busyAction !== null}
-                />
-              }
-            >
-              <MoreHorizontalIcon className="size-3.5" />
-            </MenuTrigger>
-            <MenuPopup align="end" className="min-w-60 max-w-(--available-width)">
-              <MenuItem onClick={() => void detach()}>
-                <UnplugIcon className="size-3.5" />
-                Disconnect agent session
-              </MenuItem>
-            </MenuPopup>
-          </Menu>
+        agentRowCount > 0 || runningCount > 0 || canDetach ? (
+          <>
+            {agentRowCount > 0 || runningCount > 0 ? (
+              // Fork: the same agents, with hover previews and nested agents, in the right panel.
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <ThreadDetailsControl
+                      size="icon-xs"
+                      variant="ghost"
+                      part="icon"
+                      aria-label="Open in Agents panel"
+                      onClick={() => useRightPanelStore.getState().open(ref, "agents")}
+                    />
+                  }
+                >
+                  <PanelRightIcon className="size-3.5" />
+                </TooltipTrigger>
+                <TooltipPopup side="left">Open in Agents panel</TooltipPopup>
+              </Tooltip>
+            ) : null}
+            {canDetach ? (
+              <Menu>
+                <MenuTrigger
+                  render={
+                    <ThreadDetailsControl
+                      size="icon-xs"
+                      variant="ghost"
+                      part="icon"
+                      aria-label="More thread actions"
+                      disabled={busyAction !== null}
+                    />
+                  }
+                >
+                  <MoreHorizontalIcon className="size-3.5" />
+                </MenuTrigger>
+                <MenuPopup align="end" className="min-w-60 max-w-(--available-width)">
+                  <MenuItem onClick={() => void detach()}>
+                    <UnplugIcon className="size-3.5" />
+                    Disconnect agent session
+                  </MenuItem>
+                </MenuPopup>
+              </Menu>
+            ) : null}
+          </>
         ) : null
       }
     >

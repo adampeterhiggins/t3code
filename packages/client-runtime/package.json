@@ -287,6 +287,10 @@
       "types": "./src/state/agentListView.ts",
       "default": "./src/state/agentListView.ts"
     },
+    "./state/agent-fleet": {
+      "types": "./src/state/agentFleet.ts",
+      "default": "./src/state/agentFleet.ts"
+    },
     "./state/subagentRuntime": {
       "types": "./src/state/subagentRuntime.ts",
       "default": "./src/state/subagentRuntime.ts"
