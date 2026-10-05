@@ -318,6 +318,10 @@ export interface ProjectionStoreV2Shape {
   readonly getNextTurnItemOrdinal: (
     threadId: ThreadId,
   ) => Effect.Effect<number, ProjectionStoreV2Error>;
+  /** Tool calls a provider recorded on a thread, without app-owned rows such as workspace prep. */
+  readonly getProviderToolCallCount: (
+    threadId: ThreadId,
+  ) => Effect.Effect<number, ProjectionStoreV2Error>;
   /** One persisted turn item, or null when the thread has no such item. */
   readonly getTurnItem: (input: {
     readonly threadId: ThreadId;
@@ -951,6 +955,15 @@ type ShellRunItemCountRow = {
 };
 
 const encodeIdList = Schema.encodeSync(Schema.fromJsonString(Schema.Array(Schema.String)));
+
+/** Turn item types that are tool calls, as the agent views list them. */
+const PROVIDER_TOOL_CALL_ITEM_TYPES: ReadonlyArray<OrchestrationV2TurnItem["type"]> = [
+  "command_execution",
+  "file_change",
+  "file_search",
+  "web_search",
+  "dynamic_tool",
+];
 
 const encodeThreadPayload = Schema.encodeEffect(
   Schema.fromJsonString(OrchestrationV2AppThreadJsonSchema),
@@ -4515,6 +4528,18 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         Effect.mapError(controlReadError(threadId)),
       );
 
+    const getProviderToolCallCount: ProjectionStoreV2Shape["getProviderToolCallCount"] = (
+      threadId,
+    ) =>
+      sql<{ count: number }>`SELECT COUNT(*) AS count
+        FROM orchestration_v2_projection_turn_items
+        WHERE thread_id = ${threadId}
+          AND provider_turn_id IS NOT NULL
+          AND type IN (SELECT value FROM json_each(${encodeIdList(PROVIDER_TOOL_CALL_ITEM_TYPES)}))`.pipe(
+        Effect.map((rows) => rows[0]?.count ?? 0),
+        Effect.mapError(controlReadError(threadId)),
+      );
+
     const getTurnItem: ProjectionStoreV2Shape["getTurnItem"] = ({ threadId, itemId }) =>
       sql<{ payload_json: string }>`SELECT payload_json
         FROM orchestration_v2_projection_turn_items
@@ -5562,6 +5587,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       hasUnpairedRunInterruptRequest,
       getMessageCount,
       getNextTurnItemOrdinal,
+      getProviderToolCallCount,
       getTurnItem,
       getThreadRecords,
       getRuntimeRequest,
@@ -5813,6 +5839,19 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
               (state.projections
                 .get(threadId)
                 ?.turnItems.reduce((max, item) => Math.max(max, item.ordinal), 0) ?? 0) + 1,
+          ),
+        ),
+      getProviderToolCallCount: (threadId) =>
+        Ref.get(replayState).pipe(
+          Effect.map(
+            (state) =>
+              state.projections
+                .get(threadId)
+                ?.turnItems.filter(
+                  (item) =>
+                    item.providerTurnId !== null &&
+                    PROVIDER_TOOL_CALL_ITEM_TYPES.includes(item.type),
+                ).length ?? 0,
           ),
         ),
       getTurnItem: ({ threadId, itemId }) =>

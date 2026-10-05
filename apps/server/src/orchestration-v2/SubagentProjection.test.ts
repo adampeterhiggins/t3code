@@ -20,6 +20,7 @@ import {
   makeSubagentChildThread,
   delegatedTaskProgress,
   subagentResultForRun,
+  subagentUsageFromChildTurns,
   makeSubagentConversationArtifacts,
 } from "./SubagentProjection.ts";
 
@@ -305,4 +306,40 @@ it("exposes the provider failure rather than a progress message from the failed 
   assert.equal(result.text, failure.message);
   assert.equal(result.turnItemId, artifacts.turnItem.id);
   assert.isNull(result.messageId);
+});
+
+it("derives no delegated task usage until a child provider turn reports token counts", () => {
+  assert.isUndefined(subagentUsageFromChildTurns([], 3));
+  assert.isUndefined(
+    subagentUsageFromChildTurns(
+      [
+        {},
+        {
+          turnTokenUsage: {
+            usageStatus: "unavailable",
+            usageScope: "main_agent",
+            hasSubagents: false,
+          },
+        },
+      ],
+      3,
+    ),
+  );
+  // Fields a provider never reported stay absent rather than reading as zero.
+  assert.deepEqual(
+    subagentUsageFromChildTurns(
+      [
+        {
+          turnTokenUsage: {
+            usageStatus: "partial",
+            usageScope: "main_agent",
+            outputTokens: 7,
+            hasSubagents: false,
+          },
+        },
+      ],
+      0,
+    ),
+    { totalTokens: 7, inputTokens: 0, outputTokens: 7, toolUses: 0 },
+  );
 });

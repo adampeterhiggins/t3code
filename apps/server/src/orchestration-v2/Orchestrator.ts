@@ -112,6 +112,7 @@ import { RuntimePolicyV2 } from "./RuntimePolicy.ts";
 import {
   makeSubagentChildThread,
   subagentResultForRun,
+  subagentUsageFromChildTurns,
   delegatedTaskProgress,
   subagentThreadTitle,
 } from "./SubagentProjection.ts";
@@ -9087,11 +9088,19 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       const parentTurnItem = parentProjection.turnItems.find(
         (candidate) => candidate.type === "subagent" && candidate.subagentId === task.id,
       );
+      // App-owned tasks get no adapter-reported usage; their own thread's
+      // provider turns carry it, so every agent view reads one total here.
+      const usage =
+        subagentUsageFromChildTurns(
+          childControls.providerTurns,
+          yield* projectionStore.getProviderToolCallCount(childThreadId),
+        ) ?? task.usage;
       const updatedTask: OrchestrationV2Subagent = {
         ...task,
         providerThreadId: childRun.providerThreadId,
         status: terminalStatus,
         result: result.text,
+        ...(usage === undefined ? {} : { usage }),
         completedAt: now,
         updatedAt: now,
       };

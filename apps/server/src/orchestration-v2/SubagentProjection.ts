@@ -7,7 +7,9 @@ import type {
   OrchestrationV2ConversationMessage,
   OrchestrationV2CreationSource,
   OrchestrationV2ProviderRef,
+  OrchestrationV2ProviderTurn,
   OrchestrationV2Run,
+  OrchestrationV2SubagentUsage,
   OrchestrationV2ThreadProjection,
   OrchestrationV2TurnItem,
   ProviderInstanceId,
@@ -251,5 +253,45 @@ export function delegatedTaskProgress(projection: {
           ? ("waiting_for_children" as const)
           : ("result_available" as const),
     resultRun,
+  };
+}
+
+/**
+ * An app-owned task's usage, summed from the provider turns of its own child
+ * thread. Undefined when no turn reported token counts, so a task never shows a
+ * measured zero. Total follows the subagent convention: input (cache included)
+ * plus output.
+ */
+export function subagentUsageFromChildTurns(
+  providerTurns: ReadonlyArray<Pick<OrchestrationV2ProviderTurn, "turnTokenUsage">>,
+  toolUses: number,
+): OrchestrationV2SubagentUsage | undefined {
+  let reported = false;
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let cachedInputTokens: number | undefined;
+  let reasoningOutputTokens: number | undefined;
+  for (const { turnTokenUsage: usage } of providerTurns) {
+    if (
+      usage === undefined ||
+      (usage.inputTokens === undefined && usage.outputTokens === undefined)
+    )
+      continue;
+    reported = true;
+    inputTokens += usage.inputTokens ?? 0;
+    outputTokens += usage.outputTokens ?? 0;
+    if (usage.cachedInputTokens !== undefined)
+      cachedInputTokens = (cachedInputTokens ?? 0) + usage.cachedInputTokens;
+    if (usage.reasoningTokens !== undefined)
+      reasoningOutputTokens = (reasoningOutputTokens ?? 0) + usage.reasoningTokens;
+  }
+  if (!reported) return undefined;
+  return {
+    totalTokens: inputTokens + outputTokens,
+    inputTokens,
+    ...(cachedInputTokens === undefined ? {} : { cachedInputTokens }),
+    outputTokens,
+    ...(reasoningOutputTokens === undefined ? {} : { reasoningOutputTokens }),
+    toolUses,
   };
 }

@@ -110,6 +110,14 @@ CLI login, and one account counts once. Code:
 scan in [`UsageService.ts`](../apps/server/src/usage/UsageService.ts). User guide:
 [usage.md](./user/usage.md).
 
+Cursor turns also record their token usage. Upstream's Cursor adapter ignores the usage the SDK
+returns with each finished run, so Cursor provider turns carry none. The fork maps it onto the
+turn's `turnTokenUsage` (cache reads and writes counted inside input, as for Claude), which feeds
+turn analytics and the usage of delegated tasks run on Cursor
+([`CursorTurnTokenUsage.ts`](../apps/server/src/provider/CursorTurnTokenUsage.ts)). It is a sum
+over the run's model calls, not context occupancy, so Cursor threads still have no context meter.
+The usage page keeps reading Cursor's account history, so nothing is counted twice.
+
 Code: `apps/web/src/components/settings/ProviderAuthSection.tsx`,
 `apps/server/src/provider/Services/ProviderAuthService.ts`,
 `apps/server/src/provider/ProviderInstanceEnvironment.ts`, and
@@ -167,10 +175,15 @@ thread details panel, one row each, newest first, and removed the right-panel Ag
   which opens the Agents panel on that agent, and a bot button that opens the fleet
   ([`V2LifecycleRow.tsx`](../apps/web/src/components/chat/V2LifecycleRow.tsx)).
 - **Record fields.** `OrchestrationV2Subagent` gains optional fork fields kept in the record's
-  payload JSON (no migration): `usage` (Claude's `task_progress`/`task_notification` usage and the
-  running token total of a Codex child thread), `outputFile` (Claude's task output file), and
-  `sessionUrl` (the http(s) remote session link a Claude Workflow tool result names for its task).
-  Other providers leave them empty.
+  payload JSON (no migration): `usage` (Claude's `task_progress`/`task_notification` usage, the
+  running token total of a Codex child thread, and, for app-owned tasks such as `delegate_task`
+  children on any provider, the sum of their own thread's provider-turn usage plus its tool calls,
+  written when the task finishes; `subagentUsageFromChildTurns` in
+  [`SubagentProjection.ts`](../apps/server/src/orchestration-v2/SubagentProjection.ts)),
+  `outputFile` (Claude's task output file), and `sessionUrl` (the http(s) remote session link a
+  Claude Workflow tool result names for its task). Every agent view (detail footer, rows, hover
+  cards, fleet footer) reads this one field. A running delegated task shows usage once it finishes,
+  and tasks that finished before this existed show none. Other native subagents leave these empty.
 - **Agent detail.** Clicking an agent in the Agents panel inspects it in place, with **Back** to
   the fleet. The header has the agent's status, compact model with effort (from its child thread's
   model selection), `run N` past its first run, elapsed time, the prompt clamped to four lines
@@ -224,8 +237,9 @@ Code: [`agentListView.ts`](../packages/client-runtime/src/state/agentListView.ts
 [`agentTranscript.ts`](../apps/web/src/components/chat/agentTranscript.ts),
 [`agentDrillStore.ts`](../apps/web/src/agentDrillStore.ts),
 [`agentChatActions.ts`](../apps/web/src/components/chat/agentChatActions.ts), the `agents` and
-`agent` surfaces in [`rightPanelStore.ts`](../apps/web/src/rightPanelStore.ts), and the record
-field mapping in `ClaudeAdapterV2.ts` and `CodexAdapterV2.ts`. User guide:
+`agent` surfaces in [`rightPanelStore.ts`](../apps/web/src/rightPanelStore.ts), the record
+field mapping in `ClaudeAdapterV2.ts` and `CodexAdapterV2.ts`, and `finalizeAppOwnedSubagent` in
+[`Orchestrator.ts`](../apps/server/src/orchestration-v2/Orchestrator.ts). User guide:
 [thread-sidebar.md](./user/thread-sidebar.md#inspect-agent-work).
 
 ## Chat tabs

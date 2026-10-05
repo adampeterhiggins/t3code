@@ -7,13 +7,16 @@ import {
   MessageId,
   type ModelSelection,
   NodeId,
+  type OrchestrationV2ProviderTurn,
   type OrchestrationV2Run,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
   ProviderThreadId,
+  ProviderTurnId,
   RunId,
   ThreadId,
+  TurnItemId,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -1273,6 +1276,132 @@ it.layer(TestLayer)("delegated tasks across a server restart", (it) => {
         projection.runs.find((row) => row.id === runId)?.delegatedCompletion?.delivery?.taskIds,
         [child.taskId],
       );
+    }),
+  );
+
+  it.effect("settles a delegated task with the usage of its own thread's provider turns", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const eventSink = yield* EventSink.EventSinkV2;
+      const now = yield* DateTime.now;
+      const threadId = ThreadId.make("thread:usage-parent");
+      const projectId = ProjectId.make("project:usage-parent");
+      const runId = RunId.make("run:usage-parent");
+      const rootNodeId = NodeId.make("node:usage-parent-root");
+      yield* seedParentWithTerminalTask({
+        threadId,
+        projectId,
+        runId,
+        rootNodeId,
+        taskId: NodeId.make("node:usage-parent-settled"),
+        deliveryState: "delivered",
+        now,
+      });
+      const child = yield* seedRestartCancelledChild({
+        parentThreadId: threadId,
+        projectId,
+        parentRunId: runId,
+        rootNodeId,
+        name: "usage-child",
+        completionWake: "always",
+        continuationPending: false,
+        runStatus: "completed",
+        now,
+      });
+      const providerThreadId = ProviderThreadId.make("provider-thread:usage-child");
+      const providerTurn = (
+        ordinal: number,
+        usage: OrchestrationV2ProviderTurn["turnTokenUsage"],
+      ) =>
+        ({
+          id: EventId.make(`event:usage-child:turn:${ordinal}`),
+          type: "provider-turn.updated",
+          threadId: child.childThreadId,
+          runId: child.childRunId,
+          occurredAt: now,
+          payload: {
+            id: ProviderTurnId.make(`provider-turn:usage-child:${ordinal}`),
+            providerThreadId,
+            nodeId: NodeId.make("node:usage-child-root"),
+            runAttemptId: null,
+            nativeTurnRef: null,
+            ordinal,
+            status: "completed",
+            startedAt: now,
+            completedAt: now,
+            ...(usage === undefined ? {} : { turnTokenUsage: usage }),
+          },
+        }) as const;
+      const command = (name: string, providerTurnId: ProviderTurnId | null, ordinal: number) =>
+        ({
+          id: EventId.make(`event:usage-child:item:${name}`),
+          type: "turn-item.updated",
+          threadId: child.childThreadId,
+          runId: child.childRunId,
+          occurredAt: now,
+          payload: {
+            id: TurnItemId.make(`turn-item:usage-child:${name}`),
+            threadId: child.childThreadId,
+            runId: child.childRunId,
+            nodeId: NodeId.make("node:usage-child-root"),
+            providerThreadId,
+            providerTurnId,
+            nativeItemRef: null,
+            parentItemId: null,
+            ordinal,
+            status: "completed",
+            title: name,
+            startedAt: now,
+            completedAt: now,
+            updatedAt: now,
+            type: "command_execution",
+            input: name,
+          },
+        }) as const;
+      yield* eventSink.write({
+        commandId: reconcileCommandId("usage-child-turns"),
+        events: [
+          providerTurn(1, {
+            usageStatus: "complete",
+            usageScope: "main_agent",
+            inputTokens: 1000,
+            cachedInputTokens: 600,
+            outputTokens: 50,
+            reasoningTokens: 10,
+            hasSubagents: false,
+          }),
+          providerTurn(2, {
+            usageStatus: "partial",
+            usageScope: "main_agent",
+            inputTokens: 200,
+            outputTokens: 5,
+            hasSubagents: false,
+          }),
+          providerTurn(3, {
+            usageStatus: "unavailable",
+            usageScope: "main_agent",
+            hasSubagents: false,
+          }),
+          // App-owned rows such as workspace preparation are not the agent's tool calls.
+          command("Preparing workspace", null, 1),
+          command("ls", ProviderTurnId.make("provider-turn:usage-child:1"), 2),
+          command("pwd", ProviderTurnId.make("provider-turn:usage-child:2"), 3),
+        ],
+      });
+
+      yield* orchestrator.recoverDelegatedTasks;
+
+      const projection = yield* orchestrator.getThreadProjection(threadId);
+      const task = projection.subagents.find((row) => row.id === child.taskId);
+      assert.equal(task?.status, "completed");
+      assert.deepEqual(task?.usage, {
+        totalTokens: 1255,
+        inputTokens: 1200,
+        cachedInputTokens: 600,
+        outputTokens: 55,
+        reasoningOutputTokens: 10,
+        toolUses: 2,
+      });
     }),
   );
 });
