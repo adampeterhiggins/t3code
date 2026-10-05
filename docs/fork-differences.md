@@ -221,7 +221,10 @@ web, desktop, and mobile. Timelines carry an edit without its diff, so an expand
 stored item for its preview (`fileChangePreviewText`); the fork's `projectTurnItemForDetail` returns
 an edit's stored diff, bounded, where upstream withholds it there too. Claude's Edit results are only a
 success message, so the fork builds a Claude edit's diff and line counts from the tool's input
-(`claudeFileChangeDiff`), where upstream stores the message as the diff. In the agent views a tool's preview also
+(`claudeFileChangeDiff`), where upstream stores the message as the diff. Codex sends a new or deleted
+file as raw contents and an update as bare hunks; the fork stores every change in the item as one
+unified patch with line counts (`codexFileChangeDiff`), where upstream kept the first change's raw
+text. In the agent views a tool's preview also
 carries what it reported back, such as an `Error:` line, when its output came with the timeline;
 v2 command items record no working directory, so none is shown. On web and desktop, collapsed tool calls in
 the main chat also preview on hover; clicking still expands them inline. The card shows the tool

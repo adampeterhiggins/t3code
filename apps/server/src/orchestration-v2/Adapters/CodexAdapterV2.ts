@@ -62,6 +62,7 @@ import type {
   RuntimeRequestId,
   ThreadId,
 } from "@t3tools/contracts";
+import { createPatch } from "diff";
 import * as CodexClient from "effect-codex-app-server/client";
 import * as CodexErrors from "effect-codex-app-server/errors";
 import * as CodexSchema from "effect-codex-app-server/schema";
@@ -400,6 +401,52 @@ function providerTurnStatusToTerminal(
     case "running":
       return "failed";
   }
+}
+
+/** Edits larger than this keep their line counts but carry no diff. */
+const CODEX_FILE_CHANGE_DIFF_MAX_CHARS = 256 * 1024;
+
+/**
+ * Fork: a Codex file change as one unified patch with line counts. Codex sends an added or deleted
+ * file as its raw contents and an update as bare `@@` hunks, and upstream stored the first
+ * change's raw text, so a new file rendered as plain text with no counts. Every change in the
+ * item is included.
+ */
+export function codexFileChangeDiff(
+  changes: ReadonlyArray<{
+    readonly path: string;
+    readonly diff: string;
+    readonly kind: {
+      readonly type: "add" | "delete" | "update";
+      readonly move_path?: string | null;
+    };
+  }>,
+): { readonly diffStr?: string; readonly additions?: number; readonly deletions?: number } {
+  if (changes.length === 0) return {};
+  const withNewline = (value: string) =>
+    value === "" || value.endsWith("\n") ? value : `${value}\n`;
+  const patches = changes.map((change) => {
+    const body = withNewline(change.diff);
+    if (change.kind.type === "add") return createPatch(change.path, "", body);
+    if (change.kind.type === "delete") return createPatch(change.path, body, "");
+    if (/^(?:diff --git |--- )/m.test(change.diff)) return body;
+    const target = change.kind.move_path ?? change.path;
+    return `--- a/${change.path}\n+++ b/${target}\n${body}`;
+  });
+  let additions = 0;
+  let deletions = 0;
+  for (const patch of patches) {
+    for (const line of patch.split("\n")) {
+      if (line.startsWith("+") && !line.startsWith("+++")) additions += 1;
+      else if (line.startsWith("-") && !line.startsWith("---")) deletions += 1;
+    }
+  }
+  const diffStr = patches.join("");
+  return {
+    additions,
+    deletions,
+    ...(diffStr.length <= CODEX_FILE_CHANGE_DIFF_MAX_CHARS ? { diffStr } : {}),
+  };
 }
 
 function codexItemStatus(status: "inProgress" | "completed" | "failed" | "declined"): {
@@ -3290,7 +3337,7 @@ export function makeCodexAdapterV2(adapterOptions: CodexAdapterV2Options): Provi
               updatedAt,
               type: "file_change",
               fileName: firstChange.path,
-              diffStr: firstChange.diff,
+              ...codexFileChangeDiff(item.changes),
             };
             return { node, turnItem };
           });
