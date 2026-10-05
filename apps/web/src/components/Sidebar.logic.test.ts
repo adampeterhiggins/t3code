@@ -55,6 +55,7 @@ import {
   withSidebarTabThreads,
   holdSidebarTabOrder,
   limitSidebarTabs,
+  sidebarSiblingTabs,
   sidebarTabToggleCount,
   sidebarTabToggleLabel,
   moveSidebarTab,
@@ -764,6 +765,35 @@ describe("sidebar tab order", () => {
     });
     expect(limitSidebarTabs(keys, 3, "e", (k) => k)).toEqual({
       shown: ["a", "b", "e"],
+      hidden: ["c", "d"],
+    });
+  });
+
+  it("lists a group's other tabs where the sidebar shows them, split at its more row", () => {
+    const tabs = ["a", "b", "c", "d", "e", "f"];
+    const siblings = (input: { listsRow: boolean; openKey: string }) =>
+      sidebarSiblingTabs(tabs, {
+        ...input,
+        order: "manual",
+        direction: "asc",
+        getKey: (k) => k,
+        getTimestamp: () => null,
+        manualRanks: { f: 0, e: 1 },
+        limit: 3,
+      });
+    // A card sorts every tab; the open one keeps its slot and leaves the list.
+    expect(siblings({ listsRow: true, openKey: "b" })).toEqual({
+      shown: ["f", "e"],
+      hidden: ["a", "c", "d"],
+    });
+    // Open past the limit, it takes the last slot as in the sidebar.
+    expect(siblings({ listsRow: true, openKey: "d" })).toEqual({
+      shown: ["f", "e"],
+      hidden: ["a", "b", "c"],
+    });
+    // A slim row stands for the first tab and limits only the rest.
+    expect(siblings({ listsRow: false, openKey: "f" })).toEqual({
+      shown: ["a", "e", "b"],
       hidden: ["c", "d"],
     });
   });
