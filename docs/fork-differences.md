@@ -820,27 +820,24 @@ User guide: [thread-sidebar.md](./user/thread-sidebar.md#see-what-needs-you).
 
 ## Usage-limit recovery
 
-When Codex or Claude ends a turn because the account's usage allowance ran out, the thread shows a
-recovery banner instead of the plain error. Upstream only shows the error. The banner offers:
+Upstream shows a recovery banner when Codex or Claude ends a turn on a usage limit, with **Resume at
+reset**, **Cancel auto-resume**, and **Snooze until reset**. The fork adds:
 
-- **Resume when available**, only when the provider reported a reset time. It arms the server to
-  send "Continue where you left off." into the same session a minute after the reset, with no
-  client connected and across restarts. It covers that one stop and is off until chosen; **Cancel
-  auto-resume** disarms it.
-- **Resume now**, which sends the same message at once.
+- **Resume now**, on web, desktop, and mobile, which sends the same "Continue where you left off."
+  continuation into the same session at once. It is the `thread.usage-limit.resume-now` command, so
+  the server owns the message and any client or future agent tool can send it. Servers advertise it
+  with the `usageLimitResumeNow` capability; clients hide the button without it.
 - **Continue in new tab** on web and desktop, which forks the chat onto another ready account or
-  model through the [Chat tabs](#chat-tabs) fork.
+  model through the [Chat tabs](#chat-tabs) fork, with the continuation as the new tab's prompt.
+- A one-minute grace after the reported reset before an armed auto-resume is sent, since a request
+  at the reset can still be refused.
+- A notice in the stopped turn when auto-resume is scheduled or cancelled.
 
-Adapters mark the stop with `usageLimit` (and `resetsAt` when known) on `runtime.error`. Codex uses
-`usageLimitExceeded`; Claude uses a rejected rate-limit window or `blocking_limit`. Cursor, Grok,
-OpenCode, Antigravity, and Devin do not mark stops, so they keep the plain error. Arming and
-cancelling are the `thread.usage-limit.resume` command, recorded as thread activities. Mobile has
-the resume actions but not **Continue in new tab**.
-
-Code: `packages/shared/src/usageLimitRecovery.ts`,
-`apps/server/src/orchestration/UsageLimitResumeReactor.ts`, the `thread.usage-limit.resume` case in
-`apps/server/src/orchestration/decider.ts`, `apps/web/src/components/chat/UsageLimitRecoveryBanner.tsx`,
-and `apps/mobile/src/features/threads/UsageLimitRecoveryNotice.tsx`. User guides:
+Code: the `thread.usage-limit.resume-now` case and limit-recovery notice in
+[Orchestrator](../apps/server/src/orchestration-v2/Orchestrator.ts), the grace in
+[UsageLimitRecoveryWorker](../apps/server/src/orchestration-v2/UsageLimitRecoveryWorker.ts),
+[UsageLimitRecoveryBanner](../apps/web/src/components/chat/UsageLimitRecoveryBanner.tsx), and
+[UsageLimitRecoveryCard](../apps/mobile/src/features/threads/UsageLimitRecoveryCard.tsx). User guides:
 [providers-codex.md](./user/providers-codex.md#codex-says-i-hit-a-usage-limit) and
 [providers-claude.md](./user/providers-claude.md#usage-limits).
 

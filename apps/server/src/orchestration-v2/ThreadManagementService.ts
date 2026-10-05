@@ -55,6 +55,7 @@ export function withCreationProvenance(
       return { ...(provenance.createdBy === "user" ? rest : command), ...provenance };
     }
     case "message.dispatch":
+    case "thread.usage-limit.resume-now":
     case "thread.fork":
     case "thread.merge_back":
     case "delegated_task.request":

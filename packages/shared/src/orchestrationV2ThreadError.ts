@@ -77,6 +77,15 @@ export function runRanAfter(
   return end(run) === end(other) ? run.ordinal > other.ordinal : end(run) > end(other);
 }
 
+/** The message that continues a run stopped on a usage limit, sent now or after the reset. */
+export const USAGE_LIMIT_CONTINUATION_TEXT = "Continue where you left off.";
+
+/**
+ * Auto-resume waits this long past the provider's reported reset, since a
+ * request sent right at the reset can still be refused.
+ */
+export const USAGE_LIMIT_RESUME_GRACE_MS = 60_000;
+
 /**
  * The latest run that actually started, when it stopped because the
  * subscription limit was reached. Queued messages after that run must stay

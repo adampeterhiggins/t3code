@@ -105,17 +105,20 @@ to continue sooner.
 
 The thread keeps its work and offers a way to pick it back up:
 
-- **Resume when available** continues the same session shortly after the reset,
-  even if no app is open. It is off until you choose it for that stop, and
-  **Cancel auto-resume** turns it off again. It appears only when Codex reported
-  a reset time.
+- **Resume at reset** continues the same session about a minute after the
+  reset, even if no app is open. **Cancel auto-resume** turns it off again. It
+  appears only when Codex reported a reset time. **Snooze until reset** hides
+  the thread until then.
 - **Resume now** continues the same session straight away, for example after
   your workspace added credits.
 - **Continue in new tab** (web and desktop) forks the chat into a new tab on
   another account or model, starting from a summary of this one. See
   [Switch accounts in an existing thread](#switch-accounts-in-an-existing-thread).
 
-Sending any new message also moves the thread past the stop.
+Scheduling and cancelling an automatic resume are noted in the stopped turn.
+Sending any new message also moves the thread past the stop. See
+[Inspect agent work](./thread-sidebar.md#inspect-agent-work) for the settings
+that schedule or snooze every limit stop by default.
 
 ## Send feedback to OpenAI
 

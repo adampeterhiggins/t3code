@@ -2,6 +2,7 @@ import {
   latestExecutedRun,
   latestRootProviderFailure,
   runRanAfter,
+  USAGE_LIMIT_CONTINUATION_TEXT,
   usageLimitBlockedRun,
 } from "@t3tools/shared/orchestrationV2ThreadError";
 import { threadPullRequestsOf } from "@t3tools/shared/threadPullRequests";
@@ -391,6 +392,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
     case "thread.visit":
     case "thread.mark-unread":
     case "thread.metadata.update":
+    case "thread.usage-limit.resume-now":
     case "thread.pull-request.link":
     case "thread.pull-request.unlink":
     case "thread.pull-request-link.sync":
@@ -2607,6 +2609,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         : null;
 
     const now = yield* DateTime.now;
+    // The failed root item of the limited run; recovery notices join its turn.
+    let limitFailure:
+      | {
+          readonly run: OrchestrationV2Run;
+          readonly item: Extract<OrchestrationV2TurnItem, { readonly type: "error" }>;
+        }
+      | undefined;
     if (command.type === "thread.metadata.update" && command.limitRecovery != null) {
       const projection = yield* loadProjectionForCommand(
         command,
@@ -2615,6 +2624,11 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       );
       const run = usageLimitBlockedRun(projection.runs, projection.turnItems, null);
       const failure = latestRootProviderFailure(run, projection.turnItems);
+      const failureItem = projection.turnItems.findLast(
+        (item): item is Extract<OrchestrationV2TurnItem, { readonly type: "error" }> =>
+          item.type === "error" && item.failure === failure,
+      );
+      limitFailure = run && failureItem ? { run, item: failureItem } : undefined;
       const resetMs = Date.parse(command.limitRecovery.resetAt);
       if (command.limitRecovery.snooze === true && resetMs <= DateTime.toEpochMillis(now)) {
         return yield* new OrchestratorDispatchError({
@@ -3147,6 +3161,51 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       occurredAt: now,
       payload: updatedThread,
     });
+
+    // Arming or cancelling auto-resume is shown in the stopped turn, as the
+    // composer banner goes away once the thread moves on.
+    const wasArmed =
+      thread.limitRecovery?.autoResume === true &&
+      thread.limitRecovery.runId === updatedThread.limitRecovery?.runId &&
+      thread.limitRecovery.resetAt === updatedThread.limitRecovery.resetAt;
+    const armed = updatedThread.limitRecovery?.autoResume === true;
+    if (limitFailure !== undefined && armed !== wasArmed) {
+      const { run, item } = limitFailure;
+      yield* emit(
+        events,
+        command,
+      )({
+        type: "turn-item.updated",
+        threadId: command.threadId,
+        runId: run.id,
+        ...(run.rootNodeId === null ? {} : { nodeId: run.rootNodeId }),
+        providerInstanceId: run.providerInstanceId,
+        occurredAt: now,
+        payload: {
+          id: idAllocator.derive.runSignalTurnItem({
+            runId: run.id,
+            signal: `limit-recovery:${command.commandId}`,
+          }),
+          threadId: command.threadId,
+          runId: run.id,
+          nodeId: run.rootNodeId,
+          providerThreadId: item.providerThreadId,
+          providerTurnId: item.providerTurnId,
+          nativeItemRef: null,
+          parentItemId: null,
+          ordinal: yield* nextTurnItemOrdinal({ thread }),
+          status: "completed",
+          title: armed ? "Auto-resume scheduled" : "Auto-resume cancelled",
+          startedAt: now,
+          completedAt: now,
+          updatedAt: now,
+          type: "system_notice",
+          message: armed
+            ? "Auto-resume scheduled for a minute after the usage limit resets"
+            : "Auto-resume cancelled",
+        },
+      });
+    }
 
     if (command.type === "thread.metadata.update" && command.regenerateTitle === true) {
       yield* Ref.update(effects, (existing) => [
@@ -9618,6 +9677,44 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           });
         }
         yield* dispatchMessage(command, events, effects);
+        break;
+      }
+      case "thread.usage-limit.resume-now": {
+        // The same continuation the recovery worker sends at the reset, sent
+        // now as a manual continuation so no armed recovery or passed reset is needed.
+        const projection = yield* loadProjectionForCommand(command, ["runs", "turnItems"], {
+          turnItemTypes: ["error"],
+        });
+        const run = projection.runs.find((candidate) => candidate.id === command.runId) ?? null;
+        if (latestRootProviderFailure(run, projection.turnItems)?.class !== "usage_limit") {
+          return yield* new OrchestratorDispatchError({
+            commandId: command.commandId,
+            commandType: command.type,
+            cause: "This thread is no longer stopped on that usage limit.",
+          });
+        }
+        if (isProviderNativeSubagentThread(projection.thread)) {
+          return yield* new OrchestratorSubagentThreadReadOnlyError({
+            commandId: command.commandId,
+            threadId: command.threadId,
+          });
+        }
+        yield* dispatchMessage(
+          {
+            type: "message.dispatch",
+            commandId: command.commandId,
+            threadId: command.threadId,
+            messageId: MessageId.make(`limit-resume-now:${command.commandId}`),
+            manualContinuationOfRunId: command.runId,
+            text: USAGE_LIMIT_CONTINUATION_TEXT,
+            attachments: [],
+            dispatchMode: { type: "start_immediately" },
+            createdBy: command.createdBy,
+            creationSource: command.creationSource,
+          },
+          events,
+          effects,
+        );
         break;
       }
       case "notification.delivery.accept":

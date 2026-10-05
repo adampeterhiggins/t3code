@@ -2636,6 +2636,18 @@ export const OrchestrationV2Command = Schema.Union([
     /** Link (object) or unlink (null) a pull request (#8160); absent leaves it unchanged. */
     linkedPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
   }),
+  /**
+   * Sends the usage-limit continuation into the same session now, without
+   * waiting for the reset. Rejected unless `runId` is still the run stopped on
+   * the usage limit.
+   */
+  Schema.Struct({
+    type: Schema.Literal("thread.usage-limit.resume-now"),
+    ...OrchestrationV2CreationFields,
+    commandId: CommandId,
+    threadId: ThreadId,
+    runId: RunId,
+  }),
   Schema.Struct({
     type: Schema.Literal("thread.pull-request.link"),
     commandId: CommandId,

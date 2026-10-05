@@ -120,6 +120,11 @@ export interface VisitThreadInput extends ThreadCommandInput {
 
 export type MarkThreadUnreadInput = ThreadCommandInput;
 
+export interface ResumeUsageLimitedThreadInput extends ThreadCommandInput {
+  /** The run stopped on the usage limit. */
+  readonly runId: RunId;
+}
+
 export interface UpdateThreadMetadataInput extends ThreadCommandInput {
   readonly limitRecovery?: import("@t3tools/contracts").OrchestrationV2LimitRecoveryUpdate | null;
   readonly title?: string;
@@ -561,6 +566,20 @@ export const markThreadUnread = Effect.fn("EnvironmentCommands.markThreadUnread"
     threadId: input.threadId,
   });
 });
+
+/** Sends the usage-limit continuation into the same session now, ahead of the reset. */
+export const resumeUsageLimitedThread = Effect.fn("EnvironmentCommands.resumeUsageLimitedThread")(
+  function* (input: ResumeUsageLimitedThreadInput) {
+    return yield* dispatch({
+      type: "thread.usage-limit.resume-now",
+      commandId: yield* allocateCommandId(input),
+      threadId: input.threadId,
+      runId: input.runId,
+      createdBy: "user",
+      creationSource: input.creationSource ?? "web",
+    });
+  },
+);
 
 export const updateThreadMetadata = Effect.fn("EnvironmentCommands.updateThreadMetadata")(
   function* (input: UpdateThreadMetadataInput) {
