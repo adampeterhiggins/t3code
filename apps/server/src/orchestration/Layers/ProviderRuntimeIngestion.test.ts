@@ -5014,6 +5014,53 @@ describe("ProviderRuntimeIngestion", () => {
     expect(completedPayload?.title).toBe("wait for codex review to finish");
   });
 
+  it("stamps the task's spawn time on its replaced progress row", async () => {
+    const harness = await createHarness();
+    const threadId = asThreadId("thread-1");
+    const turnId = asTurnId("turn-spawned-task");
+    const provider = ProviderDriverKind.make("claudeAgent");
+
+    await harness.emitAndDrain([
+      {
+        type: "task.started",
+        eventId: asEventId("evt-spawned-task-started"),
+        provider,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        threadId,
+        turnId,
+        payload: { taskId: "spawned-task-1", description: "Port chat tabs" },
+      },
+      {
+        type: "task.progress",
+        eventId: asEventId("evt-spawned-task-progress-1"),
+        provider,
+        createdAt: "2026-01-01T00:01:00.000Z",
+        threadId,
+        turnId,
+        payload: { taskId: "spawned-task-1", description: "Port chat tabs", summary: "Reading" },
+      },
+      {
+        type: "task.progress",
+        eventId: asEventId("evt-spawned-task-progress-2"),
+        provider,
+        createdAt: "2026-01-01T00:02:00.000Z",
+        threadId,
+        turnId,
+        payload: { taskId: "spawned-task-1", description: "Port chat tabs", summary: "Testing" },
+      },
+    ]);
+
+    const thread = (await harness.readModel()).threads.find((entry) => entry.id === threadId);
+    const progress = thread?.activities.find(
+      (activity) => activity.id === `task-progress:${threadId}:spawned-task-1`,
+    );
+    expect(progress?.createdAt).toBe("2026-01-01T00:02:00.000Z");
+    expect(progress?.payload).toMatchObject({
+      summary: "Testing",
+      spawnedAt: "2026-01-01T00:00:00.000Z",
+    });
+  });
+
   it("recovers a task title past untitled progress after the cache is swept", async () => {
     const harness = await createHarness();
     const now = "2026-01-01T00:00:00.000Z";

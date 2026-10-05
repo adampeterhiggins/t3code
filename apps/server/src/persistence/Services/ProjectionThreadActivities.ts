@@ -94,6 +94,14 @@ export interface ProjectionThreadActivityRepositoryShape {
   ) => Effect.Effect<Option.Option<ProjectionThreadActivity>, ProjectionRepositoryError>;
 
   /**
+   * Read when a task was spawned: its earliest task-start or task-progress
+   * time, preferring the spawn time stamped on progress rows.
+   */
+  readonly getTaskSpawnedAt: (
+    input: GetLatestProjectionThreadTaskActivityInput,
+  ) => Effect.Effect<Option.Option<string>, ProjectionRepositoryError>;
+
+  /**
    * Delete projected thread activity rows by thread.
    */
   readonly deleteByThreadId: (

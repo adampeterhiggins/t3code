@@ -487,6 +487,33 @@ describe("deriveAgentPanelModel", () => {
     ).toEqual(["direct-a", "direct-b"]);
   });
 
+  it("orders by stamped spawn time when only replaced progress rows are retained", () => {
+    // The snapshot window lost both start rows; each progress row is the
+    // agent's latest tick, so the busier (earlier-spawned) agent is newest.
+    const progressOnly = fold([
+      activity(
+        "task.progress",
+        { taskId: "quiet", summary: "Reading", spawnedAt: "2026-08-01T11:05:00.000Z" },
+        "2026-08-01T11:30:00.000Z",
+      ),
+      activity(
+        "task.progress",
+        { taskId: "busy", summary: "Testing", spawnedAt: "2026-08-01T11:00:00.000Z" },
+        "2026-08-01T11:30:05.000Z",
+      ),
+    ]);
+
+    expect(
+      deriveAgentPanelModel({ agents: progressOnly }).directAgents.map((agent) => [
+        agent.id,
+        agent.startedAt,
+      ]),
+    ).toEqual([
+      ["busy", "2026-08-01T11:00:00.000Z"],
+      ["quiet", "2026-08-01T11:05:00.000Z"],
+    ]);
+  });
+
   it("keeps first-seen order after the roster retention ranking runs", () => {
     const starts = Array.from({ length: 101 }, (_, index) =>
       activity(

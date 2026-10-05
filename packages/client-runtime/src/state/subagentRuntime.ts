@@ -84,7 +84,10 @@ export interface RuntimeSubagent {
   readonly phases: ReadonlyArray<SubagentWorkflowPhase>;
   readonly runHandles: SubagentRunHandles | null;
   readonly recentActivity: ReadonlyArray<SubagentActivityEntry>;
-  /** First retained observation, used as the roster's stable display order. */
+  /**
+   * Spawn time when known, else the first retained observation: the roster's
+   * stable display order.
+   */
   readonly firstSeenAt: string;
   readonly startedAt: string | null;
   readonly completedAt: string | null;
@@ -348,6 +351,9 @@ function fillMetadata(agent: MutableAgent, payload: Record<string, unknown>): vo
   const workflowName = asString(payload.workflowName);
   if (workflowName) agent.workflowName = workflowName;
   if (asString(payload.taskType) === "local_workflow") agent.kind = "workflow";
+  // Progress rows carry the spawn time because the start row ages out.
+  const spawnedAt = asString(payload.spawnedAt);
+  if (spawnedAt && spawnedAt < agent.firstSeenAt) agent.firstSeenAt = spawnedAt;
   const agentIndex = asCount(payload.agentIndex);
   if (agentIndex !== undefined) agent.agentIndex = agentIndex;
   const phaseIndex = asCount(payload.phaseIndex);
@@ -526,7 +532,10 @@ export function foldSubagentActivities(
         if (!existed && isBackgroundTaskActivity(payload)) break;
         const agent = getOrCreate(agents, taskId, payload, at);
         fillMetadata(agent, payload);
-        if (agent.activationCount === 0) agent.activationCount = 1;
+        if (agent.activationCount === 0) {
+          agent.activationCount = 1;
+          agent.startedAt ??= asString(payload.spawnedAt) ?? null;
+        }
         const explicitStatus = asRuntimeStatus(payload.status);
         if (explicitStatus) {
           applyStatus(agent, explicitStatus, at);

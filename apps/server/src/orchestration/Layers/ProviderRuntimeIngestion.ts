@@ -493,6 +493,7 @@ function taskLinkageActivityFields(payload: Record<string, unknown>): Record<str
 export function runtimeEventToActivities(
   event: ProviderRuntimeEvent,
   taskTitle?: string,
+  taskSpawnedAt?: string,
 ): ReadonlyArray<OrchestrationThreadActivity> {
   const maybeSequence = (() => {
     const eventWithSequence = event as ProviderRuntimeEvent & { sessionSequence?: number };
@@ -744,6 +745,9 @@ export function runtimeEventToActivities(
                 payload: {
                   taskId: event.payload.taskId,
                   ...title,
+                  // Replaced on every tick while the start row ages out of the
+                  // snapshot window: carry the spawn time clients order by.
+                  ...(taskSpawnedAt ? { spawnedAt: taskSpawnedAt } : {}),
                   detail: truncateDetail(event.payload.summary ?? event.payload.description),
                   ...(event.payload.summary
                     ? { summary: truncateDetail(event.payload.summary) }
@@ -772,6 +776,7 @@ export function runtimeEventToActivities(
                 payload: {
                   taskId: event.payload.taskId,
                   ...title,
+                  ...(taskSpawnedAt ? { spawnedAt: taskSpawnedAt } : {}),
                   ...identityLinkage,
                   usageSnapshot: true,
                   typedUsage: event.payload.typedUsage,
@@ -1121,6 +1126,40 @@ const make = Effect.gen(function* () {
 
   const rememberTaskDescription = (threadId: ThreadId, taskId: string, description: string) =>
     Cache.set(taskDescriptionByTaskKey, providerTaskKey(threadId, taskId), description);
+
+  // Spawn times for task.progress rows. A miss (restart, TTL, eviction) falls
+  // back to persisted rows; a reactivated task keeps its first spawn time.
+  const taskSpawnedAtByTaskKey = yield* Cache.make<string, string>({
+    capacity: TASK_DESCRIPTION_BY_TASK_CACHE_CAPACITY,
+    timeToLive: TASK_DESCRIPTION_BY_TASK_TTL,
+    lookup: () => Effect.succeed(""),
+  });
+
+  const rememberTaskSpawnedAt = (threadId: ThreadId, taskId: string, spawnedAt: string) =>
+    Cache.getOption(taskSpawnedAtByTaskKey, providerTaskKey(threadId, taskId)).pipe(
+      Effect.flatMap((existing) =>
+        Option.isSome(existing)
+          ? Effect.void
+          : Cache.set(taskSpawnedAtByTaskKey, providerTaskKey(threadId, taskId), spawnedAt),
+      ),
+    );
+
+  const resolveTaskSpawnedAt = Effect.fn("resolveTaskSpawnedAt")(function* (
+    threadId: ThreadId,
+    taskId: string,
+    observedAt: string,
+  ) {
+    const key = providerTaskKey(threadId, taskId);
+    const cached = yield* Cache.getOption(taskSpawnedAtByTaskKey, key);
+    if (Option.isSome(cached)) return cached.value;
+    const persisted = yield* projectionThreadActivityRepository.getTaskSpawnedAt({
+      threadId,
+      taskId,
+    });
+    const spawnedAt = Option.getOrElse(persisted, () => observedAt);
+    yield* Cache.set(taskSpawnedAtByTaskKey, key, spawnedAt);
+    return spawnedAt;
+  });
 
   // Entries are left in place after completion so replayed or duplicate
   // terminal events stay titled; TTL, capacity, and the session-exit sweep
@@ -2481,6 +2520,9 @@ const make = Effect.gen(function* () {
           yield* rememberTaskDescription(thread.id, event.payload.taskId, description);
         }
       }
+      if (event.type === "task.started") {
+        yield* rememberTaskSpawnedAt(thread.id, event.payload.taskId, event.createdAt);
+      }
       // Working-indicator plan progress: current step while the turn runs,
       // cleared on settle so a finished plan never lingers as stale UI.
       // Events carrying a turn id that conflicts with the active turn are
@@ -2551,6 +2593,11 @@ const make = Effect.gen(function* () {
         }
       }
 
+      const taskSpawnedAt =
+        event.type === "task.progress"
+          ? yield* resolveTaskSpawnedAt(thread.id, event.payload.taskId, event.createdAt)
+          : undefined;
+
       let activityEvent = event;
       if (
         isCompactedThreadState &&
@@ -2605,7 +2652,7 @@ const make = Effect.gen(function* () {
         }
       }
 
-      const activities = runtimeEventToActivities(activityEvent, taskTitle);
+      const activities = runtimeEventToActivities(activityEvent, taskTitle, taskSpawnedAt);
       yield* Effect.forEach(activities, (activity) =>
         providerCommandId(event, "thread-activity-append").pipe(
           Effect.flatMap((commandId) =>

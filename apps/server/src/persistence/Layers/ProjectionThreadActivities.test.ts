@@ -2,6 +2,7 @@ import { EventId, ThreadId } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { ProjectionThreadActivityRepository } from "../Services/ProjectionThreadActivities.ts";
@@ -95,6 +96,39 @@ layer("ProjectionThreadActivityRepository", (it) => {
         (yield* repository.getLatestTaskActivity({ threadId, taskId: "missing" }))._tag,
         "None",
       );
+    }),
+  );
+
+  it.effect("reads a task's spawn time past replaced progress rows", () =>
+    Effect.gen(function* () {
+      const repository = yield* ProjectionThreadActivityRepository;
+      const sql = yield* SqlClient.SqlClient;
+      const threadId = ThreadId.make("thread-task-spawned-at");
+
+      yield* sql`
+        INSERT INTO projection_thread_activities (
+          activity_id, thread_id, turn_id, tone, kind, summary, payload_json, sequence, created_at
+        )
+        VALUES
+          (
+            'activity-started', ${threadId}, NULL, 'info', 'task.started',
+            'started', '{"taskId":"task-started"}', NULL, '2026-03-01T00:00:01.000Z'
+          ),
+          (
+            'activity-started-progress', ${threadId}, NULL, 'info', 'task.progress',
+            'progress', '{"taskId":"task-started"}', NULL, '2026-03-01T00:10:00.000Z'
+          ),
+          (
+            'activity-stamped-progress', ${threadId}, NULL, 'info', 'task.progress',
+            'progress', '{"taskId":"task-stamped","spawnedAt":"2026-03-01T00:00:02.000Z"}',
+            NULL, '2026-03-01T00:10:01.000Z'
+          )
+      `;
+
+      const spawnedAt = (taskId: string) => repository.getTaskSpawnedAt({ threadId, taskId });
+      assert.deepEqual(yield* spawnedAt("task-started"), Option.some("2026-03-01T00:00:01.000Z"));
+      assert.deepEqual(yield* spawnedAt("task-stamped"), Option.some("2026-03-01T00:00:02.000Z"));
+      assert.deepEqual(yield* spawnedAt("missing"), Option.none());
     }),
   );
 });
