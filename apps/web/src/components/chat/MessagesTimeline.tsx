@@ -1,5 +1,8 @@
 import type { NotionPageContextRecord } from "@t3tools/contracts";
 import { ToolCallBody } from "../ToolCallBody";
+import { ToolCallCommand } from "../ToolCallCommand";
+import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
+import { splitToolCallPreviewMetadata } from "../../lib/toolCallPreview";
 import { ArrowUpIcon, ClockIcon } from "lucide-react";
 import { GitHubIcon, LinearIcon, NotionIcon, SlackIcon } from "../Icons";
 import { ReadOnlySourcePreview } from "../files/AttachmentFilePreview";
@@ -38,6 +41,7 @@ import {
 } from "@t3tools/client-runtime/work-log/presentation";
 import {
   formatCommandForWorkspace,
+  formatPathsForWorkspace,
   formatToolTextForWorkspace,
 } from "@t3tools/client-runtime/work-log/command-display";
 import { resolveWorkGroupScrollAnchor } from "@t3tools/client-runtime/work-log/scroll-anchor";
@@ -273,7 +277,11 @@ import { useMediaQuery } from "~/hooks/useMediaQuery";
 import { cn } from "~/lib/utils";
 import { useUiStateStore } from "~/uiStateStore";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
-import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
+import {
+  formatChatTimestampTooltip,
+  formatDayAwareTimestamp,
+  formatSecondsTimestamp,
+} from "../../timestampFormat";
 
 import { SkillChipIcon, SkillInlineText } from "./SkillInlineText";
 import { deriveAgentSpawnSummary } from "./agentSpawnSummary";
@@ -4616,6 +4624,7 @@ function buildToolCallExpandedBody(
   workspaceRoot: string | undefined,
   visibleLabel: string,
   viewedImagePath: string | null,
+  options: { activityBody?: string; outputFirst?: boolean } = {},
 ): string | null {
   const blocks: string[] = [];
   const seen = new Set<string>([visibleLabel.trim()]);
@@ -4625,7 +4634,8 @@ function buildToolCallExpandedBody(
     seen.add(text);
     blocks.push(text);
   };
-  addBlock(toolActivityDataBody(workEntry));
+  const activityBody = options.activityBody ?? toolActivityDataBody(workEntry);
+  if (!options.outputFirst) addBlock(activityBody);
   const command = workEntry.command?.trim();
   const raw = workEntryRawCommand(workEntry);
   if (command && formatCommandForWorkspace(command, workspaceRoot) === visibleLabel.trim()) {
@@ -4641,6 +4651,7 @@ function buildToolCallExpandedBody(
       detail && !command ? formatToolTextForWorkspace(workEntry, detail, workspaceRoot) : detail,
     );
   }
+  if (options.outputFirst) addBlock(activityBody);
   const viewedImagePaths = new Set(
     viewedImagePath
       ? [viewedImagePath.trim(), formatWorkspaceRelativePath(viewedImagePath, workspaceRoot)]
@@ -4663,6 +4674,58 @@ function buildToolCallExpandedBody(
 
 const toolCallExpandedBodyClassName =
   "max-h-64 cursor-text overflow-auto whitespace-pre-wrap break-words font-mono text-secondary-label text-(length:--font-size-code,var(--text-2xs)) leading-relaxed select-text";
+
+/** Build the preview details only when the hover card mounts. */
+function ToolCallPreviewBody(props: {
+  workEntry: TimelineWorkEntry;
+  workspaceRoot: string | undefined;
+  visibleLabel: string;
+}) {
+  const { timestampFormat } = use(TimelineRowCtx);
+  const activityBody = toolActivityDataBody(props.workEntry);
+  const preview =
+    props.workEntry.itemType === "mcp_tool_call"
+      ? { body: activityBody, metadata: [] }
+      : splitToolCallPreviewMetadata(activityBody);
+  const body = buildToolCallExpandedBody(
+    props.workEntry,
+    props.workspaceRoot,
+    props.visibleLabel,
+    null,
+    { activityBody: preview.body ?? "", outputFirst: true },
+  );
+  return (
+    <>
+      {body ? <ToolCallBody text={body} className="max-h-[50vh]" /> : null}
+      <p className="flex flex-wrap gap-x-3 gap-y-1 font-mono text-3xs text-muted-foreground select-text">
+        <span>
+          {[
+            formatSecondsTimestamp(props.workEntry.createdAt, timestampFormat),
+            props.workEntry.toolLifecycleStatus === "inProgress"
+              ? "running"
+              : props.workEntry.toolLifecycleStatus,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </span>
+        {preview.metadata.map(({ label, value }) => (
+          <Tooltip key={`${label}:${value}`}>
+            <TooltipTrigger
+              render={
+                <span>
+                  {label === "Working directory"
+                    ? `cwd: ${formatPathsForWorkspace(value, props.workspaceRoot)}`
+                    : `Exit: ${value}`}
+                </span>
+              }
+            />
+            <TooltipPopup>{`${label}: ${value}`}</TooltipPopup>
+          </Tooltip>
+        ))}
+      </p>
+    </>
+  );
+}
 
 function workEntryIconName(workEntry: TimelineWorkEntry): WorkEntryIconName {
   if (
@@ -4951,7 +5014,9 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
   const [expanded, setExpanded] = useState(
     () => groupView?.state.expandedEntries.has(workEntry.id) ?? false,
   );
+  const [previewOpen, setPreviewOpen] = useState(false);
   const toggleExpanded = () => {
+    setPreviewOpen(false);
     const next = !expanded;
     if (groupView) {
       groupView.onToggleEntry(!next);
@@ -4982,6 +5047,10 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
     : "";
   const previewText =
     displayLabel ?? (questionHeading || workEntryDisplayLabel(workEntry, workspaceRoot));
+  const previewTitle =
+    resolveWorkEntryToolPresentation(workEntry)?.displayName ??
+    workEntry.toolTitle ??
+    (workEntry.command ? "Command" : previewText);
   const answerPreview =
     workEntry.questionAnswer && hasQuestionAnswer(workEntry.questionAnswer)
       ? getQuestionAnswerPreview(workEntry.questionAnswer)
@@ -5053,7 +5122,7 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
       }
     : {};
 
-  return (
+  const row = (
     <div
       className={cn(
         "group/timeline-row relative flex flex-col rounded-md px-0.5 transition-colors",
@@ -5159,6 +5228,47 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
         </div>
       ) : null}
     </div>
+  );
+
+  if (!canExpand || !workLogEntryIsToolLike(workEntry) || workEntry.questionAnswer) {
+    return row;
+  }
+  return (
+    <PreviewCard
+      open={!expanded && previewOpen}
+      onOpenChange={(open) => setPreviewOpen(!expanded && open)}
+    >
+      <PreviewCardTrigger render={row} delay={300} closeDelay={150} />
+      <PreviewCardPopup align="start" className="w-md max-w-[calc(100vw-2rem)]">
+        <div className="flex max-h-[60vh] flex-col gap-1.5 overflow-auto p-3">
+          <div className="flex items-start gap-1.5 text-xs text-secondary-label">
+            <ToolActivityIconView
+              icon={entryToolIcon}
+              fallbackName={entryIconName}
+              className={cn(iconWrapperClass, "mt-px size-3.5 shrink-0")}
+              muted
+            />
+            <span className="min-w-0 break-all">{previewTitle}</span>
+          </div>
+          {workEntry.command ? (
+            <ToolCallCommand
+              command={formatCommandForWorkspace(workEntry.command, workspaceRoot)}
+            />
+          ) : previewTitle !== previewText ? (
+            <ToolCallBody text={previewText} className="max-h-[50vh]" />
+          ) : null}
+          <ToolCallPreviewBody
+            workEntry={workEntry}
+            workspaceRoot={workspaceRoot}
+            visibleLabel={
+              workEntry.command
+                ? formatCommandForWorkspace(workEntry.command, workspaceRoot)
+                : previewText
+            }
+          />
+        </div>
+      </PreviewCardPopup>
+    </PreviewCard>
   );
 });
 
