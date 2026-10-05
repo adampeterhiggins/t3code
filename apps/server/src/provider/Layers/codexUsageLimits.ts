@@ -220,36 +220,31 @@ export function codexUsageLimitMessage(
   atIso: string,
 ): string {
   const atMs = Date.parse(atIso);
-  const window = latestExhaustedWindow(snapshot, atMs);
-  const reset = window
-    ? ` The ${window.kind} limit resets in ${formatCodexUsageLimitWait(window.resetMs - atMs)}.`
-    : "";
-  return `Codex usage limit reached.${reset}${codexUsageLimitNextStep(snapshot?.rateLimitReachedType)}`;
-}
-
-/** When the window the stop names reopens, so the thread can offer to resume then. */
-export function codexUsageLimitResetsAt(
-  snapshot: CodexRateLimitSnapshot | undefined,
-  atIso: string,
-): string | undefined {
-  return latestExhaustedWindow(snapshot, Date.parse(atIso))?.resetsAt;
-}
-
-/** The exhausted window that resets last after `atMs`: until then no allowance is left. */
-function latestExhaustedWindow(
-  snapshot: CodexRateLimitSnapshot | undefined,
-  atMs: number,
-): { kind: ServerProviderUsageWindow["kind"]; resetsAt: string; resetMs: number } | undefined {
   const windows = snapshot && Number.isFinite(atMs) ? codexRateLimitsToWindows(snapshot) : [];
-  let latest:
-    | { kind: ServerProviderUsageWindow["kind"]; resetsAt: string; resetMs: number }
-    | undefined;
+  let reset = "";
+  let latestResetMs = Number.NEGATIVE_INFINITY;
   for (const window of windows) {
     if (window.usedPercent < 100 || !window.resetsAt) continue;
     const resetMs = Date.parse(window.resetsAt);
-    if (!Number.isFinite(resetMs) || resetMs <= atMs || (latest && resetMs <= latest.resetMs))
-      continue;
-    latest = { kind: window.kind, resetsAt: window.resetsAt, resetMs };
+    if (!Number.isFinite(resetMs) || resetMs <= atMs || resetMs <= latestResetMs) continue;
+    latestResetMs = resetMs;
+    reset = ` The ${window.kind} limit resets in ${formatCodexUsageLimitWait(resetMs - atMs)}.`;
   }
-  return latest;
+  return `Codex usage limit reached.${reset}${codexUsageLimitNextStep(snapshot?.rateLimitReachedType)}`;
+}
+
+/** All exhausted windows must reset before a continuation can run. */
+export function codexUsageLimitResetAt(
+  snapshot: CodexRateLimitSnapshot | undefined,
+): string | null {
+  if (!snapshot) return null;
+  const windows = codexRateLimitsToWindows(snapshot).filter((window) => window.usedPercent >= 100);
+  if (windows.length === 0 || windows.some((window) => !window.resetsAt)) return null;
+  return windows.reduce<string | null>(
+    (latest, window) =>
+      latest === null || Date.parse(window.resetsAt!) > Date.parse(latest)
+        ? window.resetsAt!
+        : latest,
+    null,
+  );
 }

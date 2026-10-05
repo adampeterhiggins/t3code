@@ -1,129 +1,142 @@
 import { describe, expect, it } from "@effect/vitest";
 import {
-  CheckpointRef,
-  EventId,
+  CheckpointId,
+  CheckpointScopeId,
   MessageId,
-  TurnId,
-  type OrchestrationCheckpointSummary,
-  type OrchestrationMessage,
-  type OrchestrationThreadActivity,
+  PlanId,
+  RunId,
+  ThreadId,
+  TurnItemId,
+  type OrchestrationV2CheckpointFileSummary,
+  type OrchestrationV2TurnItem,
 } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
+
 import {
   siblingChatBeforeMessage,
   siblingChatThroughMessage,
   summarizeSiblingChat,
 } from "./summary.ts";
 
-let clock = 0;
-// Strictly increasing timestamps order the fixture chronologically.
-const at = () => `2026-01-01T00:00:00.${String(clock++).padStart(3, "0")}Z`;
+const NOW = DateTime.makeUnsafe("2026-10-05T12:00:00.000Z");
+let ordinal = 0;
 
-const message = (
-  id: string,
-  role: OrchestrationMessage["role"],
-  text: string,
-  streaming = false,
-): OrchestrationMessage => {
-  const createdAt = at();
+const base = (runId: string | null = "run-1") => {
+  ordinal += 1;
   return {
-    id: MessageId.make(id),
-    role,
-    text,
-    turnId: null,
-    streaming,
-    createdAt,
-    updatedAt: createdAt,
+    id: TurnItemId.make(`item-${ordinal}`),
+    threadId: ThreadId.make("thread"),
+    runId: runId === null ? null : RunId.make(runId),
+    nodeId: null,
+    providerThreadId: null,
+    providerTurnId: null,
+    nativeItemRef: null,
+    parentItemId: null,
+    ordinal,
+    status: "completed" as const,
+    title: null,
+    startedAt: NOW,
+    completedAt: NOW,
+    updatedAt: NOW,
   };
 };
 
-const activity = (
-  kind: string,
-  summary: string,
-  payload: unknown,
-  tone: OrchestrationThreadActivity["tone"] = "tool",
-): OrchestrationThreadActivity => ({
-  id: EventId.make(`activity-${clock}`),
-  tone,
-  kind,
-  summary,
-  payload,
-  turnId: null,
-  createdAt: at(),
+const user = (id: string, text: string, runId = "run-1"): OrchestrationV2TurnItem => ({
+  ...base(runId),
+  type: "user_message",
+  createdBy: "user",
+  creationSource: "web",
+  messageId: MessageId.make(id),
+  inputIntent: "turn_start",
+  text,
+  attachments: [],
+});
+
+const assistant = (
+  id: string,
+  text: string,
+  options: { readonly streaming?: boolean; readonly runId?: string } = {},
+): OrchestrationV2TurnItem => ({
+  ...base(options.runId ?? "run-1"),
+  type: "assistant_message",
+  messageId: MessageId.make(id),
+  text,
+  streaming: options.streaming ?? false,
+});
+
+const reasoning = (text: string): OrchestrationV2TurnItem => ({
+  ...base(),
+  type: "reasoning",
+  text,
+  streaming: false,
+});
+
+const command = (
+  input: string,
+  options: { readonly exitCode?: number; readonly runId?: string } = {},
+): OrchestrationV2TurnItem => ({
+  ...base(options.runId ?? "run-1"),
+  type: "command_execution",
+  input,
+  ...(options.exitCode === undefined ? {} : { exitCode: options.exitCode }),
+});
+
+const edit = (fileName: string, runId = "run-1"): OrchestrationV2TurnItem => ({
+  ...base(runId),
+  type: "file_change",
+  fileName,
+});
+
+const failure = (message: string): OrchestrationV2TurnItem => ({
+  ...base(),
+  type: "error",
+  status: "failed",
+  failure: { class: "provider_error", message, code: null, retryable: null },
 });
 
 const checkpoint = (
-  files: OrchestrationCheckpointSummary["files"],
-): OrchestrationCheckpointSummary => ({
-  turnId: TurnId.make(`turn-${clock}`),
-  checkpointTurnCount: 1,
-  checkpointRef: CheckpointRef.make(`ref-${clock}`),
-  status: "ready",
+  files: ReadonlyArray<OrchestrationV2CheckpointFileSummary>,
+  runId = "run-1",
+): OrchestrationV2TurnItem => ({
+  ...base(runId),
+  type: "checkpoint",
+  checkpointId: CheckpointId.make(`checkpoint-${ordinal}`),
+  scopeId: CheckpointScopeId.make("scope"),
   files,
-  assistantMessageId: null,
-  completedAt: at(),
+});
+
+const plan = (markdown: string, runId = "run-1"): OrchestrationV2TurnItem => ({
+  ...base(runId),
+  type: "proposed_plan",
+  planId: PlanId.make(`plan-${ordinal}`),
+  markdown,
+  streaming: false,
+});
+
+const file = (path: string, additions: number, deletions = 0) => ({
+  path,
+  kind: "modified",
+  additions,
+  deletions,
 });
 
 describe("sibling chat handoff", () => {
   it("interleaves dialogue with tool calls, reasoning, errors, files and the latest plan", () => {
-    const messages = [message("u1", "user", "Fix the flaky search test")];
-    const activities = [
-      activity("tool.started", "Command run started", { detail: "Bash: {}" }),
-      // Claude: generic summary, truncated detail, full input under data.
-      activity("tool.completed", "Command run", {
-        status: "completed",
-        detail: "Bash: cd /repo && vp test run apps/web/src/sea...",
-        data: {
-          toolName: "Bash",
-          input: { command: "cd /repo && vp test run apps/web/src/search.test.ts" },
-        },
-      }),
-      // Codex: shell wrapper in the detail.
-      activity("tool.completed", "Ran command", {
-        status: "failed",
-        detail: "/bin/zsh -lc 'git status'",
-      }),
-      // ACP: the summary already says it all.
-      activity("tool.completed", "Read apps/web/src/search.ts (1 - 40)", { status: "completed" }),
-      activity("tool.completed", "File change", {
-        status: "completed",
-        detail: 'Edit: {"file_path":"/repo/apps/web/src/search.ts","old_string":"a...',
-        data: { toolName: "Edit", input: { file_path: "/repo/apps/web/src/search.ts" } },
-      }),
-      activity(
-        "provider.turn.start.failed",
-        "Provider turn start failed",
-        {
-          detail: "transport failure",
-        },
-        "error",
-      ),
-    ];
-    messages.push(message("r1", "reasoning", "The debounce races the fake timers"));
-    messages.push(message("a1", "assistant", "Fixed by flushing timers"));
     const summary = summarizeSiblingChat({
       title: "Search",
       worktreePath: "/repo",
-      latestTurnState: "completed",
-      messages: messages.toSorted((a, b) => a.createdAt.localeCompare(b.createdAt)),
-      activities,
-      checkpoints: [
-        checkpoint([
-          { path: "apps/web/src/search.ts", kind: "modified", additions: 3, deletions: 1 },
-        ]),
-        checkpoint([
-          { path: "apps/web/src/search.ts", kind: "modified", additions: 2, deletions: 0 },
-        ]),
-      ],
-      proposedPlans: [
-        {
-          id: "plan",
-          turnId: null,
-          planMarkdown: "1. Flush timers",
-          implementedAt: null,
-          implementationThreadId: null,
-          createdAt: at(),
-          updatedAt: at(),
-        },
+      latestRunStatus: "completed",
+      items: [
+        user("u1", "Fix the flaky search test"),
+        command("/bin/zsh -lc 'cd /repo && vp test run apps/web/src/search.test.ts'"),
+        command("git status", { exitCode: 1 }),
+        edit("/repo/apps/web/src/search.ts"),
+        failure("transport failure"),
+        reasoning("The debounce races the fake timers"),
+        plan("1. Flush timers"),
+        assistant("a1", "Fixed by flushing timers"),
+        checkpoint([file("apps/web/src/search.ts", 3, 1)]),
+        checkpoint([file("apps/web/src/search.ts", 2)]),
       ],
     });
 
@@ -131,23 +144,22 @@ describe("sibling chat handoff", () => {
     expect(summary).toContain("- apps/web/src/search.ts (+5 −1)");
     expect(summary).toContain("Latest plan:\n1. Flush timers");
     expect(summary).toContain(
-      "Tools: Bash: vp test run apps/web/src/search.test.ts · Ran command: 'git status' (failed) · Read apps/web/src/search.ts (1 - 40) · Edit: apps/web/src/search.ts",
+      "Tools: Command: 'vp test run apps/web/src/search.test.ts' · Command: git status (failed) · Edit: apps/web/src/search.ts",
     );
-    expect(summary).not.toContain("Command run started");
-    expect(summary).toContain("Error: Provider turn start failed: transport failure");
+    expect(summary).toContain("Error: transport failure");
     expect(summary).toContain("Reasoning (excerpt): The debounce races the fake timers");
     expect(summary.indexOf("User: Fix")).toBeLessThan(summary.indexOf("Tools:"));
     expect(summary.indexOf("Tools:")).toBeLessThan(summary.indexOf("Assistant: Fixed"));
   });
 
   it("keeps the opening request and newest turns when the budget runs out", () => {
-    const messages = [message("first", "user", "Build the search view")];
+    const items = [user("first", "Build the search view")];
     for (let index = 0; index < 20; index++) {
-      messages.push(message(`u${index}`, "user", `Follow-up ${index}`));
-      messages.push(message(`a${index}`, "assistant", `Detail ${index} ${"x".repeat(1_500)}`));
+      items.push(user(`u${index}`, `Follow-up ${index}`));
+      items.push(assistant(`a${index}`, `Detail ${index} ${"x".repeat(1_500)}`));
     }
-    messages.push(message("live", "assistant", "unfinished", true));
-    const summary = summarizeSiblingChat({ title: "Search work", messages });
+    items.push(assistant("live", "unfinished", { streaming: true }));
+    const summary = summarizeSiblingChat({ title: "Search work", items });
 
     expect(summary.length).toBeLessThanOrEqual(16_000);
     expect(summary).toContain("User: Build the search view");
@@ -160,10 +172,7 @@ describe("sibling chat handoff", () => {
   it("clips long messages at both ends so conclusions survive", () => {
     const summary = summarizeSiblingChat({
       title: "Long",
-      messages: [
-        message("u", "user", "Go"),
-        message("a", "assistant", `Start ${"y".repeat(10_000)} Conclusion`),
-      ],
+      items: [user("u", "Go"), assistant("a", `Start ${"y".repeat(10_000)} Conclusion`)],
     });
     expect(summary).toContain("Assistant: Start");
     expect(summary).toContain("Conclusion");
@@ -171,83 +180,59 @@ describe("sibling chat handoff", () => {
   });
 
   it("forks from a user message with only the history before it", () => {
-    const messages = [
-      message("u1", "user", "Build the search view"),
-      message("a1", "assistant", "Built it"),
-    ];
-    const earlyTool = activity("tool.completed", "Read search.ts", { status: "completed" });
-    const earlyFiles = checkpoint([
-      { path: "search.ts", kind: "modified", additions: 1, deletions: 0 },
-    ]);
-    messages.push(message("u2", "user", "Now add filters"));
-    messages.push(message("a2", "assistant", "Added filters"));
-    const lateTool = activity("tool.completed", "Read filters.ts", { status: "completed" });
-    const lateFiles = checkpoint([
-      { path: "filters.ts", kind: "modified", additions: 4, deletions: 0 },
-    ]);
     const chat = {
       title: "Search",
-      latestTurnState: "completed",
-      messages,
-      activities: [earlyTool, lateTool],
-      checkpoints: [earlyFiles, lateFiles],
+      latestRunStatus: "completed",
+      items: [
+        user("u1", "Build the search view"),
+        command("cat search.ts"),
+        assistant("a1", "Built it"),
+        checkpoint([file("search.ts", 1)]),
+        user("u2", "Now add filters", "run-2"),
+        command("cat filters.ts", { runId: "run-2" }),
+        assistant("a2", "Added filters", { runId: "run-2" }),
+        checkpoint([file("filters.ts", 4)], "run-2"),
+      ],
     };
 
-    const forked = siblingChatBeforeMessage(chat, "u2");
+    const forked = siblingChatBeforeMessage(chat, MessageId.make("u2"));
     expect(forked).not.toBeNull();
     const summary = summarizeSiblingChat(forked!);
     expect(summary).toContain("User: Build the search view");
     expect(summary).toContain("Assistant: Built it");
-    expect(summary).toContain("Read search.ts");
+    expect(summary).toContain("Command: cat search.ts");
     expect(summary).toContain("search.ts (+1 −0)");
     expect(summary).not.toContain("Now add filters");
     expect(summary).not.toContain("Added filters");
     expect(summary).not.toContain("filters.ts");
     expect(summary).not.toContain("Latest turn");
 
-    expect(siblingChatBeforeMessage(chat, "a1")).toBeNull();
-    expect(siblingChatBeforeMessage(chat, "missing")).toBeNull();
+    expect(siblingChatBeforeMessage(chat, MessageId.make("a1"))).toBeNull();
+    expect(siblingChatBeforeMessage(chat, MessageId.make("missing"))).toBeNull();
   });
-  it("forks through a completed assistant response without later dialogue or work", () => {
-    const opening = message("u1", "user", "Build search");
-    const answer = message("a1", "assistant", "Built search");
-    // Tool work can land while the assistant response is streaming.
-    const earlyTool = activity("tool.completed", "Read search.ts", {});
-    const earlyFiles = checkpoint([
-      { path: "search.ts", kind: "modified", additions: 1, deletions: 0 },
-    ]);
-    const plan = {
-      id: "early-plan",
-      turnId: null,
-      planMarkdown: "Build the search view",
-      implementedAt: null,
-      implementationThreadId: null,
-      createdAt: at(),
-      updatedAt: at(),
-    };
-    const completedAnswer = { ...answer, updatedAt: at() };
-    const later = message("u2", "user", "Add filters");
-    const lateTool = activity("tool.completed", "Read filters.ts", {});
-    const lateFiles = checkpoint([
-      { path: "filters.ts", kind: "modified", additions: 4, deletions: 0 },
-    ]);
+
+  it("forks through a completed assistant response with its checkpoint but no later work", () => {
     const chat = {
       title: "Search",
-      latestTurnState: "running",
-      messages: [opening, completedAnswer, later, message("a2", "assistant", "Added filters")],
-      activities: [earlyTool, lateTool],
-      checkpoints: [earlyFiles, lateFiles],
-      proposedPlans: [
-        plan,
-        { ...plan, id: "late-plan", planMarkdown: "Add filters", updatedAt: at() },
+      latestRunStatus: "running",
+      items: [
+        user("u1", "Build search"),
+        command("cat search.ts"),
+        plan("Build the search view"),
+        assistant("a1", "Built search"),
+        checkpoint([file("search.ts", 1)]),
+        user("u2", "Add filters", "run-2"),
+        plan("Add filters", "run-2"),
+        command("cat filters.ts", { runId: "run-2" }),
+        assistant("a2", "Added filters", { runId: "run-2" }),
+        checkpoint([file("filters.ts", 4)], "run-2"),
       ],
     };
-    const forked = siblingChatThroughMessage(chat, "a1");
-    expect(forked?.messages.map((entry) => entry.id)).toEqual(["u1", "a1"]);
+    const forked = siblingChatThroughMessage(chat, MessageId.make("a1"));
     const summary = summarizeSiblingChat(forked!);
     expect(summary).toContain("User: Build search");
     expect(summary).toContain("Assistant: Built search");
-    expect(summary).toContain("Read search.ts");
+    expect(summary).toContain("Command: cat search.ts");
     expect(summary).toContain("search.ts (+1 −0)");
     expect(summary).toContain("Latest plan:\nBuild the search view");
     expect(summary).not.toContain("filters");
@@ -257,14 +242,10 @@ describe("sibling chat handoff", () => {
   it("rejects assistant fork cutoffs that are missing, streaming, or another role", () => {
     const chat = {
       title: "Search",
-      messages: [
-        message("u1", "user", "Build search"),
-        message("a1", "assistant", "Working", true),
-        message("r1", "reasoning", "Thinking"),
-      ],
+      items: [user("u1", "Build search"), assistant("a1", "Working", { streaming: true })],
     };
-    for (const id of ["missing", "u1", "a1", "r1"]) {
-      expect(siblingChatThroughMessage(chat, id)).toBeNull();
+    for (const id of ["missing", "u1", "a1"]) {
+      expect(siblingChatThroughMessage(chat, MessageId.make(id))).toBeNull();
     }
   });
 });

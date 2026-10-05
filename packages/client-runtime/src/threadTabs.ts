@@ -1,6 +1,7 @@
 import type {
   CreateThreadTabInput,
   EnvironmentId,
+  ForkThreadTabInput,
   ThreadId,
   ThreadTabHandoffInput,
   ThreadTabMembership,
@@ -165,6 +166,27 @@ export const createThreadTab = Effect.fn("clientRuntime.threadTabs.create")(func
     timeoutMs: 20_000,
     request: ({ client, headers }) =>
       client.create({ params: { threadId: sourceThreadId }, payload: input, headers }),
+  });
+});
+
+/** Forks a completed response natively into a new tab of `threadId`'s group. */
+export const forkThreadTabFromRun = Effect.fn("clientRuntime.threadTabs.fork")(function* (
+  prepared: PreparedConnection,
+  threadId: ThreadId,
+  input: ForkThreadTabInput,
+) {
+  const signer = yield* Effect.serviceOption(ManagedRelayDpopSigner);
+  const remoteAuthorization = yield* Effect.serviceOption(RemoteEnvironmentAuthorization);
+  return yield* executeAuthenticatedEnvironmentHttpRequest({
+    prepared,
+    signer,
+    remoteAuthorization,
+    group: "threadTabs",
+    method: "POST",
+    url: (base) => environmentEndpointUrl(base, `/api/thread-tabs/${threadId}/fork`),
+    timeoutMs: 20_000,
+    request: ({ client, headers }) =>
+      client.fork({ params: { threadId }, payload: input, headers }),
   });
 });
 

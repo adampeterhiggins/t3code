@@ -20,7 +20,7 @@ import { agentSessionImport, agentSessionList } from "~/state/agentSessions";
 import { useProject, waitForThreadShell } from "~/state/entities";
 import { useEnvironmentQuery } from "~/state/query";
 import { useAtomCommand } from "~/state/use-atom-command";
-import { PROVIDER_ICON_BY_PROVIDER } from "./chat/providerIconUtils";
+import { ProviderInstanceIcon } from "./chat/ProviderInstanceIcon";
 import {
   Dialog,
   DialogDescription,
@@ -57,6 +57,11 @@ export function ImportConversationDialogHost() {
     />
   );
 }
+
+const PROVIDER_LABEL: Record<AgentSessionSummary["provider"], string> = {
+  claudeAgent: "Claude Code",
+  codex: "Codex",
+};
 
 const sessionKey = (session: AgentSessionSummary) =>
   `${session.providerInstanceId}:${session.providerSessionId}`;
@@ -160,13 +165,18 @@ function ImportConversationDialog({ projectRef }: { projectRef: ScopedProjectRef
             <div className="max-h-96 overflow-y-auto">
               <DiscoveryList>
                 {sessions.map((session) => {
-                  const ProviderIcon =
-                    PROVIDER_ICON_BY_PROVIDER[ProviderDriverKind.make(session.provider)];
                   const key = sessionKey(session);
                   return (
                     <DiscoveryListRow
                       key={key}
-                      icon={ProviderIcon ? <ProviderIcon className="size-4 shrink-0" /> : undefined}
+                      icon={
+                        <ProviderInstanceIcon
+                          driverKind={ProviderDriverKind.make(session.provider)}
+                          displayName={PROVIDER_LABEL[session.provider]}
+                          showBadge={false}
+                          iconClassName="size-4"
+                        />
+                      }
                       title={session.title}
                       description={describeSession(session)}
                       disabled={pendingKey !== null}

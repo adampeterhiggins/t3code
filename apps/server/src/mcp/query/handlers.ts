@@ -1,4 +1,4 @@
-import { ThreadId, UsageDay } from "@t3tools/contracts";
+import { ThreadId } from "@t3tools/contracts";
 import { parseChangeRequestUrl } from "@t3tools/shared/changeRequestUrl";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -8,7 +8,6 @@ import * as SqlError from "effect/unstable/sql/SqlError";
 
 import * as CheckpointDiffQuery from "../../checkpointing/CheckpointDiffQuery.ts";
 import * as ServerEnvironment from "../../environment/ServerEnvironment.ts";
-import { ProviderService } from "../../provider/Services/ProviderService.ts";
 import { UsageService } from "../../usage/UsageService.ts";
 import {
   type CursorKey,
@@ -19,7 +18,7 @@ import {
   type PageRequest,
   type Window,
 } from "./store.ts";
-import { QueryToolError, QueryToolkit, ThreadReadToolkit } from "./tools.ts";
+import { QueryToolError, QueryToolkit } from "./tools.ts";
 
 const GUIDE = [
   "All tools are read-only and see what the user sees in T3 Code.",
@@ -27,6 +26,7 @@ const GUIDE = [
   "list_messages with role=user shows what was asked; get_turn shows what an agent did about one prompt; get_turn_diff shows the code it changed.",
   "get_activity_timeline orders every prompt, finished turn, plan, pull request link and error in a range.",
   "list_pull_requests and list_plans cover shipped and planned work; search finds text anywhere.",
+  "A turn's turnId is its run id. Threads with importedFromV1 were carried over from before T3 Code's orchestration rewrite with their messages only: they have no turns, activities, plans or diffs, so read them with list_messages.",
   "Pass until to cut everything off at an instant. Titles, archive state and pull request state are current, not as of until.",
 ].join(" ");
 
@@ -59,6 +59,9 @@ const windowOf = Effect.fn("QueryToolkit.windowOf")(function* (
   }
   return window;
 });
+
+const optionalWindowOf = (since: string | undefined, until: string | undefined) =>
+  since === undefined && until === undefined ? Effect.succeed(undefined) : windowOf(since, until);
 
 const CursorJson = Schema.fromJsonString(
   Schema.Array(Schema.Union([Schema.String, Schema.Number])),
@@ -120,13 +123,38 @@ const make = Effect.gen(function* () {
   const store = yield* makeQueryStore;
   const environment = yield* ServerEnvironment.ServerEnvironment;
   const checkpointDiffs = yield* CheckpointDiffQuery.CheckpointDiffQuery;
-  const providers = yield* ProviderService;
   const usage = yield* UsageService;
 
   const requireThread = Effect.fn("QueryToolkit.requireThread")(function* (threadId: string) {
     if (!(yield* store.threadExists(threadId))) {
       return yield* notFound("thread", threadId);
     }
+  });
+
+  const resolveTurnRange = Effect.fn("QueryToolkit.resolveTurnRange")(function* (input: {
+    readonly threadId: string;
+    readonly turnId?: string | undefined;
+    readonly fromTurnCount?: number | undefined;
+    readonly toTurnCount?: number | undefined;
+  }) {
+    if (input.turnId !== undefined) {
+      const turn = yield* store.turnCountOf(input.threadId, input.turnId);
+      if (turn === undefined) return yield* notFound("turn", input.turnId);
+      if (turn.turnCount === null) {
+        return yield* new QueryToolError({
+          reason: "This turn has no checkpoint, so there is nothing to diff.",
+        });
+      }
+      return { fromTurnCount: turn.turnCount - 1, toTurnCount: turn.turnCount };
+    }
+    if (input.toTurnCount === undefined) {
+      return yield* new QueryToolError({ reason: "Pass turnId, or toTurnCount for a range." });
+    }
+    const fromTurnCount = input.fromTurnCount ?? input.toTurnCount - 1;
+    if (fromTurnCount >= input.toTurnCount) {
+      return yield* new QueryToolError({ reason: "fromTurnCount must be below toTurnCount." });
+    }
+    return { fromTurnCount, toTurnCount: input.toTurnCount };
   });
 
   return QueryToolkit.of({
@@ -172,12 +200,8 @@ const make = Effect.gen(function* () {
 
     list_projects: (input) =>
       Effect.gen(function* () {
-        const window =
-          input.activeSince === undefined && input.activeUntil === undefined
-            ? undefined
-            : yield* windowOf(input.activeSince, input.activeUntil);
         const page = yield* store.listProjects(
-          window,
+          yield* optionalWindowOf(input.activeSince, input.activeUntil),
           yield* pageRequest({ ...input, defaultLimit: 50 }),
         );
         const { items, nextCursor } = withCursor(page);
@@ -192,14 +216,10 @@ const make = Effect.gen(function* () {
 
     list_threads: (input) =>
       Effect.gen(function* () {
-        const window =
-          input.activeSince === undefined && input.activeUntil === undefined
-            ? undefined
-            : yield* windowOf(input.activeSince, input.activeUntil);
         const page = yield* store.listThreads(
           {
             projectId: input.projectId,
-            window,
+            window: yield* optionalWindowOf(input.activeSince, input.activeUntil),
             archived: input.archived,
             needsAttention: input.needsAttention,
             hasPullRequest: input.hasPullRequest,
@@ -305,11 +325,10 @@ const make = Effect.gen(function* () {
 
     get_subagent_transcript: (input) =>
       Effect.gen(function* () {
-        yield* requireThread(input.threadId).pipe(sqlDies);
-        return yield* providers
-          .readSubagentTranscript({ threadId: ThreadId.make(input.threadId), taskId: input.taskId })
-          .pipe(Effect.mapError((error) => new QueryToolError({ reason: error.message })));
-      }),
+        yield* requireThread(input.threadId);
+        const transcript = yield* store.getSubagentTranscript(input);
+        return yield* requireFound(transcript, "subagent", input.taskId);
+      }).pipe(sqlDies),
 
     list_plans: (input) =>
       Effect.gen(function* () {
@@ -405,55 +424,9 @@ const make = Effect.gen(function* () {
 
     get_usage_summary: (input) =>
       usage
-        .readSummary({
-          ...input,
-          sinceDay: UsageDay.make(input.sinceDay),
-          untilDay: UsageDay.make(input.untilDay),
-        })
+        .readSummary(input)
         .pipe(Effect.mapError((error) => new QueryToolError({ reason: error.message }))),
   });
-
-  function resolveTurnRange(input: {
-    readonly threadId: string;
-    readonly turnId?: string | undefined;
-    readonly fromTurnCount?: number | undefined;
-    readonly toTurnCount?: number | undefined;
-  }) {
-    return Effect.gen(function* () {
-      if (input.turnId !== undefined) {
-        const turn = yield* store.turnCountOf(input.threadId, input.turnId);
-        if (turn === undefined) return yield* notFound("turn", input.turnId);
-        if (turn.turnCount === null) {
-          return yield* new QueryToolError({
-            reason: "This turn has no checkpoint yet, so there is nothing to diff.",
-          });
-        }
-        return { fromTurnCount: turn.turnCount - 1, toTurnCount: turn.turnCount };
-      }
-      if (input.toTurnCount === undefined) {
-        return yield* new QueryToolError({ reason: "Pass turnId, or toTurnCount for a range." });
-      }
-      const fromTurnCount = input.fromTurnCount ?? input.toTurnCount - 1;
-      if (fromTurnCount >= input.toTurnCount) {
-        return yield* new QueryToolError({ reason: "fromTurnCount must be below toTurnCount." });
-      }
-      return { fromTurnCount, toTurnCount: input.toTurnCount };
-    });
-  }
 });
 
 export const QueryToolkitHandlersLive = QueryToolkit.toLayer(make);
-
-export const ThreadReadToolkitHandlersLive = ThreadReadToolkit.toLayer(
-  make.pipe(
-    Effect.map((handlers) =>
-      ThreadReadToolkit.of({
-        list_projects: handlers.list_projects,
-        list_threads: handlers.list_threads,
-        get_thread: handlers.get_thread,
-        list_messages: handlers.list_messages,
-        search: handlers.search,
-      }),
-    ),
-  ),
-);

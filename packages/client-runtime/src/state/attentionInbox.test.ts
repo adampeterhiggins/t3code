@@ -1,4 +1,4 @@
-import { EnvironmentId, ThreadId, TurnId } from "@t3tools/contracts";
+import { EnvironmentId, ProviderInstanceId, RunId, ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -17,14 +17,14 @@ function makeThread(
   input: {
     readonly environmentId?: string;
     readonly pending?: "approval" | "input";
-    readonly sessionStatus?: "running" | "ready" | "error";
-    readonly sessionUpdatedAt?: string;
-    readonly turnState?: "completed" | "error" | "running";
-    readonly turnCompletedAt?: string | null;
+    readonly runtimeStatus?: "running" | "idle" | "failed";
+    readonly runtimeUpdatedAt?: string;
+    readonly runStatus?: "completed" | "failed" | "running";
+    readonly runCompletedAt?: string | null;
     readonly updatedAt?: string;
     readonly archivedAt?: string | null;
     readonly snoozedUntil?: string | null;
-    readonly backgroundLiveness?: "working" | "monitoring" | null;
+    readonly backgroundWork?: boolean;
   } = {},
 ): AttentionThread {
   const threadId = ThreadId.make(id);
@@ -33,32 +33,33 @@ function makeThread(
     environmentId: EnvironmentId.make(input.environmentId ?? "env-1"),
     archivedAt: input.archivedAt ?? null,
     updatedAt: input.updatedAt ?? AFTER_VISIT,
-    backgroundLiveness: input.backgroundLiveness ?? null,
+    pendingBackgroundTasks: input.backgroundWork
+      ? [{ taskId: "task-1", kind: "monitor" } as AttentionThread["pendingBackgroundTasks"][number]]
+      : [],
     snoozedUntil: input.snoozedUntil ?? null,
     snoozedAt: input.snoozedUntil ? BEFORE_VISIT : null,
     hasPendingApprovals: input.pending === "approval",
     hasPendingUserInput: input.pending === "input",
-    session:
-      input.sessionStatus === undefined
+    runtime:
+      input.runtimeStatus === undefined
         ? null
         : {
-            threadId,
-            status: input.sessionStatus,
+            status: input.runtimeStatus,
+            activeRunId: null,
+            providerInstanceId: ProviderInstanceId.make("codex"),
             providerName: "Codex",
-            runtimeMode: "full-access",
-            activeTurnId: null,
-            lastError: input.sessionStatus === "error" ? "boom" : null,
-            updatedAt: input.sessionUpdatedAt ?? AFTER_VISIT,
+            lastError: input.runtimeStatus === "failed" ? "boom" : null,
+            updatedAt: input.runtimeUpdatedAt ?? AFTER_VISIT,
           },
-    latestTurn:
-      input.turnCompletedAt === undefined
+    latestRun:
+      input.runCompletedAt === undefined
         ? null
         : {
-            turnId: TurnId.make(`${id}-turn`),
-            state: input.turnState ?? "completed",
+            runId: RunId.make(`${id}-run`),
+            status: input.runStatus ?? "completed",
             requestedAt: BEFORE_VISIT,
             startedAt: BEFORE_VISIT,
-            completedAt: input.turnCompletedAt,
+            completedAt: input.runCompletedAt,
             assistantMessageId: null,
           },
   };
@@ -69,7 +70,7 @@ const visitedEverything = (threads: ReadonlyArray<AttentionThread>) =>
 
 describe("resolveThreadAttention", () => {
   it("prefers an approval over an unread completion on the same thread", () => {
-    const thread = makeThread("t", { pending: "approval", turnCompletedAt: AFTER_VISIT });
+    const thread = makeThread("t", { pending: "approval", runCompletedAt: AFTER_VISIT });
     expect(resolveThreadAttention(thread, VISITED)?.reason).toBe("approval");
   });
 
@@ -80,9 +81,9 @@ describe("resolveThreadAttention", () => {
 
   it("reports a failure only until the thread is visited", () => {
     const thread = makeThread("t", {
-      sessionStatus: "error",
-      turnState: "error",
-      turnCompletedAt: AFTER_VISIT,
+      runtimeStatus: "failed",
+      runStatus: "failed",
+      runCompletedAt: AFTER_VISIT,
     });
     expect(resolveThreadAttention(thread, VISITED)).toEqual({
       reason: "failed",
@@ -92,27 +93,27 @@ describe("resolveThreadAttention", () => {
   });
 
   it("does not fall back to completed when a seen failure is dismissed", () => {
-    const thread = makeThread("t", { turnState: "error", turnCompletedAt: BEFORE_VISIT });
+    const thread = makeThread("t", { runStatus: "failed", runCompletedAt: BEFORE_VISIT });
     expect(resolveThreadAttention(thread, VISITED)).toBeNull();
   });
 
   it("ignores threads that are still working, including background work", () => {
     expect(
       resolveThreadAttention(
-        makeThread("t", { sessionStatus: "running", turnCompletedAt: AFTER_VISIT }),
+        makeThread("t", { runtimeStatus: "running", runCompletedAt: AFTER_VISIT }),
         VISITED,
       ),
     ).toBeNull();
     expect(
       resolveThreadAttention(
-        makeThread("t", { backgroundLiveness: "monitoring", turnCompletedAt: AFTER_VISIT }),
+        makeThread("t", { backgroundWork: true, runCompletedAt: AFTER_VISIT }),
         VISITED,
       ),
     ).toBeNull();
   });
 
   it("treats a missing visit marker as read, like the sidebar", () => {
-    const thread = makeThread("t", { turnCompletedAt: AFTER_VISIT });
+    const thread = makeThread("t", { runCompletedAt: AFTER_VISIT });
     expect(resolveThreadAttention(thread, undefined)).toBeNull();
     expect(resolveThreadAttention(thread, VISITED)?.reason).toBe("completed");
   });
@@ -121,13 +122,13 @@ describe("resolveThreadAttention", () => {
 describe("buildAttentionInbox", () => {
   it("orders by urgency, then newest first, with one entry per thread", () => {
     const threads = [
-      makeThread("old-done", { turnCompletedAt: "2026-04-10T10:30:00.000Z" }),
-      makeThread("new-done", { turnCompletedAt: "2026-04-10T11:30:00.000Z" }),
-      makeThread("failed", { sessionStatus: "error" }),
+      makeThread("old-done", { runCompletedAt: "2026-04-10T10:30:00.000Z" }),
+      makeThread("new-done", { runCompletedAt: "2026-04-10T11:30:00.000Z" }),
+      makeThread("failed", { runtimeStatus: "failed" }),
       makeThread("input", { pending: "input" }),
-      makeThread("approval", { pending: "approval", turnCompletedAt: AFTER_VISIT }),
-      makeThread("approval", { pending: "approval", turnCompletedAt: AFTER_VISIT }),
-      makeThread("quiet", { turnCompletedAt: BEFORE_VISIT }),
+      makeThread("approval", { pending: "approval", runCompletedAt: AFTER_VISIT }),
+      makeThread("approval", { pending: "approval", runCompletedAt: AFTER_VISIT }),
+      makeThread("quiet", { runCompletedAt: BEFORE_VISIT }),
     ];
     const inbox = buildAttentionInbox(threads, {
       lastVisitedAtByKey: visitedEverything(threads),
@@ -155,7 +156,7 @@ describe("buildAttentionInbox", () => {
     const snoozeUntil = "2026-04-11T09:00:00.000Z";
     const threads = [
       makeThread("archived", { pending: "input", archivedAt: VISITED }),
-      makeThread("snoozed", { snoozedUntil: snoozeUntil, turnCompletedAt: BEFORE_VISIT }),
+      makeThread("snoozed", { snoozedUntil: snoozeUntil, runCompletedAt: BEFORE_VISIT }),
       makeThread("snoozed-asks", { snoozedUntil: snoozeUntil, pending: "approval" }),
     ];
     const inbox = buildAttentionInbox(threads, {

@@ -1,81 +1,68 @@
-import type { ThreadPullRequestSnapshot } from "@t3tools/contracts";
+import type { ThreadPullRequestSnapshot, ThreadPullRequestWatch } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  evaluatePullRequestWatch,
-  pullRequestWatchProblemKeys,
+  PULL_REQUEST_WATCH_FOLLOW_UP_LIMIT,
   pullRequestWatchStatusLabel,
 } from "./pullRequestWatch.ts";
 
-const snapshot: ThreadPullRequestSnapshot = {
+const watch = (overrides: Partial<ThreadPullRequestWatch> = {}): ThreadPullRequestWatch => ({
+  startedAt: "2026-10-02T12:00:00.000Z",
+  headSha: null,
+  failedChecks: [],
+  passed: false,
+  remarksThrough: "2026-10-02T12:00:00.000Z",
+  remarkIds: [],
+  conflicting: false,
+  wakes: 0,
+  ...overrides,
+});
+
+const snapshot = (
+  overrides: Partial<ThreadPullRequestSnapshot> = {},
+): ThreadPullRequestSnapshot => ({
+  title: "Watched",
   state: "open",
-  title: "Work",
-  headBranch: "feature",
   baseBranch: "main",
+  headBranch: "feature",
   isDraft: false,
-  updatedAt: "2026-09-30T12:00:00.000Z",
-  syncedAt: "2026-09-30T12:00:00.000Z",
-};
-const active = { status: "active" as const, attemptsUsed: 0, handled: [] };
+  updatedAt: null,
+  syncedAt: "2026-10-02T12:00:00.000Z",
+  ...overrides,
+});
 
-describe("evaluatePullRequestWatch", () => {
-  it("asks for a follow-up covering every problem the host reports", () => {
-    const evaluation = evaluatePullRequestWatch(active, {
-      ...snapshot,
-      checksState: "failing",
-      reviewDecision: "changes-requested",
-      mergeability: "conflicting",
-    });
-    expect(evaluation).toMatchObject({
-      kind: "follow-up",
-      problems: ["checks", "review", "conflict"],
-    });
-    expect(pullRequestWatchStatusLabel(evaluation, false)).toBe(
-      "Starting a follow-up for failing checks, requested changes and merge conflicts",
+describe("pullRequestWatchStatusLabel", () => {
+  it("names every problem the host reports", () => {
+    expect(
+      pullRequestWatchStatusLabel(
+        watch(),
+        snapshot({ checksState: "failing", reviewDecision: "changes-requested" }),
+      ),
+    ).toBe("Checks failed · Changes requested");
+    expect(pullRequestWatchStatusLabel(watch(), snapshot({ mergeability: "conflicting" }))).toBe(
+      "Merge conflicts",
     );
   });
 
-  it("re-arms failing checks when the pull request is updated", () => {
-    const failing = { ...snapshot, checksState: "failing" as const };
-    const handled = pullRequestWatchProblemKeys(failing);
-    expect(evaluatePullRequestWatch({ ...active, handled }, failing).kind).toBe("handled");
-    expect(
-      evaluatePullRequestWatch(
-        { ...active, handled },
-        { ...failing, updatedAt: "2026-09-30T12:05:00.000Z" },
-      ).kind,
-    ).toBe("follow-up");
-  });
-
-  it("does not re-arm requested changes until the review decision clears", () => {
-    const reviewed = { ...snapshot, reviewDecision: "changes-requested" as const };
-    const watch = { ...active, handled: pullRequestWatchProblemKeys(reviewed) };
-    expect(
-      evaluatePullRequestWatch(watch, { ...reviewed, updatedAt: "2026-09-30T12:05:00.000Z" }).kind,
-    ).toBe("handled");
-    expect(
-      evaluatePullRequestWatch(watch, { ...reviewed, reviewDecision: "review-required" }),
-    ).toEqual({ kind: "waiting", on: "review" });
-  });
-
-  it("forgets handled problems that cleared, so they wake the agent if they return", () => {
-    const evaluation = evaluatePullRequestWatch(
-      { ...active, handled: ["review", "conflict"] },
-      { ...snapshot, mergeability: "conflicting" },
+  it("says what a healthy pull request waits on", () => {
+    expect(pullRequestWatchStatusLabel(watch(), snapshot({ checksState: "pending" }))).toBe(
+      "Waiting for checks",
     );
-    expect(evaluation).toMatchObject({ kind: "handled", handled: ["conflict"] });
-  });
-
-  it("stops asking once the budget is spent", () => {
     expect(
-      evaluatePullRequestWatch(
-        { ...active, attemptsUsed: 3 },
-        { ...snapshot, checksState: "failing" },
-      ).kind,
-    ).toBe("exhausted");
+      pullRequestWatchStatusLabel(watch(), snapshot({ reviewDecision: "review-required" })),
+    ).toBe("Waiting for review");
+    expect(pullRequestWatchStatusLabel(watch(), snapshot())).toBe("Nothing to fix");
+    expect(pullRequestWatchStatusLabel(watch(), null)).toBe("Waiting for the first sync");
   });
 
-  it("ends with the pull request", () => {
-    expect(evaluatePullRequestWatch(active, { ...snapshot, state: "closed" }).kind).toBe("done");
+  it("tells a spent budget apart from a pause", () => {
+    const failing = snapshot({ checksState: "failing" });
+    expect(pullRequestWatchStatusLabel(watch({ paused: true }), failing)).toBe("Paused");
+    expect(
+      pullRequestWatchStatusLabel(
+        watch({ paused: true, followUps: PULL_REQUEST_WATCH_FOLLOW_UP_LIMIT }),
+        failing,
+      ),
+    ).toBe(`Used all ${PULL_REQUEST_WATCH_FOLLOW_UP_LIMIT} follow-ups; resume to allow more`);
   });
 });

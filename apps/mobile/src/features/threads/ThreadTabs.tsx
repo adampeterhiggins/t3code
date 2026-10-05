@@ -39,12 +39,12 @@ import {
 } from "../../state/use-composer-drafts";
 import { refreshArchivedThreadsForEnvironment } from "../archive/useArchivedThreadSnapshots";
 import { ThreadGitHubIssueLinkChip, useThreadGitHubIssueLink } from "./ThreadGitHubIssueLink";
-import { ThreadStartedByChip } from "./ThreadStartedByChip";
 import {
   ThreadLinearLinkButton,
   ThreadLinearLinkChip,
   useThreadLinearLink,
 } from "./ThreadLinearLink";
+import { ThreadStartedByChip } from "./ThreadStartedByChip";
 
 const NEW_TAB_ACTION = "tab:new";
 const CLOSE_TAB_ACTION = "tab:close";
@@ -135,6 +135,7 @@ export function ThreadTabs({
       await runtime.runPromise(
         createThreadTab(prepared.value, threadId, {
           threadId: next,
+          creationSource: "mobile",
           modelSelection,
         }),
       );
@@ -152,6 +153,7 @@ export function ThreadTabs({
       await runtime.runPromise(
         createThreadTab(prepared.value, threadId, {
           threadId: next,
+          creationSource: "mobile",
           modelSelection: option.selection,
         }),
       );

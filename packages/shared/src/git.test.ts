@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   applyGitStatusStreamEvent,
-  buildGeneratedWorktreeBranchName,
+  formatGeneratedBranchName,
   buildTemporaryWorktreeBranchName,
   isTemporaryWorktreeBranch,
   normalizeGitRemoteUrl,
@@ -213,30 +213,6 @@ describe("isTemporaryWorktreeBranch", () => {
   });
 });
 
-describe("buildGeneratedWorktreeBranchName", () => {
-  it("namespaces the generated name under the configured prefix", () => {
-    expect(buildGeneratedWorktreeBranchName("Fix Reconnect Backoff", "t3code")).toBe(
-      "t3code/fix-reconnect-backoff",
-    );
-    expect(buildGeneratedWorktreeBranchName("fix/reconnect", "adam/")).toBe("adam/fix/reconnect");
-  });
-
-  it("does not double a prefix the generator already included", () => {
-    expect(buildGeneratedWorktreeBranchName("refs/heads/adam/fix-login", "adam")).toBe(
-      "adam/fix-login",
-    );
-  });
-
-  it("drops the namespace when the prefix is empty", () => {
-    expect(buildGeneratedWorktreeBranchName("feature/fix-login", "")).toBe("feature/fix-login");
-    expect(buildGeneratedWorktreeBranchName("feature/fix-login", " / ")).toBe("feature/fix-login");
-  });
-
-  it("sanitizes an invalid prefix into a valid ref fragment", () => {
-    expect(buildGeneratedWorktreeBranchName("fix", "My Team..")).toBe("my-team/fix");
-  });
-});
-
 describe("applyGitStatusStreamEvent", () => {
   it("treats a remote-only update as a repository when local state is missing", () => {
     const remote: VcsStatusRemoteResult = {
@@ -297,5 +273,70 @@ describe("applyGitStatusStreamEvent", () => {
       behindCount: 1,
       pr: null,
     });
+  });
+});
+
+describe("formatGeneratedBranchName", () => {
+  it.each(["t3code", "t3code/"])("joins static prefix %s with one slash", (prefix) => {
+    expect(
+      formatGeneratedBranchName("Add Search", { mode: "static", prefix, instructions: "" }),
+    ).toBe("t3code/add-search");
+  });
+  it("supports an empty prefix and preserves user prefix casing", () => {
+    expect(
+      formatGeneratedBranchName("Add Search", { mode: "static", prefix: "", instructions: "" }),
+    ).toBe("add-search");
+    expect(
+      formatGeneratedBranchName("Add Search", {
+        mode: "static",
+        prefix: "Team/Julius/",
+        instructions: "",
+      }),
+    ).toBe("Team/Julius/add-search");
+  });
+  it.each([
+    ["release..candidate", "release-candidate/add-search"],
+    [" Team / Jules.lock/", "Team/Jules-lock/add-search"],
+    ["-team//feature@{new}", "team/feature-new/add-search"],
+    [" /?. / ", "add-search"],
+  ])("normalizes invalid static prefix %s", (prefix, expected) => {
+    expect(
+      formatGeneratedBranchName("Add Search", { mode: "static", prefix, instructions: "" }),
+    ).toBe(expected);
+  });
+  it("does not double a static prefix the model already included", () => {
+    expect(
+      formatGeneratedBranchName("refs/heads/Team/fix-login", {
+        mode: "static",
+        prefix: "Team/",
+        instructions: "",
+      }),
+    ).toBe("Team/fix-login");
+    expect(
+      formatGeneratedBranchName("t3code-fix", {
+        mode: "static",
+        prefix: "t3code",
+        instructions: "",
+      }),
+    ).toBe("t3code/t3code-fix");
+  });
+  it("uses the model's semantic prefix without the stored static prefix", () => {
+    expect(
+      formatGeneratedBranchName("feat/Add Search", {
+        mode: "semantic",
+        prefix: "t3code",
+        instructions: "",
+      }),
+    ).toBe("feat/add-search");
+  });
+  it("preserves the full custom name, including case, dots and length", () => {
+    const branch = `Julius/ABC-123/release.v2-${"x".repeat(70)}`;
+    expect(
+      formatGeneratedBranchName(` ${branch} `, {
+        mode: "custom",
+        prefix: "ignored",
+        instructions: "",
+      }),
+    ).toBe(branch);
   });
 });

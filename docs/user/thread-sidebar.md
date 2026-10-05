@@ -11,9 +11,10 @@ Its branch and workspace mode come from your configured defaults. To continue in
 an existing worktree, use **New thread in this worktree** from the branch toolbar.
 
 To set up a thread before you know what to ask, leave the composer empty and click **Create
-worktree** (**Create thread** in Local mode), or press Enter. The worktree and its setup script get
-ready without starting the agent, so you can add files or context first. Your first message then
-names the thread and its branch. This is not available on mobile.
+worktree** (**Create thread** in Local mode), or press Enter. The thread opens right away while
+the worktree and its setup script get ready without starting the agent, so you can add files or
+context first; sending waits until the setup is done. Your first message then names the thread and
+its branch. This is not available on mobile.
 
 When you change a new thread's project, T3 Code stays in the current environment
 if that project exists there. Otherwise it selects an environment that has it.
@@ -69,15 +70,15 @@ changes.
 To retry a message with another model or provider on web or desktop, hover the message and click
 **Fork into new tab**. The new tab's composer holds a summary of the chat up to that message,
 followed by the message itself and its attachments. Pick a model, edit if you like, and send.
-To continue from an agent response, use its **Fork into new tab** action. The new composer holds
-only a summary attachment covering the chat through that response, ready for your follow-up.
+To continue from an agent response, use its **Fork from this response** action. The new tab
+carries the conversation through that response, on the same model, ready for your follow-up.
 Files the original chat changed after that message stay changed, since tabs share the workspace.
 
 To carry on with a different model instead, open the model picker after the first message and
 click the fork button on a model. A new tab opens on that model, with a summary of the chat and
-a copy of what you had typed. Models from other providers are listed too. A chat cannot switch to
-them in place, so clicking the row does nothing; use its fork button. Picking another account in
-the composer's account picker works the same way, and those accounts are marked **New tab**.
+a copy of what you had typed. Models the chat cannot switch to in place stay listed too, but
+clicking their row does nothing; use its fork button. Picking another account in the composer's
+account picker works the same way, and those accounts are marked **New tab**.
 On mobile, tap **Hand off** beside the tab switcher and pick a provider and model.
 
 ### View two chats side by side
@@ -103,7 +104,9 @@ A thread does not need a project. To start one without a project, click **or
 start without a project** under a new thread's heading, pick **No project** from
 the project menu in that heading or from **New thread in...** in the command
 palette, or press `mod+alt+n`. On mobile, pick **No project** from the project
-list. To move a draft into a project, pick the project in the heading.
+list. It starts on your current machine; before sending, pick another machine
+from the machine menu to move it there. To move a draft into a project, pick the
+project in the heading.
 
 Each thread without a project works in its own folder under `~/.t3/scratch` (the
 `scratch` folder of your T3 data directory), named after its date, the first words
@@ -132,8 +135,8 @@ lists threads from every project and chat tab that are waiting for an approval o
 failed, or that finished since you last opened them. Click an entry to open that exact tab. Use
 the check mark to mark a failure or completion read; **Mark unread** in the thread menu brings a
 completion back. Approvals and questions stay listed until you answer them. Snoozed threads stay
-out until they wake or ask for you. Press `Cmd+Option+N` on macOS or `Ctrl+Alt+N` on Windows and
-Linux, or search the command palette for **Needs attention**, to see the same list.
+out until they wake or ask for you. Press `Cmd+Option+Shift+N` on macOS or `Ctrl+Alt+Shift+N` on Windows
+and Linux, or search the command palette for **Needs attention**, to see the same list.
 
 ## Pin and reorder threads
 
@@ -142,7 +145,8 @@ Pin a thread from its menu to keep it above your active work.
 On web and desktop, unpinning, settling, snoozing, and archiving a thread each show
 a notification with **Undo** for five seconds. Undo restores the thread's previous
 state, including its pinned position, and reopens an archived thread you were
-viewing. `mod+z` triggers the most recent Undo when no text field is focused; see
+viewing. Discarding an unsent draft from the sidebar works the same way: Undo brings
+back its text and attachments. `mod+z` triggers the most recent Undo when no text field is focused; see
 [Keybindings](./keybindings.md#commands-with-special-behavior).
 
 On web and desktop, you can also drag files from your computer onto any thread row:
@@ -194,15 +198,26 @@ If dragging is unavailable for one environment, update the T3 Code server runnin
 environment. Pinned and active reordering require server support. Threads from older servers keep
 their default order until the server is updated.
 
+To generate a fresh title from the conversation, open a thread's menu and choose
+**Regenerate title**. The action is unavailable while title generation is in progress
+or when the connected environment needs a server update.
+
+Agents connected through T3 Code can use the same server-owned metadata workflow to
+rename a thread, regenerate its title, or link and unlink a pull request. These changes
+appear on web, desktop, and mobile without requiring the originating browser to remain
+open.
+
 ### Fold working threads (beta)
 
-On web and desktop, turn on **Settings → General → Working section (beta)** to move threads that
-are working or monitoring into a collapsed **Working** section at the bottom of the sidebar. A
-thread returns to the top of the active list when it finishes, fails, or needs an approval or
-answer. Pinned threads stay in the pinned section.
+Turn on **Settings → General → Working section (beta)** on web and desktop, or **Settings →
+Thread behavior → Working section** on iOS and Android, to move threads that are working or
+monitoring into a collapsed **Working** section below the active list. A thread returns to the top
+of the active list when it finishes, fails, or needs an approval or answer. The Working section
+lists the thread you last sent work to first. Pinned threads stay in the pinned section. Each
+device keeps its own choice.
 
 While this is on, the active list is ordered by when each thread last came back to you, so you
-cannot drag to reorder it. Your saved order returns when you turn it off.
+cannot drag or move threads within it. Your saved order returns when you turn it off.
 
 ## Settle finished work
 
@@ -214,12 +229,18 @@ sending an answer or restarting the agent. Settling also closes the thread's
 terminals that wait at an idle prompt, and keeps their output. A terminal that
 runs a command, such as a dev server, stays open.
 
+On web and desktop, press a thread's **Settle** button and drag up or down to
+settle every thread in that section between it and the one you release on.
+The **Un-settle** and **Wake** buttons work the same way in their sections.
+Press `Escape` while dragging to cancel.
+
 By default, environments settle inactive threads after three days and settle
 threads whose pull request merged. A closed pull request can also settle an idle
 thread. Work in progress, pending questions or approvals, and live background work
 prevent automatic settlement. An open pull request does not prevent inactivity
 settlement, but an old closed or merged pull request does not settle work you
-resumed after it closed.
+resumed after it closed. Only your own messages count as resuming. A turn that
+finished background work or a pull request watch starts on its own does not.
 
 To keep one thread out of the settled shelf no matter how long it sits idle, open its menu,
 choose **Auto-settle behavior**, and pick **Disabled**. The current option is checked. Pick
@@ -277,67 +298,103 @@ continues the same Claude or Codex session, so the agent keeps its full context.
 session first so both sides do not write to it at once.
 
 Conversations that already have a thread, including ones T3 Code started itself, show **Open**
-instead. Imported history keeps the first prompt and the newest 200 messages, without tool
+instead. An archived thread does not count, so importing makes a fresh one. Imported history keeps the first prompt and the newest 200 messages, without tool
 activity or attachments. Other providers and the mobile app do not offer import.
 
 ## Inspect agent work
 
-On web and desktop, use **Agents** to follow work delegated to subagents.
-Search the list, filter it by status, or sort it by status, tokens, or
-duration. Token and duration sorts rank finished agents; agents still working
-stay at the top in launch order, so rows don't jump while you read them.
+**Limited** means the provider stopped on a usage or rate limit. The conversation
+keeps the provider's explanation. Retry after the limit resets, or switch to
+another provider instance.
+On web and desktop, press **Resume** in an empty composer to continue a limited
+or interrupted turn manually.
+Queued messages stay saved while the limit blocks the thread. They run after
+the continuation finishes. If the queue was held by a restart, resume it then.
 
-Each agent is one line. Working agents add their latest tool call underneath
-and failed agents their error. Hover an agent to preview its prompt, latest
-tool calls, and usage; the preview stays open while you move onto it, so you
-can hover a tool call inside it to see the whole call. Click the preview, or
-the agent, to open it; clicking a tool call opens the agent with that call
-expanded.
+When the provider reports a reset time, choose **Resume at reset** to schedule a
+continuation. You can cancel it from the thread. Enable **Auto-resume limited
+threads** in **Settings → General** on web and desktop, or **Settings → Thread
+behavior** on mobile, to schedule limit stops by default.
+The environment must be running when the reset arrives; it resumes overdue
+continuations after a restart. Sending a new message, archiving, or settling the
+thread prevents a pending continuation from starting.
 
-Open an agent to see the prompt it was given, its full result or error, the
-tool calls it made, and its token usage in the footer (hover a number for its
-label, or the total for the full breakdown). In the conversation, expand an
-agent in its launch row and choose **Show details** to open it directly.
+Choose **Snooze until reset** to hide the thread until its allowance returns.
+Snooze and auto-resume are independent: snooze alone wakes the thread without
+sending a message; enabling both wakes and continues it. **Wake now** cancels
+the snooze. Enable **Snooze limited threads** in thread behavior settings to
+snooze limit stops by default. Providers without a reset time offer manual
+retry and the normal snooze choices.
 
-Right-click an agent in the list and choose **Open in new tab**, or use the
-same action in its detail view, to keep it in a dedicated sidebar tab. You can
-keep several agents open while using the Agents list to inspect others. Close a
-tab with its close button; right-click the agent again, or open its detail
-view, to reopen it. **Agents** in a dedicated tab returns to the list.
-Tabs belong to the current thread and are restored when you reopen the app.
+Each subagent runs in its own thread. On web and desktop there are two places to follow them:
 
-Tool calls list newest first. Search them, filter by status or tool, or sort
-oldest first or by duration. Hover a call to preview all of it; click to keep
-it open. The menu on the **Tool calls** heading switches to the **Transcript**,
-the agent's own conversation fetched from the provider, which you can search,
-filter, and sort the same way. The transcript is read from the provider while
-the thread's session is running. T3 Code keeps a bounded copy of the latest
-entries when an agent finishes and each time you open its transcript, so you
-can still read it after the session stops; that copy is marked **Saved copy**.
-A full read needs the session running again.
+- **Agents** in the side panel lists every agent of the thread, including agents that an agent
+  started, indented under it. Open it from the side panel's launcher or **+** menu, the command
+  palette (**Show agents**), or the button in the **Lineage** header. In the conversation, choose
+  **Details** on an agent's row to open the panel on that agent, or the bot button next to it for
+  the whole list; clicking the row itself still opens the agent's thread. Right-click an agent in
+  the conversation or in Lineage and choose **Show in Agents panel** to do the same. The footer
+  counts agents by status and adds up the usage they reported; hover a number for its label, or
+  the total for the full breakdown. The launcher's badge counts working agents, including agents
+  started by agents.
+- **Lineage** in the thread details panel lists the agents this thread started, next to its forks;
+  click one to open its thread and read its whole conversation. The Agents panel's Lineage button
+  brings you back here.
 
-To use what an agent found in your next message, choose **Attach result to
-chat** next to its result, or right-click the agent in the list. T3 Code adds
-the agent's task and result to the composer; a long result becomes a pasted
-attachment.
+With two or more agents you can search either list, filter it by status, or sort it by status,
+tokens, or duration; both lists share the same filter and sort. Agents are listed in the order they
+started, and token and duration sorts keep working agents at the top in that order, so rows don't
+jump while you read them. A working agent's row shows its latest tool call, with `…` while the call
+runs and **waiting** when the agent needs you, and a failed agent's row its error. Hover an agent in
+the Agents panel to preview its model, prompt, result, latest tool calls, and usage; the preview
+stays open while you move onto it, so you can hover a tool call inside it to see the whole call.
+Click the preview to open the agent, or click a tool call to open the agent with that call expanded.
+Hover an agent in Lineage to preview its model, status, result, and token usage.
 
-To pick up an agent's line of work in its own conversation, choose **Continue
-in chat** in the agent's detail view, or right-click the agent in the list. A
-new chat tab opens with the agent's task, result, and tool calls attached, so
-you can ask follow-up questions or push the investigation further. The new
-chat starts fresh with that context; it does not resume the agent itself.
+Click an agent in the Agents panel to see what it is doing without leaving the panel. You get its
+status, model and reasoning effort, how many times it has run, and its running time; the prompt it
+was given (choose **Show all** for a long one); its result or error; any files or remote session it
+left under **Artifacts**; and the agents it started. Click one of those to look inside it too.
+**Back** goes up one level, and from the top back to the list. Below the header, **Tools** lists
+the agent's tool calls; hover or click one to see its command, output, or diff. **Transcript**
+follows the agent live: its messages, the reasoning it shares, and each tool call as it runs, each
+with its time. Click a call or thought to expand its command, output, or diff. While you are at
+the bottom, new activity scrolls into view; scroll up to read and it stays put. **Tools** lists
+calls newest first; filter them by status or tool, or sort oldest first or by duration. Search either view; a search or filter shows how many entries it kept. Paths read
+relative to the checkout the agent works in, including a separate worktree it was given. The
+footer shows the agent's token usage, and its runs and retries when there were several; hover a
+number for its label, or the total for the full breakdown.
 
-| Provider    | Tool calls | Prompt                | Transcript |
-| ----------- | ---------- | --------------------- | ---------- |
-| Claude      | Yes        | Yes                   | Yes        |
-| Codex       | Yes        | When Codex reports it | Yes        |
-| OpenCode    | Yes        | Yes                   | Yes        |
-| Cursor      | Yes        | Yes                   | No         |
-| Devin       | Yes        | Yes                   | No         |
-| Grok        | No         | Yes                   | No         |
-| Antigravity | No         | No                    | No         |
+An agent that has not started its own thread yet still opens, with its prompt, result, and usage;
+its activity appears once it starts.
 
-Antigravity reports subagents as one row per batch.
+**Stop agent** shows when the agent's own thread can be interrupted. Some subagents, such as
+Claude's, stop only when you stop the parent thread.
+
+To keep an agent beside the list, choose **Open in new tab** in its detail, or right-click it
+anywhere and choose the same. The agent gets its own tab in the side panel with the same view.
+The detail's buttons also open the agent's own thread. The Agents panel and agent tabs belong to
+the current thread and are restored when you reopen the app; the agent you had open inside the
+panel is not. Close a tab with its close button and open it again the same way.
+
+To use what an agent found in your next message, choose **Attach result to chat** in its detail or
+from the right-click menu. T3 Code adds the agent's task and result to the composer; a long result
+becomes a pasted attachment.
+
+To pick up an agent's line of work in its own conversation, choose **Continue in chat**. A new chat
+tab opens with the agent's task, result, and tool calls attached, so you can ask follow-up questions
+or push the investigation further. The new chat starts fresh with that context; it does not resume
+the agent itself.
+
+Claude and Codex report each agent's token usage. A delegated task's usage appears once it
+finishes, on any provider that reports usage for its own turns (Claude, Codex, Cursor, and
+OpenCode). Agents built into other providers show the usage as not reported.
+When a provider doesn't report an agent's tool calls, **Tools** says so and shows the agent's
+latest progress while it works.
+
+Subagent threads started by the agent can't take messages; message the parent
+thread instead. When such a subagent needs an approval or an answer, the parent
+thread asks for it.
 
 Expand a tool call in the conversation to see its full command and output.
 Summaries shorten shell wrappers and can still describe the latest call after it

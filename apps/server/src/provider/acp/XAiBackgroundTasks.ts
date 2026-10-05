@@ -7,7 +7,12 @@ import {
   type TurnId,
 } from "@t3tools/contracts";
 
-import { boundSubagentPrompt } from "../subagentTranscript.ts";
+function boundSubagentPrompt(value: unknown, limit: number): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return undefined;
+  return trimmed.length <= limit ? trimmed : `${trimmed.slice(0, limit - 1)}…`;
+}
 
 type TaskEvent =
   | Pick<ProviderRuntimeTaskStartedEvent, "type" | "payload" | "turnId">

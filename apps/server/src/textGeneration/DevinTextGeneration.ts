@@ -6,7 +6,7 @@ import * as Schema from "effect/Schema";
 import { ChildProcessSpawner } from "effect/unstable/process";
 
 import { type DevinSettings, type ModelSelection } from "@t3tools/contracts";
-import { sanitizeBranchFragment, sanitizeFeatureBranchName } from "@t3tools/shared/git";
+import { formatGeneratedBranchName, sanitizeFeatureBranchName } from "@t3tools/shared/git";
 import { extractJsonObject } from "@t3tools/shared/schemaJson";
 
 import { TextGenerationError } from "@t3tools/contracts";
@@ -94,13 +94,10 @@ export const makeDevinTextGeneration = Effect.fn("makeDevinTextGeneration")(func
           runtime,
           model: modelSelection.model,
           selections: modelSelection.options,
-          mapError: ({ cause, configId, step }) =>
+          mapError: (cause) =>
             new TextGenerationError({
               operation,
-              detail:
-                step === "set-config-option"
-                  ? `Failed to set Devin ACP config option "${configId}" for text generation.`
-                  : "Failed to set Devin ACP model for text generation.",
+              detail: "Failed to set Devin ACP model for text generation.",
               cause,
             }),
         });
@@ -228,6 +225,7 @@ export const makeDevinTextGeneration = Effect.fn("makeDevinTextGeneration")(func
       const { prompt, outputSchema } = buildBranchNamePrompt({
         message: input.message,
         attachments: input.attachments,
+        naming: input.naming,
       });
 
       const generated = yield* runDevinJson({
@@ -239,7 +237,7 @@ export const makeDevinTextGeneration = Effect.fn("makeDevinTextGeneration")(func
       });
 
       return {
-        branch: sanitizeBranchFragment(generated.branch),
+        branch: formatGeneratedBranchName(generated.branch, input.naming),
       };
     });
 

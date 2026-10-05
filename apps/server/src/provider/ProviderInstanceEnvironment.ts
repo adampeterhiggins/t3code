@@ -114,3 +114,22 @@ export const mergeProviderHomePathEnvironment = Effect.fn("mergeProviderHomePath
     };
   },
 );
+
+/**
+ * The instance environment with each of `variableNames` pointed at `homePath`.
+ * Orchestration adapters build their own process env from the instance
+ * environment, so per-instance homes must travel in it to reach them.
+ */
+export const withProviderHomePathVariables = Effect.fn("withProviderHomePathVariables")(function* (
+  homePath: string,
+  variableNames: ReadonlyArray<string>,
+  environment: ProviderInstanceEnvironment,
+): Effect.fn.Return<ProviderInstanceEnvironment, never, Path.Path> {
+  const resolvedHomePath = yield* resolveProviderHomePath(homePath);
+  if (resolvedHomePath === undefined) return environment;
+  const names = new Set(variableNames);
+  return [
+    ...environment.filter((variable) => !names.has(variable.name)),
+    ...variableNames.map((name) => ({ name, value: resolvedHomePath, sensitive: false })),
+  ];
+});

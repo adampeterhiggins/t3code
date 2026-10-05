@@ -3,10 +3,9 @@ import type { ThreadId } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 
-import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
 import * as ProjectSetupScriptRunner from "./ProjectSetupScriptRunner.ts";
 
 export interface SubagentWorktreeSetupInput {
@@ -51,17 +50,17 @@ export const layer = Layer.effect(
 export const installLive = Layer.effectDiscard(
   Effect.gen(function* () {
     const setup = yield* SubagentWorktreeSetup;
-    const projections = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
     const runner = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
 
     const prepare = Effect.fn("SubagentWorktreeSetup.prepare")(function* (
       input: SubagentWorktreeSetupInput,
     ) {
-      const thread = yield* projections.getThreadShellById(input.threadId);
-      if (Option.isNone(thread)) return;
+      const thread = yield* projections.getThreadShell(input.threadId);
+      if (thread === null) return;
       const result = yield* runner.runForThread({
         threadId: input.threadId,
-        projectId: thread.value.projectId,
+        projectId: thread.projectId,
         worktreePath: input.worktreePath,
         preferredTerminalId: `subagent-setup-${input.agentId}`,
         observeCompletion: {},

@@ -61,12 +61,16 @@ const DEFINITIONS = [
     capabilities: { details: "popover", expanded: "none", defaultDraftView: "compact" },
   },
   {
+    kind: "slack-thread",
+    capabilities: { details: "popover", expanded: "none", defaultDraftView: "compact" },
+  },
+  {
     kind: "notion-page",
     capabilities: { details: "popover", expanded: "none", defaultDraftView: "compact" },
   },
   {
-    kind: "slack-thread",
-    capabilities: { details: "popover", expanded: "none", defaultDraftView: "compact" },
+    kind: "thread",
+    capabilities: { details: "tooltip", expanded: "none", defaultDraftView: "compact" },
   },
 ] as const satisfies ReadonlyArray<ContextPresentationDefinition>;
 

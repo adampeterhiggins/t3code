@@ -277,7 +277,7 @@ export function GitOverviewSheet(props: GitOverviewSheetProps) {
         <SheetListRow
           icon="text.bubble"
           title="Review changes"
-          subtitle="Inspect turn diffs, worktree changes, and base branch diff"
+          subtitle="Inspect changes, uncommitted edits, and turn diffs"
           disabled={busy || !isRepo}
           onPress={() => {
             const params = { environmentId, threadId };
@@ -334,11 +334,7 @@ export function GitOverviewSheet(props: GitOverviewSheetProps) {
                   <SheetListRow
                     icon="arrow.triangle.pull"
                     title={`#${link.number} ${link.snapshot?.title ?? "Pull request"}`}
-                    subtitle={
-                      stackLabel === null
-                        ? `${link.repository} · ${status}`
-                        : `${link.repository} · ${status} · ${stackLabel}`
-                    }
+                    subtitle={`${link.repository} · ${status}${stackLabel === null ? "" : ` · ${stackLabel}`}${link.watch === undefined ? "" : link.watch.paused === true ? " · Watch paused" : " · Watching"}`}
                     onPress={() => {
                       void tryOpenExternalUrl(link.url, "pull-request").then((opened) => {
                         if (!opened)

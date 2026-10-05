@@ -1,4 +1,3 @@
-import { isToolLifecycleItemType } from "@t3tools/contracts";
 import { isWindowsAbsolutePath } from "@t3tools/shared/path";
 
 // A statement that changes directory: `cd`, `pushd`, or PowerShell's
@@ -70,17 +69,16 @@ export function formatPathsForWorkspace(
 
 /**
  * Formats a work entry's tool label (`Read: /repo/src/a.ts`, an image path, a
- * changed file) with workspace paths relative. Prose rows such as task
- * summaries and errors keep their paths as written.
+ * changed file) with workspace paths relative. Only tool rows are rewritten;
+ * prose rows such as task summaries, notices, and errors keep their paths as
+ * written.
  */
 export function formatToolTextForWorkspace(
-  entry: { readonly itemType?: string | undefined },
+  entry: { readonly tone: string },
   text: string,
   workspaceRoot: string | null | undefined,
 ): string {
-  return entry.itemType !== undefined && isToolLifecycleItemType(entry.itemType)
-    ? formatPathsForWorkspace(text, workspaceRoot)
-    : text;
+  return entry.tone === "tool" ? formatPathsForWorkspace(text, workspaceRoot) : text;
 }
 
 /**

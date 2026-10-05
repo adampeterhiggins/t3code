@@ -1,15 +1,10 @@
 import {
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
-  CommandId,
   EnvironmentHttpApi,
-  ThreadId,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
-import * as Crypto from "effect/Crypto";
-import * as DateTime from "effect/DateTime";
-import * as Option from "effect/Option";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as Layer from "effect/Layer";
 import * as HttpApiBuilder from "effect/unstable/httpapi/HttpApiBuilder";
 
 import {
@@ -19,76 +14,33 @@ import {
   failEnvironmentNotFound,
   requireEnvironmentScope,
 } from "../auth/http.ts";
-import { LinearThreadLinks } from "../linear/LinearThreadLinks.ts";
-import { GitHubIssueThreadLinks } from "../githubIssues/GitHubIssueThreadLinks.ts";
-import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
-import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
-import {
-  siblingChatBeforeMessage,
-  siblingChatThroughMessage,
-  summarizeSiblingChat,
-} from "./summary.ts";
+import * as ThreadTabs from "./ThreadTabs.ts";
 
-interface TabRow {
-  readonly threadId: string;
-  readonly groupId: string;
-  readonly position: number;
-}
+const mapThreadTabsError = (error: ThreadTabs.ThreadTabsError) =>
+  Effect.gen(function* () {
+    switch (error.reason) {
+      case "thread_not_found":
+        return yield* failEnvironmentNotFound("thread_not_found");
+      case "invalid_request":
+        return yield* failEnvironmentInvalidRequest("invalid_command");
+      case "dispatch_failed":
+      case "internal":
+        return yield* failEnvironmentInternal("internal_error", error);
+    }
+  });
 
 export const threadTabsHttpApiLayer = HttpApiBuilder.group(
   EnvironmentHttpApi,
   "threadTabs",
   Effect.fnUntraced(function* (handlers) {
-    const sql = yield* SqlClient.SqlClient;
-    const snapshots = yield* ProjectionSnapshotQuery;
-    const engine = yield* OrchestrationEngineService;
-    const linearThreadLinks = yield* LinearThreadLinks;
-    const githubIssueThreadLinks = yield* GitHubIssueThreadLinks;
-
-    const groupFor = Effect.fn("ThreadTabs.groupFor")(function* (threadId: ThreadId) {
-      const source = yield* snapshots.getThreadShellById(threadId);
-      if (Option.isNone(source)) return null;
-
-      const membership = yield* sql<TabRow>`
-        SELECT thread_id AS "threadId", group_id AS "groupId", position
-        FROM fork_thread_tabs WHERE thread_id = ${threadId}
-      `;
-      const groupId = (membership[0]?.groupId ?? threadId) as ThreadId;
-      const rows = yield* sql<TabRow>`
-        SELECT thread_id AS "threadId", group_id AS "groupId", position
-        FROM fork_thread_tabs WHERE group_id = ${groupId} ORDER BY position, created_at
-      `;
-      const siblings =
-        rows.length === 0
-          ? [source.value]
-          : yield* Effect.forEach(
-              rows,
-              (row) =>
-                snapshots
-                  .getThreadShellById(ThreadId.make(row.threadId))
-                  .pipe(Effect.map(Option.getOrNull)),
-              { concurrency: 8 },
-            );
-      const tabs = siblings
-        .filter((thread) => thread !== null)
-        .map((thread) => ({
-          threadId: thread.id,
-          title: thread.title,
-          modelSelection: thread.modelSelection,
-        }));
-      return { groupId, tabs };
-    });
-
+    const tabs = yield* ThreadTabs.ThreadTabs;
     return handlers
       .handle(
         "memberships",
         Effect.fn("environment.threadTabs.memberships")(function* (args) {
           yield* annotateEnvironmentRequest(args.endpoint.name);
           yield* requireEnvironmentScope(AuthOrchestrationReadScope);
-          return yield* sql<{ readonly threadId: ThreadId; readonly groupId: ThreadId }>`
-            SELECT thread_id AS "threadId", group_id AS "groupId" FROM fork_thread_tabs
-            ORDER BY group_id, position, created_at
-          `.pipe(Effect.catch((cause) => failEnvironmentInternal("internal_error", cause)));
+          return yield* tabs.memberships.pipe(Effect.catch(mapThreadTabsError));
         }),
       )
       .handle(
@@ -96,11 +48,7 @@ export const threadTabsHttpApiLayer = HttpApiBuilder.group(
         Effect.fn("environment.threadTabs.list")(function* (args) {
           yield* annotateEnvironmentRequest(args.endpoint.name);
           yield* requireEnvironmentScope(AuthOrchestrationReadScope);
-          const group = yield* groupFor(args.params.threadId).pipe(
-            Effect.catch((cause) => failEnvironmentInternal("internal_error", cause)),
-          );
-          if (!group) return yield* failEnvironmentNotFound("thread_not_found");
-          return group;
+          return yield* tabs.group(args.params.threadId).pipe(Effect.catch(mapThreadTabsError));
         }),
       )
       .handle(
@@ -108,84 +56,19 @@ export const threadTabsHttpApiLayer = HttpApiBuilder.group(
         Effect.fn("environment.threadTabs.create")(function* (args) {
           yield* annotateEnvironmentRequest(args.endpoint.name);
           yield* requireEnvironmentScope(AuthOrchestrationOperateScope);
-          const source = yield* snapshots
-            .getThreadShellById(args.params.threadId)
-            .pipe(Effect.catch((cause) => failEnvironmentInternal("internal_error", cause)));
-          if (Option.isNone(source)) return yield* failEnvironmentNotFound("thread_not_found");
-          const target = yield* snapshots
-            .getThreadShellById(args.payload.threadId)
-            .pipe(Effect.catch((cause) => failEnvironmentInternal("internal_error", cause)));
-          if (Option.isSome(target)) {
-            return yield* failEnvironmentInvalidRequest("invalid_command");
-          }
-          const sourceThread = source.value;
-          const createdAt = DateTime.formatIso(yield* DateTime.now);
-          const crypto = yield* Crypto.Crypto;
-          const commandId = CommandId.make(
-            yield* crypto.randomUUIDv4.pipe(
-              Effect.catch((cause) => failEnvironmentInternal("internal_error", cause)),
-            ),
-          );
-
-          // Membership is written before the thread exists so clients that refetch
-          // memberships on the new shell never see it as a standalone thread.
-          yield* sql
-            .withTransaction(
-              Effect.gen(function* () {
-                const existing = yield* sql<TabRow>`
-              SELECT thread_id AS "threadId", group_id AS "groupId", position
-              FROM fork_thread_tabs WHERE thread_id = ${sourceThread.id}
-            `;
-                const groupId = existing[0]?.groupId ?? sourceThread.id;
-                yield* sql`
-              INSERT OR IGNORE INTO fork_thread_tabs (thread_id, group_id, position, created_at)
-              VALUES (${sourceThread.id}, ${groupId}, 0, ${sourceThread.createdAt})
-            `;
-                const max = yield* sql<{ readonly position: number }>`
-              SELECT COALESCE(MAX(position), 0) AS position FROM fork_thread_tabs WHERE group_id = ${groupId}
-            `;
-                yield* sql`
-              INSERT INTO fork_thread_tabs (thread_id, group_id, position, created_at)
-              VALUES (${args.payload.threadId}, ${groupId}, ${(max[0]?.position ?? 0) + 1}, ${createdAt})
-            `;
-              }),
-            )
-            .pipe(Effect.catch((cause) => failEnvironmentInternal("internal_error", cause)));
-          // The group's issue links, if any, now cover the new tab too.
-          yield* linearThreadLinks.refresh;
-          yield* githubIssueThreadLinks.refresh;
-
-          yield* engine
-            .dispatch({
-              type: "thread.create",
-              commandId,
-              threadId: args.payload.threadId,
-              projectId: sourceThread.projectId,
-              title: "New tab",
-              modelSelection: args.payload.modelSelection,
-              runtimeMode: sourceThread.runtimeMode,
-              interactionMode: sourceThread.interactionMode,
-              branch: sourceThread.branch,
-              worktreePath: sourceThread.worktreePath,
-              createdAt,
-            })
-            .pipe(
-              Effect.tapError(() =>
-                sql`DELETE FROM fork_thread_tabs WHERE thread_id = ${args.payload.threadId}`.pipe(
-                  Effect.ignore,
-                ),
-              ),
-              Effect.catch((cause) =>
-                failEnvironmentInternal("orchestration_dispatch_failed", cause),
-              ),
-            );
-
-          const group = yield* groupFor(args.payload.threadId).pipe(
-            Effect.catch((cause) => failEnvironmentInternal("internal_error", cause)),
-          );
-          if (!group)
-            return yield* failEnvironmentInternal("internal_error", "New tab was not projected");
-          return group;
+          return yield* tabs
+            .create(args.params.threadId, args.payload)
+            .pipe(Effect.catch(mapThreadTabsError));
+        }),
+      )
+      .handle(
+        "fork",
+        Effect.fn("environment.threadTabs.fork")(function* (args) {
+          yield* annotateEnvironmentRequest(args.endpoint.name);
+          yield* requireEnvironmentScope(AuthOrchestrationOperateScope);
+          return yield* tabs
+            .fork(args.params.threadId, args.payload)
+            .pipe(Effect.catch(mapThreadTabsError));
         }),
       )
       .handle(
@@ -193,55 +76,10 @@ export const threadTabsHttpApiLayer = HttpApiBuilder.group(
         Effect.fn("environment.threadTabs.handoff")(function* (args) {
           yield* annotateEnvironmentRequest(args.endpoint.name);
           yield* requireEnvironmentScope(AuthOrchestrationOperateScope);
-          // Sources may be sibling tabs or any other thread in this environment, and the thread
-          // composing may still be a draft, so only self-reference is refused.
-          const sourceIds = [...new Set(args.payload.sourceThreadIds)];
-          const { beforeMessageId, afterMessageId } = args.payload;
-          if (
-            sourceIds.includes(args.params.threadId) ||
-            ((beforeMessageId !== undefined || afterMessageId !== undefined) &&
-              sourceIds.length !== 1) ||
-            (beforeMessageId !== undefined && afterMessageId !== undefined)
-          ) {
-            return yield* failEnvironmentInvalidRequest("invalid_command");
-          }
-          // A fork cuts the history at its message, which may be older than the recent window.
-          const window =
-            beforeMessageId === undefined && afterMessageId === undefined
-              ? { turnLimit: 8 }
-              : undefined;
-          const sections = yield* Effect.forEach(sourceIds, (sourceId) =>
-            snapshots.getThreadDetailSnapshot(sourceId, window).pipe(
-              Effect.catch((cause) => failEnvironmentInternal("internal_error", cause)),
-              Effect.flatMap((detail) => {
-                if (Option.isNone(detail)) return failEnvironmentInvalidRequest("invalid_command");
-                const { thread, snapshotSequence } = detail.value;
-                const chat = {
-                  title: thread.title,
-                  worktreePath: thread.worktreePath,
-                  latestTurnState: thread.latestTurn?.state ?? null,
-                  messages: thread.messages,
-                  activities: thread.activities,
-                  checkpoints: thread.checkpoints,
-                  proposedPlans: thread.proposedPlans,
-                };
-                const source =
-                  afterMessageId !== undefined
-                    ? siblingChatThroughMessage(chat, afterMessageId)
-                    : beforeMessageId !== undefined
-                      ? siblingChatBeforeMessage(chat, beforeMessageId)
-                      : chat;
-                if (!source) return failEnvironmentInvalidRequest("invalid_command");
-                return Effect.succeed(
-                  `Source thread: ${sourceId} (snapshot ${snapshotSequence})\n${summarizeSiblingChat(source)}`,
-                );
-              }),
-            ),
-          );
-          return {
-            text: sections.filter(Boolean).join("\n\n"),
-          };
+          return yield* tabs
+            .handoff(args.params.threadId, args.payload)
+            .pipe(Effect.catch(mapThreadTabsError));
         }),
       );
   }),
-);
+).pipe(Layer.provide(ThreadTabs.layer));

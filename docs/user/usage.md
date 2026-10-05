@@ -8,11 +8,13 @@ desktop when the terminal is not focused. Customize `usage.open` in
 
 **Usage** combines Codex, Claude Code, Grok Build, Devin ACP, OpenCode, Antigravity, and Cursor history from your connected
 environments. It shows token use, cache savings, model breakdowns, and estimated API-equivalent
-cost. These estimates are not your subscription bill.
+cost, split by token type and by speed. These estimates are not your subscription bill.
+**Premium** is what Fast and Ultrafast requests cost above standard rates. Cost that cannot be
+split, such as a provider-reported cost for a model without public rates, shows as **Other**.
+Select a model under **Breakdown** to see its trend, cache hit rate, and cost per million tokens.
 
 Devin records come from the Devin CLI's local session history, so they include sessions run
-outside T3. When that history is missing, T3 falls back to its own event logs, which only cover
-sessions driven through the selected T3 server. Use the provider filter above the breakdown to focus the chart and tables, and
+outside T3. Use the provider filter above the breakdown to focus the chart and tables, and
 use the download button to export the current window as CSV. The page can optionally show official
 Devin organization ACUs in a separate section when a `cog_...` service key with
 `ViewOrgConsumption` permission and `DEVIN_ORG_ID` are configured on the server; ACUs are never
@@ -25,11 +27,11 @@ OpenCode reads its SQLite database and older JSON history. Antigravity reads loc
 databases, including T3-managed profiles. Set `OPENCODE_DATA_DIR` or `ANTIGRAVITY_DATA_DIR` on the
 server to read a different data directory; comma-separated paths read multiple directories.
 
-Cursor reads account usage from Cursor's dashboard API using the CLI login saved on the server.
-This includes headless T3 sessions and desktop usage across machines; the same account counts
-once across connected environments. Cursor accounts with their own home directory add their own
-login, and an account signed in more than once still counts once. Without an accessible CLI login, T3 shows a
-notice instead of incomplete local totals. T3 does not estimate missing tokens from conversation text.
+Cursor reads account usage from Cursor's dashboard API with each Cursor account's own sign-in or
+`CURSOR_API_KEY`, and with the CLI login saved on the server. This includes headless T3 sessions and
+desktop usage across machines; the same account counts once, however many accounts or connected
+environments are signed in to it. Without a readable sign-in or CLI login, T3 shows a notice instead
+of incomplete local totals. T3 does not estimate missing tokens from conversation text.
 On macOS, choose **Enable Cursor usage** on Usage to allow T3 to read your existing CLI login
 from Keychain. You can turn it off in **Settings → Providers → Usage providers**. macOS may ask
 you to allow access on the server Mac.
@@ -56,7 +58,8 @@ On web or desktop, open the environment dropdown on **Usage**, then choose **Mod
 edit, or reset a model's estimated price. **Apply to** starts with your current Usage filter;
 choose all environments or select individual destinations. Enter the exact model ID and USD
 rates per million input and output tokens. You can enter any model ID, including models
-without public pricing.
+without public pricing. When a model on **Usage** has no known price, select it under
+**Breakdown** and choose **Set price** to open this table with that model added.
 
 Cache read and cache write rates are optional and use the input rate when blank. Enter `0` for
 tokens that are free. Saved prices replace automatic pricing for all of that environment's
@@ -65,6 +68,11 @@ cells show **Mixed**. Edit rates directly in the table, then choose **Save chang
 edited rows. Untouched cells keep each environment's rate. Select one environment to inspect its
 prices. **Reset to automatic** marks a model's override for removal when you save; you can undo
 it before saving.
+
+To count one model as another, such as a preview model under its released name, enter the target
+model ID under **Map to**. The mapped model no longer appears on **Usage**: its tokens and cost
+move to the target model and use the target's price. Clear **Map to** or reset the row to show
+the model on its own again.
 
 Each destination reports whether the change saved. Offline or unavailable environments are
 marked **Not saved**. Reconnect them and choose **Retry failed saves** to finish the same change
@@ -102,10 +110,8 @@ anything. The command is offered only for providers that appear under **Usage �
 OpenCode Go reports its session, weekly, and monthly allowance when OpenCode runs locally in
 the environment. T3 cannot report limits for external OpenCode servers because their credentials
 belong to the remote server. Cursor reports
-its monthly allowance, including separate Auto and API usage, using the CLI login or
-`CURSOR_AUTH_TOKEN`. On macOS, this includes the default Keychain login after you enable Cursor
-usage. Keychain login is used for limits only with Cursor's default API endpoint. If you configure
-a custom Cursor endpoint, use an explicit token or file-based CLI login for limits.
+its monthly allowance, including separate Auto and API usage, for each Cursor account using that
+account's own sign-in or `CURSOR_API_KEY`, so two accounts show their own limits.
 
 Grok reports the remaining subscription allowance and reset time for its current billing period
 after signing in with `grok login`. Explicit `XAI_API_KEY` connections and custom authentication
