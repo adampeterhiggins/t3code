@@ -58,6 +58,9 @@ describe("RPC authorization scopes", () => {
     expect(requiredScopeForRpcMethod(WS_METHODS.agentSessionsImport)).toBe(
       AuthOrchestrationOperateScope,
     );
+    expect(requiredScopeForRpcMethod(WS_METHODS.agentSessionsList)).toBe(
+      AuthOrchestrationReadScope,
+    );
   });
 
   it("separates ACP Registry discovery from provisioning", () => {

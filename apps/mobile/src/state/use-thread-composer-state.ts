@@ -106,6 +106,7 @@ import { enqueueThreadOutboxMessage } from "./thread-outbox";
 import { dispatchingQueuedMessageIdAtom, useThreadOutboxMessages } from "./use-thread-outbox";
 import { threadEnvironment } from "./threads";
 import { useAtomCommand } from "./use-atom-command";
+import { useSelectedThreadWorktree } from "./use-selected-thread-worktree";
 
 const EMPTY_QUEUE_WORKFLOW_ATOM = Atom.make<null>(null).pipe(
   Atom.withLabel("mobile-thread-queue-workflow:empty"),
@@ -182,6 +183,7 @@ export function useThreadComposerState() {
   } = useThreadSelection();
   const selectedThreadProjection = useSelectedThreadProjection();
   const selectedThreadVisibleTurnItems = useSelectedThreadVisibleTurnItems();
+  const { selectedThreadCwd } = useSelectedThreadWorktree();
   const composerDrafts = useAtomValue(composerDraftsAtom);
   const acknowledgedMessages = useAtomValue(acknowledgedThreadMessagesAtom);
   const queuedMessagesByThreadKey = useThreadOutboxMessages();
@@ -266,6 +268,7 @@ export function useThreadComposerState() {
       anchoredMessages: pendingCreation,
       attempts: selectedThreadAttempts,
       nodes: selectedThreadNodes,
+      workspaceRoot: selectedThreadCwd,
     });
     const pendingAcknowledgments = acknowledgedMessages.filter(
       (message) =>
@@ -281,6 +284,7 @@ export function useThreadComposerState() {
     selectedThreadAttempts,
     selectedThreadNodes,
     selectedThreadVisibleTurnItems,
+    selectedThreadCwd,
     pendingCreationMessage,
     selectedThreadKey,
     selectedThreadQueuedMessages,

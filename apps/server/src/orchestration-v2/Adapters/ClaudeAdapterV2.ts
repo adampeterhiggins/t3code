@@ -14,6 +14,7 @@ import {
   type ForkSessionOptions,
   type ForkSessionResult,
   getSubagentMessages,
+  type HookCallbackMatcher,
   query,
   type Options as ClaudeQueryOptions,
   type PermissionMode,
@@ -92,6 +93,7 @@ import { discoverClaudeSkills } from "../../provider/Drivers/ClaudeSkills.ts";
 import { compileClaudeModelSelection } from "../../claudeModelOptions.ts";
 import * as ServerConfig from "../../config.ts";
 import { expandHomePath } from "../../pathExpansion.ts";
+import * as SubagentWorktreeSetup from "../../project/SubagentWorktreeSetup.ts";
 import {
   claudeSignedOutMessage,
   makeClaudeEnvironment,
@@ -826,6 +828,7 @@ export function makeClaudeQueryOptions(input: {
   readonly onUserDialog?: ClaudeQueryOptions["onUserDialog"];
   readonly supportedDialogKinds?: ClaudeQueryOptions["supportedDialogKinds"];
   readonly allowDangerouslySkipPermissions?: boolean;
+  readonly hooks?: ClaudeQueryOptions["hooks"];
 }): ClaudeAgentSdkQueryOptions {
   const compiledSelection = compileClaudeModelSelection(input.modelSelection);
   const {
@@ -905,6 +908,7 @@ export function makeClaudeQueryOptions(input: {
       : {}),
     ...(input.environment === undefined ? {} : { env: input.environment }),
     ...(input.mcpServers === undefined ? {} : { mcpServers: input.mcpServers }),
+    ...(input.hooks === undefined ? {} : { hooks: input.hooks }),
     systemPrompt: {
       type: "preset" as const,
       preset: "claude_code" as const,
@@ -922,6 +926,52 @@ export function makeClaudeQueryOptions(input: {
     additionalDirectories.length === 0 ? options : { ...options, additionalDirectories };
   return input.cwd === null ? withDirectories : { ...withDirectories, cwd: input.cwd };
 }
+
+/**
+ * Claude Code creates the worktree for an `isolation: "worktree"` subagent
+ * itself, so T3's worktree setup never sees it. SubagentStart fires after that
+ * worktree exists and before the subagent's first tool call, with the worktree
+ * as its cwd; preparing it there gives the subagent the same files, setup
+ * script, and environment as a thread. `prepared` lives as long as the provider
+ * session, so each worktree is prepared once. The session cwd is the thread's
+ * own, already prepared, worktree.
+ */
+export const makeSubagentWorktreeSetupHooks = Effect.fn("ClaudeAdapterV2.subagentWorktreeHooks")(
+  function* (input: {
+    readonly threadId: ThreadId;
+    readonly sessionCwd: string;
+    readonly prepared: Set<string>;
+    readonly setup: SubagentWorktreeSetup.SubagentWorktreeSetup["Service"];
+    readonly fileSystem: FileSystem.FileSystem;
+  }) {
+    const runPromise = Effect.runPromiseWith(yield* Effect.context<never>());
+    const realPathOrSelf = (target: string) =>
+      input.fileSystem.realPath(target).pipe(Effect.orElseSucceed(() => target));
+    input.prepared.add(yield* realPathOrSelf(input.sessionCwd));
+    const matcher: HookCallbackMatcher = {
+      hooks: [
+        (hookInput) =>
+          runPromise(
+            Effect.gen(function* () {
+              if (hookInput.hook_event_name !== "SubagentStart") return {};
+              const worktreePath = yield* realPathOrSelf(hookInput.cwd);
+              if (input.prepared.has(worktreePath)) return {};
+              input.prepared.add(worktreePath);
+              yield* input.setup.prepare({
+                threadId: input.threadId,
+                agentId: hookInput.agent_id,
+                worktreePath,
+              });
+              return {};
+            }),
+          ),
+      ],
+      // A blocking setup script (often an install) can outlast the 60s default.
+      timeout: 600,
+    };
+    return { SubagentStart: [matcher] } satisfies NonNullable<ClaudeQueryOptions["hooks"]>;
+  },
+);
 
 export const CLAUDE_T3_MCP_TOOL_WILDCARD = "mcp__t3-code__*";
 
@@ -2947,6 +2997,8 @@ export interface ClaudeAdapterV2Options {
       request: ProviderContinuationRequests.ProviderContinuationRequest,
     ) => Effect.Effect<void>;
   };
+  /** Prepares worktrees Claude creates for its subagents; absent in tests. */
+  readonly subagentWorktreeSetup?: SubagentWorktreeSetup.SubagentWorktreeSetup["Service"];
 }
 
 export function makeClaudeAdapterV2(
@@ -3234,6 +3286,8 @@ export function makeClaudeAdapterV2(
         // tool_use frame is handled, in whichever run that frame is routed
         // to (the prompt's turn, or the continuation that drains a wake).
         const heldProposedPlansByToolUseId = new Map<string, string>();
+        // Subagent worktrees already given the project setup in this session.
+        const preparedSubagentWorktrees = new Set<string>();
         const runtimeContext = yield* Effect.context<never>();
         const runPromise = Effect.runPromiseWith(runtimeContext);
 
@@ -6988,6 +7042,17 @@ export function makeClaudeAdapterV2(
             turnInput.nativeThreadHasTurns ?? turnInput.providerTurnOrdinal > 1;
           const shouldResume =
             resumeSessionAt !== undefined || openedWithResume || hasPersistedProviderTurn;
+          const subagentHooks =
+            adapterOptions.subagentWorktreeSetup !== undefined &&
+            turnInput.runtimePolicy.cwd !== null
+              ? yield* makeSubagentWorktreeSetupHooks({
+                  threadId: turnInput.threadId,
+                  sessionCwd: turnInput.runtimePolicy.cwd,
+                  prepared: preparedSubagentWorktrees,
+                  setup: adapterOptions.subagentWorktreeSetup,
+                  fileSystem,
+                })
+              : undefined;
           const queryOptions = makeClaudeQueryOptions({
             modelSelection: turnInput.modelSelection,
             nativeThreadId,
@@ -7008,6 +7073,7 @@ export function makeClaudeAdapterV2(
             canUseTool,
             onUserDialog,
             supportedDialogKinds: ["resume_return"],
+            ...(subagentHooks === undefined ? {} : { hooks: subagentHooks }),
           });
           const querySession = yield* queryRunner
             .open({
@@ -7794,6 +7860,9 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
     const queryRunner = yield* ClaudeAgentSdkQueryRunner;
     const serverConfig = yield* ServerConfig.ServerConfig;
     const continuationRequests = yield* ProviderContinuationRequests.ProviderContinuationRequests;
+    const subagentWorktreeSetup = yield* Effect.serviceOption(
+      SubagentWorktreeSetup.SubagentWorktreeSetup,
+    );
     const baseEnvironment = mergeProviderInstanceEnvironment(environment, hostEnvironment);
     const claudeEnvironment = yield* makeClaudeEnvironment(config, baseEnvironment);
     const path = yield* Path.Path;
@@ -7811,6 +7880,9 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
       idAllocator,
       queryRunner,
       continuationRequests,
+      ...(Option.isSome(subagentWorktreeSetup)
+        ? { subagentWorktreeSetup: subagentWorktreeSetup.value }
+        : {}),
       ...hooks,
     });
   },

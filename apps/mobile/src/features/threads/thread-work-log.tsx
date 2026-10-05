@@ -450,6 +450,8 @@ interface ThreadWorkLogProps {
   readonly activities: ReadonlyArray<ThreadFeedActivity>;
   readonly anchorKey: string;
   readonly environmentId: EnvironmentId;
+  /** Directory the thread runs in; read rows show paths relative to it. */
+  readonly workspaceRoot: string | null;
   readonly copiedRowId: string | null;
   readonly expandedRows: Readonly<Record<string, boolean>>;
   readonly rowSizing: ReturnType<typeof deriveThreadWorkLogSizing>;
@@ -474,6 +476,7 @@ export function ThreadWorkLog(props: ThreadWorkLogProps) {
         copied={props.copiedRowId === row.id}
         expanded={props.expandedRows[row.id] ?? false}
         environmentId={props.environmentId}
+        workspaceRoot={props.workspaceRoot}
         iconSubtleColor={props.iconSubtleColor}
         onCopyRow={props.onCopyRow}
         onToggleRow={props.onToggleRow}
@@ -487,6 +490,7 @@ export function ThreadWorkLog(props: ThreadWorkLogProps) {
       props.copiedRowId,
       props.expandedRows,
       props.environmentId,
+      props.workspaceRoot,
       props.iconSubtleColor,
       props.onCopyRow,
       props.onToggleRow,
@@ -966,12 +970,12 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
             : null;
   const viewedImagePath = workEntryViewedImagePath(row.workEntry);
   const toolPresentation = resolveWorkEntryToolPresentation(row.workEntry);
-  const previewText = workEntryRowLabel(row.workEntry);
+  const previewText = workEntryRowLabel(row.workEntry, false, props.workspaceRoot);
   const answerPreview = row.workEntry.questionAnswer
     ? getQuestionAnswerPreview(row.workEntry.questionAnswer)
     : null;
   const accessiblePreview = [previewText, answerPreview].filter(Boolean).join(": ");
-  const displayText = workEntryRowLabel(row.workEntry, expanded);
+  const displayText = workEntryRowLabel(row.workEntry, expanded, props.workspaceRoot);
   const isSystemNotice = row.projectedItem.item.type === "system_notice";
   const isUsageLimit =
     row.projectedItem.item.type === "error" &&

@@ -118,6 +118,7 @@ import * as PullRequestReadCache from "./pullRequest/PullRequestReadCache.ts";
 import * as SourceControlRateLimit from "./sourceControl/SourceControlRateLimit.ts";
 import * as SourceControlRepositoryService from "./sourceControl/SourceControlRepositoryService.ts";
 import * as ConductorWorkspace from "./project/ConductorWorkspace.ts";
+import * as SubagentWorktreeSetup from "./project/SubagentWorktreeSetup.ts";
 import * as WorktreeSetupTracker from "./project/WorktreeSetupTracker.ts";
 import { ObservabilityLive } from "./observability/Layers/Observability.ts";
 import * as HeapSnapshot from "./observability/HeapSnapshot.ts";
@@ -563,6 +564,8 @@ const RuntimeCoreDependenciesBaseLive = Layer.mergeAll(
   ProviderUsageLimitsIngestionLive,
   ProviderInstallationRefreshLive,
   ReplayMarkers.layer,
+  // Hands the project setup runner down to providers, which are built below it.
+  SubagentWorktreeSetup.installLive.pipe(Layer.provide(ProjectionStoreV2.layer)),
 ).pipe(
   // Fork integrations: issue trackers and chat links surfaced in the composer.
   Layer.provideMerge(
@@ -619,7 +622,12 @@ const RuntimeCoreDependenciesLive = RuntimeCoreDependenciesBaseLive.pipe(
   // from the repo's `model-manifest.json` on `main` and applied by the
   // Codex/Claude drivers.
   Layer.provideMerge(
-    Layer.mergeAll(ProviderEventLoggers.layer, ModelManifest.layer, ResetCreditCoordinator.layer),
+    Layer.mergeAll(
+      ProviderEventLoggers.layer,
+      ModelManifest.layer,
+      ResetCreditCoordinator.layer,
+      SubagentWorktreeSetup.layer,
+    ),
   ),
   // `OpenCodeDriver.create()` yields `OpenCodeRuntime`; previously the old
   // `ProviderRegistryLive` pulled `OpenCodeRuntimeLive` in for itself, but
