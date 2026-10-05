@@ -189,6 +189,27 @@ const makeProjectionThreadActivityRepository = Effect.gen(function* () {
       `,
   });
 
+  // A progress row is replaced on every tick, so its own created_at is recent;
+  // the spawnedAt it carries (or the start row, when retained) is the spawn.
+  const getTaskSpawnedAtRow = SqlSchema.findOneOption({
+    Request: GetLatestProjectionThreadTaskActivityInput,
+    Result: Schema.Struct({ spawnedAt: Schema.NullOr(Schema.String) }),
+    execute: ({ threadId, taskId }) =>
+      sql`
+        SELECT MIN(
+          CASE
+            WHEN kind = 'task.progress' AND json_type(payload_json, '$.spawnedAt') = 'text'
+              THEN json_extract(payload_json, '$.spawnedAt')
+            ELSE created_at
+          END
+        ) AS "spawnedAt"
+        FROM projection_thread_activities
+        WHERE thread_id = ${threadId}
+          AND kind IN ('task.started', 'task.progress')
+          AND json_extract(payload_json, '$.taskId') = ${taskId}
+      `,
+  });
+
   const deleteProjectionThreadActivityRows = SqlSchema.void({
     Request: DeleteProjectionThreadActivitiesInput,
     execute: ({ threadId }) =>
@@ -244,6 +265,17 @@ const makeProjectionThreadActivityRepository = Effect.gen(function* () {
       Effect.map(Option.map(toProjectionThreadActivity)),
     );
 
+  const getTaskSpawnedAt: ProjectionThreadActivityRepositoryShape["getTaskSpawnedAt"] = (input) =>
+    getTaskSpawnedAtRow(input).pipe(
+      Effect.mapError(
+        toPersistenceSqlOrDecodeError(
+          "ProjectionThreadActivityRepository.getTaskSpawnedAt:query",
+          "ProjectionThreadActivityRepository.getTaskSpawnedAt:decodeRow",
+        ),
+      ),
+      Effect.map(Option.flatMap((row) => Option.fromNullishOr(row.spawnedAt))),
+    );
+
   const deleteByThreadId: ProjectionThreadActivityRepositoryShape["deleteByThreadId"] = (input) =>
     deleteProjectionThreadActivityRows(input).pipe(
       Effect.mapError(
@@ -256,6 +288,7 @@ const makeProjectionThreadActivityRepository = Effect.gen(function* () {
     listByThreadId,
     listUserInputLifecycleByThreadId,
     getLatestTaskActivity,
+    getTaskSpawnedAt,
     deleteByThreadId,
   } satisfies ProjectionThreadActivityRepositoryShape;
 });
