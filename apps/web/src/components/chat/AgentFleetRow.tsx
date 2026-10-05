@@ -4,19 +4,30 @@
  * - A row is one line. Working agents add their latest tool call and failed agents their error
  *   as a second line, so a row's height only changes with its status.
  * - Hovering a row previews the agent (prompt, outcome, latest tool calls, usage). Clicking the
- *   row or its preview opens the agent; right-click for the agent menu.
+ *   row or its preview opens the agent; clicking a tool call in the preview opens the agent on
+ *   that call. Right-click for the agent menu. An agent recorded before its child thread exists
+ *   opens too, with its record alone.
  * - Only a working row on screen (or an open preview) subscribes to its child thread.
  */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import type { AgentFleetEntry, AgentFleetRow } from "@t3tools/client-runtime/state/agent-fleet";
-import { deriveSubagentToolCalls } from "@t3tools/client-runtime/state/agent-list-view";
+import {
+  subagentFromRecord,
+  subagentIdentityParts,
+  subagentRunStats,
+  subagentRunUsageRows,
+  type AgentFleetEntry,
+  type AgentFleetRow,
+} from "@t3tools/client-runtime/state/agent-fleet";
+import {
+  deriveSubagentToolCalls,
+  subagentWorkspaceRoot,
+} from "@t3tools/client-runtime/state/agent-list-view";
 import {
   formatSubagentTokenCount,
   isActiveSubagentStatus,
-  projectedSubagentsToRuntime,
   type RuntimeSubagent,
 } from "@t3tools/client-runtime/state/subagentRuntime";
-import type { OrchestrationV2ThreadShell, ScopedThreadRef } from "@t3tools/contracts";
+import type { OrchestrationV2ThreadShell, ScopedThreadRef, TurnItemId } from "@t3tools/contracts";
 import { CheckIcon, CornerDownRightIcon, XIcon } from "lucide-react";
 import { useMemo, useRef, type MouseEvent, type ReactNode } from "react";
 
@@ -62,7 +73,7 @@ function AgentPreviewContent(props: {
   parentRef: ScopedThreadRef;
   entry: AgentFleetEntry;
   workspaceRoot: string | null;
-  onOpen: () => void;
+  onOpen: (toolCallId?: TurnItemId) => void;
 }) {
   const { entry } = props;
   const record = useAgentRecord(props.parentRef, entry);
@@ -70,9 +81,9 @@ function AgentPreviewContent(props: {
   const agent: RuntimeSubagent = useMemo(
     () =>
       entry.subagent === null && record !== null
-        ? { ...projectedSubagentsToRuntime([record])[0]!, status: entry.agent.status }
+        ? { ...subagentFromRecord(record, entry.shell), status: entry.agent.status }
         : entry.agent,
-    [entry.agent, entry.subagent, record],
+    [entry.agent, entry.shell, entry.subagent, record],
   );
   const childRef =
     entry.childThreadId === null
@@ -80,26 +91,39 @@ function AgentPreviewContent(props: {
       : scopeThreadRef(props.parentRef.environmentId, entry.childThreadId);
   const child = useThreadProjection(childRef)?.projection ?? null;
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
-  const calls = useMemo(
+  const ownItems = useMemo(
     () =>
       child && entry.childThreadId !== null
-        ? deriveSubagentToolCalls(
-            child.turnItems.filter((item) => item.threadId === entry.childThreadId),
-            props.workspaceRoot,
-          )
+        ? child.turnItems.filter((item) => item.threadId === entry.childThreadId)
         : [],
-    [child, entry.childThreadId, props.workspaceRoot],
+    [child, entry.childThreadId],
+  );
+  const calls = useMemo(
+    () => deriveSubagentToolCalls(ownItems, props.workspaceRoot),
+    [ownItems, props.workspaceRoot],
+  );
+  const agentRoot = useMemo(
+    () => subagentWorkspaceRoot(ownItems, props.workspaceRoot),
+    [ownItems, props.workspaceRoot],
+  );
+  const runStats = useMemo(
+    () =>
+      child && entry.childThreadId !== null
+        ? subagentRunStats(child, entry.childThreadId)
+        : { runs: 0, attempt: null },
+    [child, entry.childThreadId],
   );
   const latest = useMemo(() => calls.slice(-PREVIEW_TOOL_CALLS).toReversed(), [calls]);
   const live = isActiveSubagentStatus(agent.status);
   const totalCalls = Math.max(calls.length, agent.usage?.toolUses ?? 0);
   const outcome = agent.error ?? (live ? null : agent.result);
   const prompt = record?.prompt.trim() || null;
-  const identity = [STATUS_VISUALS[agent.status].label, agent.model].filter(
-    (value): value is string => value !== null,
-  );
+  const identity = [
+    STATUS_VISUALS[agent.status].label,
+    ...subagentIdentityParts(agent, runStats.runs),
+  ];
   return (
-    <div className="flex cursor-pointer flex-col" onClick={props.onOpen}>
+    <div className="flex cursor-pointer flex-col" onClick={() => props.onOpen()}>
       <div className="flex flex-col gap-0.5 border-b border-border/60 px-3 pt-2.5 pb-2">
         <div className="flex min-w-0 items-center gap-2">
           <StatusDot status={agent.status} />
@@ -146,18 +170,17 @@ function AgentPreviewContent(props: {
               </>
             }
           >
-            {/* Hovering or expanding a call stays in the preview. */}
-            <div onClick={(event) => event.stopPropagation()}>
-              <ToolCallList
-                calls={latest}
-                timestampFormat={timestampFormat}
-                source={{
-                  environmentId: props.parentRef.environmentId,
-                  threadId: entry.childThreadId,
-                  workspaceRoot: props.workspaceRoot,
-                }}
-              />
-            </div>
+            {/* Hovering a call previews it; clicking opens the agent on it. */}
+            <ToolCallList
+              calls={latest}
+              timestampFormat={timestampFormat}
+              source={{
+                environmentId: props.parentRef.environmentId,
+                threadId: entry.childThreadId,
+                workspaceRoot: agentRoot,
+              }}
+              onActivate={(call) => props.onOpen(call.id)}
+            />
             {totalCalls > latest.length ? (
               <p className="ps-6.5 pt-1 text-2xs text-muted-foreground">
                 {totalCalls - latest.length} more · click to open the agent
@@ -166,7 +189,7 @@ function AgentPreviewContent(props: {
           </PreviewSection>
         ) : null}
       </div>
-      <AgentUsageFooter usage={agent.usage} />
+      <AgentUsageFooter usage={agent.usage} extra={subagentRunUsageRows(runStats)} />
     </div>
   );
 }
@@ -175,7 +198,8 @@ export function AgentRow(props: {
   parentRef: ScopedThreadRef;
   row: AgentFleetRow;
   workspaceRoot: string | null;
-  onOpen: (entry: AgentFleetEntry) => void;
+  /** Opens the agent; `toolCallId` opens it on that call. */
+  onOpen: (entry: AgentFleetEntry, toolCallId?: TurnItemId) => void;
   onContextMenu: (event: MouseEvent<HTMLElement>, entry: AgentFleetEntry) => void;
 }) {
   const { row } = props;
@@ -184,9 +208,9 @@ export function AgentRow(props: {
   const previewActions = useRef<{ close: () => void; unmount: () => void } | null>(null);
   const live = isActiveSubagentStatus(agent.status);
   const failed = agent.status === "failed";
-  const openable = entry.childThreadId !== null;
-  const open = () => {
-    if (openable) props.onOpen(entry);
+  const open = (toolCallId?: TurnItemId) => {
+    previewActions.current?.close();
+    props.onOpen(entry, toolCallId);
   };
   // One truncated line; the full error stays in the preview and the agent tab.
   const error =
@@ -203,16 +227,11 @@ export function AgentRow(props: {
         render={
           <button
             type="button"
-            onClick={open}
-            aria-disabled={!openable}
-            onContextMenu={
-              openable
-                ? (event) => {
-                    previewActions.current?.close();
-                    props.onContextMenu(event, entry);
-                  }
-                : undefined
-            }
+            onClick={() => open()}
+            onContextMenu={(event) => {
+              previewActions.current?.close();
+              props.onContextMenu(event, entry);
+            }}
             aria-label={`${entry.title}, ${STATUS_VISUALS[agent.status].label}. Show details`}
             className={cn(
               "flex w-full flex-col rounded-md px-1.5 text-left hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70",
@@ -240,10 +259,15 @@ export function AgentRow(props: {
             <AgentElapsed agent={agent} />
           </span>
         </span>
-        {live && entry.childThreadId !== null ? (
+        {live ? (
           <span className="flex h-5 min-w-0 items-center ps-3.5">
             <SubagentActivityLine
-              childRef={scopeThreadRef(props.parentRef.environmentId, entry.childThreadId)}
+              childRef={
+                entry.childThreadId === null
+                  ? null
+                  : scopeThreadRef(props.parentRef.environmentId, entry.childThreadId)
+              }
+              status={agent.status}
               progress={agent.progress}
               workspaceRoot={props.workspaceRoot}
             />

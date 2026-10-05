@@ -86,6 +86,16 @@ export function useThreadShells(): ReadonlyArray<EnvironmentThreadShell> {
   return useAtomValue(environmentThreadShells.threadShellsAtom);
 }
 
+/**
+ * A value derived from every thread shell, re-rendering only when it changes. Keep `select`
+ * stable (memoized); a new function re-derives.
+ */
+export function useThreadShellsValue<T>(
+  select: (shells: ReadonlyArray<EnvironmentThreadShell>) => T,
+): T {
+  return useAtomValue(environmentThreadShells.threadShellsAtom, select);
+}
+
 export function useAllEnvironmentShellsBootstrapped(): boolean {
   return useAtomValue(allEnvironmentShellsBootstrappedAtom);
 }

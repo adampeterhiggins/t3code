@@ -328,9 +328,13 @@ Each subagent runs in its own thread. On web and desktop there are two places to
 
 - **Agents** in the side panel lists every agent of the thread, including agents that an agent
   started, indented under it. Open it from the side panel's launcher or **+** menu, the command
-  palette (**Show agents**), or the button in the **Lineage** header. Right-click an agent in the
-  conversation or in Lineage and choose **Show in Agents panel** to open the panel on that agent.
-  The footer counts agents by status and adds up their tokens.
+  palette (**Show agents**), or the button in the **Lineage** header. In the conversation, choose
+  **Details** on an agent's row to open the panel on that agent, or the bot button next to it for
+  the whole list; clicking the row itself still opens the agent's thread. Right-click an agent in
+  the conversation or in Lineage and choose **Show in Agents panel** to do the same. The footer
+  counts agents by status and adds up the usage they reported; hover a number for its label, or
+  the total for the full breakdown. The launcher's badge counts working agents, including agents
+  started by agents.
 - **Lineage** in the thread details panel lists the agents this thread started, next to its forks;
   click one to open its thread and read its whole conversation. The Agents panel's Lineage button
   brings you back here.
@@ -338,19 +342,29 @@ Each subagent runs in its own thread. On web and desktop there are two places to
 With two or more agents you can search either list, filter it by status, or sort it by status,
 tokens, or duration; both lists share the same filter and sort. Agents are listed in the order they
 started, and token and duration sorts keep working agents at the top in that order, so rows don't
-jump while you read them. A working agent's row shows its latest tool call and a failed agent's row
-its error. Hover an agent in the Agents panel to preview its prompt, result, latest tool calls, and
-usage; hover one in Lineage to preview its model, status, result, and token usage.
+jump while you read them. A working agent's row shows its latest tool call, with `…` while the call
+runs and **waiting** when the agent needs you, and a failed agent's row its error. Hover an agent in
+the Agents panel to preview its model, prompt, result, latest tool calls, and usage; the preview
+stays open while you move onto it, so you can hover a tool call inside it to see the whole call.
+Click the preview to open the agent, or click a tool call to open the agent with that call expanded.
+Hover an agent in Lineage to preview its model, status, result, and token usage.
 
 Click an agent in the Agents panel to see what it is doing without leaving the panel. You get its
-status, model, and running time, the prompt it was given, its result or error, and the agents it
-started. Click one of those to look inside it too. **Back** goes up one level, and from the top
-back to the list. Below the header, **Transcript** follows the agent live: its messages, the
-reasoning it shares, and each tool call as it runs. Click a call or thought to expand its command,
-output, or diff. While you are at the bottom, new activity scrolls into view; scroll up to read
-and it stays put. Switch to **Tools** for only the tool calls, newest first, filtered by status or
-tool, or sorted oldest first or by duration. Search either view. The footer shows the agent's
-token usage; hover a number for its label, or the total for the full breakdown.
+status, model and reasoning effort, how many times it has run, and its running time; the prompt it
+was given (choose **Show all** for a long one); its result or error; any files or remote session it
+left under **Artifacts**; and the agents it started. Click one of those to look inside it too.
+**Back** goes up one level, and from the top back to the list. Below the header, **Transcript**
+follows the agent live: its messages, the reasoning it shares, and each tool call as it runs, each
+with its time. Click a call or thought to expand its command, output, or diff. While you are at
+the bottom, new activity scrolls into view; scroll up to read and it stays put. Switch to **Tools**
+for only the tool calls, newest first, filtered by status or tool, or sorted oldest first or by
+duration. Search either view; a search or filter shows how many entries it kept. Paths read
+relative to the checkout the agent works in, including a separate worktree it was given. The
+footer shows the agent's token usage, and its runs and retries when there were several; hover a
+number for its label, or the total for the full breakdown.
+
+An agent that has not started its own thread yet still opens, with its prompt, result, and usage;
+its activity appears once it starts.
 
 **Stop agent** shows when the agent's own thread can be interrupted. Some subagents, such as
 Claude's, stop only when you stop the parent thread.
@@ -371,6 +385,8 @@ or push the investigation further. The new chat starts fresh with that context; 
 the agent itself.
 
 Claude and Codex report each agent's token usage. Other providers show the usage as not reported.
+When a provider doesn't report an agent's tool calls, **Tools** says so and shows the agent's
+latest progress while it works.
 
 Subagent threads started by the agent can't take messages; message the parent
 thread instead. When such a subagent needs an approval or an answer, the parent

@@ -20,7 +20,15 @@ import {
   XIcon,
   type LucideIcon,
 } from "lucide-react";
-import { memo, useState, type KeyboardEvent, type ReactNode } from "react";
+import {
+  memo,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 
 import { cn } from "~/lib/utils";
 import { useTurnItemDetail } from "~/state/queries";
@@ -148,25 +156,45 @@ function ToolCallHoverContent(props: {
   );
 }
 
-/** One call. Hovering previews the whole call; clicking pins it open inline. */
+/**
+ * One call. Hovering previews the whole call; clicking pins it open inline, or runs `onActivate`
+ * instead where a click should navigate (the agent hover preview). A new `focusToken` expands the
+ * call and scrolls it into view.
+ */
 const ToolCallRow = memo(function ToolCallRow(props: {
   call: SubagentToolCall;
   timestampFormat: TimestampFormat;
   source: ToolCallSource;
+  focusToken: number | null;
+  onActivate: ((call: SubagentToolCall) => void) | undefined;
 }) {
-  const { call } = props;
-  const [expanded, setExpanded] = useState(false);
+  const { call, focusToken, onActivate } = props;
+  const [expanded, setExpanded] = useState(focusToken !== null);
+  // A new focus expands the call during render; the layout effect only scrolls to it.
+  const [seenFocusToken, setSeenFocusToken] = useState(focusToken);
+  if (focusToken !== seenFocusToken) {
+    setSeenFocusToken(focusToken);
+    if (focusToken !== null) setExpanded(true);
+  }
+  const rowRef = useRef<HTMLLIElement>(null);
+  useLayoutEffect(() => {
+    if (focusToken !== null) rowRef.current?.scrollIntoView({ block: "center" });
+  }, [focusToken]);
   const Icon = TOOL_KIND_ICONS[call.kind];
   const failed = call.status === "failed";
   const meta = toolCallMeta(call, props.timestampFormat);
-  const toggle = () => setExpanded(!expanded);
+  const toggle = () => (onActivate ? onActivate(call) : setExpanded(!expanded));
   const line = (
     <div
       role="button"
       tabIndex={0}
-      aria-expanded={expanded}
+      aria-expanded={onActivate ? undefined : expanded}
       aria-label={failed ? `${call.title}, failed` : call.title}
-      onClick={toggle}
+      onClick={(event: MouseEvent) => {
+        // An outer clickable surface (the agent preview) must not also handle it.
+        if (onActivate) event.stopPropagation();
+        toggle();
+      }}
       onKeyDown={rowKeyToggle(toggle)}
       className="flex cursor-pointer select-none items-center gap-1.5 rounded-md px-0.5 text-xs leading-relaxed hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
     >
@@ -191,24 +219,34 @@ const ToolCallRow = memo(function ToolCallRow(props: {
       <span className="min-w-9 shrink-0 text-right font-mono text-2xs tabular-nums text-muted-foreground/70">
         {toolCallDuration(call)}
       </span>
-      <ChevronRightIcon
-        aria-hidden
-        className={cn(
-          "size-3 shrink-0 text-icon-muted opacity-70 transition-transform duration-200",
-          expanded && "rotate-90",
-        )}
-      />
+      {onActivate ? null : (
+        <ChevronRightIcon
+          aria-hidden
+          className={cn(
+            "size-3 shrink-0 text-icon-muted opacity-70 transition-transform duration-200",
+            expanded && "rotate-90",
+          )}
+        />
+      )}
     </div>
   );
   return (
-    <li className={cn("flex flex-col", expanded && "mb-1")}>
+    <li ref={rowRef} className={cn("flex flex-col", expanded && "mb-1")}>
       {expanded ? (
         line
       ) : (
         <PreviewCard>
           <PreviewCardTrigger render={line} delay={300} closeDelay={150} />
           <PreviewCardPopup side="left" align="start" className="w-md max-w-[calc(100vw-2rem)]">
-            <ToolCallHoverContent call={call} meta={meta} source={props.source} />
+            <div
+              onClick={(event) => {
+                if (!onActivate) return;
+                event.stopPropagation();
+                onActivate(call);
+              }}
+            >
+              <ToolCallHoverContent call={call} meta={meta} source={props.source} />
+            </div>
           </PreviewCardPopup>
         </PreviewCard>
       )}
@@ -217,10 +255,19 @@ const ToolCallRow = memo(function ToolCallRow(props: {
   );
 });
 
+/** A call to open expanded and in view; a new `token` focuses it again. */
+export interface ToolCallFocus {
+  readonly id: SubagentToolCall["id"];
+  readonly token: number;
+}
+
 export function ToolCallList(props: {
   calls: ReadonlyArray<SubagentToolCall>;
   timestampFormat: TimestampFormat;
   source: ToolCallSource;
+  focus?: ToolCallFocus | null | undefined;
+  /** Clicking a call navigates instead of expanding it. */
+  onActivate?: ((call: SubagentToolCall) => void) | undefined;
 }) {
   return (
     <ol className="flex flex-col gap-px">
@@ -230,6 +277,8 @@ export function ToolCallList(props: {
           call={call}
           timestampFormat={props.timestampFormat}
           source={props.source}
+          focusToken={props.focus?.id === call.id ? props.focus.token : null}
+          onActivate={props.onActivate}
         />
       ))}
     </ol>
@@ -253,11 +302,13 @@ function UsageStat(props: { icon: LucideIcon; label: string; value: string }) {
 
 /**
  * A subagent's usage as icon + number with each label in its tooltip, and
- * `Σ total` opening the full breakdown. `leading` sits at the start.
+ * `Σ total` opening the full breakdown. `leading` sits at the start; `extra`
+ * appends rows to the breakdown (runs, attempt).
  */
 export function AgentUsageFooter(props: {
   usage: OrchestrationV2SubagentUsage | null;
   leading?: ReactNode;
+  extra?: ReadonlyArray<readonly [string, string]>;
 }) {
   const { usage } = props;
   const breakdown: Array<readonly [string, string]> = [];
@@ -275,6 +326,7 @@ export function AgentUsageFooter(props: {
     if (usage.durationMs !== undefined)
       breakdown.push(["Duration", formatDuration(usage.durationMs)]);
   }
+  breakdown.push(...(props.extra ?? []));
   const cachedShare =
     usage?.cachedInputTokens !== undefined && usage.inputTokens
       ? Math.round((usage.cachedInputTokens / usage.inputTokens) * 100)
@@ -320,10 +372,13 @@ export function AgentUsageFooter(props: {
           />
         ) : null}
       </span>
-      {usage ? (
+      {usage || breakdown.length > 0 ? (
         <Tooltip>
           <TooltipTrigger render={<span tabIndex={0} className="shrink-0 outline-none" />}>
-            Σ <span className="text-foreground">{formatSubagentTokenCount(usage.totalTokens)}</span>
+            Σ{" "}
+            <span className="text-foreground">
+              {usage ? formatSubagentTokenCount(usage.totalTokens) : "—"}
+            </span>
           </TooltipTrigger>
           <TooltipPopup side="top" align="end">
             <dl className="grid grid-cols-[auto_auto] gap-x-4 gap-y-0.5 font-mono text-2xs tabular-nums">

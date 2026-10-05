@@ -719,6 +719,10 @@ export const OrchestrationV2Subagent = Schema.Struct({
   result: Schema.NullOr(Schema.String),
   /** Fork: filled by adapters that report subagent usage (Claude, Codex). */
   usage: Schema.optional(OrchestrationV2SubagentUsage),
+  /** Fork: where the provider saved the subagent's output (Claude's task output file). */
+  outputFile: Schema.optional(TrimmedNonEmptyString),
+  /** Fork: an http(s) link to the subagent's remote session (Claude workflow runs). */
+  sessionUrl: Schema.optional(TrimmedNonEmptyString),
   startedAt: Schema.NullOr(Schema.DateTimeUtc),
   completedAt: Schema.NullOr(Schema.DateTimeUtc),
   updatedAt: Schema.DateTimeUtc,

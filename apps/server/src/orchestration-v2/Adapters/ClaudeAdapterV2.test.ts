@@ -6590,8 +6590,116 @@ describe("ClaudeAdapterV2 background wake turns", () => {
               ["running", undefined, undefined],
             ],
           );
+          // The notification names the task's output file; a resume clears it.
+          assert.deepEqual(
+            updates.map((subagent) => subagent.outputFile),
+            [undefined, undefined, undefined, `/tmp/${TASK_ID}.output`, undefined],
+          );
         }).pipe(Effect.provide(Layer.merge(IdAllocator.layer, NodeServices.layer))),
       ),
+  );
+
+  it.effect("records a workflow task's remote session link from the Workflow tool result", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const TASK_ID = "task-workflow";
+        const harness = yield* makeWakeHarness;
+        const now = yield* DateTime.now;
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now,
+            attemptId: RunAttemptId.make("attempt-claude-workflow-link"),
+            text: "Run the review workflow.",
+            attachments: [],
+          }),
+        );
+        const workflowResult = (input: {
+          readonly toolUseId: string;
+          readonly sessionUrl: string;
+          readonly uuid: string;
+        }) => [
+          claudeSdkFrame({
+            type: "assistant",
+            message: {
+              id: `msg-${input.toolUseId}`,
+              type: "message",
+              role: "assistant",
+              model: "claude-opus-4-1",
+              content: [
+                {
+                  type: "tool_use",
+                  id: input.toolUseId,
+                  name: "Workflow",
+                  input: { workflow: "review" },
+                },
+              ],
+              stop_reason: null,
+              stop_sequence: null,
+              usage: { input_tokens: 1, output_tokens: 1 },
+            },
+            parent_tool_use_id: null,
+            uuid: `${input.uuid}-use`,
+            session_id: WAKE_NATIVE_SESSION,
+          }),
+          claudeSdkFrame({
+            type: "user",
+            message: {
+              role: "user",
+              content: [
+                { type: "tool_result", tool_use_id: input.toolUseId, content: "Workflow started." },
+              ],
+            },
+            parent_tool_use_id: null,
+            uuid: `${input.uuid}-result`,
+            session_id: WAKE_NATIVE_SESSION,
+            tool_use_result: { taskId: TASK_ID, sessionUrl: input.sessionUrl },
+          }),
+        ];
+        const frames = [
+          claudeSdkFrame({
+            ...makeSubagentTaskStartedFrame({
+              taskId: TASK_ID,
+              toolUseId: "toolu-workflow-agent",
+              uuid: "00000000-0000-4000-8000-000000000371",
+            }),
+            is_backgrounded: false,
+            task_type: "local_workflow",
+          }),
+          // Only http(s) links are kept.
+          ...workflowResult({
+            toolUseId: "toolu-workflow-unsafe",
+            sessionUrl: "javascript:alert(1)",
+            uuid: "00000000-0000-4000-8000-000000000372",
+          }),
+          ...workflowResult({
+            toolUseId: "toolu-workflow",
+            sessionUrl: " https://claude.ai/code/session-1 ",
+            uuid: "00000000-0000-4000-8000-000000000373",
+          }),
+          makeResultFrame({
+            uuid: "00000000-0000-4000-8000-000000000374",
+            result: "Started.",
+          }),
+        ];
+        for (const frame of frames) {
+          yield* Queue.offer(harness.sdkMessages, frame);
+        }
+        yield* awaitUntil(() => harness.terminalEvents().length === 1, "turn terminal");
+
+        const updates = harness.events.flatMap((event) =>
+          event.type === "subagent.updated" ? [event.subagent] : [],
+        );
+        assert.deepEqual(
+          updates.map((subagent) => [subagent.status, subagent.sessionUrl]),
+          [
+            ["running", undefined],
+            ["running", "https://claude.ai/code/session-1"],
+          ],
+        );
+      }).pipe(Effect.provide(Layer.merge(IdAllocator.layer, NodeServices.layer))),
+    ),
   );
 
   it.effect.each(["requested", "observed-before", "observed-after", "inherit", "unknown"] as const)(

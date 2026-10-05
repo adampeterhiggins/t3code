@@ -4,14 +4,20 @@
  * which fetches withheld output and edit diffs while open. The list is virtualized and follows the
  * newest activity only while it is scrolled to the end.
  */
-import { LegendList, type MaintainScrollAtEndOptions } from "@legendapp/list/react";
+import {
+  LegendList,
+  type LegendListRef,
+  type MaintainScrollAtEndOptions,
+} from "@legendapp/list/react";
 import type {
   EnvironmentId,
   OrchestrationV2ProjectedTurnItem,
   RunId,
   ScopedThreadRef,
   ThreadId,
+  TurnItemId,
 } from "@t3tools/contracts";
+import type { TimestampFormat } from "@t3tools/contracts/settings";
 import * as DateTime from "effect/DateTime";
 import {
   BrainIcon,
@@ -21,14 +27,25 @@ import {
   XIcon,
   type LucideIcon,
 } from "lucide-react";
-import { createContext, memo, use, useCallback, useMemo, useState, type ReactElement } from "react";
+import {
+  createContext,
+  memo,
+  use,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+} from "react";
 
 import { cn } from "~/lib/utils";
+import { formatSecondsTimestamp } from "~/timestampFormat";
 
 import { elapsedBetween } from "../AgentStatus";
 import ChatMarkdown from "../ChatMarkdown";
 import { TOOL_KIND_ICONS } from "./agentToolKinds";
-import type { AgentTranscriptRow } from "./agentTranscript";
+import { agentTranscriptToolRowIndex, type AgentTranscriptRow } from "./agentTranscript";
 import { shouldPreserveAssistantLineBreaks } from "./MessagesTimeline.logic";
 import { V2ItemInspector } from "./V2ItemInspector";
 import { WorkLogDetails, WorkLogRow } from "./WorkLog";
@@ -37,6 +54,7 @@ interface AgentTranscriptContextValue {
   readonly environmentId: EnvironmentId;
   readonly childRef: ScopedThreadRef;
   readonly workspaceRoot: string | undefined;
+  readonly timestampFormat: TimestampFormat;
   readonly expanded: ReadonlySet<string>;
   readonly toggle: (id: string) => void;
   readonly onOpenAgent: (childThreadId: ThreadId) => void;
@@ -75,6 +93,16 @@ function toggleKeys(toggle: () => void) {
       toggle();
     }
   };
+}
+
+/** The entry's time, as every transcript row shows it. */
+function RowTime(props: { createdAt: string }) {
+  const { timestampFormat } = useTranscriptContext();
+  return (
+    <span className="shrink-0 font-mono text-2xs tabular-nums text-muted-foreground/70">
+      {formatSecondsTimestamp(props.createdAt, timestampFormat)}
+    </span>
+  );
 }
 
 function Inspector(props: { projectedItem: OrchestrationV2ProjectedTurnItem }) {
@@ -133,6 +161,7 @@ function ToolRow({ row }: { row: Extract<AgentTranscriptRow, { kind: "tool" }> }
       trailing={
         <span className="flex shrink-0 items-center gap-1">
           {failed ? <XIcon aria-hidden className="size-3 text-destructive" /> : null}
+          <RowTime createdAt={row.createdAt} />
           <span className="min-w-8 text-right font-mono text-2xs tabular-nums text-muted-foreground/70">
             {toolDuration(row)}
           </span>
@@ -158,7 +187,12 @@ function ReasoningRow({ row }: { row: Extract<AgentTranscriptRow, { kind: "reaso
       onKeyDown={toggleKeys(toggle)}
       icon={rowIcon(BrainIcon)}
       label={<span className="text-xs italic">{row.text.replace(/\s+/g, " ")}</span>}
-      trailing={chevron(expanded)}
+      trailing={
+        <span className="flex shrink-0 items-center gap-1">
+          <RowTime createdAt={row.createdAt} />
+          {chevron(expanded)}
+        </span>
+      }
     >
       {expanded ? (
         row.projectedItem ? (
@@ -196,11 +230,20 @@ function NoticeRow({ row }: { row: Extract<AgentTranscriptRow, { kind: "notice" 
         onKeyDown={toggleKeys(open)}
         icon={icon}
         label={label}
-        trailing={<ChevronRightIcon aria-hidden className="size-3 shrink-0 text-icon-muted" />}
+        trailing={
+          <span className="flex shrink-0 items-center gap-1">
+            <RowTime createdAt={row.createdAt} />
+            <ChevronRightIcon aria-hidden className="size-3 shrink-0 text-icon-muted" />
+          </span>
+        }
       />
     );
   }
-  if (row.detail === null) return <WorkLogRow icon={icon} label={label} />;
+  if (row.detail === null) {
+    return (
+      <WorkLogRow icon={icon} label={label} trailing={<RowTime createdAt={row.createdAt} />} />
+    );
+  }
   const toggle = () => context.toggle(row.id);
   return (
     <WorkLogRow
@@ -211,7 +254,12 @@ function NoticeRow({ row }: { row: Extract<AgentTranscriptRow, { kind: "notice" 
       onKeyDown={toggleKeys(toggle)}
       icon={icon}
       label={label}
-      trailing={chevron(expanded)}
+      trailing={
+        <span className="flex shrink-0 items-center gap-1">
+          <RowTime createdAt={row.createdAt} />
+          {chevron(expanded)}
+        </span>
+      }
     >
       {expanded ? (
         <WorkLogDetails>
@@ -230,8 +278,11 @@ function MessageRow({ row }: { row: Extract<AgentTranscriptRow, { kind: "message
   const context = useTranscriptContext();
   return (
     <div className="flex min-w-0 flex-col gap-0.5 px-0.5 py-1.5">
-      <span className="text-3xs font-medium uppercase tracking-wider text-muted-foreground">
-        {MESSAGE_HEADINGS[row.role]}
+      <span className="flex items-center justify-between gap-2">
+        <span className="text-3xs font-medium uppercase tracking-wider text-muted-foreground">
+          {MESSAGE_HEADINGS[row.role]}
+        </span>
+        <RowTime createdAt={row.createdAt} />
       </span>
       {row.role === "user" ? (
         <p className="select-text whitespace-pre-wrap break-words text-xs text-foreground/85">
@@ -281,16 +332,42 @@ export function AgentTranscriptList(props: {
   readonly environmentId: EnvironmentId;
   readonly childRef: ScopedThreadRef;
   readonly workspaceRoot: string | undefined;
+  readonly timestampFormat: TimestampFormat;
   readonly onOpenAgent: (childThreadId: ThreadId) => void;
   readonly onOpenThread: (threadId: ThreadId) => void;
   readonly onOpenTurnDiff: (runId: RunId, filePath?: string) => void;
   /** Opens at the newest activity rather than the start, for an agent still working. */
   readonly startAtEnd: boolean;
+  /** A tool call to expand and scroll to; a new `token` focuses it again. */
+  readonly focus?: { readonly itemId: TurnItemId; readonly token: number } | null;
   /** Above the first row, such as the control that loads earlier activity. */
   readonly header?: ReactElement | null;
+  /** Below the last row, such as how many rows a search left. */
+  readonly footer?: ReactElement | null;
 }) {
   // Kept here rather than in the rows, which unmount when scrolled out of view.
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
+  const listRef = useRef<LegendListRef | null>(null);
+  const { focus, rows } = props;
+  // Each focus applies once, as soon as its row is listed: expanded during render, then
+  // scrolled to. Rows streaming in later do not refocus.
+  const [focusScroll, setFocusScroll] = useState<{ token: number; index: number } | null>(null);
+  if (focus && focus.token !== focusScroll?.token) {
+    const index = agentTranscriptToolRowIndex(rows, focus.itemId);
+    const row = rows[index];
+    if (row) {
+      setFocusScroll({ token: focus.token, index });
+      if (!expanded.has(row.id)) setExpanded(new Set(expanded).add(row.id));
+    }
+  }
+  useEffect(() => {
+    if (focusScroll === null) return;
+    void listRef.current?.scrollToIndex({
+      index: focusScroll.index,
+      animated: false,
+      viewPosition: 0.3,
+    });
+  }, [focusScroll]);
   const toggle = useCallback(
     (id: string) =>
       setExpanded((current) => {
@@ -300,13 +377,21 @@ export function AgentTranscriptList(props: {
       }),
     [],
   );
-  const { environmentId, childRef, workspaceRoot, onOpenAgent, onOpenThread, onOpenTurnDiff } =
-    props;
+  const {
+    environmentId,
+    childRef,
+    workspaceRoot,
+    timestampFormat,
+    onOpenAgent,
+    onOpenThread,
+    onOpenTurnDiff,
+  } = props;
   const context = useMemo(
     () => ({
       environmentId,
       childRef,
       workspaceRoot,
+      timestampFormat,
       expanded,
       toggle,
       onOpenAgent,
@@ -320,6 +405,7 @@ export function AgentTranscriptList(props: {
       onOpenAgent,
       onOpenThread,
       onOpenTurnDiff,
+      timestampFormat,
       toggle,
       workspaceRoot,
     ],
@@ -327,15 +413,21 @@ export function AgentTranscriptList(props: {
   return (
     <AgentTranscriptContext value={context}>
       <LegendList<AgentTranscriptRow>
-        data={props.rows}
+        ref={listRef}
+        data={rows}
         keyExtractor={(row) => row.id}
         getItemType={(row) => row.kind}
         renderItem={renderRow}
         estimatedItemSize={28}
-        initialScrollAtEnd={props.startAtEnd}
+        initialScrollAtEnd={props.startAtEnd && !focus}
         maintainScrollAtEnd={FOLLOW_NEWEST}
         ListHeaderComponent={props.header ?? null}
-        ListFooterComponent={<div className="h-2" />}
+        ListFooterComponent={
+          <>
+            {props.footer ?? null}
+            <div className="h-2" />
+          </>
+        }
         className="h-full min-h-0 overflow-x-hidden overscroll-y-contain [overflow-anchor:none]"
       />
     </AgentTranscriptContext>

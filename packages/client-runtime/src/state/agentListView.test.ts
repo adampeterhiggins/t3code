@@ -10,7 +10,9 @@ import {
   deriveSubagentToolCalls,
   latestSubagentToolCall,
   subagentContinuationContext,
+  subagentEmptyToolCallsText,
   subagentResultChatContext,
+  subagentWorkspaceRoot,
   type AgentListSubject,
   type SubagentToolCall,
 } from "./agentListView.ts";
@@ -297,6 +299,45 @@ describe("deriveSubagentToolCalls", () => {
     ).toBe(`${sibling}/src/a.ts`);
   });
 
+  it("previews what a tool reported back, such as an error", () => {
+    const [call] = deriveSubagentToolCalls(
+      [
+        item({
+          id: "fetch",
+          type: "dynamic_tool",
+          ordinal: 0,
+          toolName: "WebFetch",
+          status: "failed",
+          input: { url: "https://example.com" },
+          output: { error: "403 Forbidden" },
+        }),
+      ],
+      root,
+    );
+    expect(call?.preview).toContain("URL: https://example.com");
+    expect(call?.preview).toContain("Error: 403 Forbidden");
+  });
+
+  it("finds the checkout an agent works in for its whole transcript", () => {
+    const worktree = "/repo/app/.claude/worktrees/agent-a1b2";
+    const read = (id: string, ordinal: number, path: string) =>
+      item({ id, type: "dynamic_tool", ordinal, toolName: "Read", input: { file_path: path } });
+    expect(
+      subagentWorkspaceRoot(
+        [read("a", 0, `${worktree}/src/a.ts`), read("b", 1, "/repo/app/src/b.ts")],
+        root,
+      ),
+    ).toBe(worktree);
+    expect(
+      subagentWorkspaceRoot(
+        [read("a", 0, "/repo/app-task/src/a.ts"), read("b", 1, "/repo/app-task/src/b.ts")],
+        root,
+      ),
+    ).toBe("/repo/app-task");
+    expect(subagentWorkspaceRoot([read("a", 0, "/repo/app/src/a.ts")], root)).toBe(root);
+    expect(subagentWorkspaceRoot([], null)).toBeNull();
+  });
+
   it("picks the newest tool call for a working agent's row", () => {
     expect(latestSubagentToolCall(items, root)?.id).toBe("grep");
     expect(latestSubagentToolCall(items.slice(0, 1), root)).toBeNull();
@@ -388,5 +429,28 @@ describe("chat context", () => {
         [],
       ),
     ).toBeNull();
+  });
+});
+
+describe("subagentEmptyToolCallsText", () => {
+  it("says an agent made no calls only when its provider records them", () => {
+    const base = { recordedItems: 3, reportedToolUses: undefined, progress: null };
+    expect(subagentEmptyToolCallsText({ ...base, live: true })).toBe("No tool calls yet.");
+    expect(subagentEmptyToolCallsText({ ...base, live: false })).toBe("No tool calls.");
+  });
+
+  it("falls back to progress, then says the provider reports no calls", () => {
+    const silent = { recordedItems: 0, reportedToolUses: undefined, progress: null };
+    expect(subagentEmptyToolCallsText({ ...silent, live: true, progress: " Reading " })).toBe(
+      "Reading",
+    );
+    expect(subagentEmptyToolCallsText({ ...silent, live: true })).toBe("Starting…");
+    expect(subagentEmptyToolCallsText({ ...silent, live: false })).toBe(
+      "This provider did not report the agent's tool calls.",
+    );
+    // Counted tool uses that never arrived as calls.
+    expect(
+      subagentEmptyToolCallsText({ ...silent, recordedItems: 2, reportedToolUses: 4, live: false }),
+    ).toBe("This provider did not report the agent's tool calls.");
   });
 });
