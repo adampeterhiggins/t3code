@@ -1,6 +1,7 @@
 import type { NotionPageContextRecord } from "@t3tools/contracts";
 import { ToolCallBody } from "../ToolCallBody";
 import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
+import { splitToolCallPreviewMetadata } from "../../lib/toolCallPreview";
 import { ArrowUpIcon, ClockIcon } from "lucide-react";
 import { GitHubIcon, LinearIcon, NotionIcon, SlackIcon } from "../Icons";
 import { ReadOnlySourcePreview } from "../files/AttachmentFilePreview";
@@ -39,6 +40,7 @@ import {
 } from "@t3tools/client-runtime/work-log/presentation";
 import {
   formatCommandForWorkspace,
+  formatPathsForWorkspace,
   formatToolTextForWorkspace,
 } from "@t3tools/client-runtime/work-log/command-display";
 import { resolveWorkGroupScrollAnchor } from "@t3tools/client-runtime/work-log/scroll-anchor";
@@ -4617,6 +4619,7 @@ function buildToolCallExpandedBody(
   workspaceRoot: string | undefined,
   visibleLabel: string,
   viewedImagePath: string | null,
+  options: { activityBody?: string; outputFirst?: boolean } = {},
 ): string | null {
   const blocks: string[] = [];
   const seen = new Set<string>([visibleLabel.trim()]);
@@ -4626,7 +4629,8 @@ function buildToolCallExpandedBody(
     seen.add(text);
     blocks.push(text);
   };
-  addBlock(toolActivityDataBody(workEntry));
+  const activityBody = options.activityBody ?? toolActivityDataBody(workEntry);
+  if (!options.outputFirst) addBlock(activityBody);
   const command = workEntry.command?.trim();
   const raw = workEntryRawCommand(workEntry);
   if (command && formatCommandForWorkspace(command, workspaceRoot) === visibleLabel.trim()) {
@@ -4642,6 +4646,7 @@ function buildToolCallExpandedBody(
       detail && !command ? formatToolTextForWorkspace(workEntry, detail, workspaceRoot) : detail,
     );
   }
+  if (options.outputFirst) addBlock(activityBody);
   const viewedImagePaths = new Set(
     viewedImagePath
       ? [viewedImagePath.trim(), formatWorkspaceRelativePath(viewedImagePath, workspaceRoot)]
@@ -4671,13 +4676,41 @@ function ToolCallPreviewBody(props: {
   workspaceRoot: string | undefined;
   visibleLabel: string;
 }) {
+  const activityBody = toolActivityDataBody(props.workEntry);
+  const preview =
+    props.workEntry.itemType === "mcp_tool_call"
+      ? { body: activityBody, metadata: [] }
+      : splitToolCallPreviewMetadata(activityBody);
   const body = buildToolCallExpandedBody(
     props.workEntry,
     props.workspaceRoot,
     props.visibleLabel,
     null,
+    { activityBody: preview.body ?? "", outputFirst: true },
   );
-  return body ? <ToolCallBody text={body} className="max-h-[50vh]" /> : null;
+  return (
+    <>
+      {body ? <ToolCallBody text={body} className="max-h-[50vh]" /> : null}
+      {preview.metadata.length > 0 ? (
+        <p className="flex flex-wrap gap-x-3 gap-y-1 border-t pt-2 font-mono text-3xs text-muted-foreground select-text">
+          {preview.metadata.map(({ label, value }) => (
+            <Tooltip key={`${label}:${value}`}>
+              <TooltipTrigger
+                render={
+                  <span>
+                    {label === "Working directory"
+                      ? `cwd: ${formatPathsForWorkspace(value, props.workspaceRoot)}`
+                      : `Exit: ${value}`}
+                  </span>
+                }
+              />
+              <TooltipPopup>{`${label}: ${value}`}</TooltipPopup>
+            </Tooltip>
+          ))}
+        </p>
+      ) : null}
+    </>
+  );
 }
 
 function workEntryIconName(workEntry: TimelineWorkEntry): WorkEntryIconName {
