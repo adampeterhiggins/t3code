@@ -340,8 +340,8 @@ Code: `SidebarHistoryNavigation` in `apps/web/src/components/sidebar/SidebarChro
 
 The sidebar's project filter is multi-select: each project row toggles on or off and the popup
 stays open, and **All projects** clears the filter. **Only**, on the highlighted row, picks just
-that project and closes the popup. The trigger shows the first project's icon
-with a count when more than one is picked. A thread's **Filter by project** menu item still narrows
+that project and closes the popup. With more than one project picked, the trigger
+shows a generic folders icon and its tooltip lists the picked projects. A thread's **Filter by project** menu item still narrows
 the list to that one project. This is web and desktop; mobile has no sidebar project filter.
 
 Code: the project scope `Combobox` in `apps/web/src/components/Sidebar.tsx`,

@@ -66,6 +66,7 @@ import {
   CircleCheckIcon,
   ClockIcon,
   FolderIcon,
+  FoldersIcon,
   BotIcon,
   GitBranchIcon,
   LayersIcon,
@@ -5654,20 +5655,33 @@ export default function Sidebar() {
                                 .join(", ")}`
                             : "Filter threads by project"
                         }
+                        tooltip={
+                          scopedProjectGroups.length > 1 ? (
+                            <span className="flex flex-col gap-1">
+                              <span className="text-muted-foreground">Filtering threads by</span>
+                              {scopedProjectGroups.map((project) => (
+                                <span
+                                  key={project.projectKey}
+                                  className="flex items-center gap-1.5"
+                                >
+                                  <ProjectFavicon project={project} className="size-3.5" />
+                                  {project.displayName}
+                                </span>
+                              ))}
+                            </span>
+                          ) : undefined
+                        }
                       />
                     }
                   >
-                    {scopedProjectGroups[0] ? (
+                    {scopedProjectGroups.length > 1 ? (
+                      // Several scoped projects get a generic icon; the tooltip lists them.
+                      <FoldersIcon className="size-4" />
+                    ) : scopedProjectGroups[0] ? (
                       // Wrapped so the button's direct-child svg color rule cannot override
-                      // a project's own icon color. Several scoped projects show the
-                      // first one's icon with a count.
-                      <span className="relative flex shrink-0">
+                      // a project's own icon color.
+                      <span className="flex shrink-0">
                         <ProjectFavicon project={scopedProjectGroups[0]} className="size-4" />
-                        {scopedProjectGroups.length > 1 ? (
-                          <span className="absolute -right-1.5 -bottom-1 min-w-3 rounded-full bg-primary px-0.5 text-center text-3xs leading-3 font-semibold text-primary-foreground tabular-nums">
-                            {scopedProjectGroups.length}
-                          </span>
-                        ) : null}
                       </span>
                     ) : (
                       <FolderIcon className="size-4" />
