@@ -114,6 +114,23 @@ export function threadTabGroupTarget(
   return target;
 }
 
+/**
+ * The thread a group's own sidebar row opens. A row whose group is already open keeps the tab
+ * you're on. Coming from anywhere else, it opens the group's most recently opened tab.
+ */
+export function threadTabGroupHeaderTarget(
+  rowKey: string,
+  openThreadKey: string | null,
+  tabGroups: ReadonlyMap<string, string>,
+  foldedTabThreads: ReadonlyMap<string, string>,
+  openedAtByThreadKey: Readonly<Record<string, number>>,
+): string {
+  if (openThreadKey !== null && (tabGroups.get(openThreadKey) ?? openThreadKey) === rowKey) {
+    return openThreadKey;
+  }
+  return threadTabGroupTarget(rowKey, foldedTabThreads, openedAtByThreadKey);
+}
+
 export const listThreadTabs = Effect.fn("clientRuntime.threadTabs.list")(function* (
   prepared: PreparedConnection,
   threadId: ThreadId,

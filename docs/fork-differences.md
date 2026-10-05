@@ -114,7 +114,12 @@ its launch prompt, full result or error, searchable and filterable tool calls or
 transcript, and a usage footer. Tool previews include bounded unified edit diffs and line counts,
 read ranges, search arguments, working directories, and exit codes when the provider supplies them.
 The same details appear in chat tool expansions on web, desktop, and mobile. On web and desktop,
-right-click an agent in the list and choose **Open in new tab**, or use the same action in its
+collapsed tool calls in the main chat also preview their full label and details on hover; clicking
+still expands them inline. Previews follow the agent tool-call layout: a tool heading,
+syntax-highlighted command with preserved whitespace, then output and details. Time, status,
+working directory, and exit code appear in a compact footer
+([`MessagesTimeline.tsx`](../apps/web/src/components/chat/MessagesTimeline.tsx)).
+Right-click an agent in the list and choose **Open in new tab**, or use the same action in its
 detail view, to keep it in its own thread-scoped sidebar tab alongside the fleet and other agents.
 Agent tabs can be closed and reopened the same way, and are restored when the app restarts.
 Upstream's panel is a fixed list with one summary line per agent. To feed it:
@@ -167,14 +172,17 @@ is its own conversation and provider.
   request.
 - **Sidebars.** By default child tabs are hidden from the web sidebar, the legacy project sidebar,
   and both mobile thread lists (`useHiddenTabThreads`). The group's row stays highlighted while any
-  of its tabs is open, and opening it returns to the tab last left open
-  (`apps/web/src/threadTabRecencyStore.ts`). With tabs hidden on web and desktop, the row shows
+  of its tabs is open. Opening it from another thread returns to the tab last left open; clicking
+  it while one of its tabs is already open leaves that tab selected
+  (`threadTabGroupHeaderTarget` in `packages/client-runtime/src/threadTabs.ts`,
+  `apps/web/src/threadTabRecencyStore.ts`). With tabs hidden on web and desktop, the row shows
   that tab’s title, model, and details (`apps/web/src/components/Sidebar.tsx`). On web and desktop, **Settings → General → Tabs in
   sidebar**, the sidebar header's tabs button (click to toggle, right-click for a menu;
   `sidebar/SidebarTabsMenu.tsx`), the command palette,
   and `Cmd+Option+T` on macOS or `Ctrl+Alt+T` on Windows and Linux list each tab under that row:
   all of them, or up to a chosen number with the rest behind a **more** row that keeps the open tab
-  listed. **Sort tabs by** orders them by latest response, creation, or last opened, either way, or
+  listed. Hovering the collapsed row lists those tabs, and clicking one opens it. **Sort tabs by**
+  orders them by latest response, creation, or last opened, either way, or
   manually by dragging, which switches to Manual. Manual order is client-local, because the
   server's tab positions also pick the group's row. The row's tab count opens or folds just that
   group; those choices stay in the browser and reset when the setting changes. The row's hover
@@ -323,6 +331,18 @@ app's navigation history, the same as the `navigation.back` and `navigation.forw
 (`Mod+[` and `Mod+]` by default). This is web and desktop. The mobile app uses its own navigation.
 
 Code: `SidebarHistoryNavigation` in `apps/web/src/components/sidebar/SidebarChrome.tsx`.
+
+## Sidebar project filter picks several projects
+
+The sidebar's project filter is multi-select: each project row toggles on or off and the popup
+stays open, and **All projects** clears the filter. **Only**, on the highlighted row, picks just
+that project and closes the popup. With more than one project picked, the trigger
+shows a generic folders icon with a count, and its tooltip lists the picked projects. A thread's **Filter by project** menu item still narrows
+the list to that one project. This is web and desktop; mobile has no sidebar project filter.
+
+Code: the project scope `Combobox` in `apps/web/src/components/Sidebar.tsx`,
+`resolveSidebarProjectScopeKeys` in `apps/web/src/components/Sidebar.logic.ts`, and
+`sidebarProjectScopeKeys` in `apps/web/src/uiStateStore.ts`.
 
 ## Diagnostics settings tab
 

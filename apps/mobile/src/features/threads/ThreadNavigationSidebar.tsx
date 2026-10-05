@@ -9,6 +9,7 @@ import {
   threadSearchMatchKey,
   type EnvironmentThreadSearchMatch,
 } from "@t3tools/client-runtime/state/thread-search";
+import { threadTabGroupHeaderTarget } from "@t3tools/client-runtime/thread-tabs";
 import { LegendList } from "@legendapp/list/react-native";
 import type { MenuAction } from "@react-native-menu/menu";
 import { useAtomValue } from "@effect/atom-react";
@@ -592,10 +593,20 @@ function ThreadNavigationSidebarPane(
   }, []);
   const handleSelectThread = useCallback(
     (thread: EnvironmentThreadShell) => {
-      props.onSelectThread(thread);
+      const rowKey = scopedThreadKey(thread.environmentId, thread.id);
+      // The row stands for the whole tab group. A tab already open in it stays open.
+      const targetKey = threadTabGroupHeaderTarget(
+        rowKey,
+        props.selectedThreadKey,
+        hiddenTabThreads,
+        hiddenTabThreads,
+        {},
+      );
       openSwipeableRef.current?.close();
+      if (targetKey !== rowKey) return;
+      props.onSelectThread(thread);
     },
-    [props.onSelectThread],
+    [hiddenTabThreads, props.onSelectThread, props.selectedThreadKey],
   );
   const handleScrollBeginDrag = useCallback(() => {
     openSwipeableRef.current?.close();

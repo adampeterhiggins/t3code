@@ -25,14 +25,16 @@ Click the tab name at the end of the header breadcrumb (`project / thread / tab`
 You can also hover a chat's sidebar row and click **+**, or right-click it and choose **New tab**.
 Each tab has its own provider and conversation. Closing a tab archives it, so undo or
 **Settings → Archived threads** brings it back. By default the sidebar shows one row per chat,
-with a count of its tabs, and opening that row returns to the tab you last had open.
+with a count of its tabs, and opening that row returns to the tab you last had open. Clicking the
+chat's row while one of its tabs is already open leaves that tab selected.
 
 On web and desktop, press `Cmd+Option+T` on macOS or `Ctrl+Alt+T` on Windows and Linux to list
 each tab under its chat instead, with its own status, provider, and time. Clicking the tabs
 button in the sidebar header does the same. Right-click it for a menu that hides tabs, lists every
 tab, or lists up to a number of them per chat. Past that number the rest fold behind a **more** row, which also shows when a hidden tab is
-working or needs you. Expand it to see them all; it folds again when you open a tab or thread. The
-tab you have open always stays listed. The same shortcut switches between hiding tabs and your
+working or needs you. Hover the collapsed row to see those tabs, and click one to open it. Expand
+the row to list them in the sidebar; it folds again when you open a tab or thread. The
+tab you have open always stays listed. Click a listed tab to switch to it. The same shortcut switches between hiding tabs and your
 last choice, and the command palette and **Settings → General → Tabs in sidebar** set it too.
 
 The same menu, or **Settings → General → Sort tabs by**, orders tabs by latest response, when

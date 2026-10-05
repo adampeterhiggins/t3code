@@ -1022,6 +1022,25 @@ export function holdSidebarTabOrder<T>(
 }
 
 /**
+ * Tab rows the count control hides or reveals. A card's list includes its own thread; a slim
+ * row lists only the others. A limit cuts that list until its "more" row is expanded.
+ */
+export function sidebarTabToggleCount(input: {
+  listed: number;
+  limit: number | null;
+  expanded: boolean;
+}): number {
+  const { listed, limit, expanded } = input;
+  if (limit === null || expanded || listed <= limit) return listed;
+  return limit;
+}
+
+/** "Hide 4 tabs" / "Show 1 tab" for the row's tab-count control. */
+export function sidebarTabToggleLabel(open: boolean, count: number): string {
+  return `${open ? "Hide" : "Show"} ${count} ${count === 1 ? "tab" : "tabs"}`;
+}
+
+/**
  * The tabs a group lists before its "more" row. The open tab always shows: past the limit it
  * takes the last slot, so the group stays exactly `limit` rows tall.
  */
@@ -1335,6 +1354,17 @@ export function filterSidebarProjectScopeItems<TItem extends { readonly value: s
   const query = input.query.trim();
   if (query.length === 0) return input.items;
   return input.items.filter((item) => item.value !== "all" && input.matches(item, query));
+}
+
+/** Maps the multi-select picker's next value onto scope keys. "All projects"
+    is selected exactly when nothing is scoped, so picking it clears the scope
+    and picking any project drops it. */
+export function resolveSidebarProjectScopeKeys(input: {
+  readonly current: readonly string[];
+  readonly next: readonly string[];
+}): string[] {
+  if (input.current.length > 0 && input.next.includes("all")) return [];
+  return input.next.filter((value) => value !== "all");
 }
 
 export interface SidebarProjectScopeMenuState {
