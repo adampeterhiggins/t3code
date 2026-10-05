@@ -336,6 +336,17 @@ app's navigation history, the same as the `navigation.back` and `navigation.forw
 
 Code: `SidebarHistoryNavigation` in `apps/web/src/components/sidebar/SidebarChrome.tsx`.
 
+## Sidebar project filter picks several projects
+
+The sidebar's project filter is multi-select: each project row toggles on or off and the popup
+stays open, and **All projects** clears the filter. The trigger shows the first project's icon
+with a count when more than one is picked. A thread's **Filter by project** menu item still narrows
+the list to that one project. This is web and desktop; mobile has no sidebar project filter.
+
+Code: the project scope `Combobox` in `apps/web/src/components/Sidebar.tsx`,
+`resolveSidebarProjectScopeKeys` in `apps/web/src/components/Sidebar.logic.ts`, and
+`sidebarProjectScopeKeys` in `apps/web/src/uiStateStore.ts`.
+
 ## Diagnostics settings tab
 
 Diagnostics has its own entry in the settings sidebar, between Connections and Archive. Upstream
