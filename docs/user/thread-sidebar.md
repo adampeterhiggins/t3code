@@ -355,8 +355,8 @@ Click an agent in the Agents panel to see what it is doing without leaving the p
 status, model and reasoning effort, how many times it has run, and its running time; the prompt it
 was given (choose **Show all** for a long one); its result or error; any files or remote session it
 left under **Artifacts**; and the agents it started. Click one of those to look inside it too.
-**Back** goes up one level, and from the top back to the list. Below the header, **Tools** lists
-the agent's tool calls; hover or click one to see its command, output, or diff. **Transcript**
+**Back** goes up one level, and from the top back to the list. Below the header, **Tool calls** lists
+the agent's tool calls (click the heading to switch to **Transcript**); hover or click one to see its command, output, or diff. **Transcript**
 follows the agent live: its messages, the reasoning it shares, and each tool call as it runs, each
 with its time. Click a call or thought to expand its command, output, or diff. While you are at
 the bottom, new activity scrolls into view; scroll up to read and it stays put. **Tools** lists
