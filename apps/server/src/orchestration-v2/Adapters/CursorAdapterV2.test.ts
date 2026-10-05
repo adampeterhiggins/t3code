@@ -28,6 +28,7 @@ import * as IdAllocator from "../IdAllocator.ts";
 import { ProviderAdapterV2RuntimePolicy } from "../ProviderAdapter.ts";
 import {
   cursorMcpServers,
+  cursorRunFailure,
   cursorRuntimeAgentPolicy,
   cursorSdkModelSelection,
   makeCursorAgentOptions,
@@ -908,6 +909,25 @@ describe("CursorAdapterV2", () => {
     );
     assert.isFalse(isCursorCancellationError(new Error("request failed")));
     assert.isFalse(isCursorCancellationError(null));
+  });
+
+  it("classifies an exhausted Cursor allowance as a usage limit", () => {
+    // Recorded from Cursor's SDK `run.completed` result when an account ran out of usage.
+    const failure = cursorRunFailure({
+      message:
+        "Increase limits for faster responses You're out of usage. Switch to Auto, or ask your admin to increase your limit to continue.",
+    });
+    assert.equal(failure.class, "usage_limit");
+    assert.equal(failure.code, "cursor_out_of_usage");
+    assert.include(failure.message, "out of usage");
+  });
+
+  it("keeps other Cursor run errors generic", () => {
+    for (const error of [{ message: "Something went wrong." }, "ENOENT", undefined]) {
+      const failure = cursorRunFailure(error);
+      assert.equal(failure.class, "provider_error");
+      assert.equal(failure.message, "Provider turn failed.");
+    }
   });
 
   it("preserves failed nested read calls when Cursor omits their path", () => {

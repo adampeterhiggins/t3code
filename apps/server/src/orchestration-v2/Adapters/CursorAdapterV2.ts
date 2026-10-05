@@ -612,6 +612,33 @@ function nestedGrepWorkspaceResults(success: Record<string, unknown>): Record<st
   );
 }
 
+// Cursor reports an exhausted allowance only as run error text, e.g. "You're out of usage. Switch
+// to Auto, or ask your admin to increase your limit to continue."
+const CURSOR_OUT_OF_USAGE = /\bout of usage\b|\busage limit\b|\bincrease your limit\b/iu;
+
+/**
+ * The failure for a Cursor run that ended with `status: "error"`. An exhausted allowance becomes a
+ * `usage_limit` failure, so the thread shows the usage-limit banner and its recovery actions. Any
+ * other run error stays generic, since its text is arbitrary provider output.
+ */
+export function cursorRunFailure(error: unknown) {
+  const message =
+    typeof error === "string"
+      ? error
+      : typeof error === "object" && error !== null && "message" in error
+        ? error.message
+        : undefined;
+  if (typeof message === "string" && CURSOR_OUT_OF_USAGE.test(message)) {
+    return makeProviderFailure({
+      class: "usage_limit",
+      code: "cursor_out_of_usage",
+      message:
+        "This Cursor account is out of usage for this model. Switch to Auto, use another account, or ask your admin to raise the limit.",
+    });
+  }
+  return makeProviderFailure({ cause: error, class: "provider_error" });
+}
+
 export function nestedToolCallFromEnvelope(
   envelope: Record<string, unknown>,
 ): { readonly callId: string; readonly toolCall: ToolCall } | undefined {
@@ -2298,14 +2325,13 @@ export function makeCursorAdapterV2(
                       status,
                       ...(status === "failed"
                         ? {
-                            failure: makeProviderFailure({
-                              cause:
-                                transportFailure ?? (result as { readonly error?: unknown }).error,
-                              class:
-                                transportFailure === undefined
-                                  ? "provider_error"
-                                  : "transport_error",
-                            }),
+                            failure:
+                              transportFailure === undefined
+                                ? cursorRunFailure((result as { readonly error?: unknown }).error)
+                                : makeProviderFailure({
+                                    cause: transportFailure,
+                                    class: "transport_error",
+                                  }),
                           }
                         : {}),
                     });
