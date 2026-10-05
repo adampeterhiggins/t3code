@@ -655,6 +655,22 @@ export const OrchestrationV2ExecutionNode = Schema.Struct({
 });
 export type OrchestrationV2ExecutionNode = typeof OrchestrationV2ExecutionNode.Type;
 
+/**
+ * What a subagent has spent so far, as its provider reports it: Claude's task
+ * usage, or the thread-wide token total of a Codex child thread. Absent when
+ * the provider reports nothing for subagents.
+ */
+export const OrchestrationV2SubagentUsage = Schema.Struct({
+  totalTokens: NonNegativeInt,
+  inputTokens: Schema.optional(NonNegativeInt),
+  cachedInputTokens: Schema.optional(NonNegativeInt),
+  outputTokens: Schema.optional(NonNegativeInt),
+  reasoningOutputTokens: Schema.optional(NonNegativeInt),
+  toolUses: Schema.optional(NonNegativeInt),
+  durationMs: Schema.optional(NonNegativeInt),
+});
+export type OrchestrationV2SubagentUsage = typeof OrchestrationV2SubagentUsage.Type;
+
 export const OrchestrationV2Subagent = Schema.Struct({
   id: NodeId,
   threadId: ThreadId,
@@ -689,6 +705,8 @@ export const OrchestrationV2Subagent = Schema.Struct({
   ]),
   progress: Schema.optional(Schema.String),
   result: Schema.NullOr(Schema.String),
+  /** Fork: filled by adapters that report subagent usage (Claude, Codex). */
+  usage: Schema.optional(OrchestrationV2SubagentUsage),
   startedAt: Schema.NullOr(Schema.DateTimeUtc),
   completedAt: Schema.NullOr(Schema.DateTimeUtc),
   updatedAt: Schema.DateTimeUtc,

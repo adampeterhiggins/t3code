@@ -323,62 +323,32 @@ the snooze. Enable **Snooze limited threads** in thread behavior settings to
 snooze limit stops by default. Providers without a reset time offer manual
 retry and the normal snooze choices.
 
-On web and desktop, use **Agents** to follow work delegated to subagents.
-Search the list, filter it by status, or sort it by status, tokens, or
-duration. Token and duration sorts rank finished agents; agents still working
-stay at the top in launch order, so rows don't jump while you read them.
+Each subagent runs in its own thread. On web and desktop, the thread details panel lists them
+under **Lineage**; click one to open its thread and read its whole conversation. With two or more
+agents you can search the list, filter it by status, or sort it by status, tokens, or duration.
+Agents are listed in the order they started, and token and duration sorts keep working agents at
+the top in that order, so rows don't jump while you read them. A working agent's row shows its
+latest tool call and a failed agent's row its error. Hover an agent to preview its model, status,
+result, and token usage.
 
-Each agent is one line. Working agents add their latest tool call underneath
-and failed agents their error. Hover an agent to preview its prompt, latest
-tool calls, and usage; the preview stays open while you move onto it, so you
-can hover a tool call inside it to see the whole call. Click the preview, or
-the agent, to open it; clicking a tool call opens the agent with that call
-expanded.
+Right-click an agent in Lineage, or its row in the conversation, and choose **Open in new tab** to
+keep it in a tab of the side panel: the prompt it was given, its result or error, the tool calls it
+made, and its token usage in the footer (hover a number for its label, or the total for the full
+breakdown). Tool calls list newest first; search them, filter by status or tool, or sort oldest
+first or by duration. Hover a call to preview all of it, or click to keep it open. Agent tabs belong
+to the current thread and are restored when you reopen the app. Close one with its close button and
+right-click the agent again to reopen it.
 
-Open an agent to see the prompt it was given, its full result or error, the
-tool calls it made, and its token usage in the footer (hover a number for its
-label, or the total for the full breakdown). In the conversation, expand an
-agent in its launch row and choose **Show details** to open it directly.
+To use what an agent found in your next message, choose **Attach result to chat** in its tab or
+from the right-click menu. T3 Code adds the agent's task and result to the composer; a long result
+becomes a pasted attachment.
 
-Right-click an agent in the list and choose **Open in new tab**, or use the
-same action in its detail view, to keep it in a dedicated sidebar tab. You can
-keep several agents open while using the Agents list to inspect others. Close a
-tab with its close button; right-click the agent again, or open its detail
-view, to reopen it. **Agents** in a dedicated tab returns to the list.
-Tabs belong to the current thread and are restored when you reopen the app.
+To pick up an agent's line of work in its own conversation, choose **Continue in chat**. A new chat
+tab opens with the agent's task, result, and tool calls attached, so you can ask follow-up questions
+or push the investigation further. The new chat starts fresh with that context; it does not resume
+the agent itself.
 
-Tool calls list newest first. Search them, filter by status or tool, or sort
-oldest first or by duration. Hover a call to preview all of it; click to keep
-it open. The menu on the **Tool calls** heading switches to the **Transcript**,
-the agent's own conversation fetched from the provider, which you can search,
-filter, and sort the same way. The transcript is read from the provider while
-the thread's session is running. T3 Code keeps a bounded copy of the latest
-entries when an agent finishes and each time you open its transcript, so you
-can still read it after the session stops; that copy is marked **Saved copy**.
-A full read needs the session running again.
-
-To use what an agent found in your next message, choose **Attach result to
-chat** next to its result, or right-click the agent in the list. T3 Code adds
-the agent's task and result to the composer; a long result becomes a pasted
-attachment.
-
-To pick up an agent's line of work in its own conversation, choose **Continue
-in chat** in the agent's detail view, or right-click the agent in the list. A
-new chat tab opens with the agent's task, result, and tool calls attached, so
-you can ask follow-up questions or push the investigation further. The new
-chat starts fresh with that context; it does not resume the agent itself.
-
-| Provider    | Tool calls | Prompt                | Transcript |
-| ----------- | ---------- | --------------------- | ---------- |
-| Claude      | Yes        | Yes                   | Yes        |
-| Codex       | Yes        | When Codex reports it | Yes        |
-| OpenCode    | Yes        | Yes                   | Yes        |
-| Cursor      | Yes        | Yes                   | No         |
-| Devin       | Yes        | Yes                   | No         |
-| Grok        | No         | Yes                   | No         |
-| Antigravity | No         | No                    | No         |
-
-Antigravity reports subagents as one row per batch.
+Claude and Codex report each agent's token usage. Other providers show the usage as not reported.
 
 Subagent threads started by the agent can't take messages; message the parent
 thread instead. When such a subagent needs an approval or an answer, the parent

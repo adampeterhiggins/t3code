@@ -279,6 +279,10 @@
       "types": "./src/state/subagentDisplay.ts",
       "default": "./src/state/subagentDisplay.ts"
     },
+    "./state/agent-list-view": {
+      "types": "./src/state/agentListView.ts",
+      "default": "./src/state/agentListView.ts"
+    },
     "./state/subagentRuntime": {
       "types": "./src/state/subagentRuntime.ts",
       "default": "./src/state/subagentRuntime.ts"

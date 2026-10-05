@@ -7,6 +7,8 @@ import { turnItemIsWorkspacePreparation } from "@t3tools/client-runtime/state/tu
 import { formatSubagentDisplayTitle } from "@t3tools/client-runtime/state/subagent-display";
 import { extractToolActivityPresentation } from "@t3tools/client-runtime/work-log/tool-presentation";
 import {
+  fileChangeDiffWithheld,
+  toolReadRangeLabel,
   turnItemHasDetail,
   turnItemNeedsDetailFetch,
 } from "@t3tools/client-runtime/work-log/item-detail";
@@ -758,8 +760,13 @@ function toFeedActivity(
     item.type === "dynamic_tool" && toolGroupAction(workEntry) === "read"
       ? collectToolFilePaths(item)
       : null;
+  // Fork: a ranged read names its lines after the paths.
+  const readRange =
+    readPaths && item.type === "dynamic_tool" ? toolReadRangeLabel(item.input) : null;
   const getFullDetail = memoizeValue(() =>
-    readPaths ? readPaths.join("\n") || null : formatItemFullDetail(row, item),
+    readPaths
+      ? [...readPaths, ...(readRange ? [readRange] : [])].join("\n") || null
+      : formatItemFullDetail(row, item),
   );
   const getCopyText = memoizeValue(() =>
     [summary, detail, getFullDetail()]
@@ -781,8 +788,8 @@ function toFeedActivity(
       (readPaths
         ? readPaths.length > 0 || turnItemNeedsDetailFetch(item)
         : turnItemHasDetail(item) || workEntry.questionAnswer !== undefined),
-    // Read rows show their paths, then the fetched file contents.
-    fetchesDetail: turnItemNeedsDetailFetch(item),
+    // Read rows show their paths, then the fetched file contents. Edits fetch their withheld diff.
+    fetchesDetail: turnItemNeedsDetailFetch(item) || fileChangeDiffWithheld(item),
     getFullDetail,
     getCopyText,
     icon: workEntry.toolSurface ?? itemIcon(item),

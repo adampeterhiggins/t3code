@@ -3,7 +3,7 @@
  * web agent rows render.
  */
 import * as DateTime from "effect/DateTime";
-import type { OrchestrationV2Subagent } from "@t3tools/contracts";
+import type { OrchestrationV2Subagent, OrchestrationV2SubagentUsage } from "@t3tools/contracts";
 import { isOrchestrationV2WorkActive } from "@t3tools/contracts";
 
 export type RuntimeSubagentStatus =
@@ -16,15 +16,7 @@ export type RuntimeSubagentStatus =
   | "cancelled"
   | "interrupted";
 
-export interface SubagentUsage {
-  readonly totalTokens: number;
-  readonly inputTokens?: number;
-  readonly cachedInputTokens?: number;
-  readonly outputTokens?: number;
-  readonly reasoningOutputTokens?: number;
-  readonly toolUses?: number;
-  readonly durationMs?: number;
-}
+export type SubagentUsage = OrchestrationV2SubagentUsage;
 
 export interface SubagentActivityEntry {
   readonly at: string;
@@ -104,6 +96,7 @@ export function projectedSubagentsToRuntime(
     readonly status: OrchestrationV2Subagent["status"];
     readonly progress?: string | undefined;
     readonly result: string | null;
+    readonly usage?: OrchestrationV2SubagentUsage | undefined;
     readonly startedAt: DateTime.Utc | null;
     readonly completedAt: DateTime.Utc | null;
     readonly updatedAt: DateTime.Utc;
@@ -123,7 +116,7 @@ export function projectedSubagentsToRuntime(
       effort: null,
       status: subagent.status,
       activationCount: 1,
-      usage: null,
+      usage: subagent.usage ?? null,
       progress: subagent.progress ?? null,
       lastToolName: null,
       result: subagent.result,
@@ -144,4 +137,16 @@ export function projectedSubagentsToRuntime(
       updatedAt,
     } satisfies RuntimeSubagent;
   });
+}
+
+/** Compact token count for agent rows and usage footers: 950, 12.3k, 1.2M. */
+export function formatSubagentTokenCount(totalTokens: number): string {
+  if (totalTokens < 1000) {
+    return `${totalTokens}`;
+  }
+  if (totalTokens < 1_000_000) {
+    const value = totalTokens / 1000;
+    return `${value >= 100 ? Math.round(value) : value.toFixed(1)}k`;
+  }
+  return `${(totalTokens / 1_000_000).toFixed(1)}M`;
 }

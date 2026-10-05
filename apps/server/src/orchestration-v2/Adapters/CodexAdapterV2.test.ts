@@ -6643,6 +6643,92 @@ describe("CodexAdapterV2 post-settle continuation", () => {
     ),
   );
 
+  it.effect("records a subagent's child-thread token total and keeps it through completion", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const childUsage = (
+          totalTokens: number,
+          last: number,
+        ): CodexReplay.CodexAppServerReplayEntry => {
+          const breakdown = (total: number) => ({
+            totalTokens: total,
+            inputTokens: total - 400,
+            cachedInputTokens: 100,
+            outputTokens: 400,
+            reasoningOutputTokens: 50,
+          });
+          return {
+            type: "emit_inbound",
+            label: `thread/tokenUsage/updated/child-${totalTokens}-${last}`,
+            frame: {
+              method: "thread/tokenUsage/updated",
+              params: {
+                threadId: RESUME_CHILD_THREAD,
+                turnId: RESUME_CHILD_TURN_1,
+                tokenUsage: {
+                  total: breakdown(totalTokens),
+                  last: breakdown(last),
+                  modelContextWindow: 200_000,
+                },
+              },
+            },
+          };
+        };
+        const entries = resumeSubagentTranscript.entries.flatMap((entry) => {
+          if (entry.type !== "emit_inbound") return [entry];
+          // Stop after the root turn; the resume is covered elsewhere.
+          if (entry.label === `turn/started/${RESUME_CHILD_TURN_2}`) return [];
+          if (
+            entry.label === "item/completed/child-resume-answer" ||
+            entry.label === `turn/completed/${RESUME_CHILD_TURN_2}`
+          ) {
+            return [];
+          }
+          return entry.label === `turn/completed/${RESUME_CHILD_TURN_1}`
+            ? // An unchanged total is not re-emitted.
+              [childUsage(1_200, 1_200), childUsage(1_200, 0), entry]
+            : [entry];
+        });
+        const harness = yield* makeCodexReplayHarness({ ...resumeSubagentTranscript, entries });
+        yield* harness.runtime.startTurn(
+          makeCodexTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("attempt-codex-subagent-usage"),
+            text: RESUME_PROMPT,
+          }),
+        );
+        yield* awaitUntil(
+          () => harness.subagentUpdates().some((event) => event.subagent.usage !== undefined),
+          "subagent usage",
+        );
+        yield* TestClock.adjust("100 millis");
+        yield* awaitUntil(() => harness.terminalEvents().length === 1, "root turn terminal");
+
+        const expectedUsage = {
+          totalTokens: 1_200,
+          inputTokens: 800,
+          cachedInputTokens: 100,
+          outputTokens: 400,
+          reasoningOutputTokens: 50,
+        };
+        const updates = harness.subagentUpdates();
+        const firstUsageIndex = updates.findIndex((event) => event.subagent.usage !== undefined);
+        const usageUpdate = updates[firstUsageIndex]?.subagent;
+        assert.deepEqual(usageUpdate?.usage, expectedUsage);
+        assert.equal(usageUpdate?.status, updates[firstUsageIndex - 1]?.subagent.status);
+        // The duplicate total emitted nothing; the completion kept the usage.
+        assert.deepEqual(
+          updates.slice(firstUsageIndex + 1).map((event) => event.subagent.status),
+          ["completed"],
+        );
+        assert.deepEqual(updates.at(-1)?.subagent.usage, expectedUsage);
+        assert.equal(updates.at(-1)?.subagent.result, "CODEX_FIRST_DONE");
+      }).pipe(Effect.provide(Layer.merge(IdAllocator.layer, NodeServices.layer))),
+    ),
+  );
+
   it.effect("rejects duplicate child starts across parent runs", () =>
     Effect.scoped(
       Effect.gen(function* () {

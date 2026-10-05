@@ -64,7 +64,11 @@ import {
   type ThreadFeedActivity,
   workEntryRowLabel,
 } from "../../lib/threadActivity";
-import { toolCallLines, turnItemOutputText } from "@t3tools/client-runtime/work-log/item-detail";
+import {
+  fileChangePreviewText,
+  toolCallLines,
+  turnItemOutputText,
+} from "@t3tools/client-runtime/work-log/item-detail";
 import { useTurnItemDetail } from "../../state/queries";
 import {
   resolveThreadWorkGroupInitialScroll,
@@ -941,29 +945,41 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
           : expanded && shownItem.type === "web_search"
             ? toolCallLines({ args: { query: shownItem.patterns?.join(", ") } })
             : null;
-  const failedExitCode =
-    call && shownItem.type === "command_execution" && shownItem.exitCode
+  const exitCode =
+    call && shownItem.type === "command_execution" && shownItem.exitCode !== undefined
       ? shownItem.exitCode
       : null;
+  // Fork: an edit shows its bounded diff and line counts once the stored item arrives.
+  const editPreview =
+    expanded && shownItem.type === "file_change" ? fileChangePreviewText(shownItem) : null;
   const fullDetail =
     expanded && !reasoning && !call
-      ? fetchedItem && !isRead
-        ? formatItemFullDetail(row.projectedItem, fetchedItem)
-        : row.getFullDetail()
+      ? (editPreview ??
+        (fetchedItem && !isRead
+          ? formatItemFullDetail(row.projectedItem, fetchedItem)
+          : row.getFullDetail()))
       : null;
   const fetchedOutput = !expanded
     ? null
-    : shownItem.type === "file_search" || shownItem.type === "web_search"
-      ? turnItemOutputText(shownItem)
-      : fetchedItem
-        ? (turnItemOutputText(fetchedItem) ?? "No output.")
+    : shownItem.type === "file_change"
+      ? fetchedItem
+        ? null
         : fetchedDetail.error
-          ? `Couldn't load output: ${fetchedDetail.error}`
-          : row.fetchesDetail
-            ? fetchedDetail.data
-              ? "Output is no longer available."
-              : "Loading output…"
-            : null;
+          ? `Couldn't load the diff: ${fetchedDetail.error}`
+          : row.fetchesDetail && !fetchedDetail.data
+            ? "Loading diff…"
+            : null
+      : shownItem.type === "file_search" || shownItem.type === "web_search"
+        ? turnItemOutputText(shownItem)
+        : fetchedItem
+          ? (turnItemOutputText(fetchedItem) ?? "No output.")
+          : fetchedDetail.error
+            ? `Couldn't load output: ${fetchedDetail.error}`
+            : row.fetchesDetail
+              ? fetchedDetail.data
+                ? "Output is no longer available."
+                : "Loading output…"
+              : null;
   const viewedImagePath = workEntryViewedImagePath(row.workEntry);
   const toolPresentation = resolveWorkEntryToolPresentation(row.workEntry);
   const previewText = workEntryRowLabel(row.workEntry);
@@ -1171,9 +1187,14 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
                 {fetchedOutput}
               </Text>
             ) : null}
-            {failedExitCode !== null ? (
-              <Text className="mt-1.5 font-mono text-2xs leading-normal text-danger-foreground">
-                exit {failedExitCode}
+            {exitCode !== null ? (
+              <Text
+                className={cn(
+                  "mt-1.5 font-mono text-2xs leading-normal",
+                  exitCode === 0 ? "text-foreground-muted" : "text-danger-foreground",
+                )}
+              >
+                exit {exitCode}
               </Text>
             ) : null}
           </ScrollView>

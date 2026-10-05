@@ -6,8 +6,17 @@ import { SubagentTooltipContent } from "./SubagentTooltipContent";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
+  applyAgentListView,
+  isAgentListViewFiltered,
+  latestSubagentToolCall,
+  type AgentListSubject,
+} from "@t3tools/client-runtime/state/agent-list-view";
+import {
+  formatSubagentTokenCount,
+  isActiveSubagentStatus,
   projectedSubagentsToRuntime,
   type RuntimeSubagent,
+  type RuntimeSubagentStatus,
 } from "@t3tools/client-runtime/state/subagentRuntime";
 import { formatSubagentDisplayTitle } from "@t3tools/client-runtime/state/subagent-display";
 import {
@@ -24,7 +33,12 @@ import {
   canDetachThreadProviderSession,
   resolveLatestMergeBackRun,
 } from "@t3tools/client-runtime/state/thread-workflows";
-import type { EnvironmentId, OrchestrationV2ThreadShell, ThreadId } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  OrchestrationV2ThreadShell,
+  ScopedThreadRef,
+  ThreadId,
+} from "@t3tools/contracts";
 import { groupBy } from "effect/Array";
 import * as DateTime from "effect/DateTime";
 import { useNavigate } from "@tanstack/react-router";
@@ -38,8 +52,9 @@ import {
   PlusIcon,
   UnplugIcon,
 } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type MouseEvent, type ReactNode } from "react";
 
+import { useAgentListViewStore } from "../../agentListViewStore";
 import { useArchivedThreadSnapshots } from "../../lib/archivedThreadsState";
 import { buildThreadRouteParams } from "../../threadRoutes";
 import {
@@ -51,8 +66,12 @@ import {
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { AgentElapsed } from "./AgentElapsed";
+import { TOOL_KIND_ICONS } from "./agentToolKinds";
+import { AgentListToolbar } from "./AgentListToolbar";
+import { useAgentContextMenu } from "./agentContextMenu";
 import { ThreadRelationshipIcon, threadRelationshipStatusLabel } from "./ThreadRelationshipIcon";
 
+import { Button } from "../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
@@ -115,9 +134,12 @@ function ThreadLineageGroup(props: {
   readonly label: string | null;
   readonly rows: ReadonlyArray<ThreadRelationshipWalkRow>;
   readonly expanded: boolean;
+  /** Fork: a filtered agents list shows its matches instead of a collapsed header. */
+  readonly forceExpanded?: boolean;
   readonly children: (rows: ReadonlyArray<ThreadRelationshipWalkRow>) => ReactNode;
 }) {
-  const [expanded, setExpanded] = useState(props.expanded);
+  const [userExpanded, setExpanded] = useState(props.expanded);
+  const expanded = userExpanded || props.forceExpanded === true;
   const [visibleCount, setVisibleCount] = useState(THREAD_LINEAGE_INITIAL_COUNT);
   const { visibleRows, hiddenCount } = resolveThreadLineageWindow(props.rows, visibleCount);
   const failedCount = props.rows.filter(
@@ -190,6 +212,67 @@ function liveSubagent<Agent extends RuntimeSubagent>(
   };
 }
 
+/** A subagent row without a parent record still reads its status from the lineage edge. */
+function edgeAgentStatus(status: string | null): RuntimeSubagentStatus {
+  switch (status) {
+    case "pending":
+    case "preparing":
+    case "starting":
+      return "pending";
+    case "running":
+    case "waiting":
+    case "idle":
+    case "completed":
+    case "failed":
+    case "cancelled":
+    case "interrupted":
+      return status;
+    case "error":
+      return "failed";
+    default:
+      return "idle";
+  }
+}
+
+/**
+ * Fork: a working agent's second line, its latest tool call read from its child thread, or the
+ * provider's progress until the first call arrives. Mounted only for working rows on screen.
+ */
+function SubagentActivityLine(props: {
+  readonly childRef: ScopedThreadRef;
+  readonly progress: string | null;
+  readonly workspaceRoot: string | null;
+}) {
+  const child = useThreadProjection(props.childRef)?.projection ?? null;
+  const latest = useMemo(
+    () =>
+      child === null
+        ? null
+        : latestSubagentToolCall(
+            child.turnItems.filter((item) => item.threadId === props.childRef.threadId),
+            props.workspaceRoot,
+          ),
+    [child, props.childRef.threadId, props.workspaceRoot],
+  );
+  if (latest === null) {
+    return (
+      <span className="block truncate text-left text-2xs font-normal text-muted-foreground">
+        {props.progress ?? "Starting…"}
+      </span>
+    );
+  }
+  const Icon = TOOL_KIND_ICONS[latest.kind];
+  return (
+    <span className="flex min-w-0 items-center gap-1 text-left text-2xs font-normal text-muted-foreground">
+      <Icon aria-hidden className="size-3 shrink-0" />
+      <span className={latest.detail ? "max-w-[45%] shrink-0 truncate" : "min-w-0 truncate"}>
+        {latest.title}
+      </span>
+      {latest.detail ? <span className="min-w-0 truncate font-mono">{latest.detail}</span> : null}
+    </span>
+  );
+}
+
 export function ThreadRelationshipsPanel(props: {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
@@ -231,6 +314,10 @@ export function ThreadRelationshipsPanel(props: {
   const currentThread = projection?.thread ?? graph.nodes.get(props.threadId)?.thread;
   const currentProject = projects.find((project) => project.id === currentThread?.projectId);
   const navigate = useNavigate();
+  const openAgentMenu = useAgentContextMenu(ref);
+  const agentListView = useAgentListViewStore((state) => state.view);
+  const setAgentListView = useAgentListViewStore((state) => state.setView);
+  const workspaceRoot = currentThread?.worktreePath ?? currentProject?.workspaceRoot ?? null;
   const mergeBack = useAtomCommand(threadEnvironment.mergeBack);
   const stopSession = useAtomCommand(threadEnvironment.stopSession);
   const [busyAction, setBusyAction] = useState<"merge" | "detach" | null>(null);
@@ -262,10 +349,40 @@ export function ThreadRelationshipsPanel(props: {
       ? "previous"
       : "active";
   });
+  // Fork: the agents list's search, status filter and sort, in spawn order by default.
+  const agentSubject = ({ threadId, edge }: ThreadRelationshipWalkRow): AgentListSubject => {
+    const node = graph.nodes.get(threadId);
+    const recorded = subagentsByThreadId.get(threadId);
+    const agent = liveSubagent(recorded, node?.thread);
+    return {
+      title: relationshipThreadTitle({
+        title: node?.thread?.title ?? agent?.title ?? threadId,
+        isSubagent: true,
+      }),
+      model: agent?.model ?? null,
+      status: agent?.status ?? edgeAgentStatus(edge.status),
+      usage: agent?.usage ?? null,
+      spawnedAt:
+        recorded?.firstSeenAt ?? (node?.thread ? DateTime.formatIso(node.thread.createdAt) : null),
+      startedAt: agent?.startedAt ?? null,
+      completedAt: agent?.completedAt ?? null,
+    };
+  };
+  const agentRowCount = active.length + previous.length;
+  const agentListFiltered = isAgentListViewFiltered(agentListView);
+  const visibleActive = applyAgentListView(active, agentListView, agentSubject);
+  const visiblePrevious = applyAgentListView(previous, agentListView, agentSubject);
+  const showAgentToolbar = agentRowCount > 1 || agentListFiltered;
   const groups = [
     { id: "related", label: null, rows: related, expanded: true },
-    { id: "active", label: null, rows: active, expanded: true },
-    { id: "previous", label: "Previous agents", rows: previous, expanded: false },
+    { id: "active", label: null, rows: visibleActive, expanded: true },
+    {
+      id: "previous",
+      label: "Previous agents",
+      rows: visiblePrevious,
+      expanded: false,
+      forceExpanded: agentListFiltered,
+    },
   ];
   // Subagents without a child thread yet have no row, so count them separately.
   const runningCount =
@@ -345,6 +462,24 @@ export function ThreadRelationshipsPanel(props: {
         ) : null
       }
     >
+      {showAgentToolbar ? (
+        <AgentListToolbar view={agentListView} onChange={setAgentListView} />
+      ) : null}
+      {showAgentToolbar &&
+      agentListFiltered &&
+      visibleActive.length === 0 &&
+      visiblePrevious.length === 0 ? (
+        <div className="flex items-center justify-between gap-2 px-2.5 py-1.5">
+          <span className="text-xs text-muted-foreground">No agents match these filters.</span>
+          <Button
+            size="xs"
+            variant="outline"
+            onClick={() => setAgentListView({ ...agentListView, statuses: [], query: "" })}
+          >
+            Clear filters
+          </Button>
+        </div>
+      ) : null}
       {groups.map((group) => (
         <ThreadLineageGroup key={`${scopedThreadKey(ref)}:${group.id}`} {...group}>
           {(visibleRows) =>
@@ -390,6 +525,7 @@ export function ThreadRelationshipsPanel(props: {
                   status={agent.status}
                   result={agent.result}
                   progress={agent.progress}
+                  usage={agent.usage}
                   parentThread={currentThread ?? undefined}
                   childThread={node?.thread ?? undefined}
                   parentProject={currentProject}
@@ -398,6 +534,31 @@ export function ThreadRelationshipsPanel(props: {
               ) : (
                 relationshipHint
               );
+              // Fork: working agents add their latest tool call, failed agents their error.
+              const agentLive = agent !== undefined && isActiveSubagentStatus(agent.status);
+              // One truncated line; the full error stays in the hover card and the agent tab.
+              const agentError =
+                agent?.status === "failed" && agent.error
+                  ? agent.error.length > 160
+                    ? `${agent.error.slice(0, 159)}…`
+                    : agent.error
+                  : null;
+              const secondLine = agentLive ? (
+                <SubagentActivityLine
+                  childRef={scopeThreadRef(props.environmentId, threadId)}
+                  progress={agent.progress}
+                  workspaceRoot={workspaceRoot}
+                />
+              ) : agentError ? (
+                <span className="block truncate text-left font-mono text-2xs font-normal text-destructive-foreground">
+                  {agentError}
+                </span>
+              ) : null;
+              const onAgentContextMenu =
+                agent && !node?.missing
+                  ? (event: MouseEvent<HTMLElement>) =>
+                      openAgentMenu(event, { childThreadId: threadId, title: threadTitle })
+                  : undefined;
               const relationshipContent = (
                 <>
                   <ThreadRelationshipIcon
@@ -410,7 +571,13 @@ export function ThreadRelationshipsPanel(props: {
                     <span className="block truncate text-left text-sm font-medium leading-4 text-foreground/85">
                       {threadTitle}
                     </span>
+                    {secondLine}
                   </span>
+                  {agent?.usage ? (
+                    <span className="shrink-0 text-2xs font-normal tabular-nums text-muted-foreground">
+                      {formatSubagentTokenCount(agent.usage.totalTokens)}
+                    </span>
+                  ) : null}
                   {agent ? (
                     agent.startedAt ? (
                       <span className="shrink-0 text-2xs font-normal tabular-nums text-muted-foreground">
@@ -428,7 +595,10 @@ export function ThreadRelationshipsPanel(props: {
                 </>
               );
               return (
-                <li key={threadId} className="group flex h-8 items-center rounded-lg">
+                <li
+                  key={threadId}
+                  className={`group flex ${secondLine ? "min-h-8" : "h-8"} items-center rounded-lg`}
+                >
                   {isMergeTarget ? (
                     <div className={THREAD_DETAILS_PANEL_LINK_SPLIT_GROUP_CLASS}>
                       <Tooltip>
@@ -498,6 +668,8 @@ export function ThreadRelationshipsPanel(props: {
                             variant="ghost"
                             disabled={node?.missing === true}
                             onClick={() => openThread(threadId)}
+                            onContextMenu={onAgentContextMenu}
+                            multiline={secondLine !== null}
                             part="row"
                           />
                         }

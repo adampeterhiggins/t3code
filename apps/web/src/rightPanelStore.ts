@@ -29,6 +29,7 @@ const RIGHT_PANEL_KINDS = [
   "terminal",
   "pull-request",
   "pull-requests",
+  "agent",
 ] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
 
@@ -84,7 +85,12 @@ export type RightPanelSurface =
       url?: string;
     }
   /** The thread's linked pull requests, one singleton tab beside any number of `pull-request` tabs. */
-  | { id: "pull-requests"; kind: "pull-requests" };
+  | { id: "pull-requests"; kind: "pull-requests" }
+  /**
+   * Fork: one subagent of this thread, kept beside the chat (its prompt, result, tool calls and
+   * usage). The title is the agent's as of opening, for the tab label.
+   */
+  | { id: `agent:${string}`; kind: "agent"; childThreadId: ThreadId; title: string };
 
 const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
 // v9 removed the "plan" surface kind (plans render inline in the transcript).
@@ -135,7 +141,7 @@ interface RightPanelStoreState {
   ) => boolean;
   open: (
     ref: ScopedThreadRef,
-    kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request">,
+    kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request" | "agent">,
   ) => void;
   openDevice: (ref: ScopedThreadRef, target: DeviceTabTarget, automatic?: boolean) => void;
   renameDevice: (ref: ScopedThreadRef, surfaceId: string, title: string) => void;
@@ -153,6 +159,8 @@ interface RightPanelStoreState {
       url?: string;
     },
   ) => void;
+  /** Fork: opens (or focuses) a subagent's agent tab. */
+  openAgent: (ref: ScopedThreadRef, agent: { childThreadId: ThreadId; title: string }) => void;
   openTerminal: (ref: ScopedThreadRef, terminalId: string) => void;
   splitTerminal: (
     ref: ScopedThreadRef,
@@ -174,7 +182,7 @@ interface RightPanelStoreState {
   toggleVisibility: (ref: ScopedThreadRef) => void;
   toggle: (
     ref: ScopedThreadRef,
-    kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request">,
+    kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request" | "agent">,
   ) => void;
   setThreadPanelOpen: (
     ref: ScopedThreadRef,
@@ -197,7 +205,7 @@ const DEFAULT_THREAD_PANEL_VISIBILITY: ThreadPanelVisibility = {
 };
 
 const singletonSurface = (
-  kind: Exclude<RightPanelKind, "file" | "preview" | "terminal" | "pull-request">,
+  kind: Exclude<RightPanelKind, "file" | "preview" | "terminal" | "pull-request" | "agent">,
 ): RightPanelSurface => {
   switch (kind) {
     case "diff":
@@ -281,6 +289,16 @@ export function pullRequestSurface(target: {
     ...(typeof target.url === "string" ? { url: target.url } : {}),
   };
 }
+
+export const agentSurface = (agent: {
+  childThreadId: ThreadId;
+  title: string;
+}): Extract<RightPanelSurface, { kind: "agent" }> => ({
+  id: `agent:${agent.childThreadId}`,
+  kind: "agent",
+  childThreadId: agent.childThreadId,
+  title: agent.title,
+});
 
 const upsertSurface = (
   current: ThreadRightPanelState,
@@ -452,6 +470,17 @@ export function migratePersistedRightPanelState(persistedState: unknown): {
                           ? surface.revealRequestId
                           : 0;
                       return [{ ...surface, revealLine, revealRequestId }];
+                    }
+                    if (surface.kind === "agent") {
+                      return typeof surface.childThreadId === "string" &&
+                        surface.childThreadId.length > 0
+                        ? [
+                            agentSurface({
+                              childThreadId: ThreadId.make(surface.childThreadId),
+                              title: typeof surface.title === "string" ? surface.title : "Agent",
+                            }),
+                          ]
+                        : [];
                     }
                     if (surface.kind === "pull-request") {
                       if (
@@ -648,6 +677,18 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
               ? current.surfaces.filter((entry) => entry.id !== "browser:new")
               : current.surfaces;
             return upsertSurface({ ...current, surfaces: withoutPlaceholder }, surface);
+          }),
+        ),
+      openAgent: (ref, agent) =>
+        set((state) =>
+          userAction(state, scopedThreadKey(ref), (current) => {
+            const surface = agentSurface(agent);
+            // Reopening refreshes the label to the agent's current title.
+            const next = upsertSurface(current, surface);
+            return {
+              ...next,
+              surfaces: next.surfaces.map((entry) => (entry.id === surface.id ? surface : entry)),
+            };
           }),
         ),
       openPullRequest: (ref, target) =>

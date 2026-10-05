@@ -1,4 +1,5 @@
 import type { OrchestrationV2TurnItem } from "@t3tools/contracts";
+import { summarizeToolActivityInput } from "@t3tools/shared/toolActivity";
 import * as DateTime from "effect/DateTime";
 
 const MAX_TEXT_BLOCK_DEPTH = 4;
@@ -142,6 +143,62 @@ export function turnItemNeedsDetailFetch(item: OrchestrationV2TurnItem): boolean
     default:
       return false;
   }
+}
+
+type FileChangeItem = Extract<OrchestrationV2TurnItem, { readonly type: "file_change" }>;
+
+/**
+ * Fork: true when a successful edit's diff was left off the wire. Timelines carry an edit's
+ * identity and line counts only; `getTurnItem` returns the stored diff for its preview.
+ */
+export function fileChangeDiffWithheld(item: OrchestrationV2TurnItem): item is FileChangeItem {
+  return (
+    item.type === "file_change" &&
+    item.status !== "failed" &&
+    item.diffStr === undefined &&
+    item.oldStr === undefined &&
+    item.newStr === undefined
+  );
+}
+
+/**
+ * Fork: an edit's bounded preview, a unified diff block (`Diff\n<patch>`, or a note when it is
+ * too large) after its line counts. Null when the item carries no diff, or for a failed edit,
+ * whose `diffStr` holds the provider's error.
+ */
+export function fileChangePreviewText(item: OrchestrationV2TurnItem): string | null {
+  if (item.type !== "file_change" || item.status === "failed") return null;
+  if (item.diffStr === undefined && item.oldStr === undefined && item.newStr === undefined) {
+    return null;
+  }
+  return (
+    summarizeToolActivityInput({
+      file_path: item.fileName,
+      ...(item.diffStr !== undefined ? { diff: item.diffStr } : {}),
+      ...(item.oldStr !== undefined ? { old_string: item.oldStr } : {}),
+      ...(item.newStr !== undefined ? { new_string: item.newStr } : {}),
+      ...(item.additions !== undefined && item.deletions !== undefined
+        ? { linesAdded: item.additions, linesRemoved: item.deletions }
+        : {}),
+    }) ?? null
+  );
+}
+
+function positiveInteger(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : null;
+}
+
+/** Fork: a file read's line range from its tool input: `Lines 10–49`, `From line 10`, `First 40 lines`. */
+export function toolReadRangeLabel(input: unknown): string | null {
+  if (!isRecord(input)) return null;
+  const start = positiveInteger(input.offset ?? input.start_line ?? input.startLine);
+  const end = positiveInteger(input.end_line ?? input.endLine);
+  const limit = positiveInteger(input.limit);
+  if (start !== null && end !== null) return `Lines ${start}–${end}`;
+  if (start !== null && limit !== null) return `Lines ${start}–${start + limit - 1}`;
+  if (start !== null) return `From line ${start}`;
+  if (limit !== null) return `First ${limit} lines`;
+  return null;
 }
 
 /** Older Claude bash rows stored the raw `{ stdout, stderr, interrupted, ... }` result. */

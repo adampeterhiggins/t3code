@@ -6471,6 +6471,129 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     ),
   );
 
+  it.effect.each(["with", "without"] as const)(
+    "records subagent usage from task_progress and a task_notification %s usage",
+    (notificationUsage) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const TASK_ID = "task-usage-subagent";
+          const TOOL_USE_ID = "toolu-usage-subagent";
+          const harness = yield* makeWakeHarness;
+          const now = yield* DateTime.now;
+          yield* harness.runtime.startTurn(
+            makeClaudeTestTurnInput({
+              threadId: harness.threadId,
+              providerThread: harness.providerThread,
+              now,
+              attemptId: RunAttemptId.make(`attempt-claude-usage-${notificationUsage}`),
+              text: "Run an auditor.",
+              attachments: [],
+            }),
+          );
+          const progressFrame = (input: {
+            readonly description: string;
+            readonly totalTokens: number;
+            readonly toolUses: number;
+            readonly durationMs: number;
+            readonly uuid: string;
+          }) =>
+            claudeSdkFrame({
+              type: "system",
+              subtype: "task_progress",
+              task_id: TASK_ID,
+              tool_use_id: TOOL_USE_ID,
+              description: input.description,
+              usage: {
+                total_tokens: input.totalTokens,
+                tool_uses: input.toolUses,
+                duration_ms: input.durationMs,
+              },
+              uuid: input.uuid,
+              session_id: WAKE_NATIVE_SESSION,
+            });
+          const frames = [
+            claudeSdkFrame({
+              ...makeSubagentTaskStartedFrame({
+                taskId: TASK_ID,
+                toolUseId: TOOL_USE_ID,
+                uuid: "00000000-0000-4000-8000-000000000361",
+              }),
+              is_backgrounded: false,
+            }),
+            progressFrame({
+              description: "Reading commits",
+              totalTokens: 1_200,
+              toolUses: 2,
+              durationMs: 3_400.6,
+              uuid: "00000000-0000-4000-8000-000000000362",
+            }),
+            // A blank description still carries a usage tick.
+            progressFrame({
+              description: "  ",
+              totalTokens: 2_500,
+              toolUses: -1,
+              durationMs: 5_000,
+              uuid: "00000000-0000-4000-8000-000000000363",
+            }),
+            claudeSdkFrame({
+              ...makeSubagentNotificationFrame({
+                taskId: TASK_ID,
+                toolUseId: TOOL_USE_ID,
+                summary: "Audit done.",
+                uuid: "00000000-0000-4000-8000-000000000364",
+              }),
+              ...(notificationUsage === "with"
+                ? { usage: { total_tokens: 3_000, tool_uses: 4, duration_ms: 6_000 } }
+                : {}),
+            }),
+            // A resume starts a new run whose usage is not yet known.
+            claudeSdkFrame({
+              ...makeSubagentTaskStartedFrame({
+                taskId: TASK_ID,
+                toolUseId: "toolu-usage-resume",
+                uuid: "00000000-0000-4000-8000-000000000365",
+              }),
+              is_backgrounded: false,
+              prompt: "Check one more commit.",
+            }),
+            makeResultFrame({
+              uuid: "00000000-0000-4000-8000-000000000366",
+              result: "The auditor finished.",
+            }),
+          ];
+          for (const frame of frames) {
+            yield* Queue.offer(harness.sdkMessages, frame);
+          }
+          yield* awaitUntil(() => harness.terminalEvents().length === 1, "turn terminal");
+
+          const updates = harness.events.flatMap((event) =>
+            event.type === "subagent.updated" ? [event.subagent] : [],
+          );
+          const progressUsage = { totalTokens: 2_500, toolUses: 0, durationMs: 5_000 };
+          assert.deepEqual(
+            updates.map((subagent) => [subagent.status, subagent.progress, subagent.usage]),
+            [
+              ["running", undefined, undefined],
+              [
+                "running",
+                "Reading commits",
+                { totalTokens: 1_200, toolUses: 2, durationMs: 3_400 },
+              ],
+              ["running", "Reading commits", progressUsage],
+              [
+                "completed",
+                "Reading commits",
+                notificationUsage === "with"
+                  ? { totalTokens: 3_000, toolUses: 4, durationMs: 6_000 }
+                  : progressUsage,
+              ],
+              ["running", undefined, undefined],
+            ],
+          );
+        }).pipe(Effect.provide(Layer.merge(IdAllocator.layer, NodeServices.layer))),
+      ),
+  );
+
   it.effect.each(["requested", "observed-before", "observed-after", "inherit", "unknown"] as const)(
     "records the subagent model from %s without inheriting the parent override",
     (source) =>

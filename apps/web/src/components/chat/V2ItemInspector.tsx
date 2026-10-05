@@ -4,7 +4,10 @@ import type {
   RunId,
   ThreadId,
 } from "@t3tools/contracts";
+import { formatPathsForWorkspace } from "@t3tools/client-runtime/work-log/command-display";
 import {
+  fileChangeDiffWithheld,
+  fileChangePreviewText,
   toolCallLines,
   turnItemDetailRevision,
   turnItemNeedsDetailFetch,
@@ -23,6 +26,7 @@ import { formatWorkspaceRelativePath } from "../../filePathDisplay";
 import { Button } from "../ui/button";
 import ChatMarkdown from "../ChatMarkdown";
 import { RenderErrorBoundary } from "../RenderErrorBoundary";
+import { ToolCallBody as ToolPreviewBody } from "../ToolCallBody";
 import { resolveExternalWebLinkHref } from "./externalLinkContextMenu";
 import { ShellCommandBlock } from "./ShellCommandBlock";
 
@@ -102,7 +106,8 @@ function useFetchedTurnItem(
   environmentId: EnvironmentId,
 ) {
   const wireItem = projectedItem.item;
-  const fetches = turnItemNeedsDetailFetch(wireItem);
+  // Fork: an open edit also fetches the diff the timeline left out, for its preview.
+  const fetches = turnItemNeedsDetailFetch(wireItem) || fileChangeDiffWithheld(wireItem);
   const detail = useTurnItemDetail(
     fetches
       ? {
@@ -187,11 +192,35 @@ function ToolCallBody(
       ) : null}
       {call.argsText ? <StructuredValue value={call.argsText} highlightJson /> : null}
       <ToolOutput {...props} />
-      {props.exitCode !== undefined && props.exitCode !== 0 ? (
-        <div className="text-destructive">exit {props.exitCode}</div>
+      {props.exitCode !== undefined ? (
+        <div className={props.exitCode === 0 ? "text-muted-foreground" : "text-destructive"}>
+          exit {props.exitCode}
+        </div>
       ) : null}
     </div>
   );
+}
+
+/** Fork: an edit's bounded unified diff, once the stored item has been fetched. */
+function FileChangePreview(props: {
+  readonly preview: string | null;
+  readonly pending: boolean;
+  readonly workspaceRoot: string | undefined;
+}) {
+  if (props.preview === null) {
+    return props.pending ? <div className="text-muted-foreground italic">Loading diff…</div> : null;
+  }
+  // Line counts already sit beside the file name; the preview adds the diff.
+  const diff = props.preview
+    .split("\n\n")
+    .filter((block) => !/^\+\d+, −\d+ lines$/.test(block))
+    .join("\n\n");
+  return diff ? (
+    <ToolPreviewBody
+      className="max-h-80 text-muted-foreground"
+      text={formatPathsForWorkspace(diff, props.workspaceRoot)}
+    />
+  ) : null;
 }
 
 export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspectorProps) {
@@ -248,6 +277,11 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
           {item.status === "failed" && item.diffStr?.trim() ? (
             <StructuredValue value={item.diffStr} />
           ) : null}
+          <FileChangePreview
+            preview={fileChangePreviewText(item)}
+            pending={outputState.pending}
+            workspaceRoot={props.workspaceRoot}
+          />
           {item.changes !== undefined && item.changes.length > 0 ? (
             <ul className="space-y-1 font-mono text-muted-foreground">
               {item.changes.map((change, index) => (

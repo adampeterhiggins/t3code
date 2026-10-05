@@ -15,7 +15,13 @@ const state = vi.hoisted(() => ({
 
 vi.mock("@tanstack/react-router", () => ({ useNavigate: () => state.navigate }));
 vi.mock("../../state/entities", () => ({
-  useThreadProjection: () => ({ projection: state.projection }),
+  // A working agent's row also reads its child thread, which these tests leave unloaded.
+  useThreadProjection: (ref: { readonly threadId: string } | null) =>
+    (
+      state.projection as { subagents?: ReadonlyArray<{ childThreadId: string | null }> } | null
+    )?.subagents?.some((agent) => agent.childThreadId === ref?.threadId)
+      ? null
+      : { projection: state.projection },
   useThreadShells: () => state.shells,
   useProjects: () => state.projects,
   useServerConfigs: () => state.configs,

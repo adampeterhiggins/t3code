@@ -194,6 +194,33 @@ export function waitForThreadShell(ref: ScopedThreadRef, timeoutMs = 5_000): Pro
   });
 }
 
+/** The projection of a thread a view already has open; null otherwise. */
+export function readThreadProjection(ref: ScopedThreadRef): EnvironmentThread["projection"] | null {
+  return appAtomRegistry.get(environmentThreadDetails.threadAtom(ref))?.projection ?? null;
+}
+
+/**
+ * A thread's projection, subscribing to it until it arrives when no view has it open.
+ * Null when it does not arrive in time.
+ */
+export async function loadThreadProjection(
+  ref: ScopedThreadRef,
+  timeoutMs = 5_000,
+): Promise<EnvironmentThread["projection"] | null> {
+  const atom = environmentThreadDetails.threadAtom(ref);
+  const loaded: { thread: EnvironmentThread | null } = { thread: null };
+  await waitForAtomValue({
+    registry: appAtomRegistry,
+    atom,
+    predicate: (thread) => {
+      loaded.thread = thread;
+      return thread !== null;
+    },
+    timeoutMs,
+  });
+  return loaded.thread?.projection ?? null;
+}
+
 export function readEnvironmentSupportsTitleRegeneration(environmentId: EnvironmentId): boolean {
   return (
     appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
