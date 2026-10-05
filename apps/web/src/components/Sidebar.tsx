@@ -2789,15 +2789,17 @@ function SidebarTabOverflowRow(props: {
             side="right"
             align="start"
             sideOffset={4}
-            className="w-80 max-w-[calc(100vw-2rem)] p-1"
+            className="w-80 max-w-[calc(100vw-2rem)]"
           >
-            <SidebarTabOverflowPreview
-              hidden={hidden}
-              providerEntriesByEnvironment={providerEntriesByEnvironment}
-              tabSortOrder={props.tabSortOrder}
-              openedAtByThreadKey={props.openedAtByThreadKey}
-              onOpenTab={props.onOpenTab}
-            />
+            <div className="p-1">
+              <SidebarTabOverflowPreview
+                hidden={hidden}
+                providerEntriesByEnvironment={providerEntriesByEnvironment}
+                tabSortOrder={props.tabSortOrder}
+                openedAtByThreadKey={props.openedAtByThreadKey}
+                onOpenTab={props.onOpenTab}
+              />
+            </div>
           </PreviewCardPopup>
         </PreviewCard>
       ) : (
