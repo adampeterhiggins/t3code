@@ -160,6 +160,12 @@ interface StartThreadBootstrap {
     readonly startFromOrigin?: boolean;
   };
   readonly runSetupScript?: boolean;
+  /**
+   * Create the thread and prepare its workspace without a first message, so
+   * the first real send starts the turn. Requires `createThread`; the input's
+   * message is ignored. Servers advertise this as `deferredBootstrapTurn`.
+   */
+  readonly deferTurn?: boolean;
 }
 
 export interface StartThreadTurnInput extends ThreadCommandInput {
@@ -676,12 +682,16 @@ export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(
       runtimeMode: input.runtimeMode,
       interactionMode: input.interactionMode,
       workspaceStrategy,
-      initialMessage: {
-        messageId: input.message.messageId,
-        text: input.message.text,
-        ...(context ? { context } : {}),
-        attachments,
-      },
+      ...(input.bootstrap?.deferTurn === true
+        ? {}
+        : {
+            initialMessage: {
+              messageId: input.message.messageId,
+              text: input.message.text,
+              ...(context ? { context } : {}),
+              attachments,
+            },
+          }),
     });
   }
 

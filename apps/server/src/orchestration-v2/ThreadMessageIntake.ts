@@ -128,6 +128,16 @@ export const dispatchCommand = Effect.fn("ThreadMessageIntake.dispatchCommand")(
     (command.type !== "queued-run.edit" || command.attachments === undefined)
   )
     return yield* threads.dispatch(command);
+  const launches = yield* ThreadLaunch.ThreadLaunchService;
+  // A message waits for its thread's workspace and lands with the outcome of
+  // cloning its attached repositories, so the agent's prompt sees them.
+  const context =
+    command.type === "message.dispatch"
+      ? yield* launches.prepareMessageWorkspace({
+          threadId: command.threadId,
+          context: command.context,
+        })
+      : command.context;
   const claimed = yield* AttachmentClaims.claimPendingAttachments({
     threadId: command.threadId,
     attachments: command.attachments ?? [],
@@ -136,10 +146,10 @@ export const dispatchCommand = Effect.fn("ThreadMessageIntake.dispatchCommand")(
     .dispatch({
       ...command,
       attachments: claimed.attachments,
-      ...(command.context
+      ...(context
         ? {
             context: remapComposerContextAttachments(
-              command.context,
+              context,
               command.attachments ?? [],
               claimed.attachments,
             ),
@@ -154,6 +164,19 @@ export const dispatchCommand = Effect.fn("ThreadMessageIntake.dispatchCommand")(
             event.type === "message.updated" ? event.payload.attachments : [],
           ),
         ),
+      ),
+      Effect.tap(() =>
+        command.type === "message.dispatch"
+          ? launches.nameTemporaryBranch({
+              commandId: command.commandId,
+              threadId: command.threadId,
+              message: {
+                text: command.text,
+                attachments: claimed.attachments,
+                ...(context ? { context } : {}),
+              },
+            })
+          : Effect.void,
       ),
       Effect.tapError((error) =>
         dispatchWasNotAccepted(error)

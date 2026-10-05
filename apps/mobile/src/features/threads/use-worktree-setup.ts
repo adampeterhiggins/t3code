@@ -10,6 +10,8 @@ export function useWorktreeSetup(input: {
   environmentId: EnvironmentId | null;
   threadId: ThreadId | null;
   preparing: boolean;
+  /** A message is on its way; the server may show its repository clones as a setup. */
+  sending: boolean;
   turnStarted: boolean;
   followUpSent: boolean;
 }) {
@@ -19,7 +21,7 @@ export function useWorktreeSetup(input: {
   const query = useEnvironmentQuery(
     input.environmentId &&
       input.threadId &&
-      (live?.phase === "running" || (!live && input.preparing))
+      (live?.phase === "running" || input.sending || (!live && input.preparing))
       ? vcsEnvironment.worktreeSetup({
           environmentId: input.environmentId,
           input: { threadId: input.threadId },

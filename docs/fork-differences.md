@@ -284,16 +284,19 @@ Code: `apps/server/src/storageCleanup.ts` and
 `apps/web/src/components/settings/StorageSettings.tsx`. User guide:
 [project-settings.md](./user/project-settings.md#storage-cleanup).
 
-## Worktree branch prefix
+## Worktree branch named before setup
 
-Generated worktree branch names use a configurable prefix instead of a fixed `t3code/`.
-**Settings → General → Branch prefix** takes any namespace, or none, and projects can override it.
-The name is generated while the worktree is checked out, so the agent and setup script start on
-the final branch; upstream renames the `t3code/<id>` placeholder after the first turn has started.
-The placeholder remains only when naming outlasts checkout by more than a few seconds.
+New worktree branches use upstream's naming (**Settings → Source Control → Worktree branch
+naming**), but the name is generated while the worktree is checked out, so the setup script and
+agent start on the final branch; upstream renames the `t3code/<id>` placeholder after the first
+turn has started. The placeholder remains only when naming outlasts checkout by more than a few
+seconds, and is then renamed in the background as upstream does. A static prefix the model repeats
+in its answer is not doubled. The fork's earlier **Branch prefix** setting (global and per project)
+moves into the static prefix once, the first time the server loads its settings.
 
-Code: `generateWorktreeBranchName` in `apps/server/src/git/worktreeBranchName.ts`, its bootstrap
-call in `apps/server/src/orchestration/ClientCommandDispatcher.ts`, and `worktreeBranchPrefix` in `packages/contracts/src/settings.ts`. User guide:
+Code: `prepareInBackground` in `apps/server/src/orchestration-v2/ThreadLaunchService.ts`,
+`formatGeneratedBranchName` in `packages/shared/src/git.ts`, and `foldLegacyWorktreeBranchPrefix`
+in `apps/server/src/serverSettings.ts`. User guide:
 [project-settings.md](./user/project-settings.md#defaults-and-inheritance).
 
 ## Sidebar resource pill
@@ -530,15 +533,19 @@ Mobile has no controls yet. See [the user guide](user/source-control.md#watch-a-
 ## Create a thread before writing its first message
 
 On web and desktop, a new thread's empty composer shows **Create worktree** (or **Create thread**
-in Local mode) in place of the send arrow; Enter does the same. It creates the thread, prepares the
-worktree, and runs the setup script without starting a turn, then opens the thread with an empty
-composer so context can be added first. The first real message starts the turn and names the thread
-and branch. Chat tabs already share a workspace, so they never offer it. A selection of several
-models, or a server without the `deferredBootstrapTurn` capability, keeps the plain send arrow.
-Mobile does not offer it.
+in Local mode) in place of the send arrow; Enter does the same. It launches the thread without a
+message: the thread opens right away with an empty composer and the setup card while the worktree
+is checked out and the setup script runs, and no turn starts. Sending waits until that setup is
+done, and the server also holds a first message that arrives earlier, from any client. The first
+real message starts the turn, names the thread, and renames the temporary `t3code/<id>` branch.
+Chat tabs already share a workspace, so they never offer it. A selection of several models, or a
+server without the `deferredBootstrapTurn` capability, keeps the plain send arrow. Mobile does not
+offer it.
 
-Code: `bootstrap.deferTurn` in `packages/contracts/src/orchestration.ts`, handled by
-`dispatchBootstrapTurnStart` in `apps/server/src/orchestration/ClientCommandDispatcher.ts`; `createThreadWithoutMessage` in
+Code: `bootstrap.deferTurn` in `packages/client-runtime/src/operations/commands.ts`;
+`prepareMessageWorkspace` and `nameTemporaryBranch` in
+`apps/server/src/orchestration-v2/ThreadLaunchService.ts`, called from `dispatchCommand` in
+`apps/server/src/orchestration-v2/ThreadMessageIntake.ts`; `createThreadWithoutMessage` in
 `apps/web/src/components/ChatView.tsx` and the pill in `ComposerPrimaryActions.tsx`. User guide:
 [thread-sidebar.md](./user/thread-sidebar.md#start-a-thread).
 
@@ -593,9 +600,10 @@ name once a default owner is set, open that tab by default instead of pull reque
 A picked repository becomes a `repository` context chip. When the message sends, the server
 clones what is missing before the turn starts. It leaves an existing clone of the same remote
 alone (fetching only, so ahead/behind are current) and never overwrites a folder that belongs to
-something else. On a new worktree this runs as a step of the setup card, before the setup script.
-Otherwise it runs before the turn is recorded, with a work log row showing progress. Each record's clone outcome and git status are
-written back onto the message. The chip shows them, and the agent's prompt includes them, so the
+something else. On a new launch this runs as a step of the setup card, before the setup script,
+and the outcomes reach the already recorded message as its run is released. Otherwise it runs
+before the message is recorded, with a one-step setup card showing progress. Each record's clone
+outcome and git status are written back onto the message. The chip shows them, and the agent's prompt includes them, so the
 agent knows what is there. A failed clone is a warning and the agent still starts. The server adds
 the folder to the repository's `info/exclude` so checkpoints and diffs ignore the clones. The
 default owner and the folder are server settings in **Settings > General**. Mobile's attach menu
@@ -603,8 +611,11 @@ has the same picker, without the recently attached ranking.
 
 Code: `apps/server/src/contextRepositories/ContextRepositories.ts`,
 `packages/contracts/src/contextRepositories.ts`, `RepositoryContextRecord` in
-`packages/contracts/src/composerContext.ts`, the context-repository step in `apps/server/src/orchestration/ClientCommandDispatcher.ts`,
-the persisted-message restatement in `apps/server/src/orchestration/decider.ts`,
+`packages/contracts/src/composerContext.ts`,
+`apps/server/src/contextRepositories/messageContextRepositories.ts` (called from
+`apps/server/src/orchestration-v2/ThreadLaunchService.ts`), the `context` of `prepared-run.release`
+in `packages/contracts/src/orchestrationV2.ts` and its message restatement in
+`apps/server/src/orchestration-v2/Orchestrator.ts`,
 `packages/client-runtime/src/contextRepositories.ts`, and
 `apps/web/src/components/chat/RepositoryAttachPicker.tsx`,
 `apps/web/src/components/chat/useComposerRepositoryItems.ts`, and

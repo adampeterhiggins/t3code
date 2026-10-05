@@ -361,6 +361,49 @@ describe("V2 environment commands", () => {
     }).pipe(Effect.provide(TEST_CRYPTO_LAYER)),
   );
 
+  it.effect("launches a deferred bootstrap without a first message", () =>
+    Effect.gen(function* () {
+      const launches: OrchestrationV2ThreadLaunchInput[] = [];
+      const supervisor = yield* makeSupervisor({ commands: [], projects: [], launches });
+
+      yield* startThreadTurn({
+        commandId: CommandId.make("launch-without-message"),
+        threadId: v2ThreadId,
+        message: {
+          messageId: MessageId.make("message-unused"),
+          role: "user",
+          text: "",
+          attachments: [],
+        },
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        bootstrap: {
+          createThread: {
+            projectId: ProjectId.make("project-1"),
+            title: "New thread",
+            modelSelection: v2Projection.thread.modelSelection,
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            branch: "main",
+            worktreePath: null,
+            createdAt: "2026-06-20T00:00:00.000Z",
+          },
+          prepareWorktree: { projectCwd: "/workspace/project", baseBranch: "main" },
+          runSetupScript: true,
+          deferTurn: true,
+        },
+      }).pipe(Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor));
+
+      expect(launches[0]).toMatchObject({
+        threadId: v2ThreadId,
+        title: "New thread",
+        generateTitle: false,
+        workspaceStrategy: { type: "worktree", baseRef: "main" },
+      });
+      expect(launches[0]).not.toHaveProperty("initialMessage");
+    }).pipe(Effect.provide(TEST_CRYPTO_LAYER)),
+  );
+
   it.effect("provisions an origin-based worktree for an existing empty thread", () =>
     Effect.gen(function* () {
       const launches: OrchestrationV2ThreadLaunchInput[] = [];

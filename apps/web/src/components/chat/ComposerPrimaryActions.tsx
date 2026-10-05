@@ -1,5 +1,12 @@
 import { memo, type MouseEventHandler, type PointerEventHandler } from "react";
-import { CheckIcon, ChevronDownIcon, ChevronLeftIcon, PlayIcon } from "lucide-react";
+import {
+  CheckIcon,
+  ChevronDownIcon,
+  ChevronLeftIcon,
+  GitBranchIcon,
+  PlayIcon,
+  PlusIcon,
+} from "lucide-react";
 import { CornerUpRight, ListPlus } from "lucide";
 import { MorphIcon } from "~/components/MorphIcon";
 import { useEnvironmentIdentificationMode } from "~/hooks/useSettings";
@@ -42,6 +49,8 @@ interface ComposerPrimaryActionsProps {
   isPreparingWorktree: boolean;
   hasSendableContent: boolean;
   canResume?: boolean;
+  /** Set on a new thread's draft: an empty send creates the thread (and worktree) without a turn. */
+  createWithoutMessage?: "worktree" | "thread" | null;
   preserveComposerFocusOnPointerDown?: boolean;
   isEditingQueuedMessage?: boolean;
   onSubmitMessage?: MouseEventHandler<HTMLButtonElement>;
@@ -94,6 +103,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   isPreparingWorktree,
   hasSendableContent,
   canResume = false,
+  createWithoutMessage = null,
   preserveComposerFocusOnPointerDown = false,
   isEditingQueuedMessage = false,
   onSubmitMessage,
@@ -249,6 +259,33 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
 
   if (canInterrupt && !hasSendableContent && !isEditingQueuedMessage) {
     return renderStopGenerationButton(false);
+  }
+
+  // Only while idle: a normal first send also empties the draft, and must not read as a create.
+  if (
+    createWithoutMessage !== null &&
+    !hasSendableContent &&
+    !canResume &&
+    !isEditingQueuedMessage &&
+    !isRunning &&
+    !isSendBusy &&
+    !isConnecting &&
+    !isPreparingWorktree
+  ) {
+    const Icon = createWithoutMessage === "worktree" ? GitBranchIcon : PlusIcon;
+    return (
+      <button
+        type="submit"
+        className={cn(messageActionPillClassName, "h-9 sm:h-8", compact ? "px-3" : "px-4")}
+        {...pointerFocusProps}
+        onClick={onSubmitMessage}
+        disabled={isSendDisabled || isEnvironmentUnavailable}
+        aria-label={sendDisabledReason ?? undefined}
+      >
+        <Icon className="size-3.5" aria-hidden="true" />
+        {createWithoutMessage === "worktree" ? "Create worktree" : "Create thread"}
+      </button>
+    );
   }
 
   const showResume = canResume && !hasSendableContent && !isEditingQueuedMessage;

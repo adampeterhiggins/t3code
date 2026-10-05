@@ -7,6 +7,7 @@ import {
   type ChatAttachment,
   type MessageId,
   type ModelSelection,
+  type OrchestrationMessageContext,
   type OrchestrationV2Actor,
   type OrchestrationV2CreationSource,
   type OrchestrationV2ProviderThreadNativeMetadata,
@@ -21,8 +22,11 @@ import {
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
@@ -30,6 +34,11 @@ import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import { buildTemporaryWorktreeBranchName, isTemporaryWorktreeBranch } from "@t3tools/shared/git";
 
+import * as ContextRepositories from "../contextRepositories/ContextRepositories.ts";
+import {
+  ensureMessageContextRepositories,
+  messageRepositoryRecords,
+} from "../contextRepositories/messageContextRepositories.ts";
 import * as GitWorkflow from "../git/GitWorkflowService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
@@ -64,7 +73,7 @@ export interface ThreadLaunchInitialMessage {
   readonly senderThreadId?: ThreadId;
   readonly text: string;
   readonly attachments: ReadonlyArray<ChatAttachment>;
-  readonly context?: import("@t3tools/contracts").OrchestrationMessageContext | undefined;
+  readonly context?: OrchestrationMessageContext | undefined;
 }
 
 export interface ThreadLaunchInput {
@@ -152,10 +161,36 @@ export class ThreadLaunchService extends Context.Service<
     readonly retryPreparation: (
       input: ThreadLaunchRetryInput,
     ) => Effect.Effect<Orchestrator.OrchestratorV2DispatchResult, Orchestrator.OrchestratorV2Error>;
+    /**
+     * Readies an existing thread's workspace for a message about to be
+     * dispatched: waits for a message-less launch that is still preparing it,
+     * then clones the message's attached repositories into it. Returns the
+     * context with each repository's outcome filled in. Never fails.
+     */
+    readonly prepareMessageWorkspace: (input: {
+      readonly threadId: ThreadId;
+      readonly context: OrchestrationMessageContext | undefined;
+    }) => Effect.Effect<OrchestrationMessageContext | undefined>;
+    /**
+     * Renames a thread's temporary `t3code/<hash>` worktree branch from its
+     * first message, in the background. A message-less launch leaves the
+     * temporary name until that message arrives. Never fails.
+     */
+    readonly nameTemporaryBranch: (input: {
+      readonly commandId: CommandId;
+      readonly threadId: ThreadId;
+      readonly message: ThreadLaunchInitialMessage;
+    }) => Effect.Effect<void>;
   }
 >()("t3/orchestration-v2/ThreadLaunchService") {}
 
 const isThreadLaunchError = Schema.is(ThreadLaunchError);
+
+/**
+ * How long preparation waits, past checkout, for a generated branch name before
+ * the setup script and first turn start on the temporary one.
+ */
+const BRANCH_NAME_WAIT = Duration.seconds(10);
 
 function failureDetail(error: unknown): string {
   if (isThreadLaunchError(error)) {
@@ -180,8 +215,21 @@ const make = Effect.gen(function* () {
   const ids = yield* IdAllocator.IdAllocatorV2;
   const threads = yield* ThreadManagement.ThreadManagementService;
   const managedFolders = yield* ManagedProjectFolders.ManagedProjectFolders;
+  const contextRepositories = yield* ContextRepositories.ContextRepositories;
+  const ensureContextRepositories = (
+    input: Parameters<typeof ensureMessageContextRepositories>[0],
+  ) =>
+    ensureMessageContextRepositories(input).pipe(
+      Effect.provideService(ContextRepositories.ContextRepositories, contextRepositories),
+      Effect.provideService(WorktreeSetupTracker.WorktreeSetupTracker, setupTracker),
+      Effect.provideService(ServerSettings.ServerSettingsService, serverSettings),
+    );
   const preparationScope = yield* Scope.make("sequential");
   const scheduledLaunches = yield* Ref.make<ReadonlySet<CommandId>>(new Set());
+  // Message-less launches still preparing their workspace; a first message waits on them.
+  const messageLessPreparations = yield* Ref.make<ReadonlyMap<ThreadId, Deferred.Deferred<void>>>(
+    new Map(),
+  );
   yield* Effect.addFinalizer(() => Scope.close(preparationScope, Exit.void));
 
   const mapError =
@@ -224,6 +272,80 @@ const make = Effect.gen(function* () {
     }
   });
 
+  const generateBranchNameFor = (
+    projectId: ProjectId,
+    cwd: string,
+    message: ThreadLaunchInitialMessage,
+  ) =>
+    Effect.gen(function* () {
+      const settings = resolveProjectSettings(
+        yield* serverSettings.getSettings,
+        projectId,
+      ).settings;
+      const modelSelection =
+        settings.sourceControlWriterModelSelection === null
+          ? settings.textGenerationModelSelection
+          : ServerSettings.resolveSourceControlWriterModelSelection(
+              settings,
+              yield* providerRegistry.getProviders,
+            );
+      return yield* textGeneration
+        .generateBranchName({
+          naming: {
+            mode: settings.branchNamingMode,
+            prefix: settings.branchNamePrefix,
+            instructions: settings.branchNameInstructions,
+          },
+          cwd,
+          message: message.text,
+          attachments: message.attachments,
+          ...(message.context ? { context: message.context } : {}),
+          modelSelection,
+        })
+        .pipe(
+          Effect.map((result) => ({
+            branch: result.branch,
+            exactName: settings.branchNamingMode === "custom",
+          })),
+        );
+    });
+
+  /** Renames the thread's temporary branch to a generated name and records it. */
+  const renameTemporaryBranch = <E>(input: {
+    readonly commandId: CommandId;
+    readonly threadId: ThreadId;
+    readonly worktreePath: string;
+    readonly oldBranch: string;
+    readonly generated: Effect.Effect<{ readonly branch: string; readonly exactName: boolean }, E>;
+  }) =>
+    input.generated.pipe(
+      Effect.flatMap(({ branch: newBranch, exactName }) =>
+        git.renameBranch({
+          cwd: input.worktreePath,
+          oldBranch: input.oldBranch,
+          newBranch,
+          ...(exactName ? { exactName: true } : {}),
+        }),
+      ),
+      Effect.flatMap((renamed) =>
+        threads.dispatch({
+          type: "thread.metadata.update",
+          commandId: CommandId.make(`${input.commandId}:branch-rename`),
+          threadId: input.threadId,
+          branch: renamed.branch,
+          worktreePath: input.worktreePath,
+        }),
+      ),
+      Effect.catchCause((cause) =>
+        Effect.logWarning("Thread worktree branch rename failed", {
+          commandId: input.commandId,
+          threadId: input.threadId,
+          oldBranch: input.oldBranch,
+          cause,
+        }),
+      ),
+    );
+
   const prepareInBackground = Effect.fn("ThreadLaunchService.prepareInBackground")(function* (
     input: PreparationInput,
     threadId: ThreadId,
@@ -242,6 +364,16 @@ const make = Effect.gen(function* () {
 
     const reused = input.reusedWorktree;
     const tracked = input.workspaceStrategy.type === "worktree" || reused !== undefined;
+    // A launch without a message only prepares the workspace; no agent starts.
+    const messageLess = runId === null;
+    const repositoryRecords = messageLess
+      ? []
+      : messageRepositoryRecords(input.initialMessage?.context);
+    const contextStage = repositoryRecords.length > 0 ? (["context-repositories"] as const) : [];
+    const agentStage = messageLess ? [] : (["agent"] as const);
+    let branchNameFiber: Fiber.Fiber<
+      Option.Option<{ readonly branch: string; readonly exactName: boolean }>
+    > | null = null;
     let createdWorktreePath: string | null = null;
     let setupTerminalId: string | null = null;
     let workspaceRecorded = false;
@@ -250,7 +382,7 @@ const make = Effect.gen(function* () {
         threadId,
         branch: input.workspaceStrategy.branch ?? null,
         baseRef: input.workspaceStrategy.baseRef,
-        stages: ["fetch", "checkout", "setup-script", "agent"],
+        stages: ["fetch", "checkout", ...contextStage, "setup-script", ...agentStage],
         fiber: yield* Effect.fiber,
       });
     } else if (reused !== undefined) {
@@ -258,46 +390,12 @@ const make = Effect.gen(function* () {
         threadId,
         branch: input.workspaceStrategy.branch ?? null,
         baseRef: reused.baseRef,
-        stages: ["setup-script", "agent"],
+        stages: [...contextStage, "setup-script", ...agentStage],
         fiber: yield* Effect.fiber,
       });
     }
     yield* Effect.gen(function* () {
       const initialMessage = input.initialMessage;
-      const generateBranchNameFor = (cwd: string, message: ThreadLaunchInitialMessage) =>
-        Effect.gen(function* () {
-          const settings = resolveProjectSettings(
-            yield* serverSettings.getSettings,
-            input.projectId,
-          ).settings;
-          const modelSelection =
-            settings.sourceControlWriterModelSelection === null
-              ? settings.textGenerationModelSelection
-              : ServerSettings.resolveSourceControlWriterModelSelection(
-                  settings,
-                  yield* providerRegistry.getProviders,
-                );
-          return yield* textGeneration
-            .generateBranchName({
-              naming: {
-                mode: settings.branchNamingMode,
-                prefix: settings.branchNamePrefix,
-                instructions: settings.branchNameInstructions,
-              },
-              cwd,
-              message: message.text,
-              attachments: message.attachments,
-              ...(message.context ? { context: message.context } : {}),
-              modelSelection,
-            })
-            .pipe(
-              Effect.map((result) => ({
-                branch: result.branch,
-                exactName: settings.branchNamingMode === "custom",
-              })),
-            );
-        });
-
       // The server owns worktree naming: without an explicit branch, provision
       // under a temporary `t3code/<hash>` name so the worktree never waits on
       // name generation, then rename in the background below.
@@ -313,6 +411,34 @@ const make = Effect.gen(function* () {
         input.workspaceStrategy.type === "existing_worktree"
           ? input.workspaceStrategy.worktreePath
           : null;
+
+      // Name a temporary branch from the message while the fetch and checkout
+      // run, so the setup script and agent start on the final branch instead
+      // of watching the temporary one get renamed under them. A retry's
+      // reused worktree keeps whatever its first attempt recorded.
+      if (
+        reused === undefined &&
+        initialMessage !== undefined &&
+        branch !== null &&
+        isTemporaryWorktreeBranch(branch) &&
+        input.workspaceStrategy.type !== "root"
+      ) {
+        branchNameFiber = yield* generateBranchNameFor(
+          input.projectId,
+          worktreePath ?? project.workspaceRoot,
+          initialMessage,
+        ).pipe(
+          Effect.map(Option.some),
+          Effect.catchCause((cause) =>
+            Effect.logWarning("Thread worktree branch name generation failed", {
+              commandId: input.commandId,
+              threadId,
+              cause,
+            }).pipe(Effect.as(Option.none())),
+          ),
+          Effect.forkIn(preparationScope),
+        );
+      }
       if (input.workspaceStrategy.type === "worktree") {
         if (runId !== null) {
           yield* threads
@@ -392,6 +518,45 @@ const make = Effect.gen(function* () {
         yield* setupTracker.stageStatus(threadId, "checkout", "done");
       }
 
+      // A name that arrives within the wait is applied before anything runs in
+      // the worktree; a slower one is applied in the background below.
+      let lateBranchName: typeof branchNameFiber = null;
+      if (branchNameFiber !== null && worktreePath !== null && branch !== null) {
+        const named = yield* Fiber.join(branchNameFiber).pipe(
+          Effect.timeoutOption(BRANCH_NAME_WAIT),
+        );
+        if (Option.isNone(named)) {
+          lateBranchName = branchNameFiber;
+        } else if (Option.isSome(named.value)) {
+          const generated = named.value.value;
+          const temporaryBranch = branch;
+          const renameCwd = worktreePath;
+          branch = yield* git
+            .renameBranch({
+              cwd: renameCwd,
+              oldBranch: temporaryBranch,
+              newBranch: generated.branch,
+              ...(generated.exactName ? { exactName: true } : {}),
+            })
+            .pipe(
+              Effect.map((renamed) => renamed.branch),
+              Effect.catchCause((cause) =>
+                Effect.logWarning("Thread worktree branch rename failed", {
+                  commandId: input.commandId,
+                  threadId,
+                  oldBranch: temporaryBranch,
+                  cause,
+                }).pipe(Effect.as(temporaryBranch)),
+              ),
+            );
+          const namedBranch = branch;
+          yield* setupTracker.update(threadId, (snapshot) => ({
+            ...snapshot,
+            branch: namedBranch,
+          }));
+        }
+      }
+
       // A reused worktree is already recorded, and rewriting it could undo
       // the first attempt's branch rename.
       if (reused === undefined) {
@@ -407,50 +572,35 @@ const make = Effect.gen(function* () {
       }
       workspaceRecorded = true;
 
-      // Rename temporary branches (server-invented above, or sent by clients
-      // that name worktrees themselves) in the background so generation latency
-      // never delays provisioning or the provider turn. The temporary name
-      // simply sticks if generation or the rename fails.
-      if (
-        reused === undefined &&
-        worktreePath !== null &&
-        branch !== null &&
-        initialMessage !== undefined &&
-        isTemporaryWorktreeBranch(branch)
-      ) {
-        const oldBranch = branch;
-        const worktreeCwd = worktreePath;
-        yield* generateBranchNameFor(worktreeCwd, initialMessage).pipe(
-          Effect.flatMap(({ branch: newBranch, exactName }) =>
-            git.renameBranch({
-              cwd: worktreeCwd,
-              oldBranch,
-              newBranch,
-              ...(exactName ? { exactName: true } : {}),
-            }),
+      // Naming outlasted the wait: the temporary name stands until the
+      // generated one arrives, then the branch is renamed in the background.
+      // The temporary name simply sticks if generation or the rename fails.
+      if (lateBranchName !== null && worktreePath !== null && branch !== null) {
+        yield* renameTemporaryBranch({
+          commandId: input.commandId,
+          threadId,
+          worktreePath,
+          oldBranch: branch,
+          generated: Fiber.join(lateBranchName).pipe(
+            Effect.flatMap(
+              Option.match({
+                onNone: () => Effect.fail(new Cause.NoSuchElementError()),
+                onSome: Effect.succeed,
+              }),
+            ),
           ),
-          Effect.flatMap((renamed) =>
-            threads.dispatch({
-              type: "thread.metadata.update",
-              commandId: CommandId.make(`${input.commandId}:branch-rename`),
-              threadId,
-              branch: renamed.branch,
-              worktreePath: worktreeCwd,
-            }),
-          ),
-          Effect.catchCause((cause) =>
-            Effect.logWarning("Thread worktree branch rename failed", {
-              commandId: input.commandId,
-              threadId,
-              oldBranch,
-              cause,
-            }),
-          ),
-          Effect.forkIn(preparationScope),
-        );
+        }).pipe(Effect.forkIn(preparationScope));
       }
 
       const cwd = worktreePath ?? project.workspaceRoot;
+      // Attached repositories go in before the setup script, so the script
+      // (and then the agent) can rely on them being there. Their outcomes
+      // reach the committed message when the run is released.
+      const initialContext = initialMessage?.context;
+      const releaseContext =
+        repositoryRecords.length > 0 && initialContext !== undefined
+          ? yield* ensureContextRepositories({ threadId, cwd, context: initialContext })
+          : undefined;
       if (runId !== null) {
         yield* threads
           .dispatch({
@@ -510,7 +660,14 @@ const make = Effect.gen(function* () {
                 threadId,
               )(`Setup script exited with ${completion.exitCode ?? "no exit code"}.`);
           });
-          if (setup.async) {
+          if (setup.async && messageLess) {
+            // No agent runs beside an async script (often a dev server that
+            // never exits), so starting it is where a message-less setup ends.
+            yield* setupTracker.stage(threadId, "setup-script", {
+              status: "done",
+              detail: "running in its terminal",
+            });
+          } else if (setup.async) {
             awaitAsyncSetup = awaitCompletion.pipe(
               Effect.catchCause((cause) =>
                 setupTracker.stage(threadId, "setup-script", {
@@ -537,6 +694,7 @@ const make = Effect.gen(function* () {
             commandId: CommandId.make(`${input.commandId}:release`),
             threadId,
             runId,
+            ...(releaseContext === undefined ? {} : { context: releaseContext }),
           })
           .pipe(Effect.mapError(mapError(input, "release-run", threadId)));
       }
@@ -546,6 +704,10 @@ const make = Effect.gen(function* () {
     }).pipe(
       Effect.onError((cause) =>
         Effect.gen(function* () {
+          // A recorded worktree outlives a failed setup, so its pending rename still lands.
+          if (branchNameFiber !== null && !workspaceRecorded) {
+            yield* Fiber.interrupt(branchNameFiber);
+          }
           const cancelled = Cause.hasInterruptsOnly(cause);
           yield* setupTracker.finish(
             threadId,
@@ -649,6 +811,21 @@ const make = Effect.gen(function* () {
     threadId: ThreadId,
     runId: RunId | null,
   ) {
+    const preparing = runId === null ? yield* Deferred.make<void>() : null;
+    if (preparing !== null) {
+      yield* Ref.update(messageLessPreparations, (current) =>
+        new Map(current).set(threadId, preparing),
+      );
+    }
+    const settleMessageLess =
+      preparing === null
+        ? Effect.void
+        : Ref.update(messageLessPreparations, (current) => {
+            if (current.get(threadId) !== preparing) return current;
+            const next = new Map(current);
+            next.delete(threadId);
+            return next;
+          }).pipe(Effect.andThen(Deferred.succeed(preparing, undefined)));
     yield* prepareInBackground(input, threadId, runId).pipe(
       Effect.onError((cause) =>
         failPreparedRun(
@@ -660,6 +837,7 @@ const make = Effect.gen(function* () {
       ),
       Effect.ignoreCause,
       Effect.ensuring(releasePreparation(input.commandId)),
+      Effect.ensuring(settleMessageLess),
       Effect.forkIn(preparationScope),
     );
   });
@@ -960,7 +1138,85 @@ const make = Effect.gen(function* () {
     );
   };
 
-  return ThreadLaunchService.of({ launch, retryPreparation });
+  const prepareMessageWorkspace: ThreadLaunchService["Service"]["prepareMessageWorkspace"] = (
+    input,
+  ) =>
+    Effect.gen(function* () {
+      const pending = (yield* Ref.get(messageLessPreparations)).get(input.threadId);
+      if (pending !== undefined) yield* Deferred.await(pending);
+      const context = input.context;
+      if (context === undefined || messageRepositoryRecords(context).length === 0) return context;
+      const shell = yield* threads.getThreadShell(input.threadId);
+      if (shell === null) return context;
+      const cwd =
+        shell.worktreePath ??
+        Option.getOrNull(
+          Option.map(yield* projects.getById(shell.projectId), (project) => project.workspaceRoot),
+        );
+      if (cwd === null) return context;
+      // With no worktree setup under way, the clone gets a setup card of its own.
+      const running = yield* setupTracker.get(input.threadId);
+      const ownsCard = running === null || running.phase !== "running";
+      if (ownsCard) {
+        yield* setupTracker.begin({
+          threadId: input.threadId,
+          branch: shell.branch,
+          baseRef: null,
+          stages: ["context-repositories"],
+          fiber: null,
+        });
+      }
+      return yield* ensureContextRepositories({
+        threadId: input.threadId,
+        cwd,
+        context,
+      }).pipe(
+        Effect.ensuring(ownsCard ? setupTracker.finish(input.threadId, "done") : Effect.void),
+      );
+    }).pipe(
+      Effect.catchCause((cause) =>
+        Effect.logWarning("Failed to prepare context repositories for a message", {
+          threadId: input.threadId,
+          cause,
+        }).pipe(Effect.as(input.context)),
+      ),
+    );
+
+  const nameTemporaryBranch: ThreadLaunchService["Service"]["nameTemporaryBranch"] = (input) =>
+    Effect.gen(function* () {
+      const shell = yield* threads.getThreadShell(input.threadId);
+      if (
+        shell === null ||
+        shell.worktreePath === null ||
+        shell.branch === null ||
+        !isTemporaryWorktreeBranch(shell.branch) ||
+        (yield* threads.getMessageCount(input.threadId)) !== 1
+      ) {
+        return;
+      }
+      yield* renameTemporaryBranch({
+        commandId: input.commandId,
+        threadId: input.threadId,
+        worktreePath: shell.worktreePath,
+        oldBranch: shell.branch,
+        generated: generateBranchNameFor(shell.projectId, shell.worktreePath, input.message),
+      }).pipe(Effect.forkIn(preparationScope));
+    }).pipe(
+      Effect.catchCause((cause) =>
+        Effect.logWarning("Failed to schedule a thread worktree branch rename", {
+          commandId: input.commandId,
+          threadId: input.threadId,
+          cause,
+        }),
+      ),
+    );
+
+  return ThreadLaunchService.of({
+    launch,
+    retryPreparation,
+    prepareMessageWorkspace,
+    nameTemporaryBranch,
+  });
 });
 
 export const layer = Layer.effect(ThreadLaunchService, make);
