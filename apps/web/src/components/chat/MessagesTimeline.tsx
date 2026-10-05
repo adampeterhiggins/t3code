@@ -1,5 +1,6 @@
 import type { NotionPageContextRecord } from "@t3tools/contracts";
 import { ToolCallBody } from "../ToolCallBody";
+import { ToolCallCommand } from "../ToolCallCommand";
 import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
 import { splitToolCallPreviewMetadata } from "../../lib/toolCallPreview";
 import { ArrowUpIcon, ClockIcon } from "lucide-react";
@@ -5223,19 +5224,31 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
       <PreviewCardTrigger render={row} delay={300} closeDelay={150} />
       <PreviewCardPopup align="start" className="w-md max-w-[calc(100vw-2rem)]">
         <div className="max-h-[60vh] space-y-1.5 overflow-auto p-3">
-          <p className="flex items-start gap-1.5 text-xs text-secondary-label">
+          <div className="flex items-start gap-1.5 text-xs text-secondary-label">
             <ToolActivityIconView
               icon={entryToolIcon}
               fallbackName={entryIconName}
               className={cn(iconWrapperClass, "mt-px size-3.5 shrink-0")}
               muted
             />
-            <span className="min-w-0 whitespace-pre-wrap break-all select-text">{previewText}</span>
-          </p>
+            {workEntry.command ? (
+              <ToolCallCommand
+                command={formatCommandForWorkspace(workEntry.command, workspaceRoot)}
+              />
+            ) : (
+              <span className="min-w-0 whitespace-pre-wrap break-words select-text">
+                {previewText}
+              </span>
+            )}
+          </div>
           <ToolCallPreviewBody
             workEntry={workEntry}
             workspaceRoot={workspaceRoot}
-            visibleLabel={previewText}
+            visibleLabel={
+              workEntry.command
+                ? formatCommandForWorkspace(workEntry.command, workspaceRoot)
+                : previewText
+            }
           />
         </div>
       </PreviewCardPopup>
