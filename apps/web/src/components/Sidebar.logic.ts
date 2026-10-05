@@ -1,4 +1,5 @@
 import { resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/models";
+import { isThreadWorking } from "@t3tools/client-runtime/state/thread-inbox";
 import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import { threadPullRequestSearchTerms } from "@t3tools/shared/threadPullRequests";
 import * as React from "react";
@@ -16,6 +17,7 @@ import type {
   SidebarTabSortOrder,
   SidebarThreadSortOrder,
 } from "@t3tools/contracts/settings";
+import * as Schema from "effect/Schema";
 import type { AsyncResult } from "effect/unstable/reactivity";
 import { planPinnedReorder } from "@t3tools/client-runtime/state/thread-sort";
 import {
@@ -963,6 +965,12 @@ export function withSidebarTabThreads<T>(
   });
 }
 
+// Dragged tab order, as each tab's rank within its group. Client-local, like the other tab
+// view preferences: the server's tab positions also decide which tab stands for the group's row.
+export const SIDEBAR_TAB_MANUAL_RANKS_KEY = "t3code:sidebar:tab-manual-ranks";
+export const SidebarTabManualRanksSchema = Schema.Record(Schema.String, Schema.Number);
+export const NO_SIDEBAR_TAB_MANUAL_RANKS: Readonly<Record<string, number>> = {};
+
 /**
  * What a tab sorts by: when its latest turn finished, or was sent while it is still running,
  * when it was created, or when you last opened it here. Null sorts last either way.
@@ -1067,6 +1075,58 @@ export function limitSidebarTabs<T>(
   }
   const shownSet = new Set(shown);
   return { shown, hidden: ordered.filter((tab) => !shownSet.has(tab)) };
+}
+
+/**
+ * A group's tab list as the sidebar shows it: sorted, held still under a resting pointer, then
+ * cut to the limit unless `expanded`. Other surfaces listing a group's tabs use it so each tab
+ * keeps the place the sidebar gives it.
+ */
+export function layoutSidebarTabs<T>(
+  tabs: readonly T[],
+  input: Parameters<typeof sortSidebarTabs<T>>[1] & {
+    heldKeys: readonly string[] | null;
+    limit: number | null;
+    activeKey: string | null;
+    expanded: boolean;
+  },
+): { ordered: readonly T[]; shown: readonly T[]; hidden: readonly T[]; expanded: boolean } {
+  const sorted = sortSidebarTabs(tabs, input);
+  const ordered =
+    input.heldKeys === null ? sorted : holdSidebarTabOrder(sorted, input.heldKeys, input.getKey);
+  const expanded = input.expanded && input.limit !== null && ordered.length > input.limit;
+  const { shown, hidden } = expanded
+    ? { shown: ordered, hidden: [] }
+    : limitSidebarTabs(ordered, input.limit, input.activeKey, input.getKey);
+  return { ordered, shown, hidden, expanded };
+}
+
+/**
+ * The tabs other than `openKey` in the order the sidebar lists the group, split at its "more"
+ * row. `tabs` is the group in tab order: a card (`listsRow`) lists them all, while a slim row
+ * stands for the first tab and lists the rest. The open tab never folds away, as in the sidebar.
+ */
+export function sidebarSiblingTabs<T>(
+  tabs: readonly T[],
+  input: Parameters<typeof sortSidebarTabs<T>>[1] & {
+    listsRow: boolean;
+    limit: number | null;
+    openKey: string;
+  },
+): { shown: readonly T[]; hidden: readonly T[] } {
+  const [row, ...rest] = tabs;
+  if (row === undefined) return { shown: [], hidden: [] };
+  const layout = layoutSidebarTabs(input.listsRow ? tabs : rest, {
+    ...input,
+    heldKeys: null,
+    activeKey: input.openKey,
+    expanded: false,
+  });
+  const shown = input.listsRow ? layout.shown : [row, ...layout.shown];
+  return {
+    shown: shown.filter((tab) => input.getKey(tab) !== input.openKey),
+    hidden: layout.hidden,
+  };
 }
 
 /**
@@ -1285,6 +1345,34 @@ export function resolveSidebarV2TopStatus(input: {
 
 export function shouldShowSidebarV2Duration(status: SidebarThreadStatus): boolean {
   return status === "working";
+}
+
+export type SidebarThreadShelf = "snoozed" | "settled" | "pinned" | "working" | "active";
+
+/**
+ * The shelf a standalone sidebar row sits on. Pinned and active rows render as cards, whose tab
+ * lists include the row's own thread; the other shelves show slim rows.
+ */
+export function sidebarThreadShelf(
+  thread: ThreadStatusInput &
+    ThreadSnoozeShell &
+    Pick<SidebarThreadSummary, "settledOverride" | "pinnedAt">,
+  input: {
+    supportsSnooze: boolean;
+    supportsSettlement: boolean;
+    workingShelfEnabled: boolean;
+    now: string;
+  },
+): SidebarThreadShelf {
+  // Snooze outranks settlement and pinning until the thread wakes.
+  const section = resolveSidebarThreadSection({
+    snoozed: input.supportsSnooze && effectiveSnoozed(thread, { now: input.now }),
+    settled: input.supportsSettlement && thread.settledOverride === "settled",
+    pinned: thread.pinnedAt != null,
+  });
+  if (section !== "active") return section;
+  // Working beta: only inbox threads fold away.
+  return input.workingShelfEnabled && isThreadWorking(thread) ? "working" : "active";
 }
 
 /** First VALID timestamp wins: `a ?? b` falls through on null, but a present-
