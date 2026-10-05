@@ -52,7 +52,10 @@ import {
 } from "@t3tools/client-runtime/state/models";
 import { useHiddenTabThreads } from "./sidebar/useHiddenTabThreads";
 import { resolveThreadTabTarget, useThreadTabRecencyStore } from "../threadTabRecencyStore";
-import { threadTabGroupTarget } from "@t3tools/client-runtime/thread-tabs";
+import {
+  threadTabGroupHeaderTarget,
+  threadTabGroupTarget,
+} from "@t3tools/client-runtime/thread-tabs";
 import {
   parseScopedThreadKey,
   scopeProjectRef,
@@ -80,6 +83,7 @@ import {
   CircleCheckIcon,
   ClockIcon,
   FolderIcon,
+  FoldersIcon,
   GitBranchIcon,
   LayersIcon,
   PinIcon,
@@ -206,6 +210,8 @@ import {
   hasUnseenCompletion,
   holdSidebarTabOrder,
   limitSidebarTabs,
+  sidebarTabToggleCount,
+  sidebarTabToggleLabel,
   moveSidebarTab,
   sidebarTabNeighbourKey,
   sidebarTabSortTimestamp,
@@ -217,6 +223,7 @@ import {
   orderItemsByPreferredIds,
   planSidebarThreadDrop,
   reduceSidebarProjectScopeMenuState,
+  resolveSidebarProjectScopeKeys,
   resolveAdjacentThreadId,
   resolveSidebarSweepKeys,
   resolveSidebarDropTarget,
@@ -306,6 +313,7 @@ import {
   SidebarTabsMenu,
 } from "./sidebar/SidebarTabsMenu";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuShortcut, MenuTrigger } from "./ui/menu";
+import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "./ui/preview-card";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { MiddleTruncate } from "./ui/middle-truncate";
 import {
@@ -1201,8 +1209,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   projectDisplayName: string | null;
   providerEntryByInstanceId: ReadonlyMap<string, ProviderInstanceEntry>;
   timestampFormat: TimestampFormat;
-  onThreadClick: (event: ReactMouseEvent, threadRef: ScopedThreadRef) => void;
-  onThreadActivate: (threadRef: ScopedThreadRef) => void;
+  onThreadClick: (
+    event: ReactMouseEvent,
+    threadRef: ScopedThreadRef,
+    keepOpenGroupTab?: boolean,
+  ) => void;
+  onThreadActivate: (threadRef: ScopedThreadRef, keepOpenGroupTab?: boolean) => void;
   onStartRename: (threadRef: ScopedThreadRef, title: string) => void;
   onRenameTitleChange: (title: string) => void;
   onCommitRename: (threadRef: ScopedThreadRef, title: string, originalTitle: string) => void;
@@ -1220,12 +1232,15 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   onSnooze: (threadRef: ScopedThreadRef, preset: Pick<SnoozePreset, "snoozedUntil">) => void;
   onUnsnooze: (threadRef: ScopedThreadRef) => void;
   onUnpin: (threadRef: ScopedThreadRef) => void;
+  onPin: (threadRef: ScopedThreadRef) => void;
   onAcknowledgeWoke: (threadRef: ScopedThreadRef, visitedAt: string) => void;
   onFileDropThreads?: ((threadRef: ScopedThreadRef, files: File[]) => void) | undefined;
   /** Adds a chat tab to this row's group. Absent where the environment has no tabs. */
   onNewTab?: ((threadRef: ScopedThreadRef) => void) | undefined;
   /** Tabs in this row's group; the badge shows only above one. */
   tabCount: number;
+  /** Tabs the count control hides or reveals, after the show-up-to limit. */
+  tabToggleCount: number;
   /** The group's tabs. Mounted under the row while `tabsOpen`, and while it animates closed. */
   tabs: ReactNode;
   tabsOpen: boolean;
@@ -1259,6 +1274,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     onUnsettle,
     onUnsnooze,
     onUnpin,
+    onPin,
     openPullRequestsInRightPanel,
     renamingTitle,
     displayThread: thread,
@@ -1416,7 +1432,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
 
   const handleClick = useCallback(
     (event: ReactMouseEvent) => {
-      onThreadClick(event, rowThreadRef);
+      // The group header stands for every tab. A tab already open in it stays open.
+      onThreadClick(event, rowThreadRef, true);
     },
     [onThreadClick, rowThreadRef],
   );
@@ -1441,7 +1458,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       if (event.target !== event.currentTarget) return;
       if (event.key !== "Enter" && event.key !== " ") return;
       event.preventDefault();
-      onThreadActivate(rowThreadRef);
+      onThreadActivate(rowThreadRef, true);
     },
     [onThreadActivate, rowThreadRef],
   );
@@ -1526,6 +1543,14 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       onUnpin(rowThreadRef);
     },
     [onUnpin, rowThreadRef],
+  );
+  const handlePinClick = useCallback(
+    (event: ReactMouseEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      onPin(rowThreadRef);
+    },
+    [onPin, rowThreadRef],
   );
   const handleSnoozePreset = useCallback(
     (preset: Pick<SnoozePreset, "snoozedUntil">) => {
@@ -1763,6 +1788,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     props.tabCount > 1 ? (
       <SidebarTabCountBadge
         count={props.tabCount}
+        toggleCount={props.tabToggleCount}
         open={props.tabsOpen}
         onToggle={onToggleTabs ? handleToggleTabsClick : undefined}
       />
@@ -1775,6 +1801,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     ) : null;
   const showPin =
     props.isPinned && (!sortable?.isDragging || (props.dragOverPinned && props.dropVerb === null));
+  // Unpinned rows offer pin beside the other hover actions. Pinned rows keep
+  // a trailing marker instead, so the two never show at once.
+  const showUnpinnedPinAction = props.pinningSupported && !props.isPinned;
   const pinIndicator = showPin ? (
     props.pinningSupported && !sortable?.isDragging ? (
       <Tooltip>
@@ -1784,7 +1813,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
               type="button"
               aria-label="Unpin thread"
               onClick={handleUnpinClick}
-              className="group/unpin inline-flex cursor-pointer items-center rounded-sm text-muted-foreground/65 outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+              className={cn(
+                "group/unpin inline-flex cursor-pointer items-center rounded-sm text-muted-foreground/65 outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
+                variant === "card" && "-mr-1 self-center px-1.5",
+              )}
             />
           }
         >
@@ -1805,7 +1837,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       <PinIcon
         aria-label="Pinned"
         role="img"
-        className="size-3 shrink-0 text-muted-foreground/65"
+        className={cn(
+          "size-3 shrink-0 text-muted-foreground/65",
+          variant === "card" && "-mr-1 ml-1.5 self-center",
+        )}
       />
     )
   ) : null;
@@ -2031,154 +2066,183 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
               ) : (
                 <span className="flex-1" />
               )}
-              {pinIndicator}
-              {/* The visible state owns this slot's width: status at rest,
-                  actions on hover/keyboard focus or while the popover is open. Keeping
-                  the hidden state out of flow lets the project label reclaim
-                  space without either state overlapping it. */}
+              {/* Status at rest, hover actions once they fit. The pin is the
+                  trailing item, outside that swap, so it cannot slide sideways. */}
               {sortable?.isDragging ? (
-                dragDestination
+                <>
+                  {dragDestination}
+                  {pinIndicator}
+                </>
               ) : (
                 <span
                   className={cn(
-                    "group/sidebar-status-slot relative ml-auto flex h-5 min-w-8 shrink-0 items-stretch justify-end text-xs",
+                    "ml-auto flex h-5 shrink-0 items-stretch justify-end text-xs",
                     props.sweepAction !== null && "hidden",
                   )}
                 >
-                  {/* Read-only status labels yield to the hover actions. Woke is
-                    itself an action, so it stays pointer-enabled and visible
-                    while the other controls appear beside it. */}
-                  <span
-                    className={cn(
-                      isWokeStatus
-                        ? "pointer-events-auto"
-                        : "pointer-events-none group-has-[:focus-visible]/sidebar-status-slot:absolute group-has-[:focus-visible]/sidebar-status-slot:right-0 group-has-[:focus-visible]/sidebar-status-slot:opacity-0 group-any-hover/sidebar-row:absolute group-any-hover/sidebar-row:right-0 group-any-hover/sidebar-row:opacity-0",
-                      "flex items-center self-center justify-self-end tabular-nums text-secondary-label transition-opacity",
-                      snoozeMenuOpen && "pointer-events-none absolute right-0 opacity-0",
-                    )}
-                  >
-                    {headerStatus ? (
-                      isWokeStatus ? (
-                        <Tooltip>
-                          <TooltipTrigger
-                            render={
-                              <button
-                                type="button"
-                                aria-label="Dismiss Woke notification"
-                                onClick={handleAcknowledgeWokeClick}
-                                className={cn(
-                                  "inline-flex cursor-pointer items-center gap-1 rounded-sm font-medium outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring",
-                                  headerStatus.className,
-                                )}
-                              >
-                                <AlarmClockIcon aria-hidden className="size-4 shrink-0" />
-                                <span role="status">{headerStatus.label}</span>
-                              </button>
-                            }
-                          />
-                          <TooltipPopup side="top">Dismiss Woke notification</TooltipPopup>
-                        </Tooltip>
-                      ) : (
-                        <span
-                          className={cn(
-                            "inline-flex items-center gap-1 font-medium",
-                            headerStatus.className,
-                          )}
-                        >
-                          <SidebarTopStatusIcon
-                            icon={headerStatus.icon}
-                            className="size-4 shrink-0"
-                          />
-                          {/* The label alone is the live region: a role="status"
-                            wrapper around the ticking duration would make
-                            screen readers announce every second. */}
-                          <span role="status">{headerStatus.label}</span>
-                          {status === "working" ? (
-                            <span aria-hidden>
-                              <WorkingDuration startedAt={resolveWorkingStartedAt(thread)} />
-                            </span>
-                          ) : null}
-                        </span>
-                      )
-                    ) : unifyTabs ? null : (
-                      threadTimeLabel(thread)
-                    )}
-                  </span>
-                  {props.settlementSupported || showSnoozeButton || hasUnsentDraft || onNewTab ? (
+                  <span className="group/sidebar-status-slot relative flex h-5 min-w-8 items-stretch justify-end">
+                    {/* Read-only status labels yield to the hover actions. Woke is
+                      itself an action, so it stays pointer-enabled and visible
+                      while the other controls appear beside it. */}
                     <span
                       className={cn(
-                        // focus-visible, not focus-within: a mouse click leaves
-                        // the Settle button focused, and a plain focus-within
-                        // would keep the controls pinned over the status label
-                        // once the pointer moves away (e.g. after a failed
-                        // settle) instead of cross-fading back.
-                        "pointer-events-none absolute inset-y-0 right-0 flex items-stretch opacity-0 transition-opacity has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:static has-[:focus-visible]:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:static group-any-hover/sidebar-row:opacity-100",
-                        snoozeMenuOpen && "pointer-events-auto static opacity-100",
+                        isWokeStatus
+                          ? "pointer-events-auto"
+                          : "pointer-events-none group-has-[:focus-visible]/sidebar-status-slot:absolute group-has-[:focus-visible]/sidebar-status-slot:right-0 group-has-[:focus-visible]/sidebar-status-slot:opacity-0 group-any-hover/sidebar-row:absolute group-any-hover/sidebar-row:right-0 group-any-hover/sidebar-row:opacity-0",
+                        "flex items-center self-center justify-self-end tabular-nums text-secondary-label transition-opacity",
+                        snoozeMenuOpen && "pointer-events-none absolute right-0 opacity-0",
                       )}
                     >
-                      {hasUnsentDraft ? (
-                        <Tooltip>
-                          <TooltipTrigger
-                            render={
-                              <button
-                                type="button"
-                                aria-label="Discard draft"
-                                onClick={handleDiscardDraftClick}
-                                className="inline-flex cursor-pointer items-center rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
-                              />
-                            }
+                      {headerStatus ? (
+                        isWokeStatus ? (
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <button
+                                  type="button"
+                                  aria-label="Dismiss Woke notification"
+                                  onClick={handleAcknowledgeWokeClick}
+                                  className={cn(
+                                    "inline-flex cursor-pointer items-center gap-1 rounded-sm font-medium outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring",
+                                    headerStatus.className,
+                                  )}
+                                >
+                                  <AlarmClockIcon aria-hidden className="size-4 shrink-0" />
+                                  <span role="status">{headerStatus.label}</span>
+                                </button>
+                              }
+                            />
+                            <TooltipPopup side="top">Dismiss Woke notification</TooltipPopup>
+                          </Tooltip>
+                        ) : (
+                          <span
+                            className={cn(
+                              "inline-flex items-center gap-1 font-medium",
+                              headerStatus.className,
+                            )}
                           >
-                            <XIcon className="size-3.5" />
-                          </TooltipTrigger>
-                          <TooltipPopup side="top">Discard draft</TooltipPopup>
-                        </Tooltip>
-                      ) : null}
-                      {onNewTab ? (
-                        <Tooltip>
-                          <TooltipTrigger
-                            render={
-                              <button
-                                type="button"
-                                aria-label="New tab"
-                                onClick={handleNewTabClick}
-                                className="inline-flex cursor-pointer items-center rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
-                              />
-                            }
-                          >
-                            <PlusIcon className="size-3.5" />
-                          </TooltipTrigger>
-                          <TooltipPopup side="top">New tab</TooltipPopup>
-                        </Tooltip>
-                      ) : null}
-                      {showSnoozeButton ? (
-                        <SnoozeMenuButton
-                          open={snoozeMenuOpen}
-                          onOpenChange={setSnoozeMenuOpen}
-                          onSnooze={handleSnoozePreset}
-                          timestampFormat={props.timestampFormat}
-                        />
-                      ) : null}
-                      {props.settlementSupported ? (
-                        <Tooltip>
-                          <TooltipTrigger
-                            render={
-                              <button
-                                type="button"
-                                aria-label="Settle thread"
-                                onClick={handleSettleClick}
-                                onPointerDown={handleActionPointerDown}
-                                className="-mr-1 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
-                              />
-                            }
-                          >
-                            <CheckIcon className="size-3.5" />
-                            Settle
-                          </TooltipTrigger>
-                          <TooltipPopup>Settle thread</TooltipPopup>
-                        </Tooltip>
-                      ) : null}
+                            <SidebarTopStatusIcon
+                              icon={headerStatus.icon}
+                              className="size-4 shrink-0"
+                            />
+                            {/* The label alone is the live region: a role="status"
+                              wrapper around the ticking duration would make
+                              screen readers announce every second. */}
+                            <span role="status">{headerStatus.label}</span>
+                            {status === "working" ? (
+                              <span aria-hidden>
+                                <WorkingDuration startedAt={resolveWorkingStartedAt(thread)} />
+                              </span>
+                            ) : null}
+                          </span>
+                        )
+                      ) : unifyTabs ? null : (
+                        threadTimeLabel(thread)
+                      )}
                     </span>
-                  ) : null}
+                    {props.settlementSupported ||
+                    showSnoozeButton ||
+                    hasUnsentDraft ||
+                    onNewTab ||
+                    showUnpinnedPinAction ? (
+                      <span
+                        className={cn(
+                          // focus-visible, not focus-within: a mouse click leaves
+                          // the Settle button focused, and a plain focus-within
+                          // would keep the controls pinned over the status label
+                          // once the pointer moves away (e.g. after a failed
+                          // settle) instead of cross-fading back.
+                          "pointer-events-none absolute inset-y-0 right-0 flex items-stretch opacity-0 transition-opacity has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:static has-[:focus-visible]:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:static group-any-hover/sidebar-row:opacity-100",
+                          snoozeMenuOpen && "pointer-events-auto static opacity-100",
+                        )}
+                      >
+                        {hasUnsentDraft ? (
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <button
+                                  type="button"
+                                  aria-label="Discard draft"
+                                  onClick={handleDiscardDraftClick}
+                                  className="inline-flex cursor-pointer items-center rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
+                                />
+                              }
+                            >
+                              <XIcon className="size-3.5" />
+                            </TooltipTrigger>
+                            <TooltipPopup side="top">Discard draft</TooltipPopup>
+                          </Tooltip>
+                        ) : null}
+                        {onNewTab ? (
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <button
+                                  type="button"
+                                  aria-label="New tab"
+                                  onClick={handleNewTabClick}
+                                  className="inline-flex cursor-pointer items-center rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
+                                />
+                              }
+                            >
+                              <PlusIcon className="size-3.5" />
+                            </TooltipTrigger>
+                            <TooltipPopup side="top">New tab</TooltipPopup>
+                          </Tooltip>
+                        ) : null}
+                        {showSnoozeButton ? (
+                          <SnoozeMenuButton
+                            open={snoozeMenuOpen}
+                            onOpenChange={setSnoozeMenuOpen}
+                            onSnooze={handleSnoozePreset}
+                            timestampFormat={props.timestampFormat}
+                          />
+                        ) : null}
+                        {props.settlementSupported ? (
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <button
+                                  type="button"
+                                  aria-label="Settle thread"
+                                  onClick={handleSettleClick}
+                                  onPointerDown={handleActionPointerDown}
+                                  className={cn(
+                                    "inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground",
+                                    // The pin owns the trailing inset when it is present.
+                                    !showPin && !showUnpinnedPinAction && "-mr-1",
+                                  )}
+                                />
+                              }
+                            >
+                              <CheckIcon className="size-3.5" />
+                              Settle
+                            </TooltipTrigger>
+                            <TooltipPopup>Settle thread</TooltipPopup>
+                          </Tooltip>
+                        ) : null}
+                        {showUnpinnedPinAction ? (
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <button
+                                  type="button"
+                                  aria-label="Pin thread"
+                                  onClick={handlePinClick}
+                                  onPointerDown={handleActionPointerDown}
+                                  className="-mr-1 inline-flex cursor-pointer items-center rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
+                                />
+                              }
+                            >
+                              <PinIcon className="size-3.5" />
+                            </TooltipTrigger>
+                            <TooltipPopup>Pin thread</TooltipPopup>
+                          </Tooltip>
+                        ) : null}
+                      </span>
+                    ) : null}
+                  </span>
+                  {pinIndicator}
                 </span>
               )}
               {/* A sweep hides the slot rather than unmounting it, so the
@@ -2303,6 +2367,7 @@ function SidebarRenameInput(props: {
 /** The group's tab count. With `onToggle`, it opens and folds that group's tabs. */
 function SidebarTabCountBadge(props: {
   count: number;
+  toggleCount: number;
   open: boolean;
   onToggle?: ((event: ReactMouseEvent) => void) | undefined;
 }) {
@@ -2317,7 +2382,7 @@ function SidebarTabCountBadge(props: {
       </span>
     );
   }
-  const label = `${props.open ? "Hide" : "Show"} ${props.count} tabs`;
+  const label = sidebarTabToggleLabel(props.open, props.toggleCount);
   return (
     <Tooltip>
       <TooltipTrigger
@@ -2481,14 +2546,118 @@ function SidebarTabList(props: {
 }
 
 /**
+ * The tabs folded behind a group's collapsed "n more" row, in the same order and with the same
+ * title, status, time, and provider as the list they would join. Clicking one opens it.
+ */
+function SidebarTabOverflowPreview(props: {
+  hidden: readonly SidebarThreadSummary[];
+  providerEntriesByEnvironment: ReadonlyMap<string, ReadonlyMap<string, ProviderInstanceEntry>>;
+  tabSortOrder: SidebarTabSortOrder;
+  openedAtByThreadKey: Readonly<Record<string, number>>;
+  onOpenTab: (threadRef: ScopedThreadRef) => void;
+}) {
+  const lastVisitedAtById = useUiStateStore((state) => state.threadLastVisitedAtById);
+  return (
+    <ul
+      aria-label={`${props.hidden.length} more tabs`}
+      data-testid="sidebar-tab-overflow-preview"
+      className="flex max-h-80 flex-col gap-px overflow-y-auto overscroll-contain"
+    >
+      {props.hidden.map((thread) => {
+        const threadKey = sidebarThreadKey(thread);
+        const entries = props.providerEntriesByEnvironment.get(thread.environmentId);
+        const instanceId = thread.runtime?.providerInstanceId ?? thread.modelSelection.instanceId;
+        const providerEntry = entries?.get(instanceId) ?? null;
+        const showInstanceBadge =
+          providerEntry !== null &&
+          entries !== undefined &&
+          shouldShowInstanceBadge(providerEntry, entries.values());
+        const isUnread = hasUnseenCompletion({
+          ...thread,
+          lastVisitedAt: resolveThreadLastVisitedAt(
+            thread.lastVisitedAt,
+            lastVisitedAtById[threadKey],
+          ),
+        });
+        const status = resolveSidebarThreadStatus(thread);
+        const topStatus = resolveSidebarTopStatus(status, false, isUnread);
+        const shouldRecede = shouldRecedeSidebarThread({
+          status,
+          isUnread,
+          isWoke: false,
+          isActive: false,
+          isSelected: false,
+        });
+        const timeLabel =
+          tabSortTimeLabel(thread, props.tabSortOrder, props.openedAtByThreadKey[threadKey]) ??
+          threadTimeLabel(thread);
+        return (
+          <li key={threadKey} className="list-none">
+            <button
+              type="button"
+              onClick={() => props.onOpenTab(scopeThreadRef(thread.environmentId, thread.id))}
+              className="flex h-8 w-full cursor-pointer items-center gap-2 rounded-md px-2 text-left outline-none hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+            >
+              <span
+                className={cn(
+                  "min-w-0 flex-1 truncate text-sm",
+                  shouldRecede
+                    ? "text-secondary-label"
+                    : isUnread || status === "input"
+                      ? "text-foreground"
+                      : "text-foreground/85",
+                )}
+              >
+                {thread.title}
+              </span>
+              {topStatus ? (
+                <span
+                  className={cn(
+                    "inline-flex shrink-0 items-center gap-1 text-xs font-medium",
+                    topStatus.className,
+                  )}
+                >
+                  <SidebarTopStatusIcon icon={topStatus.icon} className="size-3.5 shrink-0" />
+                  <span>{topStatus.label}</span>
+                </span>
+              ) : null}
+              <span className="shrink-0 text-xs tabular-nums text-secondary-label">
+                {timeLabel}
+              </span>
+              {providerEntry ? (
+                <span aria-hidden className="inline-flex shrink-0 items-center">
+                  <ProviderInstanceIcon
+                    driverKind={providerEntry.driverKind}
+                    displayName={providerEntry.displayName}
+                    accentColor={providerEntry.accentColor}
+                    showBadge={showInstanceBadge}
+                    iconClassName="size-3.5 opacity-60"
+                    badgeClassName="right-[-0.1875rem] bottom-[-0.1875rem] h-3 min-w-3 px-0.5 text-5xs"
+                  />
+                </span>
+              ) : null}
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/**
  * Stands in for a group's tabs past the limit. It names what it hides that needs you, and the
- * providers behind them, so folding tabs away never hides work in progress.
+ * providers behind them, so folding tabs away never hides work in progress. Hovering the
+ * collapsed row lists those tabs.
  */
 function SidebarTabOverflowRow(props: {
   hidden: readonly SidebarThreadSummary[];
   expanded: boolean;
   providerEntriesByEnvironment: ReadonlyMap<string, ReadonlyMap<string, ProviderInstanceEntry>>;
+  tabSortOrder: SidebarTabSortOrder;
+  openedAtByThreadKey: Readonly<Record<string, number>>;
   onToggle: () => void;
+  onOpenTab: (threadRef: ScopedThreadRef) => void;
+  onPreviewOpenChange?: ((open: boolean) => void) | undefined;
 }) {
   const { hidden, providerEntriesByEnvironment } = props;
   const summary = useMemo(() => {
@@ -2522,46 +2691,112 @@ function SidebarTabOverflowRow(props: {
     };
   }, [hidden, providerEntriesByEnvironment]);
   const label = props.expanded ? "Show less" : `${hidden.length} more`;
+  const onPreviewOpenChangeRef = useRef(props.onPreviewOpenChange);
+  onPreviewOpenChangeRef.current = props.onPreviewOpenChange;
+  const previewOpenRef = useRef(false);
+  // The card unmounts when the row expands or the group leaves the list. Release the sort hold
+  // if that happens while the preview is open and the pointer is no longer over the list.
+  useEffect(() => {
+    if (props.expanded && previewOpenRef.current) {
+      previewOpenRef.current = false;
+      onPreviewOpenChangeRef.current?.(false);
+    }
+  }, [props.expanded]);
+  useEffect(
+    () => () => {
+      if (!previewOpenRef.current) return;
+      previewOpenRef.current = false;
+      onPreviewOpenChangeRef.current?.(false);
+    },
+    [],
+  );
+  const buttonClassName =
+    "flex h-7 w-full cursor-pointer items-center gap-1.5 rounded-md px-2 text-left text-secondary-label text-xs outline-none hover:bg-sidebar-row-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring";
+  const buttonBody = (
+    <>
+      {props.expanded ? (
+        <ChevronUpIcon aria-hidden className="size-3 shrink-0" />
+      ) : (
+        <ChevronDownIcon aria-hidden className="size-3 shrink-0" />
+      )}
+      <span className="shrink-0">{label}</span>
+      {!props.expanded && summary.topStatus ? (
+        <span
+          className={cn(
+            "inline-flex min-w-0 items-center gap-1 truncate font-medium",
+            summary.topStatus.className,
+          )}
+        >
+          <SidebarTopStatusIcon icon={summary.topStatus.icon} className="size-3 shrink-0" />
+          {summary.statusCount} {summary.topStatus.label.toLowerCase()}
+        </span>
+      ) : null}
+      {!props.expanded && summary.providers.length > 0 ? (
+        <span aria-hidden className="ml-auto inline-flex shrink-0 items-center gap-1">
+          {summary.providers.map((provider) => (
+            <ProviderInstanceIcon
+              key={provider.driverKind}
+              driverKind={provider.driverKind}
+              displayName={provider.displayName}
+              showBadge={false}
+              iconClassName="size-3 opacity-45"
+            />
+          ))}
+        </span>
+      ) : null}
+    </>
+  );
+  const showPreview = !props.expanded && hidden.length > 0;
   return (
     <li className="list-none">
-      <button
-        type="button"
-        data-testid="sidebar-tab-overflow"
-        aria-expanded={props.expanded}
-        onClick={props.onToggle}
-        className="flex h-7 w-full cursor-pointer items-center gap-1.5 rounded-md px-2 text-left text-secondary-label text-xs outline-none hover:bg-sidebar-row-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-      >
-        {props.expanded ? (
-          <ChevronUpIcon aria-hidden className="size-3 shrink-0" />
-        ) : (
-          <ChevronDownIcon aria-hidden className="size-3 shrink-0" />
-        )}
-        <span className="shrink-0">{label}</span>
-        {!props.expanded && summary.topStatus ? (
-          <span
-            className={cn(
-              "inline-flex min-w-0 items-center gap-1 truncate font-medium",
-              summary.topStatus.className,
-            )}
-          >
-            <SidebarTopStatusIcon icon={summary.topStatus.icon} className="size-3 shrink-0" />
-            {summary.statusCount} {summary.topStatus.label.toLowerCase()}
-          </span>
-        ) : null}
-        {!props.expanded && summary.providers.length > 0 ? (
-          <span aria-hidden className="ml-auto inline-flex shrink-0 items-center gap-1">
-            {summary.providers.map((provider) => (
-              <ProviderInstanceIcon
-                key={provider.driverKind}
-                driverKind={provider.driverKind}
-                displayName={provider.displayName}
-                showBadge={false}
-                iconClassName="size-3 opacity-45"
+      {showPreview ? (
+        <PreviewCard
+          onOpenChange={(open) => {
+            previewOpenRef.current = open;
+            props.onPreviewOpenChange?.(open);
+          }}
+        >
+          <PreviewCardTrigger
+            delay={400}
+            closeDelay={150}
+            render={
+              <button
+                type="button"
+                data-testid="sidebar-tab-overflow"
+                aria-expanded={false}
+                onClick={props.onToggle}
+                className={buttonClassName}
               />
-            ))}
-          </span>
-        ) : null}
-      </button>
+            }
+          >
+            {buttonBody}
+          </PreviewCardTrigger>
+          <PreviewCardPopup
+            side="right"
+            align="start"
+            sideOffset={4}
+            className="w-80 max-w-[calc(100vw-2rem)] p-1"
+          >
+            <SidebarTabOverflowPreview
+              hidden={hidden}
+              providerEntriesByEnvironment={providerEntriesByEnvironment}
+              tabSortOrder={props.tabSortOrder}
+              openedAtByThreadKey={props.openedAtByThreadKey}
+              onOpenTab={props.onOpenTab}
+            />
+          </PreviewCardPopup>
+        </PreviewCard>
+      ) : (
+        <button
+          type="button"
+          data-testid="sidebar-tab-overflow"
+          aria-expanded={props.expanded}
+          onClick={props.onToggle}
+          className={buttonClassName}
+        >
+          {buttonBody}
+        </button>
+      )}
     </li>
   );
 }
@@ -3239,8 +3474,8 @@ export default function Sidebar() {
   // The selection lives in the persisted UI store next to the other sidebar
   // project preferences, so routes that unmount the sidebar (Settings) and
   // app restarts keep it.
-  const projectScopeKey = useUiStateStore((store) => store.sidebarProjectScopeKey);
-  const setProjectScopeKey = useUiStateStore((store) => store.setSidebarProjectScopeKey);
+  const projectScopeKeys = useUiStateStore((store) => store.sidebarProjectScopeKeys);
+  const setProjectScopeKeys = useUiStateStore((store) => store.setSidebarProjectScopeKeys);
   // {value, label} items let Base UI drive the combobox selection contract
   // while the popup search filters the same collection.
   const projectScopeItems = useMemo(
@@ -3264,11 +3499,14 @@ export default function Sidebar() {
     () => new Map(projectGroups.map((project) => [project.projectKey, project] as const)),
     [projectGroups],
   );
-  const selectedProjectScopeItem = useMemo(
-    () =>
-      projectScopeItems.find((item) => item.value === (projectScopeKey ?? "all")) ??
-      projectScopeItems[0]!,
-    [projectScopeItems, projectScopeKey],
+  // "All projects" is the selected row exactly when nothing is scoped.
+  const selectedProjectScopeValues = useMemo(
+    () => new Set(projectScopeKeys.length === 0 ? ["all"] : projectScopeKeys),
+    [projectScopeKeys],
+  );
+  const selectedProjectScopeItems = useMemo(
+    () => projectScopeItems.filter((item) => selectedProjectScopeValues.has(item.value)),
+    [projectScopeItems, selectedProjectScopeValues],
   );
   const [projectScopeMenuState, dispatchProjectScopeMenu] = useReducer(
     reduceSidebarProjectScopeMenuState,
@@ -3291,33 +3529,36 @@ export default function Sidebar() {
       }),
     [projectScopeFilter, projectScopeItems, projectScopeMenuState.query],
   );
-  const scopedProjectGroup = useMemo(
+  const scopedProjectGroups = useMemo(
     () =>
-      projectScopeKey === null
-        ? null
-        : (projectGroups.find((project) => project.projectKey === projectScopeKey) ?? null),
-    [projectGroups, projectScopeKey],
+      projectScopeKeys.flatMap((key) => {
+        const project = projectGroupByScopeKey.get(key);
+        return project ? [project] : [];
+      }),
+    [projectGroupByScopeKey, projectScopeKeys],
   );
   const scopedProjectKeys = useMemo(
     () =>
-      scopedProjectGroup === null
+      scopedProjectGroups.length === 0
         ? null
         : new Set(
-            scopedProjectGroup.memberProjectRefs.map(
-              (projectRef) => `${projectRef.environmentId}:${projectRef.projectId}`,
+            scopedProjectGroups.flatMap((project) =>
+              project.memberProjectRefs.map(
+                (projectRef) => `${projectRef.environmentId}:${projectRef.projectId}`,
+              ),
             ),
           ),
-    [scopedProjectGroup],
+    [scopedProjectGroups],
   );
-  // A persisted scope whose project is gone falls back to all projects, but
-  // only after every catalog environment has a live project snapshot. Cached
-  // or disconnected environments cannot establish that the project is gone.
+  // Scoped projects that are gone drop out of the scope, but only after every
+  // catalog environment has a live project snapshot. Cached or disconnected
+  // environments cannot establish that a project is gone.
   const allProjectSnapshotsReady = useAllEnvironmentProjectSnapshotsReady();
   useEffect(() => {
-    if (projectScopeKey !== null && allProjectSnapshotsReady && scopedProjectGroup === null) {
-      setProjectScopeKey(null);
+    if (allProjectSnapshotsReady && scopedProjectGroups.length < projectScopeKeys.length) {
+      setProjectScopeKeys(scopedProjectGroups.map((project) => project.projectKey));
     }
-  }, [allProjectSnapshotsReady, projectScopeKey, scopedProjectGroup, setProjectScopeKey]);
+  }, [allProjectSnapshotsReady, projectScopeKeys, scopedProjectGroups, setProjectScopeKeys]);
   // Count-only subscription: the parent needs "are there draft rows" for the
   // empty state, while SidebarDraftBlock owns the per-keystroke content
   // subscription. Selecting a number keeps typing in a draft composer from
@@ -3348,7 +3589,7 @@ export default function Sidebar() {
   // hidden now, and bulk actions must never count or touch invisible rows.
   useEffect(() => {
     clearSelection();
-  }, [clearSelection, projectScopeKey]);
+  }, [clearSelection, projectScopeKeys]);
 
   const openProjectSettings = useCallback(
     (projectGroup: SidebarProjectSnapshot) => {
@@ -3643,7 +3884,7 @@ export default function Sidebar() {
   // filter context changes so a scope/search flip never inherits a deep
   // page state.
   const [settledVisibleCount, setSettledVisibleCount] = useState(SETTLED_TAIL_INITIAL_COUNT);
-  const settledResetKey = projectScopeKey ?? "all";
+  const settledResetKey = projectScopeKeys.join("\n") || "all";
   const lastSettledResetKeyRef = useRef(settledResetKey);
   if (lastSettledResetKeyRef.current !== settledResetKey) {
     lastSettledResetKeyRef.current = settledResetKey;
@@ -3910,8 +4151,10 @@ export default function Sidebar() {
   // Settled threads are live shells, so opening one is plain navigation:
   // history stays readable without un-settling, and sending a message or
   // starting a session un-settles server-side.
+  const tabThreadGroupsRef = useRef(tabThreadGroups);
+  tabThreadGroupsRef.current = tabThreadGroups;
   const navigateToThread = useCallback(
-    (threadRef: ScopedThreadRef) => {
+    (threadRef: ScopedThreadRef, keepOpenGroupTab = false) => {
       if (useThreadSelectionStore.getState().selectedThreadKeys.size > 0) {
         clearSelection();
       }
@@ -3919,15 +4162,24 @@ export default function Sidebar() {
       if (isMobile) {
         setOpenMobile(false);
       }
+      const target = keepOpenGroupTab
+        ? (parseScopedThreadKey(
+            threadTabGroupHeaderTarget(
+              scopedThreadKey(threadRef),
+              routeThreadKeyRef.current,
+              tabThreadGroupsRef.current,
+              hiddenTabThreads,
+              useThreadTabRecencyStore.getState().openedAtByThreadKey,
+            ),
+          ) ?? threadRef)
+        : resolveThreadTabTarget(threadRef, hiddenTabThreads);
       return router.navigate({
         to: "/$environmentId/$threadId",
-        params: buildThreadRouteParams(resolveThreadTabTarget(threadRef, hiddenTabThreads)),
+        params: buildThreadRouteParams(target),
       });
     },
     [clearSelection, hiddenTabThreads, isMobile, router, setOpenMobile, setSelectionAnchor],
   );
-  const tabThreadGroupsRef = useRef(tabThreadGroups);
-  tabThreadGroupsRef.current = tabThreadGroups;
   // New tabs join the clicked thread's group and start on its model.
   const handleNewTab = useCallback(
     (threadRef: ScopedThreadRef) => {
@@ -4089,7 +4341,7 @@ export default function Sidebar() {
   );
 
   const handleThreadClick = useCallback(
-    (event: ReactMouseEvent, threadRef: ScopedThreadRef) => {
+    (event: ReactMouseEvent, threadRef: ScopedThreadRef, keepOpenGroupTab = false) => {
       if (isSidebarNestedLinkClick(event.target)) return;
       const isMac = isMacPlatform(navigator.platform);
       const isModClick = isMac ? event.metaKey : event.ctrlKey;
@@ -4108,7 +4360,7 @@ export default function Sidebar() {
         return;
       }
       setExpandedTabRowKey(null);
-      navigateToThread(threadRef);
+      navigateToThread(threadRef, keepOpenGroupTab);
     },
     [navigateToThread, rangeSelectTo, toggleThreadSelection],
   );
@@ -5366,7 +5618,9 @@ export default function Sidebar() {
               projectFilter: threadProjectGroup
                 ? {
                     label: threadProjectGroup.displayName,
-                    isActive: projectScopeKey === threadProjectGroup.projectKey,
+                    isActive:
+                      projectScopeKeys.length === 1 &&
+                      projectScopeKeys[0] === threadProjectGroup.projectKey,
                   }
                 : null,
               tabs: tabEnvironmentIds.has(thread.environmentId)
@@ -5406,13 +5660,15 @@ export default function Sidebar() {
         }
         switch (clicked.value) {
           case "filter-by-project":
-            // This item is the only scope control here, so picking the
-            // already-scoped project again is the way back to all projects.
+            // This item is the only scope control here, so it narrows the
+            // list to this one project, and picking it again while that is
+            // the whole scope is the way back to all projects.
             if (threadProjectGroup) {
-              setProjectScopeKey(
-                projectScopeKey === threadProjectGroup.projectKey
-                  ? null
-                  : threadProjectGroup.projectKey,
+              setProjectScopeKeys(
+                projectScopeKeys.length === 1 &&
+                  projectScopeKeys[0] === threadProjectGroup.projectKey
+                  ? []
+                  : [threadProjectGroup.projectKey],
               );
             }
             return;
@@ -5617,11 +5873,11 @@ export default function Sidebar() {
       isMobile,
       markThreadUnread,
       openProjectSettings,
-      projectScopeKey,
+      projectScopeKeys,
       projectByKey,
       serverConfigs,
       setOpenMobile,
-      setProjectScopeKey,
+      setProjectScopeKeys,
       setThreadAutoSettle,
       splitViewActions,
       startThreadRename,
@@ -5649,8 +5905,14 @@ export default function Sidebar() {
   }, []);
   const tabSortOrderRef = useRef(tabSortOrder);
   tabSortOrderRef.current = tabSortOrder;
-  const handleTabPointerRest = useCallback((rowKey: string, resting: boolean) => {
-    if (!resting) {
+  // The list's pointer and the portaled "n more" preview both count as resting, so a live
+  // sort does not reshuffle the tabs while you are reading or clicking the preview.
+  const tabListPointerRowRef = useRef<string | null>(null);
+  const tabOverflowPreviewRowRef = useRef<string | null>(null);
+  const syncTabOrderHold = useCallback((rowKey: string) => {
+    const holding =
+      tabListPointerRowRef.current === rowKey || tabOverflowPreviewRowRef.current === rowKey;
+    if (!holding) {
       setHeldTabOrder((held) => (held?.rowKey === rowKey ? null : held));
       return;
     }
@@ -5659,6 +5921,24 @@ export default function Sidebar() {
     const ordered = tabLayoutByRowKeyRef.current.get(rowKey)?.ordered;
     if (ordered) setHeldTabOrder({ rowKey, keys: ordered.map(sidebarThreadKey) });
   }, []);
+  const handleTabPointerRest = useCallback(
+    (rowKey: string, resting: boolean) => {
+      if (resting) tabListPointerRowRef.current = rowKey;
+      else if (tabListPointerRowRef.current === rowKey) tabListPointerRowRef.current = null;
+      syncTabOrderHold(rowKey);
+    },
+    [syncTabOrderHold],
+  );
+  const handleTabOverflowPreview = useCallback(
+    (rowKey: string, open: boolean) => {
+      const previous = tabOverflowPreviewRowRef.current;
+      if (open) tabOverflowPreviewRowRef.current = rowKey;
+      else if (previous === rowKey) tabOverflowPreviewRowRef.current = null;
+      if (previous !== null && previous !== rowKey) syncTabOrderHold(previous);
+      syncTabOrderHold(rowKey);
+    },
+    [syncTabOrderHold],
+  );
   const threadsRef = useRef(threads);
   threadsRef.current = threads;
   // A drop in a timed order switches to Manual, starting from the order you were looking at.
@@ -5856,6 +6136,7 @@ export default function Sidebar() {
               hasProjects={projectGroups.length > 0}
               projectScope={
                 <Combobox
+                  multiple
                   items={projectScopeItems}
                   filteredItems={filteredProjectScopeItems}
                   autoHighlight
@@ -5869,32 +6150,67 @@ export default function Sidebar() {
                   onItemHighlighted={(item) => {
                     highlightedProjectScopeKeyRef.current = item?.value ?? null;
                   }}
-                  value={selectedProjectScopeItem}
-                  onValueChange={(item) => {
+                  value={selectedProjectScopeItems}
+                  onValueChange={(items) => {
                     if (suppressNextScopeChangeRef.current) {
                       suppressNextScopeChangeRef.current = false;
                       return;
                     }
-                    if (!item) return;
-                    setProjectScopeKey(item.value === "all" ? null : item.value);
+                    setProjectScopeKeys(
+                      resolveSidebarProjectScopeKeys({
+                        current: projectScopeKeys,
+                        next: items.map((item) => item.value),
+                      }),
+                    );
                   }}
+                  inputValue={projectScopeMenuState.query}
+                  onInputValueChange={(query) =>
+                    dispatchProjectScopeMenu({ type: "query-changed", query })
+                  }
                 >
                   <ComboboxTrigger
                     render={
                       <SidebarHeaderIconButton
                         label={
-                          scopedProjectGroup
-                            ? `Filter threads by project: ${scopedProjectGroup.displayName}`
+                          scopedProjectGroups.length > 0
+                            ? `Filter threads by project: ${scopedProjectGroups
+                                .map((project) => project.displayName)
+                                .join(", ")}`
                             : "Filter threads by project"
+                        }
+                        tooltip={
+                          scopedProjectGroups.length > 1 ? (
+                            <span className="flex flex-col gap-1">
+                              <span className="text-muted-foreground">Filtering threads by</span>
+                              {scopedProjectGroups.map((project) => (
+                                <span
+                                  key={project.projectKey}
+                                  className="flex items-center gap-1.5"
+                                >
+                                  <ProjectFavicon project={project} className="size-3.5" />
+                                  {project.displayName}
+                                </span>
+                              ))}
+                            </span>
+                          ) : undefined
                         }
                       />
                     }
                   >
-                    {scopedProjectGroup ? (
+                    {scopedProjectGroups.length > 1 ? (
+                      // Several scoped projects get a generic icon with a count; the
+                      // tooltip lists them.
+                      <span className="relative flex shrink-0">
+                        <FoldersIcon className="size-4" />
+                        <span className="absolute -right-1.5 -bottom-1 min-w-3 rounded-full bg-primary px-0.5 text-center text-3xs leading-3 font-semibold text-primary-foreground tabular-nums">
+                          {scopedProjectGroups.length}
+                        </span>
+                      </span>
+                    ) : scopedProjectGroups[0] ? (
                       // Wrapped so the button's direct-child svg color rule cannot override
                       // a project's own icon color.
                       <span className="flex shrink-0">
-                        <ProjectFavicon project={scopedProjectGroup} className="size-4" />
+                        <ProjectFavicon project={scopedProjectGroups[0]} className="size-4" />
                       </span>
                     ) : (
                       <FolderIcon className="size-4" />
@@ -5912,7 +6228,6 @@ export default function Sidebar() {
                     <ComboboxSearchInput
                       aria-label="Search projects"
                       placeholder="Search projects..."
-                      value={projectScopeMenuState.query}
                       onKeyDown={(event) => {
                         if (
                           event.defaultPrevented ||
@@ -5930,12 +6245,6 @@ export default function Sidebar() {
                         const project = scopeKey ? projectGroupByScopeKey.get(scopeKey) : null;
                         if (project) handleProjectSettings(event, project);
                       }}
-                      onChange={(event) =>
-                        dispatchProjectScopeMenu({
-                          type: "query-changed",
-                          query: event.target.value,
-                        })
-                      }
                     />
                     <ComboboxEmpty>No matching projects.</ComboboxEmpty>
                     <ComboboxList>
@@ -5964,13 +6273,39 @@ export default function Sidebar() {
                               />
                             ) : null}
                             {project ? (
+                              // Shown on the highlighted row: scope to just this
+                              // project and close, instead of toggling it. Its
+                              // space is always reserved, so highlighting a row
+                              // truncates nothing new and never widens the popup.
+                              <button
+                                type="button"
+                                tabIndex={-1}
+                                className="invisible shrink-0 cursor-pointer text-xs font-medium text-primary in-data-highlighted:visible hover:text-primary/80"
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  setProjectScopeKeys([project.projectKey]);
+                                  dispatchProjectScopeMenu({ type: "open-changed", open: false });
+                                }}
+                              >
+                                Only
+                              </button>
+                            ) : null}
+                            <CheckIcon
+                              aria-hidden="true"
+                              className={cn(
+                                "ml-auto size-3.5 text-primary",
+                                !selectedProjectScopeValues.has(item.value) && "invisible",
+                              )}
+                            />
+                            {project ? (
                               <Button
                                 size="icon-xs"
                                 variant="ghost-muted"
                                 tabIndex={-1}
                                 aria-hidden="true"
                                 title={`Project settings for ${project.displayName}`}
-                                className="ml-auto"
                                 onPointerDown={(event) => event.stopPropagation()}
                                 onClick={(event) => {
                                   void handleProjectSettings(event, project);
@@ -6256,6 +6591,7 @@ export default function Sidebar() {
                             onSnooze={attemptSnooze}
                             onUnsnooze={attemptUnsnooze}
                             onUnpin={attemptUnpin}
+                            onPin={attemptPin}
                             onAcknowledgeWoke={acknowledgeWoke}
                             onFileDropThreads={handleThreadFileDrop}
                             onNewTab={
@@ -6264,6 +6600,16 @@ export default function Sidebar() {
                                 : undefined
                             }
                             tabCount={rowTabs ? rowTabs.length + 1 : 0}
+                            tabToggleCount={
+                              rowTabLayout
+                                ? rowTabLayout.shown.length
+                                : sidebarTabToggleCount({
+                                    // A card lists its own thread; a slim row lists only the others.
+                                    listed: rowTabs ? rowTabs.length + (isCard ? 1 : 0) : 0,
+                                    limit: tabLimit,
+                                    expanded: expandedTabRowKey === threadKey,
+                                  })
+                            }
                             tabsOpen={rowTabsOpen}
                             onToggleTabs={rowTabs ? toggleTabGroup : undefined}
                             onTabsResized={refreshListMotion}
@@ -6349,7 +6695,13 @@ export default function Sidebar() {
                                       hidden={rowTabLayout.hidden}
                                       expanded={rowTabLayout.expanded}
                                       providerEntriesByEnvironment={providerEntriesByEnvironment}
+                                      tabSortOrder={tabSortOrder}
+                                      openedAtByThreadKey={openedAtByThreadKey}
                                       onToggle={() => toggleTabOverflow(threadKey)}
+                                      onOpenTab={navigateToThread}
+                                      onPreviewOpenChange={(open) =>
+                                        handleTabOverflowPreview(threadKey, open)
+                                      }
                                     />
                                   ) : null}
                                 </SidebarTabList>
@@ -6562,8 +6914,10 @@ export default function Sidebar() {
                     Add project
                   </button>
                 </>
-              ) : scopedProjectGroup ? (
-                `No threads in ${scopedProjectGroup.displayName} yet`
+              ) : scopedProjectGroups.length === 1 ? (
+                `No threads in ${scopedProjectGroups[0]!.displayName} yet`
+              ) : scopedProjectGroups.length > 1 ? (
+                "No threads in these projects yet"
               ) : (
                 "No threads yet"
               )}

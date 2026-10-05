@@ -22,6 +22,7 @@ import {
   isSidebarTabGroupOpen,
   setSidebarTabGroupOverride,
   sidebarTabNeighbourKey,
+  resolveSidebarProjectScopeKeys,
   getFallbackThreadIdAfterDelete,
   getProjectSortTimestamp,
   getSidebarForkParentThreadId,
@@ -64,6 +65,8 @@ import {
   withSidebarTabThreads,
   holdSidebarTabOrder,
   limitSidebarTabs,
+  sidebarTabToggleCount,
+  sidebarTabToggleLabel,
   moveSidebarTab,
   sidebarTabSortTimestamp,
   sortSidebarTabs,
@@ -881,6 +884,17 @@ describe("sidebar tab order", () => {
     ]);
   });
 
+  it("counts the tabs a hide or show control lists, capped by the sidebar limit", () => {
+    expect(sidebarTabToggleCount({ listed: 19, limit: 4, expanded: false })).toBe(4);
+    expect(sidebarTabToggleCount({ listed: 19, limit: null, expanded: false })).toBe(19);
+    expect(sidebarTabToggleCount({ listed: 3, limit: 4, expanded: false })).toBe(3);
+    expect(sidebarTabToggleCount({ listed: 19, limit: 4, expanded: true })).toBe(19);
+    expect(sidebarTabToggleCount({ listed: 1, limit: 4, expanded: false })).toBe(1);
+    expect(sidebarTabToggleLabel(true, 4)).toBe("Hide 4 tabs");
+    expect(sidebarTabToggleLabel(false, 4)).toBe("Show 4 tabs");
+    expect(sidebarTabToggleLabel(true, 1)).toBe("Hide 1 tab");
+  });
+
   it("limits a group to N rows, the open tab taking the last slot when it would be hidden", () => {
     const keys = ["a", "b", "c", "d", "e"];
     expect(limitSidebarTabs(keys, null, "e", (k) => k)).toEqual({ shown: keys, hidden: [] });
@@ -1275,6 +1289,30 @@ describe("filterSidebarProjectScopeItems", () => {
   it("returns matching projects in source order and supports no-match results", () => {
     expect(filter("WORK")).toEqual([items[1]]);
     expect(filter("missing")).toEqual([]);
+  });
+});
+
+describe("resolveSidebarProjectScopeKeys", () => {
+  it("replaces the default row with the first picked project", () => {
+    expect(resolveSidebarProjectScopeKeys({ current: [], next: ["all", "alpha"] })).toEqual([
+      "alpha",
+    ]);
+  });
+
+  it("adds and removes projects while scoped", () => {
+    expect(resolveSidebarProjectScopeKeys({ current: ["alpha"], next: ["alpha", "beta"] })).toEqual(
+      ["alpha", "beta"],
+    );
+    expect(resolveSidebarProjectScopeKeys({ current: ["alpha", "beta"], next: ["beta"] })).toEqual([
+      "beta",
+    ]);
+  });
+
+  it("clears the scope when the default row is picked", () => {
+    expect(resolveSidebarProjectScopeKeys({ current: ["alpha"], next: ["alpha", "all"] })).toEqual(
+      [],
+    );
+    expect(resolveSidebarProjectScopeKeys({ current: [], next: [] })).toEqual([]);
   });
 });
 
