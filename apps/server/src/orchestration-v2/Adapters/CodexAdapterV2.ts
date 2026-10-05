@@ -49,6 +49,7 @@ import type {
   OrchestrationV2PlanStep,
   OrchestrationV2RuntimeRequest,
   OrchestrationV2Subagent,
+  OrchestrationV2SubagentUsage,
   OrchestrationV2TurnItem,
   ProviderUserInputAnswers,
   ProviderApprovalDecision,
@@ -207,6 +208,19 @@ export function codexProviderTurnTokenUsage(
     outputTokens: Math.max(0, tokenUsage.last.outputTokens),
     reasoningOutputTokens: Math.max(0, tokenUsage.last.reasoningOutputTokens),
     updatedAt,
+  };
+}
+/** A Codex subagent's usage is its native child thread's running token total. */
+export function codexSubagentUsage(
+  tokenUsage: CodexSchema.V2ThreadTokenUsageUpdatedNotification["tokenUsage"],
+): OrchestrationV2SubagentUsage {
+  const count = (value: number) => (Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0);
+  return {
+    totalTokens: count(tokenUsage.total.totalTokens),
+    inputTokens: count(tokenUsage.total.inputTokens),
+    cachedInputTokens: count(tokenUsage.total.cachedInputTokens),
+    outputTokens: count(tokenUsage.total.outputTokens),
+    reasoningOutputTokens: count(tokenUsage.total.reasoningOutputTokens),
   };
 }
 const DEFAULT_CODEX_SETTINGS = Schema.decodeSync(CodexSettings)({});
@@ -2445,6 +2459,24 @@ export function makeCodexAdapterV2(adapterOptions: CodexAdapterV2Options): Provi
           });
         });
 
+        // Records a subagent child thread's running token total on its task.
+        // Status is untouched; unchanged totals emit nothing.
+        const updateSubagentUsage = Effect.fnUntraced(function* (
+          nativeThreadId: string,
+          tokenUsage: CodexSchema.V2ThreadTokenUsageUpdatedNotification["tokenUsage"],
+        ) {
+          const subagent = (yield* Ref.get(subagentThreads)).get(nativeThreadId);
+          if (subagent === undefined) return;
+          const usage = codexSubagentUsage(tokenUsage);
+          if (subagent.task.usage?.totalTokens === usage.totalTokens) return;
+          subagent.task = { ...subagent.task, usage, updatedAt: yield* DateTime.now };
+          yield* emitProviderEvent({
+            type: "subagent.updated",
+            driver: CODEX_PROVIDER,
+            subagent: subagent.task,
+          });
+        });
+
         const registerSubagentThread = (input: {
           readonly context: ActiveCodexTurnContext;
           readonly nativeThreadId: string;
@@ -3846,6 +3878,7 @@ export function makeCodexAdapterV2(adapterOptions: CodexAdapterV2Options): Provi
               payload.turnId,
               payload.tokenUsage,
             );
+            yield* updateSubagentUsage(payload.threadId, payload.tokenUsage);
             const context = yield* awaitActiveTurn(payload.turnId);
             if (context === undefined) {
               return;

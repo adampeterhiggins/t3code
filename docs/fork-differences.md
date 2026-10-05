@@ -133,48 +133,47 @@ Code: `apps/web/src/components/chat/ProviderAccountPicker.tsx` and
 
 ## Agents panel drilldowns
 
-The Agents panel has search, a status filter, sorting, compact rows that show a working agent's
-latest tool call, and hover previews of each agent. Each agent opens a detail view with
-its launch prompt, full result or error, searchable and filterable tool calls or an on-demand
-transcript, and a usage footer. Tool previews include bounded unified edit diffs and line counts,
-read ranges, search arguments, working directories, and exit codes when the provider supplies them.
-The same details appear in chat tool expansions on web, desktop, and mobile. On web and desktop,
-collapsed tool calls in the main chat also preview on hover; clicking still expands them inline.
-The card shows the tool heading, the workspace-relative syntax-highlighted command or full label,
-then the same details the row expands to (output loads only once the card opens, and a non-zero
-exit code shows with it), with time and status in a compact footer. Thoughts and answered
-questions do not preview
-([`MessagesTimeline.tsx`](../apps/web/src/components/chat/MessagesTimeline.tsx),
-[`toolCallPreview.ts`](../apps/web/src/lib/toolCallPreview.ts)).
-Right-click an agent in the list and choose **Open in new tab**, or use the same action in its
-detail view, to keep it in its own thread-scoped sidebar tab alongside the fleet and other agents.
-Agent tabs can be closed and reopened the same way, and are restored when the app restarts.
-Upstream's panel is a fixed list with one summary line per agent. To feed it:
+Upstream makes every subagent a child thread and lists a thread's subagents under **Lineage** in
+the thread details panel, one row each, newest first. The fork builds on that list and on the
+child threads:
 
-- Adapters put the launch prompt on `task.started` (`prompt`) and emit a subagent's own tool calls
-  as `item.*` events tagged with `agentId`, as Claude already did upstream. Codex, Cursor,
-  OpenCode, and Devin do this in the fork.
-- OpenCode child sessions, Grok subagents, and Devin subagents join the panel at all; upstream
-  shows none of them. Devin reports subagents inside the root ACP session as `_meta` markers on
-  tool call notifications (`cognition.ai/subagent_started`, `subagent_completed`, and
-  `subagent_context` on the child's calls); upstream's `DevinAcp.ts` maps them for the shared ACP
-  adapter.
-- `orchestration.getSubagentTranscript` reads a subagent's history through the adapter's
-  `readSubagentTranscript` (Claude, Codex, OpenCode) while the session is running.
-  ProviderService keeps the last bounded read per agent in the fork-owned
-  `fork_subagent_transcripts` table, captured on `task.completed` and on every live read, and
-  serves it with `retainedAt` once the provider can no longer answer.
-- **Attach result to chat** (detail view and list right-click) pastes the agent's task and
+- **List.** With two or more subagents, Lineage gets search, a status filter, and sorting by spawn
+  order (the default, so rows never jump while they work), status, tokens, or duration. A working
+  agent's row adds its latest tool call, read from its child thread, and a failed agent's row its
+  error. Rows show the agent's token total, and the hover card adds tokens and tool calls. The
+  filter and sort are kept per device (`agentListViewStore.ts`).
+- **Usage.** `OrchestrationV2Subagent.usage` carries what the provider reports: Claude's
+  `task_progress`/`task_notification` usage (tokens, tool calls, duration) and the running token
+  total of a Codex child thread. Other providers leave it empty.
+- **Agent tab.** Right-click an agent in Lineage, or its row in the conversation, and choose
+  **Open in new tab** to keep it in a thread-scoped right-panel tab beside the chat: its launch
+  prompt, result or error, its tool calls with search, status and kind filters, and sorting, and a
+  usage footer. Agent tabs close like other tabs, reopen the same way, and are restored when the
+  app restarts. The agent's whole conversation stays in its child thread, one click away.
+- **Attach result to chat** (right-click or the agent tab) pastes a finished agent's task and
   result into the composer; `subagentResultChatContext` builds the text.
-- **Continue in chat** (detail view and list right-click) opens a new chat tab of the thread whose
+- **Continue in chat** (right-click or the agent tab) opens a new chat tab of the thread whose
   draft carries the agent's task, result or error, and latest tool calls as a chat-summary chip;
   `subagentContinuationContext` builds the text. It starts a fresh conversation rather than
   resuming the agent's provider session.
 
-Code: `apps/web/src/components/AgentsPanel.tsx`, `AgentDetailView.tsx`,
-`apps/web/src/rightPanelStore.ts`, `packages/client-runtime/src/state/agentPanelView.ts`,
-`apps/server/src/provider/subagentTranscript.ts`,
-and `apps/server/src/provider/SubagentTranscriptStore.ts`. User guide:
+Tool previews include bounded unified edit diffs and line counts, read ranges, search arguments,
+and exit codes when the provider supplies them, in the agent tab and in chat tool expansions on
+web, desktop, and mobile. Timelines carry an edit without its diff, so an expanded edit fetches the
+stored item for its preview (`fileChangePreviewText`). On web and desktop, collapsed tool calls in
+the main chat also preview on hover; clicking still expands them inline. The card shows the tool
+heading, the workspace-relative syntax-highlighted command or full label, then the same details the
+row expands to (output loads only once the card opens, and a non-zero exit code shows with it), with
+time and status in a compact footer. Thoughts and answered questions do not preview
+([`MessagesTimeline.tsx`](../apps/web/src/components/chat/MessagesTimeline.tsx),
+[`toolCallPreview.ts`](../apps/web/src/lib/toolCallPreview.ts)).
+
+Code: [`agentListView.ts`](../packages/client-runtime/src/state/agentListView.ts),
+[`ThreadRelationshipsControl.tsx`](../apps/web/src/components/chat/ThreadRelationshipsControl.tsx),
+[`AgentDetailPanel.tsx`](../apps/web/src/components/chat/AgentDetailPanel.tsx),
+[`agentChatActions.ts`](../apps/web/src/components/chat/agentChatActions.ts), the `agent` surface
+in [`rightPanelStore.ts`](../apps/web/src/rightPanelStore.ts), and the usage mapping in
+`ClaudeAdapterV2.ts` and `CodexAdapterV2.ts`. User guide:
 [thread-sidebar.md](./user/thread-sidebar.md#inspect-agent-work).
 
 ## Chat tabs
@@ -729,7 +728,8 @@ install ad hoc–signed builds. Run `make` targets from the repository root, sta
 ## Commands and file paths shown relative to the workspace
 
 Tool calls in the web, desktop, and mobile timelines, and subagent tool calls in the web and
-desktop Agents panel, show paths inside the thread's working directory as relative. For commands, a leading `cd` to that directory is dropped. Rewriting a
+desktop agent tabs and agents list, show paths inside the thread's working directory as relative.
+For commands, a leading `cd` to that directory is dropped. Rewriting a
 command stops at the first `cd` somewhere else, because relative paths after it would point
 somewhere else. File, image, and other tool labels (`Read: src/index.ts`) get the same path
 treatment. A subagent working in a sibling checkout of that directory — another folder next to
@@ -743,7 +743,7 @@ start in that directory.
 Code: `packages/client-runtime/src/work-log/commandDisplay.ts`, used by
 `apps/web/src/components/chat/MessagesTimeline.logic.ts` and by `buildThreadFeed` and
 `workEntryRowLabel` in `apps/mobile/src/lib/threadActivity.ts`;
-`packages/client-runtime/src/state/agentPanelView.ts`; and
+[`agentListView.ts`](../packages/client-runtime/src/state/agentListView.ts); and
 `apps/server/src/provider/RuntimeInstructions.ts`.
 
 ## Agent access over MCP

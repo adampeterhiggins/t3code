@@ -222,6 +222,41 @@ describe("rightPanelStore", () => {
     expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBe("diff");
   });
 
+  it("opens one agent tab per subagent and refreshes its label on reopen", () => {
+    const store = useRightPanelStore.getState();
+    const childThreadId = ThreadId.make("child-1");
+    store.openAgent(refA, { childThreadId, title: "Scout" });
+    store.open(refA, "diff");
+    store.openAgent(refA, { childThreadId, title: "Scout (renamed)" });
+    const state = selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA);
+    expect(state.activeSurfaceId).toBe("agent:child-1");
+    expect(state.surfaces).toEqual([
+      { id: "agent:child-1", kind: "agent", childThreadId, title: "Scout (renamed)" },
+      { id: "diff", kind: "diff" },
+    ]);
+  });
+
+  it("restores saved agent tabs and drops ones without a thread", () => {
+    expect(
+      migratePersistedRightPanelState({
+        byThreadKey: {
+          "env-1:thread-A": {
+            isOpen: true,
+            activeSurfaceId: "agent:child-1",
+            surfaces: [
+              { id: "agent:child-1", kind: "agent", childThreadId: "child-1", title: "Scout" },
+              { id: "agent:", kind: "agent", childThreadId: "" },
+            ],
+          },
+        },
+      }).byThreadKey["env-1:thread-A"],
+    ).toEqual({
+      isOpen: true,
+      activeSurfaceId: "agent:child-1",
+      surfaces: [{ id: "agent:child-1", kind: "agent", childThreadId: "child-1", title: "Scout" }],
+    });
+  });
+
   it("drops the legacy singleton terminal surface during migration", () => {
     expect(
       migratePersistedRightPanelState({

@@ -4,6 +4,7 @@ import { projectedSubagentsToRuntime } from "@t3tools/client-runtime/state/subag
 import type { ReactNode } from "react";
 import { useThreadShell, useProject } from "../../state/entities";
 import { SubagentTooltipContent } from "./SubagentTooltipContent";
+import { useAgentContextMenu } from "./agentContextMenu";
 import { useAtomValue } from "@effect/atom-react";
 import { scopeThreadRef, scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { environmentThreadDetails } from "../../state/threads";
@@ -16,6 +17,7 @@ import { formatSubagentDisplayTitle } from "@t3tools/client-runtime/state/subage
 import {
   ProviderDriverKind,
   type OrchestrationV2Notification,
+  type OrchestrationV2SubagentUsage,
   type OrchestrationV2TurnItem,
   type ProviderInstanceId,
   type ServerProvider,
@@ -418,6 +420,7 @@ function SubagentTimelineLink(props: {
     (thread) => thread?.projection.subagents.find((agent) => agent.id === props.subagentId) ?? null,
   );
   const threadId = props.threadId;
+  const openAgentMenu = useAgentContextMenu(props.parentRef);
   const liveStatus = agent?.status ?? props.status;
   const status = props.event ? props.event.status : liveStatus;
   const statusLabel = props.event?.label ?? subagentStatusVisual(liveStatus).label;
@@ -500,6 +503,12 @@ function SubagentTimelineLink(props: {
               aria-label={`Open ${props.title}`}
               aria-description={statusLabel}
               onClick={() => props.onOpenThread(threadId)}
+              onContextMenu={(event) =>
+                openAgentMenu(event, {
+                  childThreadId: threadId,
+                  title: formatSubagentDisplayTitle(props.title),
+                })
+              }
               className={cn(
                 className,
                 "cursor-pointer transition-colors hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70",
@@ -518,6 +527,7 @@ function SubagentTimelineLink(props: {
           status={liveStatus}
           result={agent?.result ?? props.result}
           progress={agent?.progress ?? props.progress}
+          usage={agent?.usage ?? null}
         />
       </ThreadHoverCardPopup>
     </Tooltip>
@@ -525,7 +535,11 @@ function SubagentTimelineLink(props: {
 }
 
 function SubagentTimelineTooltip(
-  props: Parameters<typeof SubagentTimelineLink>[0] & { model: string | null; elapsed: ReactNode },
+  props: Parameters<typeof SubagentTimelineLink>[0] & {
+    model: string | null;
+    elapsed: ReactNode;
+    usage: OrchestrationV2SubagentUsage | null;
+  },
 ) {
   const environmentId = props.parentRef.environmentId;
   const parent = useThreadShell(props.parentRef)?.source;
@@ -547,6 +561,7 @@ function SubagentTimelineTooltip(
       status={props.status}
       result={props.result}
       progress={props.progress}
+      usage={props.usage}
       parentThread={parent}
       childThread={child}
       parentProject={parentProject ?? undefined}

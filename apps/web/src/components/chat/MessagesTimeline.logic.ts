@@ -1,4 +1,5 @@
 import { worktreeSetupAgentStarted } from "@t3tools/client-runtime/worktree-setup";
+import { toolReadRangeLabel } from "@t3tools/client-runtime/work-log/item-detail";
 export { worktreeSetupAgentStarted } from "@t3tools/client-runtime/worktree-setup";
 import * as Equal from "effect/Equal";
 import { shallow } from "zustand/vanilla/shallow";
@@ -197,7 +198,12 @@ export function workEntryReadOutput(
     ),
   ];
   if (paths.length > 0) {
-    return paths.join("\n");
+    // Fork: a ranged read names its lines after the path.
+    const range =
+      entry.structuredPayload?.type === "dynamic_tool"
+        ? toolReadRangeLabel(entry.structuredPayload.input)
+        : null;
+    return [...paths, ...(range ? [range] : [])].join("\n");
   }
   return null;
 }

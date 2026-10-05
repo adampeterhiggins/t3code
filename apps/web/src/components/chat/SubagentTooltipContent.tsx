@@ -1,4 +1,5 @@
 import type {
+  OrchestrationV2SubagentUsage,
   OrchestrationV2ThreadShell,
   OrchestrationV2TurnItemStatus,
   OrchestrationProjectShell,
@@ -9,6 +10,7 @@ import {
   resolveSubagentMetadata,
   subagentDetailPreview,
 } from "@t3tools/client-runtime/state/subagent-display";
+import { formatSubagentTokenCount } from "@t3tools/client-runtime/state/subagentRuntime";
 import type { ReactNode } from "react";
 import {
   BotIcon,
@@ -17,6 +19,7 @@ import {
   CircleXIcon,
   FolderIcon,
   GitBranchIcon,
+  SigmaIcon,
   TerminalIcon,
 } from "lucide-react";
 import { ThreadHoverCard } from "../ThreadHoverCard";
@@ -41,6 +44,8 @@ export function SubagentTooltipContent(props: {
   status: OrchestrationV2TurnItemStatus;
   result?: string | null | undefined;
   progress?: string | null | undefined;
+  /** Fork: the subagent's reported usage, where the provider reports it. */
+  usage?: OrchestrationV2SubagentUsage | null | undefined;
 }) {
   const { modelLabel, workspace: metadata } = resolveSubagentMetadata(props);
   const preview = subagentDetailPreview(props);
@@ -107,6 +112,21 @@ export function SubagentTooltipContent(props: {
           </div>
         );
       })}
+      {props.usage ? (
+        <div className="flex min-w-0 items-center gap-2 tabular-nums">
+          <SigmaIcon aria-hidden className="size-3 shrink-0" />
+          <span className="min-w-0 truncate">
+            {[
+              `${formatSubagentTokenCount(props.usage.totalTokens)} tokens`,
+              props.usage.toolUses !== undefined
+                ? `${props.usage.toolUses} tool ${props.usage.toolUses === 1 ? "call" : "calls"}`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </span>
+        </div>
+      ) : null}
       {preview ? (
         <div className="flex min-w-0 items-center gap-2">
           <TerminalIcon aria-hidden className="size-3 shrink-0" />

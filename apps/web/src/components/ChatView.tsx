@@ -476,6 +476,7 @@ import {
 } from "./chat/PanelLayoutControls";
 import { expandedImageKey, type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { ThreadDetailsPanel, type ThreadDetailsPanelProps } from "./chat/ThreadDetailsPanel";
+import { AgentDetailPanel } from "./chat/AgentDetailPanel";
 import { NoActiveThreadState } from "./NoActiveThreadState";
 import {
   type EnvironmentOption,
@@ -11211,6 +11212,13 @@ export default function ChatView(props: ChatViewProps) {
       />
     ) : renderedRightPanelSurface?.kind === "pull-requests" && activeThreadRef ? (
       <ThreadPullRequestsPanel threadRef={activeThreadRef} />
+    ) : renderedRightPanelSurface?.kind === "agent" ? (
+      <AgentDetailPanel
+        key={renderedRightPanelSurface.id}
+        parentRef={activeThreadRef}
+        childThreadId={renderedRightPanelSurface.childThreadId}
+        workspaceRoot={activeWorkspaceRoot ?? null}
+      />
     ) : renderedRightPanelSurface?.kind === "device" ? (
       <Suspense fallback={null}>
         <DevicePanel

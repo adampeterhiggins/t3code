@@ -59,6 +59,7 @@ import {
   type OrchestrationV2RuntimeRequest,
   type OrchestrationV2UserInputQuestion,
   type OrchestrationV2Subagent,
+  type OrchestrationV2SubagentUsage,
   type OrchestrationV2TurnItem,
   type OrchestrationV2WebSearchResult,
   type ProviderApprovalDecision,
@@ -1962,6 +1963,23 @@ function claudeSubagentResultText(output: ClaudeNativeToolOutput): string {
     }
   }
   return claudeNativeToolOutputText(output);
+}
+
+const clampClaudeUsageCount = (value: number) =>
+  Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
+
+/** Maps the SDK's task_progress/task_notification usage onto a subagent's usage. */
+function claudeSubagentUsage(
+  usage:
+    | { readonly total_tokens: number; readonly tool_uses: number; readonly duration_ms: number }
+    | undefined,
+): OrchestrationV2SubagentUsage | undefined {
+  if (usage === undefined) return undefined;
+  return {
+    totalTokens: clampClaudeUsageCount(usage.total_tokens),
+    toolUses: clampClaudeUsageCount(usage.tool_uses),
+    durationMs: clampClaudeUsageCount(usage.duration_ms),
+  };
 }
 
 function isClaudeSubagentAsyncLaunchAck(output: ClaudeNativeToolOutput): boolean {
@@ -4060,6 +4078,8 @@ export function makeClaudeAdapterV2(
           readonly owner?: ActiveClaudeSubagent;
           readonly progress?: string;
           readonly result?: string;
+          // Replaces the prior usage; an update without one keeps it.
+          readonly usage?: OrchestrationV2SubagentUsage;
           readonly status: Extract<
             OrchestrationV2ExecutionNode["status"],
             "running" | "completed" | "failed" | "cancelled"
@@ -4127,16 +4147,17 @@ export function makeClaudeAdapterV2(
           const turnItemOrdinal =
             existingSubagent?.turnItemOrdinal ??
             (yield* resolveItemOrdinal(input.context, `${nativeItemId}:subagent`));
-          // A resumed subagent's previous final answer and progress no longer
-          // represent its outcome; the next task_progress/task_notification
-          // carry the new ones.
+          // A resumed subagent's previous final answer, progress, and usage no
+          // longer represent its outcome; the next task_progress/
+          // task_notification carry the new ones.
           const priorTask =
             existingSubagent === undefined
               ? undefined
               : isReopen
-                ? (({ progress: _staleProgress, ...rest }) => ({ ...rest, result: null }))(
-                    existingSubagent.task,
-                  )
+                ? (({ progress: _staleProgress, usage: _staleUsage, ...rest }) => ({
+                    ...rest,
+                    result: null,
+                  }))(existingSubagent.task)
                 : existingSubagent.task;
           const task = {
             ...(priorTask ?? {
@@ -4179,6 +4200,7 @@ export function makeClaudeAdapterV2(
             ...(input.model === undefined ? {} : { model: input.model }),
             ...(input.progress === undefined ? {} : { progress: input.progress }),
             ...(input.result === undefined ? {} : { result: input.result }),
+            ...(input.usage === undefined ? {} : { usage: input.usage }),
             ...(isReopen ? { startedAt: now } : {}),
             completedAt: input.status === "running" ? null : (priorTask?.completedAt ?? now),
             updatedAt: now,
@@ -5211,7 +5233,11 @@ export function makeClaudeAdapterV2(
               if (registered === undefined || registered.task.status === "running") {
                 return current;
               }
-              const { progress: _staleProgress, ...priorTask } = registered.task;
+              const {
+                progress: _staleProgress,
+                usage: _staleUsage,
+                ...priorTask
+              } = registered.task;
               return new Map(current).set(message.task_id, {
                 ...registered,
                 task: {
@@ -5992,12 +6018,14 @@ export function makeClaudeAdapterV2(
 
           if (message.type === "system" && message.subtype === "task_progress") {
             const progress = message.description.trim();
+            const usage = claudeSubagentUsage(message.usage);
             const isBackgroundTask = yield* hasPendingBackgroundTaskOnNativeThread(
               liveQuery.nativeThreadId,
               message.task_id,
             );
+            // A usage-only tick (blank description) still updates the row.
             if (
-              progress.length > 0 &&
+              (progress.length > 0 || usage !== undefined) &&
               !context.ignoredTaskIds.has(message.task_id) &&
               !isBackgroundTask
             ) {
@@ -6005,7 +6033,8 @@ export function makeClaudeAdapterV2(
                 context,
                 taskId: message.task_id,
                 ...(message.tool_use_id === undefined ? {} : { toolUseId: message.tool_use_id }),
-                progress,
+                ...(progress.length === 0 ? {} : { progress }),
+                ...(usage === undefined ? {} : { usage }),
                 status: "running",
               });
             }
@@ -6055,11 +6084,13 @@ export function makeClaudeAdapterV2(
               activeContext: context,
             });
             if (!wasBackgroundTask && !context.ignoredTaskIds.has(message.task_id)) {
+              const notificationUsage = claudeSubagentUsage(message.usage);
               yield* updateClaudeSubagentNode({
                 context,
                 taskId: message.task_id,
                 ...(message.tool_use_id === undefined ? {} : { toolUseId: message.tool_use_id }),
                 result: message.summary,
+                ...(notificationUsage === undefined ? {} : { usage: notificationUsage }),
                 status:
                   message.status === "completed"
                     ? "completed"
