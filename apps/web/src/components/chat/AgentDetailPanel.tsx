@@ -2,7 +2,10 @@
  * Fork: a subagent's agent tab, kept beside the parent chat. Identity, launch
  * prompt, outcome, its tool calls (from the agent's child thread, with search,
  * filters and sort), and a usage footer. The conversation itself is the child
- * thread, one click away.
+ * thread, one click away, and the whole fleet is in the Agents panel.
+ *
+ * A nested agent (spawned by one of this thread's agents) has its record on the
+ * thread that spawned it, read from its child thread's lineage.
  */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
@@ -20,6 +23,7 @@ import type { ScopedThreadRef, ThreadId } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import {
   ArrowDownUpIcon,
+  BotIcon,
   ListFilterIcon,
   MessageSquarePlusIcon,
   MessageSquareShareIcon,
@@ -31,6 +35,7 @@ import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "reac
 import { useComposerHandleContext } from "~/composerHandleContext";
 import { useClientSettings } from "~/hooks/useSettings";
 import { cn } from "~/lib/utils";
+import { useRightPanelStore } from "~/rightPanelStore";
 import { useThreadProjection, useThreadShell } from "~/state/entities";
 import { buildThreadRouteParams } from "~/threadRoutes";
 
@@ -319,12 +324,23 @@ export function AgentDetailPanel(props: {
   const childRef = scopeThreadRef(props.parentRef.environmentId, props.childThreadId);
   const childShell = useThreadShell(childRef);
   const child = useThreadProjection(childRef)?.projection ?? null;
+  const ownerThreadId =
+    childShell?.lineage.relationshipToParent === "subagent"
+      ? childShell.lineage.parentThreadId
+      : null;
+  const nestedOwnerRef =
+    ownerThreadId !== null && ownerThreadId !== props.parentRef.threadId
+      ? scopeThreadRef(props.parentRef.environmentId, ownerThreadId)
+      : null;
+  const nestedOwner = useThreadProjection(nestedOwnerRef)?.projection ?? null;
+  const owner = nestedOwnerRef === null ? parent : nestedOwner;
   const subagent =
-    parent?.subagents.find((candidate) => candidate.childThreadId === props.childThreadId) ?? null;
+    owner?.subagents.find((candidate) => candidate.childThreadId === props.childThreadId) ?? null;
   const runtime = useMemo(
     () => (subagent ? projectedSubagentsToRuntime([subagent])[0]! : null),
     [subagent],
   );
+  const showAllAgents = () => useRightPanelStore.getState().open(props.parentRef, "agents");
   const calls = useMemo(
     () =>
       child
@@ -341,10 +357,13 @@ export function AgentDetailPanel(props: {
       <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
         <p className="text-sm font-medium">Agent unavailable</p>
         <p className="max-w-64 text-xs text-muted-foreground">
-          {parent === null
+          {owner === null
             ? "Loading this thread's agents…"
             : "This agent is no longer recorded on this thread."}
         </p>
+        <Button size="xs" variant="ghost-muted" onClick={showAllAgents}>
+          View agents
+        </Button>
       </div>
     );
   }
@@ -373,6 +392,9 @@ export function AgentDetailPanel(props: {
         <div className="flex min-w-0 items-center gap-2">
           <StatusDot status={runtime.status} />
           <h2 className="min-w-0 flex-1 truncate text-sm font-medium">{title}</h2>
+          <ActionButton label="Show all agents" onClick={showAllAgents}>
+            <BotIcon />
+          </ActionButton>
           <ActionButton label="Open agent thread" onClick={openThread}>
             <SquareArrowOutUpRightIcon />
           </ActionButton>

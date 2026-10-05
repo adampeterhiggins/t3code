@@ -477,6 +477,8 @@ import {
 import { expandedImageKey, type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { ThreadDetailsPanel, type ThreadDetailsPanelProps } from "./chat/ThreadDetailsPanel";
 import { AgentDetailPanel } from "./chat/AgentDetailPanel";
+import { AgentsPanel } from "./chat/AgentsPanel";
+import { isActiveSubagentStatus } from "@t3tools/client-runtime/state/subagentRuntime";
 import { NoActiveThreadState } from "./NoActiveThreadState";
 import {
   type EnvironmentOption,
@@ -5490,6 +5492,31 @@ export default function ChatView(props: ChatViewProps) {
     if (!activeThreadRef || !pullRequestsSurfaceAvailable) return;
     useRightPanelStore.getState().open(activeThreadRef, "pull-requests");
   }, [activeThreadRef, pullRequestsSurfaceAvailable]);
+  // Fork: the Agents panel, the thread's whole agent fleet beside Lineage.
+  const addAgentsSurface = useCallback(() => {
+    if (!activeThreadRef) return;
+    useRightPanelStore.getState().open(activeThreadRef, "agents");
+  }, [activeThreadRef]);
+  const showLineage = useCallback(() => {
+    if (!activeThreadRef) return;
+    useRightPanelStore
+      .getState()
+      .setThreadPanelOpen(activeThreadRef, threadPanelPresentation, true);
+    requestAnimationFrame(() =>
+      document
+        .querySelector("[data-thread-relationships-panel]")
+        ?.scrollIntoView({ block: "nearest" }),
+    );
+  }, [activeThreadRef, threadPanelPresentation]);
+  const liveAgentCount = useMemo(
+    () =>
+      serverProjection?.subagents.filter((agent) => isActiveSubagentStatus(agent.status)).length ??
+      0,
+    [serverProjection?.subagents],
+  );
+  const agentsSurfaceVisible = rightPanelOpen && activeRightPanelSurface?.kind === "agents";
+  // The roster itself is on screen; a badge would point at nothing.
+  const launcherLiveAgentCount = agentsSurfaceVisible ? 0 : liveAgentCount;
   const { state: deviceState, loaded: deviceStateLoaded } = useDeviceState(
     activeThreadRef?.environmentId ?? null,
   );
@@ -7421,19 +7448,29 @@ export default function ChatView(props: ChatViewProps) {
               );
             }),
       actions: (
-        <Button
-          size="xs"
-          variant="ghost"
-          disabled={isStoppingBackgroundWork}
-          onClick={() => void handleStopBackgroundWork()}
-        >
-          {isStoppingBackgroundWork ? "Stopping..." : "Stop"}
-        </Button>
+        <>
+          {/* Fork: hidden once the Agents panel is on screen; it would point at nothing. */}
+          {presentation.items.some((item) => item.kind === "subagent") && !agentsSurfaceVisible ? (
+            <Button size="xs" variant="ghost" aria-label="View agents" onClick={addAgentsSurface}>
+              View
+            </Button>
+          ) : null}
+          <Button
+            size="xs"
+            variant="ghost"
+            disabled={isStoppingBackgroundWork}
+            onClick={() => void handleStopBackgroundWork()}
+          >
+            {isStoppingBackgroundWork ? "Stopping..." : "Stop"}
+          </Button>
+        </>
       ),
     };
   }, [
     activeBackgroundTasks,
     activeThread,
+    addAgentsSurface,
+    agentsSurfaceVisible,
     handleStopBackgroundWork,
     isStoppingBackgroundWork,
     onOpenRelatedThread,
@@ -11212,6 +11249,12 @@ export default function ChatView(props: ChatViewProps) {
       />
     ) : renderedRightPanelSurface?.kind === "pull-requests" && activeThreadRef ? (
       <ThreadPullRequestsPanel threadRef={activeThreadRef} />
+    ) : renderedRightPanelSurface?.kind === "agents" ? (
+      <AgentsPanel
+        threadRef={activeThreadRef}
+        workspaceRoot={activeWorkspaceRoot ?? null}
+        onShowLineage={showLineage}
+      />
     ) : renderedRightPanelSurface?.kind === "agent" ? (
       <AgentDetailPanel
         key={renderedRightPanelSurface.id}
@@ -12128,6 +12171,7 @@ export default function ChatView(props: ChatViewProps) {
           onAddFiles={addFilesSurface}
           onAddPullRequest={addPullRequestSurface}
           onAddPullRequests={addPullRequestsSurface}
+          onAddAgents={addAgentsSurface}
           onAddDevice={addDeviceSurface}
           browserAvailable={isPreviewSupportedInRuntime()}
           terminalAvailable={activeProject !== null}
@@ -12135,7 +12179,9 @@ export default function ChatView(props: ChatViewProps) {
           filesAvailable={activeProject !== null}
           pullRequestAvailable={pullRequestSurfaceAvailable}
           pullRequestsAvailable={pullRequestsSurfaceAvailable}
+          agentsAvailable={activeThreadRef !== null}
           deviceAvailable={activeThreadRef !== null}
+          liveAgentCount={launcherLiveAgentCount}
         >
           {rightPanelContent}
         </RightPanelTabs>
@@ -12183,6 +12229,7 @@ export default function ChatView(props: ChatViewProps) {
             onAddFiles={addFilesSurface}
             onAddPullRequest={addPullRequestSurface}
             onAddPullRequests={addPullRequestsSurface}
+            onAddAgents={addAgentsSurface}
             onAddDevice={addDeviceSurface}
             browserAvailable={isPreviewSupportedInRuntime()}
             terminalAvailable={activeProject !== null}
@@ -12190,7 +12237,9 @@ export default function ChatView(props: ChatViewProps) {
             filesAvailable={activeProject !== null}
             pullRequestAvailable={pullRequestSurfaceAvailable}
             pullRequestsAvailable={pullRequestsSurfaceAvailable}
+            agentsAvailable={activeThreadRef !== null}
             deviceAvailable={activeThreadRef !== null}
+            liveAgentCount={launcherLiveAgentCount}
           >
             {rightPanelContent}
           </RightPanelTabs>

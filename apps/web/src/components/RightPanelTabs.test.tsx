@@ -120,6 +120,7 @@ function renderTabs(
       onAddTerminal={() => undefined}
       onAddPullRequest={() => undefined}
       onAddPullRequests={() => undefined}
+      onAddAgents={() => undefined}
       onAddDiff={() => undefined}
       onAddFiles={() => undefined}
       onAddDevice={() => undefined}
@@ -129,6 +130,8 @@ function renderTabs(
       filesAvailable={false}
       pullRequestAvailable={false}
       pullRequestsAvailable={false}
+      agentsAvailable={false}
+      liveAgentCount={0}
       deviceAvailable={false}
     >
       <div>content</div>

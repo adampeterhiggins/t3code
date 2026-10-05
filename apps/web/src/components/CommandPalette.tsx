@@ -60,6 +60,7 @@ import {
   CheckIcon,
   ChevronRightIcon,
   CornerLeftUpIcon,
+  BotIcon,
   DownloadIcon,
   FileSearchIcon,
   FolderGit2Icon,
@@ -2057,6 +2058,17 @@ function OpenCommandPaletteDialog(props: {
       icon: <DownloadIcon className={ITEM_ICON_CLASS} />,
       run: async () => {
         openTranscriptExportDialog(threadRef);
+      },
+    });
+    // Fork: the thread's agent fleet in the right panel.
+    actionItems.push({
+      kind: "action",
+      value: "action:open-agents-panel",
+      searchTerms: ["agents", "subagents", "fleet", "tasks", "panel"],
+      title: "Show agents",
+      icon: <BotIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        useRightPanelStore.getState().open(threadRef, "agents");
       },
     });
   }

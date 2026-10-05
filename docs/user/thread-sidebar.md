@@ -324,21 +324,32 @@ the snooze. Enable **Snooze limited threads** in thread behavior settings to
 snooze limit stops by default. Providers without a reset time offer manual
 retry and the normal snooze choices.
 
-Each subagent runs in its own thread. On web and desktop, the thread details panel lists them
-under **Lineage**; click one to open its thread and read its whole conversation. With two or more
-agents you can search the list, filter it by status, or sort it by status, tokens, or duration.
-Agents are listed in the order they started, and token and duration sorts keep working agents at
-the top in that order, so rows don't jump while you read them. A working agent's row shows its
-latest tool call and a failed agent's row its error. Hover an agent to preview its model, status,
-result, and token usage.
+Each subagent runs in its own thread. On web and desktop there are two places to follow them:
 
-Right-click an agent in Lineage, or its row in the conversation, and choose **Open in new tab** to
+- **Agents** in the side panel lists every agent of the thread, including agents that an agent
+  started, indented under it. Open it from the side panel's launcher or **+** menu, the command
+  palette (**Show agents**), the button in the **Lineage** header, or **Show in Agents panel** when
+  you right-click an agent in the conversation or in Lineage. The footer counts agents by status
+  and adds up their tokens.
+- **Lineage** in the thread details panel lists the agents this thread started, next to its forks;
+  click one to open its thread and read its whole conversation. The Agents panel's Lineage button
+  brings you back here.
+
+With two or more agents you can search either list, filter it by status, or sort it by status,
+tokens, or duration; both lists share the same filter and sort. Agents are listed in the order they
+started, and token and duration sorts keep working agents at the top in that order, so rows don't
+jump while you read them. A working agent's row shows its latest tool call and a failed agent's row
+its error. Hover an agent in the Agents panel to preview its prompt, result, latest tool calls, and
+usage; hover one in Lineage to preview its model, status, result, and token usage.
+
+Click an agent in the Agents panel, or right-click it anywhere and choose **Open in new tab**, to
 keep it in a tab of the side panel: the prompt it was given, its result or error, the tool calls it
 made, and its token usage in the footer (hover a number for its label, or the total for the full
 breakdown). Tool calls list newest first; search them, filter by status or tool, or sort oldest
-first or by duration. Hover a call to preview all of it, or click to keep it open. Agent tabs belong
-to the current thread and are restored when you reopen the app. Close one with its close button and
-right-click the agent again to reopen it.
+first or by duration. Hover a call to preview all of it, or click to keep it open. The tab's buttons
+open the agent's own thread or go back to all agents. The Agents panel and agent tabs belong to the
+current thread and are restored when you reopen the app. Close one with its close button and open
+it again the same way.
 
 To use what an agent found in your next message, choose **Attach result to chat** in its tab or
 from the right-click menu. T3 Code adds the agent's task and result to the composer; a long result

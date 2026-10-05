@@ -97,6 +97,20 @@ function settledDurationMs(agent: AgentListSubject): number {
   return started === null || completed === null ? 0 : completed - started;
 }
 
+/** True when the agent passes the view's status filter and search (title and model). */
+export function matchesAgentListView(subject: AgentListSubject, view: AgentListView): boolean {
+  if (view.statuses.length > 0 && !view.statuses.includes(agentStatusFilterFor(subject.status))) {
+    return false;
+  }
+  const query = view.query.trim().toLocaleLowerCase();
+  return (
+    query.length === 0 ||
+    [subject.title, subject.model].some(
+      (value) => value !== null && value.toLocaleLowerCase().includes(query),
+    )
+  );
+}
+
 /**
  * Filters and sorts a thread's agents. Spawn order (oldest first) is the base,
  * and the other sorts never reshuffle a working row: status order only moves a
@@ -108,19 +122,8 @@ export function applyAgentListView<Item>(
   view: AgentListView,
   subjectOf: (item: Item) => AgentListSubject,
 ): ReadonlyArray<Item> {
-  const query = view.query.trim().toLocaleLowerCase();
   const entries = items.map((item, index) => ({ item, index, subject: subjectOf(item) }));
-  const visible = entries.filter(({ subject }) => {
-    if (view.statuses.length > 0 && !view.statuses.includes(agentStatusFilterFor(subject.status))) {
-      return false;
-    }
-    return (
-      query.length === 0 ||
-      [subject.title, subject.model].some(
-        (value) => value !== null && value.toLocaleLowerCase().includes(query),
-      )
-    );
-  });
+  const visible = entries.filter(({ subject }) => matchesAgentListView(subject, view));
   const spawned = copySorted(visible, (left, right) => {
     const leftAt = epochOrNull(left.subject.spawnedAt);
     const rightAt = epochOrNull(right.subject.spawnedAt);

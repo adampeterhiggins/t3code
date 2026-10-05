@@ -29,6 +29,7 @@ const RIGHT_PANEL_KINDS = [
   "terminal",
   "pull-request",
   "pull-requests",
+  "agents",
   "agent",
 ] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
@@ -86,6 +87,8 @@ export type RightPanelSurface =
     }
   /** The thread's linked pull requests, one singleton tab beside any number of `pull-request` tabs. */
   | { id: "pull-requests"; kind: "pull-requests" }
+  /** Fork: the thread's whole agent fleet, beside any number of `agent` tabs. */
+  | { id: "agents"; kind: "agents" }
   /**
    * Fork: one subagent of this thread, kept beside the chat (its prompt, result, tool calls and
    * usage). The title is the agent's as of opening, for the tab label.
@@ -97,8 +100,9 @@ const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
 // v10 keys pull-request surfaces by reference instead of a singleton tab.
 // v11 stops persisting the pull-request list's shared panel, so a restart opens the page fresh.
 // v12 adds the device surface.
-// v14 removes the agents surface; lineage lives in the thread title bar.
-const RIGHT_PANEL_STORAGE_VERSION = 14;
+// v14 removed the agents surface (upstream); lineage lives in the thread title bar.
+// v15 (fork) brings the agents surface back beside lineage, so it is kept again.
+const RIGHT_PANEL_STORAGE_VERSION = 15;
 
 /** A fixed workspace-level ref: each PR surface carries its own real environment. */
 export const PULL_REQUESTS_PANEL_REF = scopeThreadRef(
@@ -214,6 +218,8 @@ const singletonSurface = (
       return { id: "files", kind };
     case "pull-requests":
       return { id: "pull-requests", kind };
+    case "agents":
+      return { id: "agents", kind };
     case "device":
       return { id: "device", kind };
   }
@@ -454,9 +460,10 @@ export function migratePersistedRightPanelState(persistedState: unknown): {
                 threadState && typeof threadState === "object" ? threadState : null;
               const surfaces = Array.isArray(validThreadState?.surfaces)
                 ? validThreadState.surfaces.flatMap<RightPanelSurface>((surface) => {
-                    // Removed surfaces: plans render inline, agents in thread lineage.
+                    // Removed surface: plans render inline.
                     const kind = (surface as { kind?: string }).kind;
-                    if (kind === "plan" || kind === "agents") return [];
+                    if (kind === "plan") return [];
+                    if (kind === "agents") return [{ id: "agents", kind: "agents" }];
                     if (surface.kind === "file") {
                       const revealLine =
                         typeof surface.revealLine === "number" &&
@@ -552,11 +559,9 @@ export function migratePersistedRightPanelState(persistedState: unknown): {
                   : persistedActiveSurfaceId !== null);
               // An open panel needs an active surface: if migration dropped
               // the persisted one (e.g. plan was active), fall back to the
-              // first survivor instead of rendering an open empty panel. Removed
-              // agents selections also keep a survivor ready while the panel is closed.
+              // first survivor instead of rendering an open empty panel.
               const activeSurfaceId =
-                persistedActiveSurfaceId ??
-                (isOpen || rawActiveSurfaceId === "agents" ? (surfaces[0]?.id ?? null) : null);
+                persistedActiveSurfaceId ?? (isOpen ? (surfaces[0]?.id ?? null) : null);
               return [
                 threadKey,
                 {
