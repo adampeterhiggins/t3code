@@ -288,6 +288,7 @@ import {
   SidebarTabsMenu,
 } from "./sidebar/SidebarTabsMenu";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuShortcut, MenuTrigger } from "./ui/menu";
+import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "./ui/preview-card";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { MiddleTruncate } from "./ui/middle-truncate";
 import {
@@ -2389,14 +2390,115 @@ function SidebarTabList(props: {
 }
 
 /**
+ * The tabs folded behind a group's collapsed "n more" row, in the same order and with the same
+ * title, status, time, and provider as the list they would join. Clicking one opens it.
+ */
+function SidebarTabOverflowPreview(props: {
+  hidden: readonly SidebarThreadSummary[];
+  providerEntriesByEnvironment: ReadonlyMap<string, ReadonlyMap<string, ProviderInstanceEntry>>;
+  tabSortOrder: SidebarTabSortOrder;
+  openedAtByThreadKey: Readonly<Record<string, number>>;
+  onOpenTab: (threadRef: ScopedThreadRef) => void;
+}) {
+  const lastVisitedAtById = useUiStateStore((state) => state.threadLastVisitedAtById);
+  return (
+    <ul
+      aria-label={`${props.hidden.length} more tabs`}
+      data-testid="sidebar-tab-overflow-preview"
+      className="flex max-h-80 flex-col gap-px overflow-y-auto overscroll-contain"
+    >
+      {props.hidden.map((thread) => {
+        const threadKey = sidebarThreadKey(thread);
+        const entries = props.providerEntriesByEnvironment.get(thread.environmentId);
+        const instanceId = thread.session?.providerInstanceId ?? thread.modelSelection.instanceId;
+        const providerEntry = entries?.get(instanceId) ?? null;
+        const showInstanceBadge =
+          providerEntry !== null &&
+          entries !== undefined &&
+          shouldShowInstanceBadge(providerEntry, entries.values());
+        const isUnread = hasUnseenCompletion({
+          ...thread,
+          lastVisitedAt: lastVisitedAtById[threadKey],
+        });
+        const status = resolveSidebarThreadStatus(thread);
+        const topStatus = resolveSidebarTopStatus(status, false, isUnread);
+        const shouldRecede = shouldRecedeSidebarThread({
+          status,
+          isUnread,
+          isWoke: false,
+          isActive: false,
+          isSelected: false,
+        });
+        const timeLabel =
+          tabSortTimeLabel(thread, props.tabSortOrder, props.openedAtByThreadKey[threadKey]) ??
+          threadTimeLabel(thread);
+        return (
+          <li key={threadKey} className="list-none">
+            <button
+              type="button"
+              onClick={() => props.onOpenTab(scopeThreadRef(thread.environmentId, thread.id))}
+              className="flex h-8 w-full cursor-pointer items-center gap-2 rounded-md px-2 text-left outline-none hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+            >
+              <span
+                className={cn(
+                  "min-w-0 flex-1 truncate text-sm",
+                  shouldRecede
+                    ? "text-secondary-label"
+                    : isUnread || status === "input"
+                      ? "text-foreground"
+                      : "text-foreground/85",
+                )}
+              >
+                {thread.title}
+              </span>
+              {topStatus ? (
+                <span
+                  className={cn(
+                    "inline-flex shrink-0 items-center gap-1 text-xs font-medium",
+                    topStatus.className,
+                  )}
+                >
+                  <SidebarTopStatusIcon icon={topStatus.icon} className="size-3.5 shrink-0" />
+                  <span>{topStatus.label}</span>
+                </span>
+              ) : null}
+              <span className="shrink-0 text-xs tabular-nums text-secondary-label">
+                {timeLabel}
+              </span>
+              {providerEntry ? (
+                <span aria-hidden className="inline-flex shrink-0 items-center">
+                  <ProviderInstanceIcon
+                    driverKind={providerEntry.driverKind}
+                    displayName={providerEntry.displayName}
+                    accentColor={providerEntry.accentColor}
+                    showBadge={showInstanceBadge}
+                    iconClassName="size-3.5 opacity-60"
+                    badgeClassName="right-[-0.1875rem] bottom-[-0.1875rem] h-3 min-w-3 px-0.5 text-5xs"
+                  />
+                </span>
+              ) : null}
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/**
  * Stands in for a group's tabs past the limit. It names what it hides that needs you, and the
- * providers behind them, so folding tabs away never hides work in progress.
+ * providers behind them, so folding tabs away never hides work in progress. Hovering the
+ * collapsed row lists those tabs.
  */
 function SidebarTabOverflowRow(props: {
   hidden: readonly SidebarThreadSummary[];
   expanded: boolean;
   providerEntriesByEnvironment: ReadonlyMap<string, ReadonlyMap<string, ProviderInstanceEntry>>;
+  tabSortOrder: SidebarTabSortOrder;
+  openedAtByThreadKey: Readonly<Record<string, number>>;
   onToggle: () => void;
+  onOpenTab: (threadRef: ScopedThreadRef) => void;
+  onPreviewOpenChange?: ((open: boolean) => void) | undefined;
 }) {
   const { hidden, providerEntriesByEnvironment } = props;
   const summary = useMemo(() => {
@@ -2430,46 +2532,112 @@ function SidebarTabOverflowRow(props: {
     };
   }, [hidden, providerEntriesByEnvironment]);
   const label = props.expanded ? "Show less" : `${hidden.length} more`;
+  const onPreviewOpenChangeRef = useRef(props.onPreviewOpenChange);
+  onPreviewOpenChangeRef.current = props.onPreviewOpenChange;
+  const previewOpenRef = useRef(false);
+  // The card unmounts when the row expands or the group leaves the list. Release the sort hold
+  // if that happens while the preview is open and the pointer is no longer over the list.
+  useEffect(() => {
+    if (props.expanded && previewOpenRef.current) {
+      previewOpenRef.current = false;
+      onPreviewOpenChangeRef.current?.(false);
+    }
+  }, [props.expanded]);
+  useEffect(
+    () => () => {
+      if (!previewOpenRef.current) return;
+      previewOpenRef.current = false;
+      onPreviewOpenChangeRef.current?.(false);
+    },
+    [],
+  );
+  const buttonClassName =
+    "flex h-7 w-full cursor-pointer items-center gap-1.5 rounded-md px-2 text-left text-secondary-label text-xs outline-none hover:bg-sidebar-row-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring";
+  const buttonBody = (
+    <>
+      {props.expanded ? (
+        <ChevronUpIcon aria-hidden className="size-3 shrink-0" />
+      ) : (
+        <ChevronDownIcon aria-hidden className="size-3 shrink-0" />
+      )}
+      <span className="shrink-0">{label}</span>
+      {!props.expanded && summary.topStatus ? (
+        <span
+          className={cn(
+            "inline-flex min-w-0 items-center gap-1 truncate font-medium",
+            summary.topStatus.className,
+          )}
+        >
+          <SidebarTopStatusIcon icon={summary.topStatus.icon} className="size-3 shrink-0" />
+          {summary.statusCount} {summary.topStatus.label.toLowerCase()}
+        </span>
+      ) : null}
+      {!props.expanded && summary.providers.length > 0 ? (
+        <span aria-hidden className="ml-auto inline-flex shrink-0 items-center gap-1">
+          {summary.providers.map((provider) => (
+            <ProviderInstanceIcon
+              key={provider.driverKind}
+              driverKind={provider.driverKind}
+              displayName={provider.displayName}
+              showBadge={false}
+              iconClassName="size-3 opacity-45"
+            />
+          ))}
+        </span>
+      ) : null}
+    </>
+  );
+  const showPreview = !props.expanded && hidden.length > 0;
   return (
     <li className="list-none">
-      <button
-        type="button"
-        data-testid="sidebar-tab-overflow"
-        aria-expanded={props.expanded}
-        onClick={props.onToggle}
-        className="flex h-7 w-full cursor-pointer items-center gap-1.5 rounded-md px-2 text-left text-secondary-label text-xs outline-none hover:bg-sidebar-row-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-      >
-        {props.expanded ? (
-          <ChevronUpIcon aria-hidden className="size-3 shrink-0" />
-        ) : (
-          <ChevronDownIcon aria-hidden className="size-3 shrink-0" />
-        )}
-        <span className="shrink-0">{label}</span>
-        {!props.expanded && summary.topStatus ? (
-          <span
-            className={cn(
-              "inline-flex min-w-0 items-center gap-1 truncate font-medium",
-              summary.topStatus.className,
-            )}
-          >
-            <SidebarTopStatusIcon icon={summary.topStatus.icon} className="size-3 shrink-0" />
-            {summary.statusCount} {summary.topStatus.label.toLowerCase()}
-          </span>
-        ) : null}
-        {!props.expanded && summary.providers.length > 0 ? (
-          <span aria-hidden className="ml-auto inline-flex shrink-0 items-center gap-1">
-            {summary.providers.map((provider) => (
-              <ProviderInstanceIcon
-                key={provider.driverKind}
-                driverKind={provider.driverKind}
-                displayName={provider.displayName}
-                showBadge={false}
-                iconClassName="size-3 opacity-45"
+      {showPreview ? (
+        <PreviewCard
+          onOpenChange={(open) => {
+            previewOpenRef.current = open;
+            props.onPreviewOpenChange?.(open);
+          }}
+        >
+          <PreviewCardTrigger
+            delay={400}
+            closeDelay={150}
+            render={
+              <button
+                type="button"
+                data-testid="sidebar-tab-overflow"
+                aria-expanded={false}
+                onClick={props.onToggle}
+                className={buttonClassName}
               />
-            ))}
-          </span>
-        ) : null}
-      </button>
+            }
+          >
+            {buttonBody}
+          </PreviewCardTrigger>
+          <PreviewCardPopup
+            side="right"
+            align="start"
+            sideOffset={4}
+            className="w-80 max-w-[calc(100vw-2rem)] p-1"
+          >
+            <SidebarTabOverflowPreview
+              hidden={hidden}
+              providerEntriesByEnvironment={providerEntriesByEnvironment}
+              tabSortOrder={props.tabSortOrder}
+              openedAtByThreadKey={props.openedAtByThreadKey}
+              onOpenTab={props.onOpenTab}
+            />
+          </PreviewCardPopup>
+        </PreviewCard>
+      ) : (
+        <button
+          type="button"
+          data-testid="sidebar-tab-overflow"
+          aria-expanded={props.expanded}
+          onClick={props.onToggle}
+          className={buttonClassName}
+        >
+          {buttonBody}
+        </button>
+      )}
     </li>
   );
 }
@@ -5424,8 +5592,14 @@ export default function Sidebar() {
   }, []);
   const tabSortOrderRef = useRef(tabSortOrder);
   tabSortOrderRef.current = tabSortOrder;
-  const handleTabPointerRest = useCallback((rowKey: string, resting: boolean) => {
-    if (!resting) {
+  // The list's pointer and the portaled "n more" preview both count as resting, so a live
+  // sort does not reshuffle the tabs while you are reading or clicking the preview.
+  const tabListPointerRowRef = useRef<string | null>(null);
+  const tabOverflowPreviewRowRef = useRef<string | null>(null);
+  const syncTabOrderHold = useCallback((rowKey: string) => {
+    const holding =
+      tabListPointerRowRef.current === rowKey || tabOverflowPreviewRowRef.current === rowKey;
+    if (!holding) {
       setHeldTabOrder((held) => (held?.rowKey === rowKey ? null : held));
       return;
     }
@@ -5434,6 +5608,24 @@ export default function Sidebar() {
     const ordered = tabLayoutByRowKeyRef.current.get(rowKey)?.ordered;
     if (ordered) setHeldTabOrder({ rowKey, keys: ordered.map(sidebarThreadKey) });
   }, []);
+  const handleTabPointerRest = useCallback(
+    (rowKey: string, resting: boolean) => {
+      if (resting) tabListPointerRowRef.current = rowKey;
+      else if (tabListPointerRowRef.current === rowKey) tabListPointerRowRef.current = null;
+      syncTabOrderHold(rowKey);
+    },
+    [syncTabOrderHold],
+  );
+  const handleTabOverflowPreview = useCallback(
+    (rowKey: string, open: boolean) => {
+      const previous = tabOverflowPreviewRowRef.current;
+      if (open) tabOverflowPreviewRowRef.current = rowKey;
+      else if (previous === rowKey) tabOverflowPreviewRowRef.current = null;
+      if (previous !== null && previous !== rowKey) syncTabOrderHold(previous);
+      syncTabOrderHold(rowKey);
+    },
+    [syncTabOrderHold],
+  );
   const threadsRef = useRef(threads);
   threadsRef.current = threads;
   // A drop in a timed order switches to Manual, starting from the order you were looking at.
@@ -6119,7 +6311,13 @@ export default function Sidebar() {
                                       hidden={rowTabLayout.hidden}
                                       expanded={rowTabLayout.expanded}
                                       providerEntriesByEnvironment={providerEntriesByEnvironment}
+                                      tabSortOrder={tabSortOrder}
+                                      openedAtByThreadKey={openedAtByThreadKey}
                                       onToggle={() => toggleTabOverflow(threadKey)}
+                                      onOpenTab={navigateToThread}
+                                      onPreviewOpenChange={(open) =>
+                                        handleTabOverflowPreview(threadKey, open)
+                                      }
                                     />
                                   ) : null}
                                 </SidebarTabList>

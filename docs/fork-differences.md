@@ -189,7 +189,8 @@ is its own conversation and provider.
   `sidebar/SidebarTabsMenu.tsx`), the command palette,
   and `Cmd+Option+T` on macOS or `Ctrl+Alt+T` on Windows and Linux list each tab under that row:
   all of them, or up to a chosen number with the rest behind a **more** row that keeps the open tab
-  listed. **Sort tabs by** orders them by latest response, creation, or last opened, either way, or
+  listed. Hovering the collapsed row lists those tabs, and clicking one opens it. **Sort tabs by**
+  orders them by latest response, creation, or last opened, either way, or
   manually by dragging, which switches to Manual. Manual order is client-local, because the
   server's tab positions also pick the group's row. The row's tab count opens or folds just that
   group; those choices stay in the browser and reset when the setting changes. The row's hover
