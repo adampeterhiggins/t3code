@@ -928,6 +928,25 @@ export function holdSidebarTabOrder<T>(
 }
 
 /**
+ * Tab rows the count control hides or reveals. A card's list includes its own thread; a slim
+ * row lists only the others. A limit cuts that list until its "more" row is expanded.
+ */
+export function sidebarTabToggleCount(input: {
+  listed: number;
+  limit: number | null;
+  expanded: boolean;
+}): number {
+  const { listed, limit, expanded } = input;
+  if (limit === null || expanded || listed <= limit) return listed;
+  return limit;
+}
+
+/** "Hide 4 tabs" / "Show 1 tab" for the row's tab-count control. */
+export function sidebarTabToggleLabel(open: boolean, count: number): string {
+  return `${open ? "Hide" : "Show"} ${count} ${count === 1 ? "tab" : "tabs"}`;
+}
+
+/**
  * The tabs a group lists before its "more" row. The open tab always shows: past the limit it
  * takes the last slot, so the group stays exactly `limit` rows tall.
  */
