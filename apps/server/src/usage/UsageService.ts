@@ -67,7 +67,6 @@ import {
   type RateTable,
 } from "./usagePricing.ts";
 import {
-  listProviderEventLogFiles,
   listTranscriptFiles,
   readDirectoryVolumeId,
   readTranscriptRecords,
@@ -396,7 +395,7 @@ export const make = Effect.gen(function* () {
   /**
    * Provider probes persist their model catalog in the status-cache directory.
    * Retain Devin's advertised per-million prices for Devin records so
-   * canonical ACP records can be priced even when the public LiteLLM table
+   * Devin CLI history can be priced even when the public LiteLLM table
    * does not yet contain a newly launched Devin model.
    */
   const ensureDevinRates = Effect.fn("UsageService.ensureDevinRates")(function* () {
@@ -561,7 +560,6 @@ export const make = Effect.gen(function* () {
       provider: UsageProviderKind;
       dir: string;
       fileName?: string;
-      eventLog?: boolean;
       volumeId: string;
     }> = [];
     const seen = new Set<string>();
@@ -647,9 +645,6 @@ export const make = Effect.gen(function* () {
         });
       }
     }
-    const devinDir = config.providerLogsDir;
-    const devinVolumeId = yield* Effect.promise(() => readDirectoryVolumeId(devinDir));
-    dirs.push({ provider: "devin", dir: devinDir, volumeId: devinVolumeId, eventLog: true });
     return dirs;
   });
 
@@ -833,10 +828,7 @@ export const make = Effect.gen(function* () {
           : "Devin usage is read from the Devin CLI's local session history.",
       });
     }
-    for (const { provider, dir, volumeId, fileName, eventLog } of dirs) {
-      // Devin's own history already includes the sessions T3 ran, so T3's
-      // event logs are only a fallback when that history is absent.
-      if (provider === "devin" && !devin.missing) continue;
+    for (const { provider, dir, volumeId, fileName } of dirs) {
       const exists = yield* fileSystem
         .exists(dir)
         .pipe(Effect.catchCause(() => Effect.succeed(false)));
@@ -845,13 +837,7 @@ export const make = Effect.gen(function* () {
         continue;
       }
       const files = yield* Effect.promise(() =>
-        eventLog
-          ? listProviderEventLogFiles(dir, "events", windowStartMs)
-          : listTranscriptFiles(
-              dir,
-              windowStartMs,
-              fileName === undefined ? undefined : { fileName },
-            ),
+        listTranscriptFiles(dir, windowStartMs, fileName === undefined ? undefined : { fileName }),
       );
       // A cold parse waits on disk reads, so a few files in flight read
       // close to twice as fast. Results keep walk order.

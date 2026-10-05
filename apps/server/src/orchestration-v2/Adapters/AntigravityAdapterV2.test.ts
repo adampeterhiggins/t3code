@@ -79,6 +79,7 @@ describe("AntigravityAdapterV2 flavor", () => {
           interactionMode: "default",
           cwd: "/workspace",
         }),
+        undefined,
       );
     assert.equal(mode("approval-required"), "default");
     assert.equal(mode("auto-accept-edits"), "auto_edit");

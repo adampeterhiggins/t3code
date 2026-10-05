@@ -183,26 +183,33 @@ describe("UsageService", () => {
             ),
           );
         }
-        yield* Effect.promise(() =>
-          NodeFSP.writeFile(
-            NodePath.join(config.providerLogsDir, "events.devin-collision.log"),
-            `[2026-08-01T10:00:00Z] CANON: ${encodeUnknownJsonString({
-              type: "thread.token-usage.updated",
-              eventId: "usage-collision",
-              createdAt: "2026-08-01T10:00:00Z",
-              provider: "devin",
-              threadId: "devin-collision",
-              payload: {
-                usage: {
-                  model: "shared-model",
-                  providerSessionId: "devin-session",
-                  lastInputTokens: 10,
-                  lastOutputTokens: 5,
+        const devinCliDir = NodePath.join(home, ".local", "share", "devin", "cli");
+        yield* Effect.promise(() => NodeFSP.mkdir(devinCliDir, { recursive: true }));
+        const devinDb = new NodeSqlite.DatabaseSync(NodePath.join(devinCliDir, "sessions.db"));
+        try {
+          devinDb.exec(
+            "CREATE TABLE message_nodes (row_id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, chat_message TEXT, created_at INTEGER)",
+          );
+          devinDb
+            .prepare(
+              "INSERT INTO message_nodes (session_id, chat_message, created_at) VALUES (?, ?, ?)",
+            )
+            .run(
+              "devin-session",
+              encodeUnknownJsonString({
+                message_id: "usage-collision",
+                role: "assistant",
+                metadata: {
+                  created_at: "2026-08-01T10:00:00Z",
+                  generation_model: "shared-model",
+                  metrics: { input_tokens: 10, output_tokens: 5 },
                 },
-              },
-            })}\n`,
-          ),
-        );
+              }),
+              Date.parse("2026-08-01T10:00:00Z") / 1000,
+            );
+        } finally {
+          devinDb.close();
+        }
         const service = yield* UsageService.make;
         const summary = yield* service.readSummary(WINDOW);
         const claude = summary.buckets.find((bucket) => bucket.provider === "claude");

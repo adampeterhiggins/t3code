@@ -1,0 +1,121 @@
+/**
+ * CustomAcpAdapterV2 — the `customAcp` driver's ACP flavor: any stdio agent
+ * from an executable, arguments, and the instance environment.
+ *
+ * The flavor only knows the ACP spec. Models, options, and modes come from
+ * what the agent advertises; T3's MCP tools, approvals, elicitations, and auth
+ * methods come from the shared ACP adapter.
+ *
+ * @module CustomAcpAdapterV2
+ */
+import type { CustomAcpSettings, ProviderInstanceId } from "@t3tools/contracts";
+import type { SelfInvocation } from "@t3tools/shared/nodeRuntime";
+import type * as Crypto from "effect/Crypto";
+import * as Effect from "effect/Effect";
+import type * as FileSystem from "effect/FileSystem";
+import type * as Scope from "effect/Scope";
+import type { ChildProcessSpawner } from "effect/unstable/process";
+import type * as EffectAcpErrors from "effect-acp/errors";
+import type * as EffectAcpSchema from "effect-acp/compat";
+
+import type * as ServerConfig from "../../config.ts";
+import type * as AcpSessionRuntime from "../../provider/acp/AcpSessionRuntime.ts";
+import {
+  CUSTOM_ACP_DRIVER_KIND,
+  makeCustomAcpRuntime,
+  resolveCustomAcpModeId,
+  resolveCustomAcpModelUpdate,
+} from "../../provider/acp/CustomAcpSupport.ts";
+import type * as IdAllocator from "../IdAllocator.ts";
+import type * as ProviderAdapter from "../ProviderAdapter.ts";
+import {
+  AcpProviderCapabilitiesV2,
+  makeAcpAdapterV2,
+  type AcpAdapterV2Flavor,
+  type AcpAdapterV2RuntimeInput,
+} from "./AcpAdapterV2.ts";
+
+export interface CustomAcpAdapterV2Options {
+  readonly instanceId: ProviderInstanceId;
+  readonly settings: Pick<CustomAcpSettings, "binaryPath" | "arguments">;
+  /** Shown to the agent as the harness it runs in. */
+  readonly harness: string;
+  readonly environment: NodeJS.ProcessEnv;
+  readonly childProcessSpawner: ChildProcessSpawner.ChildProcessSpawner["Service"];
+  readonly crypto: Crypto.Crypto;
+  readonly fileSystem: FileSystem.FileSystem;
+  readonly idAllocator: IdAllocator.IdAllocatorV2["Service"];
+  readonly serverConfig: ServerConfig.ServerConfig["Service"];
+  readonly selfInvocation: SelfInvocation;
+  /** Slash commands the agent advertised for a workspace. */
+  readonly onAvailableCommands: (
+    commands: ReadonlyArray<EffectAcpSchema.AvailableCommand>,
+    cwd: string,
+  ) => Effect.Effect<void>;
+  readonly nativeLogging?: Parameters<typeof makeAcpAdapterV2>[0]["nativeLogging"];
+  readonly makeRuntime?: (
+    input: AcpAdapterV2RuntimeInput,
+  ) => Effect.Effect<
+    AcpSessionRuntime.AcpSessionRuntime["Service"],
+    EffectAcpErrors.AcpError,
+    Crypto.Crypto | Scope.Scope
+  >;
+}
+
+export function makeCustomAcpAdapterFlavor(options: CustomAcpAdapterV2Options): AcpAdapterV2Flavor {
+  return {
+    driver: CUSTOM_ACP_DRIVER_KIND,
+    runtimeHarness: options.harness,
+    capabilities: AcpProviderCapabilitiesV2,
+    makeRuntime:
+      options.makeRuntime ??
+      (({ runtimePolicy: _runtimePolicy, processEnvironment, ...input }) =>
+        makeCustomAcpRuntime({
+          ...input,
+          settings: options.settings,
+          environment:
+            processEnvironment === undefined
+              ? options.environment
+              : { ...options.environment, ...processEnvironment },
+          childProcessSpawner: options.childProcessSpawner,
+        })),
+    applyModelSelection: ({ runtime, startResult, modelSelection }) =>
+      Effect.gen(function* () {
+        const configOptions = yield* runtime.getConfigOptions;
+        const update = resolveCustomAcpModelUpdate({
+          configOptions,
+          models: startResult.sessionSetupResult.models,
+          model: modelSelection.model,
+        });
+        if (update?.type === "config") {
+          yield* runtime.setConfigOption(update.configId, update.value);
+          return update.value;
+        }
+        if (update?.type === "session") {
+          yield* runtime.setSessionModel(update.modelId);
+          return update.modelId;
+        }
+        return undefined;
+      }),
+    sessionModeForPolicy: (policy, modeState) =>
+      policy.interactionMode === "plan"
+        ? undefined
+        : resolveCustomAcpModeId({ runtimeMode: policy.runtimeMode, modeState }),
+    onAvailableCommandsUpdate: options.onAvailableCommands,
+  };
+}
+
+export function makeCustomAcpAdapterV2(
+  options: CustomAcpAdapterV2Options,
+): ProviderAdapter.ProviderAdapterV2Shape {
+  return makeAcpAdapterV2({
+    instanceId: options.instanceId,
+    flavor: makeCustomAcpAdapterFlavor(options),
+    crypto: options.crypto,
+    fileSystem: options.fileSystem,
+    idAllocator: options.idAllocator,
+    serverConfig: options.serverConfig,
+    selfInvocation: options.selfInvocation,
+    ...(options.nativeLogging === undefined ? {} : { nativeLogging: options.nativeLogging }),
+  });
+}

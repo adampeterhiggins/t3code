@@ -1,0 +1,397 @@
+/**
+ * DevinDriver — built-in driver for the Devin CLI via ACP.
+ *
+ * @module DevinDriver
+ */
+import {
+  DevinSettings,
+  ProviderDriverKind,
+  ProviderSetupError,
+  type ServerProvider,
+} from "@t3tools/contracts";
+import { HostProcessWorkingDirectory } from "@t3tools/shared/hostProcess";
+import { resolveSelfInvocation } from "@t3tools/shared/nodeRuntime";
+import * as Schema from "effect/Schema";
+import * as Crypto from "effect/Crypto";
+import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
+import * as Path from "effect/Path";
+import { HttpClient } from "effect/unstable/http";
+import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
+import { AcpTransportError } from "effect-acp/errors";
+
+import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
+import { ServerConfig } from "../../config.ts";
+import * as IdAllocator from "../../orchestration-v2/IdAllocator.ts";
+import { makeDevinAdapterV2 } from "../../orchestration-v2/Adapters/DevinAdapterV2.ts";
+import * as ServerSettingsService from "../../serverSettings.ts";
+import { ProviderDriverError } from "../Errors.ts";
+import { makeAcpNativeLoggerFactory } from "../acp/AcpNativeLogging.ts";
+import { discoverDevinSkills } from "./DevinSkills.ts";
+import {
+  buildInitialDevinProviderSnapshot,
+  checkDevinProviderStatus,
+  enrichDevinSnapshot,
+} from "../Layers/DevinProvider.ts";
+import { ProviderEventLoggers } from "../Layers/ProviderEventLoggers.ts";
+import { makeManagedServerProvider } from "../makeManagedServerProvider.ts";
+import {
+  authMethodDescriptors,
+  type CliAuthMethodSpec,
+  makeCliProviderAuth,
+  providerAuthMethodPersistence,
+  providerEnvVarCredential,
+} from "../CliProviderAuth.ts";
+import { makeDevinAcpRuntime } from "../acp/DevinAcpSupport.ts";
+import {
+  defaultProviderContinuationIdentity,
+  type ProviderDriver,
+  type ProviderInstance,
+} from "../ProviderDriver.ts";
+import { withInstanceIdentity } from "./instanceIdentity.ts";
+import {
+  mergeProviderHomePathEnvironment,
+  mergeProviderInstanceEnvironment,
+  resolveInstanceHomePath,
+} from "../ProviderInstanceEnvironment.ts";
+import {
+  makeCachedProviderMaintenanceResolution,
+  makeManualOnlyProviderMaintenanceCapabilities,
+  makeProviderMaintenanceCapabilities,
+  type ProviderMaintenanceCapabilitiesResolver,
+  resolveProviderMaintenanceCapabilitiesEffect,
+} from "../providerMaintenance.ts";
+import {
+  haveProviderSnapshotSettingsChanged,
+  makeProviderSnapshotSettingsSource,
+  type ProviderSnapshotSettings,
+} from "../providerUpdateSettings.ts";
+import { makeDevinTextGeneration } from "../../textGeneration/DevinTextGeneration.ts";
+const decodeDevinSettings = Schema.decodeSync(DevinSettings);
+
+const DRIVER_KIND = ProviderDriverKind.make("devin");
+// devin updates itself (`devin update`), so the resolved executable is its
+// own updater. No executable means nothing to update, not "whatever is on
+// PATH".
+const UPDATE: ProviderMaintenanceCapabilitiesResolver = {
+  resolve: (context) =>
+    Effect.succeed(
+      context
+        ? makeProviderMaintenanceCapabilities({
+            provider: DRIVER_KIND,
+            packageName: null,
+            updateExecutable: context.resolvedCommandPath,
+            updateArgs: ["update"],
+            updateLockKey: "devin",
+            platform: context.platform,
+          })
+        : makeManualOnlyProviderMaintenanceCapabilities({
+            provider: DRIVER_KIND,
+            packageName: null,
+          }),
+    ),
+};
+
+export type DevinDriverEnv =
+  | BackgroundPolicy.BackgroundPolicy
+  | ChildProcessSpawner.ChildProcessSpawner
+  | Crypto.Crypto
+  | FileSystem.FileSystem
+  | HttpClient.HttpClient
+  | IdAllocator.IdAllocatorV2
+  | Path.Path
+  | ProviderEventLoggers
+  | ServerConfig
+  | ServerSettingsService.ServerSettingsService;
+
+export const DevinDriver: ProviderDriver<DevinSettings, DevinDriverEnv> = {
+  driverKind: DRIVER_KIND,
+  metadata: {
+    displayName: "Devin",
+    supportsMultipleInstances: true,
+  },
+  configSchema: DevinSettings,
+  defaultConfig: (): DevinSettings => decodeDevinSettings({}),
+  create: ({ instanceId, displayName, accentColor, environment, enabled, config: configured }) =>
+    Effect.gen(function* () {
+      const config = {
+        ...configured,
+        homePath: yield* resolveInstanceHomePath({
+          homePath: configured.homePath,
+          stateDir: (yield* ServerConfig).stateDir,
+          driver: DRIVER_KIND,
+          instanceId,
+          environment,
+          homeVariables: ["XDG_DATA_HOME"],
+        }),
+      };
+      const crypto = yield* Crypto.Crypto;
+      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const httpClient = yield* HttpClient.HttpClient;
+      const serverSettings = yield* ServerSettingsService.ServerSettingsService;
+      const eventLoggers = yield* ProviderEventLoggers;
+      const serverConfig = yield* ServerConfig;
+      const idAllocator = yield* IdAllocator.IdAllocatorV2;
+      const selfInvocation = yield* resolveSelfInvocation();
+      const makeNativeLogger = yield* makeAcpNativeLoggerFactory();
+      const processEnv = yield* mergeProviderHomePathEnvironment(
+        config.homePath,
+        ["XDG_DATA_HOME"],
+        mergeProviderInstanceEnvironment(environment),
+      );
+      const continuationIdentity = defaultProviderContinuationIdentity({
+        driverKind: DRIVER_KIND,
+        instanceId,
+      });
+      const stampIdentity = withInstanceIdentity({
+        instanceId,
+        driverKind: DRIVER_KIND,
+        displayName,
+        accentColor,
+        continuationGroupKey: continuationIdentity.continuationKey,
+      });
+      const effectiveConfig = { ...config, enabled } satisfies DevinSettings;
+      const resolveMaintenance = yield* makeCachedProviderMaintenanceResolution(
+        resolveProviderMaintenanceCapabilitiesEffect(UPDATE, {
+          binaryPath: effectiveConfig.binaryPath,
+          env: processEnv,
+        }).pipe(
+          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+          Effect.provideService(FileSystem.FileSystem, fileSystem),
+          Effect.provideService(Path.Path, path),
+        ),
+      );
+
+      // Re-read on each send that mentions a `$token`: skills are added and
+      // switched off mid-session. A failed probe sends the prompt unchanged.
+      const skillNames = (cwd: string) =>
+        discoverDevinSkills(effectiveConfig, processEnv, cwd).pipe(
+          Effect.map(
+            (skills): ReadonlySet<string> =>
+              new Set(
+                skills
+                  .filter((skill) => skill.enabled && skill.userInvocable !== false)
+                  .map((skill) => skill.name),
+              ),
+          ),
+          Effect.tapError((cause) =>
+            Effect.logDebug("Devin skill discovery failed; sending prompt unchanged", {
+              stage: cause.stage,
+            }),
+          ),
+          Effect.orElseSucceed((): ReadonlySet<string> => new Set()),
+          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+          Effect.provideService(Path.Path, path),
+        );
+      const orchestrationAdapter = makeDevinAdapterV2({
+        instanceId,
+        settings: effectiveConfig,
+        environment: processEnv,
+        childProcessSpawner: spawner,
+        crypto,
+        fileSystem,
+        idAllocator,
+        serverConfig,
+        selfInvocation,
+        skillNames,
+        nativeLogging: (threadId) =>
+          makeNativeLogger({
+            nativeEventLogger: eventLoggers.native,
+            provider: DRIVER_KIND,
+            threadId,
+          }),
+      });
+      const textGeneration = yield* makeDevinTextGeneration(effectiveConfig, processEnv);
+
+      const apiKeyCredential = providerEnvVarCredential({
+        serverSettings,
+        instanceId,
+        driverKind: DRIVER_KIND,
+        envName: "WINDSURF_API_KEY",
+      });
+      const authCwd = yield* HostProcessWorkingDirectory;
+      const authMethods: ReadonlyArray<CliAuthMethodSpec> = [
+        {
+          kind: "effect",
+          id: "browser",
+          label: "Sign in with browser",
+          description:
+            "Runs Devin's browser sign-in and shows a Devin sign-in URL to open in your browser.",
+          waitingMessage: "Open the Devin sign-in URL in your browser to finish signing in.",
+          run: ({ publishAuthorizationUrl }) => {
+            let stderrTail = "";
+            let publishedUrl: string | undefined;
+            return makeDevinAcpRuntime({
+              devinSettings: effectiveConfig,
+              environment: processEnv,
+              childProcessSpawner: spawner,
+              cwd: authCwd,
+              clientInfo: { name: "t3-code", version: "0.0.0" },
+              onStderr: (text) => {
+                stderrTail = (stderrTail + text).slice(-4096);
+                const url = /https:\/\/[^\s"'\\]+/.exec(stderrTail)?.[0];
+                if (url === undefined || url === publishedUrl) return Effect.void;
+                publishedUrl = url;
+                return publishAuthorizationUrl(url);
+              },
+            }).pipe(
+              Effect.flatMap((runtime) =>
+                runtime.authenticate === undefined
+                  ? Effect.fail(
+                      new AcpTransportError({
+                        detail: "Devin's ACP runtime cannot sign in.",
+                        cause: undefined,
+                      }),
+                    )
+                  : runtime.authenticate("devin-browser"),
+              ),
+              Effect.provideService(Crypto.Crypto, crypto),
+              Effect.mapError(
+                (cause) =>
+                  new ProviderSetupError({
+                    instanceId,
+                    operation: "start",
+                    detail: `Devin browser sign-in did not complete: ${cause.message}`,
+                    cause: cause as Error,
+                  }),
+              ),
+            );
+          },
+        },
+        {
+          kind: "saved-credentials",
+          id: "saved",
+          label: "Use saved Devin login",
+          description: "Reuses the credentials `devin auth login` stored on this environment.",
+          missingMessage:
+            "No Devin login found on this environment. Sign in with a browser or paste an API key.",
+        },
+        {
+          kind: "paste-credential",
+          id: "api-key",
+          label: "Paste an API key",
+          description: "Stored as a sensitive WINDSURF_API_KEY variable on this instance.",
+          credentialLabel: "Devin API key",
+          credentialPlaceholder: "devin-se…",
+          probeAfterApply: false,
+          appliedMessage: "Devin API key saved.",
+          apply: apiKeyCredential.apply,
+        },
+      ];
+      const providerSetup: ServerProvider["setup"] = {
+        canAuthenticate: true,
+        canInstall: false,
+        authMethods: authMethodDescriptors(authMethods),
+      };
+      const authMethodPersistence = providerAuthMethodPersistence({
+        serverSettings,
+        instanceId,
+        methods: authMethods,
+      });
+      const stampSetup = <T extends { setup?: ServerProvider["setup"] }>(draft: T) => ({
+        ...draft,
+        setup: providerSetup,
+      });
+
+      const checkProvider = checkDevinProviderStatus(effectiveConfig, processEnv).pipe(
+        Effect.map(stampSetup),
+        Effect.map(stampIdentity),
+        Effect.flatMap(authMethodPersistence.stamp),
+        Effect.provideService(Crypto.Crypto, crypto),
+        Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+      );
+
+      const snapshotSettings = makeProviderSnapshotSettingsSource(effectiveConfig, serverSettings);
+      const snapshot = yield* makeManagedServerProvider<ProviderSnapshotSettings<DevinSettings>>({
+        resolveMaintenance,
+        getSettings: snapshotSettings.getSettings,
+        streamSettings: snapshotSettings.streamSettings,
+        haveSettingsChanged: haveProviderSnapshotSettingsChanged,
+        initialSnapshot: (settings) =>
+          buildInitialDevinProviderSnapshot(settings.provider).pipe(
+            Effect.map(stampSetup),
+            Effect.map(stampIdentity),
+          ),
+        checkProvider,
+        // Model catalog comes from `devin models list --format json` during
+        // provider checks; enrichment only republishes version advisories.
+        enrichSnapshot: ({ settings, snapshot: currentSnapshot, publishSnapshot }) =>
+          resolveMaintenance().pipe(
+            Effect.flatMap((maintenanceCapabilities) =>
+              enrichDevinSnapshot({
+                settings: settings.provider,
+                snapshot: currentSnapshot,
+                maintenanceCapabilities,
+                enableProviderUpdateChecks: settings.enableProviderUpdateChecks,
+                publishSnapshot,
+                stampIdentity,
+                httpClient,
+              }),
+            ),
+          ),
+      }).pipe(
+        Effect.mapError(
+          (cause) =>
+            new ProviderDriverError({
+              driver: DRIVER_KIND,
+              instanceId,
+              detail: `Failed to build Devin snapshot: ${cause.message ?? String(cause)}`,
+              cause,
+            }),
+        ),
+      );
+
+      // Per-workspace skill discovery mirrors Claude: `devin skills list`
+      // runs in the project cwd so project-scoped skills resolve correctly.
+      // A discovery failure fails the snapshot so the registry keeps the last
+      // valid workspace entry instead of republishing an empty skill list.
+      const snapshotForCwd = (cwd: string) =>
+        !effectiveConfig.enabled
+          ? snapshot.getSnapshot
+          : Effect.all([
+              snapshot.getSnapshot,
+              discoverDevinSkills(effectiveConfig, processEnv, cwd),
+            ]).pipe(
+              Effect.map(([machineSnapshot, skills]) => ({ ...machineSnapshot, skills })),
+              Effect.mapError(
+                (cause) =>
+                  new ProviderDriverError({
+                    driver: DRIVER_KIND,
+                    instanceId,
+                    detail: `Failed to discover Devin skills for ${cwd}: ${cause.stage}`,
+                    cause,
+                  }),
+              ),
+              Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+              Effect.provideService(Path.Path, path),
+            );
+
+      const auth = yield* makeCliProviderAuth({
+        instanceId,
+        providerLabel: "Devin",
+        command: effectiveConfig.binaryPath || "devin",
+        processEnv,
+        methods: authMethods,
+        probeAuth: snapshot.refresh.pipe(Effect.map((provider) => provider.auth)),
+        recordAuthMethod: authMethodPersistence.record,
+        logoutCommand: ["auth", "logout"],
+        onLogout: apiKeyCredential.remove,
+      });
+
+      return {
+        instanceId,
+        driverKind: DRIVER_KIND,
+        continuationIdentity,
+        displayName,
+        accentColor,
+        enabled,
+        snapshot,
+        snapshotForCwd,
+        orchestrationAdapter,
+        textGeneration,
+        auth,
+      } satisfies ProviderInstance;
+    }),
+};

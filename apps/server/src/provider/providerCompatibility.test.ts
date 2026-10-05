@@ -57,8 +57,9 @@ const V2_RELEASE = "0.0.46";
 describe("provider compatibility", () => {
   it("bundles a compatibility policy for every built-in harness", () => {
     for (const builtIn of BUILT_IN_DRIVERS) {
-      // Registry entries are arbitrary external ACP agents, not one versioned harness.
-      if (builtIn.driverKind === "acpRegistry") continue;
+      // Registry and custom ACP entries are arbitrary external agents, not one
+      // versioned harness.
+      if (builtIn.driverKind === "acpRegistry" || builtIn.driverKind === "customAcp") continue;
       assert.isDefined(
         resolveProviderCompatibility(
           ModelManifest.BUNDLED_MODEL_MANIFEST.compatibility,
