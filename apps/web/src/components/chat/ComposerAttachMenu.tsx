@@ -2,6 +2,7 @@ import type { ScopedThreadRef } from "@t3tools/contracts";
 import { FolderGit2Icon, MessageSquareIcon, PaperclipIcon } from "lucide-react";
 import { GitHubIcon, LinearIcon, NotionIcon, SlackIcon } from "../Icons";
 import { memo } from "react";
+import { useEnvironmentSettings } from "~/hooks/useSettings";
 
 import { Button } from "../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
@@ -28,6 +29,10 @@ export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
   onAttachFiles: () => void;
 }) {
   const composerMenuProps = useComposerMenuProps();
+  const slackEnabled = useEnvironmentSettings(
+    props.threadRef.environmentId,
+    (s) => s.enableSlackIntegration,
+  );
   return (
     <Menu>
       <MenuTrigger
@@ -52,10 +57,12 @@ export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
           <NotionIcon />
           Notion page
         </MenuItem>
-        <MenuItem onClick={() => openSlackMessagePicker(props.threadRef)}>
-          <SlackIcon />
-          Slack message
-        </MenuItem>
+        {slackEnabled ? (
+          <MenuItem onClick={() => openSlackMessagePicker(props.threadRef)}>
+            <SlackIcon />
+            Slack message
+          </MenuItem>
+        ) : null}
         {props.githubIssuesAvailable ? (
           <MenuItem onClick={() => openGitHubIssuePicker(props.threadRef)}>
             <GitHubIcon />

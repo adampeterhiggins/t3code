@@ -317,6 +317,31 @@ it.layer(NodeServices.layer)("server settings", (it) => {
     ).pipe(Effect.provide(makeServerSettingsLayer())),
   );
 
+  it.effect("persists and broadcasts disabling and re-enabling Slack", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const serverConfig = yield* ServerConfig.ServerConfig;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+
+        for (const enabled of [false, true]) {
+          const changes = yield* serverSettings.subscribeChanges;
+          const next = yield* serverSettings.updateSettings({ enableSlackIntegration: enabled });
+          const change = Option.getOrUndefined(yield* Stream.runHead(changes));
+          const persisted = yield* fileSystem
+            .readFileString(serverConfig.settingsPath)
+            .pipe(
+              Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(ServerSettings))),
+            );
+
+          assert.strictEqual(next.enableSlackIntegration, enabled);
+          assert.strictEqual(change?.enableSlackIntegration, enabled);
+          assert.strictEqual(persisted.enableSlackIntegration, enabled);
+        }
+      }),
+    ).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
   it.effect("persists and broadcasts thread settlement settings", () =>
     Effect.scoped(
       Effect.gen(function* () {

@@ -444,6 +444,10 @@ server renders the thread to capped markdown when it is attached. That markdown 
 first message and the linked one, fills the rest newest first, and resolves mentions to names.
 The snapshot is inlined into the prompt for every provider. Slack has no thread links.
 
+Turning off **Enable Slack integration** in that setting keeps pasted Slack links as links without
+setup prompts and hides Slack attachment actions on web, desktop, and mobile for the environment.
+The connected account and existing attachments are kept, so turning it back on needs no new login.
+
 Code: `apps/server/src/slack/`, `packages/contracts/src/slack.ts`, `SlackThreadContextRecord` in
 `packages/contracts/src/composerContext.ts`, `packages/client-runtime/src/state/slack.ts`,
 `apps/web/src/components/settings/SlackSettings.tsx`,

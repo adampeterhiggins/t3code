@@ -22,6 +22,18 @@ const decodeServerSettingsPatch = Schema.decodeUnknownSync(ServerSettingsPatch);
 const encodeServerSettings = Schema.encodeSync(ServerSettings);
 const decodeClaudeSettings = Schema.decodeUnknownSync(ClaudeSettings);
 
+describe("Slack integration settings", () => {
+  it("preserves existing Slack behavior unless explicitly disabled", () => {
+    expect(decodeServerSettings({}).enableSlackIntegration).toBe(true);
+  });
+
+  it.each([false, true])("persists an explicit %s preference", (enabled) => {
+    const preference = { enableSlackIntegration: enabled };
+    expect(decodeServerSettingsPatch(preference)).toEqual(preference);
+    expect(encodeServerSettings(decodeServerSettings(preference))).toMatchObject(preference);
+  });
+});
+
 describe("storage cleanup settings", () => {
   it("keeps cleanup disabled for existing installations", () => {
     expect(decodeServerSettings({}).worktreeCleanup).toBeNull();
