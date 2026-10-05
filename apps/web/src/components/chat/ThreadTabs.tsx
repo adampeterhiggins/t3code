@@ -1,5 +1,6 @@
 import {
   createThreadTab,
+  forkThreadTabFromRun,
   listThreadTabs,
   prepareThreadTabHandoff,
 } from "@t3tools/client-runtime/thread-tabs";
@@ -9,6 +10,7 @@ import {
   type EnvironmentId,
   type MessageId,
   type ModelSelection,
+  type RunId,
   type ScopedThreadRef,
   type ThreadId,
   type ThreadTabGroup,
@@ -593,6 +595,37 @@ export async function forkThreadTab(
         .filter((part) => part.length > 0)
         .join("\n\n"),
     );
+  // The thread route redirects away from threads the client store has not heard of yet.
+  await waitForThreadShell(threadRef);
+  return threadRef;
+}
+
+/**
+ * Forks a completed response into a new tab of `tabThreadId`'s group with the native thread
+ * fork, so the new tab carries the conversation itself rather than a summary of it. Resolves to
+ * the new tab once the client knows about it.
+ */
+export async function forkResponseIntoTab(
+  connection: PreparedConnection,
+  input: {
+    environmentId: EnvironmentId;
+    tabThreadId: ThreadId;
+    sourceThreadId: ThreadId;
+    runId: RunId;
+    title: string;
+  },
+): Promise<ScopedThreadRef> {
+  const threadId = newThreadId();
+  await runtime.runPromise(
+    forkThreadTabFromRun(connection, input.tabThreadId, {
+      threadId,
+      sourceThreadId: input.sourceThreadId,
+      runId: input.runId,
+      title: input.title,
+    }),
+  );
+  const threadRef = scopeThreadRef(input.environmentId, threadId);
+  carryRightPanelVisibility(scopeThreadRef(input.environmentId, input.tabThreadId), threadRef);
   // The thread route redirects away from threads the client store has not heard of yet.
   await waitForThreadShell(threadRef);
   return threadRef;

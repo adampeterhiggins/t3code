@@ -4,31 +4,43 @@ import {
   EnvironmentHttpApi,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import * as HttpApiBuilder from "effect/unstable/httpapi/HttpApiBuilder";
 
 import {
   annotateEnvironmentRequest,
+  failEnvironmentInternal,
   failEnvironmentInvalidRequest,
   failEnvironmentNotFound,
   requireEnvironmentScope,
 } from "../auth/http.ts";
+import * as ThreadTabs from "./ThreadTabs.ts";
 
-/**
- * Chat tabs are not yet ported to orchestration V2. Until they are, the API
- * reports no tab groups and refuses to create or hand off tabs, so clients
- * fall back to plain threads. `fork_thread_tabs` rows are left untouched.
- */
+const mapThreadTabsError = (error: ThreadTabs.ThreadTabsError) =>
+  Effect.gen(function* () {
+    switch (error.reason) {
+      case "thread_not_found":
+        return yield* failEnvironmentNotFound("thread_not_found");
+      case "invalid_request":
+        return yield* failEnvironmentInvalidRequest("invalid_command");
+      case "dispatch_failed":
+      case "internal":
+        return yield* failEnvironmentInternal("internal_error", error);
+    }
+  });
+
 export const threadTabsHttpApiLayer = HttpApiBuilder.group(
   EnvironmentHttpApi,
   "threadTabs",
   Effect.fnUntraced(function* (handlers) {
+    const tabs = yield* ThreadTabs.ThreadTabs;
     return handlers
       .handle(
         "memberships",
         Effect.fn("environment.threadTabs.memberships")(function* (args) {
           yield* annotateEnvironmentRequest(args.endpoint.name);
           yield* requireEnvironmentScope(AuthOrchestrationReadScope);
-          return [];
+          return yield* tabs.memberships.pipe(Effect.catch(mapThreadTabsError));
         }),
       )
       .handle(
@@ -36,7 +48,7 @@ export const threadTabsHttpApiLayer = HttpApiBuilder.group(
         Effect.fn("environment.threadTabs.list")(function* (args) {
           yield* annotateEnvironmentRequest(args.endpoint.name);
           yield* requireEnvironmentScope(AuthOrchestrationReadScope);
-          return yield* failEnvironmentNotFound("thread_not_found");
+          return yield* tabs.group(args.params.threadId).pipe(Effect.catch(mapThreadTabsError));
         }),
       )
       .handle(
@@ -44,7 +56,19 @@ export const threadTabsHttpApiLayer = HttpApiBuilder.group(
         Effect.fn("environment.threadTabs.create")(function* (args) {
           yield* annotateEnvironmentRequest(args.endpoint.name);
           yield* requireEnvironmentScope(AuthOrchestrationOperateScope);
-          return yield* failEnvironmentInvalidRequest("invalid_command");
+          return yield* tabs
+            .create(args.params.threadId, args.payload)
+            .pipe(Effect.catch(mapThreadTabsError));
+        }),
+      )
+      .handle(
+        "fork",
+        Effect.fn("environment.threadTabs.fork")(function* (args) {
+          yield* annotateEnvironmentRequest(args.endpoint.name);
+          yield* requireEnvironmentScope(AuthOrchestrationOperateScope);
+          return yield* tabs
+            .fork(args.params.threadId, args.payload)
+            .pipe(Effect.catch(mapThreadTabsError));
         }),
       )
       .handle(
@@ -52,8 +76,10 @@ export const threadTabsHttpApiLayer = HttpApiBuilder.group(
         Effect.fn("environment.threadTabs.handoff")(function* (args) {
           yield* annotateEnvironmentRequest(args.endpoint.name);
           yield* requireEnvironmentScope(AuthOrchestrationOperateScope);
-          return yield* failEnvironmentInvalidRequest("invalid_command");
+          return yield* tabs
+            .handoff(args.params.threadId, args.payload)
+            .pipe(Effect.catch(mapThreadTabsError));
         }),
       );
   }),
-);
+).pipe(Layer.provide(ThreadTabs.layer));

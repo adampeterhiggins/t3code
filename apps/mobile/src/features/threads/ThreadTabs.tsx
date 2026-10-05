@@ -134,6 +134,7 @@ export function ThreadTabs({
       await runtime.runPromise(
         createThreadTab(prepared.value, threadId, {
           threadId: next,
+          creationSource: "mobile",
           modelSelection,
         }),
       );
@@ -151,6 +152,7 @@ export function ThreadTabs({
       await runtime.runPromise(
         createThreadTab(prepared.value, threadId, {
           threadId: next,
+          creationSource: "mobile",
           modelSelection: option.selection,
         }),
       );

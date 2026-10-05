@@ -1,6 +1,7 @@
 import * as Schema from "effect/Schema";
-import { MessageId, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { MessageId, RunId, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { ModelSelection } from "./modelSelection.ts";
+import { OrchestrationV2CreationSource } from "./orchestrationV2.ts";
 
 export const ThreadTab = Schema.Struct({
   threadId: ThreadId,
@@ -27,8 +28,24 @@ export type ThreadTabMemberships = typeof ThreadTabMemberships.Type;
 export const CreateThreadTabInput = Schema.Struct({
   threadId: ThreadId,
   modelSelection: ModelSelection,
+  /** The surface that opened the tab; defaults to web. */
+  creationSource: Schema.optional(OrchestrationV2CreationSource),
 });
 export type CreateThreadTabInput = typeof CreateThreadTabInput.Type;
+
+/**
+ * Forks a completed response into a new tab: a native `thread.fork` of `sourceThreadId` at
+ * `runId`, joined to the group of the thread in the path. The source differs from that thread
+ * when the response was inherited from an earlier fork.
+ */
+export const ForkThreadTabInput = Schema.Struct({
+  threadId: ThreadId,
+  sourceThreadId: ThreadId,
+  runId: RunId,
+  title: Schema.optional(TrimmedNonEmptyString),
+  creationSource: Schema.optional(OrchestrationV2CreationSource),
+});
+export type ForkThreadTabInput = typeof ForkThreadTabInput.Type;
 
 export const ThreadTabHandoffInput = Schema.Struct({
   sourceThreadIds: Schema.Array(ThreadId).check(Schema.isMaxLength(8)),

@@ -183,6 +183,7 @@ import {
 import { orchestrationHttpApiLayer } from "./orchestration-v2/http.ts";
 import { projectHttpApiLayer } from "./project/http.ts";
 import { threadTabsHttpApiLayer } from "./threadTabs/http.ts";
+import * as ThreadTabSettlementReactor from "./threadTabs/settlement.ts";
 import * as NetService from "@t3tools/shared/Net";
 import * as RelayClient from "@t3tools/shared/relayClient";
 import { disableTailscaleServe, ensureTailscaleServe } from "@t3tools/tailscale";
@@ -558,6 +559,13 @@ const RuntimeCoreDependenciesBaseLive = Layer.mergeAll(
     Layer.provide(PullRequestServiceLive),
     Layer.provide(ProjectionStoreV2.layer),
   ),
+  // Fork: a chat tab group settles and wakes as one sidebar row.
+  Layer.effectDiscard(
+    Effect.gen(function* () {
+      const service = yield* ThreadTabSettlementReactor.ThreadTabSettlementReactor;
+      yield* service.start();
+    }),
+  ).pipe(Layer.provide(ThreadTabSettlementReactor.layer)),
   // Subscribes to `account.rate-limits.updated` so usage bars track live
   // telemetry instead of waiting for the next status probe.
   ProviderUsageLimitsIngestionLive,

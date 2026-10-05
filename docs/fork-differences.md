@@ -158,13 +158,17 @@ is its own conversation and provider.
   `fork_thread_tabs` table, created by `ensureThreadTabsSchema` in
   `apps/server/src/threadTabs/schema.ts`. It is versioned in a separate `fork_schema_migrations`
   table so upstream's numbered migrations are never touched.
-- **Server.** `apps/server/src/threadTabs/http.ts` serves the `threadTabs` HTTP group: list a
-  group, list all memberships, create a tab, and summarize sibling tabs. Checkpointing lets tab
-  siblings share a worktree (`sharedWorkspace.ts`, `CheckpointReactor.ts`).
+- **Server.** The `ThreadTabs` service (`apps/server/src/threadTabs/ThreadTabs.ts`) lists a group
+  and all memberships, creates a tab, forks a response into a tab, and summarizes other chats;
+  `http.ts` serves it as the `threadTabs` HTTP group. A new tab is an orchestration `thread.create`
+  on the source's branch and worktree. Each tab keeps its own checkpoints in the shared worktree.
+  Orchestration v2 does not follow a worktree's checked-out branch for any thread, so tabs keep
+  the branch they were created with.
 - **Settlement.** The group shows as one sidebar row, so it settles as a unit while upstream's
-  settle commands and auto-settle policy stay per thread. `settlement.ts` mirrors them: a turn or
-  unsettle in any tab wakes the group, and a settle in any tab settles the rest. A settle is undone
-  while another tab is working, or, for an automatic settle, while another tab has an open pull
+  settle commands and auto-settle policy stay per thread. `settlement.ts` follows the stored
+  orchestration events and mirrors them: a new run or unsettle in any tab wakes the group, and a
+  settle in any tab settles the rest. A settle is undone while another tab is working, waiting on
+  you, or holding background work, or, for an automatic settle, while another tab has an open pull
   request.
 - **Sidebars.** By default child tabs are hidden from the web sidebar, the legacy project sidebar,
   and both mobile thread lists (`useHiddenTabThreads`). The group's row stays highlighted while any
@@ -217,9 +221,10 @@ is its own conversation and provider.
   - A user message's hover actions include **Fork into new tab**. The summary stops before that
     message (`beforeMessageId` on the handoff request), and the message's text and attachments
     follow it.
-  - A completed agent response has the same fork action. Its summary includes that response
-    (`afterMessageId` on the handoff request); the new draft holds only the summary attachment,
-    ready for a follow-up.
+  - A completed agent response's **Fork from this response** opens upstream's native fork as a
+    new tab (`forkResponseIntoTab`, the `fork` endpoint), so the tab carries the conversation
+    itself rather than a summary. Against a server without tabs it forks a separate thread, as
+    upstream does.
   - Each model picker row has a hover fork button. The new tab runs that model, the whole chat is
     summarized, and the current draft (text, attachments, and context chips) is copied after it.
     Other providers, and models the provider cannot switch to mid-chat, stay listed instead of

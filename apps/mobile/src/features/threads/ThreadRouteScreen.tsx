@@ -358,9 +358,15 @@ function ThreadRouteContent(
   const { selectedThreadCwd } = useSelectedThreadWorktree();
   const composer = useThreadComposerState();
   const tabHandoffInFlightRef = useRef(false);
+  // A tab is empty until its first run; the shell knows that before the detail loads.
+  const selectedThreadIsEmptyTab =
+    selectedThread !== null &&
+    selectedThread.latestRun === null &&
+    selectedThread.latestUserMessageAt === null &&
+    selectedThread.runtime === null;
   const sendWithTabContext = useCallback(async () => {
     if (tabHandoffInFlightRef.current) return null;
-    if (selectedThread && selectedThreadDetail?.messages.length === 0) {
+    if (selectedThread && selectedThreadIsEmptyTab) {
       const sources = selectedThreadTabSources(selectedThread.id);
       if (sources.length > 0) {
         if (Option.isNone(tabConnection)) {
@@ -395,7 +401,7 @@ function ThreadRouteContent(
       }
     }
     return composer.onSendMessage();
-  }, [composer.onSendMessage, selectedThread, selectedThreadDetail, tabConnection]);
+  }, [composer.onSendMessage, selectedThread, selectedThreadIsEmptyTab, tabConnection]);
   const gitState = useSelectedThreadGitState();
   const gitActions = useSelectedThreadGitActions();
   const requests = useSelectedThreadRequests();
@@ -1159,7 +1165,7 @@ function ThreadRouteContent(
             threadId={selectedThread.id}
             title={selectedThread.title}
             modelSelection={selectedThread.modelSelection}
-            empty={selectedThreadDetail?.messages.length === 0}
+            empty={selectedThreadIsEmptyTab}
             working={threadRuntimeIsActive(selectedThread.runtime)}
           />
         ) : null}
