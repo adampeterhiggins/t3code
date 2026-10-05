@@ -390,7 +390,9 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "pull-request-open-target",
     title: "Open pull requests in",
     to: "/settings/general",
-    searchTerms: ["pr view browser github gitlab side panel sidebar default button external"],
+    searchTerms: [
+      "pr view browser github gitlab side panel sidebar default details badge toast external",
+    ],
   },
   {
     id: "proactive-panels",

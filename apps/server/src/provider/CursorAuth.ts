@@ -18,6 +18,7 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 
 import { Cursor, InMemoryCredentialStore } from "./cursorSdk.ts";
 import type { ProviderAuthController } from "./Services/ProviderAuthService.ts";
+import type { CursorSdkCredential } from "./Layers/cursorUsageLimits.ts";
 
 const AUTH_TIMEOUT_MS = 300_000;
 
@@ -29,6 +30,8 @@ interface AuthFlow {
 
 export interface CursorAuth {
   readonly controller: ProviderAuthController;
+  /** The key this instance runs with, and the backend a browser sign-in minted it against. */
+  readonly readCredential: Effect.Effect<CursorSdkCredential | undefined, ProviderSetupError>;
   readonly readApiKey: Effect.Effect<string | undefined, ProviderSetupError>;
   readonly requireApiKey: Effect.Effect<string, ProviderSetupError>;
   readonly usesApiKey: boolean;
@@ -73,8 +76,8 @@ export const makeCursorAuth = Effect.fn("makeCursorAuth")(function* (options: Cu
       state: { ...current.state, ...patch },
     }));
 
-  const readApiKey = Effect.gen(function* () {
-    if (configuredKey) return configuredKey;
+  const readCredential = Effect.gen(function* () {
+    if (configuredKey) return { apiKey: configuredKey } satisfies CursorSdkCredential;
     const credentials = yield* Effect.tryPromise({
       try: () => options.store.load(),
       catch: (cause) =>
@@ -88,9 +91,13 @@ export const makeCursorAuth = Effect.fn("makeCursorAuth")(function* (options: Cu
     const now = yield* Clock.currentTimeMillis;
     return credentials &&
       (credentials.apiKeyExpiresAtMs === undefined || credentials.apiKeyExpiresAtMs > now)
-      ? credentials.apiKey
+      ? ({
+          apiKey: credentials.apiKey,
+          backendUrl: credentials.backendUrl,
+        } satisfies CursorSdkCredential)
       : undefined;
   });
+  const readApiKey = readCredential.pipe(Effect.map((credential) => credential?.apiKey));
 
   const requireApiKey = Effect.gen(function* () {
     if (operation !== "idle") {
@@ -487,6 +494,7 @@ export const makeCursorAuth = Effect.fn("makeCursorAuth")(function* (options: Cu
 
   return {
     controller,
+    readCredential,
     readApiKey,
     requireApiKey,
     withAccess,

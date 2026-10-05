@@ -57,7 +57,14 @@ import { parseDevinAccountConsumptionPayload } from "./devinAccountUsage.ts";
 import { readDevinUsage } from "./devinUsageReader.ts";
 import { readOpenCodeUsage } from "./opencodeUsageReader.ts";
 import { readAntigravityUsage } from "./antigravityUsageReader.ts";
-import { readCursorAccountUsage } from "./cursorUsageReader.ts";
+import {
+  cursorAccountKey,
+  readCursorAccountUsage,
+  type CursorAccountUsageReadResult,
+} from "./cursorUsageReader.ts";
+import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
+import { readCursorSdkCredential } from "../provider/CursorCredentialStore.ts";
+import { exchangeCursorApiKey } from "../provider/Layers/cursorUsageLimits.ts";
 import { resolveModelAliases, UsageAggregator } from "./usageAggregation.ts";
 import {
   createOverrideRateTable,
@@ -299,6 +306,7 @@ export const make = Effect.gen(function* () {
   const httpClient = yield* HttpClient.HttpClient;
   const hostEnvironment = yield* HostProcessEnvironment;
   const platform = yield* HostProcessPlatform;
+  const secretStore = yield* ServerSecretStore.ServerSecretStore;
 
   const fileCache: ScanCache = new Map();
   const sourceCache = new Map<string, typeof CachedSource.Type>();
@@ -949,6 +957,90 @@ export const make = Effect.gen(function* () {
         ...(failed ? { message: "Some Antigravity history could not be read." } : {}),
       });
     }
+    // Each Cursor instance's own SDK sign-in (or CURSOR_API_KEY) reads its account's history.
+    // One account counts once, however many instances, logins, or servers share it.
+    const cursorUntilMs = yield* Clock.currentTimeMillis;
+    const cursorAccounts = new Set<string>();
+    const pushCursorAccount = (account: CursorAccountUsageReadResult & { accountKey: string }) => {
+      if (cursorAccounts.has(account.accountKey)) return;
+      cursorAccounts.add(account.accountKey);
+      // The same account includes CLI and desktop history from every machine.
+      // A stable remote fingerprint prevents connected environments counting it twice.
+      const source = `cursor-account:${account.accountKey}`;
+      scanned.push({
+        provider: "cursor",
+        dir: source,
+        hostId: "cursor.com",
+        volumeId: account.accountKey,
+        files: [{ path: source, records: account.records }],
+        status: "ok",
+      });
+    };
+    const cursorInstances: Array<{
+      readonly instanceId: ProviderInstanceId;
+      readonly environment: ProviderInstanceConfig["environment"];
+    }> = Object.entries(settings.providerInstances)
+      .filter(([, instance]) => instance.driver === "cursor")
+      .map(([id, instance]) => ({
+        instanceId: ProviderInstanceId.make(id),
+        environment: instance.environment,
+      }));
+    if (!Object.hasOwn(settings.providerInstances, "cursor")) {
+      cursorInstances.push({
+        instanceId: ProviderInstanceId.make("cursor"),
+        environment: undefined,
+      });
+    }
+    for (const instance of cursorInstances) {
+      const environment = mergeProviderInstanceEnvironment(instance.environment, hostEnvironment);
+      const account = yield* readCursorSdkCredential(instance.instanceId, environment).pipe(
+        Effect.flatMap((credential) =>
+          credential === undefined
+            ? Effect.succeed(null)
+            : exchangeCursorApiKey(credential, environment).pipe(
+                Effect.flatMap((accessToken) => {
+                  // Another instance signed in to this account already read its history.
+                  const accountKey = cursorAccountKey(accessToken);
+                  return accountKey !== null && cursorAccounts.has(accountKey)
+                    ? Effect.succeed(null)
+                    : Effect.promise(() =>
+                        readCursorAccountUsage(
+                          { kind: "token", accessToken },
+                          windowStartMs,
+                          cursorUntilMs,
+                        ),
+                      );
+                }),
+              ),
+        ),
+        Effect.provideService(ServerSecretStore.ServerSecretStore, secretStore),
+        Effect.provideService(HttpClient.HttpClient, httpClient),
+        Effect.catchCause(() =>
+          Effect.succeed<CursorAccountUsageReadResult>({
+            accountKey: null,
+            records: [],
+            missing: false,
+            error: "Cursor account usage could not be read with this account's sign-in.",
+          }),
+        ),
+      );
+      if (account === null) continue;
+      if (account.accountKey !== null && account.error === null && !account.missing) {
+        pushCursorAccount({ ...account, accountKey: account.accountKey });
+        continue;
+      }
+      scanned.push({
+        provider: "cursor",
+        dir: `cursor-instance:${instance.instanceId}`,
+        volumeId: "",
+        files: null,
+        message: account.error ?? "Cursor account usage could not be read.",
+      });
+    }
+    // The host's CLI login still counts, as its own account. Once an instance's sign-in has
+    // been read, a missing or unreadable CLI login is not worth a notice.
+    const haveInstanceAccount = cursorAccounts.size > 0;
+
     const cursorUserHome =
       (platform === "win32" ? hostEnvironment["USERPROFILE"] : hostEnvironment["HOME"]) || home;
     const configHome = hostEnvironment["XDG_CONFIG_HOME"]?.trim();
@@ -975,6 +1067,7 @@ export const make = Effect.gen(function* () {
       !loginUnavailable &&
       !settings.cursorKeychainUsageEnabled
     ) {
+      if (haveInstanceAccount) return scanned;
       scanned.push({
         provider: "cursor",
         dir: cursorAuthPath,
@@ -985,7 +1078,6 @@ export const make = Effect.gen(function* () {
       });
       return scanned;
     }
-    const cursorUntilMs = yield* Clock.currentTimeMillis;
     const account = loginUnavailable
       ? {
           accountKey: null,
@@ -1005,19 +1097,10 @@ export const make = Effect.gen(function* () {
     // No saved login means there is no account source to report, not a setup error.
     if (account.missing && account.error === null) return scanned;
     if (account.accountKey !== null && account.error === null && !account.missing) {
-      // The same account includes CLI and desktop history from every machine.
-      // A stable remote fingerprint prevents connected environments counting it twice.
-      const source = `cursor-account:${account.accountKey}`;
-      scanned.push({
-        provider: "cursor",
-        dir: source,
-        hostId: "cursor.com",
-        volumeId: account.accountKey,
-        files: [{ path: source, records: account.records }],
-        status: "ok",
-      });
+      pushCursorAccount({ ...account, accountKey: account.accountKey });
       return scanned;
     }
+    if (haveInstanceAccount) return scanned;
     scanned.push({
       provider: "cursor",
       dir: cursorAuthPath,

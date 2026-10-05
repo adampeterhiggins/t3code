@@ -1,11 +1,13 @@
 import type { SdkCredentialStore } from "@cursor/sdk";
 import { ProviderSetupError, type ProviderInstanceId } from "@t3tools/contracts";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import * as ProviderCredentialStore from "./ProviderCredentialStore.ts";
+import type { CursorSdkCredential } from "./Layers/cursorUsageLimits.ts";
 
 const Credentials = Schema.fromJsonString(
   Schema.Struct({
@@ -88,4 +90,28 @@ export const makeCursorCredentialStore = Effect.fn("makeCursorCredentialStore")(
     clear: () => Effect.runPromise(credentials.remove),
   };
   return { store, binding: credentials.binding };
+});
+
+/**
+ * The credential an instance's driver runs with, read without the driver: its CURSOR_API_KEY,
+ * else its unexpired sign-in. Undefined when the instance is signed out.
+ */
+export const readCursorSdkCredential = Effect.fn("readCursorSdkCredential")(function* (
+  instanceId: ProviderInstanceId,
+  environment: NodeJS.ProcessEnv,
+) {
+  const configured = environment.CURSOR_API_KEY?.trim();
+  if (configured) return { apiKey: configured } satisfies CursorSdkCredential;
+  const credentials = yield* ProviderCredentialStore.make("cursor", instanceId);
+  const stored = yield* credentials.get;
+  if (Option.isNone(stored)) return undefined;
+  const decoded = yield* decodeCredentials(new TextDecoder().decode(stored.value)).pipe(
+    Effect.option,
+  );
+  if (Option.isNone(decoded)) return undefined;
+  const now = yield* Clock.currentTimeMillis;
+  const { apiKey, apiKeyExpiresAtMs, backendUrl } = decoded.value;
+  return apiKeyExpiresAtMs !== undefined && apiKeyExpiresAtMs <= now
+    ? undefined
+    : ({ apiKey, backendUrl } satisfies CursorSdkCredential);
 });

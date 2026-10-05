@@ -52,7 +52,7 @@ import { RadioGroup } from "~/components/ui/radio-group";
 import { Spinner } from "~/components/ui/spinner";
 import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
 import { cn } from "~/lib/utils";
-import { useOpenPrLink } from "~/lib/openPullRequestLink";
+import { usePreferredOpenPrLink } from "~/lib/openPullRequestLink";
 import {
   buildMenuItems,
   formatGitActionElapsed,
@@ -1081,7 +1081,7 @@ export default function GitActionsControl({
     [activeThreadRef],
   );
   const activeServerThread = useThreadShell(activeThreadRef);
-  const openPrLink = useOpenPrLink(activeThreadRef ?? undefined);
+  const openPrLink = usePreferredOpenPrLink(activeThreadRef ?? undefined);
   const openLink = useOpenLink(activeThreadRef);
   const activeDraftThread = useComposerDraftStore((store) =>
     draftId

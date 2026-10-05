@@ -3,8 +3,10 @@ import type {
   PullRequestCheck,
   PullRequestComment,
   PullRequestDetail,
+  PullRequestReviewDecision,
   ThreadPullRequestWatch,
 } from "@t3tools/contracts";
+import { PULL_REQUEST_WATCH_FOLLOW_UP_LIMIT } from "@t3tools/shared/pullRequestWatch";
 
 /**
  * Wakes in a row that bring only comments. Check, conflict, or push news resets the count, so
@@ -18,7 +20,15 @@ export type PullRequestWatchChange =
   | { readonly kind: "checks-failed"; readonly failed: ReadonlyArray<PullRequestCheck> }
   | { readonly kind: "checks-passed"; readonly count: number; readonly required: boolean }
   | { readonly kind: "remarks"; readonly remarks: ReadonlyArray<PullRequestComment> }
-  | { readonly kind: "conflicting" };
+  | { readonly kind: "conflicting" }
+  /** Fork: the review decision became "changes requested". */
+  | { readonly kind: "changes-requested" };
+
+/** Fork: changes that ask the agent to fix something, which spend the follow-up budget. */
+const isFollowUp = (change: PullRequestWatchChange) =>
+  change.kind === "checks-failed" ||
+  change.kind === "conflicting" ||
+  change.kind === "changes-requested";
 
 export interface PullRequestWatchReport {
   /** What the agent has not been told yet. Empty means no wake. */
@@ -27,6 +37,12 @@ export interface PullRequestWatchReport {
   readonly next: ThreadPullRequestWatch;
   /** This report spends the last wake before the limit, so watching stops after it. */
   readonly exhausted: boolean;
+  /**
+   * Fork: which follow-up of the budget this wake is, when it asks for a fix. Null for news
+   * only. When the budget is already spent, nothing is reported and `next` pauses the watch,
+   * keeping what the agent was last told so resuming reports the news.
+   */
+  readonly followUp: number | null;
 }
 
 // "action-required" is a finished check that needs someone, so the agent hears about it.
@@ -43,7 +59,10 @@ const isFailedCheck = (check: PullRequestCheck) =>
  */
 export function evaluatePullRequestWatch(
   watch: ThreadPullRequestWatch,
-  detail: Pick<PullRequestDetail, "headSha" | "checks" | "mergeability" | "viewer" | "author">,
+  detail: Pick<PullRequestDetail, "headSha" | "checks" | "mergeability" | "viewer" | "author"> & {
+    /** From the synced snapshot: the detail read carries no review decision. */
+    readonly reviewDecision?: PullRequestReviewDecision | null | undefined;
+  },
   remarks: ReadonlyArray<PullRequestComment> | null,
 ): PullRequestWatchReport {
   const changes: Array<PullRequestWatchChange> = [];
@@ -95,6 +114,18 @@ export function evaluatePullRequestWatch(
   const conflicting =
     detail.mergeability === "unknown" ? watch.conflicting : detail.mergeability === "conflicting";
 
+  // Like a conflict, requested changes are reported once and re-arm when the decision clears.
+  const changesRequested = detail.reviewDecision === "changes-requested";
+  if (changesRequested && watch.changesRequested !== true) {
+    changes.push({ kind: "changes-requested" });
+  }
+
+  const followUps = watch.followUps ?? 0;
+  const asksForFix = changes.some(isFollowUp);
+  if (asksForFix && followUps >= PULL_REQUEST_WATCH_FOLLOW_UP_LIMIT) {
+    return { changes: [], next: { ...watch, paused: true }, exhausted: false, followUp: null };
+  }
+
   const commentsOnly = changes.length > 0 && changes.every((change) => change.kind === "remarks");
   const progress = headMoved || (changes.length > 0 && !commentsOnly);
   const wakes = (progress ? 0 : watch.wakes) + (commentsOnly ? 1 : 0);
@@ -109,8 +140,12 @@ export function evaluatePullRequestWatch(
       remarkIds,
       conflicting,
       wakes,
+      changesRequested,
+      followUps: followUps + (asksForFix ? 1 : 0),
+      ...(watch.paused === undefined ? {} : { paused: watch.paused }),
     },
     exhausted: commentsOnly && wakes >= PULL_REQUEST_WATCH_WAKE_LIMIT,
+    followUp: asksForFix ? followUps + 1 : null,
   };
 }
 
@@ -158,7 +193,32 @@ function changeLines(
       ];
     case "conflicting":
       return [`- The branch now conflicts with ${context.baseBranch}.`];
+    case "changes-requested":
+      return ["- A reviewer requested changes."];
   }
+}
+
+/** Fork: what the agent should do about each change that asks for a fix. */
+function fixLine(
+  change: PullRequestWatchChange,
+  context: { readonly baseBranch: string },
+): string | null {
+  switch (change.kind) {
+    case "checks-failed":
+      return "- Failing checks: read the failing logs, fix the cause, and push.";
+    case "changes-requested":
+      return "- Requested changes: read the review comments, address them, push, and reply where useful.";
+    case "conflicting":
+      return `- Merge conflict: rebase on or merge ${context.baseBranch}, resolve the conflicts, and push.`;
+    default:
+      return null;
+  }
+}
+
+function inspectHint(host: string, number: number): string {
+  return host === "github.com"
+    ? `\`gh pr view ${number} --comments\` and \`gh pr checks ${number}\``
+    : "the host's CLI or API";
 }
 
 const SUMMARY: Record<PullRequestWatchChange["kind"], string> = {
@@ -166,25 +226,38 @@ const SUMMARY: Record<PullRequestWatchChange["kind"], string> = {
   "checks-passed": "checks passed",
   remarks: "new comments",
   conflicting: "merge conflict",
+  "changes-requested": "changes requested",
 };
 
 /** The wake the agent reads and the timeline notification the user sees. */
 export function pullRequestWatchMessage(input: {
+  readonly host: string;
   readonly number: number;
   readonly url: string;
   readonly baseBranch: string;
   readonly headSha: string | null;
   readonly report: PullRequestWatchReport;
 }): { readonly text: string; readonly notification: OrchestrationV2Notification } {
-  const { changes, exhausted } = input.report;
+  const { changes, exhausted, followUp } = input.report;
   const context = {
     baseBranch: input.baseBranch,
     commit: input.headSha === null ? "" : ` on ${input.headSha.slice(0, 7)}`,
   };
+  const fixes = changes.flatMap((change) => fixLine(change, context) ?? []);
   const text = [
     `Update on pull request #${input.number} (${input.url}), which T3 Code is watching for you:`,
     ...changes.flatMap((change) => changeLines(change, context)),
     "",
+    ...(followUp === null || fixes.length === 0
+      ? []
+      : [
+          "Fix these:",
+          ...fixes,
+          "",
+          `Inspect the pull request with ${inspectHint(input.host, input.number)}. If something needs a human decision, stop and say so instead of guessing.`,
+          `This is automatic follow-up ${followUp} of ${PULL_REQUEST_WATCH_FOLLOW_UP_LIMIT}; after that T3 Code pauses the watch until the user resumes it.`,
+          "",
+        ]),
     exhausted
       ? `T3 Code stopped watching after ${PULL_REQUEST_WATCH_WAKE_LIMIT} comment-only updates in a row. Call watch_pull_request to watch it again.`
       : "Look into each item and act on it as your task requires. T3 Code keeps watching and wakes you on the next change, so end your turn when you are done. Call unwatch_pull_request when you no longer need updates.",

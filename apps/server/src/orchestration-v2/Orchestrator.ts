@@ -507,6 +507,23 @@ function legacyPullRequestLink(
   );
 }
 
+/**
+ * Fork: pauses or resumes a watch. Resuming restores the follow-up budget; the watch keeps what
+ * the agent was already told, so only news since then wakes it. Either change restarts the
+ * watch's `startedAt`, so a pass that read the host before it cannot record over it.
+ */
+function pausedPullRequestWatch(
+  watch: ThreadPullRequestWatch,
+  paused: boolean | undefined,
+  now: string,
+): ThreadPullRequestWatch {
+  if (paused === undefined) return watch;
+  if (paused) return watch.paused === true ? watch : { ...watch, startedAt: now, paused: true };
+  return watch.paused !== true && (watch.followUps ?? 0) === 0
+    ? watch
+    : { ...watch, startedAt: now, paused: false, followUps: 0 };
+}
+
 function delegatedCompletionWakeDetail(taskIds: ReadonlyArray<string>): string {
   const taskList = taskIds.join(", ");
   return taskIds.length === 1
@@ -2277,11 +2294,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           candidate.source !== "stack-dismissed" && threadPullRequestKeysEqual(candidate, key),
       );
       // Same rule as a direct message.dispatch: a provider-native subagent takes no messages.
-      const inactive =
-        thread.archivedAt !== null ||
-        thread.settledOverride === "settled" ||
-        thread.settledAt !== null ||
-        isProviderNativeSubagentThread(thread);
+      // Fork: a settled thread still takes the wake, which brings it back like any message.
+      const inactive = thread.archivedAt !== null || isProviderNativeSubagentThread(thread);
       if (link?.watch?.startedAt !== command.startedAt || (command.wake && inactive)) {
         return yield* new OrchestratorDispatchError({
           commandId: command.commandId,
@@ -2995,16 +3009,20 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                 : existing.watch
               : !command.watching
                 ? undefined
-                : (existing.watch ?? {
+                : pausedPullRequestWatch(
+                    existing.watch ?? {
+                      startedAt,
+                      headSha: null,
+                      failedChecks: [],
+                      passed: false,
+                      remarksThrough: startedAt,
+                      remarkIds: [],
+                      conflicting: false,
+                      wakes: 0,
+                    },
+                    command.paused,
                     startedAt,
-                    headSha: null,
-                    failedChecks: [],
-                    passed: false,
-                    remarksThrough: startedAt,
-                    remarkIds: [],
-                    conflicting: false,
-                    wakes: 0,
-                  });
+                  );
           if (watch === existing.watch && links === linked) return thread;
           return {
             ...thread,

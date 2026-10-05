@@ -2898,7 +2898,7 @@ export function GeneralSettingsPanel() {
         />
         <SettingsRow
           {...searchableSetting("pull-request-open-target")}
-          description="Choose where the View PR button opens a pull request. The other option stays in its dropdown."
+          description="Choose where the thread's pull request opens from the details panel, the composer badge, and the View PR toast. Cmd/Ctrl-click opens the other one."
           resetAction={
             settings.pullRequestOpenTarget !== DEFAULT_UNIFIED_SETTINGS.pullRequestOpenTarget ? (
               <SettingResetButton

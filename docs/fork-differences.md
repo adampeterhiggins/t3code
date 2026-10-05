@@ -99,6 +99,17 @@ so a second login does not replace the default. The default instance keeps the C
 Grok uses `GROK_HOME`; Devin and OpenCode use `XDG_DATA_HOME`. Cursor is not covered: upstream signs each
 Cursor instance in through the Cursor SDK and keeps every instance's sign-in separately.
 
+Cursor usage follows each instance's own sign-in. Upstream reads limits only from the host's shared
+CLI login and shows none for an SDK sign-in. In the fork, each instance trades its SDK key (or
+`CURSOR_API_KEY`) for an access token, as the SDK does, and reads its own limits; only the default
+instance may fall back to the CLI login. The usage page reads every instance's account as well as the
+CLI login, and one account counts once. Code:
+[`cursorUsageLimits.ts`](../apps/server/src/provider/Layers/cursorUsageLimits.ts),
+`readCursorSdkCredential` in
+[`CursorCredentialStore.ts`](../apps/server/src/provider/CursorCredentialStore.ts), and the Cursor
+scan in [`UsageService.ts`](../apps/server/src/usage/UsageService.ts). User guide:
+[usage.md](./user/usage.md).
+
 Code: `apps/web/src/components/settings/ProviderAuthSection.tsx`,
 `apps/server/src/provider/Services/ProviderAuthService.ts`,
 `apps/server/src/provider/ProviderInstanceEnvironment.ts`, and
@@ -278,16 +289,19 @@ own timeline, composer, right panel, and terminal.
 
 User guide: [thread-sidebar.md](./user/thread-sidebar.md#view-two-chats-side-by-side).
 
-## View an open pull request
+## Open the thread's pull request in the browser
 
-The git toolbar's primary action becomes **View PR** when the branch already has an open pull
-request, on web and mobile. On web and desktop, **Settings → General → Open pull requests in**
-chooses the side panel (the default) or the browser. The other destination stays in the actions
-menu. The browser is whichever one **Open links in** picks (see below).
+On web and desktop, **Settings → General → Open pull requests in** chooses where the thread's own
+pull request opens: the thread details panel's pull request rows, the composer's pull request badge,
+and the **View PR** button on the toast after a pull request is created. **Side panel** (the
+default) is upstream's behaviour, where Cmd/Ctrl-click opens the browser. **Browser** swaps them: a
+click opens the browser that **Open links in** picks (see below), and Cmd/Ctrl-click opens the side
+panel. Other pull request links are unaffected.
 
-Code: `packages/client-runtime/src/state/gitActions.ts`,
-`apps/web/src/components/GitActionsControl.tsx`, and `pullRequestOpenTarget` in
-`packages/contracts/src/settings.ts`.
+Code: `usePreferredOpenPrLink` in
+[`openPullRequestLink.ts`](../apps/web/src/lib/openPullRequestLink.ts),
+[`BranchToolbarBranchSelector.tsx`](../apps/web/src/components/BranchToolbarBranchSelector.tsx), and
+`pullRequestOpenTarget` in `packages/contracts/src/settings.ts`.
 
 ## Pull request host links follow Open links in
 
@@ -559,19 +573,29 @@ a single link keeps one row checked. See
 
 ## Watch a pull request
 
-A linked pull request's row menu can **Watch and follow up**. The server re-reads a watched thread
-when a linked pull request's snapshot syncs or its session changes. If the host reports failing
-checks, requested changes, or merge conflicts the agent has not been asked about, and the thread is
-idle, it starts a follow-up turn with instructions for that work. Each watch allows 3 follow-ups
-until resumed, can be paused or stopped, and ends when the pull request merges or closes. The row
-shows what the watch is waiting for.
+Upstream's pull request watch (`watch_pull_request`, or the row menu) wakes the agent with news.
+The fork adds to it:
 
-Watches live in the fork-owned `fork_pull_request_watches` table, versioned in
-`fork_schema_migrations`, and are served by the `pullRequestWatches` HTTP group. Code:
-[`pullRequestWatch/`](../apps/server/src/pullRequestWatch/reactor.ts),
-[`pullRequestWatch.ts`](../packages/shared/src/pullRequestWatch.ts) (when to follow up), and
+- The wake tells the agent what to do about failing checks, a merge conflict, and requested
+  changes (fix and push, rebase, address the review), with how to inspect the pull request.
+  A "changes requested" review decision is news of its own, raised once until it clears.
+- Wakes that ask for a fix spend a budget of 3 follow-ups, alongside upstream's limit on
+  comment-only wakes. When a fourth is needed the watch pauses instead.
+- **Pause watching** and **Resume watching** sit beside **Stop watching**. A paused watch reads
+  nothing; resuming restores the budget and reports what changed meanwhile.
+- Settled threads stay watched, and a wake brings the thread back; upstream skips them.
+- Each watched row on web shows a status line ("Waiting for checks", "Checks failed", "Changes
+  requested", ...) and the follow-ups used. Mobile's Git overview shows "Watching" or "Watch paused".
+
+The state rides on upstream's `ThreadPullRequestWatch` (`changesRequested`, `followUps`, `paused`)
+and `thread.pull-request.watch` takes `paused`, behind the `threadPullRequestWatchPause` capability.
+Watches from the fork's old `fork_pull_request_watches` table move onto their links at startup,
+without their follow-up counts. Code:
+[`pullRequestWatch.ts`](../apps/server/src/orchestration-v2/pullRequestWatch.ts),
+[`PullRequestWatchReactor.ts`](../apps/server/src/orchestration-v2/PullRequestWatchReactor.ts),
+[`pullRequestWatch.ts`](../packages/shared/src/pullRequestWatch.ts) (status line), and
 [`ThreadPullRequestsPanel.tsx`](../apps/web/src/components/pullRequest/ThreadPullRequestsPanel.tsx).
-Mobile has no controls yet. See [the user guide](user/source-control.md#watch-a-pull-request).
+See [the user guide](user/source-control.md#watch-a-pull-request).
 
 ## Create a thread before writing its first message
 

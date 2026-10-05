@@ -57,15 +57,22 @@ function watchesEqual(left: ThreadPullRequestWatch, right: ThreadPullRequestWatc
     left.remarksThrough === right.remarksThrough &&
     left.remarkIds.join("\n") === right.remarkIds.join("\n") &&
     left.conflicting === right.conflicting &&
-    left.wakes === right.wakes
+    left.wakes === right.wakes &&
+    (left.changesRequested ?? false) === (right.changesRequested ?? false) &&
+    (left.followUps ?? 0) === (right.followUps ?? 0) &&
+    (left.paused ?? false) === (right.paused ?? false)
   );
 }
 
 /**
  * Wakes a thread's agent when a pull request it watches (`watch_pull_request`) needs a look:
  * checks finished on the head commit, someone else commented, or the branch started to
- * conflict. One pass a minute reads each watched pull request; settled threads wait until
- * they are active again, and a merged or closed pull request ends its watch.
+ * conflict. One pass a minute reads each watched pull request, and a merged or closed pull
+ * request ends its watch.
+ *
+ * Fork: settled threads keep being watched, and a wake brings them back. A paused watch reads
+ * nothing. Wakes that ask for a fix (failing checks, requested changes, a conflict) spend a
+ * follow-up budget; when it runs out the watch pauses until the user resumes it.
  */
 export class PullRequestWatchReactor extends Context.Service<
   PullRequestWatchReactor,
@@ -195,7 +202,11 @@ export const make = Effect.gen(function* () {
     // A merged pull request cannot reopen, so its watch ends without a host read, even on a
     // settled thread. A closed one can, so the host decides below.
     if (link.snapshot?.state === "merged") return yield* record(target, null);
-    if (thread.settledOverride === "settled" || thread.settledAt !== null) return;
+    if (watch.paused === true) {
+      // Nothing is read while paused, so the synced snapshot is what can say it closed.
+      if (link.snapshot?.state === "closed") yield* record(target, null);
+      return;
+    }
 
     const reference = { projectId: thread.projectId, ...pullRequest };
     const read = yield* Effect.exit(
@@ -226,12 +237,17 @@ export const make = Effect.gen(function* () {
 
     // Never advance the remark watermark past comments an incomplete read could have missed.
     const remarks = yield* readRemarks(target, reference, activity);
-    const report = evaluatePullRequestWatch(watch, detail, remarks);
+    const report = evaluatePullRequestWatch(
+      watch,
+      { ...detail, reviewDecision: link.snapshot?.reviewDecision ?? null },
+      remarks,
+    );
     if (report.changes.length > 0) {
       return yield* record(
         target,
         report.exhausted ? null : report.next,
         pullRequestWatchMessage({
+          host: pullRequest.host,
           number: link.number,
           url: link.url,
           baseBranch: detail.baseBranch,

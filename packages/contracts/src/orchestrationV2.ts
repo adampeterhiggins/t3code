@@ -2665,6 +2665,11 @@ export const OrchestrationV2Command = Schema.Union([
     threadId: ThreadId,
     ...ThreadPullRequestKey.fields,
     watching: Schema.Boolean,
+    /**
+     * Fork: with `watching`, true pauses the watch and false resumes it, which also restores its
+     * follow-up budget. Absent leaves an existing watch as it is.
+     */
+    paused: Schema.optional(Schema.Boolean),
     /** Links the pull request first when starting a watch on one the thread has not linked. */
     link: Schema.optional(
       Schema.Struct({ url: TrimmedNonEmptyString, source: ThreadPullRequestLinkSource }),
@@ -2948,7 +2953,8 @@ const OrchestrationV2InternalCommand = Schema.Union([
   /**
    * Records what a pull request watch saw, and wakes the agent in the same transaction when
    * `wake` is set. Rejected once the watch started at `startedAt` has ended, and a wake is
-   * rejected on a settled or archived thread, so a read that raced either changes nothing.
+   * rejected on an archived thread, so a read that raced either changes nothing. A wake on a
+   * settled thread brings it back (fork: watching continues while a thread is settled).
    */
   Schema.Struct({
     type: Schema.Literal("thread.pull-request-watch.sync"),
