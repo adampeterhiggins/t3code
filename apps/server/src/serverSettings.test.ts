@@ -133,6 +133,38 @@ it.layer(NodeServices.layer)("server settings", (it) => {
     }).pipe(Effect.provide(makeServerSettingsLayer())),
   );
 
+  it.effect("moves the fork's worktree branch prefix into the static branch prefix once", () =>
+    Effect.gen(function* () {
+      const config = yield* ServerConfig.ServerConfig;
+      const fs = yield* FileSystem.FileSystem;
+      const service = yield* ServerSettingsModule.ServerSettingsService;
+      yield* fs.writeFileString(
+        config.settingsPath,
+        `{
+          "worktreeBranchPrefix": "adam",
+          "projectSettingsOverrides": {
+            "moved": { "worktreeBranchPrefix": "", "defaultAutoPull": true },
+            "kept": { "worktreeBranchPrefix": "old", "branchNamePrefix": "chosen" }
+          }
+        }`,
+      );
+
+      const settings = yield* service.getSettings;
+      assert.equal(settings.branchNamingMode, "static");
+      assert.equal(settings.branchNamePrefix, "adam");
+      assert.deepEqual(settings.projectSettingsOverrides, {
+        [ProjectId.make("moved")]: { defaultAutoPull: true, branchNamePrefix: "" },
+        [ProjectId.make("kept")]: { branchNamePrefix: "chosen" },
+      });
+
+      const raw = yield* fs.readFileString(config.settingsPath);
+      assert.notInclude(raw, "worktreeBranchPrefix");
+      const persisted = yield* decodeServerSettingsJson(raw);
+      assert.equal(persisted.branchNamePrefix, "adam");
+      assert.deepEqual(persisted.projectSettingsOverrides, settings.projectSettingsOverrides);
+    }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
   it.effect("saves through a symlinked settings file without replacing the link", () =>
     Effect.gen(function* () {
       const config = yield* ServerConfig.ServerConfig;

@@ -1418,6 +1418,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
   isEnvironmentUnavailable: boolean;
   hasSendableContent: boolean;
   canResume: boolean;
+  createWithoutMessage: "worktree" | "thread" | null;
   preserveComposerFocusOnPointerDown?: boolean;
   isEditingQueuedMessage: boolean;
   onSubmitMessage: React.MouseEventHandler<HTMLButtonElement>;
@@ -1458,6 +1459,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
         isPreparingWorktree={props.isPreparingWorktree}
         hasSendableContent={props.hasSendableContent}
         canResume={props.canResume}
+        createWithoutMessage={props.createWithoutMessage}
         preserveComposerFocusOnPointerDown={props.preserveComposerFocusOnPointerDown ?? false}
         isEditingQueuedMessage={props.isEditingQueuedMessage}
         onSubmitMessage={props.onSubmitMessage}
@@ -1588,6 +1590,8 @@ export interface ChatComposerProps {
   isRevertingCheckpoint?: boolean;
   sendDisabledReason: string | null;
   isPreparingWorktree: boolean;
+  /** A new thread's draft can be sent empty to create the thread and its workspace first. */
+  createWithoutMessage: "worktree" | "thread" | null;
   bannerItems: readonly ComposerBannerStackItem[];
   /** Picking /usage-limits from the menu is the action itself; the draft keeps nothing of it. */
   onUsageLimitsCommand?: (() => void) | undefined;
@@ -1771,6 +1775,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     isRevertingCheckpoint = false,
     sendDisabledReason: externalSendDisabledReason,
     isPreparingWorktree,
+    createWithoutMessage,
     environmentUnavailable,
     activePendingApproval,
     pendingApprovals,
@@ -3029,11 +3034,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     if (showPlanFollowUpPrompt) {
       return prompt.trim().length > 0 ? "plan:refine" : "plan:implement";
     }
-    return `idle:${composerSendState.hasSendableContent}:${isSendBusy}:${isConnecting}:${isPreparingWorktree}`;
+    return `idle:${composerSendState.hasSendableContent}:${isSendBusy}:${isConnecting}:${isPreparingWorktree}:${createWithoutMessage}`;
   }, [
     activePendingIsResponding,
     activePendingProgress,
     composerSendState.hasSendableContent,
+    createWithoutMessage,
     isConnecting,
     isPreparingWorktree,
     isSendBusy,
@@ -8079,6 +8085,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     isPreparingWorktree={isPreparingWorktree}
                     hasSendableContent={composerSendState.hasSendableContent}
                     canResume={showResumeAction}
+                    createWithoutMessage={
+                      multipleModelSelections === null ? createWithoutMessage : null
+                    }
                     preserveComposerFocusOnPointerDown={isMobileViewport || isComposerResting}
                     isEditingQueuedMessage={isEditingQueuedMessage}
                     onSubmitMessage={handleSubmitMessage}

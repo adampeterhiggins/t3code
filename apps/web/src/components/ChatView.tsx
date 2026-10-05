@@ -4000,10 +4000,19 @@ export default function ChatView(props: ChatViewProps) {
   // Keep the sending environment during local draft setup; revisiting a
   // canonical thread subscribes by its durable identity.
   const setupTarget = worktreeSetupActive ? worktreeSetupRef : routeThreadRef;
+  // A server thread can be preparing with no run to say so: one created without a message
+  // (checkout and setup script before the first send), or a send whose attached repositories
+  // the server is still cloning. Stay subscribed until a running snapshot settles, so a
+  // dropped stream never leaves a stale running card holding sends.
   const worktreeSetupQuery = useEnvironmentQuery(
     worktreeSetupActive ||
       (activeThread?.id === routeThreadRef.threadId &&
-        (isLocallyPreparingWorktree || activeRunPreparing || activeThread.worktreePath !== null))
+        (isLocallyPreparingWorktree ||
+          activeRunPreparing ||
+          activeThread.worktreePath !== null ||
+          (serverThread !== null && (serverThread.latestUserMessageAt === null || isSendBusy)) ||
+          (heldWorktreeSetup?.threadId === activeThread.id &&
+            heldWorktreeSetup.phase === "running")))
       ? vcsEnvironment.worktreeSetup({
           environmentId: setupTarget.environmentId,
           input: { threadId: setupTarget.threadId },
@@ -6905,6 +6914,14 @@ export default function ChatView(props: ChatViewProps) {
     requestedEnvMode: envMode,
     isGitRepo,
   });
+  // A new thread's empty draft sends as "create the thread (and worktree) now, write later".
+  // Tabs are server threads from the start, so they never qualify.
+  const createWithoutMessage =
+    isLocalDraftThread && serverConfig?.environment.capabilities.deferredBootstrapTurn === true
+      ? sendEnvMode === "worktree" && !activeThread?.worktreePath
+        ? "worktree"
+        : "thread"
+      : null;
   const localCheckoutBranchMismatch = useMemo(
     () =>
       isServerThread
@@ -8716,6 +8733,139 @@ export default function ChatView(props: ChatViewProps) {
     }
   };
 
+  // Moves the new-thread hero composer to the bottom before the thread takes over the view.
+  const dockDraftHeroForSubmission = async (submissionIntent: ComposerSubmissionIntent) => {
+    if (
+      !shouldDockDraftHeroForSubmission({ isDraftHeroState, activeThreadKey, submissionIntent }) ||
+      !activeThreadKey
+    ) {
+      return;
+    }
+    let resolveDockStarted: (() => void) | undefined;
+    const dockStarted = new Promise<void>((resolve) => {
+      resolveDockStarted = resolve;
+    });
+    const dockTransition = runMobileComposerTransition(
+      () => {
+        flushSync(() => {
+          captureDraftHeroComposerRect();
+          setDockedDraftHeroThreadKey(activeThreadKey);
+        });
+        resolveDockStarted?.();
+      },
+      {
+        active: panelAnimationsActive,
+        durationMs: panelAnimationDurationMs,
+      },
+    );
+    void dockTransition.catch(() => resolveDockStarted?.());
+    await dockStarted;
+  };
+
+  // An empty send from a new thread's draft: creates the thread and schedules its worktree
+  // checkout and setup script, then opens the thread with an empty composer. The setup card
+  // holds sends until the workspace is ready; the first real send starts the turn and names
+  // the thread and branch from that message.
+  const createThreadWithoutMessage = async (input: {
+    modelSelection: ModelSelection;
+    model: string | undefined;
+    interactionMode: ProviderInteractionMode;
+  }) => {
+    if (!activeThread || !activeProject || !isLocalDraftThread) return;
+    const threadId = activeThread.id;
+    const shouldCreateWorktree = sendEnvMode === "worktree" && !activeThread.worktreePath;
+    if (shouldCreateWorktree && !activeThreadBranch) {
+      setThreadError(threadId, "Select a base branch before creating a worktree.");
+      return;
+    }
+    sendInFlightRef.current = true;
+    setThreadError(threadId, null);
+    await dockDraftHeroForSubmission("foreground");
+    beginLocalDispatch({ preparingWorktree: shouldCreateWorktree });
+    setWorktreeSetupRef(
+      shouldCreateWorktree
+        ? {
+            environmentId: activeThread.environmentId,
+            threadId,
+            ownerKey: worktreeSetupOwnerKey,
+          }
+        : null,
+    );
+    const createdAt = new Date().toISOString();
+    const result = await startThreadTurn({
+      environmentId,
+      input: {
+        threadId,
+        // Required by the command shape; a deferred bootstrap never sends it.
+        message: { messageId: newMessageId(), role: "user", text: "", attachments: [] },
+        modelSelection: input.modelSelection,
+        runtimeMode,
+        interactionMode: input.interactionMode,
+        bootstrap: {
+          createThread: {
+            projectId: activeProject.id,
+            title: "New thread",
+            modelSelection: createModelSelection(
+              input.modelSelection.instanceId,
+              input.model || activeProjectDefaultModelSelection?.model || DEFAULT_MODEL,
+              input.modelSelection.options,
+            ),
+            runtimeMode,
+            interactionMode: input.interactionMode,
+            branch: activeThreadBranch,
+            worktreePath: activeThread.worktreePath,
+            createdAt: activeThread.createdAt,
+          },
+          ...(shouldCreateWorktree && activeThreadBranch
+            ? {
+                prepareWorktree: {
+                  projectCwd: activeProject.workspaceRoot,
+                  baseBranch: activeThreadBranch,
+                  ...(startFromOrigin ? { startFromOrigin: true } : {}),
+                },
+                runSetupScript: true,
+              }
+            : {}),
+          deferTurn: true,
+        },
+        createdAt,
+      },
+    });
+    sendInFlightRef.current = false;
+    resetLocalDispatch();
+    if (result._tag === "Failure") {
+      setDockedDraftHeroThreadKey((current) => (current === activeThreadKey ? null : current));
+      if (isAtomCommandInterrupted(result)) return;
+      const error = squashAtomCommandFailure(result);
+      // A rolled-back bootstrap leaves no thread behind, so the draft needs a fresh id to retry.
+      if (draftId && (wasBootstrapThreadDeleted(error) || wasBootstrapThreadNotCreated(error))) {
+        setWorktreeSetupRef(null);
+        const failedDraftSession = getDraftSession(draftId);
+        if (failedDraftSession?.threadId === threadId) {
+          setLogicalProjectDraftThreadId(
+            failedDraftSession.logicalProjectKey,
+            scopeProjectRef(failedDraftSession.environmentId, failedDraftSession.projectId),
+            draftId,
+            { threadId: newThreadId(), createdAt: new Date().toISOString() },
+          );
+        }
+      }
+      setThreadError(threadId, error instanceof Error ? error.message : "Failed to create thread.");
+      return;
+    }
+    // With no message or turn, the draft route has no reason to hand over by itself.
+    const threadRef = scopeThreadRef(activeThread.environmentId, threadId);
+    if (currentRouteThreadKeyRef.current === routeThreadKey) {
+      await waitForThreadShell(threadRef);
+      await navigate({
+        to: "/$environmentId/$threadId",
+        params: buildThreadRouteParams(threadRef),
+        replace: true,
+      });
+    }
+    finalizePromotedDraftThreadByRef(threadRef);
+  };
+
   const onSend = async (
     e?: { preventDefault: () => void },
     dispatchMode: ComposerDispatchMode = "auto",
@@ -9175,6 +9325,19 @@ export default function ChatView(props: ChatViewProps) {
       return;
     }
     if (!hasSendableContent) {
+      if (
+        createWithoutMessage !== null &&
+        multipleModelSelections === null &&
+        expiredTerminalContextCount === 0 &&
+        !directAnnotation
+      ) {
+        await createThreadWithoutMessage({
+          modelSelection: ctxSelectedModelSelection,
+          model: ctxSelectedModel,
+          interactionMode: sendInteractionMode,
+        });
+        return;
+      }
       if (expiredTerminalContextCount > 0) {
         const toastCopy = buildExpiredTerminalContextToastCopy(
           expiredTerminalContextCount,
@@ -9361,30 +9524,8 @@ export default function ChatView(props: ChatViewProps) {
       }
     }
 
-    if (
-      multipleModelSelections === null &&
-      shouldDockDraftHeroForSubmission({ isDraftHeroState, activeThreadKey, submissionIntent }) &&
-      activeThreadKey
-    ) {
-      let resolveDockStarted: (() => void) | undefined;
-      const dockStarted = new Promise<void>((resolve) => {
-        resolveDockStarted = resolve;
-      });
-      const dockTransition = runMobileComposerTransition(
-        () => {
-          flushSync(() => {
-            captureDraftHeroComposerRect();
-            setDockedDraftHeroThreadKey(activeThreadKey);
-          });
-          resolveDockStarted?.();
-        },
-        {
-          active: panelAnimationsActive,
-          durationMs: panelAnimationDurationMs,
-        },
-      );
-      void dockTransition.catch(() => resolveDockStarted?.());
-      await dockStarted;
+    if (multipleModelSelections === null) {
+      await dockDraftHeroForSubmission(submissionIntent);
     }
     beginLocalDispatch({
       preparingWorktree: multipleModelSelections !== null || Boolean(baseBranchForWorktree),
@@ -11620,6 +11761,7 @@ export default function ChatView(props: ChatViewProps) {
                                           : projectCloneSendBlockReason
                               }
                               isPreparingWorktree={isPreparingWorktree}
+                              createWithoutMessage={createWithoutMessage}
                               queuedRunsControl={
                                 isServerThread && activeThread ? (
                                   <QueuedRunsControl

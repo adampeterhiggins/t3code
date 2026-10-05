@@ -2763,6 +2763,12 @@ export const OrchestrationV2Command = Schema.Union([
     commandId: CommandId,
     threadId: ThreadId,
     runId: RunId,
+    /**
+     * The run's message context as preparation left it, such as attached
+     * repositories with their clone outcomes. Replaces the committed message's
+     * context before the provider turn starts.
+     */
+    context: Schema.optional(OrchestrationMessageContext),
   }),
   /** Provider acceptance of a mailbox delivery; distinct from the agent reading its result. */
   Schema.Struct({

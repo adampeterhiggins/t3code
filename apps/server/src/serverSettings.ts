@@ -387,6 +387,60 @@ const decodePersistedOptionalProviderSettingsJsonExit = Schema.decodeUnknownExit
   fromLenientJson(PersistedOptionalProviderSettings),
 );
 
+/**
+ * The fork's retired `worktreeBranchPrefix`, read from the raw file because the
+ * settings schema no longer carries it. Values that are not strings decode as
+ * absent rather than failing the read.
+ */
+const LegacyBranchPrefixValue = Schema.optionalKey(Schema.Unknown);
+const LegacyWorktreeBranchPrefixSettings = Schema.Struct({
+  worktreeBranchPrefix: LegacyBranchPrefixValue,
+  branchNamePrefix: LegacyBranchPrefixValue,
+  projectSettingsOverrides: Schema.optionalKey(
+    Schema.Record(
+      Schema.String,
+      Schema.Struct({
+        worktreeBranchPrefix: LegacyBranchPrefixValue,
+        branchNamePrefix: LegacyBranchPrefixValue,
+      }),
+    ),
+  ),
+});
+const decodeLegacyWorktreeBranchPrefixSettings = Schema.decodeUnknownOption(
+  fromLenientJson(LegacyWorktreeBranchPrefixSettings),
+);
+
+/**
+ * One-time move of the fork's `worktreeBranchPrefix` (global and per project)
+ * into upstream's `branchNamePrefix`, which static branch naming applies. A
+ * `branchNamePrefix` already in the file wins. The next write drops the old key,
+ * so this only ever applies once.
+ */
+function foldLegacyWorktreeBranchPrefix(settings: ServerSettings, raw: string): ServerSettings {
+  const legacy = decodeLegacyWorktreeBranchPrefixSettings(raw);
+  if (Option.isNone(legacy)) return settings;
+  const legacyPrefix = (entry: {
+    readonly worktreeBranchPrefix?: unknown;
+    readonly branchNamePrefix?: unknown;
+  }) =>
+    typeof entry.worktreeBranchPrefix === "string" && entry.branchNamePrefix === undefined
+      ? entry.worktreeBranchPrefix.trim()
+      : undefined;
+  let next = settings;
+  const globalPrefix = legacyPrefix(legacy.value);
+  if (globalPrefix !== undefined) next = { ...next, branchNamePrefix: globalPrefix };
+  const projectOverrides = { ...next.projectSettingsOverrides };
+  let projectsChanged = false;
+  for (const [projectId, entry] of Object.entries(legacy.value.projectSettingsOverrides ?? {})) {
+    const prefix = legacyPrefix(entry);
+    if (prefix === undefined) continue;
+    const id = ProjectId.make(projectId);
+    projectOverrides[id] = { ...projectOverrides[id], branchNamePrefix: prefix };
+    projectsChanged = true;
+  }
+  return projectsChanged ? { ...next, projectSettingsOverrides: projectOverrides } : next;
+}
+
 function restoreUsedProviders(
   settings: ServerSettings,
   persisted: typeof PersistedOptionalProviderSettings.Type,
@@ -723,9 +777,11 @@ const make = Effect.gen(function* () {
     // A file that failed to decode must stay on disk for the user to repair;
     // the fold below only writes when it started from the file's real contents.
     let settingsFileTrusted = true;
+    let rawSettings: string | null = null;
 
     if (yield* readConfigExists) {
       const raw = yield* readRawConfig;
+      rawSettings = raw;
       const decoded = decodeServerSettingsJsonExit(raw);
       const persistedSettings = decodePersistedOptionalProviderSettingsJsonExit(raw);
       if (persistedSettings._tag === "Success") {
@@ -799,7 +855,10 @@ const make = Effect.gen(function* () {
       restoreUsedProviders(settings, persisted, providerHistory),
     );
     const folded = settingsFileTrusted
-      ? foldLegacyProjectSettings(loaded, legacyProjectRows)
+      ? foldLegacyProjectSettings(
+          rawSettings === null ? loaded : foldLegacyWorktreeBranchPrefix(loaded, rawSettings),
+          legacyProjectRows,
+        )
       : loaded;
     // Only rewrite a file that decoded cleanly; an untrusted one stays for the user to repair.
     const migrated = settingsFileTrusted ? yield* moveInlineBitbucketTokens(folded) : folded;

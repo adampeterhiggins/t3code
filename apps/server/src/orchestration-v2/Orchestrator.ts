@@ -35,6 +35,7 @@ import {
   type OrchestrationV2ExecutionNode,
   type OrchestrationV2ProviderThread,
   type OrchestrationV2ProviderTurn,
+  type OrchestrationMessageContext,
   type OrchestrationV2Run,
   type OrchestrationV2RunAttempt,
   type OrchestrationV2ThreadShell,
@@ -7584,6 +7585,47 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       });
     });
 
+  /** Restates a preparing run's committed message with the context its preparation produced. */
+  const emitPreparedMessageContext = (
+    command: Extract<OrchestrationV2Command, { readonly type: "prepared-run.release" }>,
+    run: OrchestrationV2Run,
+    context: OrchestrationMessageContext,
+    now: DateTime.Utc,
+    emitEvent: ReturnType<typeof emit>,
+  ) =>
+    Effect.gen(function* () {
+      const records = yield* loadProjectionForCommand(command, ["messages", "turnItems"], {
+        messageIds: [run.userMessageId],
+        turnItemTypes: ["user_message"],
+        turnItemRunId: run.id,
+      });
+      const message = records.messages.find((candidate) => candidate.id === run.userMessageId);
+      if (message === undefined) return;
+      yield* emitEvent({
+        type: "message.updated",
+        threadId: command.threadId,
+        runId: run.id,
+        ...(run.rootNodeId === null ? {} : { nodeId: run.rootNodeId }),
+        providerInstanceId: run.providerInstanceId,
+        occurredAt: now,
+        payload: { ...message, context, updatedAt: now },
+      });
+      const turnItem = records.turnItems.find(
+        (candidate) => candidate.type === "user_message" && candidate.messageId === message.id,
+      );
+      if (turnItem?.type === "user_message") {
+        yield* emitEvent({
+          type: "turn-item.updated",
+          threadId: command.threadId,
+          runId: run.id,
+          ...(run.rootNodeId === null ? {} : { nodeId: run.rootNodeId }),
+          providerInstanceId: run.providerInstanceId,
+          occurredAt: now,
+          payload: { ...turnItem, context, updatedAt: now },
+        });
+      }
+    });
+
   const dispatchPreparedRunRelease = (
     command: Extract<OrchestrationV2Command, { readonly type: "prepared-run.release" }>,
     events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
@@ -7604,6 +7646,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         });
       }
       const now = yield* DateTime.now;
+      const emitEvent = emit(events, command);
+      if (command.context !== undefined) {
+        yield* emitPreparedMessageContext(command, state.run, command.context, now, emitEvent);
+      }
       const resolvedRuntimePolicy = yield* runtimePolicy
         .resolve({ thread: projection.thread, modelSelection: state.run.modelSelection })
         .pipe(mapDispatchError(command));
@@ -7617,7 +7663,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           createdAt: now,
         })
         .pipe(mapDispatchError(command));
-      const emitEvent = emit(events, command);
       yield* emitEvent({
         type: "checkpoint-scope.created",
         threadId: command.threadId,
