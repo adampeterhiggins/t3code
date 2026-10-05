@@ -1203,6 +1203,17 @@ export function filterSidebarProjectScopeItems<TItem extends { readonly value: s
   return input.items.filter((item) => item.value !== "all" && input.matches(item, query));
 }
 
+/** Maps the multi-select picker's next value onto scope keys. "All projects"
+    is selected exactly when nothing is scoped, so picking it clears the scope
+    and picking any project drops it. */
+export function resolveSidebarProjectScopeKeys(input: {
+  readonly current: readonly string[];
+  readonly next: readonly string[];
+}): string[] {
+  if (input.current.length > 0 && input.next.includes("all")) return [];
+  return input.next.filter((value) => value !== "all");
+}
+
 export interface SidebarProjectScopeMenuState {
   readonly open: boolean;
   readonly query: string;

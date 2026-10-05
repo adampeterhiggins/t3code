@@ -69,6 +69,7 @@ import {
   CircleCheckIcon,
   ClockIcon,
   FolderIcon,
+  FoldersIcon,
   BotIcon,
   GitBranchIcon,
   LayersIcon,
@@ -207,6 +208,7 @@ import {
   orderItemsByPreferredIds,
   planSidebarThreadDrop,
   reduceSidebarProjectScopeMenuState,
+  resolveSidebarProjectScopeKeys,
   resolveAdjacentThreadId,
   resolveSidebarDropTarget,
   resolveSidebarDropVerb,
@@ -3330,8 +3332,8 @@ export default function Sidebar() {
   // The selection lives in the persisted UI store next to the other sidebar
   // project preferences, so routes that unmount the sidebar (Settings) and
   // app restarts keep it.
-  const projectScopeKey = useUiStateStore((store) => store.sidebarProjectScopeKey);
-  const setProjectScopeKey = useUiStateStore((store) => store.setSidebarProjectScopeKey);
+  const projectScopeKeys = useUiStateStore((store) => store.sidebarProjectScopeKeys);
+  const setProjectScopeKeys = useUiStateStore((store) => store.setSidebarProjectScopeKeys);
   // {value, label} items let Base UI drive the combobox selection contract
   // while the popup search filters the same collection.
   const projectScopeItems = useMemo(
@@ -3355,11 +3357,14 @@ export default function Sidebar() {
     () => new Map(projectGroups.map((project) => [project.projectKey, project] as const)),
     [projectGroups],
   );
-  const selectedProjectScopeItem = useMemo(
-    () =>
-      projectScopeItems.find((item) => item.value === (projectScopeKey ?? "all")) ??
-      projectScopeItems[0]!,
-    [projectScopeItems, projectScopeKey],
+  // "All projects" is the selected row exactly when nothing is scoped.
+  const selectedProjectScopeValues = useMemo(
+    () => new Set(projectScopeKeys.length === 0 ? ["all"] : projectScopeKeys),
+    [projectScopeKeys],
+  );
+  const selectedProjectScopeItems = useMemo(
+    () => projectScopeItems.filter((item) => selectedProjectScopeValues.has(item.value)),
+    [projectScopeItems, selectedProjectScopeValues],
   );
   const [projectScopeMenuState, dispatchProjectScopeMenu] = useReducer(
     reduceSidebarProjectScopeMenuState,
@@ -3382,33 +3387,36 @@ export default function Sidebar() {
       }),
     [projectScopeFilter, projectScopeItems, projectScopeMenuState.query],
   );
-  const scopedProjectGroup = useMemo(
+  const scopedProjectGroups = useMemo(
     () =>
-      projectScopeKey === null
-        ? null
-        : (projectGroups.find((project) => project.projectKey === projectScopeKey) ?? null),
-    [projectGroups, projectScopeKey],
+      projectScopeKeys.flatMap((key) => {
+        const project = projectGroupByScopeKey.get(key);
+        return project ? [project] : [];
+      }),
+    [projectGroupByScopeKey, projectScopeKeys],
   );
   const scopedProjectKeys = useMemo(
     () =>
-      scopedProjectGroup === null
+      scopedProjectGroups.length === 0
         ? null
         : new Set(
-            scopedProjectGroup.memberProjectRefs.map(
-              (projectRef) => `${projectRef.environmentId}:${projectRef.projectId}`,
+            scopedProjectGroups.flatMap((project) =>
+              project.memberProjectRefs.map(
+                (projectRef) => `${projectRef.environmentId}:${projectRef.projectId}`,
+              ),
             ),
           ),
-    [scopedProjectGroup],
+    [scopedProjectGroups],
   );
-  // A persisted scope whose project is gone falls back to all projects, but
-  // only after every catalog environment has a live project snapshot. Cached
-  // or disconnected environments cannot establish that the project is gone.
+  // Scoped projects that are gone drop out of the scope, but only after every
+  // catalog environment has a live project snapshot. Cached or disconnected
+  // environments cannot establish that a project is gone.
   const allProjectSnapshotsReady = useAllEnvironmentProjectSnapshotsReady();
   useEffect(() => {
-    if (projectScopeKey !== null && allProjectSnapshotsReady && scopedProjectGroup === null) {
-      setProjectScopeKey(null);
+    if (allProjectSnapshotsReady && scopedProjectGroups.length < projectScopeKeys.length) {
+      setProjectScopeKeys(scopedProjectGroups.map((project) => project.projectKey));
     }
-  }, [allProjectSnapshotsReady, projectScopeKey, scopedProjectGroup, setProjectScopeKey]);
+  }, [allProjectSnapshotsReady, projectScopeKeys, scopedProjectGroups, setProjectScopeKeys]);
   // Count-only subscription: the parent needs "are there draft rows" for the
   // empty state, while SidebarDraftBlock owns the per-keystroke content
   // subscription. Selecting a number keeps typing in a draft composer from
@@ -3439,7 +3447,7 @@ export default function Sidebar() {
   // hidden now, and bulk actions must never count or touch invisible rows.
   useEffect(() => {
     clearSelection();
-  }, [clearSelection, projectScopeKey]);
+  }, [clearSelection, projectScopeKeys]);
 
   const openProjectSettings = useCallback(
     (projectGroup: SidebarProjectSnapshot) => {
@@ -3740,7 +3748,7 @@ export default function Sidebar() {
   // filter context changes so a scope/search flip never inherits a deep
   // page state.
   const [settledVisibleCount, setSettledVisibleCount] = useState(SETTLED_TAIL_INITIAL_COUNT);
-  const settledResetKey = projectScopeKey ?? "all";
+  const settledResetKey = projectScopeKeys.join("\n") || "all";
   const lastSettledResetKeyRef = useRef(settledResetKey);
   if (lastSettledResetKeyRef.current !== settledResetKey) {
     lastSettledResetKeyRef.current = settledResetKey;
@@ -5305,7 +5313,9 @@ export default function Sidebar() {
               projectFilter: threadProjectGroup
                 ? {
                     label: threadProjectGroup.displayName,
-                    isActive: projectScopeKey === threadProjectGroup.projectKey,
+                    isActive:
+                      projectScopeKeys.length === 1 &&
+                      projectScopeKeys[0] === threadProjectGroup.projectKey,
                   }
                 : null,
               tabs: tabEnvironmentIds.has(thread.environmentId)
@@ -5346,13 +5356,15 @@ export default function Sidebar() {
         }
         switch (clicked.value) {
           case "filter-by-project":
-            // This item is the only scope control here, so picking the
-            // already-scoped project again is the way back to all projects.
+            // This item is the only scope control here, so it narrows the
+            // list to this one project, and picking it again while that is
+            // the whole scope is the way back to all projects.
             if (threadProjectGroup) {
-              setProjectScopeKey(
-                projectScopeKey === threadProjectGroup.projectKey
-                  ? null
-                  : threadProjectGroup.projectKey,
+              setProjectScopeKeys(
+                projectScopeKeys.length === 1 &&
+                  projectScopeKeys[0] === threadProjectGroup.projectKey
+                  ? []
+                  : [threadProjectGroup.projectKey],
               );
             }
             return;
@@ -5560,11 +5572,11 @@ export default function Sidebar() {
       isMobile,
       markThreadUnread,
       openProjectSettings,
-      projectScopeKey,
+      projectScopeKeys,
       projectByKey,
       serverConfigs,
       setOpenMobile,
-      setProjectScopeKey,
+      setProjectScopeKeys,
       setThreadAutoSettle,
       splitViewActions,
       startThreadRename,
@@ -5818,6 +5830,7 @@ export default function Sidebar() {
               hasProjects={projectGroups.length > 0}
               projectScope={
                 <Combobox
+                  multiple
                   items={projectScopeItems}
                   filteredItems={filteredProjectScopeItems}
                   autoHighlight
@@ -5831,32 +5844,67 @@ export default function Sidebar() {
                   onItemHighlighted={(item) => {
                     highlightedProjectScopeKeyRef.current = item?.value ?? null;
                   }}
-                  value={selectedProjectScopeItem}
-                  onValueChange={(item) => {
+                  value={selectedProjectScopeItems}
+                  onValueChange={(items) => {
                     if (suppressNextScopeChangeRef.current) {
                       suppressNextScopeChangeRef.current = false;
                       return;
                     }
-                    if (!item) return;
-                    setProjectScopeKey(item.value === "all" ? null : item.value);
+                    setProjectScopeKeys(
+                      resolveSidebarProjectScopeKeys({
+                        current: projectScopeKeys,
+                        next: items.map((item) => item.value),
+                      }),
+                    );
                   }}
+                  inputValue={projectScopeMenuState.query}
+                  onInputValueChange={(query) =>
+                    dispatchProjectScopeMenu({ type: "query-changed", query })
+                  }
                 >
                   <ComboboxTrigger
                     render={
                       <SidebarHeaderIconButton
                         label={
-                          scopedProjectGroup
-                            ? `Filter threads by project: ${scopedProjectGroup.displayName}`
+                          scopedProjectGroups.length > 0
+                            ? `Filter threads by project: ${scopedProjectGroups
+                                .map((project) => project.displayName)
+                                .join(", ")}`
                             : "Filter threads by project"
+                        }
+                        tooltip={
+                          scopedProjectGroups.length > 1 ? (
+                            <span className="flex flex-col gap-1">
+                              <span className="text-muted-foreground">Filtering threads by</span>
+                              {scopedProjectGroups.map((project) => (
+                                <span
+                                  key={project.projectKey}
+                                  className="flex items-center gap-1.5"
+                                >
+                                  <ProjectFavicon project={project} className="size-3.5" />
+                                  {project.displayName}
+                                </span>
+                              ))}
+                            </span>
+                          ) : undefined
                         }
                       />
                     }
                   >
-                    {scopedProjectGroup ? (
+                    {scopedProjectGroups.length > 1 ? (
+                      // Several scoped projects get a generic icon with a count; the
+                      // tooltip lists them.
+                      <span className="relative flex shrink-0">
+                        <FoldersIcon className="size-4" />
+                        <span className="absolute -right-1.5 -bottom-1 min-w-3 rounded-full bg-primary px-0.5 text-center text-3xs leading-3 font-semibold text-primary-foreground tabular-nums">
+                          {scopedProjectGroups.length}
+                        </span>
+                      </span>
+                    ) : scopedProjectGroups[0] ? (
                       // Wrapped so the button's direct-child svg color rule cannot override
                       // a project's own icon color.
                       <span className="flex shrink-0">
-                        <ProjectFavicon project={scopedProjectGroup} className="size-4" />
+                        <ProjectFavicon project={scopedProjectGroups[0]} className="size-4" />
                       </span>
                     ) : (
                       <FolderIcon className="size-4" />
@@ -5874,7 +5922,6 @@ export default function Sidebar() {
                     <ComboboxSearchInput
                       aria-label="Search projects"
                       placeholder="Search projects..."
-                      value={projectScopeMenuState.query}
                       onKeyDown={(event) => {
                         if (
                           event.defaultPrevented ||
@@ -5892,12 +5939,6 @@ export default function Sidebar() {
                         const project = scopeKey ? projectGroupByScopeKey.get(scopeKey) : null;
                         if (project) handleProjectSettings(event, project);
                       }}
-                      onChange={(event) =>
-                        dispatchProjectScopeMenu({
-                          type: "query-changed",
-                          query: event.target.value,
-                        })
-                      }
                     />
                     <ComboboxEmpty>No matching projects.</ComboboxEmpty>
                     <ComboboxList>
@@ -5926,13 +5967,39 @@ export default function Sidebar() {
                               />
                             ) : null}
                             {project ? (
+                              // Shown on the highlighted row: scope to just this
+                              // project and close, instead of toggling it. Its
+                              // space is always reserved, so highlighting a row
+                              // truncates nothing new and never widens the popup.
+                              <button
+                                type="button"
+                                tabIndex={-1}
+                                className="invisible shrink-0 cursor-pointer text-xs font-medium text-primary in-data-highlighted:visible hover:text-primary/80"
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  setProjectScopeKeys([project.projectKey]);
+                                  dispatchProjectScopeMenu({ type: "open-changed", open: false });
+                                }}
+                              >
+                                Only
+                              </button>
+                            ) : null}
+                            <CheckIcon
+                              aria-hidden="true"
+                              className={cn(
+                                "ml-auto size-3.5 text-primary",
+                                !selectedProjectScopeValues.has(item.value) && "invisible",
+                              )}
+                            />
+                            {project ? (
                               <Button
                                 size="icon-xs"
                                 variant="ghost-muted"
                                 tabIndex={-1}
                                 aria-hidden="true"
                                 title={`Project settings for ${project.displayName}`}
-                                className="ml-auto"
                                 onPointerDown={(event) => event.stopPropagation()}
                                 onClick={(event) => {
                                   void handleProjectSettings(event, project);
@@ -6524,8 +6591,10 @@ export default function Sidebar() {
                     Add project
                   </button>
                 </>
-              ) : scopedProjectGroup ? (
-                `No threads in ${scopedProjectGroup.displayName} yet`
+              ) : scopedProjectGroups.length === 1 ? (
+                `No threads in ${scopedProjectGroups[0]!.displayName} yet`
+              ) : scopedProjectGroups.length > 1 ? (
+                "No threads in these projects yet"
               ) : (
                 "No threads yet"
               )}
