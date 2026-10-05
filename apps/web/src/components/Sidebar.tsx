@@ -5675,8 +5675,14 @@ export default function Sidebar() {
                     }
                   >
                     {scopedProjectGroups.length > 1 ? (
-                      // Several scoped projects get a generic icon; the tooltip lists them.
-                      <FoldersIcon className="size-4" />
+                      // Several scoped projects get a generic icon with a count; the
+                      // tooltip lists them.
+                      <span className="relative flex shrink-0">
+                        <FoldersIcon className="size-4" />
+                        <span className="absolute -right-1.5 -bottom-1 min-w-3 rounded-full bg-primary px-0.5 text-center text-3xs leading-3 font-semibold text-primary-foreground tabular-nums">
+                          {scopedProjectGroups.length}
+                        </span>
+                      </span>
                     ) : scopedProjectGroups[0] ? (
                       // Wrapped so the button's direct-child svg color rule cannot override
                       // a project's own icon color.
