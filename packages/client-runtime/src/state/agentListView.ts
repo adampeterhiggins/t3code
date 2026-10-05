@@ -303,6 +303,11 @@ function rawToolCallFromItem(item: OrchestrationV2TurnItem): RawToolCall | null 
   }
 }
 
+/** The tool family of a turn item, as agent rows mark it; null for non-tool items. */
+export function subagentToolKindOfItem(item: OrchestrationV2TurnItem): SubagentToolKind | null {
+  return rawToolCallFromItem(item)?.kind ?? null;
+}
+
 function rawToolCallText(call: RawToolCall): string {
   return [call.title, call.detail, call.preview].filter(Boolean).join("\n");
 }

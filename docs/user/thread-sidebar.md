@@ -328,9 +328,9 @@ Each subagent runs in its own thread. On web and desktop there are two places to
 
 - **Agents** in the side panel lists every agent of the thread, including agents that an agent
   started, indented under it. Open it from the side panel's launcher or **+** menu, the command
-  palette (**Show agents**), the button in the **Lineage** header, or **Show in Agents panel** when
-  you right-click an agent in the conversation or in Lineage. The footer counts agents by status
-  and adds up their tokens.
+  palette (**Show agents**), or the button in the **Lineage** header. Right-click an agent in the
+  conversation or in Lineage and choose **Show in Agents panel** to open the panel on that agent.
+  The footer counts agents by status and adds up their tokens.
 - **Lineage** in the thread details panel lists the agents this thread started, next to its forks;
   click one to open its thread and read its whole conversation. The Agents panel's Lineage button
   brings you back here.
@@ -342,16 +342,26 @@ jump while you read them. A working agent's row shows its latest tool call and a
 its error. Hover an agent in the Agents panel to preview its prompt, result, latest tool calls, and
 usage; hover one in Lineage to preview its model, status, result, and token usage.
 
-Click an agent in the Agents panel, or right-click it anywhere and choose **Open in new tab**, to
-keep it in a tab of the side panel: the prompt it was given, its result or error, the tool calls it
-made, and its token usage in the footer (hover a number for its label, or the total for the full
-breakdown). Tool calls list newest first; search them, filter by status or tool, or sort oldest
-first or by duration. Hover a call to preview all of it, or click to keep it open. The tab's buttons
-open the agent's own thread or go back to all agents. The Agents panel and agent tabs belong to the
-current thread and are restored when you reopen the app. Close one with its close button and open
-it again the same way.
+Click an agent in the Agents panel to see what it is doing without leaving the panel. You get its
+status, model, and running time, the prompt it was given, its result or error, and the agents it
+started. Click one of those to look inside it too. **Back** goes up one level, and from the top
+back to the list. Below the header, **Transcript** follows the agent live: its messages, the
+reasoning it shares, and each tool call as it runs. Click a call or thought to expand its command,
+output, or diff. While you are at the bottom, new activity scrolls into view; scroll up to read
+and it stays put. Switch to **Tools** for only the tool calls, newest first, filtered by status or
+tool, or sorted oldest first or by duration. Search either view. The footer shows the agent's
+token usage; hover a number for its label, or the total for the full breakdown.
 
-To use what an agent found in your next message, choose **Attach result to chat** in its tab or
+**Stop agent** shows when the agent's own thread can be interrupted. Some subagents, such as
+Claude's, stop only when you stop the parent thread.
+
+To keep an agent beside the list, choose **Open in new tab** in its detail, or right-click it
+anywhere and choose the same. The agent gets its own tab in the side panel with the same view.
+The detail's buttons also open the agent's own thread. The Agents panel and agent tabs belong to
+the current thread and are restored when you reopen the app; the agent you had open inside the
+panel is not. Close a tab with its close button and open it again the same way.
+
+To use what an agent found in your next message, choose **Attach result to chat** in its detail or
 from the right-click menu. T3 Code adds the agent's task and result to the composer; a long result
 becomes a pasted attachment.
 

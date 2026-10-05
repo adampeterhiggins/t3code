@@ -3,7 +3,11 @@
  * the conversation's agent rows, the Agents panel): open it in an agent tab, continue from its
  * work in a new chat tab, attach its result to this chat, or find it in the Agents panel.
  */
-import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import {
+  scopedThreadKey,
+  scopeProjectRef,
+  scopeThreadRef,
+} from "@t3tools/client-runtime/environment";
 import type {
   ContextMenuItem,
   OrchestrationV2ThreadProjection,
@@ -13,6 +17,7 @@ import type {
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, type MouseEvent } from "react";
 
+import { useAgentDrillStore } from "~/agentDrillStore";
 import { useComposerHandleContext } from "~/composerHandleContext";
 import { readLocalApi } from "~/localApi";
 import { useRightPanelStore } from "~/rightPanelStore";
@@ -87,6 +92,8 @@ export function useAgentContextMenu(
         if (action === "open-in-tab") {
           useRightPanelStore.getState().openAgent(parentRef, agent);
         } else if (action === "show-in-agents") {
+          // The panel opens on the agent's detail; Back returns to the fleet.
+          useAgentDrillStore.getState().focus(scopedThreadKey(parentRef), agent.childThreadId);
           useRightPanelStore.getState().open(parentRef, "agents");
         } else if (action === "continue-in-chat") {
           // The new chat tab belongs to the chat the user is in, even for a nested agent.
