@@ -4,7 +4,7 @@ import { projectedSubagentsToRuntime } from "@t3tools/client-runtime/state/subag
 import type { ReactNode } from "react";
 import { useThreadShell, useProject } from "../../state/entities";
 import { SubagentTooltipContent } from "./SubagentTooltipContent";
-import { showAgentInPanel, showAgentsPanel, useAgentContextMenu } from "./agentContextMenu";
+import { showAgentInPanel, useAgentContextMenu } from "./agentContextMenu";
 import { useAtomValue } from "@effect/atom-react";
 import { scopeThreadRef, scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { environmentThreadDetails } from "../../state/threads";
@@ -29,6 +29,7 @@ import {
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import {
   BotIcon,
+  PanelRightOpenIcon,
   ChevronRightIcon,
   ArrowRightLeftIcon,
   ArrowRightIcon,
@@ -488,7 +489,7 @@ function SubagentTimelineLink(props: {
   const className =
     "group/subagent flex w-full min-w-0 items-center gap-2.5 rounded-md px-2 py-1.5 text-left";
   return (
-    <div className="flex min-w-0 items-center gap-1">
+    <div className="group/subagent-row flex min-w-0 items-center gap-1">
       <div className="min-w-0 flex-1">
         <Tooltip>
           <TooltipTrigger
@@ -557,9 +558,9 @@ function SubagentTimelineLink(props: {
 }
 
 /**
- * Fork: a conversation agent row's way into the Agents panel. **Details** opens the panel on the
- * agent (Back returns to the fleet); the bot button opens the fleet. The row itself still opens
- * the agent's thread.
+ * Fork: a conversation agent row's way into the Agents panel, shown while the row is hovered or
+ * focused. It opens the panel on the agent; Back there returns to the whole fleet. The row itself
+ * still opens the agent's thread.
  */
 function SubagentPanelControls(props: {
   readonly parentRef: ScopedThreadRef;
@@ -568,14 +569,7 @@ function SubagentPanelControls(props: {
   readonly title: string;
 }) {
   return (
-    <span className="flex shrink-0 items-center gap-0.5">
-      <InlineButton
-        tone="muted"
-        aria-label={`Show details of ${props.title}`}
-        onClick={() => showAgentInPanel(props.parentRef, props.agentKey)}
-      >
-        Details
-      </InlineButton>
+    <span className="shrink-0 opacity-0 transition-opacity focus-within:opacity-100 group-any-hover/subagent-row:opacity-100">
       <Tooltip>
         <TooltipTrigger
           render={
@@ -583,14 +577,14 @@ function SubagentPanelControls(props: {
               type="button"
               size="icon-xs"
               variant="ghost-muted"
-              aria-label="Open Agents panel"
-              onClick={() => showAgentsPanel(props.parentRef)}
+              aria-label={`Show ${props.title} in the Agents panel`}
+              onClick={() => showAgentInPanel(props.parentRef, props.agentKey)}
             />
           }
         >
-          <BotIcon />
+          <PanelRightOpenIcon />
         </TooltipTrigger>
-        <TooltipPopup>Open Agents panel</TooltipPopup>
+        <TooltipPopup>Show in Agents panel</TooltipPopup>
       </Tooltip>
     </span>
   );

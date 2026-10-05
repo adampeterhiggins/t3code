@@ -1,5 +1,7 @@
 import * as NodeCrypto from "node:crypto";
 
+import { FILE_HEADERS_ONLY, formatPatch, structuredPatch, type StructuredPatch } from "diff";
+
 import { makeProviderTextDeltaCoalescer } from "./ProviderTextDeltaCoalescer.ts";
 import {
   dynamicToolTitle,
@@ -1856,6 +1858,75 @@ function parseClaudeBackgroundTaskEntry(
     startedByMonitor: monitorTasks.has(taskId),
     description: typeof description === "string" ? description : undefined,
   });
+}
+
+/** Edits larger than this keep their line counts but carry no diff. */
+const CLAUDE_EDIT_DIFF_MAX_CHARS = 64_000;
+
+/**
+ * Fork: an edit's diff from its tool input. Claude's Edit result is only a success message
+ * ("The file … has been updated successfully"), and subagent results carry no patch, so the
+ * input's old and new text are the only source. A failed edit keeps the provider's error where
+ * the diff would be, which is how upstream stores failures.
+ */
+export function claudeFileChangeDiff(input: {
+  readonly fileName: string;
+  readonly toolInput: ClaudeNativeToolInput;
+  readonly failed: boolean;
+  readonly outputText: string;
+}): { readonly diffStr?: string; readonly additions?: number; readonly deletions?: number } {
+  if (input.failed) return input.outputText.length === 0 ? {} : { diffStr: input.outputText };
+  const record: Readonly<Record<string, unknown>> =
+    input.toolInput.type === "record" ? input.toolInput.value : {};
+  const text = (value: unknown) => (typeof value === "string" ? value : undefined);
+  const edits: Array<{ readonly before: string; readonly after: string }> = [];
+  const single = { before: text(record.old_string), after: text(record.new_string) };
+  if (single.before !== undefined && single.after !== undefined) {
+    edits.push({ before: single.before, after: single.after });
+  } else if (Array.isArray(record.edits)) {
+    for (const edit of record.edits) {
+      const entry =
+        typeof edit === "object" && edit !== null ? (edit as Record<string, unknown>) : {};
+      const before = text(entry.old_string);
+      const after = text(entry.new_string);
+      if (before !== undefined && after !== undefined) edits.push({ before, after });
+    }
+  } else if (text(record.content) !== undefined) {
+    edits.push({ before: "", after: text(record.content) ?? "" });
+  }
+  if (edits.length === 0) return {};
+  const withNewline = (value: string) =>
+    value === "" || value.endsWith("\n") ? value : `${value}\n`;
+  let additions = 0;
+  let deletions = 0;
+  const patches: Array<StructuredPatch> = [];
+  let size = 0;
+  for (const edit of edits) {
+    size += edit.before.length + edit.after.length;
+    const patch = structuredPatch(
+      input.fileName,
+      input.fileName,
+      withNewline(edit.before),
+      withNewline(edit.after),
+      undefined,
+      undefined,
+      { context: 3 },
+    );
+    for (const hunk of patch.hunks) {
+      for (const line of hunk.lines) {
+        if (line.startsWith("+")) additions += 1;
+        else if (line.startsWith("-")) deletions += 1;
+      }
+    }
+    if (patch.hunks.length > 0) patches.push(patch);
+  }
+  return {
+    additions,
+    deletions,
+    ...(patches.length === 0 || size > CLAUDE_EDIT_DIFF_MAX_CHARS
+      ? {}
+      : { diffStr: formatPatch(patches, FILE_HEADERS_ONLY) }),
+  };
 }
 
 function fileNameFromClaudeTool(toolName: string, input: ClaudeNativeToolInput): string {
@@ -3937,7 +4008,12 @@ export function makeClaudeAdapterV2(
                     ...itemBase,
                     type: "file_change",
                     fileName: fileNameFromClaudeTool(input.toolName, input.toolInput),
-                    ...(outputText.length === 0 ? {} : { diffStr: outputText }),
+                    ...claudeFileChangeDiff({
+                      fileName: fileNameFromClaudeTool(input.toolName, input.toolInput),
+                      toolInput: input.toolInput,
+                      failed: input.status === "failed",
+                      outputText,
+                    }),
                   }
                 : itemType === "web_search"
                   ? {
