@@ -31,6 +31,8 @@ interface V2ItemInspectorProps {
   readonly environmentId: EnvironmentId;
   readonly cwd?: string | undefined;
   readonly workspaceRoot?: string | undefined;
+  /** Omit a command's text when the surrounding surface already shows it, as the hover preview does. */
+  readonly hideCommand?: boolean | undefined;
   readonly onOpenThread: (threadId: ThreadId) => void;
   readonly onOpenTurnDiff: (runId: RunId, filePath?: string) => void;
   readonly onRollbackCheckpoint?: (input: {
@@ -220,7 +222,11 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
       ) : null}
 
       {item.type === "command_execution" ? (
-        <ToolCallBody command={item.input} exitCode={item.exitCode} {...outputState} />
+        <ToolCallBody
+          command={props.hideCommand ? "" : item.input}
+          exitCode={item.exitCode}
+          {...outputState}
+        />
       ) : null}
 
       {item.type === "file_change" ? (

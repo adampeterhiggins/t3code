@@ -1,5 +1,11 @@
 import type { NotionPageContextRecord } from "@t3tools/contracts";
 import { ToolCallBody } from "../ToolCallBody";
+import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
+import {
+  toolCallPreviewHeading,
+  toolCallPreviewStatus,
+  workEntryHasToolCallPreview,
+} from "../../lib/toolCallPreview";
 import {
   ComputerUseAppIcon,
   GitHubIcon,
@@ -286,9 +292,11 @@ import { type TimestampFormat } from "@t3tools/contracts/settings";
 import {
   formatChatTimestampTooltip,
   formatDayAwareTimestamp,
+  formatSecondsTimestamp,
   formatUpcomingTimestamp,
 } from "../../timestampFormat";
 import { FetchedToolOutput, V2ItemInspector } from "./V2ItemInspector";
+import { ShellCommandBlock } from "./ShellCommandBlock";
 import { useV2ItemSupport } from "../../state/v2ItemSupport";
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "../ui/collapsible";
 import {
@@ -5079,6 +5087,103 @@ function buildToolCallExpandedBody(
 const toolCallExpandedBodyClassName =
   "max-h-64 cursor-text overflow-auto whitespace-pre-wrap break-words font-mono text-secondary-label text-(length:--font-size-code,var(--text-2xs)) leading-relaxed select-text";
 
+type WorkEntryDetailProps = {
+  workEntry: TimelineWorkEntry;
+  workspaceRoot: string | undefined;
+  /** Reads and skills show this text instead of the item inspector. */
+  plainOutput: string | null | undefined;
+  /** The plain output still has output the timeline withheld. */
+  plainOutputFetches: boolean;
+};
+
+/** An open tool row's details: the item inspector for projected items, otherwise plain text. */
+function WorkEntryDetailBody(
+  props: WorkEntryDetailProps & { textBody: string | null; hideCommand?: boolean },
+) {
+  const ctx = use(TimelineRowCtx);
+  const { workEntry } = props;
+  if (workEntry.projectedItem && props.plainOutput === undefined) {
+    return (
+      <V2ItemInspector
+        projectedItem={workEntry.projectedItem}
+        environmentId={ctx.activeThreadEnvironmentId}
+        cwd={ctx.markdownCwd}
+        workspaceRoot={props.workspaceRoot}
+        hideCommand={props.hideCommand}
+        onOpenThread={ctx.onOpenThread}
+        onOpenTurnDiff={ctx.onOpenTurnDiff}
+        onRollbackCheckpoint={ctx.onRollbackCheckpoint}
+      />
+    );
+  }
+  return (
+    <>
+      {props.textBody ? (
+        <ToolCallBody className={toolCallExpandedBodyClassName} text={props.textBody} />
+      ) : null}
+      {props.plainOutputFetches && workEntry.projectedItem ? (
+        <FetchedToolOutput
+          projectedItem={workEntry.projectedItem}
+          environmentId={ctx.activeThreadEnvironmentId}
+        />
+      ) : null}
+    </>
+  );
+}
+
+const toolCallPreviewCommandClassName =
+  "max-h-40 overflow-auto font-mono text-(length:--font-size-code,var(--text-2xs)) leading-relaxed whitespace-pre-wrap break-words select-text";
+
+/**
+ * A collapsed tool row's hover card: the tool's heading, the command or full
+ * label, then the same details the row expands to. Mounts only while open, so
+ * rows never build (or fetch) preview details on render.
+ */
+function ToolCallPreviewContent(
+  props: WorkEntryDetailProps & { previewText: string; icon: ReactNode },
+) {
+  const { timestampFormat } = use(TimelineRowCtx);
+  const { workEntry, workspaceRoot, plainOutput } = props;
+  const heading = toolCallPreviewHeading(workEntry, workspaceRoot, props.previewText);
+  const textBody =
+    plainOutput !== undefined
+      ? plainOutput
+      : workEntry.projectedItem
+        ? null
+        : buildToolCallExpandedBody(
+            workEntry,
+            workspaceRoot,
+            heading.command ?? props.previewText,
+            null,
+          );
+  return (
+    <div className="flex max-h-[60vh] flex-col gap-1.5 overflow-auto p-3">
+      <div className="flex items-start gap-1.5 text-xs text-secondary-label">
+        {props.icon}
+        <span className="min-w-0 break-all">{heading.title}</span>
+      </div>
+      {heading.command ? (
+        <div className={toolCallPreviewCommandClassName}>
+          <ShellCommandBlock command={heading.command} />
+        </div>
+      ) : heading.text ? (
+        <p className="text-xs break-words whitespace-pre-wrap text-foreground/85 select-text">
+          {heading.text}
+        </p>
+      ) : null}
+      <WorkEntryDetailBody {...props} textBody={textBody} hideCommand />
+      <p className="font-mono text-3xs text-muted-foreground select-text">
+        {[
+          formatSecondsTimestamp(workEntry.createdAt, timestampFormat),
+          toolCallPreviewStatus(workEntry),
+        ]
+          .filter(Boolean)
+          .join(" · ")}
+      </p>
+    </div>
+  );
+}
+
 function workEntryIconName(workEntry: TimelineWorkEntry): WorkEntryIconName {
   if (workEntry.structuredPayload?.type === "notification") {
     if (workEntry.structuredPayload.outcome === "failed") return "circle-alert";
@@ -5213,7 +5318,9 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
   const [expanded, setExpanded] = useState(
     () => groupView?.state.expandedEntries.has(workEntry.id) ?? false,
   );
+  const [previewOpen, setPreviewOpen] = useState(false);
   const toggleExpanded = () => {
+    setPreviewOpen(false);
     const next = !expanded;
     if (groupView) {
       groupView.onToggleEntry(!next);
@@ -5416,7 +5523,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
       }
     : {};
 
-  return (
+  const row = (
     <WorkLogRow
       data-v2-item-type={workEntry.projectedItem?.item.type}
       data-v2-item-visibility={workEntry.projectedItem?.visibility}
@@ -5550,32 +5657,46 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
         plainOutputFetches ||
         (workEntry.projectedItem && plainOutput === undefined)) ? (
         <WorkLogDetails kind="panel">
-          {workEntry.projectedItem && plainOutput === undefined ? (
-            <V2ItemInspector
-              projectedItem={workEntry.projectedItem}
-              environmentId={ctx.activeThreadEnvironmentId}
-              cwd={ctx.markdownCwd}
-              workspaceRoot={workspaceRoot}
-              onOpenThread={ctx.onOpenThread}
-              onOpenTurnDiff={ctx.onOpenTurnDiff}
-              onRollbackCheckpoint={ctx.onRollbackCheckpoint}
-            />
-          ) : (
-            <>
-              {expandedBody ? (
-                <ToolCallBody className={toolCallExpandedBodyClassName} text={expandedBody} />
-              ) : null}
-              {plainOutputFetches && workEntry.projectedItem ? (
-                <FetchedToolOutput
-                  projectedItem={workEntry.projectedItem}
-                  environmentId={ctx.activeThreadEnvironmentId}
-                />
-              ) : null}
-            </>
-          )}
+          <WorkEntryDetailBody
+            workEntry={workEntry}
+            workspaceRoot={workspaceRoot}
+            plainOutput={plainOutput}
+            plainOutputFetches={plainOutputFetches}
+            textBody={expandedBody}
+          />
         </WorkLogDetails>
       ) : null}
     </WorkLogRow>
+  );
+
+  // The card stays mounted while expanded so toggling never remounts the row.
+  if (!workEntryHasToolCallPreview(workEntry, canExpandProjectedItem)) return row;
+  return (
+    <PreviewCard
+      open={!expanded && previewOpen}
+      onOpenChange={(open) => setPreviewOpen(!expanded && open)}
+    >
+      <PreviewCardTrigger render={row} delay={300} closeDelay={150} />
+      <PreviewCardPopup align="start" className="w-md max-w-[calc(100vw-2rem)]">
+        <ToolCallPreviewContent
+          workEntry={workEntry}
+          workspaceRoot={workspaceRoot}
+          previewText={previewText}
+          plainOutput={plainOutput}
+          plainOutputFetches={plainOutputFetches}
+          icon={
+            <span className={cn(iconWrapperClass, "mt-px size-3.5 shrink-0")}>
+              <ToolActivityIconView
+                icon={entryToolIcon}
+                fallbackName={entryIconName}
+                className="block size-3.5 shrink-0 stroke-2"
+                muted
+              />
+            </span>
+          }
+        />
+      </PreviewCardPopup>
+    </PreviewCard>
   );
 }
 
