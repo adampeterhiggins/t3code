@@ -37,7 +37,10 @@ import {
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import { useHiddenTabThreads } from "./sidebar/useHiddenTabThreads";
 import { resolveThreadTabTarget, useThreadTabRecencyStore } from "../threadTabRecencyStore";
-import { threadTabGroupTarget } from "@t3tools/client-runtime/thread-tabs";
+import {
+  threadTabGroupHeaderTarget,
+  threadTabGroupTarget,
+} from "@t3tools/client-runtime/thread-tabs";
 import {
   parseScopedThreadKey,
   scopeProjectRef,
@@ -1128,8 +1131,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   projectDisplayName: string | null;
   providerEntryByInstanceId: ReadonlyMap<string, ProviderInstanceEntry>;
   timestampFormat: TimestampFormat;
-  onThreadClick: (event: ReactMouseEvent, threadRef: ScopedThreadRef) => void;
-  onThreadActivate: (threadRef: ScopedThreadRef) => void;
+  onThreadClick: (
+    event: ReactMouseEvent,
+    threadRef: ScopedThreadRef,
+    keepOpenGroupTab?: boolean,
+  ) => void;
+  onThreadActivate: (threadRef: ScopedThreadRef, keepOpenGroupTab?: boolean) => void;
   onStartRename: (threadRef: ScopedThreadRef, title: string) => void;
   onRenameTitleChange: (title: string) => void;
   onCommitRename: (threadRef: ScopedThreadRef, title: string, originalTitle: string) => void;
@@ -1327,7 +1334,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
 
   const handleClick = useCallback(
     (event: ReactMouseEvent) => {
-      onThreadClick(event, rowThreadRef);
+      // The group header stands for every tab. A tab already open in it stays open.
+      onThreadClick(event, rowThreadRef, true);
     },
     [onThreadClick, rowThreadRef],
   );
@@ -1352,7 +1360,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       if (event.target !== event.currentTarget) return;
       if (event.key !== "Enter" && event.key !== " ") return;
       event.preventDefault();
-      onThreadActivate(rowThreadRef);
+      onThreadActivate(rowThreadRef, true);
     },
     [onThreadActivate, rowThreadRef],
   );
@@ -3824,8 +3832,10 @@ export default function Sidebar() {
   // Settled threads are live shells, so opening one is plain navigation:
   // history stays readable without un-settling, and sending a message or
   // starting a session un-settles server-side.
+  const tabThreadGroupsRef = useRef(tabThreadGroups);
+  tabThreadGroupsRef.current = tabThreadGroups;
   const navigateToThread = useCallback(
-    (threadRef: ScopedThreadRef) => {
+    (threadRef: ScopedThreadRef, keepOpenGroupTab = false) => {
       if (useThreadSelectionStore.getState().selectedThreadKeys.size > 0) {
         clearSelection();
       }
@@ -3833,15 +3843,24 @@ export default function Sidebar() {
       if (isMobile) {
         setOpenMobile(false);
       }
+      const target = keepOpenGroupTab
+        ? (parseScopedThreadKey(
+            threadTabGroupHeaderTarget(
+              scopedThreadKey(threadRef),
+              routeThreadKeyRef.current,
+              tabThreadGroupsRef.current,
+              hiddenTabThreads,
+              useThreadTabRecencyStore.getState().openedAtByThreadKey,
+            ),
+          ) ?? threadRef)
+        : resolveThreadTabTarget(threadRef, hiddenTabThreads);
       return router.navigate({
         to: "/$environmentId/$threadId",
-        params: buildThreadRouteParams(resolveThreadTabTarget(threadRef, hiddenTabThreads)),
+        params: buildThreadRouteParams(target),
       });
     },
     [clearSelection, hiddenTabThreads, isMobile, router, setOpenMobile, setSelectionAnchor],
   );
-  const tabThreadGroupsRef = useRef(tabThreadGroups);
-  tabThreadGroupsRef.current = tabThreadGroups;
   // New tabs join the clicked thread's group and start on its model.
   const handleNewTab = useCallback(
     (threadRef: ScopedThreadRef) => {
@@ -4016,7 +4035,7 @@ export default function Sidebar() {
   );
 
   const handleThreadClick = useCallback(
-    (event: ReactMouseEvent, threadRef: ScopedThreadRef) => {
+    (event: ReactMouseEvent, threadRef: ScopedThreadRef, keepOpenGroupTab = false) => {
       if (isSidebarNestedLinkClick(event.target)) return;
       const isMac = isMacPlatform(navigator.platform);
       const isModClick = isMac ? event.metaKey : event.ctrlKey;
@@ -4035,7 +4054,7 @@ export default function Sidebar() {
         return;
       }
       setExpandedTabRowKey(null);
-      navigateToThread(threadRef);
+      navigateToThread(threadRef, keepOpenGroupTab);
     },
     [navigateToThread, rangeSelectTo, toggleThreadSelection],
   );
