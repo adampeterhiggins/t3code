@@ -2304,6 +2304,77 @@ it.layer(TestLayer)("OrchestrationV2LayerLive lifecycle", (it) => {
     }),
   );
 
+  // Fork: settling keeps a thread's pull request watches; a wake brings the thread back.
+  it.effect.each(["manual", "automatic"])("settling keeps pull request watches: %s", (mode) =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const maintenance = yield* ProjectionMaintenance.ProjectionMaintenanceV2;
+      const threadId = ThreadId.make(`pr-watch-settle-${mode}`);
+      yield* orchestrator.dispatch({
+        type: "thread.create",
+        createdBy: "user",
+        creationSource: "web",
+        commandId: CommandId.make(`pr-watch-settle-create-${mode}`),
+        threadId,
+        projectId: ProjectId.make("pr-watch-settle-project"),
+        title: "Settle watched PRs",
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+      });
+      const key = { host: "github.com", repository: "pingdotgg/t3code" };
+      for (const number of [7, 8]) {
+        yield* orchestrator.dispatch({
+          type: "thread.pull-request.watch",
+          commandId: CommandId.make(`pr-watch-settle-start-${mode}-${number}`),
+          threadId,
+          ...key,
+          number,
+          watching: true,
+          link: { url: `https://github.com/pingdotgg/t3code/pull/${number}`, source: "agent" },
+        });
+      }
+      const before = yield* orchestrator.getThreadShell(threadId);
+      assert.isDefined(before?.pullRequests?.[0]?.watch);
+      if (before === null) return;
+      yield* orchestrator.dispatch({
+        ...(mode === "manual"
+          ? { type: "thread.settle" as const }
+          : { type: "thread.auto-settle" as const, snapshotAt: before.updatedAt }),
+        commandId: CommandId.make(`pr-watch-settle-${mode}`),
+        threadId,
+      });
+      const watched = (shell: typeof before | null) =>
+        shell?.pullRequests?.map((link) => [link.number, link.watch !== undefined]);
+      assert.deepEqual(watched(yield* orchestrator.getThreadShell(threadId)), [
+        [7, true],
+        [8, true],
+      ]);
+      assert.isTrue((yield* maintenance.rebuild).valid);
+      assert.deepEqual(watched(yield* orchestrator.getThreadShell(threadId)), [
+        [7, true],
+        [8, true],
+      ]);
+      // A settled thread can still start a watch.
+      yield* orchestrator.dispatch({
+        type: "thread.pull-request.watch",
+        commandId: CommandId.make(`pr-watch-settle-new-${mode}`),
+        threadId,
+        ...key,
+        number: 9,
+        watching: true,
+        link: { url: "https://github.com/pingdotgg/t3code/pull/9", source: "agent" },
+      });
+      assert.isTrue(
+        (yield* orchestrator.getThreadShell(threadId))?.pullRequests?.some(
+          (link) => link.number === 9 && link.watch !== undefined,
+        ) === true,
+      );
+    }),
+  );
+
   it.effect("ends a watch it cannot read, and tells the agent", () =>
     Effect.gen(function* () {
       const orchestrator = yield* Orchestrator.OrchestratorV2;
