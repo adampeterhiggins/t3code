@@ -60,11 +60,13 @@ import {
   CheckIcon,
   ChevronRightIcon,
   CornerLeftUpIcon,
+  DownloadIcon,
   FileSearchIcon,
   FolderGit2Icon,
   FolderIcon,
   FolderPlusIcon,
   GitBranchIcon,
+  HistoryIcon,
   InboxIcon,
   LayersIcon,
   MessageSquareDashedIcon,
@@ -209,6 +211,8 @@ import {
 } from "./sidebar/SidebarAttentionInbox";
 import { ProjectFilePicker } from "./files/ProjectFilePicker";
 import { openLinkPullRequestDialog } from "./pullRequest/LinkPullRequestDialog";
+import { openTranscriptExportDialog } from "./TranscriptExportDialog";
+import { openImportConversationDialog } from "./ImportConversationDialog";
 import { ProjectContentSearchDialog } from "./search/ProjectContentSearchDialog";
 import { toggleThemeEditorForTheme } from "./settings/themeEditorStore";
 import { searchSettings, SETTINGS_SECTION_LABELS } from "./settings/settingsSearch";
@@ -1975,6 +1979,35 @@ function OpenCommandPaletteDialog(props: {
           if (started) openStartFromPicker();
         },
       });
+      const importProjectRef = contextualProjectRef;
+      if (
+        importProjectRef !== null &&
+        serverConfigs.get(importProjectRef.environmentId)?.environment.capabilities
+          .agentSessionPicker === true
+      ) {
+        actionItems.push({
+          kind: "action",
+          value: "action:import-conversation",
+          searchTerms: [
+            "import",
+            "conversation",
+            "claude code",
+            "codex",
+            "session",
+            "resume",
+            "cli",
+          ],
+          title: (
+            <>
+              Import conversation into <span className="font-semibold">{activeProjectTitle}</span>
+            </>
+          ),
+          icon: <HistoryIcon className={ITEM_ICON_CLASS} />,
+          run: async () => {
+            openImportConversationDialog(importProjectRef);
+          },
+        });
+      }
     }
 
     actionItems.push({
@@ -2011,6 +2044,20 @@ function OpenCommandPaletteDialog(props: {
       icon: <LinkIcon className={ITEM_ICON_CLASS} />,
       shortcutCommand: "thread.copyReference",
       run: copyActiveThreadReference,
+    });
+  }
+
+  if (activeThread !== null) {
+    const threadRef = scopeThreadRef(activeThread.environmentId, activeThread.id);
+    actionItems.push({
+      kind: "action",
+      value: "action:export-transcript",
+      searchTerms: ["export", "transcript", "markdown", "save", "copy", "conversation"],
+      title: "Export transcript",
+      icon: <DownloadIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        openTranscriptExportDialog(threadRef);
+      },
     });
   }
 

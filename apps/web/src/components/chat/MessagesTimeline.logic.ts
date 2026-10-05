@@ -5,7 +5,7 @@ import { shallow } from "zustand/vanilla/shallow";
 import { renderCodexDirectivesForCopy } from "@t3tools/client-runtime/codex-markdown-directives";
 import {
   formatCommandForWorkspace,
-  formatPathsForWorkspace,
+  formatToolTextForWorkspace,
 } from "@t3tools/client-runtime/work-log/command-display";
 import {
   commandDisplayText,
@@ -117,18 +117,6 @@ function workEntryReadPaths(entry: WorkLogEntry, workspaceRoot: string | undefin
   );
 }
 
-/**
- * Shows workspace paths relative in a tool row's label (`Read: /repo/src/a.ts`).
- * Prose rows such as task summaries and errors keep their paths as written.
- */
-export function workEntryTextForWorkspace(
-  entry: WorkLogEntry,
-  text: string,
-  workspaceRoot: string | undefined,
-): string {
-  return entry.tone === "tool" ? formatPathsForWorkspace(text, workspaceRoot) : text;
-}
-
 export function workEntryDisplayLabel(entry: WorkLogEntry, workspaceRoot: string | undefined) {
   if (entry.itemType === "system_notice") return entry.label;
   if (entry.itemType === "reasoning" || entry.tone === "thinking") {
@@ -165,7 +153,7 @@ export function workEntryDisplayLabel(entry: WorkLogEntry, workspaceRoot: string
   const detailIsSearchOutput =
     (action === "code-search" || action === "search") && /[\r\n]/.test(compactDetail ?? "");
   if (compactDetail && !providerRetry && action !== "read" && !detailIsSearchOutput) {
-    return workEntryTextForWorkspace(entry, compactDetail, workspaceRoot);
+    return formatToolTextForWorkspace(entry, compactDetail, workspaceRoot);
   }
   const [firstPath] = entry.changedFiles ?? [];
   if (firstPath) {
@@ -177,7 +165,7 @@ export function workEntryDisplayLabel(entry: WorkLogEntry, workspaceRoot: string
   if (action === "read" && !entry.viewedImagePath) {
     return "Read file";
   }
-  const heading = workEntryTextForWorkspace(
+  const heading = formatToolTextForWorkspace(
     entry,
     normalizeCompactToolLabel(entry.toolTitle || entry.label),
     workspaceRoot,

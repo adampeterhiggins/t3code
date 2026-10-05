@@ -295,7 +295,7 @@ continues the same Claude or Codex session, so the agent keeps its full context.
 session first so both sides do not write to it at once.
 
 Conversations that already have a thread, including ones T3 Code started itself, show **Open**
-instead. Imported history keeps the first prompt and the newest 200 messages, without tool
+instead. An archived thread does not count, so importing makes a fresh one. Imported history keeps the first prompt and the newest 200 messages, without tool
 activity or attachments. Other providers and the mobile app do not offer import.
 
 ## Inspect agent work

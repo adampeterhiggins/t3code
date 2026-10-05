@@ -58,7 +58,10 @@ import {
   resolveViewedImageAsset,
   workEntryViewedImagePath,
 } from "@t3tools/client-runtime/work-log/presentation";
-import { formatCommandForWorkspace } from "@t3tools/client-runtime/work-log/command-display";
+import {
+  formatCommandForWorkspace,
+  formatToolTextForWorkspace,
+} from "@t3tools/client-runtime/work-log/command-display";
 import { resolveWorkGroupScrollAnchor } from "@t3tools/client-runtime/work-log/scroll-anchor";
 import {
   turnItemHasDetail,
@@ -229,7 +232,6 @@ import {
   shouldPreserveAssistantLineBreaks,
   toolGroupAction,
   workEntryDisplayLabel,
-  workEntryTextForWorkspace,
   workEntryReadOutput,
   workEntryIsVisibleInGroup,
   worktreeSetupAgentStarted,
@@ -5061,7 +5063,7 @@ function buildToolCallExpandedBody(
   if (detail !== viewedImagePath?.trim()) {
     // A command's detail is its output, shown as written.
     addBlock(
-      detail && !command ? workEntryTextForWorkspace(workEntry, detail, workspaceRoot) : detail,
+      detail && !command ? formatToolTextForWorkspace(workEntry, detail, workspaceRoot) : detail,
     );
   }
   const viewedImagePaths = new Set(

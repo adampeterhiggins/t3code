@@ -1,5 +1,11 @@
 import * as Schema from "effect/Schema";
-import { IsoDateTime, NonNegativeInt, ProjectId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import {
+  IsoDateTime,
+  NonNegativeInt,
+  ProjectId,
+  ThreadId,
+  TrimmedNonEmptyString,
+} from "./baseSchemas.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 
 /** Coding agent home directories the scanner knows how to read. */
@@ -68,9 +74,18 @@ export const AgentSessionScanResult = Schema.Struct({
 });
 export type AgentSessionScanResult = typeof AgentSessionScanResult.Type;
 
+/** One provider session, keyed the way the server binds it for resume. */
+export const AgentSessionRef = Schema.Struct({
+  providerInstanceId: ProviderInstanceId,
+  providerSessionId: TrimmedNonEmptyString,
+});
+export type AgentSessionRef = typeof AgentSessionRef.Type;
+
 export const AgentSessionImportInput = Schema.Struct({
   projectId: ProjectId,
   expectedWorkspaceRoot: Schema.optional(TrimmedNonEmptyString),
+  /** Import only this session. Omitted, every recent session for the project is imported. */
+  session: Schema.optionalKey(AgentSessionRef),
 });
 export type AgentSessionImportInput = typeof AgentSessionImportInput.Type;
 
@@ -95,8 +110,38 @@ export class AgentSessionImportProjectChangedError extends Schema.TaggedError<Ag
 export const AgentSessionImportResult = Schema.Struct({
   importedCount: NonNegativeInt,
   skippedCount: NonNegativeInt,
+  /** Threads holding the imported session. Set only for a single-session import. */
+  threadIds: Schema.optionalKey(Schema.Array(ThreadId)),
 });
 export type AgentSessionImportResult = typeof AgentSessionImportResult.Type;
+
+export const AgentSessionListInput = Schema.Struct({ projectId: ProjectId });
+export type AgentSessionListInput = typeof AgentSessionListInput.Type;
+
+/**
+ * A Claude Code or Codex conversation recorded for a project's directory.
+ * `threadId` is the live T3 thread already holding the session, either an
+ * earlier import or a thread T3 started itself; opening it beats a duplicate.
+ */
+export const AgentSessionSummary = Schema.Struct({
+  ...AgentSessionRef.fields,
+  provider: AgentSessionSource,
+  title: TrimmedNonEmptyString,
+  /** First line of the first user prompt. */
+  preview: Schema.String,
+  messageCount: NonNegativeInt,
+  createdAt: IsoDateTime,
+  updatedAt: IsoDateTime,
+  threadId: Schema.NullOr(ThreadId),
+});
+export type AgentSessionSummary = typeof AgentSessionSummary.Type;
+
+export const AgentSessionListResult = Schema.Struct({
+  sessions: Schema.Array(AgentSessionSummary),
+  /** More sessions exist than the listing reads. */
+  truncated: Schema.Boolean,
+});
+export type AgentSessionListResult = typeof AgentSessionListResult.Type;
 
 export class AgentSessionScanError extends Schema.TaggedError<AgentSessionScanError>()(
   "AgentSessionScanError",

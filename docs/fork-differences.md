@@ -388,8 +388,9 @@ script (the T3 setup action or Conductor's `scripts.setup`) with the Conductor v
 script holds the subagent until it exits. Claude Code still creates and removes the worktree itself,
 so no archive script runs. Only the Claude adapter does this.
 
-Code: the `SubagentStart` hook in `apps/server/src/provider/Layers/ClaudeAdapter.ts` and
-`apps/server/src/project/SubagentWorktreeSetup.ts`. User guide:
+Code: `makeSubagentWorktreeSetupHooks` in
+[`ClaudeAdapterV2.ts`](../apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts) and
+[`SubagentWorktreeSetup.ts`](../apps/server/src/project/SubagentWorktreeSetup.ts). User guide:
 [project-settings.md](./user/project-settings.md#repositories-set-up-for-conductor).
 
 ## Linear integration
@@ -575,11 +576,12 @@ On web and desktop, **Export transcript…** in a thread's menu (sidebar row, si
 header) or the command palette opens a dialog that previews the thread as Markdown. A thread with
 several chat tabs gets a tab picker, starting on the tab it was opened from. **Concise** keeps
 the prompts and replies; **Full** adds the work log (tool calls, commands, file edits) and proposed
-plans in time order. Reasoning is always left out. **Header** adds front matter with the project,
+plans in the order the thread's timeline shows them. Reasoning is always left out. **Header** adds front matter with the project,
 branch, provider, model, and dates. **Save…** writes a `.md` file on the device running the client:
 the native save dialog on desktop, the browser's save picker in Chromium, and a download elsewhere.
-**Copy** puts the same Markdown on the clipboard. The dialog loads the whole thread over HTTP, so it
-works for threads that are not open. Mobile does not offer it.
+**Copy** puts the same Markdown on the clipboard. The dialog loads the whole thread projection over
+HTTP (`loadFullThreadSnapshot`), so it works for threads that are not open. Mobile does not offer
+it.
 
 Code: [`threadTranscript.ts`](../apps/web/src/lib/threadTranscript.ts),
 [`TranscriptExportDialog.tsx`](../apps/web/src/components/TranscriptExportDialog.tsx), and
@@ -592,11 +594,15 @@ Upstream imports recent Claude Code and Codex history only in bulk, from the wel
 fork adds a per-project picker on web and desktop: **Import conversation into …** in the command
 palette, and **Import conversation…** in the legacy sidebar's project menu. `agentSessions.list`
 returns the project's conversations from the last 30 days (newest 50, with first prompt, message
-count, and dates), marking ones a live thread already resumes so the picker opens that thread
-instead. `agentSessions.import` takes an optional `session` to import just one, from a fresh scan,
-and returns its thread. The thread binds to the original session exactly like the wizard's import,
-so the next turn resumes it. The server advertises the picker with the `agentSessionPicker`
-capability. Cursor, Grok, OpenCode, Antigravity, Devin, and mobile have no import.
+count, and dates, and `truncated` when there are more). Each is marked with the thread already
+holding it, so the picker opens that thread instead: an earlier import, found by upstream's
+`import:<instance>:<session>` thread id, or any unarchived thread whose active provider thread
+resumes that session, including threads T3 started itself. `agentSessions.import` takes an
+optional `session` to import just one through upstream's importer, from a fresh scan, and returns
+its thread in `threadIds`. The thread binds to the original session exactly like the wizard's
+import, so the next turn resumes it. The server advertises the picker with the
+`agentSessionPicker` capability. Cursor, Grok, OpenCode, Antigravity, Devin, and mobile have no
+import.
 
 Code: `listProjectAgentSessions` in
 [`AgentSessionImporter.ts`](../apps/server/src/project/AgentSessionImporter.ts), the
@@ -684,8 +690,10 @@ the agent never reports it. Other paths stay absolute, and approval prompts stil
 command. The shared runtime instructions also tell every provider that shell commands already
 start in that directory.
 
-Code: `packages/client-runtime/src/work-log/commandDisplay.ts`,
-`packages/client-runtime/src/state/agentPanelView.ts`, and
+Code: `packages/client-runtime/src/work-log/commandDisplay.ts`, used by
+`apps/web/src/components/chat/MessagesTimeline.logic.ts` and by `buildThreadFeed` and
+`workEntryRowLabel` in `apps/mobile/src/lib/threadActivity.ts`;
+`packages/client-runtime/src/state/agentPanelView.ts`; and
 `apps/server/src/provider/RuntimeInstructions.ts`.
 
 ## Agent access over MCP

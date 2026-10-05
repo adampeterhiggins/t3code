@@ -15,6 +15,11 @@ import {
   commandProgramName,
 } from "@t3tools/client-runtime/work-log/command-label";
 import {
+  formatCommandForWorkspace,
+  formatPathsForWorkspace,
+  formatToolTextForWorkspace,
+} from "@t3tools/client-runtime/work-log/command-display";
+import {
   contextCompactionLabel,
   toolItemForDisplay,
   workEntryDisplayIndicatesToolFailure,
@@ -224,8 +229,16 @@ function compactWorkEntryText(value: string): string {
   return value.replace(/\s+/gu, " ").trim();
 }
 
-/** Expanded work rows keep their detail while compact rows show a stable one-line label. */
-export function workEntryRowLabel(entry: WorkLogPresentationEntry, expanded = false): string {
+/**
+ * Expanded work rows keep their detail while compact rows show a stable one-line label.
+ * `buildThreadFeed` already shows commands and tool text relative to the thread's
+ * workspace; `workspaceRoot` does the same for read paths taken from the tool input.
+ */
+export function workEntryRowLabel(
+  entry: WorkLogPresentationEntry,
+  expanded = false,
+  workspaceRoot: string | null = null,
+): string {
   if (expanded && entry.itemType === "reasoning")
     return entry.toolLifecycleStatus === "inProgress" ? "Thinking" : "Thought";
   const presentation = resolveWorkEntryToolPresentation(entry);
@@ -248,7 +261,10 @@ export function workEntryRowLabel(entry: WorkLogPresentationEntry, expanded = fa
   if (isToolRead) {
     const [firstPath] = entry.changedFiles ?? collectToolFilePaths(entry.toolData);
     if (firstPath) {
-      return formatReadToolLabel(firstPath, Math.max(0, (entry.changedFiles?.length ?? 1) - 1));
+      return formatReadToolLabel(
+        formatPathsForWorkspace(firstPath, workspaceRoot),
+        Math.max(0, (entry.changedFiles?.length ?? 1) - 1),
+      );
     }
     if (!expanded) return "Read file";
   }
@@ -273,6 +289,7 @@ const projectedEntriesCache = new WeakMap<
   OrchestrationV2ProjectedTurnItem,
   {
     readonly attemptId: RunAttemptId | null;
+    readonly workspaceRoot: string | null;
     readonly entry: RawThreadFeedEntry;
   }
 >();
@@ -744,16 +761,63 @@ export function formatItemFullDetail(
   );
 }
 
+/** Shows commands and tool targets relative to the directory the thread runs in. */
+function withWorkspacePaths(
+  entry: WorkLogPresentationEntry,
+  workspaceRoot: string | null,
+): WorkLogPresentationEntry {
+  if (!workspaceRoot) return entry;
+  const command = entry.command && formatCommandForWorkspace(entry.command, workspaceRoot);
+  // Without a command, detail is the tool's target rather than command output.
+  const detail =
+    entry.detail && !entry.command
+      ? formatToolTextForWorkspace(entry, entry.detail, workspaceRoot)
+      : entry.detail;
+  const label = formatToolTextForWorkspace(entry, entry.label, workspaceRoot);
+  const toolTitle =
+    entry.toolTitle && formatToolTextForWorkspace(entry, entry.toolTitle, workspaceRoot);
+  const changedFiles = entry.changedFiles?.map((path) =>
+    formatPathsForWorkspace(path, workspaceRoot),
+  );
+  if (
+    command === entry.command &&
+    detail === entry.detail &&
+    label === entry.label &&
+    toolTitle === entry.toolTitle &&
+    (changedFiles === undefined ||
+      changedFiles.every((path, index) => path === entry.changedFiles?.[index]))
+  ) {
+    return entry;
+  }
+  return {
+    ...entry,
+    label,
+    ...(command ? { command } : {}),
+    ...(detail ? { detail } : {}),
+    ...(toolTitle ? { toolTitle } : {}),
+    ...(changedFiles ? { changedFiles } : {}),
+  };
+}
+
 function toFeedActivity(
   row: OrchestrationV2ProjectedTurnItem,
   attemptId: RunAttemptId | null,
+  workspaceRoot: string | null,
 ): ThreadFeedActivity {
   const item = row.item;
   const toolPresentation = itemToolPresentation(item);
-  const summary = itemSummary(item, toolPresentation);
-  const detail = item.type === "notification" ? null : itemPreview(item);
+  const rawSummary = itemSummary(item, toolPresentation);
+  const rawDetail = item.type === "notification" ? null : itemPreview(item);
   const createdAt = DateTime.formatIso(item.startedAt ?? item.updatedAt);
-  const workEntry = toWorkLogEntry(item, createdAt, summary, detail);
+  const rawWorkEntry = toWorkLogEntry(item, createdAt, rawSummary, rawDetail);
+  const workEntry = withWorkspacePaths(rawWorkEntry, workspaceRoot);
+  const summary = workEntry.label;
+  const detail =
+    rawDetail === null
+      ? null
+      : workEntry.command !== undefined && rawDetail === rawWorkEntry.command
+        ? workEntry.command
+        : formatToolTextForWorkspace(workEntry, rawDetail, workspaceRoot);
   const readPaths =
     item.type === "dynamic_tool" && toolGroupAction(workEntry) === "read"
       ? collectToolFilePaths(item)
@@ -761,8 +825,9 @@ function toFeedActivity(
   const getFullDetail = memoizeValue(() =>
     readPaths ? readPaths.join("\n") || null : formatItemFullDetail(row, item),
   );
+  // Copies keep the exact text the agent ran or wrote.
   const getCopyText = memoizeValue(() =>
-    [summary, detail, getFullDetail()]
+    [rawSummary, rawDetail, getFullDetail()]
       .filter(
         (value, index, values): value is string =>
           Boolean(value) && values.indexOf(value) === index,
@@ -1653,8 +1718,11 @@ export function buildThreadFeed(
     readonly anchoredMessages?: ReadonlyArray<LocalThreadMessage>;
     readonly attempts?: ReadonlyArray<OrchestrationV2RunAttempt>;
     readonly nodes?: ReadonlyArray<OrchestrationV2ExecutionNode>;
+    /** Directory the thread's commands start in; work rows show paths relative to it. */
+    readonly workspaceRoot?: string | null;
   },
 ): ThreadFeedEntry[] {
+  const workspaceRoot = options?.workspaceRoot ?? null;
   const entries: RawThreadFeedEntry[] = [];
   const attemptByRootNodeId = new Map(
     (options?.attempts ?? []).map((attempt) => [attempt.rootNodeId, attempt] as const),
@@ -1695,7 +1763,7 @@ export function buildThreadFeed(
     }
     const attemptId = resolveAttemptId(item);
     const cached = projectedEntriesCache.get(row);
-    if (cached?.attemptId === attemptId) {
+    if (cached?.attemptId === attemptId && cached.workspaceRoot === workspaceRoot) {
       entries.push(cached.entry);
       continue;
     }
@@ -1730,11 +1798,11 @@ export function buildThreadFeed(
           projectedItem: row,
         },
       };
-      projectedEntriesCache.set(row, { attemptId, entry });
+      projectedEntriesCache.set(row, { attemptId, workspaceRoot, entry });
       entries.push(entry);
       continue;
     }
-    const activity = toFeedActivity(row, attemptId);
+    const activity = toFeedActivity(row, attemptId, workspaceRoot);
     const entry: RawThreadFeedEntry = {
       type: "activity",
       id: activity.id,
@@ -1742,7 +1810,7 @@ export function buildThreadFeed(
       runId: item.runId,
       activity,
     };
-    projectedEntriesCache.set(row, { attemptId, entry });
+    projectedEntriesCache.set(row, { attemptId, workspaceRoot, entry });
     entries.push(entry);
   }
   const retainedMessageIds = new Set([

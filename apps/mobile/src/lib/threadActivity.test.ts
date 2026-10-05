@@ -100,6 +100,61 @@ it("labels file searches with the adapter title and its search target", () => {
   expect(activity ? workEntryRowLabel(activity.workEntry) : null).toBe("Searched TODO in web");
 });
 
+describe("work rows relative to the thread workspace", () => {
+  const root = "/repo/wt";
+  const activitiesOf = (feed: ReturnType<typeof buildThreadFeed>) =>
+    feed.flatMap((entry) => (entry.type === "activity-group" ? entry.activities : []));
+
+  it("drops a cd to the workspace and relativizes command paths", () => {
+    const item: OrchestrationV2TurnItem = {
+      ...base("workspace-command", "2026-06-20T00:00:02.000Z", 1),
+      type: "command_execution",
+      input: `/bin/zsh -lc 'cd ${root} && bun run test ${root}/src'`,
+      output: "ok",
+      exitCode: 0,
+    };
+    const [activity] = activitiesOf(buildThreadFeed([projected(item, 0)], { workspaceRoot: root }));
+
+    expect(activity ? workEntryRowLabel(activity.workEntry) : null).toBe("bun run test src");
+    // Copying keeps the command exactly as the agent ran it.
+    expect(activity?.getCopyText()).toContain(`cd ${root} && bun run test ${root}/src`);
+
+    const [unscoped] = activitiesOf(buildThreadFeed([projected(item, 0)]));
+    expect(unscoped ? workEntryRowLabel(unscoped.workEntry) : null).toBe(
+      `cd ${root} && bun run test ${root}/src`,
+    );
+  });
+
+  it("relativizes file tool targets but not prose rows", () => {
+    const change: OrchestrationV2TurnItem = {
+      ...base("workspace-change", "2026-06-20T00:00:02.000Z", 1),
+      type: "file_change",
+      fileName: `${root}/src/index.ts`,
+    };
+    const read: OrchestrationV2TurnItem = {
+      ...base("workspace-read", "2026-06-20T00:00:03.000Z", 2),
+      type: "dynamic_tool",
+      toolName: "Read",
+      input: { file_path: `${root}/docs/guide.md` },
+    };
+    const notice: OrchestrationV2TurnItem = {
+      ...base("workspace-notice", "2026-06-20T00:00:04.000Z", 3),
+      type: "system_notice",
+      message: `Config reloaded from ${root}/t3.json`,
+    };
+    const activities = activitiesOf(
+      buildThreadFeed([projected(change, 0), projected(read, 1), projected(notice, 2)], {
+        workspaceRoot: root,
+      }),
+    );
+
+    expect(activities[0]?.summary).toBe("Changed src/index.ts");
+    expect(activities[0]?.workEntry.changedFiles).toEqual(["src/index.ts"]);
+    expect(workEntryRowLabel(activities[1]!.workEntry, false, root)).toBe("Read docs/guide.md");
+    expect(activities[2]?.summary).toBe(`Config reloaded from ${root}/t3.json`);
+  });
+});
+
 it("keeps approval prompts rather than presenting them as tool work", () => {
   const approval = (
     id: string,

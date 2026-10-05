@@ -16,6 +16,9 @@ import {
   TurnItemId,
   type AgentSessionImportInput,
   type AgentSessionImportResult,
+  type AgentSessionListInput,
+  type AgentSessionListResult,
+  type AgentSessionSummary,
   type OrchestrationV2AppThread,
   type OrchestrationV2ConversationMessage,
   type OrchestrationV2DomainEvent,
@@ -28,8 +31,10 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import * as EventSink from "../orchestration-v2/EventSink.ts";
 import * as IdAllocator from "../orchestration-v2/IdAllocator.ts";
@@ -39,6 +44,12 @@ import * as AgentSessionScanner from "./AgentSessionScanner.ts";
 import * as ProjectService from "./ProjectService.ts";
 
 const IMPORT_EVENT_PREFIX = "agent-session-import:v2";
+/**
+ * The picker reads each listed transcript in full to count its messages, so it
+ * stops at the newest sessions instead of reading the import budget's hundred.
+ */
+const MAX_LISTED_SESSIONS = 50;
+const MAX_PREVIEW_CHARS = 200;
 const CLAUDE_SESSION_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const decodeImportedTranscriptPayload = Schema.decodeUnknownOption(
@@ -80,6 +91,24 @@ class AgentSessionThreadModifiedError extends Schema.TaggedError<AgentSessionThr
   override get message(): string {
     return `Imported thread '${this.threadId}' already contains non-imported activity.`;
   }
+}
+
+/** Imports are keyed by session, so importing the same conversation twice reuses one thread. */
+function importedThreadId(providerInstanceId: string, providerSessionId: string): ThreadId {
+  return ThreadId.make(`import:${providerInstanceId}:${providerSessionId}`);
+}
+
+function sessionKey(providerInstanceId: string, providerSessionId: string): string {
+  return `${providerInstanceId}\0${providerSessionId}`;
+}
+
+function previewText(thread: AgentSessionScanner.AgentSessionThread): string {
+  const prompt = thread.messages.find((message) => message.role === "user")?.text ?? "";
+  const firstLine = prompt
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+  return (firstLine ?? "").slice(0, MAX_PREVIEW_CHARS);
 }
 
 function dateTime(value: string): DateTime.Utc {
@@ -172,19 +201,23 @@ const make = Effect.gen(function* () {
   const eventSink = yield* EventSink.EventSinkV2;
   const idAllocator = yield* IdAllocator.IdAllocatorV2;
   const runtimes = yield* ProviderSessionRuntime.ProviderSessionRuntimeRepository;
-  const importRecentAgentThreads = Effect.fn("importRecentAgentThreadsV2")(function* (
-    input: AgentSessionImportInput,
-  ) {
-    const project = yield* projects.getById(input.projectId).pipe(
+  const sql = yield* SqlClient.SqlClient;
+
+  const getProject = (projectId: ProjectId) =>
+    projects.getById(projectId).pipe(
       Effect.mapError((cause) => new AgentSessionScanError({ operation: "read-projects", cause })),
       Effect.flatMap(
         Option.match({
-          onNone: () =>
-            Effect.fail(new AgentSessionImportProjectNotFoundError({ projectId: input.projectId })),
+          onNone: () => Effect.fail(new AgentSessionImportProjectNotFoundError({ projectId })),
           onSome: Effect.succeed,
         }),
       ),
     );
+
+  const importRecentAgentThreads = Effect.fn("importRecentAgentThreadsV2")(function* (
+    input: AgentSessionImportInput,
+  ) {
+    const project = yield* getProject(input.projectId);
     if (
       input.expectedWorkspaceRoot !== undefined &&
       normalizeProjectPathForComparison(project.workspaceRoot) !==
@@ -211,7 +244,12 @@ const make = Effect.gen(function* () {
       }
       return payload.value.importedTranscripts ?? [];
     });
-    const outcomes = scanner.recentThreads(project.workspaceRoot, completedSources);
+    const outcomes = scanner.recentThreads(
+      project.workspaceRoot,
+      completedSources,
+      // The picker lists from a fresh scan, so a single-session import reads one too.
+      input.session === undefined ? {} : { session: input.session, refresh: true },
+    );
     const importedThreadIds = new Set<ThreadId>();
     let importedCount = 0;
     let skippedCount = 0;
@@ -223,9 +261,7 @@ const make = Effect.gen(function* () {
           return;
         }
         const source = outcome.source;
-        const threadId = ThreadId.make(
-          `import:${source.providerInstanceId}:${source.providerSessionId}`,
-        );
+        const threadId = importedThreadId(source.providerInstanceId, source.providerSessionId);
         if (outcome._tag === "AlreadyImported") {
           importedThreadIds.add(threadId);
           importedCount += 1;
@@ -393,10 +429,87 @@ const make = Effect.gen(function* () {
       }),
     );
 
-    return { importedCount, skippedCount } satisfies AgentSessionImportResult;
+    return {
+      importedCount,
+      skippedCount,
+      ...(input.session === undefined ? {} : { threadIds: [...importedThreadIds] }),
+    } satisfies AgentSessionImportResult;
   });
 
-  return { importRecentAgentThreads };
+  /**
+   * Threads in a project that already hold a provider session: earlier imports by
+   * their deterministic id, and any live thread whose active provider thread
+   * resumes that session, including threads T3 started itself.
+   */
+  const sessionHolders = (projectId: ProjectId) =>
+    sql<{
+      readonly threadId: ThreadId;
+      readonly providerInstanceId: string | null;
+      readonly nativeId: string | null;
+    }>`
+      SELECT
+        threads.thread_id AS "threadId",
+        provider_threads.provider_instance_id AS "providerInstanceId",
+        json_extract(provider_threads.payload_json, '$.nativeThreadRef.nativeId') AS "nativeId"
+      FROM orchestration_v2_projection_threads AS threads
+      LEFT JOIN orchestration_v2_projection_provider_threads AS provider_threads
+        ON provider_threads.provider_thread_id = threads.active_provider_thread_id
+      WHERE threads.project_id = ${projectId}
+        AND threads.deleted_at IS NULL
+        AND threads.archived_at IS NULL
+    `.pipe(
+      Effect.map((rows) => {
+        const threadIds = new Set(rows.map((row) => row.threadId));
+        const byNativeSession = new Map<string, ThreadId>();
+        for (const row of rows) {
+          if (row.providerInstanceId === null || row.nativeId === null) continue;
+          byNativeSession.set(sessionKey(row.providerInstanceId, row.nativeId), row.threadId);
+        }
+        return (providerInstanceId: string, providerSessionId: string): ThreadId | null => {
+          const imported = importedThreadId(providerInstanceId, providerSessionId);
+          if (threadIds.has(imported)) return imported;
+          return byNativeSession.get(sessionKey(providerInstanceId, providerSessionId)) ?? null;
+        };
+      }),
+      Effect.mapError((cause) => new AgentSessionScanError({ operation: "read-projects", cause })),
+    );
+
+  /**
+   * The recent Claude Code and Codex conversations recorded for a project's
+   * directory, newest first, each marked with the thread already holding it.
+   */
+  const listProjectAgentSessions = Effect.fn("listProjectAgentSessionsV2")(function* (
+    input: AgentSessionListInput,
+  ) {
+    const project = yield* getProject(input.projectId);
+    const threads = yield* scanner.recentThreads(project.workspaceRoot, [], { refresh: true }).pipe(
+      Stream.filterMap((outcome) =>
+        outcome._tag === "Importable" ? Result.succeed(outcome.thread) : Result.failVoid,
+      ),
+      Stream.take(MAX_LISTED_SESSIONS + 1),
+      Stream.runCollect,
+    );
+    const holderOf = yield* sessionHolders(input.projectId);
+    const sessions = Array.from(threads)
+      .slice(0, MAX_LISTED_SESSIONS)
+      .map((thread): AgentSessionSummary => ({
+        provider: thread.source,
+        providerInstanceId: thread.providerInstanceId,
+        providerSessionId: thread.providerSessionId,
+        title: thread.title.trim() === "" ? "Untitled thread" : thread.title,
+        preview: previewText(thread),
+        messageCount: thread.messageCount,
+        createdAt: thread.createdAt,
+        updatedAt: thread.updatedAt,
+        threadId: holderOf(thread.providerInstanceId, thread.providerSessionId),
+      }));
+    return {
+      sessions,
+      truncated: threads.length > MAX_LISTED_SESSIONS,
+    } satisfies AgentSessionListResult;
+  });
+
+  return { importRecentAgentThreads, listProjectAgentSessions };
 });
 
 type AgentSessionImporterShape = Effect.Success<typeof make>;

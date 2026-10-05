@@ -56,6 +56,7 @@ describe("buildThreadActionMenuItems", () => {
       "rename",
       "mark-unread",
       "copy",
+      "export-transcript",
       "link-linear-issue",
       "project-settings",
       "archive",
@@ -66,13 +67,14 @@ describe("buildThreadActionMenuItems", () => {
   it("groups project settings with utility actions before archive", () => {
     const items = buildThreadActionMenuItems(baseState);
     const copyIndex = items.findIndex((item) => item.id === "copy");
-    expect(items[copyIndex + 1]?.id).toBe("link-linear-issue");
-    expect(items[copyIndex + 2]).toMatchObject({
+    expect(items[copyIndex + 1]?.id).toBe("export-transcript");
+    expect(items[copyIndex + 2]?.id).toBe("link-linear-issue");
+    expect(items[copyIndex + 3]).toMatchObject({
       id: "project-settings",
       label: "Project settings",
       icon: "settings",
     });
-    expect(items[copyIndex + 3]?.id).toBe("archive");
+    expect(items[copyIndex + 4]?.id).toBe("archive");
   });
 
   it("offers project filtering only for surfaces with a scoped thread list", () => {

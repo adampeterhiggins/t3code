@@ -97,9 +97,9 @@ describe("formatPathsForWorkspace", () => {
 describe("formatToolTextForWorkspace", () => {
   it("rewrites tool rows and leaves prose rows alone", () => {
     const text = `Everything below is under ${root}/apps`;
-    expect(formatToolTextForWorkspace({ itemType: "file_change" }, text, root)).toBe(
+    expect(formatToolTextForWorkspace({ tone: "tool" }, text, root)).toBe(
       "Everything below is under apps",
     );
-    expect(formatToolTextForWorkspace({}, text, root)).toBe(text);
+    expect(formatToolTextForWorkspace({ tone: "info" }, text, root)).toBe(text);
   });
 });
