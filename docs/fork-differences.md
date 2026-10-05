@@ -180,8 +180,10 @@ is its own conversation and provider.
   request.
 - **Sidebars.** By default child tabs are hidden from the web sidebar, the legacy project sidebar,
   and both mobile thread lists (`useHiddenTabThreads`). The group's row stays highlighted while any
-  of its tabs is open, and opening it returns to the tab last left open
-  (`apps/web/src/threadTabRecencyStore.ts`). With tabs hidden on web and desktop, the row shows
+  of its tabs is open. Opening it from another thread returns to the tab last left open; clicking
+  it while one of its tabs is already open leaves that tab selected
+  (`threadTabGroupHeaderTarget` in `packages/client-runtime/src/threadTabs.ts`,
+  `apps/web/src/threadTabRecencyStore.ts`). With tabs hidden on web and desktop, the row shows
   that tab’s title, model, and details (`apps/web/src/components/Sidebar.tsx`). On web and desktop, **Settings → General → Tabs in
   sidebar**, the sidebar header's tabs button (click to toggle, right-click for a menu;
   `sidebar/SidebarTabsMenu.tsx`), the command palette,

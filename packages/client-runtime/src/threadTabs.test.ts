@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   hiddenSidebarTabThreadKeys,
   hiddenTabThreadKeys,
+  threadTabGroupHeaderTarget,
   threadTabGroupTarget,
 } from "./threadTabs.ts";
 
@@ -75,6 +76,28 @@ describe("sidebar tab groups", () => {
       "local:root",
     );
     expect(threadTabGroupTarget("local:second", hidden, { "local:third": 9 })).toBe("local:second");
+  });
+
+  it("keeps the open tab when its group's row is clicked", () => {
+    const groups = new Map([
+      ["local:second", "local:root"],
+      ["local:third", "local:root"],
+      ["local:other-child", "local:other"],
+    ]);
+    const openedAt = { "local:root": 1, "local:second": 5, "local:third": 3 };
+
+    expect(threadTabGroupHeaderTarget("local:root", "local:third", groups, groups, openedAt)).toBe(
+      "local:third",
+    );
+    expect(threadTabGroupHeaderTarget("local:root", "local:root", groups, groups, openedAt)).toBe(
+      "local:root",
+    );
+    expect(
+      threadTabGroupHeaderTarget("local:root", "local:other-child", groups, groups, openedAt),
+    ).toBe("local:second");
+    expect(threadTabGroupHeaderTarget("local:root", null, groups, new Map(), openedAt)).toBe(
+      "local:root",
+    );
   });
 });
 
