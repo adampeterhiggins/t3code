@@ -1,5 +1,6 @@
 import { ChatCanvas } from "./chat/ChatCanvas";
 import { usageLimitRecoveryBannerItem } from "./chat/UsageLimitRecoveryBanner";
+import { resolveModelForAccountSwitch } from "./chat/providerAccountSelection";
 import {
   resolveBackgroundDraftWorkspaceOptions,
   resolveDraftHeroState,
@@ -130,6 +131,7 @@ import { CHAT_LIST_ANCHOR_OFFSET } from "@t3tools/shared/chatList";
 import { derivePendingBackgroundWork } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import {
   latestUnheldRun,
+  USAGE_LIMIT_CONTINUATION_TEXT,
   usageLimitRunPresentedAsLatest,
 } from "@t3tools/shared/orchestrationV2ThreadError";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
@@ -330,6 +332,7 @@ import { getProviderModelCapabilities } from "../providerModels";
 import {
   applyProviderInstanceSettings,
   deriveProviderInstanceEntries,
+  isProviderInstancePickerReady,
   NO_PROVIDER_MODEL_SELECTION,
   shouldShowInstanceBadge,
   sortProviderInstanceEntries,
@@ -1649,6 +1652,9 @@ export default function ChatView(props: ChatViewProps) {
     reportFailure: false,
   });
   const startThreadTurn = useAtomCommand(threadEnvironment.startTurn, { reportFailure: false });
+  const resumeUsageLimitedThread = useAtomCommand(threadEnvironment.resumeUsageLimited, {
+    reportFailure: false,
+  });
   const resumeThreadQueue = useAtomCommand(threadEnvironment.resumeThreadQueue, {
     reportFailure: false,
   });
@@ -3034,6 +3040,9 @@ export default function ChatView(props: ChatViewProps) {
     providers: providerStatuses,
   });
   const modelPickerLockedProvider = supportsProviderSwitchingViaHandoff ? null : lockedProvider;
+  // A started chat on a server with tabs can fork any model into a new tab, so models it
+  // cannot switch to in place stay pickable and fork instead of being disabled.
+  const canForkModel = isServerThread && lockedProvider !== null && hasThreadTabs;
   const pullRequestsCapabilityKnown = serverConfig !== null;
   const supportsPullRequests = serverConfig?.environment.capabilities.pullRequests === true;
   const attachmentEnvironmentConfig = environmentById.get(environmentId)?.serverConfig ?? null;
@@ -7611,6 +7620,41 @@ export default function ChatView(props: ChatViewProps) {
             });
             if (result._tag === "Failure") throw squashAtomCommandFailure(result);
           },
+          onResumeNow:
+            serverConfig?.environment.capabilities.usageLimitResumeNow === true
+              ? async () => {
+                  const result = await resumeUsageLimitedThread({
+                    environmentId,
+                    input: {
+                      threadId: activeThreadShell.id,
+                      runId: activeThreadShell.latestRun!.runId,
+                    },
+                  });
+                  if (result._tag === "Failure") throw squashAtomCommandFailure(result);
+                }
+              : null,
+          // Other ready accounts, of any provider, can pick the chat up in a new tab.
+          continueElsewhere:
+            canForkModel && activeThread
+              ? {
+                  alternatives: providerInstanceEntries
+                    .filter(
+                      (entry) =>
+                        entry.instanceId !== activeThreadShell.providerInstanceId &&
+                        isProviderInstancePickerReady(entry),
+                    )
+                    .map((entry) => ({
+                      entry,
+                      model: resolveModelForAccountSwitch({
+                        currentModel: activeThread.modelSelection.model,
+                        destinationModels: entry.models,
+                      }),
+                    })),
+                  onContinueWith: (instanceId, model) =>
+                    void onForkModel(instanceId, model, USAGE_LIMIT_CONTINUATION_TEXT),
+                  onChooseModel: () => composerRef.current?.openModelPicker(),
+                }
+              : null,
         })
       : null;
   const composerBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
@@ -10630,9 +10674,6 @@ export default function ChatView(props: ChatViewProps) {
         : null,
     [activeRuntime, activeThread, providerStatuses, supportsProviderSwitchingViaHandoff],
   );
-  // A started chat on a server with tabs can fork any model into a new tab, so models it
-  // cannot switch to in place stay pickable and fork instead of being disabled.
-  const canForkModel = isServerThread && lockedProvider !== null && hasThreadTabs;
   const getModelDisabledReason = useCallback(
     (instanceId: ProviderInstanceId, model: string): string | null => {
       if (canForkModel) return null;

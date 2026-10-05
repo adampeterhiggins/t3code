@@ -238,6 +238,7 @@ export const make = Effect.gen(function* () {
       usageLimitSources: true,
       usagePriceOverrides: true,
       usageModelAliases: true,
+      usageLimitResumeNow: true,
       threadPinning: true,
       threadPinReorder: true,
       threadActiveReorder: true,

@@ -1220,6 +1220,7 @@ const makeWsRpcLayer = (
       const recordClientCommandAnalytics = (command: OrchestrationV2Command) => {
         switch (command.type) {
           case "message.dispatch":
+          case "thread.usage-limit.resume-now":
             return analytics.record("client.turn.requested", originProps).pipe(Effect.ignore);
           default:
             return Effect.void;

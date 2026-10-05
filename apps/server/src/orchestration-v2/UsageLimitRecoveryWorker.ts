@@ -1,4 +1,8 @@
 import { CommandId, MessageId, type OrchestrationV2Command } from "@t3tools/contracts";
+import {
+  USAGE_LIMIT_CONTINUATION_TEXT,
+  USAGE_LIMIT_RESUME_GRACE_MS,
+} from "@t3tools/shared/orchestrationV2ThreadError";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -49,7 +53,7 @@ export function limitRecoveryCommand(
   }
   if (
     !recovery.autoResume ||
-    resetMs > nowMs ||
+    resetMs + USAGE_LIMIT_RESUME_GRACE_MS > nowMs ||
     (thread.snoozedUntil != null && DateTime.toEpochMillis(thread.snoozedUntil) > nowMs)
   )
     return null;
@@ -63,7 +67,7 @@ export function limitRecoveryCommand(
     ...(recovery.requestId === undefined
       ? {}
       : { usageLimitRecoveryRequestId: recovery.requestId }),
-    text: "Continue where you left off.",
+    text: USAGE_LIMIT_CONTINUATION_TEXT,
     attachments: [],
     dispatchMode: { type: "start_immediately" },
     createdBy: "user",

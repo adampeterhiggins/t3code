@@ -10,6 +10,7 @@ import {
   type OrchestrationV2ServerCommand,
   type OrchestrationV2ThreadShell,
 } from "@t3tools/contracts";
+import { USAGE_LIMIT_RESUME_GRACE_MS } from "@t3tools/shared/orchestrationV2ThreadError";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -33,6 +34,10 @@ it.effect.each(["on time", "after restart"])(
     Effect.gen(function* () {
       const now = yield* DateTime.now;
       const resetAt = DateTime.formatIso(DateTime.add(now, { seconds: 60 }));
+      // Auto-resume waits out the grace after the reset.
+      const resumeDueAt = DateTime.formatIso(
+        DateTime.add(now, { milliseconds: 60_000 + USAGE_LIMIT_RESUME_GRACE_MS }),
+      );
       const thread: OrchestrationV2ThreadShell = {
         id: ThreadId.make("thread:limited"),
         projectId: ProjectId.make("project:test"),
@@ -80,7 +85,7 @@ it.effect.each(["on time", "after restart"])(
         },
       };
       if (scenario === "after restart") {
-        yield* TestClock.adjust("65 seconds");
+        yield* TestClock.adjust("125 seconds");
       }
       const current = yield* Ref.make(thread);
       const commands = yield* Ref.make<ReadonlyArray<OrchestrationV2ServerCommand>>([]);
@@ -131,9 +136,10 @@ it.effect.each(["on time", "after restart"])(
           interactionMode: thread.interactionMode,
         });
         const sql = yield* SqlClient.SqlClient;
-        yield* sql`UPDATE scheduled_tasks SET next_run_at = ${resetAt} WHERE task_id = ${task.id}`;
+        yield* sql`UPDATE scheduled_tasks SET next_run_at = ${resumeDueAt} WHERE task_id = ${task.id}`;
         if (scenario === "on time") {
-          yield* TestClock.adjust("55 seconds");
+          // Past the reset but inside the grace, nothing resumes yet.
+          yield* TestClock.adjust("115 seconds");
           assert.deepEqual(yield* Ref.get(commands), []);
         }
         yield* TestClock.adjust("5 seconds");

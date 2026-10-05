@@ -150,6 +150,8 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   usagePriceOverrides: Schema.optionalKey(Schema.Boolean),
   /** Server persists model mappings and folds mapped usage into the target model. */
   usageModelAliases: Schema.optionalKey(Schema.Boolean),
+  /** Server accepts `thread.usage-limit.resume-now`. Absent on servers that only resume at the reset. */
+  usageLimitResumeNow: Schema.optionalKey(Schema.Boolean),
   /** Server understands thread.pin / thread.unpin commands. Same
       version-skew contract as threadSettlement. */
   threadPinning: Schema.optionalKey(Schema.Boolean),

@@ -1,3 +1,4 @@
+import { USAGE_LIMIT_RESUME_GRACE_MS } from "@t3tools/shared/orchestrationV2ThreadError";
 import { limitRecoveryCommand } from "./UsageLimitRecoveryWorker.ts";
 import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -4224,7 +4225,11 @@ it.layer(TestLayer)("usage-limit recovery", (it) => {
           const armed = (yield* orchestrator.getShellSnapshot()).threads.find(
             (thread) => thread.id === threadId,
           )!;
-          scheduledResume = limitRecoveryCommand(armed, true, Date.parse(resetAt));
+          scheduledResume = limitRecoveryCommand(
+            armed,
+            true,
+            Date.parse(resetAt) + USAGE_LIMIT_RESUME_GRACE_MS,
+          );
           assert.isNotNull(scheduledResume);
         }
         const resume = (suffix: string) => ({
@@ -4254,6 +4259,131 @@ it.layer(TestLayer)("usage-limit recovery", (it) => {
         }
         assert.lengthOf((yield* orchestrator.getThreadProjection(threadId)).runs, 3);
       }),
+  );
+
+  it.effect("resumes a usage-limited run now and notes arm and cancel in its turn", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const events = yield* EventSink.EventSinkV2;
+      const threadId = ThreadId.make("resume-now:thread");
+      const projectId = ProjectId.make("resume-now:project");
+      const now = yield* DateTime.now;
+      yield* seedProject({
+        projectId,
+        title: "Resume now project",
+        workspaceRoot: process.cwd(),
+        defaultModelSelection: modelSelection,
+        createdAt: DateTime.formatIso(now),
+      });
+      yield* orchestrator.dispatch({
+        type: "thread.create",
+        commandId: CommandId.make("resume-now:create"),
+        threadId,
+        projectId,
+        title: "Limited thread",
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+        createdBy: "user",
+        creationSource: "web",
+      });
+      yield* orchestrator.dispatch({
+        type: "message.dispatch",
+        commandId: CommandId.make("resume-now:message"),
+        threadId,
+        messageId: MessageId.make("resume-now:message"),
+        text: "Work on this.",
+        attachments: [],
+        dispatchMode: { type: "defer_start" },
+        createdBy: "user",
+        creationSource: "web",
+      });
+      const run = (yield* orchestrator.getThreadProjection(threadId)).runs[0]!;
+      const resetAt = DateTime.formatIso(DateTime.add(now, { hours: 1 }));
+      yield* events.write({
+        commandId: CommandId.make("resume-now:failure"),
+        events: [
+          {
+            id: EventId.make("resume-now:run"),
+            type: "run.updated",
+            threadId,
+            occurredAt: now,
+            payload: { ...run, status: "failed", completedAt: now },
+          },
+          {
+            id: EventId.make("resume-now:error"),
+            type: "turn-item.updated",
+            threadId,
+            occurredAt: now,
+            payload: {
+              id: TurnItemId.make("resume-now:error"),
+              type: "error",
+              threadId,
+              runId: run.id,
+              nodeId: run.rootNodeId,
+              providerThreadId: null,
+              providerTurnId: null,
+              nativeItemRef: null,
+              parentItemId: null,
+              ordinal: 2,
+              status: "failed",
+              title: "Usage limit reached",
+              startedAt: now,
+              completedAt: now,
+              updatedAt: now,
+              failure: {
+                class: "usage_limit",
+                message: "Plan limit reached.",
+                code: "usageLimitExceeded",
+                retryable: null,
+                resetAt,
+              },
+            },
+          },
+        ],
+      });
+      const notices = Effect.map(orchestrator.getThreadProjection(threadId), (projection) =>
+        projection.turnItems.flatMap((item) =>
+          item.type === "system_notice" && item.runId === run.id ? [item.title] : [],
+        ),
+      );
+      for (const autoResume of [true, true, false]) {
+        yield* orchestrator.dispatch({
+          type: "thread.metadata.update",
+          commandId: CommandId.make(`resume-now:arm:${autoResume}:${yield* DateTime.now}`),
+          threadId,
+          limitRecovery: { runId: run.id, resetAt, autoResume },
+        });
+        yield* TestClock.adjust("1 second");
+      }
+      // Re-arming an armed recovery is not a change, so it adds no notice.
+      assert.deepEqual(yield* notices, ["Auto-resume scheduled", "Auto-resume cancelled"]);
+
+      const resumeNow = (suffix: string, runId = run.id) =>
+        orchestrator
+          .dispatch({
+            type: "thread.usage-limit.resume-now",
+            commandId: CommandId.make(`resume-now:${suffix}`),
+            threadId,
+            runId,
+            createdBy: "user",
+            creationSource: "web",
+          })
+          .pipe(Effect.exit);
+      assert.equal((yield* resumeNow("stale", RunId.make("resume-now:other-run")))._tag, "Failure");
+      assert.equal((yield* resumeNow("first"))._tag, "Success");
+      const after = yield* orchestrator.getThreadProjection(threadId);
+      assert.lengthOf(after.runs, 2);
+      assert.equal(after.runs[1]?.status, "starting");
+      const continuation = after.messages.find((message) => message.runId === after.runs[1]?.id);
+      assert.equal(continuation?.role, "user");
+      assert.equal(continuation?.text, "Continue where you left off.");
+      // The stop is no longer the latest run, so a second click changes nothing.
+      assert.equal((yield* resumeNow("second"))._tag, "Failure");
+      assert.lengthOf((yield* orchestrator.getThreadProjection(threadId)).runs, 2);
+    }),
   );
 
   it.effect.each([
@@ -4573,7 +4703,7 @@ it.layer(TestLayer)("usage-limit recovery", (it) => {
       const resume = limitRecoveryCommand(
         armedShell,
         true,
-        DateTime.toEpochMillis(yield* DateTime.now),
+        DateTime.toEpochMillis(yield* DateTime.now) + USAGE_LIMIT_RESUME_GRACE_MS,
       );
       if (autoResume && scenario !== "cancel-resume-keep-snooze") assert.isNotNull(resume);
       else assert.isNull(resume);
@@ -4594,7 +4724,7 @@ it.layer(TestLayer)("usage-limit recovery", (it) => {
         const freshResume = limitRecoveryCommand(
           current,
           true,
-          DateTime.toEpochMillis(yield* DateTime.now),
+          DateTime.toEpochMillis(yield* DateTime.now) + USAGE_LIMIT_RESUME_GRACE_MS,
         );
         assert.isNotNull(freshResume);
         assert.notEqual(freshResume!.commandId, resume!.commandId);
@@ -4689,7 +4819,7 @@ it.layer(TestLayer)("usage-limit recovery", (it) => {
         const freshResume = limitRecoveryCommand(
           rearmedShell,
           true,
-          DateTime.toEpochMillis(yield* DateTime.now),
+          DateTime.toEpochMillis(yield* DateTime.now) + USAGE_LIMIT_RESUME_GRACE_MS,
         );
         assert.isNotNull(freshResume);
         assert.notEqual(freshResume!.commandId, resume!.commandId);
