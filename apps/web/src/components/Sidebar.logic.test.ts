@@ -53,6 +53,8 @@ import {
   withSidebarTabThreads,
   holdSidebarTabOrder,
   limitSidebarTabs,
+  sidebarTabToggleCount,
+  sidebarTabToggleLabel,
   moveSidebarTab,
   sidebarTabSortTimestamp,
   sortSidebarTabs,
@@ -737,6 +739,17 @@ describe("sidebar tab order", () => {
       "c",
       "d",
     ]);
+  });
+
+  it("counts the tabs a hide or show control lists, capped by the sidebar limit", () => {
+    expect(sidebarTabToggleCount({ listed: 19, limit: 4, expanded: false })).toBe(4);
+    expect(sidebarTabToggleCount({ listed: 19, limit: null, expanded: false })).toBe(19);
+    expect(sidebarTabToggleCount({ listed: 3, limit: 4, expanded: false })).toBe(3);
+    expect(sidebarTabToggleCount({ listed: 19, limit: 4, expanded: true })).toBe(19);
+    expect(sidebarTabToggleCount({ listed: 1, limit: 4, expanded: false })).toBe(1);
+    expect(sidebarTabToggleLabel(true, 4)).toBe("Hide 4 tabs");
+    expect(sidebarTabToggleLabel(false, 4)).toBe("Show 4 tabs");
+    expect(sidebarTabToggleLabel(true, 1)).toBe("Hide 1 tab");
   });
 
   it("limits a group to N rows, the open tab taking the last slot when it would be hidden", () => {

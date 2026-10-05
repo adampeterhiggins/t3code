@@ -191,6 +191,8 @@ import {
   hasUnseenCompletion,
   holdSidebarTabOrder,
   limitSidebarTabs,
+  sidebarTabToggleCount,
+  sidebarTabToggleLabel,
   moveSidebarTab,
   sidebarTabNeighbourKey,
   sidebarTabSortTimestamp,
@@ -1112,6 +1114,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   onNewTab?: ((threadRef: ScopedThreadRef) => void) | undefined;
   /** Tabs in this row's group; the badge shows only above one. */
   tabCount: number;
+  /** Tabs the count control hides or reveals, after the show-up-to limit. */
+  tabToggleCount: number;
   /** The group's tabs. Mounted under the row while `tabsOpen`, and while it animates closed. */
   tabs: ReactNode;
   tabsOpen: boolean;
@@ -1622,6 +1626,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     props.tabCount > 1 ? (
       <SidebarTabCountBadge
         count={props.tabCount}
+        toggleCount={props.tabToggleCount}
         open={props.tabsOpen}
         onToggle={onToggleTabs ? handleToggleTabsClick : undefined}
       />
@@ -2156,6 +2161,7 @@ function SidebarRenameInput(props: {
 /** The group's tab count. With `onToggle`, it opens and folds that group's tabs. */
 function SidebarTabCountBadge(props: {
   count: number;
+  toggleCount: number;
   open: boolean;
   onToggle?: ((event: ReactMouseEvent) => void) | undefined;
 }) {
@@ -2170,7 +2176,7 @@ function SidebarTabCountBadge(props: {
       </span>
     );
   }
-  const label = `${props.open ? "Hide" : "Show"} ${props.count} tabs`;
+  const label = sidebarTabToggleLabel(props.open, props.toggleCount);
   return (
     <Tooltip>
       <TooltipTrigger
@@ -5869,6 +5875,16 @@ export default function Sidebar() {
                                 : undefined
                             }
                             tabCount={rowTabs ? rowTabs.length + 1 : 0}
+                            tabToggleCount={
+                              rowTabLayout
+                                ? rowTabLayout.shown.length
+                                : sidebarTabToggleCount({
+                                    // A card lists its own thread; a slim row lists only the others.
+                                    listed: rowTabs ? rowTabs.length + (isCard ? 1 : 0) : 0,
+                                    limit: tabLimit,
+                                    expanded: expandedTabRowKey === threadKey,
+                                  })
+                            }
                             tabsOpen={rowTabsOpen}
                             onToggleTabs={rowTabs ? toggleTabGroup : undefined}
                             onTabsResized={refreshListMotion}
