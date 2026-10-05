@@ -6,8 +6,11 @@
  * - Spawn order is stable; activity and completion update rows in place.
  * - Agents spawned by an agent sit indented under it, found through child-thread lineage.
  * - Clicking an agent drills into its detail view in place (`AgentDetailPanel`), with Back to the
- *   list; an agent it started drills one level further. The drill-in is per thread and
- *   session-only (`agentDrillStore.ts`). **Open in new tab** pins an agent as its own agent tab.
+ *   list; an agent it started drills one level further, and a tool call clicked in a preview opens
+ *   the agent on that call. An agent recorded before its child thread exists opens on its record.
+ *   The drill-in is per thread and session-only (`agentDrillStore.ts`). **Open in new tab** pins an
+ *   agent as its own agent tab.
+ * - The footer counts agents by status and sums the usage they reported.
  * - Static status dots and DOM-write elapsed timers. Rows page in, and only working rows on
  *   screen (or an open preview) subscribe to a child thread; the detail view subscribes to its
  *   agent's child thread while it is shown.
@@ -25,14 +28,21 @@ import {
 } from "@t3tools/client-runtime/state/agent-list-view";
 import { formatSubagentDisplayTitle } from "@t3tools/client-runtime/state/subagent-display";
 import type { RuntimeSubagent } from "@t3tools/client-runtime/state/subagentRuntime";
-import type { ScopedThreadRef } from "@t3tools/contracts";
+import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
+import type {
+  NodeId,
+  OrchestrationV2Subagent,
+  ScopedThreadRef,
+  ThreadId,
+  TurnItemId,
+} from "@t3tools/contracts";
 import { BotIcon, PanelTopIcon } from "lucide-react";
-import { useMemo, useState, type MouseEvent } from "react";
+import { useCallback, useMemo, useState, type MouseEvent } from "react";
 
 import { selectAgentDrillStack, useAgentDrillStore } from "~/agentDrillStore";
 import { useAgentListViewStore } from "~/agentListViewStore";
 import { useRightPanelStore } from "~/rightPanelStore";
-import { useThreadProjection, useThreadShell } from "~/state/entities";
+import { useThreadProjection, useThreadShell, useThreadShellsValue } from "~/state/entities";
 
 import { StatusDot } from "../AgentStatus";
 import { Button } from "../ui/button";
@@ -42,7 +52,7 @@ import { AgentUsageFooter } from "./AgentActivityParts";
 import { AgentDetailPanel } from "./AgentDetailPanel";
 import { AgentRow, useEnvironmentShells } from "./AgentFleetRow";
 import { AgentListToolbar } from "./AgentListToolbar";
-import { useAgentContextMenu } from "./agentContextMenu";
+import { agentMenuTargetOf, useAgentContextMenu } from "./agentContextMenu";
 
 const PAGE_SIZE = 50;
 
@@ -83,21 +93,78 @@ interface AgentsPanelProps {
   readonly onShowLineage?: (() => void) | undefined;
 }
 
+/**
+ * How many of a thread's agents are working, nested agents included, following live follow-up
+ * runs: the count the Agents launcher badges. Re-renders only when the count changes.
+ */
+export function useWorkingAgentCount(
+  threadRef: ScopedThreadRef | null,
+  subagents: ReadonlyArray<OrchestrationV2Subagent> | undefined,
+): number {
+  const environmentId = threadRef?.environmentId ?? null;
+  const threadId = threadRef?.threadId ?? null;
+  const count = useCallback(
+    (shells: ReadonlyArray<EnvironmentThreadShell>) => {
+      if (environmentId === null || threadId === null) return 0;
+      // Most threads have no agents; skip building the fleet for them.
+      if (
+        (subagents?.length ?? 0) === 0 &&
+        !shells.some((shell) => shell.source.lineage.parentThreadId === threadId)
+      ) {
+        return 0;
+      }
+      const fleet = deriveThreadAgentFleet({
+        threadId,
+        subagents: subagents ?? [],
+        shells: shells
+          .filter((shell) => shell.environmentId === environmentId)
+          .map((shell) => shell.source),
+      });
+      return summarizeAgentFleet(fleet).counts.working;
+    },
+    [environmentId, subagents, threadId],
+  );
+  return useThreadShellsValue(count);
+}
+
+const RECORD_KEY_PREFIX = "subagent:";
+
+/** A drill key's child thread, or the record id of an agent without one (`AgentFleetEntry.key`). */
+function drillTarget(key: string): {
+  readonly childThreadId: ThreadId | null;
+  readonly subagentId: NodeId | undefined;
+} {
+  return key.startsWith(RECORD_KEY_PREFIX)
+    ? { childThreadId: null, subagentId: key.slice(RECORD_KEY_PREFIX.length) as NodeId }
+    : { childThreadId: key as ThreadId, subagentId: undefined };
+}
+
+/** Drills into an agent; a tool call from its preview opens it on that call. */
+function openFleetEntry(threadKey: string, entry: AgentFleetEntry, toolCallId?: TurnItemId) {
+  const store = useAgentDrillStore.getState();
+  if (toolCallId && entry.childThreadId !== null) {
+    store.focusToolCall({ childThreadId: entry.childThreadId, itemId: toolCallId });
+  }
+  store.push(threadKey, entry.key);
+}
+
 export function AgentsPanel(props: AgentsPanelProps) {
   const { threadRef } = props;
   const threadKey = scopedThreadKey(threadRef);
   const stack = useAgentDrillStore(selectAgentDrillStack(threadKey));
   const focused = stack.at(-1) ?? null;
-  const previous = stack.length > 1 ? stack.at(-2)! : null;
+  const previous = stack.length > 1 ? drillTarget(stack.at(-2)!).childThreadId : null;
   const previousShell = useThreadShell(
     previous === null ? null : scopeThreadRef(threadRef.environmentId, previous),
   );
   if (focused === null) return <AgentFleetList {...props} />;
+  const target = drillTarget(focused);
   return (
     <AgentDetailPanel
       key={focused}
       parentRef={threadRef}
-      childThreadId={focused}
+      childThreadId={target.childThreadId}
+      subagentId={target.subagentId}
       workspaceRoot={props.workspaceRoot}
       backLabel={
         previous === null ? "Agents" : formatSubagentDisplayTitle(previousShell?.title ?? "Agent")
@@ -105,6 +172,7 @@ export function AgentsPanel(props: AgentsPanelProps) {
       onBack={() => useAgentDrillStore.getState().back(threadKey)}
       onOpenInTab={(agent) => useRightPanelStore.getState().openAgent(threadRef, agent)}
       onOpenAgent={(agent) => useAgentDrillStore.getState().push(threadKey, agent.childThreadId)}
+      onOpenRecord={(key) => useAgentDrillStore.getState().push(threadKey, key)}
     />
   );
 }
@@ -135,17 +203,11 @@ function AgentFleetList(props: AgentsPanelProps) {
   const filtered = isAgentListViewFiltered(view);
   const visibleRows = rows.slice(0, visibleCount);
   const hiddenCount = rows.length - visibleRows.length;
-  const openAgent = (entry: AgentFleetEntry) => {
-    if (entry.childThreadId === null) return;
-    useAgentDrillStore.getState().push(threadKey, entry.childThreadId);
-  };
+  const openAgent = (entry: AgentFleetEntry, toolCallId?: TurnItemId) =>
+    openFleetEntry(threadKey, entry, toolCallId);
   const onContextMenu = (event: MouseEvent<HTMLElement>, entry: AgentFleetEntry) => {
-    if (entry.childThreadId === null) return;
-    openAgentMenu(event, {
-      childThreadId: entry.childThreadId,
-      title: entry.title,
-      ownerThreadId: entry.ownerThreadId,
-    });
+    const target = agentMenuTargetOf(entry);
+    if (target !== null) openAgentMenu(event, target);
   };
   const lineageButton = props.onShowLineage ? (
     <Tooltip>
@@ -229,7 +291,7 @@ function AgentFleetList(props: AgentsPanelProps) {
         </div>
       </ScrollArea>
       <AgentUsageFooter
-        usage={summary.hasUsage ? { totalTokens: summary.totalTokens } : null}
+        usage={summary.usage}
         leading={
           <>
             {STATUS_COUNTS.map(({ filter, status, label }) => (

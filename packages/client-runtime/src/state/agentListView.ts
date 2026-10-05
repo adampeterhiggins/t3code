@@ -295,7 +295,13 @@ function rawToolCallFromItem(item: OrchestrationV2TurnItem): RawToolCall | null 
         detail: kind === "command" && detail ? commandDisplayText(detail) : detail,
         kind,
         exitCode: null,
-        preview: summarizeToolActivityInput({ toolName: item.toolName, input: item.input }) ?? null,
+        // The output adds what the call reported back, such as an error or exit code.
+        preview:
+          summarizeToolActivityInput({
+            toolName: item.toolName,
+            input: item.input,
+            ...(item.output === undefined ? {} : { result: item.output }),
+          }) ?? null,
       };
     }
     default:
@@ -476,6 +482,48 @@ export function deriveSubagentToolCalls(
     workspaceRoot,
   );
   return calls.map(({ item, raw }) => toolCallFromItem(item, raw, workspaceRoot, sibling));
+}
+
+/**
+ * The directory an agent works in, for showing its whole transcript relative to it: the Claude
+ * agent worktree its calls use most, else a sibling checkout they use (see
+ * `subagentSiblingCheckout`), else `workspaceRoot`.
+ */
+export function subagentWorkspaceRoot(
+  items: ReadonlyArray<OrchestrationV2TurnItem>,
+  workspaceRoot?: string | null,
+): string | null {
+  const texts = rawToolCalls(items).map(({ raw }) => rawToolCallText(raw));
+  const worktrees = new Map<string, number>();
+  for (const text of texts) {
+    const worktree = CLAUDE_AGENT_WORKTREE.exec(text)?.[0];
+    if (worktree) worktrees.set(worktree, (worktrees.get(worktree) ?? 0) + 1);
+  }
+  let best: string | null = null;
+  for (const [worktree, count] of worktrees) {
+    if (best === null || count > worktrees.get(best)!) best = worktree;
+  }
+  return best ?? subagentSiblingCheckout(texts, workspaceRoot) ?? workspaceRoot ?? null;
+}
+
+/**
+ * What an agent's empty Tools view says. An agent whose thread recorded activity but no tool
+ * calls made none; one whose provider recorded nothing at all, or counted tool uses it never
+ * reported, falls back to its progress while it works.
+ */
+export function subagentEmptyToolCallsText(input: {
+  readonly live: boolean;
+  /** Turn items the agent's own thread recorded, of any kind. */
+  readonly recordedItems: number;
+  readonly reportedToolUses: number | undefined;
+  readonly progress: string | null;
+}): string {
+  const unreported = input.recordedItems === 0 || (input.reportedToolUses ?? 0) > 0;
+  if (!unreported) return input.live ? "No tool calls yet." : "No tool calls.";
+  if (input.live && input.progress?.trim()) return input.progress.trim();
+  return input.live && input.recordedItems === 0 && input.reportedToolUses === undefined
+    ? "Starting…"
+    : "This provider did not report the agent's tool calls.";
 }
 
 /** The call a working agent's row shows: the newest one. Only it is formatted. */

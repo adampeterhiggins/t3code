@@ -140,34 +140,57 @@ thread details panel, one row each, newest first, and removed the right-panel Ag
 
 - **Agents panel.** A right-panel surface with the thread's whole fleet: one line per agent with a
   status dot, token total, and elapsed time, a second line with a working agent's latest tool call
-  or a failed agent's error, and hover previews (prompt, result or error, the latest five tool
-  calls, usage). Agents spawned by an agent sit indented under it, found through child-thread
+  (a static `…` while it runs, a `waiting` badge when the agent waits on the user) or a failed
+  agent's error, and hover previews (status, compact model with reasoning effort and `run N`,
+  prompt, result or error, the latest five tool calls, usage). Clicking a tool call in a preview
+  opens the agent on that call, expanded and scrolled into view (`agentDrillStore.ts`
+  `focusToolCall`). Agents spawned by an agent sit indented under it, found through child-thread
   lineage in the thread shells (`deriveThreadAgentFleet`); a filter keeps a non-matching agent as
-  context when one below it matches. The footer counts agents by status and adds up reported
-  tokens. Open it from the right panel's launcher or **+** menu (badged with working agents), the
-  command palette (**Show agents**), the Lineage header, an agent tab, or **Show in Agents panel**
-  in an agent's right-click menu. Clicking a row or its preview opens the agent's detail. The panel links back to Lineage. Upstream's v14 right-panel
-  migration dropped `agents`; v15 keeps it, so the surface is restored on restart again. Rows page
-  in 50 at a time, and only working rows on screen and open previews read a child thread.
+  context when one below it matches. An agent recorded before its child thread exists still opens
+  (its prompt, result, and usage, without activity) and has the right-click menu. Spawn order is
+  the child thread's creation, so a resumed agent never moves (`subagentSpawnedAt`). The footer
+  counts agents by status and sums the usage they reported (input, cached share, output,
+  reasoning, tool calls; `summarizeAgentFleet`). Agents spawned by agents add no usage there:
+  their records live on their owners' projections, which the list does not subscribe to. Open the
+  panel from the right panel's launcher or **+** menu (badged with working agents, nested agents
+  and live follow-up runs included), the command palette (**Show agents**), the Lineage header, an
+  agent tab, **Details** or the bot button on an agent row in the conversation, or **Show in Agents
+  panel** in an agent's right-click menu. Clicking a row or its preview opens the agent's detail.
+  The panel links back to Lineage. Upstream's v14 right-panel migration dropped `agents`; v15
+  keeps it, so the surface is restored on restart again. Rows page in 50 at a time, and only
+  working rows on screen and open previews read a child thread.
 - **Lineage.** With two or more subagents, Lineage gets the same search, status filter, and sorting
   by spawn order (the default, so rows never jump while they work), status, tokens, or duration,
   and the same compact rows. Lineage and the panel share one filter and sort, kept per device
   (`agentListViewStore.ts`), so switching between them shows the same list.
-- **Usage.** `OrchestrationV2Subagent.usage` carries what the provider reports: Claude's
-  `task_progress`/`task_notification` usage (tokens, tool calls, duration) and the running token
-  total of a Codex child thread. Other providers leave it empty.
+- **Conversation rows.** Upstream's agent rows open the agent's thread. The fork adds **Details**,
+  which opens the Agents panel on that agent, and a bot button that opens the fleet
+  ([`V2LifecycleRow.tsx`](../apps/web/src/components/chat/V2LifecycleRow.tsx)).
+- **Record fields.** `OrchestrationV2Subagent` gains optional fork fields kept in the record's
+  payload JSON (no migration): `usage` (Claude's `task_progress`/`task_notification` usage and the
+  running token total of a Codex child thread), `outputFile` (Claude's task output file), and
+  `sessionUrl` (the http(s) remote session link a Claude Workflow tool result names for its task).
+  Other providers leave them empty.
 - **Agent detail.** Clicking an agent in the Agents panel inspects it in place, with **Back** to
-  the fleet. The header has the agent's status, model, elapsed time, and collapsible prompt, result
-  or error, and agents it started (click one to drill a level further; Back returns one level).
-  Below it is the agent's activity from its child thread: a live **Transcript** of its messages,
-  reasoning summaries, tool calls, and notices in order, or only its **Tools**, with status and
-  kind filters and sorting. Both can be searched. The transcript reuses the chat's timeline
-  derivation (`deriveTimelineEntriesFromVisibleTurnItemsWithState`), work-log rows, and
-  `V2ItemInspector` for expanded calls (output, diffs). It is virtualized and follows new activity
-  only while scrolled to the end. **Stop agent** appears when the agent's own thread has an
-  interruptible run. It is the same interrupt that thread offers in chat; native Claude subagents
-  have none. The drill-in is per thread and session-only (`agentDrillStore.ts`). **Show in Agents
-  panel** opens the panel on the agent. The child thread is read only while its detail is shown.
+  the fleet. The header has the agent's status, compact model with effort (from its child thread's
+  model selection), `run N` past its first run, elapsed time, the prompt clamped to four lines
+  with **Show all**, the result or error, **Artifacts** (output file, **Open remote session**), and
+  agents it started (click one to drill a level further; Back returns one level). Below it is the
+  agent's activity from its child thread: a live **Transcript** of its messages, reasoning
+  summaries, tool calls, and notices in order, each with its time, or only its **Tools**, with
+  status and kind filters and sorting. Both can be searched, and a narrowed view says
+  **Showing N of M**. Paths in both read relative to the checkout the agent works in: a Claude
+  `.claude/worktrees/agent-<id>` worktree or a sibling checkout its calls use
+  (`subagentWorkspaceRoot`). An empty Tools view says whether the agent made no calls or its
+  provider records none, showing progress while it works (`subagentEmptyToolCallsText`). The usage
+  breakdown adds **Runs** and **Attempt** from the child thread's runs and run attempts
+  (`subagentRunStats`). The transcript reuses the chat's timeline derivation
+  (`deriveTimelineEntriesFromVisibleTurnItemsWithState`), work-log rows, and `V2ItemInspector` for
+  expanded calls (output, diffs). It is virtualized and follows new activity only while scrolled
+  to the end. **Stop agent** appears when the agent's own thread has an interruptible run. It is
+  the same interrupt that thread offers in chat; native Claude subagents have none. The drill-in
+  is per thread and session-only (`agentDrillStore.ts`). **Show in Agents panel** opens the panel
+  on the agent. The child thread is read only while its detail is shown.
 - **Agent tab.** **Open in new tab** in the detail view, or right-click an agent in the panel, in
   Lineage, or in the conversation, keeps it in a thread-scoped right-panel tab beside the fleet,
   with the same detail view. Agent tabs close like other tabs, reopen the same way, and are
@@ -182,7 +205,9 @@ thread details panel, one row each, newest first, and removed the right-panel Ag
 Tool previews include bounded unified edit diffs and line counts, read ranges, search arguments,
 and exit codes when the provider supplies them, in the agent detail and in chat tool expansions on
 web, desktop, and mobile. Timelines carry an edit without its diff, so an expanded edit fetches the
-stored item for its preview (`fileChangePreviewText`). On web and desktop, collapsed tool calls in
+stored item for its preview (`fileChangePreviewText`). In the agent views a tool's preview also
+carries what it reported back, such as an `Error:` line, when its output came with the timeline;
+v2 command items record no working directory, so none is shown. On web and desktop, collapsed tool calls in
 the main chat also preview on hover; clicking still expands them inline. The card shows the tool
 heading, the workspace-relative syntax-highlighted command or full label, then the same details the
 row expands to (output loads only once the card opens, and a non-zero exit code shows with it), with
@@ -198,8 +223,8 @@ Code: [`agentListView.ts`](../packages/client-runtime/src/state/agentListView.ts
 [`agentTranscript.ts`](../apps/web/src/components/chat/agentTranscript.ts),
 [`agentDrillStore.ts`](../apps/web/src/agentDrillStore.ts),
 [`agentChatActions.ts`](../apps/web/src/components/chat/agentChatActions.ts), the `agents` and
-`agent` surfaces in [`rightPanelStore.ts`](../apps/web/src/rightPanelStore.ts), and the usage mapping in
-`ClaudeAdapterV2.ts` and `CodexAdapterV2.ts`. User guide:
+`agent` surfaces in [`rightPanelStore.ts`](../apps/web/src/rightPanelStore.ts), and the record
+field mapping in `ClaudeAdapterV2.ts` and `CodexAdapterV2.ts`. User guide:
 [thread-sidebar.md](./user/thread-sidebar.md#inspect-agent-work).
 
 ## Chat tabs

@@ -4,7 +4,7 @@ import { projectedSubagentsToRuntime } from "@t3tools/client-runtime/state/subag
 import type { ReactNode } from "react";
 import { useThreadShell, useProject } from "../../state/entities";
 import { SubagentTooltipContent } from "./SubagentTooltipContent";
-import { useAgentContextMenu } from "./agentContextMenu";
+import { showAgentInPanel, showAgentsPanel, useAgentContextMenu } from "./agentContextMenu";
 import { useAtomValue } from "@effect/atom-react";
 import { scopeThreadRef, scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { environmentThreadDetails } from "../../state/threads";
@@ -488,49 +488,111 @@ function SubagentTimelineLink(props: {
   const className =
     "group/subagent flex w-full min-w-0 items-center gap-2.5 rounded-md px-2 py-1.5 text-left";
   return (
-    <Tooltip>
-      <TooltipTrigger
-        delay={200}
-        render={
-          threadId === null ? (
-            <div data-v2-item-type="subagent" aria-description={statusLabel} className={className}>
-              {content}
-            </div>
-          ) : (
-            <button
-              type="button"
-              data-v2-item-type="subagent"
-              aria-label={`Open ${props.title}`}
-              aria-description={statusLabel}
-              onClick={() => props.onOpenThread(threadId)}
-              onContextMenu={(event) =>
-                openAgentMenu(event, {
-                  childThreadId: threadId,
-                  title: formatSubagentDisplayTitle(props.title),
-                })
+    <div className="flex min-w-0 items-center gap-1">
+      <div className="min-w-0 flex-1">
+        <Tooltip>
+          <TooltipTrigger
+            delay={200}
+            render={
+              threadId === null ? (
+                <div
+                  data-v2-item-type="subagent"
+                  aria-description={statusLabel}
+                  className={className}
+                  onContextMenu={(event) =>
+                    openAgentMenu(event, {
+                      childThreadId: null,
+                      subagentId: props.subagentId,
+                      title: formatSubagentDisplayTitle(props.title),
+                    })
+                  }
+                >
+                  {content}
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  data-v2-item-type="subagent"
+                  aria-label={`Open ${props.title}`}
+                  aria-description={statusLabel}
+                  onClick={() => props.onOpenThread(threadId)}
+                  onContextMenu={(event) =>
+                    openAgentMenu(event, {
+                      childThreadId: threadId,
+                      title: formatSubagentDisplayTitle(props.title),
+                    })
+                  }
+                  className={cn(
+                    className,
+                    "cursor-pointer transition-colors hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70",
+                  )}
+                >
+                  {content}
+                </button>
+              )
+            }
+          />
+          <ThreadHoverCardPopup>
+            <SubagentTimelineTooltip
+              {...props}
+              elapsed={
+                agent ? <AgentElapsed agent={projectedSubagentsToRuntime([agent])[0]!} /> : null
               }
-              className={cn(
-                className,
-                "cursor-pointer transition-colors hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70",
-              )}
-            >
-              {content}
-            </button>
-          )
-        }
+              model={agent?.model ?? null}
+              status={liveStatus}
+              result={agent?.result ?? props.result}
+              progress={agent?.progress ?? props.progress}
+              usage={agent?.usage ?? null}
+            />
+          </ThreadHoverCardPopup>
+        </Tooltip>
+      </div>
+      <SubagentPanelControls
+        parentRef={props.parentRef}
+        agentKey={threadId ?? `subagent:${props.subagentId}`}
+        title={props.title}
       />
-      <ThreadHoverCardPopup>
-        <SubagentTimelineTooltip
-          {...props}
-          elapsed={agent ? <AgentElapsed agent={projectedSubagentsToRuntime([agent])[0]!} /> : null}
-          model={agent?.model ?? null}
-          status={liveStatus}
-          result={agent?.result ?? props.result}
-          progress={agent?.progress ?? props.progress}
-          usage={agent?.usage ?? null}
-        />
-      </ThreadHoverCardPopup>
-    </Tooltip>
+    </div>
+  );
+}
+
+/**
+ * Fork: a conversation agent row's way into the Agents panel. **Details** opens the panel on the
+ * agent (Back returns to the fleet); the bot button opens the fleet. The row itself still opens
+ * the agent's thread.
+ */
+function SubagentPanelControls(props: {
+  readonly parentRef: ScopedThreadRef;
+  /** The agent's Agents panel key (`AgentFleetEntry.key`). */
+  readonly agentKey: string;
+  readonly title: string;
+}) {
+  return (
+    <span className="flex shrink-0 items-center gap-0.5">
+      <InlineButton
+        tone="muted"
+        aria-label={`Show details of ${props.title}`}
+        onClick={() => showAgentInPanel(props.parentRef, props.agentKey)}
+      >
+        Details
+      </InlineButton>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              type="button"
+              size="icon-xs"
+              variant="ghost-muted"
+              aria-label="Open Agents panel"
+              onClick={() => showAgentsPanel(props.parentRef)}
+            />
+          }
+        >
+          <BotIcon />
+        </TooltipTrigger>
+        <TooltipPopup>Open Agents panel</TooltipPopup>
+      </Tooltip>
+    </span>
   );
 }
 

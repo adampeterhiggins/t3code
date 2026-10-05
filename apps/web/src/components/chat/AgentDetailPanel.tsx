@@ -1,37 +1,47 @@
 /**
  * Fork: one subagent in the sidebar, shown in place in the Agents panel (with Back) and as its
- * own agent tab beside the parent chat. The header carries identity, status and elapsed time,
- * and collapsible prompt, result, and the agents this agent started. Below it, the agent's
- * activity read from its child thread: a live compact transcript (messages, reasoning, tool calls
- * in order) or its tool calls alone, with search and filters. Usage sits in a footer.
+ * own agent tab beside the parent chat. The header carries identity (status, compact model and
+ * effort, runs, elapsed time), the prompt clamped to four lines, the result, artifacts, and the
+ * agents this agent started. Below it, the agent's activity read from its child thread: a live
+ * compact transcript (messages, reasoning, tool calls in order, each with its time) or its tool
+ * calls alone, with search and filters. Paths read relative to the checkout the agent works in.
+ * Usage sits in a footer.
  *
  * The child thread is subscribed only while this view is mounted. A nested agent (spawned by
  * one of this thread's agents) has its record on the thread that spawned it, read from its child
- * thread's lineage.
+ * thread's lineage. An agent recorded before its child thread exists shows its record alone.
  */
-import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { deriveThreadAgentFleet, liveSubagent } from "@t3tools/client-runtime/state/agent-fleet";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import {
+  deriveThreadAgentFleet,
+  subagentFromRecord,
+  subagentIdentityParts,
+  subagentRunStats,
+  subagentRunUsageRows,
+  type AgentFleetEntry,
+} from "@t3tools/client-runtime/state/agent-fleet";
 import {
   applySubagentToolCallView,
   DEFAULT_SUBAGENT_TOOL_CALL_VIEW,
   deriveSubagentToolCalls,
+  subagentEmptyToolCallsText,
+  subagentWorkspaceRoot,
   type SubagentToolCall,
   type SubagentToolCallSort,
   type SubagentToolCallView,
   type SubagentToolKind,
 } from "@t3tools/client-runtime/state/agent-list-view";
 import { formatSubagentDisplayTitle } from "@t3tools/client-runtime/state/subagent-display";
-import {
-  isActiveSubagentStatus,
-  projectedSubagentsToRuntime,
-} from "@t3tools/client-runtime/state/subagentRuntime";
+import { isActiveSubagentStatus } from "@t3tools/client-runtime/state/subagentRuntime";
 import { deriveThreadRuntime } from "@t3tools/client-runtime/state/thread-execution";
 import { shouldShowLoadEarlierControl } from "@t3tools/client-runtime/state/threads";
 import type {
+  NodeId,
   OrchestrationV2ProjectedTurnItem,
   RunId,
   ScopedThreadRef,
   ThreadId,
+  TurnItemId,
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import {
@@ -47,7 +57,16 @@ import {
   SquareArrowOutUpRightIcon,
   XIcon,
 } from "lucide-react";
-import { useCallback, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 
 import { useAgentDrillStore } from "~/agentDrillStore";
 import { useAgentListViewStore } from "~/agentListViewStore";
@@ -88,7 +107,7 @@ import {
 import { ScrollArea } from "../ui/scroll-area";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { AgentUsageFooter, ToolCallList } from "./AgentActivityParts";
+import { AgentUsageFooter, ToolCallList, type ToolCallFocus } from "./AgentActivityParts";
 import { AgentRow, useEnvironmentShells } from "./AgentFleetRow";
 import { AgentTranscriptList } from "./AgentTranscriptList";
 import {
@@ -101,7 +120,12 @@ import {
   type AgentTranscriptView,
 } from "./agentTranscript";
 import { TOOL_KIND_LABELS } from "./agentToolKinds";
-import { useAgentContextMenu } from "./agentContextMenu";
+import {
+  agentMenuTargetOf,
+  showAgentInPanel,
+  showAgentsPanel,
+  useAgentContextMenu,
+} from "./agentContextMenu";
 import {
   attachAgentResultToChat,
   canAttachAgentResult,
@@ -187,6 +211,86 @@ function HeaderText(props: { text: string; tone?: "error" | undefined }) {
       )}
     >
       {props.text}
+    </p>
+  );
+}
+
+/** Text clamped to four lines, with Show all only when it overflows. */
+function ClampedText(props: { text: string }) {
+  const ref = useRef<HTMLParagraphElement>(null);
+  const [open, setOpen] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+  // Re-measured on resize: the panel width and the text both move the clamp.
+  useLayoutEffect(() => {
+    const node = ref.current;
+    if (!node || open) return;
+    const measure = () => setOverflows(node.scrollHeight > node.clientHeight + 1);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [open]);
+  return (
+    <div className="flex flex-col items-start gap-0.5">
+      <p
+        ref={ref}
+        className={cn(
+          "select-text whitespace-pre-wrap break-words text-xs leading-relaxed text-foreground/85",
+          open ? "max-h-48 overflow-y-auto" : "line-clamp-4",
+        )}
+      >
+        {props.text}
+      </p>
+      {overflows || open ? (
+        <button
+          type="button"
+          className="text-2xs text-muted-foreground hover:text-foreground"
+          onClick={() => setOpen(!open)}
+        >
+          {open ? "Show less" : "Show all"}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function HeaderLabel(props: { children: ReactNode }) {
+  return (
+    <span className="text-3xs font-medium uppercase tracking-wider text-muted-foreground">
+      {props.children}
+    </span>
+  );
+}
+
+/** Where the provider saved the agent's output, and its remote session. */
+function Artifacts(props: { outputFile: string | null; sessionUrl: string | undefined }) {
+  if (!props.outputFile && !props.sessionUrl) return null;
+  return (
+    <div className="flex flex-col gap-0.5 ps-4.5">
+      <HeaderLabel>Artifacts</HeaderLabel>
+      {props.outputFile ? (
+        <p className="select-text break-all font-mono text-2xs text-muted-foreground">
+          {props.outputFile}
+        </p>
+      ) : null}
+      {props.sessionUrl ? (
+        <a
+          href={props.sessionUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="self-start text-xs text-info-foreground hover:underline"
+        >
+          Open remote session
+        </a>
+      ) : null}
+    </div>
+  );
+}
+
+function ShowingCount(props: { shown: number; total: number }) {
+  return (
+    <p className="px-0.5 pt-1.5 text-2xs text-muted-foreground">
+      Showing {props.shown} of {props.total}
     </p>
   );
 }
@@ -278,7 +382,10 @@ function EmptyActivity(props: { children: ReactNode }) {
 export function AgentDetailPanel(props: {
   /** The thread that spawned the agent; the tab lives in its right panel. */
   readonly parentRef: ScopedThreadRef;
-  readonly childThreadId: ThreadId;
+  /** The agent's child thread; null for an agent recorded before it has one (see `subagentId`). */
+  readonly childThreadId: ThreadId | null;
+  /** The record of an agent without a child thread, on `parentRef`'s thread. */
+  readonly subagentId?: NodeId | undefined;
   /** The directory the agent's commands and paths are shown relative to. */
   readonly workspaceRoot: string | null;
   /** In the Agents panel: back to the fleet list, or to the agent one level up. */
@@ -288,8 +395,13 @@ export function AgentDetailPanel(props: {
   readonly onOpenInTab?: ((agent: AgentDetailTarget) => void) | undefined;
   /** Opens an agent this agent started; an agent tab by default. */
   readonly onOpenAgent?: ((agent: AgentDetailTarget) => void) | undefined;
+  /**
+   * Opens an agent this agent started that has no child thread yet, by its fleet key; the Agents
+   * panel on it by default.
+   */
+  readonly onOpenRecord?: ((key: string) => void) | undefined;
 }) {
-  const { parentRef, childThreadId } = props;
+  const { parentRef } = props;
   const navigate = useNavigate();
   const composerRef = useComposerHandleContext();
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
@@ -301,8 +413,14 @@ export function AgentDetailPanel(props: {
   );
 
   const parent = useThreadProjection(parentRef)?.projection ?? null;
+  const recordById =
+    props.subagentId === undefined
+      ? null
+      : (parent?.subagents.find((candidate) => candidate.id === props.subagentId) ?? null);
+  // A recorded agent whose child thread has since arrived shows it.
+  const childThreadId = props.childThreadId ?? recordById?.childThreadId ?? null;
   const childRef = useMemo(
-    () => scopeThreadRef(parentRef.environmentId, childThreadId),
+    () => (childThreadId === null ? null : scopeThreadRef(parentRef.environmentId, childThreadId)),
     [childThreadId, parentRef.environmentId],
   );
   const childShell = useThreadShell(childRef);
@@ -328,29 +446,61 @@ export function AgentDetailPanel(props: {
   const nestedOwner = useThreadProjection(nestedOwnerRef)?.projection ?? null;
   const owner = nestedOwnerRef === null ? parent : nestedOwner;
   const subagent =
-    owner?.subagents.find((candidate) => candidate.childThreadId === childThreadId) ?? null;
-  const runtime = useMemo(() => {
-    if (!subagent) return null;
-    const recorded = projectedSubagentsToRuntime([subagent])[0]!;
-    return liveSubagent(recorded, childShell?.source) ?? recorded;
-  }, [childShell?.source, subagent]);
+    childThreadId === null
+      ? recordById
+      : (owner?.subagents.find((candidate) => candidate.childThreadId === childThreadId) ?? null);
+  const runtime = useMemo(
+    () => (subagent ? subagentFromRecord(subagent, childShell?.source) : null),
+    [childShell?.source, subagent],
+  );
+  const runStats = useMemo(
+    () =>
+      child === null || childThreadId === null
+        ? { runs: 0, attempt: null }
+        : subagentRunStats(child, childThreadId),
+    [child, childThreadId],
+  );
   // Stop is offered exactly when the agent's own thread would offer it in chat.
   const canStop = useMemo(
     () => child !== null && deriveCanInterruptRunningThread(true, deriveThreadRuntime(child)),
     [child],
   );
 
+  const ownItems = useMemo(
+    () => (child ? child.turnItems.filter((item) => item.threadId === childThreadId) : []),
+    [child, childThreadId],
+  );
   const calls = useMemo(
-    () =>
-      child
-        ? deriveSubagentToolCalls(
-            child.turnItems.filter((item) => item.threadId === childThreadId),
-            props.workspaceRoot,
-          )
-        : [],
-    [child, childThreadId, props.workspaceRoot],
+    () => deriveSubagentToolCalls(ownItems, props.workspaceRoot),
+    [ownItems, props.workspaceRoot],
+  );
+  // The checkout the agent works in, for the transcript and fetched diffs.
+  const agentRoot = useMemo(
+    () => subagentWorkspaceRoot(ownItems, props.workspaceRoot),
+    [ownItems, props.workspaceRoot],
   );
   const visibleCalls = useMemo(() => applySubagentToolCallView(calls, toolView), [calls, toolView]);
+
+  // A tool call this view was opened on (from an agent preview), expanded and scrolled to.
+  const pendingToolCall = useAgentDrillStore((state) =>
+    childThreadId !== null && state.toolCall?.childThreadId === childThreadId
+      ? state.toolCall.itemId
+      : null,
+  );
+  // Taken into local state during render, then cleared from the store so it applies once.
+  const [toolCallFocus, setToolCallFocus] = useState<ToolCallFocus | null>(null);
+  const [seenToolCall, setSeenToolCall] = useState<TurnItemId | null>(null);
+  if (pendingToolCall !== seenToolCall) {
+    setSeenToolCall(pendingToolCall);
+    if (pendingToolCall !== null) {
+      setToolCallFocus({ id: pendingToolCall, token: (toolCallFocus?.token ?? 0) + 1 });
+    }
+  }
+  useEffect(() => {
+    if (pendingToolCall !== null && childThreadId !== null) {
+      useAgentDrillStore.getState().takeToolCall(childThreadId);
+    }
+  }, [childThreadId, pendingToolCall]);
 
   // The transcript reuses the chat's timeline derivation, which keeps unchanged entries while text
   // streams; the row cache then keeps their rows, so only the streaming row re-renders.
@@ -359,10 +509,10 @@ export function AgentDetailPanel(props: {
   // Rows depend on these options, so the cache goes with them.
   const transcriptSetup = useMemo(
     () => ({
-      options: { prompt, workspaceRoot: props.workspaceRoot ?? undefined },
+      options: { prompt, workspaceRoot: agentRoot ?? undefined },
       cache: new WeakMap() as AgentTranscriptRowCache,
     }),
-    [prompt, props.workspaceRoot],
+    [agentRoot, prompt],
   );
   const ownVisibleItems = useMemo(
     (): ReadonlyArray<OrchestrationV2ProjectedTurnItem> =>
@@ -398,7 +548,7 @@ export function AgentDetailPanel(props: {
   // The agents this agent started, from its own projection's records.
   const children = useMemo(
     () =>
-      child === null
+      child === null || childThreadId === null
         ? []
         : deriveThreadAgentFleet({ threadId: childThreadId, subagents: child.subagents, shells })
             .filter((entry) => entry.ownerThreadId === childThreadId)
@@ -406,12 +556,25 @@ export function AgentDetailPanel(props: {
     [child, childThreadId, shells],
   );
 
-  const { onOpenAgent } = props;
+  const { onOpenAgent, onOpenRecord } = props;
   const openAgent = useCallback(
     (agent: AgentDetailTarget) =>
       onOpenAgent ? onOpenAgent(agent) : useRightPanelStore.getState().openAgent(parentRef, agent),
     [onOpenAgent, parentRef],
   );
+  const openChildEntry = (entry: AgentFleetEntry, toolCallId?: TurnItemId) => {
+    if (entry.childThreadId === null) {
+      if (onOpenRecord) onOpenRecord(entry.key);
+      else showAgentInPanel(parentRef, entry.key);
+      return;
+    }
+    if (toolCallId) {
+      useAgentDrillStore
+        .getState()
+        .focusToolCall({ childThreadId: entry.childThreadId, itemId: toolCallId });
+    }
+    openAgent({ childThreadId: entry.childThreadId, title: entry.title });
+  };
   const openThread = useCallback(
     (threadId: ThreadId) =>
       void navigate({
@@ -423,6 +586,7 @@ export function AgentDetailPanel(props: {
   // An edit's full diff lives with the agent's own thread.
   const openTurnDiff = useCallback(
     (runId: RunId, filePath?: string) => {
+      if (childRef === null) return;
       useDiffPanelStore.getState().selectTurn(childRef, runId, filePath);
       useRightPanelStore.getState().open(childRef, "diff");
       openThread(childRef.threadId);
@@ -445,10 +609,7 @@ export function AgentDetailPanel(props: {
       </Button>
     </div>
   ) : null;
-  const showAllAgents = () => {
-    useAgentDrillStore.getState().reset(scopedThreadKey(parentRef));
-    useRightPanelStore.getState().open(parentRef, "agents");
-  };
+  const showAllAgents = () => showAgentsPanel(parentRef);
 
   if (!subagent || !runtime) {
     return (
@@ -487,23 +648,19 @@ export function AgentDetailPanel(props: {
         navigate({ to: "/$environmentId/$threadId", params: buildThreadRouteParams(tabRef) }),
     });
   };
-  const stop = () =>
+  const stop = () => {
+    if (childThreadId === null) return;
     void interruptTurn({
-      environmentId: childRef.environmentId,
+      environmentId: parentRef.environmentId,
       input: { threadId: childThreadId },
     });
-  const onChildContextMenu = (
-    event: MouseEvent<HTMLElement>,
-    entry: (typeof children)[number]["entry"],
-  ) => {
-    if (entry.childThreadId === null) return;
-    openAgentMenu(event, {
-      childThreadId: entry.childThreadId,
-      title: entry.title,
-      ownerThreadId: entry.ownerThreadId,
-    });
+  };
+  const onChildContextMenu = (event: MouseEvent<HTMLElement>, entry: AgentFleetEntry) => {
+    const target = agentMenuTargetOf(entry);
+    if (target !== null) openAgentMenu(event, target);
   };
   const outcome = subject.error ?? (live ? null : subject.result);
+  const runUsageRows = subagentRunUsageRows(runStats);
 
   const tools = mode === "tools";
   const query = tools ? toolView.query : transcriptView.query;
@@ -523,6 +680,7 @@ export function AgentDetailPanel(props: {
       ? setToolView(DEFAULT_SUBAGENT_TOOL_CALL_VIEW)
       : setTranscriptView(DEFAULT_AGENT_TRANSCRIPT_VIEW);
 
+  const narrowed = query.trim().length > 0 || activeFilters > 0;
   const loadEarlier = shouldShowLoadEarlierControl(history) ? (
     <div className="flex items-center gap-2 px-2 py-1.5">
       <Button
@@ -530,10 +688,12 @@ export function AgentDetailPanel(props: {
         variant="ghost-muted"
         disabled={history.loading}
         onClick={() =>
-          void loadEarlierHistory({
-            environmentId: childRef.environmentId,
-            input: { threadId: childThreadId },
-          })
+          childThreadId === null
+            ? undefined
+            : void loadEarlierHistory({
+                environmentId: parentRef.environmentId,
+                input: { threadId: childThreadId },
+              })
         }
       >
         {history.loading ? "Loading earlier activity…" : "Load earlier activity"}
@@ -547,7 +707,18 @@ export function AgentDetailPanel(props: {
   ) : null;
 
   let body: ReactNode;
-  if (tools) {
+  if (childThreadId === null || childRef === null) {
+    // Only its record so far: the activity arrives with its child thread.
+    body = (
+      <div className="min-h-0 flex-1">
+        <EmptyActivity>
+          {live
+            ? "This agent's activity shows here once it starts."
+            : "This provider recorded no activity for this agent."}
+        </EmptyActivity>
+      </div>
+    );
+  } else if (tools) {
     body = (
       <ScrollArea className="min-h-0 flex-1">
         <div className="flex flex-col p-2">
@@ -558,8 +729,9 @@ export function AgentDetailPanel(props: {
               source={{
                 environmentId: parentRef.environmentId,
                 threadId: childThreadId,
-                workspaceRoot: props.workspaceRoot,
+                workspaceRoot: agentRoot,
               }}
+              focus={toolCallFocus}
             />
           ) : (
             <p className="px-0.5 text-xs text-muted-foreground">
@@ -567,9 +739,17 @@ export function AgentDetailPanel(props: {
                 ? "Loading tool calls…"
                 : calls.length > 0
                   ? "No tool calls match these filters."
-                  : "No tool calls yet."}
+                  : subagentEmptyToolCallsText({
+                      live,
+                      recordedItems: ownItems.length,
+                      reportedToolUses: runtime.usage?.toolUses,
+                      progress: runtime.progress,
+                    })}
             </p>
           )}
+          {narrowed && visibleCalls.length > 0 ? (
+            <ShowingCount shown={visibleCalls.length} total={calls.length} />
+          ) : null}
           {loadEarlier}
         </div>
       </ScrollArea>
@@ -596,12 +776,21 @@ export function AgentDetailPanel(props: {
           rows={visibleTranscript}
           environmentId={parentRef.environmentId}
           childRef={childRef}
-          workspaceRoot={props.workspaceRoot ?? undefined}
+          workspaceRoot={agentRoot ?? undefined}
+          timestampFormat={timestampFormat}
           onOpenAgent={openStartedAgent}
           onOpenThread={openThread}
           onOpenTurnDiff={openTurnDiff}
           startAtEnd={live}
+          focus={toolCallFocus ? { itemId: toolCallFocus.id, token: toolCallFocus.token } : null}
           header={loadEarlier}
+          footer={
+            narrowed ? (
+              <div className="px-2">
+                <ShowingCount shown={visibleTranscript.length} total={transcriptRows.length} />
+              </div>
+            ) : null
+          }
         />
       </div>
     );
@@ -619,20 +808,24 @@ export function AgentDetailPanel(props: {
           <StatusDot status={runtime.status} />
           <h2 className="min-w-0 flex-1 truncate text-sm font-medium">{title}</h2>
           {props.onOpenInTab ? (
-            <ActionButton
-              label="Open in new tab"
-              onClick={() => props.onOpenInTab?.({ childThreadId, title })}
-            >
-              <PanelRightOpenIcon />
-            </ActionButton>
+            childThreadId === null ? null : (
+              <ActionButton
+                label="Open in new tab"
+                onClick={() => props.onOpenInTab?.({ childThreadId, title })}
+              >
+                <PanelRightOpenIcon />
+              </ActionButton>
+            )
           ) : (
             <ActionButton label="Show all agents" onClick={showAllAgents}>
               <BotIcon />
             </ActionButton>
           )}
-          <ActionButton label="Open agent thread" onClick={() => openThread(childThreadId)}>
-            <SquareArrowOutUpRightIcon />
-          </ActionButton>
+          {childThreadId === null ? null : (
+            <ActionButton label="Open agent thread" onClick={() => openThread(childThreadId)}>
+              <SquareArrowOutUpRightIcon />
+            </ActionButton>
+          )}
           {canAttachAgentResult(subject) ? (
             <ActionButton
               label="Attach result to chat"
@@ -651,7 +844,10 @@ export function AgentDetailPanel(props: {
           ) : null}
         </div>
         <p className="truncate ps-3.5 font-mono text-2xs text-muted-foreground">
-          {[STATUS_VISUALS[runtime.status].label, subagent.model].filter(Boolean).join(" · ")}
+          {[
+            STATUS_VISUALS[runtime.status].label,
+            ...subagentIdentityParts(runtime, runStats.runs),
+          ].join(" · ")}
           {runtime.startedAt ? (
             <>
               {" · "}
@@ -664,9 +860,10 @@ export function AgentDetailPanel(props: {
             <p className="truncate ps-4.5 text-xs text-muted-foreground">{runtime.progress}</p>
           ) : null}
           {subject.prompt ? (
-            <HeaderDisclosure label="Prompt" preview={subject.prompt}>
-              <HeaderText text={subject.prompt} />
-            </HeaderDisclosure>
+            <div className="flex min-w-0 flex-col gap-0.5 py-0.5 ps-4.5">
+              <HeaderLabel>Prompt</HeaderLabel>
+              <ClampedText text={subject.prompt} />
+            </div>
           ) : null}
           {outcome ? (
             <HeaderDisclosure
@@ -678,6 +875,7 @@ export function AgentDetailPanel(props: {
               <HeaderText text={outcome} tone={subject.error ? "error" : undefined} />
             </HeaderDisclosure>
           ) : null}
+          <Artifacts outputFile={runtime.outputFile} sessionUrl={runtime.runHandles?.sessionUrl} />
           {children.length > 0 ? (
             <HeaderDisclosure
               label={`Agents · ${children.length}`}
@@ -694,11 +892,7 @@ export function AgentDetailPanel(props: {
                     parentRef={parentRef}
                     row={row}
                     workspaceRoot={props.workspaceRoot}
-                    onOpen={(entry) =>
-                      entry.childThreadId === null
-                        ? undefined
-                        : openAgent({ childThreadId: entry.childThreadId, title: entry.title })
-                    }
+                    onOpen={openChildEntry}
                     onContextMenu={onChildContextMenu}
                   />
                 ))}
@@ -707,106 +901,110 @@ export function AgentDetailPanel(props: {
           ) : null}
         </div>
       </header>
-      <div className="flex items-center gap-1 border-b border-border/60 px-2 py-1.5">
-        <ToggleGroup
-          aria-label="Agent activity"
-          value={[mode]}
-          onValueChange={(next) => {
-            const value = next[0];
-            if (value === "transcript" || value === "tools") setMode(value);
-          }}
-        >
-          <Toggle value="transcript">Transcript</Toggle>
-          <Toggle value="tools">
-            Tools
-            {calls.length > 0 ? (
-              <span className="font-mono tabular-nums text-muted-foreground">{calls.length}</span>
-            ) : null}
-          </Toggle>
-        </ToggleGroup>
-        <div className="min-w-0 flex-1">
-          <Input
-            size="compact"
-            type="search"
-            value={query}
-            placeholder={tools ? "Search tool calls" : "Search transcript"}
-            aria-label={tools ? "Search tool calls" : "Search transcript"}
-            onChange={(event) => setQuery(event.target.value)}
-          />
-        </div>
-        <FilterMenu activeCount={activeFilters}>
-          {tools ? (
-            <>
-              <CheckboxGroup
-                label="Status"
-                labels={TOOL_STATUS_LABELS}
-                selected={toolView.statuses}
-                counts={countBy(calls, (call) => call.status)}
-                onChange={(statuses) => setToolView({ ...toolView, statuses })}
-              />
-              <MenuSeparator />
-              <CheckboxGroup<SubagentToolKind>
-                label="Kind"
-                labels={TOOL_KIND_LABELS}
-                selected={toolView.kinds}
-                counts={countBy(calls, (call) => call.kind)}
-                onChange={(kinds) => setToolView({ ...toolView, kinds })}
-              />
-            </>
-          ) : (
-            <CheckboxGroup
-              label="Show"
-              labels={TRANSCRIPT_KIND_LABELS}
-              selected={transcriptView.kinds}
-              counts={countBy(transcriptRows, agentTranscriptKindOf)}
-              onChange={(kinds) => setTranscriptView({ ...transcriptView, kinds })}
-            />
-          )}
-        </FilterMenu>
-        {tools ? (
-          <Menu>
-            <MenuTrigger
-              render={
-                <Button
-                  type="button"
-                  size="icon-micro"
-                  variant={
-                    toolView.sort === DEFAULT_SUBAGENT_TOOL_CALL_VIEW.sort ? "ghost-muted" : "ghost"
-                  }
-                  aria-label={`Sort tool calls: ${TOOL_SORT_LABELS[toolView.sort]}`}
-                />
-              }
-            >
-              <ArrowDownUpIcon />
-            </MenuTrigger>
-            <MenuPopup align="end">
-              <MenuRadioGroup
-                value={toolView.sort}
-                onValueChange={(sort: SubagentToolCallSort) => setToolView({ ...toolView, sort })}
-              >
-                {(Object.keys(TOOL_SORT_LABELS) as SubagentToolCallSort[]).map((sort) => (
-                  <MenuRadioItem key={sort} value={sort}>
-                    {TOOL_SORT_LABELS[sort]}
-                  </MenuRadioItem>
-                ))}
-              </MenuRadioGroup>
-            </MenuPopup>
-          </Menu>
-        ) : null}
-        {customised ? (
-          <Button
-            type="button"
-            size="icon-micro"
-            variant="ghost-muted"
-            aria-label="Reset activity filters"
-            onClick={resetView}
+      {childThreadId === null ? null : (
+        <div className="flex items-center gap-1 border-b border-border/60 px-2 py-1.5">
+          <ToggleGroup
+            aria-label="Agent activity"
+            value={[mode]}
+            onValueChange={(next) => {
+              const value = next[0];
+              if (value === "transcript" || value === "tools") setMode(value);
+            }}
           >
-            <XIcon />
-          </Button>
-        ) : null}
-      </div>
+            <Toggle value="transcript">Transcript</Toggle>
+            <Toggle value="tools">
+              Tools
+              {calls.length > 0 ? (
+                <span className="font-mono tabular-nums text-muted-foreground">{calls.length}</span>
+              ) : null}
+            </Toggle>
+          </ToggleGroup>
+          <div className="min-w-0 flex-1">
+            <Input
+              size="compact"
+              type="search"
+              value={query}
+              placeholder={tools ? "Search tool calls" : "Search transcript"}
+              aria-label={tools ? "Search tool calls" : "Search transcript"}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </div>
+          <FilterMenu activeCount={activeFilters}>
+            {tools ? (
+              <>
+                <CheckboxGroup
+                  label="Status"
+                  labels={TOOL_STATUS_LABELS}
+                  selected={toolView.statuses}
+                  counts={countBy(calls, (call) => call.status)}
+                  onChange={(statuses) => setToolView({ ...toolView, statuses })}
+                />
+                <MenuSeparator />
+                <CheckboxGroup<SubagentToolKind>
+                  label="Kind"
+                  labels={TOOL_KIND_LABELS}
+                  selected={toolView.kinds}
+                  counts={countBy(calls, (call) => call.kind)}
+                  onChange={(kinds) => setToolView({ ...toolView, kinds })}
+                />
+              </>
+            ) : (
+              <CheckboxGroup
+                label="Show"
+                labels={TRANSCRIPT_KIND_LABELS}
+                selected={transcriptView.kinds}
+                counts={countBy(transcriptRows, agentTranscriptKindOf)}
+                onChange={(kinds) => setTranscriptView({ ...transcriptView, kinds })}
+              />
+            )}
+          </FilterMenu>
+          {tools ? (
+            <Menu>
+              <MenuTrigger
+                render={
+                  <Button
+                    type="button"
+                    size="icon-micro"
+                    variant={
+                      toolView.sort === DEFAULT_SUBAGENT_TOOL_CALL_VIEW.sort
+                        ? "ghost-muted"
+                        : "ghost"
+                    }
+                    aria-label={`Sort tool calls: ${TOOL_SORT_LABELS[toolView.sort]}`}
+                  />
+                }
+              >
+                <ArrowDownUpIcon />
+              </MenuTrigger>
+              <MenuPopup align="end">
+                <MenuRadioGroup
+                  value={toolView.sort}
+                  onValueChange={(sort: SubagentToolCallSort) => setToolView({ ...toolView, sort })}
+                >
+                  {(Object.keys(TOOL_SORT_LABELS) as SubagentToolCallSort[]).map((sort) => (
+                    <MenuRadioItem key={sort} value={sort}>
+                      {TOOL_SORT_LABELS[sort]}
+                    </MenuRadioItem>
+                  ))}
+                </MenuRadioGroup>
+              </MenuPopup>
+            </Menu>
+          ) : null}
+          {customised ? (
+            <Button
+              type="button"
+              size="icon-micro"
+              variant="ghost-muted"
+              aria-label="Reset activity filters"
+              onClick={resetView}
+            >
+              <XIcon />
+            </Button>
+          ) : null}
+        </div>
+      )}
       {body}
-      <AgentUsageFooter usage={subagent.usage ?? null} />
+      <AgentUsageFooter usage={subagent.usage ?? null} extra={runUsageRows} />
     </div>
   );
 }

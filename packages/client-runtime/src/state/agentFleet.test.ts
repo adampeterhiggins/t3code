@@ -12,6 +12,11 @@ import {
   arrangeAgentFleet,
   deriveThreadAgentFleet,
   edgeAgentStatus,
+  modelSelectionEffort,
+  subagentFromRecord,
+  subagentIdentityParts,
+  subagentRunStats,
+  subagentRunUsageRows,
   summarizeAgentFleet,
 } from "./agentFleet.ts";
 import { DEFAULT_AGENT_LIST_VIEW } from "./agentListView.ts";
@@ -147,8 +152,8 @@ describe("arrangeAgentFleet", () => {
       }),
     ],
     shells: [
-      shell("late-thread", "parent"),
-      shell("early-thread", "parent"),
+      shell("late-thread", "parent", { createdAt: at("2026-10-05T10:00:05Z") }),
+      shell("early-thread", "parent", { createdAt: at("2026-10-05T10:00:01Z") }),
       shell("helper", "late-thread", {
         status: "failed",
         createdAt: at("2026-10-05T10:00:06Z"),
@@ -182,14 +187,116 @@ describe("arrangeAgentFleet", () => {
   });
 });
 
+describe("spawn order", () => {
+  it("keeps an agent in place when a follow-up restarts its record", () => {
+    const fleet = deriveThreadAgentFleet({
+      threadId: parentId,
+      subagents: [
+        // Resumed later, so its record's start moved past its sibling's.
+        subagent("first", "first-thread", { startedAt: at("2026-10-05T10:05:00Z") }),
+        subagent("second", "second-thread", { startedAt: at("2026-10-05T10:00:02Z") }),
+        subagent("unthreaded", null, { startedAt: at("2026-10-05T10:00:03Z") }),
+      ],
+      shells: [
+        shell("first-thread", "parent", { createdAt: at("2026-10-05T10:00:01Z") }),
+        shell("second-thread", "parent", { createdAt: at("2026-10-05T10:00:02Z") }),
+      ],
+    });
+    expect(keys(arrangeAgentFleet(fleet, DEFAULT_AGENT_LIST_VIEW, parentId))).toEqual([
+      "first-thread",
+      "second-thread",
+      "subagent:unthreaded",
+    ]);
+  });
+});
+
+describe("subagentFromRecord", () => {
+  it("adds the child thread's model, effort, and the record's artifacts", () => {
+    const agent = subagentFromRecord(
+      subagent("scout", "scout-thread", {
+        model: null,
+        outputFile: "/tmp/scout.output",
+        sessionUrl: "https://claude.ai/code/s",
+      }),
+      shell("scout-thread", "parent", {
+        modelSelection: {
+          instanceId: ProviderInstanceId.make("claude"),
+          model: "claude-sonnet-4-5-20250929",
+          options: [{ id: "effort", value: "high" }],
+        },
+      }),
+    );
+    expect(agent).toMatchObject({
+      model: "claude-sonnet-4-5-20250929",
+      effort: "high",
+      outputFile: "/tmp/scout.output",
+      runHandles: { sessionUrl: "https://claude.ai/code/s" },
+    });
+    expect(subagentIdentityParts(agent, 3)).toEqual(["sonnet-4-5 · high", "run 3"]);
+    expect(subagentIdentityParts({ model: "gpt-5", effort: null }, 1)).toEqual(["gpt-5"]);
+  });
+
+  it("reads effort only from a string option", () => {
+    const selection = { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" };
+    expect(modelSelectionEffort(selection)).toBeNull();
+    expect(
+      modelSelectionEffort({
+        ...selection,
+        options: [
+          { id: "fastMode", value: true },
+          { id: "reasoningEffort", value: "low" },
+        ],
+      }),
+    ).toBe("low");
+  });
+});
+
+describe("subagentRunStats", () => {
+  const child = ThreadId.make("child");
+  const run = (id: string, ordinal: number, threadId = child) => ({
+    id: id as never,
+    threadId,
+    ordinal,
+  });
+  it("counts runs by the newest ordinal and reads its latest attempt", () => {
+    const stats = subagentRunStats(
+      {
+        runs: [run("r3", 3), run("r2", 2), run("other", 9, parentId)],
+        attempts: [
+          { runId: "r3" as never, attemptOrdinal: 1 },
+          { runId: "r3" as never, attemptOrdinal: 2 },
+          { runId: "r2" as never, attemptOrdinal: 4 },
+        ],
+      },
+      child,
+    );
+    expect(stats).toEqual({ runs: 3, attempt: 2 });
+    expect(subagentRunUsageRows(stats)).toEqual([
+      ["Runs", "3"],
+      ["Attempt", "2"],
+    ]);
+    expect(subagentRunUsageRows({ runs: 1, attempt: 1 })).toEqual([]);
+    expect(subagentRunStats({ runs: [], attempts: [] }, child)).toEqual({
+      runs: 0,
+      attempt: null,
+    });
+  });
+});
+
 describe("summarizeAgentFleet", () => {
-  it("counts statuses and adds up reported tokens", () => {
+  it("counts statuses and adds up reported usage", () => {
     const summary = summarizeAgentFleet(
       deriveThreadAgentFleet({
         threadId: parentId,
         subagents: [
-          subagent("a", "a", { usage: { totalTokens: 1_200 } }),
-          subagent("b", "b", { status: "running", completedAt: null, usage: { totalTokens: 300 } }),
+          subagent("a", "a", {
+            usage: { totalTokens: 1_200, inputTokens: 1_000, cachedInputTokens: 400, toolUses: 3 },
+          }),
+          subagent("b", "b", {
+            status: "running",
+            completedAt: null,
+            usage: { totalTokens: 300, inputTokens: 200, outputTokens: 100, durationMs: 5_000 },
+          }),
           subagent("c", "c", { status: "cancelled" }),
         ],
         shells: [],
@@ -197,9 +304,15 @@ describe("summarizeAgentFleet", () => {
     );
     expect(summary).toEqual({
       counts: { working: 1, idle: 0, done: 1, failed: 0, stopped: 1 },
-      totalTokens: 1_500,
-      hasUsage: true,
+      usage: {
+        totalTokens: 1_500,
+        inputTokens: 1_200,
+        cachedInputTokens: 400,
+        outputTokens: 100,
+        toolUses: 3,
+      },
     });
+    expect(summarizeAgentFleet([]).usage).toBeNull();
   });
 });
 

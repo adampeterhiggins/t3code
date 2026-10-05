@@ -477,8 +477,7 @@ import {
 import { expandedImageKey, type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { ThreadDetailsPanel, type ThreadDetailsPanelProps } from "./chat/ThreadDetailsPanel";
 import { AgentDetailPanel } from "./chat/AgentDetailPanel";
-import { AgentsPanel } from "./chat/AgentsPanel";
-import { isActiveSubagentStatus } from "@t3tools/client-runtime/state/subagentRuntime";
+import { AgentsPanel, useWorkingAgentCount } from "./chat/AgentsPanel";
 import { NoActiveThreadState } from "./NoActiveThreadState";
 import {
   type EnvironmentOption,
@@ -5508,12 +5507,8 @@ export default function ChatView(props: ChatViewProps) {
         ?.scrollIntoView({ block: "nearest" }),
     );
   }, [activeThreadRef, threadPanelPresentation]);
-  const liveAgentCount = useMemo(
-    () =>
-      serverProjection?.subagents.filter((agent) => isActiveSubagentStatus(agent.status)).length ??
-      0,
-    [serverProjection?.subagents],
-  );
+  // Fork: nested agents and live follow-up runs count too, as the Agents panel shows them.
+  const liveAgentCount = useWorkingAgentCount(activeThreadRef, serverProjection?.subagents);
   const agentsSurfaceVisible = rightPanelOpen && activeRightPanelSurface?.kind === "agents";
   // The roster itself is on screen; a badge would point at nothing.
   const launcherLiveAgentCount = agentsSurfaceVisible ? 0 : liveAgentCount;

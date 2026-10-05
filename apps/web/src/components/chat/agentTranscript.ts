@@ -7,7 +7,7 @@ import {
   subagentToolKindOfItem,
   type SubagentToolKind,
 } from "@t3tools/client-runtime/state/agent-list-view";
-import type { OrchestrationV2ProjectedTurnItem, ThreadId } from "@t3tools/contracts";
+import type { OrchestrationV2ProjectedTurnItem, ThreadId, TurnItemId } from "@t3tools/contracts";
 
 import type { TimelineEntry, WorkLogEntry } from "../../session-logic";
 import { workEntryDisplayLabel, workEntryIsVisibleInGroup } from "./MessagesTimeline.logic";
@@ -17,7 +17,7 @@ export type AgentTranscriptKind = "message" | "reasoning" | "tool";
 
 export type AgentTranscriptToolStatus = "running" | "completed" | "failed" | "stopped";
 
-export type AgentTranscriptRow =
+export type AgentTranscriptRow = (
   | {
       readonly kind: "message";
       readonly id: string;
@@ -48,7 +48,11 @@ export type AgentTranscriptRow =
       /** An agent this one started, to drill into. */
       readonly childThreadId: ThreadId | null;
       readonly projectedItem: OrchestrationV2ProjectedTurnItem | null;
-    };
+    }
+) & {
+  /** When the entry happened (ISO), shown in the user's timestamp format. */
+  readonly createdAt: string;
+};
 
 export interface AgentTranscriptView {
   readonly query: string;
@@ -74,13 +78,20 @@ function toolStatus(entry: WorkLogEntry): AgentTranscriptToolStatus {
 
 function workRow(
   entry: WorkLogEntry,
+  createdAt: string,
   workspaceRoot: string | undefined,
 ): AgentTranscriptRow | null {
   if (!workEntryIsVisibleInGroup(entry, true)) return null;
   if (entry.itemType === "reasoning" || entry.tone === "thinking") {
     const text = entry.detail?.trim();
     return text
-      ? { kind: "reasoning", id: entry.id, text, projectedItem: entry.projectedItem ?? null }
+      ? {
+          kind: "reasoning",
+          id: entry.id,
+          createdAt,
+          text,
+          projectedItem: entry.projectedItem ?? null,
+        }
       : null;
   }
   // The child thread's creation is the agent itself starting.
@@ -90,6 +101,7 @@ function workRow(
     return {
       kind: "tool",
       id: entry.id,
+      createdAt,
       label: workEntryDisplayLabel(entry, workspaceRoot),
       toolKind: (item ? subagentToolKindOfItem(item) : null) ?? "other",
       status: toolStatus(entry),
@@ -100,6 +112,7 @@ function workRow(
   return {
     kind: "notice",
     id: entry.id,
+    createdAt,
     label: entry.label,
     detail: detail === entry.label ? null : detail,
     tone: entry.tone === "error" || entry.sourceActivityKind === "runtime.error" ? "error" : "info",
@@ -108,12 +121,16 @@ function workRow(
   };
 }
 
-function eventRow(projectedItem: OrchestrationV2ProjectedTurnItem): AgentTranscriptRow {
+function eventRow(
+  projectedItem: OrchestrationV2ProjectedTurnItem,
+  createdAt: string,
+): AgentTranscriptRow {
   const { item } = projectedItem;
   const title = item.title?.trim() || null;
   return {
     kind: "notice",
     id: item.id,
+    createdAt,
     label:
       item.type === "subagent"
         ? `Started agent: ${title ?? (item.prompt.trim().split("\n")[0] || "Agent")}`
@@ -137,6 +154,7 @@ function entryRow(
       return {
         kind: "message",
         id: entry.id,
+        createdAt: entry.createdAt,
         role: message.role,
         text: message.text,
         streaming: message.streaming,
@@ -146,14 +164,15 @@ function entryRow(
       return {
         kind: "message",
         id: entry.id,
+        createdAt: entry.createdAt,
         role: "plan",
         text: entry.proposedPlan.planMarkdown,
         streaming: false,
       };
     case "work":
-      return workRow(entry.entry, workspaceRoot);
+      return workRow(entry.entry, entry.createdAt, workspaceRoot);
     case "event":
-      return eventRow(entry.projectedItem);
+      return eventRow(entry.projectedItem, entry.createdAt);
   }
 }
 
@@ -228,5 +247,17 @@ export function applyAgentTranscriptView(
     (row) =>
       (view.kinds.length === 0 || view.kinds.includes(agentTranscriptKindOf(row))) &&
       (query.length === 0 || rowText(row).toLocaleLowerCase().includes(query)),
+  );
+}
+
+/** The position of a tool call's row, to open the transcript on it; -1 when it is not listed. */
+export function agentTranscriptToolRowIndex(
+  rows: ReadonlyArray<AgentTranscriptRow>,
+  itemId: TurnItemId,
+): number {
+  return rows.findIndex(
+    (row) =>
+      row.kind === "tool" &&
+      (row.entry.structuredPayload?.id ?? row.entry.projectedItem?.item.id) === itemId,
   );
 }

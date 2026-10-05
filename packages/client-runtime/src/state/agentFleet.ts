@@ -8,7 +8,11 @@
  * subscribes to another thread's projection.
  */
 import type {
+  ModelSelection,
+  OrchestrationV2Run,
+  OrchestrationV2RunAttempt,
   OrchestrationV2Subagent,
+  OrchestrationV2SubagentUsage,
   OrchestrationV2ThreadShell,
   ThreadId,
 } from "@t3tools/contracts";
@@ -25,10 +29,12 @@ import {
 } from "./agentListView.ts";
 import { formatSubagentDisplayTitle } from "./subagentDisplay.ts";
 import {
+  formatSubagentModelLabel,
   projectedSubagentsToRuntime,
   type RuntimeSubagent,
   type RuntimeSubagentStatus,
 } from "./subagentRuntime.ts";
+import { REASONING_EFFORT_OPTION_IDS } from "./threadExecution.ts";
 
 /** A thread or lineage-edge status read as an agent status. */
 export function edgeAgentStatus(status: string | null | undefined): RuntimeSubagentStatus {
@@ -82,6 +88,33 @@ export function liveSubagent<Agent extends RuntimeSubagent>(
   };
 }
 
+/** The reasoning effort a model selection asks for, as the provider names it ("high"). */
+export function modelSelectionEffort(selection: ModelSelection): string | null {
+  for (const id of REASONING_EFFORT_OPTION_IDS) {
+    const option = selection.options?.find((candidate) => candidate.id === id);
+    if (typeof option?.value === "string") return option.value;
+  }
+  return null;
+}
+
+/**
+ * An agent's record as rows render it. Its child thread adds the model and effort it runs with,
+ * and a live follow-up run (see `liveSubagent`).
+ */
+export function subagentFromRecord(
+  record: OrchestrationV2Subagent,
+  childThread: OrchestrationV2ThreadShell | null | undefined,
+): RuntimeSubagent {
+  const recorded = projectedSubagentsToRuntime([record])[0]!;
+  if (!childThread) return recorded;
+  const withThread: RuntimeSubagent = {
+    ...recorded,
+    model: recorded.model ?? childThread.modelSelection.model,
+    effort: modelSelectionEffort(childThread.modelSelection),
+  };
+  return liveSubagent(withThread, childThread) ?? withThread;
+}
+
 /** An agent known only from its child thread's shell: status and timing, no prompt or result. */
 export function shellSubagent(shell: OrchestrationV2ThreadShell): RuntimeSubagent {
   const status = edgeAgentStatus(shell.activityRunStatus ?? shell.status);
@@ -100,7 +133,19 @@ export function shellSubagent(shell: OrchestrationV2ThreadShell): RuntimeSubagen
       completedAt: live ? null : (shell.latestRunCompletedAt ?? null),
       updatedAt: shell.updatedAt,
     },
-  ])[0]!;
+  ]).map((agent) => ({ ...agent, effort: modelSelectionEffort(shell.modelSelection) }))[0]!;
+}
+
+/**
+ * When the agent was spawned, its stable list order: its child thread's creation, which a
+ * follow-up run never moves, else the record's start before the thread exists.
+ */
+export function subagentSpawnedAt(
+  record: Pick<OrchestrationV2Subagent, "startedAt"> | null,
+  childThread: Pick<OrchestrationV2ThreadShell, "createdAt"> | null | undefined,
+): string | null {
+  if (childThread) return DateTime.formatIso(childThread.createdAt);
+  return isoOrNull(record?.startedAt);
 }
 
 export interface AgentFleetEntry {
@@ -170,7 +215,7 @@ export function deriveThreadAgentFleet(input: {
       shell,
       agent,
       title,
-      subject: subjectOf(agent, title, DateTime.formatIso(shell.createdAt)),
+      subject: subjectOf(agent, title, subagentSpawnedAt(null, shell)),
     });
   };
 
@@ -181,9 +226,8 @@ export function deriveThreadAgentFleet(input: {
       seen.add(childThreadId);
     }
     const shell = childThreadId === null ? null : (shellsById.get(childThreadId) ?? null);
-    const recorded = projectedSubagentsToRuntime([subagent])[0]!;
-    const agent = liveSubagent(recorded, shell) ?? recorded;
-    const title = formatSubagentDisplayTitle(shell?.title ?? recorded.title);
+    const agent = subagentFromRecord(subagent, shell);
+    const title = formatSubagentDisplayTitle(shell?.title ?? agent.title);
     entries.push({
       key: childThreadId ?? `subagent:${subagent.id}`,
       childThreadId,
@@ -192,7 +236,7 @@ export function deriveThreadAgentFleet(input: {
       shell,
       agent,
       title,
-      subject: subjectOf(agent, title, recorded.firstSeenAt),
+      subject: subjectOf(agent, title, subagentSpawnedAt(subagent, shell)),
     });
   }
   for (const shell of subagentChildren.get(input.threadId) ?? []) {
@@ -267,10 +311,20 @@ export function arrangeAgentFleet(
 
 export interface AgentFleetSummary {
   readonly counts: Readonly<Record<AgentStatusFilter, number>>;
-  /** Tokens the fleet reported; agents without usage add nothing. */
-  readonly totalTokens: number;
-  readonly hasUsage: boolean;
+  /**
+   * What the fleet reported, summed: each breakdown field only when an agent reported it.
+   * Durations overlap, so they are not summed. Null when no agent reported usage.
+   */
+  readonly usage: OrchestrationV2SubagentUsage | null;
 }
+
+const SUMMED_USAGE_FIELDS = [
+  "inputTokens",
+  "cachedInputTokens",
+  "outputTokens",
+  "reasoningOutputTokens",
+  "toolUses",
+] as const;
 
 export function summarizeAgentFleet(entries: ReadonlyArray<AgentFleetEntry>): AgentFleetSummary {
   const counts: Record<AgentStatusFilter, number> = {
@@ -280,14 +334,71 @@ export function summarizeAgentFleet(entries: ReadonlyArray<AgentFleetEntry>): Ag
     failed: 0,
     stopped: 0,
   };
-  let totalTokens = 0;
+  const usage: { totalTokens: number } & {
+    -readonly [K in (typeof SUMMED_USAGE_FIELDS)[number]]?: number;
+  } = { totalTokens: 0 };
   let hasUsage = false;
   for (const entry of entries) {
     counts[agentStatusFilterFor(entry.agent.status)] += 1;
-    if (entry.agent.usage) {
-      hasUsage = true;
-      totalTokens += entry.agent.usage.totalTokens;
+    const reported = entry.agent.usage;
+    if (!reported) continue;
+    hasUsage = true;
+    usage.totalTokens += reported.totalTokens;
+    for (const field of SUMMED_USAGE_FIELDS) {
+      const value = reported[field];
+      if (value !== undefined) usage[field] = (usage[field] ?? 0) + value;
     }
   }
-  return { counts, totalTokens, hasUsage };
+  return { counts, usage: hasUsage ? usage : null };
+}
+
+/** How many runs an agent's child thread has had, and the latest run's attempt. */
+export interface SubagentRunStats {
+  readonly runs: number;
+  /** The latest run's attempt, from 1; null before the thread has a run. */
+  readonly attempt: number | null;
+}
+
+/**
+ * Runs and retries of an agent's own thread, from its projection. Run ordinals count every run,
+ * so the newest ordinal is the run count even when older runs are paged out.
+ */
+export function subagentRunStats(
+  projection: {
+    readonly runs: ReadonlyArray<Pick<OrchestrationV2Run, "id" | "threadId" | "ordinal">>;
+    readonly attempts: ReadonlyArray<Pick<OrchestrationV2RunAttempt, "runId" | "attemptOrdinal">>;
+  },
+  childThreadId: ThreadId,
+): SubagentRunStats {
+  let latest: Pick<OrchestrationV2Run, "id" | "ordinal"> | null = null;
+  for (const run of projection.runs) {
+    if (run.threadId === childThreadId && (latest === null || run.ordinal > latest.ordinal)) {
+      latest = run;
+    }
+  }
+  if (latest === null) return { runs: 0, attempt: null };
+  let attempt = 0;
+  for (const candidate of projection.attempts) {
+    if (candidate.runId === latest.id) attempt = Math.max(attempt, candidate.attemptOrdinal);
+  }
+  return { runs: latest.ordinal, attempt: attempt > 0 ? attempt : null };
+}
+
+/** The identity line after an agent's status: compact model with effort, then `run N` past the first. */
+export function subagentIdentityParts(
+  agent: Pick<RuntimeSubagent, "model" | "effort">,
+  runs = 0,
+): ReadonlyArray<string> {
+  const model = formatSubagentModelLabel(agent.model, agent.effort);
+  return [model, runs > 1 ? `run ${runs}` : null].filter((part) => part !== null);
+}
+
+/** Usage breakdown rows an agent's own thread adds: runs past the first, and a retried attempt. */
+export function subagentRunUsageRows(
+  stats: SubagentRunStats,
+): ReadonlyArray<readonly [string, string]> {
+  const rows: Array<readonly [string, string]> = [];
+  if (stats.runs > 1) rows.push(["Runs", String(stats.runs)]);
+  if (stats.attempt !== null && stats.attempt > 1) rows.push(["Attempt", String(stats.attempt)]);
+  return rows;
 }

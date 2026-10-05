@@ -1,4 +1,4 @@
-import { ThreadId } from "@t3tools/contracts";
+import { ThreadId, TurnItemId } from "@t3tools/contracts";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 
 import {
@@ -50,5 +50,24 @@ describe("useAgentDrillStore", () => {
     expect(selectAgentDrillStack("env:parent")(useAgentDrillStore.getState())).toEqual([reader]);
     store.back("env:parent");
     expect(useAgentDrillStore.getState().stacks).toEqual({});
+  });
+
+  it("drills into an agent recorded before its thread exists by its fleet key", () => {
+    useAgentDrillStore.getState().push("env:parent", "subagent:node-pending");
+    expect(selectAgentDrillStack("env:parent")(useAgentDrillStore.getState())).toEqual([
+      "subagent:node-pending",
+    ]);
+  });
+});
+
+describe("agent tool call focus", () => {
+  beforeEach(() => useAgentDrillStore.setState({ toolCall: null }));
+
+  it("hands a tool call to that agent's next detail view once", () => {
+    const store = useAgentDrillStore.getState();
+    store.focusToolCall({ childThreadId: scout, itemId: TurnItemId.make("item-grep") });
+    expect(store.takeToolCall(helper)).toBeNull();
+    expect(store.takeToolCall(scout)).toBe("item-grep");
+    expect(store.takeToolCall(scout)).toBeNull();
   });
 });

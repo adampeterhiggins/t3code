@@ -204,6 +204,7 @@ it("shows readable models and only differing workspace details in agent tooltips
     title: "Worker",
     modelSelection: { instanceId: "codex", model: "gpt-5.4" },
     lineage: { parentThreadId: "parent", relationshipToParent: "subagent" },
+    createdAt: DateTime.makeUnsafe("2026-09-16T12:00:00Z"),
   };
   state.projects = [
     { id: "main", environmentId: "test", title: "Main", workspaceRoot: "/main" },

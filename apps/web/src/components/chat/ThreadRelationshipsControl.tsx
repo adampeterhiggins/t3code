@@ -10,7 +10,11 @@ import {
   isAgentListViewFiltered,
   type AgentListSubject,
 } from "@t3tools/client-runtime/state/agent-list-view";
-import { edgeAgentStatus, liveSubagent } from "@t3tools/client-runtime/state/agent-fleet";
+import {
+  edgeAgentStatus,
+  liveSubagent,
+  subagentSpawnedAt,
+} from "@t3tools/client-runtime/state/agent-fleet";
 import {
   formatSubagentTokenCount,
   isActiveSubagentStatus,
@@ -33,7 +37,6 @@ import {
 } from "@t3tools/client-runtime/state/thread-workflows";
 import type { EnvironmentId, OrchestrationV2ThreadShell, ThreadId } from "@t3tools/contracts";
 import { groupBy } from "effect/Array";
-import * as DateTime from "effect/DateTime";
 import { useNavigate } from "@tanstack/react-router";
 import {
   ArrowRightIcon,
@@ -272,8 +275,10 @@ export function ThreadRelationshipsPanel(props: {
       model: agent?.model ?? null,
       status: agent?.status ?? edgeAgentStatus(edge.status),
       usage: agent?.usage ?? null,
-      spawnedAt:
-        recorded?.firstSeenAt ?? (node?.thread ? DateTime.formatIso(node.thread.createdAt) : null),
+      // The child thread's creation, which a follow-up run never moves (`subagentSpawnedAt`).
+      spawnedAt: node?.thread
+        ? subagentSpawnedAt(null, node.thread)
+        : (recorded?.startedAt ?? null),
       startedAt: agent?.startedAt ?? null,
       completedAt: agent?.completedAt ?? null,
     };
@@ -479,6 +484,7 @@ export function ThreadRelationshipsPanel(props: {
               const secondLine = agentLive ? (
                 <SubagentActivityLine
                   childRef={scopeThreadRef(props.environmentId, threadId)}
+                  status={agent.status}
                   progress={agent.progress}
                   workspaceRoot={workspaceRoot}
                 />

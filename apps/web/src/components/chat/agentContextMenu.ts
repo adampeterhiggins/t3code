@@ -10,10 +10,12 @@ import {
 } from "@t3tools/client-runtime/environment";
 import type {
   ContextMenuItem,
+  NodeId,
   OrchestrationV2ThreadProjection,
   ScopedThreadRef,
   ThreadId,
 } from "@t3tools/contracts";
+import type { AgentFleetEntry } from "@t3tools/client-runtime/state/agent-fleet";
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, type MouseEvent } from "react";
 
@@ -41,11 +43,34 @@ function menuPosition(event: MouseEvent<HTMLElement>): { x: number; y: number } 
   return { x: event.clientX, y: event.clientY };
 }
 
+/** An agent the menu acts on: by its child thread, or by its record before the thread exists. */
+export type AgentMenuTarget =
+  | { childThreadId: ThreadId; title: string; ownerThreadId?: ThreadId }
+  | { childThreadId: null; subagentId: NodeId; title: string };
+
+/** The Agents panel's key for an agent (`AgentFleetEntry.key`). */
+export function agentMenuTargetKey(agent: AgentMenuTarget): string {
+  return agent.childThreadId ?? `subagent:${agent.subagentId}`;
+}
+
+/** Opens the Agents panel on one agent's detail; Back returns to the fleet. */
+export function showAgentInPanel(parentRef: ScopedThreadRef, key: string): void {
+  useAgentDrillStore.getState().focus(scopedThreadKey(parentRef), key);
+  useRightPanelStore.getState().open(parentRef, "agents");
+}
+
+/** Opens the Agents panel on its fleet list. */
+export function showAgentsPanel(parentRef: ScopedThreadRef): void {
+  useAgentDrillStore.getState().reset(scopedThreadKey(parentRef));
+  useRightPanelStore.getState().open(parentRef, "agents");
+}
+
 /**
  * Returns a context-menu handler for the agents listed in `parentRef`'s chat. Tabs open in
  * `parentRef`'s right panel. A nested agent names its `ownerThreadId`, the subagent thread that
- * spawned it, whose record is loaded when the menu opens. `showInAgentsPanel` adds the item that
- * opens the Agents panel, for lists other than that panel.
+ * spawned it, whose record is loaded when the menu opens. An agent without a child thread has no
+ * tab. `showInAgentsPanel` adds the item that opens the Agents panel, for lists other than that
+ * panel.
  */
 export function useAgentContextMenu(
   parentRef: ScopedThreadRef,
@@ -55,20 +80,21 @@ export function useAgentContextMenu(
   const composerRef = useComposerHandleContext();
   const showInAgentsPanel = options?.showInAgentsPanel ?? true;
   return useCallback(
-    (
-      event: MouseEvent<HTMLElement>,
-      agent: { childThreadId: ThreadId; title: string; ownerThreadId?: ThreadId },
-    ) => {
+    (event: MouseEvent<HTMLElement>, agent: AgentMenuTarget) => {
       const api = readLocalApi();
       if (!api) return;
+      const ownerThreadId = agent.childThreadId === null ? undefined : agent.ownerThreadId;
       const ownerRef =
-        agent.ownerThreadId === undefined || agent.ownerThreadId === parentRef.threadId
+        ownerThreadId === undefined || ownerThreadId === parentRef.threadId
           ? parentRef
-          : scopeThreadRef(parentRef.environmentId, agent.ownerThreadId);
+          : scopeThreadRef(parentRef.environmentId, ownerThreadId);
       const loadedOwner = readThreadProjection(ownerRef);
       const findSubagent = (owner: OrchestrationV2ThreadProjection | null) =>
-        owner?.subagents.find((candidate) => candidate.childThreadId === agent.childThreadId) ??
-        null;
+        owner?.subagents.find((candidate) =>
+          agent.childThreadId === null
+            ? candidate.id === agent.subagentId
+            : candidate.childThreadId === agent.childThreadId,
+        ) ?? null;
       // Without a record there is nothing to act on; leave the native menu alone.
       if (loadedOwner !== null && findSubagent(loadedOwner) === null) return;
       event.preventDefault();
@@ -78,8 +104,11 @@ export function useAgentContextMenu(
         const subagent = findSubagent(loadedOwner ?? (await loadThreadProjection(ownerRef)));
         if (!subagent) return;
         const subject = subagentContextSubject(subagent, agent.title);
+        const childThreadId = agent.childThreadId;
         const items: ContextMenuItem<AgentMenuAction>[] = [
-          { id: "open-in-tab", label: "Open in new tab" },
+          ...(childThreadId === null
+            ? []
+            : [{ id: "open-in-tab" as const, label: "Open in new tab" }]),
           { id: "continue-in-chat", label: "Continue in chat" },
           ...(canAttachAgentResult(subject)
             ? [{ id: "attach-result" as const, label: "Attach result to chat" }]
@@ -90,11 +119,13 @@ export function useAgentContextMenu(
         ];
         const action = await api.contextMenu.show(items, position);
         if (action === "open-in-tab") {
-          useRightPanelStore.getState().openAgent(parentRef, agent);
+          if (childThreadId !== null) {
+            useRightPanelStore
+              .getState()
+              .openAgent(parentRef, { childThreadId, title: agent.title });
+          }
         } else if (action === "show-in-agents") {
-          // The panel opens on the agent's detail; Back returns to the fleet.
-          useAgentDrillStore.getState().focus(scopedThreadKey(parentRef), agent.childThreadId);
-          useRightPanelStore.getState().open(parentRef, "agents");
+          showAgentInPanel(parentRef, agentMenuTargetKey(agent));
         } else if (action === "continue-in-chat") {
           // The new chat tab belongs to the chat the user is in, even for a nested agent.
           const parent = readThreadProjection(parentRef);
@@ -123,4 +154,18 @@ export function useAgentContextMenu(
     },
     [composerRef, navigate, parentRef, showInAgentsPanel],
   );
+}
+
+/** The menu target for a fleet row; null for a nested agent row that has neither. */
+export function agentMenuTargetOf(entry: AgentFleetEntry): AgentMenuTarget | null {
+  if (entry.childThreadId !== null) {
+    return {
+      childThreadId: entry.childThreadId,
+      title: entry.title,
+      ownerThreadId: entry.ownerThreadId,
+    };
+  }
+  return entry.subagent === null
+    ? null
+    : { childThreadId: null, subagentId: entry.subagent.id, title: entry.title };
 }

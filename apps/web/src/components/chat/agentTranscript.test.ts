@@ -15,7 +15,13 @@ import {
   deriveTimelineEntriesFromVisibleTurnItems,
   deriveTimelineEntriesFromVisibleTurnItemsWithState,
 } from "../../session-logic";
-import { applyAgentTranscriptView, deriveAgentTranscriptRows } from "./agentTranscript";
+import { subagentWorkspaceRoot } from "@t3tools/client-runtime/state/agent-list-view";
+
+import {
+  agentTranscriptToolRowIndex,
+  applyAgentTranscriptView,
+  deriveAgentTranscriptRows,
+} from "./agentTranscript";
 
 const timestamp = DateTime.makeUnsafe("2026-10-05T12:00:00.000Z");
 const childThreadId = ThreadId.make("child-thread");
@@ -144,6 +150,30 @@ describe("deriveAgentTranscriptRows", () => {
     const nextRows = deriveAgentTranscriptRows(next.entries, options, cache);
     expect(nextRows[0]).toBe(firstRows[0]);
     expect(nextRows[1]).toMatchObject({ kind: "message", text: "Looking at auth" });
+  });
+
+  it("stamps every row with its time and finds a tool call's row", () => {
+    const rows = transcript([userPrompt, thinking, grep, edit, answer]);
+    expect(new Set(rows.map((row) => row.createdAt))).toEqual(
+      new Set([DateTime.formatIso(timestamp)]),
+    );
+    expect(agentTranscriptToolRowIndex(rows, edit.id)).toBe(2);
+    expect(agentTranscriptToolRowIndex(rows, answer.id)).toBe(-1);
+  });
+
+  it("reads paths relative to the agent's own worktree", () => {
+    const worktree = "/repo/.claude/worktrees/agent-a1b2";
+    const test = item("command_execution", { input: `bun test ${worktree}/src/auth` });
+    const items = [userPrompt, test];
+    const entries = deriveTimelineEntriesFromVisibleTurnItems({
+      visibleTurnItems: items.map(visible),
+      optimisticMessages: [],
+    });
+    const rows = deriveAgentTranscriptRows(entries, {
+      prompt,
+      workspaceRoot: subagentWorkspaceRoot(items, root) ?? undefined,
+    });
+    expect(rows[0]?.kind === "tool" && rows[0].label).toBe("bun test src/auth");
   });
 
   it("keeps a follow-up that only resembles the prompt, and later repeats of it", () => {

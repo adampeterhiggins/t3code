@@ -97,6 +97,8 @@ export function projectedSubagentsToRuntime(
     readonly progress?: string | undefined;
     readonly result: string | null;
     readonly usage?: OrchestrationV2SubagentUsage | undefined;
+    readonly outputFile?: string | undefined;
+    readonly sessionUrl?: string | undefined;
     readonly startedAt: DateTime.Utc | null;
     readonly completedAt: DateTime.Utc | null;
     readonly updatedAt: DateTime.Utc;
@@ -121,7 +123,7 @@ export function projectedSubagentsToRuntime(
       lastToolName: null,
       result: subagent.result,
       error: subagent.status === "failed" ? (subagent.result ?? null) : null,
-      outputFile: null,
+      outputFile: subagent.outputFile ?? null,
       parentAgentId: null,
       agentIndex: null,
       phaseIndex: null,
@@ -129,7 +131,7 @@ export function projectedSubagentsToRuntime(
       attempt: null,
       workflowName: null,
       phases: [],
-      runHandles: null,
+      runHandles: subagent.sessionUrl ? { sessionUrl: subagent.sessionUrl } : null,
       recentActivity: [],
       firstSeenAt: startedAt ?? updatedAt,
       startedAt,
@@ -137,6 +139,22 @@ export function projectedSubagentsToRuntime(
       updatedAt,
     } satisfies RuntimeSubagent;
   });
+}
+
+/**
+ * A model as agent rows name it: `claude-` and date suffixes dropped, with the
+ * reasoning effort when known ("sonnet-4-5 · high").
+ */
+export function formatSubagentModelLabel(
+  model: string | null,
+  effort: string | null,
+): string | null {
+  if (!model) return null;
+  const compact = model
+    .replace(/^claude-/, "")
+    .replace(/-\d{8}$/, "")
+    .replace(/-latest$/, "");
+  return effort ? `${compact} · ${effort}` : compact;
 }
 
 /** Compact token count for agent rows and usage footers: 950, 12.3k, 1.2M. */

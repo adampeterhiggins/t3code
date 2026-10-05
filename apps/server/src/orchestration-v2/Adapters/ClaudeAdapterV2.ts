@@ -1982,6 +1982,27 @@ function claudeSubagentUsage(
   };
 }
 
+function trimmedClaudeString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+/**
+ * Fork: the task a Workflow tool call started and its remote session link, from
+ * the tool's structured result. Only http(s) links are kept.
+ */
+function claudeWorkflowSessionLink(
+  output: ClaudeNativeToolOutput,
+): { readonly taskId: string; readonly sessionUrl: string } | null {
+  if (output.type !== "structured_tool_use_result") return null;
+  const value = output.value;
+  if (typeof value !== "object" || value === null) return null;
+  const taskId = trimmedClaudeString(Reflect.get(value, "taskId"));
+  const sessionUrl = trimmedClaudeString(Reflect.get(value, "sessionUrl"));
+  return taskId !== undefined && sessionUrl !== undefined && /^https?:\/\//i.test(sessionUrl)
+    ? { taskId, sessionUrl }
+    : null;
+}
+
 function isClaudeSubagentAsyncLaunchAck(output: ClaudeNativeToolOutput): boolean {
   const value = claudeNativeToolOutputValue(output);
   if (typeof value === "object" && value !== null) {
@@ -4080,6 +4101,8 @@ export function makeClaudeAdapterV2(
           readonly result?: string;
           // Replaces the prior usage; an update without one keeps it.
           readonly usage?: OrchestrationV2SubagentUsage;
+          readonly outputFile?: string;
+          readonly sessionUrl?: string;
           readonly status: Extract<
             OrchestrationV2ExecutionNode["status"],
             "running" | "completed" | "failed" | "cancelled"
@@ -4154,7 +4177,12 @@ export function makeClaudeAdapterV2(
             existingSubagent === undefined
               ? undefined
               : isReopen
-                ? (({ progress: _staleProgress, usage: _staleUsage, ...rest }) => ({
+                ? (({
+                    progress: _staleProgress,
+                    usage: _staleUsage,
+                    outputFile: _staleOutputFile,
+                    ...rest
+                  }) => ({
                     ...rest,
                     result: null,
                   }))(existingSubagent.task)
@@ -4201,6 +4229,8 @@ export function makeClaudeAdapterV2(
             ...(input.progress === undefined ? {} : { progress: input.progress }),
             ...(input.result === undefined ? {} : { result: input.result }),
             ...(input.usage === undefined ? {} : { usage: input.usage }),
+            ...(input.outputFile === undefined ? {} : { outputFile: input.outputFile }),
+            ...(input.sessionUrl === undefined ? {} : { sessionUrl: input.sessionUrl }),
             ...(isReopen ? { startedAt: now } : {}),
             completedAt: input.status === "running" ? null : (priorTask?.completedAt ?? now),
             updatedAt: now,
@@ -6085,12 +6115,14 @@ export function makeClaudeAdapterV2(
             });
             if (!wasBackgroundTask && !context.ignoredTaskIds.has(message.task_id)) {
               const notificationUsage = claudeSubagentUsage(message.usage);
+              const outputFile = trimmedClaudeString(message.output_file);
               yield* updateClaudeSubagentNode({
                 context,
                 taskId: message.task_id,
                 ...(message.tool_use_id === undefined ? {} : { toolUseId: message.tool_use_id }),
                 result: message.summary,
                 ...(notificationUsage === undefined ? {} : { usage: notificationUsage }),
+                ...(outputFile === undefined ? {} : { outputFile }),
                 status:
                   message.status === "completed"
                     ? "completed"
@@ -6217,6 +6249,30 @@ export function makeClaudeAdapterV2(
             });
             yield* emitToolCallArtifacts(artifacts);
             context.toolCalls.delete(toolCall.nativeItemId);
+            // Fork: the Workflow tool's result links the task it started to its remote session.
+            const workflowLink =
+              toolCall.toolName.toLowerCase() === "workflow" && !isClaudeToolResultError(toolResult)
+                ? claudeWorkflowSessionLink(output)
+                : null;
+            if (workflowLink !== null) {
+              const registered =
+                context.subagentsByTaskId.get(workflowLink.taskId) ??
+                (yield* Ref.get(sessionSubagentsByTaskId)).get(workflowLink.taskId);
+              const status = registered?.task.status;
+              if (
+                status === "running" ||
+                status === "completed" ||
+                status === "failed" ||
+                status === "cancelled"
+              ) {
+                yield* updateClaudeSubagentNode({
+                  context,
+                  taskId: workflowLink.taskId,
+                  sessionUrl: workflowLink.sessionUrl,
+                  status,
+                });
+              }
+            }
           }
 
           const assistantParentToolUseId = parentToolUseIdFromSdkMessage(message);
