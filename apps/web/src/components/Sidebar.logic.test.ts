@@ -113,6 +113,17 @@ describe("resolveSidebarRowAccessibility", () => {
       isActive: false,
       expected: { label: "Untitled task", current: undefined },
     },
+    {
+      title: "Fix the flaky test",
+      statusLabel: "Working",
+      projectDisplayName: "T3 Code",
+      isActive: false,
+      startedByAgent: true,
+      expected: {
+        label: "Fix the flaky test, Working, Started by an agent, T3 Code",
+        current: undefined,
+      },
+    },
   ])("leads with the title without folding row actions into its name: %j", (input) => {
     const { expected, ...state } = input;
     expect(resolveSidebarRowAccessibility(state)).toEqual(expected);

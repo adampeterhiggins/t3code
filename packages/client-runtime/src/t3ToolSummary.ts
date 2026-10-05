@@ -285,6 +285,13 @@ export function summarizeT3ToolCalls(
         quantity(countEntities(entityIds("requestId")), "pending question request"),
       );
       break;
+    case "approval-respond":
+      label = phrase(
+        "Answered",
+        "answer",
+        quantity(countEntities(entityIds("requestId")), "approval request"),
+      );
+      break;
     case "worktree-handoff":
       label = phrase(
         "Handed off to",

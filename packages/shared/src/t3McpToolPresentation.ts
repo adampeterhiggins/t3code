@@ -38,6 +38,7 @@ export type T3McpToolSummaryAction =
   | "question-list"
   | "question-read"
   | "question-respond"
+  | "approval-respond"
   | "worktree-handoff"
   | "worktree-list"
   | "worktree-status"
@@ -239,6 +240,11 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
     "question-list",
   ),
   t3_pending_request_read: tool(["Read", "Reading", "Read", "pending questions"], "question-read"),
+  // Fork: served on /mcp/operate to agents holding an agent access token.
+  t3_approval_respond: tool(
+    ["Answer", "Answering", "Answered", "a thread's approval"],
+    "approval-respond",
+  ),
   t3_pending_request_respond: tool(
     ["Answer", "Answering", "Answered", "pending questions"],
     "question-respond",

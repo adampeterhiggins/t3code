@@ -88,6 +88,17 @@ const OrchestrationV2CreationFields = {
   creationSource: OrchestrationV2CreationSource,
 } as const;
 
+/**
+ * Who started a thread when an agent did: the thread whose agent started it,
+ * or the agent access token an agent outside T3 Code used. Absent for threads
+ * the user started. Fork-only; see docs/fork-differences.md.
+ */
+export const OrchestrationV2ThreadStartedBy = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("thread"), threadId: ThreadId }),
+  Schema.Struct({ kind: Schema.Literal("agent-access"), label: Schema.String }),
+]);
+export type OrchestrationV2ThreadStartedBy = typeof OrchestrationV2ThreadStartedBy.Type;
+
 export const OrchestrationV2NativeRefStrength = Schema.Literals(["strong", "weak", "none"]);
 export type OrchestrationV2NativeRefStrength = typeof OrchestrationV2NativeRefStrength.Type;
 
@@ -358,6 +369,7 @@ export type OrchestrationV2LimitRecoveryUpdate = typeof OrchestrationV2LimitReco
 
 export const OrchestrationV2AppThread = Schema.Struct({
   ...OrchestrationV2CreationFields,
+  startedBy: Schema.optional(OrchestrationV2ThreadStartedBy),
   id: ThreadId,
   projectId: ProjectId,
   title: TrimmedNonEmptyString,
@@ -1716,6 +1728,7 @@ export type OrchestrationV2LatestVisibleMessageSummary =
 
 export const OrchestrationV2ThreadShell = Schema.Struct({
   ...OrchestrationV2CreationFields,
+  startedBy: Schema.optional(OrchestrationV2ThreadStartedBy),
   id: ThreadId,
   projectId: ProjectId,
   title: Schema.String,
@@ -2481,6 +2494,8 @@ export const OrchestrationV2Command = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("thread.create"),
     ...OrchestrationV2CreationFields,
+    /** Set by the server for threads an agent starts over MCP; ignored from clients. */
+    startedBy: Schema.optional(OrchestrationV2ThreadStartedBy),
     commandId: CommandId,
     threadId: ThreadId,
     projectId: ProjectId,

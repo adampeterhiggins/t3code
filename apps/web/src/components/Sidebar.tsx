@@ -76,6 +76,7 @@ import {
   AlarmClockIcon,
   AlarmClockOffIcon,
   ArrowRightLeftIcon,
+  BotIcon,
   CheckIcon,
   ChevronDownIcon,
   ChevronUpIcon,
@@ -193,6 +194,7 @@ import { ProjectEnvironmentBadge } from "./ProjectEnvironmentBadge";
 import { buildDraftActionMenuItems, buildThreadActionMenuItems } from "./threadActionMenu.logic";
 import { openLinearIssuePicker } from "./chat/LinearIssuePicker";
 import { openTranscriptExportDialog } from "./TranscriptExportDialog";
+import { StartedByHoverLine } from "./chat/StartedByChip";
 import {
   animateSidebarLayoutChanges,
   applySidebarThreadDrop,
@@ -595,6 +597,7 @@ function SidebarThreadTooltip({
             </div>
           </div>
         ) : null}
+        {thread.startedBy !== null ? <StartedByHoverLine thread={thread} /> : null}
         {terminalStatus ? (
           <div className="flex min-w-0 items-center gap-2">
             <TerminalIcon
@@ -1675,6 +1678,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     statusLabel: headerStatus?.label ?? null,
     projectDisplayName: props.projectDisplayName,
     isActive: rowActive,
+    startedByAgent: thread.startedBy !== null,
   });
 
   const title = isRenaming ? (
@@ -1846,6 +1850,13 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     )
   ) : null;
 
+  // An agent started this thread. The row's label speaks it, the hover card
+  // and chat header say which agent.
+  const agentIndicator =
+    thread.startedBy !== null ? (
+      <BotIcon aria-hidden className="size-3 shrink-0 text-muted-foreground/65" />
+    ) : null;
+
   if (variant === "slim") {
     return (
       <li
@@ -1892,6 +1903,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
             {draftIndicator}
             {title}
             {tabCountBadge}
+            {agentIndicator}
             {pinIndicator}
             {terminalStatusIcon}
             {isRegeneratingTitle ? (
@@ -2067,6 +2079,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
               ) : (
                 <span className="flex-1" />
               )}
+              {agentIndicator}
               {/* Status at rest, hover actions once they fit. The pin is the
                   trailing item, outside that swap, so it cannot slide sideways. */}
               {sortable?.isDragging ? (

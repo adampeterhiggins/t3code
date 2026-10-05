@@ -7,6 +7,7 @@ import * as Project from "../../../project/ProjectService.ts";
 import * as ManagedProjectFolders from "../../../project/ManagedProjectFolders.ts";
 import * as Repositories from "../../../sourceControl/SourceControlRepositoryService.ts";
 import { resolveRuntimeMode } from "../../OrchestratorMcpService.ts";
+import { assertMaySpawn } from "../../spawnPolicy.ts";
 import {
   newCommandId,
   readCaller,
@@ -57,6 +58,7 @@ export const ProjectHandlersLive = ProjectToolkit.toLayer({
         limits.runtimeMode,
         input.runtimeMode ?? caller?.runtimeMode,
       );
+      if (caller !== undefined) yield* assertMaySpawn(context.threads, caller.id, 1);
       const commandId = yield* newCommandId();
       const threadId = ThreadId.make(commandId);
       const messageId = MessageId.make(commandId);
@@ -125,6 +127,12 @@ export const ProjectHandlersLive = ProjectToolkit.toLayer({
             }),
         createdBy: "agent",
         creationSource: "mcp",
+        // Who started it shows on the new thread: the calling thread, or the agent access token.
+        ...(caller !== undefined
+          ? { startedBy: { kind: "thread" as const, threadId: caller.id } }
+          : context.scope.client !== undefined
+            ? { startedBy: { kind: "agent-access" as const, label: context.scope.client.label } }
+            : {}),
       }).pipe(
         Effect.mapError((error) =>
           error._tag === "AttachmentClaimError"

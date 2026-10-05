@@ -44,6 +44,7 @@ import {
   ThreadLinearLinkChip,
   useThreadLinearLink,
 } from "./ThreadLinearLink";
+import { ThreadStartedByChip } from "./ThreadStartedByChip";
 
 const NEW_TAB_ACTION = "tab:new";
 const CLOSE_TAB_ACTION = "tab:close";
@@ -339,6 +340,7 @@ export function ThreadTabs({
         ) : linear.canLink && group.tabs.length <= 1 ? (
           <ThreadLinearLinkButton onPress={linearPicker.open} />
         ) : null}
+        <ThreadStartedByChip environmentId={environmentId} threadId={threadId} />
         {gitHubIssueLink ? (
           <ThreadGitHubIssueLinkChip
             environmentId={environmentId}

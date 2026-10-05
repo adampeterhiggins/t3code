@@ -714,12 +714,14 @@ Code: `packages/client-runtime/src/work-log/commandDisplay.ts`, used by
 ## Agent access over MCP
 
 Two more MCP servers serve agents outside T3 Code. `/mcp/query` gives read-only access to the
-environment's history: projects, threads, turns, messages, activities, plans, turn diffs, linked
+environment's history: projects, threads, turns, messages, the work log, plans, turn diffs, linked
 pull requests, and usage. Its tools page with cursors, take `since`/`until` bounds, and cap text.
-`/mcp/operate` adds the thread and project tools listed under
-[Agents start and drive threads](#agents-start-and-drive-threads), plus `respond_to_request` for
-answering a thread's approvals and questions. It acts as the user without the spawn limits, and
-threads it starts record the token's label.
+It reads the orchestration v2 projections; threads imported from before v2 carry only their
+messages. `/mcp/operate` adds upstream's orchestrator, thread, project, and environment tools,
+acting as a client caller labelled with the token's name, plus `t3_approval_respond` for
+answering a thread's approvals (upstream's `t3_pending_request_respond` answers questions but
+refuses approvals). It acts as the user, in any permission mode, without the spawn limits, and
+threads it starts with `t3_thread_launch` record the token's label.
 Both authenticate with an environment bearer token, never a cookie: `/mcp/query` needs
 `orchestration:read`, `/mcp/operate` also `orchestration:operate`.
 
@@ -727,32 +729,38 @@ Tokens come from **Settings → Connections → Agent access** (`POST /api/auth/
 `access: "read" | "operate"`) or `t3 auth session issue --read-only` / `--operate`. Each token is a
 normal client session, so revoking it works like revoking any client. Web and desktop only.
 
-Code: `apps/server/src/mcp/query/`, the `agentAccessToken` handler in
-`apps/server/src/auth/http.ts`, `AuthReadOnlyClientScopes` and `AuthAgentOperateScopes` in
-`packages/contracts/src/auth.ts`, and `apps/web/src/components/settings/AgentAccessSettings.tsx`.
+Code: [`AgentAccessMcpServer.ts`](../apps/server/src/mcp/AgentAccessMcpServer.ts),
+[`mcp/query/`](../apps/server/src/mcp/query/),
+[`toolkits/approval/`](../apps/server/src/mcp/toolkits/approval/), the `agentAccessToken`
+handler in [`auth/http.ts`](../apps/server/src/auth/http.ts), `AuthReadOnlyClientScopes` and
+`AuthAgentOperateScopes` in [`contracts/src/auth.ts`](../packages/contracts/src/auth.ts), and
+[`AgentAccessSettings.tsx`](../apps/web/src/components/settings/AgentAccessSettings.tsx).
 User guide: [agent-access.md](./user/agent-access.md).
 
 ## Agents start and drive threads
 
-A thread's `t3-code` MCP server also lists the thread tools `create_thread`, `send_message`,
-`wait_for_thread`, `interrupt_turn`, `update_thread`, `set_thread_state`, and `list_models`; the
-project tools `create_project` and `update_project`; and the history tools `list_projects`,
-`list_threads`, `get_thread`, `list_messages`, and `search`.
+Upstream gives every thread's agent its orchestration tools (`create_threads`, `delegate_task`,
+`t3_thread_launch`, `t3_thread_send`, and the rest). The fork adds limits for an agent inside a
+thread: chains of agent-started threads stop two levels deep, a thread keeps at most five started
+threads going at once (a started thread counts until it settles or is archived, a delegated task
+while its child runs), and `t3_thread_send`, `t3_thread_wait`, and `t3_thread_interrupt` refuse
+the caller's own thread. Metadata tools such as `t3_thread_update` still default to the caller's
+own thread, as upstream intends. A thread's agent never answers another thread's approvals.
 
-A thread's agent cannot give a thread it starts a runtime mode above its own, chains stop two
-levels deep, a thread keeps at most five live children, and it cannot act on its own thread or
-answer another thread's approvals or questions. A thread an agent starts records `createdBy`: the
-chat header on web, desktop, and mobile names the starting thread (and opens it) or the agent
-access token, and web sidebar rows mark it with a bot icon.
+A thread an agent starts with `create_threads` or `t3_thread_launch` records `startedBy` (the
+starting thread, or the agent access token's label). The chat header on web, desktop, and mobile
+names the starting thread (and opens it) or the token, and web sidebar rows mark the thread with a
+bot icon. A client cannot set `startedBy`; only the server's MCP paths do.
 
-Code: `apps/server/src/mcp/toolkits/operate/`, `apps/server/src/mcp/McpActor.ts`,
-`ThreadReadToolkit` in `apps/server/src/mcp/query/tools.ts`, `agentAccessCapabilities` in
-`apps/server/src/provider/Layers/ProviderService.ts`, `ThreadCreatedBy` in
-`packages/contracts/src/orchestration.ts`,
-`apps/server/src/orchestration/ClientCommandDispatcher.ts`,
-`apps/web/src/components/chat/StartedByChip.tsx`, and
-`apps/mobile/src/features/threads/ThreadStartedByChip.tsx`. User guide:
-[agent-access.md](./user/agent-access.md#let-agents-start-threads).
+Code: [`spawnPolicy.ts`](../apps/server/src/mcp/spawnPolicy.ts), its callers in
+[`OrchestratorMcpService.ts`](../apps/server/src/mcp/OrchestratorMcpService.ts) and
+[`toolkits/project/handlers.ts`](../apps/server/src/mcp/toolkits/project/handlers.ts),
+`OrchestrationV2ThreadStartedBy` in
+[`orchestrationV2.ts`](../packages/contracts/src/orchestrationV2.ts),
+[`state/startedBy.ts`](../packages/client-runtime/src/state/startedBy.ts),
+[`StartedByChip.tsx`](../apps/web/src/components/chat/StartedByChip.tsx), and
+[`ThreadStartedByChip.tsx`](../apps/mobile/src/features/threads/ThreadStartedByChip.tsx). User
+guide: [agent-access.md](./user/agent-access.md#let-agents-start-threads).
 
 ## Attention inbox
 
