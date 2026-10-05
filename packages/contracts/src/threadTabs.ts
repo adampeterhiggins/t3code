@@ -1,6 +1,6 @@
 import * as Schema from "effect/Schema";
 import { MessageId, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
-import { ModelSelection } from "./orchestration.ts";
+import { ModelSelection } from "./modelSelection.ts";
 
 export const ThreadTab = Schema.Struct({
   threadId: ThreadId,

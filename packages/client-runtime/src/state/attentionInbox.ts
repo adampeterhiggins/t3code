@@ -1,5 +1,6 @@
-import type { EnvironmentId, OrchestrationThreadShell, ThreadId } from "@t3tools/contracts";
+import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 
+import { threadRuntimeIsActive, type EnvironmentThreadShell } from "./models.ts";
 import { effectiveSnoozed, type ThreadSnoozeShell } from "./threadSettled.ts";
 
 /**
@@ -16,7 +17,10 @@ const REASON_RANK: Record<ThreadAttentionReason, number> = {
 };
 
 export type AttentionThread = ThreadSnoozeShell &
-  Pick<OrchestrationThreadShell, "id" | "archivedAt" | "backgroundLiveness" | "updatedAt"> & {
+  Pick<
+    EnvironmentThreadShell,
+    "id" | "archivedAt" | "updatedAt" | "runtime" | "latestRun" | "pendingBackgroundTasks"
+  > & {
     readonly environmentId: EnvironmentId;
   };
 
@@ -45,10 +49,10 @@ function isAfterVisit(at: string | null | undefined, lastVisitedAt: string | und
 
 /** The latest turn finished after the client last looked at the thread. */
 export function hasUnseenCompletion(
-  latestTurn: OrchestrationThreadShell["latestTurn"],
+  latestRun: EnvironmentThreadShell["latestRun"],
   lastVisitedAt: string | undefined,
 ): boolean {
-  return isAfterVisit(latestTurn?.completedAt, lastVisitedAt);
+  return isAfterVisit(latestRun?.completedAt, lastVisitedAt);
 }
 
 /**
@@ -63,21 +67,21 @@ export function resolveThreadAttention(
 ): ThreadAttention | null {
   if (thread.hasPendingApprovals) return { reason: "approval", at: thread.updatedAt };
   if (thread.hasPendingUserInput) return { reason: "input", at: thread.updatedAt };
-  const session = thread.session;
-  if (session?.status === "running" || session?.status === "starting") return null;
-  const turn = thread.latestTurn;
+  const runtime = thread.runtime;
+  if (threadRuntimeIsActive(runtime)) return null;
+  const run = thread.latestRun;
   const failedAt =
-    turn?.state === "error" && turn.completedAt
-      ? turn.completedAt
-      : session?.status === "error"
-        ? session.updatedAt
+    run?.status === "failed" && run.completedAt
+      ? run.completedAt
+      : runtime?.status === "failed"
+        ? runtime.updatedAt
         : null;
   if (failedAt !== null) {
     return isAfterVisit(failedAt, lastVisitedAt) ? { reason: "failed", at: failedAt } : null;
   }
-  if (thread.backgroundLiveness) return null;
-  if (turn?.completedAt && hasUnseenCompletion(turn, lastVisitedAt)) {
-    return { reason: "completed", at: turn.completedAt };
+  if (thread.pendingBackgroundTasks.length > 0) return null;
+  if (run?.completedAt && hasUnseenCompletion(run, lastVisitedAt)) {
+    return { reason: "completed", at: run.completedAt };
   }
   return null;
 }

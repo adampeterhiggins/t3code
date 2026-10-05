@@ -1,10 +1,11 @@
-import type { OrchestrationThreadShell, VcsRef } from "@t3tools/contracts";
+import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
+import type { VcsRef } from "@t3tools/contracts";
 import { deriveLocalBranchNameFromRemoteRef } from "@t3tools/shared/git";
 
 import type { DraftThreadEnvMode } from "~/composerDraftStore";
 
 type ThreadCandidate = Pick<
-  OrchestrationThreadShell,
+  EnvironmentThreadShell,
   "branch" | "archivedAt" | "updatedAt" | "pullRequests" | "linkedPullRequest" | "branchPullRequest"
 >;
 

@@ -1,53 +1,22 @@
-import type { ReactElement } from "react";
-import { EnvironmentId } from "@t3tools/contracts";
+import { EnvironmentId, ProviderDriverKind, type AcpRegistrySearchAgent } from "@t3tools/contracts";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { visitElements } from "../../test/reactElementTree";
 import { reactHookHarness as hooks } from "../../test/reactHookHarness";
 
-const settingsHooks = vi.hoisted(() => {
-  const updateInner = vi.fn();
-  return {
-    read: vi.fn(() => ({ providerInstances: {} })),
-    update: vi.fn(() => updateInner),
-    updateInner,
-  };
-});
+const settingsHooks = vi.hoisted(() => ({
+  read: vi.fn(() => ({ providerInstances: {} })),
+  mutate: vi.fn(),
+  useMutation: vi.fn(),
+}));
 
 const atoms = vi.hoisted(() => ({
   providers: [] as ReadonlyArray<unknown>,
-  providersAtom: Symbol("providers"),
   refreshProviders: Symbol("refreshProviders"),
-  providerAuthState: Symbol("providerAuthState"),
-  providerInstallState: Symbol("providerInstallState"),
-  startProviderAuth: Symbol("startProviderAuth"),
-  completeProviderAuth: Symbol("completeProviderAuth"),
-  cancelProviderAuth: Symbol("cancelProviderAuth"),
-  logoutProviderAuth: Symbol("logoutProviderAuth"),
-  startProviderInstall: Symbol("startProviderInstall"),
-  cancelProviderInstall: Symbol("cancelProviderInstall"),
-  removeProviderInstall: Symbol("removeProviderInstall"),
 }));
 
 const commands = vi.hoisted(() => ({
   refreshProviders: vi.fn(),
-  startAuth: vi.fn(),
-  completeAuth: vi.fn(),
-  cancelAuth: vi.fn(),
-  logoutAuth: vi.fn(),
-  startInstall: vi.fn(),
-  cancelInstall: vi.fn(),
-  removeInstall: vi.fn(),
-}));
-
-const queryState = vi.hoisted(() => ({
-  value: {
-    data: { phase: "idle" },
-    error: null,
-    isPending: false,
-    isSuccess: true,
-    refresh: vi.fn(),
-  },
 }));
 
 vi.mock("react", async (importOriginal) => {
@@ -56,7 +25,6 @@ vi.mock("react", async (importOriginal) => {
   return {
     ...actual,
     useMemo: reactHookHarness.useMemo,
-    useRef: reactHookHarness.useRef,
     useState: reactHookHarness.useState,
   };
 });
@@ -66,153 +34,290 @@ vi.mock("react/compiler-runtime", async () => {
   return { c: reactHookHarness.useMemoCache };
 });
 
+vi.mock("@t3tools/client-runtime/state/runtime", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@t3tools/client-runtime/state/runtime")>()),
+  squashAtomCommandFailure: () => new Error("The settings update failed."),
+}));
+
 vi.mock("../../hooks/useSettings", () => ({
   useEnvironmentSettings: settingsHooks.read,
-  useUpdateEnvironmentSettings: settingsHooks.update,
+  usePersistEnvironmentProviderInstanceMutation: settingsHooks.useMutation,
 }));
 
 vi.mock("@effect/atom-react", () => ({
   useAtomValue: () => atoms.providers,
-  useAtomRefresh: () => vi.fn(),
 }));
 
 vi.mock("../../state/server", () => ({
   EMPTY_SERVER_PROVIDERS: [],
   serverEnvironment: {
-    providersValueAtom: () => atoms.providersAtom,
+    providersValueAtom: () => Symbol("providers"),
     refreshProviders: atoms.refreshProviders,
-    providerAuthState: () => atoms.providerAuthState,
-    providerInstallState: () => atoms.providerInstallState,
-    startProviderAuth: atoms.startProviderAuth,
-    completeProviderAuth: atoms.completeProviderAuth,
-    cancelProviderAuth: atoms.cancelProviderAuth,
-    logoutProviderAuth: atoms.logoutProviderAuth,
-    startProviderInstall: atoms.startProviderInstall,
-    cancelProviderInstall: atoms.cancelProviderInstall,
-    removeProviderInstallation: atoms.removeProviderInstall,
   },
 }));
 
 vi.mock("../../state/use-atom-command", () => ({
-  useAtomCommand: (atom: symbol) => {
-    switch (atom) {
-      case atoms.refreshProviders:
-        return commands.refreshProviders;
-      case atoms.startProviderAuth:
-        return commands.startAuth;
-      case atoms.completeProviderAuth:
-        return commands.completeAuth;
-      case atoms.cancelProviderAuth:
-        return commands.cancelAuth;
-      case atoms.logoutProviderAuth:
-        return commands.logoutAuth;
-      case atoms.startProviderInstall:
-        return commands.startInstall;
-      case atoms.cancelProviderInstall:
-        return commands.cancelInstall;
-      case atoms.removeProviderInstall:
-        return commands.removeInstall;
-      default:
-        return vi.fn();
-    }
-  },
+  useAtomCommand: (atom: symbol) =>
+    atom === atoms.refreshProviders ? commands.refreshProviders : vi.fn(),
 }));
-
-vi.mock("../../state/query", () => ({
-  useEnvironmentQuery: () => queryState.value,
-}));
-
-vi.mock("./settingsLayout", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./settingsLayout")>();
-  return {
-    ...actual,
-    useSettingsSearchTargetId: () => null,
-  };
-});
 
 import { AddProviderInstanceDialog } from "./AddProviderInstanceDialog";
 import { ProviderAuthSection } from "./ProviderAuthSection";
 
 const remoteEnvironmentId = EnvironmentId.make("remote-device");
+const preparedAgent: AcpRegistrySearchAgent = {
+  id: "kilo",
+  name: "Kilo Code",
+  version: "4.2.0",
+  description: "Kilo ACP agent",
+  authors: ["Kilo"],
+  license: "Apache-2.0",
+  website: null,
+  repository: null,
+  icon: "https://cdn.agentclientprotocol.com/registry/v1/latest/kilo.svg",
+  distribution: "binary",
+  integrity: "sha256",
+};
 
-function renderDialog(onOpenChange: () => void = vi.fn()): ReactElement<Record<string, unknown>> {
+function render(onOpenChange = vi.fn()) {
   hooks.beginRender();
   return AddProviderInstanceDialog({
     open: true,
     environmentId: remoteEnvironmentId,
     environmentLabel: "Remote device",
     onOpenChange,
-  }) as ReactElement<Record<string, unknown>>;
+  });
 }
 
-function findButtonByLabel(
-  tree: ReactElement<Record<string, unknown>>,
-  label: string,
-): ReactElement<Record<string, unknown>> | null {
-  return visitElements(
-    tree,
-    (element) => element.props.children === label && typeof element.props.onClick === "function",
+function findByChildren(tree: ReturnType<typeof render>, children: string) {
+  const result = visitElements(tree, (element) => element.props.children === children);
+  expect(result).not.toBeNull();
+  return result!;
+}
+
+async function selectPreparedAcp() {
+  const searchStep = render();
+  const search = visitElements(
+    searchStep,
+    (element) =>
+      typeof element.type === "function" && element.type.name === "AcpRegistrySearchStep",
   );
-}
-
-function clickButton(tree: ReactElement<Record<string, unknown>>, label: string): void {
-  const button = findButtonByLabel(tree, label);
-  (button?.props.onClick as (() => void) | undefined)?.();
+  expect(search).not.toBeNull();
+  (search?.props.onPrepared as ((agent: AcpRegistrySearchAgent) => void) | undefined)?.(
+    preparedAgent,
+  );
 }
 
 describe("AddProviderInstanceDialog environment routing", () => {
   beforeEach(() => {
     hooks.reset();
-    settingsHooks.read.mockClear();
-    settingsHooks.update.mockClear();
-    settingsHooks.updateInner.mockClear();
+    settingsHooks.read.mockReset().mockReturnValue({ providerInstances: {} });
+    settingsHooks.mutate.mockReset().mockResolvedValue({ _tag: "Success", value: {} });
+    settingsHooks.useMutation.mockReset().mockReturnValue(settingsHooks.mutate);
+    atoms.providers = [];
     commands.refreshProviders.mockReset();
   });
 
-  it("reads and writes settings through the supplied environment", () => {
-    renderDialog();
-
-    expect(settingsHooks.read).toHaveBeenCalledWith(remoteEnvironmentId);
-    expect(settingsHooks.update).toHaveBeenCalledWith(remoteEnvironmentId);
+  it("creates a provider with its default identity without typing", async () => {
+    let tree = render();
+    const group = visitElements(
+      tree,
+      (element) => element.props["aria-labelledby"] === "add-instance-driver-label",
+    );
+    (group!.props.onValueChange as (value: string) => void)("grok");
+    tree = render();
+    (findByChildren(tree, "Next").props.onClick as () => void)();
+    tree = render();
+    (findByChildren(tree, "Next").props.onClick as () => void)();
+    tree = render();
+    (findByChildren(tree, "Add instance").props.onClick as () => void)();
+    await Promise.resolve();
+    expect(settingsHooks.mutate).toHaveBeenCalledWith({
+      operation: "create",
+      instanceId: "grok",
+      instance: { driver: "grok", enabled: true, displayName: "Grok" },
+    });
   });
 
-  it("creates the instance on Config and lands on a sign-in step for its id", () => {
-    let tree = renderDialog();
-    // Codex opens on the ChatGPT connect choice; the manual path reaches Config.
-    clickButton(tree, "Configure manually");
-
-    tree = renderDialog();
-    const idInput = visitElements(tree, (element) => element.props.placeholder === "codex_work");
-    (idInput?.props.onChange as ((event: unknown) => void) | undefined)?.({
-      target: { value: "codex_work" },
-    });
-
-    tree = renderDialog();
-    clickButton(tree, "Next");
-
-    tree = renderDialog();
-    clickButton(tree, "Add instance");
-
-    expect(settingsHooks.updateInner).toHaveBeenCalledWith({
+  it("chooses an unused identity for another account without replacing configured instances", async () => {
+    settingsHooks.read.mockReturnValue({
       providerInstances: {
-        codex_work: { driver: "codex", enabled: true, config: { setupMode: "existing" } },
+        codex_2: { driver: "codex", enabled: false },
       },
     });
+    let tree = render();
+    // Codex offers ChatGPT sign-in first; manual setup keeps the existing CLI flow.
+    (findByChildren(tree, "Configure manually").props.onClick as () => void)();
+    tree = render();
+    (findByChildren(tree, "Next").props.onClick as () => void)();
+    tree = render();
+    (findByChildren(tree, "Add instance").props.onClick as () => void)();
+    await Promise.resolve();
+    expect(settingsHooks.mutate).toHaveBeenCalledWith({
+      operation: "create",
+      instanceId: "codex_3",
+      instance: {
+        driver: "codex",
+        enabled: true,
+        displayName: "Codex",
+        config: { setupMode: "existing" },
+      },
+    });
+  });
+
+  it("reads and writes settings through the supplied environment", () => {
+    render();
+
+    expect(settingsHooks.read).toHaveBeenCalledWith(remoteEnvironmentId);
+    expect(settingsHooks.useMutation).toHaveBeenCalledWith(remoteEnvironmentId);
+  });
+
+  it("awaits an atomic create before closing and retains prepared ACP metadata", async () => {
+    const onOpenChange = vi.fn();
+    let resolveMutation!: (value: { readonly _tag: "Success"; readonly value: unknown }) => void;
+    settingsHooks.mutate.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveMutation = resolve;
+      }),
+    );
+    await selectPreparedAcp();
+
+    const identityStep = render(onOpenChange);
+    expect(
+      visitElements(identityStep, (element) => {
+        const content = JSON.stringify(element.props.children);
+        return content?.includes("4.2.0") === true && content.includes("binary");
+      }),
+    ).not.toBeNull();
+    (
+      findByChildren(identityStep, "Continue to sign-in").props.onClick as (() => void) | undefined
+    )?.();
+    expect(settingsHooks.mutate).toHaveBeenCalledWith({
+      operation: "create",
+      instanceId: "acpRegistry_kilo_code",
+      instance: {
+        driver: ProviderDriverKind.make("acpRegistry"),
+        enabled: true,
+        displayName: "Kilo Code",
+        config: {
+          agentId: "kilo",
+          distribution: "auto",
+          registryIconUrl: "https://cdn.agentclientprotocol.com/registry/v1/latest/kilo.svg",
+        },
+      },
+    });
+    expect(onOpenChange).not.toHaveBeenCalled();
+
+    resolveMutation({ _tag: "Success", value: {} });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(onOpenChange).not.toHaveBeenCalled();
+    const signInStep = render(onOpenChange);
+    const authentication = visitElements(
+      signInStep,
+      (element) =>
+        typeof element.type === "function" &&
+        element.type.name === "ProviderWizardAuthenticationStep",
+    );
+    expect(authentication?.props.instanceId).toBe("acpRegistry_kilo_code");
+    expect(authentication?.props.environmentId).toBe(remoteEnvironmentId);
+    expect(settingsHooks.mutate).toHaveBeenCalledTimes(1);
+    (authentication!.props.onFinish as () => void)();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("configures a manually entered registry agent from the first provider screen", async () => {
+    let tree = render();
+    const search = visitElements(
+      tree,
+      (element) =>
+        typeof element.type === "function" && element.type.name === "AcpRegistrySearchStep",
+    );
+    (search!.props.onManualConfiguration as () => void)();
+    tree = render();
+    const configuration = visitElements(
+      tree,
+      (element) => element.props.idPrefix === "add-provider-acpRegistry-manual",
+    );
+    (configuration!.props.onChange as (value: Record<string, unknown>) => void)({
+      agentId: "devin",
+    });
+    tree = render();
+    (findByChildren(tree, "Next").props.onClick as () => void)();
+    tree = render();
+    (findByChildren(tree, "Continue to sign-in").props.onClick as () => void)();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(settingsHooks.mutate).toHaveBeenCalledWith({
+      operation: "create",
+      instanceId: "acpRegistry_custom",
+      instance: {
+        driver: "acpRegistry",
+        enabled: true,
+        config: { agentId: "devin" },
+      },
+    });
+    tree = render();
+    expect(
+      visitElements(
+        tree,
+        (element) =>
+          typeof element.type === "function" &&
+          element.type.name === "ProviderWizardAuthenticationStep",
+      ),
+    ).not.toBeNull();
+  });
+
+  it("keeps the dialog open when the atomic upsert fails", async () => {
+    settingsHooks.mutate.mockResolvedValueOnce({ _tag: "Failure", cause: new Error("Conflict") });
+    const onOpenChange = vi.fn();
+    await selectPreparedAcp();
+
+    const identityStep = render(onOpenChange);
+    (
+      findByChildren(identityStep, "Continue to sign-in").props.onClick as (() => void) | undefined
+    )?.();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(onOpenChange).not.toHaveBeenCalled();
+  });
+  it("continues a created CLI-sign-in provider to its sign-in step", async () => {
+    let tree = render();
+    // Codex opens on the ChatGPT connect choice; the manual path reaches Config.
+    (findByChildren(tree, "Configure manually").props.onClick as () => void)();
+    tree = render();
+    (findByChildren(tree, "Next").props.onClick as () => void)();
+    tree = render();
+    (findByChildren(tree, "Add instance").props.onClick as () => void)();
+    await Promise.resolve();
+    await Promise.resolve();
+
     // A targeted refresh asks the server to probe the new instance so its
     // sign-in methods arrive promptly.
     expect(commands.refreshProviders).toHaveBeenCalledWith({
       environmentId: remoteEnvironmentId,
-      input: { instanceId: "codex_work" },
+      input: { instanceId: "codex_2" },
     });
 
-    tree = renderDialog();
-    const signInSection = visitElements(tree, (element) => element.type === ProviderAuthSection);
-    expect(signInSection?.props.instanceId).toBe("codex_work");
-    expect(signInSection?.props.environmentId).toBe(remoteEnvironmentId);
-
+    atoms.providers = [
+      {
+        instanceId: "codex_2",
+        setup: {
+          canAuthenticate: true,
+          canInstall: false,
+          authMethods: [{ id: "login", kind: "sign-in-flow", label: "Sign in" }],
+        },
+      },
+    ];
     const onOpenChange = vi.fn();
-    tree = renderDialog(onOpenChange);
-    clickButton(tree, "Done");
+    tree = render(onOpenChange);
+    const signInSection = visitElements(tree, (element) => element.type === ProviderAuthSection);
+    expect(signInSection?.props.instanceId).toBe("codex_2");
+    expect(signInSection?.props.environmentId).toBe(remoteEnvironmentId);
+    expect(onOpenChange).not.toHaveBeenCalled();
+
+    (findByChildren(tree, "Done").props.onClick as () => void)();
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 });

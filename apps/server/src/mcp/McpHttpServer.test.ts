@@ -1,3 +1,5 @@
+import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
+import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
 import { expect, it } from "@effect/vitest";
 import { NodeHttpServer } from "@effect/platform-node";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -10,27 +12,9 @@ import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { McpProtocol, McpSchema, McpServer } from "effect/unstable/ai";
-import {
-  HttpBody,
-  HttpClient,
-  HttpRouter,
-  HttpServerRequest,
-  HttpServerResponse,
-} from "effect/unstable/http";
+import { HttpBody, HttpClient, HttpRouter, HttpServerResponse } from "effect/unstable/http";
 
-import * as CheckpointDiffQuery from "../checkpointing/CheckpointDiffQuery.ts";
-import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
-import * as GitWorkflowService from "../git/GitWorkflowService.ts";
-import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
-import { ProviderService } from "../provider/Services/ProviderService.ts";
-import { UsageService } from "../usage/UsageService.ts";
-import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
-import * as ClientCommandDispatcher from "../orchestration/ClientCommandDispatcher.ts";
-import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
-import * as ProviderRegistry from "../provider/Services/ProviderRegistry.ts";
-import * as ServerSettings from "../serverSettings.ts";
-import * as McpActor from "./McpActor.ts";
-import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import * as ProjectService from "../project/ProjectService.ts";
 import * as ServerConfig from "../config.ts";
 import * as McpHttpServer from "./McpHttpServer.ts";
 import * as McpInvocationContext from "./McpInvocationContext.ts";
@@ -43,9 +27,13 @@ const alternateTabId = PreviewTabId.make("tab-mcp-alternate");
 const decodeJsonText = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 const invocation = {
   environmentId,
-  threadId,
-  providerSessionId: "provider-session-mcp-test",
-  providerInstanceId: ProviderInstanceId.make("codex"),
+  requestNamespace: "provider-session-mcp-test",
+  thread: {
+    threadId,
+    providerSessionId: "provider-session-mcp-test",
+    providerInstanceId: ProviderInstanceId.make("codex"),
+  },
+  client: undefined,
   capabilities: new Set(["preview"] as const),
   issuedAt: 1,
 };
@@ -71,10 +59,9 @@ const PullRequestsTestLayer = McpHttpServer.PullRequestsToolkitRegistrationLive.
   Layer.provideMerge(McpServer.McpServer.layer),
   Layer.provide(
     Layer.mergeAll(
-      Layer.mock(ProjectionSnapshotQuery)({
-        getThreadShellById: () => Effect.succeedNone,
-      }),
-      Layer.mock(OrchestrationEngineService)({}),
+      Layer.mock(ProjectService.ProjectService)({}),
+      Layer.mock(Orchestrator.OrchestratorV2)({}),
+      Layer.mock(ProjectionStore.ProjectionStoreV2)({}),
       NodeServices.layer,
     ),
   ),
@@ -886,120 +873,4 @@ it.effect("registers annotated tools and preserves authenticated request context
       }
     }),
   ).pipe(Effect.provide(TestLayer)),
-);
-
-it.effect("lists thread-control tools only to credentials that may drive threads", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      // Stands in for the /mcp credential check: the header picks the thread's capabilities.
-      const actorMiddleware = HttpRouter.middleware<{ provides: McpActor.McpActor }>()(
-        Effect.succeed((httpEffect) =>
-          Effect.gen(function* () {
-            const request = yield* HttpServerRequest.HttpServerRequest;
-            const control = request.headers["x-thread-control"] === "on";
-            return yield* httpEffect.pipe(
-              Effect.provideService(McpActor.McpActor, {
-                kind: "thread",
-                threadId,
-                capabilities: new Set<McpInvocationContext.McpCapability>(
-                  control ? ["orchestration"] : [],
-                ),
-              }),
-              Effect.map(McpHttpServer.normalizeMcpHttpResponse),
-            );
-          }),
-        ),
-      ).layer;
-      const serverLayer = McpHttpServer.OperateToolkitRegistrationLive.pipe(
-        Layer.provideMerge(
-          McpServer.layerHttp({
-            name: "MCP visibility test",
-            version: "1.0.0",
-            path: "/mcp",
-            protocols: [McpProtocol.v2025_06_18],
-          }).pipe(Layer.provide(actorMiddleware)),
-        ),
-        Layer.provide(
-          Layer.mergeAll(
-            Layer.mock(ClientCommandDispatcher.ClientCommandDispatcher)({
-              forOrigin: () => ({ dispatch: () => Effect.die("unused") }),
-            }),
-            Layer.mock(OrchestrationEngineService)({}),
-            Layer.mock(ProjectionSnapshotQuery)({}),
-            Layer.mock(ProviderRegistry.ProviderRegistry)({}),
-            Layer.mock(ServerSettings.ServerSettingsService)({}),
-            Layer.mock(GitWorkflowService.GitWorkflowService)({}),
-            Layer.mock(CheckpointDiffQuery.CheckpointDiffQuery)({}),
-            Layer.mock(ProviderService)({}),
-            Layer.mock(ServerEnvironment.ServerEnvironment)({}),
-            Layer.mock(UsageService)({}),
-            SqlitePersistenceMemory,
-            WorkspacePaths.layer,
-            ServerConfig.layerTest(process.cwd(), { prefix: "t3-mcp-visibility-" }),
-          ).pipe(Layer.provideMerge(NodeServices.layer)),
-        ),
-      );
-      yield* HttpRouter.serve(serverLayer, { disableListenLog: true, disableLogger: true }).pipe(
-        Layer.build,
-      );
-      const httpClient = yield* HttpClient.HttpClient;
-
-      const listToolNames = (control: "on" | "off") =>
-        Effect.gen(function* () {
-          const headers = {
-            accept: "application/json, text/event-stream",
-            "x-thread-control": control,
-          };
-          const initialized = yield* httpClient.post("/mcp", {
-            headers,
-            body: HttpBody.text(
-              `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"mcp-test","version":"1.0.0"}}}`,
-              "application/json",
-            ),
-          });
-          const sessionId = initialized.headers["mcp-session-id"]!;
-          const listed = yield* httpClient.post("/mcp", {
-            headers: {
-              ...headers,
-              "mcp-session-id": sessionId,
-              "mcp-protocol-version": "2025-06-18",
-            },
-            body: HttpBody.text(
-              `{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}`,
-              "application/json",
-            ),
-          });
-          const text = yield* listed.text;
-          expect(listed.status).toBe(200);
-          const json = text.trimStart().startsWith("{")
-            ? text
-            : (text
-                .split("\n")
-                .find((line) => line.startsWith("data:"))
-                ?.slice(5) ?? "{}");
-          const body = decodeJsonText(json) as {
-            readonly result?: { readonly tools?: ReadonlyArray<{ readonly name: string }> };
-          };
-          return (body.result?.tools ?? []).map((tool) => tool.name).sort();
-        });
-
-      expect(yield* listToolNames("off")).toEqual([]);
-      expect(yield* listToolNames("on")).toEqual([
-        "create_project",
-        "create_thread",
-        "get_thread",
-        "interrupt_turn",
-        "list_messages",
-        "list_models",
-        "list_projects",
-        "list_threads",
-        "search",
-        "send_message",
-        "set_thread_state",
-        "update_project",
-        "update_thread",
-        "wait_for_thread",
-      ]);
-    }),
-  ).pipe(Effect.provide(NodeHttpServer.layerTest)),
 );

@@ -82,18 +82,15 @@ Codex defaults to the browser flow.
 
 An added instance with a blank home gets a private directory under T3's data (`provider-homes`),
 so a second login does not replace the default. The default instance keeps the CLI's normal home.
-Cursor ignores `CURSOR_CONFIG_DIR` for its login, so its private home is a shadow `HOME`:
-`.cursor` (and `.config/cursor` on Linux) stays private, and everything else is symlinked back to
-the real home. Devin and OpenCode use `XDG_DATA_HOME`. Cursor usage reads each instance's own CLI
-login; the same account still counts once.
+Grok uses `GROK_HOME`; Devin and OpenCode use `XDG_DATA_HOME`. Cursor is not covered: upstream signs each
+Cursor instance in through the Cursor SDK and keeps every instance's sign-in separately.
 
 Code: `apps/web/src/components/settings/ProviderAuthSection.tsx`,
 `apps/server/src/provider/Services/ProviderAuthService.ts`,
-`apps/server/src/provider/ProviderInstanceEnvironment.ts`,
-`apps/server/src/provider/Drivers/CursorHome.ts`, and
+`apps/server/src/provider/ProviderInstanceEnvironment.ts`, and
 `packages/contracts/src/providerSetup.ts`. User guides:
-[providers-cursor.md](./user/providers-cursor.md), [providers-devin.md](./user/providers-devin.md),
-and [providers-opencode.md](./user/providers-opencode.md).
+[providers-devin.md](./user/providers-devin.md) and
+[providers-opencode.md](./user/providers-opencode.md).
 
 ## Provider account picker
 
@@ -108,20 +105,6 @@ desktop.
 Code: `apps/web/src/components/chat/ProviderAccountPicker.tsx` and
 `apps/web/src/components/chat/providerAccountSelection.ts`. User guide:
 [providers-codex.md](./user/providers-codex.md#switch-accounts-in-an-existing-thread).
-
-## Cursor subagents in Agents
-
-Cursor subagents show up in the Agents panel and the conversation's agent launch row, like
-Claude's. Upstream never asks Cursor for subagent updates, so Cursor threads leave Agents empty.
-The server opts in with `clientCapabilities._meta.subagents` and maps Cursor's
-`subagent_spawned`, `subagent_state_update`, and child-session updates onto `task.*` events.
-`effect-acp` delivers `session/update` kinds its schema does not define as extension
-notifications instead of closing the connection.
-
-Code: `apps/server/src/provider/acp/CursorSubagents.ts`, the subagent handlers in
-`apps/server/src/provider/Layers/CursorAdapter.ts`, and `isUnknownSessionUpdate` in
-`packages/effect-acp/src/protocol.ts`. User guide:
-[providers-cursor.md](./user/providers-cursor.md#subagents).
 
 ## Agents panel drilldowns
 
@@ -701,12 +684,10 @@ User guide: [agent-access.md](./user/agent-access.md).
 
 ## Agents start and drive threads
 
-With **Agent thread control** on (off by default; environment setting with project overrides), a
-thread's `t3-code` MCP server also lists the thread tools `create_thread`, `send_message`,
+A thread's `t3-code` MCP server also lists the thread tools `create_thread`, `send_message`,
 `wait_for_thread`, `interrupt_turn`, `update_thread`, `set_thread_state`, and `list_models`; the
 project tools `create_project` and `update_project`; and the history tools `list_projects`,
-`list_threads`, `get_thread`, `list_messages`, and `search`. Credentials without it never see them.
-Web, desktop, and mobile settings all carry the toggle.
+`list_threads`, `get_thread`, `list_messages`, and `search`.
 
 A thread's agent cannot give a thread it starts a runtime mode above its own, chains stop two
 levels deep, a thread keeps at most five live children, and it cannot act on its own thread or
@@ -733,7 +714,7 @@ sidebar row would return to. Failures and completions leave the inbox once you o
 mark them read; **Mark unread** in the thread menu brings a completion back. Approvals and
 questions stay until answered. Archived threads are left out, and so are snoozed ones until they
 wake or raise their hand. The same list is **Needs attention** in the command palette
-(`mod+alt+n`, `attentionInbox.open`).
+(`mod+alt+shift+n`, `attentionInbox.open`).
 
 The inbox is derived on the client from thread shells and the client's existing read markers, so
 it adds no server state or payload. Mobile does not show it, because the mobile client does not

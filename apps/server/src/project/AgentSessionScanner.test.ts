@@ -19,7 +19,7 @@ import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 
 import * as ServerConfig from "../config.ts";
-import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as AgentSessionScanner from "./AgentSessionScanner.ts";
 
@@ -33,39 +33,12 @@ const makeProjectShell = (workspaceRoot: string): OrchestrationProjectShell => (
   updatedAt: "2026-01-01T00:00:00.000Z",
 });
 
-/** Only `getShellSnapshot` is exercised; the rest must not be called. */
-const makeProjectionSnapshotQueryLayer = (importedWorkspaceRoots: ReadonlyArray<string>) =>
-  Layer.succeed(ProjectionSnapshotQuery.ProjectionSnapshotQuery, {
-    getCommandReadModel: () => Effect.die("unused"),
-    getUserInputActivity: () => Effect.die("unused"),
-    listActivitiesByKind: () => Effect.die("unused"),
-    getSnapshot: () => Effect.die("unused"),
-    getShellSnapshot: () =>
-      Effect.succeed({
-        snapshotSequence: 0,
-        projects: importedWorkspaceRoots.map((workspaceRoot) => makeProjectShell(workspaceRoot)),
-        threads: [],
-        updatedAt: "2026-01-01T00:00:00.000Z",
-      }),
-    getDeletedWorktreeThreads: () => Effect.die("unused"),
-    listThreadsWithPullRequests: () => Effect.die("unused"),
-    getArchivedShellSnapshot: () => Effect.die("unused"),
-    getSnapshotSequence: () => Effect.die("unused"),
-    getCounts: () => Effect.die("unused"),
-    getEventReplayStats: () => Effect.die("unused"),
-    getActiveProjectByWorkspaceRoot: () => Effect.die("unused"),
-    getProjectShells: () => Effect.die("unused"),
-    getProjectShellById: () => Effect.die("unused"),
-    getImportedAgentSessionSources: () => Effect.succeed([]),
-    getFirstActiveThreadIdByProjectId: () => Effect.die("unused"),
-    getThreadCheckpointContext: () => Effect.die("unused"),
-    getFullThreadDiffContext: () => Effect.die("unused"),
-    getThreadShellById: () => Effect.die("unused"),
-    getThreadRuntimeContext: () => Effect.die("unused"),
-    getTurnStartMessage: () => Effect.die("unused"),
-    getThreadDetailById: () => Effect.die("unused"),
-    getThreadDetailSnapshot: () => Effect.die("unused"),
-    searchThreads: () => Effect.die("unused"),
+const makeProjectStoreLayer = (importedWorkspaceRoots: ReadonlyArray<string>) =>
+  Layer.mock(ProjectStore.ProjectStoreV2)({
+    listShells: () =>
+      Effect.succeed(
+        importedWorkspaceRoots.map((workspaceRoot) => makeProjectShell(workspaceRoot)),
+      ),
   });
 
 /**
@@ -98,7 +71,7 @@ const makeScannerTestLayer = (input: ScannerTestInput) =>
           input.claudeHomePath,
           input.configBaseDir ?? { prefix: "t3code-scanner-config-" },
         ),
-        makeProjectionSnapshotQueryLayer(input.importedWorkspaceRoots ?? []),
+        makeProjectStoreLayer(input.importedWorkspaceRoots ?? []),
       ),
     ),
   );
@@ -1370,94 +1343,6 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
 
         expect(result.candidates).toEqual([]);
         expect(result.scannedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
-      }),
-    );
-  });
-
-  describe("recentThreads for the conversation picker", () => {
-    it.effect("narrows to one session and rescans on refresh", () =>
-      Effect.gen(function* () {
-        const path = yield* Path.Path;
-        const nowMs = Date.parse("2026-08-24T12:00:00.000Z");
-        yield* TestClock.setTime(nowMs);
-        const claudeHomePath = yield* makeTempDir("t3code-picker-claude-");
-        const codexHomePath = yield* makeTempDir("t3code-picker-codex-");
-        const workspace = yield* makeTempDir("t3code-picker-project-");
-        const directory = path.join(codexHomePath, "sessions", "2026", "08", "24");
-        const rollout = (sessionId: string, turns: number) =>
-          [
-            encodeTranscriptRecord({
-              type: "session_meta",
-              payload: { id: sessionId, cwd: workspace },
-            }),
-            ...Array.from({ length: turns }, (_, turn) => [
-              encodeTranscriptRecord({
-                type: "event_msg",
-                payload: { type: "user_message", message: `Prompt ${turn}` },
-              }),
-              encodeTranscriptRecord({
-                type: "response_item",
-                payload: {
-                  type: "message",
-                  role: "assistant",
-                  content: [{ type: "output_text", text: `Answer ${turn}` }],
-                },
-              }),
-            ]).flat(),
-          ].join("\n");
-        yield* writeTranscript({
-          filePath: path.join(directory, "rollout-2026-08-24T10-00-00-session-long.jsonl"),
-          contents: rollout("session-long", 150),
-          mtimeMs: nowMs - 2_000,
-        });
-        yield* writeTranscript({
-          filePath: path.join(directory, "rollout-2026-08-24T11-00-00-session-short.jsonl"),
-          contents: rollout("session-short", 1),
-          mtimeMs: nowMs - 1_000,
-        });
-
-        const outcomes = yield* Effect.gen(function* () {
-          const scanner = yield* AgentSessionScanner.AgentSessionScanner;
-          const collect = (options?: AgentSessionScanner.AgentSessionRecentThreadsOptions) =>
-            scanner.recentThreads(workspace, [], options).pipe(
-              Stream.runCollect,
-              Effect.map((all) =>
-                Array.from(all).flatMap((outcome) =>
-                  outcome._tag === "Importable" ? [outcome.thread] : [],
-                ),
-              ),
-            );
-          const everything = yield* collect();
-          const one = yield* collect({
-            session: {
-              providerInstanceId: ProviderInstanceId.make("codex"),
-              providerSessionId: "session-long",
-            },
-          });
-          yield* writeTranscript({
-            filePath: path.join(directory, "rollout-2026-08-24T11-30-00-session-new.jsonl"),
-            contents: rollout("session-new", 1),
-            mtimeMs: nowMs - 500,
-          });
-          const cached = yield* collect();
-          const refreshed = yield* collect({ refresh: true });
-          return { everything, one, cached, refreshed };
-        }).pipe(Effect.provide(makeScannerTestLayer({ claudeHomePath, codexHomePath })));
-
-        expect(outcomes.everything.map((thread) => thread.providerSessionId)).toEqual([
-          "session-short",
-          "session-long",
-        ]);
-        expect(outcomes.one.map((thread) => thread.providerSessionId)).toEqual(["session-long"]);
-        // Imports keep the newest 200 messages, but the picker counts all of them.
-        expect(outcomes.one[0]?.messages).toHaveLength(200);
-        expect(outcomes.one[0]?.messageCount).toBe(300);
-        expect(outcomes.cached).toHaveLength(2);
-        expect(outcomes.refreshed.map((thread) => thread.providerSessionId)).toEqual([
-          "session-new",
-          "session-short",
-          "session-long",
-        ]);
       }),
     );
   });

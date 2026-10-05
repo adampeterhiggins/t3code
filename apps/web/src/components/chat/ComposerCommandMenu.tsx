@@ -8,6 +8,7 @@ import {
   type ProjectEntry,
   type ProviderDriverKind,
   type PullRequestContextMetadata,
+  type ScopedThreadRef,
   type ServerProviderSkill,
   type ServerProviderSlashCommand,
   type SlackMessageSummary,
@@ -118,6 +119,13 @@ export type ComposerCommandItem =
       type: "repository";
       nameWithOwner: string;
       remoteUrl: string;
+      label: string;
+      description: string;
+    }
+  | {
+      id: string;
+      type: "thread";
+      thread: ScopedThreadRef;
       label: string;
       description: string;
     };
@@ -347,22 +355,25 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
         />
       ) : null}
       {props.item.type === "thread-tab" ? (
-        <MessagesSquareIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+        <MessagesSquareIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
       ) : null}
       {props.item.type === "linear-issue" ? (
-        <LinearIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+        <LinearIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
       ) : null}
       {props.item.type === "github-issue" ? (
-        <GitHubIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+        <GitHubIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
       ) : null}
       {props.item.type === "notion-page" ? (
-        <NotionIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+        <NotionIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
       ) : null}
       {props.item.type === "slack-message" ? (
-        <SlackIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+        <SlackIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
       ) : null}
       {props.item.type === "repository" ? (
-        <FolderGit2Icon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+        <FolderGit2Icon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
+      ) : null}
+      {props.item.type === "thread" ? (
+        <MessagesSquareIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
       ) : null}
       {pullRequestPresentation ? (
         <pullRequestPresentation.Icon

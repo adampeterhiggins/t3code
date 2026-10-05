@@ -24,7 +24,6 @@ import {
   resolveProviderInstanceEnabled,
   type AgentSessionImportSource,
   type AgentSessionProjectCandidate,
-  type AgentSessionRef,
   type AgentSessionProjectGit,
   type AgentSessionScanResult,
   type ProviderInstanceConfig,
@@ -49,7 +48,7 @@ import { HostProcessEnvironment, HostProcessPlatform } from "@t3tools/shared/hos
 import { normalizeProjectPathForComparison } from "@t3tools/shared/path";
 
 import * as ServerConfig from "../config.ts";
-import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
 import { resolveCodexHomeLayout } from "../provider/Drivers/CodexHomeLayout.ts";
 import { expandHomePath } from "../pathExpansion.ts";
 import * as ServerSettings from "../serverSettings.ts";
@@ -167,16 +166,6 @@ export interface AgentSessionThread {
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly messages: ReadonlyArray<AgentSessionThreadMessage>;
-  /** Visible messages in the whole transcript; `messages` keeps only the most recent. */
-  readonly messageCount: number;
-}
-
-/** Narrows `recentThreads` for the conversation picker. */
-export interface AgentSessionRecentThreadsOptions {
-  /** Only the transcript for this session. */
-  readonly session?: AgentSessionRef;
-  /** Rediscover transcripts instead of reusing the last scan's. */
-  readonly refresh?: boolean;
 }
 
 export type AgentSessionRecentThread =
@@ -203,7 +192,6 @@ export class AgentSessionScanner extends Context.Service<
     readonly recentThreads: (
       workspaceRoot: string,
       completedSources?: ReadonlyArray<AgentSessionImportSource>,
-      options?: AgentSessionRecentThreadsOptions,
     ) => Stream.Stream<AgentSessionRecentThread, AgentSessionScanError>;
   }
 >()("t3/project/AgentSessionScanner") {}
@@ -322,7 +310,6 @@ function parseAgentSessionRecords(
   let firstUserMessage:
     | (AgentSessionThreadMessage & { readonly codexResponseUser: boolean })
     | undefined;
-  let messageCount = 0;
   // A Codex response item can include generated setup text beside the real
   // prompt. Suppress response-user records only when the shared turn ID and a
   // verbatim event copy prove which prompt the user submitted.
@@ -385,7 +372,6 @@ function parseAgentSessionRecords(
     if (firstUserMessage === undefined && message.role === "user") {
       firstUserMessage = message;
     }
-    messageCount += 1;
     messages.push(message);
     if (messages.length > MAX_IMPORTED_MESSAGES) messages.shift();
   };
@@ -462,7 +448,6 @@ function parseAgentSessionRecords(
         if (message?.codexResponseUser === true && message.text.trim() === text.trim()) {
           if (firstUserMessage === message) firstUserMessage = undefined;
           messages.splice(index, 1);
-          messageCount -= 1;
           break;
         }
       }
@@ -518,7 +503,6 @@ function parseAgentSessionRecords(
     createdAt: retainedMessages[0]?.createdAt ?? fallbackTimestamp,
     updatedAt: fallbackTimestamp,
     messages: retainedMessages,
-    messageCount: Math.max(messageCount, retainedMessages.length),
   };
 }
 
@@ -640,7 +624,7 @@ export const make = Effect.gen(function* () {
   const path = yield* Path.Path;
   const serverConfig = yield* ServerConfig.ServerConfig;
   const serverSettings = yield* ServerSettings.ServerSettingsService;
-  const projectionSnapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
+  const projectStore = yield* ProjectStore.ProjectStoreV2;
   // Candidates are checked by their realpath too, so the T3 directories must
   // be as well: a home under a symlink (macOS `/var` is `/private/var`)
   // would otherwise never match the resolved candidate.
@@ -1301,15 +1285,15 @@ export const make = Effect.gen(function* () {
 
     // Resolve persisted roots too. A project and a transcript can name
     // different symlinks to the same directory.
-    const shellSnapshot = yield* projectionSnapshotQuery
-      .getShellSnapshot()
+    const importedProjects = yield* projectStore
+      .listShells()
       .pipe(
         Effect.mapError(
           (cause) => new AgentSessionScanError({ operation: "read-projects", cause }),
         ),
       );
-    const importedProjectsByRoot = new Map<string, (typeof shellSnapshot.projects)[number]>();
-    for (const project of shellSnapshot.projects) {
+    const importedProjectsByRoot = new Map<string, (typeof importedProjects)[number]>();
+    for (const project of importedProjects) {
       const projectRoot = path.resolve(expandHomePath(project.workspaceRoot));
       importedProjectsByRoot.set(normalizeProjectPathForComparison(projectRoot), project);
       importedProjectsByRoot.set(yield* directoryIdentity(projectRoot), project);
@@ -1356,7 +1340,6 @@ export const make = Effect.gen(function* () {
   const prepareRecentThreads = Effect.fn("AgentSessionScanner.prepareRecentThreads")(function* (
     workspaceRoot: string,
     completedSources: ReadonlyArray<AgentSessionImportSource>,
-    options: AgentSessionRecentThreadsOptions,
   ) {
     const root = path.resolve(expandHomePath(workspaceRoot));
     const realRoot = yield* fileSystem.realPath(root).pipe(Effect.orElseSucceed(() => root));
@@ -1365,18 +1348,8 @@ export const make = Effect.gen(function* () {
     const nowMs = DateTime.toEpochMillis(yield* DateTime.now);
     const cutoffMs = nowMs - RECENT_THREAD_WINDOW_MS;
 
-    const candidates =
-      options.refresh === true || cachedCandidates === null
-        ? (yield* collectCandidates()).candidates
-        : cachedCandidates;
+    const candidates = cachedCandidates ?? (yield* collectCandidates()).candidates;
     cachedCandidates = candidates;
-    // Claude names transcripts `<session>.jsonl` and Codex `rollout-<time>-<session>.jsonl`, so
-    // the file name rules out other sessions without reading them. The parsed id is checked too.
-    const wanted = options.session;
-    const isWantedTranscript = (candidate: RawCandidate, filePath: string) =>
-      wanted === undefined ||
-      (candidate.providerInstanceId === wanted.providerInstanceId &&
-        path.basename(filePath, ".jsonl").endsWith(wanted.providerSessionId));
 
     const eligibleTranscripts: Array<{
       readonly candidate: RawCandidate;
@@ -1389,7 +1362,6 @@ export const make = Effect.gen(function* () {
       if ((yield* directoryIdentity(resolved)) !== rootIdentity) continue;
 
       for (const transcript of candidate.transcripts) {
-        if (!isWantedTranscript(candidate, transcript.filePath)) continue;
         if (
           transcript.mtimeMs === null ||
           transcript.mtimeMs < cutoffMs ||
@@ -1497,10 +1469,7 @@ export const make = Effect.gen(function* () {
             },
             snapshot.records,
           );
-          if (
-            parsedThread === null ||
-            (wanted !== undefined && parsedThread.providerSessionId !== wanted.providerSessionId)
-          ) {
+          if (parsedThread === null) {
             return Option.some<AgentSessionRecentThread>({ _tag: "Skipped" });
           }
 
@@ -1530,8 +1499,7 @@ export const make = Effect.gen(function* () {
   const recentThreads: AgentSessionScanner["Service"]["recentThreads"] = (
     workspaceRoot,
     completedSources = [],
-    options = {},
-  ) => Stream.unwrap(prepareRecentThreads(workspaceRoot, completedSources, options));
+  ) => Stream.unwrap(prepareRecentThreads(workspaceRoot, completedSources));
 
   return AgentSessionScanner.of({ scan, recentThreads });
 });

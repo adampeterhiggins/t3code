@@ -19,17 +19,6 @@ export const agentSessionScan = createEnvironmentRpcQueryAtomFamily(connectionAt
   idleTtlMs: 5 * 60_000,
 });
 
-/**
- * A project's Claude Code / Codex conversations for the import picker. Listing
- * reads transcripts on the environment, so a reopened picker reuses a fresh result.
- */
-export const agentSessionList = createEnvironmentRpcQueryAtomFamily(connectionAtomRuntime, {
-  label: "environment-data:agent-sessions:list",
-  tag: WS_METHODS.agentSessionsList,
-  staleTimeMs: 30_000,
-  idleTtlMs: 5 * 60_000,
-});
-
 export const agentSessionImport = createEnvironmentRpcCommand(connectionAtomRuntime, {
   label: "environment-data:agent-sessions:import",
   tag: WS_METHODS.agentSessionsImport,

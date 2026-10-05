@@ -179,7 +179,7 @@ function ThreadAttachPickerDialog({ threadRef }: { threadRef: ScopedThreadRef })
       availableThreads.map((thread) => [
         thread.modelSelection.instanceId,
         providerEntries.get(thread.modelSelection.instanceId)?.displayName ??
-          thread.session?.providerName ??
+          thread.runtime?.providerName ??
           thread.modelSelection.instanceId,
       ]),
     );
@@ -321,7 +321,7 @@ function ThreadProviderIcon(props: {
 }) {
   const { thread, providerEntries } = props;
   if (!thread) return null;
-  const instanceId = thread.session?.providerInstanceId ?? thread.modelSelection.instanceId;
+  const instanceId = thread.runtime?.providerInstanceId ?? thread.modelSelection.instanceId;
   const entry = providerEntries.get(instanceId);
   if (!entry) return null;
   return (

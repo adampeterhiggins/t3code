@@ -14,7 +14,7 @@ import {
   makeUnavailableUsageLimits,
   makeUsageLimits,
 } from "../providerUsageLimits.ts";
-import { readMacCursorAccessToken } from "../cursorCredentialStore.ts";
+import { readMacCursorAccessToken } from "../cursorKeychainToken.ts";
 
 const CursorCredentials = Schema.Struct({ accessToken: Schema.optional(Schema.String) });
 const DEFAULT_CURSOR_API_ENDPOINT = "https://api2.cursor.sh";
@@ -71,7 +71,7 @@ export const readCursorUsageLimits = Effect.fn("readCursorUsageLimits")(function
     const path = yield* Path.Path;
     const platform = yield* HostProcessPlatform;
     const endpoint = (
-      settings.apiEndpoint.trim() ||
+      settings.apiEndpoint?.trim() ||
       environment.CURSOR_API_ENDPOINT?.trim() ||
       DEFAULT_CURSOR_API_ENDPOINT
     ).replace(/\/$/, "");
@@ -107,8 +107,6 @@ export const readCursorUsageLimits = Effect.fn("readCursorUsageLimits")(function
     } else if (!token) {
       const home =
         (platform === "win32" ? environment.USERPROFILE : environment.HOME) || NodeOS.homedir();
-      // auth.json is home-anchored (CURSOR_CONFIG_DIR never relocates it), so a
-      // per-instance HOME already points this lookup at the right credentials.
       const directory =
         platform === "win32"
           ? path.join(environment.APPDATA || path.join(home, "AppData", "Roaming"), "Cursor")

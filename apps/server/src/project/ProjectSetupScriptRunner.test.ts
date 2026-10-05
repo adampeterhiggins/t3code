@@ -1,25 +1,27 @@
-import { describe, expect, it, vi } from "@effect/vitest";
-import { type OrchestrationProject, ProjectId, type TerminalEvent } from "@t3tools/contracts";
+import { assert, describe, expect, it, vi } from "@effect/vitest";
+import { type Project, ProjectId, type TerminalEvent } from "@t3tools/contracts";
 import { HostProcessEnvironment, HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as TerminalManager from "../terminal/Manager.ts";
 import * as ConductorWorkspace from "./ConductorWorkspace.ts";
+import * as ProjectService from "./ProjectService.ts";
 import * as ProjectSetupScriptRunner from "./ProjectSetupScriptRunner.ts";
 
 const isProjectSetupScriptOperationError = Schema.is(
   ProjectSetupScriptRunner.ProjectSetupScriptOperationError,
 );
 
-const makeProject = (scripts: OrchestrationProject["scripts"]): OrchestrationProject => ({
+const makeProject = (scripts: Project["scripts"]): Project => ({
   id: ProjectId.make("project-1"),
   title: "Project",
   workspaceRoot: "/repo/project",
+  repositoryIdentity: null,
+  faviconPath: null,
   defaultModelSelection: null,
   scripts,
   createdAt: "2026-01-01T00:00:00.000Z",
@@ -27,36 +29,14 @@ const makeProject = (scripts: OrchestrationProject["scripts"]): OrchestrationPro
   deletedAt: null,
 });
 
-const makeProjectionSnapshotQueryLayer = (project: OrchestrationProject) =>
-  Layer.succeed(ProjectionSnapshotQuery.ProjectionSnapshotQuery, {
-    getUserInputActivity: () => Effect.die("unused"),
-    listActivitiesByKind: () => Effect.die("unused"),
-    getCommandReadModel: () => Effect.die("unused"),
-    getSnapshot: () => Effect.die("unused"),
-    getShellSnapshot: () => Effect.die("unused"),
-    getDeletedWorktreeThreads: () => Effect.die("unused"),
-    listThreadsWithPullRequests: () => Effect.die("unused"),
-    getArchivedShellSnapshot: () => Effect.die("unused"),
-    getSnapshotSequence: () => Effect.succeed({ snapshotSequence: 1 }),
-    getCounts: () => Effect.die("unused"),
-    getEventReplayStats: () => Effect.die("unused"),
-    getActiveProjectByWorkspaceRoot: (workspaceRoot) =>
+const makeProjectServiceLayer = (project: Project) =>
+  Layer.mock(ProjectService.ProjectService)({
+    getById: (projectId) =>
+      Effect.succeed(projectId === project.id ? Option.some(project) : Option.none()),
+    getByWorkspaceRoot: (workspaceRoot) =>
       Effect.succeed(
         workspaceRoot === project.workspaceRoot ? Option.some(project) : Option.none(),
       ),
-    getProjectShells: () => Effect.die("unused"),
-    getProjectShellById: (projectId) =>
-      Effect.succeed(projectId === project.id ? Option.some(project) : Option.none()),
-    getFirstActiveThreadIdByProjectId: () => Effect.die("unused"),
-    getImportedAgentSessionSources: () => Effect.die("unused"),
-    getThreadCheckpointContext: () => Effect.die("unused"),
-    getFullThreadDiffContext: () => Effect.die("unused"),
-    getThreadRuntimeContext: () => Effect.die("unused"),
-    getTurnStartMessage: () => Effect.die("unused"),
-    getThreadShellById: () => Effect.die("unused"),
-    getThreadDetailById: () => Effect.die("unused"),
-    getThreadDetailSnapshot: () => Effect.die("unused"),
-    searchThreads: () => Effect.succeed({ matches: [] }),
   });
 
 type TerminalOverrides = Pick<TerminalManager.TerminalManager["Service"], "open" | "write"> &
@@ -76,13 +56,13 @@ const makeTerminalManagerLayer = (overrides: TerminalOverrides) =>
   });
 
 const testLayer = (
-  project: OrchestrationProject,
+  project: Project,
   terminal: TerminalOverrides,
   settings = ServerSettings.layerTest(),
   conductor = ConductorWorkspace.layerNoop,
 ) =>
   ProjectSetupScriptRunner.layer.pipe(
-    Layer.provideMerge(makeProjectionSnapshotQueryLayer(project)),
+    Layer.provideMerge(makeProjectServiceLayer(project)),
     Layer.provideMerge(makeTerminalManagerLayer(terminal)),
     Layer.provide(settings),
     Layer.provide(conductor),
@@ -122,6 +102,7 @@ describe("ProjectSetupScriptRunner", () => {
         env: {
           T3CODE_PROJECT_ROOT: "/repo/project",
           T3CODE_WORKTREE_PATH: "/repo/worktrees/a",
+          COLORTERM: "",
           NO_COLOR: "1",
           FORCE_COLOR: "0",
         },
@@ -320,6 +301,7 @@ describe("ProjectSetupScriptRunner", () => {
             FORCE_COLOR: "0",
             T3CODE_PROJECT_ROOT: "/repo/project",
             T3CODE_WORKTREE_PATH: "/repo/worktrees/a",
+            COLORTERM: "",
           },
         });
         expect(write).toHaveBeenCalledWith({
@@ -652,4 +634,114 @@ describe("ProjectSetupScriptRunner", () => {
       ),
     );
   });
+});
+
+it.effect("resolves setup scripts through the standalone project service", () => {
+  const open = vi.fn((input: Parameters<TerminalManager.TerminalManager["Service"]["open"]>[0]) =>
+    Effect.succeed({
+      threadId: input.threadId,
+      terminalId: input.terminalId,
+      cwd: input.cwd,
+      worktreePath: input.worktreePath ?? null,
+      status: "running" as const,
+      pid: 123,
+      history: "",
+      exitCode: null,
+      exitSignal: null,
+      label: "Shell",
+      updatedAt: "2026-06-20T00:00:00.000Z",
+    }),
+  );
+  const write = vi.fn(
+    (_input: Parameters<TerminalManager.TerminalManager["Service"]["write"]>[0]) => Effect.void,
+  );
+  const listeners: Array<Parameters<TerminalManager.TerminalManager["Service"]["subscribe"]>[0]> =
+    [];
+  const subscribe: TerminalManager.TerminalManager["Service"]["subscribe"] = (listener) =>
+    Effect.sync(() => {
+      listeners.push(listener);
+      return () => undefined;
+    });
+  const projectId = ProjectId.make("project:setup-runner-v2");
+  const project = {
+    id: projectId,
+    title: "Project",
+    workspaceRoot: "/repo",
+    repositoryIdentity: null,
+    faviconPath: null,
+    defaultModelSelection: null,
+    scripts: [
+      {
+        id: "setup",
+        name: "Setup",
+        command: "vp install",
+        icon: "configure" as const,
+        runOnWorktreeCreate: true,
+      },
+    ],
+    createdAt: "2026-06-20T00:00:00.000Z",
+    updatedAt: "2026-06-20T00:00:00.000Z",
+    deletedAt: null,
+  };
+  const layer = ProjectSetupScriptRunner.layer.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        Layer.mock(ProjectService.ProjectService)({
+          getById: () => Effect.succeed(Option.some(project)),
+        }),
+        Layer.mock(TerminalManager.TerminalManager)({ open, write, subscribe }),
+        ServerSettings.layerTest(),
+        ConductorWorkspace.layerNoop,
+      ),
+    ),
+  );
+
+  return Effect.gen(function* () {
+    const runner = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
+    const result = yield* runner.runForThread({
+      threadId: "thread-1",
+      projectId,
+      worktreePath: "/repo-worktree",
+    });
+    assert.deepEqual(result, {
+      status: "started",
+      async: true,
+      scriptId: "setup",
+      scriptName: "Setup",
+      scriptCommand: "vp install",
+      terminalId: "setup-setup",
+      cwd: "/repo-worktree",
+    });
+    assert.equal(open.mock.calls[0]?.[0].cwd, "/repo-worktree");
+    assert.deepEqual(open.mock.calls[0]?.[0].env, {
+      T3CODE_PROJECT_ROOT: "/repo",
+      T3CODE_WORKTREE_PATH: "/repo-worktree",
+      COLORTERM: "",
+      NO_COLOR: "1",
+      FORCE_COLOR: "0",
+    });
+    assert.equal(write.mock.calls[0]?.[0].data, "vp install\r");
+    const lines: string[] = [];
+    const observed = yield* runner.runForThread({
+      threadId: "thread-1",
+      projectId,
+      worktreePath: "/repo-worktree",
+      observeCompletion: {
+        onOutputLine: (line) =>
+          Effect.sync(() => {
+            lines.push(line);
+          }),
+      },
+    });
+    assert.equal(observed.status, "started");
+    const listener = listeners[0]!;
+    yield* listener({
+      type: "output",
+      threadId: "thread-1",
+      terminalId: "setup-setup",
+      data: "Downloading 10%\rDownloading 20%\r\nDone\n",
+    });
+    assert.deepEqual(lines, ["Downloading 10%", "Downloading 20%", "Done"]);
+    yield* listener({ type: "closed", threadId: "thread-1", terminalId: "setup-setup" });
+  }).pipe(Effect.provide(layer));
 });

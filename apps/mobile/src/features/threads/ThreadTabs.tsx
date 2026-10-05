@@ -39,7 +39,6 @@ import {
 } from "../../state/use-composer-drafts";
 import { refreshArchivedThreadsForEnvironment } from "../archive/useArchivedThreadSnapshots";
 import { ThreadGitHubIssueLinkChip, useThreadGitHubIssueLink } from "./ThreadGitHubIssueLink";
-import { ThreadStartedByChip } from "./ThreadStartedByChip";
 import {
   ThreadLinearLinkButton,
   ThreadLinearLinkChip,
@@ -338,7 +337,6 @@ export function ThreadTabs({
         ) : linear.canLink && group.tabs.length <= 1 ? (
           <ThreadLinearLinkButton onPress={linearPicker.open} />
         ) : null}
-        <ThreadStartedByChip environmentId={environmentId} threadId={threadId} />
         {gitHubIssueLink ? (
           <ThreadGitHubIssueLinkChip
             environmentId={environmentId}
