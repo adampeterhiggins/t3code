@@ -32,6 +32,8 @@ import { useProjects, useNavigationThreadShells } from "../../state/entities";
 import { useHiddenTabThreads } from "./useHiddenTabThreads";
 import { useThreadSearch } from "../../state/queries";
 import { useThreadListPages } from "./use-thread-list-pages";
+import { scopeProjectRefsByOrganisations } from "../home/thread-list-organisations";
+import { useThreadListOrganisations } from "../home/use-thread-list-organisations";
 import { useThreadListV2ShelfPreferences } from "./use-thread-list-v2-shelf-preferences";
 import { usePendingThreadOrder } from "../../state/thread-order";
 import { threadListEnvironmentsAtom } from "../../state/server";
@@ -273,16 +275,28 @@ function ThreadNavigationSidebarPane(
       setSelectedProjectKey(null);
     }
   }, [projectFilterOptions, selectedProjectKey]);
+  const { organisations, organisationKeys, toggleOrganisation, clearOrganisations } =
+    useThreadListOrganisations(projects);
+  // The Organisations filter narrows the project scope (or every checkout).
+  const scopedProjectRefs = useMemo(
+    () =>
+      scopeProjectRefsByOrganisations({
+        projects,
+        projectRefs: selectedProjectScope?.projectRefs ?? null,
+        organisationKeys,
+      }),
+    [organisationKeys, projects, selectedProjectScope],
+  );
   const selectedProjectRefs = useMemo(
     () =>
-      selectedProjectScope === null
+      scopedProjectRefs === null
         ? null
         : new Set(
-            selectedProjectScope.projectRefs.map((projectRef) =>
+            scopedProjectRefs.map((projectRef) =>
               scopedProjectKey(projectRef.environmentId, projectRef.projectId),
             ),
           ),
-    [selectedProjectScope],
+    [scopedProjectRefs],
   );
   const projectByKey = useMemo(() => {
     const map = new Map<string, EnvironmentProject>();
@@ -413,7 +427,7 @@ function ThreadNavigationSidebarPane(
       pendingOrder,
       threads: threads.filter((thread) => thread.archivedAt === null),
       environmentId: options.selectedEnvironmentId,
-      projectRefs: selectedProjectScope === null ? null : selectedProjectScope.projectRefs,
+      projectRefs: scopedProjectRefs,
       searchQuery: props.searchQuery,
       matchedThreadKeys,
       settlementEnvironmentIds,
@@ -451,7 +465,7 @@ function ThreadNavigationSidebarPane(
     settlementEnvironmentIds,
     snoozeEnvironmentIds,
     threads,
-    selectedProjectScope,
+    scopedProjectRefs,
   ]);
   // Re-partition the moment the earliest snooze expires (clamped to the
   // signed-32-bit setTimeout range; far-future wakes re-arm at the clamp).
@@ -552,6 +566,28 @@ function ThreadNavigationSidebarPane(
           })),
         ],
       },
+      ...(organisations.length === 0
+        ? []
+        : ([
+            {
+              id: "organisation",
+              title: "Organisations",
+              subactions: [
+                {
+                  id: "organisation:all",
+                  title: "All organisations",
+                  state: organisationKeys.length === 0 ? "on" : "off",
+                },
+                ...organisations.map((organisation) => ({
+                  id: `organisation:${organisation.key}`,
+                  title: organisation.label,
+                  state: organisationKeys.includes(organisation.key)
+                    ? ("on" as const)
+                    : ("off" as const),
+                })),
+              ],
+            },
+          ] satisfies MenuAction[])),
       ...(projectFilterOptions.length === 0
         ? []
         : ([
@@ -592,6 +628,8 @@ function ThreadNavigationSidebarPane(
       groups,
       groupsSupported,
       options,
+      organisationKeys,
+      organisations,
       pages,
       projectFilterOptions,
       selectedProjectKey,
@@ -609,6 +647,17 @@ function ThreadNavigationSidebarPane(
           (candidate) => String(candidate.environmentId) === event.slice("environment:".length),
         );
         if (environment) setSelectedEnvironmentId(environment.environmentId);
+        return;
+      }
+      if (event === "organisation:all") {
+        clearOrganisations();
+        return;
+      }
+      if (event.startsWith("organisation:")) {
+        const key = event.slice("organisation:".length);
+        if (organisations.some((organisation) => organisation.key === key)) {
+          toggleOrganisation(key);
+        }
         return;
       }
       if (event === "new-group") {
@@ -634,9 +683,12 @@ function ThreadNavigationSidebarPane(
     },
     [
       availablePages,
+      clearOrganisations,
       createThreadGroup,
       environments,
+      organisations,
       projectFilterOptions,
+      toggleOrganisation,
       setSelectedEnvironmentId,
       togglePage,
     ],
@@ -951,11 +1003,13 @@ function ThreadNavigationSidebarPane(
       workingShelfEnabled,
     ],
   );
-  // The list ignores sort/group options, so only the environment and project
-  // filters and a non-default page selection can light the "customized" state.
+  // The list ignores sort/group options, so only the environment, project
+  // and organisation filters and a non-default page selection can light the
+  // "customized" state.
   const filterCustomized =
     options.selectedEnvironmentId !== null ||
     selectedProjectKey !== null ||
+    organisationKeys.length > 0 ||
     !isDefaultThreadListPages(pages);
   const filterIcon = filterCustomized
     ? "line.3.horizontal.decrease.circle.fill"
@@ -974,6 +1028,10 @@ function ThreadNavigationSidebarPane(
         onTogglePage: togglePage,
         groups,
         onCreateGroup: groupsSupported ? createThreadGroup : undefined,
+        organisations,
+        organisationKeys,
+        onToggleOrganisation: toggleOrganisation,
+        onClearOrganisations: clearOrganisations,
       }),
     [
       availablePages,
@@ -982,10 +1040,14 @@ function ThreadNavigationSidebarPane(
       groups,
       groupsSupported,
       options,
+      organisationKeys,
+      organisations,
       projectFilterOptions,
       pages,
       selectedProjectKey,
       setSelectedEnvironmentId,
+      toggleOrganisation,
+      clearOrganisations,
       togglePage,
     ],
   );

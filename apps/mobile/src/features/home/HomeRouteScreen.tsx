@@ -9,6 +9,7 @@ import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell
 import { NativeHeaderToolbar, NativeStackScreenOptions } from "../../native/StackHeader";
 import { useProjects, useNavigationThreadShells } from "../../state/entities";
 import { useThreadListPages } from "../threads/use-thread-list-pages";
+import { useThreadListOrganisations } from "./use-thread-list-organisations";
 import { usePendingNewTasks } from "../../state/use-pending-new-tasks";
 import { useWorkspaceState } from "../../state/workspace";
 import { useSavedRemoteConnections } from "../../state/use-remote-environment-registry";
@@ -118,6 +119,8 @@ export function HomeRouteScreen() {
     togglePage,
     renameGroupPage,
   } = useThreadListPages(visibleThreads);
+  const { organisations, organisationKeys, toggleOrganisation, clearOrganisations } =
+    useThreadListOrganisations(projects);
   const handleEditGroup = useCallback(
     async (name: string) => {
       const result = await editThreadGroup(name);
@@ -223,6 +226,10 @@ export function HomeRouteScreen() {
           onTogglePage={togglePage}
           groups={groups}
           onCreateGroup={groupsSupported ? createThreadGroup : undefined}
+          organisations={organisations}
+          organisationKeys={organisationKeys}
+          onToggleOrganisation={toggleOrganisation}
+          onClearOrganisations={clearOrganisations}
           onOpenEnvironments={() =>
             navigation.navigate("SettingsSheet", {
               screen: "SettingsContent",
@@ -295,6 +302,7 @@ export function HomeRouteScreen() {
           searchQuery={searchQuery}
           selectedEnvironmentId={selectedEnvironmentId}
           selectedProjectKey={selectedProjectKey}
+          organisationKeys={organisationKeys}
           pages={pages}
           groupNames={groupNames}
           groups={groups}

@@ -18,6 +18,7 @@ export function HomeHeader(props: HomeHeaderProps) {
   const hasCustomListOptions =
     props.selectedEnvironmentId !== null ||
     props.selectedProjectKey !== null ||
+    props.organisationKeys.length > 0 ||
     !isDefaultThreadListPages(props.pages);
   const menuActions = useMemo<MenuAction[]>(
     () => [
@@ -37,6 +38,26 @@ export function HomeHeader(props: HomeHeaderProps) {
           })),
         ],
       },
+      ...(props.organisations.length === 0
+        ? []
+        : ([
+            {
+              id: "organisation",
+              title: "Organisations",
+              subactions: [
+                {
+                  id: "organisation:all",
+                  title: "All organisations",
+                  state: checkedMenuState(props.organisationKeys.length === 0),
+                },
+                ...props.organisations.map((organisation) => ({
+                  id: `organisation:${organisation.key}`,
+                  title: organisation.label,
+                  state: checkedMenuState(props.organisationKeys.includes(organisation.key)),
+                })),
+              ],
+            },
+          ] satisfies MenuAction[])),
       ...(props.projects.length === 0
         ? []
         : ([
@@ -75,6 +96,8 @@ export function HomeHeader(props: HomeHeaderProps) {
       props.availablePages,
       props.groups,
       props.onCreateGroup,
+      props.organisationKeys,
+      props.organisations,
       props.pages,
       props.projects,
       props.selectedEnvironmentId,
@@ -100,6 +123,17 @@ export function HomeHeader(props: HomeHeaderProps) {
         return;
       }
 
+      if (id === "organisation:all") {
+        props.onClearOrganisations();
+        return;
+      }
+      if (id.startsWith("organisation:")) {
+        const key = id.slice("organisation:".length);
+        if (props.organisations.some((organisation) => organisation.key === key)) {
+          props.onToggleOrganisation(key);
+        }
+        return;
+      }
       if (id === "new-group") {
         props.onCreateGroup?.();
         return;

@@ -23,6 +23,7 @@ export function HomeHeader(props: HomeHeaderProps) {
   const hasCustomListOptions =
     props.selectedEnvironmentId !== null ||
     props.selectedProjectKey !== null ||
+    props.organisationKeys.length > 0 ||
     !isDefaultThreadListPages(props.pages);
   const focusSearch = useCallback(() => {
     searchBarRef.current?.focus();
@@ -120,6 +121,28 @@ export function HomeHeader(props: HomeHeaderProps) {
                 </NativeHeaderToolbar.MenuAction>
               ))}
             </NativeHeaderToolbar.Menu>
+
+            {props.organisations.length > 0 ? (
+              <NativeHeaderToolbar.Menu title="Organisations">
+                <NativeHeaderToolbar.Label>Organisations</NativeHeaderToolbar.Label>
+                <NativeHeaderToolbar.MenuAction
+                  isOn={props.organisationKeys.length === 0}
+                  onPress={props.onClearOrganisations}
+                  subtitle="Show threads from every organisation"
+                >
+                  <NativeHeaderToolbar.Label>All organisations</NativeHeaderToolbar.Label>
+                </NativeHeaderToolbar.MenuAction>
+                {props.organisations.map((organisation) => (
+                  <NativeHeaderToolbar.MenuAction
+                    key={organisation.key}
+                    isOn={props.organisationKeys.includes(organisation.key)}
+                    onPress={() => props.onToggleOrganisation(organisation.key)}
+                  >
+                    <NativeHeaderToolbar.Label>{organisation.label}</NativeHeaderToolbar.Label>
+                  </NativeHeaderToolbar.MenuAction>
+                ))}
+              </NativeHeaderToolbar.Menu>
+            ) : null}
 
             {props.projects.length > 0 ? (
               <NativeHeaderToolbar.Menu title="Project">

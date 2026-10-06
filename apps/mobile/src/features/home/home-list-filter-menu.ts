@@ -3,6 +3,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import type { ThreadGroups } from "@t3tools/contracts/settings";
 
 import { threadListPageLabel, type ThreadListPage } from "../threads/threadListV2";
+import type { ThreadListOrganisation } from "./thread-list-organisations";
 
 export interface HomeListFilterMenuEnvironment {
   readonly environmentId: EnvironmentId;
@@ -48,6 +49,11 @@ export function buildHomeListFilterMenu(props: {
   readonly groups?: ThreadGroups;
   /** Adds "New group…" to Show; omitted when no environment supports groups. */
   readonly onCreateGroup?: () => void;
+  /** Repository owners of the checkouts; multi-select, none picked means all. */
+  readonly organisations: ReadonlyArray<ThreadListOrganisation>;
+  readonly organisationKeys: ReadonlyArray<string>;
+  readonly onToggleOrganisation: (key: string) => void;
+  readonly onClearOrganisations: () => void;
 }): HomeListFilterMenu {
   const items: Array<HomeListFilterMenuAction | HomeListFilterMenuSubmenu> = [];
 
@@ -73,6 +79,30 @@ export function buildHomeListFilterMenu(props: {
       })),
     ],
   });
+
+  if (props.organisations.length > 0) {
+    items.push({
+      type: "submenu",
+      title: "Organisations",
+      items: [
+        {
+          type: "action",
+          title: "All organisations",
+          subtitle: "Show threads from every organisation",
+          state: props.organisationKeys.length === 0 ? "on" : "off",
+          onPress: props.onClearOrganisations,
+        },
+        ...props.organisations.map((organisation) => ({
+          type: "action" as const,
+          title: organisation.label,
+          state: props.organisationKeys.includes(organisation.key)
+            ? ("on" as const)
+            : ("off" as const),
+          onPress: () => props.onToggleOrganisation(organisation.key),
+        })),
+      ],
+    });
+  }
 
   if (props.projects.length > 0) {
     items.push({

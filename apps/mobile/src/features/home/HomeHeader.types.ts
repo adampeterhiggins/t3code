@@ -1,6 +1,7 @@
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { ThreadGroups } from "@t3tools/contracts/settings";
 import type { ThreadListPage } from "../threads/threadListV2";
+import type { ThreadListOrganisation } from "./thread-list-organisations";
 import type {
   HomeListFilterMenuEnvironment,
   HomeListFilterMenuProject,
@@ -24,6 +25,11 @@ export interface HomeHeaderProps {
   readonly groups: ThreadGroups;
   /** Adds "New group…" to Show; omitted when no environment supports groups. */
   readonly onCreateGroup?: () => void;
+  /** Repository owners of the checkouts; multi-select, none picked means all. */
+  readonly organisations: ReadonlyArray<ThreadListOrganisation>;
+  readonly organisationKeys: ReadonlyArray<string>;
+  readonly onToggleOrganisation: (key: string) => void;
+  readonly onClearOrganisations: () => void;
   readonly onOpenEnvironments: () => void;
   readonly onOpenSettings: () => void;
   readonly onStartNewTask: () => void;

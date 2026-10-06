@@ -60,6 +60,7 @@ import {
   type ThreadListPage,
   type ThreadListV2ListItem,
 } from "../threads/threadListV2";
+import { scopeProjectRefsByOrganisations } from "./thread-list-organisations";
 import { useThreadListV2ShelfPreferences } from "../threads/use-thread-list-v2-shelf-preferences";
 import type { HomeListFilterMenuEnvironment } from "./home-list-filter-menu";
 import {
@@ -85,6 +86,8 @@ interface HomeScreenProps {
   readonly searchQuery: string;
   readonly selectedEnvironmentId: EnvironmentId | null;
   readonly selectedProjectKey: string | null;
+  /** Picked Organisations filter keys; empty means every organisation. */
+  readonly organisationKeys: ReadonlyArray<string>;
   /** Filter-menu pages: which groups the list shows. */
   readonly pages: ReadonlyArray<ThreadListPage>;
   /** Every group in use across the list, for the row Move to group menu. */
@@ -400,16 +403,26 @@ export function HomeScreen(props: HomeScreenProps) {
       ),
     [v2ScopeProjects],
   );
+  // The Organisations filter narrows the project scope (or every checkout).
+  const v2ScopedProjectRefs = useMemo(
+    () =>
+      scopeProjectRefsByOrganisations({
+        projects: props.projects,
+        projectRefs: v2ScopedProjectGroup?.projectRefs ?? null,
+        organisationKeys: props.organisationKeys,
+      }),
+    [props.organisationKeys, props.projects, v2ScopedProjectGroup],
+  );
   const v2ScopedProjectKeys = useMemo(
     () =>
-      v2ScopedProjectGroup === null
+      v2ScopedProjectRefs === null
         ? null
         : new Set(
-            v2ScopedProjectGroup.projectRefs.map((projectRef) =>
+            v2ScopedProjectRefs.map((projectRef) =>
               scopedProjectKey(projectRef.environmentId, projectRef.projectId),
             ),
           ),
-    [v2ScopedProjectGroup],
+    [v2ScopedProjectRefs],
   );
   // Thread List v2 (beta): one flat list in creation order, no grouping.
   // Settled threads collapse into a recency tail below the card block.
@@ -584,7 +597,7 @@ export function HomeScreen(props: HomeScreenProps) {
       pendingOrder,
       threads: props.threads.filter((thread) => thread.archivedAt === null),
       environmentId: props.selectedEnvironmentId,
-      projectRefs: v2ScopedProjectGroup === null ? null : v2ScopedProjectGroup.projectRefs,
+      projectRefs: v2ScopedProjectRefs,
       searchQuery: props.searchQuery,
       matchedThreadKeys,
       settlementEnvironmentIds,
@@ -621,7 +634,7 @@ export function HomeScreen(props: HomeScreenProps) {
     props.selectedEnvironmentId,
     props.threads,
     matchedThreadKeys,
-    v2ScopedProjectGroup,
+    v2ScopedProjectRefs,
   ]);
   // Re-partition the moment the earliest snooze expires (clamped to the
   // signed-32-bit setTimeout range; far-future wakes re-arm at the clamp).
