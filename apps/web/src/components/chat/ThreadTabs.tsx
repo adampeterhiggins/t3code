@@ -30,7 +30,14 @@ import { useAtomValue } from "@effect/atom-react";
 import * as Option from "effect/Option";
 import { useNavigate } from "@tanstack/react-router";
 import { Columns2Icon, PlusIcon, XIcon } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import {
+  type ComponentProps,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+} from "react";
 
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useClientSettings } from "../../hooks/useSettings";
@@ -49,6 +56,7 @@ import {
   waitForThreadShell,
 } from "../../state/entities";
 import { selectThreadRightPanelState, useRightPanelStore } from "../../rightPanelStore";
+import { deriveProviderEntriesByEnvironment } from "../../providerInstances";
 import { environmentServerConfigsAtom } from "../../state/server";
 import { readPreparedConnection, usePreparedConnection } from "../../state/session";
 import { useThreadTabRecencyStore } from "../../threadTabRecencyStore";
@@ -62,6 +70,7 @@ import {
 } from "../Sidebar.logic";
 import { splitPartnerKey, useSplitViewStore } from "../../splitViewStore";
 import { useThreadTabContextStore } from "../../threadTabContextStore";
+import { SidebarTabSummary } from "../sidebar/SidebarTabSummary";
 import { WorkspaceBreadcrumbText } from "../WorkspaceBreadcrumb";
 import { CursorPreviewCard } from "./CursorPreviewCard";
 import { useSplitPaneFocus, useSplitViewActions } from "./splitPane";
@@ -435,6 +444,7 @@ function ThreadTabContextPill(props: {
   environmentId: EnvironmentId;
   group: ThreadTabGroup;
   threadId: ThreadId;
+  summary: TabSummary | undefined;
   disabled: boolean;
   loadSummary: ReturnType<typeof createThreadAttachSummaryLoader>;
   onSelect: (title: string) => void;
@@ -452,7 +462,13 @@ function ThreadTabContextPill(props: {
           className="min-w-0"
           onClick={() => props.onSelect(label)}
         >
-          <span className="truncate">{label}</span>
+          {props.summary ? (
+            <span className="flex min-w-0 flex-1 items-center gap-1.5">
+              <SidebarTabSummary {...props.summary} compact />
+            </span>
+          ) : (
+            <span className="truncate">{label}</span>
+          )}
         </Toggle>
       }
     >
@@ -668,10 +684,19 @@ function useSidebarSiblingTabs(
     SidebarTabManualRanksSchema,
   );
   const openedAtByThreadKey = useThreadTabRecencyStore((s) => s.openedAtByThreadKey);
-  const capabilities = useAtomValue(environmentServerConfigsAtom).get(environmentId)?.environment
-    .capabilities;
+  const serverConfig = useAtomValue(environmentServerConfigsAtom).get(environmentId);
+  const capabilities = serverConfig?.environment.capabilities;
+  const providerEntries = useMemo(
+    () =>
+      serverConfig
+        ? deriveProviderEntriesByEnvironment([
+            [environmentId, serverConfig.providers, serverConfig.settings],
+          ]).get(environmentId)
+        : undefined,
+    [environmentId, serverConfig],
+  );
 
-  return useMemo(() => {
+  const tabs = useMemo(() => {
     const shellById = new Map(projectShells.map((thread) => [thread.id, thread]));
     const tabKey = (tab: Pick<ThreadTab, "threadId">) =>
       scopedThreadKey(scopeThreadRef(environmentId, tab.threadId));
@@ -685,7 +710,7 @@ function useSidebarSiblingTabs(
           now: new Date().toISOString(),
         })
       : "active";
-    return sidebarSiblingTabs(group.tabs, {
+    const { shown, hidden } = sidebarSiblingTabs(group.tabs, {
       listsRow: shelf === "pinned" || shelf === "active",
       order: tabSortOrder,
       direction: tabSortDirection,
@@ -700,6 +725,7 @@ function useSidebarSiblingTabs(
       limit: tabLimit,
       openKey: tabKey({ threadId }),
     });
+    return { shown, hidden, shellById };
   }, [
     capabilities,
     environmentId,
@@ -713,7 +739,24 @@ function useSidebarSiblingTabs(
     threadId,
     workingShelfEnabled,
   ]);
+
+  /** What the sidebar row of a sibling tab shows, once its shell has loaded. */
+  const summaryOf = (tabThreadId: ThreadId): TabSummary | undefined => {
+    const thread = tabs.shellById.get(tabThreadId);
+    return thread
+      ? {
+          thread,
+          providerEntries,
+          tabSortOrder,
+          openedAt:
+            openedAtByThreadKey[scopedThreadKey(scopeThreadRef(environmentId, tabThreadId))],
+        }
+      : undefined;
+  };
+  return { shown: tabs.shown, hidden: tabs.hidden, summaryOf };
 }
+
+type TabSummary = Omit<ComponentProps<typeof SidebarTabSummary>, "compact">;
 
 /**
  * Sibling tabs an empty tab can pull context from, in the sidebar's order and up to its tab
@@ -743,7 +786,7 @@ export function ThreadTabContextPills({
   const [loadingId, setLoadingId] = useState<ThreadId | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
-  const { shown, hidden } = useSidebarSiblingTabs(environmentId, threadId, group);
+  const { shown, hidden, summaryOf } = useSidebarSiblingTabs(environmentId, threadId, group);
   if (shown.length + hidden.length === 0 || threadTabContext === null || loadSummary === null) {
     return null;
   }
@@ -773,21 +816,60 @@ export function ThreadTabContextPills({
             environmentId={environmentId}
             group={group}
             threadId={tab.threadId}
+            summary={summaryOf(tab.threadId)}
             disabled={loadingId !== null}
             loadSummary={loadSummary}
             onSelect={(title) => void insert(tab.threadId, title)}
           />
         ))}
-        {hidden.length > 0 ? (
+        {hidden.length > 0 && expanded ? (
           <Toggle
             size="compact"
             variant="pill"
             pressed={false}
             className="min-w-0"
-            onClick={() => setExpanded((value) => !value)}
+            onClick={() => setExpanded(false)}
           >
-            <span className="truncate">{expanded ? "Show less" : `${hidden.length} more`}</span>
+            <span className="truncate">Show less</span>
           </Toggle>
+        ) : null}
+        {hidden.length > 0 && !expanded ? (
+          // Previews which tabs are folded away before expanding them.
+          <CursorPreviewCard
+            className="w-80 max-w-[calc(100vw-2rem)]"
+            trigger={
+              <Toggle
+                size="compact"
+                variant="pill"
+                pressed={false}
+                className="min-w-0"
+                onClick={() => setExpanded(true)}
+              >
+                <span className="truncate">{hidden.length} more</span>
+              </Toggle>
+            }
+          >
+            <ul className="flex max-h-80 flex-col gap-px overflow-y-auto overscroll-contain">
+              {hidden.map((tab) => {
+                const summary = summaryOf(tab.threadId);
+                return (
+                  <li key={tab.threadId} className="flex h-7 items-center gap-2 px-1">
+                    {summary ? (
+                      <SidebarTabSummary {...summary} />
+                    ) : (
+                      <span className="min-w-0 flex-1 truncate text-sm">
+                        <TabMenuLabel
+                          environmentId={environmentId}
+                          group={group}
+                          threadId={tab.threadId}
+                        />
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </CursorPreviewCard>
         ) : null}
       </div>
       {error ? (
