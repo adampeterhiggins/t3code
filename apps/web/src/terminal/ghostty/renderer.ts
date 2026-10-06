@@ -79,13 +79,22 @@ function drawPowerlineSeparator(
   const base = separator.side === "right" ? left : left + width;
   const tip = separator.side === "right" ? left + width : left;
   context.beginPath();
-  context.moveTo(base, top);
-  context.lineTo(tip, top + height / 2);
-  context.lineTo(base, top + height);
   if (separator.solid) {
+    // Cells start at fractional pixels, so the base edge would anti-alias over
+    // a pixel the cell background already half-covered and leave a seam. The
+    // segment behind the base is the arrow's own color, so overlap it by 1px.
+    const behind = separator.side === "right" ? base - 1 : base + 1;
+    context.moveTo(behind, top);
+    context.lineTo(base, top);
+    context.lineTo(tip, top + height / 2);
+    context.lineTo(base, top + height);
+    context.lineTo(behind, top + height);
     context.closePath();
     context.fill();
   } else {
+    context.moveTo(base, top);
+    context.lineTo(tip, top + height / 2);
+    context.lineTo(base, top + height);
     context.lineWidth = 1;
     context.strokeStyle = context.fillStyle;
     context.stroke();
