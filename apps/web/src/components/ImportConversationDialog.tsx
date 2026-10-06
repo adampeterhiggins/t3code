@@ -4,6 +4,7 @@ import {
   scopeProjectRef,
   scopeThreadRef,
 } from "@t3tools/client-runtime/environment";
+import type { EnvironmentProject } from "@t3tools/client-runtime/state/models";
 import { isScratchProject } from "@t3tools/client-runtime/state/projects";
 import {
   isAtomCommandInterrupted,
@@ -14,11 +15,14 @@ import {
   type AgentSessionSummary,
   type ConductorAgent,
   type ConductorWorkspaceSummary,
+  type EnvironmentId,
+  type ProjectId,
   type ScopedProjectRef,
   type ThreadId,
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
-import { Atom } from "effect/reactivity";
+import * as Option from "effect/Option";
+import { AsyncResult, Atom } from "effect/reactivity";
 import { useMemo, useState, type ReactNode } from "react";
 
 import { formatRelativeTimeLabel } from "~/timestampFormat";
@@ -30,8 +34,8 @@ import {
   conductorWorkspaceList,
 } from "~/state/agentSessions";
 import { useScratchProject } from "~/hooks/useScratchProject";
-import { useProject, useProjects, useServerConfigs, waitForThreadShell } from "~/state/entities";
-import { useEnvironmentQuery } from "~/state/query";
+import { useProjects, useServerConfigs, waitForThreadShell } from "~/state/entities";
+import { formatEnvironmentQueryError } from "~/state/query";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { ProviderInstanceIcon } from "./chat/ProviderInstanceIcon";
 import {
@@ -98,28 +102,30 @@ function ImportConversationDialog({
 }) {
   const projects = useImportableProjects();
   const [chosenKey, setChosenKey] = useState(
-    initialProjectRef === null ? null : scopedProjectKey(initialProjectRef),
+    initialProjectRef === null ? ALL_PROJECTS : scopedProjectKey(initialProjectRef),
   );
-  const project =
-    projects.find(
-      (candidate) =>
-        scopedProjectKey(scopeProjectRef(candidate.environmentId, candidate.id)) === chosenKey,
-    ) ??
-    projects[0] ??
-    null;
-  const projectRef = project === null ? null : scopeProjectRef(project.environmentId, project.id);
-  const projectPicker =
-    project === null ? null : (
-      <MenuSelect
-        aria-label="Project to import into"
-        value={scopedProjectKey(projectRef!)}
-        onValueChange={setChosenKey}
-        options={projects.map((candidate) => ({
+  const chosen = projects.filter(
+    (candidate) =>
+      chosenKey === ALL_PROJECTS ||
+      scopedProjectKey(scopeProjectRef(candidate.environmentId, candidate.id)) === chosenKey,
+  );
+  // A project that went away falls back to all of them.
+  const selectedKey = chosen.length === 0 ? ALL_PROJECTS : chosenKey;
+  const selected = chosen.length === 0 ? projects : chosen;
+  const projectPicker = (
+    <MenuSelect
+      aria-label="Project to import into"
+      value={selectedKey}
+      onValueChange={setChosenKey}
+      options={[
+        { value: ALL_PROJECTS, label: "All projects" },
+        ...projects.map((candidate) => ({
           value: scopedProjectKey(scopeProjectRef(candidate.environmentId, candidate.id)),
           label: candidate.title,
-        }))}
-      />
-    );
+        })),
+      ]}
+    />
+  );
 
   return (
     <Dialog
@@ -133,19 +139,19 @@ function ImportConversationDialog({
           <DialogTitle>Import conversation</DialogTitle>
           <DialogDescription>
             Claude Code and Codex conversations from the last 30 days, and active Conductor
-            workspaces, for the project you choose. An imported conversation continues the same
-            session.
+            workspaces, for your projects. An imported conversation continues the same session.
           </DialogDescription>
         </DialogHeader>
         <DialogPanel>
-          {projectRef === null ? (
+          {projects.length === 0 ? (
             <div className="flex h-40 items-center justify-center px-6 text-center text-muted-foreground text-sm">
               Add a project to import conversations into it.
             </div>
           ) : (
             <ImportConversationList
-              key={scopedProjectKey(projectRef)}
-              projectRef={projectRef}
+              key={selectedKey}
+              projects={selected}
+              showProject={selectedKey === ALL_PROJECTS && projects.length > 1}
               projectPicker={projectPicker}
             />
           )}
@@ -171,8 +177,38 @@ const SOURCE_LABEL: Record<ImportSource, string> = {
 };
 
 type ImportRow =
-  | { kind: "session"; session: AgentSessionSummary; updatedAt: string }
-  | { kind: "workspace"; workspace: ConductorWorkspaceSummary; updatedAt: string };
+  | {
+      kind: "session";
+      project: EnvironmentProject;
+      session: AgentSessionSummary;
+      updatedAt: string;
+    }
+  | {
+      kind: "workspace";
+      project: EnvironmentProject;
+      workspace: ConductorWorkspaceSummary;
+      updatedAt: string;
+    };
+
+const ALL_PROJECTS = "all-projects";
+
+/**
+ * Both listings for each project, keyed by the projects' JSON so the dialog subscribes to one
+ * atom however many projects it shows.
+ */
+const importListingsAtom = Atom.family((targetsJson: string) =>
+  Atom.make((get) =>
+    (
+      JSON.parse(targetsJson) as ReadonlyArray<{
+        readonly environmentId: EnvironmentId;
+        readonly projectId: ProjectId;
+      }>
+    ).map(({ environmentId, projectId }) => ({
+      sessions: get(agentSessionList({ environmentId, input: { projectId } })),
+      conductor: get(conductorWorkspaceList({ environmentId, input: { projectId } })),
+    })),
+  ),
+);
 
 /** Whether a row's titles, prompt, folder, or branch contain the lowercased search text. */
 function matchesSearch(row: ImportRow, needle: string): boolean {
@@ -203,11 +239,18 @@ const CONDUCTOR_AGENT: Record<ConductorAgent, { driver: ProviderDriverKind; labe
   cursor: { driver: ProviderDriverKind.make("cursor"), label: "Cursor" },
 };
 
-/** Folder, tab count with the tabs on hover, and age. */
-function WorkspaceDescription({ workspace }: { workspace: ConductorWorkspaceSummary }) {
+/** Project when listing several, folder, tab count with the tabs on hover, and age. */
+function WorkspaceDescription({
+  workspace,
+  projectTitle,
+}: {
+  workspace: ConductorWorkspaceSummary;
+  projectTitle: string | null;
+}) {
   const tabs = workspace.tabs.length;
   return (
     <>
+      {projectTitle === null ? null : `${projectTitle} · `}
       {workspace.name} ·{" "}
       <Tooltip>
         <TooltipTrigger
@@ -242,8 +285,9 @@ function WorkspaceDescription({ workspace }: { workspace: ConductorWorkspaceSumm
 const sessionKey = (session: AgentSessionSummary) =>
   `${session.providerInstanceId}:${session.providerSessionId}`;
 
-function describeSession(session: AgentSessionSummary): string {
+function describeSession(session: AgentSessionSummary, projectTitle: string | null): string {
   return [
+    projectTitle,
     session.preview !== session.title ? session.preview : null,
     `${session.messageCount} ${session.messageCount === 1 ? "message" : "messages"}`,
     formatRelativeTimeLabel(session.updatedAt),
@@ -253,43 +297,53 @@ function describeSession(session: AgentSessionSummary): string {
 }
 
 function ImportConversationList({
-  projectRef,
+  projects,
+  showProject,
   projectPicker,
 }: {
-  projectRef: ScopedProjectRef;
+  projects: ReadonlyArray<EnvironmentProject>;
+  showProject: boolean;
   projectPicker: ReactNode;
 }) {
-  const { environmentId, projectId } = projectRef;
   const navigate = useNavigate();
-  const project = useProject(projectRef);
-  const listing = useEnvironmentQuery(agentSessionList({ environmentId, input: { projectId } }));
-  const importSession = useAtomCommand(agentSessionImport, { reportFailure: false });
-  const conductorListing = useEnvironmentQuery(
-    conductorWorkspaceList({ environmentId, input: { projectId } }),
+  const listings = useAtomValue(
+    importListingsAtom(
+      JSON.stringify(
+        projects.map((project) => ({
+          environmentId: project.environmentId,
+          projectId: project.id,
+        })),
+      ),
+    ),
   );
+  const importSession = useAtomCommand(agentSessionImport, { reportFailure: false });
   const importWorkspace = useAtomCommand(conductorWorkspaceImport, { reportFailure: false });
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [chosenSource, setSource] = useState<ImportSource | null>(null);
   const [query, setQuery] = useState("");
   const needle = query.trim().toLowerCase();
 
-  const openThread = (threadId: ThreadId) => {
+  const openThread = (project: EnvironmentProject, threadId: ThreadId) => {
     closeImportConversationDialog();
-    void navigate({ to: "/$environmentId/$threadId", params: { environmentId, threadId } });
+    void navigate({
+      to: "/$environmentId/$threadId",
+      params: { environmentId: project.environmentId, threadId },
+    });
   };
 
-  const choose = async (session: AgentSessionSummary) => {
+  const choose = async (project: EnvironmentProject, session: AgentSessionSummary) => {
     if (pendingKey !== null) return;
     if (session.threadId !== null) {
-      openThread(session.threadId);
+      openThread(project, session.threadId);
       return;
     }
+    const { environmentId } = project;
     setPendingKey(sessionKey(session));
     const result = await importSession({
       environmentId,
       input: {
-        projectId,
-        ...(project ? { expectedWorkspaceRoot: project.workspaceRoot } : {}),
+        projectId: project.id,
+        expectedWorkspaceRoot: project.workspaceRoot,
         session: {
           providerInstanceId: session.providerInstanceId,
           providerSessionId: session.providerSessionId,
@@ -298,12 +352,14 @@ function ImportConversationList({
     });
     if (result._tag === "Success") {
       const threadId = result.value.threadIds?.[0];
-      listing.refresh();
+      appAtomRegistry.refresh(
+        agentSessionList({ environmentId, input: { projectId: project.id } }),
+      );
       if (threadId) {
         // The route treats a thread the client has not heard of yet as missing.
         await waitForThreadShell(scopeThreadRef(environmentId, threadId)).catch(() => null);
         setPendingKey(null);
-        openThread(threadId);
+        openThread(project, threadId);
         return;
       }
       setPendingKey(null);
@@ -324,23 +380,29 @@ function ImportConversationList({
     });
   };
 
-  const chooseWorkspace = async (workspace: ConductorWorkspaceSummary) => {
+  const chooseWorkspace = async (
+    project: EnvironmentProject,
+    workspace: ConductorWorkspaceSummary,
+  ) => {
     if (pendingKey !== null) return;
     if (workspace.threadId !== null) {
-      openThread(workspace.threadId);
+      openThread(project, workspace.threadId);
       return;
     }
+    const { environmentId } = project;
     setPendingKey(`conductor:${workspace.workspaceId}`);
     const result = await importWorkspace({
       environmentId,
-      input: { projectId, workspaceId: workspace.workspaceId },
+      input: { projectId: project.id, workspaceId: workspace.workspaceId },
     });
     if (result._tag === "Success" && result.value.threadIds[0] !== undefined) {
       const threadId = result.value.threadIds[0];
-      conductorListing.refresh();
+      appAtomRegistry.refresh(
+        conductorWorkspaceList({ environmentId, input: { projectId: project.id } }),
+      );
       await waitForThreadShell(scopeThreadRef(environmentId, threadId)).catch(() => null);
       setPendingKey(null);
-      openThread(threadId);
+      openThread(project, threadId);
       return;
     }
     setPendingKey(null);
@@ -353,35 +415,56 @@ function ImportConversationList({
     });
   };
 
+  const loaded = listings.map((listing) => ({
+    sessions: Option.getOrNull(AsyncResult.value(listing.sessions)),
+    conductor: Option.getOrNull(AsyncResult.value(listing.conductor)),
+  }));
   // Conductor leads while its listing loads; without Conductor on this machine, show everything.
-  const conductorMissing = conductorListing.data?.available === false;
+  const conductorMissing =
+    loaded.length > 0 && loaded.every((listing) => listing.conductor?.available === false);
   const source: ImportSource =
     chosenSource === null || (chosenSource === "conductor" && conductorMissing)
       ? conductorMissing
         ? "all"
         : "conductor"
       : chosenSource;
-  const sessions = listing.data?.sessions.filter(
-    (session) => source === "all" || session.provider === source,
-  );
-  const workspaces =
-    source === "all" || source === "conductor" ? (conductorListing.data?.workspaces ?? []) : [];
-  const rows: ReadonlyArray<ImportRow> = [
-    ...(source === "conductor" ? [] : (sessions ?? [])).map((session): ImportRow => ({
-      kind: "session",
-      session,
-      updatedAt: session.updatedAt,
-    })),
-    ...workspaces.map((workspace): ImportRow => ({
-      kind: "workspace",
-      workspace,
-      updatedAt: workspace.updatedAt,
-    })),
-  ]
+  const showSessions = source !== "conductor";
+  const showWorkspaces = source === "all" || source === "conductor";
+
+  // Two projects of one repository list the same workspaces; the first one keeps them.
+  const seen = new Set<string>();
+  const rows: Array<ImportRow> = [];
+  projects.forEach((project, index) => {
+    const listing = loaded[index];
+    if (showSessions) {
+      for (const session of listing?.sessions?.sessions ?? []) {
+        if (source !== "all" && session.provider !== source) continue;
+        if (seen.has(sessionKey(session))) continue;
+        seen.add(sessionKey(session));
+        rows.push({ kind: "session", project, session, updatedAt: session.updatedAt });
+      }
+    }
+    if (showWorkspaces) {
+      for (const workspace of listing?.conductor?.workspaces ?? []) {
+        const key = `conductor:${workspace.workspaceId}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        rows.push({ kind: "workspace", project, workspace, updatedAt: workspace.updatedAt });
+      }
+    }
+  });
+  const visibleRows = rows
     .filter((row) => matchesSearch(row, needle))
     .toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt));
-  const loading =
-    source === "conductor" ? conductorListing.data === undefined : sessions === undefined;
+  const relevant = listings.flatMap((listing) => [
+    ...(showSessions ? [listing.sessions] : []),
+    ...(showWorkspaces ? [listing.conductor] : []),
+  ]);
+  const pending = relevant.some(
+    (result) => result._tag === "Initial" || (result._tag !== "Success" && result.waiting),
+  );
+  const failure = relevant.find((result) => result._tag === "Failure");
+  const truncated = showSessions && loaded.some((listing) => listing.sessions?.truncated === true);
   const sourceOptions = SOURCES.filter((option) => option !== "conductor" || !conductorMissing).map(
     (option) => ({ value: option, label: SOURCE_LABEL[option] }),
   );
@@ -394,7 +477,7 @@ function ImportConversationList({
           aria-label="Choose where to import from"
           value={source}
           onValueChange={setSource}
-          count={loading ? undefined : rows.length}
+          count={rows.length === 0 && pending ? undefined : visibleRows.length}
           options={sourceOptions}
         />
         <div className="min-w-0 flex-1">
@@ -408,26 +491,29 @@ function ImportConversationList({
           />
         </div>
       </div>
-      {loading ? (
+      {rows.length === 0 && (pending || failure !== undefined) ? (
         <div className="flex h-40 items-center justify-center px-6 text-center text-muted-foreground text-sm">
-          {(source === "conductor" ? conductorListing.error : listing.error) ?? (
+          {pending ? (
             <Spinner size="md" tone="muted" />
-          )}
+          ) : failure?._tag === "Failure" ? (
+            formatEnvironmentQueryError(failure.cause)
+          ) : null}
         </div>
-      ) : rows.length === 0 ? (
+      ) : visibleRows.length === 0 ? (
         <div className="flex h-40 items-center justify-center px-6 text-center text-muted-foreground text-sm">
           {needle !== ""
             ? `Nothing matches “${query.trim()}”.`
             : source === "conductor"
-              ? "No active Conductor workspaces found for this repository."
+              ? "No active Conductor workspaces found."
               : source === "all"
-                ? "Nothing to import for this project."
-                : `No ${SOURCE_LABEL[source]} conversations found for this folder.`}
+                ? "Nothing to import."
+                : `No ${SOURCE_LABEL[source]} conversations found.`}
         </div>
       ) : (
         <div className="max-h-[28rem] overflow-y-auto">
           <DiscoveryList>
-            {rows.map((row) => {
+            {visibleRows.map((row) => {
+              const projectTitle = showProject ? row.project.title : null;
               if (row.kind === "session") {
                 const { session } = row;
                 const key = sessionKey(session);
@@ -443,10 +529,10 @@ function ImportConversationList({
                       />
                     }
                     title={session.title}
-                    description={describeSession(session)}
+                    description={describeSession(session, projectTitle)}
                     disabled={pendingKey !== null}
                     aria-label={`${session.threadId ? "Open" : "Import"} ${session.title}`}
-                    onClick={() => void choose(session)}
+                    onClick={() => void choose(row.project, session)}
                     action={rowAction(pendingKey === key, session.threadId !== null)}
                   />
                 );
@@ -466,18 +552,24 @@ function ImportConversationList({
                     />
                   }
                   title={workspace.title}
-                  description={<WorkspaceDescription workspace={workspace} />}
+                  description={
+                    <WorkspaceDescription workspace={workspace} projectTitle={projectTitle} />
+                  }
                   disabled={pendingKey !== null}
                   aria-label={`${workspace.threadId ? "Open" : "Import"} ${workspace.title}`}
-                  onClick={() => void chooseWorkspace(workspace)}
+                  onClick={() => void chooseWorkspace(row.project, workspace)}
                   action={rowAction(pendingKey === key, workspace.threadId !== null)}
                 />
               );
             })}
           </DiscoveryList>
-          {listing.data?.truncated && source !== "conductor" ? (
+          {pending ? (
+            <p className="mt-2 flex items-center gap-2 text-muted-foreground text-xs">
+              <Spinner size="xs" /> Still loading some projects.
+            </p>
+          ) : truncated ? (
             <p className="mt-2 text-muted-foreground text-xs">
-              Showing the newest 50 conversations.
+              Showing the newest 50 conversations per project.
             </p>
           ) : null}
         </div>

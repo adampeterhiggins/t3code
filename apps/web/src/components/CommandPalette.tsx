@@ -2013,7 +2013,6 @@ function OpenCommandPaletteDialog(props: {
         },
       });
     }
-    const importProjectRef = contextualProjectRef;
     if (
       [...serverConfigs.values()].some(
         (config) => config.environment.capabilities.agentSessionPicker === true,
@@ -2035,7 +2034,7 @@ function OpenCommandPaletteDialog(props: {
         title: "Import conversation…",
         icon: <HistoryIcon className={ITEM_ICON_CLASS} />,
         run: async () => {
-          openImportConversationDialog(importProjectRef);
+          openImportConversationDialog();
         },
       });
     }

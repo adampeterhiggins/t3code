@@ -292,8 +292,8 @@ remote server; **Copy** puts the same Markdown on your clipboard.
 
 On web and desktop, run **Import conversation…** from the command palette, or right-click a
 project in the legacy sidebar and choose **Import conversation…**, to bring in a Claude Code or
-Codex conversation you started in a terminal. Pick the project from the dropdown at the top of the
-list; it starts on the project you are in. The list shows conversations from the last 30 days
+Codex conversation you started in a terminal. The list covers all your projects; narrow it to one
+with the project dropdown at the top. It shows conversations from the last 30 days
 that ran in the project's folder on the computer hosting it, newest first, with their first
 prompt, message count, and age. Choosing one creates a thread with its messages. Your next message
 continues the same Claude or Codex session, so the agent keeps its full context. Close the CLI
