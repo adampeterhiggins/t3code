@@ -31,6 +31,9 @@ export interface ConductorWorkspace {
   readonly branch: string | null;
   readonly path: string;
   readonly pinnedAt: string | null;
+  /** A name the user gave the workspace. */
+  readonly customName: string | null;
+  readonly prTitle: string | null;
   readonly updatedAt: string;
 }
 
@@ -139,6 +142,17 @@ function userMessage(
   };
 }
 
+/**
+ * The title Conductor's sidebar shows: the user's name for the workspace, its pull request's
+ * title, or its branch in words (`ah/google-drive-access` is "Google drive access").
+ */
+export function conductorWorkspaceTitle(workspace: ConductorWorkspace): string {
+  if (workspace.customName) return workspace.customName;
+  if (workspace.prTitle) return workspace.prTitle;
+  const words = (workspace.branch?.split("/").at(-1) ?? "").replace(/[-_]+/g, " ").trim();
+  return words === "" ? workspace.name : words[0]!.toUpperCase() + words.slice(1);
+}
+
 function record(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -213,7 +227,9 @@ export function openConductorDatabase(path: string) {
     activeWorkspaces: (repoId: string) =>
       all<ConductorWorkspace>(
         `SELECT local_id AS id, repository_id AS repoId, directory_name AS name, branch,
-                workspace_path AS path, pinned_at AS pinnedAt, updated_at AS updatedAt
+                workspace_path AS path, pinned_at AS pinnedAt, updated_at AS updatedAt,
+                NULLIF(TRIM(workspace_name), '') AS customName,
+                NULLIF(TRIM(pr_title), '') AS prTitle
          FROM workspaces
          WHERE repository_id = ? AND state = 'ready'
            AND directory_name IS NOT NULL AND workspace_path IS NOT NULL

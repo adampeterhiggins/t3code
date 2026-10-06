@@ -53,7 +53,8 @@ function makeFixture() {
   db.exec(`
     CREATE TABLE repos (id TEXT PRIMARY KEY, remote_url TEXT, root_path TEXT);
     CREATE TABLE workspaces (local_id TEXT PRIMARY KEY, repository_id TEXT, directory_name TEXT,
-      branch TEXT, state TEXT, workspace_path TEXT, pinned_at TEXT, updated_at TEXT);
+      branch TEXT, state TEXT, workspace_path TEXT, pinned_at TEXT, updated_at TEXT,
+      workspace_name TEXT, pr_title TEXT);
     CREATE TABLE sessions (id TEXT PRIMARY KEY, workspace_id TEXT, title TEXT, agent_type TEXT,
       claude_session_id TEXT, model TEXT, is_hidden INTEGER, created_at TEXT);
     CREATE TABLE session_messages (id TEXT PRIMARY KEY, session_id TEXT, role TEXT, content TEXT,
@@ -68,7 +69,9 @@ function makeFixture() {
     "https://github.com/focaldata/orchestra.git",
     NodePath.join(root, "conductor", "orchestra"),
   );
-  const workspace = db.prepare("INSERT INTO workspaces VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+  const workspace = db.prepare(
+    "INSERT INTO workspaces VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)",
+  );
   workspace.run(
     "ws",
     "repo",
@@ -315,6 +318,7 @@ it.effect("imports a workspace's open tabs as one tab group in Conductor's workt
       workspaces: [
         {
           workspaceId: "ws",
+          title: "Google drive connection access",
           name: "yaounde",
           branch: "ah/google-drive-connection-access",
           path: fixture.workspacePath,
@@ -373,7 +377,7 @@ it.effect("imports a workspace's open tabs as one tab group in Conductor's workt
     });
     // Conductor's Cursor sessions cannot be resumed, so the history is handed off instead.
     expect(grok).toMatchObject({
-      title: "yaounde",
+      title: "Google drive connection access",
       providerInstanceId: "cursor",
       activeProviderThreadId: null,
       pinnedAt: null,

@@ -49,6 +49,7 @@ import * as ProjectService from "../project/ProjectService.ts";
 import { ThreadTabs } from "../threadTabs/ThreadTabs.ts";
 import {
   conductorIsoTime,
+  conductorWorkspaceTitle,
   defaultConductorDatabasePath,
   openConductorDatabase,
   parseConductorTranscript,
@@ -216,6 +217,7 @@ const make = (databasePath: string) =>
           const imported = yield* existingThread(firstThreadId);
           return {
             workspaceId: workspace.id,
+            title: conductorWorkspaceTitle(workspace),
             name: workspace.name,
             branch: workspace.branch?.trim() || null,
             path: workspace.path,
@@ -325,7 +327,7 @@ const make = (databasePath: string) =>
           creationSource: "server",
           id: threadId,
           projectId: input.projectId,
-          title: tab.title === "Untitled" ? workspace.name : tab.title,
+          title: tab.title === "Untitled" ? conductorWorkspaceTitle(workspace) : tab.title,
           providerInstanceId,
           modelSelection: {
             instanceId: providerInstanceId,

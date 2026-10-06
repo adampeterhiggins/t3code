@@ -38,6 +38,7 @@ import {
 } from "./ui/dialog";
 import { DiscoveryList, DiscoveryListRow } from "./ui/discovery-list";
 import { Spinner } from "./ui/spinner";
+import { Toggle, ToggleGroup } from "./ui/toggle-group";
 import { toastManager } from "./ui/toast";
 
 const importConversationProjectAtom = Atom.make<ScopedProjectRef | null>(null).pipe(
@@ -73,6 +74,16 @@ const PROVIDER_LABEL: Record<AgentSessionSummary["provider"], string> = {
   codex: "Codex",
 };
 
+const SOURCES = ["all", "claudeAgent", "codex", "conductor"] as const;
+type ImportSource = (typeof SOURCES)[number];
+
+const SOURCE_LABEL: Record<ImportSource, string> = {
+  all: "All",
+  claudeAgent: "Claude Code",
+  codex: "Codex",
+  conductor: "Conductor",
+};
+
 const CONDUCTOR_AGENT: Record<ConductorAgent, { driver: ProviderDriverKind; label: string }> = {
   claude: { driver: ProviderDriverKind.make("claudeAgent"), label: "Claude Code" },
   codex: { driver: ProviderDriverKind.make("codex"), label: "Codex" },
@@ -80,13 +91,12 @@ const CONDUCTOR_AGENT: Record<ConductorAgent, { driver: ProviderDriverKind; labe
 };
 
 function describeWorkspace(workspace: ConductorWorkspaceSummary): string {
+  const tabs = workspace.tabs.length;
   return [
-    workspace.branch,
-    workspace.tabs.length === 1 ? workspace.tabs[0]!.title : `${workspace.tabs.length} tabs`,
+    workspace.name,
+    `${tabs} ${tabs === 1 ? "tab" : "tabs"}`,
     formatRelativeTimeLabel(workspace.updatedAt),
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  ].join(" · ");
 }
 
 const sessionKey = (session: AgentSessionSummary) =>
@@ -113,6 +123,7 @@ function ImportConversationDialog({ projectRef }: { projectRef: ScopedProjectRef
   );
   const importWorkspace = useAtomCommand(conductorWorkspaceImport, { reportFailure: false });
   const [pendingKey, setPendingKey] = useState<string | null>(null);
+  const [source, setSource] = useState<ImportSource>("all");
 
   const openThread = (threadId: ThreadId) => {
     closeImportConversationDialog();
@@ -194,8 +205,108 @@ function ImportConversationDialog({ projectRef }: { projectRef: ScopedProjectRef
     });
   };
 
-  const sessions = listing.data?.sessions ?? null;
+  const conductorAvailable = conductorListing.data?.available === true;
   const workspaces = conductorListing.data?.workspaces ?? [];
+  const showConversations = source !== "conductor";
+  const showWorkspaces = conductorAvailable && (source === "all" || source === "conductor");
+  const sessions =
+    listing.data?.sessions.filter(
+      (session) => source === "all" || source === "conductor" || session.provider === source,
+    ) ?? null;
+
+  const conversationList =
+    sessions === null ? (
+      <div className="flex h-40 items-center justify-center px-6 text-center text-muted-foreground text-sm">
+        {listing.error ?? <Spinner size="md" tone="muted" />}
+      </div>
+    ) : sessions.length === 0 ? (
+      <div className="flex h-40 items-center justify-center px-6 text-center text-muted-foreground text-sm">
+        {source === "all"
+          ? "No Claude Code or Codex conversations found for this folder."
+          : `No ${SOURCE_LABEL[source]} conversations found for this folder.`}
+      </div>
+    ) : (
+      <div className="max-h-96 overflow-y-auto">
+        <DiscoveryList>
+          {sessions.map((session) => {
+            const key = sessionKey(session);
+            return (
+              <DiscoveryListRow
+                key={key}
+                icon={
+                  <ProviderInstanceIcon
+                    driverKind={ProviderDriverKind.make(session.provider)}
+                    displayName={PROVIDER_LABEL[session.provider]}
+                    showBadge={false}
+                    iconClassName="size-4"
+                  />
+                }
+                title={session.title}
+                description={describeSession(session)}
+                disabled={pendingKey !== null}
+                aria-label={`${session.threadId ? "Open" : "Import"} ${session.title}`}
+                onClick={() => void choose(session)}
+                action={
+                  pendingKey === key ? (
+                    <Spinner size="xs" />
+                  ) : (
+                    <span className="text-muted-foreground text-xs">
+                      {session.threadId ? "Open" : "Import"}
+                    </span>
+                  )
+                }
+              />
+            );
+          })}
+        </DiscoveryList>
+        {listing.data?.truncated ? (
+          <p className="mt-2 text-muted-foreground text-xs">Showing the newest 50.</p>
+        ) : null}
+      </div>
+    );
+
+  const workspaceList =
+    workspaces.length === 0 ? (
+      <div className="flex h-40 items-center justify-center px-6 text-center text-muted-foreground text-sm">
+        No active Conductor workspaces found for this repository.
+      </div>
+    ) : (
+      <div className="max-h-96 overflow-y-auto">
+        <DiscoveryList>
+          {workspaces.map((workspace) => {
+            const key = `conductor:${workspace.workspaceId}`;
+            const agent = CONDUCTOR_AGENT[workspace.tabs[0]!.agent];
+            return (
+              <DiscoveryListRow
+                key={key}
+                icon={
+                  <ProviderInstanceIcon
+                    driverKind={agent.driver}
+                    displayName={agent.label}
+                    showBadge={false}
+                    iconClassName="size-4"
+                  />
+                }
+                title={workspace.title}
+                description={describeWorkspace(workspace)}
+                disabled={pendingKey !== null}
+                aria-label={`${workspace.threadId ? "Open" : "Import"} ${workspace.title}`}
+                onClick={() => void chooseWorkspace(workspace)}
+                action={
+                  pendingKey === key ? (
+                    <Spinner size="xs" />
+                  ) : (
+                    <span className="text-muted-foreground text-xs">
+                      {workspace.threadId ? "Open" : "Import"}
+                    </span>
+                  )
+                }
+              />
+            );
+          })}
+        </DiscoveryList>
+      </div>
+    );
 
   return (
     <Dialog
@@ -209,97 +320,40 @@ function ImportConversationDialog({ projectRef }: { projectRef: ScopedProjectRef
           <DialogTitle>Import conversation</DialogTitle>
           <DialogDescription>
             Claude Code and Codex conversations from the last 30 days in{" "}
-            {project?.title ?? "this project"}, and its active Conductor workspaces. An imported
+            {project?.title ?? "this project"}
+            {conductorAvailable ? ", and its active Conductor workspaces" : ""}. An imported
             conversation continues the same session.
           </DialogDescription>
         </DialogHeader>
         <DialogPanel>
-          {sessions === null ? (
-            <div className="flex h-40 items-center justify-center px-6 text-center text-muted-foreground text-sm">
-              {listing.error ?? <Spinner size="md" tone="muted" />}
-            </div>
-          ) : sessions.length === 0 ? (
-            <div className="flex h-40 items-center justify-center px-6 text-center text-muted-foreground text-sm">
-              No Claude Code or Codex conversations found for this folder.
-            </div>
-          ) : (
-            <div className="max-h-96 overflow-y-auto">
-              <DiscoveryList>
-                {sessions.map((session) => {
-                  const key = sessionKey(session);
-                  return (
-                    <DiscoveryListRow
-                      key={key}
-                      icon={
-                        <ProviderInstanceIcon
-                          driverKind={ProviderDriverKind.make(session.provider)}
-                          displayName={PROVIDER_LABEL[session.provider]}
-                          showBadge={false}
-                          iconClassName="size-4"
-                        />
-                      }
-                      title={session.title}
-                      description={describeSession(session)}
-                      disabled={pendingKey !== null}
-                      aria-label={`${session.threadId ? "Open" : "Import"} ${session.title}`}
-                      onClick={() => void choose(session)}
-                      action={
-                        pendingKey === key ? (
-                          <Spinner size="xs" />
-                        ) : (
-                          <span className="text-muted-foreground text-xs">
-                            {session.threadId ? "Open" : "Import"}
-                          </span>
-                        )
-                      }
-                    />
-                  );
-                })}
-              </DiscoveryList>
-              {listing.data?.truncated ? (
-                <p className="mt-2 text-muted-foreground text-xs">Showing the newest 50.</p>
-              ) : null}
-            </div>
-          )}
-          {workspaces.length > 0 ? (
-            <div className="mt-4 flex flex-col gap-2">
-              <h3 className="font-medium text-muted-foreground text-xs">Conductor workspaces</h3>
-              <div className="max-h-72 overflow-y-auto">
-                <DiscoveryList>
-                  {workspaces.map((workspace) => {
-                    const key = `conductor:${workspace.workspaceId}`;
-                    const agent = CONDUCTOR_AGENT[workspace.tabs[0]!.agent];
-                    return (
-                      <DiscoveryListRow
-                        key={key}
-                        icon={
-                          <ProviderInstanceIcon
-                            driverKind={agent.driver}
-                            displayName={agent.label}
-                            showBadge={false}
-                            iconClassName="size-4"
-                          />
-                        }
-                        title={workspace.name}
-                        description={describeWorkspace(workspace)}
-                        disabled={pendingKey !== null}
-                        aria-label={`${workspace.threadId ? "Open" : "Import"} ${workspace.name}`}
-                        onClick={() => void chooseWorkspace(workspace)}
-                        action={
-                          pendingKey === key ? (
-                            <Spinner size="xs" />
-                          ) : (
-                            <span className="text-muted-foreground text-xs">
-                              {workspace.threadId ? "Open" : "Import"}
-                            </span>
-                          )
-                        }
-                      />
-                    );
-                  })}
-                </DiscoveryList>
+          <div className="mb-3">
+            <ToggleGroup
+              aria-label="Source"
+              value={[source]}
+              onValueChange={(next) => {
+                const value = SOURCES.find((candidate) => candidate === next[0]);
+                if (value !== undefined) setSource(value);
+              }}
+            >
+              {SOURCES.filter((option) => option !== "conductor" || conductorAvailable).map(
+                (option) => (
+                  <Toggle key={option} value={option}>
+                    {SOURCE_LABEL[option]}
+                  </Toggle>
+                ),
+              )}
+            </ToggleGroup>
+          </div>
+          {showConversations ? conversationList : null}
+          {showWorkspaces ? (
+            source === "all" ? (
+              <div className="mt-4 flex flex-col gap-2">
+                <h3 className="font-medium text-muted-foreground text-xs">Conductor workspaces</h3>
+                {workspaceList}
               </div>
-            </div>
+            ) : (
+              workspaceList
+            )
           ) : null}
         </DialogPanel>
       </DialogPopup>

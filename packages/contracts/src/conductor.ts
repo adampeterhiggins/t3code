@@ -26,6 +26,9 @@ export type ConductorTabSummary = typeof ConductorTabSummary.Type;
  */
 export const ConductorWorkspaceSummary = Schema.Struct({
   workspaceId: TrimmedNonEmptyString,
+  /** The workspace's title in Conductor's sidebar. */
+  title: TrimmedNonEmptyString,
+  /** Conductor's directory name, such as `yaounde`. */
   name: TrimmedNonEmptyString,
   branch: Schema.NullOr(TrimmedNonEmptyString),
   path: TrimmedNonEmptyString,
