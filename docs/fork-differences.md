@@ -230,7 +230,8 @@ v2 command items record no working directory, so none is shown. On web and deskt
 the main chat also preview on hover; clicking still expands them inline. The card shows the tool
 heading, the workspace-relative syntax-highlighted command or full label, then the same details the
 row expands to (output loads only once the card opens, and a non-zero exit code shows with it), with
-time and status in a compact footer. Thoughts and answered questions do not preview
+time and status in a compact footer. Syntax highlighting for commands and tool arguments is
+limited to hover previews; expanded chat rows show plain text. Thoughts and answered questions do not preview
 ([`MessagesTimeline.tsx`](../apps/web/src/components/chat/MessagesTimeline.tsx),
 [`toolCallPreview.ts`](../apps/web/src/lib/toolCallPreview.ts)).
 

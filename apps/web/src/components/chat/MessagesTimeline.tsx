@@ -5100,7 +5100,11 @@ type WorkEntryDetailProps = {
 
 /** An open tool row's details: the item inspector for projected items, otherwise plain text. */
 function WorkEntryDetailBody(
-  props: WorkEntryDetailProps & { textBody: string | null; hideCommand?: boolean },
+  props: WorkEntryDetailProps & {
+    textBody: string | null;
+    hideCommand?: boolean;
+    highlightSyntax?: boolean;
+  },
 ) {
   const ctx = use(TimelineRowCtx);
   const { workEntry } = props;
@@ -5112,6 +5116,7 @@ function WorkEntryDetailBody(
         cwd={ctx.markdownCwd}
         workspaceRoot={props.workspaceRoot}
         hideCommand={props.hideCommand}
+        highlightSyntax={props.highlightSyntax}
         onOpenThread={ctx.onOpenThread}
         onOpenTurnDiff={ctx.onOpenTurnDiff}
         onRollbackCheckpoint={ctx.onRollbackCheckpoint}
@@ -5166,14 +5171,14 @@ function ToolCallPreviewContent(
       </div>
       {heading.command ? (
         <div className={toolCallPreviewCommandClassName}>
-          <ShellCommandBlock command={heading.command} />
+          <ShellCommandBlock command={heading.command} highlightSyntax />
         </div>
       ) : heading.text ? (
         <p className="text-xs break-words whitespace-pre-wrap text-foreground/85 select-text">
           {heading.text}
         </p>
       ) : null}
-      <WorkEntryDetailBody {...props} textBody={textBody} hideCommand />
+      <WorkEntryDetailBody {...props} textBody={textBody} hideCommand highlightSyntax />
       <p className="font-mono text-3xs text-muted-foreground select-text">
         {[
           formatSecondsTimestamp(workEntry.createdAt, timestampFormat),

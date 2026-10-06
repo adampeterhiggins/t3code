@@ -12,7 +12,7 @@ import { HighlightedTokens } from "./HighlightedTokens";
 // at a hyphen; a word longer than the line still breaks anywhere.
 const WORD_CLASS_NAME = "inline-block max-w-full [overflow-wrap:anywhere]";
 
-// The shell parser loads with the first expanded command, not with the timeline.
+// The shell parser loads with the first highlighted preview, not with the timeline.
 let embeddedScriptsModule: Promise<typeof import("../../lib/embeddedScripts")> | undefined;
 function loadEmbeddedScripts() {
   embeddedScriptsModule ??= import("../../lib/embeddedScripts");
@@ -55,10 +55,16 @@ function HighlightedCommand({ code, theme }: { code: string; theme: "light" | "d
 }
 
 /**
- * The command a command_execution item ran, syntax highlighted. Scripts inside
- * it, such as a `bash -lc` script or a Python heredoc, get their own grammar.
+ * The command a command_execution item ran. Hover previews opt into highlighting;
+ * scripts inside them, such as a Python heredoc, get their own grammar.
  */
-export function ShellCommandBlock({ command }: { command: string }) {
+export function ShellCommandBlock({
+  command,
+  highlightSyntax = false,
+}: {
+  command: string;
+  highlightSyntax?: boolean | undefined;
+}) {
   const { resolvedTheme } = useTheme();
   const code = withVisibleControlCharacters(command.trim());
   if (!code) return null;
@@ -66,11 +72,15 @@ export function ShellCommandBlock({ command }: { command: string }) {
   return (
     // The tool body sets the monospace, pre-wrapped text this sits in.
     <div className="text-foreground/85">
-      <RenderErrorBoundary fallback={plain} resetKeys={[code]}>
-        <Suspense fallback={plain}>
-          <HighlightedCommand code={code} theme={resolvedTheme} />
-        </Suspense>
-      </RenderErrorBoundary>
+      {highlightSyntax ? (
+        <RenderErrorBoundary fallback={plain} resetKeys={[code]}>
+          <Suspense fallback={plain}>
+            <HighlightedCommand code={code} theme={resolvedTheme} />
+          </Suspense>
+        </RenderErrorBoundary>
+      ) : (
+        plain
+      )}
     </div>
   );
 }
