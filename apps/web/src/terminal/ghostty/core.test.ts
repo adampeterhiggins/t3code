@@ -12,6 +12,11 @@ import {
 import { writeTerminalOutputUpdate } from "../../components/ThreadTerminalDrawer";
 import { GHOSTTY_CELL_WIDE, GhosttyTerminalCore, ghosttyCellText } from "./core";
 import { loadGhosttyRuntime } from "./runtime";
+import {
+  DEFAULT_TERMINAL_ANSI_COLORS,
+  TERMINAL_ANSI_ROLES,
+  themeColorToHex,
+} from "../../themePalette";
 
 vi.mock("./vendor/ghostty-vt.wasm?url", async () => ({
   default: (await import("./vendor/ghostty-vt.wasm?inline")).default,
@@ -376,5 +381,77 @@ describe("GhosttyTerminalCore snapshots", () => {
     writeTerminalOutputUpdate(core, reattached);
     reference.resetAndWrite("hello");
     expect(core.snapshot()).toEqual(reference.snapshot());
+  });
+
+  it("paints ANSI colors from the theme palette and restores Ghostty's defaults", async () => {
+    const core = await createCore();
+    core.write("\x1b[31mR\x1b[0m\x1b[94mB\x1b[0m\x1b[38;5;196mC");
+    const stock = core
+      .snapshot()
+      .rowData[0]!.cells.slice(0, 3)
+      .map((cell) => cell.foreground);
+    const palette = Array.from({ length: 16 }, (_, index) => ({ r: index, g: 100, b: 200 }));
+    const theme = {
+      foreground: { r: 255, g: 255, b: 255 },
+      background: { r: 0, g: 0, b: 0 },
+      cursor: { r: 255, g: 255, b: 255 },
+    };
+
+    core.setTheme({ ...theme, palette });
+    const themed = core.snapshot().rowData[0]!.cells;
+    expect(themed[0]!.foreground).toEqual({ r: 1, g: 100, b: 200 });
+    expect(themed[1]!.foreground).toEqual({ r: 12, g: 100, b: 200 });
+    // The 256-color cube is not part of a theme.
+    expect(themed[2]!.foreground).toEqual(stock[2]);
+
+    core.resetAndWrite("\x1b[31mR");
+    expect(core.snapshot().rowData[0]!.cells[0]!.foreground).toEqual({ r: 1, g: 100, b: 200 });
+
+    core.setTheme(theme);
+    core.resetAndWrite("\x1b[31mR\x1b[0m\x1b[94mB\x1b[0m\x1b[38;5;196mC");
+    expect(
+      core
+        .snapshot()
+        .rowData[0]!.cells.slice(0, 3)
+        .map((cell) => cell.foreground),
+    ).toEqual(stock);
+
+    // A program's own OSC 4 color outlives later theme changes.
+    core.write("\x1b]4;1;rgb:ff/00/00\x07");
+    core.setTheme({ ...theme, palette });
+    expect(core.snapshot().rowData[0]!.cells[0]!.foreground).toEqual({ r: 255, g: 0, b: 0 });
+  });
+
+  it("ships theme ANSI defaults equal to Ghostty's built-in palette", async () => {
+    const core = await createCore();
+    core.write(
+      `${Array.from({ length: 8 }, (_, index) => `\x1b[${30 + index}m#`).join("")}\r\n` +
+        Array.from({ length: 8 }, (_, index) => `\x1b[${90 + index}m#`).join(""),
+    );
+    const rows = core.snapshot().rowData;
+    const stock = [...rows[0]!.cells.slice(0, 8), ...rows[1]!.cells.slice(0, 8)].map(
+      ({ foreground: { r, g, b } }) =>
+        `#${[r, g, b].map((channel) => channel.toString(16).padStart(2, "0")).join("")}`,
+    );
+    expect(
+      TERMINAL_ANSI_ROLES.map((role) => themeColorToHex(DEFAULT_TERMINAL_ANSI_COLORS[role])),
+    ).toEqual(stock);
+  });
+
+  it("starts in the default cursor style and lets programs override it", async () => {
+    const core = await createCore();
+    expect(core.snapshot().cursorStyle).toBe(1);
+
+    core.setDefaultCursorStyle("underline");
+    expect(core.snapshot().cursorStyle).toBe(2);
+
+    // DECSCUSR 6 asks for a steady bar; CSI 0 q returns to the default.
+    core.write("\x1b[6 q");
+    expect(core.snapshot().cursorStyle).toBe(0);
+    core.write("\x1b[0 q");
+    expect(core.snapshot().cursorStyle).toBe(2);
+
+    core.resetAndWrite("hello");
+    expect(core.snapshot()).toMatchObject({ cursorStyle: 2, cursorBlinking: true });
   });
 });

@@ -3,6 +3,7 @@ import { SELECTION_MULTI_CLICK_INTERVAL_MS } from "../../lib/selectionActions";
 import { collectWrappedTerminalLinkLine, extractTerminalLinks } from "../../terminal-links";
 import {
   GhosttyTerminalCore,
+  type GhosttyCursorStyle,
   type GhosttyScrollbar,
   type GhosttySnapshot,
   type GhosttyTheme,
@@ -540,6 +541,8 @@ export interface GhosttySelectionPosition {
 export interface GhosttyTerminalSurfaceOptions {
   readonly theme: GhosttyTheme;
   readonly font?: GhosttyTerminalFont;
+  /** Read once the WASM core exists, like `visible`. */
+  readonly cursorStyle?: GhosttyCursorStyle;
   /** Read after font and WASM loading. Hosts can supply a getter for the latest value. */
   readonly visible?: boolean;
   readonly onData: (data: string) => void;
@@ -730,6 +733,7 @@ export class GhosttyTerminalSurface {
       options.theme,
       options.onData,
     );
+    if (options.cursorStyle) core.setDefaultCursorStyle(options.cursorStyle);
     const surface = new GhosttyTerminalSurface(
       mount,
       canvas,
@@ -790,6 +794,13 @@ export class GhosttyTerminalSurface {
     this.theme = theme;
     this.core.setTheme(theme);
     this.forceFullRender = true;
+    this.requestRender();
+  }
+
+  setCursorStyle(style: GhosttyCursorStyle): void {
+    if (this.disposed) return;
+    this.core.setDefaultCursorStyle(style);
+    this.cursorOn = true;
     this.requestRender();
   }
 

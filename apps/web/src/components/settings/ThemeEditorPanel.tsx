@@ -9,6 +9,7 @@ import {
 } from "react";
 import {
   applyThemeColorPreview,
+  TERMINAL_ANSI_ROLES,
   THEME_COLOR_ROLES,
   THEME_FILE_VERSION,
   createVividThemeColors,
@@ -215,6 +216,23 @@ const THEME_EDITOR_ROLE_GROUPS: ReadonlyArray<{
         roles: ["warning", "warningForeground", "warningSurface"],
       },
     ],
+  },
+  {
+    id: "terminal-ansi",
+    title: "Terminal colors",
+    // terminalAnsiBrightRed -> "Bright red"
+    families: TERMINAL_ANSI_ROLES.map((role) => {
+      const label = role
+        .slice("terminalAnsi".length)
+        .replace(/([a-z])([A-Z])/g, "$1 $2")
+        .toLowerCase();
+      return {
+        id: role,
+        label: label.charAt(0).toUpperCase() + label.slice(1),
+        role,
+        roles: [role],
+      };
+    }),
   },
 ];
 

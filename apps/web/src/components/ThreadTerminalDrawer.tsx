@@ -119,13 +119,18 @@ export function writeTerminalOutputUpdate(
   }
 }
 
+let colorProbeContext: CanvasRenderingContext2D | null = null;
+
 function parseTerminalColor(value: string, fallback: GhosttyColor): GhosttyColor {
   if (typeof document === "undefined") return fallback;
 
-  const canvas = document.createElement("canvas");
-  canvas.width = 1;
-  canvas.height = 1;
-  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!colorProbeContext) {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1;
+    canvas.height = 1;
+    colorProbeContext = canvas.getContext("2d", { willReadFrequently: true });
+  }
+  const context = colorProbeContext;
   if (!context) return fallback;
 
   context.clearRect(0, 0, 1, 1);
@@ -219,6 +224,13 @@ export function terminalThemeFromApp(mountElement?: HTMLElement | null): Ghostty
     "--terminal-selection-background",
     isDark ? "rgba(180, 203, 255, 0.25)" : "rgba(37, 63, 99, 0.2)",
   );
+  // Only themes carry an ANSI palette; without one Ghostty keeps its own.
+  const paletteValues = Array.from({ length: 16 }, (_, index) =>
+    readThemeColor(themeStyles, `--terminal-ansi-${index}`, ""),
+  );
+  const palette = paletteValues.every((value) => value.length > 0)
+    ? paletteValues.map((value) => parseTerminalColor(value, { r: 0, g: 0, b: 0 }))
+    : null;
   return {
     background: parseTerminalColor(
       terminalBackground,
@@ -233,6 +245,7 @@ export function terminalThemeFromApp(mountElement?: HTMLElement | null): Ghostty
       isDark ? { r: 180, g: 203, b: 255 } : { r: 38, g: 56, b: 78 },
     ),
     selectionBackground: terminalSelection,
+    ...(palette ? { palette } : {}),
   };
 }
 
@@ -401,6 +414,8 @@ export function TerminalViewport({
     }),
   );
   const terminalFontRef = useRef({ family: terminalFontFamily, size: terminalFontSize });
+  const terminalCursorStyle = useClientSettings((settings) => settings.terminalCursorStyle);
+  const terminalCursorStyleRef = useRef(terminalCursorStyle);
   const terminalSession = useAttachedTerminalSession({
     environmentId,
     terminal: {
@@ -478,6 +493,12 @@ export function TerminalViewport({
   }, [terminalFontFamily, terminalFontSize]);
 
   useEffect(() => {
+    if (terminalCursorStyleRef.current === terminalCursorStyle) return;
+    terminalCursorStyleRef.current = terminalCursorStyle;
+    terminalRef.current?.setCursorStyle(terminalCursorStyle);
+  }, [terminalCursorStyle]);
+
+  useEffect(() => {
     const mount = containerRef.current;
     if (!mount) return;
 
@@ -493,6 +514,10 @@ export function TerminalViewport({
       const terminalOptions: GhosttyTerminalSurfaceOptions = {
         theme: terminalThemeFromApp(mount),
         font: terminalFontOptions(setupFont.family, setupFont.size),
+        // Settings hydrate asynchronously, so read the style once WASM loads.
+        get cursorStyle() {
+          return terminalCursorStyleRef.current;
+        },
         get visible() {
           return visibleRef.current;
         },

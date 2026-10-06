@@ -26,6 +26,7 @@ import {
   type ChatWidth,
   type DiffLayout,
   type EnvironmentIdentificationMode,
+  type TerminalCursorStyle,
   type PullRequestOpenTarget,
   MAX_APPEARANCE_CONTRAST,
   MAX_CODE_FONT_SIZE,
@@ -181,6 +182,12 @@ const ENVIRONMENT_IDENTIFICATION_LABELS: Record<EnvironmentIdentificationMode, s
   artwork: "Artwork",
   pill: "Version pill",
   none: "None",
+};
+
+const TERMINAL_CURSOR_STYLE_LABELS: Record<TerminalCursorStyle, string> = {
+  block: "Block",
+  bar: "Bar",
+  underline: "Underline",
 };
 
 const RESPONSE_STREAMING_MODE_LABELS: Record<ResponseStreamingMode, string> = {
@@ -609,6 +616,9 @@ export function useSettingsRestore(onRestored?: () => void) {
         ? ["Snooze limited threads"]
         : []),
       ...(settings.wordWrap !== DEFAULT_UNIFIED_SETTINGS.wordWrap ? ["Word wrap"] : []),
+      ...(settings.terminalCursorStyle !== DEFAULT_UNIFIED_SETTINGS.terminalCursorStyle
+        ? ["Terminal cursor"]
+        : []),
       ...(settings.persistComposerContextStrip !==
       DEFAULT_UNIFIED_SETTINGS.persistComposerContextStrip
         ? ["Composer context"]
@@ -731,6 +741,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.fontSizeInterface,
       settings.fontSizePrompt,
       settings.fontSizeTerminal,
+      settings.terminalCursorStyle,
       settings.glassOpacity,
       settings.panelAnimationDurationMs,
       settings.responseStreamingMode,
@@ -882,6 +893,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       fontSizePrompt: DEFAULT_UNIFIED_SETTINGS.fontSizePrompt,
       fontSizeCode: DEFAULT_UNIFIED_SETTINGS.fontSizeCode,
       fontSizeTerminal: DEFAULT_UNIFIED_SETTINGS.fontSizeTerminal,
+      terminalCursorStyle: DEFAULT_UNIFIED_SETTINGS.terminalCursorStyle,
       browserDefaultViewport: DEFAULT_UNIFIED_SETTINGS.browserDefaultViewport,
       browserDefaultZoomFactor: DEFAULT_UNIFIED_SETTINGS.browserDefaultZoomFactor,
       browserDefaultAppearance: DEFAULT_UNIFIED_SETTINGS.browserDefaultAppearance,
@@ -1747,6 +1759,48 @@ function FontSmoothingRow() {
   );
 }
 
+function TerminalCursorRow() {
+  const settings = useScopedSettings();
+  const updateSettings = useUpdateScopedSettings();
+  return (
+    <SettingsRow
+      {...searchableSetting("terminal-cursor")}
+      description="Cursor shape in the terminal. Programs that set their own cursor still win."
+      resetAction={
+        settings.terminalCursorStyle !== DEFAULT_UNIFIED_SETTINGS.terminalCursorStyle ? (
+          <SettingResetButton
+            label="terminal cursor"
+            onClick={() =>
+              updateSettings({ terminalCursorStyle: DEFAULT_UNIFIED_SETTINGS.terminalCursorStyle })
+            }
+          />
+        ) : null
+      }
+      control={
+        <Select
+          value={settings.terminalCursorStyle}
+          onValueChange={(value) => {
+            if (value === "block" || value === "bar" || value === "underline") {
+              updateSettings({ terminalCursorStyle: value });
+            }
+          }}
+        >
+          <SelectTrigger size="sm" className="w-full sm:w-40" aria-label="Terminal cursor">
+            <SelectValue>{TERMINAL_CURSOR_STYLE_LABELS[settings.terminalCursorStyle]}</SelectValue>
+          </SelectTrigger>
+          <SelectPopup align="end" alignItemWithTrigger={false}>
+            {Object.entries(TERMINAL_CURSOR_STYLE_LABELS).map(([value, label]) => (
+              <SelectItem hideIndicator key={value} value={value}>
+                {label}
+              </SelectItem>
+            ))}
+          </SelectPopup>
+        </Select>
+      }
+    />
+  );
+}
+
 function WordWrapRow() {
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
@@ -1870,6 +1924,7 @@ function TypographySection() {
       }
     >
       {advanced ? <FontSettingsGroup /> : <SimpleFontRows />}
+      <TerminalCursorRow />
       <WordWrapRow />
     </SettingsSection>
   );

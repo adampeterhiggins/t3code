@@ -68,9 +68,20 @@ export interface GhosttyTheme {
   readonly foreground: GhosttyColor;
   readonly background: GhosttyColor;
   readonly cursor: GhosttyColor;
+  /** The 16 ANSI colors; omitted keeps Ghostty's built-in palette. */
+  readonly palette?: ReadonlyArray<GhosttyColor>;
   /** CSS color the renderer overlays on selected cells; not sent to Ghostty. */
   readonly selectionBackground?: string;
 }
+
+export type GhosttyCursorStyle = "bar" | "block" | "underline";
+
+/** `GhosttyTerminalCursorStyle` values for option 22. */
+const GHOSTTY_CURSOR_STYLE: Record<GhosttyCursorStyle, number> = {
+  bar: 0,
+  block: 1,
+  underline: 2,
+};
 
 export interface GhosttyCell {
   readonly text: string;
@@ -213,6 +224,7 @@ export class GhosttyTerminalCore {
   private scrollbar = 0;
   private rows: GhosttyRow[] = [];
   private disposed = false;
+  private defaultCursorStyle: GhosttyCursorStyle = "block";
   private keyboardLayoutMap: GhosttyKeyboardLayoutMap | undefined;
 
   private constructor(runtime: GhosttyRuntime) {
@@ -328,9 +340,10 @@ export class GhosttyTerminalCore {
   resetAndWrite(data: string): void {
     this.ensureActive();
     this.runtime.call("ghostty_terminal_reset", this.terminal);
-    // RIS returns the cursor to Ghostty's built-in steady default, so the
-    // embedder default has to be applied again before the replay runs.
+    // RIS returns the cursor to Ghostty's built-in steady block, so the
+    // embedder defaults have to be applied again before the replay runs.
     this.applyDefaultCursorBlink();
+    this.applyDefaultCursorStyle();
     this.rows = [];
     if (data.length === 0) return;
     const writer = this.ptyWriter;
@@ -388,6 +401,52 @@ export class GhosttyTerminalCore {
       this.runtime.call("ghostty_terminal_set", this.terminal, option, color);
     }
     this.runtime.free(color, 3);
+    this.applyPalette(theme.palette);
+  }
+
+  /**
+   * Option 14 takes all 256 colors, so the theme's 16 replace the head of the
+   * current default palette and the 6x6x6 cube and grayscale ramp stay as-is.
+   * Program-set OSC 4 overrides still win over this default.
+   */
+  private applyPalette(palette: ReadonlyArray<GhosttyColor> | undefined): void {
+    if (!palette) {
+      this.runtime.call("ghostty_terminal_set", this.terminal, 14, 0);
+      return;
+    }
+    const size = 256 * 3;
+    const colors = this.runtime.alloc(size);
+    try {
+      // 25 is GHOSTTY_TERMINAL_DATA_COLOR_PALETTE_DEFAULT.
+      this.assertSuccess(
+        "ghostty_terminal_get",
+        this.runtime.call("ghostty_terminal_get", this.terminal, 25, colors),
+      );
+      const bytes = this.runtime.bytes(colors, size);
+      palette.slice(0, 16).forEach((value, index) => {
+        bytes.set([value.r, value.g, value.b], index * 3);
+      });
+      this.runtime.call("ghostty_terminal_set", this.terminal, 14, colors);
+    } finally {
+      this.runtime.free(colors, size);
+    }
+  }
+
+  /**
+   * The style a session starts in and returns to on DECSCUSR reset, so a
+   * program that asks for its own cursor (an editor's insert-mode bar) wins.
+   */
+  setDefaultCursorStyle(style: GhosttyCursorStyle): void {
+    this.ensureActive();
+    this.defaultCursorStyle = style;
+    this.applyDefaultCursorStyle();
+  }
+
+  private applyDefaultCursorStyle(): void {
+    const value = this.runtime.alloc(4);
+    this.runtime.view(value, 4).setInt32(0, GHOSTTY_CURSOR_STYLE[this.defaultCursorStyle], true);
+    this.runtime.call("ghostty_terminal_set", this.terminal, 22, value);
+    this.runtime.free(value, 4);
   }
 
   scroll(deltaRows: number): void {
