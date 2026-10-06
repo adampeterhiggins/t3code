@@ -1061,6 +1061,14 @@ media and rendered pages, so a file outside the workspace that never triggers a 
 mutation can still be brought up to date. See [the user guide](user/keybindings.md#refresh-a-file)
 and [`FilePreviewPanel.tsx`](../apps/web/src/components/files/FilePreviewPanel.tsx).
 
+## Type `>` in the file picker for commands
+
+Typing `>` at the start of the file picker's (`mod+p`) search switches to the command palette's
+actions-only search with the query kept, and deleting the `>` returns to file search. Upstream keeps
+the two surfaces separate. See [the user guide](user/keybindings.md#jump-from-files-to-commands),
+[`ProjectFilePicker.tsx`](../apps/web/src/components/files/ProjectFilePicker.tsx), and
+[`CommandPalette.tsx`](../apps/web/src/components/CommandPalette.tsx).
+
 ## Keeping this page current
 
 Update this page in the same change that adds, changes, or removes a user-visible fork-only

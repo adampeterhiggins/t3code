@@ -57,6 +57,9 @@ export function browseInputEndPaddingClass(input: {
  * command palette (⌘K), the project file picker (⌘P), and project content
  * search (⇧⌘F). One reducer owns open/mode state so the surfaces can never
  * stack and re-triggering a mode's shortcut toggles it closed.
+ *
+ * Like VS Code's quick open, typing `>` in the file picker hands the query to
+ * the command palette's actions-only search, and deleting the `>` hands it back.
  */
 export type SearchOverlayMode = "command" | "files" | "content";
 
@@ -66,7 +69,9 @@ export type CommandPaletteOpenIntent =
       readonly kind: "search";
       readonly query: string;
       readonly linkedThreads?: CommandPaletteLinkedThreads;
-    };
+      readonly fromFilePicker?: boolean;
+    }
+  | { readonly kind: "file-search"; readonly query: string };
 
 export interface CommandPaletteUiState {
   readonly open: boolean;
@@ -81,7 +86,9 @@ export type CommandPaletteUiAction =
       readonly _tag: "OpenSearch";
       readonly query: string;
       readonly linkedThreads?: CommandPaletteLinkedThreads;
+      readonly fromFilePicker?: boolean;
     }
+  | { readonly _tag: "OpenFileSearch"; readonly query: string }
   | { readonly _tag: "OpenAddProject" }
   | { readonly _tag: "OpenNewThreadIn" }
   | { readonly _tag: "OpenChangeTheme" }
@@ -109,7 +116,14 @@ export function reduceCommandPaletteUiState(
           kind: "search",
           query: action.query,
           ...(action.linkedThreads ? { linkedThreads: action.linkedThreads } : {}),
+          ...(action.fromFilePicker ? { fromFilePicker: true } : {}),
         },
+      };
+    case "OpenFileSearch":
+      return {
+        open: true,
+        mode: "files",
+        openIntent: { kind: "file-search", query: action.query },
       };
     case "OpenAddProject":
       return { open: true, mode: "command", openIntent: { kind: "add-project" } };

@@ -213,6 +213,25 @@ describe("reduceCommandPaletteUiState", () => {
     );
   });
 
+  it("hands a > query from the file picker to commands and back", () => {
+    const commands = reduceCommandPaletteUiState(
+      { open: true, mode: "files", openIntent: null },
+      { _tag: "OpenSearch", query: ">", fromFilePicker: true },
+    );
+    expect(commands).toEqual({
+      open: true,
+      mode: "command",
+      openIntent: { kind: "search", query: ">", fromFilePicker: true },
+    });
+    expect(
+      reduceCommandPaletteUiState(commands, { _tag: "OpenFileSearch", query: "readme" }),
+    ).toEqual({
+      open: true,
+      mode: "files",
+      openIntent: { kind: "file-search", query: "readme" },
+    });
+  });
+
   it("opens PR search from another overlay and replaces an earlier search", () => {
     const first = reduceCommandPaletteUiState(
       { open: true, mode: "files", openIntent: null },

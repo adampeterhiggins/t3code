@@ -506,6 +506,14 @@ export function CommandPalette({ children }: { children: ReactNode }) {
   const openAddProject = useCallback(() => dispatch({ _tag: "OpenAddProject" }), []);
   const openNewThreadIn = useCallback(() => dispatch({ _tag: "OpenNewThreadIn" }), []);
   const clearOpenIntent = useCallback(() => dispatch({ _tag: "ClearOpenIntent" }), []);
+  const openFileSearch = useCallback(
+    (query: string) => dispatch({ _tag: "OpenFileSearch", query }),
+    [],
+  );
+  const openCommandSearchFromFiles = useCallback(
+    (query: string) => dispatch({ _tag: "OpenSearch", query, fromFilePicker: true }),
+    [],
+  );
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const { theme, themeHalves, resolvedTheme, appearanceMode, setAppearanceMode } = useTheme();
   const composerHandleRef = useRef<ChatComposerHandle | null>(null);
@@ -665,6 +673,8 @@ export function CommandPalette({ children }: { children: ReactNode }) {
           openIntent={state.openIntent}
           setOpen={setOpen}
           openOverlayMode={toggleMode}
+          openFileSearch={openFileSearch}
+          openCommandSearchFromFiles={openCommandSearchFromFiles}
           clearOpenIntent={clearOpenIntent}
         />
       </CommandDialog>
@@ -677,6 +687,8 @@ function CommandPaletteDialog(props: {
   readonly openIntent: CommandPaletteOpenIntent | null;
   readonly setOpen: (open: boolean) => void;
   readonly openOverlayMode: (mode: SearchOverlayMode) => void;
+  readonly openFileSearch: (query: string) => void;
+  readonly openCommandSearchFromFiles: (query: string) => void;
   readonly clearOpenIntent: () => void;
 }) {
   const composerHandleRef = useComposerHandleContext();
@@ -703,7 +715,11 @@ function CommandPaletteDialog(props: {
       }}
     >
       {props.mode === "files" ? (
-        <ProjectFilePicker setOpen={props.setOpen} />
+        <ProjectFilePicker
+          initialQuery={props.openIntent?.kind === "file-search" ? props.openIntent.query : ""}
+          setOpen={props.setOpen}
+          openCommandSearch={props.openCommandSearchFromFiles}
+        />
       ) : props.mode === "content" ? (
         <ProjectContentSearchDialog onOpenChange={props.setOpen} />
       ) : (
@@ -711,6 +727,7 @@ function CommandPaletteDialog(props: {
           openIntent={props.openIntent}
           setOpen={props.setOpen}
           openOverlayMode={props.openOverlayMode}
+          openFileSearch={props.openFileSearch}
           clearOpenIntent={props.clearOpenIntent}
         />
       )}
@@ -722,11 +739,12 @@ function OpenCommandPaletteDialog(props: {
   readonly openIntent: CommandPaletteOpenIntent | null;
   readonly setOpen: (open: boolean) => void;
   readonly openOverlayMode: (mode: SearchOverlayMode) => void;
+  readonly openFileSearch: (query: string) => void;
   readonly clearOpenIntent: () => void;
 }) {
   const navigate = useNavigate();
   const pathname = useLocation({ select: (location) => location.pathname });
-  const { clearOpenIntent, openIntent, openOverlayMode, setOpen } = props;
+  const { clearOpenIntent, openFileSearch, openIntent, openOverlayMode, setOpen } = props;
   const attentionEntries = useAttentionInbox();
   const attentionProjectTitleByKey = useProjectTitleByKey();
   const splitRouteTarget = useParams({
@@ -738,6 +756,10 @@ function OpenCommandPaletteDialog(props: {
   const [query, setQuery] = useState(openIntent?.kind === "search" ? openIntent.query : "");
   const [linkedThreadSearch, setLinkedThreadSearch] = useState(
     openIntent?.kind === "search" ? openIntent : null,
+  );
+  // Entered by typing `>` in the file picker: deleting the `>` returns there.
+  const [fromFilePicker, setFromFilePicker] = useState(
+    openIntent?.kind === "search" && openIntent.fromFilePicker === true,
   );
   const deferredQuery = useDeferredValue(query);
   const isActionsOnly = deferredQuery.startsWith(">");
@@ -1561,6 +1583,15 @@ function OpenCommandPaletteDialog(props: {
   }
 
   function handleQueryChange(nextQuery: string): void {
+    if (
+      fromFilePicker &&
+      currentView === null &&
+      query.startsWith(">") &&
+      !nextQuery.startsWith(">")
+    ) {
+      openFileSearch(nextQuery);
+      return;
+    }
     browseNavigation.invalidate();
     clearTypedHighlight();
     setQuery(nextQuery);
@@ -1878,6 +1909,7 @@ function OpenCommandPaletteDialog(props: {
     setNewProjectFlow(null);
     setViewStack([]);
     setLinkedThreadSearch(openIntent);
+    setFromFilePicker(openIntent.fromFilePicker === true);
     setQuery(openIntent.query);
     clearOpenIntent();
   }, [browseNavigation, clearOpenIntent, openIntent]);

@@ -17,7 +17,10 @@ import {
 import { useProjectFilePickerQuery } from "./projectFilesQueryState";
 
 interface ProjectFilePickerProps {
+  readonly initialQuery: string;
   readonly setOpen: (open: boolean) => void;
+  /** Hands a `>`-prefixed query to the command palette's actions-only search. */
+  readonly openCommandSearch: (query: string) => void;
 }
 
 function HighlightedFuzzyText(props: {
@@ -70,7 +73,7 @@ function EmptyProjectFilePicker() {
 
 function OpenProjectFilePicker(props: ProjectFilePickerProps & { target: ActiveProjectTarget }) {
   const { target } = props;
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(props.initialQuery);
   const [highlightedItemValue, setHighlightedItemValue] = useState<string | null>(null);
   const result = useProjectFilePickerQuery(
     target.environmentId,
@@ -121,12 +124,16 @@ function OpenProjectFilePicker(props: ProjectFilePickerProps & { target: ActiveP
       autoHighlight="always"
       escapeLabel="Back"
       footerActionLabel="Open file"
-      inputProps={{ placeholder: "Search files…" }}
+      inputProps={{ placeholder: "Search files, or type > for commands…" }}
       mode="none"
       onItemHighlighted={(value) => {
         setHighlightedItemValue(typeof value === "string" ? value : null);
       }}
       onValueChange={(value) => {
+        if (value.startsWith(">")) {
+          props.openCommandSearch(value);
+          return;
+        }
         setHighlightedItemValue(null);
         setQuery(value);
       }}
@@ -159,5 +166,5 @@ export function ProjectFilePicker(props: ProjectFilePickerProps) {
     return <EmptyProjectFilePicker />;
   }
 
-  return <OpenProjectFilePicker setOpen={props.setOpen} target={target} />;
+  return <OpenProjectFilePicker {...props} target={target} />;
 }
