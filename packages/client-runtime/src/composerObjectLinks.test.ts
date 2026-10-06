@@ -73,14 +73,17 @@ describe("objectLinkLabel", () => {
     expect(objectLinkLabel("https://github.com/acme/api/issues/12")).toBe("acme/api#12");
     expect(objectLinkLabel("https://linear.app/acme/issue/eng-123/fix-the-thing")).toBe("ENG-123");
     expect(objectLinkLabel("https://github.com/acme/api.git")).toBe("acme/api");
-    expect(objectLinkLabel("https://acme.slack.com/archives/C04ABCD12/p1727779620000100")).toBe(
-      "Slack · acme",
-    );
   });
 
   it("has no label for ordinary links", () => {
     expect(objectLinkLabel("https://github.com/acme/api/blob/main/README.md")).toBeNull();
     expect(objectLinkLabel("https://example.com/acme/api")).toBeNull();
+  });
+
+  it("leaves Slack message links as links", () => {
+    expect(
+      objectLinkLabel("https://acme.slack.com/archives/C04ABCD12/p1727779620000100"),
+    ).toBeNull();
   });
 });
 

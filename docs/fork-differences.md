@@ -819,9 +819,10 @@ deleted chip stick. Mobile does not convert links.
 
 A bare link of one of those kinds that is still a link when the message renders, in any message on
 web, desktop, or mobile, shows its short name instead of the URL: `owner/repo#162` for a pull
-request or GitHub issue (with `L4-L14` appended for a link to lines), `ENG-123` for a Linear issue, `owner/repo` for a repository, and
-`Slack · workspace` for a Slack message. It still
-opens, previews, and copies as the full URL. Link text the writer chose is left alone.
+request or GitHub issue (with `L4-L14` appended for a link to lines), `ENG-123` for a Linear issue, and
+`owner/repo` for a repository. It still opens, previews, and copies as the full URL. Link text the
+writer chose is left alone. A bare Slack link keeps its URL: an attached Slack message is already a
+chip, so a bare one was not attached.
 
 Code: `packages/client-runtime/src/composerObjectLinks.ts`,
 `apps/web/src/components/chat/useResolveComposerObjectLink.ts`, and `convertObjectLinks` in
