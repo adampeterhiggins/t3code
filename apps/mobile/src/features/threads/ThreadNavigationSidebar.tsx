@@ -59,6 +59,7 @@ import { SidebarFilterButton } from "./sidebar-filter-button";
 import { createSidebarHeaderItems } from "./sidebar-native-header-items";
 import { SidebarNavigationShell } from "./sidebar-navigation-shell";
 import {
+  ThreadListV2GroupSectionHeader,
   ThreadListV2PendingRow,
   ThreadListV2Row,
   ThreadListV2SectionDivider,
@@ -171,6 +172,8 @@ function ThreadNavigationSidebarPane(
     setThreadHidden,
     setThreadGroup,
     moveThreadToNewGroup,
+    createThreadGroup,
+    editThreadGroup,
     moveThread,
     renameThread,
     regenerateThreadTitle,
@@ -343,7 +346,22 @@ function ThreadNavigationSidebarPane(
     activeReorderEnvironmentIds,
     titleRegenerationEnvironmentIds,
   } = listEnvironments;
-  const { pages, availablePages, groupNames, togglePage } = useThreadListPages(threads);
+  const {
+    pages,
+    availablePages,
+    groups,
+    groupNames,
+    groupsSupported,
+    togglePage,
+    renameGroupPage,
+  } = useThreadListPages(threads);
+  const handleEditGroup = useCallback(
+    async (name: string) => {
+      const result = await editThreadGroup(name);
+      if (result !== null) renameGroupPage(result.from, result.to);
+    },
+    [editThreadGroup, renameGroupPage],
+  );
   const showThreadsPage = pages.includes("threads");
   const resolveProviderInstance = useThreadRowProviderInstanceResolver(providersByEnvironmentId);
   const pendingOrder = usePendingThreadOrder(nowMinute, snoozeWakeTick);
@@ -558,14 +576,26 @@ function ThreadNavigationSidebarPane(
       {
         id: "page",
         title: "Show",
-        subactions: availablePages.map((page) => ({
-          id: `page:${page}`,
-          title: threadListPageLabel(page),
-          state: pages.includes(page) ? ("on" as const) : ("off" as const),
-        })),
+        subactions: [
+          ...availablePages.map((page) => ({
+            id: `page:${page}`,
+            title: threadListPageLabel(page, groups),
+            state: pages.includes(page) ? ("on" as const) : ("off" as const),
+          })),
+          ...(groupsSupported ? [{ id: "new-group", title: "New group…" }] : []),
+        ],
       },
     ],
-    [availablePages, environments, options, pages, projectFilterOptions, selectedProjectKey],
+    [
+      availablePages,
+      environments,
+      groups,
+      groupsSupported,
+      options,
+      pages,
+      projectFilterOptions,
+      selectedProjectKey,
+    ],
   );
   const handleListMenuAction = useCallback(
     ({ nativeEvent }: { readonly nativeEvent: { readonly event: string } }) => {
@@ -579,6 +609,10 @@ function ThreadNavigationSidebarPane(
           (candidate) => String(candidate.environmentId) === event.slice("environment:".length),
         );
         if (environment) setSelectedEnvironmentId(environment.environmentId);
+        return;
+      }
+      if (event === "new-group") {
+        void createThreadGroup();
         return;
       }
       const page = availablePages.find((candidate) => event === `page:${candidate}`);
@@ -598,7 +632,14 @@ function ThreadNavigationSidebarPane(
         return;
       }
     },
-    [availablePages, environments, projectFilterOptions, setSelectedEnvironmentId, togglePage],
+    [
+      availablePages,
+      createThreadGroup,
+      environments,
+      projectFilterOptions,
+      setSelectedEnvironmentId,
+      togglePage,
+    ],
   );
 
   const [measuredHeaderHeight, setMeasuredHeaderHeight] = useState<number | null>(null);
@@ -668,9 +709,11 @@ function ThreadNavigationSidebarPane(
       // Rows read it for their reorder menu items.
       workingShelfEnabled,
       groupNames,
+      groups,
     }),
     [
       groupNames,
+      groups,
       sidebarSelectedThreadKey,
       projectByKey,
       projectTitleByProjectKey,
@@ -832,7 +875,15 @@ function ThreadNavigationSidebarPane(
             />
           );
         case "v2-group-section":
-          return <ThreadListV2SectionDivider label={item.name} pane="sidebar" />;
+          return (
+            <ThreadListV2GroupSectionHeader
+              name={item.name}
+              group={groups[item.name]}
+              empty={item.empty}
+              pane="sidebar"
+              onEdit={handleEditGroup}
+            />
+          );
         case "v2-snoozed-shelf":
           return <ThreadListV2SectionDivider label="Snoozed" pane="sidebar" tone="snoozed" />;
         case "v2-hidden-section":
@@ -870,6 +921,8 @@ function ThreadNavigationSidebarPane(
       setThreadGroup,
       moveThreadToNewGroup,
       groupNames,
+      groups,
+      handleEditGroup,
       groupEnvironmentIds,
       hidingEnvironmentIds,
       projectByKey,
@@ -919,10 +972,15 @@ function ThreadNavigationSidebarPane(
         pages,
         availablePages,
         onTogglePage: togglePage,
+        groups,
+        onCreateGroup: groupsSupported ? createThreadGroup : undefined,
       }),
     [
       availablePages,
+      createThreadGroup,
       environments,
+      groups,
+      groupsSupported,
       options,
       projectFilterOptions,
       pages,

@@ -1039,16 +1039,20 @@ mobile's [`threadListV2.ts`](../apps/mobile/src/features/threads/threadListV2.ts
 
 ## Thread groups
 
-**Move to group** in the thread menu (web, desktop, mobile) files a thread under a user-named
+**Move to group** in the thread menu (web, desktop, mobile) files a thread under a user-made
 group, which takes it out of the live thread list; each group is an entry in the filter menu's
-**Show** submenu. A group is only a name threads share: the server-owned `groupName` field, set by
-`thread.group.set` and gated on the `threadGroups` capability, with no separate group record, so a
-group ends when its last thread leaves. Hiding outranks a group. Agents reach it through
-`t3_thread_organize`'s `move_to_group` and `remove_from_group` actions.
+**Show** submenu, which can also create an empty group. Groups are the shared server setting
+`threadGroups` (name to icon and accent), written to every environment, so they persist when empty
+and are removed only by **Delete group**, which returns their threads to the live list.
+Membership is the server-owned `groupName` field, set by `thread.group.set` and gated on the
+`threadGroups` capability; a name a thread holds but the setting lacks (an agent can create one)
+still lists. Renaming moves each thread and the setting's key. Hiding outranks a group. Agents
+reach membership through `t3_thread_organize`'s `move_to_group` and `remove_from_group`.
 
 Code: `thread.group.set` in [`Orchestrator.ts`](../apps/server/src/orchestration-v2/Orchestrator.ts),
 `resolveSidebarPages` in [`Sidebar.logic.ts`](../apps/web/src/components/Sidebar.logic.ts), the
-menu in [`threadActionMenu.logic.ts`](../apps/web/src/components/threadActionMenu.logic.ts), and
+menu in [`threadActionMenu.logic.ts`](../apps/web/src/components/threadActionMenu.logic.ts),
+[`useThreadGroups.ts`](../apps/web/src/hooks/useThreadGroups.ts), and
 mobile's [`threadListV2.ts`](../apps/mobile/src/features/threads/threadListV2.ts). User guide:
 [thread-sidebar.md](./user/thread-sidebar.md#group-threads).
 

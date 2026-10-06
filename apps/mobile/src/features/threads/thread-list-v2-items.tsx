@@ -51,6 +51,9 @@ import {
 } from "./threadListV2";
 import { QueuedMessageIcon } from "./queued-message-icon";
 import { ThreadSearchMatchExcerpt } from "./thread-search-match";
+import { ThreadGroupIcon } from "./ThreadGroupIcon";
+import { projectIconColorClassNames } from "../../lib/projectIcon";
+import type { ThreadGroup } from "@t3tools/contracts/settings";
 
 /**
  * Thread List v2 renders one flat native list: rich edge-to-edge rows for
@@ -187,6 +190,61 @@ export const ThreadListV2SectionDivider = memo(function ThreadListV2SectionDivid
   readonly tone?: "default" | "snoozed";
 }) {
   return <ThreadListV2Section {...props} />;
+});
+
+/** A thread group's title: its icon and accent, an Edit button (long press
+    works too), and an Empty line when no threads are in it. */
+export const ThreadListV2GroupSectionHeader = memo(function ThreadListV2GroupSectionHeader(props: {
+  readonly name: string;
+  readonly group: ThreadGroup | undefined;
+  readonly empty: boolean;
+  readonly pane?: "screen" | "sidebar";
+  readonly onEdit: (name: string) => void;
+}) {
+  const sidebarPane = props.pane === "sidebar";
+  const accent = props.group?.accent;
+  const mutedText = sidebarPane ? "text-drawer-foreground-muted" : "text-foreground-tertiary";
+  const mutedTint = sidebarPane ? "accent-drawer-foreground-muted" : "accent-foreground-muted";
+  const edit = () => props.onEdit(props.name);
+  return (
+    <View>
+      <Pressable
+        accessibilityHint="Long press to edit the group."
+        accessibilityLabel={`${props.name} group`}
+        className={cn("mb-1.5 mt-4 flex-row items-center gap-2", sidebarPane ? "px-3" : "px-5")}
+        onLongPress={edit}
+      >
+        <ThreadGroupIcon
+          name={props.name}
+          style={props.group}
+          size={13}
+          fallbackTintClassName={mutedTint}
+        />
+        <Text
+          className={cn(
+            "text-xs font-t3-medium",
+            accent === undefined ? mutedText : projectIconColorClassNames(accent).text,
+          )}
+          numberOfLines={1}
+        >
+          {props.name}
+        </Text>
+        <View className={cn("h-px flex-1", sidebarPane ? "bg-drawer-border" : "bg-border")} />
+        <Pressable
+          accessibilityLabel={`Edit ${props.name} group`}
+          accessibilityRole="button"
+          hitSlop={8}
+          onPress={edit}
+          style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+        >
+          <SymbolView name="pencil" size={11} tintColorClassName={mutedTint} type="monochrome" />
+        </Pressable>
+      </Pressable>
+      {props.empty ? (
+        <Text className={cn("pb-2 text-xs", mutedText, sidebarPane ? "px-3" : "px-5")}>Empty</Text>
+      ) : null}
+    </View>
+  );
 });
 
 type ThreadListV2ShelfHeaderProps = {

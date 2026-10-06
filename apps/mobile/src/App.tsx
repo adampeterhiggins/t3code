@@ -9,6 +9,7 @@ import { createStaticNavigation } from "@react-navigation/native";
 
 import { RegistryContext } from "@effect/atom-react";
 import { ThreadArrangementHost } from "./features/threads/ThreadArrangementSheet";
+import { ThreadGroupEditorHost } from "./features/threads/ThreadGroupEditor";
 import { ConfirmDialogHost } from "./components/ConfirmDialogHost";
 import { CloudAuthProvider } from "./features/cloud/CloudAuthProvider";
 import { prepareNativeShowcaseCapture } from "./features/showcase/nativeShowcaseScene";
@@ -91,6 +92,7 @@ function AppContent() {
                 </IncomingShareProvider>
                 <ConfirmDialogHost />
                 <ThreadArrangementHost />
+                <ThreadGroupEditorHost />
               </GlobalVoiceInputControl>
               {/* Anchored-menu overlays render here — in-window, so the
                 keyboard stays up while a dropdown is open. */}

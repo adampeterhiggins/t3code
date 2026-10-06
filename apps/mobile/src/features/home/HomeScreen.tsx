@@ -1,3 +1,4 @@
+import type { ThreadGroups } from "@t3tools/contracts/settings";
 import { useAndroidControlSizing } from "../../components/useAndroidControlSizing";
 import type { ThreadMoveDestination } from "../threads/threadOrder";
 import { computeThreadMoveAvailability } from "../threads/threadOrder";
@@ -39,6 +40,7 @@ import { threadListEnvironmentsAtom } from "../../state/server";
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
 import { useQueuedThreadKeys } from "../../state/use-thread-outbox";
 import {
+  ThreadListV2GroupSectionHeader,
   ThreadListV2PendingRow,
   ThreadListV2Row,
   ThreadListV2SectionDivider,
@@ -87,6 +89,9 @@ interface HomeScreenProps {
   readonly pages: ReadonlyArray<ThreadListPage>;
   /** Every group in use across the list, for the row Move to group menu. */
   readonly groupNames: ReadonlyArray<string>;
+  /** Registered group icons and accents, for group section titles. */
+  readonly groups: ThreadGroups;
+  readonly onEditGroup: (name: string) => void;
   readonly projectSortOrder: HomeProjectSortOrder;
   readonly projectGroupingMode: SidebarProjectGroupingMode;
   readonly onSearchQueryChange: (query: string) => void;
@@ -737,7 +742,14 @@ export function HomeScreen(props: HomeScreenProps) {
         );
       }
       if (item.type === "v2-group-section") {
-        return <ThreadListV2SectionDivider label={item.name} />;
+        return (
+          <ThreadListV2GroupSectionHeader
+            name={item.name}
+            group={props.groups[item.name]}
+            empty={item.empty}
+            onEdit={props.onEditGroup}
+          />
+        );
       }
       if (item.type === "v2-snoozed-shelf") {
         return <ThreadListV2SectionDivider label="Snoozed" tone="snoozed" />;
@@ -842,6 +854,8 @@ export function HomeScreen(props: HomeScreenProps) {
       hidingEnvironmentIds,
       groupEnvironmentIds,
       props.groupNames,
+      props.groups,
+      props.onEditGroup,
       props.onMoveThreadToNewGroup,
       autoSettleOptOutEnvironmentIds,
       pinningEnvironmentIds,
@@ -884,9 +898,11 @@ export function HomeScreen(props: HomeScreenProps) {
       // Rows read it for their reorder menu items.
       workingShelfEnabled,
       groupNames: props.groupNames,
+      groups: props.groups,
     }),
     [
       props.groupNames,
+      props.groups,
       projectByKey,
       props.searchQuery,
       props.savedConnectionsById,

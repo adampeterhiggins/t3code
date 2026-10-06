@@ -60,16 +60,21 @@ export function HomeHeader(props: HomeHeaderProps) {
       {
         id: "page",
         title: "Show",
-        subactions: props.availablePages.map((page) => ({
-          id: `page:${page}`,
-          title: threadListPageLabel(page),
-          state: checkedMenuState(props.pages.includes(page)),
-        })),
+        subactions: [
+          ...props.availablePages.map((page) => ({
+            id: `page:${page}`,
+            title: threadListPageLabel(page, props.groups),
+            state: checkedMenuState(props.pages.includes(page)),
+          })),
+          ...(props.onCreateGroup ? [{ id: "new-group", title: "New group…" }] : []),
+        ],
       },
     ],
     [
       props.environments,
       props.availablePages,
+      props.groups,
+      props.onCreateGroup,
       props.pages,
       props.projects,
       props.selectedEnvironmentId,
@@ -95,6 +100,10 @@ export function HomeHeader(props: HomeHeaderProps) {
         return;
       }
 
+      if (id === "new-group") {
+        props.onCreateGroup?.();
+        return;
+      }
       const page = props.availablePages.find((candidate) => id === `page:${candidate}`);
       if (page !== undefined) {
         props.onTogglePage(page);

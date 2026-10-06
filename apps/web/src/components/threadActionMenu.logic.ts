@@ -317,11 +317,15 @@ export function buildThreadActionMenuItems(
   ];
 }
 
-/** Every sidebar group name in use across the given threads, sorted for menus. */
+/**
+ * Every sidebar group, sorted for menus: the saved groups, plus any name a thread is in that was
+ * never saved (an agent can move a thread into a new name).
+ */
 export function collectThreadGroupNames(
   threads: Iterable<{ readonly groupName?: string | null }>,
+  savedGroupNames: Iterable<string> = [],
 ): string[] {
-  const names = new Set<string>();
+  const names = new Set<string>(savedGroupNames);
   for (const thread of threads) if (thread.groupName) names.add(thread.groupName);
   return [...names].toSorted((left, right) => left.localeCompare(right));
 }

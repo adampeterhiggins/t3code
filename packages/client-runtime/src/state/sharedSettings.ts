@@ -25,6 +25,7 @@ const SHARED_SERVER_SETTING_KEYS = [
   "continueThreadsAfterServerUpdate",
   "sidebarAutoSettleAfterDays",
   "sidebarAutoSettleOnMerge",
+  "threadGroups",
   "autoResumeLimitedThreads",
   "snoozeLimitedThreads",
   "newWorktreesStartFromOrigin",
@@ -59,7 +60,9 @@ export function splitSharedServerPatch(patch: ServerSettingsPatch): {
 /** Filter unsupported preferences; direct model writes retain the server's fallback behavior. */
 export function filterSharedServerPatch(
   patch: ServerSettingsPatch,
-  capabilities: Pick<ExecutionEnvironmentCapabilities, "threadRestartContinuation"> | undefined,
+  capabilities:
+    | Pick<ExecutionEnvironmentCapabilities, "threadRestartContinuation" | "threadGroups">
+    | undefined,
   settings?: ServerSettings,
   sourceSettings = settings,
   targetIsSource = false,
@@ -81,6 +84,8 @@ export function filterSharedServerPatch(
   ) {
     patch = Struct.omit(patch, ["textGenerationModelSelection"]);
   }
+  // Servers that predate thread groups have no field to hold their styles.
+  if (capabilities?.threadGroups !== true) patch = Struct.omit(patch, ["threadGroups"]);
   return capabilities?.threadRestartContinuation === true
     ? patch
     : Struct.omit(patch, ["continueThreadsAfterServerUpdate"]);
@@ -89,7 +94,10 @@ export function filterSharedServerPatch(
 /** The shared subset supported by one environment. */
 export function pickSharedServerSettings(
   settings: ServerSettings,
-  capabilities?: Pick<ExecutionEnvironmentCapabilities, "threadRestartContinuation">,
+  capabilities?: Pick<
+    ExecutionEnvironmentCapabilities,
+    "threadRestartContinuation" | "threadGroups"
+  >,
 ): ServerSettingsPatch {
   return filterSharedServerPatch(
     Struct.pick(settings, SHARED_SERVER_SETTING_KEYS),

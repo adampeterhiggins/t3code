@@ -250,6 +250,13 @@ describe("buildDraftActionMenuItems", () => {
 });
 
 describe("thread groups", () => {
+  it("lists saved groups even with no threads in them", () => {
+    expect(collectThreadGroupNames([{ groupName: "Research" }], ["Later", "Research"])).toEqual([
+      "Later",
+      "Research",
+    ]);
+  });
+
   it("collects each group name once, sorted", () => {
     expect(
       collectThreadGroupNames([

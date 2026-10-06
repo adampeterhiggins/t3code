@@ -76,6 +76,8 @@ export function HomeRouteScreen() {
     setThreadHidden,
     setThreadGroup,
     moveThreadToNewGroup,
+    createThreadGroup,
+    editThreadGroup,
     moveThread,
     renameThread,
     regenerateThreadTitle,
@@ -107,7 +109,22 @@ export function HomeRouteScreen() {
     useHomeListOptions(availableEnvironmentIds);
   const selectedEnvironmentId = listOptions.selectedEnvironmentId;
   const [selectedProjectKey, setSelectedProjectKey] = useState<string | null>(null);
-  const { pages, availablePages, groupNames, togglePage } = useThreadListPages(visibleThreads);
+  const {
+    pages,
+    availablePages,
+    groups,
+    groupNames,
+    groupsSupported,
+    togglePage,
+    renameGroupPage,
+  } = useThreadListPages(visibleThreads);
+  const handleEditGroup = useCallback(
+    async (name: string) => {
+      const result = await editThreadGroup(name);
+      if (result !== null) renameGroupPage(result.from, result.to);
+    },
+    [editThreadGroup, renameGroupPage],
+  );
   const projectFilterOptions = useMemo(
     () =>
       buildHomeProjectScopes({
@@ -204,6 +221,8 @@ export function HomeRouteScreen() {
           pages={pages}
           availablePages={availablePages}
           onTogglePage={togglePage}
+          groups={groups}
+          onCreateGroup={groupsSupported ? createThreadGroup : undefined}
           onOpenEnvironments={() =>
             navigation.navigate("SettingsSheet", {
               screen: "SettingsContent",
@@ -278,6 +297,8 @@ export function HomeRouteScreen() {
           selectedProjectKey={selectedProjectKey}
           pages={pages}
           groupNames={groupNames}
+          groups={groups}
+          onEditGroup={handleEditGroup}
           threads={visibleThreads}
         />
       </>

@@ -150,9 +150,16 @@ export function HomeHeader(props: HomeHeaderProps) {
                   isOn={props.pages.includes(page)}
                   onPress={() => props.onTogglePage(page)}
                 >
-                  <NativeHeaderToolbar.Label>{threadListPageLabel(page)}</NativeHeaderToolbar.Label>
+                  <NativeHeaderToolbar.Label>
+                    {threadListPageLabel(page, props.groups)}
+                  </NativeHeaderToolbar.Label>
                 </NativeHeaderToolbar.MenuAction>
               ))}
+              {props.onCreateGroup ? (
+                <NativeHeaderToolbar.MenuAction onPress={props.onCreateGroup}>
+                  <NativeHeaderToolbar.Label>New group…</NativeHeaderToolbar.Label>
+                </NativeHeaderToolbar.MenuAction>
+              ) : null}
             </NativeHeaderToolbar.Menu>
           </NativeHeaderToolbar.Menu>
           <NativeHeaderToolbar.Spacer flexible />

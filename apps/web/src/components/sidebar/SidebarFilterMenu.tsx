@@ -14,10 +14,10 @@ import {
   CircleCheckIcon,
   EyeOffIcon,
   FolderIcon,
-  FolderOpenIcon,
   LayersIcon,
   ListFilterIcon,
   ListIcon,
+  PlusIcon,
   SearchIcon,
   SettingsIcon,
 } from "lucide-react";
@@ -25,7 +25,9 @@ import * as Schema from "effect/Schema";
 import { type MouseEvent as ReactMouseEvent, type ReactNode, useState } from "react";
 
 import type { SidebarProjectSnapshot } from "../../sidebarProjectGrouping";
+import type { ThreadGroups } from "@t3tools/contracts/settings";
 import type { SidebarPage } from "../Sidebar.logic";
+import { ThreadGroupIcon } from "./ThreadGroupIcon";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { Button } from "../ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
@@ -34,6 +36,7 @@ import {
   MenuCheckboxItem,
   MenuItem,
   MenuPopup,
+  MenuSeparator,
   MenuSub,
   MenuSubPopup,
   MenuSubTrigger,
@@ -57,10 +60,13 @@ export function sidebarPageLabel(page: SidebarPage): string {
     : BUILT_IN_PAGES[page as keyof typeof BUILT_IN_PAGES].label;
 }
 
-function sidebarPageIcon(page: SidebarPage) {
-  return page.startsWith("group:")
-    ? FolderOpenIcon
-    : BUILT_IN_PAGES[page as keyof typeof BUILT_IN_PAGES].Icon;
+/** A page's glyph: the built-in icon, or a group's own icon and accent. */
+function SidebarPageIcon(props: { page: SidebarPage; groupStyles: ThreadGroups }) {
+  if (props.page.startsWith("group:")) {
+    return <ThreadGroupIcon style={props.groupStyles[sidebarPageLabel(props.page)]} />;
+  }
+  const Icon = BUILT_IN_PAGES[props.page as keyof typeof BUILT_IN_PAGES].Icon;
+  return <Icon aria-hidden className="size-3.5 shrink-0" />;
 }
 
 /** Past this many projects the submenu offers a search field. */
@@ -88,14 +94,20 @@ function SidebarShowFilter(props: {
   pages: readonly SidebarPage[];
   available: readonly SidebarPage[];
   counts: ReadonlyMap<SidebarPage, number>;
+  groupStyles: ThreadGroups;
   onPagesChange: (pages: readonly SidebarPage[]) => void;
+  onNewGroup: () => void;
 }) {
   const single = props.pages.length === 1 ? props.pages[0]! : null;
-  const Icon = single ? sidebarPageIcon(single) : LayersIcon;
+
   return (
     <MenuSub>
       <MenuSubTrigger>
-        <Icon aria-hidden className="size-3.5" />
+        {single ? (
+          <SidebarPageIcon page={single} groupStyles={props.groupStyles} />
+        ) : (
+          <LayersIcon aria-hidden className="size-3.5" />
+        )}
         <span className="flex-1">Show</span>
         <span className="min-w-0 max-w-32 truncate text-xs text-muted-foreground">
           {props.pages.map(sidebarPageLabel).join(", ")}
@@ -103,7 +115,6 @@ function SidebarShowFilter(props: {
       </MenuSubTrigger>
       <MenuSubPopup className="min-w-44">
         {props.available.map((page) => {
-          const PageIcon = sidebarPageIcon(page);
           return (
             <MenuCheckboxItem
               key={page}
@@ -117,7 +128,7 @@ function SidebarShowFilter(props: {
               }}
             >
               <span className="flex min-w-0 items-center gap-2">
-                <PageIcon aria-hidden className="size-3.5 shrink-0" />
+                <SidebarPageIcon page={page} groupStyles={props.groupStyles} />
                 <span className="min-w-0 flex-1 truncate">{sidebarPageLabel(page)}</span>
                 <OnlyButton onClick={() => props.onPagesChange([page])} />
                 <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
@@ -127,6 +138,13 @@ function SidebarShowFilter(props: {
             </MenuCheckboxItem>
           );
         })}
+        <MenuSeparator />
+        <MenuItem onClick={props.onNewGroup}>
+          <span className="flex min-w-0 items-center gap-2">
+            <PlusIcon aria-hidden className="size-3.5 shrink-0" />
+            New group…
+          </span>
+        </MenuItem>
       </MenuSubPopup>
     </MenuSub>
   );
@@ -239,7 +257,9 @@ export function SidebarFilterMenu(props: {
   pages: readonly SidebarPage[];
   availablePages: readonly SidebarPage[];
   pageCounts: ReadonlyMap<SidebarPage, number>;
+  groupStyles: ThreadGroups;
   onPagesChange: (pages: readonly SidebarPage[]) => void;
+  onNewGroup: () => void;
   projects: readonly SidebarProjectSnapshot[];
   scopedProjectKeys: readonly string[];
   onScopedProjectKeysChange: (keys: readonly string[]) => void;
@@ -282,6 +302,8 @@ export function SidebarFilterMenu(props: {
           pages={props.pages}
           available={props.availablePages}
           counts={props.pageCounts}
+          groupStyles={props.groupStyles}
+          onNewGroup={props.onNewGroup}
           onPagesChange={props.onPagesChange}
         />
         {props.projects.length > 0 ? (

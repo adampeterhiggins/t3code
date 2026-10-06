@@ -18,7 +18,8 @@ import {
   resolveThreadGroupMenuPick,
   type ThreadActionMenuId,
 } from "../components/threadActionMenu.logic";
-import { requestNewThreadGroupName } from "../components/NewThreadGroupDialog";
+import { requestThreadGroup } from "../components/ThreadGroupDialog";
+import { useThreadGroups } from "./useThreadGroups";
 import { openLinearIssuePicker } from "../components/chat/LinearIssuePicker";
 import { openTranscriptExportDialog } from "../components/TranscriptExportDialog";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
@@ -108,6 +109,7 @@ export function useThreadActionMenu(input: {
     deleteThread,
     markThreadUnread,
   } = useThreadActions();
+  const { groups, saveGroup } = useThreadGroups();
   const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
   });
@@ -168,7 +170,7 @@ export function useThreadActionMenu(input: {
           isSnoozed: supports.snooze && effectiveSnoozed(thread, { now: now.toISOString() }),
           isHidden: thread.hiddenAt != null,
           groupName: thread.groupName ?? null,
-          groupNames: collectThreadGroupNames(readThreadShells()),
+          groupNames: collectThreadGroupNames(readThreadShells(), Object.keys(groups)),
           canSnoozeNow: canSnooze(thread, { now: now.toISOString() }),
           isRegeneratingTitle,
           isRunning: !threadRuntimeCanArchive(thread.runtime),
@@ -180,9 +182,13 @@ export function useThreadActionMenu(input: {
         const action: ThreadActionMenuId = clicked.value;
         const groupPick = resolveThreadGroupMenuPick(action);
         if (groupPick !== undefined) {
-          const groupName =
-            groupPick === "new" ? await requestNewThreadGroupName() : groupPick.groupName;
-          if (groupPick === "new" && groupName === null) return;
+          let groupName = groupPick === "new" ? null : groupPick.groupName;
+          if (groupPick === "new") {
+            const draft = await requestThreadGroup();
+            if (draft === null || draft === "delete") return;
+            groupName = draft.name;
+            saveGroup(draft);
+          }
           const result = await setThreadGroup(threadRef, groupName);
           if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
             failureToast("Failed to move thread", squashAtomCommandFailure(result));
@@ -393,6 +399,8 @@ export function useThreadActionMenu(input: {
       setThreadAutoSettle,
       setThreadHidden,
       setThreadGroup,
+      groups,
+      saveGroup,
       settleThread,
       snoozeThread,
       tabsSupported,

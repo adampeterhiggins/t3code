@@ -29,6 +29,8 @@ import {
 import { getThreadListV2OrderedSection } from "../threads/threadListV2";
 import { threadCanArchive } from "./threadArchive";
 import { resolveThreadTitleRename } from "../threads/thread-title-rename";
+import { requestThreadGroup } from "../threads/ThreadGroupEditor";
+import { useThreadGroups } from "../threads/use-thread-groups";
 
 /** Version skew: never send settle/unsettle to a server that predates them
     (capability defaults false on decode for older servers). */
@@ -269,8 +271,14 @@ export function useThreadListActions(): {
     thread: EnvironmentThreadShell,
     groupName: string | null,
   ) => Promise<boolean>;
-  /** Prompts for a new group name, then moves the thread into it. */
-  readonly moveThreadToNewGroup: (thread: EnvironmentThreadShell) => void;
+  /** Asks for a new group's name and look, registers it, then moves the thread into it. */
+  readonly moveThreadToNewGroup: (thread: EnvironmentThreadShell) => Promise<void>;
+  /** Asks for a new group and registers it without moving any thread. */
+  readonly createThreadGroup: () => Promise<void>;
+  /** Edits, renames or deletes a group; resolves the rename (`to` null on delete). */
+  readonly editThreadGroup: (
+    name: string,
+  ) => Promise<{ readonly from: string; readonly to: string | null } | null>;
   readonly moveThread: (
     thread: EnvironmentThreadShell,
     direction: ThreadMoveDestination,
@@ -563,29 +571,66 @@ export function useThreadListActions(): {
     },
     [setGroupMutation],
   );
+  const { groups, setGroup } = useThreadGroups();
+  // "New group…" always registers the group, even unstyled, then moves the thread.
   const moveThreadToNewGroup = useCallback(
-    (thread: EnvironmentThreadShell) => {
-      const commit = (name: string) => {
-        const groupName = name.trim();
-        if (groupName.length === 0) {
-          Alert.alert("Could not create group", "Group name cannot be empty.");
-          return;
-        }
-        void setThreadGroup(thread, groupName);
-      };
-      // Same prompt split as Rename: Alert.prompt exists only on iOS.
-      if (Platform.OS === "ios") {
-        Alert.prompt("New group", undefined, (name) => commit(name ?? ""), "plain-text", "");
-        return;
-      }
-      showTextInputDialog({
-        title: "New group",
-        initialValue: "",
-        confirmText: "Create",
-        onConfirm: commit,
-      });
+    async (thread: EnvironmentThreadShell) => {
+      const result = await requestThreadGroup(null);
+      if (result === null || result === "delete") return;
+      setGroup({ name: result.name, group: result.style });
+      await setThreadGroup(thread, result.name);
     },
-    [setThreadGroup],
+    [setGroup, setThreadGroup],
+  );
+  const createThreadGroup = useCallback(async () => {
+    const result = await requestThreadGroup(null);
+    if (result === null || result === "delete") return;
+    setGroup({ name: result.name, group: result.style });
+  }, [setGroup]);
+  /** Moves every thread in `from` (on capable environments) to `to`, or out of groups. */
+  const moveGroupThreads = useCallback(
+    async (from: string, to: string | null) => {
+      const members = appAtomRegistry
+        .get(environmentThreadShells.threadShellsAtom)
+        .filter(
+          (shell) => shell.groupName === from && environmentSupportsGroups(shell.environmentId),
+        );
+      const results = await Promise.all(
+        members.map((shell) =>
+          setGroupMutation({
+            environmentId: shell.environmentId,
+            input: { threadId: shell.id, groupName: to },
+          }),
+        ),
+      );
+      const failure = results.find((result) => result._tag === "Failure");
+      if (failure?._tag === "Failure") {
+        const error = Cause.squash(failure.cause);
+        Alert.alert(
+          "Could not update group",
+          error instanceof Error && error.message.trim().length > 0
+            ? error.message
+            : "Some threads could not be moved.",
+        );
+      }
+    },
+    [setGroupMutation],
+  );
+  const editThreadGroup = useCallback(
+    async (name: string) => {
+      const result = await requestThreadGroup({ name, style: groups[name] ?? {} });
+      if (result === null) return null;
+      if (result === "delete") {
+        setGroup({ name, group: null });
+        await moveGroupThreads(name, null);
+        return { from: name, to: null };
+      }
+      // A rename keeps the group's look under its new key.
+      setGroup({ from: name, name: result.name, group: result.style });
+      if (result.name !== name) await moveGroupThreads(name, result.name);
+      return { from: name, to: result.name };
+    },
+    [groups, moveGroupThreads, setGroup],
   );
   const regenerateThreadTitle = useCallback(
     async (thread: EnvironmentThreadShell) => {
@@ -854,6 +899,8 @@ export function useThreadListActions(): {
     setThreadHidden,
     setThreadGroup,
     moveThreadToNewGroup,
+    createThreadGroup,
+    editThreadGroup,
     moveThread,
     renameThread,
     regenerateThreadTitle,

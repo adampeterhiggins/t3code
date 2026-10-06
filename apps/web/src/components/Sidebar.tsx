@@ -77,7 +77,7 @@ import {
   AlarmClockIcon,
   AlarmClockOffIcon,
   EyeIcon,
-  FolderOpenIcon,
+  PencilIcon,
   ArrowRightLeftIcon,
   BotIcon,
   CheckIcon,
@@ -329,7 +329,11 @@ import {
   SidebarPagesSchema,
   sidebarPageLabel,
 } from "./sidebar/SidebarFilterMenu";
-import { requestNewThreadGroupName } from "./NewThreadGroupDialog";
+import { requestThreadGroup } from "./ThreadGroupDialog";
+import { ThreadGroupIcon } from "./sidebar/ThreadGroupIcon";
+import { projectIconColorClassName } from "../projectIconColors";
+import type { ThreadGroup } from "@t3tools/contracts/settings";
+import { useThreadGroups } from "../hooks/useThreadGroups";
 import {
   SIDEBAR_TAB_SORT_ORDER_LABELS,
   sidebarTabSortDirectionLabel,
@@ -845,6 +849,41 @@ function SidebarDragBoundary(props: {
         </div>
       ) : null}
     </SortableSidebarMarker>
+  );
+}
+
+// Titles a user-made group in its accent. Click the pencil, or right-click, to rename or restyle.
+function SidebarGroupHeader(props: {
+  name: string;
+  style: ThreadGroup | undefined;
+  empty: boolean;
+  onEdit: (name: string) => void;
+}) {
+  const accent = props.style?.accent;
+  return (
+    <div
+      className="group/group-header flex h-8 items-center gap-2 px-2 text-xs font-medium text-sidebar-muted-foreground"
+      onContextMenu={(event) => {
+        event.preventDefault();
+        props.onEdit(props.name);
+      }}
+    >
+      <ThreadGroupIcon style={props.style} />
+      <span className={cn("min-w-0 flex-1 truncate", accent && projectIconColorClassName(accent))}>
+        {props.name}
+      </span>
+      {props.empty ? (
+        <span className="shrink-0 font-normal text-muted-foreground/70">Empty</span>
+      ) : null}
+      <button
+        type="button"
+        aria-label={`Edit group ${props.name}`}
+        className="invisible shrink-0 cursor-pointer rounded-sm p-0.5 text-muted-foreground outline-none group-hover/group-header:visible hover:text-foreground focus-visible:visible focus-visible:ring-2 focus-visible:ring-ring"
+        onClick={() => props.onEdit(props.name)}
+      >
+        <PencilIcon aria-hidden className="size-3" />
+      </button>
+    </div>
   );
 }
 
@@ -4088,7 +4127,11 @@ export default function Sidebar() {
     SidebarPagesSchema,
   );
   // Groups are names threads share, so they are read off every thread, not just the scoped ones.
-  const threadGroupNames = useMemo(() => collectThreadGroupNames(threads), [threads]);
+  const { groups: threadGroups, saveGroup, deleteGroup } = useThreadGroups();
+  const threadGroupNames = useMemo(
+    () => collectThreadGroupNames(threads, Object.keys(threadGroups)),
+    [threadGroups, threads],
+  );
   const availablePages = useMemo(() => availableSidebarPages(threadGroupNames), [threadGroupNames]);
   const sidebarPages = useMemo(
     () => resolveSidebarPages(storedSidebarPages, threadGroupNames),
@@ -4711,6 +4754,44 @@ export default function Sidebar() {
     },
     [setThreadGroup],
   );
+  /**
+   * Renames, restyles or deletes a group. Renaming moves each of its threads and keeps it picked;
+   * deleting returns its threads to the live list and drops it from Show.
+   */
+  const editThreadGroup = useCallback(
+    (name: string) => {
+      void (async () => {
+        const result = await requestThreadGroup({ name, group: threadGroups[name] ?? {} });
+        if (result === null) return;
+        const nextName = result === "delete" ? null : result.name;
+        if (result === "delete") deleteGroup(name);
+        else saveGroup({ from: name, ...result });
+        if (nextName === name) return;
+        for (const thread of threads) {
+          if (thread.groupName === name) {
+            attemptSetGroup(scopeThreadRef(thread.environmentId, thread.id), nextName);
+          }
+        }
+        setSidebarPages((pages) =>
+          nextName === null
+            ? pages.filter((page) => page !== sidebarGroupPage(name))
+            : pages.map((page) =>
+                page === sidebarGroupPage(name) ? sidebarGroupPage(nextName) : page,
+              ),
+        );
+      })();
+    },
+    [attemptSetGroup, deleteGroup, saveGroup, setSidebarPages, threadGroups, threads],
+  );
+  /** Creates an empty group from the filter menu and shows it. */
+  const createThreadGroup = useCallback(() => {
+    void (async () => {
+      const result = await requestThreadGroup();
+      if (result === null || result === "delete") return;
+      saveGroup(result);
+      setSidebarPages((pages) => [...pages, sidebarGroupPage(result.name)]);
+    })();
+  }, [saveGroup, setSidebarPages]);
   const attemptUnhide = useCallback(
     (threadRef: ScopedThreadRef) => attemptSetHidden(threadRef, false),
     [attemptSetHidden],
@@ -5099,8 +5180,8 @@ export default function Sidebar() {
       }
     }
     // Each other page lists under its own title: groups by name, then the shelves.
+    // A picked group keeps its title while empty, so it stays editable and reads as picked.
     for (const group of visibleGroups) {
-      if (group.threads.length === 0) continue;
       items.push(
         { kind: "marker", marker: "group-header", group: group.name },
         ...rowsOf(group.threads, "grouped"),
@@ -5877,7 +5958,7 @@ export default function Sidebar() {
               isSnoozed,
               isHidden: supportsHiding && thread.hiddenAt != null,
               groupName: thread.groupName ?? null,
-              groupNames: collectThreadGroupNames(threadsRef.current),
+              groupNames: collectThreadGroupNames(threadsRef.current, Object.keys(threadGroups)),
               canSnoozeNow: canSnooze(thread, { now: new Date().toISOString() }),
               isRegeneratingTitle,
               isRunning: !threadRuntimeCanArchive(thread.runtime),
@@ -5906,9 +5987,14 @@ export default function Sidebar() {
         }
         const groupPick = clicked.value ? resolveThreadGroupMenuPick(clicked.value) : undefined;
         if (groupPick !== undefined) {
-          const groupName =
-            groupPick === "new" ? await requestNewThreadGroupName() : groupPick.groupName;
-          if (groupPick !== "new" || groupName !== null) attemptSetGroup(threadRef, groupName);
+          if (groupPick !== "new") {
+            attemptSetGroup(threadRef, groupPick.groupName);
+            return;
+          }
+          const draft = await requestThreadGroup();
+          if (draft === null || draft === "delete") return;
+          saveGroup(draft);
+          attemptSetGroup(threadRef, draft.name);
           return;
         }
         switch (clicked.value) {
@@ -6117,6 +6203,8 @@ export default function Sidebar() {
       archiveThread,
       attemptPin,
       attemptSetGroup,
+      saveGroup,
+      threadGroups,
       attemptSetHidden,
       attemptSettle,
       attemptSnooze,
@@ -6431,6 +6519,8 @@ export default function Sidebar() {
                   pages={sidebarPages}
                   availablePages={availablePages}
                   pageCounts={pageCounts}
+                  groupStyles={threadGroups}
+                  onNewGroup={createThreadGroup}
                   onPagesChange={setSidebarPages}
                   projects={projectGroups}
                   scopedProjectKeys={projectScopeKeys}
@@ -6967,10 +7057,14 @@ export default function Sidebar() {
                                 key={sidebarListItemId(item)}
                                 id={sidebarListItemId(item)}
                                 marker={item.marker}
-                                className="mx-0.5 flex h-8 items-center gap-2 px-2 text-xs font-medium text-sidebar-muted-foreground"
+                                className="mx-0.5"
                               >
-                                <FolderOpenIcon aria-hidden className="size-3.5 shrink-0" />
-                                <span className="min-w-0 truncate">{item.group}</span>
+                                <SidebarGroupHeader
+                                  name={item.group!}
+                                  style={threadGroups[item.group!]}
+                                  empty={!groupedThreadsByName.has(item.group!)}
+                                  onEdit={editThreadGroup}
+                                />
                               </SortableSidebarMarker>,
                             );
                             break;

@@ -22,7 +22,7 @@ import {
   ProviderOptionSelections,
 } from "./model.ts";
 import { ModelSelection } from "./modelSelection.ts";
-import { ProjectScript } from "./project.ts";
+import { ProjectIconColor, ProjectScript, ReceivedProjectIcon } from "./project.ts";
 import { DEFAULT_RUNTIME_MODE, RuntimeMode } from "./providerPolicy.ts";
 import { BrowserProfile, BrowserProfileId, DEFAULT_BROWSER_PROFILE_ID } from "./browserProfile.ts";
 import {
@@ -1411,6 +1411,19 @@ export const StorageCleanupSettings = Schema.Struct({
 });
 export type StorageCleanupSettings = typeof StorageCleanupSettings.Type;
 
+/**
+ * How a user-made thread group looks, keyed by the group's name. A group is the name threads
+ * share (`groupName` on the thread); this only styles it, so a style can outlive its threads.
+ */
+export const ThreadGroup = Schema.Struct({
+  /** A kind from a newer client decodes as no icon. */
+  icon: Schema.optionalKey(ReceivedProjectIcon),
+  accent: Schema.optionalKey(ProjectIconColor),
+});
+export type ThreadGroup = typeof ThreadGroup.Type;
+export const ThreadGroups = Schema.Record(Schema.String, ThreadGroup);
+export type ThreadGroups = typeof ThreadGroups.Type;
+
 export const ServerSettings = Schema.Struct({
   customEditors: Schema.Array(CustomEditor).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   fileOpenDefault: FileOpenTarget.pipe(Schema.withDecodingDefault(Effect.succeed("t3" as const))),
@@ -1534,6 +1547,7 @@ export const ServerSettings = Schema.Struct({
   snoozeLimitedThreads: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   autoResumeLimitedThreads: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   sidebarAutoSettleOnMerge: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  threadGroups: ThreadGroups.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   backgroundActivity: BackgroundActivitySettings,
   // Legacy flat fields retained for old settings files and old clients. New
   // consumers should resolve `backgroundActivity` instead.
@@ -1932,6 +1946,8 @@ export const ServerSettingsPatch = Schema.Struct({
   deviceHosts: Schema.optionalKey(SshDeviceHostConfigs),
   sidebarAutoSettleAfterDays: Schema.optionalKey(Schema.NullOr(SidebarAutoSettleAfterDays)),
   sidebarAutoSettleOnMerge: Schema.optionalKey(Schema.Boolean),
+  /** Replaces the whole map, so a removed group style stays removed. */
+  threadGroups: Schema.optionalKey(ThreadGroups),
   autoResumeLimitedThreads: Schema.optionalKey(Schema.Boolean),
   snoozeLimitedThreads: Schema.optionalKey(Schema.Boolean),
   backgroundActivity: Schema.optionalKey(

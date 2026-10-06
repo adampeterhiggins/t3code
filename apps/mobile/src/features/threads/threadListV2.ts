@@ -23,7 +23,7 @@ import {
   sortPinnedThreadsByOrderKey,
   sortSettledThreads,
 } from "@t3tools/client-runtime/state/thread-sort";
-import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
+import type { EnvironmentId, ProjectIconOverride, ProjectId } from "@t3tools/contracts";
 
 import type { ThreadListProvider } from "../../state/thread-list-environments";
 import type { ThreadMoveAvailability } from "./threadOrder";
@@ -298,8 +298,16 @@ const BUILTIN_PAGE_LABEL: Record<string, string> = {
   settled: "Settled",
 };
 
-export function threadListPageLabel(page: ThreadListPage): string {
-  return page.startsWith("group:") ? page.slice("group:".length) : BUILTIN_PAGE_LABEL[page]!;
+/** Menu title for a page. Native menus cannot draw a group's icon or accent,
+    so an emoji icon is prefixed as text and other icons are left out. */
+export function threadListPageLabel(
+  page: ThreadListPage,
+  groups?: Readonly<Record<string, { readonly icon?: ProjectIconOverride | null }>>,
+): string {
+  if (!page.startsWith("group:")) return BUILTIN_PAGE_LABEL[page]!;
+  const name = page.slice("group:".length);
+  const icon = groups?.[name]?.icon;
+  return icon?.kind === "emoji" ? `${icon.emoji} ${name}` : name;
 }
 
 /** Picker and render order: Threads, groups (alphabetical), Snoozed, Hidden,
@@ -347,15 +355,17 @@ export function isDefaultThreadListPages(pages: ReadonlyArray<ThreadListPage>): 
   return pages.length === 1 && pages[0] === "threads";
 }
 
-/** Every group name in use, alphabetical. A group exists while at least one
-    thread has it, on environments that understand thread.group.set. */
+/** Every group, alphabetical: the registered ones (even empty) plus any name
+    a thread carries on an environment that understands thread.group.set,
+    since agents may move threads into unregistered names. */
 export function collectThreadGroupNames(
   threads: ReadonlyArray<
     Pick<EnvironmentThreadShell, "environmentId" | "groupName" | "archivedAt">
   >,
   groupEnvironmentIds: ReadonlySet<EnvironmentId>,
+  registeredNames: Iterable<string> = [],
 ): ReadonlyArray<string> {
-  const names = new Set<string>();
+  const names = new Set<string>(registeredNames);
   for (const thread of threads) {
     if (thread.archivedAt === null && isThreadListV2Grouped(thread, groupEnvironmentIds)) {
       names.add(thread.groupName!);
@@ -400,6 +410,8 @@ export interface ThreadListV2Item {
 export interface ThreadListV2GroupSection {
   readonly name: string;
   readonly headerIndex: number;
+  /** Rows in the section; zero draws the title with an Empty line. */
+  readonly count: number;
 }
 
 export interface ThreadListV2Layout {
@@ -507,6 +519,7 @@ export interface ThreadListV2GroupSectionListItem {
   readonly type: "v2-group-section";
   readonly key: string;
   readonly name: string;
+  readonly empty: boolean;
 }
 
 export interface ThreadListV2HiddenSectionListItem {
@@ -592,7 +605,11 @@ export function threadListV2ListItemsAreEqual(
         previous.disabled === item.disabled
       );
     case "v2-group-section":
-      return previous.type === "v2-group-section" && previous.name === item.name;
+      return (
+        previous.type === "v2-group-section" &&
+        previous.name === item.name &&
+        previous.empty === item.empty
+      );
     case "v2-hidden-section":
       return previous.type === "v2-hidden-section";
     case "v2-settled-shelf":
@@ -737,6 +754,7 @@ export function buildThreadListV2ListItems(input: {
       type: "v2-group-section",
       key: `v2-group-section:${section.name}`,
       name: section.name,
+      empty: section.count === 0,
     });
     result.push(
       ...threadItems.slice(section.headerIndex, groupSections[index + 1]?.headerIndex ?? groupsEnd),
@@ -1011,10 +1029,15 @@ export function buildThreadListV2Items(input: {
     });
   }
   const groupSections: ThreadListV2GroupSection[] = [];
-  for (const groupName of [...grouped.keys()].sort((left, right) => left.localeCompare(right))) {
-    if (!showPage(threadListGroupPage(groupName))) continue;
-    groupSections.push({ name: groupName, headerIndex: items.length });
-    for (const thread of sortThreadsForListV2(grouped.get(groupName)!)) {
+  // Picked groups render even when empty, as a title with an Empty line.
+  const pickedGroupNames = (input.pages ?? [])
+    .filter((page) => page.startsWith("group:"))
+    .map((page) => page.slice("group:".length))
+    .sort((left, right) => left.localeCompare(right));
+  for (const groupName of pickedGroupNames) {
+    const members = sortThreadsForListV2(grouped.get(groupName) ?? []);
+    groupSections.push({ name: groupName, headerIndex: items.length, count: members.length });
+    for (const thread of members) {
       items.push({
         thread,
         // Settled members keep the slim row and its Un-settle action.

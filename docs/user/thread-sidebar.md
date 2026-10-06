@@ -440,9 +440,14 @@ hidden on your other devices.
 
 ## Group threads
 
-Choose **Move to group** from a thread's menu to file it under a group of your own, such as
-"Research" or "Later". Pick an existing group, or **New group…** to name a new one. A grouped
-thread leaves your live thread list and keeps working. Pick the group under **Show** in the filter
-menu to list it, alone or alongside other groups and your live threads. Choose **Move to group →
-Remove from group** to bring a thread back. A group lasts while it has threads; moving the last one
-out removes it. Groups are saved on the server, so they appear on your other devices.
+Make your own groups, such as "Research" or "Later", to file threads away from your live list.
+Choose **Move to group → New group…** from a thread's menu to create one and move the thread into
+it, or **New group…** under **Show** in the filter menu to create an empty one. Each group has a
+name, an optional icon, and an accent colour. A grouped thread leaves your live thread list and
+keeps working. Pick a group under **Show** to list it, alone or alongside other groups and your
+live threads. Groups stay until you delete them, even when empty.
+
+On web and desktop, click the pencil on a group's title, or right-click it, to rename it, change
+its look, or delete it. Renaming moves every thread in it; deleting returns its threads to your
+live list. Choose **Move to group → Remove from group** to bring one thread back. Groups are saved
+on your servers, so they appear on your other devices.

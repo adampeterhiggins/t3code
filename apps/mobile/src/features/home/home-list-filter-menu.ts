@@ -1,5 +1,7 @@
 import type { EnvironmentId } from "@t3tools/contracts";
 
+import type { ThreadGroups } from "@t3tools/contracts/settings";
+
 import { threadListPageLabel, type ThreadListPage } from "../threads/threadListV2";
 
 export interface HomeListFilterMenuEnvironment {
@@ -42,6 +44,10 @@ export function buildHomeListFilterMenu(props: {
   /** Pages offered in the Show submenu, from availableThreadListPages. */
   readonly availablePages: ReadonlyArray<ThreadListPage>;
   readonly onTogglePage: (page: ThreadListPage) => void;
+  /** Registered groups, for the emoji prefix on group pages. */
+  readonly groups?: ThreadGroups;
+  /** Adds "New group…" to Show; omitted when no environment supports groups. */
+  readonly onCreateGroup?: () => void;
 }): HomeListFilterMenu {
   const items: Array<HomeListFilterMenuAction | HomeListFilterMenuSubmenu> = [];
 
@@ -94,12 +100,17 @@ export function buildHomeListFilterMenu(props: {
   items.push({
     type: "submenu",
     title: "Show",
-    items: props.availablePages.map((page) => ({
-      type: "action" as const,
-      title: threadListPageLabel(page),
-      state: props.pages.includes(page) ? ("on" as const) : ("off" as const),
-      onPress: () => props.onTogglePage(page),
-    })),
+    items: [
+      ...props.availablePages.map((page) => ({
+        type: "action" as const,
+        title: threadListPageLabel(page, props.groups),
+        state: props.pages.includes(page) ? ("on" as const) : ("off" as const),
+        onPress: () => props.onTogglePage(page),
+      })),
+      ...(props.onCreateGroup
+        ? [{ type: "action" as const, title: "New group…", onPress: props.onCreateGroup }]
+        : []),
+    ],
   });
 
   return {
