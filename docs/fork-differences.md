@@ -806,7 +806,9 @@ Pasting a Linear issue, GitHub issue, pull request, GitHub repository root, or S
 into the web or desktop composer, or typing one followed by whitespace, turns it into the chip its attach picker
 makes. A pull request link to one comment (`#issuecomment-…`, `#discussion_r…`, `#r…`) becomes a
 chip for that comment instead, anchored to its line with the earlier replies when it is in a review
-thread; a comment the read did not return falls back to the pull request chip. The text goes in as
+thread; a comment the read did not return falls back to the pull request chip. A link to lines of
+one file (`#diff-<hash>L4-L14`) becomes a chip for those lines of the diff, and stays a link when
+the diff does not show them. The text goes in as
 usual, then each link becomes a chip once its object loads. A link that
 cannot be read, or that was edited away meanwhile, stays as text. Paste-as-text (`Cmd+Shift+V`)
 skips it, and typing never retries a link the draft already converted or tried, so undo and a
@@ -814,7 +816,7 @@ deleted chip stick. Mobile does not convert links.
 
 A bare link of one of those kinds that is still a link when the message renders, in any message on
 web, desktop, or mobile, shows its short name instead of the URL: `owner/repo#162` for a pull
-request or GitHub issue, `ENG-123` for a Linear issue, `owner/repo` for a repository, and
+request or GitHub issue (with `L4-L14` appended for a link to lines), `ENG-123` for a Linear issue, `owner/repo` for a repository, and
 `Slack · workspace` for a Slack message. It still
 opens, previews, and copies as the full URL. Link text the writer chose is left alone.
 

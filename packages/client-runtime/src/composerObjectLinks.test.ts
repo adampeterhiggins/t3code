@@ -67,6 +67,9 @@ describe("objectLinkLabel", () => {
     expect(objectLinkLabel("https://gitlab.com/acme/group/api/-/merge_requests/3")).toBe(
       "acme/group/api#3",
     );
+    expect(
+      objectLinkLabel(`https://github.com/acme/api/pull/7/changes#diff-${"a".repeat(64)}L4-L14`),
+    ).toBe("acme/api#7 L4-L14");
     expect(objectLinkLabel("https://github.com/acme/api/issues/12")).toBe("acme/api#12");
     expect(objectLinkLabel("https://linear.app/acme/issue/eng-123/fix-the-thing")).toBe("ENG-123");
     expect(objectLinkLabel("https://github.com/acme/api.git")).toBe("acme/api");
