@@ -92,6 +92,10 @@ beside its review tab. Each side is a full chat with its own timeline, composer,
   on Windows and Linux to open the tab you used most recently beside the current one.
 - **Focus.** The focused side has a colored line along its top, and shortcuts act on that side.
   Click the other side, or press `Cmd+Option+\` / `Ctrl+Alt+\`, to move focus there.
+- **Swap and resize.** Drag the small handle at the top of either side onto the other side to swap
+  them. Drag the line between them to resize, or double-click it to make them equal again.
+- **In the sidebar.** Both chats show a side-by-side icon, and the one you're not focused on has a
+  lighter highlight.
 - **Close.** Click **×** in either side's header to close that side. `Cmd+\` / `Ctrl+\`, the command
   palette, or **Close split view** in the sidebar menu closes the other side and keeps the focused one.
 

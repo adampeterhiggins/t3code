@@ -83,6 +83,7 @@ import {
   CircleAlertIcon,
   CircleCheckIcon,
   ClockIcon,
+  Columns2Icon,
   FolderIcon,
   FoldersIcon,
   GitBranchIcon,
@@ -292,7 +293,12 @@ import { ProjectFavicon, type ProjectFaviconProject } from "./ProjectFavicon";
 import { ThreadSearchMatchExcerpt } from "./ThreadSearchMatch";
 import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
 import { useThreadTabActions } from "./chat/ThreadTabs";
-import { useSplitViewActions } from "./chat/splitPane";
+import {
+  SPLIT_VIEW_HIDDEN_MEDIA_QUERY,
+  useSplitPartner,
+  useSplitViewActions,
+} from "./chat/splitPane";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import { splitMenuAction, useSplitViewStore } from "../splitViewStore";
 import { ProviderInstanceIcon } from "./chat/ProviderInstanceIcon";
 import { getTriggerDisplayModelLabel } from "./chat/providerIconUtils";
@@ -1143,6 +1149,19 @@ const dropVerbBadge: Record<SidebarDropVerb, ReactNode> = {
   ),
 };
 
+/** Marks a row whose chat is one side of the split view on screen. */
+function SidebarSplitIndicator() {
+  return (
+    <span
+      role="img"
+      aria-label="Shown side by side"
+      className="inline-flex shrink-0 items-center text-muted-foreground"
+    >
+      <Columns2Icon className="size-3.5" />
+    </span>
+  );
+}
+
 const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   thread: SidebarThreadSummary;
   /** The tab the hidden-tabs row opens; the group thread still owns ordering and selection. */
@@ -1181,6 +1200,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   // the user visits the thread.
   wokeAt: string | null;
   isActive: boolean;
+  // One side of the split view on screen: the routed chat or the one beside it.
+  inSplit: boolean;
   // A sibling tab is the open route. The header stays present, but the active
   // pill belongs to that tab row.
   groupFocused?: boolean;
@@ -1593,6 +1614,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   // the group header. The active tab carries the highlight.
   const unifyTabs = variant === "card" && props.tabsOpen && props.tabs != null;
   const rowActive = props.isActive && !unifyTabs;
+  // The chat beside the routed one in a split gets a lighter version of the active surface.
+  const rowSplitPartner = props.inSplit && !props.isActive && !unifyTabs;
   // Each listed tab shows its own status, so the header would only repeat the
   // first tab's and read as the whole group's. Woke belongs to the group.
   const headerStatus = unifyTabs && !isWokeStatus ? null : topStatus;
@@ -1601,13 +1624,15 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     variantAction === "unsettle" && "[&:not(:hover):not(:focus-within)_*]:text-secondary-label/70",
     rowActive
       ? "bg-sidebar-row-active text-sidebar-foreground"
-      : isSelected || props.sweepAction !== null
-        ? "bg-sidebar-row-selected text-sidebar-foreground"
-        : hasUnsentDraft
-          ? cn(draftSurfaceClassName, "text-sidebar-foreground")
-          : shouldRecede
-            ? "text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
-            : "bg-transparent text-sidebar-foreground hover:bg-sidebar-row-hover",
+      : rowSplitPartner
+        ? "bg-sidebar-row-active/50 text-sidebar-foreground"
+        : isSelected || props.sweepAction !== null
+          ? "bg-sidebar-row-selected text-sidebar-foreground"
+          : hasUnsentDraft
+            ? cn(draftSurfaceClassName, "text-sidebar-foreground")
+            : shouldRecede
+              ? "text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+              : "bg-transparent text-sidebar-foreground hover:bg-sidebar-row-hover",
     // Background work fades as a whole row, status label included, so it
     // takes less attention than rows that need a human (input, approval).
     shouldRecede &&
@@ -1890,6 +1915,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
             {tabCountBadge}
             {agentIndicator}
             {pinIndicator}
+            {props.inSplit ? <SidebarSplitIndicator /> : null}
             {terminalStatusIcon}
             {isRegeneratingTitle ? (
               <span role="status" className="sr-only">
@@ -2282,6 +2308,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                 <span className="flex-1" />
               )}
               {tabCountBadge}
+              {props.inSplit && !unifyTabs ? <SidebarSplitIndicator /> : null}
               {unifyTabs ? null : terminalStatusIcon}
               {prBadge}
               {diff ? (
@@ -2750,6 +2777,8 @@ function SidebarTabOverflowRow(props: {
 const SidebarTabRow = memo(function SidebarTabRow(props: {
   thread: SidebarThreadSummary;
   isActive: boolean;
+  /** One side of the split view on screen: the routed chat or the one beside it. */
+  inSplit: boolean;
   jumpLabel: string | null;
   environmentLabel: string | null;
   environmentMachine: EnvironmentMachineKind;
@@ -2865,9 +2894,11 @@ const SidebarTabRow = memo(function SidebarTabRow(props: {
                 "group/sidebar-row relative flex h-8 w-full cursor-pointer items-center gap-2 overflow-hidden rounded-md px-2 text-left outline-none select-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                 props.isActive
                   ? "bg-sidebar-row-active text-sidebar-foreground"
-                  : isSelected
-                    ? "bg-sidebar-row-selected text-sidebar-foreground"
-                    : "text-sidebar-foreground hover:bg-sidebar-row-hover",
+                  : props.inSplit
+                    ? "bg-sidebar-row-active/50 text-sidebar-foreground"
+                    : isSelected
+                      ? "bg-sidebar-row-selected text-sidebar-foreground"
+                      : "text-sidebar-foreground hover:bg-sidebar-row-hover",
                 isFileDragOver && "ring-1 ring-inset ring-primary/70",
                 isFileDragOver && !props.isActive && !isSelected && "bg-sidebar-row-hover",
                 // Lifted like a dragged thread: an opaque card over the rows beneath.
@@ -2916,6 +2947,7 @@ const SidebarTabRow = memo(function SidebarTabRow(props: {
               {thread.title}
             </span>
           )}
+          {props.inSplit ? <SidebarSplitIndicator /> : null}
           {terminalStatus ? (
             <TerminalIcon
               aria-label={terminalProcessLabel(runningTerminalIds.length)}
@@ -3323,6 +3355,25 @@ export default function Sidebar() {
   // A listed tab carries its own highlight; a folded one lights its group's row.
   const highlightedRouteThreadKey =
     routeThreadKey === null ? null : (hiddenTabThreads.get(routeThreadKey) ?? routeThreadKey);
+  // The chat shown beside the routed one in split view, mapped to its row the same way.
+  const splitHidden = useMediaQuery(SPLIT_VIEW_HIDDEN_MEDIA_QUERY);
+  const splitPartnerRef = useSplitPartner(
+    routeTarget?.kind === "server" && !splitHidden ? routeThreadRef : null,
+  );
+  const splitPartnerThreadKey = splitPartnerRef ? scopedThreadKey(splitPartnerRef) : null;
+  const splitPartnerRowKey =
+    splitPartnerThreadKey === null
+      ? null
+      : (hiddenTabThreads.get(splitPartnerThreadKey) ?? splitPartnerThreadKey);
+  // Rows the "more" fold never hides: the routed chat's and its split partner's.
+  const openRowKeys = useMemo(
+    () =>
+      [highlightedRouteThreadKey, splitPartnerRowKey].filter((key): key is string => key !== null),
+    [highlightedRouteThreadKey, splitPartnerRowKey],
+  );
+  const isSplitRowKey = (key: string) =>
+    splitPartnerRowKey !== null &&
+    (key === splitPartnerRowKey || key === highlightedRouteThreadKey);
   const routeTargetRef = useRef(routeTarget);
   routeTargetRef.current = routeTarget;
   // Post-settle navigation validates against the CURRENT route, not the one
@@ -3935,7 +3986,7 @@ export default function Sidebar() {
         manualRanks: tabManualRanks,
         heldKeys: heldTabOrder?.rowKey === rowKey ? heldTabOrder.keys : null,
         limit: tabLimit,
-        activeKey: highlightedRouteThreadKey,
+        openKeys: openRowKeys,
         expanded: expandedTabRowKey === rowKey,
       });
       layouts.set(rowKey, { ...layout, listsRow: card !== undefined });
@@ -3945,8 +3996,8 @@ export default function Sidebar() {
     activeThreads,
     expandedTabRowKey,
     heldTabOrder,
-    highlightedRouteThreadKey,
     listedTabsByRowKey,
+    openRowKeys,
     openedAtByThreadKey,
     pinnedThreads,
     tabLimit,
@@ -6478,6 +6529,7 @@ export default function Sidebar() {
                             // rows resolve to null on their own.
                             wokeAt={threadWokeAt(thread, { now: snoozeNow })}
                             isActive={highlightedRouteThreadKey === threadKey}
+                            inSplit={isSplitRowKey(threadKey)}
                             groupFocused={
                               rowTabsOpen &&
                               isCard &&
@@ -6587,6 +6639,7 @@ export default function Sidebar() {
                                             )}
                                             thread={tab}
                                             isActive={highlightedRouteThreadKey === tabKey}
+                                            inSplit={isSplitRowKey(tabKey)}
                                             jumpLabel={
                                               showJumpHints
                                                 ? (jumpLabelByKey.get(tabKey) ?? null)

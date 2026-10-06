@@ -910,15 +910,20 @@ describe("sidebar tab order", () => {
 
   it("limits a group to N rows, the open tab taking the last slot when it would be hidden", () => {
     const keys = ["a", "b", "c", "d", "e"];
-    expect(limitSidebarTabs(keys, null, "e", (k) => k)).toEqual({ shown: keys, hidden: [] });
-    expect(limitSidebarTabs(keys, 5, "e", (k) => k)).toEqual({ shown: keys, hidden: [] });
-    expect(limitSidebarTabs(keys, 3, "b", (k) => k)).toEqual({
+    expect(limitSidebarTabs(keys, null, ["e"], (k) => k)).toEqual({ shown: keys, hidden: [] });
+    expect(limitSidebarTabs(keys, 5, ["e"], (k) => k)).toEqual({ shown: keys, hidden: [] });
+    expect(limitSidebarTabs(keys, 3, ["b"], (k) => k)).toEqual({
       shown: ["a", "b", "c"],
       hidden: ["d", "e"],
     });
-    expect(limitSidebarTabs(keys, 3, "e", (k) => k)).toEqual({
+    expect(limitSidebarTabs(keys, 3, ["e"], (k) => k)).toEqual({
       shown: ["a", "b", "e"],
       hidden: ["c", "d"],
+    });
+    // A split keeps both of its chats listed.
+    expect(limitSidebarTabs(keys, 3, ["e", "d"], (k) => k)).toEqual({
+      shown: ["a", "d", "e"],
+      hidden: ["b", "c"],
     });
   });
 
