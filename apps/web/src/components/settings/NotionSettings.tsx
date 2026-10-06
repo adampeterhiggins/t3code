@@ -214,40 +214,41 @@ function NotionConnectionRows({
           title="Notion connection"
           description={`Notion signs in through an OAuth connection you create. Choose OAuth, register ${NOTION_REDIRECT_URI} as its redirect URI, then enter its client ID and secret here. The secret stays on ${environmentLabel}.`}
           control={
-            <div className="flex w-full flex-wrap gap-2 sm:w-auto">
-              <Input
-                size="sm"
-                aria-label="Notion client ID"
-                placeholder="Client ID"
-                className="min-w-0 flex-1 sm:w-64"
-                value={clientIdDraft ?? state?.clientId ?? ""}
-                onChange={(event) => setClientIdDraft(event.target.value)}
-              />
-              <Input
-                size="sm"
-                type="password"
-                autoComplete="off"
-                aria-label="Notion client secret"
-                placeholder={state?.configured ? "Client secret (saved)" : "Client secret"}
-                className="min-w-0 flex-1 sm:w-64"
-                value={clientSecretDraft}
-                onChange={(event) => setClientSecretDraft(event.target.value)}
-              />
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() =>
-                  void ensureLocalApi().shell.openExternal(
-                    "https://www.notion.so/profile/integrations",
-                  )
-                }
-              >
-                Create Notion connection
-                <ExternalLinkIcon className="size-3.5" aria-hidden="true" />
-              </Button>
-            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                void ensureLocalApi().shell.openExternal(
+                  "https://www.notion.so/profile/integrations",
+                )
+              }
+            >
+              Create Notion connection
+              <ExternalLinkIcon className="size-3.5" aria-hidden="true" />
+            </Button>
           }
-        />
+        >
+          <div className="flex flex-col gap-2 pb-2 sm:flex-row">
+            <Input
+              size="sm"
+              aria-label="Notion client ID"
+              placeholder="Client ID"
+              className="min-w-0 flex-1"
+              value={clientIdDraft ?? state?.clientId ?? ""}
+              onChange={(event) => setClientIdDraft(event.target.value)}
+            />
+            <Input
+              size="sm"
+              type="password"
+              autoComplete="off"
+              aria-label="Notion client secret"
+              placeholder={state?.configured ? "Client secret (saved)" : "Client secret"}
+              className="min-w-0 flex-1"
+              value={clientSecretDraft}
+              onChange={(event) => setClientSecretDraft(event.target.value)}
+            />
+          </div>
+        </SettingsRow>
       ) : null}
       {state?.phase === "waiting" ? (
         <SettingsRow
