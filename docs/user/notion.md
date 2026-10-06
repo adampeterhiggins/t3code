@@ -14,12 +14,14 @@ If you approve from another device, Notion redirects to a page that may not load
 
 ## Attach pages
 
-- Paste a `notion.so` or `notion.site` page link into the composer on web or desktop. A readable page becomes a chip; an unreadable link stays as text.
+- Paste a `notion.so`, `notion.com`, or `notion.site` page link into the composer on web or desktop. A readable page becomes a chip; an unreadable link stays as text.
 - Choose **Notion page** from the paperclip picker, then search by title or paste a page link.
 - Type `#` and choose the **Notion** tab, which appears once connected.
 - Run **Attach Notion page** from the command palette on web or desktop.
 - On mobile, choose **Notion page** from the composer's **+** menu.
 
 T3 Code captures the title, source link, and page Markdown when you attach it. Later edits in Notion do not change sent messages. Large or inaccessible portions of pages can be incomplete; the captured content says when Notion reports truncation or the snapshot reaches its size limit. Embedded media stays as links. Remove a chip to remove it from your draft, or open it to inspect the captured contents.
+
+To stop Notion setup prompts and automatic link attachments, turn off **Enable Notion integration** under **Settings > Integrations > Notion**. Notion links stay as links, and Notion attachment actions are hidden on web, desktop, and mobile for that environment. Your connected account and pages already attached are kept. Turn the setting back on to use Notion again without reconnecting.
 
 Choose **Disconnect** in the Notion settings to revoke and remove the environment's credential. Previously attached snapshots remain in their messages.

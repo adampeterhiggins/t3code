@@ -99,6 +99,8 @@ export function parseNotionPageId(value: string): string | null {
       !(
         host === "notion.so" ||
         host.endsWith(".notion.so") ||
+        host === "notion.com" ||
+        host.endsWith(".notion.com") ||
         host === "notion.site" ||
         host.endsWith(".notion.site")
       )

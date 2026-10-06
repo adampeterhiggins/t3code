@@ -2129,16 +2129,20 @@ function OpenCommandPaletteDialog(props: {
         openLinearIssuePicker(composerThreadRef);
       },
     });
-    actionItems.push({
-      kind: "action",
-      value: "action:attach-notion-page",
-      searchTerms: ["notion", "page", "document", "attach", "context"],
-      title: "Attach Notion page",
-      icon: <NotionIcon className={ITEM_ICON_CLASS} />,
-      run: async () => {
-        openNotionPagePicker(composerThreadRef);
-      },
-    });
+    if (
+      serverConfigs.get(composerThreadRef.environmentId)?.settings.enableNotionIntegration !== false
+    ) {
+      actionItems.push({
+        kind: "action",
+        value: "action:attach-notion-page",
+        searchTerms: ["notion", "page", "document", "attach", "context"],
+        title: "Attach Notion page",
+        icon: <NotionIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          openNotionPagePicker(composerThreadRef);
+        },
+      });
+    }
     if (
       serverConfigs.get(composerThreadRef.environmentId)?.settings.enableSlackIntegration !== false
     ) {

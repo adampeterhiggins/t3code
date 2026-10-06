@@ -620,6 +620,31 @@ it.layer(NodeServices.layer)("server settings", (it) => {
     ).pipe(Effect.provide(layerServerSettings())),
   );
 
+  it.effect("persists and broadcasts disabling and re-enabling Notion", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const serverConfig = yield* ServerConfig.ServerConfig;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+
+        for (const enabled of [false, true]) {
+          const changes = yield* serverSettings.subscribeChanges;
+          const next = yield* serverSettings.updateSettings({ enableNotionIntegration: enabled });
+          const change = Option.getOrUndefined(yield* Stream.runHead(changes));
+          const persisted = yield* fileSystem
+            .readFileString(serverConfig.settingsPath)
+            .pipe(
+              Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(ServerSettings))),
+            );
+
+          assert.strictEqual(next.enableNotionIntegration, enabled);
+          assert.strictEqual(change?.enableNotionIntegration, enabled);
+          assert.strictEqual(persisted.enableNotionIntegration, enabled);
+        }
+      }),
+    ).pipe(Effect.provide(layerServerSettings())),
+  );
+
   it.effect("persists and broadcasts thread settlement settings", () =>
     Effect.scoped(
       Effect.gen(function* () {

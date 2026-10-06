@@ -13,6 +13,7 @@ import { useRef, useState } from "react";
 
 import { isElectron } from "../../env";
 import { writeTextToClipboard } from "../../hooks/useCopyToClipboard";
+import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "../../hooks/useSettings";
 import { ensureLocalApi } from "../../localApi";
 import { usePrimaryEnvironment } from "../../state/environments";
 import { notionEnvironment } from "../../state/notion";
@@ -21,6 +22,7 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { Button, InlineButton } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { Switch } from "../ui/switch";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import { useSettingsScope } from "./SettingsScopeContext";
@@ -46,13 +48,37 @@ export function NotionSettingsSection() {
           description="Connect to an environment to set up Notion."
         />
       ) : (
-        <NotionConnectionRows
+        <NotionIntegrationRows
           key={environmentId}
           environmentId={environmentId}
           environmentLabel={environment?.label ?? "this environment"}
         />
       )}
     </SettingsSection>
+  );
+}
+
+function NotionIntegrationRows(props: {
+  readonly environmentId: EnvironmentId;
+  readonly environmentLabel: string;
+}) {
+  const enabled = useEnvironmentSettings(props.environmentId, (s) => s.enableNotionIntegration);
+  const updateSettings = useUpdateEnvironmentSettings(props.environmentId);
+  return (
+    <>
+      <SettingsRow
+        title="Enable Notion integration"
+        description="Attach Notion pages. Turn off to keep pasted Notion links as links without setup prompts. Your connected account is kept."
+        control={
+          <Switch
+            aria-label="Enable Notion integration"
+            checked={enabled}
+            onCheckedChange={(checked) => updateSettings({ enableNotionIntegration: checked })}
+          />
+        }
+      />
+      {enabled ? <NotionConnectionRows {...props} /> : null}
+    </>
   );
 }
 

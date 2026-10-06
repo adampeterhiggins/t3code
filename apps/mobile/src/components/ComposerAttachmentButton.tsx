@@ -30,8 +30,9 @@ export function ComposerAttachmentButton(props: {
   readonly onPickLinearIssue?: () => void;
   /** Omit to hide the GitHub issue action. See `useGitHubIssuePicker`. */
   readonly onPickGitHubIssue?: () => void;
-  /** Omit to hide the Slack action. See `useSlackMessagePicker`. */
+  /** Omit to hide the Notion action. See `useNotionPagePicker`. */
   readonly onPickNotionPage?: () => void;
+  /** Omit to hide the Slack action. See `useSlackMessagePicker`. */
   readonly onPickSlackMessage?: () => void;
   /** Omit to hide the repository action. See `useRepositoryPicker`. */
   readonly onPickRepository?: () => void;
