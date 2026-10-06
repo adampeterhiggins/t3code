@@ -23,7 +23,7 @@ import { mediaFileReference } from "@t3tools/client-runtime/media-reference";
 import { FolderTree, Globe2, WrapTextIcon } from "lucide-react";
 import { Code2, Eye, Table2 } from "lucide";
 import * as Schema from "effect/Schema";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 
 import { isBrowserPreviewFile, openFileInPreview } from "~/browser/openFileInPreview";
 import { useAssetUrlRefresh, useAssetUrlState } from "~/assets/assetUrls";
@@ -31,6 +31,9 @@ import { OpenInPicker } from "~/components/chat/OpenInPicker";
 import { MediaVideoPlayer } from "~/components/media/MediaVideoPlayer";
 import { MediaActions, type MediaActionSource } from "~/components/media/MediaActions";
 import { MorphIcon } from "~/components/MorphIcon";
+import { RefreshIcon } from "~/components/ui/refresh-icon";
+import { isCommandPaletteOpen } from "~/commandPaletteBus";
+import { resolveShortcutCommand, shortcutLabelForCommand } from "~/keybindings";
 import { useRemoteOpenState } from "~/remoteOpen";
 import { useClientSettings, useUpdateClientSettings } from "~/hooks/useSettings";
 import { useTheme } from "~/hooks/useTheme";
@@ -994,6 +997,14 @@ export default function FilePreviewPanel({
     null,
   );
   const breadcrumbRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  // Media and rendered pages read through asset URLs, not the file query. A manual
+  // refresh bumps their revision so they fetch again, as a workspace mutation does.
+  const [manualRefreshCount, setManualRefreshCount] = useState(0);
+  const previewRevision =
+    manualRefreshCount === 0
+      ? workspaceMutationId
+      : `${workspaceMutationId ?? ""}:refresh-${manualRefreshCount}`;
   const isMarkdown = previewPath ? isMarkdownPreviewFile(previewPath) : false;
   const tableDelimiter =
     previewPath && attachment === undefined ? filePreviewDelimiter({ name: previewPath }) : null;
@@ -1070,6 +1081,32 @@ export default function FilePreviewPanel({
     });
   };
 
+  // Host files outside the workspace never see a workspace mutation, so this is
+  // the only way to pick up changes another process wrote to them.
+  const canRefreshFile = previewPath !== null && attachment === undefined;
+  const refreshFile = () => {
+    file.refresh();
+    setManualRefreshCount((count) => count + 1);
+  };
+  const refreshFileShortcutLabel = shortcutLabelForCommand(keybindings, "file.refresh", {
+    context: { fileFocus: true },
+  });
+  const refreshFromShortcut = useEffectEvent((event: KeyboardEvent) => {
+    if (!canRefreshFile || event.defaultPrevented || isCommandPaletteOpen()) return;
+    const panel = panelRef.current;
+    const fileFocus = panel !== null && panel.contains(document.activeElement);
+    const command = resolveShortcutCommand(event, keybindings, { context: { fileFocus } });
+    if (command !== "file.refresh") return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (!event.repeat) refreshFile();
+  });
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => refreshFromShortcut(event);
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, []);
+
   const handleOpenInBrowser = useCallback(() => {
     if (!absolutePath || !environmentHttpBaseUrl) return;
     void (async () => {
@@ -1096,7 +1133,13 @@ export default function FilePreviewPanel({
   }, [absolutePath, createAssetUrl, cwd, environmentHttpBaseUrl, openPreview, threadRef]);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
+    <div
+      ref={panelRef}
+      // Focusable so a click on read-only text still gives the panel keyboard focus
+      // for its shortcuts.
+      tabIndex={-1}
+      className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background outline-none"
+    >
       {relativePath && attachment === undefined ? (
         <div className={FILE_SURFACE_SUBHEADER_CLASS} data-surface-subheader>
           <ScrollArea
@@ -1127,6 +1170,18 @@ export default function FilePreviewPanel({
               openInCwd={absolutePath}
               compact
             />
+          ) : null}
+          {canRefreshFile ? (
+            <FileSurfaceAction
+              label={
+                refreshFileShortcutLabel
+                  ? `Refresh file (${refreshFileShortcutLabel})`
+                  : "Refresh file"
+              }
+              onPress={refreshFile}
+            >
+              <RefreshIcon size="sm" refreshing={file.isPending} />
+            </FileSurfaceAction>
           ) : null}
           {canToggleRendered && renderedMode ? (
             <FileSurfaceAction
@@ -1203,7 +1258,7 @@ export default function FilePreviewPanel({
               absolutePath={absolutePath}
               workspaceRoot={cwd}
               name={relativePath}
-              workspaceMutationId={workspaceMutationId}
+              workspaceMutationId={previewRevision}
             />
           ) : relativePath && isAudio && absolutePath ? (
             <WorkspaceAudioPreview
@@ -1212,7 +1267,7 @@ export default function FilePreviewPanel({
               threadRef={threadRef}
               absolutePath={absolutePath}
               name={relativePath}
-              workspaceMutationId={workspaceMutationId}
+              workspaceMutationId={previewRevision}
             />
           ) : relativePath && isImage && absolutePath ? (
             <WorkspaceImagePreview
@@ -1222,7 +1277,7 @@ export default function FilePreviewPanel({
               absolutePath={absolutePath}
               workspaceRoot={cwd}
               alt={relativePath}
-              workspaceMutationId={workspaceMutationId}
+              workspaceMutationId={previewRevision}
             />
           ) : relativePath && renderBrowserFile && absolutePath ? (
             <WorkspaceBrowserPreview
@@ -1232,7 +1287,7 @@ export default function FilePreviewPanel({
               absolutePath={absolutePath}
               workspaceRoot={cwd}
               title={relativePath}
-              workspaceMutationId={workspaceMutationId}
+              workspaceMutationId={previewRevision}
             />
           ) : relativePath && file.error && file.data === null ? (
             <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-xs leading-relaxed text-destructive">

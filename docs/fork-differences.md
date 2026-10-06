@@ -1028,6 +1028,14 @@ has them. Mobile follows upstream.
 Code: the `panel` variant of `WorkLogDetails` in
 [WorkLog.tsx](../apps/web/src/components/chat/WorkLog.tsx).
 
+## Refresh the open file
+
+The file viewer header has a refresh button, and `mod+r` (command `file.refresh`, when
+`fileFocus`) does the same while the viewer has focus. It reads the file again and refetches
+media and rendered pages, so a file outside the workspace that never triggers a workspace
+mutation can still be brought up to date. See [the user guide](user/keybindings.md#refresh-a-file)
+and [`FilePreviewPanel.tsx`](../apps/web/src/components/files/FilePreviewPanel.tsx).
+
 ## Keeping this page current
 
 Update this page in the same change that adds, changes, or removes a user-visible fork-only
