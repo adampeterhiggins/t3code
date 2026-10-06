@@ -554,7 +554,7 @@ function ImportConversationList({
     <>
       <div className="mb-2 flex items-center gap-2">
         <Menu>
-          <MenuTrigger render={<Button type="button" variant="outline" size="xs" />}>
+          <MenuTrigger render={<Button type="button" variant="outline" size="sm" />}>
             <ListFilterIcon />
             <span>Filters</span>
             {activeFilters > 0 ? (
@@ -580,7 +580,7 @@ function ImportConversationList({
         </Menu>
         <div className="min-w-0 flex-1">
           <Input
-            size="compact"
+            size="sm"
             type="search"
             value={query}
             placeholder="Search"
