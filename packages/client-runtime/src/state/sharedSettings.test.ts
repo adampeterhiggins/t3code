@@ -18,7 +18,7 @@ import {
 const primaryId = EnvironmentId.make("env-primary");
 const laptopId = EnvironmentId.make("env-laptop");
 const boxId = EnvironmentId.make("env-box");
-const restartCapabilities = { threadRestartContinuation: true };
+const restartCapabilities = { threadRestartContinuation: true, threadGroups: true };
 
 describe("supportsSharedSettingsSync", () => {
   it("accepts only connected servers that advertise the shared-settings capability", () => {
@@ -131,11 +131,20 @@ describe("pickSharedServerSettings", () => {
       "snoozeLimitedThreads",
       "sourceControlWritingStyle",
       "textGenerationModelSelection",
+      "threadGroups",
     ]);
   });
 });
 
 describe("filterSharedServerPatch", () => {
+  it("keeps thread group styles away from servers without thread groups", () => {
+    const patch = { threadGroups: { Research: { accent: "blue" as const } } };
+    expect(filterSharedServerPatch(patch, { threadRestartContinuation: true })).toEqual({});
+    expect(
+      filterSharedServerPatch(patch, { threadRestartContinuation: true, threadGroups: true }),
+    ).toEqual(patch);
+  });
+
   it.each([true, false])(
     "resets a disabled default provider only on the originating environment (%s)",
     (targetIsSource) => {

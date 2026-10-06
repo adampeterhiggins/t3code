@@ -1,5 +1,10 @@
 import type { EnvironmentId } from "@t3tools/contracts";
 
+import type { ThreadGroups } from "@t3tools/contracts/settings";
+
+import { threadListPageLabel, type ThreadListPage } from "../threads/threadListV2";
+import type { ThreadListOrganisation } from "./thread-list-organisations";
+
 export interface HomeListFilterMenuEnvironment {
   readonly environmentId: EnvironmentId;
   readonly label: string;
@@ -36,6 +41,19 @@ export function buildHomeListFilterMenu(props: {
   readonly selectedProjectKey: string | null;
   readonly onEnvironmentChange: (environmentId: EnvironmentId | null) => void;
   readonly onProjectChange: (projectKey: string | null) => void;
+  readonly pages: ReadonlyArray<ThreadListPage>;
+  /** Pages offered in the Show submenu, from availableThreadListPages. */
+  readonly availablePages: ReadonlyArray<ThreadListPage>;
+  readonly onTogglePage: (page: ThreadListPage) => void;
+  /** Registered groups, for the emoji prefix on group pages. */
+  readonly groups?: ThreadGroups;
+  /** Adds "New group…" to Show; omitted when no environment supports groups. */
+  readonly onCreateGroup?: () => void;
+  /** Repository owners of the checkouts; multi-select, none picked means all. */
+  readonly organisations: ReadonlyArray<ThreadListOrganisation>;
+  readonly organisationKeys: ReadonlyArray<string>;
+  readonly onToggleOrganisation: (key: string) => void;
+  readonly onClearOrganisations: () => void;
 }): HomeListFilterMenu {
   const items: Array<HomeListFilterMenuAction | HomeListFilterMenuSubmenu> = [];
 
@@ -62,6 +80,30 @@ export function buildHomeListFilterMenu(props: {
     ],
   });
 
+  if (props.organisations.length > 0) {
+    items.push({
+      type: "submenu",
+      title: "Organisations",
+      items: [
+        {
+          type: "action",
+          title: "All organisations",
+          subtitle: "Show threads from every organisation",
+          state: props.organisationKeys.length === 0 ? "on" : "off",
+          onPress: props.onClearOrganisations,
+        },
+        ...props.organisations.map((organisation) => ({
+          type: "action" as const,
+          title: organisation.label,
+          state: props.organisationKeys.includes(organisation.key)
+            ? ("on" as const)
+            : ("off" as const),
+          onPress: () => props.onToggleOrganisation(organisation.key),
+        })),
+      ],
+    });
+  }
+
   if (props.projects.length > 0) {
     items.push({
       type: "submenu",
@@ -83,6 +125,23 @@ export function buildHomeListFilterMenu(props: {
       ],
     });
   }
+
+  // Multi-select: each page toggles; the last selected page stays on.
+  items.push({
+    type: "submenu",
+    title: "Show",
+    items: [
+      ...props.availablePages.map((page) => ({
+        type: "action" as const,
+        title: threadListPageLabel(page, props.groups),
+        state: props.pages.includes(page) ? ("on" as const) : ("off" as const),
+        onPress: () => props.onTogglePage(page),
+      })),
+      ...(props.onCreateGroup
+        ? [{ type: "action" as const, title: "New group…", onPress: props.onCreateGroup }]
+        : []),
+    ],
+  });
 
   return {
     title: "Thread list options",

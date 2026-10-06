@@ -167,21 +167,21 @@ scroll position instead of following the thread to its new place in the list.
 
 Pinning does not prevent automatic settlement. Settling a thread removes its pin.
 
-On web and desktop, drag a thread between sections to change its state. Drag a thread up into
-the pinned section to pin it at the spot you drop it; drag a pinned thread down into the active
-list to unpin it. Dragging a thread onto the **Settled** header settles it, and dragging a settled
-thread into the active list un-settles it. A snoozed thread can be dragged out of the snoozed
-shelf, which wakes it, but threads cannot be dragged into the shelf because snoozing needs a wake
-time. Dragging a pinned thread out of the pinned section does not ask for unpin confirmation.
-Pinned and active boundary labels appear only while dragging, without moving the rows. The
-other rows slide aside to show where the thread will land. When you cross into another section,
-the dragged thread shows the action the drop performs, with its icon: **Pin**, **Unpin**,
-**Settle**, **Un-settle**, or **Wake**. Its status and hover actions hide during the drag. A pinned
-thread keeps its pin only while it stays in the pinned section; once it leaves, the badge takes
-over. Reordering within the same section shows no badge. When there are no pins, drag to the top
-edge to pin a thread. Section labels stay readable for the whole drag, and the section the
-thread is over takes the accent color. Section labels also
-identify empty sections and a collapsed settled shelf.
+The thread list shows live work. To also see snoozed, hidden, or settled threads, open the filter
+button in the sidebar header on web and desktop, or the thread list's filter menu on mobile, and
+pick them under **Show**. Pick as many as you like, or **Only** to show one; each appears as its
+own titled group below your live threads. **Organisations** narrows the list to repositories
+owned by the people or organisations you pick, read from each project's Git remote, and
+**Projects** narrows it to the projects you pick. On web and desktop, the filter button shows how
+many filters are on.
+
+On web and desktop, while only **Threads** is shown, drag a thread up into the pinned section to
+pin it at the spot you drop it; drag a pinned thread down into the active list to unpin it. Dragging a pinned thread out of the pinned section does not
+ask for unpin confirmation. Pinned and active boundary labels appear only while dragging, without
+moving the rows. The other rows slide aside to show where the thread will land. When you cross
+into the other section, the dragged thread shows **Pin** or **Unpin**. Its status and hover
+actions hide during the drag. Reordering within the same section shows no badge. When there are
+no pins, drag to the top edge to pin a thread.
 
 Drag within the pinned or active section to change its order. Other rows slide aside to show the
 spot where the thread will land. Drops into either section keep the position you choose. On
@@ -199,8 +199,8 @@ after the drop.
 
 New threads appear above the active threads you have arranged. Settling clears a thread's active
 position, so using **Un-settle** returns it to the top. Pinning and snoozing preserve its active
-position until you move it again. Thread activity does not change the order. The settled shelf
-continues to use settlement time.
+position until you move it again. Thread activity does not change the order. Settled threads are
+listed by settlement time.
 
 If dragging is unavailable for one environment, update the T3 Code server running in that
 environment. Pinned and active reordering require server support. Threads from older servers keep
@@ -250,7 +250,7 @@ settlement, but an old closed or merged pull request does not settle work you
 resumed after it closed. Only your own messages count as resuming. A turn that
 finished background work or a pull request watch starts on its own does not.
 
-To keep one thread out of the settled shelf no matter how long it sits idle, open its menu,
+To keep one thread from settling on its own no matter how long it sits idle, open its menu,
 choose **Auto-settle behavior**, and pick **Disabled**. The current option is checked. Pick
 **Enabled** to return to the usual rules. Manual settle, snooze, and archive still work while it
 is disabled.
@@ -429,3 +429,32 @@ Choose **Snooze → Custom…** from a thread's menu to pick a date and time in 
 local time zone, or a duration in minutes, hours, or days. Durations start when
 you confirm; one day means 24 hours. On web and desktop, you can also snooze
 several selected threads together. Choose **Wake thread** to bring a thread back early.
+
+## Hide a thread
+
+Choose **Hide thread** from a thread's menu to take it out of your thread list without settling,
+snoozing, or archiving it. The thread keeps working and still turns up in search. New activity
+does not bring it back, but a hidden thread that needs an approval or an answer still appears in
+the inbox. Pick **Hidden** under **Show** in the filter menu, described in
+[Pin and reorder threads](#pin-and-reorder-threads), to see hidden threads. Choose **Unhide
+thread** from a thread's menu, or the eye on its row on web and desktop, to put it back. Hidden threads are saved on the server, so they stay
+hidden on your other devices.
+
+## Group threads
+
+Make your own groups, such as "Research" or "Later", to file threads away from your live list.
+Choose **Move to group → New group…** from a thread's menu to create one and move the thread into
+it, or **New group…** under **Show** in the filter menu to create an empty one. Each group has a
+name, an optional icon, and an accent colour. A grouped thread leaves your live thread list and
+keeps working. Pick a group under **Show** to list it, alone or alongside other groups and your
+live threads. Groups stay until you delete them, even when empty.
+
+To file a project's new threads automatically, open the project's settings and pick a group under
+**New threads → Thread group**. Every new thread in that project starts in the group, however it
+was started, including by agents and scheduled tasks. A fork starts in the same group as the thread
+it came from.
+
+On web and desktop, click the pencil on a group's title, or right-click it, to rename it, change
+its look, or delete it. Renaming moves every thread in it; deleting returns its threads to your
+live list. Choose **Move to group → Remove from group** to bring one thread back. Groups are saved
+on your servers, so they appear on your other devices.

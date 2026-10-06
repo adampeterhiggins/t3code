@@ -12,6 +12,7 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsConductorSection } from "./components/SettingsConductorSection";
 import { SettingsSection } from "./components/SettingsSection";
+import { SettingsProjectThreadGroupSection } from "./components/SettingsProjectThreadGroupSection";
 import {
   AndroidSettingsEnvironmentFilter,
   SettingsEnvironmentFilterHeader,
@@ -139,6 +140,11 @@ function ProjectOverviewContent(props: {
           </View>
         </View>
       </SettingsSection>
+
+      <SettingsProjectThreadGroupSection
+        members={props.members}
+        environments={props.environments}
+      />
 
       <SettingsConductorSection
         project={representative}

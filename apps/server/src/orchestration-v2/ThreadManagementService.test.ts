@@ -4,6 +4,7 @@ import {
   MessageId,
   NodeId,
   type OrchestrationV2Command,
+  type OrchestrationV2ServerCommand,
   type OrchestrationV2Run,
   type OrchestrationV2StoredEvent,
   type OrchestrationV2ThreadProjection,
@@ -24,6 +25,7 @@ import * as TestClock from "effect/testing/TestClock";
 import * as LegacyV1ThreadImporter from "./legacy/LegacyV1ThreadImporter.ts";
 import * as Orchestrator from "./Orchestrator.ts";
 import * as ThreadManagementService from "./ThreadManagementService.ts";
+import * as ServerSettings from "../serverSettings.ts";
 
 it("stamps authoritative provenance on commands that create threads or messages", () => {
   const command: OrchestrationV2Command = {
@@ -258,6 +260,54 @@ it("derives thread management messages from structural error attributes", () => 
   expect(durableProjectionFailure.message).toBe(
     `Message ${messageId} was accepted on thread ${threadId} without a durable run projection.`,
   );
+});
+
+it.effect("starts new threads in their project's default group unless one is chosen", () => {
+  const projectId = ProjectId.make("project:thread-management:default-group");
+  const dispatched: Array<OrchestrationV2ServerCommand> = [];
+  const layerTest = ThreadManagementService.layer.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        Layer.mock(Orchestrator.OrchestratorV2)({
+          dispatch: (command) => {
+            dispatched.push(command);
+            return Effect.succeed({ sequence: dispatched.length } as never);
+          },
+        }),
+        ServerSettings.layerTest({
+          projectSettingsOverrides: { [projectId]: { defaultThreadGroup: "Research" } },
+        }),
+      ),
+    ),
+  );
+  const create = (threadId: string, groupName?: string | null) =>
+    ({
+      type: "thread.create",
+      createdBy: "user",
+      creationSource: "web",
+      commandId: CommandId.make(`command:${threadId}`),
+      threadId: ThreadId.make(threadId),
+      projectId,
+      title: "Grouped thread",
+      modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5-codex" },
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      ...(groupName === undefined ? {} : { groupName }),
+    }) as const;
+
+  return Effect.gen(function* () {
+    const service = yield* ThreadManagementService.ThreadManagementService;
+    yield* service.dispatch(create("thread:default-group"));
+    yield* service.dispatch(create("thread:chosen-group", "Later"));
+    yield* service.dispatch(create("thread:no-group", null));
+    expect(dispatched.map((command) => "groupName" in command && command.groupName)).toEqual([
+      "Research",
+      "Later",
+      null,
+    ]);
+  }).pipe(Effect.provide(layerTest));
 });
 
 it.effect("classifies projection infrastructure failures separately from a missing thread", () => {

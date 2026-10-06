@@ -51,6 +51,9 @@ import {
 } from "./threadListV2";
 import { QueuedMessageIcon } from "./queued-message-icon";
 import { ThreadSearchMatchExcerpt } from "./thread-search-match";
+import { ThreadGroupIcon } from "./ThreadGroupIcon";
+import { projectIconColorClassNames } from "../../lib/projectIcon";
+import type { ThreadGroup } from "@t3tools/contracts/settings";
 
 /**
  * Thread List v2 renders one flat native list: rich edge-to-edge rows for
@@ -86,6 +89,11 @@ const SLIM_MENU_ACTIONS: MenuAction[] = [
 
 const SNOOZED_MENU_ACTIONS: MenuAction[] = [
   { id: "unsnooze", title: "Wake thread", image: "clock" },
+  { id: "delete", title: "Delete", image: "trash", attributes: { destructive: true } },
+];
+
+const HIDDEN_MENU_ACTIONS: MenuAction[] = [
+  { id: "unhide", title: "Unhide thread", image: "eye" },
   { id: "delete", title: "Delete", image: "trash", attributes: { destructive: true } },
 ];
 
@@ -179,8 +187,64 @@ function ThreadListV2Section(props: {
 export const ThreadListV2SectionDivider = memo(function ThreadListV2SectionDivider(props: {
   readonly label: string;
   readonly pane?: "screen" | "sidebar";
+  readonly tone?: "default" | "snoozed";
 }) {
   return <ThreadListV2Section {...props} />;
+});
+
+/** A thread group's title: its icon and accent, an Edit button (long press
+    works too), and an Empty line when no threads are in it. */
+export const ThreadListV2GroupSectionHeader = memo(function ThreadListV2GroupSectionHeader(props: {
+  readonly name: string;
+  readonly group: ThreadGroup | undefined;
+  readonly empty: boolean;
+  readonly pane?: "screen" | "sidebar";
+  readonly onEdit: (name: string) => void;
+}) {
+  const sidebarPane = props.pane === "sidebar";
+  const accent = props.group?.accent;
+  const mutedText = sidebarPane ? "text-drawer-foreground-muted" : "text-foreground-tertiary";
+  const mutedTint = sidebarPane ? "accent-drawer-foreground-muted" : "accent-foreground-muted";
+  const edit = () => props.onEdit(props.name);
+  return (
+    <View>
+      <Pressable
+        accessibilityHint="Long press to edit the group."
+        accessibilityLabel={`${props.name} group`}
+        className={cn("mb-1.5 mt-4 flex-row items-center gap-2", sidebarPane ? "px-3" : "px-5")}
+        onLongPress={edit}
+      >
+        <ThreadGroupIcon
+          name={props.name}
+          style={props.group}
+          size={13}
+          fallbackTintClassName={mutedTint}
+        />
+        <Text
+          className={cn(
+            "text-xs font-t3-medium",
+            accent === undefined ? mutedText : projectIconColorClassNames(accent).text,
+          )}
+          numberOfLines={1}
+        >
+          {props.name}
+        </Text>
+        <View className={cn("h-px flex-1", sidebarPane ? "bg-drawer-border" : "bg-border")} />
+        <Pressable
+          accessibilityLabel={`Edit ${props.name} group`}
+          accessibilityRole="button"
+          hitSlop={8}
+          onPress={edit}
+          style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+        >
+          <SymbolView name="pencil" size={11} tintColorClassName={mutedTint} type="monochrome" />
+        </Pressable>
+      </Pressable>
+      {props.empty ? (
+        <Text className={cn("pb-2 text-xs", mutedText, sidebarPane ? "px-3" : "px-5")}>Empty</Text>
+      ) : null}
+    </View>
+  );
 });
 
 type ThreadListV2ShelfHeaderProps = {
@@ -191,44 +255,22 @@ type ThreadListV2ShelfHeaderProps = {
   readonly pane?: "screen" | "sidebar";
 };
 
-const SHELF_LABEL = { working: "Working", snoozed: "Snoozed", settled: "Settled" } as const;
-
-function ThreadListV2ShelfHeader(
-  props: ThreadListV2ShelfHeaderProps & { readonly kind: keyof typeof SHELF_LABEL },
+export const ThreadListV2WorkingShelfHeader = memo(function ThreadListV2WorkingShelfHeader(
+  props: ThreadListV2ShelfHeaderProps,
 ) {
-  const label = SHELF_LABEL[props.kind];
   return (
     <ThreadListV2Section
-      label={props.expanded ? label : `${label} (${props.count})`}
+      label={props.expanded ? "Working" : `Working (${props.count})`}
       pane={props.pane}
-      tone={props.kind === "snoozed" ? "snoozed" : "default"}
       disclosure={{
         expanded: props.expanded,
         disabled: props.disabled,
         onToggle: props.onToggle,
-        accessibilityLabel: `${props.count} ${props.kind} ${props.count === 1 ? "thread" : "threads"}`,
-        accessibilityHint: `${props.expanded ? "Collapses" : "Expands"} the ${props.kind} threads.`,
+        accessibilityLabel: `${props.count} working ${props.count === 1 ? "thread" : "threads"}`,
+        accessibilityHint: `${props.expanded ? "Collapses" : "Expands"} the working threads.`,
       }}
     />
   );
-}
-
-export const ThreadListV2WorkingShelfHeader = memo(function ThreadListV2WorkingShelfHeader(
-  props: ThreadListV2ShelfHeaderProps,
-) {
-  return <ThreadListV2ShelfHeader {...props} kind="working" />;
-});
-
-export const ThreadListV2SnoozedShelfHeader = memo(function ThreadListV2SnoozedShelfHeader(
-  props: ThreadListV2ShelfHeaderProps,
-) {
-  return <ThreadListV2ShelfHeader {...props} kind="snoozed" />;
-});
-
-export const ThreadListV2SettledShelfHeader = memo(function ThreadListV2SettledShelfHeader(
-  props: ThreadListV2ShelfHeaderProps,
-) {
-  return <ThreadListV2ShelfHeader {...props} kind="settled" />;
 });
 
 export const ThreadListV2ShowMoreRow = memo(function ThreadListV2ShowMoreRow(props: {
@@ -458,6 +500,8 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   readonly snoozed?: boolean;
   /** Pinned-block row: shows the pin glyph and offers Unpin. */
   readonly pinned?: boolean;
+  /** Hidden-page row: offers Unhide in place of the lifecycle actions. */
+  readonly hidden?: boolean;
   /** Preformatted against the parent minute tick so this memoized row's
       countdown keeps moving. */
   readonly snoozeWakeLabelText?: string;
@@ -510,6 +554,9 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   readonly onPinThread: (thread: EnvironmentThreadShell) => void;
   readonly onUnpinThread: (thread: EnvironmentThreadShell) => void;
   readonly onSetThreadAutoSettle: (thread: EnvironmentThreadShell, enabled: boolean) => void;
+  readonly onSetThreadHidden: (thread: EnvironmentThreadShell, hidden: boolean) => void;
+  readonly onSetThreadGroup: (thread: EnvironmentThreadShell, groupName: string | null) => void;
+  readonly onMoveThreadToNewGroup: (thread: EnvironmentThreadShell) => void;
   /** False on environments whose server predates thread.settle/unsettle:
       swipe + menu fall back to Archive instead of failing on use. */
   readonly settlementSupported: boolean;
@@ -519,6 +566,12 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   readonly pinningSupported: boolean;
   /** False on servers that predate thread.auto-settle.set. */
   readonly autoSettleOptOutSupported: boolean;
+  /** False on servers that predate thread.hidden.set. */
+  readonly hidingSupported: boolean;
+  /** False on servers that predate thread.group.set. */
+  readonly groupsSupported: boolean;
+  /** Every group in use across the list, alphabetical, for Move to group. */
+  readonly groupNames: ReadonlyArray<string>;
   /** False on servers that predate thread title regeneration. */
   readonly titleRegenerationSupported: boolean;
   /** Server supports reordering this card's section. */
@@ -556,9 +609,13 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     onPinThread,
     onUnpinThread,
     onSetThreadAutoSettle,
+    onSetThreadHidden,
+    onSetThreadGroup,
+    onMoveThreadToNewGroup,
     onMoveThread,
   } = props;
   const snoozedRow = props.snoozed === true;
+  const hiddenRow = props.hidden === true;
   const pinnedRow = props.pinned === true;
   const dormant = useSwipeRowDormant(props.activationKey);
 
@@ -631,6 +688,22 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     (enabled: boolean) => onSetThreadAutoSettle(thread, enabled),
     [onSetThreadAutoSettle, thread],
   );
+  const handleHide = useCallback(
+    () => onSetThreadHidden(thread, true),
+    [onSetThreadHidden, thread],
+  );
+  const handleUnhide = useCallback(
+    () => onSetThreadHidden(thread, false),
+    [onSetThreadHidden, thread],
+  );
+  const handleSetGroup = useCallback(
+    (groupName: string | null) => onSetThreadGroup(thread, groupName),
+    [onSetThreadGroup, thread],
+  );
+  const handleNewGroup = useCallback(
+    () => onMoveThreadToNewGroup(thread),
+    [onMoveThreadToNewGroup, thread],
+  );
   const handleMoveUp = useCallback(() => onMoveThread?.(thread, "up"), [onMoveThread, thread]);
   const handleMoveDown = useCallback(() => onMoveThread?.(thread, "down"), [onMoveThread, thread]);
   const handleArchive = useCallback(() => onArchiveThread(thread), [onArchiveThread, thread]);
@@ -654,6 +727,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     snoozeSupported: props.snoozeSupported,
     snoozable: canSnooze(thread, { now: new Date().toISOString() }),
     snoozed: snoozedRow,
+    hidden: hiddenRow,
   });
   const snoozePresets = useMemo(
     () => (swipeActions.secondary === "snooze" ? resolveSnoozePresets(new Date()) : ([] as const)),
@@ -736,6 +810,35 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         : [],
     [props.autoSettleOptOutSupported, thread.autoSettleDisabledAt],
   );
+  const hideMenuItems = useMemo<MenuAction[]>(
+    () => (props.hidingSupported ? [{ id: "hide", title: "Hide thread", image: "eye.slash" }] : []),
+    [props.hidingSupported],
+  );
+  // Current group checked, like the auto-settle submenu.
+  const groupMenuItems = useMemo<MenuAction[]>(
+    () =>
+      props.groupsSupported
+        ? [
+            {
+              id: "group",
+              title: "Move to group",
+              image: "folder",
+              subactions: [
+                ...props.groupNames.map((groupName) => ({
+                  id: `group:set:${groupName}`,
+                  title: groupName,
+                  state: thread.groupName === groupName ? ("on" as const) : ("off" as const),
+                })),
+                { id: "group:new", title: "New group…", image: "plus" },
+                ...(thread.groupName != null
+                  ? [{ id: "group:remove", title: "Remove from group", image: "xmark" }]
+                  : []),
+              ],
+            } satisfies MenuAction,
+          ]
+        : [],
+    [props.groupNames, props.groupsSupported, thread.groupName],
+  );
   const titleMenuItems = useMemo<MenuAction[]>(
     () => [
       { id: "rename", title: "Rename", image: "square.and.pencil" },
@@ -758,9 +861,18 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       ...arrangementMenuItems,
       ...titleMenuItems,
       ...autoSettleMenuItems,
+      ...groupMenuItems,
+      ...hideMenuItems,
       { id: "delete", title: "Delete", image: "trash", attributes: { destructive: true } },
     ],
-    [arrangementMenuItems, autoSettleMenuItems, snoozePresetActions, titleMenuItems],
+    [
+      arrangementMenuItems,
+      autoSettleMenuItems,
+      groupMenuItems,
+      hideMenuItems,
+      snoozePresetActions,
+      titleMenuItems,
+    ],
   );
   const cardMenuActions = useMemo<MenuAction[]>(
     () => [
@@ -768,9 +880,11 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       ...arrangementMenuItems,
       ...titleMenuItems,
       ...autoSettleMenuItems,
+      ...groupMenuItems,
+      ...hideMenuItems,
       ...CARD_MENU_ACTIONS.slice(1),
     ],
-    [arrangementMenuItems, autoSettleMenuItems, titleMenuItems],
+    [arrangementMenuItems, autoSettleMenuItems, groupMenuItems, hideMenuItems, titleMenuItems],
   );
   // Settled and snoozed rows keep the setting too, matching web where every
   // row shares one menu builder.
@@ -782,18 +896,34 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       ),
       ...titleMenuItems,
       ...autoSettleMenuItems,
+      ...groupMenuItems,
+      ...hideMenuItems,
       SLIM_MENU_ACTIONS[1]!,
     ],
-    [arrangementMenuItems, autoSettleMenuItems, titleMenuItems],
+    [arrangementMenuItems, autoSettleMenuItems, groupMenuItems, hideMenuItems, titleMenuItems],
   );
   const snoozedMenuActions = useMemo<MenuAction[]>(
     () => [
       SNOOZED_MENU_ACTIONS[0]!,
       ...titleMenuItems,
       ...autoSettleMenuItems,
+      ...groupMenuItems,
+      ...hideMenuItems,
       SNOOZED_MENU_ACTIONS[1]!,
     ],
-    [autoSettleMenuItems, titleMenuItems],
+    [autoSettleMenuItems, groupMenuItems, hideMenuItems, titleMenuItems],
+  );
+  // Hidden rows offer Unhide instead of lifecycle verbs; the thread keeps
+  // its pin/settle/snooze state underneath and returns to it on unhide.
+  const hiddenMenuActions = useMemo<MenuAction[]>(
+    () => [
+      HIDDEN_MENU_ACTIONS[0]!,
+      ...titleMenuItems,
+      ...autoSettleMenuItems,
+      ...groupMenuItems,
+      HIDDEN_MENU_ACTIONS[1]!,
+    ],
+    [autoSettleMenuItems, groupMenuItems, titleMenuItems],
   );
   const legacyMenuActions = useMemo<MenuAction[]>(
     () => [
@@ -814,6 +944,13 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       if (nativeEvent.event === "unpin") handleUnpin();
       if (nativeEvent.event === "auto-settle:enabled") handleSetAutoSettle(true);
       if (nativeEvent.event === "auto-settle:disabled") handleSetAutoSettle(false);
+      if (nativeEvent.event === "hide") handleHide();
+      if (nativeEvent.event === "unhide") handleUnhide();
+      if (nativeEvent.event === "group:new") handleNewGroup();
+      if (nativeEvent.event === "group:remove") handleSetGroup(null);
+      if (nativeEvent.event.startsWith("group:set:")) {
+        handleSetGroup(nativeEvent.event.slice("group:set:".length));
+      }
       if (nativeEvent.event === "arrange") appAtomRegistry.set(threadArrangementOpenAtom, true);
       if (nativeEvent.event === "move-up") handleMoveUp();
       if (nativeEvent.event === "move-down") handleMoveDown();
@@ -852,6 +989,10 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       handleSettle,
       handleSnooze,
       handleSetAutoSettle,
+      handleHide,
+      handleUnhide,
+      handleNewGroup,
+      handleSetGroup,
       handleUnpin,
       handleUnsettle,
       handleUnsnooze,
@@ -869,6 +1010,14 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         icon: "archivebox" as const,
         label: "Archive",
         onPress: handleArchive,
+      };
+    }
+    if (swipeActions.primary === "unhide") {
+      return {
+        accessibilityLabel: `Unhide ${thread.title}`,
+        icon: "eye" as const,
+        label: "Unhide",
+        onPress: handleUnhide,
       };
     }
     if (swipeActions.primary === "unsnooze") {
@@ -895,6 +1044,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   }, [
     handleArchive,
     handleSettle,
+    handleUnhide,
     handleUnsettle,
     handleUnsnooze,
     swipeActions.primary,
@@ -1245,7 +1395,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         onSwipeableWillOpen={props.onSwipeableWillOpen}
         primaryAction={primaryAction}
         secondaryAction={secondaryAction}
-        resetKey={`${thread.environmentId}:${thread.id}:${variant}:${snoozedRow}:${thread.settledAt}:${thread.unsettledAt}:${thread.snoozedUntil}`}
+        resetKey={`${thread.environmentId}:${thread.id}:${variant}:${snoozedRow}:${hiddenRow}:${thread.settledAt}:${thread.unsettledAt}:${thread.snoozedUntil}`}
         simultaneousWith={props.simultaneousSwipeGesture}
         threadTitle={thread.title}
       >
@@ -1262,15 +1412,17 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
                   ]
                 : []),
               { id: "copy-thread-id", title: "Copy thread ID", image: "doc.on.doc" },
-              ...(snoozedRow
-                ? snoozedMenuActions
-                : !props.settlementSupported
-                  ? legacyMenuActions
-                  : canUnsettle
-                    ? slimMenuActions
-                    : swipeActions.secondary === "snooze"
-                      ? snoozableCardMenuActions
-                      : cardMenuActions),
+              ...(hiddenRow
+                ? hiddenMenuActions
+                : snoozedRow
+                  ? snoozedMenuActions
+                  : !props.settlementSupported
+                    ? legacyMenuActions
+                    : canUnsettle
+                      ? slimMenuActions
+                      : swipeActions.secondary === "snooze"
+                        ? snoozableCardMenuActions
+                        : cardMenuActions),
             ]}
             onPressAction={handleMenuAction}
             shouldOpenOnLongPress

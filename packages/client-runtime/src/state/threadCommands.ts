@@ -43,6 +43,8 @@ import {
   type ReorderPinnedThreadInput,
   type ReorderActiveThreadInput,
   type SetThreadAutoSettleInput,
+  type SetThreadHiddenInput,
+  type SetThreadGroupInput,
   type SettleThreadInput,
   type SnoozeThreadInput,
   type StartThreadTurnInput,
@@ -80,6 +82,8 @@ import {
   reorderPinnedThread,
   reorderActiveThread,
   setThreadAutoSettle,
+  setThreadHidden,
+  setThreadGroup,
   settleThread,
   snoozeThread,
   startThreadTurn,
@@ -125,6 +129,8 @@ export type {
   ReorderPinnedThreadInput,
   ReorderActiveThreadInput,
   SetThreadAutoSettleInput,
+  SetThreadHiddenInput,
+  SetThreadGroupInput,
   SettleThreadInput,
   SnoozeThreadInput,
   StartThreadTurnInput,
@@ -220,6 +226,18 @@ export function createThreadEnvironmentAtoms<R, E>(
     setAutoSettle: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:set-auto-settle",
       execute: (input: SetThreadAutoSettleInput) => setThreadAutoSettle(input),
+      scheduler,
+      concurrency,
+    }),
+    setHidden: createEnvironmentCommand(runtime, {
+      label: "environment-data:commands:thread:set-hidden",
+      execute: (input: SetThreadHiddenInput) => setThreadHidden(input),
+      scheduler,
+      concurrency,
+    }),
+    setGroup: createEnvironmentCommand(runtime, {
+      label: "environment-data:commands:thread:set-group",
+      execute: (input: SetThreadGroupInput) => setThreadGroup(input),
       scheduler,
       concurrency,
     }),
@@ -464,6 +482,14 @@ export function createThreadEnvironmentAtoms<R, E>(
     setAutoSettle: optimistic.wrap(commands.setAutoSettle, (thread, input, now) => ({
       ...thread,
       autoSettleDisabledAt: input.enabled ? null : (thread.autoSettleDisabledAt ?? now),
+    })),
+    setHidden: optimistic.wrap(commands.setHidden, (thread, input, now) => ({
+      ...thread,
+      hiddenAt: input.hidden ? (thread.hiddenAt ?? now) : null,
+    })),
+    setGroup: optimistic.wrap(commands.setGroup, (thread, input) => ({
+      ...thread,
+      groupName: input.groupName,
     })),
     pin: optimistic.wrap(commands.pin, (thread, input, now) => ({
       ...thread,

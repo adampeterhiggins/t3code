@@ -3,6 +3,7 @@ import { useCallback, useMemo } from "react";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { MaterialThreadListToolbar } from "./MaterialThreadListToolbar";
 import type { HomeHeaderProps } from "./HomeHeader.types";
+import { isDefaultThreadListPages, threadListPageLabel } from "../threads/threadListV2";
 
 export type { HomeHeaderEnvironment } from "./HomeHeader.types";
 
@@ -15,7 +16,10 @@ export function HomeHeader(props: HomeHeaderProps) {
   // the filter menu only carries the filters and the "customized" icon state
   // keys off those alone.
   const hasCustomListOptions =
-    props.selectedEnvironmentId !== null || props.selectedProjectKey !== null;
+    props.selectedEnvironmentId !== null ||
+    props.selectedProjectKey !== null ||
+    props.organisationKeys.length > 0 ||
+    !isDefaultThreadListPages(props.pages);
   const menuActions = useMemo<MenuAction[]>(
     () => [
       {
@@ -34,6 +38,26 @@ export function HomeHeader(props: HomeHeaderProps) {
           })),
         ],
       },
+      ...(props.organisations.length === 0
+        ? []
+        : ([
+            {
+              id: "organisation",
+              title: "Organisations",
+              subactions: [
+                {
+                  id: "organisation:all",
+                  title: "All organisations",
+                  state: checkedMenuState(props.organisationKeys.length === 0),
+                },
+                ...props.organisations.map((organisation) => ({
+                  id: `organisation:${organisation.key}`,
+                  title: organisation.label,
+                  state: checkedMenuState(props.organisationKeys.includes(organisation.key)),
+                })),
+              ],
+            },
+          ] satisfies MenuAction[])),
       ...(props.projects.length === 0
         ? []
         : ([
@@ -54,8 +78,31 @@ export function HomeHeader(props: HomeHeaderProps) {
               ],
             },
           ] satisfies MenuAction[])),
+      {
+        id: "page",
+        title: "Show",
+        subactions: [
+          ...props.availablePages.map((page) => ({
+            id: `page:${page}`,
+            title: threadListPageLabel(page, props.groups),
+            state: checkedMenuState(props.pages.includes(page)),
+          })),
+          ...(props.onCreateGroup ? [{ id: "new-group", title: "New group…" }] : []),
+        ],
+      },
     ],
-    [props.environments, props.projects, props.selectedEnvironmentId, props.selectedProjectKey],
+    [
+      props.environments,
+      props.availablePages,
+      props.groups,
+      props.onCreateGroup,
+      props.organisationKeys,
+      props.organisations,
+      props.pages,
+      props.projects,
+      props.selectedEnvironmentId,
+      props.selectedProjectKey,
+    ],
   );
   const handleMenuAction = useCallback(
     (event: { nativeEvent: { event: string } }) => {
@@ -73,6 +120,27 @@ export function HomeHeader(props: HomeHeaderProps) {
         if (environment) {
           props.onEnvironmentChange(environment.environmentId);
         }
+        return;
+      }
+
+      if (id === "organisation:all") {
+        props.onClearOrganisations();
+        return;
+      }
+      if (id.startsWith("organisation:")) {
+        const key = id.slice("organisation:".length);
+        if (props.organisations.some((organisation) => organisation.key === key)) {
+          props.onToggleOrganisation(key);
+        }
+        return;
+      }
+      if (id === "new-group") {
+        props.onCreateGroup?.();
+        return;
+      }
+      const page = props.availablePages.find((candidate) => id === `page:${candidate}`);
+      if (page !== undefined) {
+        props.onTogglePage(page);
         return;
       }
 

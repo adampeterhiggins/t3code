@@ -31,6 +31,9 @@ import { scopedProjectKey, scopedThreadKey } from "../../lib/scopedEntities";
 import { useProjects, useNavigationThreadShells } from "../../state/entities";
 import { useHiddenTabThreads } from "./useHiddenTabThreads";
 import { useThreadSearch } from "../../state/queries";
+import { useThreadListPages } from "./use-thread-list-pages";
+import { scopeProjectRefsByOrganisations } from "../home/thread-list-organisations";
+import { useThreadListOrganisations } from "../home/use-thread-list-organisations";
 import { useThreadListV2ShelfPreferences } from "./use-thread-list-v2-shelf-preferences";
 import { usePendingThreadOrder } from "../../state/thread-order";
 import { threadListEnvironmentsAtom } from "../../state/server";
@@ -58,11 +61,11 @@ import { SidebarFilterButton } from "./sidebar-filter-button";
 import { createSidebarHeaderItems } from "./sidebar-native-header-items";
 import { SidebarNavigationShell } from "./sidebar-navigation-shell";
 import {
+  ThreadListV2GroupSectionHeader,
   ThreadListV2PendingRow,
   ThreadListV2Row,
-  ThreadListV2SettledShelfHeader,
+  ThreadListV2SectionDivider,
   ThreadListV2ShowMoreRow,
-  ThreadListV2SnoozedShelfHeader,
   ThreadListV2WorkingShelfHeader,
 } from "./thread-list-v2-items";
 import { useThreadRowProviderInstanceResolver } from "./thread-provider-instance";
@@ -75,6 +78,8 @@ import {
   threadListInboxReturns,
   THREAD_LIST_V2_SETTLED_INITIAL_COUNT,
   THREAD_LIST_V2_SETTLED_PAGE_COUNT,
+  isDefaultThreadListPages,
+  threadListPageLabel,
   type ThreadListV2ListItem,
 } from "./threadListV2";
 
@@ -166,6 +171,11 @@ function ThreadNavigationSidebarPane(
     pinThread,
     unpinThread,
     setThreadAutoSettle,
+    setThreadHidden,
+    setThreadGroup,
+    moveThreadToNewGroup,
+    createThreadGroup,
+    editThreadGroup,
     moveThread,
     renameThread,
     regenerateThreadTitle,
@@ -265,16 +275,28 @@ function ThreadNavigationSidebarPane(
       setSelectedProjectKey(null);
     }
   }, [projectFilterOptions, selectedProjectKey]);
+  const { organisations, organisationKeys, toggleOrganisation, clearOrganisations } =
+    useThreadListOrganisations(projects);
+  // The Organisations filter narrows the project scope (or every checkout).
+  const scopedProjectRefs = useMemo(
+    () =>
+      scopeProjectRefsByOrganisations({
+        projects,
+        projectRefs: selectedProjectScope?.projectRefs ?? null,
+        organisationKeys,
+      }),
+    [organisationKeys, projects, selectedProjectScope],
+  );
   const selectedProjectRefs = useMemo(
     () =>
-      selectedProjectScope === null
+      scopedProjectRefs === null
         ? null
         : new Set(
-            selectedProjectScope.projectRefs.map((projectRef) =>
+            scopedProjectRefs.map((projectRef) =>
               scopedProjectKey(projectRef.environmentId, projectRef.projectId),
             ),
           ),
-    [selectedProjectScope],
+    [scopedProjectRefs],
   );
   const projectByKey = useMemo(() => {
     const map = new Map<string, EnvironmentProject>();
@@ -303,14 +325,13 @@ function ThreadNavigationSidebarPane(
   );
   const {
     loaded: shelfPreferencesLoaded,
-    settledShelfExpanded,
-    snoozedShelfExpanded,
     workingShelfEnabled,
     workingShelfExpanded,
-    toggleSettledShelf,
-    toggleSnoozedShelf,
     toggleWorkingShelf,
   } = useThreadListV2ShelfPreferences();
+  // Snoozed and Settled are opted into from the Show menu, so they render open.
+  const snoozedShelfExpanded = true;
+  const settledShelfExpanded = true;
   // The queued-start and snooze helpers need a clock while the pane stays open.
   const [nowMinute, setNowMinute] = useState(() => new Date().toISOString().slice(0, 16));
   // Snooze wake times are second-precise; a counter bumped exactly at the
@@ -333,10 +354,29 @@ function ThreadNavigationSidebarPane(
     snoozeEnvironmentIds,
     pinningEnvironmentIds,
     autoSettleOptOutEnvironmentIds,
+    hidingEnvironmentIds,
+    groupEnvironmentIds,
     pinReorderEnvironmentIds,
     activeReorderEnvironmentIds,
     titleRegenerationEnvironmentIds,
   } = listEnvironments;
+  const {
+    pages,
+    availablePages,
+    groups,
+    groupNames,
+    groupsSupported,
+    togglePage,
+    renameGroupPage,
+  } = useThreadListPages(threads);
+  const handleEditGroup = useCallback(
+    async (name: string) => {
+      const result = await editThreadGroup(name);
+      if (result !== null) renameGroupPage(result.from, result.to);
+    },
+    [editThreadGroup, renameGroupPage],
+  );
+  const showThreadsPage = pages.includes("threads");
   const resolveProviderInstance = useThreadRowProviderInstanceResolver(providersByEnvironmentId);
   const pendingOrder = usePendingThreadOrder(nowMinute, snoozeWakeTick);
   // Up/down menu availability for every card, computed once per section per
@@ -357,6 +397,8 @@ function ThreadNavigationSidebarPane(
           now: new Date().toISOString(),
           settlementEnvironmentIds,
           snoozeEnvironmentIds,
+          hidingEnvironmentIds,
+          groupEnvironmentIds,
           queuedThreadKeys,
         }),
       });
@@ -374,6 +416,8 @@ function ThreadNavigationSidebarPane(
     queuedThreadKeys,
     settlementEnvironmentIds,
     snoozeEnvironmentIds,
+    hidingEnvironmentIds,
+    groupEnvironmentIds,
     nowMinute,
     snoozeWakeTick,
   ]);
@@ -383,11 +427,14 @@ function ThreadNavigationSidebarPane(
       pendingOrder,
       threads: threads.filter((thread) => thread.archivedAt === null),
       environmentId: options.selectedEnvironmentId,
-      projectRefs: selectedProjectScope === null ? null : selectedProjectScope.projectRefs,
+      projectRefs: scopedProjectRefs,
       searchQuery: props.searchQuery,
       matchedThreadKeys,
       settlementEnvironmentIds,
       snoozeEnvironmentIds,
+      hidingEnvironmentIds,
+      groupEnvironmentIds,
+      pages,
       queuedThreadKeys,
       settledLimit: settledVisibleCount,
       now: new Date().toISOString(),
@@ -399,6 +446,9 @@ function ThreadNavigationSidebarPane(
       selectedThreadKey: sidebarSelectedThreadKey,
     });
   }, [
+    hidingEnvironmentIds,
+    groupEnvironmentIds,
+    pages,
     workingShelfEnabled,
     workingShelfExpanded,
     pendingOrder,
@@ -415,7 +465,7 @@ function ThreadNavigationSidebarPane(
     settlementEnvironmentIds,
     snoozeEnvironmentIds,
     threads,
-    selectedProjectScope,
+    scopedProjectRefs,
   ]);
   // Re-partition the moment the earliest snooze expires (clamped to the
   // signed-32-bit setTimeout range; far-future wakes re-arm at the clamp).
@@ -440,6 +490,7 @@ function ThreadNavigationSidebarPane(
     const v2SearchQuery = props.searchQuery.trim().toLocaleLowerCase();
     const v2PendingTasks = pendingTasks.filter(
       (pendingTask) =>
+        showThreadsPage &&
         (options.selectedEnvironmentId === null ||
           pendingTask.environmentId === options.selectedEnvironmentId) &&
         (selectedProjectRefs === null ||
@@ -461,6 +512,8 @@ function ThreadNavigationSidebarPane(
       settledCount: threadListV2Layout.settledCount,
       settledShelfExpanded,
       settledShelfHeaderIndex: threadListV2Layout.settledShelfHeaderIndex,
+      hiddenSectionHeaderIndex: threadListV2Layout.hiddenSectionHeaderIndex,
+      groupSections: threadListV2Layout.groupSections,
       snoozeLabelNow: `${nowMinute}:00.000Z`,
       snoozeEnvironmentIds,
       queuedThreadKeys,
@@ -485,6 +538,7 @@ function ThreadNavigationSidebarPane(
     selectedProjectRefs,
     settledShelfExpanded,
     shelfPreferencesLoaded,
+    showThreadsPage,
     snoozedShelfExpanded,
     snoozeEnvironmentIds,
     threadListV2Layout,
@@ -512,6 +566,28 @@ function ThreadNavigationSidebarPane(
           })),
         ],
       },
+      ...(organisations.length === 0
+        ? []
+        : ([
+            {
+              id: "organisation",
+              title: "Organisations",
+              subactions: [
+                {
+                  id: "organisation:all",
+                  title: "All organisations",
+                  state: organisationKeys.length === 0 ? "on" : "off",
+                },
+                ...organisations.map((organisation) => ({
+                  id: `organisation:${organisation.key}`,
+                  title: organisation.label,
+                  state: organisationKeys.includes(organisation.key)
+                    ? ("on" as const)
+                    : ("off" as const),
+                })),
+              ],
+            },
+          ] satisfies MenuAction[])),
       ...(projectFilterOptions.length === 0
         ? []
         : ([
@@ -533,8 +609,31 @@ function ThreadNavigationSidebarPane(
               ],
             },
           ] satisfies MenuAction[])),
+      {
+        id: "page",
+        title: "Show",
+        subactions: [
+          ...availablePages.map((page) => ({
+            id: `page:${page}`,
+            title: threadListPageLabel(page, groups),
+            state: pages.includes(page) ? ("on" as const) : ("off" as const),
+          })),
+          ...(groupsSupported ? [{ id: "new-group", title: "New group…" }] : []),
+        ],
+      },
     ],
-    [environments, options, projectFilterOptions, selectedProjectKey],
+    [
+      availablePages,
+      environments,
+      groups,
+      groupsSupported,
+      options,
+      organisationKeys,
+      organisations,
+      pages,
+      projectFilterOptions,
+      selectedProjectKey,
+    ],
   );
   const handleListMenuAction = useCallback(
     ({ nativeEvent }: { readonly nativeEvent: { readonly event: string } }) => {
@@ -550,6 +649,26 @@ function ThreadNavigationSidebarPane(
         if (environment) setSelectedEnvironmentId(environment.environmentId);
         return;
       }
+      if (event === "organisation:all") {
+        clearOrganisations();
+        return;
+      }
+      if (event.startsWith("organisation:")) {
+        const key = event.slice("organisation:".length);
+        if (organisations.some((organisation) => organisation.key === key)) {
+          toggleOrganisation(key);
+        }
+        return;
+      }
+      if (event === "new-group") {
+        void createThreadGroup();
+        return;
+      }
+      const page = availablePages.find((candidate) => event === `page:${candidate}`);
+      if (page !== undefined) {
+        togglePage(page);
+        return;
+      }
       if (event === "project:all") {
         setSelectedProjectKey(null);
         return;
@@ -562,7 +681,17 @@ function ThreadNavigationSidebarPane(
         return;
       }
     },
-    [environments, projectFilterOptions, setSelectedEnvironmentId],
+    [
+      availablePages,
+      clearOrganisations,
+      createThreadGroup,
+      environments,
+      organisations,
+      projectFilterOptions,
+      toggleOrganisation,
+      setSelectedEnvironmentId,
+      togglePage,
+    ],
   );
 
   const [measuredHeaderHeight, setMeasuredHeaderHeight] = useState<number | null>(null);
@@ -631,8 +760,12 @@ function ThreadNavigationSidebarPane(
       threadSearchMatchByKey,
       // Rows read it for their reorder menu items.
       workingShelfEnabled,
+      groupNames,
+      groups,
     }),
     [
+      groupNames,
+      groups,
       sidebarSelectedThreadKey,
       projectByKey,
       projectTitleByProjectKey,
@@ -718,6 +851,7 @@ function ThreadNavigationSidebarPane(
               hasQueuedMessages={item.hasQueuedMessages}
               snoozed={item.item.snoozed}
               pinned={item.item.pinned}
+              hidden={item.item.hidden}
               snoozePresetMinute={item.snoozePresetMinute ?? ""}
               snoozeWakeLabelText={item.snoozeWakeLabelText}
               timeLabel={item.timeLabel}
@@ -754,10 +888,15 @@ function ThreadNavigationSidebarPane(
               snoozeSupported={snoozeEnvironmentIds.has(thread.environmentId)}
               pinningSupported={pinningEnvironmentIds.has(thread.environmentId)}
               autoSettleOptOutSupported={autoSettleOptOutEnvironmentIds.has(thread.environmentId)}
+              hidingSupported={hidingEnvironmentIds.has(thread.environmentId)}
+              groupsSupported={groupEnvironmentIds.has(thread.environmentId)}
+              groupNames={groupNames}
               reorderSupported={
-                item.item.pinned
-                  ? pinReorderEnvironmentIds.has(thread.environmentId)
-                  : !workingShelfEnabled && activeReorderEnvironmentIds.has(thread.environmentId)
+                item.item.grouped
+                  ? false
+                  : item.item.pinned
+                    ? pinReorderEnvironmentIds.has(thread.environmentId)
+                    : !workingShelfEnabled && activeReorderEnvironmentIds.has(thread.environmentId)
               }
               canMoveUp={item.canMoveUp}
               canMoveDown={item.canMoveDown}
@@ -767,6 +906,9 @@ function ThreadNavigationSidebarPane(
               onPinThread={pinThread}
               onUnpinThread={unpinThread}
               onSetThreadAutoSettle={setThreadAutoSettle}
+              onSetThreadHidden={setThreadHidden}
+              onSetThreadGroup={setThreadGroup}
+              onMoveThreadToNewGroup={moveThreadToNewGroup}
               onMoveThread={moveThread}
               onSwipeableClose={handleSwipeableClose}
               onSwipeableWillOpen={handleSwipeableWillOpen}
@@ -784,26 +926,22 @@ function ThreadNavigationSidebarPane(
               pane="sidebar"
             />
           );
+        case "v2-group-section":
+          return (
+            <ThreadListV2GroupSectionHeader
+              name={item.name}
+              group={groups[item.name]}
+              empty={item.empty}
+              pane="sidebar"
+              onEdit={handleEditGroup}
+            />
+          );
         case "v2-snoozed-shelf":
-          return (
-            <ThreadListV2SnoozedShelfHeader
-              count={item.count}
-              disabled={item.disabled}
-              expanded={item.expanded}
-              onToggle={toggleSnoozedShelf}
-              pane="sidebar"
-            />
-          );
+          return <ThreadListV2SectionDivider label="Snoozed" pane="sidebar" tone="snoozed" />;
+        case "v2-hidden-section":
+          return <ThreadListV2SectionDivider label="Hidden" pane="sidebar" />;
         case "v2-settled-shelf":
-          return (
-            <ThreadListV2SettledShelfHeader
-              count={item.count}
-              disabled={item.disabled}
-              expanded={item.expanded}
-              onToggle={toggleSettledShelf}
-              pane="sidebar"
-            />
-          );
+          return <ThreadListV2SectionDivider label="Settled" pane="sidebar" />;
         case "v2-show-more":
           return (
             <ThreadListV2ShowMoreRow
@@ -831,6 +969,14 @@ function ThreadNavigationSidebarPane(
       autoSettleOptOutEnvironmentIds,
       autoSettleOptOutEnvironmentIds,
       setThreadAutoSettle,
+      setThreadHidden,
+      setThreadGroup,
+      moveThreadToNewGroup,
+      groupNames,
+      groups,
+      handleEditGroup,
+      groupEnvironmentIds,
+      hidingEnvironmentIds,
       projectByKey,
       projectTitleByProjectKey,
       regenerateThreadTitle,
@@ -850,8 +996,6 @@ function ThreadNavigationSidebarPane(
       sidebarScrollGesture,
       snoozeEnvironmentIds,
       snoozeThread,
-      toggleSettledShelf,
-      toggleSnoozedShelf,
       toggleWorkingShelf,
       unpinThread,
       unsettleThread,
@@ -859,9 +1003,14 @@ function ThreadNavigationSidebarPane(
       workingShelfEnabled,
     ],
   );
-  // The list ignores sort/group options, so only the environment and project
-  // filters can light the "customized" state.
-  const filterCustomized = options.selectedEnvironmentId !== null || selectedProjectKey !== null;
+  // The list ignores sort/group options, so only the environment, project
+  // and organisation filters and a non-default page selection can light the
+  // "customized" state.
+  const filterCustomized =
+    options.selectedEnvironmentId !== null ||
+    selectedProjectKey !== null ||
+    organisationKeys.length > 0 ||
+    !isDefaultThreadListPages(pages);
   const filterIcon = filterCustomized
     ? "line.3.horizontal.decrease.circle.fill"
     : "line.3.horizontal.decrease.circle";
@@ -874,8 +1023,33 @@ function ThreadNavigationSidebarPane(
         selectedProjectKey,
         onEnvironmentChange: setSelectedEnvironmentId,
         onProjectChange: setSelectedProjectKey,
+        pages,
+        availablePages,
+        onTogglePage: togglePage,
+        groups,
+        onCreateGroup: groupsSupported ? createThreadGroup : undefined,
+        organisations,
+        organisationKeys,
+        onToggleOrganisation: toggleOrganisation,
+        onClearOrganisations: clearOrganisations,
       }),
-    [environments, options, projectFilterOptions, selectedProjectKey, setSelectedEnvironmentId],
+    [
+      availablePages,
+      createThreadGroup,
+      environments,
+      groups,
+      groupsSupported,
+      options,
+      organisationKeys,
+      organisations,
+      projectFilterOptions,
+      pages,
+      selectedProjectKey,
+      setSelectedEnvironmentId,
+      toggleOrganisation,
+      clearOrganisations,
+      togglePage,
+    ],
   );
   const nativeHeaderItems = useMemo(
     () =>
@@ -904,9 +1078,11 @@ function ThreadNavigationSidebarPane(
             ? threadSearch.isPending
               ? "Searching thread messages…"
               : "No matching threads"
-            : selectedProjectScope !== null
-              ? `No threads in ${selectedProjectScope.title}`
-              : "No threads yet"}
+            : !isDefaultThreadListPages(pages)
+              ? "Nothing to show in the picked pages"
+              : selectedProjectScope !== null
+                ? `No threads in ${selectedProjectScope.title}`
+                : "No threads yet"}
     </Text>
   );
 

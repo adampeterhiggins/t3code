@@ -216,6 +216,8 @@ export const layer: Layer.Layer<
       "thread.unsnoozed",
       "thread.pinned",
       "thread.auto-settle-set",
+      "thread.hidden-set",
+      "thread.group-set",
       "thread.unpinned",
       "thread.pin-reordered",
       "thread.active-reordered",

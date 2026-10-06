@@ -109,6 +109,8 @@ export const layer: Layer.Layer<ThreadForkServiceV2> = Layer.succeed(
           settledAt: null,
           snoozedUntil: null,
           snoozedAt: null,
+          // A fork files alongside the thread it came from.
+          groupName: input.sourceProjection.thread.groupName ?? null,
           lastVisitedAt: null,
           deletedAt: null,
         };

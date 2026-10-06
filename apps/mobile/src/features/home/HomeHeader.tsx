@@ -8,6 +8,7 @@ import {
   createNativeMailSearchToolbarItem,
   NATIVE_MAIL_SEARCH_TOOLBAR_SUPPORTED,
 } from "../layout/native-mail-search-toolbar";
+import { isDefaultThreadListPages, threadListPageLabel } from "../threads/threadListV2";
 import { buildHomeListFilterMenu } from "./home-list-filter-menu";
 import type { HomeHeaderProps } from "./HomeHeader.types";
 
@@ -20,7 +21,10 @@ export function HomeHeader(props: HomeHeaderProps) {
   // the filter menu only carries the filters and the "customized" icon state
   // keys off those alone.
   const hasCustomListOptions =
-    props.selectedEnvironmentId !== null || props.selectedProjectKey !== null;
+    props.selectedEnvironmentId !== null ||
+    props.selectedProjectKey !== null ||
+    props.organisationKeys.length > 0 ||
+    !isDefaultThreadListPages(props.pages);
   const focusSearch = useCallback(() => {
     searchBarRef.current?.focus();
     return searchBarRef.current !== null;
@@ -118,6 +122,28 @@ export function HomeHeader(props: HomeHeaderProps) {
               ))}
             </NativeHeaderToolbar.Menu>
 
+            {props.organisations.length > 0 ? (
+              <NativeHeaderToolbar.Menu title="Organisations">
+                <NativeHeaderToolbar.Label>Organisations</NativeHeaderToolbar.Label>
+                <NativeHeaderToolbar.MenuAction
+                  isOn={props.organisationKeys.length === 0}
+                  onPress={props.onClearOrganisations}
+                  subtitle="Show threads from every organisation"
+                >
+                  <NativeHeaderToolbar.Label>All organisations</NativeHeaderToolbar.Label>
+                </NativeHeaderToolbar.MenuAction>
+                {props.organisations.map((organisation) => (
+                  <NativeHeaderToolbar.MenuAction
+                    key={organisation.key}
+                    isOn={props.organisationKeys.includes(organisation.key)}
+                    onPress={() => props.onToggleOrganisation(organisation.key)}
+                  >
+                    <NativeHeaderToolbar.Label>{organisation.label}</NativeHeaderToolbar.Label>
+                  </NativeHeaderToolbar.MenuAction>
+                ))}
+              </NativeHeaderToolbar.Menu>
+            ) : null}
+
             {props.projects.length > 0 ? (
               <NativeHeaderToolbar.Menu title="Project">
                 <NativeHeaderToolbar.Label>Project</NativeHeaderToolbar.Label>
@@ -139,6 +165,25 @@ export function HomeHeader(props: HomeHeaderProps) {
                 ))}
               </NativeHeaderToolbar.Menu>
             ) : null}
+            <NativeHeaderToolbar.Menu title="Show">
+              <NativeHeaderToolbar.Label>Show</NativeHeaderToolbar.Label>
+              {props.availablePages.map((page) => (
+                <NativeHeaderToolbar.MenuAction
+                  key={page}
+                  isOn={props.pages.includes(page)}
+                  onPress={() => props.onTogglePage(page)}
+                >
+                  <NativeHeaderToolbar.Label>
+                    {threadListPageLabel(page, props.groups)}
+                  </NativeHeaderToolbar.Label>
+                </NativeHeaderToolbar.MenuAction>
+              ))}
+              {props.onCreateGroup ? (
+                <NativeHeaderToolbar.MenuAction onPress={props.onCreateGroup}>
+                  <NativeHeaderToolbar.Label>New group…</NativeHeaderToolbar.Label>
+                </NativeHeaderToolbar.MenuAction>
+              ) : null}
+            </NativeHeaderToolbar.Menu>
           </NativeHeaderToolbar.Menu>
           <NativeHeaderToolbar.Spacer flexible />
           <NativeHeaderToolbar.Button

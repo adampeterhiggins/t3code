@@ -24,6 +24,12 @@ export type ThreadActionMenuId =
   | "snooze"
   | `snooze:${string}`
   | "unsnooze"
+  | "hide"
+  | "unhide"
+  | "move-to-group"
+  | "move-to-group:new"
+  | "move-to-group:remove"
+  | `move-to-group:name:${string}`
   | "rename"
   | "regenerate-title"
   | "mark-unread"
@@ -101,6 +107,10 @@ export interface ThreadActionMenuState {
   /** False while the user has turned automatic settlement off for this thread. */
   readonly autoSettleEnabled: boolean;
   readonly isSnoozed: boolean;
+  readonly isHidden: boolean;
+  /** The thread's sidebar group, and every group name it could move to. */
+  readonly groupName: string | null;
+  readonly groupNames: readonly string[];
   readonly canSnoozeNow: boolean;
   readonly isRegeneratingTitle: boolean;
   /** Archive rejects a thread with an attached provider, so disable it here rather than let the action fail. */
@@ -111,6 +121,10 @@ export interface ThreadActionMenuState {
     readonly autoSettleOptOut: boolean;
     readonly snooze: boolean;
     readonly pinning: boolean;
+    /** Server understands thread.hidden.set. */
+    readonly hiding: boolean;
+    /** Server understands thread.group.set. */
+    readonly groups: boolean;
     readonly titleRegeneration: boolean;
   };
   readonly snoozePresets: ReadonlyArray<SnoozePreset>;
@@ -174,6 +188,37 @@ export function buildThreadActionMenuItems(
                   { id: "snooze:custom" as const, label: "Custom…", separatorBefore: true },
                 ],
               },
+        ]
+      : []),
+    ...(state.supports.hiding
+      ? [
+          state.isHidden
+            ? { id: "unhide" as const, label: "Unhide thread", icon: "eye" }
+            : { id: "hide" as const, label: "Hide thread", icon: "eye-off" },
+        ]
+      : []),
+    ...(state.supports.groups
+      ? [
+          {
+            id: "move-to-group" as const,
+            label: "Move to group",
+            icon: "folder",
+            children: [
+              ...state.groupNames.map((name) => ({
+                id: `move-to-group:name:${name}` as const,
+                label: name,
+                checked: name === state.groupName,
+              })),
+              {
+                id: "move-to-group:new" as const,
+                label: "New group…",
+                separatorBefore: state.groupNames.length > 0,
+              },
+              ...(state.groupName === null
+                ? []
+                : [{ id: "move-to-group:remove" as const, label: "Remove from group" }]),
+            ],
+          },
         ]
       : []),
     { id: "rename", label: "Rename thread", icon: "pencil", separatorBefore: true },
@@ -270,4 +315,30 @@ export function buildThreadActionMenuItems(
       icon: "trash",
     },
   ];
+}
+
+/**
+ * Every sidebar group, sorted for menus: the saved groups, plus any name a thread is in that was
+ * never saved (an agent can move a thread into a new name).
+ */
+export function collectThreadGroupNames(
+  threads: Iterable<{ readonly groupName?: string | null }>,
+  savedGroupNames: Iterable<string> = [],
+): string[] {
+  const names = new Set<string>(savedGroupNames);
+  for (const thread of threads) if (thread.groupName) names.add(thread.groupName);
+  return [...names].toSorted((left, right) => left.localeCompare(right));
+}
+
+/**
+ * What a Move to group pick does: move into a named group, leave the current one (null), or ask
+ * for a new group's name first. Undefined for any other menu id.
+ */
+export function resolveThreadGroupMenuPick(
+  id: ThreadActionMenuId,
+): { readonly groupName: string | null } | "new" | undefined {
+  if (id === "move-to-group:new") return "new";
+  if (id === "move-to-group:remove") return { groupName: null };
+  const prefix = "move-to-group:name:";
+  return id.startsWith(prefix) ? { groupName: id.slice(prefix.length) } : undefined;
 }

@@ -14,8 +14,12 @@ import { useCallback, useMemo } from "react";
 import { resolveSnoozePresets } from "../components/Sidebar.snooze";
 import {
   buildThreadActionMenuItems,
+  collectThreadGroupNames,
+  resolveThreadGroupMenuPick,
   type ThreadActionMenuId,
 } from "../components/threadActionMenu.logic";
+import { requestThreadGroup } from "../components/ThreadGroupDialog";
+import { useThreadGroups } from "./useThreadGroups";
 import { openLinearIssuePicker } from "../components/chat/LinearIssuePicker";
 import { openTranscriptExportDialog } from "../components/TranscriptExportDialog";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
@@ -23,11 +27,14 @@ import { threadEnvironment } from "../state/threads";
 import { useAtomCommand } from "../state/use-atom-command";
 import {
   readEnvironmentSupportsAutoSettleOptOut,
+  readEnvironmentSupportsGroups,
+  readEnvironmentSupportsHiding,
   readEnvironmentSupportsPinning,
   readEnvironmentSupportsSettlement,
   readEnvironmentSupportsSnooze,
   readEnvironmentSupportsTitleRegeneration,
   readThreadShell,
+  readThreadShells,
   useProjects,
 } from "../state/entities";
 import { usePrimaryEnvironmentId } from "../state/environments";
@@ -96,10 +103,13 @@ export function useThreadActionMenu(input: {
     pinThread,
     confirmAndUnpinThread,
     setThreadAutoSettle,
+    setThreadHidden,
+    setThreadGroup,
     archiveThread,
     deleteThread,
     markThreadUnread,
   } = useThreadActions();
+  const { groups, saveGroup } = useThreadGroups();
   const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
   });
@@ -143,6 +153,8 @@ export function useThreadActionMenu(input: {
           autoSettleOptOut: readEnvironmentSupportsAutoSettleOptOut(threadRef.environmentId),
           snooze: readEnvironmentSupportsSnooze(threadRef.environmentId),
           pinning: readEnvironmentSupportsPinning(threadRef.environmentId),
+          hiding: readEnvironmentSupportsHiding(threadRef.environmentId),
+          groups: readEnvironmentSupportsGroups(threadRef.environmentId),
           titleRegeneration: readEnvironmentSupportsTitleRegeneration(threadRef.environmentId),
         };
         const isRegeneratingTitle = thread.titleRegeneration != null;
@@ -156,6 +168,9 @@ export function useThreadActionMenu(input: {
           isSettled: supports.settlement && thread.settledOverride === "settled",
           autoSettleEnabled: thread.autoSettleDisabledAt == null,
           isSnoozed: supports.snooze && effectiveSnoozed(thread, { now: now.toISOString() }),
+          isHidden: thread.hiddenAt != null,
+          groupName: thread.groupName ?? null,
+          groupNames: collectThreadGroupNames(readThreadShells(), Object.keys(groups)),
           canSnoozeNow: canSnooze(thread, { now: now.toISOString() }),
           isRegeneratingTitle,
           isRunning: !threadRuntimeCanArchive(thread.runtime),
@@ -165,6 +180,21 @@ export function useThreadActionMenu(input: {
         const clicked = await settlePromise(() => api.contextMenu.show(items, position));
         if (clicked._tag === "Failure" || clicked.value === null) return;
         const action: ThreadActionMenuId = clicked.value;
+        const groupPick = resolveThreadGroupMenuPick(action);
+        if (groupPick !== undefined) {
+          let groupName = groupPick === "new" ? null : groupPick.groupName;
+          if (groupPick === "new") {
+            const draft = await requestThreadGroup();
+            if (draft === null || draft === "delete") return;
+            groupName = draft.name;
+            saveGroup(draft);
+          }
+          const result = await setThreadGroup(threadRef, groupName);
+          if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+            failureToast("Failed to move thread", squashAtomCommandFailure(result));
+          }
+          return;
+        }
         if (action.startsWith("snooze:")) {
           const preset =
             action === "snooze:custom"
@@ -242,6 +272,13 @@ export function useThreadActionMenu(input: {
           case "auto-settle:disabled":
             await reportFailure("Failed to update auto-settle", () =>
               setThreadAutoSettle(threadRef, action === "auto-settle:enabled"),
+            );
+            return;
+          case "hide":
+          case "unhide":
+            await reportFailure(
+              action === "hide" ? "Failed to hide thread" : "Failed to unhide thread",
+              () => setThreadHidden(threadRef, action === "hide"),
             );
             return;
           case "rename":
@@ -360,6 +397,10 @@ export function useThreadActionMenu(input: {
       projects,
       router,
       setThreadAutoSettle,
+      setThreadHidden,
+      setThreadGroup,
+      groups,
+      saveGroup,
       settleThread,
       snoozeThread,
       tabsSupported,

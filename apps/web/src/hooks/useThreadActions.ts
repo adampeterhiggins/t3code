@@ -269,6 +269,12 @@ export function useThreadActions() {
   const setThreadAutoSettleMutation = useAtomCommand(threadEnvironment.setAutoSettle, {
     reportFailure: false,
   });
+  const setThreadHiddenMutation = useAtomCommand(threadEnvironment.setHidden, {
+    reportFailure: false,
+  });
+  const setThreadGroupMutation = useAtomCommand(threadEnvironment.setGroup, {
+    reportFailure: false,
+  });
   const reorderPinnedThreadMutation = useAtomCommand(threadEnvironment.reorderPin, {
     reportFailure: false,
   });
@@ -668,6 +674,26 @@ export function useThreadActions() {
     [setThreadAutoSettleMutation],
   );
 
+  /** Moves one thread into the sidebar's Hidden shelf, or back out of it. */
+  const setThreadHidden = useCallback(
+    (target: ScopedThreadRef, hidden: boolean) =>
+      setThreadHiddenMutation({
+        environmentId: target.environmentId,
+        input: { threadId: target.threadId, hidden },
+      }),
+    [setThreadHiddenMutation],
+  );
+
+  /** Moves one thread into a sidebar group by name, or out of its group with null. */
+  const setThreadGroup = useCallback(
+    (target: ScopedThreadRef, groupName: string | null) =>
+      setThreadGroupMutation({
+        environmentId: target.environmentId,
+        input: { threadId: target.threadId, groupName },
+      }),
+    [setThreadGroupMutation],
+  );
+
   const pinThread = useCallback(
     async (target: ScopedThreadRef, opts: { orderKey?: string } = {}) => {
       // Version skew: never send the command to a server that predates it.
@@ -989,6 +1015,8 @@ export function useThreadActions() {
       reorderActiveThread,
       markThreadUnread,
       setThreadAutoSettle,
+      setThreadHidden,
+      setThreadGroup,
     }),
     [
       archiveThread,
@@ -1000,6 +1028,8 @@ export function useThreadActions() {
       reorderPinnedThread,
       reorderActiveThread,
       setThreadAutoSettle,
+      setThreadHidden,
+      setThreadGroup,
       settleThread,
       snoozeThread,
       unarchiveThread,

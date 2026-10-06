@@ -306,6 +306,8 @@ export function applyServerSettingsPatch(
     usageModelAliases: usageModelAliasesPatch,
     // Entry replacement: deepMerge would keep keys the client meant to clear.
     projectSettingsOverrides: projectSettingsOverridesPatch,
+    // Whole-map replacement, so removing a group's style sticks.
+    threadGroups,
     // Already translated into `projectSettingsOverrides` above; the legacy
     // maps are derived views and must never be merged directly.
     projectAgentBrowserAccessOverrides: _legacyBrowserAccess,
@@ -353,6 +355,7 @@ export function applyServerSettingsPatch(
     ...deepMerge(current, patchForMerge),
     customEditors: customEditors ?? current.customEditors,
     fileOpenRules: fileOpenRules ?? current.fileOpenRules,
+    threadGroups: threadGroups ?? current.threadGroups,
   };
   const storageCleanupRules =
     storageCleanupPatch === undefined

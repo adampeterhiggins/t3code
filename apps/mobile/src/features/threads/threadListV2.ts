@@ -23,7 +23,7 @@ import {
   sortPinnedThreadsByOrderKey,
   sortSettledThreads,
 } from "@t3tools/client-runtime/state/thread-sort";
-import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
+import type { EnvironmentId, ProjectIconOverride, ProjectId } from "@t3tools/contracts";
 
 import type { ThreadListProvider } from "../../state/thread-list-environments";
 import type { ThreadMoveAvailability } from "./threadOrder";
@@ -84,7 +84,13 @@ export type ThreadListV2Status =
   | "failed"
   | "limited"
   | "ready";
-export type ThreadListV2SwipeAction = "archive" | "settle" | "unsettle" | "snooze" | "unsnooze";
+export type ThreadListV2SwipeAction =
+  | "archive"
+  | "settle"
+  | "unsettle"
+  | "snooze"
+  | "unsnooze"
+  | "unhide";
 
 export function resolveThreadListV2SnoozeMenuSelection(input: {
   readonly event: string;
@@ -117,10 +123,15 @@ export function resolveThreadListV2SwipeActions(input: {
   readonly snoozable: boolean;
   /** Row is on the snoozed shelf. */
   readonly snoozed?: boolean;
+  /** Row is on the Hidden page. */
+  readonly hidden?: boolean;
 }): {
   readonly primary: Exclude<ThreadListV2SwipeAction, "snooze">;
   readonly secondary: "snooze" | null;
 } {
+  if (input.hidden === true) {
+    return { primary: "unhide", secondary: null };
+  }
   if (input.snoozed === true) {
     return { primary: "unsnooze", secondary: null };
   }
@@ -235,11 +246,15 @@ export function getThreadListV2OrderedSection(input: {
   readonly now: string;
   readonly settlementEnvironmentIds?: ReadonlySet<EnvironmentId>;
   readonly snoozeEnvironmentIds?: ReadonlySet<EnvironmentId>;
+  readonly hidingEnvironmentIds?: ReadonlySet<EnvironmentId>;
+  readonly groupEnvironmentIds?: ReadonlySet<EnvironmentId>;
   readonly queuedThreadKeys?: ReadonlySet<string>;
 }): EnvironmentThreadShell[] {
   const threads = input.threads.filter((thread) => {
     if (thread.archivedAt !== null || thread.lineage.relationshipToParent === "subagent")
       return false;
+    if (isThreadListV2Hidden(thread, input.hidingEnvironmentIds)) return false;
+    if (isThreadListV2Grouped(thread, input.groupEnvironmentIds)) return false;
     if (
       (input.settlementEnvironmentIds?.has(thread.environmentId) ?? true) &&
       thread.settledOverride === "settled" &&
@@ -266,6 +281,118 @@ export function getThreadListV2OrderedSection(input: {
   return applyPendingThreadOrder(ordered, input.section, pending);
 }
 
+/** Filter-menu pages. Threads covers the pinned, active and working groups;
+    each custom thread group is its own `group:<name>` page. Mirrors the web
+    sidebar picker. */
+export type ThreadListPage = "threads" | "snoozed" | "hidden" | "settled" | `group:${string}`;
+export const DEFAULT_THREAD_LIST_PAGES: ReadonlyArray<ThreadListPage> = ["threads"];
+
+export function threadListGroupPage(groupName: string): ThreadListPage {
+  return `group:${groupName}`;
+}
+
+const BUILTIN_PAGE_LABEL: Record<string, string> = {
+  threads: "Threads",
+  snoozed: "Snoozed",
+  hidden: "Hidden",
+  settled: "Settled",
+};
+
+/** Menu title for a page. Native menus cannot draw a group's icon or accent,
+    so an emoji icon is prefixed as text and other icons are left out. */
+export function threadListPageLabel(
+  page: ThreadListPage,
+  groups?: Readonly<Record<string, { readonly icon?: ProjectIconOverride | null }>>,
+): string {
+  if (!page.startsWith("group:")) return BUILTIN_PAGE_LABEL[page]!;
+  const name = page.slice("group:".length);
+  const icon = groups?.[name]?.icon;
+  return icon?.kind === "emoji" ? `${icon.emoji} ${name}` : name;
+}
+
+/** Picker and render order: Threads, groups (alphabetical), Snoozed, Hidden,
+    Settled. Hidden is offered only once an environment supports hiding. */
+export function availableThreadListPages(input: {
+  readonly hidingSupported: boolean;
+  readonly groupNames: ReadonlyArray<string>;
+}): ReadonlyArray<ThreadListPage> {
+  return [
+    "threads",
+    ...input.groupNames.map(threadListGroupPage),
+    "snoozed",
+    ...(input.hidingSupported ? (["hidden"] as const) : []),
+    "settled",
+  ];
+}
+
+/** Picked pages that still exist, in render order. A group whose last thread
+    left drops out silently; an emptied selection falls back to Threads. */
+export function resolveThreadListPages(
+  pages: ReadonlyArray<ThreadListPage>,
+  available: ReadonlyArray<ThreadListPage>,
+): ReadonlyArray<ThreadListPage> {
+  const resolved = available.filter((page) => pages.includes(page));
+  return resolved.length === pages.length && resolved.every((page, index) => page === pages[index])
+    ? pages
+    : resolved.length > 0
+      ? resolved
+      : DEFAULT_THREAD_LIST_PAGES;
+}
+
+/** Multi-select toggle; deselecting the last page is ignored. */
+export function toggleThreadListPage(
+  pages: ReadonlyArray<ThreadListPage>,
+  page: ThreadListPage,
+  available: ReadonlyArray<ThreadListPage>,
+): ReadonlyArray<ThreadListPage> {
+  if (pages.includes(page)) {
+    return pages.length === 1 ? pages : pages.filter((candidate) => candidate !== page);
+  }
+  return available.filter((candidate) => candidate === page || pages.includes(candidate));
+}
+
+export function isDefaultThreadListPages(pages: ReadonlyArray<ThreadListPage>): boolean {
+  return pages.length === 1 && pages[0] === "threads";
+}
+
+/** Every group, alphabetical: the registered ones (even empty) plus any name
+    a thread carries on an environment that understands thread.group.set,
+    since agents may move threads into unregistered names. */
+export function collectThreadGroupNames(
+  threads: ReadonlyArray<
+    Pick<EnvironmentThreadShell, "environmentId" | "groupName" | "archivedAt">
+  >,
+  groupEnvironmentIds: ReadonlySet<EnvironmentId>,
+  registeredNames: Iterable<string> = [],
+): ReadonlyArray<string> {
+  const names = new Set<string>(registeredNames);
+  for (const thread of threads) {
+    if (thread.archivedAt === null && isThreadListV2Grouped(thread, groupEnvironmentIds)) {
+      names.add(thread.groupName!);
+    }
+  }
+  return [...names].sort((left, right) => left.localeCompare(right));
+}
+
+/** Hidden threads leave every other group (and arrangement) and show only
+    under the Hidden page. Only environments that understand
+    thread.hidden.set count; absent = no gating. */
+function isThreadListV2Hidden(
+  thread: Pick<EnvironmentThreadShell, "environmentId" | "hiddenAt">,
+  hidingEnvironmentIds: ReadonlySet<EnvironmentId> | undefined,
+): boolean {
+  return thread.hiddenAt != null && (hidingEnvironmentIds?.has(thread.environmentId) ?? true);
+}
+
+/** Grouped threads leave the Threads, Snoozed and Settled pages for their
+    group's page (hidden still wins). Same gating contract as hiding. */
+function isThreadListV2Grouped(
+  thread: Pick<EnvironmentThreadShell, "environmentId" | "groupName">,
+  groupEnvironmentIds: ReadonlySet<EnvironmentId> | undefined,
+): boolean {
+  return thread.groupName != null && (groupEnvironmentIds?.has(thread.environmentId) ?? true);
+}
+
 export interface ThreadListV2Item {
   readonly thread: EnvironmentThreadShell;
   readonly variant: "card" | "slim";
@@ -273,7 +400,18 @@ export interface ThreadListV2Item {
   readonly snoozed: boolean;
   /** Pinned-block row: renders the pin glyph and offers Unpin. */
   readonly pinned: boolean;
+  /** Hidden-page row: offers Unhide. */
+  readonly hidden: boolean;
+  /** Group-section row: never part of an arrangeable section. */
+  readonly grouped: boolean;
   readonly isLast: boolean;
+}
+
+export interface ThreadListV2GroupSection {
+  readonly name: string;
+  readonly headerIndex: number;
+  /** Rows in the section; zero draws the title with an Empty line. */
+  readonly count: number;
 }
 
 export interface ThreadListV2Layout {
@@ -293,6 +431,13 @@ export interface ThreadListV2Layout {
   readonly settledCount: number;
   /** Index in `items` where the Settled shelf header belongs. */
   readonly settledShelfHeaderIndex: number | null;
+  /** Hidden threads shown (only when the Hidden page is picked). */
+  readonly hiddenCount: number;
+  /** Index in `items` where the Hidden section title belongs. */
+  readonly hiddenSectionHeaderIndex: number | null;
+  /** Picked group sections with rows, in render order, each with the index
+      in `items` where its title belongs. */
+  readonly groupSections: ReadonlyArray<ThreadListV2GroupSection>;
   /** Soonest wake time among snoozed threads, or null. Callers arm
       a timeout at this boundary so the list re-partitions the moment a
       snooze expires instead of on the next minute tick. */
@@ -370,11 +515,25 @@ export interface ThreadListV2SettledShelfListItem {
   readonly disabled: boolean;
 }
 
+export interface ThreadListV2GroupSectionListItem {
+  readonly type: "v2-group-section";
+  readonly key: string;
+  readonly name: string;
+  readonly empty: boolean;
+}
+
+export interface ThreadListV2HiddenSectionListItem {
+  readonly type: "v2-hidden-section";
+  readonly key: "v2-hidden-section";
+}
+
 export type ThreadListV2ListItem =
   | ThreadListV2ThreadListItem
   | ThreadListV2PendingListItem
   | ThreadListV2WorkingShelfListItem
+  | ThreadListV2GroupSectionListItem
   | ThreadListV2SnoozedShelfListItem
+  | ThreadListV2HiddenSectionListItem
   | ThreadListV2SettledShelfListItem;
 
 /** Narrows a wider list-item union (e.g. the sidebar's legacy + v2 mix) to
@@ -387,6 +546,8 @@ export function isThreadListV2ListItem(value: {
     value.type === "v2-pending" ||
     value.type === "v2-working-shelf" ||
     value.type === "v2-snoozed-shelf" ||
+    value.type === "v2-group-section" ||
+    value.type === "v2-hidden-section" ||
     value.type === "v2-settled-shelf"
   );
 }
@@ -411,6 +572,8 @@ export function threadListV2ListItemsAreEqual(
         previous.item.variant === item.item.variant &&
         previous.item.snoozed === item.item.snoozed &&
         previous.item.pinned === item.item.pinned &&
+        previous.item.hidden === item.item.hidden &&
+        previous.item.grouped === item.item.grouped &&
         previous.snoozeWakeLabelText === item.snoozeWakeLabelText &&
         previous.timeLabel === item.timeLabel &&
         previous.snoozePresetMinute === item.snoozePresetMinute &&
@@ -441,6 +604,14 @@ export function threadListV2ListItemsAreEqual(
         previous.expanded === item.expanded &&
         previous.disabled === item.disabled
       );
+    case "v2-group-section":
+      return (
+        previous.type === "v2-group-section" &&
+        previous.name === item.name &&
+        previous.empty === item.empty
+      );
+    case "v2-hidden-section":
+      return previous.type === "v2-hidden-section";
     case "v2-settled-shelf":
       return (
         previous.type === "v2-settled-shelf" &&
@@ -475,9 +646,9 @@ function resolveThreadListV2ItemTimeLabel(
 
 /**
  * Builds the shared mobile order: active → pending → working shelf (beta) →
- * snoozed shelf → settled. Pending tasks are waiting rather than asking, and
- * busy or parked work remains reachable without competing with either the
- * inbox or settled history.
+ * groups → snoozed → hidden → settled. Pending tasks are waiting rather than
+ * asking, and busy or parked work remains reachable without competing with
+ * either the inbox or settled history.
  */
 export function buildThreadListV2ListItems(input: {
   readonly items: ReadonlyArray<ThreadListV2Item>;
@@ -491,6 +662,8 @@ export function buildThreadListV2ListItems(input: {
   readonly settledCount?: number;
   readonly settledShelfExpanded?: boolean;
   readonly settledShelfHeaderIndex?: number | null;
+  readonly hiddenSectionHeaderIndex?: number | null;
+  readonly groupSections?: ReadonlyArray<ThreadListV2GroupSection>;
   readonly snoozeLabelNow?: string;
   /** Environments whose server supports thread.snooze. Rows on other
       environments never carry the minute clock that feeds the snooze menu.
@@ -557,8 +730,12 @@ export function buildThreadListV2ListItems(input: {
   const snoozedShelfHeaderIndex = input.snoozedShelfHeaderIndex ?? null;
   const settledCount = input.settledCount ?? 0;
   const settledShelfHeaderIndex = input.settledShelfHeaderIndex ?? null;
-  const snoozedEnd = settledShelfHeaderIndex ?? threadItems.length;
-  const workingEnd = snoozedShelfHeaderIndex ?? snoozedEnd;
+  const hiddenSectionHeaderIndex = input.hiddenSectionHeaderIndex ?? null;
+  const hiddenEnd = settledShelfHeaderIndex ?? threadItems.length;
+  const snoozedEnd = hiddenSectionHeaderIndex ?? hiddenEnd;
+  const groupsEnd = snoozedShelfHeaderIndex ?? snoozedEnd;
+  const groupSections = input.groupSections ?? [];
+  const workingEnd = groupSections[0]?.headerIndex ?? groupsEnd;
   const activeEnd = workingShelfHeaderIndex ?? workingEnd;
   const result: ThreadListV2ListItem[] = [...threadItems.slice(0, activeEnd), ...pendingItems];
   const shelfDisabled = input.shelfPreferencesLoading === true;
@@ -572,6 +749,17 @@ export function buildThreadListV2ListItems(input: {
     });
     result.push(...threadItems.slice(workingShelfHeaderIndex, workingEnd));
   }
+  groupSections.forEach((section, index) => {
+    result.push({
+      type: "v2-group-section",
+      key: `v2-group-section:${section.name}`,
+      name: section.name,
+      empty: section.count === 0,
+    });
+    result.push(
+      ...threadItems.slice(section.headerIndex, groupSections[index + 1]?.headerIndex ?? groupsEnd),
+    );
+  });
   if (snoozedShelfHeaderIndex !== null && snoozedCount > 0) {
     result.push({
       type: "v2-snoozed-shelf",
@@ -581,6 +769,10 @@ export function buildThreadListV2ListItems(input: {
       disabled: shelfDisabled,
     });
     result.push(...threadItems.slice(snoozedShelfHeaderIndex, snoozedEnd));
+  }
+  if (hiddenSectionHeaderIndex !== null) {
+    result.push({ type: "v2-hidden-section", key: "v2-hidden-section" });
+    result.push(...threadItems.slice(hiddenSectionHeaderIndex, hiddenEnd));
   }
   if (settledShelfHeaderIndex !== null && settledCount > 0) {
     result.push({
@@ -626,6 +818,15 @@ export function buildThreadListV2Items(input: {
   /** Environments whose server supports thread.snooze/unsnooze. Same
       contract as settlementEnvironmentIds. */
   readonly snoozeEnvironmentIds?: ReadonlySet<EnvironmentId>;
+  /** Environments whose server supports thread.hidden.set. Same contract as
+      settlementEnvironmentIds. */
+  readonly hidingEnvironmentIds?: ReadonlySet<EnvironmentId>;
+  /** Environments whose server supports thread.group.set. Same contract as
+      settlementEnvironmentIds. */
+  readonly groupEnvironmentIds?: ReadonlySet<EnvironmentId>;
+  /** Pages picked in the filter menu. Absent = Threads, Snoozed and Settled
+      (tests). */
+  readonly pages?: ReadonlyArray<ThreadListPage>;
   /** Max settled rows to render; the rest are counted, not built. */
   readonly settledLimit?: number;
   /** Second-precise clock used for time-based classification. */
@@ -674,6 +875,8 @@ export function buildThreadListV2Items(input: {
   const working: EnvironmentThreadShell[] = [];
   const settled: EnvironmentThreadShell[] = [];
   const snoozed: EnvironmentThreadShell[] = [];
+  const hidden: EnvironmentThreadShell[] = [];
+  const grouped = new Map<string, EnvironmentThreadShell[]>();
   let nextSnoozeWakeAt: string | null = null;
   for (const thread of input.threads) {
     if (thread.archivedAt !== null || thread.lineage.relationshipToParent === "subagent") continue;
@@ -699,6 +902,16 @@ export function buildThreadListV2Items(input: {
     }
     const supportsSettlement = input.settlementEnvironmentIds?.has(thread.environmentId) ?? true;
     const supportsSnooze = input.snoozeEnvironmentIds?.has(thread.environmentId) ?? true;
+    if (isThreadListV2Hidden(thread, input.hidingEnvironmentIds)) {
+      hidden.push(thread);
+      continue;
+    }
+    // A group outranks snooze, settlement and pinning.
+    if (isThreadListV2Grouped(thread, input.groupEnvironmentIds)) {
+      const groupName = thread.groupName!;
+      grouped.set(groupName, [...(grouped.get(groupName) ?? []), thread]);
+      continue;
+    }
     // Snooze outranks settlement and pinning until the thread wakes.
     if (supportsSnooze && effectiveSnoozed(thread, { now })) {
       snoozed.push(thread);
@@ -723,6 +936,19 @@ export function buildThreadListV2Items(input: {
       active.push(thread);
     }
   }
+
+  // Groups outside the picked pages are dropped after classification, so a
+  // thread never falls through into another group.
+  const showPage = (page: ThreadListPage) =>
+    input.pages?.includes(page) ?? (page !== "hidden" && !page.startsWith("group:"));
+  if (!showPage("threads")) {
+    pinned.length = 0;
+    active.length = 0;
+    working.length = 0;
+  }
+  if (!showPage("snoozed")) snoozed.length = 0;
+  if (!showPage("hidden")) hidden.length = 0;
+  if (!showPage("settled")) settled.length = 0;
 
   // The beta inbox is time-ordered, so the saved arrangement (and any move in
   // flight) is kept but not applied until the beta is off again.
@@ -774,6 +1000,8 @@ export function buildThreadListV2Items(input: {
       variant: "card",
       snoozed: false,
       pinned: true,
+      hidden: false,
+      grouped: false,
       isLast: false,
     });
   }
@@ -783,6 +1011,8 @@ export function buildThreadListV2Items(input: {
       variant: "card",
       snoozed: false,
       pinned: false,
+      hidden: false,
+      grouped: false,
       isLast: false,
     });
   }
@@ -793,8 +1023,36 @@ export function buildThreadListV2Items(input: {
       variant: "card",
       snoozed: false,
       pinned: false,
+      hidden: false,
+      grouped: false,
       isLast: false,
     });
+  }
+  const groupSections: ThreadListV2GroupSection[] = [];
+  // Picked groups render even when empty, as a title with an Empty line.
+  const pickedGroupNames = (input.pages ?? [])
+    .filter((page) => page.startsWith("group:"))
+    .map((page) => page.slice("group:".length))
+    .sort((left, right) => left.localeCompare(right));
+  for (const groupName of pickedGroupNames) {
+    const members = sortThreadsForListV2(grouped.get(groupName) ?? []);
+    groupSections.push({ name: groupName, headerIndex: items.length, count: members.length });
+    for (const thread of members) {
+      items.push({
+        thread,
+        // Settled members keep the slim row and its Un-settle action.
+        variant:
+          (input.settlementEnvironmentIds?.has(thread.environmentId) ?? true) &&
+          thread.settledOverride === "settled"
+            ? "slim"
+            : "card",
+        snoozed: false,
+        pinned: false,
+        hidden: false,
+        grouped: true,
+        isLast: false,
+      });
+    }
   }
   const snoozedShelfHeaderIndex = orderedSnoozed.length > 0 ? items.length : null;
   for (const thread of visibleSnoozed) {
@@ -803,6 +1061,24 @@ export function buildThreadListV2Items(input: {
       variant: "slim",
       snoozed: true,
       pinned: false,
+      hidden: false,
+      grouped: false,
+      isLast: false,
+    });
+  }
+  // Most recently hidden first.
+  const orderedHidden = [...hidden].sort(
+    (left, right) => parseTimestampMs(right.hiddenAt ?? "") - parseTimestampMs(left.hiddenAt ?? ""),
+  );
+  const hiddenSectionHeaderIndex = orderedHidden.length > 0 ? items.length : null;
+  for (const thread of orderedHidden) {
+    items.push({
+      thread,
+      variant: "slim",
+      snoozed: false,
+      pinned: false,
+      hidden: true,
+      grouped: false,
       isLast: false,
     });
   }
@@ -813,6 +1089,8 @@ export function buildThreadListV2Items(input: {
       variant: "slim",
       snoozed: false,
       pinned: false,
+      hidden: false,
+      grouped: false,
       isLast: false,
     });
   }
@@ -829,6 +1107,9 @@ export function buildThreadListV2Items(input: {
     snoozedShelfHeaderIndex,
     settledCount: orderedSettled.length,
     settledShelfHeaderIndex,
+    hiddenCount: orderedHidden.length,
+    hiddenSectionHeaderIndex,
+    groupSections,
     nextSnoozeWakeAt,
   };
 }

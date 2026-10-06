@@ -30,7 +30,11 @@ import { threadJumpTarget } from "../keyboard/threadKeyboardShortcuts";
 import {
   buildThreadListV2Items,
   buildThreadListV2ListItems,
+  availableThreadListPages,
+  collectThreadGroupNames,
+  DEFAULT_THREAD_LIST_PAGES,
   getThreadListV2OrderedSection,
+  resolveThreadListPages,
   isThreadListV2ListItem,
   resolveThreadListV2SnoozeMenuSelection,
   resolveThreadListV2SnoozeGateExpiryMs,
@@ -39,6 +43,8 @@ import {
   sortThreadsForListV2,
   threadListV2ListItemsAreEqual,
   threadHasUnseenCompletion,
+  toggleThreadListPage,
+  type ThreadListPage,
   type ThreadListV2ListItem,
 } from "./threadListV2";
 
@@ -434,6 +440,148 @@ describe("buildThreadListV2Items", () => {
 
     expect(layout.settledCount).toBe(1);
     expect(layout.items[0]?.variant).toBe("slim");
+  });
+
+  it("shows only the picked pages; hidden outranks a group, a group outranks the rest", () => {
+    const threads = [
+      makeThread({ id: ThreadId.make("active"), title: "Active" }),
+      makeThread({
+        id: ThreadId.make("snoozed"),
+        title: "Snoozed",
+        snoozedUntil: "2026-06-03T09:00:00.000Z",
+        snoozedAt: "2026-06-01T12:00:00.000Z",
+      }),
+      makeThread({
+        id: ThreadId.make("settled"),
+        title: "Settled",
+        settledOverride: "settled",
+        settledAt: NOW,
+      }),
+      makeThread({
+        id: ThreadId.make("hidden-pinned"),
+        title: "Hidden pinned",
+        pinnedAt: NOW,
+        hiddenAt: "2026-06-01T12:00:00.000Z",
+      }),
+      makeThread({
+        id: ThreadId.make("hidden-settled"),
+        title: "Hidden settled",
+        settledOverride: "settled",
+        settledAt: NOW,
+        hiddenAt: "2026-06-02T12:00:00.000Z",
+      }),
+      makeThread({
+        id: ThreadId.make("grouped-pinned-snoozed"),
+        title: "Grouped pinned snoozed",
+        pinnedAt: NOW,
+        snoozedUntil: "2026-06-03T09:00:00.000Z",
+        snoozedAt: "2026-06-01T12:00:00.000Z",
+        groupName: "Beta",
+      }),
+      makeThread({
+        id: ThreadId.make("grouped-settled"),
+        title: "Grouped settled",
+        settledOverride: "settled",
+        settledAt: NOW,
+        groupName: "Alpha",
+      }),
+      makeThread({
+        id: ThreadId.make("grouped-hidden"),
+        title: "Grouped hidden",
+        groupName: "Alpha",
+        hiddenAt: "2026-06-01T06:00:00.000Z",
+      }),
+    ];
+    const groupNames = collectThreadGroupNames(threads, new Set([environmentId]));
+    expect(groupNames).toEqual(["Alpha", "Beta"]);
+    const available = availableThreadListPages({ hidingSupported: true, groupNames });
+    expect(available).toEqual([
+      "threads",
+      "group:Alpha",
+      "group:Beta",
+      "snoozed",
+      "hidden",
+      "settled",
+    ]);
+    const build = (pages: ReadonlyArray<ThreadListPage>) =>
+      buildThreadListV2Items({
+        threads,
+        environmentId: null,
+        searchQuery: "",
+        now: NOW,
+        pages,
+        snoozedShelfExpanded: true,
+      });
+    const ids = (layout: ReturnType<typeof build>) => layout.items.map((item) => item.thread.id);
+
+    expect(ids(build(DEFAULT_THREAD_LIST_PAGES))).toEqual(["active"]);
+    expect(ids(build(["settled"]))).toEqual(["settled"]);
+    expect(ids(build(["group:Beta"]))).toEqual(["grouped-pinned-snoozed"]);
+    // Groups follow Threads; Hidden sits between Snoozed and Settled, most
+    // recently hidden first.
+    const all = build(available);
+    expect(ids(all)).toEqual([
+      "active",
+      "grouped-settled",
+      "grouped-pinned-snoozed",
+      "snoozed",
+      "hidden-settled",
+      "hidden-pinned",
+      "grouped-hidden",
+      "settled",
+    ]);
+    expect(all.items.filter((item) => item.hidden).length).toBe(3);
+    expect(all.items.find((item) => item.thread.id === "grouped-settled")?.variant).toBe("slim");
+    expect(
+      buildThreadListV2ListItems({
+        items: all.items,
+        pendingTasks: [],
+        snoozedCount: all.snoozedCount,
+        snoozedShelfExpanded: true,
+        snoozedShelfHeaderIndex: all.snoozedShelfHeaderIndex,
+        hiddenSectionHeaderIndex: all.hiddenSectionHeaderIndex,
+        groupSections: all.groupSections,
+        settledCount: all.settledCount,
+        settledShelfHeaderIndex: all.settledShelfHeaderIndex,
+      }).map((item) => (item.type === "v2-thread" ? item.item.thread.id : item.type)),
+    ).toEqual([
+      "active",
+      "v2-group-section",
+      "grouped-settled",
+      "v2-group-section",
+      "grouped-pinned-snoozed",
+      "v2-snoozed-shelf",
+      "snoozed",
+      "v2-hidden-section",
+      "hidden-settled",
+      "hidden-pinned",
+      "grouped-hidden",
+      "v2-settled-shelf",
+      "settled",
+    ]);
+    // Hidden and grouped threads are never arrangeable.
+    expect(
+      getThreadListV2OrderedSection({ threads, section: "pinned", now: NOW }).map(
+        (thread) => thread.id,
+      ),
+    ).toEqual([]);
+  });
+
+  it("toggles pages but never deselects the last one", () => {
+    const available = availableThreadListPages({ hidingSupported: true, groupNames: ["Ops"] });
+    expect(toggleThreadListPage(["threads"], "settled", available)).toEqual(["threads", "settled"]);
+    expect(toggleThreadListPage(["settled"], "group:Ops", available)).toEqual([
+      "group:Ops",
+      "settled",
+    ]);
+    expect(toggleThreadListPage(["threads", "settled"], "threads", available)).toEqual(["settled"]);
+    expect(toggleThreadListPage(["settled"], "settled", available)).toEqual(["settled"]);
+  });
+
+  it("drops picked groups that no longer exist and falls back to Threads", () => {
+    const available = availableThreadListPages({ hidingSupported: true, groupNames: [] });
+    expect(resolveThreadListPages(["group:Gone", "settled"], available)).toEqual(["settled"]);
+    expect(resolveThreadListPages(["group:Gone"], available)).toEqual(["threads"]);
   });
 
   it("hides snoozed threads and counts them — visibility parity with web", () => {

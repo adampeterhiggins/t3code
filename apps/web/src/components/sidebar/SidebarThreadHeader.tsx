@@ -1,13 +1,6 @@
 /**
- * The sidebar header: one row holding search, project scope and new thread.
- *
- * Search owns the row's text and spans it. Project scope collapses to an icon
- * that sits with new-project and new-thread as a segmented group at the end.
- * The scope icon swaps to the project favicon while a project is selected,
- * so the header still names the scope after the row that showed it is gone.
- *
- * The scope picker itself is passed in: its combobox state lives with the rest
- * of the sidebar's scope logic.
+ * The sidebar header: one row holding search, then the icon group — attention inbox, tabs,
+ * thread filters, new project and new thread.
  */
 import { FolderPlusIcon, SearchIcon, SquarePenIcon, XIcon } from "lucide-react";
 import {
@@ -26,8 +19,6 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 export interface SidebarThreadHeaderProps {
   /** Without projects there is nothing to scope, so those controls stay out. */
   hasProjects: boolean;
-  /** The project scope combobox, rendered with the project icons of the group. */
-  projectScope: ReactNode;
   /** Leads the icon group; renders nothing while no thread needs the user. */
   attentionInbox: ReactNode;
   onNewProject: () => void;
@@ -48,11 +39,12 @@ export interface SidebarThreadHeaderProps {
   onClearSearch: () => void;
   /** The tabs menu; null while no chat has more than one tab. */
   tabsMenu: ReactNode;
+  /** The thread filters: which pages the list shows and which projects it is scoped to. */
+  filterMenu: ReactNode;
 }
 
 export function SidebarThreadHeader({
   hasProjects,
-  projectScope,
   attentionInbox,
   onNewProject,
   onNewThread,
@@ -69,6 +61,7 @@ export function SidebarThreadHeader({
   activeSearchResultIndex,
   onClearSearch,
   tabsMenu,
+  filterMenu,
 }: SidebarThreadHeaderProps) {
   const resultsVisible = isSearching && searchResultCount > 0;
   // Results shrink as the query narrows, so the active index can outrun the
@@ -125,13 +118,11 @@ export function SidebarThreadHeader({
       <div className="flex shrink-0 items-center">
         {attentionInbox}
         {tabsMenu}
+        {filterMenu}
         {hasProjects ? (
-          <>
-            {projectScope}
-            <SidebarHeaderIconButton label="Add project" onClick={onNewProject}>
-              <FolderPlusIcon />
-            </SidebarHeaderIconButton>
-          </>
+          <SidebarHeaderIconButton label="Add project" onClick={onNewProject}>
+            <FolderPlusIcon />
+          </SidebarHeaderIconButton>
         ) : null}
         <SidebarHeaderIconButton
           label="New thread"

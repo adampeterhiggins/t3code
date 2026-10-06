@@ -486,17 +486,24 @@ app's navigation history, the same as the `navigation.back` and `navigation.forw
 
 Code: `SidebarHistoryNavigation` in `apps/web/src/components/sidebar/SidebarChrome.tsx`.
 
-## Sidebar project filter picks several projects
+## Sidebar filter menu
 
-The sidebar's project filter is multi-select: each project row toggles on or off and the popup
-stays open, and **All projects** clears the filter. **Only**, on the highlighted row, picks just
-that project and closes the popup. With more than one project picked, the trigger
-shows a generic folders icon with a count, and its tooltip lists the picked projects. A thread's **Filter by project** menu item still narrows
-the list to that one project. This is web and desktop; mobile has no sidebar project filter.
+On web and desktop, one filter button in the sidebar header replaces upstream's project picker.
+Each row opens a multi-select submenu, like the pull request filters: **Show** picks which of
+Threads, your thread groups, Snoozed, Hidden, and Settled the list holds; **Organisations** scopes
+it to repository owners, read per checkout from `repositoryIdentity` (a fork counts under its own
+remote); and **Projects** scopes it to some projects. **Only**, on the highlighted row, picks just that one. Threads alone is the
+default; other picks list as titled sections below live threads, so snoozed and settled threads no longer sit in shelves under
+live work, and the drag targets for settling and waking are gone. Dragging to pin or reorder
+works while only Threads is shown. The button shows a count of narrowings off their default. A
+thread's **Filter by project** menu item still narrows the list to that one project. Mobile's
+thread list filter menu has the same **Show** submenu.
 
-Code: the project scope `Combobox` in `apps/web/src/components/Sidebar.tsx`,
-`resolveSidebarProjectScopeKeys` in `apps/web/src/components/Sidebar.logic.ts`, and
-`sidebarProjectScopeKeys` in `apps/web/src/uiStateStore.ts`.
+Code: [`SidebarFilterMenu.tsx`](../apps/web/src/components/sidebar/SidebarFilterMenu.tsx),
+`sidebarPages` in [`Sidebar.tsx`](../apps/web/src/components/Sidebar.tsx),
+`sidebarProjectScopeKeys` in [`uiStateStore.ts`](../apps/web/src/uiStateStore.ts), and mobile's
+[`home-list-filter-menu.ts`](../apps/mobile/src/features/home/home-list-filter-menu.ts). User
+guide: [thread-sidebar.md](./user/thread-sidebar.md#pin-and-reorder-threads).
 
 ## Diagnostics settings tab
 
@@ -1016,6 +1023,42 @@ the thread leaves stays on disk. The agent instructions point at the handoff ins
 Code: `performHandoff` in [`WorktreeMcpService.ts`](../apps/server/src/mcp/WorktreeMcpService.ts),
 the tool in [`toolkits/worktree/tools.ts`](../apps/server/src/mcp/toolkits/worktree/tools.ts), and
 [`T3OrchestrationInstructions.ts`](../apps/server/src/provider/T3OrchestrationInstructions.ts).
+
+## Hide a thread
+
+**Hide thread** in the thread menu takes a thread out of the thread list until **Unhide thread**;
+**Hidden** in the filter menu's **Show** submenu lists hidden threads. Unlike settling, activity
+does not bring a hidden thread back; unlike archiving, it stays live. The state is the
+server-owned `hiddenAt` field, set by the `thread.hidden.set` command and gated on the
+`threadHiding` capability. Agents reach it through `t3_thread_organize`'s `hide` and `unhide`
+actions.
+
+Code: `thread.hidden.set` in [`Orchestrator.ts`](../apps/server/src/orchestration-v2/Orchestrator.ts)
+and the `hidden` section in [`Sidebar.logic.ts`](../apps/web/src/components/Sidebar.logic.ts) and
+mobile's [`threadListV2.ts`](../apps/mobile/src/features/threads/threadListV2.ts). User guide:
+[thread-sidebar.md](./user/thread-sidebar.md#hide-a-thread).
+
+## Thread groups
+
+**Move to group** in the thread menu (web, desktop, mobile) files a thread under a user-made
+group, which takes it out of the live thread list; each group is an entry in the filter menu's
+**Show** submenu, which can also create an empty group. Groups are the shared server setting
+`threadGroups` (name to icon and accent), written to every environment, so they persist when empty
+and are removed only by **Delete group**, which returns their threads to the live list.
+Membership is the server-owned `groupName` field, set by `thread.group.set` and gated on the
+`threadGroups` capability; a name a thread holds but the setting lacks (an agent can create one)
+still lists. Renaming moves each thread and the setting's key. The project-scoped setting
+`defaultThreadGroup` files a project's new threads: `ThreadManagementService.dispatch` fills
+`groupName` on every `thread.create` that does not choose one, and a fork inherits its source's
+group. Hiding outranks a group. Agents
+reach membership through `t3_thread_organize`'s `move_to_group` and `remove_from_group`.
+
+Code: `thread.group.set` in [`Orchestrator.ts`](../apps/server/src/orchestration-v2/Orchestrator.ts),
+`resolveSidebarPages` in [`Sidebar.logic.ts`](../apps/web/src/components/Sidebar.logic.ts), the
+menu in [`threadActionMenu.logic.ts`](../apps/web/src/components/threadActionMenu.logic.ts),
+[`useThreadGroups.ts`](../apps/web/src/hooks/useThreadGroups.ts), and
+mobile's [`threadListV2.ts`](../apps/mobile/src/features/threads/threadListV2.ts). User guide:
+[thread-sidebar.md](./user/thread-sidebar.md#group-threads).
 
 ## Attention inbox
 

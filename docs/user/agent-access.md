@@ -53,7 +53,7 @@ An agent connected to `/mcp/operate` has the history tools plus the thread, proj
 environment tools an agent inside T3 Code has. It can start a thread in any project with
 `t3_thread_launch`, message a thread with `t3_thread_send`, wait for it with `t3_thread_wait`, and
 stop its turn with `t3_thread_interrupt`. It can rename a thread, change its model, archive,
-settle, pin, or snooze it, answer its questions with `t3_pending_request_respond` and its
+settle, pin, snooze, hide, or group it, answer its questions with `t3_pending_request_respond` and its
 approvals with `t3_approval_respond`, and add or change projects. It acts as you would: the
 threads it starts appear in your sidebar with a bot icon, their header names the token, and they
 run in whichever permission mode it asks for.

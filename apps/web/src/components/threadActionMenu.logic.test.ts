@@ -3,6 +3,8 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   buildDraftActionMenuItems,
   buildThreadActionMenuItems,
+  collectThreadGroupNames,
+  resolveThreadGroupMenuPick,
   type ThreadActionMenuState,
 } from "./threadActionMenu.logic";
 
@@ -14,6 +16,9 @@ const baseState: ThreadActionMenuState = {
   isSettled: false,
   autoSettleEnabled: true,
   isSnoozed: false,
+  isHidden: false,
+  groupName: null,
+  groupNames: [],
   canSnoozeNow: true,
   isRegeneratingTitle: false,
   isRunning: false,
@@ -22,6 +27,8 @@ const baseState: ThreadActionMenuState = {
     autoSettleOptOut: true,
     snooze: true,
     pinning: true,
+    hiding: true,
+    groups: true,
     titleRegeneration: true,
   },
   snoozePresets: [
@@ -49,6 +56,8 @@ describe("buildThreadActionMenuItems", () => {
           autoSettleOptOut: false,
           snooze: false,
           pinning: false,
+          hiding: false,
+          groups: false,
           titleRegeneration: false,
         },
       }),
@@ -61,6 +70,30 @@ describe("buildThreadActionMenuItems", () => {
       "project-settings",
       "archive",
       "delete",
+    ]);
+  });
+
+  it("offers Hide on a visible thread and Unhide on a hidden one", () => {
+    expect(ids(baseState)).toContain("hide");
+    expect(ids(baseState)).not.toContain("unhide");
+    expect(ids({ ...baseState, isHidden: true })).toContain("unhide");
+    expect(ids({ ...baseState, isHidden: true })).not.toContain("hide");
+  });
+
+  it("offers existing groups, a new group, and leaving the current one", () => {
+    const groupIds = (state: ThreadActionMenuState) =>
+      buildThreadActionMenuItems(state)
+        .find((item) => item.id === "move-to-group")
+        ?.children?.map((item) => item.id);
+    expect(groupIds({ ...baseState, groupNames: ["Later", "Research"] })).toEqual([
+      "move-to-group:name:Later",
+      "move-to-group:name:Research",
+      "move-to-group:new",
+    ]);
+    expect(groupIds({ ...baseState, groupName: "Later", groupNames: ["Later"] })).toEqual([
+      "move-to-group:name:Later",
+      "move-to-group:new",
+      "move-to-group:remove",
     ]);
   });
 
@@ -179,6 +212,8 @@ describe("buildThreadActionMenuItems", () => {
           autoSettleOptOut: false,
           snooze: false,
           pinning: false,
+          hiding: false,
+          groups: false,
           titleRegeneration: false,
         },
       }),
@@ -211,5 +246,33 @@ describe("buildDraftActionMenuItems", () => {
     const items = buildDraftActionMenuItems({ hasPath: true, hasBranch: false, hasProject: false });
     expect(items.map((item) => item.id)).toEqual(["copy", "discard"]);
     expect(items.at(-1)).toMatchObject({ label: "Discard draft", destructive: true });
+  });
+});
+
+describe("thread groups", () => {
+  it("lists saved groups even with no threads in them", () => {
+    expect(collectThreadGroupNames([{ groupName: "Research" }], ["Later", "Research"])).toEqual([
+      "Later",
+      "Research",
+    ]);
+  });
+
+  it("collects each group name once, sorted", () => {
+    expect(
+      collectThreadGroupNames([
+        { groupName: "Research" },
+        { groupName: null },
+        {},
+        { groupName: "Later" },
+        { groupName: "Research" },
+      ]),
+    ).toEqual(["Later", "Research"]);
+  });
+
+  it("tells a group named new apart from New group", () => {
+    expect(resolveThreadGroupMenuPick("move-to-group:new")).toBe("new");
+    expect(resolveThreadGroupMenuPick("move-to-group:name:new")).toEqual({ groupName: "new" });
+    expect(resolveThreadGroupMenuPick("move-to-group:remove")).toEqual({ groupName: null });
+    expect(resolveThreadGroupMenuPick("rename")).toBeUndefined();
   });
 });

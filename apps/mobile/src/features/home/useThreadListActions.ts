@@ -29,6 +29,8 @@ import {
 import { getThreadListV2OrderedSection } from "../threads/threadListV2";
 import { threadCanArchive } from "./threadArchive";
 import { resolveThreadTitleRename } from "../threads/thread-title-rename";
+import { requestThreadGroup } from "../threads/ThreadGroupEditor";
+import { useThreadGroups } from "../threads/use-thread-groups";
 
 /** Version skew: never send settle/unsettle to a server that predates them
     (capability defaults false on decode for older servers). */
@@ -66,6 +68,20 @@ function environmentSupportsAutoSettleOptOut(
   return (
     appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
       .threadAutoSettleOptOut === true
+  );
+}
+
+function environmentSupportsHiding(environmentId: EnvironmentThreadShell["environmentId"]) {
+  return (
+    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
+      .threadHiding === true
+  );
+}
+
+function environmentSupportsGroups(environmentId: EnvironmentThreadShell["environmentId"]) {
+  return (
+    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
+      .threadGroups === true
   );
 }
 
@@ -248,6 +264,21 @@ export function useThreadListActions(): {
     thread: EnvironmentThreadShell,
     enabled: boolean,
   ) => Promise<boolean>;
+  /** Hides the thread from the main sections, or brings it back. */
+  readonly setThreadHidden: (thread: EnvironmentThreadShell, hidden: boolean) => Promise<boolean>;
+  /** Moves the thread into a named group, or out of its group with null. */
+  readonly setThreadGroup: (
+    thread: EnvironmentThreadShell,
+    groupName: string | null,
+  ) => Promise<boolean>;
+  /** Asks for a new group's name and look, registers it, then moves the thread into it. */
+  readonly moveThreadToNewGroup: (thread: EnvironmentThreadShell) => Promise<void>;
+  /** Asks for a new group and registers it without moving any thread. */
+  readonly createThreadGroup: () => Promise<void>;
+  /** Edits, renames or deletes a group; resolves the rename (`to` null on delete). */
+  readonly editThreadGroup: (
+    name: string,
+  ) => Promise<{ readonly from: string; readonly to: string | null } | null>;
   readonly moveThread: (
     thread: EnvironmentThreadShell,
     direction: ThreadMoveDestination,
@@ -261,6 +292,12 @@ export function useThreadListActions(): {
   const pinMutation = useAtomCommand(threadEnvironment.pin, { reportFailure: false });
   const unpinMutation = useAtomCommand(threadEnvironment.unpin, { reportFailure: false });
   const setAutoSettleMutation = useAtomCommand(threadEnvironment.setAutoSettle, {
+    reportFailure: false,
+  });
+  const setHiddenMutation = useAtomCommand(threadEnvironment.setHidden, {
+    reportFailure: false,
+  });
+  const setGroupMutation = useAtomCommand(threadEnvironment.setGroup, {
     reportFailure: false,
   });
   const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
@@ -476,6 +513,124 @@ export function useThreadListActions(): {
       return true;
     },
     [setAutoSettleMutation],
+  );
+  const setThreadHidden = useCallback(
+    async (thread: EnvironmentThreadShell, hidden: boolean) => {
+      const title = hidden ? "Could not hide thread" : "Could not unhide thread";
+      if (!environmentSupportsHiding(thread.environmentId)) {
+        Alert.alert(
+          title,
+          "This environment's server does not support hiding threads yet. Update the server to use it.",
+        );
+        return false;
+      }
+      selectionHaptic();
+      const result = await setHiddenMutation({
+        environmentId: thread.environmentId,
+        input: { threadId: thread.id, hidden },
+      });
+      if (result._tag === "Failure") {
+        const error = Cause.squash(result.cause);
+        Alert.alert(
+          title,
+          error instanceof Error && error.message.trim().length > 0
+            ? error.message
+            : "The thread could not be updated.",
+        );
+        return false;
+      }
+      return true;
+    },
+    [setHiddenMutation],
+  );
+  const setThreadGroup = useCallback(
+    async (thread: EnvironmentThreadShell, groupName: string | null) => {
+      if (!environmentSupportsGroups(thread.environmentId)) {
+        Alert.alert(
+          "Could not move thread",
+          "This environment's server does not support thread groups yet. Update the server to use them.",
+        );
+        return false;
+      }
+      selectionHaptic();
+      const result = await setGroupMutation({
+        environmentId: thread.environmentId,
+        input: { threadId: thread.id, groupName },
+      });
+      if (result._tag === "Failure") {
+        const error = Cause.squash(result.cause);
+        Alert.alert(
+          "Could not move thread",
+          error instanceof Error && error.message.trim().length > 0
+            ? error.message
+            : "The thread's group could not be changed.",
+        );
+        return false;
+      }
+      return true;
+    },
+    [setGroupMutation],
+  );
+  const { groups, setGroup } = useThreadGroups();
+  // "New group…" always registers the group, even unstyled, then moves the thread.
+  const moveThreadToNewGroup = useCallback(
+    async (thread: EnvironmentThreadShell) => {
+      const result = await requestThreadGroup(null);
+      if (result === null || result === "delete") return;
+      setGroup({ name: result.name, group: result.style });
+      await setThreadGroup(thread, result.name);
+    },
+    [setGroup, setThreadGroup],
+  );
+  const createThreadGroup = useCallback(async () => {
+    const result = await requestThreadGroup(null);
+    if (result === null || result === "delete") return;
+    setGroup({ name: result.name, group: result.style });
+  }, [setGroup]);
+  /** Moves every thread in `from` (on capable environments) to `to`, or out of groups. */
+  const moveGroupThreads = useCallback(
+    async (from: string, to: string | null) => {
+      const members = appAtomRegistry
+        .get(environmentThreadShells.threadShellsAtom)
+        .filter(
+          (shell) => shell.groupName === from && environmentSupportsGroups(shell.environmentId),
+        );
+      const results = await Promise.all(
+        members.map((shell) =>
+          setGroupMutation({
+            environmentId: shell.environmentId,
+            input: { threadId: shell.id, groupName: to },
+          }),
+        ),
+      );
+      const failure = results.find((result) => result._tag === "Failure");
+      if (failure?._tag === "Failure") {
+        const error = Cause.squash(failure.cause);
+        Alert.alert(
+          "Could not update group",
+          error instanceof Error && error.message.trim().length > 0
+            ? error.message
+            : "Some threads could not be moved.",
+        );
+      }
+    },
+    [setGroupMutation],
+  );
+  const editThreadGroup = useCallback(
+    async (name: string) => {
+      const result = await requestThreadGroup({ name, style: groups[name] ?? {} });
+      if (result === null) return null;
+      if (result === "delete") {
+        setGroup({ name, group: null });
+        await moveGroupThreads(name, null);
+        return { from: name, to: null };
+      }
+      // A rename keeps the group's look under its new key.
+      setGroup({ from: name, name: result.name, group: result.style });
+      if (result.name !== name) await moveGroupThreads(name, result.name);
+      return { from: name, to: result.name };
+    },
+    [groups, moveGroupThreads, setGroup],
   );
   const regenerateThreadTitle = useCallback(
     async (thread: EnvironmentThreadShell) => {
@@ -741,6 +896,11 @@ export function useThreadListActions(): {
     pinThread,
     unpinThread,
     setThreadAutoSettle,
+    setThreadHidden,
+    setThreadGroup,
+    moveThreadToNewGroup,
+    createThreadGroup,
+    editThreadGroup,
     moveThread,
     renameThread,
     regenerateThreadTitle,
