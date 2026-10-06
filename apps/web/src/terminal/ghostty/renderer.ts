@@ -98,10 +98,16 @@ function fontForCell(cell: GhosttyCell, fontSize: number, fontFamily: string): s
   return `${style} ${weight} ${fontSize}px ${fontFamily}`;
 }
 
+/**
+ * `lineHeight` is a multiple of the font size, like CSS `line-height`. The
+ * face's line box is centred in the row, as xterm.js does, so text without
+ * descenders sits in the middle instead of riding high.
+ */
 export function measureGhosttyCell(
   context: CanvasRenderingContext2D,
   fontSize: number,
   fontFamily: string,
+  lineHeight = 1.35,
 ): GhosttyCellMetrics {
   context.font = `normal 400 ${fontSize}px ${fontFamily}`;
   const widthMeasurement = context.measureText("M");
@@ -109,11 +115,17 @@ export function measureGhosttyCell(
   const ascent = verticalMeasurement.actualBoundingBoxAscent || fontSize;
   const descent = verticalMeasurement.actualBoundingBoxDescent;
   const glyphHeight = ascent + descent;
-  const height = Math.max(1, Math.round(fontSize * 1.35), Math.ceil(glyphHeight));
+  const height = Math.max(1, Math.round(fontSize * lineHeight), Math.ceil(glyphHeight));
+  const fontAscent = verticalMeasurement.fontBoundingBoxAscent;
+  const fontDescent = verticalMeasurement.fontBoundingBoxDescent;
+  const baseline =
+    fontAscent > 0 && fontDescent >= 0
+      ? (height - fontAscent - fontDescent) / 2 + fontAscent
+      : (height - glyphHeight) / 2 + ascent;
   return {
     width: Math.max(1, widthMeasurement.width),
     height,
-    baseline: Math.round((height - glyphHeight) / 2 + ascent),
+    baseline: Math.round(baseline),
   };
 }
 

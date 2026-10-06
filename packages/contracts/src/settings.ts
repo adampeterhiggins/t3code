@@ -178,6 +178,14 @@ export const TerminalFontSize = Schema.Int.check(
 );
 export type TerminalFontSize = typeof TerminalFontSize.Type;
 const DEFAULT_TERMINAL_FONT_SIZE: TerminalFontSize = 12;
+/** Terminal row height as a percentage of its font size: 135 is CSS `line-height: 1.35`. */
+export const MIN_TERMINAL_LINE_HEIGHT = 100;
+export const MAX_TERMINAL_LINE_HEIGHT = 200;
+export const TerminalLineHeight = Schema.Int.check(
+  Schema.isBetween({ minimum: MIN_TERMINAL_LINE_HEIGHT, maximum: MAX_TERMINAL_LINE_HEIGHT }),
+);
+export type TerminalLineHeight = typeof TerminalLineHeight.Type;
+const DEFAULT_TERMINAL_LINE_HEIGHT: TerminalLineHeight = 135;
 
 export const EnvironmentIdentificationMode = Schema.Literals(["artwork", "pill", "none"]);
 export type EnvironmentIdentificationMode = typeof EnvironmentIdentificationMode.Type;
@@ -435,6 +443,9 @@ export const ClientSettingsSchema = Schema.Struct({
   fontFamilyTerminal: FontFamilyPreference.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   terminalCursorStyle: TerminalCursorStyle.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_TERMINAL_CURSOR_STYLE)),
+  ),
+  terminalLineHeight: TerminalLineHeight.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_TERMINAL_LINE_HEIGHT)),
   ),
   // Grayscale `-webkit-font-smoothing: antialiased` (thinner strokes);
   // disabling restores the platform's heavier default. No effect off macOS.
@@ -2024,6 +2035,7 @@ export const ClientSettingsPatch = Schema.Struct({
   fontFamilySans: Schema.optionalKey(FontFamilyPreference),
   fontFamilyTerminal: Schema.optionalKey(FontFamilyPreference),
   terminalCursorStyle: Schema.optionalKey(TerminalCursorStyle),
+  terminalLineHeight: Schema.optionalKey(TerminalLineHeight),
   fontSmoothing: Schema.optionalKey(Schema.Boolean),
   persistComposerContextStrip: Schema.optionalKey(Schema.Boolean),
   favorites: Schema.optionalKey(

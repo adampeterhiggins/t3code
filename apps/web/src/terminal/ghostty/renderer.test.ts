@@ -57,6 +57,30 @@ describe("measureGhosttyCell", () => {
   });
 });
 
+describe("measureGhosttyCell line height", () => {
+  it("sizes rows by the line height and centres the face's line box in them", () => {
+    // Geist Mono at 14px: a 1.3em line box (ascent 1.005em, descent 0.295em).
+    const context = {
+      font: "",
+      measureText: (text: string) => ({
+        width: text === "M" ? 8.4 : 16.8,
+        actualBoundingBoxAscent: 10,
+        actualBoundingBoxDescent: text === "M" ? 0 : 3,
+        fontBoundingBoxAscent: 14.07,
+        fontBoundingBoxDescent: 4.13,
+      }),
+    } as unknown as CanvasRenderingContext2D;
+
+    expect(measureGhosttyCell(context, 14, "Geist Mono", 1.6)).toEqual({
+      width: 8.4,
+      height: 22,
+      // (22 - 18.2) / 2 + 14.07: equal room above the ascender and below the descender.
+      baseline: 16,
+    });
+    expect(measureGhosttyCell(context, 14, "Geist Mono").height).toBe(19);
+  });
+});
+
 describe("ghosttyTextRunEnd", () => {
   it("includes wide spacer tails in the visual clip without rendering spaces", () => {
     const cells = [
