@@ -851,8 +851,9 @@ describe("sidebar tab order", () => {
     ),
     tab("b", "2026-01-02T00:00:00.000Z", turn("2026-01-09T00:00:00.000Z", null)),
     tab("c", "2026-01-03T00:00:00.000Z"),
+    tab("d", "2026-01-10T00:00:00.000Z"),
   ];
-  const openedAt: Record<string, number> = { a: 3, c: 9 };
+  const openedAt: Record<string, number> = { a: 3, c: 9, d: 12 };
   const sort = (
     order: Parameters<typeof sortSidebarTabs>[1]["order"],
     direction: "desc" | "asc" = "desc",
@@ -867,24 +868,24 @@ describe("sidebar tab order", () => {
     }).map((t) => t.key);
 
   it("orders by creation either way", () => {
-    expect(sort("created_at")).toEqual(["c", "b", "a"]);
-    expect(sort("created_at", "asc")).toEqual(["a", "b", "c"]);
+    expect(sort("created_at")).toEqual(["d", "c", "b", "a"]);
+    expect(sort("created_at", "asc")).toEqual(["a", "b", "c", "d"]);
   });
 
   it("orders by latest response, counting a running turn from when it was sent", () => {
-    expect(sort("latest_response")).toEqual(["b", "a", "c"]);
-    // A tab that never had a turn sorts last in both directions.
-    expect(sort("latest_response", "asc")).toEqual(["a", "b", "c"]);
+    // A tab that never had a turn counts from its creation, so a new tab sorts as the newest.
+    expect(sort("latest_response")).toEqual(["d", "b", "a", "c"]);
+    expect(sort("latest_response", "asc")).toEqual(["c", "a", "b", "d"]);
   });
 
   it("orders by when each tab was last opened here, unopened tabs last", () => {
-    expect(sort("last_opened")).toEqual(["c", "a", "b"]);
-    expect(sort("last_opened", "asc")).toEqual(["a", "c", "b"]);
+    expect(sort("last_opened")).toEqual(["d", "c", "a", "b"]);
+    expect(sort("last_opened", "asc")).toEqual(["a", "c", "d", "b"]);
   });
 
   it("follows dragged ranks in manual order, with undragged tabs after in opening order", () => {
-    expect(sort("manual")).toEqual(["a", "b", "c"]);
-    expect(sort("manual", "desc", { c: 0, a: 1 })).toEqual(["c", "a", "b"]);
+    expect(sort("manual")).toEqual(["a", "b", "c", "d"]);
+    expect(sort("manual", "desc", { c: 0, a: 1 })).toEqual(["c", "a", "b", "d"]);
   });
 
   it("holds the order under the pointer, adding new tabs after it", () => {

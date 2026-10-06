@@ -39,8 +39,8 @@ tab you have open always stays listed. Click a listed tab to switch to it. The s
 last choice, and the command palette and **Settings → General → Tabs in sidebar** set it too.
 
 The same menu, or **Settings → General → Sort tabs by**, orders tabs by latest response, when
-they were created, or when you last opened them, newest or oldest first. These orders update as
-replies arrive, but hold still while your pointer is over the list. Drag a tab to put it where you
+they were created, or when you last opened them, newest or oldest first. A new tab counts as the
+newest, so it lands at the top of a newest-first list. These orders update as replies arrive, but hold still while your pointer is over the list. Drag a tab to put it where you
 want; that switches to **Manual** order, and the notice that appears can undo the switch. Manual
 order is kept in this browser or desktop app.
 
