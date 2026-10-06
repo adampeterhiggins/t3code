@@ -9,7 +9,7 @@ import {
 import { notionPageContextRecord } from "@t3tools/client-runtime/state/notion";
 import { notionEnvironment } from "~/state/notion";
 import { slackThreadContextRecord } from "@t3tools/client-runtime/state/slack";
-import type { ScopedThreadRef, SlackErrorReason } from "@t3tools/contracts";
+import type { PullRequestDetail, ScopedThreadRef, SlackErrorReason } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { useCallback } from "react";
 
@@ -18,6 +18,7 @@ import { useIssueContextStore } from "~/issueContextStore";
 import { useEnvironmentSettings } from "~/hooks/useSettings";
 import type { ComposerContextReference } from "~/lib/composerContextReferences";
 import { reviewCommentContextReference } from "~/lib/composerContextRecords";
+import { getRenderablePatch } from "~/lib/diffRendering";
 import { resolvePullRequestPreviewTarget } from "~/lib/openPullRequestLink";
 import { useRepositoryContextStore } from "~/repositoryContextStore";
 import { useProjects } from "~/state/entities";
@@ -30,8 +31,10 @@ import { useAtomCommand } from "~/state/use-atom-command";
 import { useAtomQueryRunner } from "~/state/use-atom-query-runner";
 import {
   buildPullRequestCommentReferenceContext,
+  buildPullRequestLinesReferenceContext,
   buildPullRequestReferenceContext,
   findPullRequestComment,
+  pullRequestDiffLinesAnchor,
 } from "../pullRequest/pullRequestDetail.logic";
 import { toastManager } from "../ui/toast";
 
@@ -86,6 +89,9 @@ export function useResolveComposerObjectLink(input: {
     reportFailure: false,
   });
   const getPullRequestActivity = useAtomQueryRunner(pullRequestEnvironment.activity, {
+    reportFailure: false,
+  });
+  const getPullRequestDiff = useAtomQueryRunner(pullRequestEnvironment.diff, {
     reportFailure: false,
   });
   const projects = useProjects();
@@ -163,18 +169,45 @@ export function useResolveComposerObjectLink(input: {
             url: link.url,
           });
           if (target === null) return null;
+          const linesAnchor = pullRequestDiffLinesAnchor(link.url);
+          // A link to lines of a file (`#diff-…L4-L14`) attaches those lines, read from the diff
+          // a slice at a time until the file turns up. One the diff cannot show stays a link,
+          // since the whole change would drop exactly what the link pointed at.
+          const findLines = async (detail: PullRequestDetail) => {
+            let cursor: string | null = null;
+            do {
+              const page = await getPullRequestDiff({
+                environmentId: target.environmentId,
+                input: { ...target.input, ...(cursor === null ? {} : { cursor }) },
+              });
+              if (page._tag === "Failure") return null;
+              const parsed = getRenderablePatch(page.value.patch, "pull-request-link");
+              const files = parsed?.kind === "files" ? parsed.sourceFiles : [];
+              if (files.length > 0) {
+                const lines = buildPullRequestLinesReferenceContext(detail, files, link.url);
+                if (lines !== null) return lines;
+              }
+              cursor = page.value.nextCursor;
+            } while (cursor !== null);
+            return null;
+          };
           // A link to one remark (`#issuecomment-1`) attaches that remark, not the whole change.
           const [result, activity] = await Promise.all([
             getPullRequest(target),
-            new URL(link.url).hash.length > 1 ? getPullRequestActivity(target) : null,
+            linesAnchor === null && new URL(link.url).hash.length > 1
+              ? getPullRequestActivity(target)
+              : null,
           ]);
           if (result._tag === "Failure") return null;
           const linked =
             activity?._tag === "Success" ? findPullRequestComment(activity.value, link.url) : null;
           const comment =
-            linked === null
-              ? buildPullRequestReferenceContext(result.value)
-              : buildPullRequestCommentReferenceContext(result.value, linked);
+            linesAnchor !== null
+              ? await findLines(result.value)
+              : linked === null
+                ? buildPullRequestReferenceContext(result.value)
+                : buildPullRequestCommentReferenceContext(result.value, linked);
+          if (comment === null) return null;
           return {
             reference: reviewCommentContextReference(comment),
             commit: () =>
@@ -199,6 +232,7 @@ export function useResolveComposerObjectLink(input: {
       getLinearIssue,
       getPullRequest,
       getPullRequestActivity,
+      getPullRequestDiff,
       getNotionPage,
       getSlackThread,
       projects,
