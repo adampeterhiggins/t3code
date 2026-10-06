@@ -989,6 +989,22 @@ and `OrchestrationV2DelegatedTaskWorkspaceStrategy` in
 [`orchestrationV2.ts`](../packages/contracts/src/orchestrationV2.ts). User guide:
 [agent-access.md](./user/agent-access.md#let-agents-start-threads).
 
+## Agents move their thread between worktrees
+
+Upstream's `t3_worktree_handoff` only moves a thread out of the project checkout into a new
+worktree, and fails once the thread is in one. An agent whose work then belonged on another branch,
+such as a PR into a different base, ran `git worktree add` and prefixed every command with `cd`,
+so T3 neither started commands there nor tracked that checkout's diffs. In the fork the handoff
+also moves a thread that is already in a worktree, and moves it into an existing worktree when
+`branch` is checked out there and `path` names that checkout. Nothing is created or set up for an
+existing worktree unless `runSetupScript` asks, a failed move never removes it, and the worktree
+the thread leaves stays on disk. The agent instructions point at the handoff instead of
+`git worktree add` or `cd`.
+
+Code: `performHandoff` in [`WorktreeMcpService.ts`](../apps/server/src/mcp/WorktreeMcpService.ts),
+the tool in [`toolkits/worktree/tools.ts`](../apps/server/src/mcp/toolkits/worktree/tools.ts), and
+[`T3OrchestrationInstructions.ts`](../apps/server/src/provider/T3OrchestrationInstructions.ts).
+
 ## Attention inbox
 
 On web and desktop, an inbox button appears in the sidebar header while any thread needs you, with
