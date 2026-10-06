@@ -14,7 +14,7 @@ If you approve from another device, Notion redirects to a page that may not load
 
 ## Attach pages
 
-- Paste a `notion.so`, `notion.com`, or `notion.site` page link into the composer on web or desktop. A readable page becomes a chip; an unreadable link stays as text.
+- Paste a `notion.so`, `notion.com`, or `notion.site` page link into the composer on web or desktop. A readable page becomes a chip. A page that isn't shared with your connection stays as text, and a notice offers **Open in Notion**: add the connection from the page's **•••** menu → **Connections**, then choose **Retry** to turn the link into a chip.
 - Choose **Notion page** from the paperclip picker, then search by title or paste a page link.
 - Type `#` and choose the **Notion** tab, which appears once connected.
 - Run **Attach Notion page** from the command palette on web or desktop.

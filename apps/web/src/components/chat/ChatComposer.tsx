@@ -6463,7 +6463,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     const handled = handledObjectLinks();
     for (const { link, index } of links) {
       handled.add(link.url);
-      void resolveComposerObjectLink(link).then((resolved) => {
+      const retry = () => {
+        if (composerDraftTargetKeyRef.current === targetKey) convertObjectLinks([{ link, index }]);
+      };
+      void resolveComposerObjectLink(link, { retry }).then((resolved) => {
         if (resolved === null || composerDraftTargetKeyRef.current !== targetKey) return;
         const prompt = promptRef.current;
         const range = locateComposerObjectLink(prompt, link.url, index);
