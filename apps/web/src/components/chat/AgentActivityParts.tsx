@@ -216,13 +216,12 @@ const ToolCallRow = memo(function ToolCallRow(props: {
         </span>
       ) : null}
       {failed ? <XIcon aria-hidden className="size-3 shrink-0 text-destructive" /> : null}
-      {call.startedAt ? (
-        <span className="shrink-0 font-mono text-2xs tabular-nums text-muted-foreground/70">
-          {formatSecondsTimestamp(call.startedAt, props.timestampFormat)}
-        </span>
-      ) : null}
-      <span className="min-w-9 shrink-0 text-right font-mono text-2xs tabular-nums text-muted-foreground/70">
+      {/* Fixed widths keep the columns aligned; anything wider truncates. */}
+      <span className="w-[7ch] shrink-0 truncate text-right font-mono text-2xs tabular-nums text-muted-foreground/70">
         {toolCallDuration(call)}
+      </span>
+      <span className="min-w-[8ch] shrink-0 text-right font-mono text-2xs tabular-nums text-muted-foreground/70">
+        {call.startedAt ? formatSecondsTimestamp(call.startedAt, props.timestampFormat) : null}
       </span>
       {onActivate ? null : (
         <ChevronRightIcon

@@ -35,6 +35,7 @@ import { useClientSettings } from "~/hooks/useSettings";
 import { useArchivedThreadSnapshots } from "~/lib/archivedThreadsState";
 import { cn } from "~/lib/utils";
 import { useThreadProjection, useThreadShells } from "~/state/entities";
+import { formatSecondsTimestamp } from "~/timestampFormat";
 
 import { AgentElapsed, STATUS_VISUALS, StatusDot } from "../AgentStatus";
 import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
@@ -206,6 +207,7 @@ export function AgentRow(props: {
   const { entry } = row;
   const { agent } = entry;
   const previewActions = useRef<{ close: () => void; unmount: () => void } | null>(null);
+  const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const live = isActiveSubagentStatus(agent.status);
   const failed = agent.status === "failed";
   const open = (toolCallId?: TurnItemId) => {
@@ -252,11 +254,15 @@ export function AgentRow(props: {
           ) : failed ? (
             <XIcon aria-hidden className="size-3 shrink-0 text-destructive" />
           ) : null}
-          <span className="shrink-0 font-mono text-2xs tabular-nums text-muted-foreground/80">
+          {/* Fixed widths keep the columns aligned across rows. */}
+          <span className="w-[5ch] shrink-0 truncate text-right font-mono text-2xs tabular-nums text-muted-foreground/80">
             {agent.usage ? formatSubagentTokenCount(agent.usage.totalTokens) : ""}
           </span>
-          <span className="min-w-12 shrink-0 text-right font-mono text-2xs tabular-nums text-muted-foreground/80">
+          <span className="w-[7ch] shrink-0 truncate text-right font-mono text-2xs tabular-nums text-muted-foreground/80">
             <AgentElapsed agent={agent} />
+          </span>
+          <span className="min-w-[8ch] shrink-0 text-right font-mono text-2xs tabular-nums text-muted-foreground/80">
+            {agent.startedAt ? formatSecondsTimestamp(agent.startedAt, timestampFormat) : null}
           </span>
         </span>
         {live ? (

@@ -147,7 +147,7 @@ thread details panel, one row each, newest first, and removed the right-panel Ag
 **Agents** panel back beside it, both over the child threads:
 
 - **Agents panel.** A right-panel surface with the thread's whole fleet: one line per agent with a
-  status dot, token total, and elapsed time, a second line with a working agent's latest tool call
+  status dot, token total, elapsed time, and start time, a second line with a working agent's latest tool call
   (a static `…` while it runs, a `waiting` badge when the agent waits on the user) or a failed
   agent's error, and hover previews (status, compact model with reasoning effort and `run N`,
   prompt, result or error, the latest five tool calls, usage). Clicking a tool call in a preview
