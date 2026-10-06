@@ -53,6 +53,11 @@ export class ThreadTabs extends Context.Service<
       sourceThreadId: ThreadId,
       input: CreateThreadTabInput,
     ) => Effect.Effect<ThreadTabGroup, ThreadTabsError>;
+    /**
+     * Groups threads that do not exist yet as tabs, in order, under the first. Call it before
+     * writing the threads so clients never see them as standalone rows.
+     */
+    readonly adopt: (threadIds: ReadonlyArray<ThreadId>) => Effect.Effect<void, ThreadTabsError>;
     /** Forks a completed response with the native `thread.fork` into a new tab of the group. */
     readonly fork: (
       threadId: ThreadId,
@@ -192,6 +197,28 @@ export const make = Effect.gen(function* () {
     return yield* group(tabThreadId);
   });
 
+  const adopt: ThreadTabs["Service"]["adopt"] = Effect.fn("ThreadTabs.adopt")(
+    function* (threadIds) {
+      const groupId = threadIds[0];
+      if (groupId === undefined || threadIds.length < 2) return;
+      const createdAt = DateTime.formatIso(yield* DateTime.now);
+      yield* sql
+        .withTransaction(
+          Effect.forEach(
+            threadIds,
+            (threadId, position) => sql`
+            INSERT OR IGNORE INTO fork_thread_tabs (thread_id, group_id, position, created_at)
+            VALUES (${threadId}, ${groupId}, ${position}, ${createdAt})
+          `,
+            { discard: true },
+          ),
+        )
+        .pipe(Effect.mapError(internal("Could not save tab membership.")));
+      yield* linearThreadLinks.refresh;
+      yield* githubIssueThreadLinks.refresh;
+    },
+  );
+
   const newCommandId = (tag: string) =>
     crypto.randomUUIDv4.pipe(
       Effect.map((uuid) => CommandId.make(`server:${tag}:${uuid}`)),
@@ -307,7 +334,7 @@ export const make = Effect.gen(function* () {
     ORDER BY group_id, position, created_at
   `.pipe(Effect.mapError(internal("Could not read tab memberships.")));
 
-  return ThreadTabs.of({ memberships, group, create, fork, handoff });
+  return ThreadTabs.of({ memberships, group, create, adopt, fork, handoff });
 });
 
 export const layer = Layer.effect(ThreadTabs, make);

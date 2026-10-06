@@ -171,6 +171,11 @@ function makeLocalCommandHarness(input: {
   readonly writeFailure?: unknown;
   /** Loads the thread and starts the run, then fails every later state read. */
   readonly failReadsAfterRunning?: boolean;
+  /**
+   * Binds a Claude provider thread to an existing native session that resumes
+   * and starts the run. `marked` records it as an imported session.
+   */
+  readonly existingClaudeSession?: { readonly marked: boolean };
 }) {
   const now = DateTime.makeUnsafe("2026-09-04T12:00:00Z");
   const threadId = ThreadId.make("thread-native-account-command");
@@ -342,6 +347,25 @@ function makeLocalCommandHarness(input: {
     checkpoints: [],
     updatedAt: now,
   };
+  if (input.existingClaudeSession !== undefined) {
+    const driver = ProviderDriverKind.make("claudeAgent");
+    const nativeId = "imported-claude-session";
+    projection = {
+      ...projection,
+      providerThreads: projection.providerThreads.map((candidate) =>
+        candidate.id === providerThreadId
+          ? {
+              ...candidate,
+              driver,
+              nativeThreadRef: { driver, nativeId, strength: "strong" as const },
+              ...(input.existingClaudeSession?.marked === true
+                ? { nativeMetadata: { importedNativeId: nativeId } }
+                : {}),
+            }
+          : candidate,
+      ),
+    };
+  }
   if ("historyReadFailureAfterFallback" in input) {
     const nativeThreadRef = {
       driver: providerThread.driver,
@@ -393,6 +417,18 @@ function makeLocalCommandHarness(input: {
       ),
     ensureThread: () => Effect.succeed(providerThread),
   };
+  const readyProviderSession = (driver: ProviderDriverKind) => ({
+    id: providerSessionId,
+    driver,
+    providerInstanceId: newInstanceId,
+    status: "ready",
+    cwd: "/tmp/native-account-command",
+    model: null,
+    capabilities: CodexProviderCapabilitiesV2,
+    createdAt: now,
+    updatedAt: now,
+    lastError: null,
+  });
   const open = vi.fn(() =>
     input.interruptOpen === true
       ? Effect.interrupt
@@ -414,29 +450,29 @@ function makeLocalCommandHarness(input: {
                   ),
                 ),
               )
-            : input.failReadsAfterRunning === true
-              ? Effect.succeed({
-                  driver: providerThread.driver,
-                  providerSession: {
-                    id: providerSessionId,
+            : input.existingClaudeSession !== undefined
+              ? Effect.sync(() => {
+                  const existing = projection.providerThreads.find(
+                    (candidate) => candidate.id === providerThreadId,
+                  )!;
+                  return {
+                    driver: existing.driver,
+                    providerSession: readyProviderSession(existing.driver),
+                    resumeThread: () => Effect.succeed(existing),
+                  } as never;
+                })
+              : input.failReadsAfterRunning === true
+                ? Effect.succeed({
                     driver: providerThread.driver,
-                    providerInstanceId: newInstanceId,
-                    status: "ready",
-                    cwd: "/tmp/native-account-command",
-                    model: null,
-                    capabilities: CodexProviderCapabilitiesV2,
-                    createdAt: now,
-                    updatedAt: now,
-                    lastError: null,
-                  },
-                  ensureThread: () => Effect.succeed(providerThread),
-                } as never)
-              : Effect.die("A local command must not open a native session."),
+                    providerSession: readyProviderSession(providerThread.driver),
+                    ensureThread: () => Effect.succeed(providerThread),
+                  } as never)
+                : Effect.die("A local command must not open a native session."),
   );
   const startRootRun = vi.fn<
     (input: RunExecutionService.RunExecutionServiceV2StartRootRunInput) => Effect.Effect<void>
   >(() =>
-    input.failReadsAfterRunning === true
+    input.failReadsAfterRunning === true || input.existingClaudeSession !== undefined
       ? Effect.void
       : Effect.die("A local command must not start a native turn."),
   );
@@ -753,6 +789,31 @@ effectIt.effect("does not mistake a failed state read for a superseded run", () 
     const finalizeCheck = yield* Effect.flip(controls.shouldFinalizeRun!());
     expect(startCheck._tag).toBe("ProjectionStoreReadError");
     expect(finalizeCheck._tag).toBe("ProjectionStoreReadError");
+  }),
+);
+
+effectIt.effect("resumes an imported native session on its first T3 turn", () =>
+  Effect.gen(function* () {
+    const firstTurnFor = (marked: boolean) =>
+      Effect.gen(function* () {
+        const harness = makeLocalCommandHarness({
+          text: "Continue",
+          existingClaudeSession: { marked },
+        });
+        yield* harness.start;
+        expect(harness.startRootRun).toHaveBeenCalledOnce();
+        return harness.startRootRun.mock.calls[0]![0];
+      });
+
+    // Claude creates the session on a first turn without prior native turns,
+    // which the CLI rejects for an imported session id that already exists.
+    const imported = yield* firstTurnFor(true);
+    expect(imported.providerTurnOrdinal).toBe(1);
+    expect(imported.nativeThreadHasTurns).toBe(true);
+
+    const unmarked = yield* firstTurnFor(false);
+    expect(unmarked.providerTurnOrdinal).toBe(1);
+    expect(unmarked.nativeThreadHasTurns).toBe(false);
   }),
 );
 

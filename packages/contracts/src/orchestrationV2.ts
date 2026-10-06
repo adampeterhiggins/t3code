@@ -884,6 +884,8 @@ export const OrchestrationV2ProviderThreadNativeMetadata = Schema.Struct({
   updatedAt: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   /** Version 2 scopes provider-derived item ids by provider instance. */
   itemIdentityVersion: Schema.optional(Schema.Literal(2)),
+  /** A native session that already had turns when T3 imported it, so T3 resumes it. */
+  importedNativeId: Schema.optional(TrimmedNonEmptyString),
 });
 export type OrchestrationV2ProviderThreadNativeMetadata =
   typeof OrchestrationV2ProviderThreadNativeMetadata.Type;

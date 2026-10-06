@@ -138,6 +138,13 @@ import {
   AgentSessionScanError,
 } from "./agentSessions.ts";
 import {
+  ConductorImportError,
+  ConductorWorkspaceImportInput,
+  ConductorWorkspaceImportResult,
+  ConductorWorkspaceListInput,
+  ConductorWorkspaceListResult,
+} from "./conductor.ts";
+import {
   AssetAccessError,
   AssetCreateUrlInput,
   AssetCreateUrlResult,
@@ -424,6 +431,8 @@ export const WS_METHODS = {
   agentSessionsScan: "agentSessions.scan",
   agentSessionsImport: "agentSessions.import",
   agentSessionsList: "agentSessions.list",
+  conductorListWorkspaces: "conductor.listWorkspaces",
+  conductorImportWorkspace: "conductor.importWorkspace",
   assetsCreateUrl: "assets.createUrl",
   assetsPersistChatAttachments: "assets.persistChatAttachments",
   attachmentsCreateUploadUrl: "attachments.createUploadUrl",
@@ -1559,6 +1568,18 @@ const WsAgentSessionsImportRpc = Rpc.make(WS_METHODS.agentSessionsImport, {
   ]),
 });
 
+const WsConductorListWorkspacesRpc = Rpc.make(WS_METHODS.conductorListWorkspaces, {
+  payload: ConductorWorkspaceListInput,
+  success: ConductorWorkspaceListResult,
+  error: Schema.Union([ConductorImportError, EnvironmentAuthorizationError]),
+});
+
+const WsConductorImportWorkspaceRpc = Rpc.make(WS_METHODS.conductorImportWorkspace, {
+  payload: ConductorWorkspaceImportInput,
+  success: ConductorWorkspaceImportResult,
+  error: Schema.Union([ConductorImportError, EnvironmentAuthorizationError]),
+});
+
 const WsAgentSessionsListRpc = Rpc.make(WS_METHODS.agentSessionsList, {
   payload: AgentSessionListInput,
   success: AgentSessionListResult,
@@ -2243,6 +2264,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsAgentSessionsScanRpc,
   WsAgentSessionsImportRpc,
   WsAgentSessionsListRpc,
+  WsConductorListWorkspacesRpc,
+  WsConductorImportWorkspaceRpc,
   WsAssetsCreateUrlRpc,
   WsAssetsPersistChatAttachmentsRpc,
   WsAttachmentsCreateUploadUrlRpc,

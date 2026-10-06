@@ -34,3 +34,16 @@ export const agentSessionImport = createEnvironmentRpcCommand(connectionAtomRunt
   label: "environment-data:agent-sessions:import",
   tag: WS_METHODS.agentSessionsImport,
 });
+
+/** Active Conductor workspaces of a project's repository, for the import picker. */
+export const conductorWorkspaceList = createEnvironmentRpcQueryAtomFamily(connectionAtomRuntime, {
+  label: "environment-data:conductor:workspaces",
+  tag: WS_METHODS.conductorListWorkspaces,
+  staleTimeMs: 30_000,
+  idleTtlMs: 5 * 60_000,
+});
+
+export const conductorWorkspaceImport = createEnvironmentRpcCommand(connectionAtomRuntime, {
+  label: "environment-data:conductor:import-workspace",
+  tag: WS_METHODS.conductorImportWorkspace,
+});

@@ -390,6 +390,23 @@ export const GrokIcon: Icon = ({ className, ...props }) => (
   </svg>
 );
 
+/** Conductor's block "C" mark, traced from its app icon on a square viewBox. */
+export const ConductorIcon: Icon = ({ className, ...props }) => (
+  <svg
+    {...props}
+    viewBox="93 93 326 326"
+    className={cn("fill-[#0F0F0F] dark:fill-[#F5F5F5]", className)}
+  >
+    <rect x="188" y="93" width="171" height="51" rx="4" />
+    <rect x="153" y="162" width="68" height="51" rx="4" />
+    <rect x="291" y="162" width="68" height="51" rx="4" />
+    <rect x="153" y="231" width="68" height="51" rx="4" />
+    <rect x="153" y="299" width="68" height="51" rx="4" />
+    <rect x="291" y="299" width="68" height="51" rx="4" />
+    <rect x="188" y="368" width="137" height="51" rx="4" />
+  </svg>
+);
+
 export const TraeIcon: Icon = (props) => (
   <svg {...props} viewBox="0 0 24 24" fill="currentColor">
     {/* Back rectangle: left strip + bottom strip drawn separately — empty bottom-left corner is the gap between them */}

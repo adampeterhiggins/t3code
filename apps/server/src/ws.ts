@@ -261,6 +261,7 @@ import {
   withUsageLimitsCommands,
 } from "@t3tools/shared/usageLimits";
 import * as AgentSessionScanner from "./project/AgentSessionScanner.ts";
+import * as ConductorImporter from "./conductor/ConductorImporter.ts";
 import * as AgentSessionImporter from "./project/AgentSessionImporter.ts";
 import * as UsageLimitSources from "./usage/UsageLimitSources.ts";
 
@@ -1304,6 +1305,7 @@ const layerWsRpc = (
         yield* RepositoryIdentityResolver.RepositoryIdentityResolver;
       const agentSessionScanner = yield* AgentSessionScanner.AgentSessionScanner;
       const agentSessionImporter = yield* AgentSessionImporter.AgentSessionImporter;
+      const conductorImporter = yield* ConductorImporter.ConductorImporter;
       const checkpointDiffQuery = yield* CheckpointDiffQuery.CheckpointDiffQuery;
       const keybindings = yield* Keybindings.Keybindings;
       const environmentTheme = yield* EnvironmentTheme.EnvironmentThemeService;
@@ -3436,6 +3438,18 @@ const layerWsRpc = (
           observeRpcEffect(
             WS_METHODS.agentSessionsList,
             agentSessionImporter.listProjectAgentSessions(input),
+            { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.conductorListWorkspaces]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.conductorListWorkspaces,
+            conductorImporter.listWorkspaces(input),
+            { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.conductorImportWorkspace]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.conductorImportWorkspace,
+            conductorImporter.importWorkspace(input),
             { "rpc.aggregate": "workspace" },
           ),
         [WS_METHODS.assetsCreateUrl]: (input) =>

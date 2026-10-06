@@ -19,6 +19,7 @@ import {
   type AgentSessionListInput,
   type AgentSessionListResult,
   type AgentSessionSummary,
+  type ChatAttachment,
   type OrchestrationV2AppThread,
   type OrchestrationV2ConversationMessage,
   type OrchestrationV2DomainEvent,
@@ -115,11 +116,15 @@ function dateTime(value: string): DateTime.Utc {
   return DateTime.makeUnsafe(value);
 }
 
-function messageEvents(input: {
+/** Events that place one imported message in a thread's history, outside any run. */
+export function messageEvents(input: {
   readonly threadId: ThreadId;
   readonly index: number;
   readonly message: AgentSessionScanner.AgentSessionThreadMessage;
+  /** Files already persisted in the attachment store; user messages only. */
+  readonly attachments?: ReadonlyArray<ChatAttachment>;
 }): ReadonlyArray<OrchestrationV2DomainEvent> {
+  const attachments = input.message.role === "user" ? (input.attachments ?? []) : [];
   const ordinal = input.index + 1;
   const suffix = String(input.index).padStart(6, "0");
   const messageId = MessageId.make(`${input.threadId}:${suffix}`);
@@ -136,7 +141,7 @@ function messageEvents(input: {
     nodeId: null,
     role: input.message.role,
     text: input.message.text,
-    attachments: [],
+    attachments,
     streaming: false,
     createdAt: at,
     updatedAt: at,
@@ -167,7 +172,7 @@ function messageEvents(input: {
           messageId,
           inputIntent: "turn_start",
           text: input.message.text,
-          attachments: [],
+          attachments,
         }
       : {
           ...common,
@@ -358,6 +363,7 @@ const make = Effect.gen(function* () {
               strength: "strong",
             },
             nativeConversationHeadRef: null,
+            nativeMetadata: { importedNativeId: thread.providerSessionId },
             status: "idle",
             firstRunOrdinal: null,
             lastRunOrdinal: null,

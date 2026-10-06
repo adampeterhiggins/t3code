@@ -753,8 +753,9 @@ Code: [`threadTranscript.ts`](../apps/web/src/lib/threadTranscript.ts),
 ## Import a CLI conversation
 
 Upstream imports recent Claude Code and Codex history only in bulk, from the welcome wizard. The
-fork adds a per-project picker on web and desktop: **Import conversation into …** in the command
-palette, and **Import conversation…** in the legacy sidebar's project menu. `agentSessions.list`
+fork adds a picker on web and desktop: **Import conversation…** in the command palette, which
+lists every project, and in the legacy sidebar's project menu, which starts on that project. Its
+**Filters** menu narrows the list to one project or one source. `agentSessions.list`
 returns the project's conversations from the last 30 days (newest 50, with first prompt, message
 count, and dates, and `truncated` when there are more). Each is marked with the thread already
 holding it, so the picker opens that thread instead: an earlier import, found by upstream's
@@ -771,6 +772,36 @@ Code: `listProjectAgentSessions` in
 `recentThreads` options in [`AgentSessionScanner.ts`](../apps/server/src/project/AgentSessionScanner.ts),
 and [`ImportConversationDialog.tsx`](../apps/web/src/components/ImportConversationDialog.tsx).
 User guide: [thread-sidebar.md](./user/thread-sidebar.md#import-a-cli-conversation).
+
+## Import a Conductor workspace
+
+The import picker also lists the project's active Conductor (`conductor.build`) workspaces: those
+whose Conductor repository has the project's root or `origin` remote, whose worktree still exists,
+and that have at least one sent prompt. Importing one turns each open tab into a thread on the
+workspace's branch and worktree, grouped as [chat tabs](#chat-tabs), with the workspace's pin on
+the first tab. The threads land active, as if un-settled, because the workspace is still in use. History comes from Conductor's own database, read-only, so it matches what Conductor
+showed: prompts and reply text, without tool activity. Images and files sent with a prompt are
+copied into T3's attachment store from the workspace's `.context/attachments`; Conductor deletes
+some of those, so a missing one is named in the message instead. Diff comments sent to the agent
+appear in their prompt as quoted review comments. Claude Code and Codex tabs bind to their agent
+session and resume it. Conductor keeps Cursor sessions in a private store, so a Cursor tab's
+history is handed to its next turn instead. Thread ids are `conductor:<session>`, so the picker
+opens an earlier import. Only macOS hosts have the database; mobile has no import.
+
+Some workspace state stays where it is. Notes (`.context/notes.md`, `todos.md`) are files in the
+worktree the threads run in. Pull request review comments, which make up almost all of Conductor's
+diff comments, come from the pull request T3 finds for the branch. Conductor encrypts terminal
+scrollback, so terminal history is not imported, and neither are unsent diff comments or archived
+workspaces.
+
+Imported Claude sessions resume on their first turn because the provider thread records
+`nativeMetadata.importedNativeId`; Claude rejects a new session under an id that already exists.
+
+Code: [`ConductorImporter.ts`](../apps/server/src/conductor/ConductorImporter.ts),
+[`conductorDatabase.ts`](../apps/server/src/conductor/conductorDatabase.ts), `adopt` in
+[`ThreadTabs.ts`](../apps/server/src/threadTabs/ThreadTabs.ts), and
+[`ImportConversationDialog.tsx`](../apps/web/src/components/ImportConversationDialog.tsx).
+User guide: [thread-sidebar.md](./user/thread-sidebar.md#import-a-conductor-workspace).
 
 ## Attach repositories as context
 

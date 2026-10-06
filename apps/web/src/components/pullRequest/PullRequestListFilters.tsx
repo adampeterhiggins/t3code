@@ -225,7 +225,8 @@ function PullRequestFilterRadioGroup<Value extends string>({
   );
 }
 
-function PullRequestFilterRadioSubmenu<Value extends string>({
+/** A filter row showing its current value, opening a radio list of the options. */
+export function PullRequestFilterRadioSubmenu<Value extends string>({
   label,
   value,
   options,
