@@ -6513,6 +6513,36 @@ describe("ClaudeAdapterV2 background wake turns", () => {
               uuid: input.uuid,
               session_id: WAKE_NATIVE_SESSION,
             });
+          const subagentCallFrame = (input: {
+            readonly parentToolUseId: string;
+            readonly messageId: string;
+            readonly uuid: string;
+            readonly usage: {
+              readonly input: number;
+              readonly cacheCreation: number;
+              readonly cacheRead: number;
+              readonly output: number;
+            };
+          }) =>
+            claudeSdkFrame({
+              type: "assistant",
+              message: {
+                model: "claude-sonnet-4-6",
+                id: input.messageId,
+                type: "message",
+                role: "assistant",
+                content: [{ type: "text", text: "Reading." }],
+                usage: {
+                  input_tokens: input.usage.input,
+                  cache_creation_input_tokens: input.usage.cacheCreation,
+                  cache_read_input_tokens: input.usage.cacheRead,
+                  output_tokens: input.usage.output,
+                },
+              },
+              parent_tool_use_id: input.parentToolUseId,
+              uuid: input.uuid,
+              session_id: WAKE_NATIVE_SESSION,
+            });
           const frames = [
             claudeSdkFrame({
               ...makeSubagentTaskStartedFrame({
@@ -6528,6 +6558,27 @@ describe("ClaudeAdapterV2 background wake turns", () => {
               toolUses: 2,
               durationMs: 3_400.6,
               uuid: "00000000-0000-4000-8000-000000000362",
+            }),
+            // The SDK's total is only the latest call, so tokens are summed
+            // from the subagent's own calls. Each content block's snapshot
+            // repeats its call's usage; the last one is final.
+            subagentCallFrame({
+              parentToolUseId: TOOL_USE_ID,
+              messageId: "msg_usage_a",
+              uuid: "00000000-0000-4000-8000-000000000367",
+              usage: { input: 10, cacheCreation: 190, cacheRead: 2_000, output: 1 },
+            }),
+            subagentCallFrame({
+              parentToolUseId: TOOL_USE_ID,
+              messageId: "msg_usage_a",
+              uuid: "00000000-0000-4000-8000-000000000368",
+              usage: { input: 10, cacheCreation: 190, cacheRead: 2_000, output: 300 },
+            }),
+            subagentCallFrame({
+              parentToolUseId: TOOL_USE_ID,
+              messageId: "msg_usage_b",
+              uuid: "00000000-0000-4000-8000-000000000369",
+              usage: { input: 5, cacheCreation: 0, cacheRead: 2_400, output: 100 },
             }),
             // A blank description still carries a usage tick.
             progressFrame({
@@ -6548,7 +6599,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                 ? { usage: { total_tokens: 3_000, tool_uses: 4, duration_ms: 6_000 } }
                 : {}),
             }),
-            // A resume starts a new run whose usage is not yet known.
+            // A resume starts a new run; what the subagent used so far carries over.
             claudeSdkFrame({
               ...makeSubagentTaskStartedFrame({
                 taskId: TASK_ID,
@@ -6557,6 +6608,22 @@ describe("ClaudeAdapterV2 background wake turns", () => {
               }),
               is_backgrounded: false,
               prompt: "Check one more commit.",
+            }),
+            subagentCallFrame({
+              parentToolUseId: "toolu-usage-resume",
+              messageId: "msg_usage_c",
+              uuid: "00000000-0000-4000-8000-000000000370",
+              usage: { input: 1, cacheCreation: 0, cacheRead: 3_000, output: 50 },
+            }),
+            claudeSdkFrame({
+              type: "system",
+              subtype: "task_progress",
+              task_id: TASK_ID,
+              tool_use_id: "toolu-usage-resume",
+              description: "Checking the last commit",
+              usage: { total_tokens: 3_051, tool_uses: 1, duration_ms: 1_000 },
+              uuid: "00000000-0000-4000-8000-000000000371",
+              session_id: WAKE_NATIVE_SESSION,
             }),
             makeResultFrame({
               uuid: "00000000-0000-4000-8000-000000000366",
@@ -6571,7 +6638,18 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           const updates = harness.events.flatMap((event) =>
             event.type === "subagent.updated" ? [event.subagent] : [],
           );
-          const progressUsage = { totalTokens: 2_500, toolUses: 0, durationMs: 5_000 };
+          // Calls a and b: input counts cache reads and writes.
+          const runTokens = {
+            totalTokens: 5_005,
+            inputTokens: 4_605,
+            cachedInputTokens: 4_400,
+            outputTokens: 400,
+          };
+          const progressUsage = { ...runTokens, toolUses: 0, durationMs: 5_000 };
+          const completedUsage =
+            notificationUsage === "with"
+              ? { ...runTokens, toolUses: 4, durationMs: 6_000 }
+              : progressUsage;
           assert.deepEqual(
             updates.map((subagent) => [subagent.status, subagent.progress, subagent.usage]),
             [
@@ -6581,21 +6659,42 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                 "Reading commits",
                 { totalTokens: 1_200, toolUses: 2, durationMs: 3_400 },
               ],
-              ["running", "Reading commits", progressUsage],
+              // The first call's model.
               [
-                "completed",
+                "running",
                 "Reading commits",
-                notificationUsage === "with"
-                  ? { totalTokens: 3_000, toolUses: 4, durationMs: 6_000 }
-                  : progressUsage,
+                { totalTokens: 1_200, toolUses: 2, durationMs: 3_400 },
               ],
-              ["running", undefined, undefined],
+              ["running", "Reading commits", progressUsage],
+              ["completed", "Reading commits", completedUsage],
+              ["running", undefined, completedUsage],
+              // Call c adds to the first run; the SDK counts tool calls and time per run.
+              [
+                "running",
+                "Checking the last commit",
+                {
+                  totalTokens: 8_056,
+                  inputTokens: 7_606,
+                  cachedInputTokens: 7_400,
+                  outputTokens: 450,
+                  toolUses: completedUsage.toolUses + 1,
+                  durationMs: completedUsage.durationMs + 1_000,
+                },
+              ],
             ],
           );
           // The notification names the task's output file; a resume clears it.
           assert.deepEqual(
             updates.map((subagent) => subagent.outputFile),
-            [undefined, undefined, undefined, `/tmp/${TASK_ID}.output`, undefined],
+            [
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              `/tmp/${TASK_ID}.output`,
+              undefined,
+              undefined,
+            ],
           );
         }).pipe(Effect.provide(Layer.merge(IdAllocator.layer, NodeServices.layer))),
       ),

@@ -2100,17 +2100,95 @@ function claudeSubagentResultText(output: ClaudeNativeToolOutput): string {
 const clampClaudeUsageCount = (value: number) =>
   Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
 
-/** Maps the SDK's task_progress/task_notification usage onto a subagent's usage. */
+interface ClaudeSubagentCallUsage {
+  readonly inputTokens: number;
+  readonly cachedInputTokens: number;
+  readonly outputTokens: number;
+}
+
+/**
+ * A Claude subagent's usage over its whole life. The SDK's task usage counts
+ * tool calls and time per run, and its total_tokens is only the latest call,
+ * so tokens are summed from the subagent's own calls instead, matching the
+ * running totals Codex and delegated tasks report. Shared by reference across
+ * copies of the subagent's entry.
+ */
+interface ClaudeSubagentUsageTally {
+  // This run's calls by message id. Each content block's snapshot repeats its
+  // call's usage, and the last one is final.
+  readonly calls: Map<string, ClaudeSubagentCallUsage>;
+  // Everything the subagent's earlier runs used.
+  priorRuns: OrchestrationV2SubagentUsage | undefined;
+}
+
+const makeClaudeSubagentUsageTally = (): ClaudeSubagentUsageTally => ({
+  calls: new Map(),
+  priorRuns: undefined,
+});
+
+/** A resume starts a new run: what the subagent used so far carries over. */
+function startClaudeSubagentRun(
+  tally: ClaudeSubagentUsageTally,
+  usage: OrchestrationV2SubagentUsage | undefined,
+) {
+  if (usage !== undefined) tally.priorRuns = usage;
+  tally.calls.clear();
+}
+
+function recordClaudeSubagentCall(
+  tally: ClaudeSubagentUsageTally,
+  messageId: string,
+  usage: {
+    readonly input_tokens: number;
+    readonly cache_creation_input_tokens?: number | null;
+    readonly cache_read_input_tokens?: number | null;
+    readonly output_tokens: number;
+  },
+) {
+  const cachedInputTokens = clampClaudeUsageCount(usage.cache_read_input_tokens ?? 0);
+  tally.calls.set(messageId, {
+    inputTokens:
+      clampClaudeUsageCount(usage.input_tokens) +
+      clampClaudeUsageCount(usage.cache_creation_input_tokens ?? 0) +
+      cachedInputTokens,
+    cachedInputTokens,
+    outputTokens: clampClaudeUsageCount(usage.output_tokens),
+  });
+}
+
+/**
+ * Joins the SDK's task_progress/task_notification usage to the subagent's
+ * tally. Total follows the subagent convention: input (cache included) plus
+ * output. Before any call is seen, the SDK's own total stands in.
+ */
 function claudeSubagentUsage(
   usage:
     | { readonly total_tokens: number; readonly tool_uses: number; readonly duration_ms: number }
     | undefined,
+  tally: ClaudeSubagentUsageTally | undefined,
 ): OrchestrationV2SubagentUsage | undefined {
   if (usage === undefined) return undefined;
+  const prior = tally?.priorRuns;
+  const toolUses = (prior?.toolUses ?? 0) + clampClaudeUsageCount(usage.tool_uses);
+  const durationMs = (prior?.durationMs ?? 0) + clampClaudeUsageCount(usage.duration_ms);
+  if (tally === undefined || (tally.calls.size === 0 && prior === undefined)) {
+    return { totalTokens: clampClaudeUsageCount(usage.total_tokens), toolUses, durationMs };
+  }
+  let inputTokens = 0;
+  let cachedInputTokens = 0;
+  let outputTokens = 0;
+  for (const call of tally.calls.values()) {
+    inputTokens += call.inputTokens;
+    cachedInputTokens += call.cachedInputTokens;
+    outputTokens += call.outputTokens;
+  }
   return {
-    totalTokens: clampClaudeUsageCount(usage.total_tokens),
-    toolUses: clampClaudeUsageCount(usage.tool_uses),
-    durationMs: clampClaudeUsageCount(usage.duration_ms),
+    totalTokens: (prior?.totalTokens ?? 0) + inputTokens + outputTokens,
+    inputTokens: (prior?.inputTokens ?? 0) + inputTokens,
+    cachedInputTokens: (prior?.cachedInputTokens ?? 0) + cachedInputTokens,
+    outputTokens: (prior?.outputTokens ?? 0) + outputTokens,
+    toolUses,
+    durationMs,
   };
 }
 
@@ -2936,6 +3014,7 @@ interface ActiveClaudeSubagent {
   // message id. A completion result equal to it is already on screen.
   lastAssistantText: string | null;
   lastAssistantMessageId: string | null;
+  readonly usageTally: ClaudeSubagentUsageTally;
 }
 
 interface ClaudeLiveQueryContext {
@@ -4253,6 +4332,7 @@ export function makeClaudeAdapterV2(
             resultItemOrdinal: null,
             lastAssistantText: null,
             lastAssistantMessageId: null,
+            usageTally: makeClaudeSubagentUsageTally(),
           };
           yield* Ref.update(sessionSubagentsByTaskId, (current) =>
             new Map(current).set(resume.taskId, subagent),
@@ -4345,19 +4425,17 @@ export function makeClaudeAdapterV2(
           const turnItemOrdinal =
             existingSubagent?.turnItemOrdinal ??
             (yield* resolveItemOrdinal(input.context, `${nativeItemId}:subagent`));
-          // A resumed subagent's previous final answer, progress, and usage no
-          // longer represent its outcome; the next task_progress/
-          // task_notification carry the new ones.
+          // A resumed subagent's previous final answer and progress no longer
+          // represent its outcome; the next task_progress/task_notification
+          // carry the new ones. Its usage so far carries into the new run.
+          if (isReopen) {
+            startClaudeSubagentRun(existingSubagent.usageTally, existingSubagent.task.usage);
+          }
           const priorTask =
             existingSubagent === undefined
               ? undefined
               : isReopen
-                ? (({
-                    progress: _staleProgress,
-                    usage: _staleUsage,
-                    outputFile: _staleOutputFile,
-                    ...rest
-                  }) => ({
+                ? (({ progress: _staleProgress, outputFile: _staleOutputFile, ...rest }) => ({
                     ...rest,
                     result: null,
                   }))(existingSubagent.task)
@@ -4430,6 +4508,7 @@ export function makeClaudeAdapterV2(
               input.reopen === true ? null : (existingSubagent?.lastAssistantText ?? null),
             lastAssistantMessageId:
               input.reopen === true ? null : (existingSubagent?.lastAssistantMessageId ?? null),
+            usageTally: existingSubagent?.usageTally ?? makeClaudeSubagentUsageTally(),
           } satisfies ActiveClaudeSubagent;
           input.context.subagentsByTaskId.set(input.taskId, subagent);
           if (input.toolUseId !== undefined) {
@@ -4821,6 +4900,17 @@ export function makeClaudeAdapterV2(
               ? undefined
               : (yield* Ref.get(sessionSubagentsByTaskId)).get(taskId);
           return registered ?? context.subagentsByToolUseId.get(toolUseId);
+        });
+
+        /** A task's SDK usage, joined to the breakdown of its subagent's latest call. */
+        const claudeTaskUsage = Effect.fnUntraced(function* (
+          context: ActiveClaudeTurnContext,
+          message: Extract<SDKMessage, { readonly subtype: "task_progress" | "task_notification" }>,
+        ) {
+          const subagent =
+            context.subagentsByTaskId.get(message.task_id) ??
+            (yield* Ref.get(sessionSubagentsByTaskId)).get(message.task_id);
+          return claudeSubagentUsage(message.usage, subagent?.usageTally);
         });
 
         const ensureToolCallStarted = Effect.fnUntraced(function* (input: {
@@ -5464,11 +5554,8 @@ export function makeClaudeAdapterV2(
               if (registered === undefined || registered.task.status === "running") {
                 return current;
               }
-              const {
-                progress: _staleProgress,
-                usage: _staleUsage,
-                ...priorTask
-              } = registered.task;
+              const { progress: _staleProgress, ...priorTask } = registered.task;
+              startClaudeSubagentRun(registered.usageTally, registered.task.usage);
               return new Map(current).set(message.task_id, {
                 ...registered,
                 task: {
@@ -6250,7 +6337,7 @@ export function makeClaudeAdapterV2(
 
           if (message.type === "system" && message.subtype === "task_progress") {
             const progress = message.description.trim();
-            const usage = claudeSubagentUsage(message.usage);
+            const usage = yield* claudeTaskUsage(context, message);
             const isBackgroundTask = yield* hasPendingBackgroundTaskOnNativeThread(
               liveQuery.nativeThreadId,
               message.task_id,
@@ -6316,7 +6403,7 @@ export function makeClaudeAdapterV2(
               activeContext: context,
             });
             if (!wasBackgroundTask && !context.ignoredTaskIds.has(message.task_id)) {
-              const notificationUsage = claudeSubagentUsage(message.usage);
+              const notificationUsage = yield* claudeTaskUsage(context, message);
               const outputFile = trimmedClaudeString(message.output_file);
               yield* updateClaudeSubagentNode({
                 context,
@@ -6484,10 +6571,18 @@ export function makeClaudeAdapterV2(
             const thinking = message.message.content.flatMap((block) =>
               block.type === "thinking" && block.thinking.trim().length > 0 ? [block.thinking] : [],
             );
+            const callUsage = message.message.usage;
             const subagent =
-              thinking.length === 0
+              thinking.length === 0 && callUsage === undefined
                 ? undefined
                 : yield* resolveSubagentByToolUseId(context, assistantParentToolUseId);
+            if (subagent !== undefined && callUsage !== undefined) {
+              recordClaudeSubagentCall(
+                subagent.usageTally,
+                typeof message.message.id === "string" ? message.message.id : message.uuid,
+                callUsage,
+              );
+            }
             if (subagent !== undefined) {
               const now = yield* DateTime.now;
               for (const [index, text] of thinking.entries()) {
