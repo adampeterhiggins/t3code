@@ -27,7 +27,6 @@ import {
   ArrowDownIcon,
   ArrowUpIcon,
   FolderGit2Icon,
-  GitBranchIcon,
   LayersIcon,
   ListFilterIcon,
 } from "lucide-react";
@@ -46,6 +45,7 @@ import { useProjects, useServerConfigs, waitForThreadShell } from "~/state/entit
 import { formatEnvironmentQueryError } from "~/state/query";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { ProviderInstanceIcon } from "./chat/ProviderInstanceIcon";
+import { ConductorIcon } from "./Icons";
 import {
   Dialog,
   DialogDescription,
@@ -263,7 +263,7 @@ const SOURCE_ICON: Record<ImportSource, ElementType<{ className?: string }>> = {
   all: LayersIcon,
   claudeAgent: providerIcon("claudeAgent", "Claude Code"),
   codex: providerIcon("codex", "Codex"),
-  conductor: GitBranchIcon,
+  conductor: ConductorIcon,
 };
 
 const CONDUCTOR_AGENT: Record<ConductorAgent, { driver: ProviderDriverKind; label: string }> = {
