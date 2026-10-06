@@ -3616,8 +3616,9 @@ export default function Sidebar() {
     },
     [isMobile, router, setOpenMobile],
   );
-  // Anchor for the scope popup: the header search field, not its icon trigger.
-  const headerSearchRef = useRef<HTMLDivElement | null>(null);
+  // Anchor for the scope popup. Multiple-select comboboxes otherwise anchor to
+  // their chips, which this picker does not render.
+  const projectScopeTriggerRef = useRef<HTMLButtonElement | null>(null);
   // Safari can send a click after Ctrl+click opens settings. Ignore that one
   // selection, then clear the guard when the picker opens again.
   const suppressNextScopeChangeRef = useRef(false);
@@ -6137,7 +6138,6 @@ export default function Sidebar() {
           // header and would otherwise paint across the search row's outline.
           <SidebarGroup className="z-[1]">
             <SidebarThreadHeader
-              searchFieldRef={headerSearchRef}
               hasProjects={projectGroups.length > 0}
               projectScope={
                 <Combobox
@@ -6174,6 +6174,7 @@ export default function Sidebar() {
                   }
                 >
                   <ComboboxTrigger
+                    ref={projectScopeTriggerRef}
                     render={
                       <SidebarHeaderIconButton
                         label={
@@ -6222,13 +6223,11 @@ export default function Sidebar() {
                     )}
                   </ComboboxTrigger>
                   <ComboboxPopup
-                    align="start"
-                    // Anchored to the search field, not the 28px trigger: the
-                    // popup opens under the field, is at least as wide as it,
-                    // and grows to fit project names up to a cap, past which
-                    // the rows truncate.
-                    anchor={headerSearchRef}
-                    className="max-w-[min(18rem,var(--available-width))] overflow-hidden"
+                    align="end"
+                    // Opens under its trigger and grows leftward to fit project
+                    // names up to a cap, past which the rows truncate.
+                    anchor={projectScopeTriggerRef}
+                    className="min-w-56 max-w-[min(18rem,var(--available-width))] overflow-hidden"
                   >
                     <ComboboxSearchInput
                       aria-label="Search projects"
