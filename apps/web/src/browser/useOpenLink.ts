@@ -48,7 +48,7 @@ export function useOpenLink(threadRef: ScopedThreadRef | null | undefined): (
         url,
         event: options.event ?? NO_MODIFIER,
         preference: await resolveBrowserLinkTargetPreference(),
-        canOpenInApp: canOpenLinksInApp(Boolean(targetThreadRef)),
+        canOpenInApp: canOpenLinksInApp(targetThreadRef),
       });
       if (target === "app" && targetThreadRef) {
         const result = await openUrlInPreview({ threadRef: targetThreadRef, url, openPreview });
@@ -87,7 +87,7 @@ export function useLinkClickHandler(
         url,
         event,
         preference,
-        canOpenInApp: canOpenLinksInApp(Boolean(threadRef)),
+        canOpenInApp: canOpenLinksInApp(threadRef),
       });
       const isAnchor =
         event.currentTarget instanceof HTMLAnchorElement && event.currentTarget.href.length > 0;
