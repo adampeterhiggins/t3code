@@ -175,8 +175,10 @@ thread details panel, one row each, newest first, and removed the right-panel Ag
   which opens the Agents panel on that agent, and a bot button that opens the fleet
   ([`V2LifecycleRow.tsx`](../apps/web/src/components/chat/V2LifecycleRow.tsx)).
 - **Record fields.** `OrchestrationV2Subagent` gains optional fork fields kept in the record's
-  payload JSON (no migration): `usage` (Claude's `task_progress`/`task_notification` usage, the
-  running token total of a Codex child thread, and, for app-owned tasks such as `delegate_task`
+  payload JSON (no migration): `usage` (for a Claude subagent, the
+  input, cached, and output tokens summed over its own calls, since the SDK's `total_tokens` is
+  only the latest call, with the SDK's tool calls and time added up across resumed runs; the
+  running token total of a Codex child thread; and, for app-owned tasks such as `delegate_task`
   children on any provider, the sum of their own thread's provider-turn usage plus its tool calls,
   written when the task finishes; `subagentUsageFromChildTurns` in
   [`SubagentProjection.ts`](../apps/server/src/orchestration-v2/SubagentProjection.ts)),
