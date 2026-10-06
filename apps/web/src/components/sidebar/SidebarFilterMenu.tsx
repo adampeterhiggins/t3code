@@ -120,11 +120,9 @@ function SidebarShowFilter(props: {
                 <PageIcon aria-hidden className="size-3.5 shrink-0" />
                 <span className="min-w-0 flex-1 truncate">{sidebarPageLabel(page)}</span>
                 <OnlyButton onClick={() => props.onPagesChange([page])} />
-                {page === "threads" ? null : (
-                  <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                    {props.counts.get(page) ?? 0}
-                  </span>
-                )}
+                <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                  {props.counts.get(page) ?? 0}
+                </span>
               </span>
             </MenuCheckboxItem>
           );

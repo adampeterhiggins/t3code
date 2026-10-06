@@ -4108,11 +4108,20 @@ export default function Sidebar() {
         ...[...groupedThreadsByName].map(
           ([name, list]) => [sidebarGroupPage(name), list.length] as const,
         ),
+        ["threads", pinnedThreads.length + activeThreads.length + workingThreads.length],
         ["snoozed", snoozedThreads.length],
         ["hidden", hiddenThreads.length],
         ["settled", settledThreads.length],
       ]),
-    [groupedThreadsByName, hiddenThreads.length, settledThreads.length, snoozedThreads.length],
+    [
+      activeThreads.length,
+      groupedThreadsByName,
+      hiddenThreads.length,
+      pinnedThreads.length,
+      settledThreads.length,
+      snoozedThreads.length,
+      workingThreads.length,
+    ],
   );
   // Picked groups in list order, each with the rows the current project scope leaves it.
   const visibleGroups = useMemo(
