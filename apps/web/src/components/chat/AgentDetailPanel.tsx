@@ -47,6 +47,7 @@ import { useNavigate } from "@tanstack/react-router";
 import {
   ArrowDownUpIcon,
   BotIcon,
+  ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   CircleStopIcon,
@@ -104,7 +105,6 @@ import {
   MenuSeparator,
   MenuTrigger,
 } from "../ui/menu";
-import { MenuSelect } from "../ui/menu-select";
 import { ScrollArea } from "../ui/scroll-area";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { AgentUsageFooter, ToolCallList, type ToolCallFocus } from "./AgentActivityParts";
@@ -902,16 +902,36 @@ export function AgentDetailPanel(props: {
       </header>
       {childThreadId === null ? null : (
         <div className="flex items-center gap-1 border-b border-border/60 px-2 py-1.5">
-          <MenuSelect
-            aria-label="Switch between tool calls and transcript"
-            value={mode}
-            onValueChange={setMode}
-            count={tools ? calls.length : transcriptRows.length}
-            options={[
-              { value: "tools", label: "Tool calls" },
-              { value: "transcript", label: "Transcript" },
-            ]}
-          />
+          <Menu>
+            <MenuTrigger
+              render={
+                <button
+                  type="button"
+                  aria-label="Switch between tool calls and transcript"
+                  className="flex h-5 shrink-0 items-center gap-1 rounded-sm px-0.5 text-3xs font-medium uppercase tracking-wider text-muted-foreground hover:bg-accent hover:text-foreground"
+                />
+              }
+            >
+              {tools ? "Tool calls" : "Transcript"}
+              {(tools ? calls.length : transcriptRows.length) > 0 ? (
+                <span className="font-mono tracking-normal">
+                  · {tools ? calls.length : transcriptRows.length}
+                </span>
+              ) : null}
+              <ChevronDownIcon aria-hidden className="size-3" />
+            </MenuTrigger>
+            <MenuPopup align="start">
+              <MenuRadioGroup
+                value={mode}
+                onValueChange={(value) => {
+                  if (value === "transcript" || value === "tools") setMode(value);
+                }}
+              >
+                <MenuRadioItem value="tools">Tool calls</MenuRadioItem>
+                <MenuRadioItem value="transcript">Transcript</MenuRadioItem>
+              </MenuRadioGroup>
+            </MenuPopup>
+          </Menu>
           <div className="min-w-0 flex-1">
             <Input
               size="compact"

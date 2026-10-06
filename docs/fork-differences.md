@@ -754,8 +754,8 @@ Code: [`threadTranscript.ts`](../apps/web/src/lib/threadTranscript.ts),
 
 Upstream imports recent Claude Code and Codex history only in bulk, from the welcome wizard. The
 fork adds a picker on web and desktop: **Import conversation…** in the command palette, which
-lists every project, and in the legacy sidebar's project menu, which starts on that project. A
-dropdown in the picker narrows it to one project, and another filters by source. `agentSessions.list`
+lists every project, and in the legacy sidebar's project menu, which starts on that project. Its
+**Filters** menu narrows the list to one project or one source. `agentSessions.list`
 returns the project's conversations from the last 30 days (newest 50, with first prompt, message
 count, and dates, and `truncated` when there are more). Each is marked with the thread already
 holding it, so the picker opens that thread instead: an earlier import, found by upstream's

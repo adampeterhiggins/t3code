@@ -23,7 +23,8 @@ import {
 import { useNavigate } from "@tanstack/react-router";
 import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/reactivity";
-import { useMemo, useState, type ReactNode } from "react";
+import { FolderGit2Icon, GitBranchIcon, LayersIcon, ListFilterIcon } from "lucide-react";
+import { useMemo, useState, type ElementType } from "react";
 
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
@@ -49,7 +50,12 @@ import {
 import { DiscoveryList, DiscoveryListRow } from "./ui/discovery-list";
 import { Input } from "./ui/input";
 import { Spinner } from "./ui/spinner";
-import { MenuSelect } from "./ui/menu-select";
+import {
+  PullRequestFilterRadioSubmenu,
+  type PullRequestFilterOption,
+} from "./pullRequest/PullRequestListFilters";
+import { Button } from "./ui/button";
+import { Menu, MenuPopup, MenuTrigger } from "./ui/menu";
 import { toastManager } from "./ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
@@ -112,20 +118,19 @@ function ImportConversationDialog({
   // A project that went away falls back to all of them.
   const selectedKey = chosen.length === 0 ? ALL_PROJECTS : chosenKey;
   const selected = chosen.length === 0 ? projects : chosen;
-  const projectPicker = (
-    <MenuSelect
-      aria-label="Project to import into"
-      value={selectedKey}
-      onValueChange={setChosenKey}
-      options={[
-        { value: ALL_PROJECTS, label: "All projects" },
-        ...projects.map((candidate) => ({
-          value: scopedProjectKey(scopeProjectRef(candidate.environmentId, candidate.id)),
-          label: candidate.title,
-        })),
-      ]}
-    />
-  );
+  const projectFilter: ImportFilter<string> = {
+    value: selectedKey,
+    onChange: setChosenKey,
+    options: [
+      { value: ALL_PROJECTS, label: "All projects", Icon: LayersIcon },
+      ...projects.map((candidate) => ({
+        value: scopedProjectKey(scopeProjectRef(candidate.environmentId, candidate.id)),
+        label: candidate.title,
+        Icon: FolderGit2Icon,
+        project: candidate,
+      })),
+    ],
+  };
 
   return (
     <Dialog
@@ -152,7 +157,7 @@ function ImportConversationDialog({
               key={selectedKey}
               projects={selected}
               showProject={selectedKey === ALL_PROJECTS && projects.length > 1}
-              projectPicker={projectPicker}
+              projectFilter={projectFilter}
             />
           )}
         </DialogPanel>
@@ -233,6 +238,35 @@ function rowAction(pending: boolean, imported: boolean) {
   );
 }
 
+/** The project and source rows of the Filters menu. */
+interface ImportFilter<Value extends string> {
+  readonly value: Value;
+  readonly options: ReadonlyArray<PullRequestFilterOption<Value>>;
+  readonly onChange: (value: Value) => void;
+}
+
+const DEFAULT_SOURCE: ImportSource = "conductor";
+
+function providerIcon(driver: string, label: string) {
+  return function ProviderIcon({ className }: { className?: string }) {
+    return (
+      <ProviderInstanceIcon
+        driverKind={ProviderDriverKind.make(driver)}
+        displayName={label}
+        showBadge={false}
+        iconClassName={className ?? "size-3.5"}
+      />
+    );
+  };
+}
+
+const SOURCE_ICON: Record<ImportSource, ElementType<{ className?: string }>> = {
+  all: LayersIcon,
+  claudeAgent: providerIcon("claudeAgent", "Claude Code"),
+  codex: providerIcon("codex", "Codex"),
+  conductor: GitBranchIcon,
+};
+
 const CONDUCTOR_AGENT: Record<ConductorAgent, { driver: ProviderDriverKind; label: string }> = {
   claude: { driver: ProviderDriverKind.make("claudeAgent"), label: "Claude Code" },
   codex: { driver: ProviderDriverKind.make("codex"), label: "Codex" },
@@ -299,11 +333,11 @@ function describeSession(session: AgentSessionSummary, projectTitle: string | nu
 function ImportConversationList({
   projects,
   showProject,
-  projectPicker,
+  projectFilter,
 }: {
   projects: ReadonlyArray<EnvironmentProject>;
   showProject: boolean;
-  projectPicker: ReactNode;
+  projectFilter: ImportFilter<string>;
 }) {
   const navigate = useNavigate();
   const listings = useAtomValue(
@@ -426,7 +460,7 @@ function ImportConversationList({
     chosenSource === null || (chosenSource === "conductor" && conductorMissing)
       ? conductorMissing
         ? "all"
-        : "conductor"
+        : DEFAULT_SOURCE
       : chosenSource;
   const showSessions = source !== "conductor";
   const showWorkspaces = source === "all" || source === "conductor";
@@ -466,20 +500,39 @@ function ImportConversationList({
   const failure = relevant.find((result) => result._tag === "Failure");
   const truncated = showSessions && loaded.some((listing) => listing.sessions?.truncated === true);
   const sourceOptions = SOURCES.filter((option) => option !== "conductor" || !conductorMissing).map(
-    (option) => ({ value: option, label: SOURCE_LABEL[option] }),
+    (option) => ({ value: option, label: SOURCE_LABEL[option], Icon: SOURCE_ICON[option] }),
   );
+  const activeFilters =
+    Number(projectFilter.value !== ALL_PROJECTS) + Number(source !== DEFAULT_SOURCE);
 
   return (
     <>
       <div className="mb-2 flex items-center gap-2">
-        {projectPicker}
-        <MenuSelect
-          aria-label="Choose where to import from"
-          value={source}
-          onValueChange={setSource}
-          count={rows.length === 0 && pending ? undefined : visibleRows.length}
-          options={sourceOptions}
-        />
+        <Menu>
+          <MenuTrigger render={<Button type="button" variant="outline" size="xs" />}>
+            <ListFilterIcon />
+            <span>Filters</span>
+            {activeFilters > 0 ? (
+              <span className="rounded-full bg-muted px-1.5 text-xs text-muted-foreground tabular-nums">
+                {activeFilters}
+              </span>
+            ) : null}
+          </MenuTrigger>
+          <MenuPopup align="start" side="bottom">
+            <PullRequestFilterRadioSubmenu
+              label="Project"
+              value={projectFilter.value}
+              options={projectFilter.options}
+              onChange={projectFilter.onChange}
+            />
+            <PullRequestFilterRadioSubmenu
+              label="Source"
+              value={source}
+              options={sourceOptions}
+              onChange={setSource}
+            />
+          </MenuPopup>
+        </Menu>
         <div className="min-w-0 flex-1">
           <Input
             size="compact"
