@@ -306,9 +306,11 @@ activity or attachments. Other providers and the mobile app do not offer import.
 
 The same picker lists the project's active Conductor workspaces when Conductor is installed on the
 Mac hosting the project. Choosing one brings the workspace's open tabs over as chat tabs of one
-thread, on the same branch and in the same worktree, so your files and changes are where Conductor
-left them. Claude Code and Codex tabs continue their agent session; Cursor tabs start a new session
-that is given the earlier conversation. Conductor itself is not changed.
+thread, on the same branch and in the same worktree, so your files, changes, and Conductor notes
+are where Conductor left them. Images and files you sent come along, and diff comments you sent to
+the agent appear in their message. Claude Code and Codex tabs continue their agent session; Cursor
+tabs start a new session that is given the earlier conversation. Terminal history does not come
+along. Conductor itself is not changed.
 
 The worktree still belongs to Conductor. Stop using the workspace in Conductor once you move it,
 and do not archive it there, or Conductor deletes the folder the thread runs in.

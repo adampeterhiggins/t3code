@@ -1,5 +1,8 @@
 import {
+  ChatAttachmentId,
   ConductorImportError,
+  PROVIDER_SEND_TURN_MAX_FILE_BYTES,
+  PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
   DEFAULT_MODEL,
   DEFAULT_MODEL_BY_PROVIDER,
   DEFAULT_PROVIDER_INTERACTION_MODE,
@@ -8,6 +11,7 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   ThreadId,
+  type ChatAttachment,
   type ConductorAgent,
   type ConductorWorkspaceImportInput,
   type ConductorWorkspaceImportResult,
@@ -25,10 +29,18 @@ import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
+import * as Mime from "effect/http/Mime";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 
+import {
+  attachmentFileExtension,
+  createAttachmentId,
+  createDeterministicAttachmentId,
+  resolveAttachmentPath,
+} from "../attachmentStore.ts";
+import * as ServerConfig from "../config.ts";
 import * as EventSink from "../orchestration-v2/EventSink.ts";
 import * as IdAllocator from "../orchestration-v2/IdAllocator.ts";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
@@ -41,6 +53,7 @@ import {
   openConductorDatabase,
   parseConductorTranscript,
   type ConductorDatabase,
+  type ConductorFileRef,
   type ConductorTab,
   type ConductorWorkspace,
 } from "./conductorDatabase.ts";
@@ -93,6 +106,7 @@ const make = (databasePath: string) =>
     const eventSink = yield* EventSink.EventSinkV2;
     const idAllocator = yield* IdAllocator.IdAllocatorV2;
     const tabs = yield* ThreadTabs;
+    const config = yield* ServerConfig.ServerConfig;
 
     const isAvailable = fileSystem.exists(databasePath).pipe(Effect.orElseSucceed(() => false));
 
@@ -219,6 +233,65 @@ const make = (databasePath: string) =>
       return { available: true, workspaces } satisfies ConductorWorkspaceListResult;
     });
 
+    /** Copies one file into the attachment store, or `null` when it is gone or too large. */
+    const importFile = (threadId: ThreadId, file: ConductorFileRef) =>
+      Effect.gen(function* () {
+        const stat = yield* fileSystem.stat(file.path);
+        const sizeBytes = Number(stat.size);
+        if (stat.type !== "File" || sizeBytes < 1) return null;
+        const name = file.name.trim().slice(0, 255) || "attachment";
+        const mimeType = Option.getOrElse(Mime.getType(name), () =>
+          file.kind === "text" ? "text/plain" : "application/octet-stream",
+        );
+        let attachment: ChatAttachment;
+        if (file.kind === "image" && mimeType.startsWith("image/")) {
+          if (sizeBytes > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) return null;
+          const id = createDeterministicAttachmentId(threadId, `conductor:${file.attachmentId}`);
+          if (id === null) return null;
+          attachment = { type: "image", id: ChatAttachmentId.make(id), name, mimeType, sizeBytes };
+        } else {
+          if (sizeBytes > PROVIDER_SEND_TURN_MAX_FILE_BYTES) return null;
+          // File ids carry their extension so the asset route can find them.
+          const id = createAttachmentId(threadId, attachmentFileExtension(name));
+          if (id === null) return null;
+          attachment = {
+            type: "file",
+            id: ChatAttachmentId.make(id),
+            name,
+            mimeType,
+            sizeBytes,
+            ...(name.startsWith("pasted_text") ? { source: { _tag: "pasted-text" as const } } : {}),
+          };
+        }
+        const destination = resolveAttachmentPath({
+          attachmentsDir: config.attachmentsDir,
+          attachment,
+        });
+        if (destination === null) return null;
+        yield* fileSystem.makeDirectory(path.dirname(destination), { recursive: true });
+        yield* fileSystem.copyFile(file.path, destination);
+        return attachment;
+      }).pipe(Effect.orElseSucceed(() => null));
+
+    /**
+     * A prompt's files as attachments. Conductor deletes a workspace's files when it archives
+     * it, so a file that is gone is named in the text instead.
+     */
+    const importFiles = Effect.fn("ConductorImporter.importFiles")(function* (
+      threadId: ThreadId,
+      message: ReturnType<typeof parseConductorTranscript>["messages"][number],
+    ) {
+      const attachments: Array<ChatAttachment> = [];
+      const unavailable: Array<string> = [];
+      for (const file of message.files ?? []) {
+        const attachment = yield* importFile(threadId, file);
+        if (attachment === null) unavailable.push(`(Attachment not available: ${file.name})`);
+        else attachments.push(attachment);
+      }
+      const text = [message.text, ...unavailable].filter((part) => part !== "").join("\n\n");
+      return { message: { ...message, text }, attachments };
+    });
+
     const threadEvents = (input: {
       readonly projectId: ProjectId;
       readonly workspace: ConductorWorkspace;
@@ -231,6 +304,10 @@ const make = (databasePath: string) =>
         const threadId = conductorThreadId(tab.sessionId);
         const transcript = parseConductorTranscript(
           yield* query(() => input.db.messages(tab.sessionId)),
+          yield* query(() => input.db.attachments(tab.sessionId)),
+        );
+        const messages = yield* Effect.forEach(transcript.messages, (message) =>
+          importFiles(threadId, message),
         );
         const driver = DRIVER_BY_AGENT[tab.agent];
         const providerInstanceId = ProviderInstanceId.make(driver);
@@ -287,8 +364,8 @@ const make = (databasePath: string) =>
             occurredAt: createdAt,
             payload: appThread,
           },
-          ...transcript.messages.flatMap((message, index) =>
-            messageEvents({ threadId, index, message }),
+          ...messages.flatMap(({ message, attachments }, index) =>
+            messageEvents({ threadId, index, message, attachments }),
           ),
         ];
         if (providerThreadId !== null && nativeId !== null) {

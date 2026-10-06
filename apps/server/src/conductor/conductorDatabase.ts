@@ -48,15 +48,41 @@ export interface ConductorTab {
 }
 
 export interface ConductorMessageRow {
+  readonly id: string;
   readonly role: string;
   readonly content: string;
   readonly createdAt: string;
+}
+
+/**
+ * A file sent with a prompt, or a diff comment sent to the agent (`review`). Comment fields are
+ * set only for reviews.
+ */
+export interface ConductorAttachmentRow {
+  readonly id: string;
+  readonly messageId: string;
+  readonly type: string;
+  readonly name: string;
+  readonly path: string | null;
+  readonly commentFilePath: string | null;
+  readonly commentStartLine: number | null;
+  readonly commentEndLine: number | null;
+  readonly commentBody: string | null;
+}
+
+/** A file to copy into the imported message, from a Conductor workspace's `.context`. */
+export interface ConductorFileRef {
+  readonly attachmentId: string;
+  readonly kind: "image" | "text" | "file";
+  readonly name: string;
+  readonly path: string;
 }
 
 export interface ConductorTranscriptMessage {
   readonly role: "user" | "assistant";
   readonly text: string;
   readonly createdAt: string;
+  readonly files?: ReadonlyArray<ConductorFileRef>;
 }
 
 export interface ConductorTranscript {
@@ -72,6 +98,47 @@ export function conductorIsoTime(value: string): string {
     : DateTime.formatIso(DateTime.makeUnsafe(value));
 }
 
+// Conductor's inline mention of an attachment in a prompt: `@⟦name⟧(attachment:<id>)`.
+const ATTACHMENT_MENTION = /@⟦[^⟧]*⟧\(attachment:[^)\s]+\)/g;
+
+function reviewText(attachment: ConductorAttachmentRow): string | null {
+  const body = attachment.commentBody?.trim();
+  if (!body) return null;
+  const { commentStartLine: start, commentEndLine: end } = attachment;
+  const lines =
+    start === null
+      ? ""
+      : end !== null && end !== start
+        ? ` lines ${start}–${end}`
+        : ` line ${start}`;
+  const target = attachment.commentFilePath ?? attachment.name;
+  return `Review comment on \`${target}\`${lines}:\n\n${body}`;
+}
+
+/** A prompt's text with attachment mentions removed, its review comments, and its files. */
+function userMessage(
+  row: ConductorMessageRow,
+  attachments: ReadonlyArray<ConductorAttachmentRow>,
+): ConductorTranscriptMessage | null {
+  const reviews = attachments.flatMap((attachment) =>
+    attachment.type === "review" ? (reviewText(attachment) ?? []) : [],
+  );
+  const files = attachments.flatMap((attachment): Array<ConductorFileRef> => {
+    const kind = attachment.type;
+    if ((kind !== "image" && kind !== "text" && kind !== "file") || !attachment.path) return [];
+    return [{ attachmentId: attachment.id, kind, name: attachment.name, path: attachment.path }];
+  });
+  const prompt = row.content.replace(ATTACHMENT_MENTION, "").trim();
+  const text = [prompt, ...reviews].filter((part) => part !== "").join("\n\n");
+  if (text === "" && files.length === 0) return null;
+  return {
+    role: "user",
+    text,
+    createdAt: conductorIsoTime(row.createdAt),
+    ...(files.length === 0 ? {} : { files }),
+  };
+}
+
 function record(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -79,21 +146,22 @@ function record(value: unknown): Record<string, unknown> | null {
 }
 
 /**
- * Conductor stores every agent's output as Claude Agent SDK messages. Keeps the prompts and
- * the top-level reply text; tool calls, tool results and subagent output are dropped, so the
- * replies between two prompts merge into one message.
+ * Conductor stores every agent's output as Claude Agent SDK messages. Keeps the prompts, with
+ * their files and the diff comments sent with them, and the top-level reply text; tool calls,
+ * tool results and subagent output are dropped, so the replies between two prompts merge into
+ * one message.
  */
 export function parseConductorTranscript(
   rows: ReadonlyArray<ConductorMessageRow>,
+  attachments: ReadonlyArray<ConductorAttachmentRow> = [],
 ): ConductorTranscript {
+  const attachmentsByMessage = Map.groupBy(attachments, (attachment) => attachment.messageId);
   const messages: Array<ConductorTranscriptMessage> = [];
   let model: string | null = null;
   for (const row of rows) {
     if (row.role === "user") {
-      const text = row.content.trim();
-      if (text !== "") {
-        messages.push({ role: "user", text, createdAt: conductorIsoTime(row.createdAt) });
-      }
+      const message = userMessage(row, attachmentsByMessage.get(row.id) ?? []);
+      if (message !== null) messages.push(message);
       continue;
     }
     let parsed: unknown;
@@ -176,10 +244,24 @@ export function openConductorDatabase(path: string) {
     /** A tab's sent messages in order; queued and cancelled prompts are left out. */
     messages: (sessionId: string) =>
       all<ConductorMessageRow>(
-        `SELECT role, content, created_at AS createdAt FROM session_messages
+        `SELECT id, role, content, created_at AS createdAt FROM session_messages
          WHERE session_id = ? AND content IS NOT NULL AND cancelled_at IS NULL
            AND (role <> 'user' OR sent_at IS NOT NULL)
          ORDER BY created_at, rowid`,
+        sessionId,
+      ),
+
+    /** Files and diff comments sent with a tab's prompts. */
+    attachments: (sessionId: string) =>
+      all<ConductorAttachmentRow>(
+        `SELECT attachments.id, attachments.session_message_id AS messageId, attachments.type,
+                COALESCE(attachments.original_name, 'attachment') AS name, attachments.path,
+                comments.file_path AS commentFilePath, comments.line_number AS commentStartLine,
+                comments.end_line_number AS commentEndLine, comments.body AS commentBody
+         FROM attachments
+         LEFT JOIN diff_comments AS comments ON comments.id = attachments.comment_id
+         WHERE attachments.session_id = ? AND attachments.session_message_id IS NOT NULL
+           AND COALESCE(attachments.is_draft, 0) = 0`,
         sessionId,
       ),
 

@@ -15,8 +15,8 @@ import {
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 
+import * as ServerConfig from "../config.ts";
 import * as EventSink from "../orchestration-v2/EventSink.ts";
 import * as IdAllocator from "../orchestration-v2/IdAllocator.ts";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
@@ -58,6 +58,10 @@ function makeFixture() {
       claude_session_id TEXT, model TEXT, is_hidden INTEGER, created_at TEXT);
     CREATE TABLE session_messages (id TEXT PRIMARY KEY, session_id TEXT, role TEXT, content TEXT,
       created_at TEXT, sent_at TEXT, cancelled_at TEXT);
+    CREATE TABLE attachments (id TEXT PRIMARY KEY, type TEXT, original_name TEXT, path TEXT,
+      session_id TEXT, session_message_id TEXT, is_draft INTEGER, comment_id TEXT);
+    CREATE TABLE diff_comments (id TEXT PRIMARY KEY, file_path TEXT, line_number INTEGER,
+      end_line_number INTEGER, body TEXT);
   `);
   db.prepare("INSERT INTO repos VALUES (?, ?, ?)").run(
     "repo",
@@ -101,7 +105,40 @@ function makeFixture() {
   session.run("closed-tab", "ws", "Closed", "claude", null, "opus", 1, "2026-09-11 10:00:00");
   const message = db.prepare("INSERT INTO session_messages VALUES (?, ?, ?, ?, ?, ?, ?)");
   const at = (minute: number) => `2026-09-08T20:${String(minute).padStart(2, "0")}:00.000Z`;
-  message.run("m1", "claude-tab", "user", "Do you have Drive access?", at(47), at(47), null);
+  message.run(
+    "m1",
+    "claude-tab",
+    "user",
+    "Do you have Drive access? @⟦shot.png⟧(attachment:a1) @⟦pasted.txt⟧(attachment:a2)",
+    at(47),
+    at(47),
+    null,
+  );
+  const attachmentsDir = NodePath.join(workspacePath, ".context", "attachments");
+  NodeFS.mkdirSync(attachmentsDir, { recursive: true });
+  NodeFS.writeFileSync(NodePath.join(attachmentsDir, "shot.png"), "png-bytes");
+  const attachment = db.prepare("INSERT INTO attachments VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+  attachment.run(
+    "a1",
+    "image",
+    "shot.png",
+    NodePath.join(attachmentsDir, "shot.png"),
+    "claude-tab",
+    "m1",
+    0,
+    null,
+  );
+  // Conductor deleted this one.
+  attachment.run(
+    "a2",
+    "text",
+    "pasted.txt",
+    NodePath.join(attachmentsDir, "pasted.txt"),
+    "claude-tab",
+    "m1",
+    0,
+    null,
+  );
   message.run(
     "m2",
     "claude-tab",
@@ -115,38 +152,44 @@ function makeFixture() {
   message.run("m4", "grok-tab", "user", "Add Grok 4.7", at(50), at(50), null);
   message.run("m5", "closed-tab", "user", "Hidden", at(51), at(51), null);
   db.close();
-  return { root, projectRoot, workspacePath, databasePath };
+  return { root, projectRoot, workspacePath, databasePath, stateDir: NodePath.join(root, "t3") };
 }
 
 it("keeps prompts and top-level replies, merging replies split by tool calls", () => {
   const transcript = parseConductorTranscript([
-    { role: "user", content: "Fix it", createdAt: "2026-09-08 20:00:00" },
+    { id: "r1", role: "user", content: "Fix it", createdAt: "2026-09-08 20:00:00" },
     {
+      id: "r2",
       role: "assistant",
       content: JSON.stringify({ type: "system", subtype: "init" }),
       createdAt: "2026-09-08T20:00:01Z",
     },
     {
+      id: "r3",
       role: "assistant",
       content: assistant([{ type: "text", text: "Looking." }]),
       createdAt: "2026-09-08T20:00:02Z",
     },
     {
+      id: "r4",
       role: "assistant",
       content: assistant([{ type: "tool_use", id: "t", name: "Bash", input: {} }]),
       createdAt: "2026-09-08T20:00:03Z",
     },
     {
+      id: "r5",
       role: "assistant",
       content: JSON.stringify({ type: "user", message: { content: [{ type: "tool_result" }] } }),
       createdAt: "2026-09-08T20:00:04Z",
     },
     {
+      id: "r6",
       role: "assistant",
       content: assistant([{ type: "text", text: "Subagent noise" }], { parent_tool_use_id: "t" }),
       createdAt: "2026-09-08T20:00:05Z",
     },
     {
+      id: "r7",
       role: "assistant",
       content: assistant([
         { type: "thinking", thinking: "hmm" },
@@ -154,7 +197,7 @@ it("keeps prompts and top-level replies, merging replies split by tool calls", (
       ]),
       createdAt: "2026-09-08T20:00:06Z",
     },
-    { role: "user", content: "Thanks", createdAt: "2026-09-08T20:01:00Z" },
+    { id: "r8", role: "user", content: "Thanks", createdAt: "2026-09-08T20:01:00Z" },
   ]);
   expect(transcript).toEqual({
     model: "claude-fable-5-1",
@@ -166,19 +209,75 @@ it("keeps prompts and top-level replies, merging replies split by tool calls", (
   });
 });
 
+it("removes attachment mentions and inlines diff comments sent with a prompt", () => {
+  const review = {
+    id: "c",
+    messageId: "review",
+    type: "review",
+    name: "ingestion.py +55-58",
+    path: "cloud_functions/ingestion.py",
+    commentFilePath: "cloud_functions/ingestion.py",
+    commentStartLine: 55,
+    commentEndLine: 58,
+    commentBody: "Fix the typing here",
+  };
+  const image = {
+    ...review,
+    id: "i",
+    messageId: "prompt",
+    type: "image",
+    name: "shot.png",
+    path: "/ws/.context/attachments/shot.png",
+    commentFilePath: null,
+    commentStartLine: null,
+    commentEndLine: null,
+    commentBody: null,
+  };
+  const transcript = parseConductorTranscript(
+    [
+      {
+        id: "prompt",
+        role: "user",
+        content: "Broken @⟦shot.png⟧(attachment:i)",
+        createdAt: "2026-09-08T20:00:00Z",
+      },
+      { id: "review", role: "user", content: "", createdAt: "2026-09-08T20:01:00Z" },
+    ],
+    [image, review],
+  );
+  expect(transcript.messages).toEqual([
+    {
+      role: "user",
+      text: "Broken",
+      createdAt: "2026-09-08T20:00:00.000Z",
+      files: [
+        {
+          attachmentId: "i",
+          kind: "image",
+          name: "shot.png",
+          path: "/ws/.context/attachments/shot.png",
+        },
+      ],
+    },
+    {
+      role: "user",
+      text: "Review comment on `cloud_functions/ingestion.py` lines 55–58:\n\nFix the typing here",
+      createdAt: "2026-09-08T20:01:00.000Z",
+    },
+  ]);
+});
+
 it.effect("imports a workspace's open tabs as one tab group in Conductor's worktree", () => {
   const fixture = makeFixture();
   const writes: Array<ReadonlyArray<OrchestrationV2DomainEvent>> = [];
   const adopted: Array<ReadonlyArray<ThreadId>> = [];
   const created = new Set<string>();
   const layer = ConductorImporter.layerWithDatabasePath(fixture.databasePath).pipe(
-    Layer.provide(
+    Layer.provideMerge(
       Layer.mergeAll(
         Layer.mock(ProjectService.ProjectService)({
           getById: () =>
-            Effect.succeed(
-              Option.some({ id: projectId, workspaceRoot: fixture.projectRoot } as never),
-            ),
+            Effect.succeedSome({ id: projectId, workspaceRoot: fixture.projectRoot } as never),
         }),
         Layer.mock(Orchestrator.OrchestratorV2)({
           getThreadShell: (threadId) =>
@@ -200,6 +299,9 @@ it.effect("imports a workspace's open tabs as one tab group in Conductor's workt
           adopt: (threadIds) => Effect.sync(() => void adopted.push(threadIds)),
         }),
         IdAllocator.layer,
+        ServerConfig.layerTest(fixture.root, fixture.stateDir).pipe(
+          Layer.provide(NodeServices.layer),
+        ),
         NodeServices.layer,
       ),
     ),
@@ -255,6 +357,16 @@ it.effect("imports a workspace's open tabs as one tab group in Conductor's workt
       historyOrigin: "v1_import",
     });
     expect(claude).not.toMatchObject({ pinnedAt: null });
+    const prompt = writes[0]?.[1]?.payload;
+    expect(prompt).toMatchObject({
+      text: "Do you have Drive access?\n\n(Attachment not available: pasted.txt)",
+      attachments: [{ type: "image", name: "shot.png", mimeType: "image/png", sizeBytes: 9 }],
+    });
+    const config = yield* ServerConfig.ServerConfig;
+    const [copied] = (prompt as { attachments: ReadonlyArray<{ id: string }> }).attachments;
+    expect(
+      NodeFS.readFileSync(NodePath.join(config.attachmentsDir, `${copied!.id}.png`), "utf8"),
+    ).toBe("png-bytes");
     expect(writes[0]?.at(-1)?.payload).toMatchObject({
       nativeThreadRef: { driver: "claudeAgent", nativeId: claudeSessionId, strength: "strong" },
       nativeMetadata: { importedNativeId: claudeSessionId },
