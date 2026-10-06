@@ -978,8 +978,9 @@ export const SidebarTabManualRanksSchema = Schema.Record(Schema.String, Schema.N
 export const NO_SIDEBAR_TAB_MANUAL_RANKS: Readonly<Record<string, number>> = {};
 
 /**
- * What a tab sorts by: when its latest turn finished, or was sent while it is still running,
- * when it was created, or when you last opened it here. Null sorts last either way.
+ * What a tab sorts by: when its latest turn finished, or was sent while it is still running
+ * (a tab with no turn yet counts from its creation, so a new tab lands where its sort puts the
+ * newest), when it was created, or when you last opened it here. Null sorts last either way.
  */
 export function sidebarTabSortTimestamp(
   thread: Pick<SidebarThreadSummary, "createdAt" | "latestRun">,
@@ -990,7 +991,7 @@ export function sidebarTabSortTimestamp(
   const timestamp =
     order === "created_at"
       ? thread.createdAt
-      : (thread.latestRun?.completedAt ?? thread.latestRun?.requestedAt ?? null);
+      : (thread.latestRun?.completedAt ?? thread.latestRun?.requestedAt ?? thread.createdAt);
   const ms = timestamp === null ? Number.NaN : Date.parse(timestamp);
   return Number.isNaN(ms) ? null : ms;
 }
