@@ -12,6 +12,8 @@ export function preferences(settings: ServerSettings) {
     defaultThreadEnvMode,
     newWorktreesStartFromOrigin,
     enableProviderUpdateChecks,
+    terminalActivatePythonEnvironment,
+    pythonInterpreterPath,
     backgroundActivity,
     sourceControlWritingStyle,
   } = settings;
@@ -20,6 +22,8 @@ export function preferences(settings: ServerSettings) {
     defaultThreadEnvMode,
     newWorktreesStartFromOrigin,
     enableProviderUpdateChecks,
+    terminalActivatePythonEnvironment,
+    pythonInterpreterPath,
     backgroundActivity: { profile: backgroundActivity.profile },
     sourceControlWritingStyle: {
       ...sourceControlWritingStyle,

@@ -148,6 +148,7 @@ import {
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
 import { ScopedSwitch } from "./ScopedSwitch";
+import { PythonEnvironmentSettings } from "./PythonEnvironmentSettings";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ThemeLibrary } from "./ThemeSettings";
@@ -677,6 +678,13 @@ export function useSettingsRestore(onRestored?: () => void) {
       DEFAULT_UNIFIED_SETTINGS.newWorktreesStartFromOrigin
         ? ["New worktrees start from origin"]
         : []),
+      ...(settings.terminalActivatePythonEnvironment !==
+      DEFAULT_UNIFIED_SETTINGS.terminalActivatePythonEnvironment
+        ? ["Activate Python environment in terminals"]
+        : []),
+      ...(settings.pythonInterpreterPath !== DEFAULT_UNIFIED_SETTINGS.pythonInterpreterPath
+        ? ["Python interpreter path"]
+        : []),
       ...(settings.addProjectBaseDirectory !== DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory
         ? ["Add project base directory"]
         : []),
@@ -731,6 +739,8 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.contextRepositoryDirectory,
       settings.defaultThreadEnvMode,
       settings.newWorktreesStartFromOrigin,
+      settings.terminalActivatePythonEnvironment,
+      settings.pythonInterpreterPath,
       settings.diffFilesCollapsed,
       settings.diffIgnoreWhitespace,
       settings.diffLayout,
@@ -883,6 +893,8 @@ export function useSettingsRestore(onRestored?: () => void) {
       providerHealthRefreshInterval: DEFAULT_UNIFIED_SETTINGS.providerHealthRefreshInterval,
       defaultThreadEnvMode: DEFAULT_UNIFIED_SETTINGS.defaultThreadEnvMode,
       newWorktreesStartFromOrigin: DEFAULT_UNIFIED_SETTINGS.newWorktreesStartFromOrigin,
+      terminalActivatePythonEnvironment: DEFAULT_UNIFIED_SETTINGS.terminalActivatePythonEnvironment,
+      pythonInterpreterPath: DEFAULT_UNIFIED_SETTINGS.pythonInterpreterPath,
       addProjectBaseDirectory: DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory,
       contextRepositoryOwner: DEFAULT_UNIFIED_SETTINGS.contextRepositoryOwner,
       contextRepositoryDirectory: DEFAULT_UNIFIED_SETTINGS.contextRepositoryDirectory,
@@ -3451,6 +3463,7 @@ export function GeneralSettingsPanel() {
             />
           }
         />
+        <PythonEnvironmentSettings />
         <SettingsRow
           serverScoped
           settingKeys={["addProjectBaseDirectory"]}

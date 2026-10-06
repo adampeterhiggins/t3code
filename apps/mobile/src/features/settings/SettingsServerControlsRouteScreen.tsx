@@ -24,6 +24,7 @@ import {
   SettingsEnvironmentFilterHeader,
 } from "./components/SettingsEnvironmentFilterHeader";
 import { BranchNamingSettings } from "./components/BranchNamingSettings";
+import { PythonEnvironmentSettings } from "./components/PythonEnvironmentSettings";
 import { SettingsChoiceRow } from "./components/SettingsChoiceRow";
 import { SettingsSection } from "./components/SettingsSection";
 import { SettingsSwitchRow } from "./components/SettingsSwitchRow";
@@ -47,7 +48,13 @@ const PAGE_TITLES: Record<SettingsPage, string> = {
 };
 
 const PAGE_PROJECT_KEYS: Record<SettingsPage, readonly ProjectScopedServerSettingKey[]> = {
-  "new-threads": ["defaultThreadEnvMode", "worktreeSubmodules", "defaultRuntimeMode"],
+  "new-threads": [
+    "defaultThreadEnvMode",
+    "worktreeSubmodules",
+    "defaultRuntimeMode",
+    "terminalActivatePythonEnvironment",
+    "pythonInterpreterPath",
+  ],
   "source-control": [
     "defaultAutoPull",
     "removeAgentCreditsOnMerge",
@@ -320,6 +327,19 @@ function ServerSettingsDetail(props: { readonly page: SettingsPage }) {
                       />
                     ))}
                   </SettingsSection>
+                  <PythonEnvironmentSettings
+                    key={targets
+                      .map((target) => `${target.environment.environmentId}:${target.projectId}`)
+                      .join(",")}
+                    activate={uniform("terminalActivatePythonEnvironment")}
+                    interpreterPath={
+                      isMixed("pythonInterpreterPath")
+                        ? null
+                        : (reference?.settings.pythonInterpreterPath ?? "")
+                    }
+                    disabled={disabledFor("terminalActivatePythonEnvironment")}
+                    onChange={write}
+                  />
                 </>
               ) : null}
 

@@ -93,6 +93,15 @@ export const T3ProjectFile = Schema.Struct({
         'How new worktrees populate git submodules: "recursive" (the default) initializes nested submodules too, "top-level" initializes only those declared by this repository, and "none" leaves every submodule empty for a setup script to handle. A project or environment setting in T3 Code overrides this.',
     }),
   ),
+  pythonInterpreterPath: Schema.optionalKey(
+    trimmedNonEmpty(
+      {
+        description:
+          'Python environment that T3 Code terminals activate, like VS Code\'s "python.defaultInterpreterPath": an interpreter (".venv/bin/python") or an environment directory, including conda environments. Relative paths start at the terminal\'s working directory, usually the repository root. Applies when terminals are set to activate Python environments; a project or environment setting in T3 Code overrides this.',
+      },
+      T3_PROJECT_FILE_PATH_MAX_LENGTH,
+    ),
+  ),
   scripts: Schema.optionalKey(
     Schema.Array(T3ProjectFileScript)
       .annotate({
@@ -119,6 +128,8 @@ export type T3ProjectFile = typeof T3ProjectFile.Type;
 export const PROJECT_FILE_BACKED_SETTINGS = {
   defaultThreadEnvMode: { field: "defaultThreadEnvMode", builtIn: "local" },
   worktreeSubmodules: { field: "worktreeSubmodules", builtIn: "recursive" },
+  // Empty finds a .venv or venv in the terminal's working directory.
+  pythonInterpreterPath: { field: "pythonInterpreterPath", builtIn: "" },
 } as const satisfies {
   readonly [K in ProjectScopedServerSettingKey]?: {
     readonly field: {

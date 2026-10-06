@@ -1,7 +1,9 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import {
+  DEFAULT_SERVER_SETTINGS,
   DEFAULT_TERMINAL_ID,
+  ProjectId,
   type TerminalAttachStreamEvent,
   type TerminalEvent,
   type TerminalMetadataStreamEvent,
@@ -242,6 +244,7 @@ interface CreateManagerOptions {
   >[0]["resolveProviderInstanceEnvironment"];
   managedBinaryCacheDir?: string;
   managedBinaryToolsDir?: string;
+  pythonEnvironment?: { readonly activate: boolean; readonly interpreterPath: string };
 }
 
 interface ManagerFixture {
@@ -266,6 +269,7 @@ const createManager = (
       const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3code-terminal-" });
       const logsDir = join(baseDir, "userdata", "logs", "terminals");
       const ptyAdapter = options.ptyAdapter ?? new FakePtyAdapter();
+      const pythonEnvironment = options.pythonEnvironment;
 
       const manager = yield* TerminalManager.makeWithOptions({
         logsDir,
@@ -289,6 +293,9 @@ const createManager = (
           : {}),
         ...(options.resolveProviderInstanceEnvironment !== undefined
           ? { resolveProviderInstanceEnvironment: options.resolveProviderInstanceEnvironment }
+          : {}),
+        ...(pythonEnvironment !== undefined
+          ? { resolvePythonEnvironment: () => Effect.succeed(pythonEnvironment) }
           : {}),
         ...(options.managedBinaryCacheDir === undefined
           ? {}
@@ -1999,6 +2006,74 @@ it.layer(
           expect(env.COLORTERM).toBe(parentColor);
         }
       }),
+  );
+
+  it.effect("activates a project virtual environment in new shells when enabled", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const { join } = yield* Path.Path;
+      const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "t3code-venv-" });
+      yield* fs.makeDirectory(join(cwd, ".venv", "bin"), { recursive: true });
+      yield* fs.writeFileString(join(cwd, ".venv", "bin", "activate"), "");
+      const activate = ` source '${join(cwd, ".venv", "bin", "activate")}'\r`;
+
+      for (const [enabled, expected] of [
+        [true, [activate]],
+        [false, []],
+      ] as const) {
+        const { manager, ptyAdapter } = yield* createManager(5, {
+          shellResolver: () => "/bin/zsh",
+          pythonEnvironment: { activate: enabled, interpreterPath: "" },
+        }).pipe(Effect.provide(layerWithHostPlatform("darwin")));
+        yield* manager.open(openInput({ cwd }));
+        expect(ptyAdapter.processes[0]?.writes).toEqual(expected);
+      }
+    }),
+  );
+
+  it.effect("takes the Python interpreter path from t3.json when no setting names one", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const checkoutRoot = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3code-t3json-" });
+      yield* fileSystem.writeFileString(
+        path.join(checkoutRoot, "t3.json"),
+        `{ "pythonInterpreterPath": "envs/app/bin/python" }`,
+      );
+      const projectId = ProjectId.make("project-1");
+      const resolve = (settings: Partial<typeof DEFAULT_SERVER_SETTINGS>) =>
+        TerminalManager.resolveTerminalPythonEnvironment({
+          fileSystem,
+          path,
+          settings: {
+            ...DEFAULT_SERVER_SETTINGS,
+            terminalActivatePythonEnvironment: true,
+            ...settings,
+          },
+          projectId,
+          checkoutRoot,
+        });
+
+      expect(yield* resolve({})).toEqual({
+        activate: true,
+        interpreterPath: "envs/app/bin/python",
+      });
+      // The environment value, and a project override over that, outrank the file.
+      expect(yield* resolve({ pythonInterpreterPath: "" })).toEqual({
+        activate: true,
+        interpreterPath: "",
+      });
+      expect(
+        yield* resolve({
+          pythonInterpreterPath: "",
+          projectSettingsOverrides: { [projectId]: { pythonInterpreterPath: "~/conda" } },
+        }),
+      ).toEqual({ activate: true, interpreterPath: "~/conda" });
+      expect(yield* resolve({ terminalActivatePythonEnvironment: false })).toEqual({
+        activate: false,
+        interpreterPath: "",
+      });
+    }),
   );
 
   it.effect("filters app runtime env variables from terminal sessions", () =>
