@@ -1,4 +1,7 @@
-import { toolPathTargets } from "@t3tools/client-runtime/work-log/tool-paths";
+import {
+  toolEntryShowsPathBreadcrumbs,
+  toolPathTargets,
+} from "@t3tools/client-runtime/work-log/tool-paths";
 import { ToolPathText } from "./ToolPathText";
 import { SubagentStatusDot } from "./SubagentStatusDot";
 import { ThreadSubagentGroup } from "./thread-subagent-group";
@@ -945,6 +948,7 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
   const fetchedItem = fetchedDetail.data?.item ?? null;
   // Reads keep their path list; the fetched file contents show as output.
   const isRead = toolGroupAction(row.workEntry) === "read";
+  const showsPaths = toolEntryShowsPathBreadcrumbs(row.workEntry);
   // Tool calls show the call in the foreground and the result muted below it.
   const shownItem = fetchedItem ?? row.projectedItem.item;
   const call =
@@ -1050,7 +1054,7 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
         }}
         onLongPress={() => props.onCopyRow(row.id, row.getCopyText())}
       >
-        {row.live && !expanded && row.workEntry.tone !== "tool" ? (
+        {row.live && !expanded && !showsPaths ? (
           <ShimmeringWorkContent
             environmentId={props.environmentId}
             icon={icon}
@@ -1089,11 +1093,11 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
             </WorkLogIconSlot>
             <WorkLogLabel
               tone={isUsageLimit ? "warning" : iconIsDestructive ? "danger" : "default"}
-              wrap={row.workEntry.tone === "tool"}
+              wrap={showsPaths}
             >
               {isSystemNotice ? (
                 row.summary
-              ) : row.workEntry.tone === "tool" ? (
+              ) : showsPaths ? (
                 <ToolPathText
                   targets={toolPathTargets(row.workEntry)}
                   text={displayText}

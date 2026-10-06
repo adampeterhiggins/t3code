@@ -1,4 +1,7 @@
-import { toolPathTargets } from "@t3tools/client-runtime/work-log/tool-paths";
+import {
+  toolEntryShowsPathBreadcrumbs,
+  toolPathTargets,
+} from "@t3tools/client-runtime/work-log/tool-paths";
 import type { NotionPageContextRecord } from "@t3tools/contracts";
 import { ToolCallBody } from "../ToolCallBody";
 import { ToolPathText } from "./ToolPathText";
@@ -3725,6 +3728,7 @@ function LiveWorkEntryTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "
     : "";
   const label = questionHeading || liveWorkEntryLabel(row.entry, ctx.workspaceRoot, row.active);
   const failed = workEntryDisplayIndicatesToolFailure(row.entry);
+  const showsPaths = toolEntryShowsPathBreadcrumbs(row.entry);
 
   return (
     <div
@@ -3759,7 +3763,7 @@ function LiveWorkEntryTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "
             >
               {row.entry.detail ?? label}
             </ReactMarkdown>
-          ) : row.entry.tone === "tool" ? (
+          ) : showsPaths ? (
             <ToolPathText
               text={label}
               targets={toolPathTargets(row.entry)}
@@ -3770,7 +3774,7 @@ function LiveWorkEntryTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "
             label
           )
         }
-        wrapLabel={row.entry.tone === "tool"}
+        wrapLabel={showsPaths}
         iconName={workEntryIconName(row.entry)}
         toolIcon={row.entry.toolIcon ?? row.entry.toolSource?.icon}
         failed={failed}
@@ -5249,12 +5253,16 @@ function ToolCallPreviewContent(
         </div>
       ) : heading.text ? (
         <p className="text-xs break-words whitespace-pre-wrap text-foreground/85 select-text">
-          <ToolPathText
-            targets={toolPathTargets(workEntry)}
-            text={heading.text}
-            environmentId={activeThreadEnvironmentId}
-            workspaceRoot={workspaceRoot}
-          />
+          {toolEntryShowsPathBreadcrumbs(workEntry) ? (
+            <ToolPathText
+              targets={toolPathTargets(workEntry)}
+              text={heading.text}
+              environmentId={activeThreadEnvironmentId}
+              workspaceRoot={workspaceRoot}
+            />
+          ) : (
+            heading.text
+          )}
         </p>
       ) : null}
       <WorkEntryDetailBody {...props} textBody={textBody} hideCommand highlightSyntax />
@@ -5589,6 +5597,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
       : workLogEntryIsToolLike(workEntry)
         ? "text-secondary-label"
         : "text-foreground/80";
+  const showsPaths = toolEntryShowsPathBreadcrumbs(workEntry);
   const accessiblePreview = [previewText, answerPreview].filter(Boolean).join(": ");
   const accessibleDisplayText = showFailedIndicator
     ? `${accessiblePreview}, tool call failed`
@@ -5613,7 +5622,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
     <WorkLogRow
       data-v2-item-type={workEntry.projectedItem?.item.type}
       data-v2-item-visibility={workEntry.projectedItem?.visibility}
-      wrapLabel={workEntry.tone === "tool"}
+      wrapLabel={showsPaths}
       {...rowToggleProps}
       icon={
         <span
@@ -5635,7 +5644,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
             <span
               className={cn(
                 answerPreview ? "min-w-0" : "min-w-0 flex-1",
-                workEntry.tone === "tool" ? "break-words" : "truncate",
+                showsPaths ? "break-words" : "truncate",
                 headingClass,
               )}
             >
@@ -5651,7 +5660,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
                 >
                   {workEntry.detail ?? previewText}
                 </ReactMarkdown>
-              ) : workEntry.tone === "tool" ? (
+              ) : showsPaths ? (
                 <ToolPathText
                   targets={toolPathTargets(workEntry)}
                   text={previewText}

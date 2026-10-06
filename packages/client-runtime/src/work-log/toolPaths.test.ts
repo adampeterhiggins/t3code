@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { resolveToolPath, toolPathTextParts } from "./toolPaths.ts";
+import { resolveToolPath, toolEntryShowsPathBreadcrumbs, toolPathTextParts } from "./toolPaths.ts";
 
 const path = "/Users/adam/.t3/worktrees/fd-questionnaire/style-all/scripts/parity/compare_reads.py";
 
@@ -123,5 +123,27 @@ describe("tool label path tokens", () => {
     "file:///tmp/a.ts",
   ])("leaves non-target text alone: %s", (label) => {
     expect(toolPathTextParts(label, "/repo")).toEqual([{ text: label }]);
+  });
+});
+
+describe("tool rows that show path breadcrumbs", () => {
+  const entry = {
+    id: "1",
+    createdAt: "2026-10-06T00:00:00.000Z",
+    tone: "tool",
+  } as const;
+
+  it("keeps shell commands verbatim but breadcrumbs file targets", () => {
+    expect(
+      toolEntryShowsPathBreadcrumbs({
+        ...entry,
+        label: `python3 - <<'PY' ${path}`,
+        itemType: "command_execution",
+        command: `python3 - <<'PY' ${path}`,
+      }),
+    ).toBe(false);
+    expect(
+      toolEntryShowsPathBreadcrumbs({ ...entry, label: `Read ${path}`, requestKind: "file-read" }),
+    ).toBe(true);
   });
 });

@@ -871,9 +871,9 @@ private agent worktree (`.claude/worktrees/agent-<id>`) is recognized from the p
 the agent never reports it. Cross-worktree file targets render as a worktree chip followed by
 wrapping path breadcrumbs, with a full-path copy tooltip on web and desktop and a tap-to-copy
 prompt on mobile. Roots are resolved from that environment's thread records, with T3 and Claude
-private-worktree layouts as fallbacks; unknown roots are labeled External. Approval prompts
-still show the exact command. The shared runtime instructions also tell every provider that shell commands already
-start in that directory.
+private-worktree layouts as fallbacks; unknown roots are labeled External. Shell command rows
+and approval prompts still show the exact command, on one truncated line. The shared runtime
+instructions also tell every provider that shell commands already start in that directory.
 
 Code: `packages/client-runtime/src/work-log/commandDisplay.ts`, used by
 `apps/web/src/components/chat/MessagesTimeline.logic.ts` and by `buildThreadFeed` and

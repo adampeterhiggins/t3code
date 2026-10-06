@@ -158,11 +158,15 @@ function ToolCallHoverContent(props: {
       <p className="flex items-start gap-1.5 text-xs text-secondary-label">
         <Icon aria-hidden className="mt-px size-3.5 shrink-0 text-icon-muted" />
         <span className="min-w-0 break-all">
-          <ToolPathText
-            text={call.rawTitle ?? call.title}
-            environmentId={props.source.environmentId}
-            workspaceRoot={props.source.workspaceRoot}
-          />
+          {call.kind === "command" ? (
+            call.title
+          ) : (
+            <ToolPathText
+              text={call.rawTitle ?? call.title}
+              environmentId={props.source.environmentId}
+              workspaceRoot={props.source.workspaceRoot}
+            />
+          )}
         </span>
       </p>
       <ToolCallBody text={body.text} className="max-h-[50vh]" />
@@ -227,20 +231,11 @@ const ToolCallRow = memo(function ToolCallRow(props: {
           call.status === "running" ? "text-foreground" : "text-secondary-label",
         )}
       >
-        <ToolPathText
-          text={call.rawTitle ?? call.title}
-          environmentId={props.source.environmentId}
-          workspaceRoot={props.source.workspaceRoot}
-        />
+        {call.title}
       </span>
       {call.detail ? (
         <span className="min-w-0 flex-1 truncate font-mono text-2xs text-muted-foreground">
-          <ToolPathText
-            text={call.rawDetail ?? call.detail}
-            environmentId={props.source.environmentId}
-            workspaceRoot={props.source.workspaceRoot}
-            pathOnly={call.kind === "read" || call.kind === "edit"}
-          />
+          {call.detail}
         </span>
       ) : null}
       {failed ? <XIcon aria-hidden className="size-3 shrink-0 text-destructive" /> : null}
