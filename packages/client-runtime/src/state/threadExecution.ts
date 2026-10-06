@@ -251,14 +251,9 @@ export function deriveThreadRuntime(
       pullRequests: projection.thread.pullRequests,
     }),
   );
-  // A pull request watch can hold a thread that never ran.
-  if (
-    latestRun === null &&
-    projection.thread.activeProviderThreadId === null &&
-    !backgroundWorkHoldsRun
-  ) {
-    return null;
-  }
+  // Same rule as the shell runtime: a thread that never ran has no runtime
+  // unless background work, such as a pull request watch, holds it.
+  if (latestRun === null && !backgroundWorkHoldsRun) return null;
   const activeRunId =
     latestMatchingRun(projection, (run) => INTERRUPTIBLE_RUN_STATUSES.has(run.status))?.id ?? null;
   return {

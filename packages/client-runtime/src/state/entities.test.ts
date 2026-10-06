@@ -177,6 +177,28 @@ describe("V2 client presentation", () => {
     ).toBeNull();
   });
 
+  it("presents no runtime for imported history that never ran on its attached session", () => {
+    const shell = presentThreadShell(environmentId, {
+      ...v2ThreadShell,
+      latestRunId: null,
+      activeProviderThreadId: ProviderThreadId.make("provider-thread:imported"),
+      activeRunId: null,
+      status: "idle",
+      pendingBackgroundTasks: [],
+    });
+    expect(shell.runtime).toBeNull();
+    expect(
+      deriveThreadRuntime({
+        ...v2Projection,
+        thread: {
+          ...v2Projection.thread,
+          activeProviderThreadId: ProviderThreadId.make("provider-thread:imported"),
+        },
+        runs: [],
+      }),
+    ).toBeNull();
+  });
+
   it.each([
     { kinds: ["command"], expected: "completed" },
     { kinds: ["command", "subagent"], expected: "idle" },
