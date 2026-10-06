@@ -4,6 +4,7 @@ import * as Layer from "effect/Layer";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
+import * as KeyValueStore from "effect/persistence/KeyValueStore";
 
 import * as SlackApi from "./SlackApi.ts";
 import { SlackAuth } from "./SlackAuth.ts";
@@ -34,6 +35,7 @@ const THREAD = [
 
 function makeHarness(replies: Record<string, unknown> = {}) {
   const calls: Array<{ method: string; params: URLSearchParams }> = [];
+
   let revoked = 0;
   const reply = (request: HttpClientRequest.HttpClientRequest, body: unknown) =>
     HttpClientResponse.fromWeb(
@@ -72,7 +74,8 @@ function makeHarness(replies: Record<string, unknown> = {}) {
       }
     }),
   );
-  const layer = SlackApi.layer.pipe(
+  const layer = Layer.effect(SlackApi.SlackApi, SlackApi.make).pipe(
+    Layer.provide(KeyValueStore.layerMemory),
     Layer.provide(Layer.succeed(HttpClient.HttpClient, client)),
     Layer.provide(
       Layer.mock(SlackAuth)({
@@ -230,5 +233,21 @@ it.effect("marks the connection revoked when Slack rejects the token", () => {
     const error = yield* Effect.flip(api.searchMessages({ query: "deploy" }));
     assert.strictEqual(error.reason, "revoked");
     assert.strictEqual(harness.revokedCount(), 1);
+  }).pipe(Effect.provide(harness.layer));
+});
+
+it.effect("reads a link preview once and keeps it", () => {
+  const harness = makeHarness();
+  return Effect.gen(function* () {
+    const api = yield* SlackApi.SlackApi;
+    const preview = yield* api.getLinkPreview(threadInput);
+    assert.deepEqual(preview, {
+      channelLabel: "#eng",
+      authorName: "Grace",
+      title: "@Linus can you look?",
+    });
+    const reads = harness.calls.length;
+    assert.deepEqual(yield* api.getLinkPreview(threadInput), preview);
+    assert.strictEqual(harness.calls.length, reads);
   }).pipe(Effect.provide(harness.layer));
 });

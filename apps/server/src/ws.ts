@@ -3241,6 +3241,10 @@ const layerWsRpc = (
           observeRpcEffect(WS_METHODS.slackGetThread, slackApi.getThread(input), {
             "rpc.aggregate": "slack",
           }),
+        [WS_METHODS.slackGetLinkPreview]: (input) =>
+          observeRpcEffect(WS_METHODS.slackGetLinkPreview, slackApi.getLinkPreview(input), {
+            "rpc.aggregate": "slack",
+          }),
         [WS_METHODS.githubIssuesList]: (input) =>
           observeRpcEffect(WS_METHODS.githubIssuesList, githubIssues.listIssues(input), {
             "rpc.aggregate": "github-issues",

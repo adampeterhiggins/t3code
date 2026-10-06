@@ -2,6 +2,8 @@ import {
   SLACK_THREAD_MARKDOWN_MAX_CHARS,
   SlackError,
   type SlackGetThreadInput,
+  SlackLinkPreview,
+  type SlackLinkPreviewInput,
   type SlackMessageSummary,
   type SlackSearchMessagesInput,
   type SlackSearchMessagesResult,
@@ -10,8 +12,13 @@ import {
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as HttpClient from "effect/http/HttpClient";
+import * as KeyValueStore from "effect/persistence/KeyValueStore";
+
+import * as ServerConfig from "../config.ts";
 
 import { SlackAuth } from "./SlackAuth.ts";
 import {
@@ -108,6 +115,10 @@ export class SlackApi extends Context.Service<
     readonly getThread: (
       input: SlackGetThreadInput,
     ) => Effect.Effect<SlackThreadContext, SlackError>;
+    /** Who and where a bare link points, read once and kept. Needs a connected account. */
+    readonly getLinkPreview: (
+      input: SlackLinkPreviewInput,
+    ) => Effect.Effect<SlackLinkPreview, SlackError>;
   }
 >()("t3/slack/SlackApi") {}
 
@@ -115,6 +126,10 @@ export class SlackApi extends Context.Service<
 export const make = Effect.gen(function* () {
   const auth = yield* SlackAuth;
   const services = Context.make(HttpClient.HttpClient, yield* HttpClient.HttpClient);
+  const previews = KeyValueStore.toSchemaStore(
+    yield* KeyValueStore.KeyValueStore,
+    SlackLinkPreview,
+  );
   // User id → display name. Names rarely change; the cap keeps a long-lived
   // server from growing it without bound.
   const names = new Map<string, string>();
@@ -275,7 +290,42 @@ export const make = Effect.gen(function* () {
     } satisfies SlackThreadContext;
   });
 
-  return SlackApi.of({ searchMessages, getThread });
+  const getLinkPreview = Effect.fn("slack.get_link_preview")(function* (
+    input: SlackLinkPreviewInput,
+  ) {
+    const account = yield* auth.account;
+    // A message's ts is unique within its channel, and the team scopes the channel.
+    const key = `${account.teamId}_${input.channelId}_${input.ts}`;
+    const stored = yield* previews.get(key).pipe(Effect.orElseSucceed(() => Option.none()));
+    if (Option.isSome(stored)) return stored.value;
+    const thread = yield* getThread({ ...input, scope: "message" });
+    const preview: SlackLinkPreview = {
+      channelLabel: thread.channelLabel,
+      authorName: thread.authorName,
+      title: thread.title,
+    };
+    yield* Effect.ignore(previews.set(key, preview));
+    return preview;
+  });
+
+  return SlackApi.of({ searchMessages, getThread, getLinkPreview });
 });
 
-export const layer = Layer.effect(SlackApi, make);
+/** Link previews persist under the caches directory, or in memory when it cannot be used. */
+const previewStoreLayer = Layer.unwrap(
+  Effect.gen(function* () {
+    const config = yield* ServerConfig.ServerConfig;
+    const path = yield* Path.Path;
+    return KeyValueStore.layerFileSystem(
+      path.join(config.providerStatusCacheDir, "slack-link-previews"),
+    ).pipe(
+      Layer.catch(() =>
+        Layer.effectDiscard(
+          Effect.logWarning("Slack link preview directory unavailable; using memory"),
+        ).pipe(Layer.provideMerge(KeyValueStore.layerMemory)),
+      ),
+    );
+  }),
+);
+
+export const layer = Layer.effect(SlackApi, make).pipe(Layer.provide(previewStoreLayer));
