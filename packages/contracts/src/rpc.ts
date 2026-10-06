@@ -91,6 +91,8 @@ import {
   SlackConnectionState,
   SlackError,
   SlackGetThreadInput,
+  SlackLinkPreview,
+  SlackLinkPreviewInput,
   SlackSearchMessagesInput,
   SlackSearchMessagesResult,
   SlackStartLoginInput,
@@ -622,6 +624,7 @@ export const WS_METHODS = {
   slackDisconnect: "slack.disconnect",
   slackSearchMessages: "slack.searchMessages",
   slackGetThread: "slack.getThread",
+  slackGetLinkPreview: "slack.getLinkPreview",
 
   // GitHub issue methods
   githubIssuesList: "githubIssues.list",
@@ -1004,6 +1007,12 @@ const WsSlackSearchMessagesRpc = Rpc.make(WS_METHODS.slackSearchMessages, {
 const WsSlackGetThreadRpc = Rpc.make(WS_METHODS.slackGetThread, {
   payload: SlackGetThreadInput,
   success: SlackThreadContext,
+  error: SlackRpcError,
+});
+
+const WsSlackGetLinkPreviewRpc = Rpc.make(WS_METHODS.slackGetLinkPreview, {
+  payload: SlackLinkPreviewInput,
+  success: SlackLinkPreview,
   error: SlackRpcError,
 });
 
@@ -2220,6 +2229,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsSlackDisconnectRpc,
   WsSlackSearchMessagesRpc,
   WsSlackGetThreadRpc,
+  WsSlackGetLinkPreviewRpc,
   WsGitHubIssuesListRpc,
   WsGitHubIssuesGetRpc,
   WsGitHubIssuesGetSummaryRpc,

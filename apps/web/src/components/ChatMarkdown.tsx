@@ -149,7 +149,7 @@ import { HighlightedCodeLines } from "./chat/HighlightedCodeLines";
 import { RenderErrorBoundary } from "./RenderErrorBoundary";
 import { MermaidDiagram } from "./chat/MermaidDiagram";
 import { useTheme } from "../hooks/useTheme";
-import { getClientSettings, useClientSettings } from "../hooks/useSettings";
+import { getClientSettings, useClientSettings, useEnvironmentSettings } from "../hooks/useSettings";
 import {
   chatMarkdownClipboardPayload,
   serializeTableElementToCsv,
@@ -175,6 +175,8 @@ import { useRemoteOpenResolution, type RemoteOpenMode } from "../remoteOpen";
 import { useRightPanelStore } from "../rightPanelStore";
 import { readThreadShell, useProjects } from "../state/entities";
 import { serverEnvironment } from "../state/server";
+import { slackEnvironment } from "../state/slack";
+import { useEnvironmentQuery } from "../state/query";
 import { shellEnvironment } from "../state/shell";
 import { assetEnvironment } from "../state/assets";
 import { usePreparedConnection } from "../state/session";
@@ -194,7 +196,10 @@ import {
   resolvePullRequestPreviewTarget,
   useOpenChangeRequestLink,
 } from "~/lib/openPullRequestLink";
-import { objectLinkLabel } from "@t3tools/client-runtime/composer-object-links";
+import {
+  objectLinkLabel,
+  parseComposerObjectLink,
+} from "@t3tools/client-runtime/composer-object-links";
 import { useOpenLink } from "../browser/useOpenLink";
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
 import { isPreviewSupportedInRuntime } from "../previewStateStore";
@@ -2027,6 +2032,59 @@ function handleMarkdownFragmentClick(event: ReactMouseEvent<HTMLAnchorElement>, 
   target.scrollIntoView({ block: "nearest" });
 }
 
+/**
+ * A bare Slack message link, named `#channel · Author` once the connected Slack account can read
+ * it. Until then, and whenever Slack is off or disconnected, it stays its URL.
+ */
+function SlackLinkText({
+  environmentId,
+  host,
+  url,
+}: {
+  environmentId: EnvironmentId;
+  host: string;
+  url: string;
+}) {
+  const link = parseComposerObjectLink(url);
+  const enabled = useEnvironmentSettings(environmentId, (s) => s.enableSlackIntegration);
+  const connection = useEnvironmentQuery(
+    enabled ? slackEnvironment.connection({ environmentId, input: {} }) : null,
+  );
+  const preview = useEnvironmentQuery(
+    link?.kind === "slack-message" && enabled && connection.data?.phase === "connected"
+      ? slackEnvironment.linkPreview({
+          environmentId,
+          input: {
+            channelId: link.channelId,
+            ts: link.ts,
+            ...(link.threadTs === null ? {} : { threadTs: link.threadTs }),
+            url,
+          },
+        })
+      : null,
+  ).data;
+  if (!preview) {
+    return (
+      <MarkdownExternalLinkContent host={host} plainText={url}>
+        {url}
+      </MarkdownExternalLinkContent>
+    );
+  }
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<span />}>
+        <MarkdownExternalLinkContent
+          host={host}
+          plainText={`${preview.channelLabel} · ${preview.authorName}`}
+        >
+          {url}
+        </MarkdownExternalLinkContent>
+      </TooltipTrigger>
+      <TooltipPopup side="top">{preview.title}</TooltipPopup>
+    </Tooltip>
+  );
+}
+
 function MarkdownExternalLinkContent({
   host,
   plainText,
@@ -3169,6 +3227,10 @@ const CHAT_MARKDOWN_COMPONENTS = {
       // Only a bare link is renamed: link text the writer chose stays as written.
       const objectLabel =
         href && !isPullRequestAutolink && linkText === href ? objectLinkLabel(href) : null;
+      const isBareSlackLink =
+        href !== undefined &&
+        linkText === href &&
+        parseComposerObjectLink(href)?.kind === "slack-message";
       const confirmBeforeOpen = pullRequestAutolink === "reference";
       const pullRequestCandidateUrl =
         confirmBeforeOpen && href ? pullRequestCandidateUrlFromReferenceAutolink(href) : href;
@@ -3188,7 +3250,9 @@ const CHAT_MARKDOWN_COMPONENTS = {
         <a
           {...props}
           className={cn(props.className, pullRequestAutolink === "commit" && "font-mono")}
-          data-markdown-copy={pullRequestCopy ?? (objectLabel === null ? undefined : href)}
+          data-markdown-copy={
+            pullRequestCopy ?? (objectLabel === null && !isBareSlackLink ? undefined : href)
+          }
           href={href}
           target={isSameDocumentLink ? undefined : "_blank"}
           rel={isSameDocumentLink ? undefined : "noopener noreferrer"}
@@ -3307,7 +3371,9 @@ const CHAT_MARKDOWN_COMPONENTS = {
             });
           }}
         >
-          {faviconHost && hastHasText(node) && !isPullRequestAutolink ? (
+          {faviconHost && href && isBareSlackLink && environmentId !== null ? (
+            <SlackLinkText environmentId={environmentId} host={faviconHost} url={href} />
+          ) : faviconHost && hastHasText(node) && !isPullRequestAutolink ? (
             <MarkdownExternalLinkContent host={faviconHost} plainText={objectLabel ?? linkText}>
               {linkChildren}
             </MarkdownExternalLinkContent>

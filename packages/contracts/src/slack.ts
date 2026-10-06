@@ -156,6 +156,24 @@ export const SlackThreadContext = Schema.Struct({
 });
 export type SlackThreadContext = typeof SlackThreadContext.Type;
 
+/** `slack.getLinkPreview` payload: the message a bare permalink in a chat message names. */
+export const SlackLinkPreviewInput = Schema.Struct({
+  channelId: SlackId,
+  ts: SlackMessageTs,
+  threadTs: Schema.optional(SlackMessageTs),
+  url: TrimmedNonEmptyString.check(Schema.isMaxLength(2_048)),
+});
+export type SlackLinkPreviewInput = typeof SlackLinkPreviewInput.Type;
+
+/** What a bare Slack link shows in place of its URL. The server reads it once and keeps it. */
+export const SlackLinkPreview = Schema.Struct({
+  channelLabel: Schema.String,
+  authorName: Schema.String,
+  /** The linked message's first line. */
+  title: Schema.String,
+});
+export type SlackLinkPreview = typeof SlackLinkPreview.Type;
+
 export const SlackErrorReason = Schema.Literals([
   "not-configured",
   "not-connected",

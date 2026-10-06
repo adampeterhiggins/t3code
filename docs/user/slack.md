@@ -57,6 +57,10 @@ downloaded. Long threads keep the first message, the one you picked, and the lat
 The thread is copied when you attach it, so later replies don't change a message you already
 sent. Chips in an unsent draft don't survive a reload; attach the message again.
 
+A Slack link that stays a link in a message, such as one in an agent's reply, shows the channel and
+author instead of its URL on web and desktop while Slack is connected. Hover it for the message's
+first line.
+
 If T3 Code can't read a pasted link, it stays as text. The first time that happens because Slack
 isn't connected, a notice says so.
 

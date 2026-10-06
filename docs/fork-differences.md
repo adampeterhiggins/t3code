@@ -595,6 +595,13 @@ server renders the thread to capped markdown when it is attached. That markdown 
 first message and the linked one, fills the rest newest first, and resolves mentions to names.
 The snapshot is inlined into the prompt for every provider. Slack has no thread links.
 
+A bare Slack message link left in any rendered message on web or desktop (an agent's reply, a
+paste-as-text, a message sent from mobile) shows `#channel · Author` once `slack.getLinkPreview`
+reads it, with the message's first line on hover. It shows its URL while Slack is off, disconnected,
+or the read fails. The server keeps each preview as a file under the caches directory
+(`slack-link-previews`), so a link is read from Slack once; it holds no reply count, since that
+would go stale. Mobile shows the URL.
+
 Turning off **Enable Slack integration** in that setting keeps pasted Slack links as links without
 setup prompts and hides Slack attachment actions on web, desktop, and mobile for the environment.
 The connected account and existing attachments are kept, so turning it back on needs no new login.
@@ -819,9 +826,10 @@ deleted chip stick. Mobile does not convert links.
 
 A bare link of one of those kinds that is still a link when the message renders, in any message on
 web, desktop, or mobile, shows its short name instead of the URL: `owner/repo#162` for a pull
-request or GitHub issue (with `L4-L14` appended for a link to lines), `ENG-123` for a Linear issue, `owner/repo` for a repository, and
-`Slack · workspace` for a Slack message. It still
-opens, previews, and copies as the full URL. Link text the writer chose is left alone.
+request or GitHub issue (with `L4-L14` appended for a link to lines), `ENG-123` for a Linear issue, and
+`owner/repo` for a repository. It still opens, previews, and copies as the full URL. Link text the
+writer chose is left alone. A bare Slack link is not one of these: it names the message only when
+Slack is on and connected (see [Slack messages and threads](#slack-messages-and-threads)).
 
 Code: `packages/client-runtime/src/composerObjectLinks.ts`,
 `apps/web/src/components/chat/useResolveComposerObjectLink.ts`, and `convertObjectLinks` in

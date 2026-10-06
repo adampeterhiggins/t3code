@@ -107,8 +107,9 @@ export function parseComposerObjectLink(url: string): ComposerObjectLink | null 
 
 /**
  * The short name a bare link reads as once it is recognised: `owner/repo#7` for a pull request
- * or issue (`owner/repo#7 L4-L14` for lines of one of its files), `ENG-123` for a Linear issue, `owner/repo` for a repository, `Slack · acme` for a
- * Slack message (the channel's name is not in the link). Null for ordinary links.
+ * or issue (`owner/repo#7 L4-L14` for lines of one of its files), `ENG-123` for a Linear issue,
+ * `owner/repo` for a repository. Null for ordinary links, and for Slack messages: an attached one
+ * is already a chip, so a bare one was not attached and should not read as if it were.
  */
 export function objectLinkLabel(url: string): string | null {
   const link = parseComposerObjectLink(url);
@@ -120,7 +121,7 @@ export function objectLinkLabel(url: string): string | null {
     case "linear-issue":
       return link.identifier;
     case "slack-message":
-      return `Slack · ${link.workspace}`;
+      return null;
     case "repository":
       return link.nameWithOwner;
     case "github-issue": {

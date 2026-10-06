@@ -51,6 +51,12 @@ export function createSlackEnvironmentAtoms<R, E>(
       label: "environment-data:slack:get-thread",
       tag: WS_METHODS.slackGetThread,
     }),
+    // Keyed by link. The server keeps each preview, so one read per session is enough.
+    linkPreview: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:slack:link-preview",
+      tag: WS_METHODS.slackGetLinkPreview,
+      staleTimeMs: Number.POSITIVE_INFINITY,
+    }),
   };
 }
 
