@@ -2486,10 +2486,9 @@ function ForkMessageButton({
  * Hover-revealed wall-clock time with a full-date tooltip — the same metadata
  * presentation as message rows, for work entries and turn folds. The parent
  * carries `group/timeline-row`; hover or focus on an existing control reveals
- * the time without adding a tab stop. Hidden timestamps stay outside the row
- * layout. Visibility changes immediately so leaving flow cannot overlap text
- * during a fade-out. Place it before any trailing disclosure control so
- * revealing the time does not move the chevron.
+ * the time without adding a tab stop. Reserve the timestamp's width even when
+ * hidden so hover and focus cannot rewrap the label or move the chevron.
+ * Place it before any trailing disclosure control.
  */
 function TimelineRowTimestamp({
   createdAt,
@@ -2508,8 +2507,8 @@ function TimelineRowTimestamp({
         render={
           <span
             className={cn(
-              "pointer-events-none absolute me-1 shrink-0 whitespace-nowrap rounded-md text-muted-foreground text-xs tabular-nums opacity-0 group-hover/timeline-row:pointer-events-auto group-hover/timeline-row:static group-hover/timeline-row:opacity-100 group-focus-within/timeline-row:pointer-events-auto group-focus-within/timeline-row:static group-focus-within/timeline-row:opacity-100",
-              alwaysVisible && "pointer-events-auto static opacity-100",
+              "pointer-events-none me-1 shrink-0 whitespace-nowrap rounded-md text-muted-foreground text-xs tabular-nums opacity-0 group-hover/timeline-row:pointer-events-auto group-hover/timeline-row:opacity-100 group-focus-within/timeline-row:pointer-events-auto group-focus-within/timeline-row:opacity-100",
+              alwaysVisible && "pointer-events-auto opacity-100",
               className,
             )}
           />
