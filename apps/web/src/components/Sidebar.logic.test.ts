@@ -13,7 +13,6 @@ import {
   buildMultiSelectThreadContextMenuItems,
   createThreadJumpHintVisibilityController,
   deleteSelectedThreadEntries,
-  filterSidebarProjectScopeItems,
   filterSidebarV2VisibleThreads,
   foldedSidebarTabThreads,
   formatWorkingDurationLabel,
@@ -22,7 +21,6 @@ import {
   isSidebarTabGroupOpen,
   setSidebarTabGroupOverride,
   sidebarTabNeighbourKey,
-  resolveSidebarProjectScopeKeys,
   getFallbackThreadIdAfterDelete,
   getProjectSortTimestamp,
   getSidebarForkParentThreadId,
@@ -34,12 +32,12 @@ import {
   isTrailingDoubleClick,
   orderItemsByPreferredIds,
   pinOrderKeyBetween,
-  reduceSidebarProjectScopeMenuState,
   resolveAdjacentThreadId,
   resolveProjectStatusIndicator,
   resolveSidebarSweepKeys,
   resolveSidebarStageBadgeLabel,
   resolveSidebarThreadSection,
+  resolveSidebarPages,
   resolveSidebarRowAccessibility,
   resolveSidebarThreadStatus,
   resolveSidebarV2TopStatus,
@@ -172,6 +170,27 @@ describe("resolveSidebarThreadSection", () => {
     expect(resolveSidebarThreadSection({ snoozed: false, settled: true, pinned: true })).toBe(
       "settled",
     );
+  });
+
+  it("files a grouped thread under its group unless it is hidden", () => {
+    expect(
+      resolveSidebarThreadSection({ grouped: true, snoozed: true, settled: true, pinned: true }),
+    ).toBe("grouped");
+    expect(
+      resolveSidebarThreadSection({
+        hidden: true,
+        grouped: true,
+        snoozed: false,
+        settled: false,
+        pinned: false,
+      }),
+    ).toBe("hidden");
+  });
+
+  it("files a hidden thread under Hidden whatever else it is", () => {
+    expect(
+      resolveSidebarThreadSection({ hidden: true, snoozed: true, settled: true, pinned: true }),
+    ).toBe("hidden");
   });
 });
 
@@ -1327,89 +1346,6 @@ describe("searchSidebarThreads", () => {
       threads[0],
       threads[2],
     ]);
-  });
-});
-
-describe("filterSidebarProjectScopeItems", () => {
-  const items = [
-    { value: "all", label: "All projects" },
-    { value: "alpha", label: "Alpha workspace" },
-    { value: "beta", label: "Beta tools" },
-  ] as const;
-  const filter = (query: string) =>
-    filterSidebarProjectScopeItems({
-      items,
-      query,
-      matches: (item, candidate) =>
-        item.label.toLocaleLowerCase().includes(candidate.toLocaleLowerCase()),
-    });
-
-  it("shows the default row first while the query is empty", () => {
-    expect(filter("")).toEqual(items);
-    expect(filter("   ")).toEqual(items);
-  });
-
-  it("hides the default row while filtering", () => {
-    expect(filter("all")).toEqual([]);
-  });
-
-  it("returns matching projects in source order and supports no-match results", () => {
-    expect(filter("WORK")).toEqual([items[1]]);
-    expect(filter("missing")).toEqual([]);
-  });
-});
-
-describe("resolveSidebarProjectScopeKeys", () => {
-  it("replaces the default row with the first picked project", () => {
-    expect(resolveSidebarProjectScopeKeys({ current: [], next: ["all", "alpha"] })).toEqual([
-      "alpha",
-    ]);
-  });
-
-  it("adds and removes projects while scoped", () => {
-    expect(resolveSidebarProjectScopeKeys({ current: ["alpha"], next: ["alpha", "beta"] })).toEqual(
-      ["alpha", "beta"],
-    );
-    expect(resolveSidebarProjectScopeKeys({ current: ["alpha", "beta"], next: ["beta"] })).toEqual([
-      "beta",
-    ]);
-  });
-
-  it("clears the scope when the default row is picked", () => {
-    expect(resolveSidebarProjectScopeKeys({ current: ["alpha"], next: ["alpha", "all"] })).toEqual(
-      [],
-    );
-    expect(resolveSidebarProjectScopeKeys({ current: [], next: [] })).toEqual([]);
-  });
-});
-
-describe("reduceSidebarProjectScopeMenuState", () => {
-  const queriedOpenState = { open: true, query: "alpha" };
-
-  it("clears the query when the combobox closes through onOpenChange", () => {
-    expect(
-      reduceSidebarProjectScopeMenuState(queriedOpenState, {
-        type: "open-changed",
-        open: false,
-      }),
-    ).toEqual({ open: false, query: "" });
-  });
-
-  it("clears the query when project settings closes the combobox", () => {
-    expect(
-      reduceSidebarProjectScopeMenuState(queriedOpenState, {
-        type: "project-settings-opened",
-      }),
-    ).toEqual({ open: false, query: "" });
-  });
-
-  it("keeps the popup open while the query changes", () => {
-    expect(
-      reduceSidebarProjectScopeMenuState(
-        { open: true, query: "" },
-        { type: "query-changed", query: "beta" },
-      ),
-    ).toEqual({ open: true, query: "beta" });
   });
 });
 
@@ -2569,6 +2505,7 @@ describe("Working shelf (beta)", () => {
         activeOrder: ["a1", "a2", "p1"],
       });
       expect(resolveSidebarDropVerb("active", "working")).toBeNull();
+      expect(resolveSidebarDropVerb("active", "hidden")).toBeNull();
     });
 
     it("arranges the rows it can write when another row's server cannot store an order", () => {
@@ -2650,5 +2587,21 @@ describe("Working shelf (beta)", () => {
         unsnooze: false,
       });
     });
+  });
+});
+
+describe("resolveSidebarPages", () => {
+  it("keeps picked pages in list order, groups by name between threads and shelves", () => {
+    expect(
+      resolveSidebarPages(
+        ["settled", "group:Research", "threads", "group:Later"],
+        ["Later", "Research"],
+      ),
+    ).toEqual(["threads", "group:Later", "group:Research", "settled"]);
+  });
+
+  it("drops groups that no longer have threads and falls back to live threads", () => {
+    expect(resolveSidebarPages(["group:Gone", "hidden"], [])).toEqual(["hidden"]);
+    expect(resolveSidebarPages(["group:Gone", "nonsense"], [])).toEqual(["threads"]);
   });
 });

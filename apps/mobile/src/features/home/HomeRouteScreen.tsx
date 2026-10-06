@@ -8,6 +8,7 @@ import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell
 
 import { NativeHeaderToolbar, NativeStackScreenOptions } from "../../native/StackHeader";
 import { useProjects, useNavigationThreadShells } from "../../state/entities";
+import { useThreadListPages } from "../threads/use-thread-list-pages";
 import { usePendingNewTasks } from "../../state/use-pending-new-tasks";
 import { useWorkspaceState } from "../../state/workspace";
 import { useSavedRemoteConnections } from "../../state/use-remote-environment-registry";
@@ -72,6 +73,9 @@ export function HomeRouteScreen() {
     pinThread,
     unpinThread,
     setThreadAutoSettle,
+    setThreadHidden,
+    setThreadGroup,
+    moveThreadToNewGroup,
     moveThread,
     renameThread,
     regenerateThreadTitle,
@@ -103,6 +107,7 @@ export function HomeRouteScreen() {
     useHomeListOptions(availableEnvironmentIds);
   const selectedEnvironmentId = listOptions.selectedEnvironmentId;
   const [selectedProjectKey, setSelectedProjectKey] = useState<string | null>(null);
+  const { pages, availablePages, groupNames, togglePage } = useThreadListPages(visibleThreads);
   const projectFilterOptions = useMemo(
     () =>
       buildHomeProjectScopes({
@@ -196,6 +201,9 @@ export function HomeRouteScreen() {
           selectedProjectKey={selectedProjectKey}
           onEnvironmentChange={setSelectedEnvironmentId}
           onProjectChange={setSelectedProjectKey}
+          pages={pages}
+          availablePages={availablePages}
+          onTogglePage={togglePage}
           onOpenEnvironments={() =>
             navigation.navigate("SettingsSheet", {
               screen: "SettingsContent",
@@ -230,6 +238,9 @@ export function HomeRouteScreen() {
           onPinThread={pinThread}
           onUnpinThread={unpinThread}
           onSetThreadAutoSettle={setThreadAutoSettle}
+          onSetThreadHidden={setThreadHidden}
+          onSetThreadGroup={setThreadGroup}
+          onMoveThreadToNewGroup={moveThreadToNewGroup}
           onMoveThread={moveThread}
           onRenameThread={renameThread}
           onRegenerateThreadTitle={regenerateThreadTitle}
@@ -265,6 +276,8 @@ export function HomeRouteScreen() {
           searchQuery={searchQuery}
           selectedEnvironmentId={selectedEnvironmentId}
           selectedProjectKey={selectedProjectKey}
+          pages={pages}
+          groupNames={groupNames}
           threads={visibleThreads}
         />
       </>

@@ -146,17 +146,31 @@ export const animateSidebarLayoutChanges: AnimateLayoutChanges = (args) =>
 // and active threads keep the dragged position; settled threads use time
 // order. Snoozed rows can leave the shelf, but dropping into it is not
 // supported because snoozing requires a wake time. The Working shelf (beta)
-// follows live status, so it is neither a drag source nor a destination.
+// follows live status, and hidden rows leave through Unhide, so neither is a
+// drag source or destination.
 
-export type SidebarSection = "pinned" | "active" | "working" | "snoozed" | "settled";
+export type SidebarSection =
+  | "pinned"
+  | "active"
+  | "working"
+  | "grouped"
+  | "snoozed"
+  | "hidden"
+  | "settled";
 
-/** Resolve the shelf a visible thread belongs to. Snooze is temporary and
- * wins until its wake boundary; settlement then wins over a stale pin. */
+/** Resolve the shelf a visible thread belongs to. Hiding outranks everything
+ * until the user unhides, then a user-made group holds the thread until it
+ * moves out; snooze is temporary and wins until its wake boundary;
+ * settlement then wins over a stale pin. */
 export function resolveSidebarThreadSection(input: {
+  readonly hidden?: boolean;
+  readonly grouped?: boolean;
   readonly snoozed: boolean;
   readonly settled: boolean;
   readonly pinned: boolean;
 }): SidebarSection {
+  if (input.hidden) return "hidden";
+  if (input.grouped) return "grouped";
   if (input.snoozed) return "snoozed";
   if (input.settled) return "settled";
   if (input.pinned) return "pinned";
@@ -177,7 +191,10 @@ export type SidebarListMarker =
   | "pinned-divider"
   | "working-header"
   | "snoozed-header"
-  | "settled-header";
+  | "hidden-header"
+  | "settled-header"
+  /** Titles one user-made group; the item carries the group's name. */
+  | "group-header";
 
 export function sidebarMarkerId(marker: SidebarListMarker): string {
   return `${SIDEBAR_MARKER_PREFIX}${marker}`;
@@ -185,10 +202,14 @@ export function sidebarMarkerId(marker: SidebarListMarker): string {
 
 export type SidebarListItem =
   | { readonly kind: "thread"; readonly key: string; readonly section: SidebarSection }
-  | { readonly kind: "marker"; readonly marker: SidebarListMarker };
+  | { readonly kind: "marker"; readonly marker: SidebarListMarker; readonly group?: string };
 
 export function sidebarListItemId(item: SidebarListItem): string {
-  return item.kind === "thread" ? item.key : sidebarMarkerId(item.marker);
+  if (item.kind === "thread") return item.key;
+  // Encoded so a group name can never add the colon that marks thread keys.
+  return item.group === undefined
+    ? sidebarMarkerId(item.marker)
+    : `${sidebarMarkerId(item.marker)}-${encodeURIComponent(item.group)}`;
 }
 
 /** The section a slot belongs to, read off the markers around it: from
@@ -227,7 +248,13 @@ export function resolveSidebarDropTarget(
   const moved = items.filter((_, index) => index !== activeIndex);
   moved.splice(overIndex, 0, items[activeIndex]!);
   const section = sectionAtSidebarSlot(moved, overIndex);
-  if (section === "working" || section === "snoozed") return null;
+  if (
+    section === "working" ||
+    section === "grouped" ||
+    section === "snoozed" ||
+    section === "hidden"
+  )
+    return null;
   const pinnedOrder: string[] = [];
   const activeOrder: string[] = [];
   let currentSection: SidebarSection = "pinned";
@@ -283,7 +310,8 @@ export function resolveSidebarDropVerb(
   from: SidebarSection,
   to: SidebarSection | null,
 ): SidebarDropVerb | null {
-  if (to === null || to === from || to === "working" || to === "snoozed") return null;
+  if (to === null || to === from || to === "working" || to === "snoozed" || to === "hidden")
+    return null;
   if (to === "pinned") return "pin";
   if (to === "settled") return "settle";
   if (from === "pinned") return "unpin";
@@ -1391,7 +1419,14 @@ export function shouldShowSidebarV2Duration(status: SidebarThreadStatus): boolea
   return status === "working";
 }
 
-export type SidebarThreadShelf = "snoozed" | "settled" | "pinned" | "working" | "active";
+export type SidebarThreadShelf =
+  | "hidden"
+  | "grouped"
+  | "snoozed"
+  | "settled"
+  | "pinned"
+  | "working"
+  | "active";
 
 /**
  * The shelf a standalone sidebar row sits on. Pinned and active rows render as cards, whose tab
@@ -1400,7 +1435,7 @@ export type SidebarThreadShelf = "snoozed" | "settled" | "pinned" | "working" | 
 export function sidebarThreadShelf(
   thread: ThreadStatusInput &
     ThreadSnoozeShell &
-    Pick<SidebarThreadSummary, "settledOverride" | "pinnedAt">,
+    Pick<SidebarThreadSummary, "settledOverride" | "pinnedAt" | "hiddenAt" | "groupName">,
   input: {
     supportsSnooze: boolean;
     supportsSettlement: boolean;
@@ -1408,8 +1443,11 @@ export function sidebarThreadShelf(
     now: string;
   },
 ): SidebarThreadShelf {
-  // Snooze outranks settlement and pinning until the thread wakes.
+  // Snooze outranks settlement and pinning until the thread wakes. Only servers
+  // that understand hiding ever set hiddenAt, so it needs no capability check.
   const section = resolveSidebarThreadSection({
+    hidden: thread.hiddenAt != null,
+    grouped: thread.groupName != null,
     snoozed: input.supportsSnooze && effectiveSnoozed(thread, { now: input.now }),
     settled: input.supportsSettlement && thread.settledOverride === "settled",
     pinned: thread.pinnedAt != null,
@@ -1485,51 +1523,6 @@ export function searchSidebarThreads<
     }
   }
   return [...titleMatches, ...contentMatches];
-}
-
-export function filterSidebarProjectScopeItems<TItem extends { readonly value: string }>(input: {
-  items: readonly TItem[];
-  query: string;
-  matches: (item: TItem, query: string) => boolean;
-}): readonly TItem[] {
-  const query = input.query.trim();
-  if (query.length === 0) return input.items;
-  return input.items.filter((item) => item.value !== "all" && input.matches(item, query));
-}
-
-/** Maps the multi-select picker's next value onto scope keys. "All projects"
-    is selected exactly when nothing is scoped, so picking it clears the scope
-    and picking any project drops it. */
-export function resolveSidebarProjectScopeKeys(input: {
-  readonly current: readonly string[];
-  readonly next: readonly string[];
-}): string[] {
-  if (input.current.length > 0 && input.next.includes("all")) return [];
-  return input.next.filter((value) => value !== "all");
-}
-
-export interface SidebarProjectScopeMenuState {
-  readonly open: boolean;
-  readonly query: string;
-}
-
-export type SidebarProjectScopeMenuAction =
-  | { readonly type: "query-changed"; readonly query: string }
-  | { readonly type: "open-changed"; readonly open: boolean }
-  | { readonly type: "project-settings-opened" };
-
-export function reduceSidebarProjectScopeMenuState(
-  state: SidebarProjectScopeMenuState,
-  action: SidebarProjectScopeMenuAction,
-): SidebarProjectScopeMenuState {
-  switch (action.type) {
-    case "query-changed":
-      return { ...state, query: action.query };
-    case "open-changed":
-      return { open: action.open, query: "" };
-    case "project-settings-opened":
-      return { open: false, query: "" };
-  }
 }
 
 /** The timestamp a working thread's elapsed label counts from: when its
@@ -1827,4 +1820,27 @@ export function sortScopedProjectsForSidebar<
       left.environmentId.localeCompare(right.environmentId) ||
       left.id.localeCompare(right.id),
   );
+}
+
+/** What the sidebar list can show: live threads, one user-made group, or a parked shelf. */
+export type SidebarPage = "threads" | `group:${string}` | "snoozed" | "hidden" | "settled";
+
+export const sidebarGroupPage = (groupName: string): SidebarPage => `group:${groupName}`;
+
+/** Every page the Show filter offers, in list order: live work, groups by name, then shelves. */
+export function availableSidebarPages(groupNames: readonly string[]): SidebarPage[] {
+  return ["threads", ...groupNames.map(sidebarGroupPage), "snoozed", "hidden", "settled"];
+}
+
+/**
+ * The stored Show selection, kept to pages that still exist and put in list order. A group
+ * whose last thread moved out drops away; an emptied selection falls back to live threads.
+ */
+export function resolveSidebarPages(
+  stored: readonly string[],
+  groupNames: readonly string[],
+): SidebarPage[] {
+  const picked = new Set(stored);
+  const pages = availableSidebarPages(groupNames).filter((page) => picked.has(page));
+  return pages.length > 0 ? pages : ["threads"];
 }

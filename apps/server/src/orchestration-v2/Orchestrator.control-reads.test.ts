@@ -15,6 +15,7 @@ import {
   RunId,
   RuntimeRequestId,
   ThreadId,
+  TrimmedNonEmptyString,
   TurnItemId,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
@@ -47,6 +48,89 @@ const layerTest = Layer.mergeAll(
     ProviderAdapterRegistry.layerFromAdapters([adapter]),
     { databaseLayer: layerDatabase, runEffectWorker: false },
   ),
+);
+
+it.effect("moves a thread into a sidebar group and back out", () =>
+  Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const threadId = ThreadId.make("thread:group");
+    yield* orchestrator.dispatch({
+      type: "thread.create",
+      commandId: CommandId.make("create-group"),
+      threadId,
+      projectId: ProjectId.make("project:group"),
+      title: "Group me",
+      modelSelection,
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      createdBy: "user",
+      creationSource: "web",
+    });
+    const groupName = Effect.map(projections.getThreadShell(threadId), (shell) => shell?.groupName);
+    for (const [id, name] of [
+      ["group-research", "Research"],
+      ["group-later", "Later"],
+      ["group-none", null],
+    ] as const) {
+      yield* orchestrator.dispatch({
+        type: "thread.group.set",
+        commandId: CommandId.make(id),
+        threadId,
+        groupName: name === null ? null : TrimmedNonEmptyString.make(name),
+      });
+      assert.equal(yield* groupName, name);
+    }
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("hides a thread until it is unhidden, and leaves archived threads alone", () =>
+  Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const threadId = ThreadId.make("thread:hide");
+    yield* orchestrator.dispatch({
+      type: "thread.create",
+      commandId: CommandId.make("create-hide"),
+      threadId,
+      projectId: ProjectId.make("project:hide"),
+      title: "Hide me",
+      modelSelection,
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      createdBy: "user",
+      creationSource: "web",
+    });
+    const setHidden = (hidden: boolean, id: string) =>
+      orchestrator.dispatch({
+        type: "thread.hidden.set",
+        commandId: CommandId.make(id),
+        threadId,
+        hidden,
+      });
+    const hiddenAt = Effect.map(projections.getThreadShell(threadId), (shell) => shell?.hiddenAt);
+
+    yield* setHidden(true, "hide-1");
+    const firstHiddenAt = yield* hiddenAt;
+    assert.ok(firstHiddenAt);
+    // Hiding again keeps the original timestamp.
+    yield* setHidden(true, "hide-2");
+    assert.deepStrictEqual(yield* hiddenAt, firstHiddenAt);
+
+    yield* setHidden(false, "unhide");
+    assert.equal(yield* hiddenAt, null);
+
+    yield* orchestrator.dispatch({
+      type: "thread.archive",
+      commandId: CommandId.make("archive-hide"),
+      threadId,
+    });
+    assert.equal((yield* Effect.exit(setHidden(true, "hide-archived")))._tag, "Failure");
+  }).pipe(Effect.provide(layerTest)),
 );
 
 it.effect(

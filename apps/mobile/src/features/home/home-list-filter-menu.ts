@@ -1,5 +1,7 @@
 import type { EnvironmentId } from "@t3tools/contracts";
 
+import { threadListPageLabel, type ThreadListPage } from "../threads/threadListV2";
+
 export interface HomeListFilterMenuEnvironment {
   readonly environmentId: EnvironmentId;
   readonly label: string;
@@ -36,6 +38,10 @@ export function buildHomeListFilterMenu(props: {
   readonly selectedProjectKey: string | null;
   readonly onEnvironmentChange: (environmentId: EnvironmentId | null) => void;
   readonly onProjectChange: (projectKey: string | null) => void;
+  readonly pages: ReadonlyArray<ThreadListPage>;
+  /** Pages offered in the Show submenu, from availableThreadListPages. */
+  readonly availablePages: ReadonlyArray<ThreadListPage>;
+  readonly onTogglePage: (page: ThreadListPage) => void;
 }): HomeListFilterMenu {
   const items: Array<HomeListFilterMenuAction | HomeListFilterMenuSubmenu> = [];
 
@@ -83,6 +89,18 @@ export function buildHomeListFilterMenu(props: {
       ],
     });
   }
+
+  // Multi-select: each page toggles; the last selected page stays on.
+  items.push({
+    type: "submenu",
+    title: "Show",
+    items: props.availablePages.map((page) => ({
+      type: "action" as const,
+      title: threadListPageLabel(page),
+      state: props.pages.includes(page) ? ("on" as const) : ("off" as const),
+      onPress: () => props.onTogglePage(page),
+    })),
+  });
 
   return {
     title: "Thread list options",

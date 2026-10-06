@@ -49,8 +49,6 @@ export interface Preferences {
     readonly model: string;
   }>;
   /** Fresh keys reset both shelves to collapsed when users update. */
-  readonly threadListSettledShelfExpanded?: boolean;
-  readonly threadListSnoozedShelfExpanded?: boolean;
   readonly threadListWorkingShelfExpanded?: boolean;
 }
 
@@ -112,8 +110,6 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     planModeEnabled?: boolean;
     workingShelfEnabled?: boolean;
     modelFavorites?: Preferences["modelFavorites"];
-    threadListSettledShelfExpanded?: boolean;
-    threadListSnoozedShelfExpanded?: boolean;
     threadListWorkingShelfExpanded?: boolean;
   } = {};
 
@@ -198,12 +194,6 @@ function sanitizePreferences(parsed: Preferences): Preferences {
         typeof favorite.model === "string" &&
         favorite.model.trim().length > 0,
     );
-  }
-  if (typeof parsed.threadListSettledShelfExpanded === "boolean") {
-    preferences.threadListSettledShelfExpanded = parsed.threadListSettledShelfExpanded;
-  }
-  if (typeof parsed.threadListSnoozedShelfExpanded === "boolean") {
-    preferences.threadListSnoozedShelfExpanded = parsed.threadListSnoozedShelfExpanded;
   }
   if (typeof parsed.threadListWorkingShelfExpanded === "boolean") {
     preferences.threadListWorkingShelfExpanded = parsed.threadListWorkingShelfExpanded;

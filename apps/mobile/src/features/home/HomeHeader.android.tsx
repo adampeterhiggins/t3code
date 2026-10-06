@@ -3,6 +3,7 @@ import { useCallback, useMemo } from "react";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { MaterialThreadListToolbar } from "./MaterialThreadListToolbar";
 import type { HomeHeaderProps } from "./HomeHeader.types";
+import { isDefaultThreadListPages, threadListPageLabel } from "../threads/threadListV2";
 
 export type { HomeHeaderEnvironment } from "./HomeHeader.types";
 
@@ -15,7 +16,9 @@ export function HomeHeader(props: HomeHeaderProps) {
   // the filter menu only carries the filters and the "customized" icon state
   // keys off those alone.
   const hasCustomListOptions =
-    props.selectedEnvironmentId !== null || props.selectedProjectKey !== null;
+    props.selectedEnvironmentId !== null ||
+    props.selectedProjectKey !== null ||
+    !isDefaultThreadListPages(props.pages);
   const menuActions = useMemo<MenuAction[]>(
     () => [
       {
@@ -54,8 +57,24 @@ export function HomeHeader(props: HomeHeaderProps) {
               ],
             },
           ] satisfies MenuAction[])),
+      {
+        id: "page",
+        title: "Show",
+        subactions: props.availablePages.map((page) => ({
+          id: `page:${page}`,
+          title: threadListPageLabel(page),
+          state: checkedMenuState(props.pages.includes(page)),
+        })),
+      },
     ],
-    [props.environments, props.projects, props.selectedEnvironmentId, props.selectedProjectKey],
+    [
+      props.environments,
+      props.availablePages,
+      props.pages,
+      props.projects,
+      props.selectedEnvironmentId,
+      props.selectedProjectKey,
+    ],
   );
   const handleMenuAction = useCallback(
     (event: { nativeEvent: { event: string } }) => {
@@ -73,6 +92,12 @@ export function HomeHeader(props: HomeHeaderProps) {
         if (environment) {
           props.onEnvironmentChange(environment.environmentId);
         }
+        return;
+      }
+
+      const page = props.availablePages.find((candidate) => id === `page:${candidate}`);
+      if (page !== undefined) {
+        props.onTogglePage(page);
         return;
       }
 

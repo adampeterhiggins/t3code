@@ -396,6 +396,8 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
     case "thread.snooze":
     case "thread.unsnooze":
     case "thread.auto-settle.set":
+    case "thread.hidden.set":
+    case "thread.group.set":
     case "thread.pin":
     case "thread.unpin":
     case "thread.pin.reorder":
@@ -2352,6 +2354,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           | "thread.snooze"
           | "thread.unsnooze"
           | "thread.auto-settle.set"
+          | "thread.hidden.set"
+          | "thread.group.set"
           | "thread.pin"
           | "thread.unpin"
           | "thread.pin.reorder"
@@ -2490,6 +2494,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         command.type === "thread.snooze" ||
         command.type === "thread.unsnooze" ||
         command.type === "thread.auto-settle.set" ||
+        command.type === "thread.hidden.set" ||
+        command.type === "thread.group.set" ||
         command.type === "thread.pin" ||
         command.type === "thread.unpin" ||
         command.type === "thread.pin.reorder" ||
@@ -2829,6 +2835,20 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             updatedAt: unchanged ? thread.updatedAt : now,
           };
         }
+        case "thread.hidden.set": {
+          const unchanged = command.hidden === (thread.hiddenAt != null);
+          return {
+            ...thread,
+            hiddenAt: command.hidden ? (thread.hiddenAt ?? now) : null,
+            updatedAt: unchanged ? thread.updatedAt : now,
+          };
+        }
+        case "thread.group.set":
+          return {
+            ...thread,
+            groupName: command.groupName,
+            updatedAt: command.groupName === (thread.groupName ?? null) ? thread.updatedAt : now,
+          };
         case "thread.pin": {
           // Pinning is a promotion: it clears the parked states rather than
           // silently outranking them — an explicit settle is un-settled and a
@@ -3186,6 +3206,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           return "thread.unsnoozed" as const;
         case "thread.auto-settle.set":
           return "thread.auto-settle-set" as const;
+        case "thread.hidden.set":
+          return "thread.hidden-set" as const;
+        case "thread.group.set":
+          return "thread.group-set" as const;
         case "thread.pin":
           return "thread.pinned" as const;
         case "thread.unpin":
@@ -10291,6 +10315,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       case "thread.snooze":
       case "thread.unsnooze":
       case "thread.auto-settle.set":
+      case "thread.hidden.set":
+      case "thread.group.set":
       case "thread.pin":
       case "thread.unpin":
       case "thread.pin.reorder":

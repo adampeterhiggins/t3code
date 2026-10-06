@@ -1,4 +1,5 @@
 import type { EnvironmentId } from "@t3tools/contracts";
+import type { ThreadListPage } from "../threads/threadListV2";
 import type {
   HomeListFilterMenuEnvironment,
   HomeListFilterMenuProject,
@@ -15,6 +16,10 @@ export interface HomeHeaderProps {
   readonly onSearchQueryChange: (query: string) => void;
   readonly onEnvironmentChange: (environmentId: EnvironmentId | null) => void;
   readonly onProjectChange: (projectKey: string | null) => void;
+  /** Filter-menu pages (multi-select). */
+  readonly pages: ReadonlyArray<ThreadListPage>;
+  readonly availablePages: ReadonlyArray<ThreadListPage>;
+  readonly onTogglePage: (page: ThreadListPage) => void;
   readonly onOpenEnvironments: () => void;
   readonly onOpenSettings: () => void;
   readonly onStartNewTask: () => void;

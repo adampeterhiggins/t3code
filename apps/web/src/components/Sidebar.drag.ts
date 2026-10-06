@@ -131,6 +131,8 @@ export function createSidebarSortingStrategy(input: {
       active: [],
       working: [],
       snoozed: [],
+      grouped: [],
+      hidden: [],
       settled: [],
     };
     let cardHeight = input.cardHeight;

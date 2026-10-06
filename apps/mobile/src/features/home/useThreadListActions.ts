@@ -69,6 +69,20 @@ function environmentSupportsAutoSettleOptOut(
   );
 }
 
+function environmentSupportsHiding(environmentId: EnvironmentThreadShell["environmentId"]) {
+  return (
+    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
+      .threadHiding === true
+  );
+}
+
+function environmentSupportsGroups(environmentId: EnvironmentThreadShell["environmentId"]) {
+  return (
+    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
+      .threadGroups === true
+  );
+}
+
 function environmentSupportsTitleRegeneration(
   environmentId: EnvironmentThreadShell["environmentId"],
 ) {
@@ -248,6 +262,15 @@ export function useThreadListActions(): {
     thread: EnvironmentThreadShell,
     enabled: boolean,
   ) => Promise<boolean>;
+  /** Hides the thread from the main sections, or brings it back. */
+  readonly setThreadHidden: (thread: EnvironmentThreadShell, hidden: boolean) => Promise<boolean>;
+  /** Moves the thread into a named group, or out of its group with null. */
+  readonly setThreadGroup: (
+    thread: EnvironmentThreadShell,
+    groupName: string | null,
+  ) => Promise<boolean>;
+  /** Prompts for a new group name, then moves the thread into it. */
+  readonly moveThreadToNewGroup: (thread: EnvironmentThreadShell) => void;
   readonly moveThread: (
     thread: EnvironmentThreadShell,
     direction: ThreadMoveDestination,
@@ -261,6 +284,12 @@ export function useThreadListActions(): {
   const pinMutation = useAtomCommand(threadEnvironment.pin, { reportFailure: false });
   const unpinMutation = useAtomCommand(threadEnvironment.unpin, { reportFailure: false });
   const setAutoSettleMutation = useAtomCommand(threadEnvironment.setAutoSettle, {
+    reportFailure: false,
+  });
+  const setHiddenMutation = useAtomCommand(threadEnvironment.setHidden, {
+    reportFailure: false,
+  });
+  const setGroupMutation = useAtomCommand(threadEnvironment.setGroup, {
     reportFailure: false,
   });
   const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
@@ -476,6 +505,87 @@ export function useThreadListActions(): {
       return true;
     },
     [setAutoSettleMutation],
+  );
+  const setThreadHidden = useCallback(
+    async (thread: EnvironmentThreadShell, hidden: boolean) => {
+      const title = hidden ? "Could not hide thread" : "Could not unhide thread";
+      if (!environmentSupportsHiding(thread.environmentId)) {
+        Alert.alert(
+          title,
+          "This environment's server does not support hiding threads yet. Update the server to use it.",
+        );
+        return false;
+      }
+      selectionHaptic();
+      const result = await setHiddenMutation({
+        environmentId: thread.environmentId,
+        input: { threadId: thread.id, hidden },
+      });
+      if (result._tag === "Failure") {
+        const error = Cause.squash(result.cause);
+        Alert.alert(
+          title,
+          error instanceof Error && error.message.trim().length > 0
+            ? error.message
+            : "The thread could not be updated.",
+        );
+        return false;
+      }
+      return true;
+    },
+    [setHiddenMutation],
+  );
+  const setThreadGroup = useCallback(
+    async (thread: EnvironmentThreadShell, groupName: string | null) => {
+      if (!environmentSupportsGroups(thread.environmentId)) {
+        Alert.alert(
+          "Could not move thread",
+          "This environment's server does not support thread groups yet. Update the server to use them.",
+        );
+        return false;
+      }
+      selectionHaptic();
+      const result = await setGroupMutation({
+        environmentId: thread.environmentId,
+        input: { threadId: thread.id, groupName },
+      });
+      if (result._tag === "Failure") {
+        const error = Cause.squash(result.cause);
+        Alert.alert(
+          "Could not move thread",
+          error instanceof Error && error.message.trim().length > 0
+            ? error.message
+            : "The thread's group could not be changed.",
+        );
+        return false;
+      }
+      return true;
+    },
+    [setGroupMutation],
+  );
+  const moveThreadToNewGroup = useCallback(
+    (thread: EnvironmentThreadShell) => {
+      const commit = (name: string) => {
+        const groupName = name.trim();
+        if (groupName.length === 0) {
+          Alert.alert("Could not create group", "Group name cannot be empty.");
+          return;
+        }
+        void setThreadGroup(thread, groupName);
+      };
+      // Same prompt split as Rename: Alert.prompt exists only on iOS.
+      if (Platform.OS === "ios") {
+        Alert.prompt("New group", undefined, (name) => commit(name ?? ""), "plain-text", "");
+        return;
+      }
+      showTextInputDialog({
+        title: "New group",
+        initialValue: "",
+        confirmText: "Create",
+        onConfirm: commit,
+      });
+    },
+    [setThreadGroup],
   );
   const regenerateThreadTitle = useCallback(
     async (thread: EnvironmentThreadShell) => {
@@ -741,6 +851,9 @@ export function useThreadListActions(): {
     pinThread,
     unpinThread,
     setThreadAutoSettle,
+    setThreadHidden,
+    setThreadGroup,
+    moveThreadToNewGroup,
     moveThread,
     renameThread,
     regenerateThreadTitle,

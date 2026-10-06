@@ -8,6 +8,7 @@ import {
   createNativeMailSearchToolbarItem,
   NATIVE_MAIL_SEARCH_TOOLBAR_SUPPORTED,
 } from "../layout/native-mail-search-toolbar";
+import { isDefaultThreadListPages, threadListPageLabel } from "../threads/threadListV2";
 import { buildHomeListFilterMenu } from "./home-list-filter-menu";
 import type { HomeHeaderProps } from "./HomeHeader.types";
 
@@ -20,7 +21,9 @@ export function HomeHeader(props: HomeHeaderProps) {
   // the filter menu only carries the filters and the "customized" icon state
   // keys off those alone.
   const hasCustomListOptions =
-    props.selectedEnvironmentId !== null || props.selectedProjectKey !== null;
+    props.selectedEnvironmentId !== null ||
+    props.selectedProjectKey !== null ||
+    !isDefaultThreadListPages(props.pages);
   const focusSearch = useCallback(() => {
     searchBarRef.current?.focus();
     return searchBarRef.current !== null;
@@ -139,6 +142,18 @@ export function HomeHeader(props: HomeHeaderProps) {
                 ))}
               </NativeHeaderToolbar.Menu>
             ) : null}
+            <NativeHeaderToolbar.Menu title="Show">
+              <NativeHeaderToolbar.Label>Show</NativeHeaderToolbar.Label>
+              {props.availablePages.map((page) => (
+                <NativeHeaderToolbar.MenuAction
+                  key={page}
+                  isOn={props.pages.includes(page)}
+                  onPress={() => props.onTogglePage(page)}
+                >
+                  <NativeHeaderToolbar.Label>{threadListPageLabel(page)}</NativeHeaderToolbar.Label>
+                </NativeHeaderToolbar.MenuAction>
+              ))}
+            </NativeHeaderToolbar.Menu>
           </NativeHeaderToolbar.Menu>
           <NativeHeaderToolbar.Spacer flexible />
           <NativeHeaderToolbar.Button

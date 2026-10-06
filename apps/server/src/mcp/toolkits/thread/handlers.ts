@@ -298,6 +298,22 @@ export const layer = ThreadToolkit.toLayer({
         case "mark_unread":
           command = { ...common, type: "thread.mark-unread" };
           break;
+        case "move_to_group":
+          if (input.groupName === undefined) {
+            return yield* new OrchestratorMcpFailure({
+              code: "invalid_request",
+              message: "move_to_group requires groupName.",
+            });
+          }
+          command = { ...common, type: "thread.group.set", groupName: input.groupName };
+          break;
+        case "remove_from_group":
+          command = { ...common, type: "thread.group.set", groupName: null };
+          break;
+        case "hide":
+        case "unhide":
+          command = { ...common, type: "thread.hidden.set", hidden: input.action === "hide" };
+          break;
         default:
           command = { ...common, type: `thread.${input.action}` };
       }

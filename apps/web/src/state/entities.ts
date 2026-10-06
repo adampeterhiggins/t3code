@@ -289,6 +289,22 @@ export function readEnvironmentSupportsAutoSettleOptOut(environmentId: Environme
   );
 }
 
+/** Whether the environment's server understands thread.hidden.set. */
+export function readEnvironmentSupportsHiding(environmentId: EnvironmentId): boolean {
+  return (
+    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
+      .threadHiding === true
+  );
+}
+
+/** Whether the environment's server understands thread.group.set. */
+export function readEnvironmentSupportsGroups(environmentId: EnvironmentId): boolean {
+  return (
+    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
+      .threadGroups === true
+  );
+}
+
 export function readEnvironmentSupportsActiveReorder(environmentId: EnvironmentId): boolean {
   return (
     appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
