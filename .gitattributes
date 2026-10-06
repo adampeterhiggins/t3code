@@ -3,3 +3,5 @@
 # Batch files need CRLF for cmd.exe to parse them reliably.
 *.cmd text eol=crlf
 *.bat text eol=crlf
+# Vendored reference repos: collapse their diffs on GitHub.
+.repos/** linguist-generated=true
