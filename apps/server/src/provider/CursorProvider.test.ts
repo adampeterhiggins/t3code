@@ -14,6 +14,7 @@ import {
   checkCursorProviderStatus,
 } from "./CursorProvider.ts";
 import * as CursorSdkCatalog from "./CursorSdkCatalog.ts";
+import { withCursorDefaultParameters } from "./cursorSdkModel.ts";
 
 const decodeCursorSettings = Schema.decodeSync(CursorSettingsSchema);
 
@@ -162,6 +163,62 @@ describe("Cursor SDK model discovery", () => {
         capabilities: buildCursorCapabilitiesFromSdkModel(sdkParameterizedModel),
       },
     ]);
+  });
+});
+
+describe("withCursorDefaultParameters", () => {
+  // Cursor defaults Fast on for some models; T3 keeps it off unless chosen.
+  const fastByDefaultModel = {
+    ...sdkParameterizedModel,
+    variants: [
+      {
+        ...sdkParameterizedModel.variants[0]!,
+        params: sdkParameterizedModel.variants[0]!.params.map((parameter) =>
+          parameter.id === "fast" ? { ...parameter, value: "true" } : parameter,
+        ),
+      },
+    ],
+  } satisfies SDKModel;
+  const descriptors = buildCursorCapabilitiesFromSdkModel(fastByDefaultModel).optionDescriptors;
+
+  it("sends the picker defaults for parameters the selection leaves out", () => {
+    expect(withCursorDefaultParameters({ id: "claude-opus-4-8" }, descriptors)).toEqual({
+      id: "claude-opus-4-8",
+      params: [
+        { id: "effort", value: "high" },
+        { id: "context", value: "1m" },
+        { id: "fast", value: "false" },
+        { id: "thinking", value: "true" },
+      ],
+    });
+  });
+
+  it("keeps chosen parameters and fills only the rest", () => {
+    expect(
+      withCursorDefaultParameters(
+        {
+          id: "claude-opus-4-8",
+          params: [
+            { id: "context", value: "300k" },
+            { id: "fast", value: "true" },
+          ],
+        },
+        descriptors,
+      ),
+    ).toEqual({
+      id: "claude-opus-4-8",
+      params: [
+        { id: "context", value: "300k" },
+        { id: "fast", value: "true" },
+        { id: "effort", value: "high" },
+        { id: "thinking", value: "true" },
+      ],
+    });
+  });
+
+  it("leaves models without advertised options unchanged", () => {
+    const selection = { id: "default" };
+    expect(withCursorDefaultParameters(selection, undefined)).toBe(selection);
   });
 });
 

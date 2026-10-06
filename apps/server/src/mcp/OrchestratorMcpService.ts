@@ -1160,15 +1160,29 @@ const make = Effect.gen(function* () {
         }
       }
 
+      // On the parent's model, requested options override the parent's by id, so an
+      // effort-only request keeps the parent's other choices such as its context window.
+      const inheritsModel =
+        instanceId === inheritedSelection.instanceId && model === inheritedSelection.model;
       return {
         modelSelection:
-          instanceId === inheritedSelection.instanceId &&
-          model === inheritedSelection.model &&
           requestedOptions === undefined
-            ? inheritedSelection
-            : requestedOptions === undefined
-              ? { instanceId, model }
-              : { instanceId, model, options: requestedOptions },
+            ? inheritsModel
+              ? inheritedSelection
+              : { instanceId, model }
+            : {
+                instanceId,
+                model,
+                options: inheritsModel
+                  ? [
+                      ...(inheritedSelection.options ?? []).filter(
+                        (inherited) =>
+                          !requestedOptions.some((option) => option.id === inherited.id),
+                      ),
+                      ...requestedOptions,
+                    ]
+                  : requestedOptions,
+              },
       };
     });
 

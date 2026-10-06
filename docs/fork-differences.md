@@ -150,6 +150,24 @@ This is a port of upstream PR [#15884](https://github.com/pingdotgg/t3code/pull/
 [#15788](https://github.com/pingdotgg/t3code/issues/15788). Remove this section when upstream merges
 it. Code: `apps/server/src/provider/cursorSdk.ts`.
 
+## Cursor turns send the picker's defaults
+
+Cursor gets every model option the picker shows, not only the ones the user changed. Cursor treats
+an omitted option as the model's standard tier, so upstream runs an untouched composer, a delegated
+task, a launched thread, or a scheduled task at about 300K while the picker shows 1M (500K for
+Grok 4.7). Fast is the exception: it stays off unless chosen, as in the composer. With the
+long-context change above, these defaults run in Max Mode.
+
+`delegate_task` on the parent's own provider and model keeps the parent's options and overrides
+only the ones it names, for every provider. Upstream replaces them, so an effort-only child loses
+the parent's context window.
+
+Fixes upstream [#16149](https://github.com/pingdotgg/t3code/issues/16149); remove this section when
+upstream fixes it. Code: `withCursorDefaultParameters` in
+`apps/server/src/provider/cursorSdkModel.ts`, applied in
+`apps/server/src/provider/Drivers/CursorDriver.ts`, and `resolveTarget` in
+`apps/server/src/mcp/OrchestratorMcpService.ts`.
+
 ## Agents panel drilldowns
 
 Upstream makes every subagent a child thread, lists a thread's subagents under **Lineage** in the
