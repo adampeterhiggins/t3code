@@ -2934,22 +2934,25 @@ const SidebarTabRow = memo(function SidebarTabRow(props: {
               <span role="status">{topStatus.label}</span>
             </span>
           ) : null}
-          <span className="shrink-0 text-xs tabular-nums text-secondary-label group-hover/sidebar-row:hidden group-focus-visible/sidebar-row:hidden group-has-[:focus-visible]/sidebar-row:hidden">
-            {props.timeLabel ?? threadTimeLabel(thread)}
+          {/* Time and close share one grid cell so swapping them on hover keeps the row width stable. */}
+          <span className="grid shrink-0 items-center justify-items-end">
+            <span className="col-start-1 row-start-1 text-xs tabular-nums text-secondary-label group-hover/sidebar-row:invisible group-focus-visible/sidebar-row:invisible group-has-[:focus-visible]/sidebar-row:invisible">
+              {props.timeLabel ?? threadTimeLabel(thread)}
+            </span>
+            <button
+              type="button"
+              aria-label="Close tab"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                props.onCloseTab(threadRef);
+              }}
+              onDoubleClick={(event) => event.stopPropagation()}
+              className="invisible col-start-1 row-start-1 -mx-1 inline-flex size-5 cursor-pointer items-center justify-center rounded-sm text-muted-foreground outline-none hover:bg-foreground/10 hover:text-foreground focus-visible:visible focus-visible:ring-2 focus-visible:ring-ring group-hover/sidebar-row:visible group-focus-visible/sidebar-row:visible"
+            >
+              <XIcon className="size-3.5" />
+            </button>
           </span>
-          <button
-            type="button"
-            aria-label="Close tab"
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              props.onCloseTab(threadRef);
-            }}
-            onDoubleClick={(event) => event.stopPropagation()}
-            className="-mx-1 hidden size-5 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted-foreground outline-none hover:bg-foreground/10 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:inline-flex group-hover/sidebar-row:inline-flex group-focus-visible/sidebar-row:inline-flex"
-          >
-            <XIcon className="size-3.5" />
-          </button>
           {driverKind ? (
             <span aria-hidden className="inline-flex shrink-0 items-center">
               <ProviderInstanceIcon
