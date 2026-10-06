@@ -8,6 +8,7 @@ import {
   toolReadRangeLabel,
   turnItemOutputImages,
   turnItemOutputText,
+  turnItemReadFile,
 } from "./itemDetail.ts";
 
 function fileChange(
@@ -122,5 +123,88 @@ describe("tool output images", () => {
     const output = { content: [{ type: "image", mimeType: "image/svg+xml" }] };
     expect(turnItemOutputImages({ ...screenshot, output })).toEqual([]);
     expect(turnItemOutputText({ ...screenshot, output })).toBe("[image]");
+  });
+});
+
+describe("file reads", () => {
+  const read = (toolName: string, input: unknown, output: unknown) => ({
+    ...screenshot,
+    toolName,
+    input,
+    output,
+  });
+
+  it("shows the file, not the JSON a provider reported it in", () => {
+    const claude = read(
+      "Read",
+      { file_path: "/repo/a.ts", offset: 40, limit: 2 },
+      {
+        type: "text",
+        file: { filePath: "/repo/a.ts", content: "const a = 1;\nconst b = 2;\n", startLine: 40 },
+      },
+    );
+    expect(turnItemReadFile(claude)).toEqual({
+      path: "/repo/a.ts",
+      text: "const a = 1;\nconst b = 2;",
+      startLine: 40,
+    });
+    expect(turnItemOutputText(claude)).toBe("const a = 1;\nconst b = 2;");
+
+    const cursor = read(
+      "Read",
+      { path: "/repo/README.md" },
+      { content: "# Title\n\nBody", totalLines: 3, fileSize: 15 },
+    );
+    expect(turnItemReadFile(cursor)).toEqual({
+      path: "/repo/README.md",
+      text: "# Title\n\nBody",
+      startLine: 1,
+    });
+  });
+
+  it("strips the line numbers and wrappers providers add to text results", () => {
+    expect(
+      turnItemReadFile(read("Read", { file_path: "a.ts" }, "    12\tfoo\n    13\t\n    14\tbar\n")),
+    ).toEqual({ path: "a.ts", text: "foo\n\nbar", startLine: 12 });
+    const opencode = [
+      "<path>/repo/a.ts</path>",
+      "<type>file</type>",
+      "<content>",
+      "1: foo",
+      "2: ",
+      "3: bar",
+      "",
+      "(End of file - total 3 lines)",
+      "</content>",
+    ].join("\n");
+    expect(turnItemReadFile(read("read", { filePath: "/repo/a.ts" }, opencode))).toEqual({
+      path: "/repo/a.ts",
+      text: "foo\n\nbar",
+      startLine: 1,
+    });
+    expect(
+      turnItemReadFile(
+        read("read", { filePath: "a.ts" }, "<file>\n00007| foo\n00008| bar\n</file>"),
+      ),
+    ).toMatchObject({ text: "foo\nbar", startLine: 7 });
+  });
+
+  it("keeps text that only looks numbered in places", () => {
+    const text = "2024: a year\nnot numbered";
+    expect(turnItemReadFile(read("read", { path: "notes.md", offset: 5 }, text))).toEqual({
+      path: "notes.md",
+      text,
+      startLine: 5,
+    });
+  });
+
+  it("leaves other tools, image reads and withheld output alone", () => {
+    expect(turnItemReadFile(screenshot)).toBeNull();
+    expect(
+      turnItemReadFile(read("Read", { file_path: "a.png" }, { type: "image", file: {} })),
+    ).toBeNull();
+    expect(
+      turnItemReadFile({ ...read("Read", { file_path: "a.ts" }, undefined), outputOmitted: true }),
+    ).toBeNull();
   });
 });

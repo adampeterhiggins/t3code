@@ -13,6 +13,7 @@ import {
   turnItemNeedsDetailFetch,
   turnItemOutputImages,
   turnItemOutputText,
+  turnItemReadFile,
 } from "@t3tools/client-runtime/work-log/item-detail";
 import { ExternalLinkIcon, GitBranchIcon, RotateCcwIcon } from "lucide-react";
 import { memo, Suspense, use, useMemo } from "react";
@@ -30,6 +31,7 @@ import { RenderErrorBoundary } from "../RenderErrorBoundary";
 import { ToolCallBody as ToolPreviewBody } from "../ToolCallBody";
 import { resolveExternalWebLinkHref } from "./externalLinkContextMenu";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
+import { ReadFileView } from "./ReadFileView";
 import { ShellCommandBlock } from "./ShellCommandBlock";
 
 interface V2ItemInspectorProps {
@@ -131,6 +133,7 @@ function useFetchedTurnItem(
     item,
     output: {
       output: turnItemOutputText(item),
+      readFile: turnItemReadFile(item),
       images: turnItemOutputImages(item),
       environmentId,
       pending: item === wireItem && detail.isPending,
@@ -147,6 +150,8 @@ function useFetchedTurnItem(
 
 interface ToolOutputState {
   readonly output: string | null;
+  /** Fork: a file read's contents, shown as source instead of `output`. */
+  readonly readFile?: ReturnType<typeof turnItemReadFile> | undefined;
   readonly images: ReturnType<typeof turnItemOutputImages>;
   readonly environmentId: EnvironmentId;
   readonly pending: boolean;
@@ -166,7 +171,9 @@ function ToolOutput(props: ToolOutputState) {
       onImageExpand={props.onImageExpand}
     />
   ));
-  const text = props.output ? (
+  const text = props.readFile ? (
+    <ReadFileView file={props.readFile} className="max-h-80" />
+  ) : props.output ? (
     <div className="max-h-80 overflow-auto text-muted-foreground">{props.output}</div>
   ) : props.pending ? (
     <div className="text-muted-foreground italic">Loading output…</div>

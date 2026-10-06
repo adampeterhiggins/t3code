@@ -241,6 +241,26 @@ describe("deriveSubagentToolCalls", () => {
     ).toBeNull();
   });
 
+  it("offers a read's withheld file for fetching", () => {
+    const [call] = deriveSubagentToolCalls(
+      [
+        item({
+          id: "slim-read",
+          type: "dynamic_tool",
+          ordinal: 0,
+          toolName: "Read",
+          input: { file_path: "/repo/app/src/a.ts" },
+          outputOmitted: true,
+        }),
+      ],
+      root,
+    );
+    expect(call?.detailRevision).toBe("2026-10-05T10:00:01.000Z");
+    expect(
+      deriveSubagentToolCalls(items, root).find((entry) => entry.id === "read")?.detailRevision,
+    ).toBeNull();
+  });
+
   it("shows calls relative to a Claude agent worktree or a sibling checkout the agent uses", () => {
     const worktree = "/repo/app/.claude/worktrees/agent-a1b2";
     const sibling = "/repo/app-task";
