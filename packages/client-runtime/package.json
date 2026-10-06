@@ -35,6 +35,10 @@
       "types": "./src/contextRepositories.ts",
       "default": "./src/contextRepositories.ts"
     },
+    "./preview/server-browser-stream": {
+      "types": "./src/preview/serverBrowserStream.ts",
+      "default": "./src/preview/serverBrowserStream.ts"
+    },
     "./worktree-setup": {
       "types": "./src/worktreeSetup.ts",
       "default": "./src/worktreeSetup.ts"

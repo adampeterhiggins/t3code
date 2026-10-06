@@ -204,6 +204,7 @@ export function ThreadRelationshipsPanel(props: {
               ...projectedSubagentsToRuntime([subagent])[0]!,
               driver: subagent.driver,
               providerInstanceId: subagent.providerInstanceId,
+              origin: subagent.origin,
             },
           ]),
       ),
@@ -456,6 +457,8 @@ export function ThreadRelationshipsPanel(props: {
                 <SubagentTooltipContent
                   title={threadTitle}
                   model={agent.model}
+                  providerInstanceId={agent.providerInstanceId}
+                  origin={agent.origin}
                   provider={provider}
                   providers={providers}
                   driver={providerDriver}

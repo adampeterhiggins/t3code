@@ -221,6 +221,10 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   /** Server lists a project's Claude Code and Codex conversations (`agentSessions.list`) and
       imports one by session. Absent on older servers, so clients hide the import action. */
   agentSessionPicker: Schema.optionalKey(Schema.Boolean),
+  /** Server hosts preview tabs in its own headless Chromium (`runtime:
+      "server"`) and streams them over `/api/preview-stream`. Clients
+      without a local browser runtime open server tabs here. */
+  serverBrowser: Schema.optionalKey(Schema.Boolean),
 });
 export type ExecutionEnvironmentCapabilities = typeof ExecutionEnvironmentCapabilities.Type;
 
