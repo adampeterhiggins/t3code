@@ -1,7 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { resolveToolPath, toolPathTextParts } from "@t3tools/client-runtime/work-log/tool-paths";
 import type { EnvironmentId } from "@t3tools/contracts";
-import { CheckIcon, CopyIcon, GitBranchIcon } from "lucide-react";
+import { CheckIcon, CopyIcon, FolderGit2Icon, GitBranchIcon } from "lucide-react";
 import { useState } from "react";
 
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
@@ -34,7 +34,11 @@ function ToolPathBreadcrumb({ path }: { path: NonNullable<ReturnType<typeof reso
         }
       >
         <span className="inline-flex max-w-full items-center gap-1 rounded bg-accent/60 px-1 py-0.5 text-accent-foreground">
-          {!path.external ? <GitBranchIcon aria-hidden className="size-3 shrink-0" /> : null}
+          {path.repository ? (
+            <FolderGit2Icon aria-hidden className="size-3 shrink-0" />
+          ) : !path.external ? (
+            <GitBranchIcon aria-hidden className="size-3 shrink-0" />
+          ) : null}
           <span className="wrap-anywhere">{path.rootLabel}</span>
         </span>
         {path.segments.map((segment, index) => (
