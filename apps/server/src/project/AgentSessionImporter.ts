@@ -115,7 +115,8 @@ function dateTime(value: string): DateTime.Utc {
   return DateTime.makeUnsafe(value);
 }
 
-function messageEvents(input: {
+/** Events that place one imported message in a thread's history, outside any run. */
+export function messageEvents(input: {
   readonly threadId: ThreadId;
   readonly index: number;
   readonly message: AgentSessionScanner.AgentSessionThreadMessage;
@@ -358,6 +359,7 @@ const make = Effect.gen(function* () {
               strength: "strong",
             },
             nativeConversationHeadRef: null,
+            nativeMetadata: { importedNativeId: thread.providerSessionId },
             status: "idle",
             firstRunOrdinal: null,
             lastRunOrdinal: null,

@@ -1234,8 +1234,12 @@ export const layer: Layer.Layer<
           ) + 1,
         // Legacy accepted attempts have no native id. They count only before
         // a replacement, while no accepted attempt records a native identity.
+        // An imported session had turns before T3 saw it.
         nativeThreadHasTurns:
           nativeInputRunIds.size > 0 ||
+          (providerThread.nativeMetadata?.importedNativeId !== undefined &&
+            providerThread.nativeMetadata.importedNativeId ===
+              runningProviderThread.nativeThreadRef?.nativeId) ||
           (legacyInputRunIds.size > 0 &&
             sameNativeThread &&
             !acceptedAttempts.some((source) => source.nativeThreadId !== undefined)),

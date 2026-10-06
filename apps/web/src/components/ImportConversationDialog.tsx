@@ -7,6 +7,8 @@ import {
 import {
   ProviderDriverKind,
   type AgentSessionSummary,
+  type ConductorAgent,
+  type ConductorWorkspaceSummary,
   type ScopedProjectRef,
   type ThreadId,
 } from "@t3tools/contracts";
@@ -16,7 +18,12 @@ import { useState } from "react";
 
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
-import { agentSessionImport, agentSessionList } from "~/state/agentSessions";
+import {
+  agentSessionImport,
+  agentSessionList,
+  conductorWorkspaceImport,
+  conductorWorkspaceList,
+} from "~/state/agentSessions";
 import { useProject, waitForThreadShell } from "~/state/entities";
 import { useEnvironmentQuery } from "~/state/query";
 import { useAtomCommand } from "~/state/use-atom-command";
@@ -38,7 +45,10 @@ const importConversationProjectAtom = Atom.make<ScopedProjectRef | null>(null).p
   Atom.withLabel("import-conversation:project"),
 );
 
-/** Opens the picker of Claude Code and Codex conversations recorded for a project's directory. */
+/**
+ * Opens the picker of Claude Code and Codex conversations recorded for a project's directory,
+ * and of the project's active Conductor workspaces.
+ */
 export function openImportConversationDialog(projectRef: ScopedProjectRef): void {
   appAtomRegistry.set(importConversationProjectAtom, projectRef);
 }
@@ -63,6 +73,22 @@ const PROVIDER_LABEL: Record<AgentSessionSummary["provider"], string> = {
   codex: "Codex",
 };
 
+const CONDUCTOR_AGENT: Record<ConductorAgent, { driver: ProviderDriverKind; label: string }> = {
+  claude: { driver: ProviderDriverKind.make("claudeAgent"), label: "Claude Code" },
+  codex: { driver: ProviderDriverKind.make("codex"), label: "Codex" },
+  cursor: { driver: ProviderDriverKind.make("cursor"), label: "Cursor" },
+};
+
+function describeWorkspace(workspace: ConductorWorkspaceSummary): string {
+  return [
+    workspace.branch,
+    workspace.tabs.length === 1 ? workspace.tabs[0]!.title : `${workspace.tabs.length} tabs`,
+    formatRelativeTimeLabel(workspace.updatedAt),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 const sessionKey = (session: AgentSessionSummary) =>
   `${session.providerInstanceId}:${session.providerSessionId}`;
 
@@ -82,6 +108,10 @@ function ImportConversationDialog({ projectRef }: { projectRef: ScopedProjectRef
   const project = useProject(projectRef);
   const listing = useEnvironmentQuery(agentSessionList({ environmentId, input: { projectId } }));
   const importSession = useAtomCommand(agentSessionImport, { reportFailure: false });
+  const conductorListing = useEnvironmentQuery(
+    conductorWorkspaceList({ environmentId, input: { projectId } }),
+  );
+  const importWorkspace = useAtomCommand(conductorWorkspaceImport, { reportFailure: false });
   const [pendingKey, setPendingKey] = useState<string | null>(null);
 
   const openThread = (threadId: ThreadId) => {
@@ -135,7 +165,37 @@ function ImportConversationDialog({ projectRef }: { projectRef: ScopedProjectRef
     });
   };
 
+  const chooseWorkspace = async (workspace: ConductorWorkspaceSummary) => {
+    if (pendingKey !== null) return;
+    if (workspace.threadId !== null) {
+      openThread(workspace.threadId);
+      return;
+    }
+    setPendingKey(`conductor:${workspace.workspaceId}`);
+    const result = await importWorkspace({
+      environmentId,
+      input: { projectId, workspaceId: workspace.workspaceId },
+    });
+    if (result._tag === "Success" && result.value.threadIds[0] !== undefined) {
+      const threadId = result.value.threadIds[0];
+      conductorListing.refresh();
+      await waitForThreadShell(scopeThreadRef(environmentId, threadId)).catch(() => null);
+      setPendingKey(null);
+      openThread(threadId);
+      return;
+    }
+    setPendingKey(null);
+    if (result._tag !== "Success" && isAtomCommandInterrupted(result)) return;
+    const error = result._tag === "Success" ? null : squashAtomCommandFailure(result);
+    toastManager.add({
+      type: "error",
+      title: "Could not import Conductor workspace",
+      description: error instanceof Error ? error.message : "An error occurred.",
+    });
+  };
+
   const sessions = listing.data?.sessions ?? null;
+  const workspaces = conductorListing.data?.workspaces ?? [];
 
   return (
     <Dialog
@@ -149,7 +209,8 @@ function ImportConversationDialog({ projectRef }: { projectRef: ScopedProjectRef
           <DialogTitle>Import conversation</DialogTitle>
           <DialogDescription>
             Claude Code and Codex conversations from the last 30 days in{" "}
-            {project?.title ?? "this project"}. An imported conversation continues the same session.
+            {project?.title ?? "this project"}, and its active Conductor workspaces. An imported
+            conversation continues the same session.
           </DialogDescription>
         </DialogHeader>
         <DialogPanel>
@@ -200,6 +261,46 @@ function ImportConversationDialog({ projectRef }: { projectRef: ScopedProjectRef
               ) : null}
             </div>
           )}
+          {workspaces.length > 0 ? (
+            <div className="mt-4 flex flex-col gap-2">
+              <h3 className="font-medium text-muted-foreground text-xs">Conductor workspaces</h3>
+              <div className="max-h-72 overflow-y-auto">
+                <DiscoveryList>
+                  {workspaces.map((workspace) => {
+                    const key = `conductor:${workspace.workspaceId}`;
+                    const agent = CONDUCTOR_AGENT[workspace.tabs[0]!.agent];
+                    return (
+                      <DiscoveryListRow
+                        key={key}
+                        icon={
+                          <ProviderInstanceIcon
+                            driverKind={agent.driver}
+                            displayName={agent.label}
+                            showBadge={false}
+                            iconClassName="size-4"
+                          />
+                        }
+                        title={workspace.name}
+                        description={describeWorkspace(workspace)}
+                        disabled={pendingKey !== null}
+                        aria-label={`${workspace.threadId ? "Open" : "Import"} ${workspace.name}`}
+                        onClick={() => void chooseWorkspace(workspace)}
+                        action={
+                          pendingKey === key ? (
+                            <Spinner size="xs" />
+                          ) : (
+                            <span className="text-muted-foreground text-xs">
+                              {workspace.threadId ? "Open" : "Import"}
+                            </span>
+                          )
+                        }
+                      />
+                    );
+                  })}
+                </DiscoveryList>
+              </div>
+            </div>
+          ) : null}
         </DialogPanel>
       </DialogPopup>
     </Dialog>

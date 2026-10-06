@@ -167,6 +167,7 @@ import * as ResourceMonitorBinary from "./resourceTelemetry/ResourceMonitorBinar
 import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as UsageService from "./usage/UsageService.ts";
 import * as RuntimeLayer from "./orchestration-v2/runtimeLayer.ts";
+import * as IdAllocator from "./orchestration-v2/IdAllocator.ts";
 import * as ProjectStore from "./orchestration-v2/ProjectStore.ts";
 import * as ThreadSearch from "./orchestration-v2/ThreadSearch.ts";
 import * as ResourceCleanupService from "./orchestration-v2/ResourceCleanupService.ts";
@@ -182,6 +183,8 @@ import {
 import * as OrchestrationHttp from "./orchestration-v2/http.ts";
 import * as ProjectHttp from "./project/http.ts";
 import * as ThreadTabsHttp from "./threadTabs/http.ts";
+import * as ThreadTabs from "./threadTabs/ThreadTabs.ts";
+import * as ConductorImporter from "./conductor/ConductorImporter.ts";
 import * as ThreadTabSettlementReactor from "./threadTabs/settlement.ts";
 import * as NetService from "@t3tools/shared/Net";
 import * as RelayClient from "@t3tools/shared/relayClient";
@@ -601,6 +604,14 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   // Hands the project setup runner down to providers, which are built below it.
   SubagentWorktreeSetup.layerInstall.pipe(Layer.provide(ProjectionStoreV2.layer)),
 ).pipe(
+  // Imports Conductor workspaces as tab groups; tabs refresh the issue links below.
+  Layer.provideMerge(
+    ConductorImporter.layer.pipe(
+      Layer.provide(
+        Layer.mergeAll(ThreadTabs.layer, RuntimeLayer.layerEventSink, IdAllocator.layer),
+      ),
+    ),
+  ),
   // Fork integrations: issue trackers and chat links surfaced in the composer.
   Layer.provideMerge(
     LinearThreadLinks.layer.pipe(

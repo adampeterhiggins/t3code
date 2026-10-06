@@ -302,6 +302,17 @@ Conversations that already have a thread, including ones T3 Code started itself,
 instead. An archived thread does not count, so importing makes a fresh one. Imported history keeps the first prompt and the newest 200 messages, without tool
 activity or attachments. Other providers and the mobile app do not offer import.
 
+## Import a Conductor workspace
+
+The same picker lists the project's active Conductor workspaces when Conductor is installed on the
+Mac hosting the project. Choosing one brings the workspace's open tabs over as chat tabs of one
+thread, on the same branch and in the same worktree, so your files and changes are where Conductor
+left them. Claude Code and Codex tabs continue their agent session; Cursor tabs start a new session
+that is given the earlier conversation. Conductor itself is not changed.
+
+The worktree still belongs to Conductor. Stop using the workspace in Conductor once you move it,
+and do not archive it there, or Conductor deletes the folder the thread runs in.
+
 ## Inspect agent work
 
 **Limited** means the provider stopped on a usage or rate limit. The conversation

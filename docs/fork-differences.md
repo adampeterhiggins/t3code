@@ -772,6 +772,28 @@ Code: `listProjectAgentSessions` in
 and [`ImportConversationDialog.tsx`](../apps/web/src/components/ImportConversationDialog.tsx).
 User guide: [thread-sidebar.md](./user/thread-sidebar.md#import-a-cli-conversation).
 
+## Import a Conductor workspace
+
+The import picker also lists the project's active Conductor (`conductor.build`) workspaces: those
+whose Conductor repository has the project's root or `origin` remote, whose worktree still exists,
+and that have at least one sent prompt. Importing one turns each open tab into a thread on the
+workspace's branch and worktree, grouped as [chat tabs](#chat-tabs), with the workspace's pin on
+the first tab. History comes from Conductor's own database, read-only, so it matches what Conductor
+showed: prompts and reply text, without tool activity or attachments. Claude Code and Codex tabs
+bind to their agent session and resume it. Conductor keeps Cursor sessions in a private store, so a
+Cursor tab's history is handed to its next turn instead. Thread ids are `conductor:<session>`, so
+the picker opens an earlier import. Notes, diff comments, terminals, and archived workspaces are
+not imported. Only macOS hosts have the database; mobile has no import.
+
+Imported Claude sessions resume on their first turn because the provider thread records
+`nativeMetadata.importedNativeId`; Claude rejects a new session under an id that already exists.
+
+Code: [`ConductorImporter.ts`](../apps/server/src/conductor/ConductorImporter.ts),
+[`conductorDatabase.ts`](../apps/server/src/conductor/conductorDatabase.ts), `adopt` in
+[`ThreadTabs.ts`](../apps/server/src/threadTabs/ThreadTabs.ts), and
+[`ImportConversationDialog.tsx`](../apps/web/src/components/ImportConversationDialog.tsx).
+User guide: [thread-sidebar.md](./user/thread-sidebar.md#import-a-conductor-workspace).
+
 ## Attach repositories as context
 
 The composer's attach menu (and **Attach repository** in the web command palette) picks other
