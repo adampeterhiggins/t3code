@@ -186,6 +186,12 @@ import {
 } from "../threadRoutes";
 import { formatRelativeTimeLabel, parseTimestampDate } from "../timestampFormat";
 import { resolveSidebarTopStatus, SidebarTopStatusIcon } from "./sidebar/SidebarTopStatus";
+import {
+  compactSidebarTimeLabel,
+  SidebarTabSummary,
+  tabSortTimeLabel,
+  threadTimeLabel,
+} from "./sidebar/SidebarTabSummary";
 import type { SidebarThreadSummary } from "../types";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { cn } from "~/lib/utils";
@@ -358,29 +364,6 @@ const WORKING_SHELF_EXPANDED_KEY = "t3code:sidebar:working-expanded";
 // Working beta: when this client saw each thread leave the Working shelf.
 // Module scope keeps the inbox order across routes that unmount the sidebar.
 const inboxReturns = createInboxReturnTracker();
-
-function compactSidebarTimeLabel(label: string): string {
-  if (label === "just now") return "now";
-  return label.endsWith(" ago") ? label.slice(0, -4) : label;
-}
-
-function threadTimeLabel(thread: SidebarThreadSummary): string {
-  const timestamp = thread.latestUserMessageAt ?? thread.updatedAt;
-  return compactSidebarTimeLabel(formatRelativeTimeLabel(timestamp));
-}
-
-/** A tab's label under a timed sort reads the time it sorted by; manual keeps the default. */
-function tabSortTimeLabel(
-  thread: SidebarThreadSummary,
-  order: SidebarTabSortOrder,
-  openedAt: number | undefined,
-): string | undefined {
-  if (order === "manual") return undefined;
-  const ms = sidebarTabSortTimestamp(thread, order, openedAt);
-  return ms === null
-    ? ""
-    : compactSidebarTimeLabel(formatRelativeTimeLabel(new Date(ms).toISOString()));
-}
 
 // Settled rows read "how long ago did this wrap up", matching their sort
 // key: both go through resolveSettledThreadTimestamp so label and order can't
@@ -2572,7 +2555,6 @@ function SidebarTabOverflowPreview(props: {
   openedAtByThreadKey: Readonly<Record<string, number>>;
   onOpenTab: (threadRef: ScopedThreadRef) => void;
 }) {
-  const lastVisitedAtById = useUiStateStore((state) => state.threadLastVisitedAtById);
   return (
     <ul
       aria-label={`${props.hidden.length} more tabs`}
@@ -2581,32 +2563,6 @@ function SidebarTabOverflowPreview(props: {
     >
       {props.hidden.map((thread) => {
         const threadKey = sidebarThreadKey(thread);
-        const entries = props.providerEntriesByEnvironment.get(thread.environmentId);
-        const instanceId = thread.runtime?.providerInstanceId ?? thread.modelSelection.instanceId;
-        const providerEntry = entries?.get(instanceId) ?? null;
-        const showInstanceBadge =
-          providerEntry !== null &&
-          entries !== undefined &&
-          shouldShowInstanceBadge(providerEntry, entries.values());
-        const isUnread = hasUnseenCompletion({
-          ...thread,
-          lastVisitedAt: resolveThreadLastVisitedAt(
-            thread.lastVisitedAt,
-            lastVisitedAtById[threadKey],
-          ),
-        });
-        const status = resolveSidebarThreadStatus(thread);
-        const topStatus = resolveSidebarTopStatus(status, false, isUnread);
-        const shouldRecede = shouldRecedeSidebarThread({
-          status,
-          isUnread,
-          isWoke: false,
-          isActive: false,
-          isSelected: false,
-        });
-        const timeLabel =
-          tabSortTimeLabel(thread, props.tabSortOrder, props.openedAtByThreadKey[threadKey]) ??
-          threadTimeLabel(thread);
         return (
           <li key={threadKey} className="list-none">
             <button
@@ -2614,44 +2570,12 @@ function SidebarTabOverflowPreview(props: {
               onClick={() => props.onOpenTab(scopeThreadRef(thread.environmentId, thread.id))}
               className="flex h-8 w-full cursor-pointer items-center gap-2 rounded-md px-2 text-left outline-none hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
             >
-              <span
-                className={cn(
-                  "min-w-0 flex-1 truncate text-sm",
-                  shouldRecede
-                    ? "text-secondary-label"
-                    : isUnread || status === "input"
-                      ? "text-foreground"
-                      : "text-foreground/85",
-                )}
-              >
-                {thread.title}
-              </span>
-              {topStatus ? (
-                <span
-                  className={cn(
-                    "inline-flex shrink-0 items-center gap-1 text-xs font-medium",
-                    topStatus.className,
-                  )}
-                >
-                  <SidebarTopStatusIcon icon={topStatus.icon} className="size-3.5 shrink-0" />
-                  <span>{topStatus.label}</span>
-                </span>
-              ) : null}
-              <span className="shrink-0 text-xs tabular-nums text-secondary-label">
-                {timeLabel}
-              </span>
-              {providerEntry ? (
-                <span aria-hidden className="inline-flex shrink-0 items-center">
-                  <ProviderInstanceIcon
-                    driverKind={providerEntry.driverKind}
-                    displayName={providerEntry.displayName}
-                    accentColor={providerEntry.accentColor}
-                    showBadge={showInstanceBadge}
-                    iconClassName="size-3.5 opacity-60"
-                    badgeClassName="right-[-0.1875rem] bottom-[-0.1875rem] h-3 min-w-3 px-0.5 text-5xs"
-                  />
-                </span>
-              ) : null}
+              <SidebarTabSummary
+                thread={thread}
+                providerEntries={props.providerEntriesByEnvironment.get(thread.environmentId)}
+                tabSortOrder={props.tabSortOrder}
+                openedAt={props.openedAtByThreadKey[threadKey]}
+              />
             </button>
           </li>
         );
