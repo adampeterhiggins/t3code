@@ -828,6 +828,18 @@ Code: `packages/client-runtime/src/composerObjectLinks.ts`,
 `apps/web/src/components/chat/ChatComposer.tsx`. User guide:
 [composer.md](./user/composer.md#context-in-your-message).
 
+## Pasted file paths become chips
+
+Pasting text that is only file paths, one per line, into the web or desktop composer turns each
+path into the same file chip the `@` picker makes. Absolute, `~/`, Windows drive, and `./` or
+`../` paths count, as does a relative path whose last part has an extension; quoted paths and
+shell-escaped spaces work. A paste with any other text in it, such as a sentence or a command that
+mentions a path, stays as text, and so does a paste with `Cmd+Shift+V`. Mobile does not convert
+paths.
+
+Code: `pastedFilePathsAsComposerFileLinks` in `packages/shared/src/composerTrigger.ts`, called from
+`apps/web/src/components/composerInlineTokenPaste.ts`.
+
 ## Desktop mock-update loop
 
 A `Makefile` at the repository root drives a local auto-update test loop for the desktop app:

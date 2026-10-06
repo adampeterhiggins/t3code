@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { detectComposerTrigger, serializeComposerFileLink } from "./composerTrigger.ts";
+import {
+  detectComposerTrigger,
+  pastedFilePathsAsComposerFileLinks,
+  serializeComposerFileLink,
+} from "./composerTrigger.ts";
 
 describe("detectComposerTrigger", () => {
   it.each(["$", "€", "£", "¥", "₹", "₩", "₿", "𑿝"])(
@@ -40,5 +44,42 @@ describe("serializeComposerFileLink", () => {
     expect(serializeComposerFileLink("@scope/package.json")).toBe(
       "[package.json](@scope/package.json)",
     );
+  });
+});
+
+describe("pastedFilePathsAsComposerFileLinks", () => {
+  it.each([
+    ["/tmp/parity-style/graphql-differences.jsonl", "/tmp/parity-style/graphql-differences.jsonl"],
+    ["  ~/notes/todo.md\n", "~/notes/todo.md"],
+    ["C:\\repo\\src\\index.ts", "C:\\repo\\src\\index.ts"],
+    ["./scripts/build.sh", "./scripts/build.sh"],
+    ["apps/web/src/main.tsx", "apps/web/src/main.tsx"],
+    [".github/workflows/ci.yml", ".github/workflows/ci.yml"],
+    ["/Users/me/My\\ Docs/plan.md", "/Users/me/My Docs/plan.md"],
+    ['"/Users/me/My Docs/plan.md"', "/Users/me/My Docs/plan.md"],
+    ["/Users/me/project/", "/Users/me/project"],
+  ])("links the pasted path %j", (pasted, path) => {
+    expect(pastedFilePathsAsComposerFileLinks(pasted)).toBe(serializeComposerFileLink(path));
+  });
+
+  it("links every line of a multi-path paste", () => {
+    expect(pastedFilePathsAsComposerFileLinks("/a/one.ts\n/a/two.ts")).toBe(
+      "[one.ts](/a/one.ts)\n[two.ts](/a/two.ts)",
+    );
+  });
+
+  it.each([
+    "/help",
+    "/tmp",
+    "feature/composer-chips",
+    "and/or",
+    "example.com/data.json",
+    "https://github.com/org/repo/blob/main/a.ts",
+    "cat /etc/hosts",
+    "/tmp/a.txt is broken",
+    "/a/one.ts\nnot a path",
+    "",
+  ])("leaves %j as text", (pasted) => {
+    expect(pastedFilePathsAsComposerFileLinks(pasted)).toBeNull();
   });
 });

@@ -36,6 +36,37 @@ export function serializeComposerFileLink(path: string): string {
   return `[${label}](${encodeMarkdownLinkDestination(path)})`;
 }
 
+// Absolute, home, Windows drive, and ./ or ../ relative paths. Bare relative
+// paths need a slash and a file extension so branch names like `feature/foo`
+// and hosts like `example.com/a.json` stay prose.
+const PASTED_ROOTED_PATH_REGEX = /^(?:~?\/|\.\.?\/|[A-Za-z]:[\\/])[^\0]*[^\\/]$/;
+const PASTED_RELATIVE_PATH_REGEX = /^\.?[\w-]+(?:\/[^/\0]+)*\/[^/\0]*[^./\0]\.[A-Za-z0-9]+$/;
+
+function parsePastedFilePath(line: string): string | null {
+  const quoted = /^(["'])(.+)\1$/.exec(line);
+  // Shells escape spaces in dragged paths; quoted paths may contain them as-is.
+  const path = (quoted ? quoted[2]! : line.replace(/\\ /g, " ")).replace(/(.)[\\/]+$/, "$1");
+  if (!quoted && /\s/.test(line.replace(/\\ /g, ""))) return null;
+  if (path.includes("://") || !path.slice(1).match(/[\\/]/)) return null;
+  return PASTED_ROOTED_PATH_REGEX.test(path) || PASTED_RELATIVE_PATH_REGEX.test(path) ? path : null;
+}
+
+/**
+ * Pasted text that is only file paths, one per line, rewritten as composer
+ * file links so each renders as a chip. Returns null when any line is not a
+ * path, so prose, logs, and commands that merely mention a path paste as-is.
+ */
+export function pastedFilePathsAsComposerFileLinks(text: string): string | null {
+  const lines = text.trim().split(/\r?\n/);
+  const links: string[] = [];
+  for (const line of lines) {
+    const path = parsePastedFilePath(line.trim());
+    if (path === null) return null;
+    links.push(serializeComposerFileLink(path));
+  }
+  return links.join("\n");
+}
+
 function clampCursor(text: string, cursor: number): number {
   if (!Number.isFinite(cursor)) return text.length;
   return Math.max(0, Math.min(text.length, Math.floor(cursor)));

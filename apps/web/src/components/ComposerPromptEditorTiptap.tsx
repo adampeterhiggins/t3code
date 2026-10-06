@@ -1034,13 +1034,9 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
         handlePaste: (view, event) => {
           const clipboardData = event.clipboardData;
           if (!clipboardData || clipboardData.files.length > 0) return false;
-          const pastedText = clipboardData.getData("text/plain");
-          if (!pastedText) return false;
+          if (!clipboardData.getData("text/plain")) return false;
           event.preventDefault();
-          const importFragment = importFragmentRef.current;
-          let text = importFragment
-            ? importPastedComposerText(clipboardData, importFragment)
-            : pastedText;
+          let text = importPastedComposerText(clipboardData, importFragmentRef.current);
           // Complete chips at paste boundaries just as autocomplete does.
           const tokens = collectComposerPromptInlineTokens(`${text}\n`);
           const lastToken = tokens.at(-1);

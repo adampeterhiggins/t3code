@@ -53,7 +53,10 @@ import {
   pastedTextDisposition,
   wouldTextPasteExceedLimit,
 } from "@t3tools/client-runtime/text-paste";
-import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
+import {
+  pastedFilePathsAsComposerFileLinks,
+  serializeComposerFileLink,
+} from "@t3tools/shared/composerTrigger";
 import { folderDropTarget, resolveDroppedFolderPath } from "./folderDrop";
 import { createModelSelection, normalizeModelSlug } from "@t3tools/shared/model";
 import { USAGE_LIMITS_COMMAND } from "@t3tools/shared/usageLimits";
@@ -6530,6 +6533,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     // Copied T3 chips need the structured importer to bring their records and files along.
     if ((readPastedComposerContext(event.clipboardData)?.records.length ?? 0) > 0) return;
     if (!foldPastedText(plainText, bypassAutoAttachment)) {
+      // Paste-as-text keeps file paths as text; the editor would turn them into chips.
+      if (bypassAutoAttachment && pastedFilePathsAsComposerFileLinks(plainText) !== null) {
+        event.preventDefault();
+        event.stopPropagation();
+        insertComposerText(plainText, "cursor");
+        return;
+      }
       convertPastedObjectLinks(plainText, bypassAutoAttachment);
       return;
     }
