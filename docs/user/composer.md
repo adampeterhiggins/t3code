@@ -260,6 +260,10 @@ pull request from a repository none of your projects is checked out from. Paste 
 `Cmd+Shift+V` (`Ctrl+Shift+V` elsewhere) to keep a link as text. A link you turn back into text
 with undo, or whose chip you delete, is not converted again as you keep typing.
 
+Pasting a file path, or several on separate lines, turns each into a file chip, the same as
+picking it with `@`. This works for paths outside the project too, such as `/tmp/notes.md`. A
+paste that has other text around the path stays as text, as does one made with `Cmd+Shift+V`.
+
 Another thread can be context too. Type `@` followed by part of its title to pick one from
 the same server, or on web and desktop drag a thread out of the sidebar and drop it on the
 composer; a multi-selection drops together. The chip shows the thread's current title and

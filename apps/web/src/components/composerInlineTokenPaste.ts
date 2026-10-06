@@ -10,6 +10,7 @@ import {
   formatComposerContextReference,
   replaceComposerContextReferences,
 } from "@t3tools/shared/composerContextReferences";
+import { pastedFilePathsAsComposerFileLinks } from "@t3tools/shared/composerTrigger";
 /** Clipboard records referenced by the copied text, including dependent screenshots. */
 export function readPastedComposerContext(
   clipboardData: Pick<DataTransfer, "getData">,
@@ -40,7 +41,11 @@ export function readPastedComposerContext(
   };
 }
 
-/** Imports the same structured clipboard payload for focused paste and paste-to-focus. */
+/**
+ * Imports the same structured clipboard payload for focused paste and
+ * paste-to-focus. A paste of bare file paths becomes file links, so each
+ * renders as a chip.
+ */
 export function importPastedComposerText(
   clipboardData: Pick<DataTransfer, "getData">,
   importContextFragment?: (
@@ -48,6 +53,8 @@ export function importPastedComposerText(
   ) => ReadonlyMap<string, string>,
 ): string {
   const pastedText = clipboardData.getData("text/plain");
+  const pastedFileLinks = pastedFilePathsAsComposerFileLinks(pastedText);
+  if (pastedFileLinks !== null) return pastedFileLinks;
   const fragment = importContextFragment ? readPastedComposerContext(clipboardData) : null;
   const rewrittenIds =
     fragment && fragment.records.length > 0 ? importContextFragment!(fragment) : null;
