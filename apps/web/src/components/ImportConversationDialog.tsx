@@ -225,7 +225,7 @@ function ImportConversationList({
   );
   const importWorkspace = useAtomCommand(conductorWorkspaceImport, { reportFailure: false });
   const [pendingKey, setPendingKey] = useState<string | null>(null);
-  const [source, setSource] = useState<ImportSource>("all");
+  const [chosenSource, setSource] = useState<ImportSource | null>(null);
 
   const openThread = (threadId: ThreadId) => {
     closeImportConversationDialog();
@@ -307,7 +307,14 @@ function ImportConversationList({
     });
   };
 
-  const conductorAvailable = conductorListing.data?.available === true;
+  // Conductor leads while its listing loads; without Conductor on this machine, show everything.
+  const conductorMissing = conductorListing.data?.available === false;
+  const source: ImportSource =
+    chosenSource === null || (chosenSource === "conductor" && conductorMissing)
+      ? conductorMissing
+        ? "all"
+        : "conductor"
+      : chosenSource;
   const sessions = listing.data?.sessions.filter(
     (session) => source === "all" || session.provider === source,
   );
@@ -327,9 +334,9 @@ function ImportConversationList({
   ].toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   const loading =
     source === "conductor" ? conductorListing.data === undefined : sessions === undefined;
-  const sourceOptions = SOURCES.filter(
-    (option) => option !== "conductor" || conductorAvailable,
-  ).map((option) => ({ value: option, label: SOURCE_LABEL[option] }));
+  const sourceOptions = SOURCES.filter((option) => option !== "conductor" || !conductorMissing).map(
+    (option) => ({ value: option, label: SOURCE_LABEL[option] }),
+  );
 
   return (
     <>
