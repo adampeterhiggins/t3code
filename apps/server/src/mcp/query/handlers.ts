@@ -4,7 +4,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import * as SqlError from "effect/unstable/sql/SqlError";
+import * as SqlError from "effect/sql/SqlError";
 
 import * as CheckpointDiffQuery from "../../checkpointing/CheckpointDiffQuery.ts";
 import * as ServerEnvironment from "../../environment/ServerEnvironment.ts";
@@ -37,7 +37,7 @@ const GUIDE = [
  */
 const sqlDies = <A, R>(
   effect: Effect.Effect<A, QueryToolError | SqlError.SqlError, R>,
-): Effect.Effect<A, QueryToolError, R> => effect.pipe(Effect.catchTag("SqlError", Effect.die));
+): Effect.Effect<A, QueryToolError, R> => effect.pipe(Effect.catchTags({ SqlError: Effect.die }));
 
 /** Stored times are ISO UTC with milliseconds, so bounds must be too to compare as text. */
 const toStoredInstant = (value: string) =>

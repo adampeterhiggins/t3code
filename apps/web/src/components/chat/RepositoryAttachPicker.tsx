@@ -13,7 +13,7 @@ import type {
   ScopedThreadRef,
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { ExternalLinkIcon, FolderGit2Icon, LockIcon, LockOpenIcon } from "lucide-react";
 import { useState } from "react";
 

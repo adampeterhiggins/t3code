@@ -5,7 +5,7 @@ import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import type * as EffectAcpSchema from "effect-acp/compat";
 
-import type { ServerProviderShape } from "../Services/ServerProvider.ts";
+import type { ServerProviderShape } from "../ServerProvider.ts";
 
 /**
  * Keeps the slash commands an ACP agent advertises (`available_commands_update`)

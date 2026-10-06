@@ -3,8 +3,8 @@ import {
   threadPullRequestKeysEqual,
 } from "@t3tools/shared/threadPullRequests";
 import * as Effect from "effect/Effect";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
-import type { Fragment } from "effect/unstable/sql/Statement";
+import * as SqlClient from "effect/sql/SqlClient";
+import type { Fragment } from "effect/sql/Statement";
 
 import type {
   ActivityEntry,
@@ -27,7 +27,7 @@ import type {
  * SQL behind the query toolkit. Everything reads the orchestration V2
  * projections the app renders from (plus `projection_projects`, which is still
  * the live project store), so what an agent sees matches what the user saw.
- * The V1 `projection_thread*` and `projection_turns` tables stopped updating at
+ * The V1 thread and turn projection tables stopped updating at
  * the V2 cutover and are never read here.
  *
  * Mapping from the V1 shapes the tools kept: a turn is a V2 run (`turnId` is

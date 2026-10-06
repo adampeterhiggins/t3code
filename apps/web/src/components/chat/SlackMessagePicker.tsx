@@ -7,7 +7,7 @@ import {
 import { slackThreadContextRecord } from "@t3tools/client-runtime/state/slack";
 import type { ScopedThreadRef, SlackGetThreadInput, SlackMessageSummary } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useCallback, useState } from "react";
 
 import { useComposerDraftStore } from "~/composerDraftStore";

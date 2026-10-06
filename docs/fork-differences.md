@@ -404,7 +404,7 @@ Code: `apps/server/src/storageCleanup.ts` and
 
 New worktree branches use upstream's naming (**Settings → Source Control → Worktree branch
 naming**), but the name is generated while the worktree is checked out, so the setup script and
-agent start on the final branch; upstream renames the `t3code/<id>` placeholder after the first
+agent start on the final branch; upstream renames the `t3/<id>` placeholder after the first
 turn has started. The placeholder remains only when naming outlasts checkout by more than a few
 seconds, and is then renamed in the background as upstream does. A static prefix the model repeats
 in its answer is not doubled. The fork's earlier **Branch prefix** setting (global and per project)
@@ -655,7 +655,8 @@ The fork adds to it:
   comment-only wakes. When a fourth is needed the watch pauses instead.
 - **Pause watching** and **Resume watching** sit beside **Stop watching**. A paused watch reads
   nothing; resuming restores the budget and reports what changed meanwhile.
-- Settled threads stay watched, and a wake brings the thread back; upstream skips them.
+- Settled threads stay watched, and a wake brings the thread back; upstream ends a watch when its
+  thread settles. Archiving the thread or pressing Stop still ends it.
 - Each watched row on web shows a status line ("Waiting for checks", "Checks failed", "Changes
   requested", ...) and the follow-ups used. Mobile's Git overview shows "Watching" or "Watch paused".
 
@@ -676,7 +677,7 @@ in Local mode) in place of the send arrow; Enter does the same. It launches the 
 message: the thread opens right away with an empty composer and the setup card while the worktree
 is checked out and the setup script runs, and no turn starts. Sending waits until that setup is
 done, and the server also holds a first message that arrives earlier, from any client. The first
-real message starts the turn, names the thread, and renames the temporary `t3code/<id>` branch.
+real message starts the turn, names the thread, and renames the temporary `t3/<id>` branch.
 Chat tabs already share a workspace, so they never offer it. A selection of several models, or a
 server without the `deferredBootstrapTurn` capability, keeps the plain send arrow. Mobile does not
 offer it.

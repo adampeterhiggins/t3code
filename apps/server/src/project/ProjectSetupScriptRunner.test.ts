@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, describe, expect, it, vi } from "@effect/vitest";
 import { type Project, ProjectId, type TerminalEvent } from "@t3tools/contracts";
 import { HostProcessEnvironment, HostProcessPlatform } from "@t3tools/shared/hostProcess";
@@ -66,6 +67,7 @@ const testLayer = (
     Layer.provideMerge(makeTerminalManagerLayer(terminal)),
     Layer.provide(settings),
     Layer.provide(conductor),
+    Layer.provide(NodeCrypto.layer),
   );
 
 describe("ProjectSetupScriptRunner", () => {
@@ -692,6 +694,7 @@ it.effect("resolves setup scripts through the standalone project service", () =>
         Layer.mock(TerminalManager.TerminalManager)({ open, write, subscribe }),
         ServerSettings.layerTest(),
         ConductorWorkspace.layerNoop,
+        NodeCrypto.layer,
       ),
     ),
   );

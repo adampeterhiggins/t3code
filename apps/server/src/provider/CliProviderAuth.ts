@@ -49,16 +49,16 @@ import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
-import * as ChildProcess from "effect/unstable/process/ChildProcess";
-import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
+import * as ChildProcess from "effect/process/ChildProcess";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 import type { ServerSettingsService } from "../serverSettings.ts";
-import type { ProviderAuthController } from "./Services/ProviderAuthService.ts";
+import type { ProviderAuthController } from "./ProviderAuthService.ts";
 
 const AUTH_TIMEOUT = Duration.minutes(5);
 const OUTPUT_TAIL_CHARS = 8_192;
 
-// eslint-disable-next-line no-control-regex
+// eslint-disable-next-line no-control-regex -- CLI output carries ANSI escape sequences to strip
 const ANSI_ESCAPE = /\x1b\[[0-9;]*[A-Za-z]|\x1b\].*?(?:\x07|\x1b\\)|\x1b\[\?[0-9;]*[a-zA-Z]/g;
 const stripAnsi = (text: string) => text.replace(ANSI_ESCAPE, "");
 const isSetupError = Schema.is(ProviderSetupError);

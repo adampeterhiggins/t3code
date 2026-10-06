@@ -5,7 +5,7 @@ import { listThreadTabMemberships } from "@t3tools/client-runtime/thread-tabs";
 import type { PreparedConnection } from "@t3tools/client-runtime/connection";
 import type { ScopedThreadRef, ThreadId, ThreadTabMembership } from "@t3tools/contracts";
 import * as Option from "effect/Option";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { MessageSquareIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 

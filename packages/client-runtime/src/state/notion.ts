@@ -5,7 +5,7 @@ import {
   WS_METHODS,
 } from "@t3tools/contracts";
 import { sanitizeComposerContextLabel } from "@t3tools/shared/composerContextReferences";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import {
   createEnvironmentRpcCommand,
   createEnvironmentRpcQueryAtomFamily,

@@ -3,8 +3,8 @@ import { assert, it } from "@effect/vitest";
 import { NOTION_PAGE_MARKDOWN_MAX_CHARS } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as HttpClient from "effect/unstable/http/HttpClient";
-import * as HttpClientResponse from "effect/unstable/http/HttpClientResponse";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import * as NotionApi from "./NotionApi.ts";
 import { NotionAuth } from "./NotionAuth.ts";
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
@@ -116,16 +116,14 @@ it.effect("marks incomplete Notion responses even below the snapshot size cap", 
     assert.include(result.markdown, "incomplete or truncated");
   }).pipe(Effect.provide(h.layer));
 });
-for (const [status, reason] of [
+it.effect.each([
   [404, "not-found"],
   [403, "not-found"],
   [429, "rate-limited"],
-] as const) {
-  it.effect(`reports HTTP ${status} without attaching empty content`, () => {
-    const h = harness({ status });
-    return Effect.gen(function* () {
-      const failure = yield* (yield* NotionApi.NotionApi).getPage({ id }).pipe(Effect.flip);
-      assert.strictEqual(failure.reason, reason);
-    }).pipe(Effect.provide(h.layer));
-  });
-}
+] as const)("reports HTTP %s without attaching empty content", ([status, reason]) => {
+  const h = harness({ status });
+  return Effect.gen(function* () {
+    const failure = yield* (yield* NotionApi.NotionApi).getPage({ id }).pipe(Effect.flip);
+    assert.strictEqual(failure.reason, reason);
+  }).pipe(Effect.provide(h.layer));
+});

@@ -3,7 +3,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { notionPageContextRecord } from "@t3tools/client-runtime/state/notion";
 import type { ScopedThreadRef, NotionPageSummary } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useCallback, useState } from "react";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { useIssueContextStore } from "~/issueContextStore";

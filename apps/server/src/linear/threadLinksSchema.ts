@@ -1,5 +1,5 @@
 import * as Effect from "effect/Effect";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as SqlClient from "effect/sql/SqlClient";
 
 /** One linked Linear issue per chat-tab group. Runs after `ensureThreadTabsSchema`. */
 export const ensureLinearThreadLinksSchema = Effect.fn("LinearThreadLinks.ensureSchema")(

@@ -18,7 +18,8 @@ import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as Encoding from "effect/Encoding";
+import * as Base64Url from "effect/encoding/Base64Url";
+import * as Base64 from "effect/encoding/Base64";
 import * as Exit from "effect/Exit";
 import * as FiberHandle from "effect/FiberHandle";
 import * as Layer from "effect/Layer";
@@ -28,11 +29,11 @@ import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
-import * as HttpClient from "effect/unstable/http/HttpClient";
-import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
-import * as HttpRouter from "effect/unstable/http/HttpRouter";
-import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
-import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientRequest from "effect/http/HttpClientRequest";
+import * as HttpRouter from "effect/http/HttpRouter";
+import * as HttpServerRequest from "effect/http/HttpServerRequest";
+import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import {
@@ -169,7 +170,7 @@ export const make = Effect.gen(function* () {
       const response = yield* HttpClientRequest.post(NOTION_TOKEN_URL).pipe(
         HttpClientRequest.setHeader(
           "Authorization",
-          `Basic ${Encoding.encodeBase64(new TextEncoder().encode(`${clientId}:${clientSecret}`))}`,
+          `Basic ${Base64.encode(new TextEncoder().encode(`${clientId}:${clientSecret}`))}`,
         ),
         HttpClientRequest.bodyJsonUnsafe(params),
         httpClient.execute,
@@ -268,9 +269,9 @@ export const make = Effect.gen(function* () {
         yield* Deferred.succeed(listening, undefined);
         const code = yield* Deferred.await(flow.callback).pipe(
           Effect.timeout(LOGIN_TIMEOUT),
-          Effect.catchTag("TimeoutError", () =>
-            Effect.fail(loginError("Notion sign-in timed out. Start again.")),
-          ),
+          Effect.catchTags({
+            TimeoutError: () => Effect.fail(loginError("Notion sign-in timed out. Start again.")),
+          }),
         );
         return yield* exchangeCode(code);
       }),
@@ -307,7 +308,7 @@ export const make = Effect.gen(function* () {
   const makeFlowIdentity = Effect.gen(function* () {
     return {
       flowId: yield* crypto.randomUUIDv4,
-      state: Encoding.encodeBase64Url(yield* crypto.randomBytes(16)),
+      state: Base64Url.encode(yield* crypto.randomBytes(16)),
     };
   }).pipe(Effect.mapError((cause) => loginError("Could not start Notion sign-in.", cause)));
 
@@ -387,7 +388,7 @@ export const make = Effect.gen(function* () {
     HttpClientRequest.post(NOTION_REVOKE_URL).pipe(
       HttpClientRequest.setHeader(
         "Authorization",
-        `Basic ${Encoding.encodeBase64(new TextEncoder().encode(`${clientId}:${clientSecret}`))}`,
+        `Basic ${Base64.encode(new TextEncoder().encode(`${clientId}:${clientSecret}`))}`,
       ),
       HttpClientRequest.bodyJsonUnsafe({ token: token.accessToken }),
       httpClient.execute,

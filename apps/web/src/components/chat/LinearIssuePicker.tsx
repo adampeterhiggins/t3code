@@ -6,7 +6,7 @@ import {
 import { linearIssueContextRecord } from "@t3tools/client-runtime/state/linear";
 import type { LinearIssueSummary, ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { LinearIcon } from "../Icons";
 import { useCallback, useState } from "react";
 

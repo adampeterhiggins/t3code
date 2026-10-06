@@ -17,7 +17,7 @@ import type {
   ScopedThreadRef,
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useCallback, useMemo, useState } from "react";
 
 import { useComposerDraftStore } from "~/composerDraftStore";

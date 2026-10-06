@@ -8,19 +8,19 @@ import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type * as Types from "effect/Types";
-import { McpProtocol, McpServer } from "effect/unstable/ai";
-import { Headers, HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
+import { McpProtocol, McpServer } from "effect/ai";
+import { Headers, HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 
 import packageJson from "../../package.json" with { type: "json" };
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as McpInvocationContext from "./McpInvocationContext.ts";
 import {
-  EnvironmentRegistrationLive,
+  layerEnvironmentRegistration,
+  layerOrchestratorToolkit,
+  layerProjectRegistration,
+  layerThreadToolkit,
   normalizeMcpHttpResponse,
-  OrchestratorToolkitRegistrationLive,
-  ProjectRegistrationLive,
-  ThreadToolkitRegistrationLive,
 } from "./McpHttpServer.ts";
 import { OPERATE_MCP_PATH, QUERY_MCP_PATH } from "./paths.ts";
 import { QueryToolkitHandlersLive } from "./query/handlers.ts";
@@ -194,10 +194,10 @@ export const layer = Layer.mergeAll(
   Layer.fresh(
     Layer.mergeAll(
       QueryToolkitRegistrationLive,
-      OrchestratorToolkitRegistrationLive,
-      ThreadToolkitRegistrationLive,
-      ProjectRegistrationLive,
-      EnvironmentRegistrationLive,
+      layerOrchestratorToolkit,
+      layerThreadToolkit,
+      layerProjectRegistration,
+      layerEnvironmentRegistration,
       McpServer.toolkit(ApprovalToolkit).pipe(Layer.provide(ApprovalToolkitHandlersLive)),
     ).pipe(Layer.provideMerge(OperateTransportLive)),
   ),

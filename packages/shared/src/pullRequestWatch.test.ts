@@ -11,6 +11,7 @@ const watch = (overrides: Partial<ThreadPullRequestWatch> = {}): ThreadPullReque
   headSha: null,
   failedChecks: [],
   passed: false,
+  passedChecks: [],
   remarksThrough: "2026-10-02T12:00:00.000Z",
   remarkIds: [],
   conflicting: false,

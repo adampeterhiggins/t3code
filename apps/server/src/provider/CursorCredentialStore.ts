@@ -7,7 +7,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import * as ProviderCredentialStore from "./ProviderCredentialStore.ts";
-import type { CursorSdkCredential } from "./Layers/cursorUsageLimits.ts";
+import type { CursorSdkCredential } from "./cursorUsageLimits.ts";
 
 const Credentials = Schema.fromJsonString(
   Schema.Struct({

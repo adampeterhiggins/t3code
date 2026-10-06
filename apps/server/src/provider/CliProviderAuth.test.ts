@@ -16,7 +16,7 @@ import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
-import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 import { ServerSettingsService } from "../serverSettings.ts";
 import {
@@ -29,7 +29,7 @@ import {
 } from "./CliProviderAuth.ts";
 
 const instanceId = ProviderInstanceId.make("cli-auth-test");
-const testLayer = Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest());
+const layerTest = Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest());
 
 // `#!/bin/sh` stubs cannot be resolved as executables on Windows.
 const windowsHost = HostProcessPlatform.defaultValue() === "win32";
@@ -89,7 +89,7 @@ const collectUntil = (
     Effect.map((chunk) => Array.from(chunk)),
   );
 
-it.layer(testLayer)("CliProviderAuth", (it) => {
+it.layer(layerTest)("CliProviderAuth", (it) => {
   it.effect("saved-credentials succeeds when the probe reports authentication", () =>
     Effect.gen(function* () {
       const controller = yield* makeAuth({

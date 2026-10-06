@@ -10,19 +10,19 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
-import { ChildProcessSpawner } from "effect/unstable/process";
-import { HttpClient } from "effect/unstable/http";
+import { ChildProcessSpawner } from "effect/process";
+import { HttpClient } from "effect/http";
 
 import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
 import { ServerConfig } from "../../config.ts";
 import * as IdAllocator from "../../orchestration-v2/IdAllocator.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
-import { NoOpProviderEventLoggers, ProviderEventLoggers } from "../Layers/ProviderEventLoggers.ts";
+import { NoOpProviderEventLoggers, ProviderEventLoggers } from "../ProviderEventLoggers.ts";
 import { DevinDriver } from "./DevinDriver.ts";
 
 const encodeUnknownJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 
-const testLayer = ServerConfig.layerTest(process.cwd(), {
+const layerTest = ServerConfig.layerTest(process.cwd(), {
   prefix: "t3-devin-driver-skills-",
 }).pipe(
   Layer.provideMerge(NodeServices.layer),
@@ -81,7 +81,7 @@ const createInstance = (binaryPath: string, enabled: boolean) =>
     config: { ...DevinDriver.defaultConfig(), binaryPath, enabled },
   });
 
-it.layer(testLayer)("DevinDriver snapshotForCwd", (it) => {
+it.layer(layerTest)("DevinDriver snapshotForCwd", (it) => {
   it.effect("returns the normal snapshot without discovery when Devin is disabled", () =>
     Effect.gen(function* () {
       const noSpawn = Layer.succeed(

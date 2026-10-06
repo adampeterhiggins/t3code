@@ -19,7 +19,7 @@ import * as EventStore from "../orchestration-v2/EventStore.ts";
 import * as IdAllocator from "../orchestration-v2/IdAllocator.ts";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
-import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
+import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ProviderSessionRuntime from "../persistence/ProviderSessionRuntime.ts";
 import * as AgentSessionImporter from "./AgentSessionImporter.ts";
 import * as AgentSessionScanner from "./AgentSessionScanner.ts";
@@ -67,7 +67,7 @@ it.effect("imports messages once and preserves the provider native resume bindin
         },
       }),
   });
-  const testLayer = AgentSessionImporter.layer.pipe(
+  const layerTest = AgentSessionImporter.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
         Layer.succeed(AgentSessionScanner.AgentSessionScanner, scanner),
@@ -99,7 +99,7 @@ it.effect("imports messages once and preserves the provider native resume bindin
           recordImportedTranscript: (input) => Effect.sync(() => void recorded.push(input)),
         }),
         IdAllocator.layer,
-        SqlitePersistenceMemory,
+        SqlitePersistence.layerMemory,
       ),
     ),
   );
@@ -152,10 +152,10 @@ it.effect("imports messages once and preserves the provider native resume bindin
       }),
     ]);
     expect(recorded).toHaveLength(2);
-  }).pipe(Effect.provide(testLayer));
+  }).pipe(Effect.provide(layerTest));
 });
 
-const databaseLayer = SqlitePersistenceMemory;
+const databaseLayer = SqlitePersistence.layerMemory;
 const storesProvided = Layer.mergeAll(
   databaseLayer,
   EventStore.layer.pipe(Layer.provideMerge(databaseLayer)),
@@ -386,7 +386,7 @@ it.effect("caps the listing and reports truncation", () => {
         Layer.mock(EventSink.EventSinkV2)({}),
         Layer.mock(ProviderSessionRuntime.ProviderSessionRuntimeRepository)({}),
         IdAllocator.layer,
-        SqlitePersistenceMemory,
+        SqlitePersistence.layerMemory,
       ),
     ),
   );

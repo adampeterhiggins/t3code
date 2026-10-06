@@ -12,7 +12,7 @@ import {
 import { createModelSelection } from "@t3tools/shared/model";
 import { resolveWorktreeCleanup } from "@t3tools/shared/projectSettings";
 import { resolveWorktreeCleanupModelSelection } from "@t3tools/shared/serverSettings";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { ProviderModelPicker } from "../chat/ProviderModelPicker";
 import { connectionAtomRuntime } from "../../connection/runtime";
@@ -28,6 +28,7 @@ import {
 import { EMPTY_SERVER_PROVIDERS } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 
+import { Input } from "../ui/input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
 import {
@@ -41,6 +42,7 @@ import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
 import { toastManager } from "../ui/toast";
 import {
+  SettingResetButton,
   SETTINGS_PICKER_TRIGGER_CLASSNAME,
   SettingsPageContainer,
   SettingsRow,
@@ -50,9 +52,11 @@ import { useScopedModelDisabledReason } from "./useScopedModelAvailability";
 import { SettingsScopeNotice } from "./SettingsScopeNotice";
 import type { ScopedSettingsTarget } from "./scopedSettings";
 import { useSettingsScope } from "./SettingsScopeContext";
+import { searchableSetting } from "./settingsSearch";
 import {
   useClearScopedSettings,
   useScopedSettings,
+  useScopedSettingsMixed,
   useUpdateScopedSettings,
 } from "./useScopedSettings";
 
@@ -157,6 +161,60 @@ function IgnoredNamesField({
         {suggestStatus ? <p className="text-xs text-muted-foreground">{suggestStatus}</p> : null}
       </div>
     </div>
+  );
+}
+
+function WorktreesDirectoryRow() {
+  const { connectedEnvironments, targets } = useSettingsScope();
+  const settings = useScopedSettings();
+  const updateSettings = useUpdateScopedSettings();
+  const mixed = useScopedSettingsMixed(["worktreesDirectory"]);
+  const edited = useRef(false);
+  if (
+    connectedEnvironments.some(
+      (environment) =>
+        environment.serverConfig?.environment.capabilities.worktreesDirectory !== true,
+    )
+  )
+    return null;
+  const scopeKey = targets.map((target) => target.environmentId).join(",");
+
+  return (
+    <SettingsRow
+      {...searchableSetting("storage-worktrees-location")}
+      description={
+        "Folder where new worktrees are created, on any drive, such as D:\\worktrees or ~/worktrees. Existing worktrees stay where they are. Leave empty to use the T3 home folder."
+      }
+      serverScoped
+      settingKeys={["worktreesDirectory"]}
+      resetAction={
+        mixed || settings.worktreesDirectory !== "" ? (
+          <SettingResetButton
+            label="worktree location"
+            onClick={() => updateSettings({ worktreesDirectory: "" })}
+          />
+        ) : null
+      }
+      control={
+        <Input
+          key={`${scopeKey}:${mixed}:${settings.worktreesDirectory}`}
+          aria-label="Worktree location"
+          autoCapitalize="none"
+          spellCheck={false}
+          placeholder={mixed ? "Mixed" : "Default"}
+          defaultValue={mixed ? "" : settings.worktreesDirectory}
+          onChange={() => {
+            edited.current = true;
+          }}
+          onBlur={(event) => {
+            const value = event.target.value.trim();
+            if (edited.current && (mixed || value !== settings.worktreesDirectory))
+              updateSettings({ worktreesDirectory: value });
+            edited.current = false;
+          }}
+        />
+      }
+    />
   );
 }
 
@@ -405,6 +463,7 @@ export function StorageSettingsPanel() {
   return (
     <SettingsPageContainer>
       <SettingsSection id="storage-worktrees" title="Worktrees">
+        {!isProjectScope && <WorktreesDirectoryRow />}
         {isProjectScope && (
           <SettingsRow
             title="Automatic worktree cleanup"

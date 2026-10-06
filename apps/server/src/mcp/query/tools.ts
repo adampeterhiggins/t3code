@@ -5,7 +5,7 @@ import {
   UsageSummaryInput,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
-import { Tool, Toolkit } from "effect/unstable/ai";
+import { Tool, Toolkit } from "effect/ai";
 
 /**
  * The read-only history toolkit served at `/mcp/query`. Every tool is a
