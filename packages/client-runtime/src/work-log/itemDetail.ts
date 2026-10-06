@@ -1,5 +1,9 @@
 import type { AssetResource, OrchestrationV2TurnItem } from "@t3tools/contracts";
-import { summarizeToolActivityInput } from "@t3tools/shared/toolActivity";
+import {
+  classifyToolActivity,
+  collectToolFilePaths,
+  summarizeToolActivityInput,
+} from "@t3tools/shared/toolActivity";
 import { readToolOutputImage, toolOutputImages } from "@t3tools/shared/toolOutput";
 import * as DateTime from "effect/DateTime";
 
@@ -192,10 +196,15 @@ function positiveInteger(value: unknown): number | null {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : null;
 }
 
+/** Fork: the first line a read asked for, from its tool input. */
+function readStartLine(input: Record<string, unknown>): number | null {
+  return positiveInteger(input.offset ?? input.start_line ?? input.startLine);
+}
+
 /** Fork: a file read's line range from its tool input: `Lines 10–49`, `From line 10`, `First 40 lines`. */
 export function toolReadRangeLabel(input: unknown): string | null {
   if (!isRecord(input)) return null;
-  const start = positiveInteger(input.offset ?? input.start_line ?? input.startLine);
+  const start = readStartLine(input);
   const end = positiveInteger(input.end_line ?? input.endLine);
   const limit = positiveInteger(input.limit);
   if (start !== null && end !== null) return `Lines ${start}–${end}`;
@@ -203,6 +212,73 @@ export function toolReadRangeLabel(input: unknown): string | null {
   if (start !== null) return `From line ${start}`;
   if (limit !== null) return `First ${limit} lines`;
   return null;
+}
+
+/** Fork: a file read's contents, as one file whose first line is `startLine`. */
+export interface ReadFileOutput {
+  /** The file read, for syntax highlighting; null when the call names none. */
+  readonly path: string | null;
+  readonly text: string;
+  readonly startLine: number;
+}
+
+// `cat -n` (Claude: `     1\t`, `1→`) and OpenCode (`1: `, `00001| `) line prefixes.
+const READ_LINE_NUMBER = /^ *(\d+)(?:\t|→|: ?|\| ?)/;
+// Lines providers put around numbered contents: `<path>…</path>`, `<content>`, `(End of file…)`.
+const READ_WRAPPER_LINE = /^(?:<\/?[a-z-]+>.*|\(.*\)|\[.*\])?$/;
+
+/**
+ * Text with consecutive line numbers on every line. Only wrapper lines, such as a provider's
+ * end-of-file note, may come before or after them; they are dropped.
+ */
+function stripReadLineNumbers(text: string): { text: string; startLine: number } | null {
+  const lines = text.split("\n");
+  const isWrapper = (line: string) => READ_WRAPPER_LINE.test(line.trim());
+  const first = lines.findIndex((line) => READ_LINE_NUMBER.test(line));
+  if (first < 0 || !lines.slice(0, first).every(isWrapper)) return null;
+  const startLine = Number(READ_LINE_NUMBER.exec(lines[first]!)![1]);
+  const contents: string[] = [];
+  for (const line of lines.slice(first)) {
+    const match = READ_LINE_NUMBER.exec(line);
+    if (!match || Number(match[1]) !== startLine + contents.length) break;
+    contents.push(line.slice(match[0].length));
+  }
+  if (!lines.slice(first + contents.length).every(isWrapper)) return null;
+  return { text: contents.join("\n"), startLine };
+}
+
+/**
+ * Fork: a completed file read's contents without the JSON, wrappers and line numbers each
+ * provider reports them in. Null for other tools, image reads and withheld output.
+ */
+export function turnItemReadFile(item: OrchestrationV2TurnItem): ReadFileOutput | null {
+  if (item.type !== "dynamic_tool" || item.outputOmitted === true) return null;
+  const read = classifyToolActivity({
+    itemType: "dynamic_tool_call",
+    data: { toolName: item.toolName, input: item.input },
+  });
+  if (read !== "read") return null;
+  const output = item.output;
+  if (isRecord(output) && output.type === "image") return null;
+  const input = isRecord(item.input) ? item.input : {};
+  let path = collectToolFilePaths({ input: item.input })[0] ?? null;
+  let file: { text: string; startLine: number | null } | null = null;
+  // Claude nests the file under `file`; Cursor reports `{ content, totalLines }`.
+  const record = isRecord(output) ? (isRecord(output.file) ? output.file : output) : null;
+  if (typeof record?.content === "string") {
+    file = { text: record.content, startLine: positiveInteger(record.startLine) };
+    if (typeof record.filePath === "string") path = record.filePath;
+  } else {
+    // Claude's older text results, OpenCode and Pi report text, numbered or not.
+    const text = textFromBlocks(output, 0);
+    if (text?.trim()) file = stripReadLineNumbers(text) ?? { text, startLine: null };
+  }
+  if (file === null || !file.text.trim()) return null;
+  return {
+    path,
+    text: file.text.replace(/\n+$/, ""),
+    startLine: file.startLine ?? readStartLine(input) ?? 1,
+  };
 }
 
 /** Older Claude bash rows stored the raw `{ stdout, stderr, interrupted, ... }` result. */
@@ -228,7 +304,9 @@ export function turnItemOutputText(item: OrchestrationV2TurnItem): string | null
     case "command_execution":
       return item.output?.trim() ? commandOutputText(item.output) || null : null;
     case "dynamic_tool":
-      return item.outputOmitted === true ? null : formatToolValue(item.output);
+      return item.outputOmitted === true
+        ? null
+        : (turnItemReadFile(item)?.text ?? formatToolValue(item.output));
     case "file_search":
       return item.results?.length
         ? item.results

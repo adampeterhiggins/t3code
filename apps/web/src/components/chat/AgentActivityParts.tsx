@@ -6,7 +6,10 @@
 import type { SubagentToolCall } from "@t3tools/client-runtime/state/agent-list-view";
 import { formatSubagentTokenCount } from "@t3tools/client-runtime/state/subagentRuntime";
 import { formatPathsForWorkspace } from "@t3tools/client-runtime/work-log/command-display";
-import { fileChangePreviewText } from "@t3tools/client-runtime/work-log/item-detail";
+import {
+  fileChangePreviewText,
+  turnItemReadFile,
+} from "@t3tools/client-runtime/work-log/item-detail";
 import type { EnvironmentId, OrchestrationV2SubagentUsage, ThreadId } from "@t3tools/contracts";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
@@ -38,6 +41,7 @@ import { elapsedBetween } from "../AgentStatus";
 import { ToolCallBody } from "../ToolCallBody";
 import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
 import { TOOL_KIND_ICONS } from "./agentToolKinds";
+import { ReadFileView } from "./ReadFileView";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 const TOOL_STATUS_LABELS: Record<SubagentToolCall["status"], string> = {
@@ -86,8 +90,8 @@ export interface ToolCallSource {
 }
 
 /**
- * The call's body text. Timelines carry an edit without its diff, so while the caller is mounted
- * an edit fetches the stored item and shows its diff; until then it shows the line counts.
+ * The call's body text. Timelines carry an edit without its diff and a read without its file, so
+ * while the caller is mounted they fetch the stored item; until then an edit shows its line counts.
  */
 function useToolCallBodyText(call: SubagentToolCall, source: ToolCallSource) {
   const detail = useTurnItemDetail(
@@ -107,7 +111,13 @@ function useToolCallBodyText(call: SubagentToolCall, source: ToolCallSource) {
     : call.preview;
   return {
     text: toolCallBodyText(call, preview),
-    loadingDiff: call.detailRevision !== null && detail.isPending,
+    readFile: fetchedItem ? turnItemReadFile(fetchedItem) : null,
+    loading:
+      call.detailRevision !== null && detail.isPending
+        ? call.kind === "read"
+          ? "Loading file…"
+          : "Loading diff…"
+        : null,
   };
 }
 
@@ -124,8 +134,9 @@ function ExpandedToolCall(props: { call: SubagentToolCall; meta: string; source:
           call.status === "failed" ? "text-destructive-foreground" : "text-secondary-label",
         )}
       />
-      {body.loadingDiff ? (
-        <p className="mt-1 text-3xs italic text-muted-foreground">Loading diff…</p>
+      {body.readFile ? <ReadFileView file={body.readFile} className="mt-1.5 max-h-64" /> : null}
+      {body.loading ? (
+        <p className="mt-1 text-3xs italic text-muted-foreground">{body.loading}</p>
       ) : null}
       <p className="mt-1.5 font-mono text-3xs text-muted-foreground">{props.meta}</p>
     </div>
@@ -148,8 +159,9 @@ function ToolCallHoverContent(props: {
         <span className="min-w-0 break-all">{call.title}</span>
       </p>
       <ToolCallBody text={body.text} className="max-h-[50vh]" />
-      {body.loadingDiff ? (
-        <p className="text-3xs italic text-muted-foreground">Loading diff…</p>
+      {body.readFile ? <ReadFileView file={body.readFile} className="max-h-80" /> : null}
+      {body.loading ? (
+        <p className="text-3xs italic text-muted-foreground">{body.loading}</p>
       ) : null}
       <p className="font-mono text-3xs text-muted-foreground">{props.meta}</p>
     </div>

@@ -24,6 +24,7 @@ import {
   fileChangeDiffWithheld,
   fileChangePreviewText,
   turnItemDetailRevision,
+  turnItemNeedsDetailFetch,
 } from "../work-log/itemDetail.ts";
 import { isActiveSubagentStatus, type RuntimeSubagentStatus } from "./subagentRuntime.ts";
 
@@ -177,7 +178,10 @@ export interface SubagentToolCall {
   readonly exitCode: number | null;
   /** Bounded details: edit diffs and line counts, read ranges, search arguments. */
   readonly preview: string | null;
-  /** The `getTurnItem` revision to fetch an edit's withheld diff with; null when there is none. */
+  /**
+   * The `getTurnItem` revision to fetch an edit's withheld diff or a read's withheld file with;
+   * null when there is none.
+   */
   readonly detailRevision: string | null;
 }
 
@@ -452,7 +456,10 @@ function toolCallFromItem(
     ...formatToolCall(raw, workspaceRoot, siblingCheckout),
     id: item.id,
     status: toolCallStatus(item.status),
-    detailRevision: fileChangeDiffWithheld(item) ? turnItemDetailRevision(item) : null,
+    detailRevision:
+      fileChangeDiffWithheld(item) || (raw.kind === "read" && turnItemNeedsDetailFetch(item))
+        ? turnItemDetailRevision(item)
+        : null,
     startedAt: item.startedAt === null ? null : DateTime.formatIso(item.startedAt),
     completedAt: item.completedAt === null ? null : DateTime.formatIso(item.completedAt),
   };
