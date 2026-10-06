@@ -1,5 +1,7 @@
+import { toolPathTargets } from "@t3tools/client-runtime/work-log/tool-paths";
 import type { NotionPageContextRecord } from "@t3tools/contracts";
 import { ToolCallBody } from "../ToolCallBody";
+import { ToolPathText } from "./ToolPathText";
 import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
 import {
   toolCallPreviewHeading,
@@ -3613,6 +3615,7 @@ function LiveActivityRow({
   failed = false,
   active = false,
   shimmer = false,
+  wrapLabel = false,
 }: {
   label: ReactNode;
   iconName?: WorkEntryIconName;
@@ -3620,6 +3623,7 @@ function LiveActivityRow({
   failed?: boolean;
   active?: boolean;
   shimmer?: boolean;
+  wrapLabel?: boolean;
 }) {
   const animated = active && !failed;
   const showShimmer = animated && shimmer;
@@ -3630,6 +3634,7 @@ function LiveActivityRow({
     >
       <LiveActivityContent
         label={label}
+        wrapLabel={wrapLabel}
         iconName={iconName}
         toolIcon={toolIcon}
         failed={failed}
@@ -3653,6 +3658,7 @@ function LiveActivityContent({
   announceFailure = false,
   active = false,
   highlighted = false,
+  wrapLabel = false,
 }: {
   label: ReactNode;
   iconName: WorkEntryIconName | undefined;
@@ -3661,12 +3667,14 @@ function LiveActivityContent({
   announceFailure?: boolean;
   active?: boolean;
   highlighted?: boolean;
+  wrapLabel?: boolean;
 }) {
   const showTrailingFailureMark =
     failed && iconName !== undefined && !toolIconAcceptsTint(iconName, toolIcon);
 
   return (
     <WorkLogRow
+      wrapLabel={wrapLabel}
       icon={
         iconName ? (
           <span
@@ -3693,7 +3701,7 @@ function LiveActivityContent({
       label={
         <span
           className={cn(
-            "block truncate",
+            wrapLabel ? "block break-words" : "block truncate",
             highlighted && "text-foreground",
             active && "live-tool-shine",
           )}
@@ -3719,12 +3727,19 @@ function LiveWorkEntryTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "
   const failed = workEntryDisplayIndicatesToolFailure(row.entry);
 
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       className="group/live-work flex min-h-6 w-full max-w-full cursor-pointer items-center rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
       aria-label={failed ? `${label}, tool call failed` : undefined}
       aria-expanded={row.expanded}
       onClick={() => ctx.onToggleWorkGroup(row.groupId, row.id)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          ctx.onToggleWorkGroup(row.groupId, row.id);
+        }
+      }}
     >
       <LiveActivityRow
         label={
@@ -3744,16 +3759,24 @@ function LiveWorkEntryTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "
             >
               {row.entry.detail ?? label}
             </ReactMarkdown>
+          ) : row.entry.tone === "tool" ? (
+            <ToolPathText
+              text={label}
+              targets={toolPathTargets(row.entry)}
+              environmentId={ctx.activeThreadEnvironmentId}
+              workspaceRoot={ctx.workspaceRoot}
+            />
           ) : (
             label
           )
         }
+        wrapLabel={row.entry.tone === "tool"}
         iconName={workEntryIconName(row.entry)}
         toolIcon={row.entry.toolIcon ?? row.entry.toolSource?.icon}
         failed={failed}
         active={row.active}
       />
-    </button>
+    </div>
   );
 }
 
@@ -5158,7 +5181,18 @@ function WorkEntryDetailBody(
   return (
     <>
       {props.textBody ? (
-        <ToolCallBody className={toolCallExpandedBodyClassName} text={props.textBody} />
+        toolGroupAction(workEntry) === "read" ? (
+          <div className={toolCallExpandedBodyClassName}>
+            <ToolPathText
+              targets={toolPathTargets(workEntry)}
+              text={props.textBody}
+              environmentId={ctx.activeThreadEnvironmentId}
+              workspaceRoot={props.workspaceRoot}
+            />
+          </div>
+        ) : (
+          <ToolCallBody className={toolCallExpandedBodyClassName} text={props.textBody} />
+        )
       ) : null}
       {props.plainOutputFetches && workEntry.projectedItem ? (
         <FetchedToolOutput
@@ -5182,7 +5216,7 @@ const toolCallPreviewCommandClassName =
 function ToolCallPreviewContent(
   props: WorkEntryDetailProps & { previewText: string; icon: ReactNode },
 ) {
-  const { timestampFormat } = use(TimelineRowCtx);
+  const { timestampFormat, activeThreadEnvironmentId } = use(TimelineRowCtx);
   const { workEntry, workspaceRoot, plainOutput } = props;
   const heading = toolCallPreviewHeading(workEntry, workspaceRoot, props.previewText);
   const textBody =
@@ -5200,7 +5234,14 @@ function ToolCallPreviewContent(
     <div className="flex max-h-[60vh] flex-col gap-1.5 overflow-auto p-3">
       <div className="flex items-start gap-1.5 text-xs text-secondary-label">
         {props.icon}
-        <span className="min-w-0 break-all">{heading.title}</span>
+        <span className="min-w-0 break-all">
+          <ToolPathText
+            targets={toolPathTargets(workEntry)}
+            text={heading.title}
+            environmentId={activeThreadEnvironmentId}
+            workspaceRoot={workspaceRoot}
+          />
+        </span>
       </div>
       {heading.command ? (
         <div className={toolCallPreviewCommandClassName}>
@@ -5208,7 +5249,12 @@ function ToolCallPreviewContent(
         </div>
       ) : heading.text ? (
         <p className="text-xs break-words whitespace-pre-wrap text-foreground/85 select-text">
-          {heading.text}
+          <ToolPathText
+            targets={toolPathTargets(workEntry)}
+            text={heading.text}
+            environmentId={activeThreadEnvironmentId}
+            workspaceRoot={workspaceRoot}
+          />
         </p>
       ) : null}
       <WorkEntryDetailBody {...props} textBody={textBody} hideCommand highlightSyntax />
@@ -5567,6 +5613,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
     <WorkLogRow
       data-v2-item-type={workEntry.projectedItem?.item.type}
       data-v2-item-visibility={workEntry.projectedItem?.visibility}
+      wrapLabel={workEntry.tone === "tool"}
       {...rowToggleProps}
       icon={
         <span
@@ -5586,7 +5633,11 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
         <div className="min-w-0 flex-1 overflow-hidden">
           <p className="flex min-w-0 w-full items-baseline gap-1.5 text-sm leading-relaxed">
             <span
-              className={cn(answerPreview ? "min-w-0" : "min-w-0 flex-1", "truncate", headingClass)}
+              className={cn(
+                answerPreview ? "min-w-0" : "min-w-0 flex-1",
+                workEntry.tone === "tool" ? "break-words" : "truncate",
+                headingClass,
+              )}
             >
               {isReasoning && !expanded ? (
                 <ReactMarkdown
@@ -5600,6 +5651,13 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
                 >
                   {workEntry.detail ?? previewText}
                 </ReactMarkdown>
+              ) : workEntry.tone === "tool" ? (
+                <ToolPathText
+                  targets={toolPathTargets(workEntry)}
+                  text={previewText}
+                  environmentId={ctx.activeThreadEnvironmentId}
+                  workspaceRoot={workspaceRoot}
+                />
               ) : (
                 previewText
               )}

@@ -383,6 +383,10 @@
       "types": "./src/work-log/commandLabel.ts",
       "default": "./src/work-log/commandLabel.ts"
     },
+    "./work-log/tool-paths": {
+      "types": "./src/work-log/toolPaths.ts",
+      "default": "./src/work-log/toolPaths.ts"
+    },
     "./work-log/command-display": {
       "types": "./src/work-log/commandDisplay.ts",
       "default": "./src/work-log/commandDisplay.ts"

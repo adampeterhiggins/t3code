@@ -42,6 +42,7 @@ import { ToolCallBody } from "../ToolCallBody";
 import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
 import { TOOL_KIND_ICONS } from "./agentToolKinds";
 import { ReadFileView } from "./ReadFileView";
+import { ToolPathText } from "./ToolPathText";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 const TOOL_STATUS_LABELS: Record<SubagentToolCall["status"], string> = {
@@ -156,7 +157,13 @@ function ToolCallHoverContent(props: {
     <div className="flex flex-col gap-1.5 p-3">
       <p className="flex items-start gap-1.5 text-xs text-secondary-label">
         <Icon aria-hidden className="mt-px size-3.5 shrink-0 text-icon-muted" />
-        <span className="min-w-0 break-all">{call.title}</span>
+        <span className="min-w-0 break-all">
+          <ToolPathText
+            text={call.rawTitle ?? call.title}
+            environmentId={props.source.environmentId}
+            workspaceRoot={props.source.workspaceRoot}
+          />
+        </span>
       </p>
       <ToolCallBody text={body.text} className="max-h-[50vh]" />
       {body.readFile ? <ReadFileView file={body.readFile} className="max-h-80" /> : null}
@@ -220,11 +227,20 @@ const ToolCallRow = memo(function ToolCallRow(props: {
           call.status === "running" ? "text-foreground" : "text-secondary-label",
         )}
       >
-        {call.title}
+        <ToolPathText
+          text={call.rawTitle ?? call.title}
+          environmentId={props.source.environmentId}
+          workspaceRoot={props.source.workspaceRoot}
+        />
       </span>
       {call.detail ? (
         <span className="min-w-0 flex-1 truncate font-mono text-2xs text-muted-foreground">
-          {call.detail}
+          <ToolPathText
+            text={call.rawDetail ?? call.detail}
+            environmentId={props.source.environmentId}
+            workspaceRoot={props.source.workspaceRoot}
+            pathOnly={call.kind === "read" || call.kind === "edit"}
+          />
         </span>
       ) : null}
       {failed ? <XIcon aria-hidden className="size-3 shrink-0 text-destructive" /> : null}

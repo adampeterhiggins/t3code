@@ -1,3 +1,5 @@
+import { toolPathTargets } from "@t3tools/client-runtime/work-log/tool-paths";
+import { ToolPathText } from "./ToolPathText";
 import { SubagentStatusDot } from "./SubagentStatusDot";
 import { ThreadSubagentGroup } from "./thread-subagent-group";
 import {
@@ -1048,7 +1050,7 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
         }}
         onLongPress={() => props.onCopyRow(row.id, row.getCopyText())}
       >
-        {row.live && !expanded ? (
+        {row.live && !expanded && row.workEntry.tone !== "tool" ? (
           <ShimmeringWorkContent
             environmentId={props.environmentId}
             icon={icon}
@@ -1087,8 +1089,20 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
             </WorkLogIconSlot>
             <WorkLogLabel
               tone={isUsageLimit ? "warning" : iconIsDestructive ? "danger" : "default"}
+              wrap={row.workEntry.tone === "tool"}
             >
-              {isSystemNotice ? row.summary : displayText}
+              {isSystemNotice ? (
+                row.summary
+              ) : row.workEntry.tone === "tool" ? (
+                <ToolPathText
+                  targets={toolPathTargets(row.workEntry)}
+                  text={displayText}
+                  environmentId={props.environmentId}
+                  workspaceRoot={props.workspaceRoot}
+                />
+              ) : (
+                displayText
+              )}
               {answerPreview ? (
                 <Text
                   className={
@@ -1199,7 +1213,16 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
                 ))
             ) : fullDetail ? (
               <Text selectable className="font-mono text-2xs leading-normal text-foreground-muted">
-                {fullDetail}
+                {isRead ? (
+                  <ToolPathText
+                    targets={toolPathTargets(row.workEntry)}
+                    text={fullDetail}
+                    environmentId={props.environmentId}
+                    workspaceRoot={props.workspaceRoot}
+                  />
+                ) : (
+                  fullDetail
+                )}
               </Text>
             ) : null}
             {fetchedOutput ? (

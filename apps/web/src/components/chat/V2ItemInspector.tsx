@@ -1,3 +1,4 @@
+import { ToolPathText } from "./ToolPathText";
 import type {
   EnvironmentId,
   OrchestrationV2ProjectedTurnItem,
@@ -24,7 +25,6 @@ import { resolveDiffThemeName } from "../../lib/diffRendering";
 import { getSyntaxHighlighterPromise } from "../../lib/syntaxHighlighting";
 import { useTurnItemDetail } from "../../state/queries";
 import { useV2ItemSupport } from "../../state/v2ItemSupport";
-import { formatWorkspaceRelativePath } from "../../filePathDisplay";
 import { Button } from "../ui/button";
 import ChatMarkdown, { ChatMarkdownAssetImage } from "../ChatMarkdown";
 import { RenderErrorBoundary } from "../RenderErrorBoundary";
@@ -303,7 +303,12 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-mono text-muted-foreground">
-              {formatWorkspaceRelativePath(item.fileName, props.workspaceRoot)}
+              <ToolPathText
+                text={item.fileName}
+                environmentId={props.environmentId}
+                workspaceRoot={props.workspaceRoot}
+                pathOnly
+              />
             </span>
             {item.additions !== undefined || item.deletions !== undefined ? (
               <span>
@@ -334,7 +339,12 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
               {item.changes.map((change, index) => (
                 <li key={`${change.operation}:${change.path}:${index}`}>
                   {change.operation} {change.oldPath ? `${change.oldPath} → ` : ""}
-                  {formatWorkspaceRelativePath(change.path, props.workspaceRoot)}
+                  <ToolPathText
+                    text={change.path}
+                    environmentId={props.environmentId}
+                    workspaceRoot={props.workspaceRoot}
+                    pathOnly
+                  />
                   {change.fileType || change.mimeType
                     ? ` (${[change.fileType, change.mimeType].filter(Boolean).join(", ")})`
                     : ""}
@@ -358,7 +368,12 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
           {item.results.map((result) => (
             <li key={JSON.stringify(result)}>
               <span className="font-mono text-foreground/80">
-                {formatWorkspaceRelativePath(result.fileName, props.workspaceRoot)}
+                <ToolPathText
+                  text={result.fileName}
+                  environmentId={props.environmentId}
+                  workspaceRoot={props.workspaceRoot}
+                  pathOnly
+                />
                 {result.line === undefined ? "" : `:${result.line}`}
                 {result.column === undefined ? "" : `:${result.column}`}
               </span>
