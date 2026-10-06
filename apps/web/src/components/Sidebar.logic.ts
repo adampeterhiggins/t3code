@@ -1139,6 +1139,40 @@ export function sidebarSiblingTabs<T>(
   };
 }
 
+/** How far into another row, from the dragged tab's side, a drag still aims to pair with it. */
+const SIDEBAR_TAB_PAIR_DEPTH = 0.45;
+
+/**
+ * The tab a dragged tab would pair with in split view, iOS home-screen style, or null when the
+ * drag should sort the list as usual. `slots` are the rows' untransformed rects in `keys` order;
+ * the list currently shows the dragged tab in `overKey`'s slot with the others closed up around
+ * it. Entering another row from the dragged tab's side aims at that row until the drag reaches
+ * its middle, and the list holds still meanwhile; past the middle the list sorts past it.
+ */
+export function resolveSidebarTabPairTarget(input: {
+  keys: readonly string[];
+  slots: readonly ({ top: number; height: number } | undefined)[];
+  activeKey: string;
+  overKey: string | null;
+  centerY: number;
+}): string | null {
+  const activeIndex = input.keys.indexOf(input.activeKey);
+  if (activeIndex === -1) return null;
+  const overIndex = input.overKey === null ? -1 : input.keys.indexOf(input.overKey);
+  const activeSlot = overIndex === -1 ? activeIndex : overIndex;
+  const slot = input.slots.findIndex(
+    (rect) =>
+      rect !== undefined && input.centerY >= rect.top && input.centerY < rect.top + rect.height,
+  );
+  const rect = input.slots[slot];
+  if (rect === undefined || slot === activeSlot) return null;
+  const depth = (input.centerY - rect.top) / rect.height;
+  const travelled = slot > activeSlot ? depth : 1 - depth;
+  if (travelled >= SIDEBAR_TAB_PAIR_DEPTH) return null;
+  const others = input.keys.filter((key) => key !== input.activeKey);
+  return others[slot > activeSlot ? slot - 1 : slot] ?? null;
+}
+
 /**
  * A group's full order after dropping `activeKey` on `overKey` among the shown tabs. Hidden
  * tabs keep their places; the dropped tab lands next to the shown tab it moved past.

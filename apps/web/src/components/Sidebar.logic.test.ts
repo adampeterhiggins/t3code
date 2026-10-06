@@ -65,6 +65,7 @@ import {
   withSidebarTabThreads,
   holdSidebarTabOrder,
   limitSidebarTabs,
+  resolveSidebarTabPairTarget,
   sidebarSiblingTabs,
   sidebarTabToggleCount,
   sidebarTabToggleLabel,
@@ -925,6 +926,25 @@ describe("sidebar tab order", () => {
       shown: ["a", "d", "e"],
       hidden: ["b", "c"],
     });
+  });
+
+  it("pairs a dragged tab with the row it rests on, and sorts once it passes the middle", () => {
+    // Rows a, b, c, d are 10px tall at 0, 10, 20, 30.
+    const keys = ["a", "b", "c", "d"];
+    const slots = keys.map((_, index) => ({ top: index * 10, height: 10 }));
+    const target = (activeKey: string, overKey: string | null, centerY: number) =>
+      resolveSidebarTabPairTarget({ keys, slots, activeKey, overKey, centerY });
+    // Dragging a down: the top of b aims at b, its lower half sorts.
+    expect(target("a", "a", 5)).toBeNull();
+    expect(target("a", "a", 12)).toBe("b");
+    expect(target("a", "a", 16)).toBeNull();
+    // After sorting a past b, b sits in the first slot and c is next below.
+    expect(target("a", "b", 22)).toBe("c");
+    expect(target("a", "b", 8)).toBe("b");
+    expect(target("a", "b", 3)).toBeNull();
+    // Dragging d up enters c from below.
+    expect(target("d", null, 28)).toBe("c");
+    expect(target("d", null, 23)).toBeNull();
   });
 
   it("lists a group's other tabs where the sidebar shows them, split at its more row", () => {

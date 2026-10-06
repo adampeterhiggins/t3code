@@ -90,6 +90,8 @@ beside its review tab. Each side is a full chat with its own timeline, composer,
 - **Open.** In the tab menu, hover a tab and click the split button. You can also right-click any
   thread in the sidebar and choose **Open in split view**, or press `Cmd+\` on macOS or `Ctrl+\`
   on Windows and Linux to open the tab you used most recently beside the current one.
+  In the sidebar, you can also drag a tab onto another tab and hold it there until the row lights
+  up, then let go.
 - **Focus.** The focused side has a colored line along its top, and shortcuts act on that side.
   Click the other side, or press `Cmd+Option+\` / `Ctrl+Alt+\`, to move focus there.
 - **Swap and resize.** Drag the small handle at the top of either side onto the other side to swap
