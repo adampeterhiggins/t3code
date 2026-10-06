@@ -331,7 +331,8 @@ is its own conversation and provider.
   (`useRightPanelFollowsTabSwitch` in `ThreadTabs.tsx`).
 - **Context from other chats.** Type `@` in the composer and pick a sibling tab, or, before the
   first message, click one under **Include context from** (hovering one previews its summary).
-  Those pills follow the sidebar's tab order and limit, with the rest behind a **more** pill.
+  Those pills follow the sidebar's tab order and limit, with the rest behind a **more** pill
+  that lists them on hover.
   The `@` menu also lists other unarchived threads in the environment, matched by title
   (`apps/web/src/components/chat/composerThreadReferences.ts`), and works in a new draft thread
   too. On web and desktop, **Attach → Thread** and **Attach thread** in the command palette open

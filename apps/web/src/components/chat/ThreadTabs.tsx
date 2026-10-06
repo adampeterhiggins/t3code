@@ -778,16 +778,45 @@ export function ThreadTabContextPills({
             onSelect={(title) => void insert(tab.threadId, title)}
           />
         ))}
-        {hidden.length > 0 ? (
+        {hidden.length > 0 && expanded ? (
           <Toggle
             size="compact"
             variant="pill"
             pressed={false}
             className="min-w-0"
-            onClick={() => setExpanded((value) => !value)}
+            onClick={() => setExpanded(false)}
           >
-            <span className="truncate">{expanded ? "Show less" : `${hidden.length} more`}</span>
+            <span className="truncate">Show less</span>
           </Toggle>
+        ) : null}
+        {hidden.length > 0 && !expanded ? (
+          // Previews which tabs are folded away before expanding them.
+          <CursorPreviewCard
+            className="w-72 max-w-[calc(100vw-2rem)]"
+            trigger={
+              <Toggle
+                size="compact"
+                variant="pill"
+                pressed={false}
+                className="min-w-0"
+                onClick={() => setExpanded(true)}
+              >
+                <span className="truncate">{hidden.length} more</span>
+              </Toggle>
+            }
+          >
+            <ul className="max-h-64 overflow-y-auto">
+              {hidden.map((tab) => (
+                <li key={tab.threadId} className="truncate py-0.5">
+                  <TabMenuLabel
+                    environmentId={environmentId}
+                    group={group}
+                    threadId={tab.threadId}
+                  />
+                </li>
+              ))}
+            </ul>
+          </CursorPreviewCard>
         ) : null}
       </div>
       {error ? (

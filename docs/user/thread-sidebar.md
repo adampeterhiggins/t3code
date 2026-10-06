@@ -59,7 +59,8 @@ A thread's tabs are listed together. Search by the thread's or the tab's title t
 then select the tab whose conversation you want to attach.
 Before the first message in a new tab, you can also click a sibling
 under **Include context from**; hover one first to preview its summary. The siblings follow the
-sidebar's tab order and limit, so the tabs past the limit sit behind a **more** pill. Move or delete
+sidebar's tab order and limit, so the tabs past the limit sit behind a **more** pill;
+hover it to see which tabs those are. Move or delete
 the chip like any other context.
 The summary covers that chat's recent conversation, the commands and tools its agent ran, errors,
 files it changed, and its latest plan, trimmed to fit.
