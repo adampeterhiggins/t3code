@@ -44,7 +44,8 @@ newest, so it lands at the top of a newest-first list. These orders update as re
 want; that switches to **Manual** order, and the notice that appears can undo the switch. Manual
 order is kept in this browser or desktop app.
 
-To list or fold one chat's tabs on their own, click the tab count on its row. Changing the view for
+To switch tabs without listing them, hover the tab count on a chat's row and click a tab. To list
+or fold one chat's tabs on their own, click the tab count. Changing the view for
 every chat resets those choices. Moving, pinning, or settling the chat's row applies to the row,
 and its tabs stay under it. Hover a listed tab and click **×**, or right-click it and choose
 **Close tab**, to close it.
