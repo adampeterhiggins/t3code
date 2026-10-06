@@ -176,6 +176,68 @@ describe("renderGhosttySnapshot", () => {
     ]);
   });
 
+  it("draws powerline separators as cell-filling shapes between text runs", () => {
+    const calls: unknown[][] = [];
+    const record =
+      (name: string) =>
+      (...args: unknown[]) =>
+        calls.push([name, ...args]);
+    const context = {
+      canvas: { width: 200, height: 40 },
+      beginPath: () => {},
+      clip: () => {},
+      closePath: () => {},
+      fill: record("fill"),
+      fillRect: () => {},
+      fillText: record("fillText"),
+      lineTo: record("lineTo"),
+      moveTo: record("moveTo"),
+      rect: () => {},
+      resetTransform: () => {},
+      restore: () => {},
+      save: () => {},
+      fillStyle: "",
+      set font(_value: string) {},
+      set textBaseline(_value: string) {},
+    } as unknown as CanvasRenderingContext2D;
+    const cells = [cell("a"), cell("\ue0b0"), cell("b")];
+    const snapshot: GhosttySnapshot = {
+      cols: 3,
+      rows: 1,
+      foreground: { r: 255, g: 255, b: 255 },
+      background: { r: 0, g: 0, b: 0 },
+      cursor: { r: 255, g: 255, b: 255 },
+      cursorX: 0,
+      cursorY: 0,
+      cursorVisible: false,
+      cursorBlinking: false,
+      cursorStyle: 1,
+      dirtyRows: new Set([0]),
+      rowData: [{ cells, text: "a\ue0b0b", isWrapContinuation: false, wrapsToNext: false }],
+    };
+
+    renderGhosttySnapshot({
+      context,
+      snapshot,
+      metrics: { width: 8, height: 20, baseline: 14 },
+      fontSize: 12,
+      fontFamily: "monospace",
+      padding: 4,
+      forceFull: false,
+      cursorOn: true,
+    });
+
+    // The arrow spans the full 20px cell, not the font's glyph box.
+    expect(calls).toEqual([
+      ["fillText", "a", 4, 18, 8],
+      ["moveTo", 12, 4],
+      ["lineTo", 20, 14],
+      ["lineTo", 12, 24],
+      ["fill"],
+      ["fillText", "b", 20, 18, 8],
+    ]);
+  });
+
   it("repaints the cell without an overlay during the blink off phase", () => {
     const fillTextCalls: unknown[][] = [];
     const context = {

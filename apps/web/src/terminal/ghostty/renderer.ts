@@ -54,6 +54,44 @@ export function ghosttyTextRunEnd(
   return end;
 }
 
+type PowerlineSeparator = Readonly<{ side: "left" | "right"; solid: boolean }>;
+
+/**
+ * Powerline separators, drawn as shapes that fill the cell the way Ghostty and
+ * xterm.js draw them. A font glyph only spans the face's own height, so on a
+ * taller cell it leaves slivers between prompt segments.
+ */
+const POWERLINE_SEPARATORS: ReadonlyMap<string, PowerlineSeparator> = new Map([
+  ["\ue0b0", { side: "right", solid: true }],
+  ["\ue0b1", { side: "right", solid: false }],
+  ["\ue0b2", { side: "left", solid: true }],
+  ["\ue0b3", { side: "left", solid: false }],
+]);
+
+function drawPowerlineSeparator(
+  context: CanvasRenderingContext2D,
+  separator: PowerlineSeparator,
+  left: number,
+  top: number,
+  width: number,
+  height: number,
+): void {
+  const base = separator.side === "right" ? left : left + width;
+  const tip = separator.side === "right" ? left + width : left;
+  context.beginPath();
+  context.moveTo(base, top);
+  context.lineTo(tip, top + height / 2);
+  context.lineTo(base, top + height);
+  if (separator.solid) {
+    context.closePath();
+    context.fill();
+  } else {
+    context.lineWidth = 1;
+    context.strokeStyle = context.fillStyle;
+    context.stroke();
+  }
+}
+
 function fontForCell(cell: GhosttyCell, fontSize: number, fontFamily: string): string {
   const style = cell.italic ? "italic" : "normal";
   const weight = cell.bold ? "700" : "400";
@@ -193,7 +231,27 @@ export function renderGhosttySnapshot(options: {
         runStart += 1;
         continue;
       }
-      const runEnd = ghosttyTextRunEnd(row.cells, runStart, (cell) => sameTextStyle(cell, first));
+      const separator = POWERLINE_SEPARATORS.get(first.text);
+      if (separator) {
+        if (!first.invisible) {
+          context.fillStyle = cssColor(first.foreground);
+          drawPowerlineSeparator(
+            context,
+            separator,
+            padding + runStart * metrics.width,
+            top,
+            metrics.width,
+            metrics.height,
+          );
+        }
+        runStart += 1;
+        continue;
+      }
+      const runEnd = ghosttyTextRunEnd(
+        row.cells,
+        runStart,
+        (cell) => sameTextStyle(cell, first) && !POWERLINE_SEPARATORS.has(cell.text),
+      );
       const text = row.cells
         .slice(runStart, runEnd)
         .map((cell) => cell.text)
