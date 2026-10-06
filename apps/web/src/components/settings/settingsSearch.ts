@@ -276,6 +276,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     macOnly: true,
   },
   {
+    id: "terminal-cursor",
+    title: "Terminal cursor",
+    to: "/settings/appearance",
+    searchTerms: ["caret block bar beam underline shape"],
+  },
+  {
     id: "word-wrap",
     title: "Word wrap",
     to: "/settings/appearance",

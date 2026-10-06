@@ -46,6 +46,10 @@ export const TimestampFormat = Schema.Literals(["locale", "12-hour", "24-hour"])
 export type TimestampFormat = typeof TimestampFormat.Type;
 const DEFAULT_TIMESTAMP_FORMAT: TimestampFormat = "locale";
 
+export const TerminalCursorStyle = Schema.Literals(["block", "bar", "underline"]);
+export type TerminalCursorStyle = typeof TerminalCursorStyle.Type;
+const DEFAULT_TERMINAL_CURSOR_STYLE: TerminalCursorStyle = "block";
+
 export const DiffLayout = Schema.Literals(["stacked", "split"]);
 export type DiffLayout = typeof DiffLayout.Type;
 const DEFAULT_DIFF_LAYOUT: DiffLayout = "stacked";
@@ -429,6 +433,9 @@ export const ClientSettingsSchema = Schema.Struct({
   fontFamilyComposer: FontFamilyPreference.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   fontFamilySans: FontFamilyPreference.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   fontFamilyTerminal: FontFamilyPreference.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  terminalCursorStyle: TerminalCursorStyle.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_TERMINAL_CURSOR_STYLE)),
+  ),
   // Grayscale `-webkit-font-smoothing: antialiased` (thinner strokes);
   // disabling restores the platform's heavier default. No effect off macOS.
   fontSmoothing: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
@@ -2016,6 +2023,7 @@ export const ClientSettingsPatch = Schema.Struct({
   fontFamilyComposer: Schema.optionalKey(FontFamilyPreference),
   fontFamilySans: Schema.optionalKey(FontFamilyPreference),
   fontFamilyTerminal: Schema.optionalKey(FontFamilyPreference),
+  terminalCursorStyle: Schema.optionalKey(TerminalCursorStyle),
   fontSmoothing: Schema.optionalKey(Schema.Boolean),
   persistComposerContextStrip: Schema.optionalKey(Schema.Boolean),
   favorites: Schema.optionalKey(

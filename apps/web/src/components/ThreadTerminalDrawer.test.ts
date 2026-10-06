@@ -72,6 +72,12 @@ describe("terminalThemeFromApp", () => {
             "--terminal-foreground": "#fff",
             "--terminal-cursor": "#ddd",
             "--terminal-selection-background": "rgba(255, 255, 255, 0.2)",
+            ...Object.fromEntries(
+              Array.from({ length: 16 }, (_, index) => [
+                `--terminal-ansi-${index}`,
+                index % 2 === 0 ? "#111" : "#ddd",
+              ]),
+            ),
           }
         : {
             "--terminal-background": "#fff",
@@ -90,6 +96,11 @@ describe("terminalThemeFromApp", () => {
     expect(theme.background).toEqual({ r: 0, g: 0, b: 0 });
     expect(theme.foreground).toEqual({ r: 255, g: 255, b: 255 });
     expect(theme.cursor).toEqual({ r: 221, g: 221, b: 221 });
+    expect(theme.palette).toHaveLength(16);
+    expect(theme.palette?.slice(0, 2)).toEqual([
+      { r: 17, g: 17, b: 17 },
+      { r: 221, g: 221, b: 221 },
+    ]);
   });
 });
 

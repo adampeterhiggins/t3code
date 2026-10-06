@@ -4,6 +4,7 @@ import {
   getThemeModes,
   isReservedThemeId,
   parseThemeFile,
+  TERMINAL_ANSI_ROLES,
   themeColorToHex,
   themeIdFromName,
   THEME_FILE_VERSION,
@@ -22,6 +23,49 @@ import {
  * colors on top. Foregrounds must remain readable, while authored focus and
  * control candidates must remain distinct from adjacent surfaces and states.
  */
+
+/**
+ * VS Code's own ANSI defaults (terminalColorRegistry), in index order. Themes
+ * often set only some of the 16, and the rest render as these in VS Code.
+ */
+const VS_CODE_ANSI_DEFAULTS: Record<ThemeAppearance, ReadonlyArray<string>> = {
+  light: [
+    "#000000",
+    "#cd3131",
+    "#107c10",
+    "#949800",
+    "#0451a5",
+    "#bc05bc",
+    "#0598bc",
+    "#555555",
+    "#666666",
+    "#cd3131",
+    "#14ce14",
+    "#b5ba00",
+    "#0451a5",
+    "#bc05bc",
+    "#0598bc",
+    "#a5a5a5",
+  ],
+  dark: [
+    "#000000",
+    "#cd3131",
+    "#0dbc79",
+    "#e5e510",
+    "#2472c8",
+    "#bc3fbc",
+    "#11a8cd",
+    "#e5e5e5",
+    "#666666",
+    "#f14c4c",
+    "#23d18b",
+    "#f5f543",
+    "#3b8eea",
+    "#d670d6",
+    "#29b8db",
+    "#e5e5e5",
+  ],
+};
 
 type VsCodeRgba = { r: number; g: number; b: number; a: number };
 type VsCodeRgb = { r: number; g: number; b: number };
@@ -366,6 +410,11 @@ export function parseVsCodeThemeFile(value: unknown): ThemeDefinition {
     terminalScrollbar:
       solidOver(terminal, "scrollbarSlider.background") ?? derived.terminalScrollbar,
   };
+  TERMINAL_ANSI_ROLES.forEach((role, index) => {
+    // terminalAnsiBrightRed reads terminal.ansiBrightRed.
+    const key = `terminal.a${role.slice("terminalA".length)}`;
+    overrides[role] = solidOver(terminal, key) ?? VS_CODE_ANSI_DEFAULTS[appearance][index]!;
+  });
   overrides.accent = accentHex;
   overrides.focus = accentHex;
   overrides.messageAction = actionHex;

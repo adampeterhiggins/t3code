@@ -1289,6 +1289,22 @@ html[data-theme-id]:not([data-theme-id=""]) {
   --terminal-foreground: var(--app-theme-terminal-foreground);
   --terminal-cursor: var(--app-theme-terminal-cursor);
   --terminal-selection-background: var(--app-theme-terminal-selection-background);
+  --terminal-ansi-0: var(--app-theme-terminal-ansi-0);
+  --terminal-ansi-1: var(--app-theme-terminal-ansi-1);
+  --terminal-ansi-2: var(--app-theme-terminal-ansi-2);
+  --terminal-ansi-3: var(--app-theme-terminal-ansi-3);
+  --terminal-ansi-4: var(--app-theme-terminal-ansi-4);
+  --terminal-ansi-5: var(--app-theme-terminal-ansi-5);
+  --terminal-ansi-6: var(--app-theme-terminal-ansi-6);
+  --terminal-ansi-7: var(--app-theme-terminal-ansi-7);
+  --terminal-ansi-8: var(--app-theme-terminal-ansi-8);
+  --terminal-ansi-9: var(--app-theme-terminal-ansi-9);
+  --terminal-ansi-10: var(--app-theme-terminal-ansi-10);
+  --terminal-ansi-11: var(--app-theme-terminal-ansi-11);
+  --terminal-ansi-12: var(--app-theme-terminal-ansi-12);
+  --terminal-ansi-13: var(--app-theme-terminal-ansi-13);
+  --terminal-ansi-14: var(--app-theme-terminal-ansi-14);
+  --terminal-ansi-15: var(--app-theme-terminal-ansi-15);
 }
 
 /* Theme-token dependency probes are restored synchronously, before paint. Keep

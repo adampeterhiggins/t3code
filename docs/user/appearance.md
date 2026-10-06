@@ -42,6 +42,15 @@ On web and desktop, choose **Create theme** to adjust a palette, or import a T3 
 theme. The theme editor's color picker lets you select an area of the app to find the color to
 change. Export your theme as JSON to share it.
 
+Themes also carry the terminal's 16 ANSI colors. Importing a VS Code theme brings its
+`terminal.ansi*` colors, and the editor's advanced view lists them under **Terminal colors**.
+
+## Terminal
+
+On web and desktop, set **Terminal font** in **Settings → Appearance** with **Advanced** typography
+turned on. **Terminal cursor** chooses a block, bar, or underline cursor. Programs that set their
+own cursor shape, such as an editor's insert mode, still take priority.
+
 ## Environment themes
 
 Environment themes and defaults come from the server serving your web app or the desktop app's

@@ -1,4 +1,13 @@
-import { THEME_COLOR_ROLES, getThemeColorVariable, type ThemeColorRole } from "../../themePalette";
+import {
+  TERMINAL_ANSI_ROLES,
+  THEME_COLOR_ROLES,
+  getThemeColorVariable,
+  type ThemeColorRole,
+} from "../../themePalette";
+
+// ANSI colors only reach the terminal canvas, so probing them can never match.
+const TERMINAL_ANSI_ROLE_SET: ReadonlySet<ThemeColorRole> = new Set(TERMINAL_ANSI_ROLES);
+const DOM_THEME_COLOR_ROLES = THEME_COLOR_ROLES.filter((role) => !TERMINAL_ANSI_ROLE_SET.has(role));
 
 export type ThemePaintKind = "background" | "border" | "foreground";
 
@@ -470,7 +479,7 @@ export function inspectThemeRoleAtElement(initialElement: Element): ThemeElement
       if (snapshot) baseline.set(candidate, snapshot);
     }
 
-    for (const role of THEME_COLOR_ROLES) {
+    for (const role of DOM_THEME_COLOR_ROLES) {
       const restore = applyThemeTokenProbe(role);
       try {
         for (const [candidate, before] of baseline) {

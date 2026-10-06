@@ -82,6 +82,26 @@ describe("VS Code theme import", () => {
     expect(asHex(theme.colors.terminalBackground)).toBe("#101010");
   });
 
+  it("imports the ANSI palette and fills unset colors with VS Code's defaults", () => {
+    const theme = parseVsCodeThemeFile({
+      name: "One light terminal",
+      type: "light",
+      colors: {
+        "editor.background": "#fafafa",
+        "terminal.background": "#ffffff",
+        "terminal.ansiRed": "#ca1243",
+        "terminal.ansiBrightBlue": "#4078f2",
+        "terminal.ansiBrightBlack": "#00000080",
+      },
+    });
+    expect(asHex(theme.colors.terminalAnsiRed)).toBe("#ca1243");
+    expect(asHex(theme.colors.terminalAnsiBrightBlue)).toBe("#4078f2");
+    // Alpha flattens over the terminal background, as VS Code paints it.
+    expect(asHex(theme.colors.terminalAnsiBrightBlack)).toBe("#7f7f7f");
+    expect(asHex(theme.colors.terminalAnsiBlack)).toBe("#000000");
+    expect(asHex(theme.colors.terminalAnsiWhite)).toBe("#555555");
+  });
+
   it("flattens alpha overlays onto the surface they sit on", () => {
     const theme = parseVsCodeThemeFile(VSCODE_DARK);
     // #1f3e5e59 over the #101010 sidebar, not left semi-transparent.

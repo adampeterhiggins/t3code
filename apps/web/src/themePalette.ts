@@ -4,6 +4,7 @@ import "culori/css";
 import { converter, parse } from "culori/fn";
 import {
   BUILT_IN_THEMES,
+  DEFAULT_TERMINAL_ANSI_COLORS,
   EMBER_THEME,
   GROVE_THEME,
   IRIS_THEME,
@@ -12,6 +13,7 @@ import {
   T3_CODE_LIGHT_THEME_COLORS,
   T3_CODE_DARK_THEME_COLORS,
   RESERVED_THEME_IDS,
+  TERMINAL_ANSI_ROLES,
   THEME_COLOR_ROLES,
   type ThemeAppearance,
   type ThemeColorRole,
@@ -20,7 +22,16 @@ import {
   type ThemeVariants,
 } from "@t3tools/shared/themePalettes";
 
-export { EMBER_THEME, GROVE_THEME, IRIS_THEME, OCEAN_THEME, T3_CHAT_THEME, THEME_COLOR_ROLES };
+export {
+  DEFAULT_TERMINAL_ANSI_COLORS,
+  EMBER_THEME,
+  GROVE_THEME,
+  IRIS_THEME,
+  OCEAN_THEME,
+  T3_CHAT_THEME,
+  TERMINAL_ANSI_ROLES,
+  THEME_COLOR_ROLES,
+};
 export type { ThemeAppearance, ThemeColorRole, ThemeColors, ThemeDefinition, ThemeVariants };
 
 export const T3_CHAT_THEME_ID = "t3-chat" as const;
@@ -800,6 +811,7 @@ export function createVividThemeColors(
     terminalSelection: themeColor(surfaceAt(dark ? 0.18 : 0.12, Math.min(0.12, accent.C * 0.55))),
     terminalScrollbar: themeColor(surfaceAt(dark ? 0.22 : 0.16, tintC)),
     terminalScrollbarHover: themeColor(surfaceAt(dark ? 0.3 : 0.22, tintC)),
+    ...DEFAULT_TERMINAL_ANSI_COLORS,
   };
 }
 
@@ -1483,6 +1495,22 @@ const APP_THEME_VARIABLES: Readonly<Record<ThemeColorRole, string>> = {
   terminalSelection: "--app-theme-terminal-selection-background",
   terminalScrollbar: "--app-theme-terminal-scrollbar",
   terminalScrollbarHover: "--app-theme-terminal-scrollbar-hover",
+  terminalAnsiBlack: "--app-theme-terminal-ansi-0",
+  terminalAnsiRed: "--app-theme-terminal-ansi-1",
+  terminalAnsiGreen: "--app-theme-terminal-ansi-2",
+  terminalAnsiYellow: "--app-theme-terminal-ansi-3",
+  terminalAnsiBlue: "--app-theme-terminal-ansi-4",
+  terminalAnsiMagenta: "--app-theme-terminal-ansi-5",
+  terminalAnsiCyan: "--app-theme-terminal-ansi-6",
+  terminalAnsiWhite: "--app-theme-terminal-ansi-7",
+  terminalAnsiBrightBlack: "--app-theme-terminal-ansi-8",
+  terminalAnsiBrightRed: "--app-theme-terminal-ansi-9",
+  terminalAnsiBrightGreen: "--app-theme-terminal-ansi-10",
+  terminalAnsiBrightYellow: "--app-theme-terminal-ansi-11",
+  terminalAnsiBrightBlue: "--app-theme-terminal-ansi-12",
+  terminalAnsiBrightMagenta: "--app-theme-terminal-ansi-13",
+  terminalAnsiBrightCyan: "--app-theme-terminal-ansi-14",
+  terminalAnsiBrightWhite: "--app-theme-terminal-ansi-15",
 };
 
 export function getThemeColorVariable(role: ThemeColorRole): string {
