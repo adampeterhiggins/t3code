@@ -11,6 +11,7 @@ describe("tool path breadcrumbs", () => {
       rootLabel: "style-all",
       project: "fd-questionnaire",
       external: false,
+      repository: false,
       segments: ["scripts", "parity", "compare_reads.py"],
     });
   });
@@ -65,6 +66,26 @@ describe("tool path breadcrumbs", () => {
     expect(resolveToolPath("src/a.ts", null)).toBeNull();
     expect(resolveToolPath("../other/a.ts", "/repo")).toBeNull();
     expect(resolveToolPath("/repo/../other/a.ts", "/repo")).toBeNull();
+  });
+
+  it("shows a linked repository clone as its own root", () => {
+    expect(resolveToolPath(".context/fd-manager/src/Truncatable.tsx", "/repo")).toMatchObject({
+      absolutePath: "/repo/.context/fd-manager/src/Truncatable.tsx",
+      rootLabel: "fd-manager",
+      repository: true,
+      segments: ["src", "Truncatable.tsx"],
+    });
+    expect(
+      resolveToolPath("/Users/adam/.t3/worktrees/t3code/feature/.context/api/a.ts", "/repo"),
+    ).toMatchObject({ rootLabel: "api", project: "t3code", repository: true, segments: ["a.ts"] });
+    expect(resolveToolPath("/repo/.context", "/repo")).toMatchObject({
+      rootLabel: "repo",
+      repository: false,
+      segments: [".context"],
+    });
+    expect(resolveToolPath("/repo/src/.context/api/a.ts", "/repo")).toMatchObject({
+      repository: false,
+    });
   });
 
   it("recognizes a private agent checkout before its parent workspace", () => {

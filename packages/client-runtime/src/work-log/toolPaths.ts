@@ -1,7 +1,8 @@
-import type {
-  EnvironmentId,
-  OrchestrationProjectShell,
-  OrchestrationV2ThreadShell,
+import {
+  DEFAULT_CONTEXT_REPOSITORY_DIRECTORY,
+  type EnvironmentId,
+  type OrchestrationProjectShell,
+  type OrchestrationV2ThreadShell,
 } from "@t3tools/contracts";
 import { isWindowsAbsolutePath } from "@t3tools/shared/path";
 import { collectToolFilePaths } from "@t3tools/shared/toolActivity";
@@ -101,15 +102,28 @@ export function resolveToolPath(
     : claude
       ? { path: claude[1]!, label: claude[2]!, project: null }
       : null;
-  const root = [known, current, inferred]
+  let root = [known, current, inferred]
     .filter((candidate): candidate is ToolPathRoot => candidate !== null && candidate !== undefined)
     .sort((a, b) => b.path.length - a.path.length)[0];
-  const relative = root ? target.slice(normalize(root.path).length).replace(/^\//, "") : target;
+  let relative = root ? target.slice(normalize(root.path).length).replace(/^\//, "") : target;
+  // Repositories linked to a message are cloned into `<root>/.context/<name>`; show the clone as
+  // its own root rather than as a folder of the worktree that holds it.
+  const [directory, name, ...rest] = relative.split("/");
+  const repository = Boolean(root && directory === DEFAULT_CONTEXT_REPOSITORY_DIRECTORY && name);
+  if (root && repository) {
+    root = {
+      path: `${normalize(root.path)}/${directory}/${name}`,
+      label: name!,
+      project: root.project,
+    };
+    relative = rest.join("/");
+  }
   return {
     absolutePath,
     rootLabel: root?.label ?? "External",
     project: root?.project ?? null,
     external: root === undefined,
+    repository,
     segments: relative.split("/").filter(Boolean),
   };
 }
