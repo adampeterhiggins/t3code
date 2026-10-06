@@ -85,10 +85,15 @@ export function splitMenuAction(
 
 interface SplitViewState {
   panes: SplitPanes | null;
+  /** The start pane's share of the split's width, between 0 and 1. */
+  startRatio: number;
   /** A pane reached from the keyboard, whose composer takes focus once it is the focused pane. */
   composerFocusKey: string | null;
   open: (currentKey: string, otherKey: string) => void;
   replace: (fromKey: string, toKey: string) => void;
+  /** Swaps which chat sits on the start side and which on the end side; each keeps its width. */
+  swap: () => void;
+  resize: (startRatio: number) => void;
   close: () => void;
   requestComposerFocus: (key: string) => void;
   clearComposerFocus: () => void;
@@ -97,12 +102,19 @@ interface SplitViewState {
 /** In memory only: a reload starts on a single chat. */
 export const useSplitViewStore = create<SplitViewState>()((set) => ({
   panes: null,
+  startRatio: 0.5,
   composerFocusKey: null,
   open: (currentKey, otherKey) =>
     set((state) => ({ panes: openSplitPanes(state.panes, currentKey, otherKey) })),
   replace: (fromKey, toKey) =>
     set((state) => ({ panes: replaceSplitPane(state.panes, fromKey, toKey) })),
-  close: () => set({ panes: null, composerFocusKey: null }),
+  swap: () =>
+    set((state) => ({
+      panes: state.panes && [state.panes[1], state.panes[0]],
+      startRatio: 1 - state.startRatio,
+    })),
+  resize: (startRatio) => set({ startRatio }),
+  close: () => set({ panes: null, startRatio: 0.5, composerFocusKey: null }),
   requestComposerFocus: (key) => set({ composerFocusKey: key }),
   clearComposerFocus: () => set({ composerFocusKey: null }),
 }));

@@ -65,6 +65,7 @@ import {
   withSidebarTabThreads,
   holdSidebarTabOrder,
   limitSidebarTabs,
+  resolveSidebarTabPairTarget,
   sidebarSiblingTabs,
   sidebarTabToggleCount,
   sidebarTabToggleLabel,
@@ -910,16 +911,40 @@ describe("sidebar tab order", () => {
 
   it("limits a group to N rows, the open tab taking the last slot when it would be hidden", () => {
     const keys = ["a", "b", "c", "d", "e"];
-    expect(limitSidebarTabs(keys, null, "e", (k) => k)).toEqual({ shown: keys, hidden: [] });
-    expect(limitSidebarTabs(keys, 5, "e", (k) => k)).toEqual({ shown: keys, hidden: [] });
-    expect(limitSidebarTabs(keys, 3, "b", (k) => k)).toEqual({
+    expect(limitSidebarTabs(keys, null, ["e"], (k) => k)).toEqual({ shown: keys, hidden: [] });
+    expect(limitSidebarTabs(keys, 5, ["e"], (k) => k)).toEqual({ shown: keys, hidden: [] });
+    expect(limitSidebarTabs(keys, 3, ["b"], (k) => k)).toEqual({
       shown: ["a", "b", "c"],
       hidden: ["d", "e"],
     });
-    expect(limitSidebarTabs(keys, 3, "e", (k) => k)).toEqual({
+    expect(limitSidebarTabs(keys, 3, ["e"], (k) => k)).toEqual({
       shown: ["a", "b", "e"],
       hidden: ["c", "d"],
     });
+    // A split keeps both of its chats listed.
+    expect(limitSidebarTabs(keys, 3, ["e", "d"], (k) => k)).toEqual({
+      shown: ["a", "d", "e"],
+      hidden: ["b", "c"],
+    });
+  });
+
+  it("pairs a dragged tab with the row it rests on, and sorts once it passes the middle", () => {
+    // Rows a, b, c, d are 10px tall at 0, 10, 20, 30.
+    const keys = ["a", "b", "c", "d"];
+    const slots = keys.map((_, index) => ({ top: index * 10, height: 10 }));
+    const target = (activeKey: string, overKey: string | null, centerY: number) =>
+      resolveSidebarTabPairTarget({ keys, slots, activeKey, overKey, centerY });
+    // Dragging a down: the top of b aims at b, its lower half sorts.
+    expect(target("a", "a", 5)).toBeNull();
+    expect(target("a", "a", 12)).toBe("b");
+    expect(target("a", "a", 16)).toBeNull();
+    // After sorting a past b, b sits in the first slot and c is next below.
+    expect(target("a", "b", 22)).toBe("c");
+    expect(target("a", "b", 8)).toBe("b");
+    expect(target("a", "b", 3)).toBeNull();
+    // Dragging d up enters c from below.
+    expect(target("d", null, 28)).toBe("c");
+    expect(target("d", null, 23)).toBeNull();
   });
 
   it("lists a group's other tabs where the sidebar shows them, split at its more row", () => {

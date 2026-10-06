@@ -391,7 +391,18 @@ own timeline, composer, right panel, and terminal.
   fixed title-bar controls stay inside it (`SplitChatPanes.tsx`).
 - **Entry points.** The tab crumb menu's per-tab split button, **Open in split view** / **Close
   split view** in both sidebars' thread menus, the command palette, `splitView.toggle`
-  (`mod+\`), and `splitView.focusOther` (`mod+alt+\`). Each pane header has a close button.
+  (`mod+\`), and `splitView.focusOther` (`mod+alt+\`). Each pane header has a close button. In
+  a sidebar tab list, dragging a tab onto the near half of another and holding it there for half
+  a second pairs them, iOS home-screen style: the list holds still while aiming, the target row
+  lights up, and releasing opens the split (`resolveSidebarTabPairTarget` in `Sidebar.logic.ts`).
+- **Swap and resize.** Dragging the handle at the top of a pane onto the other pane swaps their
+  sides, and each keeps its width. Panes keep a fixed DOM order and are placed with CSS `order`,
+  so a swap never moves a scrolled timeline. Dragging the divider resizes the panes (at least
+  320px each); double-clicking it evens them out. The width ratio lives in the split store and
+  resets when the split closes.
+- **Sidebar.** Both chats' rows carry a side-by-side icon, and the one beside the routed chat gets
+  a lighter version of the active highlight. A tab list's **more** fold keeps both listed
+  (`limitSidebarTabs` in `Sidebar.logic.ts`). The legacy project sidebar does not mark the split.
 - **Mobile.** Not supported. Windows at or below the right-panel sheet breakpoint also show one
   chat.
 

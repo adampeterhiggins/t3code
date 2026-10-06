@@ -19,6 +19,7 @@ import {
   DndContext,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
   type DragOverEvent,
   type DragStartEvent,
@@ -83,6 +84,7 @@ import {
   CircleAlertIcon,
   CircleCheckIcon,
   ClockIcon,
+  Columns2Icon,
   FolderIcon,
   FoldersIcon,
   GitBranchIcon,
@@ -97,8 +99,10 @@ import {
   XIcon,
 } from "lucide-react";
 import {
+  createContext,
   memo,
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -218,6 +222,7 @@ import {
   type SidebarTabGroupOverrides,
   hasUnseenCompletion,
   layoutSidebarTabs,
+  resolveSidebarTabPairTarget,
   sidebarTabToggleCount,
   sidebarTabToggleLabel,
   moveSidebarTab,
@@ -292,7 +297,12 @@ import { ProjectFavicon, type ProjectFaviconProject } from "./ProjectFavicon";
 import { ThreadSearchMatchExcerpt } from "./ThreadSearchMatch";
 import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
 import { useThreadTabActions } from "./chat/ThreadTabs";
-import { useSplitViewActions } from "./chat/splitPane";
+import {
+  SPLIT_VIEW_HIDDEN_MEDIA_QUERY,
+  useSplitPartner,
+  useSplitViewActions,
+} from "./chat/splitPane";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import { splitMenuAction, useSplitViewStore } from "../splitViewStore";
 import { ProviderInstanceIcon } from "./chat/ProviderInstanceIcon";
 import { getTriggerDisplayModelLabel } from "./chat/providerIconUtils";
@@ -1143,6 +1153,19 @@ const dropVerbBadge: Record<SidebarDropVerb, ReactNode> = {
   ),
 };
 
+/** Marks a row whose chat is one side of the split view on screen. */
+function SidebarSplitIndicator() {
+  return (
+    <span
+      role="img"
+      aria-label="Shown side by side"
+      className="inline-flex shrink-0 items-center text-muted-foreground"
+    >
+      <Columns2Icon className="size-3.5" />
+    </span>
+  );
+}
+
 const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   thread: SidebarThreadSummary;
   /** The tab the hidden-tabs row opens; the group thread still owns ordering and selection. */
@@ -1181,6 +1204,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   // the user visits the thread.
   wokeAt: string | null;
   isActive: boolean;
+  // One side of the split view on screen: the routed chat or the one beside it.
+  inSplit: boolean;
   // A sibling tab is the open route. The header stays present, but the active
   // pill belongs to that tab row.
   groupFocused?: boolean;
@@ -1593,6 +1618,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   // the group header. The active tab carries the highlight.
   const unifyTabs = variant === "card" && props.tabsOpen && props.tabs != null;
   const rowActive = props.isActive && !unifyTabs;
+  // The chat beside the routed one in a split gets a lighter version of the active surface.
+  const rowSplitPartner = props.inSplit && !props.isActive && !unifyTabs;
   // Each listed tab shows its own status, so the header would only repeat the
   // first tab's and read as the whole group's. Woke belongs to the group.
   const headerStatus = unifyTabs && !isWokeStatus ? null : topStatus;
@@ -1601,13 +1628,15 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     variantAction === "unsettle" && "[&:not(:hover):not(:focus-within)_*]:text-secondary-label/70",
     rowActive
       ? "bg-sidebar-row-active text-sidebar-foreground"
-      : isSelected || props.sweepAction !== null
-        ? "bg-sidebar-row-selected text-sidebar-foreground"
-        : hasUnsentDraft
-          ? cn(draftSurfaceClassName, "text-sidebar-foreground")
-          : shouldRecede
-            ? "text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
-            : "bg-transparent text-sidebar-foreground hover:bg-sidebar-row-hover",
+      : rowSplitPartner
+        ? "bg-sidebar-row-active/50 text-sidebar-foreground"
+        : isSelected || props.sweepAction !== null
+          ? "bg-sidebar-row-selected text-sidebar-foreground"
+          : hasUnsentDraft
+            ? cn(draftSurfaceClassName, "text-sidebar-foreground")
+            : shouldRecede
+              ? "text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+              : "bg-transparent text-sidebar-foreground hover:bg-sidebar-row-hover",
     // Background work fades as a whole row, status label included, so it
     // takes less attention than rows that need a human (input, approval).
     shouldRecede &&
@@ -1890,6 +1919,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
             {tabCountBadge}
             {agentIndicator}
             {pinIndicator}
+            {props.inSplit ? <SidebarSplitIndicator /> : null}
             {terminalStatusIcon}
             {isRegeneratingTitle ? (
               <span role="status" className="sr-only">
@@ -2282,6 +2312,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                 <span className="flex-1" />
               )}
               {tabCountBadge}
+              {props.inSplit && !unifyTabs ? <SidebarSplitIndicator /> : null}
               {unifyTabs ? null : terminalStatusIcon}
               {prBadge}
               {diff ? (
@@ -2465,19 +2496,27 @@ function SidebarDisclosure(props: {
  * the list in their own drag context, so picking one up never drags the whole group, and they
  * move with the thread list's motion when a sort, the limit or a drop changes their order.
  */
+/** How long a dragged tab rests on another before releasing it pairs them in split view. */
+const SIDEBAR_TAB_PAIR_HOLD_MS = 500;
+
+/** The tab a dragged tab pairs with if released now; that row lights up. */
+const SidebarTabPairTargetContext = createContext<string | null>(null);
+
 function SidebarTabList(props: {
   /** Sortable ids of the rendered tabs, in display order. */
   tabKeys: readonly string[];
   /** Changes when the "more" row appears, disappears or flips, so its move animates too. */
   overflowKey: string;
   onReorder: (activeKey: string, overKey: string) => void;
+  /** A dragged tab was held on another and released there: show the two side by side. */
+  onPair: (draggedKey: string, targetKey: string) => void;
   /** The pointer entered or left the list; a live sort holds still while it rests here. */
   onPointerRestChange: (resting: boolean) => void;
   /** The list's height may have changed; rows below it re-measure and glide. */
   onLayoutChange: () => void;
   children: ReactNode;
 }) {
-  const { onLayoutChange, onReorder } = props;
+  const { onLayoutChange, onReorder, onPair, tabKeys } = props;
   const motionRef = useRef<ReturnType<typeof createSidebarListMotion> | null>(null);
   const attachMotionRef = useCallback((node: HTMLUListElement | null) => {
     motionRef.current?.dispose();
@@ -2504,6 +2543,54 @@ function SidebarTabList(props: {
       onFinish: finishDrag,
     }),
   );
+  // Resting a dragged tab on another row, iOS home-screen style, aims to pair the two. Aiming
+  // holds the list still; after a short hold the row lights up and releasing pairs them.
+  const overKeyRef = useRef<string | null>(null);
+  const aimRef = useRef<{ key: string | null; timer: number | null }>({ key: null, timer: null });
+  const pairTargetRef = useRef<string | null>(null);
+  const [pairTarget, setPairTarget] = useState<string | null>(null);
+  const resetPairAim = useCallback(() => {
+    if (aimRef.current.timer !== null) window.clearTimeout(aimRef.current.timer);
+    aimRef.current = { key: null, timer: null };
+    pairTargetRef.current = null;
+    setPairTarget(null);
+  }, []);
+  useEffect(() => resetPairAim, [resetPairAim]);
+  const collisionDetection = useCallback<CollisionDetection>(
+    (args) => {
+      const activeKey = String(args.active.id);
+      const target = resolveSidebarTabPairTarget({
+        keys: tabKeys,
+        slots: tabKeys.map((key) => args.droppableRects.get(key)),
+        activeKey,
+        overKey: overKeyRef.current,
+        centerY: args.collisionRect.top + args.collisionRect.height / 2,
+      });
+      // dnd-kit runs this during render, so it only starts and stops the hold timer.
+      const aim = aimRef.current;
+      if (target !== aim.key) {
+        if (aim.timer !== null) window.clearTimeout(aim.timer);
+        if (pairTargetRef.current !== null) {
+          pairTargetRef.current = null;
+          queueMicrotask(() => setPairTarget(pairTargetRef.current));
+        }
+        aimRef.current = {
+          key: target,
+          timer:
+            target === null
+              ? null
+              : window.setTimeout(() => {
+                  aimRef.current.timer = null;
+                  pairTargetRef.current = target;
+                  setPairTarget(target);
+                }, SIDEBAR_TAB_PAIR_HOLD_MS),
+        };
+      }
+      if (target === null) return closestCenter(args);
+      return [{ id: overKeyRef.current ?? activeKey }];
+    },
+    [tabKeys],
+  );
   const orderKey = `${props.tabKeys.join("\0")}\0${props.overflowKey}`;
   // A list that just mounted is opening inside its disclosure, which owns that height change.
   const mountedRef = useRef(false);
@@ -2517,28 +2604,39 @@ function SidebarTabList(props: {
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCenter}
+      collisionDetection={collisionDetection}
       modifiers={[restrictToVerticalAxis, restrictToParentElement]}
-      onDragStart={() => {
+      onDragStart={(event) => {
+        overKeyRef.current = String(event.active.id);
         motionRef.current?.suspend();
         setDragging(true);
       }}
+      onDragOver={(event) => {
+        overKeyRef.current = event.over === null ? null : String(event.over.id);
+      }}
       onDragEnd={(event) => {
-        if (event.over !== null && event.over.id !== event.active.id) {
+        const target = pairTargetRef.current;
+        resetPairAim();
+        if (target !== null) {
+          onPair(String(event.active.id), target);
+        } else if (event.over !== null && event.over.id !== event.active.id) {
           onReorder(String(event.active.id), String(event.over.id));
         }
       }}
+      onDragCancel={resetPairAim}
     >
-      <SortableContext items={[...props.tabKeys]} strategy={verticalListSortingStrategy}>
-        <ul
-          ref={attachMotionRef}
-          role="presentation"
-          onPointerEnter={() => props.onPointerRestChange(true)}
-          onPointerLeave={() => props.onPointerRestChange(false)}
-          className="relative ms-[calc(var(--sidebar-row-content-inset)+0.4375rem)] flex flex-col gap-px border-s border-sidebar-border ps-1 pb-0.5"
-        >
-          {props.children}
-        </ul>
+      <SortableContext items={[...tabKeys]} strategy={verticalListSortingStrategy}>
+        <SidebarTabPairTargetContext.Provider value={pairTarget}>
+          <ul
+            ref={attachMotionRef}
+            role="presentation"
+            onPointerEnter={() => props.onPointerRestChange(true)}
+            onPointerLeave={() => props.onPointerRestChange(false)}
+            className="relative ms-[calc(var(--sidebar-row-content-inset)+0.4375rem)] flex flex-col gap-px border-s border-sidebar-border ps-1 pb-0.5"
+          >
+            {props.children}
+          </ul>
+        </SidebarTabPairTargetContext.Provider>
       </SortableContext>
     </DndContext>
   );
@@ -2750,6 +2848,8 @@ function SidebarTabOverflowRow(props: {
 const SidebarTabRow = memo(function SidebarTabRow(props: {
   thread: SidebarThreadSummary;
   isActive: boolean;
+  /** One side of the split view on screen: the routed chat or the one beside it. */
+  inSplit: boolean;
   jumpLabel: string | null;
   environmentLabel: string | null;
   environmentMachine: EnvironmentMachineKind;
@@ -2778,6 +2878,7 @@ const SidebarTabRow = memo(function SidebarTabRow(props: {
     [thread.environmentId, thread.id],
   );
   const threadKey = scopedThreadKey(threadRef);
+  const isPairTarget = useContext(SidebarTabPairTargetContext) === threadKey;
   const lastVisitedAt = useUiStateStore((state) => state.threadLastVisitedAtById[threadKey]);
   const isSelected = useThreadSelectionStore((state) => state.selectedThreadKeys.has(threadKey));
   const runningTerminalIds = useThreadRunningTerminalIds({
@@ -2865,11 +2966,14 @@ const SidebarTabRow = memo(function SidebarTabRow(props: {
                 "group/sidebar-row relative flex h-8 w-full cursor-pointer items-center gap-2 overflow-hidden rounded-md px-2 text-left outline-none select-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                 props.isActive
                   ? "bg-sidebar-row-active text-sidebar-foreground"
-                  : isSelected
-                    ? "bg-sidebar-row-selected text-sidebar-foreground"
-                    : "text-sidebar-foreground hover:bg-sidebar-row-hover",
+                  : props.inSplit
+                    ? "bg-sidebar-row-active/50 text-sidebar-foreground"
+                    : isSelected
+                      ? "bg-sidebar-row-selected text-sidebar-foreground"
+                      : "text-sidebar-foreground hover:bg-sidebar-row-hover",
                 isFileDragOver && "ring-1 ring-inset ring-primary/70",
                 isFileDragOver && !props.isActive && !isSelected && "bg-sidebar-row-hover",
+                isPairTarget && "bg-primary/10 ring-2 ring-inset ring-primary",
                 // Lifted like a dragged thread: an opaque card over the rows beneath.
                 sortable?.isDragging &&
                   "bg-sidebar bg-linear-to-b from-sidebar-row-active to-sidebar-row-active text-sidebar-foreground shadow-lg",
@@ -2916,6 +3020,7 @@ const SidebarTabRow = memo(function SidebarTabRow(props: {
               {thread.title}
             </span>
           )}
+          {props.inSplit || isPairTarget ? <SidebarSplitIndicator /> : null}
           {terminalStatus ? (
             <TerminalIcon
               aria-label={terminalProcessLabel(runningTerminalIds.length)}
@@ -3323,6 +3428,25 @@ export default function Sidebar() {
   // A listed tab carries its own highlight; a folded one lights its group's row.
   const highlightedRouteThreadKey =
     routeThreadKey === null ? null : (hiddenTabThreads.get(routeThreadKey) ?? routeThreadKey);
+  // The chat shown beside the routed one in split view, mapped to its row the same way.
+  const splitHidden = useMediaQuery(SPLIT_VIEW_HIDDEN_MEDIA_QUERY);
+  const splitPartnerRef = useSplitPartner(
+    routeTarget?.kind === "server" && !splitHidden ? routeThreadRef : null,
+  );
+  const splitPartnerThreadKey = splitPartnerRef ? scopedThreadKey(splitPartnerRef) : null;
+  const splitPartnerRowKey =
+    splitPartnerThreadKey === null
+      ? null
+      : (hiddenTabThreads.get(splitPartnerThreadKey) ?? splitPartnerThreadKey);
+  // Rows the "more" fold never hides: the routed chat's and its split partner's.
+  const openRowKeys = useMemo(
+    () =>
+      [highlightedRouteThreadKey, splitPartnerRowKey].filter((key): key is string => key !== null),
+    [highlightedRouteThreadKey, splitPartnerRowKey],
+  );
+  const isSplitRowKey = (key: string) =>
+    splitPartnerRowKey !== null &&
+    (key === splitPartnerRowKey || key === highlightedRouteThreadKey);
   const routeTargetRef = useRef(routeTarget);
   routeTargetRef.current = routeTarget;
   // Post-settle navigation validates against the CURRENT route, not the one
@@ -3935,7 +4059,7 @@ export default function Sidebar() {
         manualRanks: tabManualRanks,
         heldKeys: heldTabOrder?.rowKey === rowKey ? heldTabOrder.keys : null,
         limit: tabLimit,
-        activeKey: highlightedRouteThreadKey,
+        openKeys: openRowKeys,
         expanded: expandedTabRowKey === rowKey,
       });
       layouts.set(rowKey, { ...layout, listsRow: card !== undefined });
@@ -3945,8 +4069,8 @@ export default function Sidebar() {
     activeThreads,
     expandedTabRowKey,
     heldTabOrder,
-    highlightedRouteThreadKey,
     listedTabsByRowKey,
+    openRowKeys,
     openedAtByThreadKey,
     pinnedThreads,
     tabLimit,
@@ -5880,6 +6004,19 @@ export default function Sidebar() {
   const threadsRef = useRef(threads);
   threadsRef.current = threads;
   // A drop in a timed order switches to Manual, starting from the order you were looking at.
+  // A tab held on another pairs them in split view. The routed chat keeps focus when it is one of
+  // the two; otherwise the dragged tab opens with the other beside it.
+  const handleTabPair = useCallback(
+    (draggedKey: string, targetKey: string) => {
+      const dragged = parseScopedThreadKey(draggedKey);
+      const target = parseScopedThreadKey(targetKey);
+      if (!dragged || !target) return;
+      const keepTarget = routeThreadKeyRef.current === targetKey;
+      splitViewActions.openBeside(keepTarget ? target : dragged, keepTarget ? dragged : target);
+      if (!keepTarget && routeThreadKeyRef.current !== draggedKey) void navigateToThread(dragged);
+    },
+    [navigateToThread, splitViewActions],
+  );
   const handleTabReorder = useCallback(
     (rowKey: string, activeKey: string, overKey: string) => {
       const layout = tabLayoutByRowKeyRef.current.get(rowKey);
@@ -6478,6 +6615,7 @@ export default function Sidebar() {
                             // rows resolve to null on their own.
                             wokeAt={threadWokeAt(thread, { now: snoozeNow })}
                             isActive={highlightedRouteThreadKey === threadKey}
+                            inSplit={isSplitRowKey(threadKey)}
                             groupFocused={
                               rowTabsOpen &&
                               isCard &&
@@ -6561,6 +6699,7 @@ export default function Sidebar() {
                                   onReorder={(activeKey, overKey) =>
                                     handleTabReorder(threadKey, activeKey, overKey)
                                   }
+                                  onPair={handleTabPair}
                                   onPointerRestChange={(resting) =>
                                     handleTabPointerRest(threadKey, resting)
                                   }
@@ -6587,6 +6726,7 @@ export default function Sidebar() {
                                             )}
                                             thread={tab}
                                             isActive={highlightedRouteThreadKey === tabKey}
+                                            inSplit={isSplitRowKey(tabKey)}
                                             jumpLabel={
                                               showJumpHints
                                                 ? (jumpLabelByKey.get(tabKey) ?? null)
