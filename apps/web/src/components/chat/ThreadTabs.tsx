@@ -463,7 +463,8 @@ function ThreadTabContextPill(props: {
           onClick={() => props.onSelect(label)}
         >
           {props.summary ? (
-            <span className="flex min-w-0 flex-1 items-center gap-1.5">
+            // Trailing room keeps the instance badge, which overhangs the icon, inside the pill.
+            <span className="flex min-w-0 flex-1 items-center gap-2 pe-1">
               <SidebarTabSummary {...props.summary} compact />
             </span>
           ) : (
@@ -806,8 +807,8 @@ export function ThreadTabContextPills({
   };
 
   return (
-    <div className="pb-2">
-      <p className="pb-1.5 text-xs text-muted-foreground">Include context from</p>
+    <div className="pb-3">
+      <p className="pb-2 text-xs text-muted-foreground">Include context from</p>
       {/* Fixed thirds of the composer width, wrapping onto new rows instead of scrolling. */}
       <div className="grid grid-cols-3 gap-1.5">
         {siblings.map((tab) => (
