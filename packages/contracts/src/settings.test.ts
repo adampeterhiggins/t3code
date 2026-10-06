@@ -35,6 +35,18 @@ describe("Slack integration settings", () => {
   });
 });
 
+describe("Notion integration settings", () => {
+  it("preserves existing Notion behavior unless explicitly disabled", () => {
+    expect(decodeServerSettings({}).enableNotionIntegration).toBe(true);
+  });
+
+  it.each([false, true])("persists an explicit %s preference", (enabled) => {
+    const preference = { enableNotionIntegration: enabled };
+    expect(decodeServerSettingsPatch(preference)).toEqual(preference);
+    expect(encodeServerSettings(decodeServerSettings(preference))).toMatchObject(preference);
+  });
+});
+
 describe("ServerSettings response streaming", () => {
   it("defaults to paragraph buffering", () => {
     expect(decodeServerSettings({}).responseStreamingMode).toBe("paragraph");

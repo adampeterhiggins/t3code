@@ -33,6 +33,10 @@ export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
     props.threadRef.environmentId,
     (s) => s.enableSlackIntegration,
   );
+  const notionEnabled = useEnvironmentSettings(
+    props.threadRef.environmentId,
+    (s) => s.enableNotionIntegration,
+  );
   return (
     <Menu>
       <MenuTrigger
@@ -53,10 +57,12 @@ export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
           <LinearIcon />
           Linear issue
         </MenuItem>
-        <MenuItem onClick={() => openNotionPagePicker(props.threadRef)}>
-          <NotionIcon />
-          Notion page
-        </MenuItem>
+        {notionEnabled ? (
+          <MenuItem onClick={() => openNotionPagePicker(props.threadRef)}>
+            <NotionIcon />
+            Notion page
+          </MenuItem>
+        ) : null}
         {slackEnabled ? (
           <MenuItem onClick={() => openSlackMessagePicker(props.threadRef)}>
             <SlackIcon />

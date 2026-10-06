@@ -11,6 +11,7 @@ import { ActivityIndicator, Alert, FlatList, Pressable, View } from "react-nativ
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { relativeTime } from "../lib/time";
+import { useEnvironmentServerConfig } from "../state/entities";
 import { notionEnvironment } from "../state/notion";
 import { useDebouncedValue } from "../state/queries";
 import { useEnvironmentQuery } from "../state/query";
@@ -52,17 +53,22 @@ type OpenedNotionPagePicker = NotionPagePickerTarget & {
  * opening the sheet blurs the editor, which can unmount a focus-dependent toolbar.
  */
 export function useNotionPagePicker(target: NotionPagePickerTarget | null): {
-  readonly open: () => void;
+  readonly open: (() => void) | undefined;
   readonly sheet: ReactNode;
 } {
   const [opened, setOpened] = useState<OpenedNotionPagePicker | null>(null);
+  const serverConfig = useEnvironmentServerConfig(target?.environmentId ?? null);
+  const enabled = serverConfig?.settings.enableNotionIntegration === true;
+  const openedServerConfig = useEnvironmentServerConfig(opened?.environmentId ?? null);
   return {
-    open: () => {
-      if (target) {
-        setOpened({ ...target, insertion: captureComposerDraftInsertion(target.draftKey) });
-      }
-    },
-    sheet: opened ? <NotionPagePickerSheet {...opened} onClose={() => setOpened(null)} /> : null,
+    open:
+      target && enabled
+        ? () => setOpened({ ...target, insertion: captureComposerDraftInsertion(target.draftKey) })
+        : undefined,
+    sheet:
+      opened && openedServerConfig?.settings.enableNotionIntegration ? (
+        <NotionPagePickerSheet {...opened} onClose={() => setOpened(null)} />
+      ) : null,
   };
 }
 

@@ -699,7 +699,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Notion",
     to: "/settings/integrations",
     searchTerms: [
-      "notion pages documents connect account sign in oauth client id client secret attach context",
+      "notion pages documents connect account sign in oauth client id client secret attach context enable disable integration pasted links setup prompts",
     ],
     environmentOnly: true,
     scope: "environment-defaults",

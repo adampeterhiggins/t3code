@@ -6,6 +6,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
 import { useCallback, useState } from "react";
 import { useComposerDraftStore } from "~/composerDraftStore";
+import { useEnvironmentSettings } from "~/hooks/useSettings";
 import { useIssueContextStore } from "~/issueContextStore";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { useDebouncedValue } from "~/state/queries";
@@ -53,13 +54,19 @@ export function NotionPagePickerHost() {
   return threadRef === null ? null : <NotionPagePickerDialog threadRef={threadRef} />;
 }
 function NotionPagePickerDialog({ threadRef }: { threadRef: ScopedThreadRef }) {
+  const notionEnabled = useEnvironmentSettings(
+    threadRef.environmentId,
+    (s) => s.enableNotionIntegration,
+  );
   const navigate = useNavigate();
   const attach = useAttachNotionPage();
   const [query, setQuery] = useState("");
   const [attaching, setAttaching] = useState(false);
   const settled = useDebouncedValue(query.trim(), 400);
   const connection = useEnvironmentQuery(
-    notionEnvironment.connection({ environmentId: threadRef.environmentId, input: {} }),
+    notionEnabled
+      ? notionEnvironment.connection({ environmentId: threadRef.environmentId, input: {} })
+      : null,
   );
   const connected = connection.data?.phase === "connected";
   const result = useEnvironmentQuery(
@@ -81,6 +88,7 @@ function NotionPagePickerDialog({ threadRef }: { threadRef: ScopedThreadRef }) {
         : pages.length === 0
           ? "No pages found. Share pages with the Notion connection to see them here."
           : null);
+  if (!notionEnabled) return null;
   return (
     <CommandDialog
       open

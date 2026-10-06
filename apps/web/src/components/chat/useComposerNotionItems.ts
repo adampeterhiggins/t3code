@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import type { ComposerTrigger } from "~/composer-logic";
 import { useDebouncedValue } from "~/state/queries";
 import { useEnvironmentQuery } from "~/state/query";
+import { useEnvironmentSettings } from "~/hooks/useSettings";
 import { notionEnvironment } from "~/state/notion";
 import type { ComposerCommandItem } from "./ComposerCommandMenu";
 
@@ -20,12 +21,14 @@ export function useComposerNotionItems(
   trigger: ComposerTrigger | null,
   active: boolean,
 ) {
+  const notionEnabled = useEnvironmentSettings(environmentId, (s) => s.enableNotionIntegration);
   const connection = useEnvironmentQuery(
-    trigger?.kind === "pull-request"
+    notionEnabled && trigger?.kind === "pull-request"
       ? notionEnvironment.connection({ environmentId, input: {} })
       : null,
   );
-  const enabled = trigger?.kind === "pull-request" && connection.data?.phase === "connected";
+  const enabled =
+    notionEnabled && trigger?.kind === "pull-request" && connection.data?.phase === "connected";
   const query = enabled && active ? trigger.query : null;
   const debouncedQuery = useDebouncedValue(query, NOTION_SEARCH_DEBOUNCE_MS);
   const settledQuery = query === debouncedQuery ? query : null;

@@ -70,8 +70,8 @@ export interface ResolvedComposerObjectLink {
 
 /**
  * Turns a link into the chip its attach picker would have made: the issue or pull request is
- * fetched and snapshotted the same way. Null when it cannot be read (Linear or Slack not
- * connected, `gh` signed out, a repository no project here is checked out from), so the caller
+ * fetched and snapshotted the same way. Null when it cannot be read (Linear, Slack, or Notion
+ * not connected or turned off, `gh` signed out, a repository no project here is checked out from), so the caller
  * keeps the link.
  */
 export function useResolveComposerObjectLink(input: {
@@ -81,6 +81,7 @@ export function useResolveComposerObjectLink(input: {
   const { threadRef, draftTarget } = input;
   const environmentId = threadRef.environmentId;
   const slackEnabled = useEnvironmentSettings(environmentId, (s) => s.enableSlackIntegration);
+  const notionEnabled = useEnvironmentSettings(environmentId, (s) => s.enableNotionIntegration);
   const getLinearIssue = useAtomCommand(linearEnvironment.getIssue, { reportFailure: false });
   const getGitHubIssue = useAtomCommand(githubIssueEnvironment.getIssue, { reportFailure: false });
   const getNotionPage = useAtomCommand(notionEnvironment.getPage, { reportFailure: false });
@@ -102,6 +103,7 @@ export function useResolveComposerObjectLink(input: {
     async (link: ComposerObjectLink): Promise<ResolvedComposerObjectLink | null> => {
       switch (link.kind) {
         case "notion-page": {
+          if (!notionEnabled) return null;
           const result = await getNotionPage({ environmentId, input: { id: link.pageId } });
           if (result._tag === "Failure") {
             if (!isAtomCommandInterrupted(result))
@@ -235,6 +237,7 @@ export function useResolveComposerObjectLink(input: {
       getPullRequestDiff,
       getNotionPage,
       getSlackThread,
+      notionEnabled,
       projects,
       pullRequestsEnabled,
       slackEnabled,

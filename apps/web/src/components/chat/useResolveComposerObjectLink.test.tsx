@@ -1,18 +1,35 @@
 import { parseComposerObjectLink } from "@t3tools/client-runtime/composer-object-links";
-import { EnvironmentId, ThreadId, type SlackThreadContext } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  ThreadId,
+  type NotionPageContext,
+  type SlackThreadContext,
+} from "@t3tools/contracts";
 import { act, useLayoutEffect } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 const mocks = vi.hoisted(() => ({
   slackEnabled: true,
+  notionEnabled: true,
   getSlackThread: vi.fn(),
+  getNotionPage: vi.fn(),
   upsert: vi.fn(),
   toast: vi.fn(),
 }));
 
 vi.mock("~/hooks/useSettings", () => ({
-  useEnvironmentSettings: () => mocks.slackEnabled,
+  useEnvironmentSettings: (
+    _environmentId: unknown,
+    select: (settings: {
+      enableSlackIntegration: boolean;
+      enableNotionIntegration: boolean;
+    }) => boolean,
+  ) =>
+    select({
+      enableSlackIntegration: mocks.slackEnabled,
+      enableNotionIntegration: mocks.notionEnabled,
+    }),
 }));
 vi.mock("@effect/atom-react", () => ({ useAtomValue: () => null }));
 vi.mock("~/state/entities", () => ({ useProjects: () => [] }));
@@ -25,7 +42,12 @@ vi.mock("~/state/pullRequests", () => ({
   pullRequestEnvironment: { detail: "detail", activity: "activity" },
 }));
 vi.mock("~/state/use-atom-command", () => ({
-  useAtomCommand: (command: string) => (command === "slack" ? mocks.getSlackThread : vi.fn()),
+  useAtomCommand: (command: string) =>
+    command === "slack"
+      ? mocks.getSlackThread
+      : command === "notion"
+        ? mocks.getNotionPage
+        : vi.fn(),
 }));
 vi.mock("~/state/use-atom-query-runner", () => ({ useAtomQueryRunner: () => vi.fn() }));
 vi.mock("~/issueContextStore", () => ({
@@ -60,6 +82,17 @@ const thread: SlackThreadContext = {
   markdown: "Alice: A message",
 };
 
+const notionUrl =
+  "https://app.notion.com/p/acme/Methodology-28599cd1efb78275839b01b59665ef86?source=copy_link";
+const notionLink = parseComposerObjectLink(notionUrl)!;
+const notionPage: NotionPageContext = {
+  id: "28599cd1-efb7-8275-839b-01b59665ef86",
+  title: "Methodology",
+  url: notionUrl,
+  updatedAt: "2026-10-06T00:00:00.000Z",
+  markdown: "# Methodology",
+};
+
 let renderer: ReactTestRenderer;
 let resolveLink: ReturnType<typeof useResolveComposerObjectLink>;
 
@@ -75,6 +108,8 @@ beforeEach(async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.clearAllMocks();
   mocks.slackEnabled = true;
+  mocks.notionEnabled = true;
+  mocks.getNotionPage.mockResolvedValue({ _tag: "Success", value: notionPage });
   mocks.getSlackThread.mockResolvedValue({ _tag: "Success", value: thread });
   await act(() => {
     renderer = create(<Probe />);
@@ -125,5 +160,25 @@ describe("Slack link attachments", () => {
     const attached = await resolveLink(repository);
     expect(attached?.reference.kind).toBe("repository");
     expect(mocks.getSlackThread).not.toHaveBeenCalled();
+  });
+});
+
+describe("Notion link attachments", () => {
+  it("attaches a pasted app.notion.com page link", async () => {
+    const attached = await resolveLink(notionLink);
+    expect(attached?.reference.kind).toBe("notion-page");
+    expect(mocks.getNotionPage).toHaveBeenCalledWith({
+      environmentId: threadRef.environmentId,
+      input: { id: notionPage.id },
+    });
+  });
+
+  it("keeps links as text without requesting Notion or showing setup prompts when disabled", async () => {
+    mocks.notionEnabled = false;
+    await act(() => renderer.update(<Probe />));
+
+    expect(await resolveLink(notionLink)).toBeNull();
+    expect(mocks.getNotionPage).not.toHaveBeenCalled();
+    expect(mocks.toast).not.toHaveBeenCalled();
   });
 });
