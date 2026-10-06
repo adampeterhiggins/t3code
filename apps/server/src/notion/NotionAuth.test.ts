@@ -98,7 +98,7 @@ function makeHarness(input: {
     const bytes = secrets.get(SECRET);
     return bytes === undefined ? null : JSON.parse(new TextDecoder().decode(bytes));
   };
-  return { layer, requests, storedToken };
+  return { layer, requests, secrets, storedToken };
 }
 
 /** A browser-style request to the login's loopback listener, over a real socket. */
@@ -121,7 +121,7 @@ it.effect("finishes remote OAuth with a server-side client secret", () => {
   const harness = makeHarness({});
   return Effect.gen(function* () {
     const auth = yield* NotionAuth.NotionAuth;
-    const waiting = yield* auth.startLogin;
+    const waiting = yield* auth.startLogin({});
     assert.strictEqual(waiting.phase, "waiting");
     const authorizationUrl = new URL(waiting.authorizationUrl ?? "");
     assert.strictEqual(authorizationUrl.searchParams.get("owner"), "user");
@@ -147,16 +147,16 @@ it.effect("can start another login after a finished one and after a cancelled on
   const harness = makeHarness({});
   return Effect.gen(function* () {
     const auth = yield* NotionAuth.NotionAuth;
-    const first = yield* auth.startLogin;
+    const first = yield* auth.startLogin({});
     const state = new URL(first.authorizationUrl ?? "").searchParams.get("state");
     // A real browser redirect, over a kept-alive connection like a browser's.
     assert.strictEqual(yield* requestLoopback(`/callback?code=the-code&state=${state}`), 200);
     yield* firstStateWhere(auth, "connected");
     yield* auth.disconnect;
-    const second = yield* auth.startLogin.pipe(Effect.timeout("5 seconds"));
+    const second = yield* auth.startLogin({}).pipe(Effect.timeout("5 seconds"));
     assert.strictEqual(second.phase, "waiting");
     yield* auth.cancelLogin({ flowId: second.flowId ?? "" });
-    const third = yield* auth.startLogin.pipe(Effect.timeout("5 seconds"));
+    const third = yield* auth.startLogin({}).pipe(Effect.timeout("5 seconds"));
     assert.strictEqual(third.phase, "waiting");
   }).pipe(Effect.provide(harness.layer));
 });
@@ -171,9 +171,9 @@ it.effect("keeps its callback listener apart from a router the host server alrea
     yield* Layer.buildWithMemoMap(HttpRouter.layer, memoMap, yield* Effect.scope);
     const inHost = <A, E>(effect: Effect.Effect<A, E>) =>
       effect.pipe(Effect.provideService(Layer.CurrentMemoMap, memoMap));
-    const first = yield* inHost(auth.startLogin);
+    const first = yield* inHost(auth.startLogin({}));
     yield* inHost(auth.cancelLogin({ flowId: first.flowId ?? "" }));
-    const second = yield* inHost(auth.startLogin).pipe(Effect.timeout("5 seconds"));
+    const second = yield* inHost(auth.startLogin({})).pipe(Effect.timeout("5 seconds"));
     assert.strictEqual(second.phase, "waiting");
     assert.strictEqual(yield* requestLoopback("/api/auth/session"), 404);
   }).pipe(Effect.scoped, Effect.provide(harness.layer));
@@ -219,8 +219,42 @@ it.effect("reports missing OAuth setup before starting a login", () => {
     const auth = yield* NotionAuth.NotionAuth;
     const initial = Option.getOrThrow(yield* auth.state.pipe(Stream.runHead));
     assert.isFalse(initial.configured);
-    const error = yield* auth.startLogin.pipe(Effect.flip);
+    const error = yield* auth.startLogin({}).pipe(Effect.flip);
     assert.strictEqual(error.reason, "not-configured");
     assert.strictEqual(h.requests.length, 0);
   }).pipe(Effect.provide(h.layer));
+});
+
+it.effect("signs in with credentials entered in Settings and keeps them for later logins", () => {
+  const h = makeHarness({ configured: false });
+  const credentials = { clientId: "entered-id", clientSecret: "entered-secret" };
+  return Effect.gen(function* () {
+    yield* Effect.gen(function* () {
+      const auth = yield* NotionAuth.NotionAuth;
+      const waiting = yield* auth.startLogin({ credentials });
+      const authorizationUrl = new URL(waiting.authorizationUrl ?? "");
+      assert.strictEqual(authorizationUrl.searchParams.get("client_id"), "entered-id");
+      yield* auth.completeLogin({
+        flowId: waiting.flowId ?? "",
+        callbackUrl: `http://localhost:47833/callback?code=the-code&state=${authorizationUrl.searchParams.get("state")}`,
+      });
+      const connected = Option.getOrThrow(yield* firstStateWhere(auth, "connected"));
+      assert.isTrue(connected.configured);
+      assert.strictEqual(connected.clientId, "entered-id");
+      const exchange = h.requests.find((request) => request.url.endsWith("/oauth/token"));
+      assert.strictEqual(exchange?.authorization, `Basic ${btoa("entered-id:entered-secret")}`);
+    }).pipe(Effect.provide(h.layer));
+    // A fresh service, as after a restart, still has them without any environment variables.
+    yield* Effect.gen(function* () {
+      const auth = yield* NotionAuth.NotionAuth;
+      const restored = Option.getOrThrow(yield* auth.state.pipe(Stream.runHead));
+      assert.isTrue(restored.configured);
+      assert.strictEqual(restored.clientId, "entered-id");
+      const waiting = yield* auth.startLogin({});
+      assert.strictEqual(
+        new URL(waiting.authorizationUrl ?? "").searchParams.get("client_id"),
+        "entered-id",
+      );
+    }).pipe(Effect.provide(h.layer));
+  });
 });

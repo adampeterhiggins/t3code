@@ -3,7 +3,12 @@ import {
   squashAtomCommandFailure,
   type AtomCommandResult,
 } from "@t3tools/client-runtime/state/runtime";
-import { type EnvironmentId, type NotionConnectionState } from "@t3tools/contracts";
+import {
+  type EnvironmentId,
+  NOTION_REDIRECT_URI,
+  type NotionConnectionState,
+} from "@t3tools/contracts";
+import { ExternalLinkIcon } from "lucide-react";
 import { useRef, useState } from "react";
 
 import { isElectron } from "../../env";
@@ -83,7 +88,18 @@ function NotionConnectionRows({
   const [pending, setPending] = useState(false);
   const pendingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
+  // Null until edited, so the field shows the client ID the server last signed in with.
+  const [clientIdDraft, setClientIdDraft] = useState<string | null>(null);
+  const [clientSecretDraft, setClientSecretDraft] = useState("");
   const [pasted, setPasted] = useState({ flowId: null as string | null, value: "" });
+  const clientId = (clientIdDraft ?? state?.clientId ?? "").trim();
+  const clientSecret = clientSecretDraft.trim();
+  // A new secret is sent with the client ID; otherwise the server reuses the
+  // credentials it has, which only fit the client ID it reports.
+  const canConnect =
+    clientSecret.length > 0
+      ? clientId.length > 0
+      : state?.configured === true && clientId === (state.clientId ?? "");
   const flowId = state?.phase === "waiting" ? state.flowId : null;
   const authorizationUrl = state?.phase === "waiting" ? state.authorizationUrl : null;
   const pastedValue = pasted.flowId === flowId ? pasted.value : "";
@@ -118,7 +134,13 @@ function NotionConnectionRows({
   }
 
   async function connect() {
-    const next = await run(() => startLogin({ environmentId, input: {} }));
+    const next = await run(() =>
+      startLogin({
+        environmentId,
+        input: clientSecret.length > 0 ? { credentials: { clientId, clientSecret } } : {},
+      }),
+    );
+    if (next) setClientSecretDraft("");
     // Only the desktop shell can open a tab after an await; browsers block
     // it as a popup, so the web build relies on the Open Notion button.
     if (isElectron && next?.authorizationUrl) await openAuthorization(next.authorizationUrl);
@@ -141,15 +163,10 @@ function NotionConnectionRows({
 
   const status = error ?? describeConnection(state);
   const statusClass = error !== null || state?.phase === "failed" ? "text-destructive" : undefined;
+  const signedOut = state?.phase === "disconnected" || state?.phase === "failed";
 
   return (
     <>
-      {state && !state.configured ? (
-        <SettingsRow
-          title="Notion OAuth setup"
-          description="Create a public Notion integration with Read content capability. Register http://localhost:47833/callback as its redirect URI. Set T3CODE_NOTION_CLIENT_ID and T3CODE_NOTION_CLIENT_SECRET on this environment, then restart it."
-        />
-      ) : null}
       <SettingsRow
         title="Notion account"
         description={<span className={statusClass}>{status}</span>}
@@ -186,12 +203,52 @@ function NotionConnectionRows({
               </Button>
             </div>
           ) : (
-            <Button size="sm" disabled={pending || !state.configured} onClick={connect}>
+            <Button size="sm" disabled={pending || !canConnect} onClick={connect}>
               {state.phase === "failed" ? "Reconnect Notion" : "Connect Notion"}
             </Button>
           )
         }
       />
+      {signedOut ? (
+        <SettingsRow
+          title="Notion connection"
+          description={`Notion signs in through an OAuth connection you create. Choose OAuth, register ${NOTION_REDIRECT_URI} as its redirect URI, then enter its client ID and secret here. The secret stays on ${environmentLabel}.`}
+          control={
+            <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+              <Input
+                size="sm"
+                aria-label="Notion client ID"
+                placeholder="Client ID"
+                className="min-w-0 flex-1 sm:w-64"
+                value={clientIdDraft ?? state?.clientId ?? ""}
+                onChange={(event) => setClientIdDraft(event.target.value)}
+              />
+              <Input
+                size="sm"
+                type="password"
+                autoComplete="off"
+                aria-label="Notion client secret"
+                placeholder={state?.configured ? "Client secret (saved)" : "Client secret"}
+                className="min-w-0 flex-1 sm:w-64"
+                value={clientSecretDraft}
+                onChange={(event) => setClientSecretDraft(event.target.value)}
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  void ensureLocalApi().shell.openExternal(
+                    "https://www.notion.so/profile/integrations",
+                  )
+                }
+              >
+                Create Notion connection
+                <ExternalLinkIcon className="size-3.5" aria-hidden="true" />
+              </Button>
+            </div>
+          }
+        />
+      ) : null}
       {state?.phase === "waiting" ? (
         <SettingsRow
           title="Approving from another device?"
@@ -207,7 +264,7 @@ function NotionConnectionRows({
               <Input
                 size="sm"
                 aria-label="Redirect URL from Notion"
-                placeholder="http://localhost:47833/callback?code=…"
+                placeholder={`${NOTION_REDIRECT_URI}?code=…`}
                 value={pastedValue}
                 onChange={(event) => setPasted({ flowId, value: event.target.value })}
               />
