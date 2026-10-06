@@ -67,6 +67,7 @@ import { Button } from "./ui/button";
 import { Menu, MenuPopup, MenuTrigger } from "./ui/menu";
 import { toastManager } from "./ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+import { Truncatable } from "./ui/truncatable";
 
 /** `null` while closed; open, it holds the project the dialog starts on, if any. */
 const importConversationAtom = Atom.make<{ readonly projectRef: ScopedProjectRef | null } | null>(
@@ -697,8 +698,8 @@ function ImportConversationList({
                             iconClassName="size-4"
                           />
                           {prompt === null ? (
-                            <span className="min-w-0 truncate font-medium text-foreground text-sm">
-                              {rowTitle(row)}
+                            <span className="min-w-0 font-medium text-foreground text-sm">
+                              <Truncatable>{rowTitle(row)}</Truncatable>
                             </span>
                           ) : (
                             <Tooltip>
@@ -710,7 +711,8 @@ function ImportConversationList({
                                 {rowTitle(row)}
                               </TooltipTrigger>
                               <TooltipPopup align="start" className="max-w-96 whitespace-normal">
-                                {prompt}
+                                <div className="font-medium">{rowTitle(row)}</div>
+                                <div className="text-muted-foreground">{prompt}</div>
                               </TooltipPopup>
                             </Tooltip>
                           )}
@@ -732,7 +734,9 @@ function ImportConversationList({
                       </TableCell>
                       {showProject ? (
                         <TableCell>
-                          <div className="truncate text-muted-foreground">{row.project.title}</div>
+                          <div className="text-muted-foreground">
+                            <Truncatable>{row.project.title}</Truncatable>
+                          </div>
                         </TableCell>
                       ) : null}
                       <TableCell>
