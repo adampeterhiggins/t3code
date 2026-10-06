@@ -993,6 +993,16 @@ Code: `TERMINAL_ANSI_ROLES` in [themePalettes.ts](../packages/shared/src/themePa
 [vscodeThemeImport.ts](../apps/web/src/vscodeThemeImport.ts). User guide:
 [Appearance](./user/appearance.md#custom-themes).
 
+## Expanded tool calls sit in a panel
+
+An expanded tool call in the web and desktop timeline shows its call and output inside a rounded,
+tinted panel, so the output stays visually separate from the assistant text around it. Upstream
+renders them flush with the timeline. Inner cards and Input/Output labels stay removed as upstream
+has them. Mobile follows upstream.
+
+Code: the `panel` variant of `WorkLogDetails` in
+[WorkLog.tsx](../apps/web/src/components/chat/WorkLog.tsx).
+
 ## Keeping this page current
 
 Update this page in the same change that adds, changes, or removes a user-visible fork-only
