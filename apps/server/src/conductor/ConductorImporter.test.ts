@@ -13,6 +13,7 @@ import {
   type OrchestrationV2ThreadShell,
   type ThreadId,
 } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
@@ -362,7 +363,9 @@ it.effect("imports a workspace's open tabs as one tab group in Conductor's workt
       settledOverride: "active",
       settledAt: null,
     });
-    expect(claude).not.toMatchObject({ pinnedAt: null });
+    expect(DateTime.formatIso((claude as { pinnedAt: DateTime.Utc }).pinnedAt)).toBe(
+      "2026-09-08T21:09:22.281Z",
+    );
     const prompt = writes[0]?.[1]?.payload;
     expect(prompt).toMatchObject({
       text: "Do you have Drive access?\n\n(Attachment not available: pasted.txt)",

@@ -353,7 +353,10 @@ const make = (databasePath: string) =>
           unsettledAt: yield* DateTime.now,
           snoozedUntil: null,
           snoozedAt: null,
-          pinnedAt: input.pinned ? updatedAt : null,
+          pinnedAt:
+            input.pinned && workspace.pinnedAt !== null
+              ? DateTime.makeUnsafe(conductorIsoTime(workspace.pinnedAt))
+              : null,
           pinOrderKey: null,
           activeOrderKey: null,
           lastVisitedAt: null,
