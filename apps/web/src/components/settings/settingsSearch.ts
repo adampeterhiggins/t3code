@@ -499,6 +499,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["new worktrees latest matching remote branch local"],
   },
   {
+    id: "terminal-activate-python-environment",
+    title: "Activate Python environment in terminals",
+    to: "/settings/general",
+    scope: "project-defaults",
+    searchTerms: ["venv .venv virtualenv conda interpreter path source activate shell uv poetry"],
+  },
+  {
     id: "add-project-starts-in",
     title: "Add project starts in",
     to: "/settings/general",

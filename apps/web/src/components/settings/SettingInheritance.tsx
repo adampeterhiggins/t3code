@@ -45,7 +45,9 @@ function formatValue(key: keyof ServerSettings, value: unknown): string {
           ? "Automatic"
           : key === "sourceControlWriterModelSelection"
             ? "Text generation model"
-            : key === "defaultThreadEnvMode" || key === "worktreeSubmodules"
+            : key === "defaultThreadEnvMode" ||
+                key === "worktreeSubmodules" ||
+                key === "pythonInterpreterPath"
               ? "Inherit"
               : "Not set";
   }
@@ -67,6 +69,7 @@ function formatValue(key: keyof ServerSettings, value: unknown): string {
         value as keyof typeof PULL_REQUEST_MERGE_METHOD_LABELS
       ];
     }
+    if (key === "pythonInterpreterPath" && value === "") return ".venv or venv";
     return value === "" ? "Empty" : value;
   }
   if (Array.isArray(value)) return `${value.length} ${value.length === 1 ? "item" : "items"}`;

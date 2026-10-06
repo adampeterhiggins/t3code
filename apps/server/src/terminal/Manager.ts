@@ -38,10 +38,19 @@ import {
   ClaudeSettings,
   CodexSettings,
   ProviderInstanceId,
+  ThreadId,
+  type ProjectId,
+  type ServerSettings as ServerSettingsSchema,
 } from "@t3tools/contracts";
 import { makeKeyedCoalescingWorker } from "@t3tools/shared/KeyedCoalescingWorker";
 import * as KeyedLock from "@t3tools/shared/KeyedLock";
 import { HostProcessArchitecture, HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import {
+  hasProjectSettingsOverrides,
+  resolveProjectFileBackedSetting,
+  resolveProjectSettings,
+} from "@t3tools/shared/projectSettings";
+import { parseT3ProjectFile } from "@t3tools/shared/t3ProjectFile";
 import { mergePathEntries } from "@t3tools/shared/shell";
 
 import { acpRegistryManagedBinaryDirectories } from "../provider/acp/AcpRegistrySupport.ts";
@@ -67,6 +76,8 @@ import { resolveCodexHomeLayout } from "../provider/Drivers/CodexHomeLayout.ts";
 import { makeClaudeEnvironment } from "../provider/Drivers/ClaudeHome.ts";
 import { deriveProviderInstanceConfigMap } from "../provider/ProviderInstanceRegistryHydration.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
+import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
 import {
   increment,
   terminalRestartsTotal,
@@ -77,6 +88,7 @@ import * as ProcessRunner from "../processRunner.ts";
 import * as PortScanner from "../preview/PortScanner.ts";
 import * as NativeTelemetryClient from "../resourceTelemetry/NativeTelemetryClient.ts";
 import * as PtyAdapter from "./PtyAdapter.ts";
+import { findPythonEnvironmentActivation } from "./pythonEnvironment.ts";
 
 export {
   TerminalCwdError,
@@ -1382,6 +1394,15 @@ interface TerminalManagerOptions {
     Record<string, string>,
     TerminalProviderInstanceNotFoundError | TerminalProviderEnvironmentError
   >;
+  /**
+   * The Python environment settings that apply to a terminal's project. When
+   * absent, terminals never activate one.
+   */
+  resolvePythonEnvironment?: (input: {
+    readonly threadId: string;
+    readonly cwd: string;
+    readonly worktreePath: string | null;
+  }) => Effect.Effect<{ readonly activate: boolean; readonly interpreterPath: string }>;
 }
 
 export const resolveProviderInstanceTerminalEnvironment = Effect.fn(
@@ -1425,6 +1446,37 @@ export const resolveProviderInstanceTerminalEnvironment = Effect.fn(
   );
 });
 
+/**
+ * Whether a terminal activates a Python environment, and which. A path set by
+ * neither the project nor the environment comes from the checkout's t3.json.
+ */
+export const resolveTerminalPythonEnvironment = Effect.fn(
+  "terminal.resolveTerminalPythonEnvironment",
+)(function* (input: {
+  readonly fileSystem: FileSystem.FileSystem;
+  readonly path: Path.Path;
+  readonly settings: ServerSettingsSchema;
+  readonly projectId: ProjectId | null;
+  readonly checkoutRoot: string;
+}) {
+  const resolved = resolveProjectSettings(input.settings, input.projectId).settings;
+  const activate = resolved.terminalActivatePythonEnvironment;
+  if (!activate || resolved.pythonInterpreterPath !== null) {
+    return { activate, interpreterPath: resolved.pythonInterpreterPath ?? "" };
+  }
+  const projectFile = yield* input.fileSystem
+    .readFileString(input.path.join(input.checkoutRoot, "t3.json"))
+    .pipe(
+      Effect.map(parseT3ProjectFile),
+      Effect.orElseSucceed(() => null),
+    );
+  return {
+    activate,
+    interpreterPath: resolveProjectFileBackedSetting("pythonInterpreterPath", null, projectFile)
+      .value,
+  };
+});
+
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = Effect.fn("TerminalManager.make")(function* () {
   const { terminalLogsDir, providerStatusCacheDir, baseDir } = yield* ServerConfig.ServerConfig;
@@ -1432,6 +1484,9 @@ export const make = Effect.fn("TerminalManager.make")(function* () {
   const portDiscovery = yield* PortScanner.PortDiscovery;
   const nativeTelemetry = yield* NativeTelemetryClient.NativeTelemetryClient;
   const serverSettings = yield* ServerSettings.ServerSettingsService;
+  const threads = yield* ProjectionStore.ProjectionStoreV2;
+  const projects = yield* ProjectStore.ProjectStoreV2;
+  const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const resolveProviderInstanceEnvironment = Effect.fn(
     "terminal.resolveProviderInstanceEnvironment",
@@ -1456,6 +1511,29 @@ export const make = Effect.fn("TerminalManager.make")(function* () {
     registerTerminalProcesses: portDiscovery.registerTerminalProcesses,
     unregisterTerminal: portDiscovery.unregisterTerminal,
     resolveProviderInstanceEnvironment,
+    resolvePythonEnvironment: (input) =>
+      Effect.gen(function* () {
+        const settings = yield* serverSettings.getSettings;
+        // Terminal thread ids include drafts the server has not stored yet,
+        // so fall back to the project rooted at the terminal's cwd.
+        const projectId = hasProjectSettingsOverrides(settings)
+          ? ((yield* threads.getThreadShell(ThreadId.make(input.threadId)).pipe(
+              Effect.map((thread) => thread?.projectId ?? null),
+              Effect.orElseSucceed(() => null),
+            )) ??
+            (yield* projects.findActiveByWorkspaceRoot(input.cwd).pipe(
+              Effect.map((project) => Option.getOrNull(project)?.projectId ?? null),
+              Effect.orElseSucceed(() => null),
+            )))
+          : null;
+        return yield* resolveTerminalPythonEnvironment({
+          fileSystem,
+          path,
+          settings,
+          projectId,
+          checkoutRoot: input.worktreePath ?? input.cwd,
+        });
+      }).pipe(Effect.orElseSucceed(() => ({ activate: false, interpreterPath: "" }))),
   });
 });
 
@@ -1478,6 +1556,9 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
   // `options.env` is the test seam.
   const baseEnv = options.env ?? process.env;
   const shellResolver = options.shellResolver ?? (() => defaultShellResolver(platform, baseEnv));
+  const resolvePythonEnvironment =
+    options.resolvePythonEnvironment ??
+    (() => Effect.succeed({ activate: false, interpreterPath: "" }));
   const processRunner = yield* ProcessRunner.ProcessRunner;
   const resolveLaunchInputEnvironment = Effect.fn("terminal.resolveLaunchInputEnvironment")(
     function* <Input extends TerminalOpenInput | TerminalAttachInput | TerminalRestartInput>(
@@ -2150,7 +2231,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     index = 0,
     lastError: PtyAdapter.PtySpawnError | null = null,
   ): Effect.fn.Return<
-    { process: PtyAdapter.PtyProcess; shellLabel: string },
+    { process: PtyAdapter.PtyProcess; shell: string; shellLabel: string },
     PtyAdapter.PtySpawnError
   > {
     if (index >= shellCandidates.length) {
@@ -2186,6 +2267,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     if (attempt._tag === "Success") {
       return {
         process: attempt.success,
+        shell: candidate.shell,
         shellLabel: formatShellCandidate(candidate),
       };
     }
@@ -2274,6 +2356,25 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
             const spawnResult = yield* trySpawn(shellCandidates, terminalEnv, session);
             ptyProcess = spawnResult.process;
             startedShell = spawnResult.shellLabel;
+            const python = yield* resolvePythonEnvironment({
+              threadId: session.threadId,
+              cwd: session.cwd,
+              worktreePath: session.worktreePath,
+            });
+            if (python.activate) {
+              const activation = yield* findPythonEnvironmentActivation({
+                fileSystem,
+                path,
+                cwd: session.cwd,
+                shell: spawnResult.shell,
+                platform,
+                interpreterPath: python.interpreterPath,
+              });
+              // The shell reads typed-ahead input once its rc files finish.
+              if (activation !== null) {
+                yield* Effect.try(() => spawnResult.process.write(activation)).pipe(Effect.ignore);
+              }
+            }
 
             const processPid = ptyProcess.pid;
             let eventsActivated = false;

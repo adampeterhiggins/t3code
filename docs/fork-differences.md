@@ -997,6 +997,22 @@ Code: `TERMINAL_ANSI_ROLES` in [themePalettes.ts](../packages/shared/src/themePa
 [vscodeThemeImport.ts](../apps/web/src/vscodeThemeImport.ts). User guide:
 [Appearance](./user/appearance.md#custom-themes).
 
+## Terminals activate Python environments
+
+**Activate Python environment in terminals** (off by default) and **Python interpreter path** make
+new and restarted terminals activate a Python environment, like VS Code's
+`python.terminal.activateEnvironment` and `python.defaultInterpreterPath`. An empty path finds a
+`.venv` or `venv` in the terminal's working directory; a configured interpreter or environment
+folder can be a virtual environment or a conda environment (`conda activate`). Both are
+project-scoped settings, exposed in web, desktop, and mobile settings and in
+`t3_environment_preferences_update`, and a repository can set the path with
+`"pythonInterpreterPath"` in its `t3.json`.
+
+Code: [pythonEnvironment.ts](../apps/server/src/terminal/pythonEnvironment.ts), called from
+`startSession` in [Manager.ts](../apps/server/src/terminal/Manager.ts), which resolves the path with
+`resolveTerminalPythonEnvironment`. User guide:
+[Terminal](./user/terminal.md#python-environments).
+
 ## Expanded tool calls sit in a panel
 
 An expanded tool call in the web and desktop timeline shows its call and output inside a rounded,

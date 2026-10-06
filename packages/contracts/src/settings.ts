@@ -1338,6 +1338,8 @@ export const PROJECT_SCOPED_SERVER_SETTING_KEYS = [
   "sidebarAutoSettleAfterDays",
   "continueThreadsAfterServerUpdate",
   "responseStreamingMode",
+  "terminalActivatePythonEnvironment",
+  "pythonInterpreterPath",
 ] as const;
 export type ProjectScopedServerSettingKey = (typeof PROJECT_SCOPED_SERVER_SETTING_KEYS)[number];
 
@@ -1369,6 +1371,8 @@ export const ProjectSettingsOverrides = Schema.Struct({
   sidebarAutoSettleAfterDays: Schema.optionalKey(Schema.NullOr(SidebarAutoSettleAfterDays)),
   continueThreadsAfterServerUpdate: Schema.optionalKey(Schema.Boolean),
   responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
+  terminalActivatePythonEnvironment: Schema.optionalKey(Schema.Boolean),
+  pythonInterpreterPath: Schema.optionalKey(TrimmedString),
 } satisfies Record<ProjectScopedServerSettingKey, unknown>);
 export type ProjectSettingsOverrides = typeof ProjectSettingsOverrides.Type;
 
@@ -1435,6 +1439,24 @@ export const ServerSettings = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed("paragraph" as const)),
   ),
   enableProviderUpdateChecks: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  /**
+   * Activate the Python environment when a terminal starts, like VS Code's
+   * `python.terminal.activateEnvironment`.
+   */
+  terminalActivatePythonEnvironment: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(false)),
+  ),
+  /**
+   * The environment terminals activate, like VS Code's
+   * `python.defaultInterpreterPath`: an interpreter (`.venv/bin/python`,
+   * `~/miniconda3/envs/app/bin/python`) or an environment directory. Relative
+   * paths resolve against the terminal's working directory. Empty finds a
+   * `.venv` or `venv` there. Null defers to the repository's t3.json, then to
+   * empty.
+   */
+  pythonInterpreterPath: Schema.NullOr(TrimmedString).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
   /** Enable Slack attachment entry points and automatic link resolution for this environment. */
   enableSlackIntegration: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   // Retain the update-era key; recovery now needs an environment-owned opt-in.
@@ -1873,6 +1895,8 @@ export const ServerSettingsPatch = Schema.Struct({
   // Server settings
   responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
   enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),
+  terminalActivatePythonEnvironment: Schema.optionalKey(Schema.Boolean),
+  pythonInterpreterPath: Schema.optionalKey(Schema.NullOr(TrimmedString)),
   enableSlackIntegration: Schema.optionalKey(Schema.Boolean),
   continueThreadsAfterServerUpdate: Schema.optionalKey(Schema.Boolean),
   enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),

@@ -8,7 +8,7 @@ This is a fork of upstream T3 Code. See [Fork differences](./fork-differences.md
 - [Messages and context](./user/composer.md)
 - [Working with threads](./user/thread-sidebar.md)
 - [Permission modes](./user/permission-modes.md)
-- [Terminal history](./user/terminal.md)
+- [Terminal](./user/terminal.md)
 - [Source control](./user/source-control.md)
 - [Linear](./user/linear.md)
 - [Slack](./user/slack.md)
