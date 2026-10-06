@@ -25,7 +25,9 @@ import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/reactivity";
 import {
   ArrowDownIcon,
+  ArrowRightIcon,
   ArrowUpIcon,
+  DownloadIcon,
   FolderGit2Icon,
   LayersIcon,
   ListFilterIcon,
@@ -345,9 +347,12 @@ function SortHeader({
   column,
   sort,
   onSort,
+  alignEnd = false,
 }: {
   label: string;
   column: SortKey;
+  /** Right-aligned columns lead with the arrow so the label lines up with the values. */
+  alignEnd?: boolean;
   sort: Sort;
   onSort: (sort: Sort) => void;
 }) {
@@ -365,8 +370,9 @@ function SortHeader({
         )
       }
     >
+      {alignEnd && active ? <Arrow aria-hidden className="size-3" /> : null}
       {label}
-      {active ? <Arrow aria-hidden className="size-3" /> : null}
+      {!alignEnd && active ? <Arrow aria-hidden className="size-3" /> : null}
     </button>
   );
 }
@@ -615,8 +621,8 @@ function ImportConversationList({
                 <col />
                 {showProject ? <col className="w-28" /> : null}
                 <col className="w-36" />
-                <col className="w-20" />
-                <col className="w-20" />
+                <col className="w-24" />
+                <col className="w-12" />
               </colgroup>
               <TableHeader>
                 <TableRow>
@@ -631,8 +637,14 @@ function ImportConversationList({
                   <TableHead aria-sort={ariaSort(sort, "source")}>
                     <SortHeader label="Source" column="source" sort={sort} onSort={setSort} />
                   </TableHead>
-                  <TableHead aria-sort={ariaSort(sort, "updated")}>
-                    <SortHeader label="Updated" column="updated" sort={sort} onSort={setSort} />
+                  <TableHead aria-sort={ariaSort(sort, "updated")} className="text-right">
+                    <SortHeader
+                      label="Updated"
+                      column="updated"
+                      sort={sort}
+                      onSort={setSort}
+                      alignEnd
+                    />
                   </TableHead>
                   <TableHead>
                     <span className="sr-only">Action</span>
@@ -697,29 +709,38 @@ function ImportConversationList({
                           )}
                         </div>
                       </TableCell>
-                      <TableCell>
-                        <div className="truncate text-muted-foreground">
+                      <TableCell className="text-right">
+                        <div className="truncate text-muted-foreground tabular-nums">
                           {formatRelativeTimeLabel(row.updatedAt)}
                         </div>
                       </TableCell>
-                      <TableCell>
-                        {pendingKey === key ? (
-                          <Spinner size="xs" />
-                        ) : (
-                          <Button
-                            type="button"
-                            size="xs"
-                            variant="ghost"
-                            disabled={pendingKey !== null}
-                            aria-label={`${imported ? "Open" : "Import"} ${rowTitle(row)}`}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              run();
-                            }}
+                      <TableCell className="text-right">
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <Button
+                                type="button"
+                                size="icon-xs"
+                                variant="ghost"
+                                disabled={pendingKey !== null}
+                                aria-label={`${imported ? "Open" : "Import"} ${rowTitle(row)}`}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  run();
+                                }}
+                              />
+                            }
                           >
-                            {imported ? "Open" : "Import"}
-                          </Button>
-                        )}
+                            {pendingKey === key ? (
+                              <Spinner size="xs" />
+                            ) : imported ? (
+                              <ArrowRightIcon aria-hidden />
+                            ) : (
+                              <DownloadIcon aria-hidden />
+                            )}
+                          </TooltipTrigger>
+                          <TooltipPopup>{imported ? "Open thread" : "Import"}</TooltipPopup>
+                        </Tooltip>
                       </TableCell>
                     </TableRow>
                   );
