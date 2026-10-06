@@ -46,6 +46,7 @@ import { DiscoveryList, DiscoveryListRow } from "./ui/discovery-list";
 import { Spinner } from "./ui/spinner";
 import { MenuSelect } from "./ui/menu-select";
 import { toastManager } from "./ui/toast";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
 /** `null` while closed; open, it holds the project the dialog starts on, if any. */
 const importConversationAtom = Atom.make<{ readonly projectRef: ScopedProjectRef | null } | null>(
@@ -186,13 +187,40 @@ const CONDUCTOR_AGENT: Record<ConductorAgent, { driver: ProviderDriverKind; labe
   cursor: { driver: ProviderDriverKind.make("cursor"), label: "Cursor" },
 };
 
-function describeWorkspace(workspace: ConductorWorkspaceSummary): string {
+/** Folder, tab count with the tabs on hover, and age. */
+function WorkspaceDescription({ workspace }: { workspace: ConductorWorkspaceSummary }) {
   const tabs = workspace.tabs.length;
-  return [
-    workspace.name,
-    `${tabs} ${tabs === 1 ? "tab" : "tabs"}`,
-    formatRelativeTimeLabel(workspace.updatedAt),
-  ].join(" · ");
+  return (
+    <>
+      {workspace.name} ·{" "}
+      <Tooltip>
+        <TooltipTrigger
+          render={<span className="underline decoration-dotted underline-offset-2" />}
+        >
+          {tabs} {tabs === 1 ? "tab" : "tabs"}
+        </TooltipTrigger>
+        <TooltipPopup align="start">
+          <ul className="flex max-w-80 flex-col gap-1">
+            {workspace.tabs.map((tab) => (
+              <li key={tab.sessionId} className="flex min-w-0 items-center gap-2">
+                <ProviderInstanceIcon
+                  driverKind={CONDUCTOR_AGENT[tab.agent].driver}
+                  displayName={CONDUCTOR_AGENT[tab.agent].label}
+                  showBadge={false}
+                  iconClassName="size-3"
+                />
+                <span className="min-w-0 flex-1 truncate">{tab.title}</span>
+                <span className="shrink-0 text-muted-foreground">
+                  {tab.messageCount} {tab.messageCount === 1 ? "prompt" : "prompts"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </TooltipPopup>
+      </Tooltip>{" "}
+      · {formatRelativeTimeLabel(workspace.updatedAt)}
+    </>
+  );
 }
 
 const sessionKey = (session: AgentSessionSummary) =>
@@ -406,7 +434,7 @@ function ImportConversationList({
                     />
                   }
                   title={workspace.title}
-                  description={describeWorkspace(workspace)}
+                  description={<WorkspaceDescription workspace={workspace} />}
                   disabled={pendingKey !== null}
                   aria-label={`${workspace.threadId ? "Open" : "Import"} ${workspace.title}`}
                   onClick={() => void chooseWorkspace(workspace)}
