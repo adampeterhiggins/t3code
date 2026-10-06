@@ -166,9 +166,8 @@ export function applyAgentListView<Item>(
 export type SubagentToolKind = "command" | "read" | "edit" | "search" | "web" | "other";
 
 export interface SubagentToolCall {
-  /** Original file targets before workspace display formatting, for inspection and copying. */
+  /** The title before workspace display formatting, for inspecting and copying its paths. */
   readonly rawTitle?: string;
-  readonly rawDetail?: string;
   /** The child thread's turn item. */
   readonly id: TurnItemId;
   readonly title: string;
@@ -457,9 +456,7 @@ function toolCallFromItem(
 ): SubagentToolCall {
   return {
     ...formatToolCall(raw, workspaceRoot, siblingCheckout),
-    ...(raw.kind === "command"
-      ? {}
-      : { rawTitle: raw.title, ...(raw.detail ? { rawDetail: raw.detail } : {}) }),
+    ...(raw.kind === "command" ? {} : { rawTitle: raw.title }),
     id: item.id,
     status: toolCallStatus(item.status),
     detailRevision:
