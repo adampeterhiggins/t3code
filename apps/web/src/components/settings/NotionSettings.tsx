@@ -18,8 +18,9 @@ import { usePrimaryEnvironment } from "../../state/environments";
 import { notionEnvironment } from "../../state/notion";
 import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { Button } from "../ui/button";
+import { Button, InlineButton } from "../ui/button";
 import { Input } from "../ui/input";
+import { Label } from "../ui/label";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import { useSettingsScope } from "./SettingsScopeContext";
@@ -91,6 +92,8 @@ function NotionConnectionRows({
   // Null until edited, so the field shows the client ID the server last signed in with.
   const [clientIdDraft, setClientIdDraft] = useState<string | null>(null);
   const [clientSecretDraft, setClientSecretDraft] = useState("");
+  // Saved credentials stay out of the way until the user asks to change them.
+  const [editingCredentials, setEditingCredentials] = useState(false);
   const [pasted, setPasted] = useState({ flowId: null as string | null, value: "" });
   const clientId = (clientIdDraft ?? state?.clientId ?? "").trim();
   const clientSecret = clientSecretDraft.trim();
@@ -140,7 +143,10 @@ function NotionConnectionRows({
         input: clientSecret.length > 0 ? { credentials: { clientId, clientSecret } } : {},
       }),
     );
-    if (next) setClientSecretDraft("");
+    if (next) {
+      setClientSecretDraft("");
+      setEditingCredentials(false);
+    }
     // Only the desktop shell can open a tab after an await; browsers block
     // it as a popup, so the web build relies on the Open Notion button.
     if (isElectron && next?.authorizationUrl) await openAuthorization(next.authorizationUrl);
@@ -164,6 +170,8 @@ function NotionConnectionRows({
   const status = error ?? describeConnection(state);
   const statusClass = error !== null || state?.phase === "failed" ? "text-destructive" : undefined;
   const signedOut = state?.phase === "disconnected" || state?.phase === "failed";
+  const showCredentials = signedOut && (state.configured === false || editingCredentials);
+  const fieldId = (name: string) => `notion-${name}-${environmentId}`;
 
   return (
     <>
@@ -203,53 +211,105 @@ function NotionConnectionRows({
               </Button>
             </div>
           ) : (
-            <Button size="sm" disabled={pending || !canConnect} onClick={connect}>
-              {state.phase === "failed" ? "Reconnect Notion" : "Connect Notion"}
-            </Button>
+            <div className="flex flex-wrap gap-2 sm:justify-end">
+              {state.configured && !editingCredentials ? (
+                <Button size="sm" variant="ghost" onClick={() => setEditingCredentials(true)}>
+                  Change credentials
+                </Button>
+              ) : null}
+              <Button size="sm" disabled={pending || !canConnect} onClick={connect}>
+                {state.phase === "failed" ? "Reconnect Notion" : "Connect Notion"}
+              </Button>
+            </div>
           )
         }
-      />
-      {signedOut ? (
-        <SettingsRow
-          title="Notion connection"
-          description={`Notion signs in through an OAuth connection you create. Choose OAuth, register ${NOTION_REDIRECT_URI} as its redirect URI, then enter its client ID and secret here. The secret stays on ${environmentLabel}.`}
-          control={
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() =>
-                void ensureLocalApi().shell.openExternal(
-                  "https://www.notion.so/profile/integrations",
-                )
-              }
-            >
-              Create Notion connection
-              <ExternalLinkIcon className="size-3.5" aria-hidden="true" />
-            </Button>
-          }
-        >
-          <div className="flex flex-col gap-2 pb-2 sm:flex-row">
-            <Input
-              size="sm"
-              aria-label="Notion client ID"
-              placeholder="Client ID"
-              className="min-w-0 flex-1"
-              value={clientIdDraft ?? state?.clientId ?? ""}
-              onChange={(event) => setClientIdDraft(event.target.value)}
-            />
-            <Input
-              size="sm"
-              type="password"
-              autoComplete="off"
-              aria-label="Notion client secret"
-              placeholder={state?.configured ? "Client secret (saved)" : "Client secret"}
-              className="min-w-0 flex-1"
-              value={clientSecretDraft}
-              onChange={(event) => setClientSecretDraft(event.target.value)}
-            />
-          </div>
-        </SettingsRow>
-      ) : null}
+      >
+        {showCredentials ? (
+          <form
+            className="mt-3 grid gap-3 border-t pt-3 pb-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (canConnect) void connect();
+            }}
+          >
+            <p className="max-w-2xl text-xs leading-relaxed text-muted-foreground">
+              Create an OAuth connection in Notion with this redirect URI, then add its client ID
+              and secret. The secret stays on {environmentLabel}.{" "}
+              <InlineButton
+                render={
+                  <a
+                    href="https://www.notion.so/profile/integrations"
+                    target="_blank"
+                    rel="noreferrer noopener"
+                  />
+                }
+              >
+                Create a connection
+                <ExternalLinkIcon aria-hidden className="size-3" />
+              </InlineButton>
+            </p>
+            <div className="grid gap-1.5">
+              <Label htmlFor={fieldId("redirect-uri")}>Redirect URI</Label>
+              <div className="flex gap-2">
+                <Input
+                  id={fieldId("redirect-uri")}
+                  size="sm"
+                  readOnly
+                  value={NOTION_REDIRECT_URI}
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => writeTextToClipboard(NOTION_REDIRECT_URI, "Redirect URI")}
+                >
+                  Copy
+                </Button>
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-1.5">
+                <Label htmlFor={fieldId("client-id")}>Client ID</Label>
+                <Input
+                  id={fieldId("client-id")}
+                  size="sm"
+                  autoComplete="off"
+                  value={clientIdDraft ?? state?.clientId ?? ""}
+                  onChange={(event) => setClientIdDraft(event.target.value)}
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor={fieldId("client-secret")}>Client secret</Label>
+                <Input
+                  id={fieldId("client-secret")}
+                  size="sm"
+                  type="password"
+                  autoComplete="off"
+                  placeholder={
+                    state?.configured ? "Saved, enter a new one to replace it" : undefined
+                  }
+                  value={clientSecretDraft}
+                  onChange={(event) => setClientSecretDraft(event.target.value)}
+                />
+              </div>
+            </div>
+            {editingCredentials ? (
+              <div className="flex justify-end">
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  onClick={() => {
+                    setEditingCredentials(false);
+                    setClientIdDraft(null);
+                    setClientSecretDraft("");
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            ) : null}
+          </form>
+        ) : null}
+      </SettingsRow>
       {state?.phase === "waiting" ? (
         <SettingsRow
           title="Approving from another device?"
