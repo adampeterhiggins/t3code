@@ -1318,4 +1318,99 @@ describe("OrchestratorMcpService provider resolution", () => {
         }
       }),
   );
+
+  it.effect("merges requested options over the parent's when the child keeps its model", () =>
+    Effect.gen(function* () {
+      const driver = ProviderDriverKind.make("codex");
+      const parentModelSelection = {
+        instanceId: codexInstanceId,
+        model: "gpt-5.4",
+        options: [
+          { id: "reasoningEffort", value: "high" },
+          { id: "contextWindow", value: "1m" },
+        ],
+      } as const;
+      const otherModel = "gpt-5.4-mini";
+      const cases = [
+        {
+          name: "same-model",
+          model: undefined,
+          expected: {
+            instanceId: codexInstanceId,
+            model: "gpt-5.4",
+            options: [
+              { id: "contextWindow", value: "1m" },
+              { id: "reasoningEffort", value: "low" },
+            ],
+          },
+        },
+        {
+          name: "other-model",
+          model: otherModel,
+          expected: {
+            instanceId: codexInstanceId,
+            model: otherModel,
+            options: [{ id: "reasoningEffort", value: "low" }],
+          },
+        },
+      ] as const;
+
+      for (const testCase of cases) {
+        const dispatched = yield* Ref.make<ReadonlyArray<unknown>>([]);
+        const dependencies = Layer.mergeAll(
+          NodeServices.layer,
+          Layer.mock(ThreadManagementService.ThreadManagementService)({
+            ...spawnPolicyReads,
+            getThreadRecords: (threadId) =>
+              Effect.succeed(
+                threadId === parentThreadId
+                  ? parentProjection([], parentModelSelection)
+                  : childProjection,
+              ),
+            dispatch: (command) =>
+              Ref.update(dispatched, (commands) => [...commands, command]).pipe(
+                Effect.as({ sequence: 1, storedEvents: [] } as never),
+              ),
+          }),
+          Layer.mock(ProviderRegistry.ProviderRegistry)({
+            getProviders: Effect.succeed([
+              {
+                ...providerSnapshot({ instanceId: codexInstanceId, driver, model: "gpt-5.4" }),
+                models: ["gpt-5.4", otherModel].map((slug) => ({
+                  slug,
+                  name: slug,
+                  isCustom: false,
+                  capabilities: null,
+                })),
+              },
+            ]),
+          }),
+          adapterRegistryLayer([codexInstanceId]),
+          Layer.mock(ProjectService.ProjectService)({}),
+          Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
+          Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
+          Layer.mock(SecretRequests.SecretRequests)({}),
+        );
+
+        yield* Effect.gen(function* () {
+          const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+          yield* service
+            .delegateTask(scope, {
+              task: "Summarize the diff.",
+              target: {
+                providerInstanceId: codexInstanceId,
+                ...(testCase.model === undefined ? {} : { model: testCase.model }),
+                options: [{ id: "reasoningEffort", value: "low" }],
+              },
+              mode: "async",
+              clientRequestId: `delegate-options-${testCase.name}`,
+            })
+            .pipe(Effect.ignore);
+          const commands = yield* Ref.get(dispatched);
+          const request = commands[0] as { modelSelection: unknown } | undefined;
+          assert.deepEqual(request?.modelSelection, testCase.expected, testCase.name);
+        }).pipe(Effect.provide(OrchestratorMcpService.layer.pipe(Layer.provide(dependencies))));
+      }
+    }),
+  );
 });

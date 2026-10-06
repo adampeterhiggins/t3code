@@ -1,5 +1,6 @@
 import type { ModelSelection as CursorSdkModelSelection, ModelParameterValue } from "@cursor/sdk";
-import type { ModelSelection } from "@t3tools/contracts";
+import type { ModelSelection, ProviderOptionDescriptor } from "@t3tools/contracts";
+import { getProviderOptionCurrentValue } from "@t3tools/shared/model";
 
 const CURSOR_SDK_PARAMETER_TO_PROVIDER_OPTION: Readonly<Record<string, string>> = {
   context: "contextWindow",
@@ -47,4 +48,25 @@ export function cursorSdkModelSelection(modelSelection: ModelSelection): CursorS
           })),
         }),
   };
+}
+
+/**
+ * Fills the parameters a selection leaves out with the defaults the model
+ * picker shows. Cursor resolves an omitted parameter to the model's standard
+ * tier rather than its default variant, so an untouched composer, a delegated
+ * task or a scheduled run would otherwise get a smaller context window than
+ * the picker displays. Fast stays off unless chosen, as in the composer.
+ */
+export function withCursorDefaultParameters(
+  selection: CursorSdkModelSelection,
+  descriptors: ReadonlyArray<ProviderOptionDescriptor> | undefined,
+): CursorSdkModelSelection {
+  const params = selection.params ?? [];
+  const present = new Set(params.map((parameter) => parameter.id));
+  const defaults = (descriptors ?? []).flatMap((descriptor): Array<ModelParameterValue> => {
+    const id = cursorSdkParameterId(descriptor.id);
+    const value = descriptor.id === "fastMode" ? false : getProviderOptionCurrentValue(descriptor);
+    return present.has(id) || value === undefined ? [] : [{ id, value: String(value) }];
+  });
+  return defaults.length === 0 ? selection : { ...selection, params: [...params, ...defaults] };
 }

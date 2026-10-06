@@ -6,6 +6,7 @@
  *
  * @module provider/Drivers/CursorDriver
  */
+import type { ModelSelection as CursorSdkModelSelection } from "@cursor/sdk";
 import {
   CursorSettings,
   defaultInstanceIdForDriver,
@@ -34,6 +35,7 @@ import {
   checkCursorProviderStatus,
 } from "../CursorProvider.ts";
 import * as CursorSdkCatalog from "../CursorSdkCatalog.ts";
+import { withCursorDefaultParameters } from "../cursorSdkModel.ts";
 import { makeManagedServerProvider } from "../makeManagedServerProvider.ts";
 import {
   defaultProviderContinuationIdentity,
@@ -152,6 +154,38 @@ export const CursorDriver: ProviderDriver<CursorSettings, CursorDriverEnv> = {
           },
         });
 
+      // Sends the defaults the model picker shows for anything the selection leaves out.
+      const withPickerDefaults = (
+        model: CursorSdkModelSelection | undefined,
+      ): Effect.Effect<CursorSdkModelSelection | undefined> =>
+        model === undefined
+          ? Effect.succeed(undefined)
+          : snapshot.getSnapshot.pipe(
+              Effect.map((provider) =>
+                withCursorDefaultParameters(
+                  model,
+                  provider.models.find((candidate) => candidate.slug === model.id)?.capabilities
+                    ?.optionDescriptors,
+                ),
+              ),
+            );
+
+      const withSendPickerDefaults = (
+        session: CursorAgentSdk.CursorAgentSdkSession,
+      ): CursorAgentSdk.CursorAgentSdkSession => ({
+        ...session,
+        send: (sendInput) =>
+          withPickerDefaults(sendInput.options?.model).pipe(
+            Effect.flatMap((model) =>
+              session.send(
+                model === undefined
+                  ? sendInput
+                  : { ...sendInput, options: { ...sendInput.options, model } },
+              ),
+            ),
+          ),
+      });
+
       const orchestrationAdapter = yield* CursorAdapterV2Driver.create({
         instanceId,
         displayName,
@@ -163,15 +197,18 @@ export const CursorDriver: ProviderDriver<CursorSettings, CursorDriverEnv> = {
         Effect.provideService(CursorAgentSdk.CursorAgentSdkRunner, {
           ...sdkRunner,
           open: (input) =>
-            auth.requireApiKey.pipe(
-              Effect.flatMap((apiKey) =>
+            Effect.all([auth.requireApiKey, withPickerDefaults(input.options.model)]).pipe(
+              Effect.flatMap(([apiKey, model]) =>
                 Effect.acquireRelease(
                   sdkRunner
-                    .open({ ...input, options: { ...input.options, apiKey } })
+                    .open({
+                      ...input,
+                      options: { ...input.options, apiKey, ...(model ? { model } : {}) },
+                    })
                     .pipe(
                       Effect.flatMap((session) =>
                         Effect.cached(session.close).pipe(
-                          Effect.map((close) => ({ ...session, close })),
+                          Effect.map((close) => withSendPickerDefaults({ ...session, close })),
                         ),
                       ),
                     ),
