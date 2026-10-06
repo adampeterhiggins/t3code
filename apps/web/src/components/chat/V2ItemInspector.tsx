@@ -37,6 +37,8 @@ interface V2ItemInspectorProps {
   readonly workspaceRoot?: string | undefined;
   /** Omit a command's text when the surrounding surface already shows it, as the hover preview does. */
   readonly hideCommand?: boolean | undefined;
+  /** Hover previews opt in; expanded chat rows keep commands and arguments plain. */
+  readonly highlightSyntax?: boolean | undefined;
   readonly onOpenThread: (threadId: ThreadId) => void;
   readonly onOpenTurnDiff: (runId: RunId, filePath?: string) => void;
   readonly onRollbackCheckpoint?: (input: {
@@ -176,12 +178,15 @@ function ToolCallBody(
     readonly command?: string;
     readonly args?: unknown;
     readonly exitCode?: number | undefined;
+    readonly highlightSyntax?: boolean | undefined;
   },
 ) {
   const call = toolCallLines({ command: props.command, args: props.args });
   return (
     <div className={cn("space-y-1.5", monoClassName)}>
-      {call.command ? <ShellCommandBlock command={call.command} /> : null}
+      {call.command ? (
+        <ShellCommandBlock command={call.command} highlightSyntax={props.highlightSyntax} />
+      ) : null}
       {call.args ? (
         <div className="text-foreground/85">
           {call.args.map(([key, value]) => (
@@ -192,7 +197,9 @@ function ToolCallBody(
           ))}
         </div>
       ) : null}
-      {call.argsText ? <StructuredValue value={call.argsText} highlightJson /> : null}
+      {call.argsText ? (
+        <StructuredValue value={call.argsText} highlightJson={props.highlightSyntax ?? false} />
+      ) : null}
       <ToolOutput {...props} />
       {props.exitCode !== undefined ? (
         <div className={props.exitCode === 0 ? "text-muted-foreground" : "text-destructive"}>
@@ -253,6 +260,7 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
       {item.type === "command_execution" ? (
         <ToolCallBody
           command={props.hideCommand ? "" : item.input}
+          highlightSyntax={props.highlightSyntax}
           exitCode={item.exitCode}
           {...outputState}
         />
@@ -357,7 +365,9 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
         </ul>
       ) : null}
 
-      {item.type === "dynamic_tool" ? <ToolCallBody args={item.input} {...outputState} /> : null}
+      {item.type === "dynamic_tool" ? (
+        <ToolCallBody args={item.input} highlightSyntax={props.highlightSyntax} {...outputState} />
+      ) : null}
 
       {item.type === "approval_request" ? <StructuredValue value={item.prompt} /> : null}
       {item.type === "user_input_request" ? (
