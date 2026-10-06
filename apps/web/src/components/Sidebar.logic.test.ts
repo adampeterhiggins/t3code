@@ -38,6 +38,7 @@ import {
   resolveSidebarStageBadgeLabel,
   resolveSidebarThreadSection,
   resolveSidebarPages,
+  repositoryOrganisationOf,
   resolveSidebarRowAccessibility,
   resolveSidebarThreadStatus,
   resolveSidebarV2TopStatus,
@@ -2603,5 +2604,28 @@ describe("resolveSidebarPages", () => {
   it("drops groups that no longer have threads and falls back to live threads", () => {
     expect(resolveSidebarPages(["group:Gone", "hidden"], [])).toEqual(["hidden"]);
     expect(resolveSidebarPages(["group:Gone", "nonsense"], [])).toEqual(["threads"]);
+  });
+});
+
+describe("repositoryOrganisationOf", () => {
+  const identity = (canonicalKey: string, origin?: string) =>
+    ({
+      canonicalKey,
+      locator: { source: "git-remote", remoteName: "origin", remoteUrl: `https://${canonicalKey}` },
+      ...(origin ? { origin: { canonicalKey: origin } } : {}),
+    }) as Parameters<typeof repositoryOrganisationOf>[0];
+
+  it("keys an organisation by host and owner", () => {
+    expect(repositoryOrganisationOf(identity("github.com/pingdotgg/t3code"))).toEqual({
+      key: "github.com/pingdotgg",
+      label: "pingdotgg",
+    });
+  });
+
+  it("files a fork under its own owner, and a checkout without a remote under none", () => {
+    expect(
+      repositoryOrganisationOf(identity("github.com/pingdotgg/t3code", "github.com/me/t3code")),
+    ).toEqual({ key: "github.com/me", label: "me" });
+    expect(repositoryOrganisationOf(null)).toBeNull();
   });
 });

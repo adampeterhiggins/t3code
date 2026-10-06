@@ -490,8 +490,9 @@ Code: `SidebarHistoryNavigation` in `apps/web/src/components/sidebar/SidebarChro
 
 On web and desktop, one filter button in the sidebar header replaces upstream's project picker.
 Each row opens a multi-select submenu, like the pull request filters: **Show** picks which of
-Threads, your thread groups, Snoozed, Hidden, and Settled the list holds, and **Projects** scopes
-it to some projects. **Only**, on the highlighted row, picks just that one. Threads alone is the
+Threads, your thread groups, Snoozed, Hidden, and Settled the list holds; **Organisations** scopes
+it to repository owners, read per checkout from `repositoryIdentity` (a fork counts under its own
+remote); and **Projects** scopes it to some projects. **Only**, on the highlighted row, picks just that one. Threads alone is the
 default; other picks list as titled sections below live threads, so snoozed and settled threads no longer sit in shelves under
 live work, and the drag targets for settling and waking are gone. Dragging to pin or reorder
 works while only Threads is shown. The button shows a count of narrowings off their default. A
@@ -1046,7 +1047,10 @@ group, which takes it out of the live thread list; each group is an entry in the
 and are removed only by **Delete group**, which returns their threads to the live list.
 Membership is the server-owned `groupName` field, set by `thread.group.set` and gated on the
 `threadGroups` capability; a name a thread holds but the setting lacks (an agent can create one)
-still lists. Renaming moves each thread and the setting's key. Hiding outranks a group. Agents
+still lists. Renaming moves each thread and the setting's key. The project-scoped setting
+`defaultThreadGroup` files a project's new threads: `ThreadManagementService.dispatch` fills
+`groupName` on every `thread.create` that does not choose one, and a fork inherits its source's
+group. Hiding outranks a group. Agents
 reach membership through `t3_thread_organize`'s `move_to_group` and `remove_from_group`.
 
 Code: `thread.group.set` in [`Orchestrator.ts`](../apps/server/src/orchestration-v2/Orchestrator.ts),

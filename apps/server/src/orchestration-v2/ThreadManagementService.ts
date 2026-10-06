@@ -34,6 +34,8 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
+import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
+import * as ServerSettings from "../serverSettings.ts";
 import * as Orchestrator from "./Orchestrator.ts";
 import { projectTurnItemForDetail } from "./WireProjection.ts";
 import * as LegacyV1ThreadImporter from "./legacy/LegacyV1ThreadImporter.ts";
@@ -403,6 +405,8 @@ function latestSteerableRun(
 
 const make = Effect.gen(function* () {
   const orchestrator = yield* Orchestrator.OrchestratorV2;
+  // Optional so layers without settings (tests) create threads ungrouped.
+  const serverSettings = yield* Effect.serviceOption(ServerSettings.ServerSettingsService);
   const legacyImporter = yield* LegacyV1ThreadImporter.LegacyV1ThreadImporter;
 
   const ensureLegacyTranscript = Effect.fn(
@@ -470,8 +474,29 @@ const make = Effect.gen(function* () {
       Effect.andThen(orchestrator.getThreadSnapshotWindow(threadId, options)),
     );
 
+  /** A new thread with no group chosen starts in its project's default group, if it has one. */
+  const withDefaultThreadGroup = (
+    command: OrchestrationV2ServerCommand,
+  ): Effect.Effect<OrchestrationV2ServerCommand> =>
+    command.type !== "thread.create" ||
+    command.groupName !== undefined ||
+    Option.isNone(serverSettings)
+      ? Effect.succeed(command)
+      : serverSettings.value.getSettings.pipe(
+          Effect.map((settings) => ({
+            ...command,
+            groupName: resolveProjectSettings(settings, command.projectId).settings
+              .defaultThreadGroup,
+          })),
+          // A settings read failure must not block creating the thread.
+          Effect.orElseSucceed(() => command),
+        );
+
   const dispatch: ThreadManagementServiceShape["dispatch"] = (command) =>
-    ensureCommandTranscripts(command).pipe(Effect.andThen(orchestrator.dispatch(command)));
+    ensureCommandTranscripts(command).pipe(
+      Effect.andThen(withDefaultThreadGroup(command)),
+      Effect.flatMap(orchestrator.dispatch),
+    );
 
   const getProjectThread: ThreadManagementServiceShape["getProjectThread"] = (input) =>
     getThreadProjection(input.threadId).pipe(

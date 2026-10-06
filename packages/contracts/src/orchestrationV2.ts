@@ -2686,6 +2686,8 @@ export const OrchestrationV2Command = Schema.Union([
     interactionMode: ProviderInteractionMode,
     branch: Schema.NullOr(TrimmedNonEmptyString),
     worktreePath: Schema.NullOr(TrimmedNonEmptyString),
+    /** The sidebar group the thread starts in. Absent lets the server apply the project's default. */
+    groupName: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
     importedNativeThread: Schema.optional(
       Schema.Struct({
         ref: Schema.Struct({

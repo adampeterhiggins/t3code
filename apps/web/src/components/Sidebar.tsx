@@ -253,6 +253,7 @@ import {
   shouldRecedeSidebarThread,
   resolveWorkingStartedAt,
   availableSidebarPages,
+  repositoryOrganisationOf,
   resolveSidebarPages,
   sidebarGroupPage,
   sidebarListItemId,
@@ -361,6 +362,8 @@ const EMPTY_PROVIDER_ENTRIES: ReadonlyMap<string, ProviderInstanceEntry> = new M
 const EMPTY_THREADS: readonly EnvironmentThreadShell[] = [];
 
 const SIDEBAR_PAGES_KEY = "t3code:sidebar:pages";
+const SIDEBAR_ORGANISATIONS_KEY = "t3code:sidebar:organisations";
+const NO_ORGANISATION_KEYS: readonly string[] = [];
 const DEFAULT_SIDEBAR_PAGES: readonly string[] = ["threads"];
 const SIDEBAR_PAGE_BY_MARKER = {
   "snoozed-header": "snoozed",
@@ -3742,19 +3745,56 @@ export default function Sidebar() {
       }),
     [projectGroupByScopeKey, projectScopeKeys],
   );
-  const scopedProjectKeys = useMemo(
-    () =>
-      scopedProjectGroups.length === 0
-        ? null
-        : new Set(
-            scopedProjectGroups.flatMap((project) =>
-              project.memberProjectRefs.map(
-                (projectRef) => `${projectRef.environmentId}:${projectRef.projectId}`,
-              ),
-            ),
-          ),
-    [scopedProjectGroups],
+  // Organisations narrow the same way projects do, per checkout: a project group can hold
+  // checkouts from a fork and its upstream, which belong to different owners.
+  const [storedOrganisationKeys, setOrganisationKeys] = useLocalStorage(
+    SIDEBAR_ORGANISATIONS_KEY,
+    NO_ORGANISATION_KEYS,
+    Schema.Array(Schema.String),
   );
+  const organisationOptions = useMemo(() => {
+    const byKey = new Map<string, { key: string; label: string }>();
+    for (const project of projectGroups) {
+      for (const member of project.memberProjects) {
+        const organisation = repositoryOrganisationOf(member.repositoryIdentity);
+        if (organisation) byKey.set(organisation.key, organisation);
+      }
+    }
+    const options = [...byKey.values()];
+    // The same owner on two hosts is told apart by its host.
+    const labelCounts = new Map<string, number>();
+    for (const option of options) {
+      labelCounts.set(option.label, (labelCounts.get(option.label) ?? 0) + 1);
+    }
+    return options
+      .map((option) =>
+        (labelCounts.get(option.label) ?? 0) > 1 ? { ...option, label: option.key } : option,
+      )
+      .toSorted((left, right) => left.label.localeCompare(right.label));
+  }, [projectGroups]);
+  // Organisations that no longer have a checkout stop narrowing the list.
+  const scopedOrganisationKeys = useMemo(
+    () =>
+      storedOrganisationKeys.filter((key) =>
+        organisationOptions.some((option) => option.key === key),
+      ),
+    [organisationOptions, storedOrganisationKeys],
+  );
+  const scopedProjectKeys = useMemo(() => {
+    if (scopedProjectGroups.length === 0 && scopedOrganisationKeys.length === 0) return null;
+    const organisations = new Set(scopedOrganisationKeys);
+    return new Set(
+      (scopedProjectGroups.length > 0 ? scopedProjectGroups : projectGroups).flatMap((project) =>
+        project.memberProjects
+          .filter(
+            (member) =>
+              organisations.size === 0 ||
+              organisations.has(repositoryOrganisationOf(member.repositoryIdentity)?.key ?? ""),
+          )
+          .map((member) => `${member.environmentId}:${member.id}`),
+      ),
+    );
+  }, [projectGroups, scopedOrganisationKeys, scopedProjectGroups]);
   // Scoped projects that are gone drop out of the scope, but only after every
   // catalog environment has a live project snapshot. Cached or disconnected
   // environments cannot establish that a project is gone.
@@ -3794,7 +3834,7 @@ export default function Sidebar() {
   // hidden now, and bulk actions must never count or touch invisible rows.
   useEffect(() => {
     clearSelection();
-  }, [clearSelection, projectScopeKeys]);
+  }, [clearSelection, projectScopeKeys, scopedOrganisationKeys]);
 
   const openProjectSettings = useCallback(
     (projectGroup: SidebarProjectSnapshot) => {
@@ -6521,6 +6561,9 @@ export default function Sidebar() {
                   pageCounts={pageCounts}
                   groupStyles={threadGroups}
                   onNewGroup={createThreadGroup}
+                  organisations={organisationOptions}
+                  scopedOrganisationKeys={scopedOrganisationKeys}
+                  onScopedOrganisationKeysChange={setOrganisationKeys}
                   onPagesChange={setSidebarPages}
                   projects={projectGroups}
                   scopedProjectKeys={projectScopeKeys}

@@ -4,6 +4,7 @@
  *
  * - Show: which of live threads, the user's own groups, snoozed, hidden and settled the list
  *   holds. Live threads alone is the default; other picks join as titled sections below them.
+ * - Organisations: which repository owners the list is scoped to, by each checkout's remote.
  * - Projects: which projects the list is scoped to. None picked means every project.
  *
  * The trigger carries a count of the narrowings off their default, so a narrowed list is never
@@ -11,6 +12,7 @@
  */
 import {
   AlarmClockIcon,
+  BuildingIcon,
   CircleCheckIcon,
   EyeOffIcon,
   FolderIcon,
@@ -253,6 +255,65 @@ function SidebarProjectFilter(props: {
   );
 }
 
+export interface SidebarOrganisationOption {
+  readonly key: string;
+  readonly label: string;
+}
+
+function SidebarOrganisationFilter(props: {
+  organisations: readonly SidebarOrganisationOption[];
+  scopedKeys: readonly string[];
+  onScopedKeysChange: (keys: readonly string[]) => void;
+}) {
+  const scoped = new Set(props.scopedKeys);
+  const picked = props.organisations.filter((option) => scoped.has(option.key));
+  return (
+    <MenuSub>
+      <MenuSubTrigger>
+        <BuildingIcon aria-hidden className="size-3.5" />
+        <span className="flex-1">Organisations</span>
+        <span className="min-w-0 max-w-32 truncate text-xs text-muted-foreground">
+          {picked.length === 0
+            ? "All"
+            : picked.length === 1
+              ? picked[0]!.label
+              : `${picked.length} selected`}
+        </span>
+      </MenuSubTrigger>
+      <MenuSubPopup className="max-w-[min(18rem,var(--available-width))] min-w-48">
+        <MenuCheckboxItem
+          checked={scoped.size === 0}
+          onCheckedChange={() => props.onScopedKeysChange([])}
+        >
+          <span className="flex min-w-0 items-center gap-2">
+            <LayersIcon aria-hidden className="size-3.5 shrink-0" />
+            All organisations
+          </span>
+        </MenuCheckboxItem>
+        {props.organisations.map((option) => (
+          <MenuCheckboxItem
+            key={option.key}
+            checked={scoped.has(option.key)}
+            onCheckedChange={(checked) =>
+              props.onScopedKeysChange(
+                checked
+                  ? [...props.scopedKeys, option.key]
+                  : props.scopedKeys.filter((key) => key !== option.key),
+              )
+            }
+          >
+            <span className="flex min-w-0 items-center gap-2">
+              <BuildingIcon aria-hidden className="size-3.5 shrink-0" />
+              <span className="min-w-0 flex-1 truncate">{option.label}</span>
+              <OnlyButton onClick={() => props.onScopedKeysChange([option.key])} />
+            </span>
+          </MenuCheckboxItem>
+        ))}
+      </MenuSubPopup>
+    </MenuSub>
+  );
+}
+
 export function SidebarFilterMenu(props: {
   pages: readonly SidebarPage[];
   availablePages: readonly SidebarPage[];
@@ -260,6 +321,9 @@ export function SidebarFilterMenu(props: {
   groupStyles: ThreadGroups;
   onPagesChange: (pages: readonly SidebarPage[]) => void;
   onNewGroup: () => void;
+  organisations: readonly SidebarOrganisationOption[];
+  scopedOrganisationKeys: readonly string[];
+  onScopedOrganisationKeysChange: (keys: readonly string[]) => void;
   projects: readonly SidebarProjectSnapshot[];
   scopedProjectKeys: readonly string[];
   onScopedProjectKeysChange: (keys: readonly string[]) => void;
@@ -267,10 +331,15 @@ export function SidebarFilterMenu(props: {
   projectBadge: (project: SidebarProjectSnapshot) => ReactNode;
 }) {
   const pagesFiltered = !(props.pages.length === 1 && props.pages[0] === "threads");
+  const organisationsFiltered = props.scopedOrganisationKeys.length > 0;
   const projectsFiltered = props.scopedProjectKeys.length > 0;
-  const activeCount = Number(pagesFiltered) + Number(projectsFiltered);
+  const activeCount =
+    Number(pagesFiltered) + Number(organisationsFiltered) + Number(projectsFiltered);
   const summary = [
     pagesFiltered ? `Showing ${props.pages.map(sidebarPageLabel).join(", ")}` : null,
+    organisationsFiltered
+      ? `${props.scopedOrganisationKeys.length} ${props.scopedOrganisationKeys.length === 1 ? "organisation" : "organisations"}`
+      : null,
     projectsFiltered
       ? `${props.scopedProjectKeys.length} ${props.scopedProjectKeys.length === 1 ? "project" : "projects"}`
       : null,
@@ -306,6 +375,13 @@ export function SidebarFilterMenu(props: {
           onNewGroup={props.onNewGroup}
           onPagesChange={props.onPagesChange}
         />
+        {props.organisations.length > 0 ? (
+          <SidebarOrganisationFilter
+            organisations={props.organisations}
+            scopedKeys={props.scopedOrganisationKeys}
+            onScopedKeysChange={props.onScopedOrganisationKeysChange}
+          />
+        ) : null}
         {props.projects.length > 0 ? (
           <SidebarProjectFilter
             projects={props.projects}

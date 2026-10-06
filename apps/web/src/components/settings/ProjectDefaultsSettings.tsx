@@ -16,6 +16,10 @@ import {
   sortProviderInstanceEntries,
 } from "../../providerInstances";
 import { useEnvironments } from "../../state/environments";
+import { useThreadShells } from "../../state/entities";
+import { useThreadGroups } from "../../hooks/useThreadGroups";
+import { collectThreadGroupNames } from "../threadActionMenu.logic";
+import { ThreadGroupIcon } from "../sidebar/ThreadGroupIcon";
 import { EMPTY_SERVER_PROVIDERS } from "../../state/server";
 import { resolveEnvModeLabel, WORKTREE_SUBMODULES_LABELS } from "../BranchToolbar.logic";
 import { ProviderModelPicker } from "../chat/ProviderModelPicker";
@@ -46,6 +50,8 @@ import {
  * environment defaults at an environment scope and project overrides at a
  * project or checkout scope; the scoped hooks route the write.
  */
+/** The Select value for "no group"; group names are trimmed, so this can never collide. */
+const NO_THREAD_GROUP = " none";
 const WORKTREE_SUBMODULES_OPTIONS = ["recursive", "top-level", "none"] as const;
 function isWorktreeSubmodules(value: string | null): value is WorktreeSubmodules {
   return value !== null && (WORKTREE_SUBMODULES_OPTIONS as readonly string[]).includes(value);
@@ -81,6 +87,14 @@ export function ProjectDefaultsSettings({ category }: { category: ProjectSetting
   const mixedAutoPull = useScopedSettingsMixed(["defaultAutoPull"]);
   const mixedAgentCredits = useScopedSettingsMixed(["removeAgentCreditsOnMerge"]);
   const mixedMergeMethod = useScopedSettingsMixed(["pullRequestMergeMethod"]);
+  const mixedThreadGroup = useScopedSettingsMixed(["defaultThreadGroup"]);
+  const { groups: threadGroups } = useThreadGroups();
+  const threadShells = useThreadShells();
+  // Every group, plus the one this project already starts threads in if it was since deleted.
+  const threadGroupNames = collectThreadGroupNames(threadShells, [
+    ...Object.keys(threadGroups),
+    ...(settings.defaultThreadGroup ? [settings.defaultThreadGroup] : []),
+  ]);
   const modelSource = useScopedSettingSource(["defaultModelSelection"]);
   const isProjectScope = scope.kind === "project" || scope.kind === "checkout";
   const unavailable = connectedEnvironments.length === 0;
@@ -248,6 +262,53 @@ export function ProjectDefaultsSettings({ category }: { category: ProjectSetting
     />
   );
 
+  const threadGroupRow = (
+    <SettingsRow
+      serverScoped
+      settingKeys={["defaultThreadGroup"]}
+      mixed={mixedThreadGroup}
+      id="default-thread-group"
+      title="Thread group"
+      description="New threads in this project start in this group, out of your live thread list."
+      resetAction={
+        settings.defaultThreadGroup !== null ? (
+          <SettingResetButton
+            label="default thread group"
+            onClick={() => updateSettings({ defaultThreadGroup: null })}
+          />
+        ) : null
+      }
+      control={
+        <Select
+          value={mixedThreadGroup ? null : (settings.defaultThreadGroup ?? NO_THREAD_GROUP)}
+          onValueChange={(value) => {
+            if (value === null) return;
+            updateSettings({ defaultThreadGroup: value === NO_THREAD_GROUP ? null : value });
+          }}
+        >
+          <SelectTrigger size="sm" aria-label="Default thread group">
+            <SelectValue>
+              {(value: string | null) =>
+                value === NO_THREAD_GROUP ? "None" : value === null ? "Mixed" : value
+              }
+            </SelectValue>
+          </SelectTrigger>
+          <SelectPopup align="end" alignItemWithTrigger={false}>
+            <SelectItem value={NO_THREAD_GROUP}>None</SelectItem>
+            {threadGroupNames.map((name) => (
+              <SelectItem key={name} value={name}>
+                <span className="flex min-w-0 items-center gap-2">
+                  <ThreadGroupIcon style={threadGroups[name]} />
+                  <span className="min-w-0 truncate">{name}</span>
+                </span>
+              </SelectItem>
+            ))}
+          </SelectPopup>
+        </Select>
+      }
+    />
+  );
+
   return (
     <SettingsSection
       id={
@@ -269,6 +330,7 @@ export function ProjectDefaultsSettings({ category }: { category: ProjectSetting
         <>
           {modelRow}
           {workspaceRow}
+          {threadGroupRow}
         </>
       ) : category === "general" ? (
         <>

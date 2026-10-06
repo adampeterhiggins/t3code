@@ -1340,6 +1340,7 @@ export const PROJECT_SCOPED_SERVER_SETTING_KEYS = [
   "responseStreamingMode",
   "terminalActivatePythonEnvironment",
   "pythonInterpreterPath",
+  "defaultThreadGroup",
 ] as const;
 export type ProjectScopedServerSettingKey = (typeof PROJECT_SCOPED_SERVER_SETTING_KEYS)[number];
 
@@ -1373,6 +1374,7 @@ export const ProjectSettingsOverrides = Schema.Struct({
   responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
   terminalActivatePythonEnvironment: Schema.optionalKey(Schema.Boolean),
   pythonInterpreterPath: Schema.optionalKey(TrimmedString),
+  defaultThreadGroup: Schema.optionalKey(TrimmedNonEmptyString),
 } satisfies Record<ProjectScopedServerSettingKey, unknown>);
 export type ProjectSettingsOverrides = typeof ProjectSettingsOverrides.Type;
 
@@ -1548,6 +1550,10 @@ export const ServerSettings = Schema.Struct({
   autoResumeLimitedThreads: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   sidebarAutoSettleOnMerge: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   threadGroups: ThreadGroups.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  /** The group new threads start in. Set per project; null starts them ungrouped. */
+  defaultThreadGroup: Schema.NullOr(TrimmedNonEmptyString).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
   backgroundActivity: BackgroundActivitySettings,
   // Legacy flat fields retained for old settings files and old clients. New
   // consumers should resolve `backgroundActivity` instead.
@@ -1948,6 +1954,7 @@ export const ServerSettingsPatch = Schema.Struct({
   sidebarAutoSettleOnMerge: Schema.optionalKey(Schema.Boolean),
   /** Replaces the whole map, so a removed group style stays removed. */
   threadGroups: Schema.optionalKey(ThreadGroups),
+  defaultThreadGroup: Schema.optionalKey(Schema.NullOr(TrimmedNonEmptyString)),
   autoResumeLimitedThreads: Schema.optionalKey(Schema.Boolean),
   snoozeLimitedThreads: Schema.optionalKey(Schema.Boolean),
   backgroundActivity: Schema.optionalKey(

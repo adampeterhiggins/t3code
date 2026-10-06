@@ -10,7 +10,13 @@ import {
 import { defaultAnimateLayoutChanges, type AnimateLayoutChanges } from "@dnd-kit/sortable";
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
 import { hasUnseenCompletion as hasUnseenTurnCompletion } from "@t3tools/client-runtime/state/attention-inbox";
-import type { ContextMenuItem, EnvironmentId, ThreadId } from "@t3tools/contracts";
+import {
+  repositoryGroupingKeyOf,
+  type ContextMenuItem,
+  type EnvironmentId,
+  type RepositoryIdentity,
+  type ThreadId,
+} from "@t3tools/contracts";
 import type {
   SidebarProjectSortOrder,
   SidebarTabSortDirection,
@@ -1843,4 +1849,18 @@ export function resolveSidebarPages(
   const picked = new Set(stored);
   const pages = availableSidebarPages(groupNames).filter((page) => picked.has(page));
   return pages.length > 0 ? pages : ["threads"];
+}
+
+/**
+ * The organisation a checkout's repository belongs to, keyed by host and owner so two hosts'
+ * same-named owners stay apart. A fork counts under its own remote's owner. Null without a remote.
+ */
+export function repositoryOrganisationOf(
+  identity: RepositoryIdentity | null | undefined,
+): { readonly key: string; readonly label: string } | null {
+  if (!identity) return null;
+  const segments = repositoryGroupingKeyOf(identity).split("/");
+  if (segments.length < 3) return null;
+  const owner = segments.at(-2)!;
+  return { key: segments.slice(0, -1).join("/"), label: owner };
 }

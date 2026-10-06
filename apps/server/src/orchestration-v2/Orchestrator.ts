@@ -2200,6 +2200,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       settledAt: null,
       snoozedUntil: null,
       snoozedAt: null,
+      groupName: command.groupName ?? null,
       lastVisitedAt: null,
       deletedAt: null,
     };

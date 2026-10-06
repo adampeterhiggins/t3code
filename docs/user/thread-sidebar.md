@@ -170,8 +170,10 @@ Pinning does not prevent automatic settlement. Settling a thread removes its pin
 The thread list shows live work. To also see snoozed, hidden, or settled threads, open the filter
 button in the sidebar header on web and desktop, or the thread list's filter menu on mobile, and
 pick them under **Show**. Pick as many as you like, or **Only** to show one; each appears as its
-own titled group below your live threads. **Projects** in the same menu narrows the list to the
-projects you pick. On web and desktop, the filter button shows how many filters are on.
+own titled group below your live threads. **Organisations** narrows the list to repositories
+owned by the people or organisations you pick, read from each project's Git remote, and
+**Projects** narrows it to the projects you pick. On web and desktop, the filter button shows how
+many filters are on.
 
 On web and desktop, while only **Threads** is shown, drag a thread up into the pinned section to
 pin it at the spot you drop it; drag a pinned thread down into the active list to unpin it. Dragging a pinned thread out of the pinned section does not
@@ -446,6 +448,11 @@ it, or **New group…** under **Show** in the filter menu to create an empty one
 name, an optional icon, and an accent colour. A grouped thread leaves your live thread list and
 keeps working. Pick a group under **Show** to list it, alone or alongside other groups and your
 live threads. Groups stay until you delete them, even when empty.
+
+To file a project's new threads automatically, open the project's settings and pick a group under
+**New threads → Thread group**. Every new thread in that project starts in the group, however it
+was started, including by agents and scheduled tasks. A fork starts in the same group as the thread
+it came from.
 
 On web and desktop, click the pencil on a group's title, or right-click it, to rename it, change
 its look, or delete it. Renaming moves every thread in it; deleting returns its threads to your
