@@ -254,9 +254,12 @@ describe("renderGhosttySnapshot", () => {
     // The arrow spans the full 20px cell, not the font's glyph box.
     expect(calls).toEqual([
       ["fillText", "a", 4, 18, 8],
-      ["moveTo", 12, 4],
+      // The base reaches 1px back into the segment it continues, hiding the seam.
+      ["moveTo", 11, 4],
+      ["lineTo", 12, 4],
       ["lineTo", 20, 14],
       ["lineTo", 12, 24],
+      ["lineTo", 11, 24],
       ["fill"],
       ["fillText", "b", 20, 18, 8],
     ]);
