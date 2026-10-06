@@ -107,7 +107,7 @@ export function parseComposerObjectLink(url: string): ComposerObjectLink | null 
 
 /**
  * The short name a bare link reads as once it is recognised: `owner/repo#7` for a pull request
- * or issue, `ENG-123` for a Linear issue, `owner/repo` for a repository, `Slack · acme` for a
+ * or issue (`owner/repo#7 L4-L14` for lines of one of its files), `ENG-123` for a Linear issue, `owner/repo` for a repository, `Slack · acme` for a
  * Slack message (the channel's name is not in the link). Null for ordinary links.
  */
 export function objectLinkLabel(url: string): string | null {
@@ -136,7 +136,9 @@ export function objectLinkLabel(url: string): string | null {
         .filter(Boolean)
         .slice(0, changeRequest.repository.split("/").length)
         .join("/");
-      return `${repository}#${changeRequest.number}`;
+      // A link to lines of one file keeps them, or the label would name the whole change.
+      const lines = /^#diff-[0-9a-f]{64}([LR]\d+(?:-[LR]\d+)?)$/iu.exec(new URL(url).hash)?.[1];
+      return `${repository}#${changeRequest.number}${lines === undefined ? "" : ` ${lines}`}`;
     }
   }
 }

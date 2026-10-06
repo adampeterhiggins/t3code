@@ -12,7 +12,10 @@ import {
   type RepositoryIdentity,
   type ThreadPullRequestLink,
 } from "@t3tools/contracts";
+import { bytesToHex } from "@noble/hashes/utils";
+import { sha256 } from "@noble/hashes/sha2";
 import { describe, expect, it } from "vite-plus/test";
+import { getRenderablePatch } from "~/lib/diffRendering";
 import { formatInlineContextReference } from "~/lib/composerContextReferences";
 import { buildMessageContext, reviewCommentContextReference } from "~/lib/composerContextRecords";
 
@@ -25,6 +28,7 @@ import {
   buildAskAboutPullRequestHandoff,
   buildExplainPullRequestHandoff,
   buildPullRequestCommentReferenceContext,
+  buildPullRequestLinesReferenceContext,
   findPullRequestComment,
   pullRequestCommentChoices,
   buildPullRequestReferenceContext,
@@ -2067,5 +2071,66 @@ describe("pasting a link to one pull request comment", () => {
       ["thread", "RC_2"],
       ["thread", "RC_3"],
     ]);
+  });
+});
+
+describe("pasting a link to lines of a pull request file", () => {
+  const pullRequest = {
+    number: 42,
+    title: "Add the pull requests page",
+    url: "https://github.com/pingdotgg/t3code/pull/42",
+    headBranch: "feat/page",
+    baseBranch: "main",
+    state: "open" as const,
+    isDraft: false,
+  };
+  const parsed = getRenderablePatch(
+    [
+      "diff --git a/README.md b/README.md",
+      "--- a/README.md",
+      "+++ b/README.md",
+      "@@ -1 +1 @@",
+      "-old readme",
+      "+new readme",
+      "diff --git a/src/page.ts b/src/page.ts",
+      "--- a/src/page.ts",
+      "+++ b/src/page.ts",
+      "@@ -1,4 +1,4 @@",
+      " const a = 1;",
+      "-const b = 2;",
+      "+const b = 3;",
+      " const c = 4;",
+      " const d = 5;",
+    ].join("\n"),
+    "test",
+  );
+  const files = parsed?.kind === "files" ? parsed.sourceFiles : [];
+  const pageHash = bytesToHex(sha256(new TextEncoder().encode("src/page.ts")));
+  const attach = (fragment: string) =>
+    buildPullRequestLinesReferenceContext(
+      pullRequest,
+      files,
+      `${pullRequest.url}/changes#${fragment}`,
+    );
+
+  it("attaches the linked lines of the file the anchor hashes", () => {
+    const context = attach(`diff-${pageHash}L1-L2`);
+    expect(context).toMatchObject({ filePath: "src/page.ts", rangeLabel: "1 to 2 (before)" });
+    expect(context?.diff).toContain(" const a = 1;");
+    expect(context?.diff).toContain("-const b = 2;");
+    expect(context?.diff).not.toContain("const c");
+    expect(context?.text).toContain("/pull/42/changes#diff-");
+  });
+
+  it("reads `R` lines as the file after the change", () => {
+    const context = attach(`diff-${pageHash}R2`);
+    expect(context?.rangeLabel).toBe("2");
+    expect(context?.diff).toContain("+const b = 3;");
+  });
+
+  it("names nothing for a whole-file link, another file, or lines outside the hunks", () => {
+    expect(attach(`diff-${pageHash}`)).toBe(null);
+    expect(attach(`diff-${"0".repeat(64)}L1`)).toBe(null);
+    expect(attach(`diff-${pageHash}R40`)).toBe(null);
   });
 });
