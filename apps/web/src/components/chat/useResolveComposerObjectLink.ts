@@ -9,7 +9,12 @@ import {
 import { notionPageContextRecord } from "@t3tools/client-runtime/state/notion";
 import { notionEnvironment } from "~/state/notion";
 import { slackThreadContextRecord } from "@t3tools/client-runtime/state/slack";
-import type { PullRequestDetail, ScopedThreadRef, SlackErrorReason } from "@t3tools/contracts";
+import type {
+  NotionError,
+  PullRequestDetail,
+  ScopedThreadRef,
+  SlackErrorReason,
+} from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { useCallback } from "react";
 
@@ -20,6 +25,7 @@ import type { ComposerContextReference } from "~/lib/composerContextReferences";
 import { reviewCommentContextReference } from "~/lib/composerContextRecords";
 import { getRenderablePatch } from "~/lib/diffRendering";
 import { resolvePullRequestPreviewTarget } from "~/lib/openPullRequestLink";
+import { ensureLocalApi } from "~/localApi";
 import { useRepositoryContextStore } from "~/repositoryContextStore";
 import { useProjects } from "~/state/entities";
 import { githubIssueEnvironment } from "~/state/githubIssues";
@@ -62,6 +68,57 @@ function reportUnreadableSlackLink(failure: unknown) {
   });
 }
 
+/**
+ * A page Notion will not show is usually one nobody shared with the connection. Only the user
+ * can share it, in Notion, so the toast stays until they act: open the page there, then retry.
+ */
+function reportUnreadableNotionLink(
+  failure: unknown,
+  url: string,
+  retry: (() => void) | undefined,
+) {
+  const reason =
+    typeof failure === "object" && failure !== null && "reason" in failure
+      ? (failure.reason as NotionError["reason"])
+      : null;
+  if (reason !== "not-found") {
+    toastManager.add({
+      type: "info",
+      title: "Could not attach that Notion page",
+      description:
+        failure instanceof Error
+          ? `The link was kept. ${failure.message}`
+          : "The link was kept. Check the Notion connection in Settings → Integrations.",
+    });
+    return;
+  }
+  const toastId = toastManager.add({
+    type: "info",
+    title: "T3 Code can't read this Notion page",
+    description:
+      "In Notion, open the page's ••• menu → Connections and add your T3 Code connection, then retry.",
+    timeout: 0,
+    ...(retry
+      ? {
+          actionProps: {
+            children: "Retry",
+            onClick: () => {
+              toastManager.close(toastId);
+              retry();
+            },
+          },
+        }
+      : {}),
+    data: {
+      hideCopyButton: true,
+      secondaryActionProps: {
+        children: "Open in Notion",
+        onClick: () => void ensureLocalApi().shell.openExternal(url),
+      },
+    },
+  });
+}
+
 export interface ResolvedComposerObjectLink {
   readonly reference: ComposerContextReference;
   /** Stores the payload behind the chip. Call it once the reference is in the prompt. */
@@ -100,19 +157,24 @@ export function useResolveComposerObjectLink(input: {
   const pullRequestsEnabled = serverConfig?.environment.capabilities.pullRequests === true;
 
   return useCallback(
-    async (link: ComposerObjectLink): Promise<ResolvedComposerObjectLink | null> => {
+    async (
+      link: ComposerObjectLink,
+      options?: {
+        /** Tries the same link again, offered where the user can fix what stopped it. */
+        readonly retry?: () => void;
+      },
+    ): Promise<ResolvedComposerObjectLink | null> => {
       switch (link.kind) {
         case "notion-page": {
           if (!notionEnabled) return null;
           const result = await getNotionPage({ environmentId, input: { id: link.pageId } });
           if (result._tag === "Failure") {
             if (!isAtomCommandInterrupted(result))
-              toastManager.add({
-                type: "info",
-                title: "Could not attach that Notion page",
-                description:
-                  "The link was kept. Connect Notion in Settings → Integrations and share this page with the connection.",
-              });
+              reportUnreadableNotionLink(
+                squashAtomCommandFailure(result),
+                link.url,
+                options?.retry,
+              );
             return null;
           }
           const record = notionPageContextRecord(result.value);
