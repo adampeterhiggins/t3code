@@ -2115,7 +2115,7 @@ describe("pasting a link to lines of a pull request file", () => {
 
   it("attaches the linked lines of the file the anchor hashes", () => {
     const context = attach(`diff-${pageHash}L1-L2`);
-    expect(context).toMatchObject({ filePath: "src/page.ts", rangeLabel: "1 to 2" });
+    expect(context).toMatchObject({ filePath: "src/page.ts", rangeLabel: "1 to 2 (before)" });
     expect(context?.diff).toContain(" const a = 1;");
     expect(context?.diff).toContain("-const b = 2;");
     expect(context?.diff).not.toContain("const c");
@@ -2123,7 +2123,9 @@ describe("pasting a link to lines of a pull request file", () => {
   });
 
   it("reads `R` lines as the file after the change", () => {
-    expect(attach(`diff-${pageHash}R2`)?.diff).toContain("+const b = 3;");
+    const context = attach(`diff-${pageHash}R2`);
+    expect(context?.rangeLabel).toBe("2");
+    expect(context?.diff).toContain("+const b = 3;");
   });
 
   it("names nothing for a whole-file link, another file, or lines outside the hunks", () => {
