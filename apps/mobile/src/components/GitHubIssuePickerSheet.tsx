@@ -15,7 +15,7 @@ import { formatComposerContextReference } from "@t3tools/shared/composerContextR
 import { useAtomValue } from "@effect/atom-react";
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult } from "effect/reactivity";
 import { StackActions, useNavigation } from "@react-navigation/native";
 import { useState, type ReactNode } from "react";
 import { ActivityIndicator, Alert, FlatList, Pressable, View } from "react-native";

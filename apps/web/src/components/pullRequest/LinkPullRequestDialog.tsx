@@ -20,7 +20,7 @@ import { usePullRequestLinking } from "~/hooks/usePullRequestLinking";
 import { usePullRequestList } from "~/state/pullRequests";
 import { useDebouncedValue } from "~/state/queries";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { CommandPaletteContent } from "../CommandPaletteContent";
 import {
   DEFAULT_PULL_REQUEST_PICKER_VIEW,

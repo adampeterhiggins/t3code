@@ -25,7 +25,7 @@ type Prepare = (input: SubagentWorktreeSetupInput) => Effect.Effect<void>;
  * (non-async) script exits, so the subagent starts in a ready worktree.
  *
  * Providers are built below the project layers, so the server installs the
- * implementation with `installLive` once those exist. Until then, and in
+ * implementation with `layerInstall` once those exist. Until then, and in
  * tests that skip it, `prepare` does nothing.
  */
 export class SubagentWorktreeSetup extends Context.Service<
@@ -47,7 +47,7 @@ export const layer = Layer.effect(
   }),
 );
 
-export const installLive = Layer.effectDiscard(
+export const layerInstall = Layer.effectDiscard(
   Effect.gen(function* () {
     const setup = yield* SubagentWorktreeSetup;
     const projections = yield* ProjectionStore.ProjectionStoreV2;

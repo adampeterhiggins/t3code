@@ -6,8 +6,8 @@ import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
-import { McpProtocol, McpServer, Tool, Toolkit } from "effect/unstable/ai";
-import { HttpBody, HttpClient, HttpRouter } from "effect/unstable/http";
+import { McpProtocol, McpServer, Tool, Toolkit } from "effect/ai";
+import { HttpBody, HttpClient, HttpRouter } from "effect/http";
 
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
 import * as CheckpointDiffQuery from "../checkpointing/CheckpointDiffQuery.ts";
@@ -17,10 +17,11 @@ import * as ProviderAdapterRegistry from "../orchestration-v2/ProviderAdapterReg
 import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as ThreadSearch from "../orchestration-v2/ThreadSearch.ts";
-import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
+import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
 import * as ProjectService from "../project/ProjectService.ts";
-import * as ProviderRegistry from "../provider/Services/ProviderRegistry.ts";
+import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
+import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as SourceControlRepositoryService from "../sourceControl/SourceControlRepositoryService.ts";
@@ -29,6 +30,7 @@ import * as AgentAccessMcpServer from "./AgentAccessMcpServer.ts";
 
 const environmentId = EnvironmentId.make("environment-agent-access-test");
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
+const decodeJson = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 
 const session = (
   scopes: ReadonlyArray<"orchestration:read" | "orchestration:operate" | "access:read">,
@@ -91,6 +93,7 @@ const RoutesLive = Layer.mergeAll(AgentAccessMcpServer.layer, ThreadMcpLive).pip
       Layer.mock(ProviderRegistry.ProviderRegistry)({}),
       Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({}),
       Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
+      Layer.mock(SecretRequests.SecretRequests)({}),
       Layer.mock(ProjectService.ProjectService)({}),
       Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({ namedProjectsRoot: "/projects" }),
       Layer.mock(SourceControlRepositoryService.SourceControlRepositoryService)({}),
@@ -102,7 +105,7 @@ const RoutesLive = Layer.mergeAll(AgentAccessMcpServer.layer, ThreadMcpLive).pip
           digest: (_algorithm, data) => Effect.succeed(data),
         }),
       ),
-      Layer.fresh(SqlitePersistenceMemory),
+      Layer.fresh(SqlitePersistence.layerMemory),
       ServerConfig.layerTest(process.cwd(), { prefix: "t3-agent-access-mcp-" }),
     ).pipe(Layer.provideMerge(NodeServices.layer)),
   ),
@@ -244,7 +247,9 @@ it.effect("runs /mcp/operate tools as a client caller without a thread", () =>
         arguments: { title: "From outside" },
       });
       // Without a calling thread the launch needs a project; a thread caller would inherit its own.
-      expect(called.result.structuredContent).toMatchObject({ code: "target_required" });
+      expect(called.result.isError).toBe(true);
+      const [content] = called.result.content as ReadonlyArray<{ readonly text: string }>;
+      expect(decodeJson(content?.text)).toMatchObject({ code: "target_required" });
     }),
   ).pipe(Effect.provide(NodeHttpServer.layerTest)),
 );

@@ -369,7 +369,8 @@ An agent that has not started its own thread yet still opens, with its prompt, r
 its activity appears once it starts.
 
 **Stop agent** shows when the agent's own thread can be interrupted. Some subagents, such as
-Claude's, stop only when you stop the parent thread.
+Claude's, stop only when you stop the parent thread. Stop on a thread also stops the subagents it
+delegated to.
 
 To keep an agent beside the list, choose **Open in new tab** in its detail, or right-click it
 anywhere and choose the same. The agent gets its own tab in the side panel with the same view.

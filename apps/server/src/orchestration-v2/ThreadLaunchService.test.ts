@@ -44,14 +44,15 @@ import * as TestClock from "effect/testing/TestClock";
 
 import * as ContextRepositories from "../contextRepositories/ContextRepositories.ts";
 import * as GitWorkflow from "../git/GitWorkflowService.ts";
-import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
+import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ProjectStore from "./ProjectStore.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
-import { makeProviderRegistryLayer } from "../provider/testUtils/providerRegistryMock.ts";
+import * as ProviderRegistryMock from "../provider/testUtils/providerRegistryMock.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as ScheduledTasks from "../scheduledTasks/ScheduledTaskService.ts";
+import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
 import * as CommandReceiptStore from "./CommandReceiptStore.ts";
@@ -65,7 +66,7 @@ import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
 import * as ThreadLaunch from "./ThreadLaunchService.ts";
 import * as ThreadManagement from "./ThreadManagementService.ts";
 import * as ThreadTitleRegeneration from "./ThreadTitleRegenerationService.ts";
-import { makeOrchestratorV2ReplayLayerWithRegistry } from "./testkit/ProviderReplayHarness.ts";
+import * as ProviderReplayHarness from "./testkit/ProviderReplayHarness.ts";
 
 const projectId = ProjectId.make("project:launch-test");
 const otherProjectId = ProjectId.make("project:launch-other");
@@ -106,6 +107,7 @@ interface HarnessOptions {
   readonly managedFolders?: Layer.Layer<ManagedProjectFolders.ManagedProjectFolders>;
   readonly createWorktree?: GitWorkflow.GitWorkflowService["Service"]["createWorktree"];
   readonly fetchRemote?: GitWorkflow.GitWorkflowService["Service"]["fetchRemote"];
+  readonly hasCommit?: GitWorkflow.GitWorkflowService["Service"]["hasCommit"];
   readonly renameBranch?: GitWorkflow.GitWorkflowService["Service"]["renameBranch"];
   readonly runSetup?: ProjectSetupScriptRunner.ProjectSetupScriptRunner["Service"]["runForThread"];
   readonly generateTitle?: TextGeneration.TextGeneration["Service"]["generateThreadTitle"];
@@ -116,16 +118,16 @@ interface HarnessOptions {
 }
 
 function makeHarness(options: HarnessOptions = {}) {
-  const database = SqlitePersistenceMemory;
-  const registry = ProviderAdapterRegistry.makeLayer([adapter]);
-  const orchestrator = makeOrchestratorV2ReplayLayerWithRegistry(
+  const layerDatabase = SqlitePersistence.layerMemory;
+  const layerRegistry = ProviderAdapterRegistry.layerFromAdapters([adapter]);
+  const layerOrchestrator = ProviderReplayHarness.layerWithRegistry(
     { name: "thread-launch" },
-    registry,
-    { databaseLayer: database, runEffectWorker: false },
+    layerRegistry,
+    { databaseLayer: layerDatabase, runEffectWorker: false },
   );
-  const threadManagement = ThreadManagement.layer.pipe(Layer.provide(orchestrator));
-  const receipts = CommandReceiptStore.layer.pipe(Layer.provide(database));
-  const outbox = EffectOutbox.layer.pipe(Layer.provide(database));
+  const layerThreadManagement = ThreadManagement.layer.pipe(Layer.provide(layerOrchestrator));
+  const layerReceipts = CommandReceiptStore.layer.pipe(Layer.provide(layerDatabase));
+  const layerOutbox = EffectOutbox.layer.pipe(Layer.provide(layerDatabase));
   const createWorktree = vi.fn(
     options.createWorktree ??
       ((input) =>
@@ -152,7 +154,7 @@ function makeHarness(options: HarnessOptions = {}) {
   const ensureContextRepositories = vi.fn(
     options.ensureContextRepositories ?? ((input) => Effect.succeed(input.repositories)),
   );
-  const externalServices = Layer.mergeAll(
+  const layerExternalServices = Layer.mergeAll(
     WorktreeSetupTracker.layer,
     Layer.mock(ProjectCloneTracker.ProjectCloneTracker)({ get: () => Effect.succeed(null) }),
     Layer.mock(TerminalManager.TerminalManager)({ close: () => Effect.void }),
@@ -178,6 +180,7 @@ function makeHarness(options: HarnessOptions = {}) {
       createWorktree,
       renameBranch,
       fetchRemote: options.fetchRemote ?? (() => Effect.void),
+      hasCommit: options.hasCommit ?? (() => Effect.succeed(false)),
       remoteExists: () => Effect.succeed(true),
       remoteBranchExists: () => Effect.succeed(true),
       removeWorktree,
@@ -193,18 +196,25 @@ function makeHarness(options: HarnessOptions = {}) {
     }),
     ServerSettings.layerTest(options.serverSettings),
     Layer.mock(ContextRepositories.ContextRepositories)({ ensure: ensureContextRepositories }),
-    makeProviderRegistryLayer(options.providers),
-    registry,
+    ProviderRegistryMock.layer(options.providers),
+    layerRegistry,
     options.managedFolders ??
       Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
         namedProjectsRoot: "/projects",
         folderForThread: () => Effect.succeed(Option.none()),
       }),
   );
-  const launch = ThreadLaunch.layer.pipe(
-    Layer.provide(Layer.mergeAll(externalServices, threadManagement, receipts, IdAllocator.layer)),
+  const layerLaunch = ThreadLaunch.layer.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        layerExternalServices,
+        layerThreadManagement,
+        layerReceipts,
+        IdAllocator.layer,
+      ),
+    ),
   );
-  const projectedProjects = Layer.mock(ProjectStore.ProjectStoreV2)({
+  const layerProjectedProjects = Layer.mock(ProjectStore.ProjectStoreV2)({
     get: (requestedProjectId) =>
       Effect.succeed(
         requestedProjectId === projectId
@@ -225,18 +235,20 @@ function makeHarness(options: HarnessOptions = {}) {
           : Option.none(),
       ),
   });
-  const titleRegeneration = ThreadTitleRegeneration.layer.pipe(
-    Layer.provide(Layer.mergeAll(threadManagement, projectedProjects, externalServices)),
+  const layerTitleRegeneration = ThreadTitleRegeneration.layer.pipe(
+    Layer.provide(
+      Layer.mergeAll(layerThreadManagement, layerProjectedProjects, layerExternalServices),
+    ),
   );
   return {
     layer: Layer.mergeAll(
-      launch,
-      threadManagement,
-      orchestrator,
-      titleRegeneration,
-      outbox,
-      database,
-      externalServices,
+      layerLaunch,
+      layerThreadManagement,
+      layerOrchestrator,
+      layerTitleRegeneration,
+      layerOutbox,
+      layerDatabase,
+      layerExternalServices,
     ),
     createWorktree,
     removeWorktree,
@@ -300,8 +312,15 @@ it.effect.each(
   "attributes $createdBy-configured automations in $target threads without changing their prompt",
   ({ target, createdBy }) => {
     const harness = makeHarness();
-    const scheduledTasks = ScheduledTasks.layer.pipe(
-      Layer.provide(Layer.mergeAll(harness.layer, NodeCrypto.layer, Scheduler.layer)),
+    const layerScheduledTasks = ScheduledTasks.layer.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          harness.layer,
+          NodeCrypto.layer,
+          Scheduler.layer,
+          Layer.mock(SecretRequests.SecretRequests)({}),
+        ),
+      ),
     );
     return Effect.gen(function* () {
       const tasks = yield* ScheduledTasks.ScheduledTaskService;
@@ -344,10 +363,13 @@ it.effect.each(
       assert.equal(wire.messages[0]?.text, task.prompt);
       assert.equal(wire.messages[0]?.scheduledTaskId, task.id);
       assert.equal(wire.messages[0]?.createdBy, createdBy);
-      const turnItem = wire.turnItems.find((item) => item.type === "user_message");
+      const turnItem = wire.turnItems.find(
+        (item): item is Extract<typeof item, { type: "user_message" }> =>
+          item.type === "user_message",
+      );
       assert.equal(turnItem?.text, task.prompt);
       assert.equal(turnItem?.scheduledTaskId, task.id);
-    }).pipe(Effect.provide(Layer.mergeAll(harness.layer, scheduledTasks)));
+    }).pipe(Effect.provide(Layer.mergeAll(harness.layer, layerScheduledTasks)));
   },
 );
 
@@ -1114,7 +1136,7 @@ it.effect("names the worktree itself when the client provides no branch", () =>
       yield* waitUntil(() => Effect.sync(() => harness.createWorktree.mock.calls.length === 1));
       assert.match(
         harness.createWorktree.mock.calls[0]?.[0]?.newRefName ?? "",
-        /^t3code\/[0-9a-f]{8}$/u,
+        /^t3\/[0-9a-f]{8}$/u,
       );
       yield* waitUntil(() =>
         threads
@@ -1151,7 +1173,7 @@ it.effect("names a temporary branch during checkout, before the setup script sta
           command: "command:launch:early-branch",
           thread: "thread:launch:early-branch",
           message: "Build the feature",
-          workspace: { type: "worktree", baseRef: "main", branch: "t3code/abcd1234" },
+          workspace: { type: "worktree", baseRef: "main", branch: "t3/abcd1234" },
         }),
       );
       yield* Deferred.await(checkoutStarted);
@@ -1166,7 +1188,7 @@ it.effect("names a temporary branch during checkout, before the setup script sta
       assert.deepEqual(order, ["rename", "setup"]);
       assert.deepEqual(harness.renameBranch.mock.calls[0]?.[0], {
         cwd: "/repo-worktrees/temp",
-        oldBranch: "t3code/abcd1234",
+        oldBranch: "t3/abcd1234",
         newBranch: "generated-branch",
       });
       const projection = yield* threads.getThreadProjection(launched.threadId);
@@ -1198,11 +1220,11 @@ it.effect("renames in the background when naming outlasts the wait", () =>
           command: "command:launch:temp-branch",
           thread: "thread:launch:temp-branch",
           message: "Build the feature",
-          workspace: { type: "worktree", baseRef: "main", branch: "t3code/abcd1234" },
+          workspace: { type: "worktree", baseRef: "main", branch: "t3/abcd1234" },
         }),
       );
       yield* Deferred.await(branchNameStarted);
-      assert.equal(harness.createWorktree.mock.calls[0]?.[0]?.newRefName, "t3code/abcd1234");
+      assert.equal(harness.createWorktree.mock.calls[0]?.[0]?.newRefName, "t3/abcd1234");
       // Time only moves for the test clock, a second per check, until the wait gives up.
       yield* waitUntil(() =>
         TestClock.adjust(Duration.seconds(1)).pipe(
@@ -1212,7 +1234,7 @@ it.effect("renames in the background when naming outlasts the wait", () =>
       );
       assert.equal(
         (yield* threads.getThreadProjection(launched.threadId)).thread.branch,
-        "t3code/abcd1234",
+        "t3/abcd1234",
       );
       yield* Deferred.succeed(allowBranchName, undefined);
       yield* waitUntil(() =>
@@ -1222,9 +1244,40 @@ it.effect("renames in the background when naming outlasts the wait", () =>
       );
       assert.deepEqual(harness.renameBranch.mock.calls[0]?.[0], {
         cwd: "/repo-worktrees/temp",
-        oldBranch: "t3code/abcd1234",
+        oldBranch: "t3/abcd1234",
         newBranch: "generated-branch",
       });
+    }).pipe(Effect.provide(harness.layer));
+  }),
+);
+
+it.effect("provisions under t3-<hash> when a plain t3 branch blocks t3/*", () =>
+  Effect.gen(function* () {
+    const harness = makeHarness({
+      hasCommit: (input) => Effect.succeed(input.refName === "refs/heads/t3"),
+      createWorktree: (input) =>
+        Effect.succeed({
+          worktree: { path: "/repo-worktrees/temp", refName: input.newRefName, headSha: "abc" },
+        } as never),
+    });
+    yield* Effect.gen(function* () {
+      const launches = yield* ThreadLaunch.ThreadLaunchService;
+      const threads = yield* ThreadManagement.ThreadManagementService;
+      const launched = yield* launches.launch(
+        launchInput({
+          command: "command:launch:blocked-namespace",
+          thread: "thread:launch:blocked-namespace",
+          message: "Build the feature",
+          workspace: { type: "worktree", baseRef: "main", branch: "t3/abcd1234" },
+        }),
+      );
+      yield* waitUntil(() =>
+        threads
+          .getThreadProjection(launched.threadId)
+          .pipe(Effect.map((projection) => projection.thread.branch === "generated-branch")),
+      );
+      assert.equal(harness.createWorktree.mock.calls[0]?.[0]?.newRefName, "t3-abcd1234");
+      assert.equal(harness.renameBranch.mock.calls[0]?.[0]?.oldBranch, "t3-abcd1234");
     }).pipe(Effect.provide(harness.layer));
   }),
 );
@@ -1266,11 +1319,11 @@ it.effect("keeps the temporary branch when branch generation fails", () =>
           command: "command:launch:branch-fallback",
           thread: "thread:launch:branch-fallback",
           message: "Build the feature",
-          workspace: { type: "worktree", baseRef: "main", branch: "t3code/abcd1234" },
+          workspace: { type: "worktree", baseRef: "main", branch: "t3/abcd1234" },
         }),
       );
       yield* waitUntil(() => Effect.sync(() => harness.generateBranchName.mock.calls.length === 1));
-      assert.equal(harness.createWorktree.mock.calls[0]?.[0]?.newRefName, "t3code/abcd1234");
+      assert.equal(harness.createWorktree.mock.calls[0]?.[0]?.newRefName, "t3/abcd1234");
       yield* waitUntil(() =>
         threads
           .getThreadProjection(launched.threadId)
@@ -1279,7 +1332,7 @@ it.effect("keeps the temporary branch when branch generation fails", () =>
       assert.equal(harness.renameBranch.mock.calls.length, 0);
       assert.equal(
         (yield* threads.getThreadProjection(launched.threadId)).thread.branch,
-        "t3code/abcd1234",
+        "t3/abcd1234",
       );
     }).pipe(Effect.provide(harness.layer));
   }),
@@ -1298,8 +1351,8 @@ it.effect("renames a temporary branch on an existing worktree to a generated nam
           message: "Build the feature",
           workspace: {
             type: "existing_worktree",
-            worktreePath: "/repo-worktrees/t3code-abcd1234",
-            branch: "t3code/abcd1234",
+            worktreePath: "/repo-worktrees/t3-abcd1234",
+            branch: "t3/abcd1234",
           },
         }),
       );
@@ -1309,8 +1362,8 @@ it.effect("renames a temporary branch on an existing worktree to a generated nam
           .pipe(Effect.map((projection) => projection.thread.branch === "generated-branch")),
       );
       assert.deepEqual(harness.renameBranch.mock.calls[0]?.[0], {
-        cwd: "/repo-worktrees/t3code-abcd1234",
-        oldBranch: "t3code/abcd1234",
+        cwd: "/repo-worktrees/t3-abcd1234",
+        oldBranch: "t3/abcd1234",
         newBranch: "generated-branch",
       });
     }).pipe(Effect.provide(harness.layer));
@@ -1978,7 +2031,7 @@ it.effect("creates a strong provider-thread mapping for an imported native sessi
 
 it.effect("shared intake preserves durable attachment bytes after a lost launch result", () => {
   const harness = makeHarness();
-  const files = ServerConfig.layerTest(process.cwd(), { prefix: "t3-message-intake-" }).pipe(
+  const layerFiles = ServerConfig.layerTest(process.cwd(), { prefix: "t3-message-intake-" }).pipe(
     Layer.provideMerge(NodeServices.layer),
   );
   return Effect.gen(function* () {
@@ -2197,7 +2250,7 @@ it.effect("shared intake preserves durable attachment bytes after a lost launch 
       assert.isNotNull(path);
       assert.deepEqual(yield* fs.readFile(path), new Uint8Array([1, 2, 3, 4]));
     }
-  }).pipe(Effect.provide(Layer.mergeAll(harness.layer, files)));
+  }).pipe(Effect.provide(Layer.mergeAll(harness.layer, layerFiles)));
 });
 
 it.effect("cancels tracked setup before provider work is released", () =>
@@ -2359,7 +2412,7 @@ it.effect("prepares a message-less launch, then names its branch from the first 
       );
       const temporaryBranch = (yield* threads.getThreadProjection(launched.threadId)).thread.branch;
       assert.isNotNull(temporaryBranch);
-      assert.match(temporaryBranch, /^t3code\/[0-9a-f]{8}$/u);
+      assert.match(temporaryBranch, /^t3\/[0-9a-f]{8}$/u);
       assert.equal(harness.generateBranchName.mock.calls.length, 0);
 
       // The first message waits for the workspace instead of starting without it.
@@ -2517,6 +2570,7 @@ describe("delegated tasks with a workspace of their own", () => {
           harness.layer,
           NodeCrypto.layer,
           Layer.mock(ScheduledTasks.ScheduledTaskService)({}),
+          Layer.mock(SecretRequests.SecretRequests)({}),
         ),
       ),
     );

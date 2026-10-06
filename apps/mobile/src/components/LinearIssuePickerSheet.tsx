@@ -14,7 +14,7 @@ import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime"
 import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult } from "effect/reactivity";
 import { StackActions, useNavigation } from "@react-navigation/native";
 import { useState, type ReactNode } from "react";
 import { ActivityIndicator, Alert, FlatList, Pressable, View } from "react-native";

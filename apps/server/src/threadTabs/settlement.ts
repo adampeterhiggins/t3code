@@ -16,11 +16,11 @@ import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
 import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as SqlClient from "effect/sql/SqlClient";
 
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import { threadHasQueuedTurnStart } from "../orchestration-v2/ThreadSettlementService.ts";
-import { OrchestrationEventStore } from "../persistence/Services/OrchestrationEventStore.ts";
+import { OrchestrationEventStore } from "../persistence/OrchestrationEventStore.ts";
 import { forkParked } from "../serverActivation.ts";
 
 /**

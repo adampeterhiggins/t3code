@@ -17,10 +17,11 @@ import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { expect, it } from "vite-plus/test";
 
 import * as ProviderAdapterRegistry from "../orchestration-v2/ProviderAdapterRegistry.ts";
-import * as ProviderRegistry from "../provider/Services/ProviderRegistry.ts";
+import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
 import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts";
+import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import type * as McpInvocationContext from "./McpInvocationContext.ts";
 import * as OrchestratorMcpService from "./OrchestratorMcpService.ts";
@@ -150,6 +151,7 @@ it("readThread prefers activity-run status over a newer cancelled queued run", a
           getProviders: Effect.succeed([]),
         } satisfies Partial<ProviderRegistry.ProviderRegistry["Service"]>),
         Layer.mock(ProjectService.ProjectService)({}),
+        Layer.mock(SecretRequests.SecretRequests)({}),
         Layer.mock(ScheduledTaskService.ScheduledTaskService)({
           list: () => Effect.succeed({ tasks: [] }),
         } satisfies Partial<ScheduledTaskService.ScheduledTaskService["Service"]>),
@@ -215,6 +217,7 @@ it("readThread prefers waiting activity status over a newer cancelled queued run
           getProviders: Effect.succeed([]),
         } satisfies Partial<ProviderRegistry.ProviderRegistry["Service"]>),
         Layer.mock(ProjectService.ProjectService)({}),
+        Layer.mock(SecretRequests.SecretRequests)({}),
         Layer.mock(ScheduledTaskService.ScheduledTaskService)({
           list: () => Effect.succeed({ tasks: [] }),
         } satisfies Partial<ScheduledTaskService.ScheduledTaskService["Service"]>),
@@ -328,6 +331,7 @@ it("taskStatus returns task.providerInstanceId rather than the driver kind", asy
           getProviders: Effect.succeed([]),
         } satisfies Partial<ProviderRegistry.ProviderRegistry["Service"]>),
         Layer.mock(ProjectService.ProjectService)({}),
+        Layer.mock(SecretRequests.SecretRequests)({}),
         Layer.mock(ScheduledTaskService.ScheduledTaskService)({
           list: () => Effect.succeed({ tasks: [] }),
         } satisfies Partial<ScheduledTaskService.ScheduledTaskService["Service"]>),
@@ -451,6 +455,7 @@ it("readThread and sendToThread reach threads in other projects", async () => {
           getProviders: Effect.succeed([]),
         } satisfies Partial<ProviderRegistry.ProviderRegistry["Service"]>),
         Layer.mock(ProjectService.ProjectService)({}),
+        Layer.mock(SecretRequests.SecretRequests)({}),
         Layer.mock(ScheduledTaskService.ScheduledTaskService)({
           list: () =>
             Effect.succeed({

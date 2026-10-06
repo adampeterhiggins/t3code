@@ -1380,7 +1380,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     isActive: props.isActive || props.groupFocused === true,
     isSelected,
   });
-  const topStatus = resolveSidebarTopStatus(status, isWoke, isUnread);
+  const resolvedTopStatus = resolveSidebarTopStatus(status, isWoke, isUnread);
+  // A native /goal keeps the agent going across turns until it is met.
+  const topStatus =
+    resolvedTopStatus !== null && status === "working" && thread.goal?.status === "active"
+      ? { ...resolvedTopStatus, label: "Goal" }
+      : resolvedTopStatus;
   const isWokeStatus = topStatus?.icon === "woke";
 
   const branchMismatch = resolveLocalCheckoutBranchMismatch({

@@ -19,7 +19,7 @@ import type {
 } from "@t3tools/contracts";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import { useNavigate } from "@tanstack/react-router";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { GitBranchIcon } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useMemo, useState } from "react";
 

@@ -7,7 +7,7 @@ import type {
   ThreadId,
 } from "@t3tools/contracts";
 import { CopyIcon, DownloadIcon } from "lucide-react";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";

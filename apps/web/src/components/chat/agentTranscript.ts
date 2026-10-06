@@ -173,6 +173,17 @@ function entryRow(
       return workRow(entry.entry, entry.createdAt, workspaceRoot);
     case "event":
       return eventRow(entry.projectedItem, entry.createdAt);
+    case "html-render":
+      return {
+        kind: "notice",
+        id: entry.id,
+        createdAt: entry.createdAt,
+        label: `Rendered: ${entry.htmlRender.title}`,
+        detail: null,
+        tone: "info",
+        childThreadId: null,
+        projectedItem: null,
+      };
   }
 }
 

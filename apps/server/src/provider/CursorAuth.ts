@@ -17,8 +17,8 @@ import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 
 import { Cursor, InMemoryCredentialStore } from "./cursorSdk.ts";
-import type { ProviderAuthController } from "./Services/ProviderAuthService.ts";
-import type { CursorSdkCredential } from "./Layers/cursorUsageLimits.ts";
+import type { ProviderAuthController } from "./ProviderAuthService.ts";
+import type { CursorSdkCredential } from "./cursorUsageLimits.ts";
 
 const AUTH_TIMEOUT_MS = 300_000;
 

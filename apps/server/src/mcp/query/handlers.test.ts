@@ -2,12 +2,12 @@ import { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { McpSchema, McpServer } from "effect/unstable/ai";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import { McpSchema, McpServer } from "effect/ai";
+import * as SqlClient from "effect/sql/SqlClient";
 
 import * as CheckpointDiffQuery from "../../checkpointing/CheckpointDiffQuery.ts";
 import * as ServerEnvironment from "../../environment/ServerEnvironment.ts";
-import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
+import * as SqlitePersistence from "../../persistence/Sqlite.ts";
 import { UsageService } from "../../usage/UsageService.ts";
 import { QueryToolkitHandlersLive } from "./handlers.ts";
 import { QueryToolkit } from "./tools.ts";
@@ -43,7 +43,7 @@ const TestLayer = McpServer.toolkit(QueryToolkit).pipe(
       Layer.mock(UsageService)({}),
     ),
   ),
-  Layer.provideMerge(Layer.fresh(SqlitePersistenceMemory)),
+  Layer.provideMerge(Layer.fresh(SqlitePersistence.layerMemory)),
 );
 
 // Today, in +01:00: 2026-09-29T23:00Z until 2026-09-30T23:00Z.

@@ -17,7 +17,7 @@ function makeLayer(input: {
   readonly completion: Deferred.Deferred<void>;
   readonly runs: Array<ProjectSetupScriptRunner.ProjectSetupScriptRunnerInput>;
 }) {
-  return SubagentWorktreeSetup.installLive.pipe(
+  return SubagentWorktreeSetup.layerInstall.pipe(
     Layer.provideMerge(SubagentWorktreeSetup.layer),
     Layer.provide(
       Layer.mock(ProjectionStore.ProjectionStoreV2)({
