@@ -54,6 +54,12 @@ the open file again. Files in the workspace update on their own when an agent ed
 them; use refresh for files outside the workspace, such as one under `/tmp`, that
 another process changes. Change the shortcut under **File: Refresh** in Settings.
 
+## Jump from files to commands
+
+`mod+k` opens the command palette and `mod+p` opens the file picker. Type `>` at
+the start of the file picker's search to switch to commands, as in VS Code; the
+palette then shows only actions. Delete the `>` to go back to file search.
+
 ## iPad
 
 With a hardware keyboard, use `Cmd+1` through `Cmd+9` to open the first nine
