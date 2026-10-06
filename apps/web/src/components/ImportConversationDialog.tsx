@@ -316,7 +316,10 @@ const rowTitle = (row: ImportRow) =>
 const rowSource = (row: ImportRow) =>
   row.kind === "session" ? PROVIDER_LABEL[row.session.provider] : "Conductor";
 
-type SortKey = "name" | "project" | "source" | "updated";
+type SortKey = "name" | "workspace" | "project" | "source" | "updated";
+
+/** A Conductor workspace's folder; conversations have none and sort last. */
+const rowWorkspace = (row: ImportRow) => (row.kind === "workspace" ? row.workspace.name : null);
 interface Sort {
   readonly key: SortKey;
   readonly descending: boolean;
@@ -332,6 +335,13 @@ function compareRows(left: ImportRow, right: ImportRow, key: SortKey): number {
   switch (key) {
     case "name":
       return rowTitle(left).localeCompare(rowTitle(right));
+    case "workspace": {
+      const leftName = rowWorkspace(left);
+      const rightName = rowWorkspace(right);
+      if (leftName === null || rightName === null)
+        return Number(leftName === null) - Number(rightName === null);
+      return leftName.localeCompare(rightName);
+    }
     case "project":
       return left.project.title.localeCompare(right.project.title);
     case "source":
@@ -619,6 +629,7 @@ function ImportConversationList({
             <Table className="table-fixed" aria-label="Conversations and workspaces to import">
               <colgroup>
                 <col />
+                <col className="w-28" />
                 {showProject ? <col className="w-28" /> : null}
                 <col className="w-36" />
                 <col className="w-24" />
@@ -628,6 +639,9 @@ function ImportConversationList({
                 <TableRow>
                   <TableHead aria-sort={ariaSort(sort, "name")}>
                     <SortHeader label="Name" column="name" sort={sort} onSort={setSort} />
+                  </TableHead>
+                  <TableHead aria-sort={ariaSort(sort, "workspace")}>
+                    <SortHeader label="Workspace" column="workspace" sort={sort} onSort={setSort} />
                   </TableHead>
                   {showProject ? (
                     <TableHead aria-sort={ariaSort(sort, "project")}>
@@ -668,12 +682,10 @@ function ImportConversationList({
                           label: PROVIDER_LABEL[row.session.provider],
                         }
                       : CONDUCTOR_AGENT[row.workspace.tabs[0]!.agent];
-                  const subtitle =
-                    row.kind === "session"
-                      ? row.session.preview !== row.session.title
-                        ? row.session.preview
-                        : null
-                      : row.workspace.name;
+                  const prompt =
+                    row.kind === "session" && row.session.preview !== row.session.title
+                      ? row.session.preview
+                      : null;
                   return (
                     <TableRow key={key} className="cursor-pointer" onClick={run}>
                       <TableCell>
@@ -684,15 +696,39 @@ function ImportConversationList({
                             showBadge={false}
                             iconClassName="size-4"
                           />
-                          <div className="min-w-0">
-                            <div className="truncate font-medium text-foreground text-sm">
+                          {prompt === null ? (
+                            <span className="min-w-0 truncate font-medium text-foreground text-sm">
                               {rowTitle(row)}
-                            </div>
-                            {subtitle ? (
-                              <div className="truncate text-muted-foreground">{subtitle}</div>
-                            ) : null}
-                          </div>
+                            </span>
+                          ) : (
+                            <Tooltip>
+                              <TooltipTrigger
+                                render={
+                                  <span className="min-w-0 truncate font-medium text-foreground text-sm" />
+                                }
+                              >
+                                {rowTitle(row)}
+                              </TooltipTrigger>
+                              <TooltipPopup align="start" className="max-w-96 whitespace-normal">
+                                {prompt}
+                              </TooltipPopup>
+                            </Tooltip>
+                          )}
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        {row.kind === "workspace" ? (
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={<div className="truncate text-muted-foreground" />}
+                            >
+                              {row.workspace.name}
+                            </TooltipTrigger>
+                            <TooltipPopup>{row.workspace.branch ?? "No branch"}</TooltipPopup>
+                          </Tooltip>
+                        ) : (
+                          <div className="text-muted-foreground/50">—</div>
+                        )}
                       </TableCell>
                       {showProject ? (
                         <TableCell>
