@@ -5,14 +5,16 @@ import { TrimmedNonEmptyString } from "./baseSchemas.ts";
 /**
  * Input for the `t3_worktree_handoff` MCP tool.
  *
- * Creates a git worktree for the calling agent thread and re-points the
- * thread at it. Changing the thread's workspace detaches the live provider
+ * Moves the calling agent thread into a git worktree: a new one, or an
+ * existing checkout of `branch` named by `path`. The thread may already be in
+ * another worktree. Changing the thread's workspace detaches the live provider
  * session, so the current turn ends shortly after the handoff is recorded;
  * the conversation continues inside the worktree on the thread's next run.
  */
 export const WorktreeMcpHandoffInput = Schema.Struct({
   branch: TrimmedNonEmptyString.annotate({
-    description: "Branch name to create for the worktree (e.g. 'feature/my-change').",
+    description:
+      "Branch name to create for the worktree (e.g. 'feature/my-change'). To move into an existing worktree instead, give the branch checked out there and its path.",
   }),
   baseRef: Schema.optional(
     TrimmedNonEmptyString.annotate({
@@ -32,13 +34,13 @@ export const WorktreeMcpHandoffInput = Schema.Struct({
       Schema.isPattern(/^(?:[A-Za-z]:[\\/]|[\\/])/),
     ).annotate({
       description:
-        "Absolute filesystem path for the new worktree. Relative paths are rejected. Defaults to the server-managed worktrees directory.",
+        "Absolute filesystem path for the new worktree. Relative paths are rejected. Defaults to the server-managed worktrees directory. When branch already exists and is checked out in a worktree at this path, the thread moves into that worktree instead of creating one; t3_worktree_list shows checkout paths.",
     }),
   ),
   runSetupScript: Schema.optional(
     Schema.Boolean.annotate({
       description:
-        "Run the project's configured setup script in the new worktree after handoff. Defaults to true.",
+        "Run the project's configured setup script in the worktree after handoff. Defaults to true for a new worktree and false for an existing one.",
     }),
   ),
   continuationPrompt: Schema.optional(
@@ -87,7 +89,13 @@ export type WorktreeMcpContinuationStatus = typeof WorktreeMcpContinuationStatus
 export const WorktreeMcpHandoffResult = Schema.Struct({
   worktreePath: TrimmedNonEmptyString,
   branch: TrimmedNonEmptyString,
-  baseRef: TrimmedNonEmptyString,
+  created: Schema.Boolean.annotate({
+    description:
+      "True when the handoff created the worktree; false when it moved into an existing one.",
+  }),
+  baseRef: Schema.NullOr(TrimmedNonEmptyString).annotate({
+    description: "Ref a new worktree's branch started from; null for an existing worktree.",
+  }),
   startedFromOrigin: Schema.Boolean,
   setupScript: WorktreeMcpSetupScriptStatus,
   continuation: WorktreeMcpContinuationStatus,
@@ -97,7 +105,8 @@ export type WorktreeMcpHandoffResult = typeof WorktreeMcpHandoffResult.Type;
 
 export const WorktreeMcpStatusResult = Schema.Struct({
   attached: Schema.Boolean.annotate({
-    description: "True when this thread is already attached to a git worktree.",
+    description:
+      "True when this thread is attached to a git worktree. A handoff can still move it to another one.",
   }),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
   branch: Schema.NullOr(TrimmedNonEmptyString),
