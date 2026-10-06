@@ -2,7 +2,8 @@ import * as Schema from "effect/Schema";
 import { IsoDateTime, TrimmedNonEmptyString } from "./baseSchemas.ts";
 
 export const NOTION_PAGE_MARKDOWN_MAX_CHARS = 64_000;
-export const NOTION_REDIRECT_URI = "http://127.0.0.1:47833/callback";
+/** Notion rejects IP-address redirect URIs, so this uses `localhost`. */
+export const NOTION_REDIRECT_URI = "http://localhost:47833/callback";
 export const NotionAccount = Schema.Struct({
   workspaceId: Schema.String,
   workspaceName: Schema.String,

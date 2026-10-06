@@ -128,7 +128,7 @@ it.effect("finishes remote OAuth with a server-side client secret", () => {
     const state = authorizationUrl.searchParams.get("state");
     yield* auth.completeLogin({
       flowId: waiting.flowId ?? "",
-      callbackUrl: `http://127.0.0.1:47833/callback?code=the-code&state=${state}`,
+      callbackUrl: `http://localhost:47833/callback?code=the-code&state=${state}`,
     });
     const connected = yield* firstStateWhere(auth, "connected");
     assert.deepEqual(

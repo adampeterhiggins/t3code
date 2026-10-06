@@ -147,7 +147,7 @@ function NotionConnectionRows({
       {state && !state.configured ? (
         <SettingsRow
           title="Notion OAuth setup"
-          description="Create a public Notion integration with Read content capability. Register http://127.0.0.1:47833/callback as its redirect URI. Set T3CODE_NOTION_CLIENT_ID and T3CODE_NOTION_CLIENT_SECRET on this environment, then restart it."
+          description="Create a public Notion integration with Read content capability. Register http://localhost:47833/callback as its redirect URI. Set T3CODE_NOTION_CLIENT_ID and T3CODE_NOTION_CLIENT_SECRET on this environment, then restart it."
         />
       ) : null}
       <SettingsRow
@@ -207,7 +207,7 @@ function NotionConnectionRows({
               <Input
                 size="sm"
                 aria-label="Redirect URL from Notion"
-                placeholder="http://127.0.0.1:47833/callback?code=…"
+                placeholder="http://localhost:47833/callback?code=…"
                 value={pastedValue}
                 onChange={(event) => setPasted({ flowId, value: event.target.value })}
               />
