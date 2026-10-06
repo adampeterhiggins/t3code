@@ -165,6 +165,14 @@ export class ThreadLaunchService extends Context.Service<
       input: ThreadLaunchRetryInput,
     ) => Effect.Effect<Orchestrator.OrchestratorV2DispatchResult, Orchestrator.OrchestratorV2Error>;
     /**
+     * Prepares the workspace a preparing run recorded (its
+     * `workspacePreparation`) in the background, binds it to the thread, and
+     * releases the run, exactly as a launch does. A delegated task with its own
+     * worktree uses this for its child's first run. Preparation failures fail
+     * the run; a replay of a run already past preparation does nothing.
+     */
+    readonly prepareDeferredRun: (input: ThreadLaunchRetryInput) => Effect.Effect<void>;
+    /**
      * Readies an existing thread's workspace for a message about to be
      * dispatched: waits for a message-less launch that is still preparing it,
      * then clones the message's attached repositories into it. Returns the
@@ -1080,27 +1088,32 @@ const make = Effect.gen(function* () {
       threadId: input.threadId,
       runId: input.runId,
     });
-    // A replayed retry finds the run already past preparation, or prepared by
-    // the attempt that first reserved this command.
-    // From here the run is preparing again; anything that stops preparation
-    // from being scheduled must fail it, or it would wait in preparing forever.
-    const scheduled = yield* Effect.gen(function* () {
-      const projection = yield* threads.getThreadProjection(input.threadId);
-      const run = projection.runs.find((candidate) => candidate.id === input.runId);
-      const workspacePreparation = run?.workspacePreparation;
-      if (run?.status !== "preparing" || workspacePreparation === undefined) return;
-      if (!(yield* reservePreparation(input.commandId))) return;
-      yield* scheduleRetriedPreparation(input, projection, run, workspacePreparation).pipe(
-        Effect.onError(() => releasePreparation(input.commandId)),
-      );
-    }).pipe(Effect.exit);
-    if (Exit.isFailure(scheduled)) {
-      yield* failPreparedRun(input, input.threadId, input.runId, Cause.squash(scheduled.cause));
-    }
+    yield* prepareRecordedRun(input);
     return dispatched;
   });
 
-  const scheduleRetriedPreparation = (
+  const prepareRecordedRun = (input: ThreadLaunchRetryInput) =>
+    Effect.gen(function* () {
+      // A replay finds the run already past preparation, or prepared by the
+      // attempt that first reserved this command.
+      // While the run is preparing, anything that stops preparation from being
+      // scheduled must fail it, or it would wait in preparing forever.
+      const scheduled = yield* Effect.gen(function* () {
+        const projection = yield* threads.getThreadProjection(input.threadId);
+        const run = projection.runs.find((candidate) => candidate.id === input.runId);
+        const workspacePreparation = run?.workspacePreparation;
+        if (run?.status !== "preparing" || workspacePreparation === undefined) return;
+        if (!(yield* reservePreparation(input.commandId))) return;
+        yield* scheduleRecordedPreparation(input, projection, run, workspacePreparation).pipe(
+          Effect.onError(() => releasePreparation(input.commandId)),
+        );
+      }).pipe(Effect.exit);
+      if (Exit.isFailure(scheduled)) {
+        yield* failPreparedRun(input, input.threadId, input.runId, Cause.squash(scheduled.cause));
+      }
+    });
+
+  const scheduleRecordedPreparation = (
     input: ThreadLaunchRetryInput,
     projection: OrchestrationV2ThreadProjection,
     run: OrchestrationV2ThreadProjection["runs"][number],
@@ -1218,6 +1231,7 @@ const make = Effect.gen(function* () {
   return ThreadLaunchService.of({
     launch,
     retryPreparation,
+    prepareDeferredRun: prepareRecordedRun,
     prepareMessageWorkspace,
     nameTemporaryBranch,
   });

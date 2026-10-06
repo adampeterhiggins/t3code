@@ -218,11 +218,18 @@ type DelegateTaskInput = {
   clientRequestId?: string;
   runtimeMode?: "inherit" | "approval-required" | "auto-accept-edits" | "full-access";
   interactionMode?: "inherit" | "plan" | "default";
+  workspaceStrategy?:
+    | { type: "worktree"; baseRef: string; branch?: string; startFromOrigin?: boolean }
+    | { type: "existing_worktree"; worktreePath: string; branch?: string };
 };
 ```
 
 Provider, model, runtime mode, and interaction mode inherit from the parent
-when omitted. A driver-only target inherits the parent's provider instance
+when omitted. The child shares the parent's checkout unless `workspaceStrategy`
+gives it its own worktree. Then its run is created in `preparing`, the launch
+service prepares and binds that workspace exactly as for `t3_thread_launch`,
+and the run is released; a preparation failure fails the run and so the task.
+A workspace of its own requires a full-access/default caller. A driver-only target inherits the parent's provider instance
 when it can run child tasks, and otherwise selects an available instance of
 that driver; an explicit `providerInstanceId` is honored exactly and fails
 when unavailable. Selecting a different provider without a model uses that
