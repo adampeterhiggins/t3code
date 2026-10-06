@@ -3,6 +3,7 @@ import {
   NotionError,
   NotionConnectionState,
   NotionCompleteLoginInput,
+  NotionStartLoginInput,
   NotionCancelLoginInput,
   NotionSearchPagesInput,
   NotionSearchPagesResult,
@@ -931,7 +932,7 @@ const WsNotionSubscribeStateRpc = Rpc.make(WS_METHODS.notionSubscribeState, {
   stream: true,
 });
 const WsNotionStartLoginRpc = Rpc.make(WS_METHODS.notionStartLogin, {
-  payload: Schema.Struct({}),
+  payload: NotionStartLoginInput,
   success: NotionConnectionState,
   error: NotionRpcError,
 });

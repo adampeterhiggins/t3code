@@ -5,9 +5,11 @@ import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import {
   NotionAccount,
   type NotionCancelLoginInput,
+  NotionClientCredentials,
   type NotionCompleteLoginInput,
   type NotionConnectionState,
   NotionError,
+  type NotionStartLoginInput,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
@@ -47,6 +49,7 @@ import {
 } from "./notionOAuth.ts";
 
 const NOTION_TOKEN_SECRET = "notion-oauth-token";
+const NOTION_CREDENTIALS_SECRET = "notion-oauth-client";
 const LOGIN_TIMEOUT = Duration.minutes(10);
 const UNEXPECTED_STOP = "Notion sign-in stopped unexpectedly. Try again.";
 
@@ -59,6 +62,9 @@ type PersistedNotionToken = typeof PersistedNotionToken.Type;
 const PersistedNotionTokenJson = Schema.fromJsonString(PersistedNotionToken);
 const decodePersistedToken = Schema.decodeUnknownEffect(PersistedNotionTokenJson);
 const encodePersistedToken = Schema.encodeEffect(PersistedNotionTokenJson);
+const NotionClientCredentialsJson = Schema.fromJsonString(NotionClientCredentials);
+const decodeCredentials = Schema.decodeUnknownEffect(NotionClientCredentialsJson);
+const encodeCredentials = Schema.encodeEffect(NotionClientCredentialsJson);
 
 const TokenResponse = Schema.Struct({
   access_token: Schema.String,
@@ -68,8 +74,11 @@ const TokenResponse = Schema.Struct({
 });
 const TokenErrorResponse = Schema.Struct({ error: Schema.String });
 
-const disconnectedState = (configured: boolean): NotionConnectionState => ({
-  configured,
+type Credentials = NotionClientCredentials | null;
+
+const disconnectedState = (credentials: Credentials): NotionConnectionState => ({
+  configured: credentials !== null,
+  clientId: credentials?.clientId ?? null,
   phase: "disconnected",
   account: null,
   flowId: null,
@@ -78,14 +87,17 @@ const disconnectedState = (configured: boolean): NotionConnectionState => ({
   message: null,
 });
 
-const connectedState = (account: NotionAccount, configured: boolean): NotionConnectionState => ({
-  ...disconnectedState(configured),
+const connectedState = (
+  account: NotionAccount,
+  credentials: Credentials,
+): NotionConnectionState => ({
+  ...disconnectedState(credentials),
   phase: "connected",
   account,
 });
 
-const failedState = (message: string, configured: boolean): NotionConnectionState => ({
-  ...disconnectedState(configured),
+const failedState = (message: string, credentials: Credentials): NotionConnectionState => ({
+  ...disconnectedState(credentials),
   phase: "failed",
   message,
 });
@@ -93,6 +105,7 @@ const failedState = (message: string, configured: boolean): NotionConnectionStat
 interface ActiveFlow {
   readonly flowId: string;
   readonly state: string;
+  readonly credentials: NotionClientCredentials;
   readonly callback: Deferred.Deferred<string, NotionError>;
   /** What to show again if the flow is cancelled. */
   readonly previous: NotionConnectionState;
@@ -105,7 +118,9 @@ export class NotionAuth extends Context.Service<
   NotionAuth,
   {
     readonly state: Stream.Stream<NotionConnectionState>;
-    readonly startLogin: Effect.Effect<NotionConnectionState, NotionError>;
+    readonly startLogin: (
+      input: NotionStartLoginInput,
+    ) => Effect.Effect<NotionConnectionState, NotionError>;
     readonly completeLogin: (
       input: NotionCompleteLoginInput,
     ) => Effect.Effect<NotionConnectionState, NotionError>;
@@ -124,12 +139,10 @@ export class NotionAuth extends Context.Service<
 
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = Effect.gen(function* () {
-  const clientId = yield* Config.String("T3CODE_NOTION_CLIENT_ID").pipe(Config.withDefault(""));
-  const clientSecret = yield* Config.String("T3CODE_NOTION_CLIENT_SECRET").pipe(
+  const envClientId = yield* Config.String("T3CODE_NOTION_CLIENT_ID").pipe(Config.withDefault(""));
+  const envClientSecret = yield* Config.String("T3CODE_NOTION_CLIENT_SECRET").pipe(
     Config.withDefault(""),
   );
-  const configured = clientId.length > 0 && clientSecret.length > 0;
-  const DISCONNECTED = disconnectedState(configured);
   const crypto = yield* Crypto.Crypto;
   const httpClient = yield* HttpClient.HttpClient;
   const secrets = yield* ServerSecretStore.ServerSecretStore;
@@ -157,21 +170,56 @@ export const make = Effect.gen(function* () {
     );
   const removeToken = secrets.remove(NOTION_TOKEN_SECRET).pipe(Effect.ignore);
 
-  const initial = yield* readToken.pipe(
-    Effect.map((token) =>
-      Option.isSome(token) ? connectedState(token.value.account, configured) : DISCONNECTED,
+  // The last credentials that signed in, entered in Settings, win over the
+  // environment's, so a desktop app needs no environment variables.
+  const savedCredentials = yield* secrets.get(NOTION_CREDENTIALS_SECRET).pipe(
+    Effect.flatMap((bytes) =>
+      Option.isNone(bytes)
+        ? Effect.succeedNone
+        : decodeCredentials(new TextDecoder().decode(bytes.value)).pipe(Effect.asSome),
     ),
-    Effect.orElseSucceed(() => DISCONNECTED),
+    Effect.orElseSucceed(() => Option.none()),
+  );
+  const credentialsRef = yield* Ref.make<Credentials>(
+    Option.getOrElse(savedCredentials, () =>
+      envClientId.length > 0 && envClientSecret.length > 0
+        ? { clientId: envClientId, clientSecret: envClientSecret }
+        : null,
+    ),
+  );
+  const persistCredentials = (credentials: NotionClientCredentials) =>
+    encodeCredentials(credentials).pipe(
+      Effect.flatMap((encoded) =>
+        secrets.set(NOTION_CREDENTIALS_SECRET, new TextEncoder().encode(encoded)),
+      ),
+      Effect.mapError((cause) =>
+        loginError("Could not save the Notion client credentials.", cause),
+      ),
+      Effect.andThen(Ref.set(credentialsRef, credentials)),
+    );
+  const disconnected = Effect.map(Ref.get(credentialsRef), disconnectedState);
+  const failed = (message: string) =>
+    Effect.map(Ref.get(credentialsRef), (credentials) => failedState(message, credentials));
+
+  const initial = yield* readToken.pipe(
+    Effect.flatMap((token) =>
+      Option.isSome(token)
+        ? Effect.map(Ref.get(credentialsRef), (credentials) =>
+            connectedState(token.value.account, credentials),
+          )
+        : disconnected,
+    ),
+    Effect.catch(() => disconnected),
   );
   const state = yield* SubscriptionRef.make<NotionConnectionState>(initial);
 
-  const postToken = (params: Record<string, string>) =>
+  const basicAuth = ({ clientId, clientSecret }: NotionClientCredentials) =>
+    `Basic ${Base64.encode(new TextEncoder().encode(`${clientId}:${clientSecret}`))}`;
+
+  const postToken = (credentials: NotionClientCredentials, params: Record<string, string>) =>
     Effect.gen(function* () {
       const response = yield* HttpClientRequest.post(NOTION_TOKEN_URL).pipe(
-        HttpClientRequest.setHeader(
-          "Authorization",
-          `Basic ${Base64.encode(new TextEncoder().encode(`${clientId}:${clientSecret}`))}`,
-        ),
+        HttpClientRequest.setHeader("Authorization", basicAuth(credentials)),
         HttpClientRequest.bodyJsonUnsafe(params),
         httpClient.execute,
       );
@@ -190,8 +238,11 @@ export const make = Effect.gen(function* () {
       return { _tag: "Rejected", error: failure.error } as const;
     });
 
-  const exchangeCode = Effect.fn("notion.auth.exchange_code")(function* (code: string) {
-    const result = yield* postToken({
+  const exchangeCode = Effect.fn("notion.auth.exchange_code")(function* (
+    code: string,
+    credentials: NotionClientCredentials,
+  ) {
+    const result = yield* postToken(credentials, {
       grant_type: "authorization_code",
       code,
       redirect_uri: NOTION_REDIRECT_URI,
@@ -210,6 +261,7 @@ export const make = Effect.gen(function* () {
       },
     };
     yield* persistToken(token);
+    yield* persistCredentials(credentials);
     return token.account;
   });
 
@@ -273,15 +325,16 @@ export const make = Effect.gen(function* () {
             TimeoutError: () => Effect.fail(loginError("Notion sign-in timed out. Start again.")),
           }),
         );
-        return yield* exchangeCode(code);
+        return yield* exchangeCode(code, flow.credentials);
       }),
     ).pipe(
       Effect.matchEffect({
-        onSuccess: (account) => SubscriptionRef.set(state, connectedState(account, configured)),
+        onSuccess: (account) =>
+          SubscriptionRef.set(state, connectedState(account, flow.credentials)),
         onFailure: (error) =>
           Effect.andThen(
             Deferred.fail(listening, error),
-            SubscriptionRef.set(state, failedState(error.detail, configured)),
+            Effect.flatMap(failed(error.detail), (next) => SubscriptionRef.set(state, next)),
           ),
       }),
       // `startLogin` waits on `listening`, so a defect or interruption must
@@ -293,7 +346,9 @@ export const make = Effect.gen(function* () {
               Deferred.fail(listening, loginError(UNEXPECTED_STOP)),
               Cause.hasInterruptsOnly(exit.cause)
                 ? Effect.void
-                : SubscriptionRef.set(state, failedState(UNEXPECTED_STOP, configured)),
+                : Effect.flatMap(failed(UNEXPECTED_STOP), (next) =>
+                    SubscriptionRef.set(state, next),
+                  ),
             ),
       ),
       Effect.ensuring(Ref.set(activeFlow, null)),
@@ -312,12 +367,13 @@ export const make = Effect.gen(function* () {
     };
   }).pipe(Effect.mapError((cause) => loginError("Could not start Notion sign-in.", cause)));
 
-  const startLogin = Effect.gen(function* () {
-    if (!configured)
+  const startLogin = Effect.fn("notion.auth.start_login")(function* (input: NotionStartLoginInput) {
+    const credentials = input.credentials ?? (yield* Ref.get(credentialsRef));
+    if (credentials === null)
       return yield* new NotionError({
         reason: "not-configured",
         detail:
-          "Configure T3CODE_NOTION_CLIENT_ID and T3CODE_NOTION_CLIENT_SECRET on this environment, then restart it.",
+          "Add your Notion connection's client ID and secret in Settings → Integrations → Notion.",
       });
     const interrupted = yield* clearFlow;
     const current = yield* SubscriptionRef.get(state);
@@ -326,6 +382,7 @@ export const make = Effect.gen(function* () {
     const flow: ActiveFlow = {
       flowId: identity.flowId,
       state: identity.state,
+      credentials,
       callback: yield* Deferred.make<string, NotionError>(),
       previous,
     };
@@ -337,9 +394,10 @@ export const make = Effect.gen(function* () {
     const waiting: NotionConnectionState = {
       ...previous,
       phase: "waiting",
+      clientId: credentials.clientId,
       flowId: flow.flowId,
       authorizationUrl: buildNotionAuthorizeUrl({
-        clientId,
+        clientId: credentials.clientId,
         state: flow.state,
       }),
       expiresAt: DateTime.formatIso(DateTime.makeUnsafe(now + Duration.toMillis(LOGIN_TIMEOUT))),
@@ -347,7 +405,7 @@ export const make = Effect.gen(function* () {
     };
     yield* SubscriptionRef.set(state, waiting);
     return waiting;
-  }).pipe(Effect.withSpan("notion.auth.start_login"));
+  });
 
   const requireFlow = (flowId: string) =>
     Ref.get(activeFlow).pipe(
@@ -384,12 +442,9 @@ export const make = Effect.gen(function* () {
     return flow.previous;
   });
 
-  const revoke = (token: PersistedNotionToken) =>
+  const revoke = (token: PersistedNotionToken, credentials: NotionClientCredentials) =>
     HttpClientRequest.post(NOTION_REVOKE_URL).pipe(
-      HttpClientRequest.setHeader(
-        "Authorization",
-        `Basic ${Base64.encode(new TextEncoder().encode(`${clientId}:${clientSecret}`))}`,
-      ),
+      HttpClientRequest.setHeader("Authorization", basicAuth(credentials)),
       HttpClientRequest.bodyJsonUnsafe({ token: token.accessToken }),
       httpClient.execute,
       Effect.timeout(Duration.seconds(5)),
@@ -402,10 +457,12 @@ export const make = Effect.gen(function* () {
         yield* clearFlow;
         const token = yield* readToken.pipe(Effect.orElseSucceed(() => Option.none()));
         // Revoking is courtesy; a failure must not keep the credential around.
-        if (Option.isSome(token)) yield* revoke(token.value);
+        const credentials = yield* Ref.get(credentialsRef);
+        if (Option.isSome(token) && credentials !== null) yield* revoke(token.value, credentials);
         yield* removeToken;
-        yield* SubscriptionRef.set(state, DISCONNECTED);
-        return DISCONNECTED;
+        const next = yield* disconnected;
+        yield* SubscriptionRef.set(state, next);
+        return next;
       }),
     )
     .pipe(Effect.withSpan("notion.auth.disconnect"));
@@ -415,7 +472,7 @@ export const make = Effect.gen(function* () {
       yield* removeToken;
       yield* SubscriptionRef.set(
         state,
-        failedState("Notion access was revoked or has expired. Reconnect Notion.", configured),
+        yield* failed("Notion access was revoked or has expired. Reconnect Notion."),
       );
     }),
   );
@@ -454,7 +511,13 @@ export const make = Effect.gen(function* () {
               reason: "revoked",
               detail: "Reconnect Notion in Settings → Integrations.",
             });
-          const result = yield* postToken({
+          const credentials = yield* Ref.get(credentialsRef);
+          if (credentials === null)
+            return yield* new NotionError({
+              reason: "revoked",
+              detail: "Reconnect Notion in Settings → Integrations.",
+            });
+          const result = yield* postToken(credentials, {
             grant_type: "refresh_token",
             refresh_token: stored.value.refreshToken,
           }).pipe(Effect.mapError(() => loginError("Could not refresh Notion access.")));

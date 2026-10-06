@@ -11,7 +11,10 @@ export const NotionAccount = Schema.Struct({
 export type NotionAccount = typeof NotionAccount.Type;
 export const NotionConnectionState = Schema.Struct({
   phase: Schema.Literals(["disconnected", "waiting", "connected", "failed"]),
+  /** Whether the environment has a client ID and secret to sign in with. */
   configured: Schema.Boolean,
+  /** The client ID it signs in with; the secret never leaves the server. */
+  clientId: Schema.NullOr(Schema.String),
   account: Schema.NullOr(NotionAccount),
   flowId: Schema.NullOr(TrimmedNonEmptyString),
   authorizationUrl: Schema.NullOr(Schema.String),
@@ -19,6 +22,16 @@ export const NotionConnectionState = Schema.Struct({
   message: Schema.NullOr(Schema.String),
 });
 export type NotionConnectionState = typeof NotionConnectionState.Type;
+export const NotionClientCredentials = Schema.Struct({
+  clientId: TrimmedNonEmptyString.check(Schema.isMaxLength(128)),
+  clientSecret: TrimmedNonEmptyString.check(Schema.isMaxLength(512)),
+});
+export type NotionClientCredentials = typeof NotionClientCredentials.Type;
+/** Without credentials, sign-in reuses the saved ones, then the environment's. */
+export const NotionStartLoginInput = Schema.Struct({
+  credentials: Schema.optional(NotionClientCredentials),
+});
+export type NotionStartLoginInput = typeof NotionStartLoginInput.Type;
 export const NotionCompleteLoginInput = Schema.Struct({
   flowId: TrimmedNonEmptyString,
   callbackUrl: TrimmedNonEmptyString.check(Schema.isMaxLength(4096)),

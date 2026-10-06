@@ -3189,8 +3189,8 @@ const layerWsRpc = (
           observeRpcStream(WS_METHODS.notionSubscribeState, notionAuth.state, {
             "rpc.aggregate": "notion",
           }),
-        [WS_METHODS.notionStartLogin]: (_input) =>
-          observeRpcEffect(WS_METHODS.notionStartLogin, notionAuth.startLogin, {
+        [WS_METHODS.notionStartLogin]: (input) =>
+          observeRpcEffect(WS_METHODS.notionStartLogin, notionAuth.startLogin(input), {
             "rpc.aggregate": "notion",
           }),
         [WS_METHODS.notionCompleteLogin]: (input) =>
