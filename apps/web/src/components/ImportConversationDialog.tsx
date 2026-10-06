@@ -1,5 +1,10 @@
 import { useAtomValue } from "@effect/atom-react";
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import {
+  scopedProjectKey,
+  scopeProjectRef,
+  scopeThreadRef,
+} from "@t3tools/client-runtime/environment";
+import { isScratchProject } from "@t3tools/client-runtime/state/projects";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -14,7 +19,7 @@ import {
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
-import { useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
@@ -24,7 +29,8 @@ import {
   conductorWorkspaceImport,
   conductorWorkspaceList,
 } from "~/state/agentSessions";
-import { useProject, waitForThreadShell } from "~/state/entities";
+import { useScratchProject } from "~/hooks/useScratchProject";
+import { useProject, useProjects, useServerConfigs, waitForThreadShell } from "~/state/entities";
 import { useEnvironmentQuery } from "~/state/query";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { ProviderInstanceIcon } from "./chat/ProviderInstanceIcon";
@@ -41,31 +47,109 @@ import { Spinner } from "./ui/spinner";
 import { MenuSelect } from "./ui/menu-select";
 import { toastManager } from "./ui/toast";
 
-const importConversationProjectAtom = Atom.make<ScopedProjectRef | null>(null).pipe(
-  Atom.keepAlive,
-  Atom.withLabel("import-conversation:project"),
-);
+/** `null` while closed; open, it holds the project the dialog starts on, if any. */
+const importConversationAtom = Atom.make<{ readonly projectRef: ScopedProjectRef | null } | null>(
+  null,
+).pipe(Atom.keepAlive, Atom.withLabel("import-conversation:open"));
 
 /**
- * Opens the picker of Claude Code and Codex conversations recorded for a project's directory,
- * and of the project's active Conductor workspaces.
+ * Opens the picker of Claude Code and Codex conversations and active Conductor workspaces,
+ * starting on `projectRef` when given. The dialog can switch to any other project.
  */
-export function openImportConversationDialog(projectRef: ScopedProjectRef): void {
-  appAtomRegistry.set(importConversationProjectAtom, projectRef);
+export function openImportConversationDialog(projectRef: ScopedProjectRef | null = null): void {
+  appAtomRegistry.set(importConversationAtom, { projectRef });
 }
 
 function closeImportConversationDialog() {
-  appAtomRegistry.set(importConversationProjectAtom, null);
+  appAtomRegistry.set(importConversationAtom, null);
 }
 
 export function ImportConversationDialogHost() {
-  const projectRef = useAtomValue(importConversationProjectAtom);
-  if (projectRef === null) return null;
+  const open = useAtomValue(importConversationAtom);
+  if (open === null) return null;
+  return <ImportConversationDialog initialProjectRef={open.projectRef} />;
+}
+
+/** Projects whose server can list importable conversations, most recently updated first. */
+function useImportableProjects() {
+  const projects = useProjects();
+  const serverConfigs = useServerConfigs();
+  const { scratchWorkspaceRootFor } = useScratchProject();
+  return useMemo(
+    () =>
+      projects
+        .filter(
+          (project) =>
+            serverConfigs.get(project.environmentId)?.environment.capabilities
+              .agentSessionPicker === true &&
+            !isScratchProject(project, scratchWorkspaceRootFor(project.environmentId)),
+        )
+        .toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
+    [projects, serverConfigs, scratchWorkspaceRootFor],
+  );
+}
+
+function ImportConversationDialog({
+  initialProjectRef,
+}: {
+  initialProjectRef: ScopedProjectRef | null;
+}) {
+  const projects = useImportableProjects();
+  const [chosenKey, setChosenKey] = useState(
+    initialProjectRef === null ? null : scopedProjectKey(initialProjectRef),
+  );
+  const project =
+    projects.find(
+      (candidate) =>
+        scopedProjectKey(scopeProjectRef(candidate.environmentId, candidate.id)) === chosenKey,
+    ) ??
+    projects[0] ??
+    null;
+  const projectRef = project === null ? null : scopeProjectRef(project.environmentId, project.id);
+  const projectPicker =
+    project === null ? null : (
+      <MenuSelect
+        aria-label="Project to import into"
+        value={scopedProjectKey(projectRef!)}
+        onValueChange={setChosenKey}
+        options={projects.map((candidate) => ({
+          value: scopedProjectKey(scopeProjectRef(candidate.environmentId, candidate.id)),
+          label: candidate.title,
+        }))}
+      />
+    );
+
   return (
-    <ImportConversationDialog
-      key={`${projectRef.environmentId}:${projectRef.projectId}`}
-      projectRef={projectRef}
-    />
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) closeImportConversationDialog();
+      }}
+    >
+      <DialogPopup className="sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>Import conversation</DialogTitle>
+          <DialogDescription>
+            Claude Code and Codex conversations from the last 30 days, and active Conductor
+            workspaces, for the project you choose. An imported conversation continues the same
+            session.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogPanel>
+          {projectRef === null ? (
+            <div className="flex h-40 items-center justify-center px-6 text-center text-muted-foreground text-sm">
+              Add a project to import conversations into it.
+            </div>
+          ) : (
+            <ImportConversationList
+              key={scopedProjectKey(projectRef)}
+              projectRef={projectRef}
+              projectPicker={projectPicker}
+            />
+          )}
+        </DialogPanel>
+      </DialogPopup>
+    </Dialog>
   );
 }
 
@@ -124,7 +208,13 @@ function describeSession(session: AgentSessionSummary): string {
     .join(" · ");
 }
 
-function ImportConversationDialog({ projectRef }: { projectRef: ScopedProjectRef }) {
+function ImportConversationList({
+  projectRef,
+  projectPicker,
+}: {
+  projectRef: ScopedProjectRef;
+  projectPicker: ReactNode;
+}) {
   const { environmentId, projectId } = projectRef;
   const navigate = useNavigate();
   const project = useProject(projectRef);
@@ -242,106 +332,89 @@ function ImportConversationDialog({ projectRef }: { projectRef: ScopedProjectRef
   ).map((option) => ({ value: option, label: SOURCE_LABEL[option] }));
 
   return (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open) closeImportConversationDialog();
-      }}
-    >
-      <DialogPopup className="sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle>Import conversation</DialogTitle>
-          <DialogDescription>
-            Claude Code and Codex conversations from the last 30 days in{" "}
-            {project?.title ?? "this project"}
-            {conductorAvailable ? ", and its active Conductor workspaces" : ""}. An imported
-            conversation continues the same session.
-          </DialogDescription>
-        </DialogHeader>
-        <DialogPanel>
-          <div className="mb-2">
-            <MenuSelect
-              aria-label="Choose where to import from"
-              value={source}
-              onValueChange={setSource}
-              count={loading ? undefined : rows.length}
-              options={sourceOptions}
-            />
-          </div>
-          {loading ? (
-            <div className="flex h-40 items-center justify-center px-6 text-center text-muted-foreground text-sm">
-              {(source === "conductor" ? conductorListing.error : listing.error) ?? (
-                <Spinner size="md" tone="muted" />
-              )}
-            </div>
-          ) : rows.length === 0 ? (
-            <div className="flex h-40 items-center justify-center px-6 text-center text-muted-foreground text-sm">
-              {source === "conductor"
-                ? "No active Conductor workspaces found for this repository."
-                : source === "all"
-                  ? "Nothing to import for this project."
-                  : `No ${SOURCE_LABEL[source]} conversations found for this folder.`}
-            </div>
-          ) : (
-            <div className="max-h-[28rem] overflow-y-auto">
-              <DiscoveryList>
-                {rows.map((row) => {
-                  if (row.kind === "session") {
-                    const { session } = row;
-                    const key = sessionKey(session);
-                    return (
-                      <DiscoveryListRow
-                        key={key}
-                        icon={
-                          <ProviderInstanceIcon
-                            driverKind={ProviderDriverKind.make(session.provider)}
-                            displayName={PROVIDER_LABEL[session.provider]}
-                            showBadge={false}
-                            iconClassName="size-4"
-                          />
-                        }
-                        title={session.title}
-                        description={describeSession(session)}
-                        disabled={pendingKey !== null}
-                        aria-label={`${session.threadId ? "Open" : "Import"} ${session.title}`}
-                        onClick={() => void choose(session)}
-                        action={rowAction(pendingKey === key, session.threadId !== null)}
-                      />
-                    );
-                  }
-                  const { workspace } = row;
-                  const key = `conductor:${workspace.workspaceId}`;
-                  const agent = CONDUCTOR_AGENT[workspace.tabs[0]!.agent];
-                  return (
-                    <DiscoveryListRow
-                      key={key}
-                      icon={
-                        <ProviderInstanceIcon
-                          driverKind={agent.driver}
-                          displayName={agent.label}
-                          showBadge={false}
-                          iconClassName="size-4"
-                        />
-                      }
-                      title={workspace.title}
-                      description={describeWorkspace(workspace)}
-                      disabled={pendingKey !== null}
-                      aria-label={`${workspace.threadId ? "Open" : "Import"} ${workspace.title}`}
-                      onClick={() => void chooseWorkspace(workspace)}
-                      action={rowAction(pendingKey === key, workspace.threadId !== null)}
-                    />
-                  );
-                })}
-              </DiscoveryList>
-              {listing.data?.truncated && source !== "conductor" ? (
-                <p className="mt-2 text-muted-foreground text-xs">
-                  Showing the newest 50 conversations.
-                </p>
-              ) : null}
-            </div>
+    <>
+      <div className="mb-2 flex items-center gap-2">
+        {projectPicker}
+        <MenuSelect
+          aria-label="Choose where to import from"
+          value={source}
+          onValueChange={setSource}
+          count={loading ? undefined : rows.length}
+          options={sourceOptions}
+        />
+      </div>
+      {loading ? (
+        <div className="flex h-40 items-center justify-center px-6 text-center text-muted-foreground text-sm">
+          {(source === "conductor" ? conductorListing.error : listing.error) ?? (
+            <Spinner size="md" tone="muted" />
           )}
-        </DialogPanel>
-      </DialogPopup>
-    </Dialog>
+        </div>
+      ) : rows.length === 0 ? (
+        <div className="flex h-40 items-center justify-center px-6 text-center text-muted-foreground text-sm">
+          {source === "conductor"
+            ? "No active Conductor workspaces found for this repository."
+            : source === "all"
+              ? "Nothing to import for this project."
+              : `No ${SOURCE_LABEL[source]} conversations found for this folder.`}
+        </div>
+      ) : (
+        <div className="max-h-[28rem] overflow-y-auto">
+          <DiscoveryList>
+            {rows.map((row) => {
+              if (row.kind === "session") {
+                const { session } = row;
+                const key = sessionKey(session);
+                return (
+                  <DiscoveryListRow
+                    key={key}
+                    icon={
+                      <ProviderInstanceIcon
+                        driverKind={ProviderDriverKind.make(session.provider)}
+                        displayName={PROVIDER_LABEL[session.provider]}
+                        showBadge={false}
+                        iconClassName="size-4"
+                      />
+                    }
+                    title={session.title}
+                    description={describeSession(session)}
+                    disabled={pendingKey !== null}
+                    aria-label={`${session.threadId ? "Open" : "Import"} ${session.title}`}
+                    onClick={() => void choose(session)}
+                    action={rowAction(pendingKey === key, session.threadId !== null)}
+                  />
+                );
+              }
+              const { workspace } = row;
+              const key = `conductor:${workspace.workspaceId}`;
+              const agent = CONDUCTOR_AGENT[workspace.tabs[0]!.agent];
+              return (
+                <DiscoveryListRow
+                  key={key}
+                  icon={
+                    <ProviderInstanceIcon
+                      driverKind={agent.driver}
+                      displayName={agent.label}
+                      showBadge={false}
+                      iconClassName="size-4"
+                    />
+                  }
+                  title={workspace.title}
+                  description={describeWorkspace(workspace)}
+                  disabled={pendingKey !== null}
+                  aria-label={`${workspace.threadId ? "Open" : "Import"} ${workspace.title}`}
+                  onClick={() => void chooseWorkspace(workspace)}
+                  action={rowAction(pendingKey === key, workspace.threadId !== null)}
+                />
+              );
+            })}
+          </DiscoveryList>
+          {listing.data?.truncated && source !== "conductor" ? (
+            <p className="mt-2 text-muted-foreground text-xs">
+              Showing the newest 50 conversations.
+            </p>
+          ) : null}
+        </div>
+      )}
+    </>
   );
 }

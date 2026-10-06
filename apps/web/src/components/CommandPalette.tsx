@@ -2012,35 +2012,32 @@ function OpenCommandPaletteDialog(props: {
           if (started) openStartFromPicker();
         },
       });
-      const importProjectRef = contextualProjectRef;
-      if (
-        importProjectRef !== null &&
-        serverConfigs.get(importProjectRef.environmentId)?.environment.capabilities
-          .agentSessionPicker === true
-      ) {
-        actionItems.push({
-          kind: "action",
-          value: "action:import-conversation",
-          searchTerms: [
-            "import",
-            "conversation",
-            "claude code",
-            "codex",
-            "session",
-            "resume",
-            "cli",
-          ],
-          title: (
-            <>
-              Import conversation into <span className="font-semibold">{activeProjectTitle}</span>
-            </>
-          ),
-          icon: <HistoryIcon className={ITEM_ICON_CLASS} />,
-          run: async () => {
-            openImportConversationDialog(importProjectRef);
-          },
-        });
-      }
+    }
+    const importProjectRef = contextualProjectRef;
+    if (
+      [...serverConfigs.values()].some(
+        (config) => config.environment.capabilities.agentSessionPicker === true,
+      )
+    ) {
+      actionItems.push({
+        kind: "action",
+        value: "action:import-conversation",
+        searchTerms: [
+          "import",
+          "conversation",
+          "claude code",
+          "codex",
+          "conductor",
+          "session",
+          "resume",
+          "cli",
+        ],
+        title: "Import conversation…",
+        icon: <HistoryIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          openImportConversationDialog(importProjectRef);
+        },
+      });
     }
 
     actionItems.push({
