@@ -346,9 +346,11 @@ const make = (databasePath: string) =>
           createdAt,
           updatedAt,
           archivedAt: null,
-          settledOverride: "settled",
-          settledAt: updatedAt,
-          unsettledAt: null,
+          // A Conductor workspace is moved to keep working in it, so it lands active, as if
+          // un-settled; its last activity is old enough that auto-settle would park it otherwise.
+          settledOverride: "active",
+          settledAt: null,
+          unsettledAt: yield* DateTime.now,
           snoozedUntil: null,
           snoozedAt: null,
           pinnedAt: input.pinned ? updatedAt : null,

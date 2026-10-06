@@ -778,7 +778,7 @@ The import picker also lists the project's active Conductor (`conductor.build`) 
 whose Conductor repository has the project's root or `origin` remote, whose worktree still exists,
 and that have at least one sent prompt. Importing one turns each open tab into a thread on the
 workspace's branch and worktree, grouped as [chat tabs](#chat-tabs), with the workspace's pin on
-the first tab. History comes from Conductor's own database, read-only, so it matches what Conductor
+the first tab. The threads land active, as if un-settled, because the workspace is still in use. History comes from Conductor's own database, read-only, so it matches what Conductor
 showed: prompts and reply text, without tool activity. Images and files sent with a prompt are
 copied into T3's attachment store from the workspace's `.context/attachments`; Conductor deletes
 some of those, so a missing one is named in the message instead. Diff comments sent to the agent

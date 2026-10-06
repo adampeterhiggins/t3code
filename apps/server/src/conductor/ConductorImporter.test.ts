@@ -359,6 +359,8 @@ it.effect("imports a workspace's open tabs as one tab group in Conductor's workt
       worktreePath: fixture.workspacePath,
       modelSelection: { instanceId: "claudeAgent", model: "claude-fable-5-1" },
       historyOrigin: "v1_import",
+      settledOverride: "active",
+      settledAt: null,
     });
     expect(claude).not.toMatchObject({ pinnedAt: null });
     const prompt = writes[0]?.[1]?.payload;
