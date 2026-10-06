@@ -221,7 +221,9 @@ import {
   setSidebarTabGroupOverride,
   type SidebarTabGroupOverrides,
   hasUnseenCompletion,
+  holdSidebarTabOrder,
   layoutSidebarTabs,
+  sortSidebarTabs,
   resolveSidebarTabPairTarget,
   sidebarTabToggleCount,
   sidebarTabToggleLabel,
@@ -1253,6 +1255,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   /** The group's tabs. Mounted under the row while `tabsOpen`, and while it animates closed. */
   tabs: ReactNode;
   tabsOpen: boolean;
+  /** Lists the group's tabs when hovering the folded count badge, so one opens in place. */
+  tabPreview?: ReactNode;
   /** Opens or folds this group's tabs. Absent where the row has no tabs. */
   onToggleTabs?: ((rowThreadKey: string) => void) | undefined;
   /** A tab list finished opening or closing, so rows below it have moved. */
@@ -1803,6 +1807,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     },
     [onToggleTabs, rowThreadKey],
   );
+  // The row's own tooltip would cover the badge's tab list, so it stays shut while that is open.
+  const [tabPreviewOpenRaw, setTabPreviewOpen] = useState(false);
+  const tabPreviewOpen = tabPreviewOpenRaw && !props.tabsOpen && props.tabCount > 1;
   const tabCountBadge =
     props.tabCount > 1 ? (
       <SidebarTabCountBadge
@@ -1810,6 +1817,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
         toggleCount={props.tabToggleCount}
         open={props.tabsOpen}
         onToggle={onToggleTabs ? handleToggleTabsClick : undefined}
+        preview={props.tabPreview}
+        onPreviewOpenChange={setTabPreviewOpen}
       />
     ) : null;
   const tabList =
@@ -1882,7 +1891,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
           sortable?.isDragging && "relative z-20",
         )}
       >
-        <Tooltip disabled={sortable?.isDragging}>
+        <Tooltip disabled={tabPreviewOpen || sortable?.isDragging}>
           <TooltipTrigger
             render={
               <div
@@ -2053,7 +2062,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
         sortable?.isDragging && "relative z-20",
       )}
     >
-      <Tooltip disabled={snoozeMenuOpen || sortable?.isDragging}>
+      <Tooltip disabled={snoozeMenuOpen || tabPreviewOpen || sortable?.isDragging}>
         <TooltipTrigger
           render={
             <div
@@ -2394,13 +2403,27 @@ function SidebarRenameInput(props: {
   );
 }
 
-/** The group's tab count. With `onToggle`, it opens and folds that group's tabs. */
+/**
+ * The group's tab count. With `onToggle`, it opens and folds that group's tabs. While folded,
+ * hovering it shows `preview`, a list to switch tabs from without opening the group.
+ */
 function SidebarTabCountBadge(props: {
   count: number;
   toggleCount: number;
   open: boolean;
   onToggle?: ((event: ReactMouseEvent) => void) | undefined;
+  preview?: ReactNode;
+  onPreviewOpenChange?: ((open: boolean) => void) | undefined;
 }) {
+  const { onPreviewOpenChange } = props;
+  const [previewOpen, setPreviewOpenState] = useState(false);
+  const setPreviewOpen = useCallback(
+    (open: boolean) => {
+      setPreviewOpenState(open);
+      onPreviewOpenChange?.(open);
+    },
+    [onPreviewOpenChange],
+  );
   const className =
     "inline-flex shrink-0 items-center gap-0.5 text-xs tabular-nums text-muted-foreground/70";
   if (!props.onToggle) {
@@ -2413,37 +2436,77 @@ function SidebarTabCountBadge(props: {
     );
   }
   const label = sidebarTabToggleLabel(props.open, props.toggleCount);
+  const button = (
+    <button
+      type="button"
+      aria-label={label}
+      aria-expanded={props.open}
+      data-testid="sidebar-tab-group-toggle"
+      onClick={(event) => {
+        setPreviewOpen(false);
+        props.onToggle?.(event);
+      }}
+      onDoubleClick={(event) => event.stopPropagation()}
+      className={cn(
+        className,
+        "-mx-1 cursor-pointer rounded-sm px-1 outline-none transition-colors hover:bg-sidebar-row-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
+      )}
+    />
+  );
+  const body = (
+    <>
+      <LayersIcon aria-hidden className="size-3" />
+      {props.count}
+      {/* The chevron marks the badge as a control: always while open, on hover while folded. */}
+      <ChevronDownIcon
+        aria-hidden
+        className={cn(
+          "size-3 transition-[rotate,opacity] motion-reduce:transition-none",
+          props.open
+            ? "rotate-180"
+            : "opacity-0 group-hover/sidebar-row:opacity-100 group-has-[:focus-visible]/sidebar-row:opacity-100",
+        )}
+      />
+    </>
+  );
+  if (!props.open && props.preview != null) {
+    // The card renders in a portal but its events still bubble through the row in React, which
+    // would open the row's thread, start a row drag, or open its context menu.
+    const stop = (event: { stopPropagation: () => void }) => event.stopPropagation();
+    return (
+      <PreviewCard open={previewOpen} onOpenChange={setPreviewOpen}>
+        <PreviewCardTrigger delay={300} closeDelay={150} render={button}>
+          {body}
+        </PreviewCardTrigger>
+        <PreviewCardPopup
+          side="right"
+          align="start"
+          sideOffset={8}
+          className="w-80 max-w-[calc(100vw-2rem)]"
+        >
+          <div
+            className="p-1"
+            onClick={(event) => {
+              stop(event);
+              // Every control in the list opens a tab, so a click there is done with the card.
+              if (event.target instanceof Element && event.target.closest("button")) {
+                setPreviewOpen(false);
+              }
+            }}
+            onDoubleClick={stop}
+            onPointerDown={stop}
+            onKeyDown={stop}
+            onContextMenu={stop}
+          >
+            {props.preview}
+          </div>
+        </PreviewCardPopup>
+      </PreviewCard>
+    );
+  }
   return (
     <Tooltip>
-      <TooltipTrigger
-        render={
-          <button
-            type="button"
-            aria-label={label}
-            aria-expanded={props.open}
-            data-testid="sidebar-tab-group-toggle"
-            onClick={props.onToggle}
-            onDoubleClick={(event) => event.stopPropagation()}
-            className={cn(
-              className,
-              "-mx-1 cursor-pointer rounded-sm px-1 outline-none transition-colors hover:bg-sidebar-row-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
-            )}
-          />
-        }
-      >
-        <LayersIcon aria-hidden className="size-3" />
-        {props.count}
-        {/* The chevron marks the badge as a control: always while open, on hover while folded. */}
-        <ChevronDownIcon
-          aria-hidden
-          className={cn(
-            "size-3 transition-[rotate,opacity] motion-reduce:transition-none",
-            props.open
-              ? "rotate-180"
-              : "opacity-0 group-hover/sidebar-row:opacity-100 group-has-[:focus-visible]/sidebar-row:opacity-100",
-          )}
-        />
-      </TooltipTrigger>
+      <TooltipTrigger render={button}>{body}</TooltipTrigger>
       <TooltipPopup side="top">{label}</TooltipPopup>
     </Tooltip>
   );
@@ -2643,11 +2706,14 @@ function SidebarTabList(props: {
 }
 
 /**
- * The tabs folded behind a group's collapsed "n more" row, in the same order and with the same
- * title, status, time, and provider as the list they would join. Clicking one opens it.
+ * Tabs listed in a hover card, with the same title, status, time, and provider as the sidebar's
+ * tab rows. Clicking one opens it; `activeKey` marks the tab already open.
  */
-function SidebarTabOverflowPreview(props: {
-  hidden: readonly SidebarThreadSummary[];
+function SidebarTabPreviewList(props: {
+  tabs: readonly SidebarThreadSummary[];
+  label: string;
+  testId: string;
+  activeKey?: string | null | undefined;
   providerEntriesByEnvironment: ReadonlyMap<string, ReadonlyMap<string, ProviderInstanceEntry>>;
   tabSortOrder: SidebarTabSortOrder;
   openedAtByThreadKey: Readonly<Record<string, number>>;
@@ -2655,18 +2721,23 @@ function SidebarTabOverflowPreview(props: {
 }) {
   return (
     <ul
-      aria-label={`${props.hidden.length} more tabs`}
-      data-testid="sidebar-tab-overflow-preview"
+      aria-label={props.label}
+      data-testid={props.testId}
       className="flex max-h-80 flex-col gap-px overflow-y-auto overscroll-contain"
     >
-      {props.hidden.map((thread) => {
+      {props.tabs.map((thread) => {
         const threadKey = sidebarThreadKey(thread);
+        const active = threadKey === props.activeKey;
         return (
           <li key={threadKey} className="list-none">
             <button
               type="button"
+              aria-current={active ? "page" : undefined}
               onClick={() => props.onOpenTab(scopeThreadRef(thread.environmentId, thread.id))}
-              className="flex h-8 w-full cursor-pointer items-center gap-2 rounded-md px-2 text-left outline-none hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+              className={cn(
+                "flex h-8 w-full cursor-pointer items-center gap-2 rounded-md px-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                active ? "bg-sidebar-row-active" : "hover:bg-sidebar-row-hover",
+              )}
             >
               <SidebarTabSummary
                 thread={thread}
@@ -2679,6 +2750,44 @@ function SidebarTabOverflowPreview(props: {
         );
       })}
     </ul>
+  );
+}
+
+/**
+ * Every tab in a folded group, in the order its open list would show them. The order holds
+ * while the card is open, so a live sort never moves a tab out from under the pointer.
+ */
+function SidebarTabGroupPreview(props: {
+  tabs: readonly SidebarThreadSummary[];
+  activeKey: string | null;
+  providerEntriesByEnvironment: ReadonlyMap<string, ReadonlyMap<string, ProviderInstanceEntry>>;
+  tabSortOrder: SidebarTabSortOrder;
+  tabSortDirection: SidebarTabSortDirection;
+  tabManualRanks: Readonly<Record<string, number>>;
+  openedAtByThreadKey: Readonly<Record<string, number>>;
+  onOpenTab: (threadRef: ScopedThreadRef) => void;
+}) {
+  const { openedAtByThreadKey } = props;
+  const sorted = sortSidebarTabs(props.tabs, {
+    order: props.tabSortOrder,
+    direction: props.tabSortDirection,
+    getKey: sidebarThreadKey,
+    getTimestamp: (tab, order) =>
+      sidebarTabSortTimestamp(tab, order, openedAtByThreadKey[sidebarThreadKey(tab)]),
+    manualRanks: props.tabManualRanks,
+  });
+  const [heldKeys] = useState(() => sorted.map(sidebarThreadKey));
+  return (
+    <SidebarTabPreviewList
+      tabs={holdSidebarTabOrder(sorted, heldKeys, sidebarThreadKey)}
+      label={`${props.tabs.length} tabs`}
+      testId="sidebar-tab-group-preview"
+      activeKey={props.activeKey}
+      providerEntriesByEnvironment={props.providerEntriesByEnvironment}
+      tabSortOrder={props.tabSortOrder}
+      openedAtByThreadKey={openedAtByThreadKey}
+      onOpenTab={props.onOpenTab}
+    />
   );
 }
 
@@ -2816,8 +2925,10 @@ function SidebarTabOverflowRow(props: {
             className="w-80 max-w-[calc(100vw-2rem)]"
           >
             <div className="p-1">
-              <SidebarTabOverflowPreview
-                hidden={hidden}
+              <SidebarTabPreviewList
+                tabs={hidden}
+                label={`${hidden.length} more tabs`}
+                testId="sidebar-tab-overflow-preview"
                 providerEntriesByEnvironment={providerEntriesByEnvironment}
                 tabSortOrder={props.tabSortOrder}
                 openedAtByThreadKey={props.openedAtByThreadKey}
@@ -6685,6 +6796,20 @@ export default function Sidebar() {
                                   })
                             }
                             tabsOpen={rowTabsOpen}
+                            tabPreview={
+                              rowTabs && !rowTabsOpen ? (
+                                <SidebarTabGroupPreview
+                                  tabs={[thread, ...rowTabs]}
+                                  activeKey={highlightedRouteThreadKey}
+                                  providerEntriesByEnvironment={providerEntriesByEnvironment}
+                                  tabSortOrder={tabSortOrder}
+                                  tabSortDirection={tabSortDirection}
+                                  tabManualRanks={tabManualRanks}
+                                  openedAtByThreadKey={openedAtByThreadKey}
+                                  onOpenTab={navigateToThread}
+                                />
+                              ) : undefined
+                            }
                             onToggleTabs={rowTabs ? toggleTabGroup : undefined}
                             onTabsResized={refreshListMotion}
                             tabs={
