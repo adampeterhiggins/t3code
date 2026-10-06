@@ -139,6 +139,17 @@ Code: `apps/web/src/components/chat/ProviderAccountPicker.tsx` and
 `apps/web/src/components/chat/providerAccountSelection.ts`. User guide:
 [providers-codex.md](./user/providers-codex.md#switch-accounts-in-an-existing-thread).
 
+## Cursor long-context tiers use Max Mode
+
+Choosing a Cursor context tier above 300K (Grok 4.7 at 500K, or 1M on other models) turns on
+Cursor's Max Mode for the request, as Cursor's own CLI does. Upstream sends these tiers without
+Max Mode, so Grok 4.7 at 500K fails with "Invalid parameters for registry model" and 1M tiers
+silently run at about 300K. Max Mode is billed per token on usage-based Cursor plans.
+
+This is a port of upstream PR [#15884](https://github.com/pingdotgg/t3code/pull/15884) for
+[#15788](https://github.com/pingdotgg/t3code/issues/15788). Remove this section when upstream merges
+it. Code: `apps/server/src/provider/cursorSdk.ts`.
+
 ## Agents panel drilldowns
 
 Upstream makes every subagent a child thread, lists a thread's subagents under **Lineage** in the
