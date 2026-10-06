@@ -172,10 +172,22 @@ function readThemeColor(styles: CSSStyleDeclaration, variable: string, fallback:
   return normalizeComputedColor(styles.getPropertyValue(variable), fallback);
 }
 
-/** The surface treats an omitted family or size as "use the built-in default". */
-function terminalFontOptions(family: string, size: number): { family?: string; size: number } {
+type TerminalFontPreference = { family: string; size: number; lineHeight: number };
+
+/** The surface treats an omitted family as "use the built-in default". */
+function terminalFontOptions({ family, size, lineHeight }: TerminalFontPreference): {
+  family?: string;
+  size: number;
+  lineHeight: number;
+} {
   const trimmed = family.trim();
-  return trimmed.length > 0 ? { family: trimmed, size } : { size };
+  return trimmed.length > 0 ? { family: trimmed, size, lineHeight } : { size, lineHeight };
+}
+
+function sameTerminalFont(left: TerminalFontPreference, right: TerminalFontPreference): boolean {
+  return (
+    left.family === right.family && left.size === right.size && left.lineHeight === right.lineHeight
+  );
 }
 
 export function terminalThemeFromApp(mountElement?: HTMLElement | null): GhosttyTheme {
@@ -413,7 +425,13 @@ export function TerminalViewport({
       terminal: settings.fontSizeTerminal,
     }),
   );
-  const terminalFontRef = useRef({ family: terminalFontFamily, size: terminalFontSize });
+  // Stored as a percentage of the font size; the surface takes a multiplier.
+  const terminalLineHeight = useClientSettings((settings) => settings.terminalLineHeight / 100);
+  const terminalFontRef = useRef<TerminalFontPreference>({
+    family: terminalFontFamily,
+    size: terminalFontSize,
+    lineHeight: terminalLineHeight,
+  });
   const terminalCursorStyle = useClientSettings((settings) => settings.terminalCursorStyle);
   const terminalCursorStyleRef = useRef(terminalCursorStyle);
   const terminalSession = useAttachedTerminalSession({
@@ -486,11 +504,15 @@ export function TerminalViewport({
   }, [visible]);
 
   useEffect(() => {
-    const current = terminalFontRef.current;
-    if (current.family === terminalFontFamily && current.size === terminalFontSize) return;
-    terminalFontRef.current = { family: terminalFontFamily, size: terminalFontSize };
-    void terminalRef.current?.setFont(terminalFontOptions(terminalFontFamily, terminalFontSize));
-  }, [terminalFontFamily, terminalFontSize]);
+    const next = {
+      family: terminalFontFamily,
+      size: terminalFontSize,
+      lineHeight: terminalLineHeight,
+    };
+    if (sameTerminalFont(terminalFontRef.current, next)) return;
+    terminalFontRef.current = next;
+    void terminalRef.current?.setFont(terminalFontOptions(next));
+  }, [terminalFontFamily, terminalFontSize, terminalLineHeight]);
 
   useEffect(() => {
     if (terminalCursorStyleRef.current === terminalCursorStyle) return;
@@ -513,7 +535,7 @@ export function TerminalViewport({
       const setupFont = terminalFontRef.current;
       const terminalOptions: GhosttyTerminalSurfaceOptions = {
         theme: terminalThemeFromApp(mount),
-        font: terminalFontOptions(setupFont.family, setupFont.size),
+        font: terminalFontOptions(setupFont),
         // Settings hydrate asynchronously, so read the style once WASM loads.
         get cursorStyle() {
           return terminalCursorStyleRef.current;
@@ -548,8 +570,8 @@ export function TerminalViewport({
       // while the surface was loading found terminalRef null, so its setFont
       // was dropped. Re-apply whatever is current once the terminal exists.
       const currentFont = terminalFontRef.current;
-      if (currentFont.family !== setupFont.family || currentFont.size !== setupFont.size) {
-        void terminal.setFont(terminalFontOptions(currentFont.family, currentFont.size));
+      if (!sameTerminalFont(currentFont, setupFont)) {
+        void terminal.setFont(terminalFontOptions(currentFont));
       }
       const latestSession = latestSessionRef.current;
       previousSessionRef.current = latestSession;

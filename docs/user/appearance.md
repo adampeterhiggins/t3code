@@ -48,8 +48,10 @@ Themes also carry the terminal's 16 ANSI colors. Importing a VS Code theme bring
 ## Terminal
 
 On web and desktop, set **Terminal font** in **Settings → Appearance** with **Advanced** typography
-turned on. **Terminal cursor** chooses a block, bar, or underline cursor. Programs that set their
-own cursor shape, such as an editor's insert mode, still take priority.
+turned on. **Terminal line height** sets the row height as a multiple of the font size; VS Code and
+Cursor multiply the font's natural line height instead, so the same number gives shorter rows here.
+**Terminal cursor** chooses a block, bar, or underline cursor. Programs that set their own cursor
+shape, such as an editor's insert mode, still take priority.
 
 ## Environment themes
 

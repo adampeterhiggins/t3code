@@ -37,6 +37,7 @@ import {
   MAX_SIDEBAR_AUTO_SETTLE_AFTER_DAYS,
   MAX_SIDEBAR_TAB_LIMIT,
   MAX_TERMINAL_FONT_SIZE,
+  MAX_TERMINAL_LINE_HEIGHT,
   MIN_CODE_FONT_SIZE,
   MIN_APPEARANCE_CONTRAST,
   MIN_GLASS_OPACITY,
@@ -47,6 +48,7 @@ import {
   MIN_SIDEBAR_TAB_LIMIT,
   type ResponseStreamingMode,
   MIN_TERMINAL_FONT_SIZE,
+  MIN_TERMINAL_LINE_HEIGHT,
   type QuitConfirmationMode,
   SidebarProjectSortOrder,
 } from "@t3tools/contracts/settings";
@@ -616,6 +618,9 @@ export function useSettingsRestore(onRestored?: () => void) {
         ? ["Snooze limited threads"]
         : []),
       ...(settings.wordWrap !== DEFAULT_UNIFIED_SETTINGS.wordWrap ? ["Word wrap"] : []),
+      ...(settings.terminalLineHeight !== DEFAULT_UNIFIED_SETTINGS.terminalLineHeight
+        ? ["Terminal line height"]
+        : []),
       ...(settings.terminalCursorStyle !== DEFAULT_UNIFIED_SETTINGS.terminalCursorStyle
         ? ["Terminal cursor"]
         : []),
@@ -742,6 +747,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.fontSizePrompt,
       settings.fontSizeTerminal,
       settings.terminalCursorStyle,
+      settings.terminalLineHeight,
       settings.glassOpacity,
       settings.panelAnimationDurationMs,
       settings.responseStreamingMode,
@@ -894,6 +900,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       fontSizeCode: DEFAULT_UNIFIED_SETTINGS.fontSizeCode,
       fontSizeTerminal: DEFAULT_UNIFIED_SETTINGS.fontSizeTerminal,
       terminalCursorStyle: DEFAULT_UNIFIED_SETTINGS.terminalCursorStyle,
+      terminalLineHeight: DEFAULT_UNIFIED_SETTINGS.terminalLineHeight,
       browserDefaultViewport: DEFAULT_UNIFIED_SETTINGS.browserDefaultViewport,
       browserDefaultZoomFactor: DEFAULT_UNIFIED_SETTINGS.browserDefaultZoomFactor,
       browserDefaultAppearance: DEFAULT_UNIFIED_SETTINGS.browserDefaultAppearance,
@@ -1801,6 +1808,65 @@ function TerminalCursorRow() {
   );
 }
 
+function TerminalLineHeightRow() {
+  const settings = useScopedSettings();
+  const updateSettings = useUpdateScopedSettings();
+  const ratio =
+    (settings.terminalLineHeight - MIN_TERMINAL_LINE_HEIGHT) /
+    (MAX_TERMINAL_LINE_HEIGHT - MIN_TERMINAL_LINE_HEIGHT);
+  const sliderStyle = {
+    "--settings-slider-progress": `${ratio * 100}%`,
+    "--settings-slider-fill-offset": `${0.5 - ratio}rem`,
+  } as CSSProperties;
+  return (
+    <SettingsRow
+      {...searchableSetting("terminal-line-height")}
+      description="Terminal row height as a multiple of the font size."
+      resetAction={
+        settings.terminalLineHeight !== DEFAULT_UNIFIED_SETTINGS.terminalLineHeight ? (
+          <SettingResetButton
+            label="terminal line height"
+            onClick={() =>
+              updateSettings({ terminalLineHeight: DEFAULT_UNIFIED_SETTINGS.terminalLineHeight })
+            }
+          />
+        ) : null
+      }
+      control={
+        <div className="flex w-full items-center gap-3 sm:w-52">
+          <output
+            className="min-w-12 rounded-md bg-muted px-2 py-1 text-center font-mono text-xs font-medium tabular-nums text-foreground"
+            htmlFor="terminal-line-height"
+          >
+            {(settings.terminalLineHeight / 100).toFixed(2)}
+          </output>
+          <input
+            aria-label="Terminal line height"
+            className="settings-slider min-w-0 flex-1"
+            id="terminal-line-height"
+            max={MAX_TERMINAL_LINE_HEIGHT}
+            min={MIN_TERMINAL_LINE_HEIGHT}
+            onChange={(event) => {
+              const terminalLineHeight = Number(event.currentTarget.value);
+              if (
+                Number.isInteger(terminalLineHeight) &&
+                terminalLineHeight >= MIN_TERMINAL_LINE_HEIGHT &&
+                terminalLineHeight <= MAX_TERMINAL_LINE_HEIGHT
+              ) {
+                updateSettings({ terminalLineHeight });
+              }
+            }}
+            step={5}
+            style={sliderStyle}
+            type="range"
+            value={settings.terminalLineHeight}
+          />
+        </div>
+      }
+    />
+  );
+}
+
 function WordWrapRow() {
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
@@ -1924,6 +1990,7 @@ function TypographySection() {
       }
     >
       {advanced ? <FontSettingsGroup /> : <SimpleFontRows />}
+      <TerminalLineHeightRow />
       <TerminalCursorRow />
       <WordWrapRow />
     </SettingsSection>

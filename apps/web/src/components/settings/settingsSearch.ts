@@ -276,6 +276,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     macOnly: true,
   },
   {
+    id: "terminal-line-height",
+    title: "Terminal line height",
+    to: "/settings/appearance",
+    searchTerms: ["row spacing leading cell height"],
+  },
+  {
     id: "terminal-cursor",
     title: "Terminal cursor",
     to: "/settings/appearance",

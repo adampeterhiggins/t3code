@@ -979,17 +979,19 @@ Web and desktop support Notion OAuth sign-in in Integrations settings, page atta
 
 Code: [NotionAuth](../apps/server/src/notion/NotionAuth.ts), [NotionApi](../apps/server/src/notion/NotionApi.ts), [NotionPagePicker](../apps/web/src/components/chat/NotionPagePicker.tsx), and [NotionPagePickerSheet](../apps/mobile/src/components/NotionPagePickerSheet.tsx). User guide: [Notion](./user/notion.md).
 
-## Terminal colors and cursor in themes
+## Terminal colors, cursor, and line height
 
 Themes carry the terminal's 16 ANSI colors. A VS Code import reads `terminal.ansi*` and fills unset
 ones with VS Code's defaults, and the theme editor's advanced view edits them under **Terminal
-colors**. Built-in themes keep Ghostty's stock palette. **Terminal cursor** in Appearance settings
-picks a block, bar, or underline cursor. This is web and desktop; mobile keeps its own terminal
-palette.
+colors**. Built-in themes keep Ghostty's stock palette. Appearance settings add **Terminal cursor**
+(block, bar, or underline) and **Terminal line height**, and terminal text is centred on the
+font's line box rather than its ink. This is web and desktop; mobile keeps its own terminal palette
+and metrics.
 
 Code: `TERMINAL_ANSI_ROLES` in [themePalettes.ts](../packages/shared/src/themePalettes.ts),
 `applyPalette` and `setDefaultCursorStyle` in
-[core.ts](../apps/web/src/terminal/ghostty/core.ts), and the ANSI mapping in
+[core.ts](../apps/web/src/terminal/ghostty/core.ts), `measureGhosttyCell` in
+[renderer.ts](../apps/web/src/terminal/ghostty/renderer.ts), and the ANSI mapping in
 [vscodeThemeImport.ts](../apps/web/src/vscodeThemeImport.ts). User guide:
 [Appearance](./user/appearance.md#custom-themes).
 
