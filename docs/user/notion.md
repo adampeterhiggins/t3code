@@ -6,7 +6,7 @@ Connect Notion to attach page contents as context for an agent.
 
 In **Settings > Integrations > Notion** on web or desktop, choose **Connect Notion**, open the sign-in link, and select the workspace and pages to share. Every client connected to that environment can attach those pages. Mobile uses the environment's existing connection.
 
-The environment needs a public Notion integration with **Read content** enabled. Register `http://127.0.0.1:47833/callback` as its OAuth redirect URI. The person running the environment sets `T3CODE_NOTION_CLIENT_ID` and `T3CODE_NOTION_CLIENT_SECRET` there and restarts it. Keep the client secret on the server.
+The environment needs a public Notion integration with **Read content** enabled. Register `http://localhost:47833/callback` as its OAuth redirect URI. The person running the environment sets `T3CODE_NOTION_CLIENT_ID` and `T3CODE_NOTION_CLIENT_SECRET` there and restarts it. Keep the client secret on the server.
 
 If you approve from another device, Notion redirects to a page that may not load. Copy its full address into **Approving from another device?** in the Notion settings to finish sign-in.
 
