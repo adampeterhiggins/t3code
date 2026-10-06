@@ -43,6 +43,7 @@ import {
   DialogTitle,
 } from "./ui/dialog";
 import { DiscoveryList, DiscoveryListRow } from "./ui/discovery-list";
+import { Input } from "./ui/input";
 import { Spinner } from "./ui/spinner";
 import { MenuSelect } from "./ui/menu-select";
 import { toastManager } from "./ui/toast";
@@ -173,6 +174,21 @@ type ImportRow =
   | { kind: "session"; session: AgentSessionSummary; updatedAt: string }
   | { kind: "workspace"; workspace: ConductorWorkspaceSummary; updatedAt: string };
 
+/** Whether a row's titles, prompt, folder, or branch contain the lowercased search text. */
+function matchesSearch(row: ImportRow, needle: string): boolean {
+  if (needle === "") return true;
+  const fields =
+    row.kind === "session"
+      ? [row.session.title, row.session.preview]
+      : [
+          row.workspace.title,
+          row.workspace.name,
+          row.workspace.branch ?? "",
+          ...row.workspace.tabs.map((tab) => tab.title),
+        ];
+  return fields.some((field) => field.toLowerCase().includes(needle));
+}
+
 function rowAction(pending: boolean, imported: boolean) {
   return pending ? (
     <Spinner size="xs" />
@@ -254,6 +270,8 @@ function ImportConversationList({
   const importWorkspace = useAtomCommand(conductorWorkspaceImport, { reportFailure: false });
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [chosenSource, setSource] = useState<ImportSource | null>(null);
+  const [query, setQuery] = useState("");
+  const needle = query.trim().toLowerCase();
 
   const openThread = (threadId: ThreadId) => {
     closeImportConversationDialog();
@@ -359,7 +377,9 @@ function ImportConversationList({
       workspace,
       updatedAt: workspace.updatedAt,
     })),
-  ].toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  ]
+    .filter((row) => matchesSearch(row, needle))
+    .toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   const loading =
     source === "conductor" ? conductorListing.data === undefined : sessions === undefined;
   const sourceOptions = SOURCES.filter((option) => option !== "conductor" || !conductorMissing).map(
@@ -377,6 +397,16 @@ function ImportConversationList({
           count={loading ? undefined : rows.length}
           options={sourceOptions}
         />
+        <div className="min-w-0 flex-1">
+          <Input
+            size="compact"
+            type="search"
+            value={query}
+            placeholder="Search"
+            aria-label="Search conversations and workspaces"
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </div>
       </div>
       {loading ? (
         <div className="flex h-40 items-center justify-center px-6 text-center text-muted-foreground text-sm">
@@ -386,11 +416,13 @@ function ImportConversationList({
         </div>
       ) : rows.length === 0 ? (
         <div className="flex h-40 items-center justify-center px-6 text-center text-muted-foreground text-sm">
-          {source === "conductor"
-            ? "No active Conductor workspaces found for this repository."
-            : source === "all"
-              ? "Nothing to import for this project."
-              : `No ${SOURCE_LABEL[source]} conversations found for this folder.`}
+          {needle !== ""
+            ? `Nothing matches “${query.trim()}”.`
+            : source === "conductor"
+              ? "No active Conductor workspaces found for this repository."
+              : source === "all"
+                ? "Nothing to import for this project."
+                : `No ${SOURCE_LABEL[source]} conversations found for this folder.`}
         </div>
       ) : (
         <div className="max-h-[28rem] overflow-y-auto">
