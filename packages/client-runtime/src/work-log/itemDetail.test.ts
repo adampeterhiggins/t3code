@@ -126,6 +126,25 @@ describe("tool output images", () => {
   });
 });
 
+describe("JSON text results", () => {
+  const textResult = (text: string) => ({
+    ...screenshot,
+    output: { content: [{ type: "text", text }] },
+  });
+
+  it("shows a lone text field as its text, not an escaped string", () => {
+    expect(turnItemOutputText(textResult(JSON.stringify({ fileContent: "# Notes\n\nBody" })))).toBe(
+      "# Notes\n\nBody",
+    );
+  });
+
+  it("indents any other document", () => {
+    expect(turnItemOutputText(textResult('{"id":"a","name":"b"}'))).toBe(
+      '{\n  "id": "a",\n  "name": "b"\n}',
+    );
+  });
+});
+
 describe("file reads", () => {
   const read = (toolName: string, input: unknown, output: unknown) => ({
     ...screenshot,

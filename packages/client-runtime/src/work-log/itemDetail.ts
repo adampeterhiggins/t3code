@@ -57,11 +57,19 @@ function parseJson(text: string): unknown {
   }
 }
 
-/** MCP tools often return JSON as minified text, one document per line. Indent each. */
+/**
+ * MCP tools often return JSON as minified text, one document per line. Indent each.
+ * A document that is a single text field (a file's content, a page's markdown)
+ * shows as that text, since its escaped line breaks would read as one long line.
+ */
 function prettyJsonText(text: string): string {
   const trimmed = text.trim();
   if (!/^[[{]/.test(trimmed)) return text;
   const whole = parseJson(trimmed);
+  if (isRecord(whole)) {
+    const values = Object.values(whole);
+    if (values.length === 1 && typeof values[0] === "string") return values[0];
+  }
   if (whole !== undefined) return JSON.stringify(whole, null, 2);
   const lines = trimmed.split("\n").filter((line) => line.trim());
   const documents = lines.map((line) => parseJson(line.trim()));
