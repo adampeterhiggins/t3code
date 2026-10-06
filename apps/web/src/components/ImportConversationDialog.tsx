@@ -23,7 +23,14 @@ import {
 import { useNavigate } from "@tanstack/react-router";
 import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/reactivity";
-import { FolderGit2Icon, GitBranchIcon, LayersIcon, ListFilterIcon } from "lucide-react";
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  FolderGit2Icon,
+  GitBranchIcon,
+  LayersIcon,
+  ListFilterIcon,
+} from "lucide-react";
 import { useMemo, useState, type ElementType } from "react";
 
 import { formatRelativeTimeLabel } from "~/timestampFormat";
@@ -47,7 +54,7 @@ import {
   DialogPopup,
   DialogTitle,
 } from "./ui/dialog";
-import { DiscoveryList, DiscoveryListRow } from "./ui/discovery-list";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { Input } from "./ui/input";
 import { Spinner } from "./ui/spinner";
 import {
@@ -139,7 +146,7 @@ function ImportConversationDialog({
         if (!open) closeImportConversationDialog();
       }}
     >
-      <DialogPopup className="sm:max-w-xl">
+      <DialogPopup className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Import conversation</DialogTitle>
           <DialogDescription>
@@ -230,14 +237,6 @@ function matchesSearch(row: ImportRow, needle: string): boolean {
   return fields.some((field) => field.toLowerCase().includes(needle));
 }
 
-function rowAction(pending: boolean, imported: boolean) {
-  return pending ? (
-    <Spinner size="xs" />
-  ) : (
-    <span className="text-muted-foreground text-xs">{imported ? "Open" : "Import"}</span>
-  );
-}
-
 /** The project and source rows of the Filters menu. */
 interface ImportFilter<Value extends string> {
   readonly value: Value;
@@ -273,61 +272,103 @@ const CONDUCTOR_AGENT: Record<ConductorAgent, { driver: ProviderDriverKind; labe
   cursor: { driver: ProviderDriverKind.make("cursor"), label: "Cursor" },
 };
 
-/** Project when listing several, folder, tab count with the tabs on hover, and age. */
-function WorkspaceDescription({
-  workspace,
-  projectTitle,
-}: {
-  workspace: ConductorWorkspaceSummary;
-  projectTitle: string | null;
-}) {
+/** "9 tabs", listing each tab's agent, title, and prompt count on hover. */
+function TabCount({ workspace }: { workspace: ConductorWorkspaceSummary }) {
   const tabs = workspace.tabs.length;
   return (
-    <>
-      {projectTitle === null ? null : `${projectTitle} · `}
-      {workspace.name} ·{" "}
-      <Tooltip>
-        <TooltipTrigger
-          render={<span className="underline decoration-dotted underline-offset-2" />}
-        >
-          {tabs} {tabs === 1 ? "tab" : "tabs"}
-        </TooltipTrigger>
-        <TooltipPopup align="start">
-          <ul className="flex max-w-80 flex-col gap-1">
-            {workspace.tabs.map((tab) => (
-              <li key={tab.sessionId} className="flex min-w-0 items-center gap-2">
-                <ProviderInstanceIcon
-                  driverKind={CONDUCTOR_AGENT[tab.agent].driver}
-                  displayName={CONDUCTOR_AGENT[tab.agent].label}
-                  showBadge={false}
-                  iconClassName="size-3"
-                />
-                <span className="min-w-0 flex-1 truncate">{tab.title}</span>
-                <span className="shrink-0 text-muted-foreground">
-                  {tab.messageCount} {tab.messageCount === 1 ? "prompt" : "prompts"}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </TooltipPopup>
-      </Tooltip>{" "}
-      · {formatRelativeTimeLabel(workspace.updatedAt)}
-    </>
+    <Tooltip>
+      <TooltipTrigger render={<span className="underline decoration-dotted underline-offset-2" />}>
+        {tabs} {tabs === 1 ? "tab" : "tabs"}
+      </TooltipTrigger>
+      <TooltipPopup align="start">
+        <ul className="flex max-w-80 flex-col gap-1">
+          {workspace.tabs.map((tab) => (
+            <li key={tab.sessionId} className="flex min-w-0 items-center gap-2">
+              <ProviderInstanceIcon
+                driverKind={CONDUCTOR_AGENT[tab.agent].driver}
+                displayName={CONDUCTOR_AGENT[tab.agent].label}
+                showBadge={false}
+                iconClassName="size-3"
+              />
+              <span className="min-w-0 flex-1 truncate">{tab.title}</span>
+              <span className="shrink-0 text-muted-foreground">
+                {tab.messageCount} {tab.messageCount === 1 ? "prompt" : "prompts"}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </TooltipPopup>
+    </Tooltip>
   );
 }
 
 const sessionKey = (session: AgentSessionSummary) =>
   `${session.providerInstanceId}:${session.providerSessionId}`;
 
-function describeSession(session: AgentSessionSummary, projectTitle: string | null): string {
-  return [
-    projectTitle,
-    session.preview !== session.title ? session.preview : null,
-    `${session.messageCount} ${session.messageCount === 1 ? "message" : "messages"}`,
-    formatRelativeTimeLabel(session.updatedAt),
-  ]
-    .filter(Boolean)
-    .join(" · ");
+const rowKey = (row: ImportRow) =>
+  row.kind === "session" ? sessionKey(row.session) : `conductor:${row.workspace.workspaceId}`;
+
+const rowTitle = (row: ImportRow) =>
+  row.kind === "session" ? row.session.title : row.workspace.title;
+
+const rowSource = (row: ImportRow) =>
+  row.kind === "session" ? PROVIDER_LABEL[row.session.provider] : "Conductor";
+
+type SortKey = "name" | "project" | "source" | "updated";
+interface Sort {
+  readonly key: SortKey;
+  readonly descending: boolean;
+}
+const DEFAULT_SORT: Sort = { key: "updated", descending: true };
+
+function ariaSort(sort: Sort, column: SortKey) {
+  if (sort.key !== column) return "none" as const;
+  return sort.descending ? ("descending" as const) : ("ascending" as const);
+}
+
+function compareRows(left: ImportRow, right: ImportRow, key: SortKey): number {
+  switch (key) {
+    case "name":
+      return rowTitle(left).localeCompare(rowTitle(right));
+    case "project":
+      return left.project.title.localeCompare(right.project.title);
+    case "source":
+      return rowSource(left).localeCompare(rowSource(right));
+    case "updated":
+      return left.updatedAt.localeCompare(right.updatedAt);
+  }
+}
+
+/** A column header that sorts by its column; pressing the sorted one flips the direction. */
+function SortHeader({
+  label,
+  column,
+  sort,
+  onSort,
+}: {
+  label: string;
+  column: SortKey;
+  sort: Sort;
+  onSort: (sort: Sort) => void;
+}) {
+  const active = sort.key === column;
+  const Arrow = sort.descending ? ArrowDownIcon : ArrowUpIcon;
+  return (
+    <button
+      type="button"
+      className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
+      onClick={() =>
+        onSort(
+          active
+            ? { key: column, descending: !sort.descending }
+            : { key: column, descending: column === "updated" },
+        )
+      }
+    >
+      {label}
+      {active ? <Arrow aria-hidden className="size-3" /> : null}
+    </button>
+  );
 }
 
 function ImportConversationList({
@@ -356,6 +397,7 @@ function ImportConversationList({
   const [chosenSource, setSource] = useState<ImportSource | null>(null);
   const [query, setQuery] = useState("");
   const needle = query.trim().toLowerCase();
+  const [sort, setSort] = useState<Sort>(DEFAULT_SORT);
 
   const openThread = (project: EnvironmentProject, threadId: ThreadId) => {
     closeImportConversationDialog();
@@ -489,7 +531,10 @@ function ImportConversationList({
   });
   const visibleRows = rows
     .filter((row) => matchesSearch(row, needle))
-    .toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+    .toSorted((left, right) => {
+      const order = compareRows(left, right, sort.key) * (sort.descending ? -1 : 1);
+      return order !== 0 ? order : right.updatedAt.localeCompare(left.updatedAt);
+    });
   const relevant = listings.flatMap((listing) => [
     ...(showSessions ? [listing.sessions] : []),
     ...(showWorkspaces ? [listing.conductor] : []),
@@ -563,59 +608,125 @@ function ImportConversationList({
                 : `No ${SOURCE_LABEL[source]} conversations found.`}
         </div>
       ) : (
-        <div className="max-h-[28rem] overflow-y-auto">
-          <DiscoveryList>
-            {visibleRows.map((row) => {
-              const projectTitle = showProject ? row.project.title : null;
-              if (row.kind === "session") {
-                const { session } = row;
-                const key = sessionKey(session);
-                return (
-                  <DiscoveryListRow
-                    key={key}
-                    icon={
-                      <ProviderInstanceIcon
-                        driverKind={ProviderDriverKind.make(session.provider)}
-                        displayName={PROVIDER_LABEL[session.provider]}
-                        showBadge={false}
-                        iconClassName="size-4"
-                      />
-                    }
-                    title={session.title}
-                    description={describeSession(session, projectTitle)}
-                    disabled={pendingKey !== null}
-                    aria-label={`${session.threadId ? "Open" : "Import"} ${session.title}`}
-                    onClick={() => void choose(row.project, session)}
-                    action={rowAction(pendingKey === key, session.threadId !== null)}
-                  />
-                );
-              }
-              const { workspace } = row;
-              const key = `conductor:${workspace.workspaceId}`;
-              const agent = CONDUCTOR_AGENT[workspace.tabs[0]!.agent];
-              return (
-                <DiscoveryListRow
-                  key={key}
-                  icon={
-                    <ProviderInstanceIcon
-                      driverKind={agent.driver}
-                      displayName={agent.label}
-                      showBadge={false}
-                      iconClassName="size-4"
-                    />
-                  }
-                  title={workspace.title}
-                  description={
-                    <WorkspaceDescription workspace={workspace} projectTitle={projectTitle} />
-                  }
-                  disabled={pendingKey !== null}
-                  aria-label={`${workspace.threadId ? "Open" : "Import"} ${workspace.title}`}
-                  onClick={() => void chooseWorkspace(row.project, workspace)}
-                  action={rowAction(pendingKey === key, workspace.threadId !== null)}
-                />
-              );
-            })}
-          </DiscoveryList>
+        <div>
+          <div className="max-h-[28rem] overflow-y-auto rounded-xl border border-border/70">
+            <Table className="table-fixed" aria-label="Conversations and workspaces to import">
+              <colgroup>
+                <col />
+                {showProject ? <col className="w-28" /> : null}
+                <col className="w-36" />
+                <col className="w-20" />
+                <col className="w-20" />
+              </colgroup>
+              <TableHeader>
+                <TableRow>
+                  <TableHead aria-sort={ariaSort(sort, "name")}>
+                    <SortHeader label="Name" column="name" sort={sort} onSort={setSort} />
+                  </TableHead>
+                  {showProject ? (
+                    <TableHead aria-sort={ariaSort(sort, "project")}>
+                      <SortHeader label="Project" column="project" sort={sort} onSort={setSort} />
+                    </TableHead>
+                  ) : null}
+                  <TableHead aria-sort={ariaSort(sort, "source")}>
+                    <SortHeader label="Source" column="source" sort={sort} onSort={setSort} />
+                  </TableHead>
+                  <TableHead aria-sort={ariaSort(sort, "updated")}>
+                    <SortHeader label="Updated" column="updated" sort={sort} onSort={setSort} />
+                  </TableHead>
+                  <TableHead>
+                    <span className="sr-only">Action</span>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {visibleRows.map((row) => {
+                  const key = rowKey(row);
+                  const imported =
+                    (row.kind === "session" ? row.session.threadId : row.workspace.threadId) !==
+                    null;
+                  const run = () =>
+                    void (row.kind === "session"
+                      ? choose(row.project, row.session)
+                      : chooseWorkspace(row.project, row.workspace));
+                  const agent =
+                    row.kind === "session"
+                      ? {
+                          driver: ProviderDriverKind.make(row.session.provider),
+                          label: PROVIDER_LABEL[row.session.provider],
+                        }
+                      : CONDUCTOR_AGENT[row.workspace.tabs[0]!.agent];
+                  const subtitle =
+                    row.kind === "session"
+                      ? row.session.preview !== row.session.title
+                        ? row.session.preview
+                        : null
+                      : row.workspace.name;
+                  return (
+                    <TableRow key={key} className="cursor-pointer" onClick={run}>
+                      <TableCell>
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <ProviderInstanceIcon
+                            driverKind={agent.driver}
+                            displayName={agent.label}
+                            showBadge={false}
+                            iconClassName="size-4"
+                          />
+                          <div className="min-w-0">
+                            <div className="truncate font-medium text-foreground text-sm">
+                              {rowTitle(row)}
+                            </div>
+                            {subtitle ? (
+                              <div className="truncate text-muted-foreground">{subtitle}</div>
+                            ) : null}
+                          </div>
+                        </div>
+                      </TableCell>
+                      {showProject ? (
+                        <TableCell>
+                          <div className="truncate text-muted-foreground">{row.project.title}</div>
+                        </TableCell>
+                      ) : null}
+                      <TableCell>
+                        <div className="truncate text-muted-foreground">
+                          {rowSource(row)} ·{" "}
+                          {row.kind === "session" ? (
+                            `${row.session.messageCount} msgs`
+                          ) : (
+                            <TabCount workspace={row.workspace} />
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="truncate text-muted-foreground">
+                          {formatRelativeTimeLabel(row.updatedAt)}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {pendingKey === key ? (
+                          <Spinner size="xs" />
+                        ) : (
+                          <Button
+                            type="button"
+                            size="xs"
+                            variant="ghost"
+                            disabled={pendingKey !== null}
+                            aria-label={`${imported ? "Open" : "Import"} ${rowTitle(row)}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              run();
+                            }}
+                          >
+                            {imported ? "Open" : "Import"}
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
           {pending ? (
             <p className="mt-2 flex items-center gap-2 text-muted-foreground text-xs">
               <Spinner size="xs" /> Still loading some projects.
