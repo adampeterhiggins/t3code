@@ -3443,6 +3443,75 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                 .map((session) => session.id)
             : (providerSwitchPlan?.releaseProviderSessionIds ?? []),
     );
+    // A worktree handoff changes the workspace from inside the running turn,
+    // and the detach below closes that turn's session without a terminal
+    // event. Settle the run as interrupted in this commit, as Stop does for a
+    // dead session: the closed stream then finds the run settled instead of
+    // recording a provider failure (which would also hold the queued
+    // continuation), and the in-flight handoff tool call stops showing as
+    // background work.
+    if (command.type === "thread.metadata.update" && detachSessionIds.size > 0) {
+      const projection = yield* loadProjectionForCommand(
+        command,
+        [
+          "runs",
+          "attempts",
+          "nodes",
+          "providerThreads",
+          "providerTurns",
+          "messages",
+          "turnItems",
+          "subagents",
+          "runtimeRequests",
+        ],
+        {
+          turnItemTypes: [
+            "command_execution",
+            "dynamic_tool",
+            "subagent",
+            "assistant_message",
+            "reasoning",
+          ],
+          turnItemStatuses: ["pending", "running", "waiting"],
+        },
+      );
+      for (const run of projection.runs) {
+        if (run.status !== "running") continue;
+        const providerThread = projection.providerThreads.find(
+          (candidate) => candidate.id === run.providerThreadId,
+        );
+        const providerTurn = projection.providerTurns.findLast(
+          (candidate) => candidate.runAttemptId === run.activeAttemptId,
+        );
+        if (
+          providerThread?.providerSessionId == null ||
+          !detachSessionIds.has(providerThread.providerSessionId) ||
+          providerTurn === undefined
+        ) {
+          continue;
+        }
+        yield* settleInterruptedRun({
+          command,
+          projection,
+          providerTurn,
+          events,
+          effects,
+          now,
+          notice: {
+            title: "Workspace changed",
+            message: `Continuing in ${command.worktreePath ?? "the project checkout"}`,
+          },
+        });
+        yield* settleBackgroundWork({
+          command,
+          events,
+          projection,
+          stoppedProviderThreadId: providerThread.id,
+          throughRunOrdinal: run.ordinal,
+          now,
+        });
+      }
+    }
     if (detachSessionIds.size > 0) {
       const liveSessions = (providerContext?.providerSessions ?? []).filter(
         (session) =>
@@ -8362,7 +8431,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
   const settleBackgroundWork = (input: {
     readonly command: Extract<
       OrchestrationV2ServerCommand,
-      { readonly type: "run.interrupt" | "thread.background-work.settle" }
+      {
+        readonly type: "run.interrupt" | "thread.background-work.settle" | "thread.metadata.update";
+      }
     >;
     readonly events: Ref.Ref<Array<OrchestrationV2DomainEvent>>;
     readonly projection: Pick<
@@ -8460,7 +8531,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
   const settleInterruptedRun = (input: {
     readonly command: Extract<
       OrchestrationV2ServerCommand,
-      { readonly type: "run.interrupt" | "thread.background-work.settle" }
+      {
+        readonly type: "run.interrupt" | "thread.background-work.settle" | "thread.metadata.update";
+      }
     >;
     readonly projection: Pick<
       OrchestrationV2ThreadProjection,
@@ -8477,6 +8550,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     readonly events: Ref.Ref<Array<OrchestrationV2DomainEvent>>;
     readonly effects: Ref.Ref<Array<PendingOrchestrationEffectV2>>;
     readonly now: DateTime.Utc;
+    /** Shown in place of "Run interrupted" when T3 itself ended the run. */
+    readonly notice?: { readonly title: string; readonly message: string };
   }) =>
     Effect.gen(function* () {
       const attempt = input.projection.attempts.find(
@@ -8603,13 +8678,36 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         yield* emitEvent({
           ...base,
           type: "turn-item.updated",
-          payload: RunExecutionService.makeInterruptResultTurnItem({
-            idAllocator,
-            run,
-            rootNode,
-            providerThread,
-            completedAt: input.now,
-          }),
+          payload:
+            input.notice === undefined
+              ? RunExecutionService.makeInterruptResultTurnItem({
+                  idAllocator,
+                  run,
+                  rootNode,
+                  providerThread,
+                  completedAt: input.now,
+                })
+              : {
+                  id: idAllocator.derive.runSignalTurnItem({
+                    runId: run.id,
+                    signal: "detach-notice",
+                  }),
+                  threadId: run.threadId,
+                  runId: run.id,
+                  nodeId: rootNode.id,
+                  providerThreadId: providerThread.id,
+                  providerTurnId: rootNode.providerTurnId,
+                  nativeItemRef: null,
+                  parentItemId: null,
+                  ordinal: run.ordinal * 100 + 98,
+                  status: "completed",
+                  title: input.notice.title,
+                  startedAt: input.now,
+                  completedAt: input.now,
+                  updatedAt: input.now,
+                  type: "system_notice",
+                  message: input.notice.message,
+                },
         });
       }
       const { delegatedCompletion: _delegatedCompletion, ...runWithoutDelegatedCompletion } = run;
