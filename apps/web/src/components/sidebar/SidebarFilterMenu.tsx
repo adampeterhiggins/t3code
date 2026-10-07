@@ -8,7 +8,7 @@
  * - Projects: which projects the list is scoped to. None picked means every project.
  *
  * The trigger carries a count of the narrowings off their default, so a narrowed list is never
- * a mystery.
+ * a mystery. Hovering it opens a preview of those selections.
  */
 import {
   AlarmClockIcon,
@@ -24,7 +24,7 @@ import {
   SettingsIcon,
 } from "lucide-react";
 import * as Schema from "effect/Schema";
-import { type MouseEvent as ReactMouseEvent, type ReactNode, useState } from "react";
+import { type MouseEvent as ReactMouseEvent, type ReactNode, useRef, useState } from "react";
 
 import type { SidebarProjectSnapshot } from "../../sidebarProjectGrouping";
 import type { ThreadGroups } from "@t3tools/contracts/settings";
@@ -44,6 +44,7 @@ import {
   MenuSubTrigger,
   MenuTrigger,
 } from "../ui/menu";
+import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
 import { SidebarHeaderIconButton } from "./SidebarThreadHeader";
 
 /** Stored loosely: groups come and go, so Sidebar.logic's resolveSidebarPages cleans it on read. */
@@ -73,6 +74,9 @@ function SidebarPageIcon(props: { page: SidebarPage; groupStyles: ThreadGroups }
 
 /** Past this many projects the submenu offers a search field. */
 const PROJECT_SEARCH_THRESHOLD = 8;
+
+/** Rows kept in the hover preview before the rest collapse to a count. */
+const FILTER_PREVIEW_ROW_LIMIT = 8;
 
 /** "Only" on the highlighted row: narrow to just that choice. It follows the
  *  label on the same baseline and keeps its width while hidden, so the
@@ -331,6 +335,97 @@ function SidebarOrganisationFilter(props: {
   );
 }
 
+function FilterPreviewSection(props: { label: string; children: ReactNode }) {
+  return (
+    <section className="flex flex-col gap-1">
+      <div className="text-3xs font-semibold tracking-widest text-muted-foreground uppercase">
+        {props.label}
+      </div>
+      <ul className="flex flex-col gap-0.5">{props.children}</ul>
+    </section>
+  );
+}
+
+function FilterPreviewName(props: { icon: ReactNode; label: string }) {
+  return (
+    <li className="flex min-w-0 items-center gap-1.5 text-xs text-popover-foreground">
+      <span className="flex size-3.5 shrink-0 items-center justify-center">{props.icon}</span>
+      <span className="min-w-0 truncate">{props.label}</span>
+    </li>
+  );
+}
+
+function FilterPreviewMore(props: { count: number }) {
+  if (props.count <= 0) return null;
+  return <li className="pl-5 text-xs text-muted-foreground">{props.count} more</li>;
+}
+
+/** The selections off their default, named, so a narrowed list is readable without opening it. */
+function SidebarFilterPreview(props: {
+  pages: readonly SidebarPage[];
+  groupStyles: ThreadGroups;
+  organisations: readonly SidebarOrganisationOption[];
+  scopedOrganisationKeys: readonly string[];
+  projects: readonly SidebarProjectSnapshot[];
+  scopedProjectKeys: readonly string[];
+}) {
+  const pagesFiltered = !(props.pages.length === 1 && props.pages[0] === "threads");
+  const organisationByKey = new Map(props.organisations.map((option) => [option.key, option]));
+  const organisations = props.scopedOrganisationKeys.flatMap((key) => {
+    const option = organisationByKey.get(key);
+    return option ? [option] : [];
+  });
+  const projectByKey = new Map(props.projects.map((project) => [project.projectKey, project]));
+  const projects = props.scopedProjectKeys.flatMap((key) => {
+    const project = projectByKey.get(key);
+    return project ? [project] : [];
+  });
+  const visiblePages = props.pages.slice(0, FILTER_PREVIEW_ROW_LIMIT);
+  const visibleOrganisations = organisations.slice(0, FILTER_PREVIEW_ROW_LIMIT);
+  const visibleProjects = projects.slice(0, FILTER_PREVIEW_ROW_LIMIT);
+
+  return (
+    <div className="flex max-h-80 flex-col gap-2.5 overflow-y-auto p-2.5">
+      {pagesFiltered ? (
+        <FilterPreviewSection label="Show">
+          {visiblePages.map((page) => (
+            <FilterPreviewName
+              key={page}
+              icon={<SidebarPageIcon page={page} groupStyles={props.groupStyles} />}
+              label={sidebarPageLabel(page)}
+            />
+          ))}
+          <FilterPreviewMore count={props.pages.length - visiblePages.length} />
+        </FilterPreviewSection>
+      ) : null}
+      {organisations.length > 0 ? (
+        <FilterPreviewSection label="Organisations">
+          {visibleOrganisations.map((option) => (
+            <FilterPreviewName
+              key={option.key}
+              icon={<BuildingIcon aria-hidden className="size-3.5" />}
+              label={option.label}
+            />
+          ))}
+          <FilterPreviewMore count={organisations.length - visibleOrganisations.length} />
+        </FilterPreviewSection>
+      ) : null}
+      {props.scopedProjectKeys.length > 0 ? (
+        <FilterPreviewSection label="Projects">
+          {visibleProjects.map((project) => (
+            <FilterPreviewName
+              key={project.projectKey}
+              icon={<ProjectFavicon project={project} className="size-3.5" />}
+              label={project.displayName}
+            />
+          ))}
+          <FilterPreviewMore count={props.scopedProjectKeys.length - visibleProjects.length} />
+        </FilterPreviewSection>
+      ) : null}
+    </div>
+  );
+}
+
 export function SidebarFilterMenu(props: {
   pages: readonly SidebarPage[];
   availablePages: readonly SidebarPage[];
@@ -363,26 +458,66 @@ export function SidebarFilterMenu(props: {
   ]
     .filter((part) => part !== null)
     .join(" · ");
-  return (
-    <Menu>
-      <MenuTrigger
-        render={
-          <SidebarHeaderIconButton
-            label={activeCount > 0 ? `Filter threads (${summary})` : "Filter threads"}
-            tooltip={activeCount > 0 ? summary : "Filter threads"}
-            isActive={activeCount > 0}
-          />
-        }
-      >
-        <span className="relative flex shrink-0">
-          <ListFilterIcon className="size-4" />
-          {activeCount > 0 ? (
-            <span className="absolute -right-1.5 -bottom-1 min-w-3 rounded-full bg-primary px-0.5 text-center text-3xs leading-3 font-semibold text-primary-foreground tabular-nums">
-              {activeCount}
-            </span>
-          ) : null}
+  const label = activeCount > 0 ? `Filter threads (${summary})` : "Filter threads";
+  const menuOpenRef = useRef(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const icon = (
+    <span className="relative flex shrink-0">
+      <ListFilterIcon className="size-4" />
+      {activeCount > 0 ? (
+        <span className="absolute -right-1.5 -bottom-1 min-w-3 rounded-full bg-primary px-0.5 text-center text-3xs leading-3 font-semibold text-primary-foreground tabular-nums">
+          {activeCount}
         </span>
-      </MenuTrigger>
+      ) : null}
+    </span>
+  );
+  const button = (
+    <SidebarHeaderIconButton
+      label={label}
+      tooltip={activeCount > 0 ? false : "Filter threads"}
+      isActive={activeCount > 0}
+    />
+  );
+  return (
+    <Menu
+      open={menuOpen}
+      onOpenChange={(open) => {
+        menuOpenRef.current = open;
+        setMenuOpen(open);
+        if (open) setPreviewOpen(false);
+      }}
+    >
+      {activeCount > 0 ? (
+        <PreviewCard
+          open={previewOpen && !menuOpen}
+          onOpenChange={(open) => {
+            if (menuOpenRef.current) return;
+            setPreviewOpen(open);
+          }}
+        >
+          <MenuTrigger render={<PreviewCardTrigger delay={400} closeDelay={120} render={button} />}>
+            {icon}
+          </MenuTrigger>
+          <PreviewCardPopup
+            side="bottom"
+            align="end"
+            sideOffset={8}
+            className="w-max min-w-40 max-w-64"
+          >
+            <SidebarFilterPreview
+              pages={props.pages}
+              groupStyles={props.groupStyles}
+              organisations={props.organisations}
+              scopedOrganisationKeys={props.scopedOrganisationKeys}
+              projects={props.projects}
+              scopedProjectKeys={props.scopedProjectKeys}
+            />
+          </PreviewCardPopup>
+        </PreviewCard>
+      ) : (
+        <MenuTrigger render={button}>{icon}</MenuTrigger>
+      )}
       <MenuPopup align="end" side="bottom" className="min-w-52">
         <SidebarShowFilter
           pages={props.pages}

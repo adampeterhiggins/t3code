@@ -163,13 +163,38 @@ export function SidebarHeaderIconButton({
 }: {
   /** Accessible name; also the tooltip unless `tooltip` says more. */
   label: string;
-  tooltip?: ReactNode;
+  /** `false` skips the tooltip so the caller can show its own hover content. */
+  tooltip?: ReactNode | false;
   className?: string | undefined;
   children?: ReactNode;
 } & Omit<
   ComponentProps<typeof SidebarMenuButton>,
   "children" | "className" | "tooltip" | "aria-label"
 >) {
+  const buttonClassName = cn("relative size-7 shrink-0", className);
+  const content = (
+    <>
+      {children}
+      {/* Coarse-pointer hit area, matching the rest of the sidebar chrome. */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute left-1/2 top-1/2 size-[max(100%,3rem)] -translate-1/2 pointer-fine:hidden"
+      />
+    </>
+  );
+  if (tooltip === false) {
+    return (
+      <SidebarMenuButton
+        size="icon"
+        type="button"
+        aria-label={label}
+        {...rest}
+        className={buttonClassName}
+      >
+        {content}
+      </SidebarMenuButton>
+    );
+  }
   return (
     <Tooltip>
       <TooltipTrigger
@@ -179,16 +204,11 @@ export function SidebarHeaderIconButton({
             type="button"
             aria-label={label}
             {...rest}
-            className={cn("relative size-7 shrink-0", className)}
+            className={buttonClassName}
           />
         }
       >
-        {children}
-        {/* Coarse-pointer hit area, matching the rest of the sidebar chrome. */}
-        <span
-          aria-hidden
-          className="pointer-events-none absolute left-1/2 top-1/2 size-[max(100%,3rem)] -translate-1/2 pointer-fine:hidden"
-        />
+        {content}
       </TooltipTrigger>
       <TooltipPopup side="top">{tooltip}</TooltipPopup>
     </Tooltip>
