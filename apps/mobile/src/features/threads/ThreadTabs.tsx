@@ -48,6 +48,7 @@ import { ThreadStartedByChip } from "./ThreadStartedByChip";
 
 const NEW_TAB_ACTION = "tab:new";
 const CLOSE_TAB_ACTION = "tab:close";
+const RESTART_SESSION_ACTION = "tab:restart-session";
 const LINK_LINEAR_ACTION = "tab:link-linear";
 const HAND_OFF_PREFIX = "tab:hand-off:";
 
@@ -62,7 +63,8 @@ export function clearSelectedThreadTabSources(threadId: ThreadId): void {
 }
 
 /**
- * Switches, opens, and closes a thread's chat tabs; empty tabs also pick sibling context. A
+ * Switches, opens, and closes a thread's chat tabs, and restarts the open tab's agent session;
+ * empty tabs also pick sibling context. A
  * started chat can hand off to any model: a new tab on that model whose draft starts with a
  * summary of this chat, followed by this chat's unsent draft. The group's linked Linear and
  * GitHub issues sit beside the switcher.
@@ -85,6 +87,7 @@ export function ThreadTabs({
   const prepared = usePreparedConnection(environmentId);
   const navigation = useNavigation();
   const archive = useAtomCommand(threadEnvironment.archive, { reportFailure: false });
+  const stopSession = useAtomCommand(threadEnvironment.stopSession, { reportFailure: false });
   const [group, setGroup] = useState<ThreadTabGroup | null>(null);
   const [selected, setSelected] = useState<ReadonlyArray<ThreadId>>(() =>
     selectedThreadTabSources(threadId),
@@ -219,9 +222,29 @@ export function ThreadTabs({
       setBusy(false);
     }
   };
+  // Stopping the provider process keeps the conversation; the next message resumes it in a fresh
+  // one that reloads skills, plugins, and MCP servers.
+  const restartSession = async () => {
+    setBusy(true);
+    try {
+      const result = await stopSession({ environmentId, input: { threadId } });
+      if (result._tag === "Failure") {
+        const error = Cause.squash(result.cause);
+        Alert.alert(
+          "Could not restart agent session",
+          error instanceof Error ? error.message : undefined,
+        );
+        return;
+      }
+      Alert.alert("Agent session will restart", "Your next message starts a fresh session.");
+    } finally {
+      setBusy(false);
+    }
+  };
   const onMenuAction = (id: string) => {
     if (id === NEW_TAB_ACTION) void create();
     else if (id === CLOSE_TAB_ACTION) void close();
+    else if (id === RESTART_SESSION_ACTION) void restartSession();
     else if (id === LINK_LINEAR_ACTION) linearPicker.open();
     else if (id.startsWith(HAND_OFF_PREFIX)) {
       const key = id.slice(HAND_OFF_PREFIX.length);
@@ -274,6 +297,11 @@ export function ThreadTabs({
               })),
               { id: NEW_TAB_ACTION, title: "New tab", image: "plus" },
               { id: CLOSE_TAB_ACTION, title: "Close tab", image: "xmark" },
+              {
+                id: RESTART_SESSION_ACTION,
+                title: "Restart agent session",
+                image: "arrow.clockwise",
+              },
               ...(linear.canLink
                 ? [{ id: LINK_LINEAR_ACTION, title: "Link Linear issue", image: "link" }]
                 : []),

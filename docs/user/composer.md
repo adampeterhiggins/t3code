@@ -190,7 +190,9 @@ Show skills in slash menu**. Only skills enabled for the provider are listed.
 
 After you add or change skills, plugins, or MCP servers, use **Restart agent
 session** in the command palette on web and desktop. The conversation continues,
-and your next message starts the agent again with the new setup.
+and your next message starts the agent again with the new setup. To restart a
+chat tab, use the same item in the tab's menu or the sidebar's right-click menu;
+on mobile it is in the tab switcher.
 
 Provider commands must start the message to run. T3 Code commands such as
 `/model` and `/plan`, and skill mentions, work on any line.

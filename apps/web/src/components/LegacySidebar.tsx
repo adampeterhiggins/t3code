@@ -87,6 +87,7 @@ import { useThreadTabActions } from "./chat/ThreadTabs";
 import { useSplitViewActions } from "./chat/splitPane";
 import { splitMenuAction, useSplitViewStore } from "../splitViewStore";
 import { resolveThreadTabTarget } from "../threadTabRecencyStore";
+import { useRestartAgentSessionWithToast } from "../hooks/useRestartAgentSession";
 import { useOpenPrLink } from "../lib/openPullRequestLink";
 import { releaseProjectDraftUploads } from "../lib/composerDraftUploads";
 import { isTerminalFocused } from "../lib/terminalFocus";
@@ -1297,6 +1298,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   const allProjectThreads = useThreadShellsForProjectRefs(project.memberProjectRefs);
   const { hiddenTabThreads, tabEnvironmentIds } = React.useContext(HiddenTabThreadsContext);
   const { createTab } = useThreadTabActions();
+  const restartAgentSession = useRestartAgentSessionWithToast();
   const splitViewActions = useSplitViewActions();
   const sidebarThreads = useMemo(
     () =>
@@ -2380,6 +2382,11 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
             : []),
           { id: "rename", label: "Rename thread", disabled: !canOperateThread },
           { id: "mark-unread", label: "Mark unread" },
+          {
+            id: "restart-session",
+            label: "Restart agent session",
+            disabled: !canOperateThread,
+          },
           { id: "copy-path", label: "Copy Path" },
           { id: "copy-thread-id", label: "Copy Thread ID" },
           { id: "export-transcript", label: "Export transcript…" },
@@ -2456,6 +2463,11 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         markThreadUnread(threadRef);
         return;
       }
+      if (clicked === "restart-session") {
+        // A row standing for a tab group restarts the tab it opens.
+        await restartAgentSession(resolveThreadTabTarget(threadRef, hiddenTabThreads));
+        return;
+      }
       if (clicked === "copy-path") {
         if (!threadWorkspacePath) {
           toastManager.add(
@@ -2517,11 +2529,13 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       createTab,
       deleteThread,
       handleNewThread,
+      hiddenTabThreads,
       isMobile,
       markThreadUnread,
       memberProjectByScopedKey,
       project.projectKey,
       project.workspaceRoot,
+      restartAgentSession,
       router,
       setOpenMobile,
       splitViewActions,

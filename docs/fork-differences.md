@@ -347,7 +347,11 @@ is its own conversation and provider.
 - **Menus.** The thread right-click menu in both sidebars and the header's thread menu offer
   **New tab**. The sidebar's menu also offers **Close tab** on a thread that has a sibling tab.
   Closing archives the tab's thread and lands on its neighbour (`useThreadTabActions` in
-  `apps/web/src/components/chat/ThreadTabs.tsx`).
+  `apps/web/src/components/chat/ThreadTabs.tsx`). Upstream restarts an agent session only from
+  the command palette, for the open chat; the tab crumb's menu and both sidebars' right-click
+  menus add **Restart agent session** for a tab (a row standing for a tab group restarts the tab
+  it opens). The header's thread menu leaves it out because it acts on the group's original
+  thread (`apps/web/src/hooks/useRestartAgentSession.ts`).
 - **Web header.** The breadcrumb reads `project / thread / tab`. The thread crumb keeps the thread
   action menu and acts on the original thread. The tab crumb switches, creates, and closes tabs. A
   chat with one tab shows a **New tab** button instead of repeating the title. A tab can also be
@@ -391,8 +395,8 @@ is its own conversation and provider.
     being hidden. Their rows show a not-allowed cursor and a tooltip, and only the fork button
     opens them, so a stray click never forks (`matchesModelPickerLock` in `ModelPickerContent.tsx`).
   - The account picker forks the same way when the chosen account cannot take over the tab.
-- **Mobile.** A switcher menu switches, creates, and closes tabs
-  (`apps/mobile/src/features/threads/ThreadTabs.tsx`). An empty tab can attach sibling context when
+- **Mobile.** A switcher menu switches, creates, and closes tabs, and restarts the open tab's
+  agent session (`apps/mobile/src/features/threads/ThreadTabs.tsx`). An empty tab can attach sibling context when
   sending. A started chat's **Hand off** menu forks it into a new tab on any provider's model, the
   same way as the web model picker's fork button. Mobile does not have the header crumb, the `@`
   chip, forking from a message, or the sidebar tab list.

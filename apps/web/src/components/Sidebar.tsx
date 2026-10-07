@@ -154,6 +154,7 @@ import {
 } from "../threadSelectionStore";
 import { useAcknowledgeThreadWoke, useThreadActions } from "../hooks/useThreadActions";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
+import { useRestartAgentSessionWithToast } from "../hooks/useRestartAgentSession";
 import { useTerminalFocus } from "../hooks/useTerminalFocus";
 import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
 import { startNewThreadFromContext } from "../lib/chatThreadActions";
@@ -3554,6 +3555,7 @@ export default function Sidebar() {
   const threads = useThreadShells();
   const { hiddenTabThreads: tabThreadGroups, tabEnvironmentIds } = useHiddenTabThreads(threads);
   const { createTab, closeTab } = useThreadTabActions();
+  const restartAgentSession = useRestartAgentSessionWithToast();
   const splitViewActions = useSplitViewActions();
   const threadViews = useClientSettings((s) => s.sidebarThreadViews);
   const showTabs = useClientSettings((s) => s.sidebarShowTabs);
@@ -6240,6 +6242,7 @@ export default function Sidebar() {
                   }
                 : null,
               split: splitAction,
+              canRestartSession: true,
               isPinned,
               isSettled,
               autoSettleEnabled: thread.autoSettleDisabledAt == null,
@@ -6308,6 +6311,9 @@ export default function Sidebar() {
             return;
           case "close-tab":
             handleCloseTab(threadRef);
+            return;
+          case "restart-session":
+            void restartAgentSession(threadRef);
             return;
           case "open-in-split":
             if (!routeRef) return;
@@ -6512,6 +6518,7 @@ export default function Sidebar() {
       isMobile,
       markThreadUnread,
       openProjectSettings,
+      restartAgentSession,
       projectScopeKeys,
       projectByKey,
       serverConfigs,
