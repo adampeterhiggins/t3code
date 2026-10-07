@@ -126,7 +126,7 @@ export function ServerUpdatesAction({
       if (desktopTargets.length > 0) {
         const confirmed =
           (await requestConfirmDialog(
-            `Update the T3 Code desktop apps on ${desktopTargets.map((target) => target.serverLabel).join(", ")}? They will close and relaunch on those machines.`,
+            `Update the T3 Code desktop apps on ${desktopTargets.map((target) => target.serverLabel).join(", ")}? They will close and relaunch on those machines. Running threads will be paused so you can resume them.`,
           )) ?? true;
         if (!confirmed) return;
       }
@@ -241,7 +241,7 @@ export function ServerUpdateAction({
       // remote machine installs without asking anyone there.
       const confirmed =
         (await requestConfirmDialog(
-          `Update the T3 Code desktop app that runs the ${serverLabel}? It will close and relaunch on that machine.`,
+          `Update the T3 Code desktop app that runs the ${serverLabel}? It will close and relaunch on that machine. Running threads will be paused so you can resume them.`,
         )) ?? true;
       if (!confirmed) {
         return;

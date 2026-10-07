@@ -1,8 +1,11 @@
+// @effect-diagnostics nodeBuiltinImport:off globalDate:off - a signal handler reads the update marker before Effect finalizers run.
 /**
  * Whether this server is going down only to be replaced by an update. Shutdown
  * keeps the managed tunnel across those restarts instead of releasing it.
  */
 import { DESKTOP_UPDATE_RESTART_MARKER_FILE } from "@t3tools/contracts";
+import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
 import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -51,6 +54,31 @@ export const pendingUpdateHandoffExists = Effect.gen(function* () {
     .pipe(Effect.orElseSucceed(() => false));
   return !stopping;
 });
+
+/**
+ * True when this process is about to be replaced by an update. Safe from a
+ * signal handler: it does not remove the desktop marker, so a later reader can
+ * still consume it.
+ */
+export function updateRestartPendingSync(baseDir: string): boolean {
+  const runtimeDir = NodePath.join(baseDir, "runtime");
+  try {
+    const stat = NodeFS.statSync(NodePath.join(runtimeDir, DESKTOP_UPDATE_RESTART_MARKER_FILE));
+    if (Date.now() - stat.mtimeMs < Duration.toMillis(DESKTOP_UPDATE_RESTART_MARKER_TTL)) {
+      return true;
+    }
+  } catch {
+    // No desktop update marker.
+  }
+  try {
+    if (NodeFS.existsSync(NodePath.join(runtimeDir, SERVICE_STOP_MARKER_FILE))) return false;
+    return serviceStateHasPendingUpdate(
+      NodeFS.readFileSync(NodePath.join(runtimeDir, SERVICE_STATE_FILE), "utf8"),
+    );
+  } catch {
+    return false;
+  }
+}
 
 // The desktop app writes its marker right before it stops this server to
 // install an update, whether a remote client or the local app started it.

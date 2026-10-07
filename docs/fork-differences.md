@@ -15,6 +15,16 @@ git log --oneline --no-merges upstream/main..HEAD
 Agents update this page in the same change that adds, changes, or removes a difference. The rule
 is in [AGENTS.md](../AGENTS.md#fork-differences).
 
+## Pause threads on update
+
+Updating the desktop app or a connected server pauses running threads before
+the process restarts. After T3 Code is back, each paused thread offers Resume.
+**Continue threads after restarts** still resumes threads after a crash or
+machine restart, and does not auto-start a thread an update already paused.
+
+Code: [`UpdateThreadPause.ts`](../apps/server/src/orchestration-v2/UpdateThreadPause.ts).
+User guide: [updating.md](./user/updating.md).
+
 ## Custom file applications
 
 Settings → Integrations → Open in can add, edit, and remove applications for one environment,

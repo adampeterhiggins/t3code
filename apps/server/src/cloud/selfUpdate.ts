@@ -67,6 +67,8 @@ export const withRunningThreadContinuation = Effect.fn(
 )(function* (input: {
   readonly mode: ServerConfig.RuntimeMode;
   readonly selfUpdate: ServerSelfUpdate["Service"];
+  /** Stops running threads before the process is replaced, so the user can resume them. */
+  readonly pause?: Effect.Effect<void, ServerSelfUpdateError>;
   readonly prepare: Effect.Effect<ReadonlyArray<ThreadId>, ServerSelfUpdateError>;
   readonly clear: (
     threadIds: ReadonlyArray<ThreadId>,
@@ -91,29 +93,44 @@ export const withRunningThreadContinuation = Effect.fn(
     request,
     reportProgress = () => Effect.void,
   ) => {
+    let paused = false;
     let prepared = false;
     let handoffAccepted = false;
     let continuationThreadIds: ReadonlyArray<ThreadId> = [];
+    const pauseBeforeHandoff = (stage: ServerSelfUpdateProgressStage) =>
+      input.pause !== undefined && input.mode !== "desktop" && stage === "installing" && !paused
+        ? input.pause.pipe(
+            Effect.tap(() =>
+              Effect.sync(() => {
+                paused = true;
+              }),
+            ),
+          )
+        : Effect.void;
     return clearOnError(
       input.selfUpdate
         .update(
           request,
           (stage) =>
-            (request.continueRunningThreads === true &&
-            input.mode !== "desktop" &&
-            stage === "installing" &&
-            !prepared
-              ? input.prepare.pipe(
-                  Effect.tap((threadIds) =>
-                    Effect.sync(() => {
-                      prepared = true;
-                      continuationThreadIds = threadIds;
-                    }),
-                  ),
-                  Effect.asVoid,
-                )
-              : Effect.void
-            ).pipe(Effect.andThen(reportProgress(stage))),
+            pauseBeforeHandoff(stage).pipe(
+              Effect.andThen(
+                request.continueRunningThreads === true &&
+                  input.mode !== "desktop" &&
+                  stage === "installing" &&
+                  !prepared
+                  ? input.prepare.pipe(
+                      Effect.tap((threadIds) =>
+                        Effect.sync(() => {
+                          prepared = true;
+                          continuationThreadIds = threadIds;
+                        }),
+                      ),
+                      Effect.asVoid,
+                    )
+                  : Effect.void,
+              ),
+              Effect.andThen(reportProgress(stage)),
+            ),
           () =>
             Effect.sync(() => {
               handoffAccepted = true;
@@ -148,6 +165,7 @@ export const withRunningThreadContinuation = Effect.fn(
         let continuationThreadIds: ReadonlyArray<ThreadId> = [];
         return yield* clearOnError(
           Effect.gen(function* () {
+            yield* input.pause ?? Effect.void;
             continuationThreadIds = shouldContinue ? yield* input.prepare : [];
             return yield* input.selfUpdate.commitDesktopUpdate(requestId, () =>
               Effect.sync(() => {

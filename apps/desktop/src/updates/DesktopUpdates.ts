@@ -635,12 +635,12 @@ export const make = Effect.gen(function* () {
           // means quitAndInstall's app.quit() exits before the pool's
           // scope cascade has a chance to run its stop finalizer, so the
           // WSL child gets hard-killed by the OS instead of receiving
-          // SIGTERM + grace. Stops run concurrently with the same 5s
-          // budget the primary had on its own.
+          // SIGTERM + grace. The budget covers pausing running threads
+          // before the process exits, so they can be resumed after relaunch.
           const instances = yield* pool.list;
           yield* Effect.forEach(
             instances,
-            (instance) => instance.stop({ timeout: Duration.seconds(5) }),
+            (instance) => instance.stop({ timeout: Duration.seconds(30) }),
             { concurrency: "unbounded" },
           );
           yield* electronUpdater.quitAndInstall({

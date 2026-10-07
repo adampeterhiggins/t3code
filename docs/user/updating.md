@@ -7,12 +7,15 @@ notice.
 
 ## Before you update
 
-Server updates restart the connection and can interrupt active agents and
-terminal commands. Saved threads, settings, and project files remain.
+Server and desktop updates restart the connection. Running threads are paused
+first, so when T3 Code is back you can resume each one from the thread. Saved
+threads, settings, and project files remain.
 
 **Settings → General → Continue threads after restarts** is off by default.
-Enable it to resume supported active threads after an update, crash, or machine
-restart. Changes are saved to connected environments that support this setting;
+Enable it to resume supported threads after a crash or machine restart. An
+application update always pauses running threads for you to resume, including
+when this setting is on. Changes are saved to connected environments that
+support this setting;
 update older servers first. If a supported environment was offline or has a
 different value, use **Apply to all** in Settings after it connects.
 T3 Code must start again on that machine;

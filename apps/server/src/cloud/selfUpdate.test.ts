@@ -161,6 +161,52 @@ it.layer(NodeServices.layer)("server self update", (it) => {
     }),
   );
 
+  it.effect("pauses running threads before the boot-service handoff", () =>
+    Effect.gen(function* () {
+      const events: string[] = [];
+      const selfUpdate = yield* ServerSelfUpdate.withRunningThreadContinuation({
+        mode: "web",
+        selfUpdate: {
+          update: (_input, reportProgress = () => Effect.void) =>
+            reportProgress("downloading").pipe(
+              Effect.andThen(reportProgress("installing")),
+              Effect.as({
+                targetVersion: "1.1.0",
+                method: "boot-service" as const,
+                updateId: "update-id",
+              }),
+            ),
+          commitDesktopUpdate: () => Effect.never,
+        },
+        pause: Effect.sync(() => {
+          events.push("pause");
+        }),
+        prepare: Effect.sync(() => {
+          events.push("prepare");
+          return [ThreadId.make("thread-running")];
+        }),
+        clear: () => Effect.void,
+      });
+
+      yield* selfUpdate.update({ targetVersion: "1.1.0", continueRunningThreads: true }, (stage) =>
+        Effect.sync(() => void events.push(stage)),
+      );
+      yield* selfUpdate.update({ targetVersion: "1.1.0" }, (stage) =>
+        Effect.sync(() => void events.push(stage)),
+      );
+
+      expect(events).toEqual([
+        "downloading",
+        "pause",
+        "prepare",
+        "installing",
+        "downloading",
+        "pause",
+        "installing",
+      ]);
+    }),
+  );
+
   it.effect("marks desktop threads only when the prepared update commits", () =>
     Effect.gen(function* () {
       const threadId = ThreadId.make("thread-running-desktop");
@@ -207,6 +253,41 @@ it.layer(NodeServices.layer)("server self update", (it) => {
         "commit",
         `clear:${threadId}`,
       ]);
+    }),
+  );
+
+  it.effect("pauses desktop threads before the prepared update commits", () =>
+    Effect.gen(function* () {
+      const events: string[] = [];
+      const commitError = new ServerSelfUpdateError({ reason: "install failed" });
+      const selfUpdate = yield* ServerSelfUpdate.withRunningThreadContinuation({
+        mode: "desktop",
+        selfUpdate: {
+          update: () =>
+            Effect.succeed({
+              targetVersion: "1.2.0",
+              method: "desktop-app" as const,
+              desktopUpdateToken: "desktop-token",
+            }),
+          commitDesktopUpdate: () =>
+            Effect.sync(() => events.push("commit")).pipe(Effect.andThen(Effect.fail(commitError))),
+        },
+        pause: Effect.sync(() => {
+          events.push("pause");
+        }),
+        prepare: Effect.sync(() => {
+          events.push("prepare");
+          return [ThreadId.make("thread-running-desktop")];
+        }),
+        clear: () => Effect.void,
+      });
+
+      yield* selfUpdate.update({ targetVersion: "1.2.0", continueRunningThreads: true });
+      expect(events).toEqual([]);
+      expect(yield* selfUpdate.commitDesktopUpdate("desktop-token").pipe(Effect.flip)).toBe(
+        commitError,
+      );
+      expect(events).toEqual(["pause", "prepare", "commit"]);
     }),
   );
 

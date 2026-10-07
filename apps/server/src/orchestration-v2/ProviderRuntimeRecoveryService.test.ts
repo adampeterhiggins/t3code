@@ -578,6 +578,65 @@ it.effect("cancels a stale waiting run when no checkpoint capture can finish it"
   }).pipe(Effect.provide(layer));
 });
 
+it.effect("interrupts a running turn when shutdown is an application update", () => {
+  const threadId = ThreadId.make("thread_update_pause");
+  const runId = RunId.make("run_update_pause");
+  let committedInput: Parameters<EventSink.EventSinkV2["Service"]["commitCommand"]>[0] | null =
+    null;
+  const projection = {
+    thread: { id: threadId },
+    runtimeRequests: [],
+    providerSessions: [],
+    providerThreads: [],
+    providerTurns: [],
+    runs: [
+      {
+        id: runId,
+        status: "running",
+        providerInstanceId: ProviderInstanceId.make("codex"),
+      },
+    ],
+    attempts: [],
+    nodes: [],
+    subagents: [],
+    messages: [],
+    turnItems: [],
+  } as unknown as OrchestrationV2ThreadProjection;
+  const layer = ProviderRuntimeRecovery.layer.pipe(
+    Layer.provide(ServerSettings.layerTest()),
+    Layer.provide(
+      Layer.mergeAll(
+        Layer.mock(ProjectionStore.ProjectionStoreV2)({
+          getRecoveryThreadIds: () => Effect.succeed([threadId]),
+          getRuntimeRecoveryProjection: () => Effect.succeed(projection),
+        }),
+        Layer.mock(EventSink.EventSinkV2)({
+          commitCommand: (input) => {
+            committedInput = input;
+            return Effect.succeed({ committed: true, cancelledEffectCount: 0 } as never);
+          },
+        }),
+        IdAllocator.layer,
+        Layer.mock(EffectWorker.OrchestrationEffectWorkerV2)({
+          runRecoveryOnce: Effect.succeed(false),
+        }),
+        Layer.mock(EffectOutbox.EffectOutboxV2)({
+          listByCommandId: () => Effect.succeed([]),
+          reconcileAfterProcessLoss: Effect.succeed({ requeued: 0, cancelled: 0 }),
+        }),
+      ),
+    ),
+  );
+
+  return Effect.gen(function* () {
+    yield* (yield* ProviderRuntimeRecovery.ProviderRuntimeRecoveryService).reconcile("shutdown", {
+      pausedForUpdate: true,
+    });
+    const runEvent = committedInput?.events.find((event) => event.type === "run.updated");
+    assert.equal(runEvent?.type === "run.updated" ? runEvent.payload.status : null, "interrupted");
+  }).pipe(Effect.provide(layer));
+});
+
 it.effect("closes a secret request card's form when its run is recovered", () => {
   const threadId = ThreadId.make("thread_secret_recovery");
   const runId = RunId.make("run_secret_recovery");

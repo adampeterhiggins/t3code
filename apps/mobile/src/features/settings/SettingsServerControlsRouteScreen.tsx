@@ -465,7 +465,7 @@ function ServerSettingsDetail(props: { readonly page: SettingsPage }) {
                         label="Continue after restart"
                         subtitle={
                           supportsContinuation
-                            ? "Resume interrupted threads after an update or restart."
+                            ? "Resume interrupted threads after a crash or restart. Updates pause them so you can resume."
                             : "Update older servers to control restart continuation."
                         }
                         value={uniform("continueThreadsAfterServerUpdate")}
