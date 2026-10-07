@@ -61,6 +61,21 @@ const contextChipVariants = cva(
     compoundVariants: [
       {
         kind: [
+          "linear-issue",
+          "github-issue",
+          "repository",
+          "notion-page",
+          "slack-thread",
+          "pull-request",
+          "pr-open",
+          "pr-draft",
+          "pr-merged",
+          "pr-closed",
+        ],
+        className: "max-w-[min(24em,100%)]",
+      },
+      {
+        kind: [
           "image",
           "video",
           "file",

@@ -30,6 +30,7 @@ import { PullRequestContextDetails } from "./PullRequestContextDetails";
 import { ContextChip, ContextChipLabel, type ContextChipKind } from "./ContextChip";
 import { Popover, PopoverPopup, PopoverTitle, PopoverTrigger } from "./ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+import { Truncatable } from "./ui/truncatable";
 import { PullRequestLinkPreview } from "./pullRequest/PullRequestLinkPreview";
 import { usePullRequestPreviewTarget } from "~/lib/openPullRequestLink";
 
@@ -97,7 +98,9 @@ export function ContextChipPopover(props: {
         }
       >
         {props.icon}
-        <ContextChipLabel>{props.label}</ContextChipLabel>
+        <ContextChipLabel>
+          <Truncatable>{props.label}</Truncatable>
+        </ContextChipLabel>
       </PopoverTrigger>
       <PopoverPopup side="top" width="lg" padding="compact">
         <PopoverTitle className="sr-only">{props.accessibleLabel}</PopoverTitle>
