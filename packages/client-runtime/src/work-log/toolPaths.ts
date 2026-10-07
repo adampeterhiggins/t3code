@@ -109,11 +109,10 @@ export function resolveToolPath(
   // Repositories linked to a message are cloned into `<root>/.context/<name>`; show the clone as
   // its own root rather than as a folder of the worktree that holds it.
   const [directory, name, ...rest] = relative.split("/");
-  const repository = Boolean(root && directory === DEFAULT_CONTEXT_REPOSITORY_DIRECTORY && name);
-  if (root && repository) {
+  if (root && directory === DEFAULT_CONTEXT_REPOSITORY_DIRECTORY && name) {
     root = {
       path: `${normalize(root.path)}/${directory}/${name}`,
-      label: name!,
+      label: name,
       project: root.project,
     };
     relative = rest.join("/");
@@ -122,8 +121,6 @@ export function resolveToolPath(
     absolutePath,
     rootLabel: root?.label ?? "External",
     project: root?.project ?? null,
-    external: root === undefined,
-    repository,
     segments: relative.split("/").filter(Boolean),
   };
 }

@@ -1,7 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { resolveToolPath, toolPathTextParts } from "@t3tools/client-runtime/work-log/tool-paths";
 import type { EnvironmentId } from "@t3tools/contracts";
-import { CheckIcon, CopyIcon, FolderGit2Icon, GitBranchIcon } from "lucide-react";
+import { CheckIcon, CopyIcon } from "lucide-react";
 import { useState } from "react";
 
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
@@ -29,29 +29,14 @@ function ToolPathBreadcrumb({ path }: { path: NonNullable<ReturnType<typeof reso
         render={
           <button
             type="button"
-            className="inline-flex max-w-full cursor-pointer flex-wrap items-baseline gap-x-1 rounded-sm text-left font-mono text-2xs leading-relaxed focus-visible:outline-2 focus-visible:outline-ring"
+            className="inline max-w-full cursor-pointer rounded-sm text-left font-mono text-2xs leading-relaxed wrap-anywhere focus-visible:outline-2 focus-visible:outline-ring"
           />
         }
       >
-        <span className="inline-flex max-w-full items-center gap-1 rounded bg-accent/60 px-1 py-0.5 text-accent-foreground">
-          {path.repository ? (
-            <FolderGit2Icon aria-hidden className="size-3 shrink-0" />
-          ) : !path.external ? (
-            <GitBranchIcon aria-hidden className="size-3 shrink-0" />
-          ) : null}
-          <span className="wrap-anywhere">{path.rootLabel}</span>
+        <span className="underline decoration-muted-foreground/60 decoration-dotted underline-offset-2">
+          {path.rootLabel}
         </span>
-        {path.segments.map((segment, index) => (
-          <span
-            key={path.segments.slice(0, index + 1).join("/")}
-            className="inline-flex min-w-0 gap-1"
-          >
-            <span aria-hidden className="text-muted-foreground/60">
-              /
-            </span>
-            <span className="wrap-anywhere">{segment}</span>
-          </span>
-        ))}
+        {path.segments.map((segment) => `/${segment}`).join("")}
       </PopoverTrigger>
       <PopoverPopup width="lg" padding="compact" tooltipStyle align="start">
         <div
