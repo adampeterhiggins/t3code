@@ -25,10 +25,10 @@ import {
   conductorScriptMenuLabel,
   getTerminalStatusLabel,
   projectScriptMenuIcon,
-  projectScriptMenuLabel,
   type ConductorScriptMenuItem,
   type TerminalMenuSession,
 } from "../terminal/terminalMenu";
+import { projectScriptMenuLabel } from "@t3tools/shared/projectScripts";
 
 function truncateMiddle(value: string, maxLength: number): string {
   if (value.length <= maxLength) {
