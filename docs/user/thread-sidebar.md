@@ -173,7 +173,7 @@ pick them under **Show**. Pick as many as you like, or **Only** to show one; eac
 own titled group below your live threads. **Organisations** narrows the list to repositories
 owned by the people or organisations you pick, read from each project's Git remote, and
 **Projects** narrows it to the projects you pick. On web and desktop, the filter button shows how
-many filters are on.
+many filters are on, and hovering it lists the ones that are selected.
 
 On web and desktop, while only **Threads** is shown, drag a thread up into the pinned section to
 pin it at the spot you drop it; drag a pinned thread down into the active list to unpin it. Dragging a pinned thread out of the pinned section does not

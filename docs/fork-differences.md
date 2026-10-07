@@ -508,8 +508,9 @@ it to repository owners, read per checkout from `repositoryIdentity` (a fork cou
 remote); and **Projects** scopes it to some projects. **Only**, on the highlighted row, picks just that one. Threads alone is the
 default; other picks list as titled sections below live threads, so snoozed and settled threads no longer sit in shelves under
 live work, and the drag targets for settling and waking are gone. Dragging to pin or reorder
-works while only Threads is shown. The button shows a count of narrowings off their default. A
-thread's **Filter by project** menu item still narrows the list to that one project. Mobile's
+works while only Threads is shown. The button shows a count of narrowings off their default,
+and hovering it lists the selected pages, organisations, and projects. A thread's **Filter by
+project** menu item still narrows the list to that one project. Mobile's
 thread list filter menu has the same **Show** submenu.
 
 Code: [`SidebarFilterMenu.tsx`](../apps/web/src/components/sidebar/SidebarFilterMenu.tsx),
