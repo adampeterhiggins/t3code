@@ -29,7 +29,7 @@ import { sanitizeComposerContextLabel } from "@t3tools/shared/composerContextRef
 import { useAtomValue } from "@effect/atom-react";
 import * as Option from "effect/Option";
 import { useNavigate } from "@tanstack/react-router";
-import { Columns2Icon, PlusIcon, XIcon } from "lucide-react";
+import { Columns2Icon, PlusIcon, RotateCcwIcon, XIcon } from "lucide-react";
 import {
   type ComponentProps,
   useCallback,
@@ -40,6 +40,7 @@ import {
 } from "react";
 
 import { useLocalStorage } from "../../hooks/useLocalStorage";
+import { useRestartAgentSessionWithToast } from "../../hooks/useRestartAgentSession";
 import { useClientSettings } from "../../hooks/useSettings";
 import { useThreadActions } from "../../hooks/useThreadActions";
 import { useComposerDraftStore } from "../../composerDraftStore";
@@ -277,7 +278,8 @@ function TabMenuLabel(props: {
 }
 
 /**
- * Breadcrumb segment naming the open tab; its menu switches, opens, or closes tabs.
+ * Breadcrumb segment naming the open tab; its menu switches, opens, or closes tabs, and restarts
+ * the open tab's agent session.
  * A "new tab" button always follows it; with a single tab it is only that button.
  */
 export function ThreadTabMenu({
@@ -294,6 +296,7 @@ export function ThreadTabMenu({
   const prepared = usePreparedConnection(environmentId);
   const navigate = useNavigate();
   const { createTab, closeTab } = useThreadTabActions();
+  const restartAgentSession = useRestartAgentSessionWithToast();
   const [busy, setBusy] = useState(false);
   const currentLabel = useTabLabel(environmentId, group, threadId);
   const splitPaneFocus = useSplitPaneFocus();
@@ -340,6 +343,9 @@ export function ThreadTabMenu({
 
   const create = () =>
     void run(() => createTab(scopeThreadRef(environmentId, threadId), modelSelection));
+
+  const restart = () =>
+    void run(() => restartAgentSession(scopeThreadRef(environmentId, threadId)));
 
   const newTabButton = (
     <Tooltip>
@@ -432,6 +438,10 @@ export function ThreadTabMenu({
           <MenuItem disabled={busy || Option.isNone(prepared)} onClick={create}>
             <PlusIcon />
             New tab
+          </MenuItem>
+          <MenuItem disabled={busy || Option.isNone(prepared)} onClick={restart}>
+            <RotateCcwIcon />
+            Restart agent session
           </MenuItem>
         </MenuPopup>
       </Menu>

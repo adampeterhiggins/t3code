@@ -33,6 +33,7 @@ export type ThreadActionMenuId =
   | "rename"
   | "regenerate-title"
   | "mark-unread"
+  | "restart-session"
   | "copy"
   | "copy-path"
   | "copy-branch"
@@ -103,6 +104,11 @@ export interface ThreadActionMenuState {
    * it is in. Null where neither applies, such as the routed chat outside a split.
    */
   readonly split?: "open" | "close" | null;
+  /**
+   * Offers restarting the thread's agent session. Off for the chat header, whose menu acts on a
+   * tab group's root thread rather than the open tab.
+   */
+  readonly canRestartSession?: boolean;
   readonly isPinned: boolean;
   readonly isSettled: boolean;
   /** False while the user has turned automatic settlement off for this thread. */
@@ -250,6 +256,9 @@ export function buildThreadActionMenuItems(
         ]
       : []),
     { id: "mark-unread", label: "Mark unread", icon: "mail-open" },
+    ...(state.canRestartSession
+      ? [{ id: "restart-session" as const, label: "Restart agent session", icon: "rotate-ccw" }]
+      : []),
     ...(state.projectFilter
       ? [
           {
