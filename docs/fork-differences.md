@@ -534,7 +534,9 @@ live work, and the drag targets for settling and waking are gone. On web and des
 section's title collapses it to a count, remembered per client; the open thread stays listed under a
 collapsed title. Dragging to pin or reorder
 works while only Threads is shown. The button shows a count of narrowings off their default,
-and hovering it lists the selected pages, organisations, and projects. A thread's **Filter by
+and hovering it lists the selected pages, organisations, and projects. Under the header, each
+of those selections shows as a pill with an × that drops it, plus **Clear all** once there are
+several. A thread's **Filter by
 project** menu item still narrows the list to that one project. Mobile's
 thread list filter menu has the same **Show** submenu.
 

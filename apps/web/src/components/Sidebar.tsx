@@ -332,6 +332,7 @@ import { SidebarAttentionInbox } from "./sidebar/SidebarAttentionInbox";
 import { SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
 import {
   SidebarFilterMenu,
+  SidebarFilterPills,
   SidebarPagesSchema,
   sidebarPageLabel,
 } from "./sidebar/SidebarFilterMenu";
@@ -6843,6 +6844,17 @@ export default function Sidebar() {
                   />
                 ) : null
               }
+            />
+            <SidebarFilterPills
+              pages={sidebarPages}
+              groupStyles={threadGroups}
+              onPagesChange={setSidebarPages}
+              organisations={organisationOptions}
+              scopedOrganisationKeys={scopedOrganisationKeys}
+              onScopedOrganisationKeysChange={setOrganisationKeys}
+              projects={projectGroups}
+              scopedProjectKeys={projectScopeKeys}
+              onScopedProjectKeysChange={setProjectScopeKeys}
             />
           </SidebarGroup>
         }
