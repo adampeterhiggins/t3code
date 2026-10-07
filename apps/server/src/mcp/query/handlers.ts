@@ -18,6 +18,7 @@ import {
   type PageRequest,
   type Window,
 } from "./store.ts";
+import * as McpToolAccess from "../McpToolAccess.ts";
 import { QueryToolError, QueryToolkit } from "./tools.ts";
 
 const GUIDE = [
@@ -429,4 +430,30 @@ const make = Effect.gen(function* () {
   });
 });
 
-export const QueryToolkitHandlersLive = QueryToolkit.toLayer(make);
+export const QueryToolkitHandlersLive = McpToolAccess.toLayer(
+  QueryToolkit,
+  make.pipe(
+    Effect.map((handlers) => ({
+      get_environment: McpToolAccess.reads(handlers.get_environment),
+      get_activity_timeline: McpToolAccess.reads(handlers.get_activity_timeline),
+      list_projects: McpToolAccess.reads(handlers.list_projects),
+      get_project: McpToolAccess.reads(handlers.get_project),
+      list_threads: McpToolAccess.reads(handlers.list_threads),
+      get_thread: McpToolAccess.reads(handlers.get_thread),
+      list_turns: McpToolAccess.reads(handlers.list_turns),
+      get_turn: McpToolAccess.reads(handlers.get_turn),
+      list_messages: McpToolAccess.reads(handlers.list_messages),
+      get_message: McpToolAccess.reads(handlers.get_message),
+      search: McpToolAccess.reads(handlers.search),
+      list_activities: McpToolAccess.reads(handlers.list_activities),
+      get_activity: McpToolAccess.reads(handlers.get_activity),
+      get_subagent_transcript: McpToolAccess.reads(handlers.get_subagent_transcript),
+      list_plans: McpToolAccess.reads(handlers.list_plans),
+      get_plan: McpToolAccess.reads(handlers.get_plan),
+      get_turn_diff: McpToolAccess.reads(handlers.get_turn_diff),
+      list_pull_requests: McpToolAccess.reads(handlers.list_pull_requests),
+      get_pull_request: McpToolAccess.reads(handlers.get_pull_request),
+      get_usage_summary: McpToolAccess.reads(handlers.get_usage_summary),
+    })),
+  ),
+);

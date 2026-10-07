@@ -10,6 +10,7 @@ import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime"
 import {
   DEFAULT_UNIFIED_SETTINGS,
   type AcpRegistrySearchAgent,
+  AuthProvidersManageScope,
   ProviderInstanceId,
   ProviderDriverKind,
   type EnvironmentId,
@@ -27,6 +28,7 @@ import { cn } from "../../lib/utils";
 import { normalizeProviderAccentColor } from "../../providerInstances";
 import { EMPTY_SERVER_PROVIDERS, serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { readEnvironmentScope, useEnvironmentScope } from "../../state/session";
 import { Button } from "../ui/button";
 import { ChatGptConnectionButton } from "./ChatGptConnectionButton";
 import { Dialog } from "../ui/dialog";
@@ -124,6 +126,7 @@ export function AddProviderInstanceDialog({
     reportFailure: false,
     reportDefect: false,
   });
+  const canManageProviders = useEnvironmentScope(environmentId, AuthProvidersManageScope);
 
   const [wizardStep, setWizardStep] = useState(0);
   const [addingChatGptAccount, setAddingChatGptAccount] = useState(false);
@@ -327,6 +330,7 @@ export function AddProviderInstanceDialog({
   };
 
   const handleSave = async () => {
+    if (!readEnvironmentScope(environmentId, AuthProvidersManageScope)) return;
     if (isSaving || createdInstanceId) return;
     setHasAttemptedSubmit(true);
     if (instanceIdError !== null || (isAcpRegistry && acpSelectionError !== null)) return;
@@ -752,7 +756,11 @@ export function AddProviderInstanceDialog({
                   Next
                 </Button>
               ) : (
-                <Button size="sm" disabled={isSaving} onClick={() => void handleSave()}>
+                <Button
+                  size="sm"
+                  disabled={isSaving || !canManageProviders}
+                  onClick={() => void handleSave()}
+                >
                   {isSaving
                     ? "Adding..."
                     : isAcpRegistry && !isLocalAcp

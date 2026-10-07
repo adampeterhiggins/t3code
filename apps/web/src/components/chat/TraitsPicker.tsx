@@ -597,14 +597,16 @@ export const TraitsPicker = memo(function TraitsPicker({
   isComposerOwned,
   size = "sm",
   hidden = false,
+  disabled = false,
   ...persistence
 }: TraitsMenuContentProps &
   TraitsPersistence & {
     size?: ComposerControlSize;
     hidden?: boolean;
+    disabled?: boolean;
   }) {
   const composerFloatingLayerProps = useComposerMenuProps();
-  const [isMenuOpen, setIsMenuOpen] = useComposerMenuState(hidden);
+  const [isMenuOpen, setIsMenuOpen] = useComposerMenuState(hidden || disabled);
   const {
     visibleDescriptors,
     primarySelectDescriptor,
@@ -644,7 +646,7 @@ export const TraitsPicker = memo(function TraitsPicker({
     <Menu
       open={isMenuOpen}
       onOpenChange={(open) => {
-        setIsMenuOpen(open);
+        setIsMenuOpen(open && !disabled);
       }}
     >
       <Tooltip>
@@ -653,6 +655,7 @@ export const TraitsPicker = memo(function TraitsPicker({
             <MenuTrigger
               render={
                 <ComposerControl
+                  disabled={disabled}
                   aria-label={namedLabel}
                   data-composer-shortcut={
                     isComposerOwned && primarySelectDescriptor?.standalone !== true

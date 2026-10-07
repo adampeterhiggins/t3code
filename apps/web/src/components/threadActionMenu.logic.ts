@@ -82,6 +82,7 @@ export function buildDraftActionMenuItems(options: {
 }
 
 export interface ThreadActionMenuState {
+  readonly canOperate: boolean;
   readonly branch: string | null;
   /**
    * Project scoping for the thread list. Null on surfaces with no scoped
@@ -130,6 +131,22 @@ export interface ThreadActionMenuState {
   readonly snoozePresets: ReadonlyArray<SnoozePreset>;
 }
 
+/** Local navigation, read markers, and copying remain available to read-only clients. */
+export function threadActionRequiresOperate(action: ThreadActionMenuId): boolean {
+  return ![
+    "new-thread-on-branch",
+    "project-settings",
+    "mark-unread",
+    "open-in-split",
+    "close-split",
+    "export-transcript",
+    "copy",
+    "copy-path",
+    "copy-branch",
+    "copy-thread-id",
+  ].includes(action);
+}
+
 /**
  * Single source for the per-thread action menu: the sidebar row's right-click
  * menu and the chat header menu share labels, ordering, and capability gating.
@@ -138,7 +155,7 @@ export interface ThreadActionMenuState {
 export function buildThreadActionMenuItems(
   state: ThreadActionMenuState,
 ): ReadonlyArray<ContextMenuItem<ThreadActionMenuId>> {
-  return [
+  const items: ReadonlyArray<ContextMenuItem<ThreadActionMenuId>> = [
     ...(state.tabs ? [{ id: "new-tab" as const, label: "New tab", icon: "plus" }] : []),
     ...(state.split === "open"
       ? [{ id: "open-in-split" as const, label: "Open in split view", icon: "columns-2" }]
@@ -315,6 +332,19 @@ export function buildThreadActionMenuItems(
       icon: "trash",
     },
   ];
+  return state.canOperate
+    ? items
+    : items.map((item) =>
+        threadActionRequiresOperate(item.id)
+          ? {
+              ...item,
+              disabled: true,
+              ...(item.children
+                ? { children: item.children.map((child) => ({ ...child, disabled: true })) }
+                : {}),
+            }
+          : item,
+      );
 }
 
 /**

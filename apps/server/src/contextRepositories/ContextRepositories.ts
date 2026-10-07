@@ -438,7 +438,7 @@ export const make = Effect.gen(function* () {
       })
       .pipe(
         Effect.mapError(
-          (error) => new ContextRepositoryError({ detail: error.detail, cause: error }),
+          (error) => new ContextRepositoryError({ detail: error.message, cause: error }),
         ),
         Effect.flatMap((result) =>
           decodeRawRepositoryList(result.stdout.trim() || "[]").pipe(
