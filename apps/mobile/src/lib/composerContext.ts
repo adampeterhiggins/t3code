@@ -1,4 +1,5 @@
 import { serializeLegacyContextMessage } from "@t3tools/shared/composerContextLegacySend";
+import { parseChangeRequestUrl } from "@t3tools/shared/changeRequestUrl";
 import { filePreviewKind } from "@t3tools/shared/filePreview";
 import { videoMimeType } from "@t3tools/shared/video";
 import {
@@ -130,7 +131,10 @@ export function pullRequestComposerContext(
     version: 1,
     kind: "review-comment",
     contextId: ComposerContextId.make(id),
-    label: `#${metadata.number}`,
+    label: sanitizeComposerContextLabel(
+      `${parseChangeRequestUrl(metadata.url)?.repository ?? ""}#${metadata.number}`,
+      "review-comment",
+    ),
     sectionId: `pull-request:${metadata.number}`,
     sectionTitle: `PR #${metadata.number}`,
     filePath: `PR #${metadata.number}`,

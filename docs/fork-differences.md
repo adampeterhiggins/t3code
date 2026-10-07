@@ -603,7 +603,10 @@ switcher (`apps/mobile/src/features/threads/ThreadLinearLink.tsx`).
 The attach menu's pull request option, also in the web command palette, opens a searchable picker
 ([`PullRequestAttachPicker.tsx`](../apps/web/src/components/chat/PullRequestAttachPicker.tsx)) and
 inserts the same context chip as picking the pull request from the `#` menu. It is not a thread
-link. Right-clicking a row offers **Attach a comment…**, which lists that pull request's comments
+link. Pull request chips include the repository and number, such as `owner/repository#271`
+([web/desktop labels](../apps/web/src/lib/composerContextRecords.ts),
+[mobile labels](../apps/mobile/src/lib/composerContext.ts)). Right-clicking a row offers
+**Attach a comment…**, which lists that pull request's comments
 (Backspace on an empty search goes back) and attaches the picked one as the same chip a pasted
 comment link makes.
 

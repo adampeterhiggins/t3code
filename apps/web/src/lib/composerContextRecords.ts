@@ -22,6 +22,7 @@ import type {
   RepositoryContextRecord,
 } from "@t3tools/contracts";
 import { upgradeLegacyContextMessage } from "@t3tools/shared/composerContextLegacy";
+import { parseChangeRequestUrl } from "@t3tools/shared/changeRequestUrl";
 import { encodeComposerContextFragment } from "@t3tools/shared/composerContextClipboard";
 import {
   collectComposerContextReferences,
@@ -72,7 +73,10 @@ function basename(filePath: string): string {
 export function reviewCommentContextLabel(comment: ReviewCommentPresentation): string {
   const pullRequestNumber = pullRequestContextNumber(comment);
   if (isPullRequestSummaryContext(comment) && pullRequestNumber !== null) {
-    return `#${pullRequestNumber}`;
+    const repository = comment.pullRequest
+      ? parseChangeRequestUrl(comment.pullRequest.url)?.repository
+      : undefined;
+    return `${repository ?? ""}#${pullRequestNumber}`;
   }
   const diffRange = /^([+-])(\d+)(?: to \1(\d+))?$/u.exec(comment.rangeLabel);
   const rangeLabel = diffRange

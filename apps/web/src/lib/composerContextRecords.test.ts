@@ -333,7 +333,14 @@ describe("composerContextRecords", () => {
     };
 
     expect(isPullRequestSummaryContext(summary)).toBe(true);
-    expect(reviewCommentContextLabel(summary)).toBe("#42");
+    expect(reviewCommentContextLabel(summary)).toBe("pingdotgg/t3code#42");
+    expect(reviewCommentContextLabel({ ...summary, pullRequest: undefined })).toBe("#42");
+    expect(
+      reviewCommentContextLabel({
+        ...summary,
+        pullRequest: { ...summary.pullRequest, url: "invalid" },
+      }),
+    ).toBe("#42");
     expect(pullRequestContextDisplayState(summary)).toBe("open");
     expect(pullRequestContextKindLabel(summary)).toBe("Open pull request");
     expect(
