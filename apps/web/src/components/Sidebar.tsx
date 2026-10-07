@@ -1212,7 +1212,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   /** The tab the hidden-tabs row opens; the group thread still owns ordering and selection. */
   displayThread: SidebarThreadSummary;
   variant: "card" | "slim";
-  // Settled rows un-settle, snoozed rows wake, hidden rows unhide, and cards settle.
+  // The category determines the action independently of the row layout.
   variantAction: SidebarRowAction;
   // False on environments whose server predates thread.settle/unsettle:
   // the lifecycle affordances hide entirely rather than fail on click.
@@ -1604,6 +1604,39 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     },
     [onUnhide, rowThreadRef],
   );
+  const rowAction =
+    variantAction === "unhide"
+      ? {
+          label: "Unhide thread",
+          text: "Unhide",
+          Icon: EyeIcon,
+          onClick: handleUnhideClick,
+          supported: true,
+        }
+      : variantAction === "unsnooze"
+        ? {
+            label: "Wake thread now",
+            text: "Wake",
+            Icon: AlarmClockOffIcon,
+            onClick: handleUnsnoozeClick,
+            supported: props.snoozeSupported,
+          }
+        : variantAction === "unsettle"
+          ? {
+              label: "Un-settle thread",
+              text: "Un-settle",
+              Icon: Undo2Icon,
+              onClick: handleUnsettleClick,
+              supported: props.settlementSupported,
+            }
+          : {
+              label: "Settle thread",
+              text: "Settle",
+              Icon: CheckIcon,
+              onClick: handleSettleClick,
+              supported: props.settlementSupported,
+            };
+  const RowActionIcon = rowAction.Icon;
   const handleUnpinClick = useCallback(
     (event: ReactMouseEvent) => {
       event.preventDefault();
@@ -2243,11 +2276,16 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                             ) : null}
                           </span>
                         )
-                      ) : unifyTabs ? null : (
+                      ) : unifyTabs ? null : variantAction === "unsnooze" &&
+                        props.snoozeWakeLabelText !== null ? (
+                        props.snoozeWakeLabelText
+                      ) : variantAction === "unsettle" ? (
+                        settledTimeLabel(thread)
+                      ) : (
                         threadTimeLabel(thread)
                       )}
                     </span>
-                    {props.settlementSupported ||
+                    {rowAction.supported ||
                     showSnoozeButton ||
                     hasUnsentDraft ||
                     onNewTab ||
@@ -2305,14 +2343,14 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                             timestampFormat={props.timestampFormat}
                           />
                         ) : null}
-                        {props.settlementSupported ? (
+                        {rowAction.supported ? (
                           <Tooltip>
                             <TooltipTrigger
                               render={
                                 <button
                                   type="button"
-                                  aria-label="Settle thread"
-                                  onClick={handleSettleClick}
+                                  aria-label={rowAction.label}
+                                  onClick={rowAction.onClick}
                                   onPointerDown={handleActionPointerDown}
                                   className={cn(
                                     "inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground",
@@ -2322,10 +2360,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                                 />
                               }
                             >
-                              <CheckIcon className="size-3.5" />
-                              Settle
+                              <RowActionIcon className="size-3.5" />
+                              {rowAction.text}
                             </TooltipTrigger>
-                            <TooltipPopup>Settle thread</TooltipPopup>
+                            <TooltipPopup>{rowAction.label}</TooltipPopup>
                           </Tooltip>
                         ) : null}
                         {showUnpinnedPinAction ? (
@@ -3449,6 +3487,7 @@ export default function Sidebar() {
   const { hiddenTabThreads: tabThreadGroups, tabEnvironmentIds } = useHiddenTabThreads(threads);
   const { createTab, closeTab } = useThreadTabActions();
   const splitViewActions = useSplitViewActions();
+  const threadViews = useClientSettings((s) => s.sidebarThreadViews);
   const showTabs = useClientSettings((s) => s.sidebarShowTabs);
   const tabLimit = useClientSettings((s) => s.sidebarTabLimit);
   const tabSortOrder = useClientSettings((s) => s.sidebarTabSortOrder);
@@ -4250,7 +4289,15 @@ export default function Sidebar() {
     >();
     if (listedTabsByRowKey.size === 0) return layouts;
     const cardByKey = new Map(
-      [...pinnedThreads, ...activeThreads].map((thread) => [sidebarThreadKey(thread), thread]),
+      [
+        ...(threadViews.pinned === "card" ? pinnedThreads : []),
+        ...(threadViews.active === "card" ? activeThreads : []),
+        ...(threadViews.working === "card" ? workingThreads : []),
+        ...(threadViews.grouped === "card" ? visibleGroups.flatMap((group) => group.threads) : []),
+        ...(threadViews.hidden === "card" ? visibleHiddenThreads : []),
+        ...(threadViews.snoozed === "card" ? visibleSnoozedThreads : []),
+        ...(threadViews.settled === "card" ? renderedSettledThreads : []),
+      ].map((thread) => [sidebarThreadKey(thread), thread]),
     );
     for (const [rowKey, rowTabs] of listedTabsByRowKey) {
       const card = cardByKey.get(rowKey);
@@ -4271,6 +4318,12 @@ export default function Sidebar() {
     return layouts;
   }, [
     activeThreads,
+    workingThreads,
+    visibleGroups,
+    visibleHiddenThreads,
+    visibleSnoozedThreads,
+    renderedSettledThreads,
+    threadViews,
     expandedTabRowKey,
     heldTabOrder,
     listedTabsByRowKey,
@@ -6720,17 +6773,8 @@ export default function Sidebar() {
                         const threadKey = scopedThreadKey(
                           scopeThreadRef(thread.environmentId, thread.id),
                         );
-                        // Settled and snoozed are the ONLY things that collapse a
-                        // row: every other thread is a full card. Density comes
-                        // from users (or the auto rules) actually parking work,
-                        // not from the sidebar second-guessing what still matters.
-                        // Working rows stay cards so their live status shows.
-                        const isCard =
-                          section === "active" ||
-                          section === "pinned" ||
-                          section === "working" ||
-                          section === "grouped";
-                        const rowVariant = isCard ? "card" : "slim";
+                        const rowVariant = threadViews[section];
+                        const isCard = rowVariant === "card";
                         const rowTabs = tabsByRowKey.get(threadKey);
                         const rowTabsOpen = listedTabsByRowKey.has(threadKey);
                         const rowTabLayout = tabLayoutByRowKey.get(threadKey);
@@ -6746,7 +6790,7 @@ export default function Sidebar() {
                             thread={thread}
                             displayThread={displayThread}
                             variant={rowVariant}
-                            // Snoozed rows wake, settled rows un-settle, and cards settle.
+                            // Each category keeps its action in either view.
                             variantAction={
                               section === "hidden"
                                 ? "unhide"

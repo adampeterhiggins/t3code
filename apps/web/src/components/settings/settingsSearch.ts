@@ -305,6 +305,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["combine matching repositories environments sidebar"],
   },
   {
+    id: "sidebar-thread-views",
+    title: "Thread views",
+    to: "/settings/general",
+    searchTerms: [
+      "sidebar detailed compact cards rows active pinned working grouped hidden snoozed settled",
+    ],
+  },
+  {
     id: "sidebar-tabs",
     title: "Tabs in sidebar",
     to: "/settings/general",

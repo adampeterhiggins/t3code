@@ -87,6 +87,21 @@ export const SidebarTabLimit = Schema.Int.check(
 );
 export type SidebarTabLimit = typeof SidebarTabLimit.Type;
 
+export const SidebarThreadView = Schema.Literals(["card", "slim"]);
+export type SidebarThreadView = typeof SidebarThreadView.Type;
+
+export const SidebarThreadViews = Schema.Struct({
+  active: SidebarThreadView.pipe(Schema.withDecodingDefault(Effect.succeed("card" as const))),
+  pinned: SidebarThreadView.pipe(Schema.withDecodingDefault(Effect.succeed("card" as const))),
+  working: SidebarThreadView.pipe(Schema.withDecodingDefault(Effect.succeed("card" as const))),
+  grouped: SidebarThreadView.pipe(Schema.withDecodingDefault(Effect.succeed("card" as const))),
+  hidden: SidebarThreadView.pipe(Schema.withDecodingDefault(Effect.succeed("card" as const))),
+  snoozed: SidebarThreadView.pipe(Schema.withDecodingDefault(Effect.succeed("slim" as const))),
+  settled: SidebarThreadView.pipe(Schema.withDecodingDefault(Effect.succeed("slim" as const))),
+});
+export type SidebarThreadViews = typeof SidebarThreadViews.Type;
+const DEFAULT_SIDEBAR_THREAD_VIEWS = Schema.decodeSync(SidebarThreadViews)({});
+
 export const SidebarProjectGroupingMode = Schema.Literals([
   "repository",
   "repository_path",
@@ -535,6 +550,9 @@ export const ClientSettingsSchema = Schema.Struct({
   ),
   sidebarThreadPreviewCount: SidebarThreadPreviewCount.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_SIDEBAR_THREAD_PREVIEW_COUNT)),
+  ),
+  sidebarThreadViews: SidebarThreadViews.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_SIDEBAR_THREAD_VIEWS)),
   ),
   // Off: a chat's tabs share one sidebar row. On: each tab is listed under it.
   sidebarShowTabs: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
@@ -2129,6 +2147,7 @@ export const ClientSettingsPatch = Schema.Struct({
   sidebarProjectSortOrder: Schema.optionalKey(SidebarProjectSortOrder),
   sidebarThreadSortOrder: Schema.optionalKey(SidebarThreadSortOrder),
   sidebarThreadPreviewCount: Schema.optionalKey(SidebarThreadPreviewCount),
+  sidebarThreadViews: Schema.optionalKey(SidebarThreadViews),
   sidebarShowTabs: Schema.optionalKey(Schema.Boolean),
   sidebarTabLimit: Schema.optionalKey(Schema.NullOr(SidebarTabLimit)),
   sidebarTabSortOrder: Schema.optionalKey(SidebarTabSortOrder),
