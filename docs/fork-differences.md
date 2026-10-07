@@ -544,6 +544,14 @@ Code: [`SidebarFilterMenu.tsx`](../apps/web/src/components/sidebar/SidebarFilter
 [`home-list-filter-menu.ts`](../apps/mobile/src/features/home/home-list-filter-menu.ts). User
 guide: [thread-sidebar.md](./user/thread-sidebar.md#pin-and-reorder-threads).
 
+## Projects settings sidebar entry
+
+Web and desktop always show **Projects** in the settings sidebar, including when no project
+is selected. Open it and choose a project to manage its name, icon, checkouts and actions.
+
+Code: [`SettingsSidebarNav.tsx`](../apps/web/src/components/settings/SettingsSidebarNav.tsx) and
+[`ProjectsSettings.tsx`](../apps/web/src/components/settings/ProjectsSettings.tsx).
+
 ## Diagnostics settings tab
 
 Diagnostics has its own entry in the settings sidebar, between Connections and Archive. Upstream
