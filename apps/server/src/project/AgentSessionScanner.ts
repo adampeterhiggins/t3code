@@ -1362,6 +1362,43 @@ export const make = Effect.gen(function* () {
     const realRoot = yield* fileSystem.realPath(root).pipe(Effect.orElseSucceed(() => root));
     if (isExcludedProjectPath(root) || isExcludedProjectPath(realRoot)) return Stream.empty;
     const rootIdentity = yield* directoryIdentity(root);
+    const nestedProjectIdentities = new Set<string>();
+    const projects = yield* projectStore
+      .listShells()
+      .pipe(
+        Effect.mapError(
+          (cause) => new AgentSessionScanError({ operation: "read-projects", cause }),
+        ),
+      );
+    for (const project of projects) {
+      const identity = yield* directoryIdentity(
+        path.resolve(expandHomePath(project.workspaceRoot)),
+      );
+      if (identity !== rootIdentity) nestedProjectIdentities.add(identity);
+    }
+    // Sessions often start in a subfolder, so a session belongs to the nearest
+    // project at or above its cwd. Claude and Codex both resume by session id
+    // from any directory.
+    const ownedByPath = new Map<string, boolean>();
+    const isOwnedByRoot = Effect.fnUntraced(function* (cwd: string) {
+      const resolved = path.resolve(cwd);
+      let current = yield* fileSystem.realPath(resolved).pipe(Effect.orElseSucceed(() => resolved));
+      const visited: Array<string> = [];
+      let owned = ownedByPath.get(current);
+      while (owned === undefined) {
+        visited.push(current);
+        const identity = yield* directoryIdentity(current);
+        const parent = path.dirname(current);
+        if (identity === rootIdentity) owned = true;
+        else if (nestedProjectIdentities.has(identity) || parent === current) owned = false;
+        else {
+          current = parent;
+          owned = ownedByPath.get(current);
+        }
+      }
+      for (const directory of visited) ownedByPath.set(directory, owned);
+      return owned;
+    });
     const nowMs = DateTime.toEpochMillis(yield* DateTime.now);
     const cutoffMs = nowMs - RECENT_THREAD_WINDOW_MS;
 
@@ -1385,8 +1422,7 @@ export const make = Effect.gen(function* () {
     for (const candidate of candidates) {
       const expanded = expandHomePath(candidate.cwd.trim());
       if (!path.isAbsolute(expanded)) continue;
-      const resolved = path.resolve(expanded);
-      if ((yield* directoryIdentity(resolved)) !== rootIdentity) continue;
+      if (!(yield* isOwnedByRoot(expanded))) continue;
 
       for (const transcript of candidate.transcripts) {
         if (!isWantedTranscript(candidate, transcript.filePath)) continue;
@@ -1481,10 +1517,7 @@ export const make = Effect.gen(function* () {
             return Option.some<AgentSessionRecentThread>({ _tag: "Skipped" });
           }
           const expandedCwd = expandHomePath(snapshotCwd.trim());
-          if (
-            !path.isAbsolute(expandedCwd) ||
-            (yield* directoryIdentity(path.resolve(expandedCwd))) !== rootIdentity
-          ) {
+          if (!path.isAbsolute(expandedCwd) || !(yield* isOwnedByRoot(expandedCwd))) {
             return Option.some<AgentSessionRecentThread>({ _tag: "Skipped" });
           }
 

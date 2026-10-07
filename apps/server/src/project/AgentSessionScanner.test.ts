@@ -1572,6 +1572,55 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
       }),
     );
 
+    it.effect("imports sessions started in a subfolder unless a nested project owns it", () =>
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const nowMs = Date.parse("2026-08-24T12:00:00.000Z");
+        yield* TestClock.setTime(nowMs);
+        const claudeHomePath = yield* makeTempDir("t3code-claude-home-");
+        const codexHomePath = yield* makeTempDir("t3code-codex-home-");
+        const workspace = yield* makeTempDir("t3code-workspace-");
+        const subfolder = path.join(workspace, "functions", "billing");
+        const nestedProject = path.join(workspace, "nested");
+        yield* fileSystem.makeDirectory(subfolder, { recursive: true });
+        yield* fileSystem.makeDirectory(path.join(nestedProject, "src"), { recursive: true });
+
+        const writeSession = (cwd: string, sessionId: string, ageMs: number) =>
+          writeTranscript({
+            filePath: path.join(claudeHomePath, "projects", `-${sessionId}`, `${sessionId}.jsonl`),
+            contents: `${JSON.stringify({
+              type: "user",
+              cwd,
+              sessionId,
+              timestamp: "2026-08-23T12:00:00.000Z",
+              message: { role: "user", content: "Fix the project" },
+            })}\n`,
+            mtimeMs: nowMs - ageMs,
+          });
+        yield* writeSession(workspace, "at-root", 1_000);
+        yield* writeSession(subfolder, "in-subfolder", 2_000);
+        yield* writeSession(path.join(subfolder, "deleted"), "in-deleted-folder", 3_000);
+        yield* writeSession(path.join(nestedProject, "src"), "in-nested-project", 4_000);
+        yield* writeSession(path.dirname(workspace), "above-root", 5_000);
+
+        const sessionIds = (workspaceRoot: string) =>
+          runRecentThreads({
+            claudeHomePath,
+            codexHomePath,
+            workspaceRoot,
+            importedWorkspaceRoots: [workspace, nestedProject],
+          }).pipe(Effect.map((threads) => threads.map((thread) => thread.providerSessionId)));
+
+        expect(yield* sessionIds(workspace)).toEqual([
+          "at-root",
+          "in-subfolder",
+          "in-deleted-folder",
+        ]);
+        expect(yield* sessionIds(nestedProject)).toEqual(["in-nested-project"]);
+      }),
+    );
+
     it.effect("imports history recorded with a case alias", () =>
       Effect.gen(function* () {
         const path = yield* Path.Path;
