@@ -16,6 +16,7 @@ import * as Stream from "effect/Stream";
 import * as ThreadManagement from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import { ApprovalToolkitHandlersLive } from "./handlers.ts";
+import * as McpToolAccess from "../../McpToolAccess.ts";
 import { ApprovalToolkit } from "./tools.ts";
 
 const threadId = ThreadId.make("target-thread");
@@ -28,7 +29,7 @@ const clientScope: McpInvocationContext.McpInvocationScope = {
   environmentId: EnvironmentId.make("environment"),
   requestNamespace: "agent-access:session-1",
   thread: undefined,
-  client: { sessionId: "session-1", label: "EOD brief", runtimeModeCeiling: "full-access" },
+  client: { sessionId: "session-1", label: "EOD brief", access: "full-access" },
   issuedAt: 0,
   capabilities: new Set(["orchestration"]),
 };
@@ -104,7 +105,11 @@ const respond = (
   Effect.gen(function* () {
     const { dispatched, dependencies } = harness(scope);
     const toolkit = yield* ApprovalToolkit.pipe(
-      Effect.provide(ApprovalToolkitHandlersLive.pipe(Layer.provide(dependencies))),
+      Effect.provide(
+        McpToolAccess.HandlersLayer.layer(ApprovalToolkitHandlersLive).pipe(
+          Layer.provide(dependencies),
+        ),
+      ),
     );
     const results = yield* toolkit
       .handle("t3_approval_respond", { threadId, ...params })

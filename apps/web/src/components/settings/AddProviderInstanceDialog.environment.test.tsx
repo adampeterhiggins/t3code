@@ -4,6 +4,13 @@ import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { visitElements } from "../../test/reactElementTree";
 import { reactHookHarness as hooks } from "../../test/reactHookHarness";
 
+const actions = vi.hoisted(() => ({
+  update: vi.fn(),
+  toast: vi.fn(),
+  onOpenChange: vi.fn(),
+  canManageProviders: true,
+}));
+
 const settingsHooks = vi.hoisted(() => ({
   read: vi.fn(() => ({ providerInstances: {} })),
   mutate: vi.fn(),
@@ -60,6 +67,14 @@ vi.mock("../../state/use-atom-command", () => ({
   useAtomCommand: (atom: symbol) =>
     atom === atoms.refreshProviders ? commands.refreshProviders : vi.fn(),
 }));
+vi.mock("../../state/session", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../state/session")>();
+  const hasScope = (environmentId: EnvironmentId, scope: string) =>
+    environmentId === "remote-device" && scope === "providers:manage" && actions.canManageProviders;
+  return { ...actual, useEnvironmentScope: hasScope, readEnvironmentScope: hasScope };
+});
+
+vi.mock("../ui/toast", () => ({ toastManager: { add: actions.toast } }));
 
 import { AddProviderInstanceDialog } from "./AddProviderInstanceDialog";
 import { ProviderAuthSection } from "./ProviderAuthSection";
@@ -108,9 +123,45 @@ async function selectPreparedAcp() {
   );
 }
 
+function renderDialog() {
+  hooks.beginRender();
+  return AddProviderInstanceDialog({
+    open: true,
+    environmentId: remoteEnvironmentId,
+    environmentLabel: "Remote device",
+    onOpenChange: actions.onOpenChange,
+  });
+}
+
+function button(dialog: unknown, label: string) {
+  const element = visitElements(
+    dialog,
+    (entry) => entry.props.children === label && typeof entry.props.onClick === "function",
+  );
+  if (!element) throw new Error(`Missing button: ${label}`);
+  return element;
+}
+
+function prepareInstance() {
+  let dialog = renderDialog();
+  (button(dialog, "Configure manually").props.onClick as () => void)();
+  dialog = renderDialog();
+  const label = visitElements(dialog, (entry) => entry.props.placeholder === "e.g. Work");
+  if (!label) throw new Error("Missing instance label input.");
+  (label.props.onChange as (event: { target: { value: string } }) => void)({
+    target: { value: "Work" },
+  });
+  dialog = renderDialog();
+  (button(dialog, "Next").props.onClick as () => void)();
+  return renderDialog();
+}
+
 describe("AddProviderInstanceDialog environment routing", () => {
   beforeEach(() => {
     hooks.reset();
+    actions.canManageProviders = true;
+    actions.toast.mockReset();
+    actions.onOpenChange.mockReset();
     settingsHooks.read.mockReset().mockReturnValue({ providerInstances: {} });
     settingsHooks.mutate.mockReset().mockResolvedValue({ _tag: "Success", value: {} });
     settingsHooks.useMutation.mockReset().mockReturnValue(settingsHooks.mutate);
@@ -387,5 +438,62 @@ describe("AddProviderInstanceDialog environment routing", () => {
 
     (findByChildren(tree, "Done").props.onClick as () => void)();
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("adds an instance with the selected environment's provider grant alone", async () => {
+    const dialog = prepareInstance();
+    (button(dialog, "Add instance").props.onClick as () => void)();
+
+    await Promise.resolve();
+    expect(settingsHooks.mutate).toHaveBeenCalledWith({
+      operation: "create",
+      instanceId: "codex_work",
+      instance: {
+        driver: "codex",
+        enabled: true,
+        displayName: "Work",
+        config: { setupMode: "existing" },
+      },
+    });
+    expect(actions.toast).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "success", title: "Provider instance added" }),
+    );
+    expect(commands.refreshProviders).toHaveBeenCalledWith({
+      environmentId: remoteEnvironmentId,
+      input: { instanceId: "codex_work" },
+    });
+    expect(actions.onOpenChange).not.toHaveBeenCalled();
+  });
+
+  it("rejects a queued save after the provider grant is revoked", () => {
+    const dialog = prepareInstance();
+    const save = button(dialog, "Add instance").props.onClick as () => void;
+    actions.canManageProviders = false;
+    save();
+
+    expect(settingsHooks.mutate).not.toHaveBeenCalled();
+    expect(actions.toast).not.toHaveBeenCalled();
+    expect(actions.onOpenChange).not.toHaveBeenCalled();
+    expect(button(renderDialog(), "Add instance").props.disabled).toBe(true);
+  });
+
+  it("keeps a denied draft available when the provider grant arrives", async () => {
+    actions.canManageProviders = false;
+    let dialog = prepareInstance();
+    (button(dialog, "Add instance").props.onClick as () => void)();
+    expect(settingsHooks.mutate).not.toHaveBeenCalled();
+    expect(actions.toast).not.toHaveBeenCalled();
+
+    actions.canManageProviders = true;
+    dialog = renderDialog();
+    expect(button(dialog, "Add instance").props.disabled).toBe(false);
+    (button(dialog, "Add instance").props.onClick as () => void)();
+    await Promise.resolve();
+    expect(settingsHooks.mutate).toHaveBeenCalledOnce();
+    expect(commands.refreshProviders).toHaveBeenCalledWith({
+      environmentId: remoteEnvironmentId,
+      input: { instanceId: "codex_work" },
+    });
+    expect(actions.onOpenChange).not.toHaveBeenCalled();
   });
 });

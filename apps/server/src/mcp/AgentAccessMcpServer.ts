@@ -8,7 +8,7 @@ import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type * as Types from "effect/Types";
-import { McpProtocol, McpServer } from "effect/ai";
+import { McpProtocol } from "effect/ai";
 import { Headers, HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 
 import packageJson from "../../package.json" with { type: "json" };
@@ -21,6 +21,8 @@ import {
   layerProjectRegistration,
   layerThreadToolkit,
   normalizeMcpHttpResponse,
+  toolkitRegistration,
+  mcpHttpTransport,
 } from "./McpHttpServer.ts";
 import { OPERATE_MCP_PATH, QUERY_MCP_PATH } from "./paths.ts";
 import { QueryToolkitHandlersLive } from "./query/handlers.ts";
@@ -59,7 +61,7 @@ export function agentAccessInvocationScope(input: {
     client: {
       sessionId: input.session.sessionId,
       label: input.session.label ?? DEFAULT_TOKEN_LABEL,
-      runtimeModeCeiling: AGENT_ACCESS_RUNTIME_MODE_CEILING,
+      access: AGENT_ACCESS_RUNTIME_MODE_CEILING,
     },
   };
 }
@@ -146,7 +148,7 @@ const tokenAuthMiddleware = (options: {
     }),
   ).layer;
 
-const QueryTransportLive = McpServer.layerHttp({
+const QueryTransportLive = mcpHttpTransport({
   name: "T3 Code history",
   version: packageJson.version,
   description:
@@ -163,7 +165,7 @@ const QueryTransportLive = McpServer.layerHttp({
   ),
 );
 
-const OperateTransportLive = McpServer.layerHttp({
+const OperateTransportLive = mcpHttpTransport({
   name: "T3 Code control",
   version: packageJson.version,
   description:
@@ -180,9 +182,7 @@ const OperateTransportLive = McpServer.layerHttp({
   ),
 );
 
-const QueryToolkitRegistrationLive = McpServer.toolkit(QueryToolkit).pipe(
-  Layer.provide(QueryToolkitHandlersLive),
-);
+const QueryToolkitRegistrationLive = toolkitRegistration(QueryToolkit, QueryToolkitHandlersLive);
 
 /**
  * Each server is fresh so it gets its own `McpServer` instance: layers are
@@ -198,7 +198,7 @@ export const layer = Layer.mergeAll(
       layerThreadToolkit,
       layerProjectRegistration,
       layerEnvironmentRegistration,
-      McpServer.toolkit(ApprovalToolkit).pipe(Layer.provide(ApprovalToolkitHandlersLive)),
+      toolkitRegistration(ApprovalToolkit, ApprovalToolkitHandlersLive),
     ).pipe(Layer.provideMerge(OperateTransportLive)),
   ),
 );

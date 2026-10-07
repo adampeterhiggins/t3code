@@ -9,6 +9,7 @@ import * as CheckpointDiffQuery from "../../checkpointing/CheckpointDiffQuery.ts
 import * as ServerEnvironment from "../../environment/ServerEnvironment.ts";
 import * as SqlitePersistence from "../../persistence/Sqlite.ts";
 import { UsageService } from "../../usage/UsageService.ts";
+import { toolkitRegistration } from "../McpHttpServer.ts";
 import { QueryToolkitHandlersLive } from "./handlers.ts";
 import { QueryToolkit } from "./tools.ts";
 
@@ -25,8 +26,7 @@ const client = McpSchema.McpServerClient.of({
   getClient: Effect.die("unused"),
 });
 
-const TestLayer = McpServer.toolkit(QueryToolkit).pipe(
-  Layer.provide(QueryToolkitHandlersLive),
+const TestLayer = toolkitRegistration(QueryToolkit, QueryToolkitHandlersLive).pipe(
   Layer.provideMerge(McpServer.McpServer.layer),
   Layer.provide(
     Layer.mergeAll(

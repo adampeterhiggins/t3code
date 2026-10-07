@@ -9,6 +9,8 @@ import * as Schema from "effect/Schema";
 import { McpProtocol, McpServer, Tool, Toolkit } from "effect/ai";
 import { HttpBody, HttpClient, HttpRouter } from "effect/http";
 
+import { toolkitRegistration } from "./McpHttpServer.ts";
+import * as McpToolAccess from "./McpToolAccess.ts";
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
 import * as CheckpointDiffQuery from "../checkpointing/CheckpointDiffQuery.ts";
 import * as ServerConfig from "../config.ts";
@@ -66,8 +68,12 @@ const ThreadTool = Tool.make("thread_only_tool", {
   success: Schema.Struct({}),
 });
 const ThreadOnlyToolkit = Toolkit.make(ThreadTool);
-const ThreadMcpLive = McpServer.toolkit(ThreadOnlyToolkit).pipe(
-  Layer.provide(ThreadOnlyToolkit.toLayer({ thread_only_tool: () => Effect.succeed({}) })),
+const ThreadMcpLive = toolkitRegistration(
+  ThreadOnlyToolkit,
+  McpToolAccess.toLayer(ThreadOnlyToolkit, {
+    thread_only_tool: McpToolAccess.reads(() => Effect.succeed({})),
+  }),
+).pipe(
   Layer.provideMerge(
     McpServer.layerHttp({
       name: "thread",
@@ -162,7 +168,7 @@ it("gives an agent access token a client caller labelled with the token", () => 
   expect(scope.client).toEqual({
     sessionId: "session-1",
     label: "EOD brief",
-    runtimeModeCeiling: "full-access",
+    access: "full-access",
   });
   expect([...scope.capabilities]).toEqual(["orchestration"]);
   expect(scope.requestNamespace).toBe("agent-access:session-1");

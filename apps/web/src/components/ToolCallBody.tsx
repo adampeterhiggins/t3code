@@ -37,7 +37,7 @@ export function ToolCallBody({ text, className }: { text: string; className?: st
 function ToolDiff(props: { patch: string; files: ReadonlyArray<FileDiffMetadata> }) {
   const { resolvedTheme } = useTheme();
   const [failed, setFailed] = useState(false);
-  const options = useMemo<FileDiffOptions<undefined>>(
+  const options = useMemo<FileDiffOptions<undefined, false>>(
     () => ({
       diffStyle: "unified",
       diffIndicators: "classic",
