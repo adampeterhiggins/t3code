@@ -74,7 +74,9 @@ function SidebarPageIcon(props: { page: SidebarPage; groupStyles: ThreadGroups }
 /** Past this many projects the submenu offers a search field. */
 const PROJECT_SEARCH_THRESHOLD = 8;
 
-/** "Only" on the highlighted row: narrow to just that choice. */
+/** "Only" on the highlighted row: narrow to just that choice. It follows the
+ *  label on the same baseline and keeps its width while hidden, so the
+ *  trailing count stays in one column on every row. */
 function OnlyButton(props: { onClick: () => void }) {
   return (
     <button
@@ -89,6 +91,15 @@ function OnlyButton(props: { onClick: () => void }) {
     >
       Only
     </button>
+  );
+}
+
+function ChoiceLabel(props: { label: string; onOnly: () => void }) {
+  return (
+    <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
+      <span className="min-w-0 truncate">{props.label}</span>
+      <OnlyButton onClick={props.onOnly} />
+    </span>
   );
 }
 
@@ -129,10 +140,12 @@ function SidebarShowFilter(props: {
                 if (next.length > 0) props.onPagesChange(next);
               }}
             >
-              <span className="flex min-w-0 items-center gap-2">
+              <span className="flex w-full min-w-0 items-center gap-2">
                 <SidebarPageIcon page={page} groupStyles={props.groupStyles} />
-                <span className="min-w-0 flex-1 truncate">{sidebarPageLabel(page)}</span>
-                <OnlyButton onClick={() => props.onPagesChange([page])} />
+                <ChoiceLabel
+                  label={sidebarPageLabel(page)}
+                  onOnly={() => props.onPagesChange([page])}
+                />
                 <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
                   {props.counts.get(page) ?? 0}
                 </span>
@@ -230,11 +243,13 @@ function SidebarProjectFilter(props: {
             }
             onContextMenu={(event) => props.onProjectSettings(event, project)}
           >
-            <span className="flex min-w-0 items-center gap-2">
+            <span className="flex w-full min-w-0 items-center gap-2">
               <ProjectFavicon project={project} className="size-3.5 shrink-0" />
-              <span className="min-w-0 flex-1 truncate">{project.displayName}</span>
+              <ChoiceLabel
+                label={project.displayName}
+                onOnly={() => props.onScopedProjectKeysChange([project.projectKey])}
+              />
               {props.projectBadge(project)}
-              <OnlyButton onClick={() => props.onScopedProjectKeysChange([project.projectKey])} />
               <Button
                 size="icon-xs"
                 variant="ghost-muted"
@@ -302,10 +317,12 @@ function SidebarOrganisationFilter(props: {
               )
             }
           >
-            <span className="flex min-w-0 items-center gap-2">
+            <span className="flex w-full min-w-0 items-center gap-2">
               <BuildingIcon aria-hidden className="size-3.5 shrink-0" />
-              <span className="min-w-0 flex-1 truncate">{option.label}</span>
-              <OnlyButton onClick={() => props.onScopedKeysChange([option.key])} />
+              <ChoiceLabel
+                label={option.label}
+                onOnly={() => props.onScopedKeysChange([option.key])}
+              />
             </span>
           </MenuCheckboxItem>
         ))}
