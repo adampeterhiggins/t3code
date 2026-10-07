@@ -12,13 +12,18 @@ import {
   findSharedSettingsMismatches,
   pickSharedServerSettings,
   splitSharedServerPatch,
+  mergeSharedSettingMaps,
   supportsSharedSettingsSync,
 } from "./sharedSettings.ts";
 
 const primaryId = EnvironmentId.make("env-primary");
 const laptopId = EnvironmentId.make("env-laptop");
 const boxId = EnvironmentId.make("env-box");
-const restartCapabilities = { threadRestartContinuation: true, threadGroups: true };
+const restartCapabilities = {
+  threadRestartContinuation: true,
+  threadGroups: true,
+  organisationStyles: true,
+};
 
 describe("supportsSharedSettingsSync", () => {
   it("accepts only connected servers that advertise the shared-settings capability", () => {
@@ -126,6 +131,7 @@ describe("pickSharedServerSettings", () => {
       "autoResumeLimitedThreads",
       "continueThreadsAfterServerUpdate",
       "newWorktreesStartFromOrigin",
+      "organisations",
       "sidebarAutoSettleAfterDays",
       "sidebarAutoSettleOnMerge",
       "snoozeLimitedThreads",
@@ -142,6 +148,17 @@ describe("filterSharedServerPatch", () => {
     expect(filterSharedServerPatch(patch, { threadRestartContinuation: true })).toEqual({});
     expect(
       filterSharedServerPatch(patch, { threadRestartContinuation: true, threadGroups: true }),
+    ).toEqual(patch);
+  });
+
+  it("keeps organisation styles away from servers that cannot store them", () => {
+    const patch = { organisations: { "github.com/acme": { name: "Acme" } } };
+    expect(filterSharedServerPatch(patch, { threadRestartContinuation: true })).toEqual({});
+    expect(
+      filterSharedServerPatch(patch, {
+        threadRestartContinuation: true,
+        organisationStyles: true,
+      }),
     ).toEqual(patch);
   });
 
@@ -409,5 +426,13 @@ describe("findSharedSettingsMismatches", () => {
       ],
     });
     expect(mismatches).toEqual([]);
+  });
+});
+
+describe("mergeSharedSettingMaps", () => {
+  it("unions entries, and the first environment to hold an entry wins", () => {
+    expect(
+      mergeSharedSettingMaps([{}, { acme: "first", zed: "only" }, { acme: "second" }]),
+    ).toEqual({ acme: "first", zed: "only" });
   });
 });

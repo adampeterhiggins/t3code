@@ -170,6 +170,8 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   threadHiding: Schema.optionalKey(Schema.Boolean),
   /** Server understands thread.group.set. */
   threadGroups: Schema.optionalKey(Schema.Boolean),
+  /** Server stores the `organisations` setting. */
+  organisationStyles: Schema.optionalKey(Schema.Boolean),
   /** Server understands regenerateTitle on thread.meta.update. Absent on
       older servers, so clients hide the action instead of sending it. */
   threadTitleRegeneration: Schema.optionalKey(Schema.Boolean),

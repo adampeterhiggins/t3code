@@ -177,6 +177,11 @@ owned by the people or organisations you pick, read from each project's Git remo
 many filters are on, hovering it lists the ones that are selected, and each one appears as a pill
 under the search bar: click its × to remove it, or **Clear all** to go back to the default list.
 
+To give an organisation a friendlier name or an icon, open **Settings → Organisations** (also
+reachable from **Organisation settings…** at the bottom of the **Organisations** filter). Names and
+icons are shared with every connected server, so they show the same on your other devices; mobile
+shows the names.
+
 On web and desktop, while only **Threads** is shown, drag a thread up into the pinned section to
 pin it at the spot you drop it; drag a pinned thread down into the active list to unpin it. Dragging a pinned thread out of the pinned section does not
 ask for unpin confirmation. Pinned and active boundary labels appear only while dragging, without

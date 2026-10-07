@@ -39,6 +39,7 @@ import {
   resolveSidebarStageBadgeLabel,
   resolveSidebarThreadSection,
   resolveSidebarPages,
+  buildOrganisationOptions,
   repositoryOrganisationOf,
   resolveSidebarRowAccessibility,
   resolveSidebarThreadStatus,
@@ -2640,5 +2641,45 @@ describe("repositoryOrganisationOf", () => {
       repositoryOrganisationOf(identity("github.com/pingdotgg/t3code", "github.com/me/t3code")),
     ).toEqual({ key: "github.com/me", label: "me" });
     expect(repositoryOrganisationOf(null)).toBeNull();
+  });
+});
+
+describe("buildOrganisationOptions", () => {
+  const identity = (canonicalKey: string) =>
+    ({ canonicalKey }) as Parameters<typeof repositoryOrganisationOf>[0];
+
+  it("labels by chosen name, else owner, showing the host when two hosts share an owner", () => {
+    const icon = { kind: "emoji", emoji: "🏢" } as const;
+    expect(
+      buildOrganisationOptions(
+        [
+          identity("github.com/zed/one"),
+          identity("github.com/acme/two"),
+          identity("gitlab.com/acme/three"),
+          identity("github.com/zed/four"),
+          null,
+        ],
+        { "github.com/zed": { name: "Zed Industries", icon }, "github.com/gone": { name: "Gone" } },
+      ),
+    ).toEqual([
+      {
+        key: "github.com/acme",
+        label: "github.com/acme",
+        defaultLabel: "github.com/acme",
+        organisation: undefined,
+      },
+      {
+        key: "gitlab.com/acme",
+        label: "gitlab.com/acme",
+        defaultLabel: "gitlab.com/acme",
+        organisation: undefined,
+      },
+      {
+        key: "github.com/zed",
+        label: "Zed Industries",
+        defaultLabel: "zed",
+        organisation: { name: "Zed Industries", icon },
+      },
+    ]);
   });
 });

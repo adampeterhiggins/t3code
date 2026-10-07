@@ -52,6 +52,14 @@ describe("buildOrganisationOptions", () => {
       { key: "github.com/zed", label: "zed" },
     ]);
   });
+
+  it("uses an organisation's chosen name", () => {
+    expect(
+      buildOrganisationOptions([project("a", identity("github.com/zed/one"))], {
+        "github.com/zed": { name: "Zed Industries" },
+      }),
+    ).toEqual([{ key: "github.com/zed", label: "Zed Industries" }]);
+  });
 });
 
 describe("scopeProjectRefsByOrganisations", () => {

@@ -259,6 +259,7 @@ import {
   shouldRecedeSidebarThread,
   resolveWorkingStartedAt,
   availableSidebarPages,
+  buildOrganisationOptions,
   repositoryOrganisationOf,
   resolveSidebarPages,
   sidebarGroupPage,
@@ -342,6 +343,7 @@ import { ThreadGroupIcon } from "./sidebar/ThreadGroupIcon";
 import { projectIconColorClassName } from "../projectIconColors";
 import type { ThreadGroup } from "@t3tools/contracts/settings";
 import { useThreadGroups } from "../hooks/useThreadGroups";
+import { useOrganisations } from "../hooks/useOrganisations";
 import {
   SIDEBAR_TAB_SORT_ORDER_LABELS,
   sidebarTabSortDirectionLabel,
@@ -3862,26 +3864,17 @@ export default function Sidebar() {
     NO_ORGANISATION_KEYS,
     Schema.Array(Schema.String),
   );
-  const organisationOptions = useMemo(() => {
-    const byKey = new Map<string, { key: string; label: string }>();
-    for (const project of projectGroups) {
-      for (const member of project.memberProjects) {
-        const organisation = repositoryOrganisationOf(member.repositoryIdentity);
-        if (organisation) byKey.set(organisation.key, organisation);
-      }
-    }
-    const options = [...byKey.values()];
-    // The same owner on two hosts is told apart by its host.
-    const labelCounts = new Map<string, number>();
-    for (const option of options) {
-      labelCounts.set(option.label, (labelCounts.get(option.label) ?? 0) + 1);
-    }
-    return options
-      .map((option) =>
-        (labelCounts.get(option.label) ?? 0) > 1 ? { ...option, label: option.key } : option,
-      )
-      .toSorted((left, right) => left.label.localeCompare(right.label));
-  }, [projectGroups]);
+  const { organisations } = useOrganisations();
+  const organisationOptions = useMemo(
+    () =>
+      buildOrganisationOptions(
+        projectGroups.flatMap((project) =>
+          project.memberProjects.map((member) => member.repositoryIdentity),
+        ),
+        organisations,
+      ),
+    [organisations, projectGroups],
+  );
   // Organisations that no longer have a checkout stop narrowing the list.
   const scopedOrganisationKeys = useMemo(
     () =>
