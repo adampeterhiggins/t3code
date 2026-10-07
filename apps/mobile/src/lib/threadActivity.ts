@@ -340,6 +340,12 @@ export function isContextHandoffActivityGroup(entry: ThreadFeedActivityGroup): b
   );
 }
 
+export function isModelChangeActivityGroup(entry: ThreadFeedActivityGroup): boolean {
+  return (
+    entry.activities.length === 1 && entry.activities[0]?.projectedItem.item.type === "model_change"
+  );
+}
+
 export function isSecretRequestActivityGroup(entry: ThreadFeedActivityGroup): boolean {
   return (
     entry.activities.length === 1 &&
@@ -448,6 +454,7 @@ function itemIsToolLike(item: OrchestrationV2TurnItem): boolean {
 function itemIsProminent(item: OrchestrationV2TurnItem): boolean {
   return (
     item.type === "fork" ||
+    item.type === "model_change" ||
     item.type === "thread_created" ||
     item.type === "system_notice" ||
     // An answerable card: it must stand alone and never fold away with the run.
@@ -566,6 +573,7 @@ function itemIcon(item: OrchestrationV2TurnItem): ThreadFeedActivity["icon"] {
       return "check";
     case "compaction":
     case "handoff":
+    case "model_change":
     case "fork":
     case "thread_created":
       return "zap";
@@ -620,6 +628,8 @@ function itemSummary(
       return item.failure.class === "usage_limit" ? "Usage limit reached" : "Provider error";
     case "handoff":
       return "Context handed off";
+    case "model_change":
+      return "Model changed";
     case "fork":
       return "Thread forked";
     case "thread_created":
@@ -680,6 +690,8 @@ function itemPreview(item: OrchestrationV2TurnItem): string | null {
     case "compaction":
     case "handoff":
       return item.summary ?? null;
+    case "model_change":
+      return `${item.from.model} → ${item.to.model}`;
     case "fork":
     case "thread_created":
       return item.targetThreadId;
@@ -992,6 +1004,7 @@ function groupAdjacentActivities(entries: ReadonlyArray<RawThreadFeedEntry>): Th
     const isStandaloneActivity =
       entry.activity.projectedItem.item.type === "compaction" ||
       entry.activity.projectedItem.item.type === "handoff" ||
+      entry.activity.projectedItem.item.type === "model_change" ||
       entry.activity.projectedItem.item.type === "notification";
     if (
       isStandaloneActivity ||
@@ -1179,7 +1192,8 @@ function deriveThreadFeedRunFolds(
                 (activity) =>
                   activity.prominent ||
                   activity.projectedItem.item.type === "notification" ||
-                  activity.projectedItem.item.type === "handoff",
+                  activity.projectedItem.item.type === "handoff" ||
+                  activity.projectedItem.item.type === "model_change",
               )
             ),
         )
@@ -1396,6 +1410,7 @@ function isWorkLogFeedRow(row: ThreadFeedEntry | undefined): boolean {
       (row.type === "activity-group" &&
         !isContextCompactionActivityGroup(row) &&
         !isContextHandoffActivityGroup(row) &&
+        !isModelChangeActivityGroup(row) &&
         row.activities.every(
           (activity) =>
             !activity.prominent &&
@@ -1430,6 +1445,7 @@ function appendPresentedFeedEntry(
   if (
     isContextCompactionActivityGroup(entry) ||
     isContextHandoffActivityGroup(entry) ||
+    isModelChangeActivityGroup(entry) ||
     isUserInputActivityGroup(entry) ||
     entry.activities[0]?.projectedItem.item.type === "subagent"
   ) {

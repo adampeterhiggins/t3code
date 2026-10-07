@@ -55,6 +55,7 @@ import {
   type TurnItemId,
 } from "@t3tools/contracts";
 import { modelSelectionsEqual } from "@t3tools/shared/model";
+import { modelChangeSourceSelection, modelChangeTurnItem } from "@t3tools/shared/modelChangeMarker";
 import {
   derivePendingBackgroundWork,
   pendingBackgroundTurnItems,
@@ -1669,6 +1670,23 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
               strategy: activeHandoff.strategy,
               summary: activeHandoff.summaryText,
             };
+      const queuedModelChangeItem =
+        handoffTurnItem === null
+          ? modelChangeTurnItem({
+              id: idAllocator.derive.runSignalTurnItem({
+                runId: queuedRun.id,
+                signal: "model-change",
+              }),
+              threadId,
+              runId: queuedRun.id,
+              nodeId: rootNodeId,
+              providerThreadId: queuedProviderThread.id,
+              ordinal: queuedRun.ordinal * 100 - 1,
+              from: modelChangeSourceSelection(projection.runs),
+              to: queuedRun.modelSelection,
+              now,
+            })
+          : null;
       const checkpointEvents: ReadonlyArray<Omit<OrchestrationV2DomainEvent, "id">> =
         storedCheckpointScope === undefined
           ? [
@@ -1787,6 +1805,19 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                   providerInstanceId: queuedRun.providerInstanceId,
                   occurredAt: now,
                   payload: handoffTurnItem,
+                },
+              ]),
+          ...(queuedModelChangeItem === null
+            ? []
+            : [
+                {
+                  type: "turn-item.updated" as const,
+                  threadId,
+                  runId: queuedRun.id,
+                  nodeId: rootNodeId,
+                  providerInstanceId: queuedRun.providerInstanceId,
+                  occurredAt: now,
+                  payload: queuedModelChangeItem,
                 },
               ]),
           ...sessionsToDetach.map((session) => ({
@@ -3925,6 +3956,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         readonly providerTurnId: typeof providerTurn.id | null;
         readonly providerThreadId: OrchestrationV2ProviderThread["id"];
         readonly providerInstanceId: ProviderInstanceId;
+        /** Set when this steer restarts onto a different model. */
+        readonly modelChangeFrom?: ModelSelection | null;
       }) =>
         Effect.gen(function* () {
           const message: OrchestrationV2ConversationMessage = {
@@ -3949,6 +3982,21 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             createdAt: now,
             updatedAt: now,
           };
+          const modelChangeOrdinal = yield* nextTurnItemOrdinal(input.projection);
+          const modelChangeItem = modelChangeTurnItem({
+            id: idAllocator.derive.runSignalTurnItem({
+              runId: messageInput.runId,
+              signal: `model-change:${input.command.commandId}`,
+            }),
+            threadId: input.command.threadId,
+            runId: messageInput.runId,
+            nodeId: messageInput.nodeId,
+            providerThreadId: messageInput.providerThreadId,
+            ordinal: modelChangeOrdinal,
+            from: messageInput.modelChangeFrom ?? null,
+            to: input.modelSelection,
+            now,
+          });
           const turnItem: OrchestrationV2TurnItem = {
             createdBy: input.createdBy,
             creationSource: input.creationSource,
@@ -3964,7 +4012,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             providerTurnId: messageInput.providerTurnId,
             nativeItemRef: null,
             parentItemId: null,
-            ordinal: yield* nextTurnItemOrdinal(input.projection),
+            ordinal: modelChangeItem === null ? modelChangeOrdinal : modelChangeOrdinal + 1,
             status: "completed",
             title: null,
             startedAt: now,
@@ -3989,6 +4037,17 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             occurredAt: now,
             payload: message,
           });
+          if (modelChangeItem !== null) {
+            yield* emitEvent({
+              type: "turn-item.updated",
+              threadId: input.command.threadId,
+              runId: messageInput.runId,
+              nodeId: messageInput.nodeId,
+              providerInstanceId: messageInput.providerInstanceId,
+              occurredAt: now,
+              payload: modelChangeItem,
+            });
+          }
           yield* emitEvent({
             type: "turn-item.updated",
             threadId: input.command.threadId,
@@ -4456,6 +4515,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         providerTurnId: null,
         providerThreadId: restartProviderThread.id,
         providerInstanceId: input.modelSelection.instanceId,
+        ...(selectionChanged ? { modelChangeFrom: targetRun.modelSelection } : {}),
       });
       const interruptedAttemptId = targetRun.activeAttemptId;
       if (interruptedAttemptId === null) {
@@ -5403,6 +5463,18 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           ...(delegatedCompletion === undefined ? {} : { delegatedCompletion }),
           ...(command.notification === undefined ? {} : { notification: command.notification }),
         };
+        const modelChangeOrdinal = yield* nextTurnItemOrdinal(projection);
+        const modelChangeItem = modelChangeTurnItem({
+          id: idAllocator.derive.runSignalTurnItem({ runId, signal: "model-change" }),
+          threadId: command.threadId,
+          runId,
+          nodeId: rootNodeId,
+          providerThreadId,
+          ordinal: modelChangeOrdinal,
+          from: modelChangeSourceSelection(projection.runs),
+          to: modelSelection,
+          now,
+        });
         const turnItem: OrchestrationV2TurnItem = {
           createdBy: command.createdBy,
           creationSource: command.creationSource,
@@ -5420,7 +5492,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           providerTurnId: null,
           nativeItemRef: null,
           parentItemId: null,
-          ordinal: yield* nextTurnItemOrdinal(projection),
+          ordinal: modelChangeItem === null ? modelChangeOrdinal : modelChangeOrdinal + 1,
           status: "completed",
           title: null,
           startedAt: now,
@@ -5524,6 +5596,17 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           occurredAt: now,
           payload: message,
         });
+        if (modelChangeItem !== null) {
+          yield* emitEvent({
+            type: "turn-item.updated",
+            threadId: command.threadId,
+            runId,
+            nodeId: rootNodeId,
+            providerInstanceId: modelSelection.instanceId,
+            occurredAt: now,
+            payload: modelChangeItem,
+          });
+        }
         yield* emitEvent({
           type: "turn-item.updated",
           threadId: command.threadId,
@@ -6180,6 +6263,20 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
               strategy: activeHandoff.strategy,
               summary: activeHandoff.summaryText,
             };
+      const providerSwitchModelChangeItem =
+        handoffTurnItem !== null
+          ? null
+          : modelChangeTurnItem({
+              id: idAllocator.derive.runSignalTurnItem({ runId, signal: "model-change" }),
+              threadId: command.threadId,
+              runId,
+              nodeId: rootNodeId,
+              providerThreadId: providerThread.id,
+              ordinal: ordinal * 100 - 1,
+              from: modelChangeSourceSelection(projection.runs),
+              to: modelSelection,
+              now,
+            });
       const nativeForkResolution: OrchestrationV2ContextTransferResolution | null =
         !canResolveForkNatively || providerThread.nativeThreadRef === null
           ? null
@@ -6416,6 +6513,17 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           providerInstanceId: modelSelection.instanceId,
           occurredAt: now,
           payload: handoffTurnItem,
+        });
+      }
+      if (providerSwitchModelChangeItem !== null) {
+        yield* emitEvent({
+          type: "turn-item.updated",
+          threadId: command.threadId,
+          runId,
+          nodeId: rootNodeId,
+          providerInstanceId: modelSelection.instanceId,
+          occurredAt: now,
+          payload: providerSwitchModelChangeItem,
         });
       }
       yield* emitEvent({

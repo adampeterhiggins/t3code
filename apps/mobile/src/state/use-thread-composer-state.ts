@@ -33,6 +33,8 @@ import {
 } from "@t3tools/client-runtime/state/threads";
 import { resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/models";
 import { upgradeLegacyContextMessage } from "@t3tools/shared/composerContextLegacy";
+import { pendingModelChangeProjection } from "@t3tools/shared/modelChangeMarker";
+import * as DateTime from "effect/DateTime";
 import { composerContextSendBlockReason, reidentifyComposerContext } from "../lib/composerContext";
 import { uuidv4 } from "../lib/uuid";
 
@@ -264,7 +266,22 @@ export function useThreadComposerState() {
       !selectedThreadMessages?.some((message) => message.id === pendingCreationMessage.messageId)
         ? [pendingThreadCreationMessage(pendingCreationMessage)]
         : [];
-    const feed = buildThreadFeed(selectedThreadVisibleTurnItems, {
+    const pendingModelChange =
+      selectedThreadShell === null
+        ? null
+        : pendingModelChangeProjection({
+            threadId: selectedThreadShell.id,
+            draft: selectedThreadKey
+              ? (composerDrafts[selectedThreadKey]?.modelSelection ?? null)
+              : null,
+            runs: selectedThreadProjection?.projection.runs ?? [],
+            now: DateTime.makeUnsafe(new Date()),
+          });
+    const visibleTurnItems =
+      pendingModelChange === null
+        ? selectedThreadVisibleTurnItems
+        : [...selectedThreadVisibleTurnItems, pendingModelChange];
+    const feed = buildThreadFeed(visibleTurnItems, {
       anchoredMessages: pendingCreation,
       attempts: selectedThreadAttempts,
       nodes: selectedThreadNodes,
@@ -283,8 +300,11 @@ export function useThreadComposerState() {
     selectedThreadMessages,
     selectedThreadAttempts,
     selectedThreadNodes,
+    selectedThreadProjection,
     selectedThreadVisibleTurnItems,
     selectedThreadCwd,
+    selectedThreadShell,
+    composerDrafts,
     pendingCreationMessage,
     selectedThreadKey,
     selectedThreadQueuedMessages,

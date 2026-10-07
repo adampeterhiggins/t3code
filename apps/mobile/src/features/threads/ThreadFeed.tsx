@@ -1,5 +1,5 @@
 import { ThreadContextDivider } from "./thread-context-divider";
-import { ThreadHandoffRow } from "./thread-handoff-row";
+import { ThreadHandoffRow, ThreadModelChangeRow } from "./thread-handoff-row";
 import { SecretRequestCard } from "./SecretRequestCard";
 import {
   WorktreeWorkingHeader,
@@ -164,6 +164,7 @@ import {
   threadFeedRunIsUnsettled,
   isContextCompactionActivityGroup,
   isContextHandoffActivityGroup,
+  isModelChangeActivityGroup,
   isSecretRequestActivityGroup,
   type ThreadFeedEntry,
   type ThreadFeedLatestRun,
@@ -1624,6 +1625,16 @@ function renderFeedEntry(
     );
   }
 
+  if (entry.type === "activity-group" && isModelChangeActivityGroup(entry)) {
+    return (
+      <ThreadModelChangeRow
+        environmentId={props.environmentId}
+        projectedItem={entry.activities[0]!.projectedItem}
+        iconColor={iconSubtleColor}
+      />
+    );
+  }
+
   if (entry.type === "activity-group" && isSecretRequestActivityGroup(entry)) {
     return (
       <SecretRequestCard
@@ -2916,7 +2927,11 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
           if (entry.activities[0]?.projectedItem.item.type === "subagent") {
             return undefined;
           }
-          if (isContextCompactionActivityGroup(entry) || isContextHandoffActivityGroup(entry)) {
+          if (
+            isContextCompactionActivityGroup(entry) ||
+            isContextHandoffActivityGroup(entry) ||
+            isModelChangeActivityGroup(entry)
+          ) {
             return undefined;
           }
           if (

@@ -274,6 +274,10 @@ export function buildThreadActivityInspector(
     case "run_interrupt_result":
       addBlock(blocks, "Message", item.message, false);
       break;
+    case "model_change":
+      fields.push({ label: "From", value: item.from.model });
+      fields.push({ label: "To", value: item.to.model });
+      break;
     case "fork":
     case "thread_created":
     case "user_message":

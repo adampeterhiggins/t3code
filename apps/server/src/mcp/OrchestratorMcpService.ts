@@ -743,6 +743,8 @@ function turnItemText(item: OrchestrationV2TurnItem): string | null {
       return item.summary ?? null;
     case "handoff":
       return item.summary ?? `${item.strategy} handoff to ${item.toProviderInstanceId}`;
+    case "model_change":
+      return `Model changed from ${item.from.model} to ${item.to.model}.`;
     case "fork":
       return `Forked to thread ${item.targetThreadId}.`;
     case "thread_created":
