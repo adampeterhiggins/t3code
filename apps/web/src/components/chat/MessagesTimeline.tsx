@@ -8,6 +8,7 @@ import { ToolPathText } from "./ToolPathText";
 import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
 import {
   toolCallPreviewHeading,
+  toolCallPreviewRepeatsFilePath,
   toolCallPreviewStatus,
   workEntryHasToolCallPreview,
 } from "../../lib/toolCallPreview";
@@ -5222,6 +5223,11 @@ function ToolCallPreviewContent(
   const { timestampFormat, activeThreadEnvironmentId } = use(TimelineRowCtx);
   const { workEntry, workspaceRoot, plainOutput } = props;
   const heading = toolCallPreviewHeading(workEntry, workspaceRoot, props.previewText);
+  const fileChange = workEntry.structuredPayload;
+  const fileName = fileChange?.type === "file_change" ? fileChange.fileName : null;
+  const headingText = toolCallPreviewRepeatsFilePath(heading.text, fileName, workspaceRoot)
+    ? null
+    : heading.text;
   const textBody =
     plainOutput !== undefined
       ? plainOutput
@@ -5250,17 +5256,17 @@ function ToolCallPreviewContent(
         <div className={toolCallPreviewCommandClassName}>
           <ShellCommandBlock command={heading.command} highlightSyntax />
         </div>
-      ) : heading.text ? (
+      ) : headingText ? (
         <p className="text-xs break-words whitespace-pre-wrap text-foreground/85 select-text">
           {toolEntryShowsPathBreadcrumbs(workEntry) ? (
             <ToolPathText
               targets={toolPathTargets(workEntry)}
-              text={heading.text}
+              text={headingText}
               environmentId={activeThreadEnvironmentId}
               workspaceRoot={workspaceRoot}
             />
           ) : (
-            heading.text
+            headingText
           )}
         </p>
       ) : null}

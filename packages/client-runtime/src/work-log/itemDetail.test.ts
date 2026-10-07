@@ -52,6 +52,22 @@ describe("file change previews", () => {
     expect(preview).toContain("+const b = 3;");
   });
 
+  it("leaves the file path out of the preview, since the row already names the file", () => {
+    const preview = fileChangePreviewText(
+      fileChange({
+        fileName: "/repo/tests/integration/repositories/test_catalogue.py",
+        diffStr: "@@ -1 +1 @@\n-a\n+b\n",
+        additions: 1,
+        deletions: 0,
+      }),
+    );
+    expect(preview?.split("\n\n")[0]).not.toBe(
+      "/repo/tests/integration/repositories/test_catalogue.py",
+    );
+    expect(preview).toContain("Diff\n");
+    expect(preview).toContain("+1, −0 lines");
+  });
+
   it("prefers the provider's line counts and stays empty without a diff or for a failure", () => {
     expect(
       fileChangePreviewText(
