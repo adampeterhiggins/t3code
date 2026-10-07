@@ -8,7 +8,8 @@
  * - Projects: which projects the list is scoped to. None picked means every project.
  *
  * The trigger carries a count of the narrowings off their default, so a narrowed list is never
- * a mystery. Hovering it opens a preview of those selections.
+ * a mystery. Hovering it opens a preview of those selections, and SidebarFilterPills lists each
+ * one under the header with a way to drop it.
  */
 import {
   AlarmClockIcon,
@@ -22,6 +23,7 @@ import {
   PlusIcon,
   SearchIcon,
   SettingsIcon,
+  XIcon,
 } from "lucide-react";
 import * as Schema from "effect/Schema";
 import { type MouseEvent as ReactMouseEvent, type ReactNode, useRef, useState } from "react";
@@ -543,5 +545,107 @@ export function SidebarFilterMenu(props: {
         ) : null}
       </MenuPopup>
     </Menu>
+  );
+}
+
+function SidebarFilterPill(props: { icon: ReactNode; label: string; onRemove: () => void }) {
+  return (
+    <span className="flex h-6 max-w-full min-w-0 items-center gap-1 rounded-full border border-sidebar-border pr-0.5 pl-2 text-xs text-sidebar-foreground">
+      <span className="flex size-3.5 shrink-0 items-center justify-center">{props.icon}</span>
+      <span className="min-w-0 truncate">{props.label}</span>
+      <button
+        type="button"
+        aria-label={`Remove ${props.label} filter`}
+        className="flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-full text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+        onClick={props.onRemove}
+      >
+        <XIcon aria-hidden className="size-3" />
+      </button>
+    </span>
+  );
+}
+
+/**
+ * One removable pill per selection off its default, under the sidebar header. Renders nothing
+ * while the list is unfiltered.
+ */
+export function SidebarFilterPills(props: {
+  pages: readonly SidebarPage[];
+  groupStyles: ThreadGroups;
+  onPagesChange: (pages: readonly SidebarPage[]) => void;
+  organisations: readonly SidebarOrganisationOption[];
+  scopedOrganisationKeys: readonly string[];
+  onScopedOrganisationKeysChange: (keys: readonly string[]) => void;
+  projects: readonly SidebarProjectSnapshot[];
+  scopedProjectKeys: readonly string[];
+  onScopedProjectKeysChange: (keys: readonly string[]) => void;
+}) {
+  // Live threads are the default page, so only the extra pages read as filters.
+  const pages = props.pages.filter((page) => page !== "threads");
+  const organisationByKey = new Map(props.organisations.map((option) => [option.key, option]));
+  const organisations = props.scopedOrganisationKeys.flatMap((key) => {
+    const option = organisationByKey.get(key);
+    return option ? [option] : [];
+  });
+  const projectByKey = new Map(props.projects.map((project) => [project.projectKey, project]));
+  const projects = props.scopedProjectKeys.flatMap((key) => {
+    const project = projectByKey.get(key);
+    return project ? [project] : [];
+  });
+  const pillCount = pages.length + organisations.length + projects.length;
+  if (pillCount === 0) return null;
+
+  return (
+    <div className="flex flex-wrap items-center gap-1 pt-1.5">
+      {pages.map((page) => (
+        <SidebarFilterPill
+          key={page}
+          icon={<SidebarPageIcon page={page} groupStyles={props.groupStyles} />}
+          label={sidebarPageLabel(page)}
+          onRemove={() => {
+            const next = props.pages.filter((candidate) => candidate !== page);
+            // The list always shows something; dropping the last page falls back to the default.
+            props.onPagesChange(next.length > 0 ? next : ["threads"]);
+          }}
+        />
+      ))}
+      {organisations.map((option) => (
+        <SidebarFilterPill
+          key={option.key}
+          icon={<BuildingIcon aria-hidden className="size-3.5" />}
+          label={option.label}
+          onRemove={() =>
+            props.onScopedOrganisationKeysChange(
+              props.scopedOrganisationKeys.filter((key) => key !== option.key),
+            )
+          }
+        />
+      ))}
+      {projects.map((project) => (
+        <SidebarFilterPill
+          key={project.projectKey}
+          icon={<ProjectFavicon project={project} className="size-3.5" />}
+          label={project.displayName}
+          onRemove={() =>
+            props.onScopedProjectKeysChange(
+              props.scopedProjectKeys.filter((key) => key !== project.projectKey),
+            )
+          }
+        />
+      ))}
+      {pillCount > 1 ? (
+        <button
+          type="button"
+          className="cursor-pointer px-1.5 text-xs text-sidebar-muted-foreground hover:text-sidebar-foreground"
+          onClick={() => {
+            props.onPagesChange(["threads"]);
+            props.onScopedOrganisationKeysChange([]);
+            props.onScopedProjectKeysChange([]);
+          }}
+        >
+          Clear all
+        </button>
+      ) : null}
+    </div>
   );
 }

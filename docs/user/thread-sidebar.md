@@ -174,7 +174,8 @@ own titled group below your live threads. On web and desktop, click a group's ti
 it, and click again to expand it. **Organisations** narrows the list to repositories
 owned by the people or organisations you pick, read from each project's Git remote, and
 **Projects** narrows it to the projects you pick. On web and desktop, the filter button shows how
-many filters are on, and hovering it lists the ones that are selected.
+many filters are on, hovering it lists the ones that are selected, and each one appears as a pill
+under the search bar: click its × to remove it, or **Clear all** to go back to the default list.
 
 On web and desktop, while only **Threads** is shown, drag a thread up into the pinned section to
 pin it at the spot you drop it; drag a pinned thread down into the active list to unpin it. Dragging a pinned thread out of the pinned section does not
