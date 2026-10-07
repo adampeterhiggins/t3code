@@ -1,7 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { resolveToolPath, toolPathTextParts } from "@t3tools/client-runtime/work-log/tool-paths";
 import type { EnvironmentId } from "@t3tools/contracts";
-import { CheckIcon, CopyIcon, FolderGit2Icon, GitBranchIcon } from "lucide-react";
+import { CheckIcon, CopyIcon } from "lucide-react";
 import { useState } from "react";
 
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
@@ -33,11 +33,6 @@ function ToolPathBreadcrumb({ path }: { path: NonNullable<ReturnType<typeof reso
           />
         }
       >
-        {path.repository ? (
-          <FolderGit2Icon aria-hidden className="mr-1 inline size-3 align-[-0.125em]" />
-        ) : !path.external ? (
-          <GitBranchIcon aria-hidden className="mr-1 inline size-3 align-[-0.125em]" />
-        ) : null}
         <span className="underline decoration-muted-foreground/60 decoration-dotted underline-offset-2">
           {path.rootLabel}
         </span>

@@ -10,8 +10,6 @@ describe("tool path breadcrumbs", () => {
       absolutePath: path,
       rootLabel: "style-all",
       project: "fd-questionnaire",
-      external: false,
-      repository: false,
       segments: ["scripts", "parity", "compare_reads.py"],
     });
   });
@@ -54,7 +52,7 @@ describe("tool path breadcrumbs", () => {
       resolveToolPath("/work/report-old/a.ts", "/repo", [
         { path: "/work/report", label: "report", project: null },
       ]),
-    ).toMatchObject({ external: true, rootLabel: "External" });
+    ).toMatchObject({ rootLabel: "External" });
   });
 
   it("resolves relative file targets only when their workspace is known", () => {
@@ -72,19 +70,18 @@ describe("tool path breadcrumbs", () => {
     expect(resolveToolPath(".context/fd-manager/src/Truncatable.tsx", "/repo")).toMatchObject({
       absolutePath: "/repo/.context/fd-manager/src/Truncatable.tsx",
       rootLabel: "fd-manager",
-      repository: true,
       segments: ["src", "Truncatable.tsx"],
     });
     expect(
       resolveToolPath("/Users/adam/.t3/worktrees/t3code/feature/.context/api/a.ts", "/repo"),
-    ).toMatchObject({ rootLabel: "api", project: "t3code", repository: true, segments: ["a.ts"] });
+    ).toMatchObject({ rootLabel: "api", project: "t3code", segments: ["a.ts"] });
     expect(resolveToolPath("/repo/.context", "/repo")).toMatchObject({
       rootLabel: "repo",
-      repository: false,
       segments: [".context"],
     });
     expect(resolveToolPath("/repo/src/.context/api/a.ts", "/repo")).toMatchObject({
-      repository: false,
+      rootLabel: "repo",
+      segments: ["src", ".context", "api", "a.ts"],
     });
   });
 

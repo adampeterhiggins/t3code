@@ -969,7 +969,7 @@ worktree label has a dotted underline, with a full-path copy tooltip on web and 
 tap-to-copy prompt on mobile. Roots are resolved from that environment's thread records, with T3 and Claude
 private-worktree layouts as fallbacks; unknown roots are labeled External. A repository linked to
 a message and cloned into the default `.context/<name>` folder gets its own label named after the
-clone, with a repository icon on web and desktop. Shell command rows
+clone. Shell command rows
 and approval prompts still show the exact command, on one truncated line. The shared runtime
 instructions also tell every provider that shell commands already start in that directory.
 
