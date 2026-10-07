@@ -220,6 +220,7 @@ describe("host context compatibility", () => {
       },
       "pr-42",
     );
+    expect(pr.label).toBe("example/repo#42");
     const review = {
       ...pr,
       contextId: ComposerContextId.make("review-1"),
