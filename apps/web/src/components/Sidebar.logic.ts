@@ -970,6 +970,17 @@ export function groupSidebarTabThreads<T>(
 }
 
 /**
+ * The sidebar row a tab belongs to. Hide and unhide follow this thread: the shelf reads it,
+ * while the tab the row shows may be a different one left open most recently.
+ */
+export function sidebarTabGroupRowKey(
+  threadKey: string,
+  tabThreadGroups: ReadonlyMap<string, string>,
+): string {
+  return tabThreadGroups.get(threadKey) ?? threadKey;
+}
+
+/**
  * The tab that takes over when `threadKey`'s tab closes: the next tab in its group, else the
  * previous one. Null when the thread has no sibling tab, where closing would just be archiving.
  */

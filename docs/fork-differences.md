@@ -302,7 +302,8 @@ is its own conversation and provider.
   orchestration events and mirrors them: a new run or unsettle in any tab wakes the group, and a
   settle in any tab settles the rest. A settle is undone while another tab is working, waiting on
   you, or holding background work, or, for an automatic settle, while another tab has an open pull
-  request.
+  request. Hiding works the same way: `hiding.ts` mirrors a hide or unhide across the group's
+  live tabs, so the row leaves the list whichever tab the menu was opened on.
 - **Sidebars.** By default child tabs are hidden from the web sidebar, the legacy project sidebar,
   and both mobile thread lists (`useHiddenTabThreads`). The group's row stays highlighted while any
   of its tabs is open. Opening it from another thread returns to the tab last left open; clicking
@@ -1030,11 +1031,13 @@ the tool in [`toolkits/worktree/tools.ts`](../apps/server/src/mcp/toolkits/workt
 **Hidden** in the filter menu's **Show** submenu lists hidden threads. Unlike settling, activity
 does not bring a hidden thread back; unlike archiving, it stays live. The state is the
 server-owned `hiddenAt` field, set by the `thread.hidden.set` command and gated on the
-`threadHiding` capability. Agents reach it through `t3_thread_organize`'s `hide` and `unhide`
-actions.
+`threadHiding` capability. A chat-tab group hides as one sidebar row: hiding or unhiding any
+tab mirrors across the group's other live tabs. Agents reach it through `t3_thread_organize`'s
+`hide` and `unhide` actions.
 
-Code: `thread.hidden.set` in [`Orchestrator.ts`](../apps/server/src/orchestration-v2/Orchestrator.ts)
-and the `hidden` section in [`Sidebar.logic.ts`](../apps/web/src/components/Sidebar.logic.ts) and
+Code: `thread.hidden.set` in [`Orchestrator.ts`](../apps/server/src/orchestration-v2/Orchestrator.ts),
+[`hiding.ts`](../apps/server/src/threadTabs/hiding.ts),
+the `hidden` section in [`Sidebar.logic.ts`](../apps/web/src/components/Sidebar.logic.ts) and
 mobile's [`threadListV2.ts`](../apps/mobile/src/features/threads/threadListV2.ts). User guide:
 [thread-sidebar.md](./user/thread-sidebar.md#hide-a-thread).
 

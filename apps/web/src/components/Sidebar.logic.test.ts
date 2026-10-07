@@ -20,6 +20,7 @@ import {
   isSidebarNestedLinkClick,
   isSidebarTabGroupOpen,
   setSidebarTabGroupOverride,
+  sidebarTabGroupRowKey,
   sidebarTabNeighbourKey,
   getFallbackThreadIdAfterDelete,
   getProjectSortTimestamp,
@@ -2313,6 +2314,18 @@ describe("navigation after parking a thread", () => {
       ).toBe(expected);
     },
   );
+});
+
+describe("sidebar tab group row", () => {
+  it("hides the group's row when the menu was opened on another tab", () => {
+    const groups = new Map([
+      ["env:child", "env:root"],
+      ["env:other", "env:elsewhere"],
+    ]);
+    expect(sidebarTabGroupRowKey("env:child", groups)).toBe("env:root");
+    expect(sidebarTabGroupRowKey("env:root", groups)).toBe("env:root");
+    expect(sidebarTabGroupRowKey("env:plain", groups)).toBe("env:plain");
+  });
 });
 
 describe("sidebar tab group overrides", () => {
