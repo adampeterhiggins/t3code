@@ -530,7 +530,9 @@ Threads, your thread groups, Snoozed, Hidden, and Settled the list holds; **Orga
 it to repository owners, read per checkout from `repositoryIdentity` (a fork counts under its own
 remote); and **Projects** scopes it to some projects. **Only**, on the highlighted row, picks just that one. Threads alone is the
 default; other picks list as titled sections below live threads, so snoozed and settled threads no longer sit in shelves under
-live work, and the drag targets for settling and waking are gone. Dragging to pin or reorder
+live work, and the drag targets for settling and waking are gone. On web and desktop, clicking a
+section's title collapses it to a count, remembered per client; the open thread stays listed under a
+collapsed title. Dragging to pin or reorder
 works while only Threads is shown. The button shows a count of narrowings off their default,
 and hovering it lists the selected pages, organisations, and projects. A thread's **Filter by
 project** menu item still narrows the list to that one project. Mobile's

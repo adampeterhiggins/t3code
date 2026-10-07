@@ -170,7 +170,8 @@ Pinning does not prevent automatic settlement. Settling a thread removes its pin
 The thread list shows live work. To also see snoozed, hidden, or settled threads, open the filter
 button in the sidebar header on web and desktop, or the thread list's filter menu on mobile, and
 pick them under **Show**. Pick as many as you like, or **Only** to show one; each appears as its
-own titled group below your live threads. **Organisations** narrows the list to repositories
+own titled group below your live threads. On web and desktop, click a group's title to collapse
+it, and click again to expand it. **Organisations** narrows the list to repositories
 owned by the people or organisations you pick, read from each project's Git remote, and
 **Projects** narrows it to the projects you pick. On web and desktop, the filter button shows how
 many filters are on, and hovering it lists the ones that are selected.
