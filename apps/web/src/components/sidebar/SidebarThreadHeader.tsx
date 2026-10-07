@@ -163,7 +163,9 @@ export function SidebarHeaderIconButton({
 }: {
   /** Accessible name; also the tooltip unless `tooltip` says more. */
   label: string;
-  /** `false` skips the tooltip so the caller can show its own hover content. */
+  /** `false` silences the tooltip so the caller can show its own hover content. The
+   *  wrapper stays mounted either way: swapping it would remount the button and
+   *  strand any popup anchored to it. */
   tooltip?: ReactNode | false;
   className?: string | undefined;
   children?: ReactNode;
@@ -182,21 +184,8 @@ export function SidebarHeaderIconButton({
       />
     </>
   );
-  if (tooltip === false) {
-    return (
-      <SidebarMenuButton
-        size="icon"
-        type="button"
-        aria-label={label}
-        {...rest}
-        className={buttonClassName}
-      >
-        {content}
-      </SidebarMenuButton>
-    );
-  }
   return (
-    <Tooltip>
+    <Tooltip disabled={tooltip === false}>
       <TooltipTrigger
         render={
           <SidebarMenuButton
