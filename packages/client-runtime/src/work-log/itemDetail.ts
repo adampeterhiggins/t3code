@@ -179,25 +179,32 @@ export function fileChangeDiffWithheld(item: OrchestrationV2TurnItem): item is F
 
 /**
  * Fork: an edit's bounded preview, a unified diff block (`Diff\n<patch>`, or a note when it is
- * too large) after its line counts. Null when the item carries no diff, or for a failed edit,
- * whose `diffStr` holds the provider's error.
+ * too large) after its line counts. The file path is left out: callers already show it beside
+ * the diff. Null when the item carries no diff, or for a failed edit, whose `diffStr` holds the
+ * provider's error.
  */
 export function fileChangePreviewText(item: OrchestrationV2TurnItem): string | null {
   if (item.type !== "file_change" || item.status === "failed") return null;
   if (item.diffStr === undefined && item.oldStr === undefined && item.newStr === undefined) {
     return null;
   }
-  return (
-    summarizeToolActivityInput({
-      file_path: item.fileName,
-      ...(item.diffStr !== undefined ? { diff: item.diffStr } : {}),
-      ...(item.oldStr !== undefined ? { old_string: item.oldStr } : {}),
-      ...(item.newStr !== undefined ? { new_string: item.newStr } : {}),
-      ...(item.additions !== undefined && item.deletions !== undefined
-        ? { linesAdded: item.additions, linesRemoved: item.deletions }
-        : {}),
-    }) ?? null
-  );
+  const summary = summarizeToolActivityInput({
+    file_path: item.fileName,
+    ...(item.diffStr !== undefined ? { diff: item.diffStr } : {}),
+    ...(item.oldStr !== undefined ? { old_string: item.oldStr } : {}),
+    ...(item.newStr !== undefined ? { new_string: item.newStr } : {}),
+    ...(item.additions !== undefined && item.deletions !== undefined
+      ? { linesAdded: item.additions, linesRemoved: item.deletions }
+      : {}),
+  });
+  if (summary === undefined) return null;
+  // summarizeToolActivityInput records file_path as its own paragraph. The patch headers
+  // still name the file; this paragraph only repeats the path shown next to the diff.
+  const text = summary
+    .split("\n\n")
+    .filter((block) => block !== item.fileName)
+    .join("\n\n");
+  return text.length > 0 ? text : null;
 }
 
 function positiveInteger(value: unknown): number | null {

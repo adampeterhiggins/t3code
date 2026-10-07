@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { WorkLogEntry } from "../session-logic";
 import {
   toolCallPreviewHeading,
+  toolCallPreviewRepeatsFilePath,
   toolCallPreviewStatus,
   workEntryHasToolCallPreview,
 } from "./toolCallPreview";
@@ -67,6 +68,35 @@ describe("toolCallPreviewHeading", () => {
       command: null,
       text: null,
     });
+  });
+});
+
+describe("toolCallPreviewRepeatsFilePath", () => {
+  const fileName = "/repo/historic-cint-band/tests/integration/repositories/test_catalogue.py";
+
+  it("matches the absolute path and the workspace-relative label", () => {
+    expect(toolCallPreviewRepeatsFilePath(fileName, fileName, "/repo/historic-cint-band")).toBe(
+      true,
+    );
+    expect(
+      toolCallPreviewRepeatsFilePath(
+        "historic-cint-band/tests/integration/repositories/test_catalogue.py",
+        fileName,
+        "/repo/historic-cint-band",
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps a heading that says more than the file path", () => {
+    expect(toolCallPreviewRepeatsFilePath("Changed 1 file", fileName, "/repo")).toBe(false);
+    expect(
+      toolCallPreviewRepeatsFilePath(
+        "historic-cint-band/tests/integration/repositories/test_catalogue.py +2 more",
+        fileName,
+        "/repo/historic-cint-band",
+      ),
+    ).toBe(false);
+    expect(toolCallPreviewRepeatsFilePath(null, fileName, "/repo")).toBe(false);
   });
 });
 

@@ -1,6 +1,7 @@
 import { formatCommandForWorkspace } from "@t3tools/client-runtime/work-log/command-display";
 import { resolveWorkEntryToolPresentation } from "@t3tools/client-runtime/work-log/presentation";
 
+import { formatWorkspaceRelativePath } from "../filePathDisplay";
 import { type WorkLogEntry, workLogEntryIsToolLike } from "../session-logic";
 
 /**
@@ -33,6 +34,20 @@ export function toolCallPreviewHeading(
     entry.toolTitle ??
     (command ? "Command" : rowLabel);
   return { title, command, text: !command && title !== rowLabel ? rowLabel : null };
+}
+
+/**
+ * A file-change preview already names the file beside the diff. Drop a heading
+ * that is only that path, in either absolute or workspace-relative form.
+ */
+export function toolCallPreviewRepeatsFilePath(
+  text: string | null,
+  fileName: string | null,
+  workspaceRoot: string | undefined,
+): boolean {
+  const label = text?.trim();
+  if (!label || !fileName) return false;
+  return label === fileName || label === formatWorkspaceRelativePath(fileName, workspaceRoot);
 }
 
 /** The lifecycle word shown in the preview footer. */
