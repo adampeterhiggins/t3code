@@ -370,6 +370,9 @@ const SIDEBAR_PAGES_KEY = "t3code:sidebar:pages";
 const SIDEBAR_ORGANISATIONS_KEY = "t3code:sidebar:organisations";
 const NO_ORGANISATION_KEYS: readonly string[] = [];
 const DEFAULT_SIDEBAR_PAGES: readonly string[] = ["threads"];
+// Page headers the user folded away. Pages start open: picking one is asking to see it.
+const SIDEBAR_COLLAPSED_PAGES_KEY = "t3code:sidebar:collapsed-pages";
+const NO_COLLAPSED_PAGES: readonly string[] = [];
 const SIDEBAR_PAGE_BY_MARKER = {
   "snoozed-header": "snoozed",
   "hidden-header": "hidden",
@@ -882,12 +885,15 @@ function SidebarDragBoundary(props: {
   );
 }
 
-// Titles a user-made group in its accent. Click the pencil, or right-click, to rename or restyle.
+// Titles a user-made group in its accent. Click the title to collapse it; click the pencil, or
+// right-click, to rename or restyle.
 function SidebarGroupHeader(props: {
   name: string;
   style: ThreadGroup | undefined;
-  empty: boolean;
+  count: number;
+  collapsed: boolean;
   onEdit: (name: string) => void;
+  onToggle: () => void;
 }) {
   const accent = props.style?.accent;
   return (
@@ -898,13 +904,24 @@ function SidebarGroupHeader(props: {
         props.onEdit(props.name);
       }}
     >
-      <ThreadGroupIcon style={props.style} />
-      <span className={cn("min-w-0 flex-1 truncate", accent && projectIconColorClassName(accent))}>
-        {props.name}
-      </span>
-      {props.empty ? (
-        <span className="shrink-0 font-normal text-muted-foreground/70">Empty</span>
-      ) : null}
+      <button
+        type="button"
+        aria-expanded={!props.collapsed}
+        className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        onClick={props.onToggle}
+      >
+        <ThreadGroupIcon style={props.style} />
+        <span
+          className={cn("min-w-0 flex-1 truncate", accent && projectIconColorClassName(accent))}
+        >
+          {props.name}
+        </span>
+        {props.count === 0 ? (
+          <span className="shrink-0 font-normal text-muted-foreground/70">Empty</span>
+        ) : props.collapsed ? (
+          <span className="shrink-0 font-normal text-muted-foreground/70">{props.count}</span>
+        ) : null}
+      </button>
       <button
         type="button"
         aria-label={`Edit group ${props.name}`}
@@ -912,6 +929,17 @@ function SidebarGroupHeader(props: {
         onClick={() => props.onEdit(props.name)}
       >
         <PencilIcon aria-hidden className="size-3" />
+      </button>
+      <button
+        type="button"
+        tabIndex={-1}
+        aria-hidden
+        className="shrink-0 cursor-pointer"
+        onClick={props.onToggle}
+      >
+        <ChevronDownIcon
+          className={cn("size-3 transition-transform", !props.collapsed && "rotate-180")}
+        />
       </button>
     </div>
   );
@@ -4285,24 +4313,57 @@ export default function Sidebar() {
       workingThreads.length,
     ],
   );
+  const [storedCollapsedPages, setCollapsedPages] = useLocalStorage(
+    SIDEBAR_COLLAPSED_PAGES_KEY,
+    NO_COLLAPSED_PAGES,
+    SidebarPagesSchema,
+  );
+  const collapsedPages = useMemo(() => new Set(storedCollapsedPages), [storedCollapsedPages]);
+  const togglePageCollapsed = useCallback(
+    (page: SidebarPage) =>
+      setCollapsedPages((pages) =>
+        pages.includes(page) ? pages.filter((entry) => entry !== page) : [...pages, page],
+      ),
+    [setCollapsedPages],
+  );
+  // The rows a picked page lists. A folded page keeps only the open thread, as the
+  // Working shelf does, so the route's row never vanishes behind its header.
+  const pageRows = useCallback(
+    (page: SidebarPage, list: readonly EnvironmentThreadShell[]) => {
+      if (!sidebarPages.includes(page)) return EMPTY_THREADS;
+      if (!collapsedPages.has(page)) return list;
+      const routeThread = list.find((thread) => sidebarThreadKey(thread) === sidebarRouteThreadKey);
+      return routeThread === undefined ? EMPTY_THREADS : [routeThread];
+    },
+    [collapsedPages, sidebarPages, sidebarRouteThreadKey],
+  );
   // Picked groups in list order, each with the rows the current project scope leaves it.
   const visibleGroups = useMemo(
     () =>
       sidebarPages.flatMap((page) => {
         if (!page.startsWith("group:")) return [];
         const name = page.slice("group:".length);
-        return [{ name, threads: groupedThreadsByName.get(name) ?? EMPTY_THREADS }];
+        return [{ name, threads: pageRows(page, groupedThreadsByName.get(name) ?? EMPTY_THREADS) }];
       }),
-    [groupedThreadsByName, sidebarPages],
+    [groupedThreadsByName, pageRows, sidebarPages],
   );
   const showsPage = (page: SidebarPage) => sidebarPages.includes(page);
   const showsThreads = showsPage("threads");
   // Dragging moves rows between pinned and active only, so it stays off while
   // other pages share the list.
   const threadsOnly = showsThreads && sidebarPages.length === 1;
-  const renderedSettledThreads = showsPage("settled") ? visibleSettledThreads : EMPTY_THREADS;
-  const visibleSnoozedThreads = showsPage("snoozed") ? snoozedThreads : EMPTY_THREADS;
-  const visibleHiddenThreads = showsPage("hidden") ? hiddenThreads : EMPTY_THREADS;
+  const renderedSettledThreads = useMemo(
+    () => pageRows("settled", visibleSettledThreads),
+    [pageRows, visibleSettledThreads],
+  );
+  const visibleSnoozedThreads = useMemo(
+    () => pageRows("snoozed", snoozedThreads),
+    [pageRows, snoozedThreads],
+  );
+  const visibleHiddenThreads = useMemo(
+    () => pageRows("hidden", hiddenThreads),
+    [hiddenThreads, pageRows],
+  );
 
   // Navigating anywhere folds an expanded tab list back to its limit.
   const [expandedForRouteKey, setExpandedForRouteKey] = useState(routeThreadKey);
@@ -4907,16 +4968,25 @@ export default function Sidebar() {
             attemptSetGroup(scopeThreadRef(thread.environmentId, thread.id), nextName);
           }
         }
-        setSidebarPages((pages) =>
+        const renamePage = (pages: readonly string[]) =>
           nextName === null
             ? pages.filter((page) => page !== sidebarGroupPage(name))
             : pages.map((page) =>
                 page === sidebarGroupPage(name) ? sidebarGroupPage(nextName) : page,
-              ),
-        );
+              );
+        setSidebarPages(renamePage);
+        setCollapsedPages(renamePage);
       })();
     },
-    [attemptSetGroup, deleteGroup, saveGroup, setSidebarPages, threadGroups, threads],
+    [
+      attemptSetGroup,
+      deleteGroup,
+      saveGroup,
+      setCollapsedPages,
+      setSidebarPages,
+      threadGroups,
+      threads,
+    ],
   );
   /** Creates an empty group from the filter menu and shows it. */
   const createThreadGroup = useCallback(() => {
@@ -5328,12 +5398,16 @@ export default function Sidebar() {
       ["settled-header", rowsOf(renderedSettledThreads, "settled")],
     ] as const;
     for (const [marker, rows] of pages) {
-      if (rows.length === 0) continue;
+      const page = SIDEBAR_PAGE_BY_MARKER[marker];
+      // A folded page keeps its header so it can be opened again.
+      if (!sidebarPages.includes(page) || (pageCounts.get(page) ?? 0) === 0) continue;
       items.push({ kind: "marker", marker }, ...rows);
     }
     return items;
   }, [
     activeThreads,
+    pageCounts,
+    sidebarPages,
     showsThreads,
     pinnedThreads,
     renderedSettledThreads,
@@ -7250,17 +7324,27 @@ export default function Sidebar() {
                             break;
                           case "snoozed-header":
                           case "hidden-header":
-                          case "settled-header":
+                          case "settled-header": {
+                            const page = SIDEBAR_PAGE_BY_MARKER[item.marker];
+                            const collapsed = collapsedPages.has(page);
                             items.push(
                               <SortableSidebarMarker
                                 key={item.marker}
                                 marker={item.marker}
-                                className="mx-0.5 flex h-8 items-center px-2 text-xs font-medium text-sidebar-muted-foreground"
+                                className="mx-0.5 h-8"
                               >
-                                {sidebarPageLabel(SIDEBAR_PAGE_BY_MARKER[item.marker])}
+                                <CollapsibleSectionHeader
+                                  expanded={!collapsed}
+                                  onClick={() => togglePageCollapsed(page)}
+                                >
+                                  {collapsed
+                                    ? `${sidebarPageLabel(page)} (${pageCounts.get(page) ?? 0})`
+                                    : sidebarPageLabel(page)}
+                                </CollapsibleSectionHeader>
                               </SortableSidebarMarker>,
                             );
                             break;
+                          }
                           case "group-header":
                             items.push(
                               <SortableSidebarMarker
@@ -7272,8 +7356,12 @@ export default function Sidebar() {
                                 <SidebarGroupHeader
                                   name={item.group!}
                                   style={threadGroups[item.group!]}
-                                  empty={!groupedThreadsByName.has(item.group!)}
+                                  count={groupedThreadsByName.get(item.group!)?.length ?? 0}
+                                  collapsed={collapsedPages.has(sidebarGroupPage(item.group!))}
                                   onEdit={editThreadGroup}
+                                  onToggle={() =>
+                                    togglePageCollapsed(sidebarGroupPage(item.group!))
+                                  }
                                 />
                               </SortableSidebarMarker>,
                             );
@@ -7282,7 +7370,9 @@ export default function Sidebar() {
                       }
                       return items;
                     })()}
-                    {showsPage("settled") && hiddenSettledCount > 0 ? (
+                    {showsPage("settled") &&
+                    !collapsedPages.has("settled") &&
+                    hiddenSettledCount > 0 ? (
                       <li className="list-none">
                         <button
                           type="button"
