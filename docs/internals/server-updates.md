@@ -56,6 +56,13 @@ could lose the only successful RPC result. The client must then observe the
 prepared version after reconnecting. If installation fails, desktop restarts the
 stopped backends and replays the failure for the same token.
 
+## Pausing threads for an update
+
+An application update stops running threads before the process is replaced.
+They come back interrupted, and the user resumes them. Restart continuation
+still covers crashes and machine restarts. It does not start a thread the
+update already paused.
+
 ## Recovering interrupted threads
 
 Restart continuation is an environment-owned preference, off by default. The

@@ -26,6 +26,7 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 
 import * as ServerConfig from "./config.ts";
+import { updateRestartPendingSync } from "./cloud/updateHandoff.ts";
 import * as ServiceLauncherClient from "./cloud/serviceLauncherClient.ts";
 import { flushCompileCache } from "./compileCache.ts";
 import * as Keybindings from "./keybindings.ts";
@@ -34,6 +35,7 @@ import * as EffectWorker from "./orchestration-v2/EffectWorker.ts";
 import * as LegacyV1ThreadImporter from "./orchestration-v2/legacy/LegacyV1ThreadImporter.ts";
 import * as Orchestrator from "./orchestration-v2/Orchestrator.ts";
 import * as ProviderRuntimeRecovery from "./orchestration-v2/ProviderRuntimeRecoveryService.ts";
+import { pauseRunningThreadsForUpdate } from "./orchestration-v2/UpdateThreadPause.ts";
 import * as ProviderSessionManager from "./orchestration-v2/ProviderSessionManager.ts";
 import * as ThreadLaunch from "./orchestration-v2/ThreadLaunchService.ts";
 import * as ThreadManagement from "./orchestration-v2/ThreadManagementService.ts";
@@ -431,6 +433,23 @@ const make = (options?: StartupOptions) =>
     const commandGate = yield* makeCommandGate;
     const httpListening = yield* Deferred.make<void>();
     const effectWorkerFiber = yield* Ref.make<Fiber.Fiber<void, never> | null>(null);
+    // A signal handler runs before finalizers, so this still sees an update
+    // marker that a later finalizer consumes.
+    const updateRestart = { current: false };
+    const noteUpdateRestart = () => {
+      if (updateRestartPendingSync(serverConfig.baseDir)) updateRestart.current = true;
+    };
+    yield* Effect.acquireRelease(
+      Effect.sync(() => {
+        process.on("SIGTERM", noteUpdateRestart);
+        process.on("SIGINT", noteUpdateRestart);
+      }),
+      () =>
+        Effect.sync(() => {
+          process.off("SIGTERM", noteUpdateRestart);
+          process.off("SIGINT", noteUpdateRestart);
+        }),
+    );
 
     yield* Effect.addFinalizer(() =>
       Effect.gen(function* () {
@@ -442,6 +461,17 @@ const make = (options?: StartupOptions) =>
             cause: "Server runtime is shutting down.",
           }),
         );
+        noteUpdateRestart();
+        if (updateRestart.current) {
+          // The effect worker has to deliver Stop before it is interrupted.
+          yield* pauseRunningThreadsForUpdate().pipe(
+            Effect.catchCause((cause) =>
+              Effect.logWarning("Could not pause running threads for the application update.", {
+                cause,
+              }),
+            ),
+          );
+        }
         const workerFiber = yield* Ref.getAndSet(effectWorkerFiber, null);
         if (workerFiber !== null) {
           yield* Fiber.interrupt(workerFiber).pipe(Effect.ignore);
@@ -449,7 +479,10 @@ const make = (options?: StartupOptions) =>
         yield* providerRuntimeRecovery.prepareForShutdown.pipe(
           Effect.ensuring(providerSessions.shutdown),
         );
-        const reconciliation = yield* providerRuntimeRecovery.reconcile("shutdown");
+        const reconciliation = yield* providerRuntimeRecovery.reconcile(
+          "shutdown",
+          updateRestart.current ? { pausedForUpdate: true } : undefined,
+        );
         yield* Effect.logInfo("V2 orchestration shutdown reconciliation completed", reconciliation);
       }).pipe(
         Effect.catchCause((cause) =>

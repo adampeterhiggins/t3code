@@ -62,6 +62,7 @@ export class ProviderRuntimeRecoveryService extends Context.Service<
   {
     readonly reconcile: (
       trigger: "startup" | "shutdown",
+      options?: { readonly pausedForUpdate?: boolean },
     ) => Effect.Effect<ProviderRuntimeReconciliationSummary, ProviderRuntimeRecoveryError>;
     readonly prepareForShutdown: Effect.Effect<void, ProviderRuntimeRecoveryError>;
     readonly recover: Effect.Effect<ProviderRuntimeRecoverySummary, ProviderRuntimeRecoveryError>;
@@ -190,6 +191,7 @@ export const make = Effect.gen(function* () {
       projection: ProjectionStore.ProjectionRuntimeRecoveryState,
       trigger: "startup" | "shutdown",
       continueAfterRestart: boolean,
+      terminalRunStatus: "cancelled" | "interrupted",
     ) {
       const now = yield* DateTime.now;
       const runs = [] as Array<OrchestrationV2ThreadProjection["runs"][number]>;
@@ -235,7 +237,10 @@ export const make = Effect.gen(function* () {
           item.type === "subagent" && isAppOwnedDelegation(item) ? [item.subagentId] : [],
         ),
       ]);
-      const detail = `Cancelled because the server ${trigger === "startup" ? "restarted" : "shut down"} before the provider work completed.`;
+      const detail =
+        terminalRunStatus === "interrupted"
+          ? "Paused because an application update stopped this server before the provider work completed."
+          : `Cancelled because the server ${trigger === "startup" ? "restarted" : "shut down"} before the provider work completed.`;
       const commandId = CommandId.make(
         `command:runtime-reconcile:${trigger}:${projection.thread.id}:${DateTime.formatIso(now)}`,
       );
@@ -324,7 +329,7 @@ export const make = Effect.gen(function* () {
           runId: run.id,
           providerInstanceId: run.providerInstanceId,
           occurredAt: now,
-          payload: { ...run, status: "cancelled", queuePosition: null, completedAt: now },
+          payload: { ...run, status: terminalRunStatus, queuePosition: null, completedAt: now },
         });
         for (const attempt of projection.attempts.filter(
           (candidate) =>
@@ -720,8 +725,13 @@ export const make = Effect.gen(function* () {
     },
   );
 
-  const reconcile = (trigger: "startup" | "shutdown") =>
+  const reconcile = (
+    trigger: "startup" | "shutdown",
+    options?: { readonly pausedForUpdate?: boolean },
+  ) =>
     Effect.gen(function* () {
+      const terminalRunStatus =
+        options?.pausedForUpdate === true ? ("interrupted" as const) : ("cancelled" as const);
       const continueAfterRestart = yield* settings.getSettings.pipe(
         Effect.orElseSucceed(() => null),
       );
@@ -751,7 +761,7 @@ export const make = Effect.gen(function* () {
           continueAfterRestart !== null &&
           resolveProjectSettings(continueAfterRestart, projection.thread.projectId).settings
             .continueThreadsAfterServerUpdate;
-        const result = yield* reconcileProjection(projection, trigger, enabled);
+        const result = yield* reconcileProjection(projection, trigger, enabled, terminalRunStatus);
         terminalizedRuns += result.terminalizedRuns;
         stoppedSessions += result.stoppedSessions;
         closedRequests += result.closedRequests;
