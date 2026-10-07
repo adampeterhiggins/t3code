@@ -488,36 +488,34 @@ export function SidebarFilterMenu(props: {
         if (open) setPreviewOpen(false);
       }}
     >
-      {activeCount > 0 ? (
-        <PreviewCard
-          open={previewOpen && !menuOpen}
-          onOpenChange={(open) => {
-            if (menuOpenRef.current) return;
-            setPreviewOpen(open);
-          }}
+      {/* One trigger shape whatever the count: swapping wrappers when a pick moves the
+          count to or from zero would remount the trigger and strand the open menu. */}
+      <PreviewCard
+        open={previewOpen && !menuOpen && activeCount > 0}
+        onOpenChange={(open) => {
+          if (menuOpenRef.current) return;
+          setPreviewOpen(open);
+        }}
+      >
+        <MenuTrigger render={<PreviewCardTrigger delay={400} closeDelay={120} render={button} />}>
+          {icon}
+        </MenuTrigger>
+        <PreviewCardPopup
+          side="bottom"
+          align="end"
+          sideOffset={8}
+          className="w-max min-w-40 max-w-64"
         >
-          <MenuTrigger render={<PreviewCardTrigger delay={400} closeDelay={120} render={button} />}>
-            {icon}
-          </MenuTrigger>
-          <PreviewCardPopup
-            side="bottom"
-            align="end"
-            sideOffset={8}
-            className="w-max min-w-40 max-w-64"
-          >
-            <SidebarFilterPreview
-              pages={props.pages}
-              groupStyles={props.groupStyles}
-              organisations={props.organisations}
-              scopedOrganisationKeys={props.scopedOrganisationKeys}
-              projects={props.projects}
-              scopedProjectKeys={props.scopedProjectKeys}
-            />
-          </PreviewCardPopup>
-        </PreviewCard>
-      ) : (
-        <MenuTrigger render={button}>{icon}</MenuTrigger>
-      )}
+          <SidebarFilterPreview
+            pages={props.pages}
+            groupStyles={props.groupStyles}
+            organisations={props.organisations}
+            scopedOrganisationKeys={props.scopedOrganisationKeys}
+            projects={props.projects}
+            scopedProjectKeys={props.scopedProjectKeys}
+          />
+        </PreviewCardPopup>
+      </PreviewCard>
       <MenuPopup align="end" side="bottom" className="min-w-52">
         <SidebarShowFilter
           pages={props.pages}
