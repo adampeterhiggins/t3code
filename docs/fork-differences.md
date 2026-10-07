@@ -509,6 +509,19 @@ app's navigation history, the same as the `navigation.back` and `navigation.forw
 
 Code: `SidebarHistoryNavigation` in `apps/web/src/components/sidebar/SidebarChrome.tsx`.
 
+## Sidebar thread views
+
+On web and desktop, **Settings → General → Thread views** chooses detailed cards or compact
+rows independently for active, pinned, working, grouped, hidden, snoozed, and settled threads.
+Hidden threads default to detailed cards; snoozed and settled threads default to compact rows.
+These client preferences also apply when several categories share the sidebar and when chat
+tabs are expanded.
+
+Code: [`Sidebar.tsx`](../apps/web/src/components/Sidebar.tsx),
+[`SettingsPanels.tsx`](../apps/web/src/components/settings/SettingsPanels.tsx), and
+[`settings.ts`](../packages/contracts/src/settings.ts). User guide:
+[thread-sidebar.md](./user/thread-sidebar.md#hide-a-thread).
+
 ## Sidebar filter menu
 
 On web and desktop, one filter button in the sidebar header replaces upstream's project picker.

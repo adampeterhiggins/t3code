@@ -1177,3 +1177,33 @@ describe("ServerSettings.removeAgentCreditsOnMerge", () => {
     ).toBe(true);
   });
 });
+
+describe("ClientSettings sidebar thread views", () => {
+  it("gives hidden threads detailed cards when upgrading existing settings", () => {
+    expect(decodeClientSettings({}).sidebarThreadViews).toEqual({
+      active: "card",
+      pinned: "card",
+      working: "card",
+      grouped: "card",
+      hidden: "card",
+      snoozed: "slim",
+      settled: "slim",
+    });
+  });
+
+  it("round-trips independent category choices and defaults missing categories", () => {
+    const decoded = decodeClientSettings({
+      sidebarThreadViews: { hidden: "slim", settled: "card" },
+    });
+    expect(decoded.sidebarThreadViews.hidden).toBe("slim");
+    expect(decoded.sidebarThreadViews.settled).toBe("card");
+    expect(decoded.sidebarThreadViews.active).toBe("card");
+    expect(
+      decodeClientSettingsPatch({ sidebarThreadViews: decoded.sidebarThreadViews })
+        .sidebarThreadViews,
+    ).toEqual(decoded.sidebarThreadViews);
+    expect(() =>
+      decodeClientSettingsPatch({ sidebarThreadViews: { hidden: "invalid" } }),
+    ).toThrow();
+  });
+});

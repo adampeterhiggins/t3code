@@ -448,6 +448,10 @@ appears in the inbox. Pick **Hidden** under **Show** in the filter menu, describ
 thread** from a thread's menu, or the eye on its row on web and desktop, to put it back. Hidden threads are saved on the server, so they stay
 hidden on your other devices.
 
+On web and desktop, **Settings → General → Thread views** lets you choose detailed cards or
+compact rows separately for active, pinned, working, grouped, hidden, snoozed, and settled
+threads. Hidden threads start with detailed cards so their project and branch remain visible.
+
 ## Group threads
 
 Make your own groups, such as "Research" or "Later", to file threads away from your live list.
