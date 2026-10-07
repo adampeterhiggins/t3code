@@ -185,6 +185,7 @@ import * as ProjectHttp from "./project/http.ts";
 import * as ThreadTabsHttp from "./threadTabs/http.ts";
 import * as ThreadTabs from "./threadTabs/ThreadTabs.ts";
 import * as ConductorImporter from "./conductor/ConductorImporter.ts";
+import * as ThreadTabHidingReactor from "./threadTabs/hiding.ts";
 import * as ThreadTabSettlementReactor from "./threadTabs/settlement.ts";
 import * as NetService from "@t3tools/shared/Net";
 import * as RelayClient from "@t3tools/shared/relayClient";
@@ -596,6 +597,13 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
       yield* service.start();
     }),
   ).pipe(Layer.provide(ThreadTabSettlementReactor.layer)),
+  // Fork: a chat tab group hides and unhides as one sidebar row.
+  Layer.effectDiscard(
+    Effect.gen(function* () {
+      const service = yield* ThreadTabHidingReactor.ThreadTabHidingReactor;
+      yield* service.start();
+    }),
+  ).pipe(Layer.provide(ThreadTabHidingReactor.layer)),
   // Subscribes to `account.rate-limits.updated` so usage bars track live
   // telemetry instead of waiting for the next status probe.
   ProviderUsageLimitsIngestion.layer,

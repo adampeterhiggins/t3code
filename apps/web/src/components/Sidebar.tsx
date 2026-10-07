@@ -230,6 +230,7 @@ import {
   sidebarTabToggleCount,
   sidebarTabToggleLabel,
   moveSidebarTab,
+  sidebarTabGroupRowKey,
   sidebarTabNeighbourKey,
   sidebarTabSortTimestamp,
   withSidebarTabRanks,
@@ -5928,6 +5929,11 @@ export default function Sidebar() {
         }
         const thread = readThreadShell(threadRef);
         if (!thread) return;
+        // The row the shelf classifies may be a different tab than the one this menu was
+        // opened on. Hide follows the row, and the server mirrors that to the other tabs.
+        const rowKey = sidebarTabGroupRowKey(threadKey, tabThreadGroupsRef.current);
+        const rowRef = parseScopedThreadKey(rowKey) ?? threadRef;
+        const rowThread = threadByKeyRef.current.get(rowKey) ?? thread;
         const threadWorkspacePath =
           thread.worktreePath ??
           projectByKey.get(`${thread.environmentId}:${thread.projectId}`)?.workspaceRoot ??
@@ -5996,7 +6002,7 @@ export default function Sidebar() {
               isSettled,
               autoSettleEnabled: thread.autoSettleDisabledAt == null,
               isSnoozed,
-              isHidden: supportsHiding && thread.hiddenAt != null,
+              isHidden: supportsHiding && rowThread.hiddenAt != null,
               groupName: thread.groupName ?? null,
               groupNames: collectThreadGroupNames(threadsRef.current, Object.keys(threadGroups)),
               canSnoozeNow: canSnooze(thread, { now: new Date().toISOString() }),
@@ -6108,7 +6114,7 @@ export default function Sidebar() {
             return;
           case "hide":
           case "unhide":
-            attemptSetHidden(threadRef, clicked.value === "hide");
+            attemptSetHidden(rowRef, clicked.value === "hide");
             return;
           case "auto-settle:enabled":
           case "auto-settle:disabled": {

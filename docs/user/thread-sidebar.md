@@ -433,9 +433,10 @@ several selected threads together. Choose **Wake thread** to bring a thread back
 ## Hide a thread
 
 Choose **Hide thread** from a thread's menu to take it out of your thread list without settling,
-snoozing, or archiving it. The thread keeps working and still turns up in search. New activity
-does not bring it back, but a hidden thread that needs an approval or an answer still appears in
-the inbox. Pick **Hidden** under **Show** in the filter menu, described in
+snoozing, or archiving it. A thread with chat tabs hides and unhides together, so every tab
+leaves the list and comes back with it. The thread keeps working and still turns up in search.
+New activity does not bring it back, but a hidden thread that needs an approval or an answer still
+appears in the inbox. Pick **Hidden** under **Show** in the filter menu, described in
 [Pin and reorder threads](#pin-and-reorder-threads), to see hidden threads. Choose **Unhide
 thread** from a thread's menu, or the eye on its row on web and desktop, to put it back. Hidden threads are saved on the server, so they stay
 hidden on your other devices.
