@@ -320,8 +320,15 @@ the agent appear in their message. Claude Code and Codex tabs continue their age
 tabs start a new session that is given the earlier conversation. Terminal history does not come
 along. Conductor itself is not changed.
 
-The worktree still belongs to Conductor. Stop using the workspace in Conductor once you move it,
-and do not archive it there, or Conductor deletes the folder the thread runs in.
+**Import all Conductor** brings in every active workspace shown for the projects you're viewing.
+You can stop it and run it again; workspaces that already have threads are left as they are. Turn
+on **Include archived** to also bring in workspaces you archived in Conductor. Those become settled
+threads, so they stay out of the live list until you show settled threads. Conductor has usually
+deleted an archived workspace's folder, so the thread keeps the conversation but not a working copy.
+
+The worktree of an active workspace still belongs to Conductor. Stop using that workspace in
+Conductor once you move it, and do not archive it there, or Conductor deletes the folder the thread
+runs in.
 
 ## Inspect agent work
 

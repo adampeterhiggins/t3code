@@ -812,20 +812,26 @@ The import picker also lists the project's active Conductor (`conductor.build`) 
 whose Conductor repository has the project's root or `origin` remote, whose worktree still exists,
 and that have at least one sent prompt. Importing one turns each open tab into a thread on the
 workspace's branch and worktree, grouped as [chat tabs](#chat-tabs), with the workspace's pin on
-the first tab. The threads land active, as if un-settled, because the workspace is still in use. History comes from Conductor's own database, read-only, so it matches what Conductor
-showed: prompts and reply text, without tool activity. Images and files sent with a prompt are
-copied into T3's attachment store from the workspace's `.context/attachments`; Conductor deletes
-some of those, so a missing one is named in the message instead. Diff comments sent to the agent
-appear in their prompt as quoted review comments. Claude Code and Codex tabs bind to their agent
-session and resume it. Conductor keeps Cursor sessions in a private store, so a Cursor tab's
-history is handed to its next turn instead. Thread ids are `conductor:<session>`, so the picker
-opens an earlier import. Only macOS hosts have the database; mobile has no import.
+the first tab. The threads land active, as if un-settled, because the workspace is still in use.
+History comes from Conductor's own database, read-only, so it matches what Conductor showed:
+prompts and reply text, without tool activity. Images and files sent with a prompt are copied into
+T3's attachment store from the workspace's `.context/attachments`; Conductor deletes some of those,
+so a missing one is named in the message instead. Diff comments sent to the agent appear in their
+prompt as quoted review comments. Claude Code and Codex tabs bind to their agent session and resume
+it. Conductor keeps Cursor sessions in a private store, so a Cursor tab's history is handed to its
+next turn instead. Thread ids are `conductor:<session>`, so the picker opens an earlier import.
+Only macOS hosts have the database; mobile has no import.
+
+**Import all Conductor** imports every listed active workspace. **Include archived** also imports
+workspaces Conductor has archived (`workspaces.state = 'archived'`), even when the worktree
+directory is gone. Those threads are settled at the workspace's last update, and they are not
+pinned. The picker list itself stays limited to active workspaces; archived ids are returned beside
+it for the bulk import. Running it again skips tabs that already have a thread.
 
 Some workspace state stays where it is. Notes (`.context/notes.md`, `todos.md`) are files in the
 worktree the threads run in. Pull request review comments, which make up almost all of Conductor's
 diff comments, come from the pull request T3 finds for the branch. Conductor encrypts terminal
-scrollback, so terminal history is not imported, and neither are unsent diff comments or archived
-workspaces.
+scrollback, so terminal history is not imported, and neither are unsent diff comments.
 
 Imported Claude sessions resume on their first turn because the provider thread records
 `nativeMetadata.importedNativeId`; Claude rejects a new session under an id that already exists.
