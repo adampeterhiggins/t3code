@@ -61,7 +61,7 @@ it.effect("a workspace change ends the running turn as interrupted, not a provid
                 driver,
                 providerInstanceId: instanceId,
                 status: "ready",
-                cwd: input.runtimePolicy.cwd,
+                cwd: input.runtimePolicy.cwd ?? cwd,
                 model: modelSelection.model,
                 capabilities: ClaudeProviderCapabilitiesV2,
                 createdAt: now,
