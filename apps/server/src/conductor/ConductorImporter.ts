@@ -166,25 +166,35 @@ const make = (databasePath: string) =>
       return origin === null ? null : normalizeGitRemoteUrl(origin);
     });
 
-    /** Conductor workspaces of the project's repository whose worktree still exists. */
-    const workspacesFor = Effect.fn("ConductorImporter.workspacesFor")(function* (
+    /** Conductor repositories checked out as this project, by root path or origin remote. */
+    const reposFor = Effect.fn("ConductorImporter.reposFor")(function* (
       db: ConductorDatabase,
       workspaceRoot: string,
     ) {
       const root = normalizeProjectPathForComparison(workspaceRoot);
       const remote = yield* originRemoteOf(workspaceRoot);
-      const repos = (yield* query(db.repos)).filter(
+      return (yield* query(db.repos)).filter(
         (repo) =>
           (repo.rootPath !== null && normalizeProjectPathForComparison(repo.rootPath) === root) ||
           (remote !== null &&
             repo.remoteUrl !== null &&
             normalizeGitRemoteUrl(repo.remoteUrl) === remote),
       );
+    });
+
+    /** Active Conductor workspaces of the project's repository whose worktree still exists. */
+    const workspacesFor = Effect.fn("ConductorImporter.workspacesFor")(function* (
+      db: ConductorDatabase,
+      workspaceRoot: string,
+    ) {
+      const repos = yield* reposFor(db, workspaceRoot);
       const workspaces: Array<{
         workspace: ConductorWorkspace;
         tabs: ReadonlyArray<ConductorTab>;
       }> = [];
+      const archivedWorkspaceIds: Array<string> = [];
       for (const repo of repos) {
+        archivedWorkspaceIds.push(...(yield* query(() => db.archivedWorkspaceIds(repo.id))));
         for (const workspace of yield* query(() => db.activeWorkspaces(repo.id))) {
           const workspaceTabs = yield* query(() => db.tabs(workspace.id));
           if (workspaceTabs.length === 0) continue;
@@ -194,7 +204,7 @@ const make = (databasePath: string) =>
           workspaces.push({ workspace, tabs: workspaceTabs });
         }
       }
-      return workspaces;
+      return { workspaces, archivedWorkspaceIds };
     });
 
     const existingThread = (threadId: ThreadId) =>
@@ -207,11 +217,15 @@ const make = (databasePath: string) =>
     ) {
       const project = yield* getProject(input.projectId);
       if (!(yield* isAvailable)) {
-        return { available: false, workspaces: [] } satisfies ConductorWorkspaceListResult;
+        return {
+          available: false,
+          workspaces: [],
+          archivedWorkspaceIds: [],
+        } satisfies ConductorWorkspaceListResult;
       }
       const found = yield* withDatabase((db) => workspacesFor(db, project.workspaceRoot));
       const workspaces = yield* Effect.forEach(
-        found,
+        found.workspaces,
         Effect.fn(function* ({ workspace, tabs: workspaceTabs }) {
           const firstThreadId = conductorThreadId(workspaceTabs[0]!.sessionId);
           const imported = yield* existingThread(firstThreadId);
@@ -232,7 +246,11 @@ const make = (databasePath: string) =>
           } satisfies ConductorWorkspaceSummary;
         }),
       );
-      return { available: true, workspaces } satisfies ConductorWorkspaceListResult;
+      return {
+        available: true,
+        workspaces,
+        archivedWorkspaceIds: found.archivedWorkspaceIds,
+      } satisfies ConductorWorkspaceListResult;
     });
 
     /** Copies one file into the attachment store, or `null` when it is gone or too large. */
@@ -322,6 +340,7 @@ const make = (databasePath: string) =>
         const updatedAt = DateTime.makeUnsafe(
           transcript.messages.at(-1)?.createdAt ?? conductorIsoTime(tab.createdAt),
         );
+        const archived = workspace.archived;
         const appThread: OrchestrationV2AppThread = {
           createdBy: "system",
           creationSource: "server",
@@ -346,11 +365,12 @@ const make = (databasePath: string) =>
           createdAt,
           updatedAt,
           archivedAt: null,
-          // A Conductor workspace is moved to keep working in it, so it lands active, as if
-          // un-settled; its last activity is old enough that auto-settle would park it otherwise.
-          settledOverride: "active",
-          settledAt: null,
-          unsettledAt: yield* DateTime.now,
+          // An active workspace is moved so the user can keep working in it, and its last
+          // activity is old enough that auto-settle would park it. An archived workspace is
+          // already finished in Conductor, so its threads land settled.
+          settledOverride: archived ? "settled" : "active",
+          settledAt: archived ? DateTime.makeUnsafe(conductorIsoTime(workspace.updatedAt)) : null,
+          unsettledAt: archived ? null : yield* DateTime.now,
           snoozedUntil: null,
           snoozedAt: null,
           pinnedAt:
@@ -408,10 +428,17 @@ const make = (databasePath: string) =>
         return events;
       });
 
+    const workspaceNotFound = () =>
+      new ConductorImportError({
+        reason: "workspace_not_found",
+        detail: "That Conductor workspace is not a workspace of this project.",
+      });
+
     /**
      * Imports a workspace's open tabs as one tab group of threads that run in Conductor's
      * worktree on its branch. Claude and Codex tabs resume their agent session; Cursor tabs
-     * hand their history to the next turn instead.
+     * hand their history to the next turn instead. An archived workspace's threads are settled,
+     * and its worktree does not have to still exist.
      */
     const importWorkspace = Effect.fn("ConductorImporter.importWorkspace")(function* (
       input: ConductorWorkspaceImportInput,
@@ -425,23 +452,35 @@ const make = (databasePath: string) =>
       }
       return yield* withDatabase((db) =>
         Effect.gen(function* () {
-          const found = (yield* workspacesFor(db, project.workspaceRoot)).find(
-            (candidate) => candidate.workspace.id === input.workspaceId,
-          );
-          if (found === undefined) {
-            return yield* new ConductorImportError({
-              reason: "workspace_not_found",
-              detail: "That Conductor workspace is not an active workspace of this project.",
-            });
+          const workspace = yield* query(() => db.workspace(input.workspaceId));
+          const repos = yield* reposFor(db, project.workspaceRoot);
+          if (workspace === null || !repos.some((repo) => repo.id === workspace.repoId)) {
+            return yield* workspaceNotFound();
           }
-          const threadIds = found.tabs.map((tab) => conductorThreadId(tab.sessionId));
+          if (
+            !workspace.archived &&
+            !(yield* fileSystem.exists(workspace.path).pipe(Effect.orElseSucceed(() => false)))
+          ) {
+            return yield* workspaceNotFound();
+          }
+          const workspaceTabs = yield* query(() => db.tabs(workspace.id));
+          if (workspaceTabs.length === 0) return yield* workspaceNotFound();
+
+          const threadIds = workspaceTabs.map((tab) => conductorThreadId(tab.sessionId));
           const missing: Array<ConductorTab> = [];
-          for (const tab of found.tabs) {
+          for (const tab of workspaceTabs) {
             if ((yield* existingThread(conductorThreadId(tab.sessionId))) === null) {
               missing.push(tab);
             }
           }
-          if (missing.length === 0) return { threadIds } satisfies ConductorWorkspaceImportResult;
+          const settled = workspace.archived;
+          if (missing.length === 0) {
+            return {
+              threadIds,
+              importedThreadCount: 0,
+              settled,
+            } satisfies ConductorWorkspaceImportResult;
+          }
 
           yield* tabs
             .adopt(threadIds)
@@ -454,10 +493,12 @@ const make = (databasePath: string) =>
           for (const tab of missing) {
             const events = yield* threadEvents({
               projectId: project.id,
-              workspace: found.workspace,
+              workspace,
               tab,
-              // The pin belongs on the group's sidebar row, which is its first tab.
-              pinned: found.workspace.pinnedAt !== null && tab === found.tabs[0],
+              // The pin belongs on the group's sidebar row, which is its first tab. Archived
+              // threads stay out of the pinned list; they are settled history.
+              pinned:
+                !workspace.archived && workspace.pinnedAt !== null && tab === workspaceTabs[0],
               db,
             });
             yield* eventSink.write({ events }).pipe(
@@ -471,7 +512,11 @@ const make = (databasePath: string) =>
               ),
             );
           }
-          return { threadIds } satisfies ConductorWorkspaceImportResult;
+          return {
+            threadIds,
+            importedThreadCount: missing.length,
+            settled,
+          } satisfies ConductorWorkspaceImportResult;
         }),
       );
     });

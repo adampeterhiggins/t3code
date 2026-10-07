@@ -1,3 +1,4 @@
+import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import {
   IsoDateTime,
@@ -45,6 +46,14 @@ export const ConductorWorkspaceListResult = Schema.Struct({
   /** False when Conductor has no database on this environment. */
   available: Schema.Boolean,
   workspaces: Schema.Array(ConductorWorkspaceSummary),
+  /**
+   * Archived workspaces of the same repositories, newest first. They are not in
+   * `workspaces`; import all uses these ids when the user includes archived threads.
+   * Missing on older servers, which only listed active workspaces.
+   */
+  archivedWorkspaceIds: Schema.Array(TrimmedNonEmptyString).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
 });
 export type ConductorWorkspaceListResult = typeof ConductorWorkspaceListResult.Type;
 
@@ -57,6 +66,10 @@ export type ConductorWorkspaceImportInput = typeof ConductorWorkspaceImportInput
 /** The imported tabs in order; the first is the group's sidebar row. */
 export const ConductorWorkspaceImportResult = Schema.Struct({
   threadIds: Schema.Array(ThreadId),
+  /** Tabs written by this call. Zero when every tab already had a thread. */
+  importedThreadCount: NonNegativeInt.pipe(Schema.withDecodingDefault(Effect.succeed(0))),
+  /** The workspace was archived in Conductor, so its threads are settled. */
+  settled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
 });
 export type ConductorWorkspaceImportResult = typeof ConductorWorkspaceImportResult.Type;
 

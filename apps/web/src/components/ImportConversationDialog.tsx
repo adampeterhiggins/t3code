@@ -32,7 +32,7 @@ import {
   LayersIcon,
   ListFilterIcon,
 } from "lucide-react";
-import { useMemo, useState, type ElementType } from "react";
+import { useEffect, useMemo, useRef, useState, type ElementType } from "react";
 
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
@@ -64,6 +64,8 @@ import {
   type PullRequestFilterOption,
 } from "./pullRequest/PullRequestListFilters";
 import { Button } from "./ui/button";
+import { Checkbox } from "./ui/checkbox";
+import { Label } from "./ui/label";
 import { Menu, MenuPopup, MenuTrigger } from "./ui/menu";
 import { toastManager } from "./ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
@@ -75,7 +77,7 @@ const importConversationAtom = Atom.make<{ readonly projectRef: ScopedProjectRef
 ).pipe(Atom.keepAlive, Atom.withLabel("import-conversation:open"));
 
 /**
- * Opens the picker of Claude Code and Codex conversations and active Conductor workspaces,
+ * Opens the picker of Claude Code and Codex conversations and Conductor workspaces,
  * starting on `projectRef` when given. The dialog can switch to any other project.
  */
 export function openImportConversationDialog(projectRef: ScopedProjectRef | null = null): void {
@@ -153,8 +155,9 @@ function ImportConversationDialog({
         <DialogHeader>
           <DialogTitle>Import conversation</DialogTitle>
           <DialogDescription>
-            Claude Code and Codex conversations from the last 30 days, and active Conductor
-            workspaces, for your projects. An imported conversation continues the same session.
+            Claude Code and Codex conversations from the last 30 days, and Conductor workspaces, for
+            your projects. An imported conversation continues the same session. Import all Conductor
+            can include archived workspaces, which become settled threads.
           </DialogDescription>
         </DialogHeader>
         <DialogPanel>
@@ -248,6 +251,55 @@ interface ImportFilter<Value extends string> {
 }
 
 const DEFAULT_SOURCE: ImportSource = "conductor";
+
+function countPhrase(count: number, singular: string): string {
+  return `${count} ${count === 1 ? singular : `${singular}s`}`;
+}
+
+/** What the import-all run should tell the user, or nothing when it was stopped before any work. */
+function conductorImportToast(input: {
+  readonly stopped: boolean;
+  readonly importedThreads: number;
+  readonly settledThreads: number;
+  readonly failed: number;
+  readonly failureDetail: string | null;
+}): {
+  readonly type: "success" | "warning" | "error";
+  readonly title: string;
+  readonly description: string | undefined;
+} | null {
+  if (input.stopped && input.importedThreads === 0 && input.failed === 0) return null;
+  const settled =
+    input.settledThreads > 0
+      ? `${countPhrase(input.settledThreads, "archived thread")} ${input.settledThreads === 1 ? "is" : "are"} settled.`
+      : null;
+  const failed =
+    input.failed > 0 ? `${countPhrase(input.failed, "workspace")} could not be imported.` : null;
+  const description = [settled, failed, input.importedThreads === 0 ? input.failureDetail : null]
+    .filter((part) => part !== null && part !== "")
+    .join(" ");
+  if (!input.stopped && input.failed === 0 && input.importedThreads === 0) {
+    return {
+      type: "success",
+      title: "Conductor threads are already imported",
+      description: undefined,
+    };
+  }
+  return {
+    type:
+      input.failed > 0 && input.importedThreads === 0
+        ? "error"
+        : input.failed > 0 || input.stopped
+          ? "warning"
+          : "success",
+    title: input.stopped
+      ? `Stopped after importing ${countPhrase(input.importedThreads, "thread")}`
+      : input.failed > 0 && input.importedThreads === 0
+        ? "Could not import Conductor threads"
+        : `Imported ${countPhrase(input.importedThreads, "thread")}`,
+    description: description === "" ? undefined : description,
+  };
+}
 
 function providerIcon(driver: string, label: string) {
   return function ProviderIcon({ className }: { className?: string }) {
@@ -411,6 +463,18 @@ function ImportConversationList({
   const importSession = useAtomCommand(agentSessionImport, { reportFailure: false });
   const importWorkspace = useAtomCommand(conductorWorkspaceImport, { reportFailure: false });
   const [pendingKey, setPendingKey] = useState<string | null>(null);
+  const [includeArchived, setIncludeArchived] = useState(false);
+  const [importProgress, setImportProgress] = useState<{
+    completed: number;
+    total: number;
+  } | null>(null);
+  const importRun = useRef<{ cancelled: boolean } | null>(null);
+  useEffect(
+    () => () => {
+      if (importRun.current) importRun.current.cancelled = true;
+    },
+    [],
+  );
   const [chosenSource, setSource] = useState<ImportSource | null>(null);
   const [query, setQuery] = useState("");
   const needle = query.trim().toLowerCase();
@@ -566,6 +630,94 @@ function ImportConversationList({
   );
   const activeFilters =
     Number(projectFilter.value !== ALL_PROJECTS) + Number(source !== DEFAULT_SOURCE);
+  const conductorKnown = loaded.length > 0 && loaded.every((listing) => listing.conductor !== null);
+  const showConductorImport = conductorKnown && !conductorMissing && showWorkspaces;
+  const archivedIds = new Set<string>();
+  for (const listing of loaded) {
+    for (const workspaceId of listing.conductor?.archivedWorkspaceIds ?? []) {
+      archivedIds.add(workspaceId);
+    }
+  }
+  const importTargets: Array<{
+    project: EnvironmentProject;
+    workspaceId: string;
+  }> = [];
+  if (showWorkspaces) {
+    const seenWorkspaceIds = new Set<string>();
+    projects.forEach((project, index) => {
+      const conductor = loaded[index]?.conductor;
+      if (conductor === null || conductor === undefined) return;
+      for (const workspace of conductor.workspaces) {
+        if (seenWorkspaceIds.has(workspace.workspaceId)) continue;
+        seenWorkspaceIds.add(workspace.workspaceId);
+        importTargets.push({ project, workspaceId: workspace.workspaceId });
+      }
+      if (!includeArchived) return;
+      for (const workspaceId of conductor.archivedWorkspaceIds) {
+        if (seenWorkspaceIds.has(workspaceId)) continue;
+        seenWorkspaceIds.add(workspaceId);
+        importTargets.push({ project, workspaceId });
+      }
+    });
+  }
+  const importingAll = importProgress !== null;
+
+  const importAll = async () => {
+    if (importRun.current !== null || pendingKey !== null || importTargets.length === 0) return;
+    const run = { cancelled: false };
+    importRun.current = run;
+    const targets = importTargets;
+    setPendingKey("import-all");
+    setImportProgress({ completed: 0, total: targets.length });
+    let importedThreads = 0;
+    let settledThreads = 0;
+    let failed = 0;
+    let failureDetail: string | null = null;
+    const refreshProjects = new Map<string, EnvironmentProject>();
+    for (const [index, target] of targets.entries()) {
+      if (run.cancelled) break;
+      const result = await importWorkspace({
+        environmentId: target.project.environmentId,
+        input: { projectId: target.project.id, workspaceId: target.workspaceId },
+      });
+      refreshProjects.set(
+        scopedProjectKey(scopeProjectRef(target.project.environmentId, target.project.id)),
+        target.project,
+      );
+      if (result._tag === "Success") {
+        importedThreads += result.value.importedThreadCount;
+        if (result.value.settled) settledThreads += result.value.importedThreadCount;
+      } else if (isAtomCommandInterrupted(result)) {
+        run.cancelled = true;
+      } else {
+        failed += 1;
+        const error = squashAtomCommandFailure(result);
+        failureDetail = error instanceof Error ? error.message : "An error occurred.";
+      }
+      setImportProgress({ completed: index + 1, total: targets.length });
+      if (run.cancelled) break;
+    }
+    if (importRun.current === run) importRun.current = null;
+    setPendingKey(null);
+    setImportProgress(null);
+    for (const project of refreshProjects.values()) {
+      appAtomRegistry.refresh(
+        conductorWorkspaceList({
+          environmentId: project.environmentId,
+          input: { projectId: project.id },
+        }),
+      );
+    }
+    const toast = conductorImportToast({
+      stopped: run.cancelled,
+      importedThreads,
+      settledThreads,
+      failed,
+      failureDetail,
+    });
+    if (toast === null) return;
+    toastManager.add({ type: toast.type, title: toast.title, description: toast.description });
+  };
 
   return (
     <>
@@ -606,6 +758,51 @@ function ImportConversationList({
           />
         </div>
       </div>
+      {showConductorImport ? (
+        <div className="mb-2 flex items-center gap-2">
+          <Tooltip>
+            <TooltipTrigger render={<span className="inline-flex min-w-0" />}>
+              <Label>
+                <Checkbox
+                  checked={includeArchived}
+                  disabled={importingAll || archivedIds.size === 0}
+                  onCheckedChange={(checked) => setIncludeArchived(checked === true)}
+                />
+                Include archived
+                {archivedIds.size > 0 ? (
+                  <span className="text-muted-foreground tabular-nums">{archivedIds.size}</span>
+                ) : null}
+              </Label>
+            </TooltipTrigger>
+            <TooltipPopup>
+              Archived Conductor workspaces become settled threads. Their folders are usually
+              already gone, so the conversation comes across without a working copy.
+            </TooltipPopup>
+          </Tooltip>
+          <div className="ml-auto flex items-center gap-2">
+            {importingAll && importProgress !== null ? (
+              <span className="text-muted-foreground text-xs tabular-nums">
+                {importProgress.completed} of {importProgress.total}
+              </span>
+            ) : null}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={!importingAll && (importTargets.length === 0 || pending)}
+              onClick={() => {
+                if (importingAll) {
+                  if (importRun.current) importRun.current.cancelled = true;
+                  return;
+                }
+                void importAll();
+              }}
+            >
+              {importingAll ? "Stop" : "Import all Conductor"}
+            </Button>
+          </div>
+        </div>
+      ) : null}
       {rows.length === 0 && (pending || failure !== undefined) ? (
         <div className="flex h-40 items-center justify-center px-6 text-center text-muted-foreground text-sm">
           {pending ? (

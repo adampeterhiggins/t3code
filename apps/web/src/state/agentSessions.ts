@@ -35,7 +35,7 @@ export const agentSessionImport = createEnvironmentRpcCommand(connectionAtomRunt
   tag: WS_METHODS.agentSessionsImport,
 });
 
-/** Active Conductor workspaces of a project's repository, for the import picker. */
+/** Conductor workspaces of a project's repository, for the import picker. */
 export const conductorWorkspaceList = createEnvironmentRpcQueryAtomFamily(connectionAtomRuntime, {
   label: "environment-data:conductor:workspaces",
   tag: WS_METHODS.conductorListWorkspaces,

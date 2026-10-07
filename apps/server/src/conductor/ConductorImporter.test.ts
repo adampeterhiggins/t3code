@@ -84,6 +84,17 @@ function makeFixture() {
     "2026-09-30T12:38:42.711Z",
   );
   workspace.run("gone", "repo", "lima", "ah/old", "archived", workspacePath, null, "2026-09-01");
+  const archivedPath = NodePath.join(root, "conductor", "missing-lima");
+  workspace.run(
+    "old",
+    "repo",
+    "lima",
+    "ah/old-work",
+    "archived",
+    archivedPath,
+    "2026-08-01T00:00:00.000Z",
+    "2026-09-01 14:00:00",
+  );
   const session = db.prepare("INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
   session.run(
     "claude-tab",
@@ -107,6 +118,7 @@ function makeFixture() {
   );
   session.run("empty-tab", "ws", "Untitled", "claude", null, "opus", 0, "2026-09-10 10:00:00");
   session.run("closed-tab", "ws", "Closed", "claude", null, "opus", 1, "2026-09-11 10:00:00");
+  session.run("old-tab", "old", "Old work", "claude", null, "opus", 0, "2026-08-01 10:00:00");
   const message = db.prepare("INSERT INTO session_messages VALUES (?, ?, ?, ?, ?, ?, ?)");
   const at = (minute: number) => `2026-09-08T20:${String(minute).padStart(2, "0")}:00.000Z`;
   message.run(
@@ -155,8 +167,24 @@ function makeFixture() {
   message.run("m3", "claude-tab", "user", "Queued, never sent", at(49), null, null);
   message.run("m4", "grok-tab", "user", "Add Grok 4.7", at(50), at(50), null);
   message.run("m5", "closed-tab", "user", "Hidden", at(51), at(51), null);
+  message.run(
+    "old-m",
+    "old-tab",
+    "user",
+    "Archived prompt",
+    "2026-08-01T10:00:00.000Z",
+    "2026-08-01T10:00:00.000Z",
+    null,
+  );
   db.close();
-  return { root, projectRoot, workspacePath, databasePath, stateDir: NodePath.join(root, "t3") };
+  return {
+    root,
+    projectRoot,
+    workspacePath,
+    archivedPath,
+    databasePath,
+    stateDir: NodePath.join(root, "t3"),
+  };
 }
 
 it("keeps prompts and top-level replies, merging replies split by tool calls", () => {
@@ -336,10 +364,15 @@ it.effect("imports a workspace's open tabs as one tab group in Conductor's workt
           threadId: null,
         },
       ],
+      archivedWorkspaceIds: ["old"],
     });
 
     const result = yield* importer.importWorkspace({ projectId, workspaceId: "ws" });
-    expect(result).toEqual({ threadIds: ["conductor:claude-tab", "conductor:grok-tab"] });
+    expect(result).toEqual({
+      threadIds: ["conductor:claude-tab", "conductor:grok-tab"],
+      importedThreadCount: 2,
+      settled: false,
+    });
     expect(adopted).toEqual([["conductor:claude-tab", "conductor:grok-tab"]]);
     expect(writes.map((events) => events.map((event) => event.type))).toEqual([
       [
@@ -388,11 +421,39 @@ it.effect("imports a workspace's open tabs as one tab group in Conductor's workt
       pinnedAt: null,
     });
 
-    expect(yield* importer.importWorkspace({ projectId, workspaceId: "ws" })).toEqual(result);
+    expect(yield* importer.importWorkspace({ projectId, workspaceId: "ws" })).toEqual({
+      ...result,
+      importedThreadCount: 0,
+    });
     expect(writes).toHaveLength(2);
     expect((yield* importer.listWorkspaces({ projectId })).workspaces[0]?.threadId).toBe(
       "conductor:claude-tab",
     );
+
+    const archived = yield* importer.importWorkspace({ projectId, workspaceId: "old" });
+    expect(archived).toEqual({
+      threadIds: ["conductor:old-tab"],
+      importedThreadCount: 1,
+      settled: true,
+    });
+    const oldThread = writes.at(-1)?.[0]?.payload;
+    expect(oldThread).toMatchObject({
+      title: "Old work",
+      worktreePath: fixture.archivedPath,
+      settledOverride: "settled",
+      pinnedAt: null,
+      unsettledAt: null,
+    });
+    expect(DateTime.formatIso((oldThread as { settledAt: DateTime.Utc }).settledAt)).toBe(
+      "2026-09-01T14:00:00.000Z",
+    );
+    expect(NodeFS.existsSync(fixture.archivedPath)).toBe(false);
+    expect(yield* importer.importWorkspace({ projectId, workspaceId: "old" })).toEqual({
+      threadIds: ["conductor:old-tab"],
+      importedThreadCount: 0,
+      settled: true,
+    });
+    expect(writes).toHaveLength(3);
   }).pipe(
     Effect.provide(layer),
     Effect.ensuring(

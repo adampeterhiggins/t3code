@@ -35,6 +35,8 @@ export interface ConductorWorkspace {
   readonly customName: string | null;
   readonly prTitle: string | null;
   readonly updatedAt: string;
+  /** Conductor has archived this workspace. Its worktree is usually already gone. */
+  readonly archived: boolean;
 }
 
 export interface ConductorTab {
@@ -217,6 +219,19 @@ export function openConductorDatabase(path: string) {
   const all = <T>(sql: string, ...params: Array<string>) =>
     db.prepare(sql).all(...params) as unknown as ReadonlyArray<T>;
 
+  const workspaceColumns = `local_id AS id, repository_id AS repoId, directory_name AS name, branch,
+                workspace_path AS path, pinned_at AS pinnedAt, updated_at AS updatedAt,
+                NULLIF(TRIM(workspace_name), '') AS customName,
+                NULLIF(TRIM(pr_title), '') AS prTitle, state`;
+
+  const toWorkspace = (
+    row: Omit<ConductorWorkspace, "archived"> & { readonly state: string | null },
+  ): ConductorWorkspace | null => {
+    if ((row.state !== "ready" && row.state !== "archived") || !row.name || !row.path) return null;
+    const { state, ...workspace } = row;
+    return { ...workspace, archived: state === "archived" };
+  };
+
   return {
     repos: () =>
       all<ConductorRepo>(
@@ -224,18 +239,51 @@ export function openConductorDatabase(path: string) {
       ),
 
     /** Workspaces Conductor still has checked out, newest first. */
-    activeWorkspaces: (repoId: string) =>
-      all<ConductorWorkspace>(
-        `SELECT local_id AS id, repository_id AS repoId, directory_name AS name, branch,
-                workspace_path AS path, pinned_at AS pinnedAt, updated_at AS updatedAt,
-                NULLIF(TRIM(workspace_name), '') AS customName,
-                NULLIF(TRIM(pr_title), '') AS prTitle
+    activeWorkspaces: (repoId: string): ReadonlyArray<ConductorWorkspace> =>
+      all<Omit<ConductorWorkspace, "archived"> & { readonly state: string | null }>(
+        `SELECT ${workspaceColumns}
          FROM workspaces
          WHERE repository_id = ? AND state = 'ready'
            AND directory_name IS NOT NULL AND workspace_path IS NOT NULL
          ORDER BY updated_at DESC`,
         repoId,
-      ),
+      ).flatMap((row) => {
+        const workspace = toWorkspace(row);
+        return workspace === null ? [] : [workspace];
+      }),
+
+    /** One workspace, active or archived, or `null` when the id is unknown. */
+    workspace: (workspaceId: string): ConductorWorkspace | null => {
+      const [row] = all<Omit<ConductorWorkspace, "archived"> & { readonly state: string | null }>(
+        `SELECT ${workspaceColumns} FROM workspaces WHERE local_id = ?`,
+        workspaceId,
+      );
+      return row === undefined ? null : toWorkspace(row);
+    },
+
+    /**
+     * Archived workspaces that still have a sent prompt, newest first. The worktree is
+     * usually deleted, so this does not check that the directory exists.
+     */
+    archivedWorkspaceIds: (repoId: string): ReadonlyArray<string> =>
+      all<{ readonly id: string }>(
+        `SELECT local_id AS id FROM workspaces AS workspace
+         WHERE repository_id = ? AND state = 'archived'
+           AND directory_name IS NOT NULL AND workspace_path IS NOT NULL
+           AND EXISTS (
+             SELECT 1 FROM sessions AS session
+             WHERE session.workspace_id = workspace.local_id
+               AND COALESCE(session.is_hidden, 0) = 0
+               AND COALESCE(session.agent_type, 'claude') IN ('claude', 'codex', 'cursor')
+               AND EXISTS (
+                 SELECT 1 FROM session_messages AS message
+                 WHERE message.session_id = session.id AND message.role = 'user'
+                   AND message.sent_at IS NOT NULL AND message.cancelled_at IS NULL
+               )
+           )
+         ORDER BY updated_at DESC, local_id`,
+        repoId,
+      ).map((row) => row.id),
 
     /** A workspace's open tabs that have at least one sent prompt, in the order they opened. */
     tabs: (workspaceId: string): ReadonlyArray<ConductorTab> =>
