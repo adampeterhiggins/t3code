@@ -45,8 +45,8 @@ export function ToolPathText(props: {
           ]);
         }}
       >
-        <Text className="bg-subtle text-foreground">{path.rootLabel}</Text>
-        {path.segments.map((segment) => ` / ${segment}`).join("")}
+        <Text className="text-foreground underline decoration-dotted">{path.rootLabel}</Text>
+        {path.segments.map((segment) => `/${segment}`).join("")}
       </Text>
     );
   });
