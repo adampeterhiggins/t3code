@@ -24,6 +24,19 @@ import {
 const FOLDED_SERVER_SETTINGS = { ...DEFAULT_SERVER_SETTINGS, projectSettingsFolded: true };
 
 describe("serverSettings helpers", () => {
+  it("replaces organisation styles wholesale, so a cleared one stays cleared", () => {
+    const styled = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, {
+      organisations: {
+        "github.com/acme": { name: "Acme" },
+        "github.com/zed": { icon: { kind: "emoji", emoji: "⚡" } },
+      },
+    });
+    expect(
+      applyServerSettingsPatch(styled, { organisations: { "github.com/acme": { name: "Acme" } } })
+        .organisations,
+    ).toEqual({ "github.com/acme": { name: "Acme" } });
+  });
+
   it("changes a cleanup rule without replacing the machine's other rules", () => {
     const enabled = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, {
       storageCleanup: { worktreeAfterDays: 8, worktreeOnMerge: true, logsAfterDays: 30 },

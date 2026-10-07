@@ -4,6 +4,7 @@ import {
   type ProjectId,
   type RepositoryIdentity,
 } from "@t3tools/contracts";
+import type { Organisations } from "@t3tools/contracts/settings";
 
 export interface ThreadListOrganisation {
   readonly key: string;
@@ -36,9 +37,13 @@ export function repositoryOrganisationOf(
   return { key: segments.slice(0, -1).join("/"), label: owner };
 }
 
-/** Organisations of every checkout, by label; the same owner on two hosts shows its host. */
+/**
+ * Organisations of every checkout, by label: the chosen name, else the owner, and the same
+ * owner on two hosts shows its host.
+ */
 export function buildOrganisationOptions(
   projects: ReadonlyArray<Pick<OrganisationProject, "repositoryIdentity">>,
+  organisations: Organisations = {},
 ): ReadonlyArray<ThreadListOrganisation> {
   const byKey = new Map<string, ThreadListOrganisation>();
   for (const project of projects) {
@@ -51,9 +56,12 @@ export function buildOrganisationOptions(
     labelCounts.set(option.label, (labelCounts.get(option.label) ?? 0) + 1);
   }
   return options
-    .map((option) =>
-      (labelCounts.get(option.label) ?? 0) > 1 ? { ...option, label: option.key } : option,
-    )
+    .map((option) => ({
+      ...option,
+      label:
+        organisations[option.key]?.name ??
+        ((labelCounts.get(option.label) ?? 0) > 1 ? option.key : option.label),
+    }))
     .sort((left, right) => left.label.localeCompare(right.label));
 }
 

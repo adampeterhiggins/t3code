@@ -9,6 +9,7 @@ import type { ResolvedSettingsScope } from "./settingsScope";
 
 export type SettingsPath =
   | "/settings/projects"
+  | "/settings/organisations"
   | "/settings/general"
   | "/settings/appearance"
   | "/settings/keybindings"
@@ -85,6 +86,7 @@ export interface SettingsSearchAvailability {
  */
 export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/projects": "Projects",
+  "/settings/organisations": "Organisations",
   "/settings/general": "General",
   "/settings/appearance": "Appearance",
   "/settings/keybindings": "Keybindings",
@@ -167,6 +169,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Project overview",
     to: "/settings/projects",
     searchTerms: ["name icon emoji image checkout remove delete"],
+  },
+  {
+    id: "organisations",
+    title: "Organisations",
+    to: "/settings/organisations",
+    searchTerms: ["organization owner org remote github name icon emoji"],
   },
   {
     id: "default-model",
@@ -1040,6 +1048,7 @@ const SEARCH_ITEMS_BY_ID = new Map(SETTINGS_SEARCH_ITEMS.map((item) => [item.id,
 
 const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScope | null>> = {
   "/settings/projects": "project",
+  "/settings/organisations": null,
   "/settings/general": null,
   "/settings/appearance": null,
   "/settings/snap-shot": null,

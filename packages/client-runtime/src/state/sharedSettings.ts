@@ -26,6 +26,7 @@ const SHARED_SERVER_SETTING_KEYS = [
   "sidebarAutoSettleAfterDays",
   "sidebarAutoSettleOnMerge",
   "threadGroups",
+  "organisations",
   "autoResumeLimitedThreads",
   "snoozeLimitedThreads",
   "newWorktreesStartFromOrigin",
@@ -61,7 +62,10 @@ export function splitSharedServerPatch(patch: ServerSettingsPatch): {
 export function filterSharedServerPatch(
   patch: ServerSettingsPatch,
   capabilities:
-    | Pick<ExecutionEnvironmentCapabilities, "threadRestartContinuation" | "threadGroups">
+    | Pick<
+        ExecutionEnvironmentCapabilities,
+        "threadRestartContinuation" | "threadGroups" | "organisationStyles"
+      >
     | undefined,
   settings?: ServerSettings,
   sourceSettings = settings,
@@ -86,6 +90,7 @@ export function filterSharedServerPatch(
   }
   // Servers that predate thread groups have no field to hold their styles.
   if (capabilities?.threadGroups !== true) patch = Struct.omit(patch, ["threadGroups"]);
+  if (capabilities?.organisationStyles !== true) patch = Struct.omit(patch, ["organisations"]);
   return capabilities?.threadRestartContinuation === true
     ? patch
     : Struct.omit(patch, ["continueThreadsAfterServerUpdate"]);
@@ -96,7 +101,7 @@ export function pickSharedServerSettings(
   settings: ServerSettings,
   capabilities?: Pick<
     ExecutionEnvironmentCapabilities,
-    "threadRestartContinuation" | "threadGroups"
+    "threadRestartContinuation" | "threadGroups" | "organisationStyles"
   >,
 ): ServerSettingsPatch {
   return filterSharedServerPatch(
@@ -149,7 +154,10 @@ export function findSharedSettingsMismatches(input: {
     | Pick<ExecutionEnvironmentCapabilities, "threadRestartContinuation">
     | undefined;
   readonly environments: ReadonlyArray<SharedSettingsEnvironment>;
-}): ReadonlyArray<{ readonly environmentId: EnvironmentId; readonly label: string }> {
+}): ReadonlyArray<{
+  readonly environmentId: EnvironmentId;
+  readonly label: string;
+}> {
   if (input.primaryEnvironmentId === null || input.primarySettings === null) {
     return [];
   }
@@ -181,6 +189,25 @@ export function findSharedSettingsMismatches(input: {
     }
     return Equal.equals(actual, expected)
       ? []
-      : [{ environmentId: environment.environmentId, label: environment.label }];
+      : [
+          {
+            environmentId: environment.environmentId,
+            label: environment.label,
+          },
+        ];
   });
+}
+
+/**
+ * One map-valued shared setting, merged across environments. The first environment to hold
+ * an entry wins, so drift between servers never flips how that entry looks.
+ */
+export function mergeSharedSettingMaps<Value>(
+  perEnvironment: Iterable<Readonly<Record<string, Value>>>,
+): Readonly<Record<string, Value>> {
+  let merged: Readonly<Record<string, Value>> = {};
+  for (const own of perEnvironment) {
+    if (Object.keys(own).length > 0) merged = { ...own, ...merged };
+  }
+  return merged;
 }

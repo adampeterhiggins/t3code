@@ -246,6 +246,7 @@ export const make = Effect.gen(function* () {
       threadAutoSettleOptOut: true,
       threadHiding: true,
       threadGroups: true,
+      organisationStyles: true,
       threadTitleRegeneration: true,
       threadVisitedTracking: true,
       threadPullRequests: true,

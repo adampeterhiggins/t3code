@@ -25,12 +25,14 @@ import {
   SettingsIcon,
   XIcon,
 } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
 import { type MouseEvent as ReactMouseEvent, type ReactNode, useRef, useState } from "react";
 
 import type { SidebarProjectSnapshot } from "../../sidebarProjectGrouping";
 import type { ThreadGroups } from "@t3tools/contracts/settings";
-import type { SidebarPage } from "../Sidebar.logic";
+import type { OrganisationOption, SidebarPage } from "../Sidebar.logic";
+import { OrganisationIcon } from "./OrganisationIcon";
 import { ThreadGroupIcon } from "./ThreadGroupIcon";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { Button } from "../ui/button";
@@ -276,18 +278,14 @@ function SidebarProjectFilter(props: {
   );
 }
 
-export interface SidebarOrganisationOption {
-  readonly key: string;
-  readonly label: string;
-}
-
 function SidebarOrganisationFilter(props: {
-  organisations: readonly SidebarOrganisationOption[];
+  organisations: readonly OrganisationOption[];
   scopedKeys: readonly string[];
   onScopedKeysChange: (keys: readonly string[]) => void;
 }) {
   const scoped = new Set(props.scopedKeys);
   const picked = props.organisations.filter((option) => scoped.has(option.key));
+  const navigate = useNavigate();
   return (
     <MenuSub>
       <MenuSubTrigger>
@@ -324,7 +322,7 @@ function SidebarOrganisationFilter(props: {
             }
           >
             <span className="flex w-full min-w-0 items-center gap-2">
-              <BuildingIcon aria-hidden className="size-3.5 shrink-0" />
+              <OrganisationIcon organisation={option.organisation} />
               <ChoiceLabel
                 label={option.label}
                 onOnly={() => props.onScopedKeysChange([option.key])}
@@ -332,6 +330,13 @@ function SidebarOrganisationFilter(props: {
             </span>
           </MenuCheckboxItem>
         ))}
+        <MenuSeparator />
+        <MenuItem onClick={() => void navigate({ to: "/settings/organisations" })}>
+          <span className="flex min-w-0 items-center gap-2">
+            <SettingsIcon aria-hidden className="size-3.5 shrink-0" />
+            Organisation settings…
+          </span>
+        </MenuItem>
       </MenuSubPopup>
     </MenuSub>
   );
@@ -366,7 +371,7 @@ function FilterPreviewMore(props: { count: number }) {
 function SidebarFilterPreview(props: {
   pages: readonly SidebarPage[];
   groupStyles: ThreadGroups;
-  organisations: readonly SidebarOrganisationOption[];
+  organisations: readonly OrganisationOption[];
   scopedOrganisationKeys: readonly string[];
   projects: readonly SidebarProjectSnapshot[];
   scopedProjectKeys: readonly string[];
@@ -405,7 +410,7 @@ function SidebarFilterPreview(props: {
           {visibleOrganisations.map((option) => (
             <FilterPreviewName
               key={option.key}
-              icon={<BuildingIcon aria-hidden className="size-3.5" />}
+              icon={<OrganisationIcon organisation={option.organisation} />}
               label={option.label}
             />
           ))}
@@ -435,7 +440,7 @@ export function SidebarFilterMenu(props: {
   groupStyles: ThreadGroups;
   onPagesChange: (pages: readonly SidebarPage[]) => void;
   onNewGroup: () => void;
-  organisations: readonly SidebarOrganisationOption[];
+  organisations: readonly OrganisationOption[];
   scopedOrganisationKeys: readonly string[];
   onScopedOrganisationKeysChange: (keys: readonly string[]) => void;
   projects: readonly SidebarProjectSnapshot[];
@@ -573,7 +578,7 @@ export function SidebarFilterPills(props: {
   pages: readonly SidebarPage[];
   groupStyles: ThreadGroups;
   onPagesChange: (pages: readonly SidebarPage[]) => void;
-  organisations: readonly SidebarOrganisationOption[];
+  organisations: readonly OrganisationOption[];
   scopedOrganisationKeys: readonly string[];
   onScopedOrganisationKeysChange: (keys: readonly string[]) => void;
   projects: readonly SidebarProjectSnapshot[];
@@ -612,7 +617,7 @@ export function SidebarFilterPills(props: {
       {organisations.map((option) => (
         <SidebarFilterPill
           key={option.key}
-          icon={<BuildingIcon aria-hidden className="size-3.5" />}
+          icon={<OrganisationIcon organisation={option.organisation} />}
           label={option.label}
           onRemove={() =>
             props.onScopedOrganisationKeysChange(

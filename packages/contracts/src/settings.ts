@@ -1480,6 +1480,19 @@ export type ThreadGroup = typeof ThreadGroup.Type;
 export const ThreadGroups = Schema.Record(Schema.String, ThreadGroup);
 export type ThreadGroups = typeof ThreadGroups.Type;
 
+/**
+ * How a repository organisation looks, keyed by its host and owner (`github.com/acme`).
+ * Organisations come from checkouts' remotes; this only names and styles them.
+ */
+export const Organisation = Schema.Struct({
+  name: Schema.optionalKey(TrimmedNonEmptyString.check(Schema.isMaxLength(64))),
+  /** A kind from a newer client decodes as no icon. */
+  icon: Schema.optionalKey(ReceivedProjectIcon),
+});
+export type Organisation = typeof Organisation.Type;
+export const Organisations = Schema.Record(Schema.String, Organisation);
+export type Organisations = typeof Organisations.Type;
+
 export const ServerSettings = Schema.Struct({
   customEditors: Schema.Array(CustomEditor).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   fileOpenDefault: FileOpenTarget.pipe(Schema.withDecodingDefault(Effect.succeed("t3" as const))),
@@ -1604,6 +1617,7 @@ export const ServerSettings = Schema.Struct({
   autoResumeLimitedThreads: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   sidebarAutoSettleOnMerge: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   threadGroups: ThreadGroups.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  organisations: Organisations.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   /** The group new threads start in. Set per project; null starts them ungrouped. */
   defaultThreadGroup: Schema.NullOr(TrimmedNonEmptyString).pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),
@@ -2009,6 +2023,8 @@ export const ServerSettingsPatch = Schema.Struct({
   sidebarAutoSettleOnMerge: Schema.optionalKey(Schema.Boolean),
   /** Replaces the whole map, so a removed group style stays removed. */
   threadGroups: Schema.optionalKey(ThreadGroups),
+  /** Replaces the whole map, so a cleared organisation style stays cleared. */
+  organisations: Schema.optionalKey(Organisations),
   defaultThreadGroup: Schema.optionalKey(Schema.NullOr(TrimmedNonEmptyString)),
   autoResumeLimitedThreads: Schema.optionalKey(Schema.Boolean),
   snoozeLimitedThreads: Schema.optionalKey(Schema.Boolean),

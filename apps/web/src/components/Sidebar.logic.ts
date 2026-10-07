@@ -18,6 +18,8 @@ import {
   type ThreadId,
 } from "@t3tools/contracts";
 import type {
+  Organisation,
+  Organisations,
   SidebarProjectSortOrder,
   SidebarTabSortDirection,
   SidebarTabSortOrder,
@@ -1874,4 +1876,42 @@ export function repositoryOrganisationOf(
   if (segments.length < 3) return null;
   const owner = segments.at(-2)!;
   return { key: segments.slice(0, -1).join("/"), label: owner };
+}
+
+export interface OrganisationOption {
+  readonly key: string;
+  /** The chosen name, else the owner (or host and owner when two hosts share it). */
+  readonly label: string;
+  /** What the label falls back to without a chosen name. */
+  readonly defaultLabel: string;
+  readonly organisation: Organisation | undefined;
+}
+
+/** The organisations of these checkouts, with their chosen names and icons, sorted by label. */
+export function buildOrganisationOptions(
+  identities: Iterable<RepositoryIdentity | null | undefined>,
+  organisations: Organisations,
+): OrganisationOption[] {
+  const byKey = new Map<string, { key: string; label: string }>();
+  for (const identity of identities) {
+    const organisation = repositoryOrganisationOf(identity);
+    if (organisation) byKey.set(organisation.key, organisation);
+  }
+  const options = [...byKey.values()];
+  const labelCounts = new Map<string, number>();
+  for (const option of options) {
+    labelCounts.set(option.label, (labelCounts.get(option.label) ?? 0) + 1);
+  }
+  return options
+    .map((option) => {
+      const defaultLabel = (labelCounts.get(option.label) ?? 0) > 1 ? option.key : option.label;
+      const organisation = organisations[option.key];
+      return {
+        key: option.key,
+        label: organisation?.name ?? defaultLabel,
+        defaultLabel,
+        organisation,
+      };
+    })
+    .toSorted((left, right) => left.label.localeCompare(right.label));
 }

@@ -540,11 +540,13 @@ collapsed title. Dragging to pin or reorder
 works while only Threads is shown. The button shows a count of narrowings off their default,
 and hovering it lists the selected pages, organisations, and projects. Under the header, each
 of those selections shows as a pill with an × that drops it, plus **Clear all** once there are
-several. A thread's **Filter by
+several. **Settings → Organisations** gives an organisation a display name and icon, saved as the
+shared `organisations` server setting so every environment and mobile's filter use them. A thread's **Filter by
 project** menu item still narrows the list to that one project. Mobile's
 thread list filter menu has the same **Show** submenu.
 
 Code: [`SidebarFilterMenu.tsx`](../apps/web/src/components/sidebar/SidebarFilterMenu.tsx),
+[`OrganisationsSettings.tsx`](../apps/web/src/components/settings/OrganisationsSettings.tsx),
 `sidebarPages` in [`Sidebar.tsx`](../apps/web/src/components/Sidebar.tsx),
 `sidebarProjectScopeKeys` in [`uiStateStore.ts`](../apps/web/src/uiStateStore.ts), and mobile's
 [`home-list-filter-menu.ts`](../apps/mobile/src/features/home/home-list-filter-menu.ts). User
