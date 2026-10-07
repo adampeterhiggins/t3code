@@ -838,7 +838,10 @@ holding it, so the picker opens that thread instead: an earlier import, found by
 resumes that session, including threads T3 started itself. `agentSessions.import` takes an
 optional `session` to import just one through upstream's importer, from a fresh scan, and returns
 its thread in `threadIds`. The thread binds to the original session exactly like the wizard's
-import, so the next turn resumes it. The server advertises the picker with the
+import, so the next turn resumes it. Upstream matches a conversation only to the project whose
+root is its exact working directory; the fork gives one started in a subfolder to the nearest
+project at or above it, for both the picker and the wizard's bulk import. The server advertises
+the picker with the
 `agentSessionPicker` capability. Cursor, Grok, OpenCode, Antigravity, Devin, and mobile have no
 import.
 
