@@ -505,6 +505,14 @@ it.live("restarts selection as a new attempt and retries after old-session clean
         "selection restart supersede must not project hard-Stop interrupt items",
       );
       assert.equal(projection.runs[0]?.modelSelection.model, replacementSelection.model);
+      const restartModelChange = projection.visibleTurnItems.find(
+        (row) => row.item.type === "model_change",
+      );
+      assert.equal(restartModelChange?.item.type, "model_change");
+      if (restartModelChange?.item.type === "model_change") {
+        assert.equal(restartModelChange.item.from.model, initialSelection.model);
+        assert.equal(restartModelChange.item.to.model, replacementSelection.model);
+      }
       assert.isTrue(captured.failedReplacementOpen);
       // The old pooled process remains available to its other threads; this
       // thread moved to a freshly allocated replacement session.
@@ -682,6 +690,14 @@ it.live.each(["stopped", "error"] as const)(
         const { projection, captured } = result;
         assert.lengthOf(projection.runs, 2);
         assert.equal(projection.runs[1]?.modelSelection.model, replacementSelection.model);
+        const nextMessageModelChange = projection.visibleTurnItems.find(
+          (row) => row.item.type === "model_change",
+        );
+        assert.equal(nextMessageModelChange?.item.type, "model_change");
+        if (nextMessageModelChange?.item.type === "model_change") {
+          assert.equal(nextMessageModelChange.item.from.model, seedSelection.model);
+          assert.equal(nextMessageModelChange.item.to.model, replacementSelection.model);
+        }
         // The exact released session is the older live one, never the newer
         // dead record.
         assert.deepEqual(result.detachedSessionIds, [result.liveSessionId]);

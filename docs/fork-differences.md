@@ -125,6 +125,18 @@ Code: `apps/web/src/components/settings/ProviderAuthSection.tsx`,
 [providers-devin.md](./user/providers-devin.md) and
 [providers-opencode.md](./user/providers-opencode.md).
 
+## Model change marker
+
+Changing the model in an existing thread leaves a divider in the transcript, the same kind of
+marker a fork leaves in the new thread. It names the model the conversation was on and the model
+the next message uses, and it appears as soon as the composer selection differs, before that
+message is sent. A provider switch that already shows a context handoff keeps that handoff instead
+of a second divider. Effort and other options on the same model do not add one.
+
+Code: [`modelChangeMarker.ts`](../packages/shared/src/modelChangeMarker.ts),
+[`V2LifecycleRow.tsx`](../apps/web/src/components/chat/V2LifecycleRow.tsx), and
+[`thread-handoff-row.tsx`](../apps/mobile/src/features/threads/thread-handoff-row.tsx).
+
 ## Provider account picker
 
 When more than one enabled instance of a provider can serve the thread, the composer has an

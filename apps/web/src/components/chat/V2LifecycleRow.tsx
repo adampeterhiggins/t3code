@@ -55,6 +55,7 @@ const LIFECYCLE_TYPES = new Set<OrchestrationV2TurnItem["type"]>([
   "run_interrupt_result",
   "compaction",
   "handoff",
+  "model_change",
   "fork",
   "subagent",
   "thread_created",
@@ -154,6 +155,30 @@ export function V2LifecycleRow(props: {
               providers={props.providerStatuses}
               instanceId={item.toProviderInstanceId}
               model={to.model}
+            />
+          </span>
+        }
+      />
+    );
+  }
+  if (item.type === "model_change") {
+    return (
+      <TimelineSystemDivider
+        label="Model changed"
+        icon={ArrowRightLeftIcon}
+        showDetailSeparator={false}
+        detail={
+          <span className="inline-flex min-w-0 flex-wrap items-center justify-center gap-1.5">
+            <HandoffEndpoint
+              providers={props.providerStatuses}
+              instanceId={item.from.instanceId}
+              model={item.from.model}
+            />
+            <ArrowRightIcon aria-hidden="true" className="size-3 shrink-0" />
+            <HandoffEndpoint
+              providers={props.providerStatuses}
+              instanceId={item.to.instanceId}
+              model={item.to.model}
             />
           </span>
         }

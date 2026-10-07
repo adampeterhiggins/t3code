@@ -1579,6 +1579,12 @@ export const OrchestrationV2TurnItem = Schema.Union([
   }),
   Schema.Struct({
     ...OrchestrationV2TurnItemBaseFields,
+    type: Schema.Literal("model_change"),
+    from: ModelSelection,
+    to: ModelSelection,
+  }),
+  Schema.Struct({
+    ...OrchestrationV2TurnItemBaseFields,
     type: Schema.Literal("fork"),
     source: Schema.Union([
       Schema.Struct({ type: Schema.Literal("run"), threadId: ThreadId, runId: RunId }),
@@ -2359,6 +2365,12 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
       "manual_context",
     ]),
     summary: Schema.optional(Schema.String),
+  }),
+  Schema.Struct({
+    ...OrchestrationV2TurnItemJsonBaseFields,
+    type: Schema.Literal("model_change"),
+    from: ModelSelection,
+    to: ModelSelection,
   }),
   Schema.Struct({
     ...OrchestrationV2TurnItemJsonBaseFields,

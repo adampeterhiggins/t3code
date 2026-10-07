@@ -30,6 +30,7 @@ import {
   latestExecutedRun,
   latestRootProviderFailure,
 } from "@t3tools/shared/orchestrationV2ThreadError";
+import { pendingModelChangeProjection } from "@t3tools/shared/modelChangeMarker";
 import type { UsageLimitSourceSnapshots } from "@t3tools/contracts";
 import {
   collectProviderUsageLimits,
@@ -1838,6 +1839,12 @@ export default function ChatView(props: ChatViewProps) {
   const composerActiveProvider = useComposerDraftStore(
     (store) => store.getComposerDraft(composerDraftTarget)?.activeProvider ?? null,
   );
+  const composerDraftModelSelection = useComposerDraftStore((store) => {
+    const draft = store.getComposerDraft(composerDraftTarget);
+    const instanceId = draft?.activeProvider ?? null;
+    if (draft === undefined || draft === null || instanceId === null) return null;
+    return draft.modelSelectionByProvider[instanceId] ?? null;
+  });
   const composerHasAttachments = useComposerDraftStore((store) => {
     const draft = store.getComposerDraft(composerDraftTarget);
     return (draft?.images.length ?? 0) > 0 || (draft?.files.length ?? 0) > 0;
@@ -3976,9 +3983,22 @@ export default function ChatView(props: ChatViewProps) {
   } | null>(null);
   const serverTimelineEntries = useMemo(() => {
     const previous = timelineProjectionRef.current;
+    const pendingModelChange =
+      serverProjection === null
+        ? null
+        : pendingModelChangeProjection({
+            threadId: serverProjection.thread.id,
+            draft: composerDraftModelSelection,
+            runs: serverProjection.runs,
+            now: DateTime.makeUnsafe(new Date()),
+          });
+    const visibleTurnItems =
+      pendingModelChange === null
+        ? serverVisibleTurnItems
+        : [...serverVisibleTurnItems, pendingModelChange];
     const projection = deriveTimelineEntriesFromVisibleTurnItemsWithState(
       {
-        visibleTurnItems: serverVisibleTurnItems,
+        visibleTurnItems,
         optimisticMessages: optimisticUserMessages,
         anchoredMessages: anchoredTimelineMessages,
         attachmentUrlById: timelineAttachmentUrlById,
@@ -3997,6 +4017,7 @@ export default function ChatView(props: ChatViewProps) {
   }, [
     activeThreadKey,
     anchoredTimelineMessages,
+    composerDraftModelSelection,
     optimisticUserMessages,
     serverVisibleTurnItems,
     serverProjection,

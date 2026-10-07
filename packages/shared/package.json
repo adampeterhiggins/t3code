@@ -35,6 +35,10 @@
       "types": "./src/model.ts",
       "import": "./src/model.ts"
     },
+    "./modelChangeMarker": {
+      "types": "./src/modelChangeMarker.ts",
+      "import": "./src/modelChangeMarker.ts"
+    },
     "./advertisedEndpoint": {
       "types": "./src/advertisedEndpoint.ts",
       "import": "./src/advertisedEndpoint.ts"

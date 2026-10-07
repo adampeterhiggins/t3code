@@ -75,6 +75,37 @@ export function ThreadHandoffRow(props: {
   );
 }
 
+export function ThreadModelChangeRow(props: {
+  environmentId: EnvironmentId;
+  projectedItem: OrchestrationV2ProjectedTurnItem;
+  iconColor: ColorValue;
+}) {
+  const { item } = props.projectedItem;
+  const config = useAtomValue(serverEnvironment.configValueAtom(props.environmentId));
+  if (item.type !== "model_change") return null;
+  return (
+    <ThreadContextDivider
+      label="Model changed"
+      icon="arrow.left.arrow.right"
+      iconColor={props.iconColor}
+    >
+      <View className="flex-row flex-wrap items-center justify-center gap-1.5">
+        <HandoffEndpoint
+          instanceId={item.from.instanceId}
+          model={item.from.model}
+          providers={config?.providers ?? []}
+        />
+        <SymbolView name="arrow.right" size={12} tintColor={props.iconColor} />
+        <HandoffEndpoint
+          instanceId={item.to.instanceId}
+          model={item.to.model}
+          providers={config?.providers ?? []}
+        />
+      </View>
+    </ThreadContextDivider>
+  );
+}
+
 function HandoffEndpoint(props: {
   instanceId: ProviderInstanceId;
   model?: string | undefined;
