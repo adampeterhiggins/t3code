@@ -203,6 +203,19 @@ export function pendingBackgroundTurnItems<Item extends PendingBackgroundWorkTur
 }
 
 /**
+ * The thread's delegated tasks that are still working, whether or not a turn runs. Stop asks
+ * whether to keep these: they run in threads of their own, so they can outlive the turn.
+ */
+export function runningDelegatedTasks(input: {
+  readonly turnItems: ReadonlyArray<PendingBackgroundWorkTurnItem & { readonly origin?: string }>;
+  readonly runs?: ReadonlyArray<PendingBackgroundWorkRun>;
+}): ReadonlyArray<PendingBackgroundWorkTask> {
+  return pendingBackgroundTurnItems(input)
+    .filter((item) => item.type === "subagent" && item.origin === "app_owned")
+    .map((item) => pendingTaskFromTurnItem(nativeTaskIdFromTurnItem(item), item));
+}
+
+/**
  * Derive one normalized pending-background-work list for post-settlement UI.
  *
  * Sources:

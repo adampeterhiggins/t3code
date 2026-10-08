@@ -213,6 +213,48 @@ it.effect("Stop ends watches, holds queues, and stops the delegated tasks under 
   }).pipe(Effect.provide(layerTest)),
 );
 
+it.effect("a Stop that keeps background work leaves delegated tasks and watches running", () =>
+  Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const sql = yield* SqlClient.SqlClient;
+    const parentThreadId = ThreadId.make("thread:stop-keep-parent");
+    yield* createWatchingThread(parentThreadId, 20);
+    yield* send(parentThreadId, "work", "start_immediately");
+    const childThreadId = yield* delegate(parentThreadId, "kept task");
+    yield* send(parentThreadId, "follow-up", "queue_after_active");
+    const run = (yield* orchestrator.getThreadProjection(parentThreadId)).runs[0]!;
+    const childRunsBefore = (yield* threadState(childThreadId)).runs;
+
+    const stopCommandId = CommandId.make("stop-keep-parent");
+    yield* orchestrator.dispatch({
+      type: "run.interrupt",
+      commandId: stopCommandId,
+      threadId: parentThreadId,
+      runId: run.id,
+      holdQueue: true,
+      keepBackgroundWork: true,
+    });
+
+    // The turn stops and the queue waits for the user, but the watch stays on.
+    assert.deepEqual(yield* threadState(parentThreadId), {
+      runs: ["interrupted", "queued:held"],
+      watched: [20],
+    });
+    const parent = yield* orchestrator.getThreadProjection(parentThreadId);
+    // The task still reports back, and its row shows it working.
+    assert.notEqual(parent.subagents[0]?.completionDelivery?.state, "disposed");
+    assert.equal(parent.turnItems.find((item) => item.type === "subagent")?.status, "running");
+    const effects = yield* sql<{ readonly effect_type: string }>`
+      SELECT effect_type FROM orchestration_v2_effect_outbox WHERE command_id = ${stopCommandId}
+    `;
+    assert.notInclude(
+      effects.map((row) => row.effect_type),
+      "delegated-tasks.stop",
+    );
+    assert.deepEqual((yield* threadState(childThreadId)).runs, childRunsBefore);
+  }).pipe(Effect.provide(layerTest)),
+);
+
 it.effect(
   "thread.stop ends an idle thread's watches and accepts a thread with nothing to stop",
   () =>

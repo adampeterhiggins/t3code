@@ -217,6 +217,8 @@ export interface ThreadDetailScreenProps {
   readonly onStopThread: () => void;
   readonly onSendMessage: (followUp?: ActiveTurnComposerAction) => Promise<MessageId | null>;
   readonly onReconnectEnvironment: () => void;
+  /** Offers to stop what the settled thread still runs. */
+  readonly onStopBackgroundWork?: () => void;
   /** Whether the model picker may offer providers other than this thread's. */
   readonly canSwitchThreadProvider: boolean;
   readonly onUpdateThreadModelSelection: (modelSelection: ModelSelection) => void;
@@ -512,6 +514,9 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
           .map((item) => item.label)
           .join(", ")}`,
         waiting: pendingBackgroundWork.waiting,
+        ...(props.onStopBackgroundWork === undefined
+          ? {}
+          : { onPress: props.onStopBackgroundWork }),
       };
     }
     if (props.selectedThread.goal !== null && contentPresentationKind === "ready") {

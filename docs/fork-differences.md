@@ -1081,6 +1081,25 @@ and `OrchestrationV2DelegatedTaskWorkspaceStrategy` in
 [`orchestrationV2.ts`](../packages/contracts/src/orchestrationV2.ts). User guide:
 [agent-access.md](./user/agent-access.md#let-agents-start-threads).
 
+## Stop keeps delegated subagents running on request
+
+Upstream's Stop always stops everything: the turn, every delegated task under the thread, their
+completion wakes, and the thread's pull request watches. In the fork, Stop on a running turn that
+has delegated subagents still working asks first. **Stop turn only** interrupts the turn and holds
+the queue, but the subagents keep running, still report back when they finish, and pull request
+watches stay on. **Stop everything** is upstream's Stop. Work the provider runs in its own process,
+such as Claude's background shells and agents, ends with the turn either way. Once the turn has
+stopped, the existing "Waiting on" strip lists the subagents and its Stop ends them. On mobile the
+same choice is a native alert, and tapping the background-work pill offers to stop what is left.
+
+Code: `keepBackgroundWork` on `run.interrupt` in
+[`orchestrationV2.ts`](../packages/contracts/src/orchestrationV2.ts), `dispatchRunInterrupt` and
+`settleBackgroundWork` in [`Orchestrator.ts`](../apps/server/src/orchestration-v2/Orchestrator.ts),
+`runningDelegatedTasks` in
+[`orchestrationV2PendingBackgroundWork.ts`](../packages/shared/src/orchestrationV2PendingBackgroundWork.ts),
+and the Stop handlers in [`ChatView.tsx`](../apps/web/src/components/ChatView.tsx) and
+[`ThreadRouteScreen.tsx`](../apps/mobile/src/features/threads/ThreadRouteScreen.tsx).
+
 ## Agents move their thread between worktrees
 
 Upstream's `t3_worktree_handoff` only moves a thread out of the project checkout into a new

@@ -36,6 +36,7 @@ import {
 import { resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/models";
 import { upgradeLegacyContextMessage } from "@t3tools/shared/composerContextLegacy";
 import { pendingModelChangeProjection } from "@t3tools/shared/modelChangeMarker";
+import { runningDelegatedTasks } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import * as DateTime from "effect/DateTime";
 import { composerContextSendBlockReason, reidentifyComposerContext } from "../lib/composerContext";
 import { uuidv4 } from "../lib/uuid";
@@ -491,6 +492,17 @@ export function useThreadComposerState() {
   const interruptibleRunId = threadRuntimeHasInterruptibleRun(selectedThreadRuntime)
     ? (selectedThreadRuntime?.activeRunId ?? null)
     : null;
+  // Delegated tasks run in threads of their own, so Stop asks whether to keep them.
+  const runningWorkers = useMemo(
+    () =>
+      selectedThreadProjection
+        ? runningDelegatedTasks({
+            turnItems: selectedThreadProjection.projection.turnItems,
+            runs: selectedThreadProjection.projection.runs,
+          })
+        : [],
+    [selectedThreadProjection],
+  );
 
   const cancelQueuedRunEdit = useCallback(() => {
     if (selectedThreadKey === null || savingQueuedEditRef.current) return;
@@ -1101,6 +1113,7 @@ export function useThreadComposerState() {
     interactionMode,
     activeThreadBusy,
     interruptibleRunId,
+    runningWorkers,
     onChangeDraftMessage,
     onPickDraftMedia,
     onPickDraftFiles,
