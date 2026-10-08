@@ -2899,7 +2899,8 @@ function SidebarTabList(props: {
 
 /**
  * Tabs listed in a hover card, with the same title, status, time, and provider as the sidebar's
- * tab rows. Clicking one opens it; `activeKey` marks the tab already open.
+ * tab rows. Clicking one opens it; `activeKey` marks the tab already open. Hovering one shows
+ * the same details card as a tab row.
  */
 function SidebarTabPreviewList(props: {
   tabs: readonly SidebarThreadSummary[];
@@ -2909,6 +2910,7 @@ function SidebarTabPreviewList(props: {
   providerEntriesByEnvironment: ReadonlyMap<string, ReadonlyMap<string, ProviderInstanceEntry>>;
   tabSortOrder: SidebarTabSortOrder;
   openedAtByThreadKey: Readonly<Record<string, number>>;
+  resolveTabPlace: (thread: SidebarThreadSummary) => SidebarTabPlace;
   onOpenTab: (threadRef: ScopedThreadRef) => void;
 }) {
   return (
@@ -2920,24 +2922,36 @@ function SidebarTabPreviewList(props: {
       {props.tabs.map((thread) => {
         const threadKey = sidebarThreadKey(thread);
         const active = threadKey === props.activeKey;
+        const providerEntries = props.providerEntriesByEnvironment.get(thread.environmentId);
         return (
           <li key={threadKey} className="list-none">
-            <button
-              type="button"
-              aria-current={active ? "page" : undefined}
-              onClick={() => props.onOpenTab(scopeThreadRef(thread.environmentId, thread.id))}
-              className={cn(
-                "flex h-8 w-full cursor-pointer items-center gap-2 rounded-md px-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-                active ? "bg-sidebar-row-active" : "hover:bg-sidebar-row-hover",
-              )}
-            >
-              <SidebarTabSummary
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    aria-current={active ? "page" : undefined}
+                    onClick={() => props.onOpenTab(scopeThreadRef(thread.environmentId, thread.id))}
+                    className={cn(
+                      "flex h-8 w-full cursor-pointer items-center gap-2 rounded-md px-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                      active ? "bg-sidebar-row-active" : "hover:bg-sidebar-row-hover",
+                    )}
+                  />
+                }
+              >
+                <SidebarTabSummary
+                  thread={thread}
+                  providerEntries={providerEntries}
+                  tabSortOrder={props.tabSortOrder}
+                  openedAt={props.openedAtByThreadKey[threadKey]}
+                />
+              </TooltipTrigger>
+              <SidebarTabTooltip
                 thread={thread}
-                providerEntries={props.providerEntriesByEnvironment.get(thread.environmentId)}
-                tabSortOrder={props.tabSortOrder}
-                openedAt={props.openedAtByThreadKey[threadKey]}
+                place={props.resolveTabPlace(thread)}
+                providerEntryByInstanceId={providerEntries ?? EMPTY_PROVIDER_ENTRIES}
               />
-            </button>
+            </Tooltip>
           </li>
         );
       })}
@@ -2957,6 +2971,7 @@ function SidebarTabGroupPreview(props: {
   tabSortDirection: SidebarTabSortDirection;
   tabManualRanks: Readonly<Record<string, number>>;
   openedAtByThreadKey: Readonly<Record<string, number>>;
+  resolveTabPlace: (thread: SidebarThreadSummary) => SidebarTabPlace;
   onOpenTab: (threadRef: ScopedThreadRef) => void;
 }) {
   const { openedAtByThreadKey } = props;
@@ -2978,6 +2993,7 @@ function SidebarTabGroupPreview(props: {
       providerEntriesByEnvironment={props.providerEntriesByEnvironment}
       tabSortOrder={props.tabSortOrder}
       openedAtByThreadKey={openedAtByThreadKey}
+      resolveTabPlace={props.resolveTabPlace}
       onOpenTab={props.onOpenTab}
     />
   );
@@ -2994,6 +3010,7 @@ function SidebarTabOverflowRow(props: {
   providerEntriesByEnvironment: ReadonlyMap<string, ReadonlyMap<string, ProviderInstanceEntry>>;
   tabSortOrder: SidebarTabSortOrder;
   openedAtByThreadKey: Readonly<Record<string, number>>;
+  resolveTabPlace: (thread: SidebarThreadSummary) => SidebarTabPlace;
   onToggle: () => void;
   onOpenTab: (threadRef: ScopedThreadRef) => void;
   onPreviewOpenChange?: ((open: boolean) => void) | undefined;
@@ -3124,6 +3141,7 @@ function SidebarTabOverflowRow(props: {
                 providerEntriesByEnvironment={providerEntriesByEnvironment}
                 tabSortOrder={props.tabSortOrder}
                 openedAtByThreadKey={props.openedAtByThreadKey}
+                resolveTabPlace={props.resolveTabPlace}
                 onOpenTab={props.onOpenTab}
               />
             </div>
@@ -3200,22 +3218,11 @@ const SidebarTabRow = memo(function SidebarTabRow(props: {
     isSelected,
   });
 
-  // An unsent composer pick wins, so the icon follows the composer before the next turn.
-  const draftModelSelection = useComposerDraftActiveModelSelection(threadRef);
-  const modelSelection = draftModelSelection ?? thread.modelSelection;
-  const modelInstanceId =
-    draftModelSelection?.instanceId ??
-    thread.runtime?.providerInstanceId ??
-    thread.modelSelection.instanceId;
-  const providerEntry = props.providerEntryByInstanceId.get(modelInstanceId) ?? null;
-  const driverKind = providerEntry?.driverKind ?? null;
-  const showInstanceBadge =
-    providerEntry !== null &&
-    shouldShowInstanceBadge(providerEntry, props.providerEntryByInstanceId.values());
-  const selectedModel = providerEntry?.models.find((model) => model.slug === modelSelection.model);
-  const modelLabel = selectedModel
-    ? getTriggerDisplayModelLabel(selectedModel)
-    : modelSelection.model;
+  const { modelInstanceId, providerEntry, driverKind, showInstanceBadge } = useSidebarTabProvider(
+    thread,
+    threadRef,
+    props.providerEntryByInstanceId,
+  );
 
   const [isFileDragOver, setIsFileDragOver] = useState(false);
   const fileDropHandlers = useMemo(
@@ -3377,25 +3384,84 @@ const SidebarTabRow = memo(function SidebarTabRow(props: {
           ) : null}
           {props.jumpLabel ? <JumpHintBadge label={props.jumpLabel} /> : null}
         </TooltipTrigger>
-        <SidebarThreadTooltip
+        <SidebarTabTooltip
           thread={thread}
-          project={props.project}
-          projectDisplayName={props.projectDisplayName}
-          environmentLabel={props.environmentLabel}
-          environmentMachine={props.environmentMachine}
-          providerEntry={providerEntry}
+          place={props}
           providerEntryByInstanceId={props.providerEntryByInstanceId}
-          showInstanceBadge={showInstanceBadge}
-          modelInstanceId={modelInstanceId}
-          modelLabel={modelLabel}
-          branchMismatch={null}
-          terminalStatus={terminalStatus}
-          terminalProcessCount={runningTerminalIds.length}
         />
       </Tooltip>
     </li>
   );
 });
+
+/** Where a tab lives, for its hover card. */
+interface SidebarTabPlace {
+  environmentLabel: string | null;
+  environmentMachine: EnvironmentMachineKind;
+  project: EnvironmentProject | null;
+  projectDisplayName: string | null;
+}
+
+/** The provider and model a tab runs on. An unsent composer pick wins, so the icon follows the composer before the next turn. */
+function useSidebarTabProvider(
+  thread: SidebarThreadSummary,
+  threadRef: ScopedThreadRef,
+  providerEntryByInstanceId: ReadonlyMap<string, ProviderInstanceEntry>,
+) {
+  const draftModelSelection = useComposerDraftActiveModelSelection(threadRef);
+  const modelSelection = draftModelSelection ?? thread.modelSelection;
+  const modelInstanceId =
+    draftModelSelection?.instanceId ??
+    thread.runtime?.providerInstanceId ??
+    thread.modelSelection.instanceId;
+  const providerEntry = providerEntryByInstanceId.get(modelInstanceId) ?? null;
+  const showInstanceBadge =
+    providerEntry !== null &&
+    shouldShowInstanceBadge(providerEntry, providerEntryByInstanceId.values());
+  const selectedModel = providerEntry?.models.find((model) => model.slug === modelSelection.model);
+  return {
+    modelInstanceId,
+    providerEntry,
+    driverKind: providerEntry?.driverKind ?? null,
+    showInstanceBadge,
+    modelLabel: selectedModel ? getTriggerDisplayModelLabel(selectedModel) : modelSelection.model,
+  };
+}
+
+/** A tab's hover card. It mounts only while open, so its subscriptions cost nothing at rest. */
+function SidebarTabTooltip(props: {
+  thread: SidebarThreadSummary;
+  place: SidebarTabPlace;
+  providerEntryByInstanceId: ReadonlyMap<string, ProviderInstanceEntry>;
+}) {
+  const { thread, place } = props;
+  const threadRef = useMemo(
+    () => scopeThreadRef(thread.environmentId, thread.id),
+    [thread.environmentId, thread.id],
+  );
+  const provider = useSidebarTabProvider(thread, threadRef, props.providerEntryByInstanceId);
+  const runningTerminalIds = useThreadRunningTerminalIds({
+    environmentId: thread.environmentId,
+    threadId: thread.id,
+  });
+  return (
+    <SidebarThreadTooltip
+      thread={thread}
+      project={place.project}
+      projectDisplayName={place.projectDisplayName}
+      environmentLabel={place.environmentLabel}
+      environmentMachine={place.environmentMachine}
+      providerEntry={provider.providerEntry}
+      providerEntryByInstanceId={props.providerEntryByInstanceId}
+      showInstanceBadge={provider.showInstanceBadge}
+      modelInstanceId={provider.modelInstanceId}
+      modelLabel={provider.modelLabel}
+      branchMismatch={null}
+      terminalStatus={terminalStatusFromRunningIds(runningTerminalIds)}
+      terminalProcessCount={runningTerminalIds.length}
+    />
+  );
+}
 
 function latestRunDiff(
   thread: SidebarThreadSummary,
@@ -3834,6 +3900,18 @@ export default function Sidebar() {
         ),
       ),
     [projectGroups],
+  );
+  const resolveTabPlace = useCallback(
+    (thread: SidebarThreadSummary): SidebarTabPlace => {
+      const projectKey = `${thread.environmentId}:${thread.projectId}` as const;
+      return {
+        environmentLabel: environmentLabelById.get(thread.environmentId) ?? null,
+        environmentMachine: environmentMachineById.get(thread.environmentId) ?? "server",
+        project: projectByKey.get(projectKey) ?? null,
+        projectDisplayName: projectDisplayNameByKey.get(projectKey) ?? null,
+      };
+    },
+    [environmentLabelById, environmentMachineById, projectByKey, projectDisplayNameByKey],
   );
 
   const nowMinute = useNowMinute();
@@ -7149,6 +7227,7 @@ export default function Sidebar() {
                                   tabSortDirection={tabSortDirection}
                                   tabManualRanks={tabManualRanks}
                                   openedAtByThreadKey={openedAtByThreadKey}
+                                  resolveTabPlace={resolveTabPlace}
                                   onOpenTab={navigateToThread}
                                 />
                               ) : undefined
@@ -7242,6 +7321,7 @@ export default function Sidebar() {
                                       providerEntriesByEnvironment={providerEntriesByEnvironment}
                                       tabSortOrder={tabSortOrder}
                                       openedAtByThreadKey={openedAtByThreadKey}
+                                      resolveTabPlace={resolveTabPlace}
                                       onToggle={() => toggleTabOverflow(threadKey)}
                                       onOpenTab={navigateToThread}
                                       onPreviewOpenChange={(open) =>
