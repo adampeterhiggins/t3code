@@ -380,17 +380,20 @@ is its own conversation and provider.
   tools, reasoning, errors, changed files, and the latest plan (`apps/server/src/threadTabs/summary.ts`).
   It is captured when chosen (or when first previewed), so later changes in that chat do not
   change it.
-- **Forking.** On web and desktop, a started chat can fork into a new tab (`forkThreadTab` in
-  `ThreadTabs.tsx`). The new tab's draft starts with a `thread-tab` summary chip.
-  - A user message's hover actions include **Fork into new tab**. The summary stops before that
-    message (`beforeMessageId` on the handoff request), and the message's text and attachments
-    follow it.
-  - A completed agent response's **Fork from this response** opens upstream's native fork as a
-    new tab (`forkResponseIntoTab`, the `fork` endpoint), so the tab carries the conversation
-    itself rather than a summary. Against a server without tabs it forks a separate thread, as
-    upstream does.
-  - Each model picker row has a hover fork button. The new tab runs that model, the whole chat is
-    summarized, and the current draft (text, attachments, and context chips) is copied after it.
+- **Forking.** On web and desktop, a started chat can fork into a new tab. Every fork uses
+  upstream's native `thread.fork` from a completed response (`forkResponseIntoTab` in
+  `ThreadTabs.tsx`, the `fork` endpoint), so the tab carries the conversation itself. The fork
+  point comes from `latestThreadForkPoint` and `threadForkPointBeforeMessage` in
+  `packages/client-runtime/src/threadTabs.ts`. When there is no finished response to fork from,
+  the tab falls back to a `thread-tab` summary chip in its draft (`forkThreadTab`).
+  - A user message's hover actions include **Fork into new tab**. The fork stops at the response
+    before that message, and the message's text and attachments wait in the new tab's composer.
+  - A completed agent response's **Fork from this response** forks at that response. Against a
+    server without tabs it forks a separate thread, as upstream does.
+  - Each model picker row has a hover fork button. The new tab forks at the latest finished
+    response and runs that model: the fork request's `modelSelection` switches it before its first
+    message, so upstream's fork hands the conversation to the new provider on that send. The
+    current draft (text, attachments, and context chips) is copied into it.
     Other providers, and models the provider cannot switch to mid-chat, stay listed instead of
     being hidden. Their rows show a not-allowed cursor and a tooltip, and only the fork button
     opens them, so a stray click never forks (`matchesModelPickerLock` in `ModelPickerContent.tsx`).

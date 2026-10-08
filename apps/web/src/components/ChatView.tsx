@@ -94,6 +94,10 @@ import {
 } from "@t3tools/client-runtime/errors";
 import { readPastedComposerContext } from "./composerInlineTokenPaste";
 import { isPasteAsTextShortcut } from "@t3tools/client-runtime/text-paste";
+import {
+  latestThreadForkPoint,
+  threadForkPointBeforeMessage,
+} from "@t3tools/client-runtime/thread-tabs";
 import { effectiveSnoozed, threadWokeAt } from "@t3tools/client-runtime/state/thread-settled";
 import { useAcknowledgeThreadWoke, useThreadActions } from "../hooks/useThreadActions";
 import {
@@ -8946,8 +8950,9 @@ export default function ChatView(props: ChatViewProps) {
     ],
   );
 
-  // Summary forks open a new tab of this thread whose draft starts with a summary of this tab:
-  // from before a user message, or onto a model or account this tab cannot switch to.
+  // Forks into a new tab of this thread: from before a user message, or onto a model or account
+  // this tab cannot switch to. They fork natively from the last finished response, so the tab
+  // carries the conversation itself; with none to fork from, its draft starts with a summary.
   const forkInFlightRef = useRef(false);
   const runFork = async (
     fork: (connection: NonNullable<ReturnType<typeof readPreparedConnection>>) => Promise<void>,
@@ -8974,7 +8979,7 @@ export default function ChatView(props: ChatViewProps) {
   const openForkedTab = (tabRef: ScopedThreadRef) =>
     navigate({ to: "/$environmentId/$threadId", params: buildThreadRouteParams(tabRef) });
 
-  // The summary stops before the message, whose text and attachments follow it in the new tab.
+  // The fork stops before the message, whose text and attachments wait in the new tab's composer.
   const onForkFromMessage = (messageId: MessageId) =>
     runFork(async (connection) => {
       if (!activeThread || !serverProjection) return;
@@ -8997,29 +9002,42 @@ export default function ChatView(props: ChatViewProps) {
         httpBaseUrl: connection.httpBaseUrl,
         createAssetUrl: createAttachmentAssetUrl,
       });
-      // Inherited history comes first in the timeline, and an older window may precede it.
-      const timelineIndex = serverProjection.visibleTurnItems.findIndex(
-        (entry) => entry.item.type === "user_message" && entry.item.messageId === messageId,
-      );
-      const hasHistory =
-        timelineIndex !== 0 ||
-        serverProjection.visibleTurnItems.length < (serverThread?.visibleItemCount ?? 0);
-      const tabRef = await forkThreadTab(connection, {
-        environmentId,
-        sourceThreadId: activeThread.id,
-        sourceTitle: activeThread.title,
-        modelSelection: activeThread.modelSelection,
-        beforeMessageId: messageId,
-        prompt: recallableComposerPrompt(message.text),
-        hasHistory,
-      });
+      const prompt = recallableComposerPrompt(message.text);
+      const forkPoint = threadForkPointBeforeMessage(serverProjection.visibleTurnItems, messageId);
+      let tabRef: ScopedThreadRef;
+      if (forkPoint) {
+        tabRef = await forkResponseIntoTab(connection, {
+          environmentId,
+          tabThreadId: activeThread.id,
+          ...forkPoint,
+          title: `${activeThread.title} fork`,
+        });
+        useComposerDraftStore.getState().setPrompt(tabRef, prompt);
+      } else {
+        // Inherited history comes first in the timeline, and an older window may precede it.
+        const timelineIndex = serverProjection.visibleTurnItems.findIndex(
+          (entry) => entry.item.type === "user_message" && entry.item.messageId === messageId,
+        );
+        const hasHistory =
+          timelineIndex !== 0 ||
+          serverProjection.visibleTurnItems.length < (serverThread?.visibleItemCount ?? 0);
+        tabRef = await forkThreadTab(connection, {
+          environmentId,
+          sourceThreadId: activeThread.id,
+          sourceTitle: activeThread.title,
+          modelSelection: activeThread.modelSelection,
+          beforeMessageId: messageId,
+          prompt,
+          hasHistory,
+        });
+      }
       restoreMessageAttachments(tabRef, message, files);
       await openForkedTab(tabRef);
     });
 
-  // From the model or account picker: the whole tab is summarized, the new tab runs the picked
-  // model, and this tab's draft is copied after the summary. The draft here is left as it was.
-  // `emptyDraftPrompt` stands in for the draft when there is none.
+  // From the model or account picker: the new tab carries the whole chat onto the picked model,
+  // and this tab's draft is copied into it. The draft here is left as it was. `emptyDraftPrompt`
+  // stands in for the draft when there is none.
   const onForkModel = (instanceId: ProviderInstanceId, model: string, emptyDraftPrompt = "") =>
     runFork(async (connection) => {
       if (!activeThread) return;
@@ -9028,14 +9046,31 @@ export default function ChatView(props: ChatViewProps) {
       const tabContexts = readThreadTabContextRecords(activeThread.id);
       const issueContexts = readIssueContextRecords(activeThread.id);
       const repositoryContexts = readRepositoryContextRecords(activeThread.id);
-      const tabRef = await forkThreadTab(connection, {
-        environmentId,
-        sourceThreadId: activeThread.id,
-        sourceTitle: activeThread.title,
-        modelSelection: createModelSelection(instanceId, model),
-        prompt: draft?.prompt.trim() || emptyDraftPrompt,
-        hasHistory: threadHasStarted(activeThread),
-      });
+      const modelSelection = createModelSelection(instanceId, model);
+      const prompt = draft?.prompt.trim() || emptyDraftPrompt;
+      const forkPoint = serverProjection
+        ? latestThreadForkPoint(serverProjection.visibleTurnItems)
+        : null;
+      let tabRef: ScopedThreadRef;
+      if (forkPoint) {
+        tabRef = await forkResponseIntoTab(connection, {
+          environmentId,
+          tabThreadId: activeThread.id,
+          ...forkPoint,
+          title: `${activeThread.title} fork`,
+          modelSelection,
+        });
+        store.setPrompt(tabRef, prompt);
+      } else {
+        tabRef = await forkThreadTab(connection, {
+          environmentId,
+          sourceThreadId: activeThread.id,
+          sourceTitle: activeThread.title,
+          modelSelection,
+          prompt,
+          hasHistory: threadHasStarted(activeThread),
+        });
+      }
       // Chips in the copied prompt resolve against these, so ids are kept.
       for (const record of tabContexts) {
         useThreadTabContextStore.getState().upsert(tabRef.threadId, record);

@@ -17,6 +17,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
+import { modelSelectionsEqual } from "@t3tools/shared/model";
 
 import { GitHubIssueThreadLinks } from "../githubIssues/GitHubIssueThreadLinks.ts";
 import { LinearThreadLinks } from "../linear/LinearThreadLinks.ts";
@@ -58,7 +59,10 @@ export class ThreadTabs extends Context.Service<
      * writing the threads so clients never see them as standalone rows.
      */
     readonly adopt: (threadIds: ReadonlyArray<ThreadId>) => Effect.Effect<void, ThreadTabsError>;
-    /** Forks a completed response with the native `thread.fork` into a new tab of the group. */
+    /**
+     * Forks a chat at a run with the native `thread.fork` into a new tab of the group, switched
+     * to `input.modelSelection` when that differs from the source's.
+     */
     readonly fork: (
       threadId: ThreadId,
       input: ForkThreadTabInput,
@@ -249,8 +253,8 @@ export const make = Effect.gen(function* () {
     function* (threadId, input) {
       const tab = yield* requireShell(threadId);
       // The fork copies its source's branch and worktree, which a sibling tab already shares.
-      yield* requireShell(input.sourceThreadId);
-      return yield* addTab(tab, input.threadId, {
+      const source = yield* requireShell(input.sourceThreadId);
+      const forked = yield* addTab(tab, input.threadId, {
         type: "thread.fork",
         commandId: yield* newCommandId("thread-tab-fork"),
         createdBy: "user",
@@ -260,6 +264,33 @@ export const make = Effect.gen(function* () {
         sourcePoint: { type: "run", runId: input.runId },
         ...(input.title === undefined ? {} : { title: input.title }),
       });
+      const modelSelection = input.modelSelection;
+      if (
+        modelSelection === undefined ||
+        modelSelectionsEqual(modelSelection, source.modelSelection)
+      ) {
+        return forked;
+      }
+      // The fork has no provider session yet, so its first message hands the conversation to
+      // the new model's provider instead of resuming the source's.
+      yield* threads
+        .dispatch({
+          type: "thread.model-selection.set",
+          commandId: yield* newCommandId("thread-tab-fork-model"),
+          threadId: input.threadId,
+          modelSelection,
+        })
+        .pipe(
+          Effect.mapError(
+            (cause) =>
+              new ThreadTabsError({
+                reason: "dispatch_failed",
+                detail: `Forked tab ${input.threadId} could not switch to ${modelSelection.model}.`,
+                cause,
+              }),
+          ),
+        );
+      return yield* group(input.threadId);
     },
   );
 

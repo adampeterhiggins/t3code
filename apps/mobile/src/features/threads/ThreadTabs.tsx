@@ -1,7 +1,9 @@
 import {
   createThreadTab,
+  forkThreadTabFromRun,
   listThreadTabs,
   prepareThreadTabHandoff,
+  type ThreadForkPoint,
 } from "@t3tools/client-runtime/thread-tabs";
 import {
   COMPOSER_CONTEXT_THREAD_TAB_SUMMARY_MAX_CHARS,
@@ -74,6 +76,7 @@ export function ThreadTabs({
   threadId,
   title,
   modelSelection,
+  forkPoint,
   empty,
   working,
 }: {
@@ -81,6 +84,8 @@ export function ThreadTabs({
   threadId: ThreadId;
   title: string;
   modelSelection: ModelSelection;
+  /** The chat's latest finished response, which a hand-off forks from natively. */
+  forkPoint: ThreadForkPoint | null;
   empty: boolean;
   working: boolean;
 }) {
@@ -153,16 +158,28 @@ export function ThreadTabs({
     setBusy(true);
     try {
       const next = ThreadId.make(uuidv4());
+      // A native fork carries the conversation itself; with no finished response to fork
+      // from, the new tab starts with a summary of this one.
       await runtime.runPromise(
-        createThreadTab(prepared.value, threadId, {
-          threadId: next,
-          creationSource: "mobile",
-          modelSelection: option.selection,
-        }),
+        forkPoint
+          ? forkThreadTabFromRun(prepared.value, threadId, {
+              threadId: next,
+              ...forkPoint,
+              title: `${title} fork`,
+              creationSource: "mobile",
+              modelSelection: option.selection,
+            })
+          : createThreadTab(prepared.value, threadId, {
+              threadId: next,
+              creationSource: "mobile",
+              modelSelection: option.selection,
+            }),
       );
-      const handoff = await runtime.runPromise(
-        prepareThreadTabHandoff(prepared.value, next, { sourceThreadIds: [threadId] }),
-      );
+      const handoff = forkPoint
+        ? { text: "" }
+        : await runtime.runPromise(
+            prepareThreadTabHandoff(prepared.value, next, { sourceThreadIds: [threadId] }),
+          );
       const summary = handoff.text.slice(0, COMPOSER_CONTEXT_THREAD_TAB_SUMMARY_MAX_CHARS);
       const record: ThreadTabContextRecord | null = summary
         ? {

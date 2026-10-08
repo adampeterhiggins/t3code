@@ -112,7 +112,7 @@ The thread keeps its work and offers a way to pick it back up:
 - **Resume now** continues the same session straight away, for example after
   your workspace added credits.
 - **Continue in new tab** (web and desktop) forks the chat into a new tab on
-  another account or model, starting from a summary of this one. See
+  another account or model, carrying this conversation over. See
   [Switch accounts in an existing thread](#switch-accounts-in-an-existing-thread).
 
 Scheduling and cancelling an automatic resume are noted in the stopped turn.

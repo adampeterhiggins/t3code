@@ -2,6 +2,9 @@ import type {
   CreateThreadTabInput,
   EnvironmentId,
   ForkThreadTabInput,
+  MessageId,
+  OrchestrationV2ProjectedTurnItem,
+  RunId,
   ThreadId,
   ThreadTabHandoffInput,
   ThreadTabMembership,
@@ -189,6 +192,47 @@ export const forkThreadTabFromRun = Effect.fn("clientRuntime.threadTabs.fork")(f
       client.fork({ params: { threadId }, payload: input, headers }),
   });
 });
+
+/** Where a native fork starts: the run of a completed response, in the thread that owns it. */
+export interface ThreadForkPoint {
+  readonly sourceThreadId: ThreadId;
+  readonly runId: RunId;
+}
+
+const forkPointOf = (entry: OrchestrationV2ProjectedTurnItem): ThreadForkPoint | null =>
+  entry.item.type === "assistant_message" &&
+  entry.item.status === "completed" &&
+  entry.item.runId !== null
+    ? { sourceThreadId: entry.sourceThreadId, runId: entry.item.runId }
+    : null;
+
+/**
+ * The fork point for carrying a whole chat into a new tab: its latest completed response, which
+ * may be inherited from an earlier fork. Null when no response has finished yet.
+ */
+export function latestThreadForkPoint(
+  items: ReadonlyArray<OrchestrationV2ProjectedTurnItem>,
+): ThreadForkPoint | null {
+  for (let index = items.length - 1; index >= 0; index--) {
+    const point = forkPointOf(items[index]!);
+    if (point) return point;
+  }
+  return null;
+}
+
+/**
+ * The fork point for re-asking a user message in a new tab: the last completed response before
+ * it. Null when the message is not loaded or nothing finished before it.
+ */
+export function threadForkPointBeforeMessage(
+  items: ReadonlyArray<OrchestrationV2ProjectedTurnItem>,
+  messageId: MessageId,
+): ThreadForkPoint | null {
+  const index = items.findIndex(
+    (entry) => entry.item.type === "user_message" && entry.item.messageId === messageId,
+  );
+  return index < 0 ? null : latestThreadForkPoint(items.slice(0, index));
+}
 
 export const prepareThreadTabHandoff = Effect.fn("clientRuntime.threadTabs.handoff")(function* (
   prepared: PreparedConnection,

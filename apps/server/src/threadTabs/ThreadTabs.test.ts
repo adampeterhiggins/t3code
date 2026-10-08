@@ -109,6 +109,11 @@ const makeHarness = (input: {
         if (command.type === "thread.fork") {
           shells.set(command.targetThreadId, makeShell(command.targetThreadId));
         }
+        if (command.type === "thread.model-selection.set") {
+          const shell = shells.get(command.threadId);
+          if (shell)
+            shells.set(command.threadId, { ...shell, modelSelection: command.modelSelection });
+        }
         return { sequence: 1, storedEvents: [] };
       }),
     getThreadSnapshotWindow: (threadId) =>
@@ -251,6 +256,38 @@ it.effect("forking a response natively adds the fork to the open tab's group", (
         assert.strictEqual(command.targetThreadId, "fork");
         assert.deepStrictEqual(command.sourcePoint, { type: "run", runId: RunId.make("run-1") });
       }
+    }),
+  );
+});
+
+it.effect("a fork onto another model switches the new tab before its first message", () => {
+  const harness = makeHarness({ shells: [makeShell("source")] });
+  const claude = { instanceId: ProviderInstanceId.make("claude"), model: "claude-opus-5-5" };
+  return withTabs(harness, (tabs) =>
+    Effect.gen(function* () {
+      const group = yield* tabs.fork(ThreadId.make("source"), {
+        threadId: ThreadId.make("fork"),
+        sourceThreadId: ThreadId.make("source"),
+        runId: RunId.make("run-1"),
+        modelSelection: claude,
+      });
+      assert.deepStrictEqual(
+        harness.dispatched.map((command) => command.type),
+        ["thread.fork", "thread.model-selection.set"],
+      );
+      assert.deepStrictEqual(
+        group.tabs.find((tab) => tab.threadId === "fork")?.modelSelection,
+        claude,
+      );
+
+      // The source's own model needs no switch.
+      yield* tabs.fork(ThreadId.make("source"), {
+        threadId: ThreadId.make("same-model"),
+        sourceThreadId: ThreadId.make("source"),
+        runId: RunId.make("run-1"),
+        modelSelection: { instanceId: codex, model: "gpt-5.4" },
+      });
+      assert.strictEqual(harness.dispatched.length, 3);
     }),
   );
 });
