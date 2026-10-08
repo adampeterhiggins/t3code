@@ -19,18 +19,23 @@ import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
-import { threadHasQueuedTurnStart } from "../orchestration-v2/ThreadSettlementService.ts";
+import {
+  isSnoozed,
+  threadHasQueuedTurnStart,
+} from "../orchestration-v2/ThreadSettlementService.ts";
 import { OrchestrationEventStore } from "../persistence/OrchestrationEventStore.ts";
 import { forkParked } from "../serverActivation.ts";
 
 /**
- * A tab group shows as one sidebar row, so the group settles as a unit. Upstream settles each
- * thread on its own; this reactor mirrors every settle and unsettle across the group.
+ * A tab group shows as one sidebar row, so settlement and snooze apply to the group. Upstream
+ * parks each thread on its own; this reactor mirrors those actions across the live tabs.
  *
  * - A new run or an unsettle in any tab wakes the group's settled tabs.
  * - A settle in any tab settles the rest of the group, unless another tab is still working
  *   (or, for an automatic settle, has an open pull request). Then the settle is undone, since
  *   the row it stands for is not done.
+ * - Snoozing any tab parks the group until the same wake time. Waking a tab, or a tab needing
+ *   attention, returns the group; a pending request or queued turn prevents group snooze.
  */
 export class ThreadTabSettlementReactor extends Context.Service<
   ThreadTabSettlementReactor,
@@ -42,10 +47,14 @@ export class ThreadTabSettlementReactor extends Context.Service<
 
 type SettlementJob =
   | { readonly kind: "wake"; readonly threadId: ThreadId }
-  | { readonly kind: "settle"; readonly threadId: ThreadId; readonly automatic: boolean };
+  | { readonly kind: "settle"; readonly threadId: ThreadId; readonly automatic: boolean }
+  | { readonly kind: "snooze"; readonly threadId: ThreadId; readonly until: DateTime.Utc }
+  | { readonly kind: "unsnooze"; readonly threadId: ThreadId }
+  | { readonly kind: "check-snooze"; readonly threadId: ThreadId };
 
 // ThreadSettlementServiceV2's sweep issues every automatic settle under this command id prefix.
 const AUTO_SETTLE_COMMAND_PREFIX = "server:auto-settle:";
+const MIRRORED_SNOOZE_COMMAND_PREFIX = "server:tab-snooze:";
 
 /**
  * Mirrors the settle guards (the orchestrator's and the auto-settle sweep's), so a mirrored
@@ -75,6 +84,8 @@ function blocksSettlement(
 
 /** The job an event asks for, if any. */
 function jobFor(stored: OrchestrationV2StoredEvent): SettlementJob | null {
+  // Snooze commands emit even when unchanged; following our own writes would loop forever.
+  if (stored.commandId?.startsWith(MIRRORED_SNOOZE_COMMAND_PREFIX)) return null;
   const { event } = stored;
   switch (event.type) {
     case "run.created":
@@ -86,6 +97,21 @@ function jobFor(stored: OrchestrationV2StoredEvent): SettlementJob | null {
         threadId: event.threadId,
         automatic: stored.commandId?.startsWith(AUTO_SETTLE_COMMAND_PREFIX) ?? false,
       };
+    case "thread.snoozed":
+      return event.payload.snoozedUntil == null
+        ? null
+        : { kind: "snooze", threadId: event.threadId, until: event.payload.snoozedUntil };
+    case "thread.unsnoozed":
+    case "thread.pinned":
+      return { kind: "unsnooze", threadId: event.threadId };
+    case "run.updated":
+      return event.payload.status === "completed" || event.payload.status === "failed"
+        ? { kind: "check-snooze", threadId: event.threadId }
+        : null;
+    case "runtime-request.updated":
+      return event.payload.status === "pending"
+        ? { kind: "check-snooze", threadId: event.threadId }
+        : null;
     default:
       return null;
   }
@@ -135,10 +161,89 @@ export const make = Effect.gen(function* () {
     });
   });
 
+  const unsnooze = Effect.fn("ThreadTabSettlementReactor.unsnooze")(function* (threadId: ThreadId) {
+    yield* orchestrator.dispatch({
+      type: "thread.unsnooze",
+      commandId: CommandId.make(
+        `${MIRRORED_SNOOZE_COMMAND_PREFIX}${threadId}:${yield* crypto.randomUUIDv4}`,
+      ),
+      threadId,
+      reason: "user",
+    });
+  });
+
+  const snooze = Effect.fn("ThreadTabSettlementReactor.snooze")(function* (
+    threadId: ThreadId,
+    until: DateTime.Utc,
+  ) {
+    yield* orchestrator.dispatch({
+      type: "thread.snooze",
+      commandId: CommandId.make(
+        `${MIRRORED_SNOOZE_COMMAND_PREFIX}${threadId}:${yield* crypto.randomUUIDv4}`,
+      ),
+      threadId,
+      snoozedUntil: DateTime.formatIso(until),
+    });
+  });
+
   const run = Effect.fn("ThreadTabSettlementReactor.run")(
     function* (job: SettlementJob) {
       const siblings = yield* readSiblings(job.threadId);
       if (siblings.length === 0) return;
+      if (job.kind === "snooze" || job.kind === "unsnooze" || job.kind === "check-snooze") {
+        const source = yield* orchestrator.getThreadShell(job.threadId);
+        if (source === null || source.archivedAt !== null || source.deletedAt !== null) return;
+        const nowMs = DateTime.toEpochMillis(yield* DateTime.now);
+        if (job.kind === "snooze") {
+          // An undo, resnooze, or completed run can overtake the queued mirroring job.
+          if (
+            source.snoozedUntil == null ||
+            DateTime.toEpochMillis(source.snoozedUntil) !== DateTime.toEpochMillis(job.until) ||
+            !isSnoozed(source, nowMs)
+          )
+            return;
+          if (
+            siblings.some(
+              (sibling) =>
+                sibling.pendingRuntimeRequest !== null || threadHasQueuedTurnStart(sibling, nowMs),
+            )
+          ) {
+            yield* unsnooze(source.id);
+            yield* Effect.forEach(
+              siblings.filter((sibling) => sibling.snoozedUntil != null),
+              (sibling) => unsnooze(sibling.id),
+              { discard: true },
+            );
+            return;
+          }
+          yield* Effect.forEach(
+            siblings.filter(
+              (sibling) =>
+                sibling.snoozedUntil == null ||
+                DateTime.toEpochMillis(sibling.snoozedUntil) !== DateTime.toEpochMillis(job.until),
+            ),
+            (sibling) => snooze(sibling.id, job.until),
+            { discard: true },
+          );
+          return;
+        }
+        // A newer snooze wins over an old wake. Time-based wakes need no writes: all tabs
+        // carry the same deadline. Attention wakes leave the source's Woke indicator intact.
+        if (
+          job.kind === "unsnooze"
+            ? source.snoozedUntil != null
+            : source.snoozedUntil == null ||
+              DateTime.toEpochMillis(source.snoozedUntil) <= nowMs ||
+              isSnoozed(source, nowMs)
+        )
+          return;
+        yield* Effect.forEach(
+          siblings.filter((sibling) => sibling.snoozedUntil != null),
+          (sibling) => unsnooze(sibling.id),
+          { discard: true },
+        );
+        return;
+      }
       if (job.kind === "wake") {
         yield* Effect.forEach(
           siblings.filter((sibling) => sibling.settledOverride === "settled"),
