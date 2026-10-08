@@ -68,6 +68,8 @@ export const ConductorWorkspaceImportResult = Schema.Struct({
   threadIds: Schema.Array(ThreadId),
   /** Tabs written by this call. Zero when every tab already had a thread. */
   importedThreadCount: NonNegativeInt.pipe(Schema.withDecodingDefault(Effect.succeed(0))),
+  /** Threads of an earlier import whose messages this call rewrote. */
+  refreshedThreadCount: NonNegativeInt.pipe(Schema.withDecodingDefault(Effect.succeed(0))),
   /** The workspace was archived in Conductor, so its threads are settled. */
   settled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
 });

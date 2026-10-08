@@ -337,7 +337,9 @@ tabs start a new session that is given the earlier conversation. Terminal histor
 along. Conductor itself is not changed.
 
 **Import all Conductor** brings in every active workspace shown for the projects you're viewing.
-You can stop it and run it again; workspaces that already have threads are left as they are. Turn
+You can stop it and run it again. Workspaces that already have threads are not imported twice, but
+their imported messages are brought up to date if an update to T3 Code reads them better, such as
+files an earlier import missed. Anything you sent in T3 Code since is left as it is. Turn
 on **Include archived** to also bring in workspaces you archived in Conductor. Those become settled
 threads, so they stay out of the live list until you show settled threads. Conductor has usually
 deleted an archived workspace's folder, so the thread keeps the conversation but not a working copy.

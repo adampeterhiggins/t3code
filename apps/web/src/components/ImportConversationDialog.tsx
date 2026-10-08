@@ -260,6 +260,7 @@ function countPhrase(count: number, singular: string): string {
 function conductorImportToast(input: {
   readonly stopped: boolean;
   readonly importedThreads: number;
+  readonly refreshedThreads: number;
   readonly settledThreads: number;
   readonly failed: number;
   readonly failureDetail: string | null;
@@ -268,20 +269,39 @@ function conductorImportToast(input: {
   readonly title: string;
   readonly description: string | undefined;
 } | null {
-  if (input.stopped && input.importedThreads === 0 && input.failed === 0) return null;
+  if (
+    input.stopped &&
+    input.importedThreads === 0 &&
+    input.refreshedThreads === 0 &&
+    input.failed === 0
+  ) {
+    return null;
+  }
+  const refreshed =
+    input.refreshedThreads > 0
+      ? `Updated ${countPhrase(input.refreshedThreads, "earlier imported thread")}.`
+      : null;
   const settled =
     input.settledThreads > 0
       ? `${countPhrase(input.settledThreads, "archived thread")} ${input.settledThreads === 1 ? "is" : "are"} settled.`
       : null;
   const failed =
     input.failed > 0 ? `${countPhrase(input.failed, "workspace")} could not be imported.` : null;
-  const description = [settled, failed, input.importedThreads === 0 ? input.failureDetail : null]
+  const description = [
+    refreshed,
+    settled,
+    failed,
+    input.importedThreads === 0 ? input.failureDetail : null,
+  ]
     .filter((part) => part !== null && part !== "")
     .join(" ");
   if (!input.stopped && input.failed === 0 && input.importedThreads === 0) {
     return {
       type: "success",
-      title: "Conductor threads are already imported",
+      title:
+        input.refreshedThreads > 0
+          ? `Updated ${countPhrase(input.refreshedThreads, "imported thread")}`
+          : "Conductor threads are already imported",
       description: undefined,
     };
   }
@@ -670,6 +690,7 @@ function ImportConversationList({
     setPendingKey("import-all");
     setImportProgress({ completed: 0, total: targets.length });
     let importedThreads = 0;
+    let refreshedThreads = 0;
     let settledThreads = 0;
     let failed = 0;
     let failureDetail: string | null = null;
@@ -686,6 +707,7 @@ function ImportConversationList({
       );
       if (result._tag === "Success") {
         importedThreads += result.value.importedThreadCount;
+        refreshedThreads += result.value.refreshedThreadCount;
         if (result.value.settled) settledThreads += result.value.importedThreadCount;
       } else if (isAtomCommandInterrupted(result)) {
         run.cancelled = true;
@@ -711,6 +733,7 @@ function ImportConversationList({
     const toast = conductorImportToast({
       stopped: run.cancelled,
       importedThreads,
+      refreshedThreads,
       settledThreads,
       failed,
       failureDetail,

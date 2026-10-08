@@ -9,6 +9,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import {
   ProjectId,
+  type OrchestrationV2ConversationMessage,
   type OrchestrationV2DomainEvent,
   type OrchestrationV2ThreadShell,
   type ThreadId,
@@ -340,6 +341,7 @@ it.effect("imports a workspace's open tabs as one tab group in Conductor's workt
   const writes: Array<ReadonlyArray<OrchestrationV2DomainEvent>> = [];
   const adopted: Array<ReadonlyArray<ThreadId>> = [];
   const created = new Set<string>();
+  const messages = new Map<string, OrchestrationV2ConversationMessage>();
   const layer = ConductorImporter.layerWithDatabasePath(fixture.databasePath).pipe(
     Layer.provideMerge(
       Layer.mergeAll(
@@ -354,12 +356,24 @@ it.effect("imports a workspace's open tabs as one tab group in Conductor's workt
                 ? ({ id: threadId, deletedAt: null } as OrchestrationV2ThreadShell)
                 : null,
             ),
+          getThreadRecords: (threadId, _fields, filter) =>
+            Effect.succeed({
+              thread: {} as never,
+              messages: [...messages.values()].filter(
+                (message) =>
+                  message.threadId === threadId &&
+                  (filter?.messageIds === undefined || filter.messageIds.includes(message.id)),
+              ),
+            } as never),
         }),
         Layer.mock(EventSink.EventSinkV2)({
           write: (input) =>
             Effect.sync(() => {
               writes.push(input.events);
-              for (const event of input.events) created.add(event.threadId);
+              for (const event of input.events) {
+                created.add(event.threadId);
+                if (event.type === "message.updated") messages.set(event.payload.id, event.payload);
+              }
               return [];
             }),
         }),
@@ -407,6 +421,7 @@ it.effect("imports a workspace's open tabs as one tab group in Conductor's workt
     expect(result).toEqual({
       threadIds: ["conductor:claude-tab", "conductor:grok-tab"],
       importedThreadCount: 2,
+      refreshedThreadCount: 0,
       settled: false,
     });
     expect(adopted).toEqual([["conductor:claude-tab", "conductor:grok-tab"]]);
@@ -462,6 +477,33 @@ it.effect("imports a workspace's open tabs as one tab group in Conductor's workt
       importedThreadCount: 0,
     });
     expect(writes).toHaveLength(2);
+
+    // An earlier importer left a mention as raw text and missed its files.
+    const promptId = (prompt as OrchestrationV2ConversationMessage).id;
+    messages.set(promptId, {
+      ...(prompt as OrchestrationV2ConversationMessage),
+      text: "Do you have Drive access? @⟦shot.png⟧(attachment:a1)",
+      attachments: [],
+    });
+    expect(yield* importer.importWorkspace({ projectId, workspaceId: "ws" })).toEqual({
+      ...result,
+      importedThreadCount: 0,
+      refreshedThreadCount: 1,
+    });
+    expect(writes).toHaveLength(3);
+    expect(writes[2]?.map((event) => [event.type, event.id.includes(":refresh:")])).toEqual([
+      ["message.updated", true],
+      ["turn-item.updated", true],
+    ]);
+    expect(messages.get(promptId)).toMatchObject({
+      text: "Do you have Drive access?\n\n(Attachment not available: pasted.txt)",
+      attachments: [{ type: "image", name: "shot.png" }],
+    });
+    expect(
+      (yield* importer.importWorkspace({ projectId, workspaceId: "ws" })).refreshedThreadCount,
+    ).toBe(0);
+    expect(writes).toHaveLength(3);
+
     expect((yield* importer.listWorkspaces({ projectId })).workspaces[0]?.threadId).toBe(
       "conductor:claude-tab",
     );
@@ -470,6 +512,7 @@ it.effect("imports a workspace's open tabs as one tab group in Conductor's workt
     expect(archived).toEqual({
       threadIds: ["conductor:old-tab"],
       importedThreadCount: 1,
+      refreshedThreadCount: 0,
       settled: true,
     });
     const oldThread = writes.at(-1)?.[0]?.payload;
@@ -487,9 +530,10 @@ it.effect("imports a workspace's open tabs as one tab group in Conductor's workt
     expect(yield* importer.importWorkspace({ projectId, workspaceId: "old" })).toEqual({
       threadIds: ["conductor:old-tab"],
       importedThreadCount: 0,
+      refreshedThreadCount: 0,
       settled: true,
     });
-    expect(writes).toHaveLength(3);
+    expect(writes).toHaveLength(4);
   }).pipe(
     Effect.provide(layer),
     Effect.ensuring(
