@@ -30,6 +30,9 @@ import { memo, useCallback, useLayoutEffect, useRef } from "react";
 import { type ComposerSlashCommand, type ComposerTriggerKind } from "../../composer-logic";
 import { cn } from "~/lib/utils";
 import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
+import { Kbd } from "../ui/kbd";
 import { Command, CommandGroup, CommandItem, CommandList } from "../ui/command";
 import { PierreEntryIcon } from "./PierreEntryIcon";
 import { ComposerBanner } from "./ComposerBanner";
@@ -148,9 +151,16 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
   activeItemId: string | null;
   /** Lets Linear and GitHub issue rows fetch their hover preview. */
   environmentId?: EnvironmentId;
+  /** Items picked with cmd/ctrl+click. While any are picked, every row shows a checkbox. */
+  selection?: {
+    itemIds: ReadonlySet<string>;
+    onCommit: () => void;
+  };
   onHighlightedItemChange: (itemId: string | null) => void;
-  onSelect: (item: ComposerCommandItem) => void;
+  /** `toggle` is set for a cmd/ctrl+click, which picks the row instead of choosing it. */
+  onSelect: (item: ComposerCommandItem, options: { toggle: boolean }) => void;
 }) {
+  const selectedCount = props.selection?.itemIds.size ?? 0;
   const listRef = useRef<HTMLDivElement>(null);
   // Only keyboard moves scroll the list. Following the pointer would scroll a half-visible edge
   // row into view, put a new row under the cursor, and creep the list along.
@@ -205,6 +215,9 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
                   triggerKind={props.triggerKind}
                   resolvedTheme={props.resolvedTheme}
                   isActive={props.activeItemId === item.id}
+                  isChecked={
+                    selectedCount > 0 ? (props.selection?.itemIds.has(item.id) ?? false) : null
+                  }
                   onHighlight={highlightFromPointer}
                   onSelect={props.onSelect}
                 />
@@ -231,6 +244,22 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
             </p>
           </div>
         )}
+        {props.selection && selectedCount > 0 ? (
+          <div className="flex items-center gap-2 px-5 pt-1 pb-2.5 text-secondary-label text-xs">
+            <span className="min-w-0 flex-1 truncate">
+              {selectedCount} selected · <Kbd>Enter</Kbd> to attach, <Kbd>Esc</Kbd> to cancel
+            </span>
+            <Button
+              size="micro"
+              onMouseDown={(event) => {
+                event.preventDefault();
+              }}
+              onClick={props.selection.onCommit}
+            >
+              Attach {selectedCount}
+            </Button>
+          </div>
+        ) : null}
       </ComposerBanner.Surface>
     </Command>
   );
@@ -320,8 +349,10 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
   triggerKind: ComposerTriggerKind | null;
   resolvedTheme: "light" | "dark";
   isActive: boolean;
+  /** `null` outside multi-select, where rows show no checkbox. */
+  isChecked: boolean | null;
   onHighlight: (itemId: string | null) => void;
-  onSelect: (item: ComposerCommandItem) => void;
+  onSelect: (item: ComposerCommandItem, options: { toggle: boolean }) => void;
 }) {
   const skillSourceKind =
     props.item.type === "skill" ? resolveProviderSkillSourceKind(props.item.skill) : null;
@@ -343,10 +374,15 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
       onMouseDown={(event) => {
         event.preventDefault();
       }}
-      onClick={() => {
-        props.onSelect(props.item);
+      onClick={(event) => {
+        props.onSelect(props.item, { toggle: event.metaKey || event.ctrlKey });
       }}
     >
+      {props.isChecked !== null ? (
+        <span aria-hidden="true" className="pointer-events-none flex shrink-0">
+          <Checkbox checked={props.isChecked} tabIndex={-1} />
+        </span>
+      ) : null}
       {props.item.type === "path" ? (
         <PierreEntryIcon
           pathValue={props.item.path}
