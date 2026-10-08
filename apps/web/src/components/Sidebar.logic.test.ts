@@ -1321,6 +1321,12 @@ describe("searchSidebarThreads", () => {
     expect(searchSidebarThreads(threads, "work")).toEqual([threads[0], threads[2]]);
   });
 
+  it("matches a group's independent name without losing tab-title searches", () => {
+    const names = new Map([[`${localEnvironmentId}:thread-2`, "Search project"]]);
+    expect(searchSidebarThreads(threads, "search project", new Set(), names)).toEqual([threads[1]]);
+    expect(searchSidebarThreads(threads, "providers", new Set(), names)).toEqual([threads[1]]);
+  });
+
   it("does not match project metadata", () => {
     expect(searchSidebarThreads(threads, "workspace")).toEqual([threads[0]]);
   });

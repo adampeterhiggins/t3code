@@ -21,5 +21,12 @@ export const ensureThreadTabsSchema = Effect.fn("ThreadTabs.ensureSchema")(funct
     )
   `;
   yield* sql`CREATE INDEX IF NOT EXISTS idx_fork_thread_tabs_group ON fork_thread_tabs (group_id, position)`;
+  yield* sql`
+    CREATE TABLE IF NOT EXISTS fork_thread_tab_groups (
+      group_id TEXT PRIMARY KEY,
+      name TEXT NOT NULL
+    )
+  `;
+  yield* sql`INSERT OR IGNORE INTO fork_schema_migrations (feature, version) VALUES ('thread_tabs', 2)`;
   yield* sql`INSERT OR IGNORE INTO fork_schema_migrations (feature, version) VALUES ('thread_tabs', 1)`;
 });

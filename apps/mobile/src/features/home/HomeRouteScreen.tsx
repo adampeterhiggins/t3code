@@ -49,10 +49,16 @@ export function HomeRouteScreen() {
     environmentThreadShells.navigationThreadShellsAtom,
     visible,
   );
-  const hiddenTabThreads = useHiddenTabThreads(threads);
+  const { hiddenTabThreads, groupNames: tabGroupNames } = useHiddenTabThreads(threads);
   const visibleThreads = useMemo(
-    () => threads.filter((thread) => !hiddenTabThreads.has(`${thread.environmentId}:${thread.id}`)),
-    [hiddenTabThreads, threads],
+    () =>
+      threads
+        .filter((thread) => !hiddenTabThreads.has(`${thread.environmentId}:${thread.id}`))
+        .map((thread) => ({
+          ...thread,
+          tabGroupName: tabGroupNames.get(`${thread.environmentId}:${thread.id}`),
+        })),
+    [hiddenTabThreads, threads, tabGroupNames],
   );
   const { environments: workspaceEnvironments, state: catalogState } = useWorkspaceState();
   const { savedConnectionsById } = useSavedRemoteConnections();

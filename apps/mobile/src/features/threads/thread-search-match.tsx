@@ -64,20 +64,22 @@ export function ThreadSearchMatchExcerpt(props: {
       )}
       numberOfLines={1}
     >
-      <Text
-        className={cn(
-          props.compact ? "text-sm font-t3-medium" : "text-xs font-t3-medium",
-          props.selected
-            ? "text-thread-selected-foreground"
-            : isUser
-              ? props.sidebar
-                ? "text-drawer-foreground-muted"
-                : "text-foreground-secondary"
-              : "text-adaptive-emerald-600-400",
-        )}
-      >
-        {isUser ? "You:" : "Agent:"}{" "}
-      </Text>
+      {props.match.source !== "group_name" ? (
+        <Text
+          className={cn(
+            props.compact ? "text-sm font-t3-medium" : "text-xs font-t3-medium",
+            props.selected
+              ? "text-thread-selected-foreground"
+              : isUser
+                ? props.sidebar
+                  ? "text-drawer-foreground-muted"
+                  : "text-foreground-secondary"
+                : "text-adaptive-emerald-600-400",
+          )}
+        >
+          {isUser ? "You:" : "Agent:"}{" "}
+        </Text>
+      ) : null}
       {parts.map((part) => (
         <Text
           className={cn(

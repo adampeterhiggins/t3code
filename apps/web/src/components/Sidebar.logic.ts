@@ -1521,15 +1521,18 @@ export function searchSidebarThreads<
   threads: readonly T[],
   query: string,
   contentMatchKeys: ReadonlySet<string> = EMPTY_CONTENT_MATCH_KEYS,
+  groupNames: ReadonlyMap<string, string> = new Map(),
 ): T[] {
   const normalizedQuery = query.trim().toLowerCase();
   if (normalizedQuery.length === 0) return [];
   const titleMatches: T[] = [];
   const contentMatches: T[] = [];
   for (const thread of threads) {
-    const matchesTitle = [thread.title, ...threadPullRequestSearchTerms(thread)].some((term) =>
-      term.toLowerCase().includes(normalizedQuery),
-    );
+    const matchesTitle = [
+      thread.title,
+      groupNames.get(`${thread.environmentId}:${thread.id}`) ?? "",
+      ...threadPullRequestSearchTerms(thread),
+    ].some((term) => term.toLowerCase().includes(normalizedQuery));
     if (matchesTitle) {
       titleMatches.push(thread);
     } else if (

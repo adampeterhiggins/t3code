@@ -19,6 +19,7 @@ import { resolveServerBackedAppDisplayName } from "../branding.logic";
 import { AppSidebarLayout } from "../components/AppSidebarLayout";
 import { CommandPalette } from "../components/CommandPalette";
 import { CustomSnoozeDialogHost } from "../components/CustomSnoozeDialog";
+import { ThreadTabGroupNameDialogHost } from "../components/ThreadTabGroupNameDialog";
 import { ThreadGroupDialogHost } from "../components/ThreadGroupDialog";
 import { TranscriptExportDialogHost } from "../components/TranscriptExportDialog";
 import { ImportConversationDialogHost } from "../components/ImportConversationDialog";
@@ -185,6 +186,7 @@ function RootRouteView() {
           <ProviderAuthCallbackCoordinator />
           <CustomSnoozeDialogHost />
           <ThreadGroupDialogHost />
+          <ThreadTabGroupNameDialogHost />
           <CommandPalette>
             <AppSidebarLayout>
               <Outlet />
@@ -242,6 +244,7 @@ function RootRouteView() {
           <ConfirmDialogHost />
           <CustomSnoozeDialogHost />
           <ThreadGroupDialogHost />
+          <ThreadTabGroupNameDialogHost />
           <TranscriptExportDialogHost />
           <ImportConversationDialogHost />
           <SlowRpcRequestToastCoordinator />

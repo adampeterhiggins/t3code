@@ -18,6 +18,8 @@ import {
   readThread,
   unavailable,
 } from "../../threadAccess.ts";
+import * as Option from "effect/Option";
+import * as ThreadTabs from "../../../threadTabs/ThreadTabs.ts";
 import * as ThreadSearch from "../../../orchestration-v2/ThreadSearch.ts";
 import * as ScheduledTasks from "../../../scheduledTasks/ScheduledTaskService.ts";
 import { queuedRunsInDeliveryOrder } from "../../../orchestration-v2/QueuedRunOrder.ts";
@@ -76,6 +78,20 @@ const writesThread = <P extends { readonly threadId?: ThreadId | undefined }, A,
 ) => McpToolAccess.writesThreads((params: P) => [params.threadId], handle);
 
 export const layer = McpToolAccess.toLayer(ThreadToolkit, {
+  t3_thread_group_name: writesThread((input) =>
+    Effect.gen(function* () {
+      const { projection } = yield* readThread(input.threadId);
+      const tabs = yield* Effect.serviceOption(ThreadTabs.ThreadTabs);
+      if (Option.isNone(tabs))
+        return yield* new OrchestratorMcpFailure({
+          code: "capability_denied",
+          message: "Chat-tab groups are unavailable.",
+        });
+      return yield* tabs.value
+        .setName(projection.thread.id, input.name)
+        .pipe(Effect.mapError(unavailable));
+    }),
+  ),
   run_scheduled_task_now: McpToolAccess.writesEnvironment((input) =>
     Effect.gen(function* () {
       const scheduler = yield* ScheduledTasks.ScheduledTaskService;

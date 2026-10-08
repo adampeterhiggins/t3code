@@ -1,5 +1,7 @@
 import {
   ScheduledTaskId,
+  SetThreadTabGroupNameInput,
+  ThreadTabGroup,
   ScheduledTask,
   OrchestrationSearchThreadsInput,
   OrchestrationSearchThreadsResult,
@@ -276,7 +278,19 @@ const ScheduledTaskRunTool = Tool.make("run_scheduled_task_now", {
   .annotate(Tool.Destructive, true)
   .annotate(Tool.OpenWorld, true);
 
+const ThreadTabGroupNameTool = Tool.make("t3_thread_group_name", {
+  ...commandTool,
+  description:
+    "Set the chat-tab group's independent name. Omit threadId for this thread; name=null restores the active-tab title. Individual tab titles are preserved.",
+  parameters: Schema.Struct({
+    threadId: Schema.optional(ThreadId),
+    ...SetThreadTabGroupNameInput.fields,
+  }),
+  success: ThreadTabGroup,
+}).annotate(Tool.Destructive, false);
+
 export const ThreadToolkit = Toolkit.make(
+  ThreadTabGroupNameTool,
   ScheduledTaskRunTool,
   ThreadSearchTool,
   ThreadForkTool,

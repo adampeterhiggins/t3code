@@ -7,6 +7,7 @@ import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled"
  * remains data-driven.
  */
 export type ThreadActionMenuId =
+  | "name-tab-group"
   | "new-tab"
   | "close-tab"
   | "open-in-split"

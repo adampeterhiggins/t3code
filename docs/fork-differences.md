@@ -307,7 +307,10 @@ field mapping in `ClaudeAdapterV2.ts` and `CodexAdapterV2.ts`, and `finalizeAppO
 ## Chat tabs
 
 A thread can have several chat tabs that share one workspace (same checkout and worktree). Each tab
-is its own conversation and provider.
+is its own conversation and provider. A group can have an optional name, set from the chat-tab
+menu with **Name thread group**. Leave it blank to use the most recently opened tab’s title.
+Group names appear in the sidebar and match sidebar search; tab titles remain independently
+editable. Names are stored by the [ThreadTabs service](../apps/server/src/threadTabs/ThreadTabs.ts).
 
 - **Storage.** Every tab is a normal thread. Tab membership lives in the fork-owned
   `fork_thread_tabs` table, created by `ensureThreadTabsSchema` in

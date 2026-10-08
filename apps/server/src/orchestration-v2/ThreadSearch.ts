@@ -6,6 +6,7 @@ import {
   ProjectId,
   ThreadId,
 } from "@t3tools/contracts";
+import { ensureThreadTabsSchema } from "../threadTabs/schema.ts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -61,8 +62,8 @@ function buildSearchSnippet(text: string, query: string): string {
 }
 
 /**
- * Searches the finished user and assistant messages of active V2 threads in
- * active projects. Legacy V1 transcripts that have not been imported yet are
+ * Searches saved chat-tab group names and finished user and assistant messages of active
+ * V2 threads in active projects. Legacy V1 transcripts that have not been imported yet are
  * not searched.
  */
 export class ThreadSearch extends Context.Service<
@@ -77,9 +78,10 @@ export class ThreadSearch extends Context.Service<
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
+  yield* ensureThreadTabsSchema();
 
-  // One best match per thread: user messages outrank assistant ones, then the
-  // newest message wins. Threads order by match kind, then recency.
+  // One best match per thread: group names outrank user messages, then assistant messages.
+  // Within message matches, the newest message wins. Threads order by match kind, then recency.
   const searchRows = SqlSchema.findAll({
     Request: SearchRequest,
     Result: SearchRow,
@@ -104,6 +106,15 @@ export const make = Effect.gen(function* () {
           AND messages.streaming = 0
           AND messages.role IN ('user', 'assistant')
           AND json_extract(messages.payload_json, '$.text') LIKE ${pattern} ESCAPE '!'
+        UNION ALL
+        SELECT threads.thread_id, threads.project_id, 'group_name', groups.name,
+          NULL, threads.thread_id, threads.updated_at
+        FROM fork_thread_tab_groups AS groups
+        INNER JOIN fork_thread_tabs AS tabs ON tabs.group_id = groups.group_id
+        INNER JOIN orchestration_v2_projection_threads AS threads ON threads.thread_id = tabs.thread_id
+        INNER JOIN projection_projects AS projects ON projects.project_id = threads.project_id
+        WHERE threads.deleted_at IS NULL AND threads.archived_at IS NULL AND projects.deleted_at IS NULL
+          AND groups.name LIKE ${pattern} ESCAPE '!'
       ),
       ranked AS (
         SELECT
@@ -112,12 +123,12 @@ export const make = Effect.gen(function* () {
           role AS source,
           match_text,
           message_created_at,
-          CASE role WHEN 'user' THEN 0 ELSE 1 END AS match_rank,
+          CASE role WHEN 'group_name' THEN -1 WHEN 'user' THEN 0 ELSE 1 END AS match_rank,
           thread_updated_at,
           ROW_NUMBER() OVER (
             PARTITION BY thread_id
             ORDER BY
-              CASE role WHEN 'user' THEN 0 ELSE 1 END ASC,
+              CASE role WHEN 'group_name' THEN -1 WHEN 'user' THEN 0 ELSE 1 END ASC,
               message_created_at DESC,
               message_id ASC
           ) AS thread_match_rank

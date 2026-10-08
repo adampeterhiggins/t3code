@@ -87,6 +87,8 @@ function threadRunStatusIsActive(status: ThreadRuntimeSummary["status"]): boolea
 }
 
 export interface EnvironmentThreadShell {
+  /** Optional sidebar label supplied by the chat-tab membership lookup. */
+  readonly tabGroupName?: string;
   readonly environmentId: EnvironmentId;
   readonly id: ThreadId;
   readonly projectId: ProjectId;

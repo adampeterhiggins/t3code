@@ -62,6 +62,7 @@ import {
   CreateThreadTabInput,
   ForkThreadTabInput,
   ThreadTabGroup,
+  SetThreadTabGroupNameInput,
   ThreadTabMemberships,
   ThreadTabHandoff,
   ThreadTabHandoffInput,
@@ -703,6 +704,15 @@ export class EnvironmentThreadTabsHttpApi extends HttpApiGroup.make("threadTabs"
       headers: OptionalBearerHeaders,
       params: ThreadTabParams,
       payload: CreateThreadTabInput,
+      success: ThreadTabGroup,
+      error: EnvironmentThreadTabsErrors,
+    }).middleware(EnvironmentAuthenticatedAuth),
+  )
+  .add(
+    HttpApiEndpoint.put("setName", "/api/thread-tabs/:threadId/name", {
+      headers: OptionalBearerHeaders,
+      params: ThreadTabParams,
+      payload: SetThreadTabGroupNameInput,
       success: ThreadTabGroup,
       error: EnvironmentThreadTabsErrors,
     }).middleware(EnvironmentAuthenticatedAuth),

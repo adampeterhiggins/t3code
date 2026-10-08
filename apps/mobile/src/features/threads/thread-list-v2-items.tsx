@@ -1008,7 +1008,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     // settled.)
     if (swipeActions.primary === "archive") {
       return {
-        accessibilityLabel: `Archive ${thread.title}`,
+        accessibilityLabel: `Archive ${thread.tabGroupName ?? thread.title}`,
         icon: "archivebox" as const,
         label: "Archive",
         onPress: handleArchive,
@@ -1016,7 +1016,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     }
     if (swipeActions.primary === "unhide") {
       return {
-        accessibilityLabel: `Unhide ${thread.title}`,
+        accessibilityLabel: `Unhide ${thread.tabGroupName ?? thread.title}`,
         icon: "eye" as const,
         label: "Unhide",
         onPress: handleUnhide,
@@ -1024,7 +1024,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     }
     if (swipeActions.primary === "unsnooze") {
       return {
-        accessibilityLabel: `Wake ${thread.title} now`,
+        accessibilityLabel: `Wake ${thread.tabGroupName ?? thread.title} now`,
         icon: "clock" as const,
         label: "Wake",
         onPress: handleUnsnooze,
@@ -1032,13 +1032,13 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     }
     return swipeActions.primary === "unsettle"
       ? {
-          accessibilityLabel: `Un-settle ${thread.title}`,
+          accessibilityLabel: `Un-settle ${thread.tabGroupName ?? thread.title}`,
           icon: "arrow.uturn.backward" as const,
           label: "Un-settle",
           onPress: handleUnsettle,
         }
       : {
-          accessibilityLabel: `Settle ${thread.title}`,
+          accessibilityLabel: `Settle ${thread.tabGroupName ?? thread.title}`,
           icon: "checkmark" as const,
           label: "Settle",
           onPress: handleSettle,
@@ -1056,7 +1056,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     () =>
       swipeActions.secondary === "snooze"
         ? {
-            accessibilityLabel: `Choose when to snooze ${thread.title}`,
+            accessibilityLabel: `Choose when to snooze ${thread.tabGroupName ?? thread.title}`,
             icon: "clock" as const,
             label: "Snooze",
             menu: {
@@ -1130,7 +1130,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         )}
         numberOfLines={2}
       >
-        {thread.title}
+        {thread.tabGroupName ?? thread.title}
       </Text>
       {props.searchMatch ? (
         <View className="mt-1">
@@ -1274,7 +1274,9 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         className={rowAppearance.className}
         accessibilityHint={swipeAccessibilityHint}
         accessibilityLabel={
-          props.hasQueuedMessages ? `${thread.title}, messages queued to send` : thread.title
+          props.hasQueuedMessages
+            ? `${thread.tabGroupName ?? thread.title}, messages queued to send`
+            : thread.title
         }
         accessibilityRole="button"
         accessibilityState={{ selected }}
@@ -1306,7 +1308,9 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         interactionOpacity={rowAppearance.interactionOpacity}
         accessibilityHint={swipeAccessibilityHint}
         accessibilityLabel={
-          props.hasQueuedMessages ? `${thread.title}, messages queued to send` : thread.title
+          props.hasQueuedMessages
+            ? `${thread.tabGroupName ?? thread.title}, messages queued to send`
+            : thread.title
         }
         accessibilityRole="button"
         accessibilityState={{ selected }}
@@ -1346,7 +1350,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
               )}
               numberOfLines={1}
             >
-              {thread.title}
+              {thread.tabGroupName ?? thread.title}
             </Text>
             {props.searchMatch ? (
               <ThreadSearchMatchExcerpt
@@ -1402,7 +1406,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         secondaryAction={secondaryAction}
         resetKey={`${thread.environmentId}:${thread.id}:${variant}:${snoozedRow}:${hiddenRow}:${thread.settledAt}:${thread.unsettledAt}:${thread.snoozedUntil}`}
         simultaneousWith={props.simultaneousSwipeGesture}
-        threadTitle={thread.title}
+        threadTitle={thread.tabGroupName ?? thread.title}
       >
         {(close) => (
           <ControlPillMenu

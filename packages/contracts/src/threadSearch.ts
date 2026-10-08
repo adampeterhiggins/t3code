@@ -8,7 +8,7 @@ import {
   TrimmedString,
 } from "./baseSchemas.ts";
 
-export const OrchestrationThreadSearchSource = Schema.Literals(["user", "assistant"]);
+export const OrchestrationThreadSearchSource = Schema.Literals(["user", "assistant", "group_name"]);
 export type OrchestrationThreadSearchSource = typeof OrchestrationThreadSearchSource.Type;
 
 // The server's SQLite client is synchronous and single-connection. Bound both

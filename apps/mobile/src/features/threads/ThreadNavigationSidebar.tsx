@@ -145,11 +145,16 @@ function ThreadNavigationSidebarPane(
   const { fabClearance } = useAndroidControlSizing();
   const projects = useProjects();
   const allThreads = useNavigationThreadShells();
-  const hiddenTabThreads = useHiddenTabThreads(allThreads);
+  const { hiddenTabThreads, groupNames: tabGroupNames } = useHiddenTabThreads(allThreads);
   const threads = useMemo(
     () =>
-      allThreads.filter((thread) => !hiddenTabThreads.has(`${thread.environmentId}:${thread.id}`)),
-    [allThreads, hiddenTabThreads],
+      allThreads
+        .filter((thread) => !hiddenTabThreads.has(`${thread.environmentId}:${thread.id}`))
+        .map((thread) => ({
+          ...thread,
+          tabGroupName: tabGroupNames.get(`${thread.environmentId}:${thread.id}`),
+        })),
+    [allThreads, hiddenTabThreads, tabGroupNames],
   );
   const sidebarSelectedThreadKey =
     props.selectedThreadKey === null
@@ -217,7 +222,11 @@ function ThreadNavigationSidebarPane(
   const threadSearchMatchByKey = useMemo(() => {
     const matches = new Map<string, EnvironmentThreadSearchMatch>();
     for (const match of threadSearch.matches) {
-      if (match.source === "user" || match.source === "assistant") {
+      if (
+        match.source === "user" ||
+        match.source === "assistant" ||
+        match.source === "group_name"
+      ) {
         matches.set(threadSearchMatchKey(match), match);
       }
     }

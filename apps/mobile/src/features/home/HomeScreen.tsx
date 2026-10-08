@@ -317,7 +317,11 @@ export function HomeScreen(props: HomeScreenProps) {
   const threadSearchMatchByKey = useMemo(() => {
     const matches = new Map<string, EnvironmentThreadSearchMatch>();
     for (const match of threadSearch.matches) {
-      if (match.source === "user" || match.source === "assistant") {
+      if (
+        match.source === "user" ||
+        match.source === "assistant" ||
+        match.source === "group_name"
+      ) {
         matches.set(threadSearchMatchKey(match), match);
       }
     }
