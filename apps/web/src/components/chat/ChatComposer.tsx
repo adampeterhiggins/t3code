@@ -387,6 +387,33 @@ const REFERENCE_MENU_TABS: ReadonlyArray<{ id: ComposerReferenceTab; label: stri
   { id: "repositories", label: "Repositories" },
 ];
 
+type ReferenceMenuItem = Extract<
+  ComposerCommandItem,
+  {
+    type:
+      | "pull-request"
+      | "github-issue"
+      | "linear-issue"
+      | "slack-message"
+      | "notion-page"
+      | "repository";
+  }
+>;
+
+const EMPTY_REFERENCE_MENU_ITEMS: ReadonlyArray<ReferenceMenuItem> = [];
+
+/** Items offered by the `#` menu's tabs, which cmd/ctrl+click can pick several of at once. */
+function isReferenceMenuItem(item: ComposerCommandItem): item is ReferenceMenuItem {
+  return (
+    item.type === "pull-request" ||
+    item.type === "github-issue" ||
+    item.type === "linear-issue" ||
+    item.type === "slack-message" ||
+    item.type === "notion-page" ||
+    item.type === "repository"
+  );
+}
+
 function ComposerVideoThumbnail({ file }: { file: File }) {
   const setVideo = useCallback(
     (video: HTMLVideoElement | null) => {
@@ -2743,6 +2770,22 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     rangeStart: number;
     tab: ComposerReferenceTab;
   } | null>(null);
+  // Items picked with cmd/ctrl+click, across tabs, held until this `#` token closes.
+  const [referenceSelection, setReferenceSelection] = useState<{
+    rangeStart: number;
+    items: ReadonlyArray<ReferenceMenuItem>;
+  } | null>(null);
+  const selectedReferenceItems =
+    composerTrigger?.kind === "pull-request" &&
+    referenceSelection?.rangeStart === composerTrigger.rangeStart
+      ? referenceSelection.items
+      : EMPTY_REFERENCE_MENU_ITEMS;
+  const selectedReferenceItemsRef = useRef(selectedReferenceItems);
+  selectedReferenceItemsRef.current = selectedReferenceItems;
+  const selectedReferenceItemIds = useMemo(
+    () => new Set(selectedReferenceItems.map((item) => item.id)),
+    [selectedReferenceItems],
+  );
   const defaultRepositoryOwner = useEnvironmentSettings(
     environmentId,
     (environmentSettings) => environmentSettings.contextRepositoryOwner,
@@ -4204,9 +4247,72 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     };
   }, [readComposerSnapshot, resolveComposerTrigger]);
 
+  /**
+   * Replaces the `#` token with the items' chips. Pull requests are captured inline; the rest
+   * land at the caret once fetched.
+   */
+  const attachReferenceItems = useCallback(
+    (prompt: string, trigger: ComposerTrigger, items: ReadonlyArray<ReferenceMenuItem>) => {
+      const pullRequestComments = items.flatMap((item) =>
+        item.type === "pull-request" ? [buildPullRequestReferenceContext(item.pullRequest)] : [],
+      );
+      const replacement = pullRequestComments
+        .map(
+          (comment) => `${formatInlineContextReference(reviewCommentContextReference(comment))} `,
+        )
+        .join("");
+      const replacementRangeEnd =
+        replacement.length > 0
+          ? extendReplacementRangeForTrailingSpace(prompt, trigger.rangeEnd, replacement)
+          : trigger.rangeEnd;
+      const applied = applyPromptReplacement(trigger.rangeStart, replacementRangeEnd, replacement, {
+        expectedText: prompt.slice(trigger.rangeStart, replacementRangeEnd),
+      });
+      if (!applied) return;
+      setComposerHighlightedItemId(null);
+      setReferenceSelection(null);
+      for (const comment of pullRequestComments) {
+        addComposerDraftReviewComment(composerDraftTarget, comment, { appendReference: false });
+      }
+      for (const item of items) {
+        if (item.type === "linear-issue") void attachLinearIssue(routeThreadRef, item.issueId);
+        if (item.type === "github-issue") void attachGitHubIssue(routeThreadRef, item.url);
+        if (item.type === "notion-page") void attachNotionPage(routeThreadRef, item.pageId);
+        if (item.type === "slack-message") {
+          void attachSlackMessage(routeThreadRef, slackGetThreadInput(item.message, "thread"));
+        }
+        if (item.type === "repository") {
+          attachRepository(routeThreadRef, {
+            nameWithOwner: item.nameWithOwner,
+            remoteUrl: item.remoteUrl,
+          });
+        }
+      }
+    },
+    [
+      addComposerDraftReviewComment,
+      applyPromptReplacement,
+      attachGitHubIssue,
+      attachLinearIssue,
+      attachNotionPage,
+      attachSlackMessage,
+      composerDraftTarget,
+      routeThreadRef,
+    ],
+  );
+
+  const commitReferenceSelection = useCallback(() => {
+    const items = selectedReferenceItemsRef.current;
+    if (items.length === 0) return false;
+    const { snapshot, trigger } = resolveActiveComposerTrigger();
+    if (trigger?.kind !== "pull-request") return false;
+    attachReferenceItems(snapshot.value, trigger, items);
+    return true;
+  }, [attachReferenceItems, resolveActiveComposerTrigger]);
+
   const { onUsageLimitsCommand } = props;
   const onSelectComposerItem = useCallback(
-    (item: ComposerCommandItem) => {
+    (item: ComposerCommandItem, options?: { toggle: boolean }) => {
       if (composerSelectLockRef.current) return;
       composerSelectLockRef.current = true;
       window.requestAnimationFrame(() => {
@@ -4261,55 +4367,25 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         );
         return;
       }
-      if (item.type === "linear-issue") {
-        const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
-          expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
-        });
-        if (!applied) return;
-        setComposerHighlightedItemId(null);
-        // The chip lands at the caret once the issue is fetched and snapshotted.
-        void attachLinearIssue(routeThreadRef, item.issueId);
-        return;
-      }
-      if (item.type === "github-issue") {
-        const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
-          expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
-        });
-        if (!applied) return;
-        setComposerHighlightedItemId(null);
-        // The chip lands at the caret once the issue is fetched and snapshotted.
-        void attachGitHubIssue(routeThreadRef, item.url);
-        return;
-      }
-      if (item.type === "notion-page") {
-        const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
-          expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
-        });
-        if (!applied) return;
-        setComposerHighlightedItemId(null);
-        void attachNotionPage(routeThreadRef, item.pageId);
-        return;
-      }
-      if (item.type === "slack-message") {
-        const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
-          expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
-        });
-        if (!applied) return;
-        setComposerHighlightedItemId(null);
-        // The chip lands at the caret once the thread is fetched and snapshotted.
-        void attachSlackMessage(routeThreadRef, slackGetThreadInput(item.message, "thread"));
-        return;
-      }
-      if (item.type === "repository") {
-        const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
-          expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
-        });
-        if (!applied) return;
-        setComposerHighlightedItemId(null);
-        attachRepository(routeThreadRef, {
-          nameWithOwner: item.nameWithOwner,
-          remoteUrl: item.remoteUrl,
-        });
+      if (isReferenceMenuItem(item)) {
+        if (trigger.kind !== "pull-request") return;
+        const selected = selectedReferenceItemsRef.current;
+        if (options?.toggle || selected.length > 0) {
+          setReferenceSelection({
+            rangeStart: trigger.rangeStart,
+            items: selected.some((candidate) => candidate.id === item.id)
+              ? selected.filter((candidate) => candidate.id !== item.id)
+              : [...selected, item],
+          });
+          return;
+        }
+        if (
+          item.type === "pull-request" &&
+          !composerMenuItemsRef.current.some((candidate) => candidate.id === item.id)
+        ) {
+          return;
+        }
+        attachReferenceItems(snapshot.value, trigger, [item]);
         return;
       }
       if (item.type === "slash-command") {
@@ -4381,36 +4457,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         }
         return;
       }
-      if (item.type === "pull-request") {
-        if (
-          trigger.kind !== "pull-request" ||
-          !composerMenuItemsRef.current.some((candidate) => candidate.id === item.id)
-        ) {
-          return;
-        }
-        const comment = buildPullRequestReferenceContext(item.pullRequest);
-        const replacement = `${formatInlineContextReference(
-          reviewCommentContextReference(comment),
-        )} `;
-        const replacementRangeEnd = extendReplacementRangeForTrailingSpace(
-          snapshot.value,
-          trigger.rangeEnd,
-          replacement,
-        );
-        const applied = applyPromptReplacement(
-          trigger.rangeStart,
-          replacementRangeEnd,
-          replacement,
-          { expectedText: snapshot.value.slice(trigger.rangeStart, replacementRangeEnd) },
-        );
-        if (applied) {
-          addComposerDraftReviewComment(composerDraftTarget, comment, {
-            appendReference: false,
-          });
-          setComposerHighlightedItemId(null);
-        }
-        return;
-      }
       if (item.type === "thread") {
         if (trigger.kind !== "path") return;
         const shell = readThreadShell(item.thread);
@@ -4438,13 +4484,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       }
     },
     [
-      addComposerDraftReviewComment,
       addComposerDraftThreadContexts,
       applyPromptReplacement,
-      attachGitHubIssue,
-      attachNotionPage,
-      attachSlackMessage,
-      attachLinearIssue,
+      attachReferenceItems,
       captureThreadTabContext,
       composerDraftTarget,
       handleInteractionModeChange,
@@ -4785,6 +4827,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       if (!menuIsActive || event.isComposing || event.keyCode === 229) return false;
       dismissComposerTrigger(trigger);
       composerMenuOpenRef.current = false;
+      setReferenceSelection(null);
       return true;
     }
     if (menuIsActive && (submissionIntent === null || submissionIntent === "foreground")) {
@@ -4798,6 +4841,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         nudgeComposerMenuHighlight("ArrowUp");
         return true;
       }
+      if (key === "Enter" && commitReferenceSelection()) return true;
       if ((key === "Enter" || key === "Tab") && selectedItem) {
         onSelectComposerItem(selectedItem);
         return true;
@@ -7528,6 +7572,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                                   referenceMenuTabs.find((option) => option.id === tab)?.id ??
                                   "pull-requests",
                               }),
+                          },
+                        }
+                      : {})}
+                    {...(composerTrigger?.kind === "pull-request"
+                      ? {
+                          selection: {
+                            itemIds: selectedReferenceItemIds,
+                            onCommit: commitReferenceSelection,
                           },
                         }
                       : {})}

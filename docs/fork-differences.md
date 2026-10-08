@@ -966,6 +966,18 @@ Code: `packages/client-runtime/src/composerObjectLinks.ts`,
 `apps/web/src/components/chat/ChatComposer.tsx`. User guide:
 [composer.md](./user/composer.md#context-in-your-message).
 
+## Pick several items from the `#` menu
+
+On web and desktop, `Cmd`-click (`Ctrl`-click on Windows and Linux) a row in the composer's `#` menu
+to check it instead of attaching it. While anything is checked, every row shows a checkbox and a
+plain click toggles it too. Picks hold across the menu's tabs and searches, so pull requests, issues,
+Notion pages, Slack messages, and repositories can go in together. `Enter` or **Attach** inserts
+them all where the `#` was, and `Esc` drops the picks. Mobile has no `#` menu.
+
+Code: `attachReferenceItems` in `apps/web/src/components/chat/ChatComposer.tsx` and
+`apps/web/src/components/chat/ComposerCommandMenu.tsx`. User guide:
+[composer.md](./user/composer.md#context-in-your-message).
+
 ## Pasted file paths become chips
 
 Pasting text that is only file paths, one per line, into the web or desktop composer turns each
