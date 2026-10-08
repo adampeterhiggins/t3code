@@ -10,6 +10,7 @@ const ExternalUrlTarget = Schema.Literals([
   "github-issue",
   "slack",
   "html-render",
+  "mcp-app",
 ]);
 
 export type ExternalUrlTarget = typeof ExternalUrlTarget.Type;

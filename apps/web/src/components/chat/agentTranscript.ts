@@ -173,6 +173,8 @@ function entryRow(
       return workRow(entry.entry, entry.createdAt, workspaceRoot);
     case "event":
       return eventRow(entry.projectedItem, entry.createdAt);
+    case "mcp-app":
+      return null;
     case "html-render":
       return {
         kind: "notice",

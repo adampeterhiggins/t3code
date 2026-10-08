@@ -60,6 +60,15 @@ another process changes. Change the shortcut under **File: Refresh** in Settings
 the start of the file picker's search to switch to commands, as in VS Code; the
 palette then shows only actions. Delete the `>` to go back to file search.
 
+## Find in a diff
+
+Click into a diff in the Diff panel or a pull request's Code tab, then press
+`mod+f` to search every file in it, including folded files and unchanged lines
+hidden between changes. Enter and `Shift+Enter` move between matches, and a
+match in a folded file opens it. Escape closes the search. This shortcut is not
+configurable. A very large uncommitted diff loads its files as you scroll, and
+find only searches the files loaded so far.
+
 ## iPad
 
 With a hardware keyboard, use `Cmd+1` through `Cmd+9` to open the first nine
