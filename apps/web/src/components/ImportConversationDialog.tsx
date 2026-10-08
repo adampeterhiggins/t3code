@@ -228,12 +228,12 @@ const importListingsAtom = Atom.family((targetsJson: string) =>
   ),
 );
 
-/** Whether a row's titles, prompt, folder, or branch contain the lowercased search text. */
+/** Whether a row's conversation ID, titles, prompt, folder, or branch match the search text. */
 function matchesSearch(row: ImportRow, needle: string): boolean {
   if (needle === "") return true;
   const fields =
     row.kind === "session"
-      ? [row.session.title, row.session.preview]
+      ? [row.session.providerSessionId, row.session.title, row.session.preview]
       : [
           row.workspace.title,
           row.workspace.name,
@@ -752,7 +752,7 @@ function ImportConversationList({
             size="sm"
             type="search"
             value={query}
-            placeholder="Search"
+            placeholder="Search by title, prompt, or conversation ID"
             aria-label="Search conversations and workspaces"
             onChange={(event) => setQuery(event.target.value)}
           />
