@@ -64,6 +64,97 @@ export const toOperationError = (cause: unknown): ServerBrowserOperationError =>
 };
 
 const DEFAULT_TIMEOUT_MS = 15_000;
+const DEFAULT_READ_TIMEOUT_MS = 10_000;
+const DEFAULT_CAPTURE_TIMEOUT_MS = 3_000;
+
+type ReadOptions = {
+  readonly timeoutMs?: number | undefined;
+  readonly signal?: AbortSignal | undefined;
+};
+type ReadStage = <T>(stage: string, operation: (timeoutMs: number) => Promise<T>) => Promise<T>;
+
+/** One deadline across parallel and sequential stages, below the broker's 15s deadline. */
+const withReadBudget = async <T>(
+  options: ReadOptions,
+  operation: (read: ReadStage) => Promise<T>,
+): Promise<T> => {
+  const timeoutMs =
+    options.timeoutMs !== undefined && Number.isFinite(options.timeoutMs)
+      ? Math.max(1, Math.min(options.timeoutMs, DEFAULT_READ_TIMEOUT_MS))
+      : DEFAULT_READ_TIMEOUT_MS;
+  const interrupted = (stage?: string) =>
+    options.signal?.reason instanceof BrowserControlInterrupted
+      ? options.signal.reason
+      : new ServerBrowserOperationError(
+          "PreviewAutomationControlInterruptedError",
+          stage === undefined
+            ? "Browser read was interrupted."
+            : `Browser read was interrupted during ${stage}.`,
+          stage === undefined ? undefined : { stage },
+        );
+  // Reject before snapshot setup can revoke the last usable element refs.
+  if (options.signal?.aborted) throw interrupted();
+  const deadline = Date.now() + timeoutMs;
+  const pending = new Set<() => void>();
+  let closed = false;
+  const read: ReadStage = (stage, start) =>
+    new Promise((resolve, reject) => {
+      const timedOut = () =>
+        new ServerBrowserOperationError(
+          "PreviewAutomationTimeoutError",
+          `Browser read timed out after ${timeoutMs}ms during ${stage}.`,
+          { stage, timeoutMs },
+        );
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let settled = false;
+      const finish = (complete: () => void) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        options.signal?.removeEventListener("abort", onAbort);
+        pending.delete(onAbort);
+        complete();
+      };
+      const onAbort = () => finish(() => reject(interrupted(stage)));
+      if (closed || options.signal?.aborted) {
+        onAbort();
+        return;
+      }
+      const remainingMs = deadline - Date.now();
+      if (remainingMs <= 0) {
+        finish(() => reject(timedOut()));
+        return;
+      }
+      pending.add(onAbort);
+      options.signal?.addEventListener("abort", onAbort, { once: true });
+      timer = setTimeout(() => finish(() => reject(timedOut())), remainingMs);
+      const fail = (cause: unknown) =>
+        finish(() =>
+          reject(
+            Date.now() >= deadline || (cause instanceof Error && cause.name === "TimeoutError")
+              ? timedOut()
+              : cause,
+          ),
+        );
+      try {
+        // CDP and Playwright cannot cancel an individual in-flight call. Keep both
+        // handlers attached after expiry, without terminating the shared page.
+        start(remainingMs).then(
+          (value) => finish(() => (Date.now() >= deadline ? reject(timedOut()) : resolve(value))),
+          fail,
+        );
+      } catch (cause) {
+        fail(cause);
+      }
+    });
+  try {
+    return await operation(read);
+  } finally {
+    // A failed parallel stage must also release its siblings' timers/listeners.
+    closed = true;
+    for (const cancel of pending) cancel();
+  }
+};
 
 const pageRefs = new WeakMap<Page, { generation: string; refs: Map<string, string> }>();
 // A compact runtime namespace prevents old refs from aliasing after a server restart.
@@ -150,81 +241,111 @@ const SNAPSHOT_SCRIPT = `(() => {
   };
 })()`;
 
+type CaptureOptions = ReadOptions & {
+  readonly format: "png" | "jpeg";
+  readonly quality?: number;
+  readonly scale: number;
+};
+
 // Scaled captures repaint live screencasts, so callers pause them. Clips use document offsets.
-export const captureViewport = async (
+const captureViewportWithinBudget = async (
   page: Page,
   cdp: CDPSession,
-  options: { readonly format: "png" | "jpeg"; readonly quality?: number; readonly scale: number },
+  options: CaptureOptions,
+  read: ReadStage,
 ) => {
-  let clip;
-  if (options.scale < 1) {
-    const viewport = page.viewportSize() ?? { width: 1280, height: 800 };
-    const { cssVisualViewport } = await cdp.send("Page.getLayoutMetrics");
-    clip = {
-      x: cssVisualViewport.pageX,
-      y: cssVisualViewport.pageY,
-      ...viewport,
-      scale: options.scale,
-    };
-  }
-  const { data } = await cdp.send("Page.captureScreenshot", {
-    format: options.format,
-    ...(options.quality === undefined ? {} : { quality: options.quality }),
-    ...(clip ? { clip } : {}),
-  });
+  const metrics =
+    options.scale < 1
+      ? await read("Page.getLayoutMetrics", () => cdp.send("Page.getLayoutMetrics"))
+      : undefined;
+  const clip = metrics && {
+    x: metrics.cssVisualViewport.pageX,
+    y: metrics.cssVisualViewport.pageY,
+    ...(page.viewportSize() ?? { width: 1280, height: 800 }),
+    scale: options.scale,
+  };
+  const { data } = await read("Page.captureScreenshot", () =>
+    cdp.send("Page.captureScreenshot", {
+      format: options.format,
+      ...(options.quality === undefined ? {} : { quality: options.quality }),
+      ...(clip ? { clip } : {}),
+    }),
+  );
   return data;
 };
 
-export const snapshot = async (input: {
+export const captureViewport = (page: Page, cdp: CDPSession, options: CaptureOptions) =>
+  withReadBudget(
+    { ...options, timeoutMs: options.timeoutMs ?? DEFAULT_CAPTURE_TIMEOUT_MS },
+    (read) => captureViewportWithinBudget(page, cdp, options, read),
+  );
+
+export const snapshot = (input: {
   readonly page: Page;
   readonly cdp: CDPSession;
   readonly renderScale: number;
   readonly consoleEntries: ReadonlyArray<PreviewAutomationConsoleEntry>;
   readonly networkEntries: ReadonlyArray<PreviewAutomationNetworkEntry>;
   readonly actionTimeline: PreviewAutomationSnapshot["actionTimeline"];
-}): Promise<PreviewAutomationSnapshot> => {
-  const viewport = input.page.viewportSize() ?? { width: 1280, height: 800 };
-  const scale = Math.min(1, MAX_SCREENSHOT_WIDTH / (viewport.width * input.renderScale));
-  const state = refsFor(input.page);
-  invalidateRefs(input.page);
-  const generation = state.generation;
-  const [page, tree, data] = await Promise.all([
-    input.page.evaluate(SNAPSHOT_SCRIPT) as Promise<
-      Pick<
-        PreviewAutomationSnapshot,
-        "url" | "title" | "loading" | "visibleText" | "interactiveElements"
-      >
-    >,
-    input.page.ariaSnapshot({ mode: "ai", boxes: true, timeout: DEFAULT_TIMEOUT_MS }),
-    captureViewport(input.page, input.cdp, { format: "png", scale }),
-  ]);
-  if (state.generation !== generation) {
-    throw new ServerBrowserOperationError(
-      "PreviewAutomationExecutionError",
-      "The page changed while capturing its snapshot. Take another snapshot.",
-    );
-  }
-  const accessibilityTree = tree
-    .slice(0, MAX_VISIBLE_TEXT_LENGTH)
-    .replace(/\[ref=((?:f\d+)?e\d+)\]/g, (_match, nativeRef: string) => {
-      const ref = `t3-${generation}-${nativeRef}`;
-      state.refs.set(ref, nativeRef);
-      return `[ref=${ref}]`;
-    });
-  return {
-    ...page,
-    accessibilityTree,
-    consoleEntries: [...input.consoleEntries],
-    networkEntries: [...input.networkEntries],
-    actionTimeline: [...input.actionTimeline],
-    screenshot: {
-      mimeType: "image/png",
-      data,
-      width: Math.round(viewport.width * input.renderScale * scale),
-      height: Math.round(viewport.height * input.renderScale * scale),
-    },
-  };
-};
+  readonly timeoutMs?: number | undefined;
+  readonly includeImage?: boolean | undefined;
+  readonly signal?: AbortSignal | undefined;
+}): Promise<PreviewAutomationSnapshot> =>
+  withReadBudget(input, async (read) => {
+    const viewport = input.page.viewportSize() ?? { width: 1280, height: 800 };
+    const scale = Math.min(1, MAX_SCREENSHOT_WIDTH / (viewport.width * input.renderScale));
+    const state = refsFor(input.page);
+    invalidateRefs(input.page);
+    const generation = state.generation;
+    const [page, tree, data] = await Promise.all([
+      read(
+        "snapshot metadata",
+        () =>
+          input.page.evaluate(SNAPSHOT_SCRIPT) as Promise<
+            Pick<
+              PreviewAutomationSnapshot,
+              "url" | "title" | "loading" | "visibleText" | "interactiveElements"
+            >
+          >,
+      ),
+      read("accessibility tree", (timeoutMs) =>
+        input.page.ariaSnapshot({ mode: "ai", boxes: true, timeout: timeoutMs }),
+      ),
+      input.includeImage === false
+        ? undefined
+        : captureViewportWithinBudget(input.page, input.cdp, { format: "png", scale }, read),
+    ]);
+    if (state.generation !== generation) {
+      throw new ServerBrowserOperationError(
+        "PreviewAutomationExecutionError",
+        "The page changed while capturing its snapshot. Take another snapshot.",
+      );
+    }
+    const accessibilityTree = tree
+      .slice(0, MAX_VISIBLE_TEXT_LENGTH)
+      .replace(/\[ref=((?:f\d+)?e\d+)\]/g, (_match, nativeRef: string) => {
+        const ref = `t3-${generation}-${nativeRef}`;
+        state.refs.set(ref, nativeRef);
+        return `[ref=${ref}]`;
+      });
+    return {
+      ...page,
+      accessibilityTree,
+      consoleEntries: [...input.consoleEntries],
+      networkEntries: [...input.networkEntries],
+      actionTimeline: [...input.actionTimeline],
+      ...(data === undefined
+        ? {}
+        : {
+            screenshot: {
+              mimeType: "image/png" as const,
+              data,
+              width: Math.round(viewport.width * input.renderScale * scale),
+              height: Math.round(viewport.height * input.renderScale * scale),
+            },
+          }),
+    };
+  });
 
 /**
  * A click whose handler opens a dialog does not finish until the dialog is
@@ -410,12 +531,21 @@ export const scroll = async (page: Page, input: PreviewAutomationScrollInput) =>
   await locator.evaluate((element, [x, y]) => element.scrollBy(x, y), delta);
 };
 
-export const evaluate = async (cdp: CDPSession, input: PreviewAutomationEvaluateInput) => {
-  const result = await cdp.send("Runtime.evaluate", {
-    expression: input.expression,
-    awaitPromise: input.awaitPromise ?? true,
-    returnByValue: input.returnByValue ?? true,
-  });
+export const evaluate = async (
+  cdp: CDPSession,
+  input: PreviewAutomationEvaluateInput,
+  options: ReadOptions = {},
+) => {
+  const result = await withReadBudget(options, (read) =>
+    read("Runtime.evaluate", (timeoutMs) =>
+      cdp.send("Runtime.evaluate", {
+        expression: input.expression,
+        awaitPromise: input.awaitPromise ?? true,
+        returnByValue: input.returnByValue ?? true,
+        timeout: timeoutMs,
+      }),
+    ),
+  );
   if (result.exceptionDetails) {
     throw new ServerBrowserOperationError(
       "PreviewAutomationExecutionError",
