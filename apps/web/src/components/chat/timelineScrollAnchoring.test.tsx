@@ -6,6 +6,7 @@ import {
   getRowBottom,
   readTimelinePosition,
   rememberTimelinePosition,
+  resolveRestoredTimelineRowOffset,
   timelineContentOverflowsViewport,
 } from "./timelineScrollAnchoring";
 
@@ -268,6 +269,49 @@ describe("observeTimelineRun", () => {
 });
 
 describe("remembered timeline positions", () => {
+  const reading = {
+    rowId: "long-response",
+    offsetWithinRow: 1400,
+    scrollOffset: 9867,
+    atEnd: false,
+    rowHeight: 1564,
+    viewportWidth: 472,
+  };
+
+  it("keeps a reading point in the same response after widening a hidden thread", () => {
+    const offset = resolveRestoredTimelineRowOffset(reading, 1205, 728);
+    expect(offset).toBeCloseTo((1400 / 1564) * 1205);
+    expect(offset).toBeLessThan(1205);
+  });
+
+  it("moves the reading point down within a response when the hidden thread narrows", () => {
+    expect(
+      resolveRestoredTimelineRowOffset(
+        { ...reading, rowHeight: 1205, viewportWidth: 728, offsetWithinRow: 1078 },
+        1564,
+        472,
+      ),
+    ).toBeCloseTo((1078 / 1205) * 1564);
+  });
+
+  it("preserves pixel offsets at the same width and gaps above a row", () => {
+    expect(resolveRestoredTimelineRowOffset(reading, 2000, 472)).toBe(1400);
+    expect(resolveRestoredTimelineRowOffset({ ...reading, offsetWithinRow: -34 }, 1205, 728)).toBe(
+      -34,
+    );
+  });
+
+  it("bounds old positions without saved geometry and rows shortened by content changes", () => {
+    expect(
+      resolveRestoredTimelineRowOffset(
+        { rowId: "response", offsetWithinRow: 1400, scrollOffset: 9867, atEnd: false },
+        1205,
+        728,
+      ),
+    ).toBe(1204);
+    expect(resolveRestoredTimelineRowOffset(reading, 900, 472)).toBe(899);
+  });
+
   it("keeps reading positions and end-follow independent across threads and environments", () => {
     const reading = { rowId: "message-4", offsetWithinRow: 32, scrollOffset: 932, atEnd: false };
     const following = { rowId: "message-9", offsetWithinRow: 10, scrollOffset: 2010, atEnd: true };
