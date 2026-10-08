@@ -5,6 +5,7 @@ import * as NodePath from "node:path";
 import * as NodeSqlite from "node:sqlite";
 
 import type { ConductorAgent } from "@t3tools/contracts";
+import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
 import * as DateTime from "effect/DateTime";
 
 /** Where the Conductor macOS app keeps its database. */
@@ -77,6 +78,7 @@ export interface ConductorAttachmentRow {
 
 /** A file to copy into the imported message, from a Conductor workspace's `.context`. */
 export interface ConductorFileRef {
+  /** The attachment row's id, or the `.context` path of a file mentioned by path. */
   readonly attachmentId: string;
   readonly kind: "image" | "text" | "file";
   readonly name: string;
@@ -103,8 +105,13 @@ export function conductorIsoTime(value: string): string {
     : DateTime.formatIso(DateTime.makeUnsafe(value));
 }
 
-// Conductor's inline mention of an attachment in a prompt: `@⟦name⟧(attachment:<id>)`.
-const ATTACHMENT_MENTION = /@⟦[^⟧]*⟧\(attachment:[^)\s]+\)/g;
+/**
+ * Conductor's inline mention of a file in a prompt: `@⟦name⟧(<target>)`. The target is
+ * `attachment:<id>` for a file with an attachment row, or a URL-encoded path: under the
+ * workspace's `.context` for a file dropped into the prompt, otherwise a file in the repository.
+ */
+const FILE_MENTION = /@⟦([^⟧]*)⟧\(([^)\s]+)\)/g;
+const IMAGE_NAME = /\.(?:png|jpe?g|gif|webp)$/i;
 
 function reviewText(attachment: ConductorAttachmentRow): string | null {
   const body = attachment.commentBody?.trim();
@@ -120,10 +127,14 @@ function reviewText(attachment: ConductorAttachmentRow): string | null {
   return `Review comment on \`${target}\`${lines}:\n\n${body}`;
 }
 
-/** A prompt's text with attachment mentions removed, its review comments, and its files. */
+/**
+ * A prompt's text with attachment mentions removed and repository files as T3 file links, its
+ * review comments, and its files.
+ */
 function userMessage(
   row: ConductorMessageRow,
   attachments: ReadonlyArray<ConductorAttachmentRow>,
+  workspacePath: string,
 ): ConductorTranscriptMessage | null {
   const reviews = attachments.flatMap((attachment) =>
     attachment.type === "review" ? (reviewText(attachment) ?? []) : [],
@@ -133,7 +144,24 @@ function userMessage(
     if ((kind !== "image" && kind !== "text" && kind !== "file") || !attachment.path) return [];
     return [{ attachmentId: attachment.id, kind, name: attachment.name, path: attachment.path }];
   });
-  const prompt = row.content.replace(ATTACHMENT_MENTION, "").trim();
+  const prompt = row.content
+    .replace(FILE_MENTION, (source, name: string, target: string) => {
+      if (target.startsWith("attachment:")) return "";
+      let mentioned: string;
+      try {
+        mentioned = decodeURIComponent(target);
+      } catch {
+        return source;
+      }
+      if (!mentioned.startsWith(".context/")) return serializeComposerFileLink(mentioned);
+      const path = NodePath.join(workspacePath, mentioned);
+      if (!mentioned.split("/").includes("..") && !files.some((file) => file.path === path)) {
+        const kind = IMAGE_NAME.test(name) ? "image" : "file";
+        files.push({ attachmentId: mentioned, kind, name, path });
+      }
+      return "";
+    })
+    .trim();
   const text = [prompt, ...reviews].filter((part) => part !== "").join("\n\n");
   if (text === "" && files.length === 0) return null;
   return {
@@ -169,14 +197,15 @@ function record(value: unknown): Record<string, unknown> | null {
  */
 export function parseConductorTranscript(
   rows: ReadonlyArray<ConductorMessageRow>,
-  attachments: ReadonlyArray<ConductorAttachmentRow> = [],
+  attachments: ReadonlyArray<ConductorAttachmentRow>,
+  workspacePath: string,
 ): ConductorTranscript {
   const attachmentsByMessage = Map.groupBy(attachments, (attachment) => attachment.messageId);
   const messages: Array<ConductorTranscriptMessage> = [];
   let model: string | null = null;
   for (const row of rows) {
     if (row.role === "user") {
-      const message = userMessage(row, attachmentsByMessage.get(row.id) ?? []);
+      const message = userMessage(row, attachmentsByMessage.get(row.id) ?? [], workspacePath);
       if (message !== null) messages.push(message);
       continue;
     }

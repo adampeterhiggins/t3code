@@ -325,6 +325,7 @@ const make = (databasePath: string) =>
         const transcript = parseConductorTranscript(
           yield* query(() => input.db.messages(tab.sessionId)),
           yield* query(() => input.db.attachments(tab.sessionId)),
+          workspace.path,
         );
         const messages = yield* Effect.forEach(transcript.messages, (message) =>
           importFiles(threadId, message),

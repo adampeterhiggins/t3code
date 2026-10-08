@@ -188,49 +188,53 @@ function makeFixture() {
 }
 
 it("keeps prompts and top-level replies, merging replies split by tool calls", () => {
-  const transcript = parseConductorTranscript([
-    { id: "r1", role: "user", content: "Fix it", createdAt: "2026-09-08 20:00:00" },
-    {
-      id: "r2",
-      role: "assistant",
-      content: JSON.stringify({ type: "system", subtype: "init" }),
-      createdAt: "2026-09-08T20:00:01Z",
-    },
-    {
-      id: "r3",
-      role: "assistant",
-      content: assistant([{ type: "text", text: "Looking." }]),
-      createdAt: "2026-09-08T20:00:02Z",
-    },
-    {
-      id: "r4",
-      role: "assistant",
-      content: assistant([{ type: "tool_use", id: "t", name: "Bash", input: {} }]),
-      createdAt: "2026-09-08T20:00:03Z",
-    },
-    {
-      id: "r5",
-      role: "assistant",
-      content: JSON.stringify({ type: "user", message: { content: [{ type: "tool_result" }] } }),
-      createdAt: "2026-09-08T20:00:04Z",
-    },
-    {
-      id: "r6",
-      role: "assistant",
-      content: assistant([{ type: "text", text: "Subagent noise" }], { parent_tool_use_id: "t" }),
-      createdAt: "2026-09-08T20:00:05Z",
-    },
-    {
-      id: "r7",
-      role: "assistant",
-      content: assistant([
-        { type: "thinking", thinking: "hmm" },
-        { type: "text", text: "Fixed." },
-      ]),
-      createdAt: "2026-09-08T20:00:06Z",
-    },
-    { id: "r8", role: "user", content: "Thanks", createdAt: "2026-09-08T20:01:00Z" },
-  ]);
+  const transcript = parseConductorTranscript(
+    [
+      { id: "r1", role: "user", content: "Fix it", createdAt: "2026-09-08 20:00:00" },
+      {
+        id: "r2",
+        role: "assistant",
+        content: JSON.stringify({ type: "system", subtype: "init" }),
+        createdAt: "2026-09-08T20:00:01Z",
+      },
+      {
+        id: "r3",
+        role: "assistant",
+        content: assistant([{ type: "text", text: "Looking." }]),
+        createdAt: "2026-09-08T20:00:02Z",
+      },
+      {
+        id: "r4",
+        role: "assistant",
+        content: assistant([{ type: "tool_use", id: "t", name: "Bash", input: {} }]),
+        createdAt: "2026-09-08T20:00:03Z",
+      },
+      {
+        id: "r5",
+        role: "assistant",
+        content: JSON.stringify({ type: "user", message: { content: [{ type: "tool_result" }] } }),
+        createdAt: "2026-09-08T20:00:04Z",
+      },
+      {
+        id: "r6",
+        role: "assistant",
+        content: assistant([{ type: "text", text: "Subagent noise" }], { parent_tool_use_id: "t" }),
+        createdAt: "2026-09-08T20:00:05Z",
+      },
+      {
+        id: "r7",
+        role: "assistant",
+        content: assistant([
+          { type: "thinking", thinking: "hmm" },
+          { type: "text", text: "Fixed." },
+        ]),
+        createdAt: "2026-09-08T20:00:06Z",
+      },
+      { id: "r8", role: "user", content: "Thanks", createdAt: "2026-09-08T20:01:00Z" },
+    ],
+    [],
+    "/ws",
+  );
   expect(transcript).toEqual({
     model: "claude-fable-5-1",
     messages: [
@@ -276,6 +280,7 @@ it("removes attachment mentions and inlines diff comments sent with a prompt", (
       { id: "review", role: "user", content: "", createdAt: "2026-09-08T20:01:00Z" },
     ],
     [image, review],
+    "/ws",
   );
   expect(transcript.messages).toEqual([
     {
@@ -295,6 +300,37 @@ it("removes attachment mentions and inlines diff comments sent with a prompt", (
       role: "user",
       text: "Review comment on `cloud_functions/ingestion.py` lines 55–58:\n\nFix the typing here",
       createdAt: "2026-09-08T20:01:00.000Z",
+    },
+  ]);
+});
+
+it("imports files mentioned by .context path and links repository files", () => {
+  const transcript = parseConductorTranscript(
+    [
+      {
+        id: "prompt",
+        role: "user",
+        content:
+          "@⟦Notes on Jev.md⟧(.context%2Fattachments%2FhSCMGS%2Fnotes.md) \n\nCompare with @⟦WORKFLOW.md⟧(%2Frepo%2Fdocs%2FWORKFLOW.md) please",
+        createdAt: "2026-09-08T20:00:00Z",
+      },
+    ],
+    [],
+    "/ws",
+  );
+  expect(transcript.messages).toEqual([
+    {
+      role: "user",
+      text: "Compare with [WORKFLOW.md](/repo/docs/WORKFLOW.md) please",
+      createdAt: "2026-09-08T20:00:00.000Z",
+      files: [
+        {
+          attachmentId: ".context/attachments/hSCMGS/notes.md",
+          kind: "file",
+          name: "Notes on Jev.md",
+          path: "/ws/.context/attachments/hSCMGS/notes.md",
+        },
+      ],
     },
   ]);
 });
