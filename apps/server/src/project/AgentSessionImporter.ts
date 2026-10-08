@@ -116,6 +116,11 @@ function dateTime(value: string): DateTime.Utc {
   return DateTime.makeUnsafe(value);
 }
 
+/** The id of the message an import writes at `index` of the thread's history. */
+export function importedMessageId(threadId: ThreadId, index: number): MessageId {
+  return MessageId.make(`${threadId}:${String(index).padStart(6, "0")}`);
+}
+
 /** Events that place one imported message in a thread's history, outside any run. */
 export function messageEvents(input: {
   readonly threadId: ThreadId;
@@ -127,7 +132,7 @@ export function messageEvents(input: {
   const attachments = input.message.role === "user" ? (input.attachments ?? []) : [];
   const ordinal = input.index + 1;
   const suffix = String(input.index).padStart(6, "0");
-  const messageId = MessageId.make(`${input.threadId}:${suffix}`);
+  const messageId = importedMessageId(input.threadId, input.index);
   const turnItemId = TurnItemId.make(
     `${IMPORT_EVENT_PREFIX}:turn-item:${input.threadId}:${suffix}`,
   );

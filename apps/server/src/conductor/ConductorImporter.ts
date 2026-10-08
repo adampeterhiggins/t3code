@@ -44,7 +44,7 @@ import * as ServerConfig from "../config.ts";
 import * as EventSink from "../orchestration-v2/EventSink.ts";
 import * as IdAllocator from "../orchestration-v2/IdAllocator.ts";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
-import { messageEvents } from "../project/AgentSessionImporter.ts";
+import { importedMessageId, messageEvents } from "../project/AgentSessionImporter.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import { ThreadTabs } from "../threadTabs/ThreadTabs.ts";
 import {
@@ -94,6 +94,18 @@ function modelFor(tab: ConductorTab, transcriptModel: string | null): string {
   if (tab.agent === "codex" && tab.model !== null) return tab.model;
   return DEFAULT_MODEL_BY_PROVIDER[driver] ?? DEFAULT_MODEL;
 }
+
+/** The name a file is imported under. */
+const attachmentName = (file: ConductorFileRef) => file.name.trim().slice(0, 255) || "attachment";
+
+/** Stands in for a file the import could not copy. */
+const unavailableText = (file: ConductorFileRef) =>
+  `(Attachment not available: ${attachmentName(file)})`;
+
+const joinParts = (parts: ReadonlyArray<string>) =>
+  parts.filter((part) => part !== "").join("\n\n");
+
+type TranscriptMessage = ReturnType<typeof parseConductorTranscript>["messages"][number];
 
 const readFailed = (detail: string) => (cause: unknown) =>
   new ConductorImportError({ reason: "read_failed", detail, cause });
@@ -259,7 +271,7 @@ const make = (databasePath: string) =>
         const stat = yield* fileSystem.stat(file.path);
         const sizeBytes = Number(stat.size);
         if (stat.type !== "File" || sizeBytes < 1) return null;
-        const name = file.name.trim().slice(0, 255) || "attachment";
+        const name = attachmentName(file);
         const mimeType = Option.getOrElse(Mime.getType(name), () =>
           file.kind === "text" ? "text/plain" : "application/octet-stream",
         );
@@ -299,17 +311,75 @@ const make = (databasePath: string) =>
      */
     const importFiles = Effect.fn("ConductorImporter.importFiles")(function* (
       threadId: ThreadId,
-      message: ReturnType<typeof parseConductorTranscript>["messages"][number],
+      message: TranscriptMessage,
     ) {
       const attachments: Array<ChatAttachment> = [];
       const unavailable: Array<string> = [];
       for (const file of message.files ?? []) {
         const attachment = yield* importFile(threadId, file);
-        if (attachment === null) unavailable.push(`(Attachment not available: ${file.name})`);
+        if (attachment === null) unavailable.push(unavailableText(file));
         else attachments.push(attachment);
       }
-      const text = [message.text, ...unavailable].filter((part) => part !== "").join("\n\n");
-      return { message: { ...message, text }, attachments };
+      return {
+        message: { ...message, text: joinParts([message.text, ...unavailable]) },
+        attachments,
+      };
+    });
+
+    const transcriptOf = (
+      db: ConductorDatabase,
+      tab: ConductorTab,
+      workspace: ConductorWorkspace,
+    ) =>
+      Effect.gen(function* () {
+        return parseConductorTranscript(
+          yield* query(() => db.messages(tab.sessionId)),
+          yield* query(() => db.attachments(tab.sessionId)),
+          workspace.path,
+        );
+      });
+
+    /**
+     * Events that rewrite an earlier import's messages where this importer now reads Conductor
+     * differently, such as a file mention it used to leave as raw text. Messages are matched by
+     * their import id, so turns sent in T3 since the import are untouched, and prompts sent in
+     * Conductor since then are not added. A thread whose imported roles no longer line up with
+     * the transcript is left alone.
+     */
+    const refreshEvents = Effect.fn("ConductorImporter.refreshEvents")(function* (input: {
+      readonly workspace: ConductorWorkspace;
+      readonly tab: ConductorTab;
+      readonly db: ConductorDatabase;
+    }) {
+      const threadId = conductorThreadId(input.tab.sessionId);
+      const transcript = yield* transcriptOf(input.db, input.tab, input.workspace);
+      const ids = transcript.messages.map((_, index) => importedMessageId(threadId, index));
+      const { messages: stored } = yield* orchestrator
+        .getThreadRecords(threadId, ["messages"], { messageIds: ids })
+        .pipe(Effect.mapError(readFailed(`Could not read thread '${threadId}'.`)));
+      const storedById = new Map(stored.map((message) => [message.id, message]));
+      const stale: Array<{ readonly index: number; readonly message: TranscriptMessage }> = [];
+      for (const [index, message] of transcript.messages.entries()) {
+        const current = storedById.get(ids[index]!);
+        if (current === undefined) continue;
+        if (current.role !== message.role) return [];
+        const copied = new Set(current.attachments.map((attachment) => attachment.name));
+        const missing = (message.files ?? []).filter((file) => !copied.has(attachmentName(file)));
+        if (current.text !== joinParts([message.text, ...missing.map(unavailableText)])) {
+          stale.push({ index, message });
+        }
+      }
+      if (stale.length === 0) return [];
+      // Event ids are unique; the payloads keep their import ids so they replace the messages.
+      const revision = DateTime.toEpochMillis(yield* DateTime.now);
+      const events: Array<OrchestrationV2DomainEvent> = [];
+      for (const { index, message } of stale) {
+        const imported = yield* importFiles(threadId, message);
+        for (const event of messageEvents({ threadId, index, ...imported })) {
+          events.push({ ...event, id: EventId.make(`${event.id}:refresh:${revision}`) });
+        }
+      }
+      return events;
     });
 
     const threadEvents = (input: {
@@ -322,11 +392,7 @@ const make = (databasePath: string) =>
       Effect.gen(function* () {
         const { tab, workspace } = input;
         const threadId = conductorThreadId(tab.sessionId);
-        const transcript = parseConductorTranscript(
-          yield* query(() => input.db.messages(tab.sessionId)),
-          yield* query(() => input.db.attachments(tab.sessionId)),
-          workspace.path,
-        );
+        const transcript = yield* transcriptOf(input.db, tab, workspace);
         const messages = yield* Effect.forEach(transcript.messages, (message) =>
           importFiles(threadId, message),
         );
@@ -439,7 +505,8 @@ const make = (databasePath: string) =>
      * Imports a workspace's open tabs as one tab group of threads that run in Conductor's
      * worktree on its branch. Claude and Codex tabs resume their agent session; Cursor tabs
      * hand their history to the next turn instead. An archived workspace's threads are settled,
-     * and its worktree does not have to still exist.
+     * and its worktree does not have to still exist. Importing again updates the threads of an
+     * earlier import with what this importer now reads from Conductor.
      */
     const importWorkspace = Effect.fn("ConductorImporter.importWorkspace")(function* (
       input: ConductorWorkspaceImportInput,
@@ -469,16 +536,34 @@ const make = (databasePath: string) =>
 
           const threadIds = workspaceTabs.map((tab) => conductorThreadId(tab.sessionId));
           const missing: Array<ConductorTab> = [];
+          const imported: Array<ConductorTab> = [];
           for (const tab of workspaceTabs) {
-            if ((yield* existingThread(conductorThreadId(tab.sessionId))) === null) {
-              missing.push(tab);
-            }
+            const thread = yield* existingThread(conductorThreadId(tab.sessionId));
+            if (thread === null) missing.push(tab);
+            else if (thread.deletedAt === null) imported.push(tab);
           }
           const settled = workspace.archived;
+          let refreshedThreadCount = 0;
+          for (const tab of imported) {
+            const events = yield* refreshEvents({ workspace, tab, db });
+            if (events.length === 0) continue;
+            yield* eventSink.write({ events }).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ConductorImportError({
+                    reason: "write_failed",
+                    detail: `Could not update the imported Conductor tab '${tab.title}'.`,
+                    cause,
+                  }),
+              ),
+            );
+            refreshedThreadCount += 1;
+          }
           if (missing.length === 0) {
             return {
               threadIds,
               importedThreadCount: 0,
+              refreshedThreadCount,
               settled,
             } satisfies ConductorWorkspaceImportResult;
           }
@@ -516,6 +601,7 @@ const make = (databasePath: string) =>
           return {
             threadIds,
             importedThreadCount: missing.length,
+            refreshedThreadCount,
             settled,
           } satisfies ConductorWorkspaceImportResult;
         }),

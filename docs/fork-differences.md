@@ -874,7 +874,9 @@ Only macOS hosts have the database; mobile has no import.
 workspaces Conductor has archived (`workspaces.state = 'archived'`), even when the worktree
 directory is gone. Those threads are settled at the workspace's last update, and they are not
 pinned. The picker list itself stays limited to active workspaces; archived ids are returned beside
-it for the bulk import. Running it again skips tabs that already have a thread.
+it for the bulk import. Running it again skips tabs that already have a thread, but rewrites their
+imported messages where the importer now reads Conductor differently, matched by import message
+id. Turns sent in T3 since the import are untouched, and Conductor prompts sent since are not added.
 
 Some workspace state stays where it is. Notes (`.context/notes.md`, `todos.md`) are files in the
 worktree the threads run in. Pull request review comments, which make up almost all of Conductor's
