@@ -55,6 +55,7 @@ function Probe({ threads }: { threads: ReadonlyArray<EnvironmentThreadShell> }) 
 }
 
 beforeEach(() => {
+  vi.stubGlobal("window", new EventTarget());
   visibleRows = [];
   mocks.runPromise.mockReset();
   mocks.environments = [{ environmentId: "local", connection: { phase: "connected" } }];

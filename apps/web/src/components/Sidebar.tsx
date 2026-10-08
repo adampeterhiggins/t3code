@@ -52,6 +52,8 @@ import {
   threadRuntimeCanArchive,
   type EnvironmentThreadShell,
 } from "@t3tools/client-runtime/state/models";
+import { requestThreadTabGroupName } from "./ThreadTabGroupNameDialog";
+import { setThreadTabGroupName } from "@t3tools/client-runtime/thread-tabs";
 import { useHiddenTabThreads } from "./sidebar/useHiddenTabThreads";
 import { resolveThreadTabTarget, useThreadTabRecencyStore } from "../threadTabRecencyStore";
 import {
@@ -184,7 +186,12 @@ import { threadEnvironment } from "../state/threads";
 import { useEnvironmentQuery } from "../state/query";
 import { useThreadSearch } from "../state/queries";
 import { useOrchestrationCommand } from "../state/use-orchestration-command";
-import { readEnvironmentScope, useEnvironmentScope } from "../state/session";
+import { runtime } from "../lib/runtime";
+import {
+  readPreparedConnection,
+  readEnvironmentScope,
+  useEnvironmentScope,
+} from "../state/session";
 import {
   buildThreadRouteParams,
   resolveActiveThreadRouteRef,
@@ -1270,6 +1277,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   thread: SidebarThreadSummary;
   /** The tab the hidden-tabs row opens; the group thread still owns ordering and selection. */
   displayThread: SidebarThreadSummary;
+  tabGroupName?: string | undefined;
   variant: "card" | "slim";
   // The category determines the action independently of the row layout.
   variantAction: SidebarRowAction;
@@ -1326,6 +1334,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   ) => void;
   onThreadActivate: (threadRef: ScopedThreadRef, keepOpenGroupTab?: boolean) => void;
   onStartRename: (threadRef: ScopedThreadRef, title: string) => void;
+  onNameTabGroup: ((threadRef: ScopedThreadRef) => void) | undefined;
   onRenameTitleChange: (title: string) => void;
   onCommitRename: (threadRef: ScopedThreadRef, title: string, originalTitle: string) => void;
   onCancelRename: () => void;
@@ -1598,13 +1607,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       ) {
         return;
       }
-      // The title lives on the first tab row, which owns rename.
-      if (variant === "card" && props.tabsOpen && props.tabs != null) return;
       if ((event.target as HTMLElement).closest("button, a, input")) return;
       event.preventDefault();
-      onStartRename(threadRef, thread.title);
+      if (props.onNameTabGroup) props.onNameTabGroup(threadRef);
+      else onStartRename(threadRef, thread.title);
     },
-    [isRenaming, onStartRename, props.tabs, props.tabsOpen, thread.title, threadRef, variant],
+    [isRenaming, onStartRename, props.onNameTabGroup, thread.title, threadRef],
   );
   const [isFileDragOver, setIsFileDragOver] = useState(false);
   const fileDropHandlers = useMemo(
@@ -1851,7 +1859,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     ) : null;
 
   const accessibility = resolveSidebarRowAccessibility({
-    title: thread.title,
+    title: props.tabGroupName ?? thread.title,
     statusLabel: headerStatus?.label ?? null,
     projectDisplayName: props.projectDisplayName,
     isActive: rowActive,
@@ -1898,10 +1906,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
           isRegeneratingTitle && "opacity-55",
         )}
       >
-        {thread.title}
+        {props.tabGroupName ?? thread.title}
       </span>
     );
-  const accessibleTitle = isRenaming ? null : <span className="sr-only">{thread.title}</span>;
+  const accessibleTitle = isRenaming ? null : (
+    <span className="sr-only">{props.tabGroupName ?? thread.title}</span>
+  );
 
   // Stacks show their layer count; multiple unrelated links show their total count.
   // Either opens the thread's pull requests tab; a single PR link opens that PR and still
@@ -2471,7 +2481,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
             </div>
             {/* An open tab list starts with this thread, so its title moves there. */}
             {props.tabs != null ? (
-              <SidebarDisclosure open={!unifyTabs}>
+              <SidebarDisclosure open={!unifyTabs || props.tabGroupName !== undefined}>
                 <div className="flex min-w-0 pt-1">{title}</div>
               </SidebarDisclosure>
             ) : (
@@ -3569,7 +3579,11 @@ export default function Sidebar() {
   const projects = useProjects();
   const projectOrder = useUiStateStore((store) => store.projectOrder);
   const threads = useThreadShells();
-  const { hiddenTabThreads: tabThreadGroups, tabEnvironmentIds } = useHiddenTabThreads(threads);
+  const {
+    hiddenTabThreads: tabThreadGroups,
+    tabEnvironmentIds,
+    groupNames: tabGroupNames,
+  } = useHiddenTabThreads(threads);
   const { createTab, closeTab } = useThreadTabActions();
   const restartAgentSession = useRestartAgentSessionWithToast();
   const splitViewActions = useSplitViewActions();
@@ -4218,8 +4232,9 @@ export default function Sidebar() {
         searchableThreads,
         threadSearchQuery,
         new Set(threadSearchMatchByKey.keys()),
+        tabGroupNames,
       ),
-    [searchableThreads, threadSearchQuery, threadSearchMatchByKey],
+    [searchableThreads, threadSearchQuery, threadSearchMatchByKey, tabGroupNames],
   );
   const threadSearchResultOrderKey = threadSearchResults
     .map((thread) => scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)))
@@ -4745,6 +4760,26 @@ export default function Sidebar() {
       selectThreadSearchResult,
       threadSearchResults,
     ],
+  );
+
+  const nameTabGroup = useCallback(
+    (threadRef: ScopedThreadRef) => {
+      void (async () => {
+        if (!readEnvironmentScope(threadRef.environmentId, AuthOrchestrationOperateScope)) return;
+        const name = await requestThreadTabGroupName(
+          tabGroupNames.get(scopedThreadKey(threadRef)) ?? null,
+        );
+        if (name === undefined) return;
+        const prepared = readPreparedConnection(threadRef.environmentId);
+        if (!prepared) return;
+        try {
+          await runtime.runPromise(setThreadTabGroupName(prepared, threadRef.threadId, name));
+        } catch {
+          toastManager.add({ type: "error", title: "Could not name thread group" });
+        }
+      })();
+    },
+    [tabGroupNames],
   );
 
   const [renamingThreadKey, setRenamingThreadKey] = useState<string | null>(null);
@@ -6242,49 +6277,55 @@ export default function Sidebar() {
           ) ?? null;
         const clicked = await settlePromise(() =>
           api.contextMenu.show(
-            buildThreadActionMenuItems({
-              canOperate: readEnvironmentScope(
-                threadRef.environmentId,
-                AuthOrchestrationOperateScope,
-              ),
-              branch: thread.branch ?? null,
-              projectFilter: threadProjectGroup
-                ? {
-                    label: threadProjectGroup.displayName,
-                    isActive:
-                      projectScopeKeys.length === 1 &&
-                      projectScopeKeys[0] === threadProjectGroup.projectKey,
-                  }
-                : null,
-              tabs: tabEnvironmentIds.has(thread.environmentId)
-                ? {
-                    canClose:
-                      sidebarTabNeighbourKey(threadKey, tabThreadGroupsRef.current) !== null,
-                  }
-                : null,
-              split: splitAction,
-              canRestartSession: true,
-              isPinned,
-              isSettled,
-              autoSettleEnabled: thread.autoSettleDisabledAt == null,
-              isSnoozed,
-              isHidden: supportsHiding && rowThread.hiddenAt != null,
-              groupName: thread.groupName ?? null,
-              groupNames: collectThreadGroupNames(threadsRef.current, Object.keys(threadGroups)),
-              canSnoozeNow: canSnooze(thread, { now: new Date().toISOString() }),
-              isRegeneratingTitle,
-              isRunning: !threadRuntimeCanArchive(thread.runtime),
-              supports: {
-                settlement: supportsSettlement,
-                autoSettleOptOut: supportsAutoSettleOptOut,
-                snooze: supportsSnooze,
-                pinning: supportsPinning,
-                hiding: supportsHiding,
-                groups: supportsGroups,
-                titleRegeneration: supportsTitleRegeneration,
-              },
-              snoozePresets,
-            }),
+            [
+              ...(tabsByRowKey.has(rowKey) &&
+              readEnvironmentScope(threadRef.environmentId, AuthOrchestrationOperateScope)
+                ? [{ id: "name-tab-group" as const, label: "Name thread group…" }]
+                : []),
+              ...buildThreadActionMenuItems({
+                canOperate: readEnvironmentScope(
+                  threadRef.environmentId,
+                  AuthOrchestrationOperateScope,
+                ),
+                branch: thread.branch ?? null,
+                projectFilter: threadProjectGroup
+                  ? {
+                      label: threadProjectGroup.displayName,
+                      isActive:
+                        projectScopeKeys.length === 1 &&
+                        projectScopeKeys[0] === threadProjectGroup.projectKey,
+                    }
+                  : null,
+                tabs: tabEnvironmentIds.has(thread.environmentId)
+                  ? {
+                      canClose:
+                        sidebarTabNeighbourKey(threadKey, tabThreadGroupsRef.current) !== null,
+                    }
+                  : null,
+                split: splitAction,
+                canRestartSession: true,
+                isPinned,
+                isSettled,
+                autoSettleEnabled: thread.autoSettleDisabledAt == null,
+                isSnoozed,
+                isHidden: supportsHiding && rowThread.hiddenAt != null,
+                groupName: thread.groupName ?? null,
+                groupNames: collectThreadGroupNames(threadsRef.current, Object.keys(threadGroups)),
+                canSnoozeNow: canSnooze(thread, { now: new Date().toISOString() }),
+                isRegeneratingTitle,
+                isRunning: !threadRuntimeCanArchive(thread.runtime),
+                supports: {
+                  settlement: supportsSettlement,
+                  autoSettleOptOut: supportsAutoSettleOptOut,
+                  snooze: supportsSnooze,
+                  pinning: supportsPinning,
+                  hiding: supportsHiding,
+                  groups: supportsGroups,
+                  titleRegeneration: supportsTitleRegeneration,
+                },
+                snoozePresets,
+              }),
+            ],
             position,
           ),
         );
@@ -6404,6 +6445,9 @@ export default function Sidebar() {
             }
             return;
           }
+          case "name-tab-group":
+            nameTabGroup(threadRef);
+            return;
           case "rename":
             startThreadRename(threadRef, thread.title);
             return;
@@ -6549,6 +6593,8 @@ export default function Sidebar() {
       splitViewActions,
       startThreadRename,
       tabEnvironmentIds,
+      tabsByRowKey,
+      nameTabGroup,
       updateThreadMetadata,
       timestampFormat,
     ],
@@ -7018,6 +7064,7 @@ export default function Sidebar() {
                             key={`${threadKey}:${rowVariant}`}
                             thread={thread}
                             displayThread={displayThread}
+                            tabGroupName={tabGroupNames.get(threadKey)}
                             variant={rowVariant}
                             // Each category keeps its action in either view.
                             variantAction={
@@ -7104,6 +7151,11 @@ export default function Sidebar() {
                             onThreadClick={handleThreadClick}
                             onThreadActivate={navigateToThread}
                             onStartRename={startThreadRename}
+                            onNameTabGroup={
+                              rowTabs !== undefined || tabGroupNames.has(threadKey)
+                                ? nameTabGroup
+                                : undefined
+                            }
                             onRenameTitleChange={setRenamingTitle}
                             onCommitRename={commitThreadRename}
                             onCancelRename={cancelThreadRename}

@@ -62,6 +62,16 @@ export const layer = HttpApiBuilder.group(
         }),
       )
       .handle(
+        "setName",
+        Effect.fn("environment.threadTabs.setName")(function* (args) {
+          yield* annotateEnvironmentRequest(args.endpoint.name);
+          yield* requireEnvironmentScope(AuthOrchestrationOperateScope);
+          return yield* tabs
+            .setName(args.params.threadId, args.payload.name)
+            .pipe(Effect.catch(mapThreadTabsError));
+        }),
+      )
+      .handle(
         "fork",
         Effect.fn("environment.threadTabs.fork")(function* (args) {
           yield* annotateEnvironmentRequest(args.endpoint.name);

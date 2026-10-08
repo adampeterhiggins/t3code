@@ -115,6 +115,36 @@ const message = (
 });
 
 it.layer(layerTest)("ThreadSearch", (it) => {
+  it.effect("searches saved group names without messages and excludes archived tabs", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const projections = yield* ProjectionStore.ProjectionStoreV2;
+      const search = yield* ThreadSearch.ThreadSearch;
+      const project = ProjectId.make("project:group-search");
+      yield* createProject(project);
+      const open = ThreadId.make("group-open");
+      const closed = ThreadId.make("group-closed");
+      yield* Effect.forEach(
+        [thread(open, project), thread(closed, project, { archivedAt: at(1) })],
+        projections.apply,
+        { discard: true },
+      );
+      yield* sql`INSERT INTO fork_thread_tabs (thread_id, group_id, position, created_at) VALUES (${open}, ${open}, 0, '2026-01-01'), (${closed}, ${open}, 1, '2026-01-01')`;
+      yield* sql`INSERT INTO fork_thread_tab_groups (group_id, name) VALUES (${open}, 'Search project')`;
+      const result = yield* search.search({ query: "search PROJECT" });
+      assert.deepEqual(
+        result.matches.map((match) => ({
+          id: match.threadId,
+          source: match.source,
+          snippet: match.snippet,
+        })),
+        [{ id: open, source: "group_name", snippet: "Search project" }],
+      );
+      yield* sql`DELETE FROM fork_thread_tab_groups WHERE group_id = ${open}`;
+      assert.deepEqual((yield* search.search({ query: "Search project" })).matches, []);
+    }),
+  );
+
   it.effect("returns one finished user or assistant match per active thread", () =>
     Effect.gen(function* () {
       const projections = yield* ProjectionStore.ProjectionStoreV2;

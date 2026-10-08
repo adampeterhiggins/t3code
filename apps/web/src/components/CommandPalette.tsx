@@ -921,7 +921,7 @@ function OpenCommandPaletteDialog(props: {
     () =>
       new Map(
         threadSearch.matches.flatMap((match) =>
-          match.source === "user" || match.source === "assistant"
+          match.source === "user" || match.source === "assistant" || match.source === "group_name"
             ? [[threadSearchMatchKey(match), match] as const]
             : [],
         ),
@@ -1525,7 +1525,10 @@ function OpenCommandPaletteDialog(props: {
               threadId: thread.id,
             }),
           );
-          return match && (match.source === "user" || match.source === "assistant")
+          return match &&
+            (match.source === "user" ||
+              match.source === "assistant" ||
+              match.source === "group_name")
             ? {
                 source: match.source,
                 snippet: match.snippet,

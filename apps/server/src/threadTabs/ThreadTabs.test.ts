@@ -215,8 +215,8 @@ it.effect("a new tab joins the source's group on the same branch and worktree", 
         assert.strictEqual(command.creationSource, "mobile");
       }
       assert.deepStrictEqual(yield* tabs.memberships, [
-        { threadId: ThreadId.make("source"), groupId: ThreadId.make("source") },
-        { threadId: ThreadId.make("tab"), groupId: ThreadId.make("source") },
+        { threadId: ThreadId.make("source"), groupId: ThreadId.make("source"), groupName: null },
+        { threadId: ThreadId.make("tab"), groupId: ThreadId.make("source"), groupName: null },
       ]);
 
       const existing = yield* Effect.flip(
@@ -304,8 +304,43 @@ it.effect("a rejected create leaves no membership behind", () => {
       );
       assert.strictEqual(error.reason, "dispatch_failed");
       assert.deepStrictEqual(yield* tabs.memberships, [
-        { threadId: ThreadId.make("source"), groupId: ThreadId.make("source") },
+        { threadId: ThreadId.make("source"), groupId: ThreadId.make("source"), groupName: null },
       ]);
     }),
   );
 });
+
+it.effect(
+  "names the group independently of its tabs, including through a sibling, and clears it",
+  () => {
+    const harness = makeHarness({ shells: [makeShell("source")] });
+    return withTabs(harness, (tabs) =>
+      Effect.gen(function* () {
+        const source = ThreadId.make("source");
+        const sibling = ThreadId.make("sibling");
+        const original = yield* tabs.create(source, {
+          threadId: sibling,
+          modelSelection: { instanceId: codex, model: "gpt-5.4" },
+        });
+        assert.strictEqual(original.name, null);
+        const named = yield* tabs.setName(sibling, "  Search project  ");
+        assert.strictEqual(named.name, "Search project");
+        assert.deepStrictEqual(named.tabs, original.tabs);
+        assert.strictEqual((yield* tabs.group(source)).name, "Search project");
+        assert.deepStrictEqual(
+          (yield* tabs.memberships).map((row) => row.groupName),
+          ["Search project", "Search project"],
+        );
+        assert.strictEqual((yield* tabs.setName(source, null)).name, null);
+        assert.deepStrictEqual(
+          (yield* tabs.memberships).map((row) => row.groupName),
+          [null, null],
+        );
+        assert.strictEqual(
+          (yield* Effect.flip(tabs.setName(source, "   "))).reason,
+          "invalid_request",
+        );
+      }),
+    );
+  },
+);

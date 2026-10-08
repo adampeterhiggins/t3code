@@ -2,11 +2,14 @@ import {
   createThreadTab,
   forkThreadTabFromRun,
   listThreadTabs,
+  setThreadTabGroupName,
+  subscribeThreadTabGroupNames,
   prepareThreadTabHandoff,
   type ThreadForkPoint,
 } from "@t3tools/client-runtime/thread-tabs";
 import {
   COMPOSER_CONTEXT_THREAD_TAB_SUMMARY_MAX_CHARS,
+  AuthOrchestrationOperateScope,
   type ComposerContextId,
   type EnvironmentId,
   type ModelSelection,
@@ -24,6 +27,7 @@ import * as Option from "effect/Option";
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, ScrollView, Text, View } from "react-native";
 
+import { showTextInputDialog } from "../../components/ConfirmDialogHost";
 import { SymbolView } from "../../components/AppSymbol";
 import { ControlPillMenu } from "../../components/ControlPillMenu";
 import { useLinearIssuePicker } from "../../components/LinearIssuePickerSheet";
@@ -32,7 +36,7 @@ import { runtime } from "../../lib/runtime";
 import { scopedThreadKey } from "../../lib/scopedEntities";
 import { uuidv4 } from "../../lib/uuid";
 import { useEnvironmentServerConfig } from "../../state/entities";
-import { usePreparedConnection } from "../../state/session";
+import { useEnvironmentScope, usePreparedConnection } from "../../state/session";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import {
@@ -91,8 +95,11 @@ export function ThreadTabs({
 }) {
   const prepared = usePreparedConnection(environmentId);
   const navigation = useNavigation();
+  const canNameGroup = useEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
   const archive = useAtomCommand(threadEnvironment.archive, { reportFailure: false });
   const stopSession = useAtomCommand(threadEnvironment.stopSession, { reportFailure: false });
+  const [nameRevision, setNameRevision] = useState(0);
+  useEffect(() => subscribeThreadTabGroupNames(() => setNameRevision((value) => value + 1)), []);
   const [group, setGroup] = useState<ThreadTabGroup | null>(null);
   const [selected, setSelected] = useState<ReadonlyArray<ThreadId>>(() =>
     selectedThreadTabSources(threadId),
@@ -126,7 +133,7 @@ export function ThreadTabs({
     return () => {
       active = false;
     };
-  }, [prepared, threadId]);
+  }, [prepared, threadId, nameRevision]);
 
   if (!group || Option.isNone(prepared)) return null;
 
@@ -260,6 +267,31 @@ export function ThreadTabs({
   };
   const onMenuAction = (id: string) => {
     if (id === NEW_TAB_ACTION) void create();
+    else if (id === "tab:name-group" && canNameGroup)
+      showTextInputDialog({
+        title: "Name thread group (blank uses tab title)",
+        initialValue: group.name ?? "",
+        confirmText: "Save",
+        onConfirm: (value) => {
+          void (async () => {
+            setBusy(true);
+            try {
+              setGroup(
+                await runtime.runPromise(
+                  setThreadTabGroupName(prepared.value, threadId, value.trim() || null),
+                ),
+              );
+            } catch (cause) {
+              Alert.alert(
+                "Could not name thread group",
+                cause instanceof Error ? cause.message : undefined,
+              );
+            } finally {
+              setBusy(false);
+            }
+          })();
+        },
+      });
     else if (id === CLOSE_TAB_ACTION) void close();
     else if (id === RESTART_SESSION_ACTION) void restartSession();
     else if (id === LINK_LINEAR_ACTION) linearPicker.open();
@@ -286,7 +318,7 @@ export function ThreadTabs({
   return (
     <View className="border-b border-border px-3 py-1.5">
       <View className="flex-row items-center gap-2">
-        {group.tabs.length <= 1 ? (
+        {group.tabs.length <= 1 && !group.name ? (
           // A lone tab would repeat the thread title, so the switcher is just a "new tab" action.
           <Pressable
             accessibilityLabel="New tab"
@@ -302,7 +334,7 @@ export function ThreadTabs({
           <ControlPillMenu
             accessible
             accessibilityRole="button"
-            accessibilityLabel={`Chat tab: ${title}`}
+            accessibilityLabel={`Chat tab: ${group.name ?? title}`}
             title="Tabs"
             // Long titles shrink so the linked issue beside the switcher stays visible.
             style={{ flexShrink: 1, minWidth: 0 }}
@@ -313,6 +345,9 @@ export function ThreadTabs({
                 state: tab.threadId === threadId ? ("on" as const) : ("off" as const),
               })),
               { id: NEW_TAB_ACTION, title: "New tab", image: "plus" },
+              ...(canNameGroup
+                ? [{ id: "tab:name-group", title: "Name thread group…", image: "pencil" }]
+                : []),
               { id: CLOSE_TAB_ACTION, title: "Close tab", image: "xmark" },
               {
                 id: RESTART_SESSION_ACTION,
@@ -326,13 +361,13 @@ export function ThreadTabs({
             onPressAction={({ nativeEvent }) => onMenuAction(nativeEvent.event)}
           >
             <Pressable
-              accessibilityLabel={`Chat tab: ${title}`}
+              accessibilityLabel={`Chat tab: ${group.name ?? title}`}
               accessibilityRole="button"
               disabled={busy}
               className="min-w-0 shrink flex-row items-center gap-1.5 self-start rounded-full bg-subtle px-3 py-1.5 active:opacity-70 disabled:opacity-50"
             >
               <Text numberOfLines={1} className="shrink text-sm font-medium text-foreground">
-                {title}
+                {group.name ?? title}
               </Text>
               <Text className="text-sm text-muted-foreground">{group.tabs.length}</Text>
               <SymbolView name="chevron.down" size={11} tintColorClassName="accent-foreground" />
@@ -382,7 +417,7 @@ export function ThreadTabs({
             link={linear.link}
             onChange={linearPicker.open}
           />
-        ) : linear.canLink && group.tabs.length <= 1 ? (
+        ) : linear.canLink && group.tabs.length <= 1 && !group.name ? (
           <ThreadLinearLinkButton onPress={linearPicker.open} />
         ) : null}
         <ThreadStartedByChip environmentId={environmentId} threadId={threadId} />

@@ -49,6 +49,11 @@ export class ThreadTabs extends Context.Service<
     readonly memberships: Effect.Effect<ThreadTabMemberships, ThreadTabsError>;
     /** The group `threadId` belongs to; a thread without tabs is a group of one. */
     readonly group: (threadId: ThreadId) => Effect.Effect<ThreadTabGroup, ThreadTabsError>;
+    /** Sets an independent group name; null restores the active-tab title. */
+    readonly setName: (
+      threadId: ThreadId,
+      name: string | null,
+    ) => Effect.Effect<ThreadTabGroup, ThreadTabsError>;
     /** Adds an empty tab to `sourceThreadId`'s group, on the source's branch and worktree. */
     readonly create: (
       sourceThreadId: ThreadId,
@@ -129,13 +134,36 @@ export const make = Effect.gen(function* () {
         : yield* Effect.forEach(rows, (row) => shellOf(ThreadId.make(row.threadId)), {
             concurrency: 8,
           });
+    const names = yield* sql<{ readonly name: string }>`
+      SELECT name FROM fork_thread_tab_groups WHERE group_id = ${groupId}
+    `.pipe(Effect.mapError(internal("Could not read tab group name.")));
     return {
       groupId,
+      name: names[0]?.name ?? null,
       tabs: siblings
         .filter((thread) => thread !== null && thread.deletedAt === null)
         .map((thread) => tabOf(thread!)),
     };
   });
+
+  const setName: ThreadTabs["Service"]["setName"] = Effect.fn("ThreadTabs.setName")(
+    function* (threadId, name) {
+      const current = yield* group(threadId);
+      const trimmed = name?.trim() ?? null;
+      if (trimmed === "")
+        return yield* new ThreadTabsError({
+          reason: "invalid_request",
+          detail: "A group name cannot be empty.",
+        });
+      yield* (
+        trimmed === null
+          ? sql`DELETE FROM fork_thread_tab_groups WHERE group_id = ${current.groupId}`
+          : sql`INSERT INTO fork_thread_tab_groups (group_id, name) VALUES (${current.groupId}, ${trimmed})
+          ON CONFLICT(group_id) DO UPDATE SET name = excluded.name`
+      ).pipe(Effect.mapError(internal("Could not save tab group name.")));
+      return yield* group(threadId);
+    },
+  );
 
   /**
    * Writes the new tab's membership, then dispatches the command that creates its thread.
@@ -360,12 +388,15 @@ export const make = Effect.gen(function* () {
   const memberships: ThreadTabs["Service"]["memberships"] = sql<{
     readonly threadId: ThreadId;
     readonly groupId: ThreadId;
+    readonly groupName: string | null;
   }>`
-    SELECT thread_id AS "threadId", group_id AS "groupId" FROM fork_thread_tabs
-    ORDER BY group_id, position, created_at
+    SELECT tabs.thread_id AS "threadId", tabs.group_id AS "groupId", groups.name AS "groupName"
+    FROM fork_thread_tabs AS tabs
+    LEFT JOIN fork_thread_tab_groups AS groups ON groups.group_id = tabs.group_id
+    ORDER BY tabs.group_id, tabs.position, tabs.created_at
   `.pipe(Effect.mapError(internal("Could not read tab memberships.")));
 
-  return ThreadTabs.of({ memberships, group, create, adopt, fork, handoff });
+  return ThreadTabs.of({ memberships, group, setName, create, adopt, fork, handoff });
 });
 
 export const layer = Layer.effect(ThreadTabs, make);

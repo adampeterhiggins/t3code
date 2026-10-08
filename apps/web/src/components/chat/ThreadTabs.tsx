@@ -2,11 +2,14 @@ import {
   createThreadTab,
   forkThreadTabFromRun,
   listThreadTabs,
+  setThreadTabGroupName,
+  subscribeThreadTabGroupNames,
   prepareThreadTabHandoff,
 } from "@t3tools/client-runtime/thread-tabs";
 import type { PreparedConnection } from "@t3tools/client-runtime/connection";
 import {
   COMPOSER_CONTEXT_THREAD_TAB_SUMMARY_MAX_CHARS,
+  AuthOrchestrationOperateScope,
   type EnvironmentId,
   type MessageId,
   type ModelSelection,
@@ -39,6 +42,7 @@ import {
   useState,
 } from "react";
 
+import { requestThreadTabGroupName } from "../ThreadTabGroupNameDialog";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useRestartAgentSessionWithToast } from "../../hooks/useRestartAgentSession";
 import { useClientSettings } from "../../hooks/useSettings";
@@ -59,7 +63,11 @@ import {
 import { selectThreadRightPanelState, useRightPanelStore } from "../../rightPanelStore";
 import { deriveProviderEntriesByEnvironment } from "../../providerInstances";
 import { environmentServerConfigsAtom } from "../../state/server";
-import { readPreparedConnection, usePreparedConnection } from "../../state/session";
+import {
+  useEnvironmentScope,
+  readPreparedConnection,
+  usePreparedConnection,
+} from "../../state/session";
 import { useThreadTabRecencyStore } from "../../threadTabRecencyStore";
 import {
   NO_SIDEBAR_TAB_MANUAL_RANKS,
@@ -101,6 +109,8 @@ let lastLoadedThreadTabGroup: ThreadTabGroup | null = null;
 export function useThreadTabGroup(environmentId: EnvironmentId, threadId: ThreadId | null) {
   const prepared = usePreparedConnection(environmentId);
   const [group, setGroup] = useState(() => lastLoadedThreadTabGroup);
+  const [nameRevision, setNameRevision] = useState(0);
+  useEffect(() => subscribeThreadTabGroupNames(() => setNameRevision((value) => value + 1)), []);
   const shell = useThreadShell(threadId === null ? null : scopeThreadRef(environmentId, threadId));
   const projectShells = useThreadShellsForProjectRefs(
     shell ? [scopeProjectRef(environmentId, shell.projectId)] : [],
@@ -122,7 +132,7 @@ export function useThreadTabGroup(environmentId: EnvironmentId, threadId: Thread
     return () => {
       active = false;
     };
-  }, [prepared, threadId]);
+  }, [prepared, threadId, nameRevision]);
 
   return useMemo(() => {
     if (!group?.tabs.some((tab) => tab.threadId === threadId)) return null;
@@ -298,6 +308,7 @@ export function ThreadTabMenu({
   const { createTab, closeTab } = useThreadTabActions();
   const restartAgentSession = useRestartAgentSessionWithToast();
   const [busy, setBusy] = useState(false);
+  const canNameGroup = useEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
   const currentLabel = useTabLabel(environmentId, group, threadId);
   const splitPaneFocus = useSplitPaneFocus();
   const splitActions = useSplitViewActions();
@@ -367,7 +378,7 @@ export function ThreadTabMenu({
   );
 
   // A lone tab repeats the thread title, so the segment is just the "new tab" action.
-  if (group.tabs.length <= 1) return newTabButton;
+  if (group.tabs.length <= 1 && !group.name) return newTabButton;
 
   return (
     <span className="flex min-w-0 items-center gap-2">
@@ -378,12 +389,12 @@ export function ThreadTabMenu({
           render={
             <button
               type="button"
-              aria-label={`Chat tab: ${currentLabel}`}
+              aria-label={`Chat tab: ${group.name ?? currentLabel}`}
               className="group/tab-crumb inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             />
           }
         >
-          <WorkspaceBreadcrumbText>{currentLabel}</WorkspaceBreadcrumbText>
+          <WorkspaceBreadcrumbText>{group.name ?? currentLabel}</WorkspaceBreadcrumbText>
         </MenuTrigger>
         <MenuPopup align="start" side="bottom">
           <MenuRadioGroup value={threadId} onValueChange={(value) => open(value as ThreadId)}>
@@ -438,6 +449,23 @@ export function ThreadTabMenu({
           <MenuItem disabled={busy || Option.isNone(prepared)} onClick={create}>
             <PlusIcon />
             New tab
+          </MenuItem>
+          <MenuItem
+            disabled={busy || !canNameGroup || Option.isNone(prepared)}
+            onClick={() =>
+              void run(async () => {
+                if (!canNameGroup) return;
+                const name = await requestThreadTabGroupName(group.name ?? null);
+                if (name === undefined || Option.isNone(prepared)) return;
+                try {
+                  await runtime.runPromise(setThreadTabGroupName(prepared.value, threadId, name));
+                } catch {
+                  toastManager.add({ type: "error", title: "Could not name thread group" });
+                }
+              })
+            }
+          >
+            Name thread group…
           </MenuItem>
           <MenuItem disabled={busy || Option.isNone(prepared)} onClick={restart}>
             <RotateCcwIcon />

@@ -16,7 +16,12 @@ it.layer(NodeSqliteClient.layer({ filename: ":memory:" }))("fork thread tab sche
         INSERT INTO fork_thread_tabs (thread_id, group_id, position, created_at)
         VALUES ('second', 'first', 1, '2026-01-01T00:00:00.000Z')
       `;
+      yield* sql`INSERT INTO fork_thread_tab_groups (group_id, name) VALUES ('first', 'Search project')`;
       yield* ensureThreadTabsSchema();
+      const names = yield* sql<{
+        readonly name: string;
+      }>`SELECT name FROM fork_thread_tab_groups WHERE group_id = 'first'`;
+      assert.deepEqual(names, [{ name: "Search project" }]);
       const tabs = yield* sql<{ readonly threadId: string }>`
         SELECT thread_id AS "threadId" FROM fork_thread_tabs WHERE group_id = 'first'
       `;
@@ -24,7 +29,7 @@ it.layer(NodeSqliteClient.layer({ filename: ":memory:" }))("fork thread tab sche
         SELECT version FROM fork_schema_migrations WHERE feature = 'thread_tabs'
       `;
       assert.deepEqual(tabs, [{ threadId: "second" }]);
-      assert.deepEqual(forkVersions, [{ version: 1 }]);
+      assert.deepEqual(forkVersions, [{ version: 1 }, { version: 2 }]);
     }),
   );
 });

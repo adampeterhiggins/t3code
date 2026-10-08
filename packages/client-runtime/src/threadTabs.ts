@@ -152,6 +152,53 @@ export const listThreadTabs = Effect.fn("clientRuntime.threadTabs.list")(functio
   });
 });
 
+const groupNameListeners = new Set<() => void>();
+
+/** Refresh group metadata after a name mutation, without refetching on every thread update. */
+export function subscribeThreadTabGroupNames(listener: () => void) {
+  groupNameListeners.add(listener);
+  return () => {
+    groupNameListeners.delete(listener);
+  };
+}
+
+export const setThreadTabGroupName = Effect.fn("clientRuntime.threadTabs.setName")(function* (
+  prepared: PreparedConnection,
+  threadId: ThreadId,
+  name: string | null,
+) {
+  const signer = yield* Effect.serviceOption(ManagedRelayDpopSigner);
+  const remoteAuthorization = yield* Effect.serviceOption(RemoteEnvironmentAuthorization);
+  const result = yield* executeAuthenticatedEnvironmentHttpRequest({
+    prepared,
+    signer,
+    remoteAuthorization,
+    group: "threadTabs",
+    method: "PUT",
+    url: (base) => environmentEndpointUrl(base, `/api/thread-tabs/${threadId}/name`),
+    timeoutMs: 20_000,
+    request: ({ client, headers }) =>
+      client.setName({ params: { threadId }, payload: { name }, headers }),
+  });
+  yield* Effect.sync(() => {
+    for (const listener of groupNameListeners) listener();
+  });
+  return result;
+});
+
+/** Names keyed by scoped tab id, including siblings and archived representatives. */
+export function threadTabGroupNames(
+  memberships: ReadonlyMap<EnvironmentId, ReadonlyArray<ThreadTabMembership>>,
+) {
+  const names = new Map<string, string>();
+  for (const [environmentId, rows] of memberships) {
+    for (const row of rows) {
+      if (row.groupName) names.set(`${environmentId}:${row.threadId}`, row.groupName);
+    }
+  }
+  return names;
+}
+
 export const createThreadTab = Effect.fn("clientRuntime.threadTabs.create")(function* (
   prepared: PreparedConnection,
   sourceThreadId: ThreadId,

@@ -1,16 +1,27 @@
 import {
   hiddenSidebarTabThreadKeys,
   listThreadTabMemberships,
+  subscribeThreadTabGroupNames,
+  threadTabGroupNames,
 } from "@t3tools/client-runtime/thread-tabs";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import type { EnvironmentId, ThreadTabMembership } from "@t3tools/contracts";
 import { useEffect, useMemo, useState } from "react";
 
+import { AppState } from "react-native";
 import { runtime } from "../../lib/runtime";
 import { readPreparedConnection } from "../../state/session";
 import { useWorkspaceState } from "../../state/workspace";
 
 export function useHiddenTabThreads(threads: ReadonlyArray<EnvironmentThreadShell>) {
+  const [nameRevision, setNameRevision] = useState(0);
+  useEffect(() => subscribeThreadTabGroupNames(() => setNameRevision((value) => value + 1)), []);
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") setNameRevision((value) => value + 1);
+    });
+    return () => subscription.remove();
+  }, []);
   const { environments } = useWorkspaceState();
   const threadIds = threads.map((thread) => `${thread.environmentId}:${thread.id}`).join("|");
   const [memberships, setMemberships] = useState<
@@ -63,11 +74,13 @@ export function useHiddenTabThreads(threads: ReadonlyArray<EnvironmentThreadShel
     return () => {
       active = false;
     };
-  }, [environments, threadIds]);
+  }, [environments, threadIds, nameRevision]);
 
-  return useMemo(
+  const hidden = useMemo(
     () =>
       hiddenSidebarTabThreadKeys(threads, memberships, checkedThreadKeys, loadingEnvironmentIds),
     [threads, memberships, checkedThreadKeys, loadingEnvironmentIds],
   );
+  const groupNames = useMemo(() => threadTabGroupNames(memberships), [memberships]);
+  return useMemo(() => ({ hiddenTabThreads: hidden, groupNames }), [hidden, groupNames]);
 }

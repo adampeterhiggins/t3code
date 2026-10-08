@@ -253,6 +253,7 @@ const EMPTY_THREAD_JUMP_LABELS = new Map<string, string>();
 const HiddenTabThreadsContext = React.createContext<ReturnType<typeof useHiddenTabThreads>>({
   hiddenTabThreads: new Map(),
   tabEnvironmentIds: new Set(),
+  groupNames: new Map(),
 });
 const PROJECT_GROUPING_MODE_LABELS: Record<SidebarProjectGroupingMode, string> = {
   repository: "Group by repository",
@@ -392,6 +393,7 @@ function checkTaskPermission(environmentId: EnvironmentId): boolean {
 }
 
 const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowProps) {
+  const { groupNames } = React.useContext(HiddenTabThreadsContext);
   const {
     orderedProjectThreadKeys,
     isActive,
@@ -833,11 +835,13 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                     className="min-w-0 flex-1 truncate text-sm"
                     data-testid={`thread-title-${thread.id}`}
                   >
-                    {thread.title}
+                    {groupNames.get(`${thread.environmentId}:${thread.id}`) ?? thread.title}
                   </span>
                 }
               />
-              <TooltipPopup side="top">{thread.title}</TooltipPopup>
+              <TooltipPopup side="top">
+                {groupNames.get(`${thread.environmentId}:${thread.id}`) ?? thread.title}
+              </TooltipPopup>
             </Tooltip>
           )}
         </div>
@@ -893,7 +897,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 type="button"
                 data-thread-selection-safe
                 data-testid={`thread-archive-confirm-${thread.id}`}
-                aria-label={`Confirm archive ${thread.title}`}
+                aria-label={`Confirm archive ${groupNames.get(`${thread.environmentId}:${thread.id}`) ?? thread.title}`}
                 className="absolute top-1/2 right-1 inline-flex h-5 -translate-y-1/2 cursor-pointer items-center rounded-md bg-destructive/12 px-2 text-3xs font-medium text-destructive transition-colors hover:bg-destructive/18 focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-destructive/40"
                 onPointerDown={stopPropagationOnPointerDown}
                 onClick={handleConfirmArchiveClick}
@@ -907,7 +911,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                     type="button"
                     data-thread-selection-safe
                     data-testid={`thread-archive-${thread.id}`}
-                    aria-label={`Archive ${thread.title}`}
+                    aria-label={`Archive ${groupNames.get(`${thread.environmentId}:${thread.id}`) ?? thread.title}`}
                     className={SIDEBAR_ICON_ACTION_BUTTON_CLASS}
                     onPointerDown={stopPropagationOnPointerDown}
                     onClick={handleStartArchiveConfirmation}
@@ -924,7 +928,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                           type="button"
                           data-thread-selection-safe
                           data-testid={`thread-archive-${thread.id}`}
-                          aria-label={`Archive ${thread.title}`}
+                          aria-label={`Archive ${groupNames.get(`${thread.environmentId}:${thread.id}`) ?? thread.title}`}
                           className={SIDEBAR_ICON_ACTION_BUTTON_CLASS}
                           onPointerDown={stopPropagationOnPointerDown}
                           onClick={handleArchiveImmediateClick}

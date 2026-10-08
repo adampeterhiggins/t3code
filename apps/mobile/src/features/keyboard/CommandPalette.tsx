@@ -172,7 +172,12 @@ export function CommandPalette(props: {
     () =>
       new Map(
         search.matches
-          .filter((match) => match.source === "user" || match.source === "assistant")
+          .filter(
+            (match) =>
+              match.source === "user" ||
+              match.source === "assistant" ||
+              match.source === "group_name",
+          )
           .map((match) => [scopedThreadKey(match.environmentId, match.threadId), match]),
       ),
     [search.matches],

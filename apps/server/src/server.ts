@@ -767,11 +767,13 @@ const layerMakeRoutes = Layer.mergeAll(
   // orchestrator uses, so MCP capability reporting can never drift from
   // what dispatch can actually serve.
   McpHttpServer.layer.pipe(
+    Layer.provide(ThreadTabs.layer),
     Layer.provide(ProviderAdapterRegistry.layerFromProviderInstanceRegistry),
     Layer.provide(McpOAuth.layerMcpClientAuthenticator),
   ),
   // `/mcp/query` and `/mcp/operate` for agents outside T3 Code with an agent access token.
   AgentAccessMcpServer.layer.pipe(
+    Layer.provide(ThreadTabs.layer),
     Layer.provide(ProviderAdapterRegistry.layerFromProviderInstanceRegistry),
   ),
 ).pipe(

@@ -1,6 +1,8 @@
 import {
   hiddenSidebarTabThreadKeys,
   listThreadTabMemberships,
+  subscribeThreadTabGroupNames,
+  threadTabGroupNames,
 } from "@t3tools/client-runtime/thread-tabs";
 import type { EnvironmentId, ThreadTabMembership } from "@t3tools/contracts";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
@@ -15,6 +17,13 @@ import { readPreparedConnection } from "../../state/session";
  * (the ones whose membership list loaded), so tab actions show only where they can succeed.
  */
 export function useHiddenTabThreads(threads: ReadonlyArray<EnvironmentThreadShell>) {
+  const [nameRevision, setNameRevision] = useState(0);
+  useEffect(() => subscribeThreadTabGroupNames(() => setNameRevision((value) => value + 1)), []);
+  useEffect(() => {
+    const refresh = () => setNameRevision((value) => value + 1);
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, []);
   const { environments } = useEnvironments();
   const threadIds = threads.map((thread) => `${thread.environmentId}:${thread.id}`).join("|");
   const [memberships, setMemberships] = useState<
@@ -68,7 +77,7 @@ export function useHiddenTabThreads(threads: ReadonlyArray<EnvironmentThreadShel
     return () => {
       active = false;
     };
-  }, [environments, threadIds]);
+  }, [environments, threadIds, nameRevision]);
 
   const hiddenTabThreads = useMemo(
     () =>
@@ -80,8 +89,9 @@ export function useHiddenTabThreads(threads: ReadonlyArray<EnvironmentThreadShel
     (): ReadonlySet<EnvironmentId> => new Set(memberships.keys()),
     [memberships],
   );
+  const groupNames = useMemo(() => threadTabGroupNames(memberships), [memberships]);
   return useMemo(
-    () => ({ hiddenTabThreads, tabEnvironmentIds }),
-    [hiddenTabThreads, tabEnvironmentIds],
+    () => ({ hiddenTabThreads, tabEnvironmentIds, groupNames }),
+    [hiddenTabThreads, tabEnvironmentIds, groupNames],
   );
 }

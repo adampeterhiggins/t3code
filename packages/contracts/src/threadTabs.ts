@@ -12,13 +12,20 @@ export type ThreadTab = typeof ThreadTab.Type;
 
 export const ThreadTabGroup = Schema.Struct({
   groupId: ThreadId,
+  name: Schema.optionalKey(Schema.NullOr(TrimmedNonEmptyString)),
   tabs: Schema.Array(ThreadTab),
 });
 export type ThreadTabGroup = typeof ThreadTabGroup.Type;
 
+export const SetThreadTabGroupNameInput = Schema.Struct({
+  name: Schema.NullOr(TrimmedNonEmptyString),
+});
+export type SetThreadTabGroupNameInput = typeof SetThreadTabGroupNameInput.Type;
+
 export const ThreadTabMembership = Schema.Struct({
   threadId: ThreadId,
   groupId: ThreadId,
+  groupName: Schema.optionalKey(Schema.NullOr(TrimmedNonEmptyString)),
 });
 export type ThreadTabMembership = typeof ThreadTabMembership.Type;
 
