@@ -30,7 +30,7 @@ import * as McpInvocationContext from "../../McpInvocationContext.ts";
 
 const ThreadOrganizeTool = Tool.make("t3_thread_organize", {
   description:
-    "Pin, snooze, settle, hide from the sidebar, move to a sidebar group, archive, or mark a thread unread. Omit threadId for this thread. snooze requires snoozedUntil. Existing thread lifecycle rules apply; this does not schedule a future action.",
+    "Pin, snooze, settle, hide from the sidebar, move to a sidebar group, archive, or mark a thread unread. Omit threadId for this thread. snooze requires snoozedUntil. Existing thread lifecycle rules apply. Settling this thread takes effect when your turn completes, returning settlesWhenTurnEnds=true; a turn that fails or is interrupted, or a queued message, leaves it active.",
   parameters: Schema.Struct({
     threadId: Schema.optional(ThreadId),
     action: Schema.Literals([
@@ -52,7 +52,10 @@ const ThreadOrganizeTool = Tool.make("t3_thread_organize", {
     /** Required by move_to_group: the group's name. A new name starts a new group. */
     groupName: Schema.optional(TrimmedNonEmptyString),
   }),
-  success: OrchestrationV2DispatchCommandResult,
+  success: Schema.Union([
+    OrchestrationV2DispatchCommandResult,
+    Schema.Struct({ settlesWhenTurnEnds: Schema.Literal(true) }),
+  ]),
   failure: OrchestratorMcpFailure,
   failureMode: "return" as const,
   dependencies: [
