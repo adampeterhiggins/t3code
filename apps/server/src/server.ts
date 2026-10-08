@@ -595,7 +595,7 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
     Layer.provide(layerPullRequestService),
     Layer.provide(ProjectionStoreV2.layer),
   ),
-  // Fork: a chat tab group settles and wakes as one sidebar row.
+  // Fork: a chat tab group settles, snoozes, and wakes as one sidebar row.
   Layer.effectDiscard(
     Effect.gen(function* () {
       const service = yield* ThreadTabSettlementReactor.ThreadTabSettlementReactor;

@@ -326,6 +326,10 @@ is its own conversation and provider.
   you, or holding background work, or, for an automatic settle, while another tab has an open pull
   request. Hiding works the same way: `hiding.ts` mirrors a hide or unhide across the group's
   live tabs, so the row leaves the list whichever tab the menu was opened on.
+  Snoozing any tab parks all live tabs until the same wake time; waking a tab (including Undo
+  or sending a message), pinning it, or a fresh completion, failure, or pending request returns
+  the group. A sibling waiting on you or holding a queued turn prevents group snooze
+  (`apps/server/src/threadTabs/settlement.ts`).
 - **Sidebars.** By default child tabs are hidden from the web sidebar, the legacy project sidebar,
   and both mobile thread lists (`useHiddenTabThreads`). The group's row stays highlighted while any
   of its tabs is open. Opening it from another thread returns to the tab last left open; clicking
