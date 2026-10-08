@@ -953,7 +953,7 @@ describe("MessagesTimeline", () => {
     expect(resolveTimelineIsAtEnd({ isNearEnd: true, isAtEnd: false })).toBe(false);
     expect(resolveTimelineIsAtEnd({ isAtEnd: false })).toBe(false);
 
-    expect(resolveTimelineMinimapHeightStyle(5)).toBe("min(32px, calc(100vh - 18rem))");
+    expect(resolveTimelineMinimapHeightStyle(5)).toBe("min(32px, calc(100% - 15rem))");
     expect(resolveTimelineMinimapTopPercent(2, 5)).toBe(50);
     expect(
       resolveTimelineMinimapIndexFromPointer({

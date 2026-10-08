@@ -303,7 +303,10 @@ export function workEntryIsVisibleInGroup(
 }
 const TIMELINE_MINIMAP_ITEM_SPACING = 8;
 export const TIMELINE_MINIMAP_MIN_ITEMS = 2;
-const TIMELINE_MINIMAP_MAX_HEIGHT_CSS = "calc(100vh - 18rem)";
+// Relative to the timeline pane, not the viewport, so the rail (and its
+// prev/next buttons) stays inside the chat when a terminal drawer or split
+// pane shrinks it.
+const TIMELINE_MINIMAP_MAX_HEIGHT_CSS = "calc(100% - 15rem)";
 const TIMELINE_MINIMAP_PERSISTENT_GUTTER = 48;
 
 export interface WorkGroupScrollAnchor {
