@@ -43,6 +43,10 @@ import {
   conductorScriptIcon,
 } from "@t3tools/client-runtime/conductor-run-scripts";
 import { Alert, Platform, ScrollView, View } from "react-native";
+import {
+  presentPendingBackgroundWork,
+  presentStopChoice,
+} from "@t3tools/client-runtime/state/thread-execution";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useConnectionsReady } from "../../state/workspace";
 import { useEnvironmentShellReadiness } from "../../state/shell";
@@ -655,14 +659,47 @@ function ThreadRouteContent(
     ) {
       return;
     }
-    return interruptThreadTurn({
-      environmentId: selectedThread.environmentId,
-      input: {
-        threadId: selectedThread.id,
-        runId: composer.interruptibleRunId,
+    const runId = composer.interruptibleRunId;
+    const stop = (keepBackgroundWork: boolean) =>
+      interruptThreadTurn({
+        environmentId: selectedThread.environmentId,
+        input: { threadId: selectedThread.id, runId, keepBackgroundWork },
+      });
+    // With subagents still working, Stop asks whether they stop with the turn.
+    if (composer.runningWorkers.length > 0) {
+      const choice = presentStopChoice(composer.runningWorkers);
+      Alert.alert(choice.title, choice.description, [
+        { text: "Cancel", style: "cancel" },
+        { text: "Stop everything", style: "destructive", onPress: () => void stop(false) },
+        { text: "Stop turn only", onPress: () => void stop(true) },
+      ]);
+      return;
+    }
+    return stop(false);
+  }, [composer.interruptibleRunId, composer.runningWorkers, interruptThreadTurn, selectedThread]);
+  // The settled thread's background work, such as subagents a turn-only Stop kept running.
+  const handleStopBackgroundWork = useCallback(() => {
+    if (
+      !selectedThread ||
+      !readEnvironmentScope(selectedThread.environmentId, AuthOrchestrationOperateScope)
+    ) {
+      return;
+    }
+    const work = presentPendingBackgroundWork(selectedThread.pendingBackgroundTasks);
+    if (work === null) return;
+    Alert.alert(work.title, work.items.map((item) => item.label).join(", "), [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Stop",
+        style: "destructive",
+        onPress: () =>
+          void interruptThreadTurn({
+            environmentId: selectedThread.environmentId,
+            input: { threadId: selectedThread.id },
+          }),
       },
-    });
-  }, [composer.interruptibleRunId, interruptThreadTurn, selectedThread]);
+    ]);
+  }, [interruptThreadTurn, selectedThread]);
 
   const handleOpenTerminal = useCallback(
     (nextTerminalId?: string | null) => {
@@ -1200,6 +1237,7 @@ function ThreadRouteContent(
           onStopThread={awaitingBootstrapTurn ? handleCancelWorktreeSetup : handleStopThread}
           onSendMessage={sendWithTabContext}
           onReconnectEnvironment={handleReconnectEnvironment}
+          onStopBackgroundWork={handleStopBackgroundWork}
           canSwitchThreadProvider={composer.canSwitchThreadProvider}
           onUpdateThreadModelSelection={composer.onUpdateModelSelection}
           onUpdateThreadRuntimeMode={composer.onUpdateRuntimeMode}

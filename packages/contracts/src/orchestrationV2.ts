@@ -3035,6 +3035,12 @@ export const OrchestrationV2Command = Schema.Union([
      * watches, and stops every delegated task under the thread.
      */
     holdQueue: Schema.optional(Schema.Boolean),
+    /**
+     * Stop the turn only. Delegated tasks keep running and still report back when they finish,
+     * and pull request watches stay on. Work the provider runs inside its own process, such as
+     * background shells, ends with the turn either way.
+     */
+    keepBackgroundWork: Schema.optional(Schema.Boolean),
   }),
   Schema.Struct({
     type: Schema.Literal("queued-message.promote-to-steer"),
@@ -3222,6 +3228,8 @@ const OrchestrationV2InternalCommand = Schema.Union([
     threadId: ThreadId,
     providerThreadId: ProviderThreadId,
     providerTurnId: ProviderTurnId,
+    /** Delegated tasks outlived the Stop, so their rows stay as their child threads report. */
+    keepDelegatedTasks: Schema.optional(Schema.Boolean),
   }),
   /**
    * Stop for one thread, whatever it is doing: interrupts its running turn, holds its queue,

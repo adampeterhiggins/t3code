@@ -3,6 +3,7 @@ import type { OrchestrationV2PendingBackgroundTask } from "@t3tools/contracts";
 import {
   backgroundWorkHoldsCompletion,
   derivePendingBackgroundWork,
+  runningDelegatedTasks,
   turnItemUpdateCanEndBackgroundWork,
 } from "./orchestrationV2PendingBackgroundWork.ts";
 
@@ -585,5 +586,32 @@ describe("derivePendingBackgroundWork kinds", () => {
         }),
       ).toEqual([]);
     });
+  });
+});
+
+describe("runningDelegatedTasks", () => {
+  const subagent = (id: string, origin: string, status: "running" | "completed") => ({
+    id,
+    type: "subagent" as const,
+    status,
+    title: `Task ${id}`,
+    origin,
+    childThreadId: `thread-${id}` as never,
+  });
+
+  it("names delegated tasks still working, even while a turn runs", () => {
+    expect(
+      runningDelegatedTasks({
+        runs: [{ id: "run-1" as never, ordinal: 1, status: "running" }],
+        turnItems: [
+          subagent("kept", "app_owned", "running"),
+          subagent("done", "app_owned", "completed"),
+          // A provider's own subagent ends with its turn, so Stop has nothing to keep.
+          subagent("native", "provider_native", "running"),
+        ],
+      }),
+    ).toEqual([
+      { taskId: "kept", description: "Task kept", kind: "subagent", childThreadId: "thread-kept" },
+    ]);
   });
 });

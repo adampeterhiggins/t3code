@@ -110,6 +110,7 @@ import {
   deriveThreadRuntime,
   presentPendingBackgroundWork,
   presentProviderGoal,
+  presentStopChoice,
 } from "@t3tools/client-runtime/state/thread-execution";
 import { threadSupportsProviderHandoff } from "@t3tools/client-runtime/state/thread-workflows";
 import {
@@ -140,7 +141,10 @@ import {
   resolveProjectScripts,
 } from "@t3tools/shared/projectScripts";
 import { CHAT_LIST_ANCHOR_OFFSET } from "@t3tools/shared/chatList";
-import { derivePendingBackgroundWork } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
+import {
+  derivePendingBackgroundWork,
+  runningDelegatedTasks,
+} from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import {
   latestUnheldRun,
   USAGE_LIMIT_CONTINUATION_TEXT,
@@ -3785,6 +3789,17 @@ export default function ChatView(props: ChatViewProps) {
       }),
     ];
   }, [serverProjection]);
+  // Delegated tasks run in threads of their own, so Stop asks whether to keep them.
+  const runningWorkers = useMemo(
+    () =>
+      serverProjection == null
+        ? []
+        : runningDelegatedTasks({
+            turnItems: serverProjection.turnItems,
+            runs: serverProjection.runs,
+          }),
+    [serverProjection],
+  );
   const activeWorkStartedAt =
     deriveActiveWorkStartedAt(activeActivityRun, activeRuntime, localDispatchStartedAt) ??
     runlessWorkStartedAt;
@@ -4726,24 +4741,36 @@ export default function ChatView(props: ChatViewProps) {
   }, [composerRef]);
   const canInterruptRunningThread =
     canOperateThread && deriveCanInterruptRunningThread(activeThread !== undefined, activeRuntime);
+  const [stopChoiceOpen, setStopChoiceOpen] = useState(false);
+  const stopThread = useCallback(
+    async (keepBackgroundWork: boolean) => {
+      if (
+        !activeThread ||
+        !readEnvironmentScope(activeThread.environmentId, AuthOrchestrationOperateScope)
+      )
+        return;
+      const result = await interruptThreadTurn({
+        environmentId,
+        input: { threadId: activeThread.id, keepBackgroundWork },
+      });
+      if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+        const error = squashAtomCommandFailure(result);
+        setThreadError(
+          activeThread.id,
+          error instanceof Error ? error.message : "Failed to interrupt the current turn.",
+        );
+      }
+    },
+    [activeThread, environmentId, interruptThreadTurn, setThreadError],
+  );
+  // With delegated tasks still working, Stop asks whether they stop with the turn.
   const onInterrupt = useCallback(async () => {
-    if (
-      !activeThread ||
-      !readEnvironmentScope(activeThread.environmentId, AuthOrchestrationOperateScope)
-    )
+    if (isWorking && runningWorkers.length > 0) {
+      setStopChoiceOpen(true);
       return;
-    const result = await interruptThreadTurn({
-      environmentId,
-      input: { threadId: activeThread.id },
-    });
-    if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-      const error = squashAtomCommandFailure(result);
-      setThreadError(
-        activeThread.id,
-        error instanceof Error ? error.message : "Failed to interrupt the current turn.",
-      );
     }
-  }, [activeThread, environmentId, interruptThreadTurn, setThreadError]);
+    await stopThread(false);
+  }, [isWorking, runningWorkers.length, stopThread]);
   useEffect(() => subscribeSnapShotComposerFocus(focusComposer), [focusComposer]);
   const scheduleComposerFocus = useCallback(() => {
     window.requestAnimationFrame(() => {
@@ -12516,6 +12543,40 @@ export default function ChatView(props: ChatViewProps) {
                     }}
                   >
                     Switch branch
+                  </Button>
+                </AlertDialogFooter>
+              </AlertDialogPopup>
+            </AlertDialog>
+
+            <AlertDialog open={stopChoiceOpen} onOpenChange={setStopChoiceOpen}>
+              <AlertDialogPopup>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>{presentStopChoice(runningWorkers).title}</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {presentStopChoice(runningWorkers).description}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+                  <Button
+                    variant="destructive-outline"
+                    disabled={!canOperateThread}
+                    onClick={() => {
+                      setStopChoiceOpen(false);
+                      void stopThread(false);
+                    }}
+                  >
+                    Stop everything
+                  </Button>
+                  <Button
+                    variant="default"
+                    disabled={!canOperateThread}
+                    onClick={() => {
+                      setStopChoiceOpen(false);
+                      void stopThread(true);
+                    }}
+                  >
+                    Stop turn only
                   </Button>
                 </AlertDialogFooter>
               </AlertDialogPopup>

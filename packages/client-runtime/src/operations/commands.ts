@@ -194,6 +194,8 @@ export interface StartThreadTurnInput extends ThreadCommandInput {
 
 export interface InterruptThreadTurnInput extends ThreadCommandInput {
   readonly runId?: RunId;
+  /** Stop the turn only: delegated tasks and pull request watches keep running. */
+  readonly keepBackgroundWork?: boolean;
   /** Temporary caller compatibility while UI naming moves from turns to runs. */
   readonly turnId?: string;
 }
@@ -832,7 +834,7 @@ export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(
 /**
  * Stop for the thread's latest work: interrupts the active run, or the settled run whose
  * background work still runs. With no run to stop, it ends the thread's pull request
- * watches, the only background work that has no run.
+ * watches, the only background work that has no run. `keepBackgroundWork` stops only the turn.
  */
 export const interruptThreadTurn = Effect.fn("EnvironmentCommands.interruptThreadTurn")(function* (
   input: InterruptThreadTurnInput,
@@ -847,6 +849,8 @@ export const interruptThreadTurn = Effect.fn("EnvironmentCommands.interruptThrea
         run.status === "running" ||
         run.status === "waiting",
     )?.id;
+    // The turn ended before this Stop arrived, and the user asked to keep the rest.
+    if (runId === undefined && input.keepBackgroundWork === true) return { sequence: 0 };
     if (runId === undefined) {
       const latestRun = projection.runs.at(-1);
       if (
@@ -885,6 +889,7 @@ export const interruptThreadTurn = Effect.fn("EnvironmentCommands.interruptThrea
     threadId: input.threadId,
     runId,
     holdQueue: true,
+    ...(input.keepBackgroundWork === true ? { keepBackgroundWork: true } : {}),
   });
 });
 

@@ -191,6 +191,9 @@ export const layerExecutor: Layer.Layer<
                     threadId: effect.threadId,
                     providerThreadId: effect.request.providerThreadId,
                     providerTurnId: effect.request.providerTurnId,
+                    ...(effect.request.keepDelegatedTasks === true
+                      ? { keepDelegatedTasks: true }
+                      : {}),
                   }),
                 ),
                 Effect.mapError(

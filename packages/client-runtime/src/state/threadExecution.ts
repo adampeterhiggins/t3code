@@ -378,6 +378,19 @@ export function presentPendingBackgroundWork(
   return { title: `${waiting ? "Waiting on" : "Running"} ${joinWithAnd(groups)}`, items, waiting };
 }
 
+/** What Stop asks while subagents still work: stop the turn alone, or everything. */
+export function presentStopChoice(tasks: ReadonlyArray<OrchestrationV2PendingBackgroundTask>): {
+  readonly title: string;
+  readonly description: string;
+} {
+  const one = tasks.length === 1;
+  const them = one ? "it" : "them";
+  return {
+    title: "Stop this turn?",
+    description: `${one ? "A subagent is" : `${tasks.length} subagents are`} still working. Keep ${them} running and ${one ? "it reports" : "they report"} back when done, or stop ${them} too.`,
+  };
+}
+
 export interface ProviderGoalPresentation {
   /** "Pursuing goal", "Goal paused", "Goal complete"... */
   readonly title: string;
