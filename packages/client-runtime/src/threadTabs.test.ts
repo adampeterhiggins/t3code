@@ -1,8 +1,15 @@
-import { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  MessageId,
+  ThreadId,
+  type OrchestrationV2ProjectedTurnItem,
+} from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 import {
   hiddenSidebarTabThreadKeys,
   hiddenTabThreadKeys,
+  latestThreadForkPoint,
+  threadForkPointBeforeMessage,
   threadTabGroupHeaderTarget,
   threadTabGroupTarget,
 } from "./threadTabs.ts";
@@ -183,5 +190,34 @@ describe("sidebar membership lookup", () => {
         new Set([local]),
       ).size,
     ).toBe(0);
+  });
+});
+
+describe("native fork points", () => {
+  const parent = ThreadId.make("parent");
+  const fork = ThreadId.make("fork");
+  const entry = (sourceThreadId: ThreadId, item: Record<string, unknown>) =>
+    ({ sourceThreadId, item }) as unknown as OrchestrationV2ProjectedTurnItem;
+  const items = [
+    entry(parent, { type: "user_message", messageId: "m1", runId: "r1" }),
+    entry(parent, { type: "assistant_message", status: "completed", runId: "r1" }),
+    entry(fork, { type: "user_message", messageId: "m2", runId: "r2" }),
+    entry(fork, { type: "assistant_message", status: "completed", runId: "r2" }),
+    entry(fork, { type: "user_message", messageId: "m3", runId: "r3" }),
+    entry(fork, { type: "assistant_message", status: "streaming", runId: "r3" }),
+  ];
+
+  it("forks a whole chat from its latest finished response", () => {
+    expect(latestThreadForkPoint(items)).toEqual({ sourceThreadId: fork, runId: "r2" });
+    expect(latestThreadForkPoint(items.slice(0, 1))).toBeNull();
+  });
+
+  it("forks before a message from the response it followed, in the thread that owns it", () => {
+    expect(threadForkPointBeforeMessage(items, MessageId.make("m2"))).toEqual({
+      sourceThreadId: parent,
+      runId: "r1",
+    });
+    expect(threadForkPointBeforeMessage(items, MessageId.make("m1"))).toBeNull();
+    expect(threadForkPointBeforeMessage(items, MessageId.make("unloaded"))).toBeNull();
   });
 });

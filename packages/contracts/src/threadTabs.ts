@@ -34,15 +34,20 @@ export const CreateThreadTabInput = Schema.Struct({
 export type CreateThreadTabInput = typeof CreateThreadTabInput.Type;
 
 /**
- * Forks a completed response into a new tab: a native `thread.fork` of `sourceThreadId` at
- * `runId`, joined to the group of the thread in the path. The source differs from that thread
- * when the response was inherited from an earlier fork.
+ * Forks a chat into a new tab: a native `thread.fork` of `sourceThreadId` at `runId`, joined to
+ * the group of the thread in the path. The source differs from that thread when the response was
+ * inherited from an earlier fork.
  */
 export const ForkThreadTabInput = Schema.Struct({
   threadId: ThreadId,
   sourceThreadId: ThreadId,
   runId: RunId,
   title: Schema.optional(TrimmedNonEmptyString),
+  /**
+   * The new tab's model when it differs from the source's. It is set before the tab's first
+   * message, which then carries the conversation over to that model's provider.
+   */
+  modelSelection: Schema.optional(ModelSelection),
   creationSource: Schema.optional(OrchestrationV2CreationSource),
 });
 export type ForkThreadTabInput = typeof ForkThreadTabInput.Type;

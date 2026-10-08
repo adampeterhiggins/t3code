@@ -5,7 +5,10 @@ import {
   clearComposerDraftContent,
   setComposerDraftText,
 } from "../../state/use-composer-drafts";
-import { prepareThreadTabHandoff } from "@t3tools/client-runtime/thread-tabs";
+import {
+  latestThreadForkPoint,
+  prepareThreadTabHandoff,
+} from "@t3tools/client-runtime/thread-tabs";
 import { runtime } from "../../lib/runtime";
 import { usePreparedConnection } from "../../state/session";
 import { ThreadTabs, selectedThreadTabSources, clearSelectedThreadTabSources } from "./ThreadTabs";
@@ -1107,6 +1110,11 @@ function ThreadRouteContent(
             threadId={selectedThread.id}
             title={selectedThread.title}
             modelSelection={selectedThread.modelSelection}
+            forkPoint={
+              selectedThreadDetail
+                ? latestThreadForkPoint(selectedThreadDetail.visibleTurnItems)
+                : null
+            }
             empty={selectedThreadIsEmptyTab}
             working={threadRuntimeIsActive(selectedThread.runtime)}
           />

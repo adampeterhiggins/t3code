@@ -642,9 +642,10 @@ export async function forkThreadTab(
 }
 
 /**
- * Forks a completed response into a new tab of `tabThreadId`'s group with the native thread
- * fork, so the new tab carries the conversation itself rather than a summary of it. Resolves to
- * the new tab once the client knows about it.
+ * Forks a chat at a completed response into a new tab of `tabThreadId`'s group with the native
+ * thread fork, so the new tab carries the conversation itself rather than a summary of it. With
+ * `modelSelection`, the new tab runs that model. Resolves to the new tab once the client knows
+ * about it.
  */
 export async function forkResponseIntoTab(
   connection: PreparedConnection,
@@ -654,6 +655,7 @@ export async function forkResponseIntoTab(
     sourceThreadId: ThreadId;
     runId: RunId;
     title: string;
+    modelSelection?: ModelSelection;
   },
 ): Promise<ScopedThreadRef> {
   const threadId = newThreadId();
@@ -663,6 +665,7 @@ export async function forkResponseIntoTab(
       sourceThreadId: input.sourceThreadId,
       runId: input.runId,
       title: input.title,
+      ...(input.modelSelection ? { modelSelection: input.modelSelection } : {}),
     }),
   );
   const threadRef = scopeThreadRef(input.environmentId, threadId);

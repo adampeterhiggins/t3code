@@ -70,18 +70,20 @@ the same workspace can edit the same files, so review the current checkout befor
 changes.
 
 To retry a message with another model or provider on web or desktop, hover the message and click
-**Fork into new tab**. The new tab's composer holds a summary of the chat up to that message,
-followed by the message itself and its attachments. Pick a model, edit if you like, and send.
+**Fork into new tab**. The new tab carries the conversation up to that message, and its composer
+holds the message itself and its attachments. Pick a model, edit if you like, and send.
 To continue from an agent response, use its **Fork from this response** action. The new tab
 carries the conversation through that response, on the same model, ready for your follow-up.
 Files the original chat changed after that message stay changed, since tabs share the workspace.
 
 To carry on with a different model instead, open the model picker after the first message and
-click the fork button on a model. A new tab opens on that model, with a summary of the chat and
-a copy of what you had typed. Models the chat cannot switch to in place stay listed too, but
+click the fork button on a model. A new tab opens on that model, carrying the conversation through
+its latest finished response, with a copy of what you had typed. A fork made before any response
+has finished starts from a summary of the chat instead. Models the chat cannot switch to in place stay listed too, but
 clicking their row does nothing; use its fork button. Picking another account in the composer's
 account picker works the same way, and those accounts are marked **New tab**.
-On mobile, tap **Hand off** beside the tab switcher and pick a provider and model.
+On mobile, tap **Hand off** beside the tab switcher and pick a provider and model; the new tab
+carries the conversation the same way.
 
 ### View two chats side by side
 
