@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { useLinkClickHandler } from "~/browser/useOpenLink";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { pullRequestEnvironment } from "~/state/pullRequests";
 import { useAtomQueryRunner } from "~/state/use-atom-query-runner";
@@ -49,6 +50,7 @@ export function PullRequestLinkPreview({
   const [open, setOpen] = useState(false);
   const previewActionsRef = useRef<PreviewCardPrimitive.Root.Actions | null>(null);
   const [resolvingClick, setResolvingClick] = useState(false);
+  const openLink = useLinkClickHandler(null);
   const detailQuery = useEnvironmentQuery(
     open
       ? pullRequestEnvironment.detail({
@@ -131,6 +133,15 @@ export function PullRequestLinkPreview({
                       {state.label}
                     </span>
                   )}
+                  <a
+                    href={detail.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="ml-auto shrink-0 pl-2 underline-offset-2 hover:text-foreground hover:underline"
+                    onClick={(event) => openLink(event, detail.url)}
+                  >
+                    Open
+                  </a>
                 </div>
                 <p className="mt-1 text-sm font-medium leading-snug text-foreground text-pretty">
                   {detail.title}
