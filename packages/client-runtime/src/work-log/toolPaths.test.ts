@@ -133,6 +133,32 @@ describe("tool label path tokens", () => {
     expect(parts).toEqual([{ text: "Read " }, { path: resolveToolPath(target, "C:/repo") }]);
   });
 
+  it("underlines the worktree name when a label was shortened to the checkout directory", () => {
+    const workspace = "/Users/adam/.t3/worktrees/fd-questionnaire/feat-scala-compat-layer";
+    const target = `${workspace}/Dockerfile`;
+    const roots = [
+      { path: workspace, label: "feat/scala-compat-layer", project: "fd-questionnaire" },
+    ];
+    expect(
+      toolPathTextParts("Read feat-scala-compat-layer/Dockerfile", workspace, roots, [target]),
+    ).toEqual([{ text: "Read " }, { path: resolveToolPath(target, workspace, roots) }]);
+    expect(resolveToolPath(target, workspace, roots)).toMatchObject({
+      rootLabel: "feat/scala-compat-layer",
+      segments: ["Dockerfile"],
+    });
+  });
+
+  it("recognizes a Windows checkout prefix without losing the recorded root", () => {
+    const workspace = "C:\\Worktrees\\feat-scala-compat-layer";
+    const target = `${workspace}\\Dockerfile`;
+    const roots = [
+      { path: "C:/worktrees/feat-scala-compat-layer", label: "feat/scala", project: null },
+    ];
+    expect(
+      toolPathTextParts("Read feat-scala-compat-layer/Dockerfile", workspace, roots, [target]),
+    ).toEqual([{ text: "Read " }, { path: resolveToolPath(target, workspace, roots) }]);
+  });
+
   it.each([
     "https://example.com/a.ts",
     "Search https://example.com/a.ts",

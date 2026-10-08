@@ -1026,8 +1026,10 @@ paths — is shown relative to the sibling once more than one of its calls uses 
 private agent worktree (`.claude/worktrees/agent-<id>`) is recognized from the path even when
 the agent never reports it. Cross-worktree file targets render as a plain wrapping path whose
 worktree label has a dotted underline, with a full-path copy tooltip on web and desktop and a
-tap-to-copy prompt on mobile. Roots are resolved from that environment's thread records, with T3 and Claude
-private-worktree layouts as fallbacks; unknown roots are labeled External. A repository linked to
+tap-to-copy prompt on mobile. A label shortened to the checkout directory (`worktree/Dockerfile`)
+keeps that name underlined too, including a branch that contains a slash. Roots are resolved from
+that environment's thread records, with T3 and Claude private-worktree layouts as fallbacks;
+unknown roots are labeled External. A repository linked to
 a message and cloned into the default `.context/<name>` folder gets its own label named after the
 clone. Shell command rows
 and approval prompts still show the exact command, on one truncated line. The shared runtime
