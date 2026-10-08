@@ -15,6 +15,20 @@ git log --oneline --no-merges upstream/main..HEAD
 Agents update this page in the same change that adds, changes, or removes a difference. The rule
 is in [AGENTS.md](../AGENTS.md#fork-differences).
 
+## Browser automation survives request timeouts
+
+The server's built-in browser stays available when an individual automation request times out,
+preserving other sessions and their tabs. Expired or cancelled queued actions cannot execute
+later. Snapshot and evaluation reads have bounded deadlines, and `preview_snapshot` with
+`includeImage: false` skips capture unless `save: true` needs a screenshot file.
+
+This ports upstream [PR #16941](https://github.com/pingdotgg/t3code/pull/16941) ahead of its merge.
+External browser hosts keep upstream's disconnect-on-timeout behavior.
+
+Code: [PreviewAutomationBroker.ts](../apps/server/src/mcp/PreviewAutomationBroker.ts),
+[ServerBrowser.ts](../apps/server/src/preview/ServerBrowser.ts), and
+[ServerBrowserPage.ts](../apps/server/src/preview/ServerBrowserPage.ts).
+
 ## Pause threads on update
 
 Updating the desktop app or a connected server pauses running threads before

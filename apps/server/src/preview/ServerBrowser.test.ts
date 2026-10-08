@@ -11,6 +11,7 @@ import {
   type PreviewAutomationStatus,
 } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
+import * as TestClock from "effect/testing/TestClock";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
@@ -1087,6 +1088,312 @@ it.live("a desktop page the desktop takes back reconnects instead of closing", (
       expect(sessions.map((session) => session.tabId)).toContain(opened.tabId);
       yield* browser.attachViewer(viewerInput(opened.tabId, false));
       expect(desktopConnections).toHaveLength(2);
+    }),
+  ).pipe(Effect.provide(layer)),
+);
+
+it.effect("a stalled snapshot releases its tab and leaves other sessions usable", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { browser, broker, tabId } = yield* ready;
+      const session = contexts[0]!.sessions[0]!;
+      const captureStarted = Promise.withResolvers<void>();
+      const send = session.send.getMockImplementation()!;
+      session.send.mockImplementation(async (method, input) => {
+        if (method === "Page.captureScreenshot") {
+          captureStarted.resolve();
+          return new Promise<Record<string, unknown>>(() => {});
+        }
+        return send(method, input);
+      });
+      const snapshot = yield* broker
+        .invoke<void>({
+          scope,
+          tabId,
+          operation: "snapshot",
+          input: {},
+          timeoutMs: 1_000,
+        })
+        .pipe(Effect.flip, Effect.forkScoped);
+      yield* Effect.promise(() => captureStarted.promise);
+      yield* TestClock.adjust(900);
+      const failed = yield* Fiber.join(snapshot);
+      expect(failed._tag).toBe("PreviewAutomationTimeoutError");
+      const other = yield* broker.invoke<PreviewAutomationStatus>({
+        scope: asSession("other-agent"),
+        operation: "open",
+        input: { show: false },
+      });
+      expect(other.available).toBe(true);
+      expect(other.tabId).not.toBe(tabId);
+      expect(
+        yield* broker.invoke<string>({
+          scope,
+          tabId,
+          operation: "evaluate",
+          input: { expression: "document.title" },
+        }),
+      ).toBe("evaluated");
+      const viewer = yield* browser.attachViewer(viewerInput(tabId, true));
+      yield* viewer.input({ type: "takeControl" });
+      yield* viewer.input({ type: "releaseControl" });
+      const revealed = yield* broker.invoke<PreviewAutomationStatus>({
+        scope,
+        tabId,
+        operation: "open",
+        input: { open: true },
+      });
+      expect(revealed.available).toBe(true);
+    }),
+  ).pipe(Effect.provide(layer)),
+);
+
+it.effect("an evaluation that never settles times out without poisoning later work", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { broker, tabId } = yield* ready;
+      const session = contexts[0]!.sessions[0]!;
+      const started = Promise.withResolvers<void>();
+      const send = session.send.getMockImplementation()!;
+      session.send.mockImplementation(async (method, input) => {
+        if (
+          method === "Runtime.evaluate" &&
+          (input as { expression?: string }).expression === "pending()"
+        ) {
+          started.resolve();
+          return new Promise<Record<string, unknown>>(() => {});
+        }
+        return send(method, input);
+      });
+      const evaluation = yield* broker
+        .invoke<void>({
+          scope,
+          tabId,
+          operation: "evaluate",
+          input: { expression: "pending()" },
+          timeoutMs: 1_000,
+        })
+        .pipe(Effect.flip, Effect.forkScoped);
+      yield* Effect.promise(() => started.promise);
+      yield* TestClock.adjust(900);
+      expect((yield* Fiber.join(evaluation))._tag).toBe("PreviewAutomationTimeoutError");
+      expect(
+        yield* broker.invoke<string>({
+          scope,
+          tabId,
+          operation: "evaluate",
+          input: { expression: "document.title" },
+        }),
+      ).toBe("evaluated");
+    }),
+  ).pipe(Effect.provide(layer)),
+);
+
+it.live("text-only snapshots stay usable when screenshot capture is unavailable", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { browser, broker, tabId } = yield* ready;
+      yield* browser.attachViewer(viewerInput(tabId, false));
+      const viewerSession = contexts[0]!.sessions.at(-1)!;
+      viewerSession.send.mockClear();
+      const session = contexts[0]!.sessions[0]!;
+      const send = session.send.getMockImplementation()!;
+      session.send.mockImplementation(async (method, input) => {
+        if (method === "Page.captureScreenshot")
+          throw new Error("Screenshot capture is unavailable");
+        return send(method, input);
+      });
+      const result = yield* broker.invoke<PreviewAutomationSnapshot>({
+        scope,
+        tabId,
+        operation: "snapshot",
+        input: { includeImage: false },
+      });
+      expect(result.visibleText).toBe("delete");
+      expect(result.accessibilityTree).toContain('button "delete"');
+      expect(result.screenshot).toBeUndefined();
+      expect(viewerSession.send.mock.calls.map(([method]) => method)).not.toContain(
+        "Page.stopScreencast",
+      );
+      expect(session.send.mock.calls.some(([method]) => method === "Page.captureScreenshot")).toBe(
+        false,
+      );
+    }),
+  ).pipe(Effect.provide(layer)),
+);
+
+it.effect(
+  "a queued click whose deadline expires is never dispatched after a stalled read releases",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { broker, tabId } = yield* ready;
+        const session = contexts[0]!.sessions[0]!;
+        const started = Promise.withResolvers<void>();
+        const send = session.send.getMockImplementation()!;
+        session.send.mockImplementation(async (method, input) => {
+          if (
+            method === "Runtime.evaluate" &&
+            (input as { expression?: string }).expression === "pending()"
+          ) {
+            started.resolve();
+            return new Promise<Record<string, unknown>>(() => {});
+          }
+          return send(method, input);
+        });
+        const evaluation = yield* broker
+          .invoke<string>({
+            scope,
+            tabId,
+            operation: "evaluate",
+            input: { expression: "pending()" },
+            timeoutMs: 1_000,
+          })
+          .pipe(Effect.flip, Effect.forkScoped);
+        yield* Effect.promise(() => started.promise);
+        const click = yield* broker
+          .invoke<string>({
+            scope,
+            tabId,
+            operation: "click",
+            input: { selector: "button" },
+            timeoutMs: 200,
+          })
+          .pipe(Effect.flip, Effect.forkScoped);
+        // Status bypasses the tab queue and acknowledges that the host consumed
+        // the preceding click before the test advances its execution deadline.
+        yield* Effect.yieldNow;
+        yield* broker.invoke<PreviewAutomationStatus>({
+          scope,
+          tabId,
+          operation: "status",
+          input: {},
+        });
+        yield* TestClock.adjust(180);
+        expect((yield* Fiber.join(click))._tag).toBe("PreviewAutomationTimeoutError");
+        yield* TestClock.adjust(720);
+        expect((yield* Fiber.join(evaluation))._tag).toBe("PreviewAutomationTimeoutError");
+        expect(
+          yield* broker.invoke<string>({
+            scope,
+            tabId,
+            operation: "evaluate",
+            input: { expression: "document.title" },
+          }),
+        ).toBe("evaluated");
+        expect(contexts[0]!.page.locator).not.toHaveBeenCalled();
+      }),
+    ).pipe(Effect.provide(layer)),
+);
+
+it.effect.each([0, 400])(
+  "passes the remaining execution budget to CDP after %sms queued",
+  (queuedMs) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { broker, tabId } = yield* ready;
+        const session = contexts[0]!.sessions[0]!;
+        const started = Promise.withResolvers<void>();
+        const release = Promise.withResolvers<void>();
+        yield* Effect.addFinalizer(() => Effect.sync(() => release.resolve()));
+        const send = session.send.getMockImplementation()!;
+        session.send.mockImplementation(async (method, input) => {
+          if (
+            method === "Runtime.evaluate" &&
+            (input as { expression?: string }).expression === "blocking()"
+          ) {
+            started.resolve();
+            await release.promise;
+          }
+          return send(method, input);
+        });
+        const first = yield* broker
+          .invoke<string>({
+            scope,
+            tabId,
+            operation: "evaluate",
+            input: { expression: "blocking()" },
+          })
+          .pipe(Effect.forkScoped);
+        yield* Effect.promise(() => started.promise);
+        const second = yield* broker
+          .invoke<string>({
+            scope,
+            tabId,
+            operation: "evaluate",
+            input: { expression: "document.title" },
+            timeoutMs: 1_000,
+          })
+          .pipe(Effect.forkScoped);
+        yield* Effect.yieldNow;
+        yield* broker.invoke({ scope, tabId, operation: "status", input: {} });
+        yield* TestClock.adjust(queuedMs);
+        release.resolve();
+        yield* Fiber.join(first);
+        expect(yield* Fiber.join(second)).toBe("evaluated");
+        const evaluation = session.send.mock.calls.find(
+          ([method, input]) =>
+            method === "Runtime.evaluate" &&
+            (input as { expression?: string }).expression === "document.title",
+        );
+        expect(evaluation).toBeDefined();
+        const timeout = (evaluation![1] as { timeout: number }).timeout;
+        expect(timeout).toBeGreaterThan(0);
+        expect(timeout).toBeLessThanOrEqual(900 - queuedMs);
+      }),
+    ).pipe(Effect.provide(layer)),
+);
+
+it.effect("cancelling a caller revokes its queued click before the tab is released", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { broker, tabId } = yield* ready;
+      const session = contexts[0]!.sessions[0]!;
+      const started = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      yield* Effect.addFinalizer(() => Effect.sync(() => release.resolve()));
+      const send = session.send.getMockImplementation()!;
+      session.send.mockImplementation(async (method, input) => {
+        if (
+          method === "Runtime.evaluate" &&
+          (input as { expression?: string }).expression === "blocking()"
+        ) {
+          started.resolve();
+          await release.promise;
+        }
+        return send(method, input);
+      });
+      const evaluation = yield* broker
+        .invoke<string>({
+          scope,
+          tabId,
+          operation: "evaluate",
+          input: { expression: "blocking()" },
+        })
+        .pipe(Effect.forkScoped);
+      yield* Effect.promise(() => started.promise);
+      const click = yield* broker
+        .invoke<void>({
+          scope,
+          tabId,
+          operation: "click",
+          input: { selector: "button" },
+        })
+        .pipe(Effect.forkScoped);
+      yield* Effect.yieldNow;
+      yield* broker.invoke({ scope, tabId, operation: "status", input: {} });
+      yield* Fiber.interrupt(click);
+      release.resolve();
+      yield* Fiber.join(evaluation);
+      expect(
+        yield* broker.invoke<string>({
+          scope,
+          tabId,
+          operation: "evaluate",
+          input: { expression: "document.title" },
+        }),
+      ).toBe("evaluated");
+      expect(contexts[0]!.page.locator).not.toHaveBeenCalled();
     }),
   ).pipe(Effect.provide(layer)),
 );

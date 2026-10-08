@@ -244,10 +244,16 @@ it.effect("tells the agent how to fall back when no desktop app can run the snap
 );
 
 it.effect.each([
-  { mode: "default", input: {}, images: true },
-  { mode: "explicit image", input: { includeImage: true }, images: true },
-  { mode: "text only", input: { includeImage: false }, images: false },
-])("returns fresh $mode snapshots on repeated MCP calls", ({ input, images }) =>
+  { mode: "default", input: {}, images: true, legacyHost: false },
+  { mode: "explicit image", input: { includeImage: true }, images: true, legacyHost: false },
+  { mode: "text only", input: { includeImage: false }, images: false, legacyHost: false },
+  {
+    mode: "text only from an older host",
+    input: { includeImage: false },
+    images: false,
+    legacyHost: true,
+  },
+])("returns fresh $mode snapshots on repeated MCP calls", ({ input, images, legacyHost }) =>
   Effect.scoped(
     Effect.gen(function* () {
       const server = yield* McpServer.McpServer;
@@ -287,7 +293,8 @@ it.effect.each([
           tabId: alternateTabId,
           threadId,
         });
-        expect(event.request.input).toEqual({});
+        const capture = requests > 6 || images;
+        expect(event.request.input).toEqual(capture ? {} : { includeImage: false });
         return broker.respond({
           clientId: "mcp-image-option-client",
           connectionId: event.connectionId,
@@ -296,7 +303,8 @@ it.effect.each([
           result: {
             ...page,
             title: `Snapshot ${requests}`,
-            screenshot: { ...screenshot, data: png },
+            // Older hosts ignore the capture preference and still return a full PNG.
+            ...(capture || legacyHost ? { screenshot: { ...screenshot, data: png } } : {}),
           },
         });
       }).pipe(Effect.forkScoped);
@@ -312,7 +320,11 @@ it.effect.each([
             Effect.provideService(McpInvocationContext.McpInvocationContext, invocation),
             Effect.provideService(McpSchema.McpServerClient, client),
           );
-        const metadata = { ...page, title: `Snapshot ${call}`, screenshot };
+        const metadata = {
+          ...page,
+          title: `Snapshot ${call}`,
+          ...(images || legacyHost ? { screenshot } : {}),
+        };
         const { accessibilityTree: _tree, ...boundedMetadata } = metadata;
         expect(snapshot.isError).toBe(false);
         expect(snapshot.structuredContent).toEqual({
@@ -443,6 +455,8 @@ it.effect("saves the snapshot PNG on request and reports its path", () =>
       const [only, ...others] = pathOnly.content;
       expect(others).toEqual([]);
       expect(only?.type === "text" ? decodeJsonText(only.text) : null).toEqual(saved);
+      // Both saved variants request a full capture even when the caller hides the image.
+      expect(inputs).toEqual([{}, {}, {}]);
     }),
   ).pipe(Effect.provide(layerTest)),
 );
@@ -854,6 +868,9 @@ it.effect("registers annotated tools and preserves authenticated request context
       expect(snapshotTool?.tool.annotations?.readOnlyHint).toBe(true);
       expect(snapshotTool?.tool.annotations?.idempotentHint).toBe(true);
       expect(snapshotTool?.tool.annotations?.openWorldHint).toBe(true);
+      // This formatter advertises no required PNG output schema to MCP clients.
+      // PreviewAutomationSnapshot validates the host result inside this server.
+      expect(snapshotTool?.tool.outputSchema).toBeUndefined();
 
       const clickTool = server.tools.find(({ tool }) => tool.name === "preview_click");
       expect(clickTool?.tool.annotations?.readOnlyHint).toBe(false);
