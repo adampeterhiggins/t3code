@@ -1,14 +1,70 @@
-import { type ReactElement, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type PointerEvent,
+  type ReactElement,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
 
-interface Point {
+interface PointerSample {
+  readonly target: Element;
   readonly x: number;
   readonly y: number;
 }
 
-// Clear of the cursor so the card never sits under it, but close enough to move into.
+interface CursorAnchor {
+  readonly contextElement: Element;
+  getBoundingClientRect: () => DOMRect;
+}
+
+// Clear of the cursor on both axes so the card opens diagonally, leaving the line under the
+// cursor and the text left of it readable, but close enough to move into.
 const CURSOR_OFFSET_PX = 14;
+
+/**
+ * Pins a preview card diagonally off the point where the cursor rested on its trigger. Spread
+ * `triggerProps` on the trigger, call `pin` when the card opens, and spread `popupProps` on the
+ * popup. The point is kept relative to the trigger, so the card follows it when the list scrolls.
+ */
+export function useCursorAnchor() {
+  const pointerRef = useRef<PointerSample | null>(null);
+  const [anchor, setAnchor] = useState<CursorAnchor | undefined>(undefined);
+  const pin = useCallback(() => {
+    const pointer = pointerRef.current;
+    if (pointer === null) {
+      setAnchor(undefined);
+      return;
+    }
+    const start = pointer.target.getBoundingClientRect();
+    const dx = pointer.x - start.left;
+    const dy = pointer.y - start.top;
+    setAnchor({
+      contextElement: pointer.target,
+      getBoundingClientRect: () => {
+        const rect = pointer.target.getBoundingClientRect();
+        return DOMRect.fromRect({ x: rect.left + dx, y: rect.top + dy, width: 0, height: 0 });
+      },
+    });
+  }, []);
+  const onPointerMove = useCallback((event: PointerEvent<Element>) => {
+    pointerRef.current = { target: event.currentTarget, x: event.clientX, y: event.clientY };
+  }, []);
+  return {
+    pin,
+    triggerProps: { onPointerMove },
+    popupProps: {
+      anchor,
+      side: "bottom",
+      align: "start",
+      sideOffset: CURSOR_OFFSET_PX,
+      alignOffset: CURSOR_OFFSET_PX,
+    } as const,
+  };
+}
 
 /**
  * Hover card for a picker row. It opens where the cursor rested and stays put. It closes when the
@@ -22,19 +78,8 @@ export function CursorPreviewCard(props: {
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  const [anchorPoint, setAnchorPoint] = useState<Point | null>(null);
-  const pointerRef = useRef<Point>({ x: 0, y: 0 });
+  const cursorAnchor = useCursorAnchor();
   const popupRef = useRef<HTMLDivElement>(null);
-  const anchor = useMemo(
-    () =>
-      anchorPoint === null
-        ? undefined
-        : {
-            getBoundingClientRect: () =>
-              DOMRect.fromRect({ x: anchorPoint.x, y: anchorPoint.y, width: 0, height: 0 }),
-          },
-    [anchorPoint],
-  );
 
   useEffect(() => {
     if (!open) return;
@@ -58,7 +103,7 @@ export function CursorPreviewCard(props: {
     <PreviewCard
       open={open}
       onOpenChange={(next) => {
-        if (next) setAnchorPoint(pointerRef.current);
+        if (next) cursorAnchor.pin();
         setOpen(next);
       }}
     >
@@ -66,16 +111,11 @@ export function CursorPreviewCard(props: {
         render={props.trigger}
         delay={400}
         closeDelay={150}
-        onPointerMove={(event) => {
-          pointerRef.current = { x: event.clientX, y: event.clientY };
-        }}
+        {...cursorAnchor.triggerProps}
       />
       <PreviewCardPopup
         ref={popupRef}
-        anchor={anchor}
-        side="bottom"
-        align="start"
-        sideOffset={CURSOR_OFFSET_PX}
+        {...cursorAnchor.popupProps}
         className={props.className ?? "w-96 max-w-[calc(100vw-2rem)]"}
       >
         <div className="p-3 text-xs">{props.children}</div>

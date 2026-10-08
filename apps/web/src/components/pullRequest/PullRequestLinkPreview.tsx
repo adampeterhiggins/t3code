@@ -17,6 +17,7 @@ import { pullRequestEnvironment } from "~/state/pullRequests";
 import { useAtomQueryRunner } from "~/state/use-atom-query-runner";
 import { useEnvironmentQuery } from "~/state/query";
 
+import { useCursorAnchor } from "../chat/CursorPreviewCard";
 import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { PullRequestActorAvatar, resolvePullRequestState } from "./pullRequestPresentation";
@@ -48,6 +49,7 @@ export function PullRequestLinkPreview({
   fallback?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const cursorAnchor = useCursorAnchor();
   const previewActionsRef = useRef<PreviewCardPrimitive.Root.Actions | null>(null);
   const [resolvingClick, setResolvingClick] = useState(false);
   const openLink = useLinkClickHandler(null);
@@ -101,7 +103,14 @@ export function PullRequestLinkPreview({
         : (detail?.author.login ?? null);
 
   return (
-    <PreviewCard open={open} onOpenChange={setOpen} actionsRef={previewActionsRef}>
+    <PreviewCard
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (nextOpen) cursorAnchor.pin();
+        setOpen(nextOpen);
+      }}
+      actionsRef={previewActionsRef}
+    >
       <Tooltip
         open={showUrlTooltip}
         onOpenChange={(nextOpen) => {
@@ -113,11 +122,12 @@ export function PullRequestLinkPreview({
           render={<TooltipTrigger render={trigger} />}
           delay={350}
           closeDelay={120}
+          {...cursorAnchor.triggerProps}
         />
         <TooltipPopup side="top">{originalUrl}</TooltipPopup>
       </Tooltip>
       {showCard ? (
-        <PreviewCardPopup align="center" className="w-80 max-w-[calc(100vw-2rem)]">
+        <PreviewCardPopup {...cursorAnchor.popupProps} className="w-80 max-w-[calc(100vw-2rem)]">
           <div className="p-3">
             {detail === null ? (
               fallback

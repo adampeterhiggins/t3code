@@ -6,6 +6,7 @@ import type { NotionPageContextRecord } from "@t3tools/contracts";
 import { ToolCallBody } from "../ToolCallBody";
 import { ToolPathText } from "./ToolPathText";
 import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
+import { useCursorAnchor } from "./CursorPreviewCard";
 import {
   toolCallPreviewHeading,
   toolCallPreviewRepeatsFilePath,
@@ -5583,6 +5584,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
     () => groupView?.state.expandedEntries.has(workEntry.id) ?? false,
   );
   const [previewOpen, setPreviewOpen] = useState(false);
+  const previewAnchor = useCursorAnchor();
   const toggleExpanded = () => {
     setPreviewOpen(false);
     const next = !expanded;
@@ -5960,10 +5962,18 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
   return (
     <PreviewCard
       open={!expanded && previewOpen}
-      onOpenChange={(open) => setPreviewOpen(!expanded && open)}
+      onOpenChange={(open) => {
+        if (open) previewAnchor.pin();
+        setPreviewOpen(!expanded && open);
+      }}
     >
-      <PreviewCardTrigger render={row} delay={300} closeDelay={150} />
-      <PreviewCardPopup align="start" className="w-md max-w-[calc(100vw-2rem)]">
+      <PreviewCardTrigger
+        render={row}
+        delay={300}
+        closeDelay={150}
+        {...previewAnchor.triggerProps}
+      />
+      <PreviewCardPopup {...previewAnchor.popupProps} className="w-md max-w-[calc(100vw-2rem)]">
         <ToolCallPreviewContent
           workEntry={workEntry}
           workspaceRoot={workspaceRoot}
