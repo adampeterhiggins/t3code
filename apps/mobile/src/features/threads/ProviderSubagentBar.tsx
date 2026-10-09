@@ -74,7 +74,12 @@ export function ProviderSubagentBar(props: {
           className="font-sans text-xs text-foreground-secondary"
           style={{ fontVariant: ["tabular-nums"] }}
         >
-          {handle ? `@${handle} · ` : ""}
+          {handle ? (
+            <>
+              <Text className="font-mono text-xs text-foreground-secondary">@{handle}</Text>
+              {" · "}
+            </>
+          ) : null}
           {statusLabel} · Runs on its own
         </Text>
       </View>

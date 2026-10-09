@@ -131,7 +131,7 @@ function SubagentMetadata(props: {
         <>
           <Text
             numberOfLines={1}
-            className="min-w-0 shrink font-t3-medium text-xs text-foreground-secondary"
+            className="min-w-0 shrink font-mono text-xs text-foreground-secondary"
           >
             @{props.handle}
           </Text>

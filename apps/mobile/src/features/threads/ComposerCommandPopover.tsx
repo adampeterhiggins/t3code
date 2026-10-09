@@ -230,7 +230,7 @@ const AgentCommandRow = memo(function AgentCommandRow(props: {
       </View>
       <View className="min-w-0 flex-1 gap-0.5">
         <View className="min-w-0 flex-row items-baseline gap-1.5">
-          <Text className="shrink-0 text-base font-t3-medium text-foreground" numberOfLines={1}>
+          <Text className="shrink-0 font-mono text-sm text-foreground" numberOfLines={1}>
             @{entry.handle}
           </Text>
           <Text className={cn("shrink-0 text-xs font-t3-medium", SUBAGENT_TONE_TEXT_CLASS[tone])}>
@@ -282,7 +282,7 @@ const CommandRow = memo(function CommandRow(props: {
           type="monochrome"
         />
       ) : null}
-      <Text className="shrink-0 text-base font-t3-medium text-foreground" numberOfLines={1}>
+      <Text className="shrink-0 font-mono text-sm text-foreground" numberOfLines={1}>
         {props.isSlashSkill && props.item.type === "skill" ? (
           <>
             <Text className="text-foreground-muted">skill:</Text>

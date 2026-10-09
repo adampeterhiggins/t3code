@@ -14,10 +14,10 @@ import {
 } from "@t3tools/client-runtime/state/subagent-display";
 import { formatSubagentTokenCount } from "@t3tools/client-runtime/state/subagentRuntime";
 import { getModelSelectionStringOptionValue, resolveSelectableModel } from "@t3tools/shared/model";
+import { AgentHandle } from "./AgentHandle";
 import { getTraitsSpeedDisplay, TraitsSpeedIcon } from "./TraitsSpeed";
 import type { ReactNode } from "react";
 import {
-  AtSignIcon,
   BotIcon,
   CheckIcon,
   CircleDashedIcon,
@@ -130,9 +130,8 @@ export function SubagentTooltipContent(props: {
   return (
     <ThreadHoverCard title={props.title}>
       {props.handle ? (
-        <div className="flex min-w-0 items-center gap-2">
-          <AtSignIcon className="size-3 shrink-0" />
-          <span className="min-w-0 truncate font-mono text-foreground/75">{props.handle}</span>
+        <div className="-ms-1 flex min-w-0">
+          <AgentHandle handle={props.handle} copyable className="max-w-full" />
         </div>
       ) : null}
       <div className="flex min-w-0 items-center gap-2">

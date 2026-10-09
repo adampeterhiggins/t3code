@@ -524,7 +524,7 @@ export function ComposerContextSheet(props: {
                 ) : null}
                 {record.kind === "subagent" ? (
                   <View className="gap-3">
-                    <ContextField label="Agent" value={`@${record.handle}`} />
+                    <ContextField label="Agent" value={`@${record.handle}`} code />
                     <ContextField label="Title" value={record.title} />
                     <ContextField label="Status when referenced" value={record.status} />
                     {/* Exactly what the agent receives about the referenced agent. */}
