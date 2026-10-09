@@ -5,6 +5,7 @@ import type {
   RunResult,
   SDKUserMessage,
   SendOptions,
+  SteerAckOutcome,
 } from "@cursor/sdk";
 import {
   type OrchestrationV2ProviderSession,
@@ -56,6 +57,12 @@ export interface CursorAgentSdkRun {
   readonly agentId: string;
   readonly wait: Effect.Effect<RunResult, CursorAgentSdkRunnerError>;
   readonly cancel: Effect.Effect<void, CursorAgentSdkRunnerError>;
+  /**
+   * Injects text into this run. `complete_delivered` means the running turn has
+   * the message. `revert_to_followup` means it does not, and the caller sends
+   * the text as a later turn.
+   */
+  readonly steer: (message: string) => Effect.Effect<SteerAckOutcome, CursorAgentSdkRunnerError>;
 }
 
 export interface CursorAgentSdkSession {
@@ -168,6 +175,24 @@ export type CursorAgentSdkProtocolLogEvent =
       readonly payload: {
         readonly type: "run.cancel";
         readonly runId: string;
+      };
+    }
+  | {
+      readonly direction: "outgoing";
+      readonly stage: "decoded";
+      readonly payload: {
+        readonly type: "run.steer";
+        readonly runId: string;
+        readonly message: string;
+      };
+    }
+  | {
+      readonly direction: "incoming";
+      readonly stage: "decoded";
+      readonly payload: {
+        readonly type: "run.steered";
+        readonly runId: string;
+        readonly outcome: SteerAckOutcome;
       };
     }
   | {
@@ -540,6 +565,34 @@ export function makeCursorAgentSdkRunner(
                 }),
               ),
             ),
+            steer: (message) =>
+              log({
+                direction: "outgoing",
+                stage: "decoded",
+                payload: {
+                  type: "run.steer",
+                  runId: run.id,
+                  message,
+                },
+              }).pipe(
+                Effect.andThen(
+                  Effect.tryPromise({
+                    try: () => run.steer?.(message) ?? Promise.resolve("revert_to_followup"),
+                    catch: (cause) => runnerError(cause, "run.steer"),
+                  }),
+                ),
+                Effect.tap((outcome) =>
+                  log({
+                    direction: "incoming",
+                    stage: "decoded",
+                    payload: {
+                      type: "run.steered",
+                      runId: run.id,
+                      outcome,
+                    },
+                  }),
+                ),
+              ),
           } satisfies CursorAgentSdkRun;
         }),
         listMessages: log({
