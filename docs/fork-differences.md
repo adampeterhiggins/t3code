@@ -1194,6 +1194,19 @@ Code: [`attentionInbox.ts`](../packages/client-runtime/src/state/attentionInbox.
 the `attention-inbox` view in [`CommandPalette.tsx`](../apps/web/src/components/CommandPalette.tsx).
 User guide: [thread-sidebar.md](./user/thread-sidebar.md#see-what-needs-you).
 
+## Provider service status
+
+**Usage → Limits** reads the public status page for Claude, Codex, Cursor, Devin, and Grok. A
+page that is not fully operational shows its own wording, such as **Partially Degraded Service**,
+on web, desktop, and mobile, and opens the status page. The same line appears in the composer's
+usage-limits result for that provider. OpenCode, Antigravity, Muse, and Pi do not publish a
+status feed this can read. Grok's page often refuses an automated read; a refused read shows
+nothing rather than a false all-clear.
+
+Code: [`providerServiceStatus.ts`](../apps/server/src/provider/providerServiceStatus.ts) and
+`collectDegradedServices` in [`usageLimits.ts`](../packages/shared/src/usageLimits.ts). User
+guide: [usage.md](./user/usage.md#track-subscription-limits).
+
 ## Usage-limit recovery
 
 Upstream shows a recovery banner when Codex or Claude ends a turn on a usage limit, with **Resume at

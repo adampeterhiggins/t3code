@@ -2,6 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { EnvironmentId } from "@t3tools/contracts";
 import {
+  collectDegradedServices,
   collectLimitAccounts,
   collectExternalUsageLinks,
   collectLimitNotices,
@@ -218,6 +219,7 @@ export function UsageLimitsSection({
       : new Map([...presentations].filter(([id]) => selectedEnvironmentIds.has(id)));
   const pools = collectLimitPools(collectLimitAccounts(selected), now);
   const notices = collectLimitNotices(selected);
+  const degradedServices = collectDegradedServices(selected);
   const externalLinks = collectExternalUsageLinks(selected);
   const colors = useProviderColors();
   const cursorPromptAt =
@@ -227,8 +229,26 @@ export function UsageLimitsSection({
     ) + 1;
   return (
     <View className="gap-6">
+      {degradedServices.map((warning) => (
+        <Pressable
+          key={warning.driver}
+          accessibilityRole="link"
+          className="flex-row items-start gap-2 rounded-xl border border-warning-border bg-warning px-3.5 py-3"
+          onPress={() => void Linking.openURL(warning.pageUrl).catch(() => undefined)}
+        >
+          <SymbolView
+            name="exclamationmark.triangle"
+            size={16}
+            tintColorClassName="accent-warning-foreground"
+          />
+          <Text className="min-w-0 flex-1 text-sm font-t3-medium text-warning-foreground">
+            {DRIVER_LABEL[warning.driver] ?? warning.driver}: {warning.description}
+          </Text>
+        </Pressable>
+      ))}
       {pools.length === 0 &&
       notices.length === 0 &&
+      degradedServices.length === 0 &&
       failedLabels.length === 0 &&
       !cursorPrompt &&
       externalLinks.length === 0 ? (

@@ -239,6 +239,18 @@ export const ServerProviderUpdateState = Schema.Struct({
 });
 export type ServerProviderUpdateState = typeof ServerProviderUpdateState.Type;
 
+/**
+ * The public status page rollup for a provider. `minor` is what Statuspage
+ * calls a partially degraded service; `none` means the page reports no issue.
+ */
+export const ServerProviderServiceStatus = Schema.Struct({
+  indicator: Schema.Literals(["none", "minor", "major", "critical"]),
+  description: TrimmedNonEmptyString,
+  pageUrl: TrimmedNonEmptyString.check(Schema.isMaxLength(2_048)),
+  checkedAt: IsoDateTime,
+});
+export type ServerProviderServiceStatus = typeof ServerProviderServiceStatus.Type;
+
 export const ServerProvider = Schema.Struct({
   // Routing key for the configured instance this snapshot represents. This
   // is the only stable identity consumers may use for provider routing.
@@ -314,6 +326,8 @@ export const ServerProvider = Schema.Struct({
   workspaceSnapshots: Schema.optionalKey(Schema.Array(ServerProviderWorkspaceSnapshot)),
   // Absent when the driver has no notion of subscription usage.
   usageLimits: Schema.optional(ServerProviderUsageLimits),
+  // Absent until a public status page has been read for this driver.
+  serviceStatus: Schema.optional(ServerProviderServiceStatus),
   versionAdvisory: Schema.optionalKey(ServerProviderVersionAdvisory),
   compatibilityAdvisory: Schema.optionalKey(ServerProviderCompatibilityAdvisory),
   updateState: Schema.optionalKey(ServerProviderUpdateState),
