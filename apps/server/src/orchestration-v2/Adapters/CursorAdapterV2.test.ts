@@ -14,6 +14,7 @@ import {
   ThreadId,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -25,8 +26,13 @@ import * as Stream from "effect/Stream";
 import * as ServerConfig from "../../config.ts";
 import * as McpProviderSession from "../../mcp/McpProviderSession.ts";
 import * as IdAllocator from "../IdAllocator.ts";
-import { ProviderAdapterV2RuntimePolicy } from "../ProviderAdapter.ts";
 import {
+  ProviderAdapterProtocolError,
+  ProviderAdapterSteerRunError,
+  ProviderAdapterV2RuntimePolicy,
+} from "../ProviderAdapter.ts";
+import {
+  CursorProviderCapabilitiesV2,
   cursorMcpServers,
   cursorRunFailure,
   cursorRuntimeAgentPolicy,
@@ -35,7 +41,11 @@ import {
   makeCursorAdapterV2,
   nestedToolCallFromEnvelope,
 } from "./CursorAdapterV2.ts";
-import { isCursorCancellationError, loggedCursorAgentOptions } from "./CursorAgentSdk.ts";
+import {
+  CURSOR_PROVIDER,
+  isCursorCancellationError,
+  loggedCursorAgentOptions,
+} from "./CursorAgentSdk.ts";
 
 const decodeCursorSettings = Schema.decodeEffect(CursorSettings);
 
@@ -180,6 +190,7 @@ describe("CursorAdapterV2", () => {
                             : {}),
                       }),
                       cancel: Effect.void,
+                      steer: () => Effect.die("unused steer"),
                     };
                   }),
               }),
@@ -379,6 +390,7 @@ describe("CursorAdapterV2", () => {
                         : {}),
                     }),
                     cancel: Effect.void,
+                    steer: () => Effect.die("unused steer"),
                   };
                 }),
             }),
@@ -717,6 +729,7 @@ describe("CursorAdapterV2", () => {
                       durationMs: 1,
                     }),
                     cancel: Effect.void,
+                    steer: () => Effect.die("unused steer"),
                   };
                 }),
             }),
@@ -1089,4 +1102,172 @@ describe("CursorAdapterV2", () => {
       },
     );
   });
+
+  it.effect("injects a follow-up into the running Cursor turn", () =>
+    Effect.gen(function* () {
+      assert.isTrue(CursorProviderCapabilitiesV2.turns.supportsActiveSteering);
+      assert.isFalse("activeSteeringInterruptsTools" in CursorProviderCapabilitiesV2.turns);
+      const isSteerError = Schema.is(ProviderAdapterSteerRunError);
+      const isProtocolError = Schema.is(ProviderAdapterProtocolError);
+
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const workspace = yield* fileSystem.makeTempDirectoryScoped({ prefix: "cursor-v2-steer-" });
+      const idAllocator = yield* IdAllocator.IdAllocatorV2;
+      const finished = yield* Deferred.make<void>();
+      const steered: Array<string> = [];
+      let steerOutcome: "complete_delivered" | "revert_to_followup" = "complete_delivered";
+      const instanceId = ProviderInstanceId.make("cursor");
+      const threadId = ThreadId.make("cursor-steer-thread");
+      const modelSelection = { instanceId, model: "composer-2.5" };
+      const runtimePolicy = ProviderAdapterV2RuntimePolicy.make({
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        cwd: workspace,
+      });
+      const adapter = makeCursorAdapterV2({
+        instanceId,
+        settings: yield* decodeCursorSettings({}),
+        environment: { HOME: workspace },
+        fileSystem,
+        path,
+        idAllocator,
+        serverConfig: yield* ServerConfig.ServerConfig.pipe(
+          Effect.provide(ServerConfig.layerTest(workspace, { prefix: "cursor-v2-steer-config-" })),
+        ),
+        runner: {
+          assertComplete: Effect.void,
+          open: () =>
+            Effect.succeed({
+              agentId: "native-cursor-steer",
+              listMessages: Effect.succeed([]),
+              close: Effect.void,
+              send: () =>
+                Effect.succeed({
+                  agentId: "native-cursor-steer",
+                  runId: "native-cursor-steer-run",
+                  wait: Deferred.await(finished).pipe(
+                    Effect.as({
+                      id: "native-cursor-steer-run",
+                      requestId: "native-request",
+                      status: "finished" as const,
+                      model: { id: "composer-2.5" },
+                      durationMs: 1,
+                    }),
+                  ),
+                  cancel: Effect.void,
+                  steer: (message: string) =>
+                    Effect.sync(() => {
+                      steered.push(message);
+                      return steerOutcome;
+                    }),
+                }),
+            }),
+        },
+      });
+      const runtime = yield* adapter.openSession({
+        threadId,
+        providerSessionId: ProviderSessionId.make("cursor-steer-session"),
+        modelSelection,
+        runtimePolicy,
+      });
+      const providerThread = yield* runtime.ensureThread({
+        threadId,
+        modelSelection,
+        runtimePolicy,
+      });
+      const now = yield* DateTime.now;
+      const providerTurnId = idAllocator.derive.providerTurn({
+        driver: CURSOR_PROVIDER,
+        nativeTurnId: "native-cursor-steer-run",
+      });
+      const steer = (text: string) =>
+        runtime.steerTurn({
+          threadId,
+          runId: RunId.make("cursor-steer-run"),
+          providerThread,
+          providerTurnId,
+          message: {
+            messageId: MessageId.make("cursor-steer-message"),
+            createdBy: "agent",
+            creationSource: "server",
+            text,
+            attachments: [],
+          },
+        });
+      yield* runtime.startTurn({
+        threadId,
+        providerThread,
+        modelSelection,
+        runtimePolicy,
+        runId: RunId.make("cursor-steer-run"),
+        runOrdinal: 1,
+        providerTurnOrdinal: 1,
+        attemptId: RunAttemptId.make("cursor-steer-attempt"),
+        rootNodeId: NodeId.make("cursor-steer-root"),
+        appThread: {
+          id: threadId,
+          projectId: ProjectId.make("cursor-steer-project"),
+          createdBy: "user",
+          creationSource: "web",
+          title: "Cursor steer",
+          providerInstanceId: instanceId,
+          modelSelection,
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: null,
+          activeProviderThreadId: providerThread.id,
+          lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: threadId },
+          forkedFrom: null,
+          createdAt: now,
+          updatedAt: now,
+          archivedAt: null,
+          settledOverride: null,
+          settledAt: null,
+          lastVisitedAt: null,
+          deletedAt: null,
+        },
+        message: {
+          messageId: MessageId.make("cursor-steer-start"),
+          createdBy: "user",
+          creationSource: "web",
+          text: "start",
+          attachments: [],
+        },
+      });
+
+      yield* steer("Delegated task finished.");
+      assert.deepEqual(steered, ["Delegated task finished."]);
+
+      const empty = yield* steer("  ").pipe(Effect.flip);
+      assert.isTrue(isSteerError(empty));
+      assert.equal(
+        isProtocolError(empty.cause) ? empty.cause.detail : undefined,
+        "Cursor steering requires non-empty text.",
+      );
+      assert.deepEqual(steered, ["Delegated task finished."]);
+
+      steerOutcome = "revert_to_followup";
+      const declined = yield* steer("Still running.").pipe(Effect.flip);
+      assert.isTrue(isSteerError(declined));
+      assert.equal(
+        isProtocolError(declined.cause) ? declined.cause.detail : undefined,
+        "Cursor declined to inject the steering message into the active run.",
+      );
+
+      yield* Deferred.succeed(finished, undefined);
+      yield* runtime.events.pipe(
+        Stream.filter((event) => event.type === "turn.terminal"),
+        Stream.take(1),
+        Stream.runDrain,
+      );
+      const inactive = yield* steer("Too late.").pipe(Effect.flip);
+      assert.isTrue(isSteerError(inactive));
+      assert.equal(
+        isProtocolError(inactive.cause) ? inactive.cause.detail : undefined,
+        `Cursor provider turn ${providerTurnId} is not active.`,
+      );
+    }).pipe(Effect.scoped, Effect.provide(Layer.merge(NodeServices.layer, IdAllocator.layer))),
+  );
 });

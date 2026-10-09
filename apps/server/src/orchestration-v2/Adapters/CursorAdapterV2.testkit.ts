@@ -446,6 +446,18 @@ export function makeCursorAgentSdkReplayRunner(
                         }),
                       catch: (cause) => replayRunnerError(transcript, cause, "replay.run.cancel"),
                     }),
+                    steer: (message) =>
+                      Effect.try({
+                        try: () => {
+                          assertOutbound({
+                            type: "run.steer",
+                            runId: started.runId,
+                            message,
+                          });
+                          return consumeInbound("run.steered").outcome;
+                        },
+                        catch: (cause) => replayRunnerError(transcript, cause, "replay.run.steer"),
+                      }),
                   };
                   return run;
                 },

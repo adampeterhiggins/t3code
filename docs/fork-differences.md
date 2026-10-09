@@ -213,6 +213,20 @@ upstream fixes it. Code: `withCursorDefaultParameters` in
 `apps/server/src/provider/Drivers/CursorDriver.ts`, and `resolveTarget` in
 `apps/server/src/mcp/OrchestratorMcpService.ts`.
 
+## Cursor follow-ups steer the running turn
+
+A follow-up sent into a running Cursor turn is injected into that turn. Delegated task
+completions wake the parent the same way, while the turn is still going. Upstream interrupts
+the turn and starts it again for a follow-up, and holds a delegated completion until the turn
+ends. Queuing a message still waits, and an explicit restart still stops the turn and starts
+a new one. When Cursor does not accept the injection, a finished turn receives the message as
+its next turn.
+
+Code: `steerTurn` in
+[`CursorAdapterV2.ts`](../apps/server/src/orchestration-v2/Adapters/CursorAdapterV2.ts) and
+`Run.steer` in
+[`CursorAgentSdk.ts`](../apps/server/src/orchestration-v2/Adapters/CursorAgentSdk.ts).
+
 ## Agents panel drilldowns
 
 Upstream makes every subagent a child thread, lists a thread's subagents under **Lineage** in the
