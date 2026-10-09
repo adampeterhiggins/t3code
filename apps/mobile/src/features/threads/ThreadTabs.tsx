@@ -42,6 +42,7 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import {
   getComposerDraftSnapshot,
   insertComposerDraftContext,
+  isComposerDraftEmpty,
 } from "../../state/use-composer-drafts";
 import { refreshArchivedThreadsForEnvironment } from "../archive/useArchivedThreadSnapshots";
 import { ThreadGitHubIssueLinkChip, useThreadGitHubIssueLink } from "./ThreadGitHubIssueLink";
@@ -57,6 +58,8 @@ const CLOSE_TAB_ACTION = "tab:close";
 const RESTART_SESSION_ACTION = "tab:restart-session";
 const LINK_LINEAR_ACTION = "tab:link-linear";
 const HAND_OFF_PREFIX = "tab:hand-off:";
+const CONTINUE_PREFIX = "tab:continue:";
+const INCLUDE_PREFIX = "tab:include:";
 
 const selectedSources = new Map<string, ReadonlyArray<ThreadId>>();
 
@@ -70,7 +73,7 @@ export function clearSelectedThreadTabSources(threadId: ThreadId): void {
 
 /**
  * Switches, opens, and closes a thread's chat tabs, and restarts the open tab's agent session;
- * empty tabs also pick sibling context. A
+ * empty tabs also include a sibling's summary or continue its conversation in their place. A
  * started chat can hand off to any model: a new tab on that model whose draft starts with a
  * summary of this chat, followed by this chat's unsent draft. The group's linked Linear and
  * GitHub issues sit beside the switcher.
@@ -220,6 +223,41 @@ export function ThreadTabs({
       setBusy(false);
     }
   };
+  // From an empty tab: a sibling's conversation continues in a native fork that takes this tab's
+  // place, on this tab's model and with its draft. This tab is archived, so it can be reopened.
+  const continueFrom = async (sourceThreadId: ThreadId, sourceTitle: string) => {
+    setBusy(true);
+    try {
+      const next = ThreadId.make(uuidv4());
+      await runtime.runPromise(
+        forkThreadTabFromRun(prepared.value, threadId, {
+          threadId: next,
+          sourceThreadId,
+          title: `${sourceTitle} fork`,
+          creationSource: "mobile",
+          modelSelection,
+        }),
+      );
+      const source = getComposerDraftSnapshot(scopedThreadKey(environmentId, threadId));
+      if (!isComposerDraftEmpty(source)) {
+        insertComposerDraftContext(scopedThreadKey(environmentId, next), {
+          text: source.text,
+          context: { version: 1, records: source.context?.records ?? [] },
+          attachments: source.attachments,
+        });
+      }
+      const archived = await archive({ environmentId, input: { threadId } });
+      if (archived._tag === "Success") refreshArchivedThreadsForEnvironment(environmentId);
+      navigateTo(next);
+    } catch (cause) {
+      Alert.alert(
+        "Could not continue that chat",
+        cause instanceof Error ? cause.message : undefined,
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
   // Closing archives the tab's thread, so the archived-threads list can reopen it.
   const close = async () => {
     const index = group.tabs.findIndex((tab) => tab.threadId === threadId);
@@ -301,6 +339,11 @@ export function ThreadTabs({
         .flatMap((group) => group.models)
         .find((model) => model.key === key);
       if (option) void handOff(option);
+    } else if (id.startsWith(CONTINUE_PREFIX)) {
+      const source = group.tabs.find((tab) => tab.threadId === id.slice(CONTINUE_PREFIX.length));
+      if (source) void continueFrom(source.threadId, source.title);
+    } else if (id.startsWith(INCLUDE_PREFIX)) {
+      toggle(ThreadId.make(id.slice(INCLUDE_PREFIX.length)));
     } else if (id !== threadId) navigateTo(ThreadId.make(id));
   };
   const toggle = (sourceId: ThreadId) => {
@@ -440,22 +483,43 @@ export function ThreadTabs({
           {group.tabs
             .filter((tab) => tab.threadId !== threadId)
             .map((tab) => (
-              <Pressable
+              <ControlPillMenu
                 key={tab.threadId}
+                accessible
                 accessibilityRole="button"
-                accessibilityState={{ selected: selected.includes(tab.threadId) }}
-                onPress={() => toggle(tab.threadId)}
+                accessibilityLabel={`Context from ${tab.title}`}
+                title={tab.title}
+                actions={[
+                  {
+                    id: `${CONTINUE_PREFIX}${tab.threadId}`,
+                    title: "Continue this conversation",
+                    image: "arrow.triangle.branch",
+                  },
+                  {
+                    id: `${INCLUDE_PREFIX}${tab.threadId}`,
+                    title: "Include summary",
+                    image: "paperclip",
+                    state: selected.includes(tab.threadId) ? ("on" as const) : ("off" as const),
+                  },
+                ]}
+                onPressAction={({ nativeEvent }) => onMenuAction(nativeEvent.event)}
               >
-                <Text
-                  className={
-                    selected.includes(tab.threadId)
-                      ? "font-semibold text-foreground"
-                      : "text-muted-foreground"
-                  }
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: selected.includes(tab.threadId) }}
+                  disabled={busy}
                 >
-                  {tab.title}
-                </Text>
-              </Pressable>
+                  <Text
+                    className={
+                      selected.includes(tab.threadId)
+                        ? "font-semibold text-foreground"
+                        : "text-muted-foreground"
+                    }
+                  >
+                    {tab.title}
+                  </Text>
+                </Pressable>
+              </ControlPillMenu>
             ))}
         </ScrollView>
       ) : null}

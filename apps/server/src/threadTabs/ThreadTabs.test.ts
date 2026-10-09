@@ -88,7 +88,10 @@ const projection = (threadId: string) =>
 const makeHarness = (input: {
   readonly shells: ReadonlyArray<OrchestrationV2ThreadShell>;
   readonly rejectDispatch?: boolean;
+  /** Overrides a thread's timeline, in both its recent window and its full snapshot. */
+  readonly projections?: Readonly<Record<string, OrchestrationV2ThreadProjection>>;
 }) => {
+  const projectionOf = (threadId: string) => input.projections?.[threadId] ?? projection(threadId);
   const shells = new Map(input.shells.map((shell) => [shell.id, shell]));
   const dispatched: Array<OrchestrationV2ServerCommand> = [];
   const threads = Layer.mock(ThreadManagementService)({
@@ -117,9 +120,9 @@ const makeHarness = (input: {
         return { sequence: 1, storedEvents: [] };
       }),
     getThreadSnapshotWindow: (threadId) =>
-      Effect.succeed({ schemaVersion: 1, snapshotSequence: 3, projection: projection(threadId) }),
+      Effect.succeed({ schemaVersion: 1, snapshotSequence: 3, projection: projectionOf(threadId) }),
     getThreadSnapshot: (threadId) =>
-      Effect.succeed({ schemaVersion: 1, snapshotSequence: 4, projection: projection(threadId) }),
+      Effect.succeed({ schemaVersion: 1, snapshotSequence: 4, projection: projectionOf(threadId) }),
   });
   const layer = ThreadTabs.layer.pipe(
     Layer.provide(
@@ -256,6 +259,49 @@ it.effect("forking a response natively adds the fork to the open tab's group", (
         assert.strictEqual(command.targetThreadId, "fork");
         assert.deepStrictEqual(command.sourcePoint, { type: "run", runId: RunId.make("run-1") });
       }
+    }),
+  );
+});
+
+it.effect("a fork without a run continues the source's latest finished response", () => {
+  const response = (runId: string, status: string, sourceThreadId: string) => ({
+    sourceThreadId: ThreadId.make(sourceThreadId),
+    item: { type: "assistant_message", status, runId: RunId.make(runId) },
+  });
+  const harness = makeHarness({
+    shells: [makeShell("source"), makeShell("tab"), makeShell("empty")],
+    projections: {
+      // The latest response is still running; the one before it was inherited from a fork.
+      source: {
+        runs: [],
+        visibleTurnItems: [
+          response("run-1", "completed", "ancestor"),
+          response("run-2", "inProgress", "source"),
+        ],
+      } as unknown as OrchestrationV2ThreadProjection,
+    },
+  });
+  return withTabs(harness, (tabs) =>
+    Effect.gen(function* () {
+      yield* tabs.fork(ThreadId.make("tab"), {
+        threadId: ThreadId.make("fork"),
+        sourceThreadId: ThreadId.make("source"),
+      });
+      const command = harness.dispatched[0];
+      assert.strictEqual(command?.type, "thread.fork");
+      if (command?.type === "thread.fork") {
+        assert.strictEqual(command.sourceThreadId, "ancestor");
+        assert.deepStrictEqual(command.sourcePoint, { type: "run", runId: RunId.make("run-1") });
+      }
+
+      const unfinished = yield* Effect.flip(
+        tabs.fork(ThreadId.make("tab"), {
+          threadId: ThreadId.make("fork-2"),
+          sourceThreadId: ThreadId.make("empty"),
+        }),
+      );
+      assert.strictEqual(unfinished.reason, "invalid_request");
+      assert.strictEqual(harness.dispatched.length, 1);
     }),
   );
 });

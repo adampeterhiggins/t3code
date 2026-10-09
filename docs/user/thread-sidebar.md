@@ -58,8 +58,12 @@ palette, to search other unarchived threads on that server. Filter by project or
 by update time, creation time, or title, and hover a result to preview the summary you will attach.
 A thread's tabs are listed together. Search by the thread's or the tab's title to find a tab,
 then select the tab whose conversation you want to attach.
-Before the first message in a new tab, you can also click a sibling
-under **Include context from**; hover one first to preview its summary. The siblings follow the
+Before the first message in a new tab, you can also pick a sibling
+under **Include context from**; hover one first to preview its summary. Its menu offers
+**Attach summary**, which adds a chip you can combine with others, or **Continue this
+conversation**, which replaces the new tab with a fork that carries the sibling's whole
+conversation and your draft. Continuing needs a finished response in that tab, and undo brings
+the new tab back. The siblings follow the
 sidebar's tab order and limit, so the tabs past the limit sit behind a **more** pill;
 hover it to see which tabs those are. Move or delete
 the chip like any other context.

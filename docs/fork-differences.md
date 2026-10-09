@@ -392,10 +392,14 @@ editable. Names are stored by the [ThreadTabs service](../apps/server/src/thread
   as you move between tabs, including new, forked, and closed-into tabs
   (`useRightPanelFollowsTabSwitch` in `ThreadTabs.tsx`).
 - **Context from other chats.** Type `@` in the composer and pick a sibling tab, or, before the
-  first message, click one under **Include context from** (hovering one previews its summary).
-  Those pills follow the sidebar's tab order and limit and show each tab's status, time, and
-  provider as its sidebar row does, with the rest behind a **more** pill that lists them on hover
-  (`apps/web/src/components/sidebar/SidebarTabSummary.tsx`).
+  first message, pick one under **Include context from** (hovering one previews its summary).
+  Those pills follow the sidebar's tab order and limit and show each tab's provider, status, and
+  time, with the rest behind a **more** pill that lists them on hover
+  (`apps/web/src/components/sidebar/SidebarTabSummary.tsx`). A pill's menu attaches the summary
+  or continues the conversation: a native fork from the sibling's latest finished response,
+  resolved by the server when the tab fork omits `runId`, replaces the empty tab and takes its
+  draft (`onContinueFromTab` in `ChatView.tsx`, `continueFrom` in
+  `apps/mobile/src/features/threads/ThreadTabs.tsx`).
   The `@` menu also lists other unarchived threads in the environment, matched by title
   (`apps/web/src/components/chat/composerThreadReferences.ts`), and works in a new draft thread
   too. On web and desktop, **Attach → Thread** and **Attach thread** in the command palette open
