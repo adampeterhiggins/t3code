@@ -48,7 +48,14 @@ const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 
 function fixture(
   options: {
-    accounts?: Array<(typeof accounts)[number] & { disabled?: boolean }>;
+    accounts?: ReadonlyArray<
+      Omit<(typeof accounts)[number], "email" | "id_token"> & {
+        email?: string;
+        disabled?: boolean;
+        project_id?: string;
+        id_token?: (typeof accounts)[number]["id_token"];
+      }
+    >;
     upstream?: (request: RequestBody) => { status: number; body: unknown };
     cooldownStatus?: number;
   } = {},
@@ -74,7 +81,9 @@ function fixture(
           Response.json({}, { status: options.cooldownStatus ?? 200 }),
         );
       expect(path).toBe("/v0/management/api-call");
-      expect(body?.header?.Authorization).toBe("Bearer $TOKEN$");
+      if (body?.header?.Authorization !== undefined) {
+        expect(body.header.Authorization).toBe("Bearer $TOKEN$");
+      }
       const upstream = options.upstream?.(body!) ?? {
         status: 200,
         body: body?.url?.endsWith("/consume")
@@ -308,6 +317,183 @@ describe("CLIProxyAPI built-in management API", () => {
       const result = yield* api.consume(config, "missing.json", "credit").pipe(Effect.result);
       expect(result._tag).toBe("Failure");
       expect(test.requests).toHaveLength(1);
+    }),
+  );
+
+  it.effect("reads Grok subscription usage from the billing status endpoint", () =>
+    Effect.gen(function* () {
+      const test = fixture({
+        accounts: [
+          {
+            id: "grok.json",
+            auth_index: "g",
+            provider: "x-ai",
+            email: "grok@example.com",
+          },
+        ],
+        upstream: () => ({
+          status: 200,
+          body: {
+            config: {
+              creditUsagePercent: 25,
+              currentPeriod: { type: "USAGE_PERIOD_TYPE_WEEKLY", end: "2099-01-01T00:00:00Z" },
+            },
+          },
+        }),
+      });
+      const api = yield* test.api;
+      const result = yield* api.readAccounts(config);
+      expect(result[0]?.driver).toBe("grok");
+      expect(result[0]?.usageLimits.windows).toMatchObject([
+        {
+          id: "subscription",
+          kind: "weekly",
+          usedPercent: 25,
+          resetsAt: "2099-01-01T00:00:00.000Z",
+        },
+      ]);
+      const call = test.requests.find((request) => request.body?.url);
+      expect(call?.body?.url).toBe("https://cli-chat-proxy.grok.com/v1/billing?format=credits");
+      expect(call?.body?.header?.["x-xai-token-auth"]).toBe("xai-grok-cli");
+    }),
+  );
+
+  it.effect("reads Antigravity quota and falls through an empty daily host", () =>
+    Effect.gen(function* () {
+      const test = fixture({
+        accounts: [
+          {
+            id: "agy.json",
+            auth_index: "agy",
+            provider: "gemini",
+            email: "agy@example.com",
+            project_id: "project-1",
+          },
+        ],
+        upstream: (request) =>
+          request.url?.includes("daily-cloudcode-pa")
+            ? { status: 200, body: { groups: [] } }
+            : {
+                status: 200,
+                body: {
+                  groups: [
+                    {
+                      displayName: "Gemini Pro",
+                      buckets: [
+                        {
+                          window: "5h",
+                          remainingFraction: 0.25,
+                          resetTime: "2099-01-01T00:00:00Z",
+                        },
+                      ],
+                    },
+                  ],
+                },
+              },
+      });
+      const api = yield* test.api;
+      const result = yield* api.readAccounts(config);
+      expect(result[0]?.driver).toBe("antigravity");
+      expect(result[0]?.usageLimits.windows).toMatchObject([
+        {
+          id: "gemini_pro_5h",
+          kind: "session",
+          label: "Gemini Pro · 5h",
+          usedPercent: 75,
+          resetsAt: "2099-01-01T00:00:00.000Z",
+        },
+      ]);
+      expect(test.requests.flatMap((request) => request.body?.url ?? [])).toEqual([
+        "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary",
+        "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:retrieveUserQuotaSummary",
+        "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary",
+      ]);
+    }),
+  );
+
+  it.effect("discovers an Antigravity project before reading quota", () =>
+    Effect.gen(function* () {
+      const test = fixture({
+        accounts: [{ id: "agy.json", auth_index: "agy", provider: "antigravity" }],
+        upstream: (request) =>
+          request.url?.endsWith(":loadCodeAssist")
+            ? { status: 200, body: { cloudaicompanionProject: "discovered-project" } }
+            : {
+                status: 200,
+                body: {
+                  groups: [
+                    {
+                      displayName: "Claude",
+                      buckets: [{ window: "weekly", remainingFraction: 0.5 }],
+                    },
+                  ],
+                },
+              },
+      });
+      const api = yield* test.api;
+      const result = yield* api.readAccounts(config);
+      expect(result[0]?.usageLimits.windows).toMatchObject([
+        { id: "claude_weekly", kind: "weekly", usedPercent: 50 },
+      ]);
+      const quota = test.requests.find((request) =>
+        request.body?.url?.endsWith(":retrieveUserQuotaSummary"),
+      );
+      expect(quota?.body?.data).toBe(encodeJson({ project: "discovered-project" }));
+    }),
+  );
+
+  it.effect("reads Devin and Kimi status endpoints and skips unknown providers", () =>
+    Effect.gen(function* () {
+      const test = fixture({
+        accounts: [
+          { id: "qwen.json", auth_index: "q", provider: "qwen" },
+          { id: "devin.json", auth_index: "d", provider: "cognition", email: "devin@example.com" },
+          { id: "kimi.json", auth_index: "k", provider: "kimi", email: "kimi@example.com" },
+        ],
+        upstream: (request) =>
+          request.url?.includes("codeium.com")
+            ? {
+                status: 200,
+                body: {
+                  userStatus: {
+                    planStatus: {
+                      planInfo: { planName: "Pro" },
+                      dailyQuotaRemainingPercent: 40,
+                      weeklyQuotaRemainingPercent: "10",
+                      weeklyQuotaResetAtUnix: 4070908800,
+                    },
+                  },
+                },
+              }
+            : {
+                status: 200,
+                body: {
+                  usage: { remaining: 20, limit: 100 },
+                  limits: [
+                    {
+                      window: { duration: 300, timeUnit: "TIME_UNIT_MINUTE" },
+                      detail: { remaining: 90, limit: 100, resetTime: "2099-01-01T00:00:00Z" },
+                    },
+                  ],
+                },
+              },
+      });
+      const api = yield* test.api;
+      const result = yield* api.readAccounts(config);
+      expect(result.map((account) => account.driver)).toEqual(["devin", "kimi"]);
+      expect(result[0]?.plan).toBe("Pro");
+      expect(result[0]?.usageLimits.windows).toMatchObject([
+        { id: "weekly", kind: "weekly", usedPercent: 90, resetsAt: "2099-01-01T00:00:00.000Z" },
+        { id: "daily", kind: "other", usedPercent: 60 },
+      ]);
+      expect(result[1]?.usageLimits.windows).toMatchObject([
+        { id: "session_0", kind: "session", label: "Session", usedPercent: 10 },
+        { id: "weekly", kind: "weekly", usedPercent: 80 },
+      ]);
+      const devin = test.requests.find((request) => request.body?.auth_index === "d");
+      expect(devin?.body?.data).toContain('"$TOKEN$"');
+      expect(devin?.body?.header?.["Connect-Protocol-Version"]).toBe("1");
+      expect(test.requests.some((request) => request.body?.auth_index === "q")).toBe(false);
     }),
   );
 });
