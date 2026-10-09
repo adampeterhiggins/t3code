@@ -1,4 +1,4 @@
-import { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { matchComposerThreadItems } from "./composerThreadItems.ts";
@@ -12,7 +12,9 @@ const shell = (
 ) => ({
   environmentId: env,
   id: ThreadId.make(id),
+  projectId: ProjectId.make("project-1"),
   title,
+  branch: null,
   updatedAt: "2026-01-01T00:00:00.000Z",
   archivedAt: null,
   ...overrides,
@@ -50,5 +52,16 @@ describe("matchComposerThreadItems", () => {
     });
     expect(items.map((item) => item.thread.threadId)).toEqual(["new", "old"]);
     expect(items[0]).toMatchObject({ type: "thread", label: "Login redesign" });
+  });
+
+  it("describes each thread by its project and branch", () => {
+    const items = matchComposerThreadItems({
+      shells: [shell("a", "On a branch", { branch: "feat/login" }), shell("b", "Unknown project")],
+      environmentId: env,
+      excludeThreadId: null,
+      query: "",
+      projectTitles: new Map([[ProjectId.make("project-1"), "t3code"]]),
+    });
+    expect(items.map((item) => item.description)).toEqual(["t3code · feat/login", "t3code"]);
   });
 });

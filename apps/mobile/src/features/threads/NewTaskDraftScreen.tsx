@@ -506,6 +506,7 @@ export function NewTaskDraftScreen(props: {
     ownerKey: flow.draftKey,
     environmentId: selectedProject?.environmentId ?? null,
     threadShells: useThreadShells(),
+    projects: useProjects(),
     pullRequestProjectId: selectedEnvironmentServerConfig?.environment.capabilities.pullRequests
       ? (selectedProject?.id ?? null)
       : null,

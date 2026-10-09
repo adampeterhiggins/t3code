@@ -8,7 +8,10 @@ import type {
   ThreadId,
 } from "@t3tools/contracts";
 import { matchComposerThreadItems } from "@t3tools/client-runtime/composerThreadItems";
-import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
+import type {
+  EnvironmentProject,
+  EnvironmentThreadShell,
+} from "@t3tools/client-runtime/state/models";
 import { deriveThreadAgentFleet } from "@t3tools/client-runtime/state/agent-fleet";
 import {
   matchesSubagentQuery,
@@ -16,6 +19,7 @@ import {
 } from "@t3tools/client-runtime/state/subagent-handles";
 
 const EMPTY_THREAD_SHELLS: ReadonlyArray<EnvironmentThreadShell> = [];
+const EMPTY_PROJECTS: ReadonlyArray<EnvironmentProject> = [];
 const EMPTY_SUBAGENTS: ReadonlyArray<OrchestrationV2Subagent> = [];
 const EMPTY_PROVIDERS: ReadonlyArray<ServerProvider> = [];
 import {
@@ -184,6 +188,7 @@ export function useComposerCommandMenu({
   ownerKey,
   environmentId,
   threadShells = EMPTY_THREAD_SHELLS,
+  projects = EMPTY_PROJECTS,
   currentThreadId = null,
   threadSubagents = EMPTY_SUBAGENTS,
   providers = EMPTY_PROVIDERS,
@@ -204,6 +209,8 @@ export function useComposerCommandMenu({
   readonly environmentId: EnvironmentId | null;
   /** Candidates for `@` thread suggestions; the caller reads them from the entity store. */
   readonly threadShells?: ReadonlyArray<EnvironmentThreadShell>;
+  /** Names the project beside each `@` thread suggestion. */
+  readonly projects?: ReadonlyArray<EnvironmentProject>;
   /** Left out of `@` thread suggestions: a thread is never context for itself. */
   readonly currentThreadId?: ThreadId | null;
   /** The current thread's subagent records, for the `@` menu's Agents tab. */
@@ -389,9 +396,14 @@ export function useComposerCommandMenu({
             environmentId,
             excludeThreadId: currentThreadId,
             query: trigger.query,
+            projectTitles: new Map(
+              projects
+                .filter((project) => project.environmentId === environmentId)
+                .map((project) => [project.id, project.title]),
+            ),
           })
         : [],
-    [currentThreadId, environmentId, threadShells, trigger],
+    [currentThreadId, environmentId, projects, threadShells, trigger],
   );
   // The tab the user picked for this `@`; otherwise Agents when the query starts a handle,
   // Chats when only chats match, else Files.
