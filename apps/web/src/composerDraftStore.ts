@@ -2273,7 +2273,9 @@ export function partializeComposerDraftStoreState(
         : {}),
       ...(draft.reviewComments.length > 0
         ? {
-            reviewComments: draft.reviewComments.map((comment) => ({ ...comment })),
+            reviewComments: draft.reviewComments.map(
+              (comment) => ({ ...comment }) as DeepMutable<ReviewCommentContext>,
+            ),
           }
         : {}),
       ...(draft.threadContexts.length > 0

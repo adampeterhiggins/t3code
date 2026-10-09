@@ -203,6 +203,23 @@ export const PreviewAnnotationContextRecord = Schema.Struct({
 });
 export type PreviewAnnotationContextRecord = typeof PreviewAnnotationContextRecord.Type;
 
+/**
+ * The conversation a review chip quotes, kept apart from its agent-facing `text` so the chip can
+ * show each remark under its author the way the host does.
+ */
+export const ReviewCommentThreadContext = Schema.Struct({
+  /** Where the thread lives on the host. */
+  url: Schema.optionalKey(ShortString),
+  comments: Schema.Array(
+    Schema.Struct({
+      author: ShortString,
+      avatarUrl: Schema.optionalKey(ShortString),
+      body: BoundedString(COMPOSER_CONTEXT_REVIEW_TEXT_MAX_CHARS),
+    }),
+  ).check(Schema.isMaxLength(50)),
+});
+export type ReviewCommentThreadContext = typeof ReviewCommentThreadContext.Type;
+
 export const ReviewCommentContextRecord = Schema.Struct({
   ...recordBase,
   kind: Schema.Literal("review-comment"),
@@ -218,6 +235,7 @@ export const ReviewCommentContextRecord = Schema.Struct({
   diff: BoundedString(COMPOSER_CONTEXT_REVIEW_DIFF_MAX_CHARS),
   fenceLanguage: Schema.optionalKey(BoundedString(64)),
   pullRequest: Schema.optionalKey(PullRequestContextMetadata),
+  thread: Schema.optionalKey(ReviewCommentThreadContext),
 }).check(Schema.makeFilter((record) => record.endIndex >= record.startIndex));
 export type ReviewCommentContextRecord = typeof ReviewCommentContextRecord.Type;
 

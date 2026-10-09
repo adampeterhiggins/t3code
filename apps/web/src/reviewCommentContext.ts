@@ -1,5 +1,9 @@
 import type { FileDiffMetadata, SelectedLineRange, SelectionSide } from "@pierre/diffs";
-import { PullRequestContextMetadata, type PullRequestReviewPosition } from "@t3tools/contracts";
+import {
+  PullRequestContextMetadata,
+  ReviewCommentThreadContext,
+  type PullRequestReviewPosition,
+} from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 
 const ReviewCommentSelectionSchema = Schema.Struct({
@@ -24,6 +28,7 @@ export const ReviewCommentContextSchema = Schema.Struct({
   fenceLanguage: Schema.optional(Schema.String),
   selection: Schema.optional(ReviewCommentSelectionSchema),
   pullRequest: Schema.optional(PullRequestContextMetadata),
+  thread: Schema.optional(ReviewCommentThreadContext),
 });
 
 export interface ReviewCommentContext {
@@ -42,6 +47,8 @@ export interface ReviewCommentContext {
   readonly fenceLanguage?: string | undefined;
   readonly selection?: ReviewCommentSelection | undefined;
   readonly pullRequest?: PullRequestContextMetadata | undefined;
+  /** The host conversation `text` quotes, for showing each remark under its author. */
+  readonly thread?: ReviewCommentThreadContext | undefined;
 }
 
 interface DiffReviewLine {
@@ -459,23 +466,52 @@ export function buildDiffReviewComment(input: {
   };
 }
 
-export function buildReviewCommentRenderablePatch(comment: ReviewCommentContext): string {
-  if ((comment.fenceLanguage ?? "diff") !== "diff") {
-    return "";
-  }
-  const diff = comment.diff.trim();
-  if (diff.length === 0) {
-    return "";
-  }
-  if (diff.startsWith("diff --git ")) {
-    return diff;
-  }
+export interface ReviewCommentCodeLine {
+  readonly change: DiffReviewLine["change"];
+  /** The new-side number, or the old one for a deleted line. */
+  readonly lineNumber: number | null;
+  readonly content: string;
+}
 
-  const normalizedPath = comment.filePath.replaceAll("\\", "/");
-  return [
-    `diff --git a/${normalizedPath} b/${normalizedPath}`,
-    `--- a/${normalizedPath}`,
-    `+++ b/${normalizedPath}`,
-    diff,
-  ].join("\n");
+/**
+ * The lines a comment quotes, numbered: a `diff` fence is read hunk by hunk, any other fence is
+ * the file's own lines from where the comment starts.
+ */
+export function reviewCommentCodeLines(
+  comment: Pick<ReviewCommentContext, "diff" | "fenceLanguage" | "startIndex">,
+): ReadonlyArray<ReviewCommentCodeLine> {
+  const diff = comment.diff.replace(/\n+$/u, "");
+  if (diff.trim().length === 0) return [];
+  if ((comment.fenceLanguage ?? "diff") !== "diff") {
+    return diff.split("\n").map((content, index) => ({
+      change: "context",
+      lineNumber: comment.startIndex + 1 + index,
+      content,
+    }));
+  }
+  const lines: ReviewCommentCodeLine[] = [];
+  let oldLine: number | null = null;
+  let newLine: number | null = null;
+  for (const line of diff.split("\n")) {
+    const header = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/u);
+    if (header) {
+      oldLine = Number(header[1]);
+      newLine = Number(header[2]);
+      continue;
+    }
+    // A whole patch carries file headers before its first hunk.
+    if (oldLine === null || newLine === null || line.startsWith("\\")) continue;
+    if (line.startsWith("+")) {
+      lines.push({ change: "add", lineNumber: newLine, content: line.slice(1) });
+      newLine += 1;
+    } else if (line.startsWith("-")) {
+      lines.push({ change: "delete", lineNumber: oldLine, content: line.slice(1) });
+      oldLine += 1;
+    } else {
+      lines.push({ change: "context", lineNumber: newLine, content: line.slice(1) });
+      oldLine += 1;
+      newLine += 1;
+    }
+  }
+  return lines;
 }
