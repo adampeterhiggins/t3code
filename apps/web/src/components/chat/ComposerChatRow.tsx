@@ -83,7 +83,10 @@ export function ComposerChatRow(props: {
             iconClassName="size-3.5 opacity-60"
             badgeClassName="right-[-0.1875rem] bottom-[-0.1875rem] h-3 min-w-3 px-0.5 text-5xs"
           />
-        ) : null}
+        ) : (
+          // Holds the icon's slot so model names still line up.
+          <span className="size-3.5 shrink-0" />
+        )}
         <span className="min-w-0 truncate">{modelLabel}</span>
       </span>
       <span className="w-24 shrink-0 truncate">
