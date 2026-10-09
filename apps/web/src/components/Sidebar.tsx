@@ -4689,8 +4689,8 @@ export default function Sidebar() {
   // starting a session un-settles server-side.
   const tabThreadGroupsRef = useRef(tabThreadGroups);
   tabThreadGroupsRef.current = tabThreadGroups;
-  const navigateToThread = useCallback(
-    (threadRef: ScopedThreadRef, keepOpenGroupTab = false) => {
+  const openThreadRoute = useCallback(
+    (threadRef: ScopedThreadRef, target: ScopedThreadRef) => {
       if (useThreadSelectionStore.getState().selectedThreadKeys.size > 0) {
         clearSelection();
       }
@@ -4698,23 +4698,35 @@ export default function Sidebar() {
       if (isMobile) {
         setOpenMobile(false);
       }
-      const target = keepOpenGroupTab
-        ? (parseScopedThreadKey(
-            threadTabGroupHeaderTarget(
-              scopedThreadKey(threadRef),
-              routeThreadKeyRef.current,
-              tabThreadGroupsRef.current,
-              hiddenTabThreads,
-              useThreadTabRecencyStore.getState().openedAtByThreadKey,
-            ),
-          ) ?? threadRef)
-        : resolveThreadTabTarget(threadRef, hiddenTabThreads);
       return router.navigate({
         to: "/$environmentId/$threadId",
         params: buildThreadRouteParams(target),
       });
     },
-    [clearSelection, hiddenTabThreads, isMobile, router, setOpenMobile, setSelectionAnchor],
+    [clearSelection, isMobile, router, setOpenMobile, setSelectionAnchor],
+  );
+  const navigateToThread = useCallback(
+    (threadRef: ScopedThreadRef, keepOpenGroupTab = false) =>
+      openThreadRoute(
+        threadRef,
+        keepOpenGroupTab
+          ? (parseScopedThreadKey(
+              threadTabGroupHeaderTarget(
+                scopedThreadKey(threadRef),
+                routeThreadKeyRef.current,
+                tabThreadGroupsRef.current,
+                hiddenTabThreads,
+                useThreadTabRecencyStore.getState().openedAtByThreadKey,
+              ),
+            ) ?? threadRef)
+          : resolveThreadTabTarget(threadRef, hiddenTabThreads),
+      ),
+    [hiddenTabThreads, openThreadRoute],
+  );
+  // A tab picked from a list opens itself, even the tab that stands for its folded group.
+  const openTab = useCallback(
+    (threadRef: ScopedThreadRef) => openThreadRoute(threadRef, threadRef),
+    [openThreadRoute],
   );
   // New tabs join the clicked thread's group and start on its model.
   const handleNewTab = useCallback(
@@ -7280,7 +7292,7 @@ export default function Sidebar() {
                                   tabManualRanks={tabManualRanks}
                                   openedAtByThreadKey={openedAtByThreadKey}
                                   resolveTabPlace={resolveTabPlace}
-                                  onOpenTab={navigateToThread}
+                                  onOpenTab={openTab}
                                 />
                               ) : undefined
                             }
@@ -7375,7 +7387,7 @@ export default function Sidebar() {
                                       openedAtByThreadKey={openedAtByThreadKey}
                                       resolveTabPlace={resolveTabPlace}
                                       onToggle={() => toggleTabOverflow(threadKey)}
-                                      onOpenTab={navigateToThread}
+                                      onOpenTab={openTab}
                                       onPreviewOpenChange={(open) =>
                                         handleTabOverflowPreview(threadKey, open)
                                       }
