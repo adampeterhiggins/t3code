@@ -145,13 +145,16 @@ export function t3UtilityToolPreview(
     case "t3_queue_list": {
       const items = Array.isArray(data?.items) ? data.items.filter(isRecord) : [];
       return records(
-        items.map((item, index) =>
-          record({
+        items.map((item, index) => {
+          const text = str(item.text) ?? "Queued message";
+          const title = firstLine(text);
+          // Only a message longer than its first line needs the rest below it.
+          return record({
             key: str(item.queuedRunId) ?? String(index),
-            title: firstLine(str(item.text) ?? "Queued message"),
-            body: str(item.text),
-          }),
-        ),
+            title,
+            body: text.trim() === title ? null : text,
+          });
+        }),
         { summary: `${items.length} queued` },
       );
     }
