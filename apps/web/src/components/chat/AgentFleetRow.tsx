@@ -320,7 +320,10 @@ export function AgentRow(props: {
             <span aria-hidden className="size-3.5 shrink-0" />
           )}
           <span className="min-w-0 flex-1 truncate text-sm">{entry.title}</span>
-          <AgentHandle handle={entry.handle} className="max-w-36" />
+          {/* A fixed column, so handles of any length start at the same place. */}
+          <span className="flex w-36 shrink-0">
+            <AgentHandle handle={entry.handle} className="max-w-full" />
+          </span>
           {agent.status === "completed" ? (
             <CheckIcon aria-hidden className="size-3 shrink-0 text-success" />
           ) : failed ? (
@@ -403,7 +406,9 @@ export function AgentCommandRow(props: {
           <span aria-hidden className="size-3.5 shrink-0" />
         )}
         <span className="min-w-0 flex-1 truncate font-sans text-xs font-medium">{entry.title}</span>
-        <AgentHandle handle={entry.handle} />
+        <span className="flex w-44 shrink-0">
+          <AgentHandle handle={entry.handle} className="max-w-full" />
+        </span>
         <span className="w-[5ch] shrink-0 truncate text-right font-mono text-2xs tabular-nums text-muted-foreground/80">
           {agent.usage ? formatSubagentTokenCount(agent.usage.totalTokens) : ""}
         </span>
