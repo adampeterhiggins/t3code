@@ -1,5 +1,6 @@
 import {
   CHATGPT_USAGE_URL,
+  collectDegradedServices,
   collectLimitAccounts,
   collectExternalUsageLinks,
   collectLimitNotices,
@@ -578,6 +579,7 @@ export function UsageLimitsPooled({
 }) {
   const pools = collectLimitPools(collectLimitAccounts(presentations), now);
   const notices = collectLimitNotices(presentations);
+  const degradedServices = collectDegradedServices(presentations);
   const externalLinks = collectExternalUsageLinks(presentations);
   const cursorPromptAt =
     Math.max(
@@ -586,7 +588,27 @@ export function UsageLimitsPooled({
     ) + 1;
   return (
     <div className="flex flex-col gap-8">
-      {pools.length === 0 && notices.length === 0 && !cursorPrompt && externalLinks.length === 0 ? (
+      {degradedServices.length > 0 ? (
+        <Alert variant="warning" controlAlignment="first-line">
+          <AlertTriangleIcon />
+          {degradedServices.map((warning) => (
+            <AlertTitle key={warning.driver}>
+              <button
+                type="button"
+                className="text-start"
+                onClick={() => void ensureLocalApi().shell.openExternal(warning.pageUrl)}
+              >
+                {getDriverOption(warning.driver)?.label ?? warning.driver}: {warning.description}
+              </button>
+            </AlertTitle>
+          ))}
+        </Alert>
+      ) : null}
+      {pools.length === 0 &&
+      notices.length === 0 &&
+      degradedServices.length === 0 &&
+      !cursorPrompt &&
+      externalLinks.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           No provider on the selected environments reports subscription limits.
         </p>

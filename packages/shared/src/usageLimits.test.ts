@@ -10,7 +10,9 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   type LimitAccount,
   isUsageLimitsCommand,
+  collectDegradedServices,
   collectProviderUsageLimits,
+  degradedServiceDescription,
   sameUsageLimitCommandCoverage,
   withUsageLimitsCommands,
   collectLimitAccounts,
@@ -1187,6 +1189,54 @@ describe("external usage settings", () => {
       ],
     ]);
     expect(collectExternalUsageLinks(presentations)).toEqual([]);
+  });
+});
+
+describe("degraded service status", () => {
+  const degraded = {
+    indicator: "minor" as const,
+    description: "Partially Degraded Service",
+    pageUrl: "https://status.claude.com",
+    checkedAt: "2026-10-09T06:00:00.000Z",
+  };
+
+  it("names a partial degradation and ignores an operational page", () => {
+    expect(degradedServiceDescription(degraded)).toBe("Partially Degraded Service");
+    expect(
+      degradedServiceDescription({
+        ...degraded,
+        indicator: "none",
+        description: "All Systems Operational",
+      }),
+    ).toBeNull();
+  });
+
+  it("keeps one warning per driver from the freshest environment", () => {
+    const claude = provider({
+      driver: ProviderDriverKind.make("claudeAgent"),
+      instanceId: ProviderInstanceId.make("claude"),
+      serviceStatus: degraded,
+      usageLimits: { checkedAt: "2026-09-03T11:00:00.000Z", windows: [window] },
+    });
+    const presentations = new Map([
+      [
+        EnvironmentId.make("env-a"),
+        {
+          entry: { target: { label: "A" } },
+          serverConfig: { providers: [claude] },
+        },
+      ],
+    ]);
+    expect(collectDegradedServices(presentations)).toEqual([
+      {
+        driver: claude.driver,
+        description: "Partially Degraded Service",
+        pageUrl: "https://status.claude.com",
+      },
+    ]);
+    expect(collectProviderUsageLimits(claude.instanceId, [claude], [], now)?.notices).toEqual([
+      "Partially Degraded Service",
+    ]);
   });
 });
 

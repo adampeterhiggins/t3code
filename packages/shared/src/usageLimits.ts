@@ -485,6 +485,48 @@ export function limitsNotice(limits: ServerProviderUsageLimits): string | null {
   return limits.windows.length === 0 ? "No limits reported." : null;
 }
 
+/** The status-page line when the provider is not fully operational. */
+export function degradedServiceDescription(status: ServerProvider["serviceStatus"]): string | null {
+  if (!status || status.indicator === "none") return null;
+  const description = status.description.trim();
+  return description.length > 0 ? description : null;
+}
+
+export interface DegradedService {
+  readonly driver: ServerProvider["driver"];
+  readonly description: string;
+  readonly pageUrl: string;
+}
+
+/** One warning per driver, from the freshest environment that still sees the problem. */
+export function collectDegradedServices(
+  presentations: LimitPresentations,
+): readonly DegradedService[] {
+  const byDriver = new Map<string, DegradedService & { readonly checkedAt: string }>();
+  for (const presentation of presentations.values()) {
+    for (const provider of presentation.serverConfig?.providers ?? []) {
+      const description = degradedServiceDescription(provider.serviceStatus);
+      const status = provider.serviceStatus;
+      if (!description || !status) continue;
+      const next = {
+        driver: provider.driver,
+        description,
+        pageUrl: status.pageUrl,
+        checkedAt: status.checkedAt,
+      };
+      const previous = byDriver.get(provider.driver);
+      if (!previous || Date.parse(next.checkedAt) > Date.parse(previous.checkedAt)) {
+        byDriver.set(provider.driver, next);
+      }
+    }
+  }
+  return [...byDriver.values()].map(({ driver, description, pageUrl }) => ({
+    driver,
+    description,
+    pageUrl,
+  }));
+}
+
 /** Quota left in the window, 0..100. Bars and labels show what remains, as Codex does. */
 export function remainingPercent(window: ServerProviderUsageWindow): number {
   return Math.round(100 - Math.max(0, Math.min(100, window.usedPercent)));
@@ -725,5 +767,7 @@ export function collectProviderUsageLimits(
       notices.push(`${source.label}: ${source.error}`);
     }
   }
+  const degraded = degradedServiceDescription(selected.serviceStatus);
+  if (degraded) notices.push(degraded);
   return { createdAt: DateTime.formatIso(DateTime.makeUnsafe(now)), accounts, notices };
 }

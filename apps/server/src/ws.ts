@@ -258,6 +258,10 @@ import {
   sameUsageLimitCommandCoverage,
   withUsageLimitsCommands,
 } from "@t3tools/shared/usageLimits";
+import {
+  ProviderServiceStatus,
+  withProviderServiceStatus,
+} from "./provider/providerServiceStatus.ts";
 import * as AgentSessionScanner from "./project/AgentSessionScanner.ts";
 import * as ConductorImporter from "./conductor/ConductorImporter.ts";
 import * as AgentSessionImporter from "./project/AgentSessionImporter.ts";
@@ -1300,6 +1304,7 @@ const layerWsRpc = (
             );
       const usage = yield* UsageService.UsageService;
       const usageLimitSources = yield* UsageLimitSources.UsageLimitSources;
+      const providerServiceStatus = yield* ProviderServiceStatus;
       const worktreeSetupTracker = yield* WorktreeSetupTracker.WorktreeSetupTracker;
       const projectCloneTracker = yield* ProjectCloneTracker.ProjectCloneTracker;
       const repositoryIdentityResolver =
@@ -1742,9 +1747,12 @@ const layerWsRpc = (
         Effect.gen(function* () {
           const keybindingsConfig = yield* keybindings.loadConfigState;
           const currentProviders = yield* providerRegistry.getProviders;
-          const providers = options.usageLimitsCommand
-            ? withUsageLimitsCommands(currentProviders, yield* usageLimitSources.current)
-            : currentProviders;
+          const providers = withProviderServiceStatus(
+            options.usageLimitsCommand
+              ? withUsageLimitsCommands(currentProviders, yield* usageLimitSources.current)
+              : currentProviders,
+            yield* providerServiceStatus.current,
+          );
           const settings = ServerSettings.redactServerSettingsForClient(
             yield* serverSettings.getSettings,
           );
@@ -3086,22 +3094,26 @@ const layerWsRpc = (
                 })),
               );
               const providerStatuses = Stream.zipLatestWith(
-                // The registry stream carries changes only. Seed it with the current
-                // providers so a source refresh that lands before any provider change
-                // still pairs up and reaches the client.
-                Stream.concat(
-                  Stream.fromEffect(providerRegistry.getProviders),
-                  providerRegistry.streamChanges,
-                ),
-                usageLimitSources.streamChanges.pipe(
-                  // Quota updates already have their own stream. Republish the model
-                  // catalog only when the set of providers offered the command changes.
-                  Stream.changesWith(
-                    usageLimitsCommand ? sameUsageLimitCommandCoverage : () => true,
+                Stream.zipLatestWith(
+                  // The registry stream carries changes only. Seed it with the current
+                  // providers so a source refresh that lands before any provider change
+                  // still pairs up and reaches the client.
+                  Stream.concat(
+                    Stream.fromEffect(providerRegistry.getProviders),
+                    providerRegistry.streamChanges,
                   ),
+                  usageLimitSources.streamChanges.pipe(
+                    // Quota updates already have their own stream. Republish the model
+                    // catalog only when the set of providers offered the command changes.
+                    Stream.changesWith(
+                      usageLimitsCommand ? sameUsageLimitCommandCoverage : () => true,
+                    ),
+                  ),
+                  (providers, sources) =>
+                    usageLimitsCommand ? withUsageLimitsCommands(providers, sources) : providers,
                 ),
-                (providers, sources) =>
-                  usageLimitsCommand ? withUsageLimitsCommands(providers, sources) : providers,
+                providerServiceStatus.streamChanges,
+                (providers, reports) => withProviderServiceStatus(providers, reports),
               ).pipe(
                 // Both sides replay their current value, so the first pairing normally
                 // repeats the snapshot the client already holds. Compare against that
