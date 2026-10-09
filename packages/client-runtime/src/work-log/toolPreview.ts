@@ -705,6 +705,16 @@ function modelSelectionDetails(value: unknown): { model: string | null; details:
   };
 }
 
+/** The tab titles of a chat-tab group result. */
+function tabTitles(result: Record_ | null): string[] {
+  return Array.isArray(result?.tabs)
+    ? result.tabs.filter(isRecord).flatMap((tab) => {
+        const title = str(tab.title);
+        return title ? [title] : [];
+      })
+    : [];
+}
+
 function sourcePointLabel(value: unknown): string | null {
   const point = isRecord(value) ? value : null;
   switch (point?.type) {
@@ -885,15 +895,28 @@ function t3ToolPreview(tool: string, input: Record_, result: Record_ | null): To
       return result ? contextTransfersPreview(result) : null;
     case "t3_thread_group_name": {
       const name = str(result?.name) ?? str(input.name);
-      const tabs = Array.isArray(result?.tabs)
-        ? result.tabs.filter(isRecord).flatMap((tab) => {
-            const title = str(tab.title);
-            return title ? [title] : [];
-          })
-        : [];
+      const tabs = tabTitles(result);
       return threadAction(name ? `Named the group “${name}”` : "Cleared the group name", {
         threadId: str(input.threadId),
         details: tabs.length > 0 ? [tabs.join(", ")] : [],
+      });
+    }
+    case "t3_thread_tabs": {
+      const tabs = tabTitles(result);
+      return result
+        ? threadAction(`${tabs.length} tab${tabs.length === 1 ? "" : "s"}`, {
+            threadId: str(input.threadId),
+            details: tabs.length > 0 ? [tabs.join(", ")] : [],
+          })
+        : null;
+    }
+    case "t3_thread_tab_open": {
+      const title = str(input.title);
+      const { model } = modelSelectionDetails(input.modelSelection);
+      const verb = isRecord(input.fork) ? "Forked into a tab" : "Opened a tab";
+      return threadAction(title ? `${verb} “${title}”` : verb, {
+        threadId: str(result?.threadId),
+        details: [model].filter((detail) => detail !== null),
       });
     }
     case "t3_thread_organize":

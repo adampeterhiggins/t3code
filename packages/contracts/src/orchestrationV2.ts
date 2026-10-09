@@ -3108,6 +3108,8 @@ export const OrchestrationV2Command = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("thread.fork"),
     ...OrchestrationV2CreationFields,
+    /** Set by the server for threads an agent starts over MCP; ignored from clients. */
+    startedBy: Schema.optional(OrchestrationV2ThreadStartedBy),
     commandId: CommandId,
     sourceThreadId: ThreadId,
     targetThreadId: ThreadId,

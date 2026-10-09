@@ -510,6 +510,13 @@ editable. Names are stored by the [ThreadTabs service](../apps/server/src/thread
     being hidden. Their rows show a not-allowed cursor and a tooltip, and only the fork button
     opens them, so a stray click never forks (`matchesModelPickerLock` in `ModelPickerContent.tsx`).
   - The account picker forks the same way when the chosen account cannot take over the tab.
+- **Agents.** Over MCP, `t3_thread_tabs` lists a thread's group and `t3_thread_tab_open` opens a
+  tab in it: empty, or a native fork of a tab's latest (or chosen) response, on any model, with an
+  optional first message. One service call, `ThreadTabs.open`, does what **New tab** or a
+  model-picker fork does, then sends the message. The tab inherits its group's modes, so its group
+  (and fork source) must sit within the caller's, and it records `startedBy` and counts toward the
+  caller's spawn limits like a launched thread
+  ([`toolkits/thread/handlers.ts`](../apps/server/src/mcp/toolkits/thread/handlers.ts)).
 - **Mobile.** A switcher menu switches, creates, and closes tabs, and restarts the open tab's
   agent session (`apps/mobile/src/features/threads/ThreadTabs.tsx`). An empty tab can attach sibling context when
   sending. A started chat's **Hand off** menu forks it into a new tab on any provider's model, the
@@ -1177,8 +1184,8 @@ while its child runs), and `t3_thread_send`, `t3_thread_wait`, and `t3_thread_in
 the caller's own thread. Metadata tools such as `t3_thread_update` still default to the caller's
 own thread, as upstream intends. A thread's agent never answers another thread's approvals.
 
-A thread an agent starts with `create_threads` or `t3_thread_launch` records `startedBy` (the
-starting thread, or the agent access token's label). The chat header on web, desktop, and mobile
+A thread an agent starts with `create_threads`, `t3_thread_launch`, or `t3_thread_tab_open`
+records `startedBy` (the starting thread, or the agent access token's label). The chat header on web, desktop, and mobile
 names the starting thread (and opens it) or the token, and web sidebar rows mark the thread with a
 bot icon. A client cannot set `startedBy`; only the server's MCP paths do.
 

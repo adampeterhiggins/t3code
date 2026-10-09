@@ -3772,7 +3772,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       threadId: command.targetThreadId,
       providerInstanceId: targetThread.providerInstanceId,
       occurredAt: now,
-      payload: targetThread,
+      payload:
+        command.startedBy === undefined
+          ? targetThread
+          : { ...targetThread, startedBy: command.startedBy },
     });
     yield* emitEvent({
       type: "context-transfer.created",

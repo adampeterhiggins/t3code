@@ -291,6 +291,8 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   t3_thread_search: tool(["Search", "Searching", "Searched", "thread content"], "thread-search"),
   t3_thread_transfers: tool(["Read", "Reading", "Read", "thread transfers"], "thread-transfers"),
   t3_thread_group_name: tool(["Name", "Naming", "Named", "a thread group"], "thread-organize"),
+  t3_thread_tabs: tool(["List", "Listing", "Listed", "chat tabs"], "thread-list"),
+  t3_thread_tab_open: tool(["Open", "Opening", "Opened", "a chat tab"], "thread-create"),
   t3_thread_organize: tool(["Organize", "Organizing", "Organized", "a thread"], "thread-organize"),
   t3_thread_update: tool(["Update", "Updating", "Updated", "T3 thread metadata"], "thread-update"),
   t3_worktree_list: tool(["List", "Listing", "Listed", "workspace branches"], "worktree-list"),

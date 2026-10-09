@@ -666,6 +666,16 @@ describe("resolveToolPreview", () => {
     ).toMatchObject({ headline: "Named the group “Release”", details: ["Cut RC"] });
     expect(
       action(
+        "t3_thread_tab_open",
+        { fork: {}, title: "Review", modelSelection: { instanceId: "claude", model: "opus" } },
+        { threadId: "t", group: { groupId: "g", tabs: [] }, runId: null },
+      ),
+    ).toMatchObject({ headline: "Forked into a tab “Review”", threadId: "t", details: ["opus"] });
+    expect(
+      action("t3_thread_tabs", {}, { groupId: "g", tabs: [{ threadId: "a", title: "Cut RC" }] }),
+    ).toMatchObject({ headline: "1 tab", details: ["Cut RC"] });
+    expect(
+      action(
         "t3_thread_update",
         { action: "rename", title: "Fix order" },
         {

@@ -20,7 +20,11 @@ import * as SqlClient from "effect/sql/SqlClient";
 import { GitHubIssueThreadLinks } from "../githubIssues/GitHubIssueThreadLinks.ts";
 import { LinearThreadLinks } from "../linear/LinearThreadLinks.ts";
 import { OrchestratorDispatchError } from "../orchestration-v2/Orchestrator.ts";
-import { ThreadManagementService } from "../orchestration-v2/ThreadManagementService.ts";
+import {
+  ThreadManagementService,
+  type ThreadManagementSendInput,
+  type ThreadManagementSendResult,
+} from "../orchestration-v2/ThreadManagementService.ts";
 import { ensureThreadTabsSchema } from "./schema.ts";
 import * as ThreadTabs from "./ThreadTabs.ts";
 
@@ -94,7 +98,14 @@ const makeHarness = (input: {
   const projectionOf = (threadId: string) => input.projections?.[threadId] ?? projection(threadId);
   const shells = new Map(input.shells.map((shell) => [shell.id, shell]));
   const dispatched: Array<OrchestrationV2ServerCommand> = [];
+  const sent: Array<ThreadManagementSendInput> = [];
   const threads = Layer.mock(ThreadManagementService)({
+    sendToThread: (send) => {
+      sent.push(send);
+      return Effect.succeed({
+        run: { id: RunId.make(`run-${send.threadId}`) },
+      } as unknown as ThreadManagementSendResult);
+    },
     getThreadShell: (threadId) => Effect.succeed(shells.get(threadId) ?? null),
     dispatch: (command) =>
       Effect.gen(function* () {
@@ -134,7 +145,7 @@ const makeHarness = (input: {
       ),
     ),
   );
-  return { dispatched, layer };
+  return { dispatched, sent, layer };
 };
 
 const withTabs = <A, E>(
@@ -334,6 +345,72 @@ it.effect("a fork onto another model switches the new tab before its first messa
         modelSelection: { instanceId: codex, model: "gpt-5.4" },
       });
       assert.strictEqual(harness.dispatched.length, 3);
+    }),
+  );
+});
+
+it.effect("an agent opens a tab as itself, then sends its first message", () => {
+  const harness = makeHarness({ shells: [makeShell("source")] });
+  const startedBy = { kind: "thread" as const, threadId: ThreadId.make("caller") };
+  return withTabs(harness, (tabs) =>
+    Effect.gen(function* () {
+      const opened = yield* tabs.open(ThreadId.make("source"), {
+        threadId: ThreadId.make("tab"),
+        title: "Review",
+        message: "Review the diff",
+        startedBy,
+      });
+      assert.deepStrictEqual(
+        opened.group.tabs.map((tab) => tab.threadId),
+        ["source", "tab"],
+      );
+      assert.strictEqual(opened.runId, "run-tab");
+      const command = harness.dispatched[0];
+      assert.strictEqual(command?.type, "thread.create");
+      if (command?.type === "thread.create") {
+        assert.strictEqual(command.title, "Review");
+        // Without a model of its own the tab runs the group's.
+        assert.strictEqual(command.modelSelection.model, "gpt-5.4");
+        assert.strictEqual(command.runtimeMode, "full-access");
+        assert.strictEqual(command.createdBy, "agent");
+        assert.strictEqual(command.creationSource, "mcp");
+        assert.deepStrictEqual(command.startedBy, startedBy);
+      }
+      assert.strictEqual(harness.sent.length, 1);
+      assert.strictEqual(harness.sent[0]?.threadId, "tab");
+      assert.strictEqual(harness.sent[0]?.text, "Review the diff");
+      assert.strictEqual(harness.sent[0]?.senderThreadId, "caller");
+    }),
+  );
+});
+
+it.effect("an agent forks a tab onto another model without sending anything", () => {
+  const harness = makeHarness({ shells: [makeShell("source")] });
+  const claude = { instanceId: ProviderInstanceId.make("claude"), model: "claude-opus-5-5" };
+  const startedBy = { kind: "agent-access" as const, label: "CI" };
+  return withTabs(harness, (tabs) =>
+    Effect.gen(function* () {
+      const opened = yield* tabs.open(ThreadId.make("source"), {
+        threadId: ThreadId.make("fork"),
+        fork: { sourceThreadId: ThreadId.make("source"), runId: RunId.make("run-1") },
+        modelSelection: claude,
+        startedBy,
+      });
+      assert.strictEqual(opened.runId, null);
+      assert.strictEqual(harness.sent.length, 0);
+      assert.deepStrictEqual(
+        harness.dispatched.map((command) => command.type),
+        ["thread.fork", "thread.model-selection.set"],
+      );
+      const command = harness.dispatched[0];
+      if (command?.type === "thread.fork") {
+        assert.strictEqual(command.createdBy, "agent");
+        assert.deepStrictEqual(command.startedBy, startedBy);
+      }
+      assert.deepStrictEqual(
+        opened.group.tabs.find((tab) => tab.threadId === "fork")?.modelSelection,
+        claude,
+      );
     }),
   );
 });

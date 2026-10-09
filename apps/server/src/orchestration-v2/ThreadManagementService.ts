@@ -56,14 +56,14 @@ export function withCreationProvenance(
   provenance: ThreadManagementProvenance,
 ): OrchestrationV2Command {
   switch (command.type) {
-    case "thread.create": {
+    case "thread.create":
+    case "thread.fork": {
       // Only the server's MCP paths record who started a thread; a client cannot claim it.
       const { startedBy: _startedBy, ...rest } = command;
       return { ...(provenance.createdBy === "user" ? rest : command), ...provenance };
     }
     case "message.dispatch":
     case "thread.usage-limit.resume-now":
-    case "thread.fork":
     case "thread.merge_back":
     case "delegated_task.request":
       return { ...command, ...provenance };

@@ -62,7 +62,9 @@ run in whichever permission mode it asks for.
 
 An agent working in a thread can start other threads with `create_threads` or `t3_thread_launch`,
 hand a task to a child agent with `delegate_task`, message threads, and wait for their results,
-for example to split a large change into parallel pieces. There is nothing to turn on.
+for example to split a large change into parallel pieces. There is nothing to turn on. It can
+also open a chat tab beside any thread with `t3_thread_tab_open`: empty, or continuing a tab's
+conversation, on any model, with an optional first message. `t3_thread_tabs` lists a thread's tabs.
 
 A child agent works in its parent's checkout unless the agent asks for a worktree of its own. Then
 the child gets a new worktree (or an existing one), set up like a thread's worktree with your
@@ -70,10 +72,10 @@ setup script, before it starts, so parallel children do not edit the same files.
 under its parent in Lineage and the Agents panel. Only a thread in full-access, non-plan mode can
 ask for one.
 
-Threads an agent starts appear in your sidebar with a bot icon, and their header shows which
+Threads and tabs an agent starts appear in your sidebar with a bot icon, and their header shows which
 thread started them; click it to open that thread. An agent cannot give a thread more freedom
 than its own permission mode allows. It can start threads two levels deep, and keep at most five
-of its own going at once: a thread it started counts until it settles or you archive it, a
+of its own going at once: a thread or tab it started counts until it settles or you archive it, a
 delegated task until it finishes. It cannot message, wait on, or stop its own thread with these
 tools, and it cannot answer another thread's approvals; those still come to you.
 

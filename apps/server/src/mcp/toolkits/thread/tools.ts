@@ -290,8 +290,47 @@ const ThreadTabGroupNameTool = Tool.make("t3_thread_group_name", {
   success: ThreadTabGroup,
 }).annotate(Tool.Destructive, false);
 
+const ThreadTabsTool = Tool.make("t3_thread_tabs", {
+  ...commandTool,
+  description:
+    "List the chat tabs in a thread's tab group, in order, with each tab's threadId, title and model. Omit threadId for this thread. A thread without tabs is a group of one.",
+  parameters: Schema.Struct({ threadId: Schema.optional(ThreadId) }),
+  success: ThreadTabGroup,
+})
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false);
+
+const ThreadTabOpenTool = Tool.make("t3_thread_tab_open", {
+  ...commandTool,
+  description:
+    "Open a new chat tab in a thread's tab group, as the user's New tab and Fork into new tab do. Omit threadId for this thread's group. The tab shares the group's branch and worktree and inherits its runtime and interaction modes. Without fork it starts empty; with fork it continues that tab's conversation from fork.runId, or its latest finished response when runId is omitted. Set modelSelection to run the tab on another provider or model (orchestrator_capabilities lists them); a fork hands its conversation to that model on the first message. Put a first message in message, or omit it for an idle tab. Use t3_thread_fork for a separate thread instead of a tab. Link the tab as `[title](t3-thread://v1/<threadId>)`.",
+  parameters: Schema.Struct({
+    threadId: Schema.optional(ThreadId),
+    fork: Schema.optional(
+      Schema.Struct({
+        sourceThreadId: Schema.optional(ThreadId).annotate({
+          description: "The tab whose conversation to continue; defaults to threadId.",
+        }),
+        runId: Schema.optional(RunId),
+      }),
+    ),
+    modelSelection: Schema.optional(ModelSelection),
+    title: Schema.optional(TrimmedNonEmptyString),
+    message: Schema.optional(Schema.String.check(Schema.isMaxLength(120000))),
+  }),
+  success: Schema.Struct({
+    threadId: ThreadId,
+    group: ThreadTabGroup,
+    runId: Schema.NullOr(RunId),
+  }),
+})
+  .annotate(Tool.Destructive, true)
+  .annotate(Tool.OpenWorld, true);
+
 export const ThreadToolkit = Toolkit.make(
   ThreadTabGroupNameTool,
+  ThreadTabsTool,
+  ThreadTabOpenTool,
   ScheduledTaskRunTool,
   ThreadSearchTool,
   ThreadForkTool,
