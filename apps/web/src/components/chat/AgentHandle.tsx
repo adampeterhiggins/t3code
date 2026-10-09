@@ -22,7 +22,7 @@ export function AgentHandle(props: { handle: string; copyable?: boolean; classNa
             type="button"
             className={cn(
               HANDLE_CLASS_NAME,
-              "cursor-pointer hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
+              "cursor-pointer transition-transform duration-100 ease-out hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100",
               props.className,
             )}
             onClick={(event) => {

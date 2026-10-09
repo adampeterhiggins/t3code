@@ -1955,9 +1955,31 @@ code {
   font-size: 0.75rem;
 }
 
-/* Fork: inline code copies on click (`CopyableInlineCode`). */
+/* Fork: inline code copies on click (`CopyableInlineCode`) and squeezes while pressed. Transforms
+   need a box, so it is inline-block; long spans still wrap inside it. */
 .chat-markdown code[data-copyable-code] {
+  display: inline-block;
+  max-width: 100%;
   cursor: pointer;
+  transition:
+    transform 120ms ease-out,
+    background-color 120ms ease-out,
+    border-color 120ms ease-out,
+    color 120ms ease-out;
+}
+
+.chat-markdown code[data-copyable-code]:active {
+  transform: scale(0.95);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-markdown code[data-copyable-code] {
+    transition: none;
+  }
+
+  .chat-markdown code[data-copyable-code]:active {
+    transform: none;
+  }
 }
 
 .chat-markdown code[data-copyable-code]:hover {
