@@ -147,6 +147,8 @@ export interface RememberedTimelinePosition {
   readonly offsetWithinRow: number;
   readonly scrollOffset: number;
   readonly atEnd: boolean;
+  readonly rowHeight?: number;
+  readonly viewportWidth?: number;
   readonly disclosures?: {
     readonly runs: ReadonlySet<RunId>;
     readonly workGroups: ReadonlySet<string>;
@@ -156,6 +158,26 @@ export interface RememberedTimelinePosition {
       expandedEntries: Set<string>;
     };
   };
+}
+
+/** Keep the reading point inside its row when wrapping changes while a thread is hidden. */
+export function resolveRestoredTimelineRowOffset(
+  position: RememberedTimelinePosition,
+  rowHeight: number,
+  viewportWidth: number,
+): number {
+  const offset = position.offsetWithinRow;
+  // Negative offsets preserve the gap above a row that begins below the viewport.
+  if (offset <= 0 || rowHeight <= 0) return offset;
+  const previousHeight = position.rowHeight;
+  const resizedOffset =
+    position.viewportWidth !== undefined &&
+    Math.abs(position.viewportWidth - viewportWidth) > 1 &&
+    previousHeight !== undefined &&
+    previousHeight > 0
+      ? (offset / previousHeight) * rowHeight
+      : offset;
+  return Math.min(Math.max(0, rowHeight - 1), resizedOffset);
 }
 
 // Scoped thread keys keep separate environments independent. Bound the session cache.

@@ -209,6 +209,7 @@ import {
   CHAT_TIMELINE_ANCHOR_OFFSET,
   readTimelinePosition,
   rememberTimelinePosition,
+  resolveRestoredTimelineRowOffset,
   timelineContentOverflowsViewport,
 } from "./timelineScrollAnchoring";
 import { MessageCopyButton } from "./MessageCopyButton";
@@ -957,13 +958,19 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         const row = rowIndex === undefined ? undefined : state.elementAtIndex(rowIndex);
         const element = list.getScrollableNode();
         if (!row || !element) return;
+        const rowBounds = row.getBoundingClientRect();
+        const offsetWithinRow = resolveRestoredTimelineRowOffset(
+          position,
+          rowBounds.height,
+          element.clientWidth,
+        );
         const offset = Math.max(
           0,
           Math.min(
             element.scrollTop +
-              row.getBoundingClientRect().top -
+              rowBounds.top -
               element.getBoundingClientRect().top +
-              position.offsetWithinRow,
+              offsetWithinRow,
             element.scrollHeight - element.clientHeight,
           ),
         );
@@ -1142,6 +1149,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           ...position,
           // DOM geometry includes the header and the virtualizer's layout adjustment.
           offsetWithinRow: element.getBoundingClientRect().top - row.getBoundingClientRect().top,
+          rowHeight: row.getBoundingClientRect().height,
+          viewportWidth: element.clientWidth,
           scrollOffset: element.scrollTop,
           atEnd: isAtEnd,
           disclosures: {
