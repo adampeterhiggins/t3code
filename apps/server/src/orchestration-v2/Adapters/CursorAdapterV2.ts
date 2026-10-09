@@ -863,6 +863,7 @@ interface ActiveCursorTurn {
   readonly reasoning: ActiveCursorTextStream;
   interrupted: boolean;
   finalized: boolean;
+  usage?: TokenUsage;
 }
 
 interface CursorLiveAgent {
@@ -1937,8 +1938,51 @@ export function makeCursorAdapterV2(
               yield* completeReasoning(context);
               yield* handleToolUpdate(context, update);
               return;
+            case "turn-ended": {
+              // Each turn-ended notification carries that model turn's usage,
+              // while the eventual run result is cumulative over all of them.
+              if (update.usage !== undefined) {
+                const reported = normalizeCursorTurnTokenUsage(update.usage, false, "running");
+                if (reported.usageStatus !== "unavailable") {
+                  const prior = context.usage;
+                  const usage = update.usage;
+                  context.usage = {
+                    inputTokens: (prior?.inputTokens ?? 0) + usage.inputTokens,
+                    outputTokens: (prior?.outputTokens ?? 0) + usage.outputTokens,
+                    cacheReadTokens: (prior?.cacheReadTokens ?? 0) + usage.cacheReadTokens,
+                    cacheWriteTokens: (prior?.cacheWriteTokens ?? 0) + usage.cacheWriteTokens,
+                    totalTokens:
+                      (prior?.totalTokens ?? 0) +
+                      usage.inputTokens +
+                      usage.outputTokens +
+                      usage.cacheReadTokens +
+                      usage.cacheWriteTokens,
+                    ...(usage.reasoningTokens === undefined && prior?.reasoningTokens === undefined
+                      ? {}
+                      : {
+                          reasoningTokens:
+                            (prior?.reasoningTokens ?? 0) + (usage.reasoningTokens ?? 0),
+                        }),
+                  };
+                  yield* emitProviderEvent({
+                    type: "provider_turn.updated",
+                    driver: CursorAgentSdk.CURSOR_PROVIDER,
+                    providerTurn: {
+                      ...providerTurnPayload({ context, status: "running", completedAt: null }),
+                      turnTokenUsage: normalizeCursorTurnTokenUsage(
+                        context.usage,
+                        context.subagents.size > 0,
+                        "running",
+                      ),
+                    },
+                  });
+                }
+              }
+              yield* completeAssistant(context);
+              yield* completeReasoning(context);
+              return;
+            }
             case "step-completed":
-            case "turn-ended":
               yield* completeAssistant(context);
               yield* completeReasoning(context);
               return;
@@ -2019,6 +2063,19 @@ export function makeCursorAdapterV2(
           }
           yield* completeReasoning(input.context);
           yield* completeAssistant(input.context);
+          const finalUsage = normalizeCursorTurnTokenUsage(
+            input.usage,
+            input.context.subagents.size > 0,
+            input.status,
+          );
+          const turnTokenUsage =
+            finalUsage.usageStatus === "unavailable" && input.context.usage !== undefined
+              ? normalizeCursorTurnTokenUsage(
+                  input.context.usage,
+                  input.context.subagents.size > 0,
+                  "running",
+                )
+              : finalUsage;
           yield* emitProviderEvent({
             type: "provider_turn.updated",
             driver: CursorAgentSdk.CURSOR_PROVIDER,
@@ -2030,11 +2087,7 @@ export function makeCursorAdapterV2(
               }),
               // Run totals span every model call, so they are billable usage, not
               // context occupancy; tokenUsage (the context meter) stays unset.
-              turnTokenUsage: normalizeCursorTurnTokenUsage(
-                input.usage,
-                input.context.subagents.size > 0,
-                input.status,
-              ),
+              turnTokenUsage,
             },
           });
           yield* emitProviderEvent({

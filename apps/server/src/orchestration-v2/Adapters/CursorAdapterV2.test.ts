@@ -43,6 +43,8 @@ describe("CursorAdapterV2", () => {
   it.effect.each([
     { status: "finished", model: undefined, lateModel: undefined },
     { status: "cancelled", model: "claude-opus-4-6", lateModel: undefined },
+    { status: "cancelled", model: undefined, lateModel: undefined },
+    { status: "finished", model: "grok-4.7", lateModel: undefined },
     { status: "error", model: "custom-fable", lateModel: undefined },
     { status: "finished", model: undefined, lateModel: "gpt-6-sol" },
     { status: "finished", model: "gpt-6-sol", lateModel: null },
@@ -50,6 +52,8 @@ describe("CursorAdapterV2", () => {
     "projects Cursor tasks: $status, late model $lateModel",
     ({ status, model, lateModel }) =>
       Effect.gen(function* () {
+        const streamed = model !== undefined || lateModel !== undefined;
+        const hasFinalUsage = status === "finished" && model !== "grok-4.7";
         const fileSystem = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
         const workspace = yield* fileSystem.makeTempDirectoryScoped({
@@ -119,6 +123,30 @@ describe("CursorAdapterV2", () => {
                         },
                       }).pipe(Effect.orDie);
                     }
+                    for (const usage of streamed
+                      ? [
+                          {
+                            inputTokens: 10,
+                            outputTokens: 2,
+                            cacheReadTokens: 4,
+                            cacheWriteTokens: 1,
+                            reasoningTokens: 1,
+                          },
+                          undefined,
+                          {
+                            inputTokens: 20,
+                            outputTokens: 3,
+                            cacheReadTokens: 5,
+                            cacheWriteTokens: 2,
+                            reasoningTokens: 1,
+                          },
+                        ]
+                      : []) {
+                      yield* input.onDelta!({
+                        type: "turn-ended",
+                        ...(usage === undefined ? {} : { usage }),
+                      }).pipe(Effect.orDie);
+                    }
                     return {
                       agentId: "native-cursor-lifecycle",
                       runId: "native-cursor-run",
@@ -128,7 +156,7 @@ describe("CursorAdapterV2", () => {
                         status,
                         model: { id: "composer-2.5" },
                         durationMs: 1,
-                        ...(status === "finished"
+                        ...(hasFinalUsage
                           ? {
                               usage: {
                                 inputTokens: 100,
@@ -139,7 +167,17 @@ describe("CursorAdapterV2", () => {
                                 reasoningTokens: 5,
                               },
                             }
-                          : {}),
+                          : status === "error"
+                            ? {
+                                usage: {
+                                  inputTokens: 0,
+                                  outputTokens: 0,
+                                  cacheReadTokens: 0,
+                                  cacheWriteTokens: 0,
+                                  totalTokens: 0,
+                                },
+                              }
+                            : {}),
                       }),
                       cancel: Effect.void,
                     };
@@ -219,14 +257,49 @@ describe("CursorAdapterV2", () => {
                 : "failed",
         );
         assert.isNotNull(rows.at(-1)?.subagent.completedAt);
-        // The finished run's usage lands on the terminal provider turn, input including cache reads.
+        const liveTurns = events.filter(
+          (event) =>
+            event.type === "provider_turn.updated" &&
+            event.providerTurn.status === "running" &&
+            event.providerTurn.turnTokenUsage !== undefined,
+        );
+        assert.deepStrictEqual(
+          liveTurns.map((event) =>
+            event.type === "provider_turn.updated" ? event.providerTurn.turnTokenUsage : undefined,
+          ),
+          streamed
+            ? [
+                {
+                  usageStatus: "partial",
+                  usageScope: "main_agent",
+                  inputTokens: 15,
+                  cachedInputTokens: 4,
+                  cacheCreationTokens: 1,
+                  outputTokens: 2,
+                  reasoningTokens: 1,
+                  hasSubagents: true,
+                },
+                {
+                  usageStatus: "partial",
+                  usageScope: "main_agent",
+                  inputTokens: 42,
+                  cachedInputTokens: 9,
+                  cacheCreationTokens: 3,
+                  outputTokens: 5,
+                  reasoningTokens: 2,
+                  hasSubagents: true,
+                },
+              ]
+            : [],
+        );
+        // Final totals replace streamed usage; cancelled/failed runs retain measured partial usage.
         const terminalTurn = events
           .filter((event) => event.type === "provider_turn.updated")
           .at(-1)?.providerTurn;
         assert.isUndefined(terminalTurn?.tokenUsage);
         assert.deepStrictEqual(
           terminalTurn?.turnTokenUsage,
-          status === "finished"
+          hasFinalUsage
             ? {
                 usageStatus: "complete",
                 usageScope: "main_agent",
@@ -237,7 +310,18 @@ describe("CursorAdapterV2", () => {
                 reasoningTokens: 5,
                 hasSubagents: true,
               }
-            : { usageStatus: "unavailable", usageScope: "main_agent", hasSubagents: true },
+            : streamed
+              ? {
+                  usageStatus: "partial",
+                  usageScope: "main_agent",
+                  inputTokens: 42,
+                  cachedInputTokens: 9,
+                  cacheCreationTokens: 3,
+                  outputTokens: 5,
+                  reasoningTokens: 2,
+                  hasSubagents: true,
+                }
+              : { usageStatus: "unavailable", usageScope: "main_agent", hasSubagents: true },
         );
       }).pipe(Effect.scoped, Effect.provide(Layer.merge(NodeServices.layer, IdAllocator.layer))),
   );

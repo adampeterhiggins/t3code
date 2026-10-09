@@ -8,16 +8,16 @@ function count(value: unknown): number | undefined {
 }
 
 /**
- * Normalizes a finished Cursor run's `result.usage`. One Cursor run is one
+ * Normalizes Cursor's streamed turn usage or a finished run's `result.usage`. One Cursor run is one
  * provider turn, and the SDK sums usage across the run's model calls. Cursor's
  * `inputTokens` excludes cache reads and writes (`totalTokens` is input +
  * cacheRead + cacheWrite + output), so they are added back to match T3's
  * input-includes-cache convention.
  */
 export function normalizeCursorTurnTokenUsage(
-  usage: Partial<TokenUsage> | undefined,
+  usage: { readonly [K in keyof TokenUsage]?: TokenUsage[K] | undefined } | undefined,
   hasSubagents: boolean,
-  terminalStatus: ProviderRuntimeTurnStatus,
+  terminalStatus: ProviderRuntimeTurnStatus | "running",
 ): TurnTokenUsage {
   const uncachedInputTokens = count(usage?.inputTokens);
   const cachedInputTokens = count(usage?.cacheReadTokens) ?? 0;

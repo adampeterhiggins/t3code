@@ -33,6 +33,7 @@ import * as IdAllocator from "./IdAllocator.ts";
 import { ProviderAdapterV2Event } from "./ProviderAdapter.ts";
 import { makeProviderFailureTurnItem } from "./ProviderFailure.ts";
 import * as ThreadCommandExecutor from "./ThreadCommandExecutor.ts";
+import { subagentUsageFromChildTurns } from "./SubagentProjection.ts";
 import { stripUnservedToolOutputImageBytes } from "./toolOutputImageBytes.ts";
 
 export class ProviderEventNormalizeError extends Schema.TaggedError<ProviderEventNormalizeError>()(
@@ -387,6 +388,69 @@ export const layer: Layer.Layer<
       },
     );
 
+    // App-owned task rows live in the parent. Serialize with parent commands,
+    // which also rewrite these rows when changing wake policy or publishing results.
+    const syncAppOwnedSubagentUsage = Effect.fn("ProviderEventIngestor.syncAppOwnedSubagentUsage")(
+      function* (input: ProviderEventIngestInput) {
+        if (
+          input.event.type !== "provider_turn.updated" ||
+          input.event.providerTurn.turnTokenUsage === undefined
+        )
+          return [];
+        const childThreadId = input.event.threadId ?? input.threadId;
+        const child = yield* projections.getThread(childThreadId);
+        const parentThreadId = child.lineage.parentThreadId;
+        const forkedFrom = child.forkedFrom;
+        if (
+          child.lineage.relationshipToParent !== "subagent" ||
+          parentThreadId === null ||
+          forkedFrom?.type !== "node"
+        )
+          return [];
+        return yield* threadCommands.withLock(
+          parentThreadId,
+          Effect.gen(function* () {
+            const parent = yield* projections.getThreadRecords(parentThreadId, ["subagents"]);
+            const task = parent.subagents.find(
+              (candidate) =>
+                candidate.id === forkedFrom.nodeId &&
+                candidate.origin === "app_owned" &&
+                candidate.childThreadId === childThreadId,
+            );
+            if (task === undefined) return [];
+            const childTurns = yield* projections.getThreadRecords(childThreadId, [
+              "providerTurns",
+            ]);
+            const usage = subagentUsageFromChildTurns(
+              childTurns.providerTurns,
+              yield* projections.getProviderToolCallCount(childThreadId),
+            );
+            if (
+              usage === undefined ||
+              (task.usage !== undefined &&
+                usage.totalTokens === task.usage.totalTokens &&
+                usage.inputTokens === task.usage.inputTokens &&
+                usage.outputTokens === task.usage.outputTokens &&
+                usage.cachedInputTokens === task.usage.cachedInputTokens &&
+                usage.reasoningOutputTokens === task.usage.reasoningOutputTokens &&
+                usage.toolUses === task.usage.toolUses)
+            )
+              return [];
+            const now = yield* DateTime.now;
+            const event = yield* makeDomainEvent(input, {
+              type: "subagent.updated",
+              threadId: parentThreadId,
+              runId: task.runId,
+              nodeId: task.id,
+              payload: { ...task, usage, updatedAt: now },
+              occurredAt: now,
+            });
+            return yield* eventSink.write({ events: [event] });
+          }),
+        );
+      },
+    );
+
     const normalize: ProviderEventIngestorV2Shape["normalize"] = (input) =>
       Effect.gen(function* () {
         switch (input.event.type) {
@@ -596,6 +660,21 @@ export const layer: Layer.Layer<
             storedEvents.length === 0 || input.event.type !== "subagent.updated"
               ? Effect.succeed(storedEvents)
               : syncSubagentThreadModel(input, input.event.subagent).pipe(
+                  Effect.map((synced) => [...storedEvents, ...synced]),
+                  Effect.mapError(
+                    (cause) =>
+                      new ProviderEventPublishError({
+                        providerSessionId: input.providerSessionId,
+                        eventCount: 1,
+                        cause,
+                      }),
+                  ),
+                ),
+          ),
+          Effect.flatMap((storedEvents) =>
+            storedEvents.length === 0
+              ? Effect.succeed(storedEvents)
+              : syncAppOwnedSubagentUsage(input).pipe(
                   Effect.map((synced) => [...storedEvents, ...synced]),
                   Effect.mapError(
                     (cause) =>
