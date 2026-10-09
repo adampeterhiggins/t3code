@@ -2403,8 +2403,13 @@ describe("MessagesTimeline", () => {
       />,
     );
 
-    expect(markup).toContain("t3code/apps/web/src/session-logic.ts");
-    expect(markup).not.toContain("C:/Users/mike/dev-stuff/t3code/apps/web/src/session-logic.ts");
+    // The visible path is workspace-relative; the full path is only the button's accessible label.
+    const visibleText = markup.replace(/<[^>]*>/g, "");
+    expect(visibleText).toContain("t3code/apps/web/src/session-logic.ts");
+    expect(visibleText).not.toContain("C:/Users/mike/dev-stuff/t3code/apps/web/src/session-logic.ts");
+    expect(markup).toContain(
+      'aria-label="Full path: C:/Users/mike/dev-stuff/t3code/apps/web/src/session-logic.ts"',
+    );
   });
 
   it("renders review comment contexts as structured cards instead of raw tags", () => {
