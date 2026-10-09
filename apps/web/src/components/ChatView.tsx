@@ -331,6 +331,7 @@ import {
   ChevronDownIcon,
   DownloadIcon,
   GitBranchIcon,
+  GaugeIcon,
   TargetIcon,
   WifiOffIcon,
 } from "lucide-react";
@@ -545,6 +546,12 @@ import {
   deriveKnownContextWindowSnapshot,
   deriveLatestContextWindowSnapshot,
 } from "../lib/contextWindow";
+import {
+  deriveThreadUsageSummary,
+  latestProviderContextUsage,
+  isContextWindowNearlyFull,
+  shouldRearmContextWindowNudge,
+} from "@t3tools/client-runtime/thread-usage";
 
 import {
   DRAFT_HERO_TRANSITION_ANIMATION_ID,
@@ -1822,15 +1829,14 @@ export default function ChatView(props: ChatViewProps) {
   const threadDetailLoading = threadSyncPhase === "loading";
   // Latest provider-reported context usage (#8144): the newest turn that has
   // a report wins; stale turns keep the meter alive between turns.
-  const activeThreadLiveTokenUsage = useMemo(() => {
-    const turns = serverProjection?.providerTurns;
-    if (!turns || turns.length === 0) return null;
-    for (let index = turns.length - 1; index >= 0; index -= 1) {
-      const usage = turns[index]?.tokenUsage;
-      if (usage !== undefined) return usage;
-    }
-    return null;
-  }, [serverProjection?.providerTurns]);
+  const activeThreadLiveTokenUsage = useMemo(
+    () =>
+      latestProviderContextUsage(
+        serverProjection?.providerTurns ?? [],
+        serverProjection?.thread.activeProviderThreadId,
+      ),
+    [serverProjection?.providerTurns, serverProjection?.thread.activeProviderThreadId],
+  );
   const serverVisibleTurnItems = useThreadVisibleTurnItems(routeThreadDetailRef);
   const serverThreadHistory = useThreadHistory(routeThreadDetailRef);
   const threadHistoryControls = useMemo<MessagesTimelineHistoryControls | undefined>(() => {
@@ -3810,6 +3816,21 @@ export default function ChatView(props: ChatViewProps) {
       serverVisibleTurnItems,
       serverProjection,
     ],
+  );
+  const usageProviderThreads = serverProjection?.providerThreads;
+  const usageProviderTurns = serverProjection?.providerTurns;
+  const usageSubagents = serverProjection?.subagents;
+  // Keyed on the arrays, not the projection, so streamed text does not rebuild it.
+  const threadUsage = useMemo(
+    () =>
+      usageProviderThreads && usageProviderTurns && usageSubagents
+        ? deriveThreadUsageSummary({
+            providerThreads: usageProviderThreads,
+            providerTurns: usageProviderTurns,
+            subagents: usageSubagents,
+          })
+        : null,
+    [usageProviderThreads, usageProviderTurns, usageSubagents],
   );
   const pendingBackgroundTasks = useMemo(() => {
     if (serverProjection === null || serverProjection === undefined) {
@@ -8047,6 +8068,72 @@ export default function ChatView(props: ChatViewProps) {
           ? "Compaction is unavailable for this provider"
           : "Compacting is unavailable right now"
     : null;
+  // Near a full window, suggest compacting or carrying a summary into a new tab. Dismissal is
+  // per thread and lasts until the provider reports the window back under the threshold.
+  const [contextNudgeDismissed, setContextNudgeDismissed] = useLocalStorage(
+    `t3code:context-nudge-dismissed:${routeThreadKey}`,
+    false,
+    Schema.Boolean,
+  );
+  useEffect(() => {
+    if (contextNudgeDismissed && shouldRearmContextWindowNudge(activeContextWindow)) {
+      setContextNudgeDismissed(false);
+    }
+  }, [activeContextWindow, contextNudgeDismissed, setContextNudgeDismissed]);
+  const contextNudgeActionsRef = useRef({ compact: () => {}, continueInNewTab: () => {} });
+  const contextNudgePercent =
+    canOperateThread &&
+    isServerThread &&
+    !contextNudgeDismissed &&
+    !isCompacting &&
+    isContextWindowNearlyFull(activeContextWindow)
+      ? Math.round(activeContextWindow?.usedPercentage ?? 0)
+      : null;
+  const contextNudgeCanCompact = manualCompactionProviderAvailable;
+  const contextNudgeCompactDisabled = compactDisabled;
+  const contextNudgeCanContinue = hasThreadTabs;
+  const contextNudgeBannerItem = useMemo<ComposerBannerStackItem | null>(() => {
+    if (contextNudgePercent === null) return null;
+    return {
+      id: "context-window-nudge",
+      variant: "info",
+      compact: true,
+      icon: <GaugeIcon />,
+      title: `Context ${contextNudgePercent}% full`,
+      actions:
+        contextNudgeCanCompact || contextNudgeCanContinue ? (
+          <>
+            {contextNudgeCanCompact ? (
+              <Button
+                size="xs"
+                variant="ghost"
+                disabled={contextNudgeCompactDisabled}
+                onClick={() => contextNudgeActionsRef.current.compact()}
+              >
+                Compact
+              </Button>
+            ) : null}
+            {contextNudgeCanContinue ? (
+              <Button
+                size="xs"
+                variant="ghost"
+                onClick={() => contextNudgeActionsRef.current.continueInNewTab()}
+              >
+                Continue in new tab
+              </Button>
+            ) : null}
+          </>
+        ) : null,
+      dismissLabel: "Dismiss context notice",
+      onDismiss: () => setContextNudgeDismissed(true),
+    };
+  }, [
+    contextNudgeCanCompact,
+    contextNudgeCanContinue,
+    contextNudgeCompactDisabled,
+    contextNudgePercent,
+    setContextNudgeDismissed,
+  ]);
   // Tokens a stale Claude session would re-read on its next turn. While set,
   // the composer shows a Compact chip and Enter compacts first; turning the
   // chip off sends the next message with full history. Held queues and
@@ -8177,6 +8264,7 @@ export default function ChatView(props: ChatViewProps) {
     // The user asked for this one, so it leads the notice tier instead of trailing it.
     const usageLimitsItems = usageLimitsBanner === null ? [] : [usageLimitsBanner];
     const projectCloneItems = projectCloneBannerItem === null ? [] : [projectCloneBannerItem];
+    const contextNudgeItems = contextNudgeBannerItem === null ? [] : [contextNudgeBannerItem];
     if (!localCheckoutBranchMismatch || !showBranchMismatchBanner || !activeBranchMismatchKey) {
       return [
         ...feedbackBannerItems,
@@ -8185,6 +8273,7 @@ export default function ChatView(props: ChatViewProps) {
         ...projectCloneItems,
         ...systemComposerBannerItems,
         ...backgroundWorkItems,
+        ...contextNudgeItems,
       ];
     }
     return [
@@ -8194,6 +8283,7 @@ export default function ChatView(props: ChatViewProps) {
       ...projectCloneItems,
       ...systemComposerBannerItems,
       ...backgroundWorkItems,
+      ...contextNudgeItems,
       {
         id: `branch-mismatch:${activeBranchMismatchKey}`,
         variant: "info",
@@ -8246,6 +8336,7 @@ export default function ChatView(props: ChatViewProps) {
     goalBannerItem,
     localCheckoutBranchMismatch,
     projectCloneBannerItem,
+    contextNudgeBannerItem,
     showBranchMismatchBanner,
     systemComposerBannerItems,
     usageLimitsBanner,
@@ -9259,6 +9350,31 @@ export default function ChatView(props: ChatViewProps) {
     if (compactDisabled) return;
     void sendStandaloneCommand("/compact", "Failed to compact context.");
   };
+
+  // From the full-context notice: a fresh tab on the same model that starts from this chat's
+  // summary chip rather than its native history, so it opens with an empty window. This tab's
+  // draft is copied into it.
+  const onContinueInFreshTab = () =>
+    runFork(async (connection) => {
+      if (!activeThread) return;
+      const draft = useComposerDraftStore.getState().getComposerDraft(composerDraftTarget);
+      const tabRef = await forkThreadTab(connection, {
+        environmentId,
+        sourceThreadId: activeThread.id,
+        sourceTitle: activeThread.title,
+        modelSelection: activeThread.modelSelection,
+        prompt: draft?.prompt.trim() ?? "",
+        hasHistory: threadHasStarted(activeThread),
+      });
+      copyDraftAttachmentsInto(tabRef);
+      await openForkedTab(tabRef);
+    });
+  useEffect(() => {
+    contextNudgeActionsRef.current = {
+      compact: onCompactContext,
+      continueInNewTab: () => void onContinueInFreshTab(),
+    };
+  });
 
   const onResume = async () => {
     if (
@@ -12509,6 +12625,7 @@ export default function ChatView(props: ChatViewProps) {
                               }
                               activeThreadModelSelection={activeThread?.modelSelection}
                               activeContextWindow={activeContextWindow}
+                              threadUsage={threadUsage}
                               activeTasksProgress={activeComposerTasksProgress}
                               activeTaskSteps={activeComposerTaskSteps}
                               compactThreadUnavailable={compactThreadUnavailable}

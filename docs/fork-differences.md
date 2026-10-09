@@ -159,6 +159,25 @@ Code: `apps/web/src/components/settings/ProviderAuthSection.tsx`,
 [providers-devin.md](./user/providers-devin.md) and
 [providers-opencode.md](./user/providers-opencode.md).
 
+## Thread usage and context notices
+
+Web, desktop, and mobile show processed thread tokens separately from context occupancy. Main
+turn counts exclude provider threads owned by subagents; reported subagent totals appear separately.
+Missing or partial main-turn counts mark the token total as a lower bound. Providers that report
+session costs also show a cost subtotal, grouped by currency. Sessions without cost reports are
+excluded; no model-price estimate or subscription charge is inferred.
+
+At 80% of a reported context window, the composer suggests reducing context. Web and desktop offer
+the existing Compact action when the provider advertises it and Continue in new tab when tabs are
+available. Mobile can insert `/compact` into an empty composer when supported. Web and desktop remember dismissal until the provider reports real usage below 80%; mobile
+hides it for the current thread view, also rearming below 80%. Providers without context occupancy reports,
+such as native Cursor and Grok, show token totals without a context notice.
+
+Code: [`threadUsage.ts`](../packages/client-runtime/src/threadUsage.ts),
+[`ContextWindowMeter.tsx`](../apps/web/src/components/chat/ContextWindowMeter.tsx), and
+[`ThreadUsageNotice.tsx`](../apps/mobile/src/features/threads/ThreadUsageNotice.tsx).
+User guide: [composer.md](./user/composer.md).
+
 ## Model change marker
 
 Changing the model in an existing thread leaves a divider in the transcript, the same kind of

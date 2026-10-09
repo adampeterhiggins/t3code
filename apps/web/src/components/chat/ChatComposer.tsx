@@ -1217,6 +1217,10 @@ import {
 } from "@t3tools/client-runtime/state/composer-dispatch";
 import type { ContextWindowSnapshot } from "../../lib/contextWindow";
 import {
+  formatReportedThreadCost,
+  type ThreadUsageSummary,
+} from "@t3tools/client-runtime/thread-usage";
+import {
   getProviderSlashCommandsForSlashMenu,
   getProviderSkillsForSlashMenu,
   hasCompleteProviderWorkspaceSnapshot,
@@ -1450,6 +1454,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
   compact: boolean;
   canOperateThread: boolean;
   activeContextWindow: ContextWindowSnapshot | null;
+  threadUsage: ThreadUsageSummary | null;
   reserveContextWindowMeter: boolean;
   activeThreadModelDisplayName: string | null;
   isPreparingWorktree: boolean;
@@ -1496,9 +1501,21 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
           onCompact={props.onCompactContext}
           compactDisabled={props.compactDisabled}
           compactDisabledReason={props.compactDisabledReason}
+          threadUsage={props.threadUsage}
         />
       ) : props.reserveContextWindowMeter ? (
         <ContextWindowMeterPlaceholder />
+      ) : null}
+      {props.threadUsage && props.threadUsage.costs.length > 0 ? (
+        <Tooltip>
+          <TooltipTrigger render={<span className="text-2xs text-secondary-label tabular-nums" />}>
+            {formatReportedThreadCost(props.threadUsage.costs)}
+          </TooltipTrigger>
+          <TooltipPopup side="top">
+            Provider-reported session cost subtotal. Sessions without cost reports are excluded;
+            this is not your subscription bill.
+          </TooltipPopup>
+        </Tooltip>
       ) : null}
       <ComposerPrimaryActions
         compact={props.compact}
@@ -1712,6 +1729,7 @@ export interface ChatComposerProps {
 
   // Context window
   activeContextWindow: ContextWindowSnapshot | null;
+  threadUsage: ThreadUsageSummary | null;
   compactThreadUnavailable: boolean;
   compactDisabled: boolean;
   compactDisabledReason: string | null;
@@ -1867,6 +1885,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     activeThreadModelSelection,
     reportedModelSelection,
     activeContextWindow,
+    threadUsage,
     compactThreadUnavailable,
     compactDisabled,
     compactDisabledReason,
@@ -8327,6 +8346,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     activeContextWindow={
                       settings.contextWindowMeterEnabled ? activeContextWindow : null
                     }
+                    threadUsage={threadUsage}
                     reserveContextWindowMeter={reserveContextWindowMeter}
                     activeThreadModelDisplayName={activeThreadModelDisplayName}
                     pendingAction={pendingPrimaryAction}

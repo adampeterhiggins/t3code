@@ -116,6 +116,7 @@ import type {
 import { PendingApprovalCard } from "./PendingApprovalCard";
 import { ComposerErrorNotice } from "./ComposerErrorNotice";
 import { ComposerFeedback } from "./ComposerFeedback";
+import { ThreadUsageNotice } from "./ThreadUsageNotice";
 import { ComposerUsageLimits } from "./ComposerUsageLimits";
 import { PendingUserInputCard } from "./PendingUserInputCard";
 import { ProviderSubagentBar } from "./ProviderSubagentBar";
@@ -1380,6 +1381,27 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
                     </View>
                   ) : (
                     <>
+                      <ThreadUsageNotice
+                        environmentId={props.environmentId}
+                        threadId={props.selectedThread.id}
+                        canOperate={props.canOperateThread}
+                        compacting={props.isCompacting}
+                        canCompact={
+                          !props.activeThreadBusy &&
+                          !props.activePendingApproval &&
+                          !props.activePendingUserInput &&
+                          hasCompactableConversation &&
+                          !props.draftMessage.trim() &&
+                          props.draftAttachments.length === 0 &&
+                          props.serverConfig?.providers.some(
+                            (provider) =>
+                              provider.instanceId ===
+                                props.selectedThread.modelSelection?.instanceId &&
+                              provider.slashCommands.some((command) => command.name === "compact"),
+                          ) === true
+                        }
+                        onInsertCompact={() => props.onChangeDraftMessage("/compact")}
+                      />
                       <ThreadComposer
                         canOperateThread={props.canOperateThread}
                         reportedModelSelection={reportedModelSelection}

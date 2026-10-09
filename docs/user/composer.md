@@ -216,6 +216,16 @@ Provider commands must start the message to run. T3 Code commands such as
 
 Send `/compact` in an existing conversation to reduce context usage when the
 provider supports it. Web and desktop also offer compaction from the context meter.
+When reported context reaches 80%, a notice offers the available compaction action;
+web and desktop can also continue from a summary in a new tab. On mobile, **Use /compact**
+puts the command into an empty composer for you to send. Dismiss the notice to hide it
+until reported usage falls below 80%. Mobile remembers dismissal while that thread view stays open.
+
+Thread usage shows processed tokens separately from context usage. A `+` means the
+main-turn total is incomplete. Reported subagent tokens are listed separately. A cost
+appears only when the provider reports it, as a subtotal of reported session costs
+in each currency. Sessions without cost reports are excluded; this is not a
+subscription bill or an estimate based on model prices.
 
 ## Goals
 

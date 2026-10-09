@@ -7,6 +7,7 @@ import {
 } from "./ContextWindowMeter.logic";
 import { Minimize2Icon } from "lucide-react";
 import { composerFloatingLayerProps } from "./composerEventScope";
+import type { ThreadUsageSummary } from "@t3tools/client-runtime/thread-usage";
 
 function formatPercentage(value: number | null): string | null {
   if (value === null || !Number.isFinite(value)) {
@@ -24,8 +25,24 @@ export function ContextWindowMeter(props: {
   onCompact?: (() => void) | undefined;
   compactDisabled?: boolean | undefined;
   compactDisabledReason?: string | null | undefined;
+  /** Reported main and subagent tokens plus session cost subtotals; unavailable rows hide. */
+  threadUsage?: ThreadUsageSummary | null | undefined;
 }) {
-  const { usage, modelDisplayName, onCompact, compactDisabled, compactDisabledReason } = props;
+  const {
+    usage,
+    modelDisplayName,
+    onCompact,
+    compactDisabled,
+    compactDisabledReason,
+    threadUsage,
+  } = props;
+  // Thread-wide provider-reported cost wins; the active session's cost is the fallback.
+  const costs =
+    threadUsage && threadUsage.costs.length > 0
+      ? threadUsage.costs
+      : usage.cost != null
+        ? [usage.cost]
+        : [];
   const usedPercentage = formatPercentage(usage.usedPercentage);
   const normalizedPercentage = Math.max(0, Math.min(100, usage.usedPercentage ?? 0));
   const radius = 9.75;
@@ -136,13 +153,24 @@ export function ContextWindowMeter(props: {
               </span>
             </div>
           ) : null}
-          {usage.cost != null ? (
-            <div className="flex items-center justify-between gap-3 text-2xs leading-4">
-              <span className="text-secondary-label">Cost</span>
-              <span className="font-medium tabular-nums text-secondary-label">
-                {formatContextWindowCost(usage.cost)}
-              </span>
-            </div>
+          {threadUsage?.mainTokens != null ? (
+            <MeterRow
+              label="Thread tokens"
+              detail={`${formatContextWindowTokens(threadUsage.mainInputTokens)} in · ${formatContextWindowTokens(threadUsage.mainOutputTokens)} out`}
+              value={`${formatContextWindowTokens(threadUsage.mainTokens)}${threadUsage.mainPartial ? "+" : ""}`}
+            />
+          ) : null}
+          {threadUsage?.subagentTokens != null ? (
+            <MeterRow
+              label={threadUsage.subagentsWithUsage === 1 ? "Subagent" : "Subagents"}
+              value={formatContextWindowTokens(threadUsage.subagentTokens)}
+            />
+          ) : null}
+          {costs.length > 0 ? (
+            <MeterRow
+              label="Reported cost"
+              value={costs.map(formatContextWindowCost).join(" · ")}
+            />
           ) : null}
           {usage.compactsAutomatically ? (
             <div className="mt-1 text-pretty text-secondary-label text-2xs font-medium">
@@ -171,6 +199,18 @@ export function ContextWindowMeter(props: {
         </div>
       </PopoverPopup>
     </Popover>
+  );
+}
+
+function MeterRow(props: { label: string; value: string; detail?: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 text-2xs leading-4">
+      <span className="text-secondary-label">{props.label}</span>
+      <span className="tabular-nums text-secondary-label">
+        {props.detail ? <span className="mr-1.5">{props.detail}</span> : null}
+        <span className="font-medium">{props.value}</span>
+      </span>
+    </div>
   );
 }
 

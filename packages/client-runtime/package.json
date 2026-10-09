@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./thread-usage": {
+      "types": "./src/threadUsage.ts",
+      "default": "./src/threadUsage.ts"
+    },
     "./thread-tabs": {
       "types": "./src/threadTabs.ts",
       "default": "./src/threadTabs.ts"
