@@ -6936,6 +6936,68 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     ),
   );
 
+  it.effect("completes a subagent's call whose result arrives after the call ended", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const TOOL_USE_ID = "toolu-late-result";
+        const BASH = "toolu-late-result-bash";
+        const harness = yield* makeWakeHarness;
+        const now = yield* DateTime.now;
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now,
+            attemptId: RunAttemptId.make("attempt-claude-late-result"),
+            text: "Audit the commits.",
+            attachments: [],
+          }),
+        );
+        for (const frame of [
+          makeSubagentTaskStartedFrame({
+            taskId: "task-late-result",
+            toolUseId: TOOL_USE_ID,
+            uuid: "00000000-0000-4000-8000-000000000a01",
+          }),
+          ...makeSubagentAssistantFrames({
+            parentToolUseId: TOOL_USE_ID,
+            uuid: "00000000-0000-4000-8000-000000000a02",
+            bashToolUseId: BASH,
+          }),
+          // The notification ends the subagent's open call; its result lands after.
+          makeSubagentNotificationFrame({
+            taskId: "task-late-result",
+            toolUseId: TOOL_USE_ID,
+            summary: "Audit finished.",
+            uuid: "00000000-0000-4000-8000-000000000a03",
+          }),
+          makeSubagentToolResultFrame({
+            parentToolUseId: TOOL_USE_ID,
+            uuid: "00000000-0000-4000-8000-000000000a04",
+            toolUseId: BASH,
+          }),
+          makeResultFrame({
+            uuid: "00000000-0000-4000-8000-000000000a05",
+            result: "Audited.",
+          }),
+        ]) {
+          yield* Queue.offer(harness.sdkMessages, frame);
+        }
+        yield* awaitUntil(() => harness.terminalEvents().length === 1, "turn terminal");
+        const bashItems = harness.events.flatMap((event) =>
+          event.type === "turn_item.updated" && event.turnItem.nativeItemRef?.nativeId === BASH
+            ? [`${event.turnItem.type}:${event.turnItem.status}`]
+            : [],
+        );
+        assert.deepEqual(bashItems, [
+          "command_execution:running",
+          "command_execution:failed",
+          "command_execution:completed",
+        ]);
+      }).pipe(Effect.provide(Layer.merge(IdAllocator.layer, NodeServices.layer))),
+    ),
+  );
+
   it.effect("ends a subagent's open call when Stop's close of the CLI times out", () =>
     Effect.scoped(
       Effect.gen(function* () {

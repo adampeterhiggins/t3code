@@ -5,6 +5,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   fileChangeDiffWithheld,
   fileChangePreviewText,
+  toolCallLines,
   toolReadRangeLabel,
   turnItemOutputImages,
   turnItemOutputText,
@@ -158,6 +159,35 @@ describe("JSON text results", () => {
     expect(turnItemOutputText(textResult('{"id":"a","name":"b"}'))).toBe(
       '{\n  "id": "a",\n  "name": "b"\n}',
     );
+  });
+
+  it("reads a text-shaped document as its text", () => {
+    const slack = JSON.stringify({ messages: "From: Matt\nHello", pagination_info: "No more." });
+    expect(turnItemOutputText(textResult(slack))).toBe(
+      "From: Matt\nHello\n\npagination_info: No more.",
+    );
+  });
+
+  it("drops server metadata, so a result of only metadata shows nothing", () => {
+    const notion = { _meta: { "io.modelcontextprotocol/serverInfo": { name: "Notion MCP" } } };
+    expect(turnItemOutputText({ ...screenshot, output: notion })).toBeNull();
+    const icon = { toolIcon: { _tag: "website", pageUrl: "http://localhost:7440" } };
+    expect(turnItemOutputText(textResult(JSON.stringify(icon)))).toBeNull();
+    expect(turnItemOutputText(textResult(JSON.stringify({ ...icon, value: 3 })))).toBe(
+      '{\n  "value": 3\n}',
+    );
+  });
+
+  it("reads Cursor's nested text blocks", () => {
+    const output = { content: [{ text: { text: "Linked." } }], isError: false };
+    expect(turnItemOutputText({ ...screenshot, output })).toBe("Linked.");
+  });
+});
+
+describe("toolCallLines", () => {
+  it("shows a Cursor MCP call's own arguments, not its envelope", () => {
+    const args = { providerIdentifier: "t3-code", toolName: "t3_thread_read", args: { limit: 5 } };
+    expect(toolCallLines({ args }).args).toEqual([["limit", "5"]]);
   });
 });
 

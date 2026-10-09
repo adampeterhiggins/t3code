@@ -1,0 +1,332 @@
+import { ThreadId, type EnvironmentId } from "@t3tools/contracts";
+import type { ToolPreview } from "@t3tools/client-runtime/work-log/tool-preview";
+import { ExternalLinkIcon } from "lucide-react";
+import { useState, type ReactNode } from "react";
+
+import { useClientSettings } from "../../hooks/useSettings";
+import { cn } from "../../lib/utils";
+import { formatShortTimestamp } from "../../timestampFormat";
+import { PullRequestStateGlyph } from "../pullRequest/pullRequestPresentation";
+import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
+import ChatMarkdown from "../ChatMarkdown";
+import { resolveExternalWebLinkHref } from "./externalLinkContextMenu";
+import { HighlightedSnippet } from "./HighlightedSnippet";
+import { ShellCommandBlock } from "./ShellCommandBlock";
+
+const monoClassName =
+  "font-mono text-(length:--font-size-code,var(--text-2xs)) leading-relaxed whitespace-pre-wrap break-words select-text";
+
+function StatusBadge({ status }: { readonly status: string | null }) {
+  if (!status) return null;
+  const variant =
+    status === "completed"
+      ? "success"
+      : status === "failed" || status === "cancelled" || status === "interrupted"
+        ? "error"
+        : status === "running" || status === "working"
+          ? "info"
+          : "secondary";
+  return (
+    <Badge size="sm" variant={variant} className="shrink-0">
+      {status.replaceAll("_", " ")}
+    </Badge>
+  );
+}
+
+function Chip({ children }: { readonly children: ReactNode }) {
+  return (
+    <span className="inline-block max-w-full rounded bg-muted px-1.5 font-mono text-2xs break-all text-foreground/85">
+      {children}
+    </span>
+  );
+}
+
+function ExternalLink({ href, children }: { readonly href: string; readonly children: ReactNode }) {
+  const safeHref = resolveExternalWebLinkHref(href);
+  if (!safeHref) return <span className="min-w-0 truncate">{children}</span>;
+  return (
+    <a
+      href={safeHref}
+      target="_blank"
+      rel="noreferrer"
+      className="inline-flex min-w-0 items-center gap-1 text-foreground hover:underline"
+    >
+      <span className="min-w-0 truncate">{children}</span>
+      <ExternalLinkIcon className="size-3 shrink-0 text-muted-foreground" />
+    </a>
+  );
+}
+
+function OpenThreadButton(props: {
+  readonly threadId: string | null;
+  readonly onOpenThread: (threadId: ThreadId) => void;
+}) {
+  const { threadId, onOpenThread } = props;
+  if (!threadId) return null;
+  return (
+    <div>
+      <Button size="xs" variant="outline" onClick={() => onOpenThread(ThreadId.make(threadId))}>
+        Open thread
+      </Button>
+    </div>
+  );
+}
+
+function WakeTime({ at }: { readonly at: string }) {
+  const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
+  return <p className="text-foreground">Wakes at {formatShortTimestamp(at, timestampFormat)}</p>;
+}
+
+function PreviewBody(props: {
+  readonly preview: ToolPreview;
+  readonly environmentId: EnvironmentId;
+  readonly cwd: string | undefined;
+  readonly onOpenThread: (threadId: ThreadId) => void;
+}) {
+  const { preview } = props;
+  switch (preview.kind) {
+    case "thread":
+      return (
+        <>
+          <div className="flex items-start gap-2">
+            <span className="min-w-0 flex-1 font-medium text-foreground">{preview.title}</span>
+            <StatusBadge status={preview.status} />
+          </div>
+          {preview.model || preview.branch ? (
+            <p className="text-muted-foreground">
+              {[preview.model, preview.branch].filter(Boolean).join(" · ")}
+            </p>
+          ) : null}
+          {preview.items.length > 0 ? (
+            <ul className="space-y-1 border-l border-border/60 pl-2">
+              {preview.items.map((item) => (
+                <li key={item.key} className="line-clamp-3 break-words">
+                  <span className="text-muted-foreground">{item.label} </span>
+                  {item.text}
+                </li>
+              ))}
+              {preview.moreItems > 0 ? (
+                <li className="text-muted-foreground">+{preview.moreItems} earlier</li>
+              ) : null}
+            </ul>
+          ) : null}
+          <OpenThreadButton threadId={preview.threadId} onOpenThread={props.onOpenThread} />
+        </>
+      );
+    case "task":
+      return (
+        <>
+          <div className="flex items-start gap-2">
+            <span className="min-w-0 flex-1 font-medium text-foreground">
+              {preview.title ?? "Delegated task"}
+            </span>
+            <StatusBadge status={preview.status} />
+          </div>
+          {preview.model ? <p className="text-muted-foreground">{preview.model}</p> : null}
+          {preview.summary ? (
+            <p className="line-clamp-4 break-words text-foreground/85">{preview.summary}</p>
+          ) : null}
+          <OpenThreadButton threadId={preview.threadId} onOpenThread={props.onOpenThread} />
+        </>
+      );
+    case "pull-requests":
+      return preview.pullRequests.length === 0 ? (
+        <p className="text-muted-foreground italic">No pull requests.</p>
+      ) : (
+        <ul className="space-y-1">
+          {preview.pullRequests.map((pr) => (
+            <li key={pr.url} className="flex min-w-0 items-center gap-1.5">
+              {pr.state ? (
+                <PullRequestStateGlyph state={pr.state} isDraft={pr.isDraft} className="size-3.5" />
+              ) : null}
+              <ExternalLink href={pr.url}>
+                {pr.title ??
+                  (pr.repository && pr.number ? `${pr.repository}#${pr.number}` : pr.url)}
+              </ExternalLink>
+              {pr.title && pr.number ? (
+                <span className="shrink-0 font-mono text-muted-foreground">#{pr.number}</span>
+              ) : null}
+              {pr.note ? <span className="shrink-0 text-muted-foreground">· {pr.note}</span> : null}
+            </li>
+          ))}
+        </ul>
+      );
+    case "browser":
+      return (
+        <>
+          {preview.page ? (
+            <div className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+              <ExternalLink href={preview.page.url}>
+                {preview.page.title ?? preview.page.url}
+              </ExternalLink>
+              {preview.page.title ? (
+                <span className="min-w-0 truncate font-mono text-2xs">{preview.page.url}</span>
+              ) : null}
+            </div>
+          ) : null}
+          {preview.target && preview.target !== preview.page?.url ? (
+            <div>
+              <Chip>{preview.target}</Chip>
+            </div>
+          ) : null}
+          {preview.text ? <p className="break-words text-foreground/85">“{preview.text}”</p> : null}
+          {preview.expression ? (
+            <pre className={cn("rounded-md bg-muted/40 px-2 py-1.5", monoClassName)}>
+              <HighlightedSnippet text={preview.expression} lang="javascript" />
+            </pre>
+          ) : null}
+          {preview.value !== null ? (
+            <pre className={cn("max-h-60 overflow-auto text-muted-foreground", monoClassName)}>
+              → {preview.value}
+            </pre>
+          ) : null}
+        </>
+      );
+    case "loaded-tools":
+      return (
+        <div className="flex flex-wrap gap-1">
+          {preview.names.map((name) => (
+            <Chip key={name}>{name}</Chip>
+          ))}
+        </div>
+      );
+    case "slack-thread":
+      return (
+        <ul className="space-y-2">
+          {preview.messages.map((message) => (
+            <li
+              key={`${message.time}\n${message.author}\n${message.text}`}
+              className="border-l-2 border-border pl-2"
+            >
+              <p>
+                <span className="font-medium text-foreground">{message.author}</span>
+                {message.time ? (
+                  <span className="ml-1.5 text-muted-foreground">{message.time}</span>
+                ) : null}
+              </p>
+              <p className="line-clamp-6 break-words whitespace-pre-wrap text-foreground/85">
+                {message.text}
+              </p>
+            </li>
+          ))}
+        </ul>
+      );
+    case "questions":
+      return (
+        <div className="space-y-2">
+          {preview.questions.map((question) => (
+            <div key={question.question} className="space-y-0.5">
+              <p className="font-medium text-foreground">{question.question}</p>
+              {question.options.map((option) => (
+                <p
+                  key={option.label}
+                  className={cn(
+                    "flex items-baseline gap-1.5",
+                    option.selected ? "font-medium text-foreground" : "text-muted-foreground",
+                  )}
+                >
+                  <span
+                    aria-hidden
+                    className={cn(
+                      "size-2 shrink-0 translate-y-px rounded-full border",
+                      option.selected ? "border-primary bg-primary" : "border-muted-foreground",
+                    )}
+                  />
+                  {option.label}
+                </p>
+              ))}
+              {question.otherAnswer ? (
+                <p className="text-foreground">Answered: {question.otherAnswer}</p>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      );
+    case "agent-message":
+      return (
+        <>
+          <div className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+            To <Chip>{preview.recipient}</Chip>
+          </div>
+          {preview.summary ? (
+            <p className="font-medium text-foreground">{preview.summary}</p>
+          ) : null}
+          <div className="max-h-60 overflow-auto">
+            <ChatMarkdown text={preview.message} cwd={props.cwd} lineBreaks />
+          </div>
+        </>
+      );
+    case "skill":
+      return (
+        <>
+          <div>
+            <Chip>/{preview.skill}</Chip>
+          </div>
+          {preview.args ? (
+            <p className="break-words whitespace-pre-wrap text-foreground/85">{preview.args}</p>
+          ) : null}
+        </>
+      );
+    case "monitor":
+      return (
+        <>
+          {preview.description ? (
+            <p className="font-medium text-foreground">{preview.description}</p>
+          ) : null}
+          <div className={cn("max-h-40 overflow-auto", monoClassName)}>
+            <ShellCommandBlock command={preview.command} highlightSyntax />
+          </div>
+        </>
+      );
+    case "wakeup":
+      return (
+        <>
+          {preview.at ? <WakeTime at={preview.at} /> : null}
+          {preview.reason ? <p className="text-muted-foreground">{preview.reason}</p> : null}
+          {preview.prompt ? (
+            <p className="line-clamp-4 break-words text-foreground/85">{preview.prompt}</p>
+          ) : null}
+        </>
+      );
+    case "html-page":
+      return (
+        <>
+          {preview.title ? <p className="font-medium text-foreground">{preview.title}</p> : null}
+          {preview.details.length > 0 ? (
+            <p className="text-muted-foreground">{preview.details.join(" · ")}</p>
+          ) : null}
+        </>
+      );
+  }
+}
+
+/**
+ * A tool call shown as what it did rather than its arguments and JSON result.
+ * The raw call stays one click away, and mounts only when asked for.
+ */
+export function ToolPreviewCard(props: {
+  readonly preview: ToolPreview;
+  readonly environmentId: EnvironmentId;
+  readonly cwd: string | undefined;
+  readonly onOpenThread: (threadId: ThreadId) => void;
+  readonly images: ReactNode;
+  /** The generic body, mounted only once asked for. */
+  readonly raw: ReactNode;
+}) {
+  const [showRaw, setShowRaw] = useState(false);
+  return (
+    <div className="space-y-1.5 text-xs" data-tool-preview={props.preview.kind}>
+      <PreviewBody {...props} />
+      {props.images}
+      <button
+        type="button"
+        className="text-2xs text-muted-foreground hover:text-foreground"
+        onClick={() => setShowRaw((shown) => !shown)}
+      >
+        {showRaw ? "Hide raw call" : "Show raw call"}
+      </button>
+      {showRaw ? props.raw : null}
+    </div>
+  );
+}

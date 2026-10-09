@@ -501,7 +501,12 @@ describe("CursorAdapterV2", () => {
               args: { city: "Berlin" },
             },
             ...(type === "tool-call-completed"
-              ? { result: { status: "success" as const, value: { content: [], isError: false } } }
+              ? {
+                  result: {
+                    status: "success" as const,
+                    value: { content: [{ text: { text: "Sunny" } }], isError: false },
+                  },
+                }
               : {}),
           },
         })),
@@ -786,12 +791,12 @@ describe("CursorAdapterV2", () => {
           name: "weather",
           kind: "integration",
         });
-        assert.deepEqual(item.input, {
-          providerIdentifier: "weather",
-          toolName: "get_weather",
-          args: { city: "Berlin" },
-        });
+        assert.deepEqual(item.input, { city: "Berlin" });
       }
+      assert.deepEqual(mcpItems.at(-1)?.output, {
+        content: [{ type: "text", text: "Sunny" }],
+        isError: false,
+      });
       const fileSearchItems = events.flatMap((event) =>
         event.type === "turn_item.updated" &&
         event.turnItem.type === "file_search" &&

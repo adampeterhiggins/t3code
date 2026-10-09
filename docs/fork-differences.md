@@ -330,6 +330,16 @@ time and status in a compact footer. Syntax highlighting for commands and tool a
 limited to hover previews; expanded chat rows show plain text. Thoughts and answered questions do not preview
 ([`MessagesTimeline.tsx`](../apps/web/src/components/chat/MessagesTimeline.tsx),
 [`toolCallPreview.ts`](../apps/web/src/lib/toolCallPreview.ts)).
+On web and desktop, a tool call's expanded row and hover card show common tools as what they
+did rather than their arguments and JSON result, with the raw call one click away: T3 thread and
+task tools as the thread's title, status, model and latest items with an Open thread button; pull
+request tools as linked PR rows; browser preview actions as their target, page, and evaluated
+code and value; and Claude's ToolSearch, AskUserQuestion, SendMessage, Skill, Monitor and
+ScheduleWakeup, Slack threads and HTML pages by what they carry (`resolveToolPreview`,
+[`ToolPreviewCard.tsx`](../apps/web/src/components/chat/ToolPreviewCard.tsx)). Other tools' JSON
+results show as a collapsible tree and markdown results rendered. On every client, server
+metadata such as an MCP `_meta` block or a browser row's `toolIcon` is left out of a tool's
+output, and a Cursor MCP call shows its own arguments rather than Cursor's envelope.
 
 Code: [`agentListView.ts`](../packages/client-runtime/src/state/agentListView.ts),
 [`agentFleet.ts`](../packages/client-runtime/src/state/agentFleet.ts),
