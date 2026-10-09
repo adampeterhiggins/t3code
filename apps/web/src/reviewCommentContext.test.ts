@@ -7,6 +7,7 @@ import {
   formatReviewCommentFence,
   inferReviewCommentFenceLanguage,
   restoreDiffReviewCommentRange,
+  reviewCommentCodeLines,
 } from "./reviewCommentContext";
 
 describe("review comment context parsing", () => {
@@ -111,5 +112,33 @@ describe("review comment context parsing", () => {
       end: 2,
       endSide: "additions",
     });
+  });
+});
+
+describe("reviewCommentCodeLines", () => {
+  it("numbers a hunk's lines by the side each one is on", () => {
+    expect(
+      reviewCommentCodeLines({
+        diff: ["@@ -12,2 +11,3 @@", " keep", "-old", "+new", "+more"].join("\n"),
+        fenceLanguage: "diff",
+        startIndex: 0,
+      }),
+    ).toEqual([
+      { change: "context", lineNumber: 11, content: "keep" },
+      { change: "delete", lineNumber: 13, content: "old" },
+      { change: "add", lineNumber: 12, content: "new" },
+      { change: "add", lineNumber: 13, content: "more" },
+    ]);
+  });
+
+  it("numbers a file comment's lines from where the comment starts", () => {
+    expect(reviewCommentCodeLines({ diff: "a\nb\n", fenceLanguage: "ts", startIndex: 4 })).toEqual([
+      { change: "context", lineNumber: 5, content: "a" },
+      { change: "context", lineNumber: 6, content: "b" },
+    ]);
+  });
+
+  it("shows nothing for a comment without code", () => {
+    expect(reviewCommentCodeLines({ diff: "", fenceLanguage: "ts", startIndex: 0 })).toEqual([]);
   });
 });

@@ -253,6 +253,11 @@ export const PullRequestReviewThread = Schema.Struct({
    */
   isOutdated: Schema.Boolean,
   comments: Schema.Array(PullRequestThreadComment),
+  /**
+   * The last few lines of the diff the thread was written against, ending on its line, as one
+   * `@@` hunk. Absent where the host does not report it.
+   */
+  diffHunk: Schema.optional(Schema.String),
   /** Host-reported total, when this thread was read in pages. */
   commentCount: Schema.optional(NonNegativeInt),
   /** Opaque cursor for the next comment page. Absent once this thread is whole. */

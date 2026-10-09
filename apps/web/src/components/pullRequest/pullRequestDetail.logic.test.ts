@@ -984,6 +984,43 @@ describe("one finding handed over on its own", () => {
     expect(handoff.prompt).not.toContain("rename the helper");
   });
 
+  it("carries the thread's code and each remark under its author", () => {
+    const handoff = buildFixFindingHandoff({
+      ...base,
+      finding: {
+        kind: "thread",
+        thread: {
+          ...reviewThread,
+          diffHunk: "@@ -11,1 +11,2 @@\n const a = 1;\n+const helper = 2;",
+          comments: [
+            {
+              ...reviewThread.comments[0]!,
+              author: { login: "reviewer", name: null, avatarUrl: "https://avatars/r.png" },
+              url: "https://github.com/acme/web/pull/1#discussion_r1",
+            },
+            {
+              id: "tc2",
+              author: null,
+              body: "<!-- bot bookkeeping -->",
+              createdAt: "2026-07-03T00:00:00Z",
+              url: null,
+            },
+          ],
+        },
+      },
+    });
+    expect(handoff.reviewComments[0]).toMatchObject({
+      diff: "@@ -11,1 +11,2 @@\n const a = 1;\n+const helper = 2;",
+      fenceLanguage: "diff",
+      thread: {
+        url: "https://github.com/acme/web/pull/1#discussion_r1",
+        comments: [
+          { author: "reviewer", avatarUrl: "https://avatars/r.png", body: "rename the helper" },
+        ],
+      },
+    });
+  });
+
   it("quotes a review remark, which has no line to attach it to", () => {
     const handoff = buildFixFindingHandoff({
       ...base,

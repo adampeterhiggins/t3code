@@ -1,6 +1,6 @@
 import type { NotionPageContextRecord } from "@t3tools/contracts";
 import ChatMarkdown from "./ChatMarkdown";
-import { ReadOnlySourcePreview } from "./files/AttachmentFilePreview";
+import { ReviewCommentCard } from "./ReviewCommentCard";
 import type {
   GitHubIssueContextRecord,
   LinearIssueContextRecord,
@@ -342,21 +342,14 @@ function previewAnnotationTooltip(annotation: PreviewAnnotationPayload): string 
 }
 
 function ComposerReviewCommentDetails({ comment }: { comment: ReviewCommentContext }) {
+  const note = comment.text.trim();
   return (
-    <div className="space-y-2 overflow-hidden rounded-lg border border-border/70 bg-background/70 p-3">
-      <div className="space-y-1">
-        <div className="truncate text-xs font-medium text-foreground">{comment.filePath}</div>
-        <div className="text-secondary-label text-2xs">
-          {comment.sectionTitle} · {comment.rangeLabel}
-        </div>
-      </div>
-      {comment.text.trim() ? <ChatMarkdown text={comment.text.trim()} cwd={undefined} /> : null}
-      {comment.diff.trim() ? (
-        <div className="flex h-64 min-h-0 flex-col overflow-hidden rounded-md border border-border">
-          <ReadOnlySourcePreview name="review.diff" text={comment.diff} />
-        </div>
-      ) : null}
-    </div>
+    <ReviewCommentCard
+      comment={comment}
+      displayPath={comment.filePath}
+      renderRemark={(body) => <ChatMarkdown text={body} cwd={undefined} />}
+      note={note ? <ChatMarkdown text={note} cwd={undefined} /> : null}
+    />
   );
 }
 
