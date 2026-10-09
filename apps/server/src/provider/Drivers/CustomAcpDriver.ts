@@ -18,14 +18,12 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { ChildProcessSpawner } from "effect/process";
 
-import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
-import { ServerConfig } from "../../config.ts";
 import { makeCustomAcpAdapterV2 } from "../../orchestration-v2/Adapters/CustomAcpAdapterV2.ts";
-import * as IdAllocator from "../../orchestration-v2/IdAllocator.ts";
-import { ServerSettingsService } from "../../serverSettings.ts";
+import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import { ProviderHost } from "@t3tools/provider-core/server/ProviderHost";
 import type { TextGeneration } from "../../textGeneration/TextGeneration.ts";
 import { makeAcpCommandCatalog } from "../acp/AcpCommandCatalog.ts";
-import { makeAcpNativeLoggerFactory } from "../acp/AcpNativeLogging.ts";
+import { makeAcpNativeLoggerFactory } from "@t3tools/provider-acp/server/nativeLogging";
 import { CUSTOM_ACP_DRIVER_KIND } from "../acp/CustomAcpSupport.ts";
 import { ProviderDriverError } from "../Errors.ts";
 import {
@@ -33,15 +31,15 @@ import {
   checkCustomAcpProviderStatus,
 } from "../CustomAcpProvider.ts";
 import { ProviderEventLoggers } from "../ProviderEventLoggers.ts";
-import { makeManagedServerProvider } from "../makeManagedServerProvider.ts";
+import { makeManagedServerProvider } from "@t3tools/provider-core/server/managedProvider";
 import {
   defaultProviderContinuationIdentity,
   type ProviderDriver,
   type ProviderInstance,
-} from "../ProviderDriver.ts";
-import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
-import { makeManualOnlyProviderMaintenanceCapabilities } from "../providerMaintenance.ts";
-import { withInstanceIdentity } from "./instanceIdentity.ts";
+} from "@t3tools/provider-core/server/driver";
+import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
+import { makeManualOnlyProviderMaintenanceCapabilities } from "@t3tools/provider-core/server/maintenanceResolver";
+import { withInstanceIdentity } from "@t3tools/provider-core/server/instanceIdentity";
 
 const decodeCustomAcpSettings = Schema.decodeSync(CustomAcpSettings);
 const MAINTENANCE = makeManualOnlyProviderMaintenanceCapabilities({
@@ -67,21 +65,21 @@ const unsupportedTextGeneration: TextGeneration["Service"] = (() => {
 })();
 
 export type CustomAcpDriverEnv =
-  | BackgroundPolicy.BackgroundPolicy
   | ChildProcessSpawner.ChildProcessSpawner
   | Crypto.Crypto
   | FileSystem.FileSystem
   | IdAllocator.IdAllocatorV2
   | Path.Path
   | ProviderEventLoggers
-  | ServerConfig
-  | ServerSettingsService;
+  | ProviderHost;
 
 export const CustomAcpDriver: ProviderDriver<CustomAcpSettings, CustomAcpDriverEnv> = {
   driverKind: CUSTOM_ACP_DRIVER_KIND,
   metadata: {
     displayName: "Custom ACP",
     supportsMultipleInstances: true,
+    // Each added instance is one agent; there is nothing to run unconfigured.
+    hasDefaultInstance: false,
   },
   configSchema: CustomAcpSettings,
   defaultConfig: (): CustomAcpSettings => decodeCustomAcpSettings({}),
@@ -89,10 +87,7 @@ export const CustomAcpDriver: ProviderDriver<CustomAcpSettings, CustomAcpDriverE
     Effect.gen(function* () {
       const crypto = yield* Crypto.Crypto;
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-      const serverConfig = yield* ServerConfig;
-      const { cwd } = serverConfig;
-      const fileSystem = yield* FileSystem.FileSystem;
-      const idAllocator = yield* IdAllocator.IdAllocatorV2;
+      const { cwd } = (yield* ProviderHost).paths;
       const selfInvocation = yield* resolveSelfInvocation();
       const eventLoggers = yield* ProviderEventLoggers;
       const makeNativeLogger = yield* makeAcpNativeLoggerFactory();
@@ -149,16 +144,12 @@ export const CustomAcpDriver: ProviderDriver<CustomAcpSettings, CustomAcpDriverE
       const { snapshot, onAvailableCommands, snapshotForCwd } =
         yield* makeAcpCommandCatalog(managedSnapshot);
 
-      const orchestrationAdapter = makeCustomAcpAdapterV2({
+      const orchestrationAdapter = yield* makeCustomAcpAdapterV2({
         instanceId,
         settings: effectiveConfig,
         harness: displayName ?? "Custom ACP agent",
         environment: processEnv,
         childProcessSpawner: spawner,
-        crypto,
-        fileSystem,
-        idAllocator,
-        serverConfig,
         selfInvocation,
         onAvailableCommands: (commands, workspaceCwd) =>
           onAvailableCommands(commands, workspaceCwd, []),

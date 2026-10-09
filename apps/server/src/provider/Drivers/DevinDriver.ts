@@ -20,13 +20,11 @@ import { HttpClient } from "effect/http";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import { AcpTransportError } from "effect-acp/errors";
 
-import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
-import { ServerConfig } from "../../config.ts";
-import * as IdAllocator from "../../orchestration-v2/IdAllocator.ts";
+import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import { makeDevinAdapterV2 } from "../../orchestration-v2/Adapters/DevinAdapterV2.ts";
-import * as ServerSettingsService from "../../serverSettings.ts";
+import { ProviderHost } from "@t3tools/provider-core/server/ProviderHost";
 import { ProviderDriverError } from "../Errors.ts";
-import { makeAcpNativeLoggerFactory } from "../acp/AcpNativeLogging.ts";
+import { makeAcpNativeLoggerFactory } from "@t3tools/provider-acp/server/nativeLogging";
 import { discoverDevinSkills } from "./DevinSkills.ts";
 import {
   buildInitialDevinProviderSnapshot,
@@ -34,38 +32,38 @@ import {
   enrichDevinSnapshot,
 } from "../DevinProvider.ts";
 import { ProviderEventLoggers } from "../ProviderEventLoggers.ts";
-import { makeManagedServerProvider } from "../makeManagedServerProvider.ts";
+import { makeManagedServerProvider } from "@t3tools/provider-core/server/managedProvider";
 import {
   authMethodDescriptors,
   type CliAuthMethodSpec,
   makeCliProviderAuth,
   providerAuthMethodPersistence,
   providerEnvVarCredential,
-} from "../CliProviderAuth.ts";
+} from "@t3tools/provider-core/server/cliAuth";
 import { makeDevinAcpRuntime } from "../acp/DevinAcpSupport.ts";
 import {
   defaultProviderContinuationIdentity,
   type ProviderDriver,
   type ProviderInstance,
-} from "../ProviderDriver.ts";
-import { withInstanceIdentity } from "./instanceIdentity.ts";
+} from "@t3tools/provider-core/server/driver";
+import { withInstanceIdentity } from "@t3tools/provider-core/server/instanceIdentity";
 import {
   mergeProviderHomePathEnvironment,
   mergeProviderInstanceEnvironment,
   resolveInstanceHomePath,
-} from "../ProviderInstanceEnvironment.ts";
+} from "@t3tools/provider-core/server/instanceEnvironment";
 import {
   makeCachedProviderMaintenanceResolution,
   makeManualOnlyProviderMaintenanceCapabilities,
   makeProviderMaintenanceCapabilities,
   type ProviderMaintenanceCapabilitiesResolver,
   resolveProviderMaintenanceCapabilitiesEffect,
-} from "../providerMaintenance.ts";
+} from "@t3tools/provider-core/server/maintenanceResolver";
 import {
   haveProviderSnapshotSettingsChanged,
   makeProviderSnapshotSettingsSource,
   type ProviderSnapshotSettings,
-} from "../providerUpdateSettings.ts";
+} from "@t3tools/provider-core/server/snapshotSettings";
 import { makeDevinTextGeneration } from "../../textGeneration/DevinTextGeneration.ts";
 const decodeDevinSettings = Schema.decodeSync(DevinSettings);
 
@@ -93,7 +91,6 @@ const UPDATE: ProviderMaintenanceCapabilitiesResolver = {
 };
 
 export type DevinDriverEnv =
-  | BackgroundPolicy.BackgroundPolicy
   | ChildProcessSpawner.ChildProcessSpawner
   | Crypto.Crypto
   | FileSystem.FileSystem
@@ -101,8 +98,7 @@ export type DevinDriverEnv =
   | IdAllocator.IdAllocatorV2
   | Path.Path
   | ProviderEventLoggers
-  | ServerConfig
-  | ServerSettingsService.ServerSettingsService;
+  | ProviderHost;
 
 export const DevinDriver: ProviderDriver<DevinSettings, DevinDriverEnv> = {
   driverKind: DRIVER_KIND,
@@ -118,7 +114,7 @@ export const DevinDriver: ProviderDriver<DevinSettings, DevinDriverEnv> = {
         ...configured,
         homePath: yield* resolveInstanceHomePath({
           homePath: configured.homePath,
-          stateDir: (yield* ServerConfig).stateDir,
+          stateDir: (yield* ProviderHost).paths.stateDir,
           driver: DRIVER_KIND,
           instanceId,
           environment,
@@ -130,10 +126,8 @@ export const DevinDriver: ProviderDriver<DevinSettings, DevinDriverEnv> = {
       const fileSystem = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const httpClient = yield* HttpClient.HttpClient;
-      const serverSettings = yield* ServerSettingsService.ServerSettingsService;
+      const host = yield* ProviderHost;
       const eventLoggers = yield* ProviderEventLoggers;
-      const serverConfig = yield* ServerConfig;
-      const idAllocator = yield* IdAllocator.IdAllocatorV2;
       const selfInvocation = yield* resolveSelfInvocation();
       const makeNativeLogger = yield* makeAcpNativeLoggerFactory();
       const processEnv = yield* mergeProviderHomePathEnvironment(
@@ -185,15 +179,11 @@ export const DevinDriver: ProviderDriver<DevinSettings, DevinDriverEnv> = {
           Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
           Effect.provideService(Path.Path, path),
         );
-      const orchestrationAdapter = makeDevinAdapterV2({
+      const orchestrationAdapter = yield* makeDevinAdapterV2({
         instanceId,
         settings: effectiveConfig,
         environment: processEnv,
         childProcessSpawner: spawner,
-        crypto,
-        fileSystem,
-        idAllocator,
-        serverConfig,
         selfInvocation,
         skillNames,
         nativeLogging: (threadId) =>
@@ -206,7 +196,7 @@ export const DevinDriver: ProviderDriver<DevinSettings, DevinDriverEnv> = {
       const textGeneration = yield* makeDevinTextGeneration(effectiveConfig, processEnv);
 
       const apiKeyCredential = providerEnvVarCredential({
-        serverSettings,
+        serverSettings: host.settings,
         instanceId,
         driverKind: DRIVER_KIND,
         envName: "WINDSURF_API_KEY",
@@ -286,7 +276,7 @@ export const DevinDriver: ProviderDriver<DevinSettings, DevinDriverEnv> = {
         authMethods: authMethodDescriptors(authMethods),
       };
       const authMethodPersistence = providerAuthMethodPersistence({
-        serverSettings,
+        serverSettings: host.settings,
         instanceId,
         methods: authMethods,
       });
@@ -303,7 +293,7 @@ export const DevinDriver: ProviderDriver<DevinSettings, DevinDriverEnv> = {
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
       );
 
-      const snapshotSettings = makeProviderSnapshotSettingsSource(effectiveConfig, serverSettings);
+      const snapshotSettings = makeProviderSnapshotSettingsSource(effectiveConfig, host.settings);
       const snapshot = yield* makeManagedServerProvider<ProviderSnapshotSettings<DevinSettings>>({
         resolveMaintenance,
         getSettings: snapshotSettings.getSettings,

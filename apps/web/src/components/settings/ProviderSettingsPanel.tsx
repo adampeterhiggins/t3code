@@ -31,7 +31,6 @@ import {
 } from "@t3tools/shared/backgroundActivitySettings";
 import * as Arr from "effect/Array";
 import * as Duration from "effect/Duration";
-import * as Equal from "effect/Equal";
 import * as Result from "effect/Result";
 import { PlusIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -96,7 +95,7 @@ import { ProviderSetupSection, readAntigravityAuthMethod } from "./ProviderSetup
 import { ProviderAuthenticationSection } from "./ProviderAuthenticationSection";
 import { CodexSetupSection, CodexManagedRuntimeFields } from "./CodexSetupSection";
 import { readCodexSetupMode } from "./CodexSetupSection.logic";
-import { DRIVER_OPTIONS, getDriverOption } from "./providerDriverMeta";
+import { providerClients } from "./providerDriverMeta";
 import { searchableSetting } from "./settingsSearch";
 import {
   backgroundActivityOverrideSettings,
@@ -146,9 +145,29 @@ function providerConfigString(config: unknown, key: string): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
-const PROVIDER_SETTINGS = DRIVER_OPTIONS.map((definition) => ({
-  provider: definition.value,
+const PROVIDER_SETTINGS = providerClients.definitions.map((definition) => ({
+  provider: definition.driverKind,
+  hasDefaultInstance: definition.hasDefaultInstance !== false,
 }));
+
+/**
+ * The entry `deleteDefaultInstance` leaves for a built-in that runs unconfigured
+ * (Codex, Claude): disabled on the envelope and in its config, with nothing else
+ * set. Turning a provider off only sets the envelope flag, so it stays listed.
+ */
+const DELETED_DEFAULT_INSTANCE_CONFIG = { enabled: false } as const;
+
+function isDeletedDefaultInstance(instance: ProviderInstanceConfig): boolean {
+  const { driver: _driver, enabled, config, ...rest } = instance;
+  return (
+    enabled === false &&
+    Object.keys(rest).length === 0 &&
+    typeof config === "object" &&
+    config !== null &&
+    Object.keys(config).length === 1 &&
+    (config as { enabled?: unknown }).enabled === false
+  );
+}
 
 function configuredBinaryPath(config: unknown): string {
   if (config === null || typeof config !== "object" || !("binaryPath" in config)) return "";
@@ -218,7 +237,10 @@ function ProviderSettingsPlaceholder({
       ) : null}
       <SettingsGroup
         divided={false}
-        className={cn(providerCardHeightClassName, "flex overflow-x-hidden overflow-y-auto")}
+        className={cn(
+          providerCardHeightClassName,
+          "scrollbar-gutter-both flex overflow-x-hidden overflow-y-auto",
+        )}
       >
         <Empty>
           <EmptyMedia variant="icon">{icon}</EmptyMedia>
@@ -754,64 +776,31 @@ export function EnvironmentProviderSettings({
   );
 
   for (const providerSettings of visibleProviderSettings) {
-    type LegacyProviderSettings = (typeof settings.providers)[keyof typeof settings.providers];
-    const legacyProviders = settings.providers as Record<string, LegacyProviderSettings>;
-    const defaultLegacyProviders = DEFAULT_UNIFIED_SETTINGS.providers as Record<
-      string,
-      LegacyProviderSettings
-    >;
     const driver = providerSettings.provider;
     const defaultInstanceId = defaultInstanceIdForDriver(driver);
     const explicitInstance = settings.providerInstances?.[defaultInstanceId];
-    // A remote device may run a server version whose settings predate this
-    // driver, so the legacy mirror can be absent. Without either an explicit
-    // instance or a legacy blob there is nothing to render for the slot.
-    const legacyConfig = legacyProviders[providerSettings.provider];
-    const defaultLegacyConfig = defaultLegacyProviders[providerSettings.provider];
-    // The envelope is the single enabled flag: keep the legacy in-config
-    // flag out of the synthesized blob, or an explicit `enabled: false`
-    // would keep winning over the envelope and the Switch could never
-    // turn a default-off provider on.
-    const synthesizedInstance = (): ProviderInstanceConfig | undefined => {
-      if (legacyConfig === undefined) {
-        return undefined;
-      }
-      const { enabled: legacyEnabled, ...legacyConfigRest } = legacyConfig;
-      return {
-        driver,
-        enabled: legacyEnabled,
-        config: legacyConfigRest,
-      } satisfies ProviderInstanceConfig;
-    };
-    const effectiveInstance: ProviderInstanceConfig | undefined =
-      explicitInstance ?? synthesizedInstance();
-    // Only the default slot depends on the legacy blob; custom instances for
-    // the driver must still render even when the slot has nothing to show.
-    if (effectiveInstance !== undefined) {
-      // `enabled` is excluded from the "configured" comparison so a slot that
-      // is otherwise at factory defaults counts as unconfigured — that is
-      // what deleting a built-in provider writes (defaults + disabled), and
-      // it is also the untouched state of default-off drivers.
-      const { enabled: _legacyEnabled, ...legacyConfigRest } = legacyConfig ?? {};
-      const { enabled: _defaultEnabled, ...defaultLegacyRest } = defaultLegacyConfig ?? {};
-      const isConfigured =
-        explicitInstance !== undefined || !Equal.equals(legacyConfigRest, defaultLegacyRest);
-      // An unconfigured, disabled default slot is a provider type the user
-      // has never set up — keep it out of the list; the + dialog adds it
-      // back. Enabled defaults (Codex and Claude ship on) stay visible
-      // because they are live even when untouched, as does a deep-linked slot.
-      if (
-        isConfigured ||
+    // An unconfigured default slot runs with the driver's default config.
+    const effectiveInstance: ProviderInstanceConfig = explicitInstance ?? { driver };
+    // Drivers without a default instance list only their configured instances.
+    const hasDefaultSlot = providerSettings.hasDefaultInstance || explicitInstance !== undefined;
+    // A slot is listed when the user configured it or it is live. An untouched,
+    // disabled slot is a provider type the user never set up, and a deleted
+    // built-in (see `deleteDefaultInstance`) is one they removed; both stay out
+    // of the list until the + dialog adds them back. A deep-linked slot always shows.
+    const isConfigured =
+      explicitInstance !== undefined && !isDeletedDefaultInstance(explicitInstance);
+    if (
+      hasDefaultSlot &&
+      (isConfigured ||
         resolveProviderInstanceEnabled(effectiveInstance) ||
-        defaultInstanceId === targetInstanceId
-      ) {
-        rows.push({
-          instanceId: defaultInstanceId,
-          instance: effectiveInstance,
-          driver,
-          isDefault: true,
-        });
-      }
+        defaultInstanceId === targetInstanceId)
+    ) {
+      rows.push({
+        instanceId: defaultInstanceId,
+        instance: effectiveInstance,
+        driver,
+        isDefault: true,
+      });
     }
     for (const [id, instance] of instancesByDriver.get(providerSettings.provider) ?? []) {
       if (id === defaultInstanceId) continue;
@@ -851,8 +840,6 @@ export function EnvironmentProviderSettings({
       settings,
       instanceId: row.instanceId,
       instance: next,
-      driver: row.driver,
-      isDefault: row.isDefault,
       textGenerationModelSelection: options?.textGenerationModelSelection,
     });
     const result = await persistProviderInstance(
@@ -950,26 +937,24 @@ export function EnvironmentProviderSettings({
     });
   };
 
-  // Deleting a built-in default slot restores its config to factory defaults
-  // and disables it — the resulting unconfigured, disabled slot drops out of
-  // the provider list. It can be re-added from the + dialog like any provider.
+  // Deleting a default slot drops it out of the provider list; it can be re-added
+  // from the + dialog like any provider. A built-in that runs unconfigured (Codex,
+  // Claude) would come straight back as enabled once its entry is gone, so it keeps
+  // the disabled marker entry `isDeletedDefaultInstance` recognizes instead.
   const deleteDefaultInstance = async (driverKind: ProviderDriverKind) => {
-    type LegacyProviderSettings = (typeof settings.providers)[keyof typeof settings.providers];
-    const defaultLegacyProviders = DEFAULT_UNIFIED_SETTINGS.providers as Record<
-      string,
-      LegacyProviderSettings | undefined
-    >;
-    const defaultInstanceId = defaultInstanceIdForDriver(driverKind);
-    const defaultLegacyProvider = defaultLegacyProviders[driverKind];
-    if (defaultLegacyProvider === undefined) return;
+    const instanceId = defaultInstanceIdForDriver(driverKind);
     const result = await persistProviderInstance(
-      { operation: "remove", instanceId: defaultInstanceId },
-      {
-        providers: {
-          ...settings.providers,
-          [driverKind]: { ...defaultLegacyProvider, enabled: false },
-        } as typeof settings.providers,
-      },
+      resolveProviderInstanceEnabled({ driver: driverKind })
+        ? {
+            operation: "upsert",
+            instanceId,
+            instance: {
+              driver: driverKind,
+              enabled: false,
+              config: DELETED_DEFAULT_INSTANCE_CONFIG,
+            },
+          }
+        : { operation: "remove", instanceId },
     );
     if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
       const error = squashAtomCommandFailure(result);
@@ -982,7 +967,7 @@ export function EnvironmentProviderSettings({
   };
 
   const renderProviderInstance = (row: InstanceRow, mode: "list" | "editor") => {
-    const driverOption = getDriverOption(row.driver);
+    const driverOption = providerClients.get(row.driver);
     const liveProvider = serverProviders.find(
       (candidate) => candidate.instanceId === row.instanceId,
     );

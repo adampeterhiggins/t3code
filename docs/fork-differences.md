@@ -128,9 +128,9 @@ CLI login and shows none for an SDK sign-in. In the fork, each instance trades i
 `CURSOR_API_KEY`) for an access token, as the SDK does, and reads its own limits; only the default
 instance may fall back to the CLI login. The usage page reads every instance's account as well as the
 CLI login, and one account counts once. Code:
-[`cursorUsageLimits.ts`](../apps/server/src/provider/Layers/cursorUsageLimits.ts),
+[`usageLimits.ts`](../packages/provider-cursor/src/server/usageLimits.ts),
 `readCursorSdkCredential` in
-[`CursorCredentialStore.ts`](../apps/server/src/provider/CursorCredentialStore.ts), and the Cursor
+[`credentialStore.ts`](../packages/provider-cursor/src/server/credentialStore.ts), and the Cursor
 scan in [`UsageService.ts`](../apps/server/src/usage/UsageService.ts). User guide:
 [usage.md](./user/usage.md).
 
@@ -141,7 +141,7 @@ totals with the finished run's cumulative usage. Interrupted or failed runs reta
 counts already reported. The fork maps it onto the
 turn's `turnTokenUsage` (cache reads and writes counted inside input, as for Claude), which feeds
 turn analytics and the live usage of delegated tasks run on Cursor
-([`CursorTurnTokenUsage.ts`](../apps/server/src/provider/CursorTurnTokenUsage.ts)). It is a sum
+([`turnTokenUsage.ts`](../packages/provider-cursor/src/server/turnTokenUsage.ts)). It is a sum
 over the run's model calls, not context occupancy, so Cursor threads still have no context meter.
 The usage page keeps reading Cursor's account history, so nothing is counted twice.
 
@@ -149,11 +149,12 @@ Native Grok turns also record the CLI's prompt-wide input, output, cache, and re
 feeding turn analytics and app-owned delegated task totals. Counts cover the prompt's model calls,
 with incomplete reports marked partial; older builds and interrupted prompts that report no counts
 remain unavailable. The context meter stays separate. See
-[`GrokTurnTokenUsage.ts`](../apps/server/src/provider/acp/GrokTurnTokenUsage.ts).
+[`turnTokenUsage.ts`](../packages/provider-grok/src/server/turnTokenUsage.ts).
 
 Code: `apps/web/src/components/settings/ProviderAuthSection.tsx`,
-`apps/server/src/provider/Services/ProviderAuthService.ts`,
-`apps/server/src/provider/ProviderInstanceEnvironment.ts`, and
+`apps/server/src/provider/ProviderAuthService.ts`,
+`packages/provider-core/src/server/cliAuth.ts`,
+`packages/provider-core/src/server/instanceEnvironment.ts`, and
 `packages/contracts/src/providerSetup.ts`. User guides:
 [providers-devin.md](./user/providers-devin.md) and
 [providers-opencode.md](./user/providers-opencode.md).
@@ -193,7 +194,7 @@ silently run at about 300K. Max Mode is billed per token on usage-based Cursor p
 
 This is a port of upstream PR [#15884](https://github.com/pingdotgg/t3code/pull/15884) for
 [#15788](https://github.com/pingdotgg/t3code/issues/15788). Remove this section when upstream merges
-it. Code: `apps/server/src/provider/cursorSdk.ts`.
+it. Code: `packages/provider-cursor/src/server/sdk.ts`.
 
 ## Cursor turns send the picker's defaults
 
@@ -209,9 +210,23 @@ the parent's context window.
 
 Fixes upstream [#16149](https://github.com/pingdotgg/t3code/issues/16149); remove this section when
 upstream fixes it. Code: `withCursorDefaultParameters` in
-`apps/server/src/provider/cursorSdkModel.ts`, applied in
-`apps/server/src/provider/Drivers/CursorDriver.ts`, and `resolveTarget` in
+`packages/provider-cursor/src/server/sdkModel.ts`, applied in
+`packages/provider-cursor/src/server/driver.ts`, and `resolveTarget` in
 `apps/server/src/mcp/OrchestratorMcpService.ts`.
+
+## Cursor follow-ups steer the running turn
+
+A follow-up sent into a running Cursor turn is injected into that turn. Delegated task
+completions wake the parent the same way, while the turn is still going. Upstream interrupts
+the turn and starts it again for a follow-up, and holds a delegated completion until the turn
+ends. Queuing a message still waits, and an explicit restart still stops the turn and starts
+a new one. When Cursor does not accept the injection, a finished turn receives the message as
+its next turn.
+
+Code: `steerTurn` in
+[`adapter.ts`](../packages/provider-cursor/src/server/adapter.ts) and
+`Run.steer` in
+[`CursorAgentSdk.ts`](../packages/provider-cursor/src/server/CursorAgentSdk.ts).
 
 ## Agents panel drilldowns
 
@@ -257,7 +272,7 @@ thread details panel, one row each, newest first, and removed the right-panel Ag
   running token total of a Codex child thread; and, for app-owned tasks such as `delegate_task`
   children on any provider, the sum of their own thread's provider-turn usage plus its tool calls,
   written when the task finishes; `subagentUsageFromChildTurns` in
-  [`SubagentProjection.ts`](../apps/server/src/orchestration-v2/SubagentProjection.ts)),
+  [`subagentProjection.ts`](../packages/provider-core/src/server/subagentProjection.ts)),
   `outputFile` (Claude's task output file), and `sessionUrl` (the http(s) remote session link a
   Claude Workflow tool result names for its task). Every agent view (detail footer, rows, hover
   cards, fleet footer) reads this one field. A running delegated task shows usage once it finishes,
@@ -428,10 +443,14 @@ editable. Names are stored by the [ThreadTabs service](../apps/server/src/thread
   as you move between tabs, including new, forked, and closed-into tabs
   (`useRightPanelFollowsTabSwitch` in `ThreadTabs.tsx`).
 - **Context from other chats.** Type `@` in the composer and pick a sibling tab, or, before the
-  first message, click one under **Include context from** (hovering one previews its summary).
-  Those pills follow the sidebar's tab order and limit and show each tab's status, time, and
-  provider as its sidebar row does, with the rest behind a **more** pill that lists them on hover
-  (`apps/web/src/components/sidebar/SidebarTabSummary.tsx`).
+  first message, pick one under **Include context from** (hovering one previews its summary).
+  Those pills follow the sidebar's tab order and limit and show each tab's provider, status, and
+  time, with the rest behind a **more** pill that lists them on hover
+  (`apps/web/src/components/sidebar/SidebarTabSummary.tsx`). A pill's menu attaches the summary
+  or continues the conversation: a native fork from the sibling's latest finished response,
+  resolved by the server when the tab fork omits `runId`, replaces the empty tab and takes its
+  draft (`onContinueFromTab` in `ChatView.tsx`, `continueFrom` in
+  `apps/mobile/src/features/threads/ThreadTabs.tsx`).
   The `@` menu also lists other unarchived threads in the environment, matched by title
   (`apps/web/src/components/chat/composerThreadReferences.ts`), and works in a new draft thread
   too. On web and desktop, **Attach → Thread** and **Attach thread** in the command palette open
@@ -1094,7 +1113,7 @@ Code: `packages/client-runtime/src/work-log/commandDisplay.ts`, used by
 [`agentListView.ts`](../packages/client-runtime/src/state/agentListView.ts);
 [`toolPaths.ts`](../packages/client-runtime/src/work-log/toolPaths.ts);
 [`ToolPathText.tsx`](../apps/web/src/components/chat/ToolPathText.tsx); and
-`apps/server/src/provider/RuntimeInstructions.ts`.
+`packages/provider-core/src/server/runtimeInstructions.ts`.
 
 ## Agent access over MCP
 
@@ -1202,7 +1221,7 @@ the thread leaves stays on disk. The agent instructions point at the handoff ins
 
 Code: `performHandoff` in [`WorktreeMcpService.ts`](../apps/server/src/mcp/WorktreeMcpService.ts),
 the tool in [`toolkits/worktree/tools.ts`](../apps/server/src/mcp/toolkits/worktree/tools.ts), and
-[`T3OrchestrationInstructions.ts`](../apps/server/src/provider/T3OrchestrationInstructions.ts).
+[`orchestrationInstructions.ts`](../packages/provider-core/src/server/orchestrationInstructions.ts).
 
 ## Hide a thread
 
@@ -1296,7 +1315,7 @@ reset**, **Cancel auto-resume**, and **Snooze until reset**. The fork adds:
   auto-resume for them.
 
 Code: `cursorRunFailure` in
-[CursorAdapterV2](../apps/server/src/orchestration-v2/Adapters/CursorAdapterV2.ts), the `thread.usage-limit.resume-now` case and limit-recovery notice in
+[Cursor adapter](../packages/provider-cursor/src/server/adapter.ts), the `thread.usage-limit.resume-now` case and limit-recovery notice in
 [Orchestrator](../apps/server/src/orchestration-v2/Orchestrator.ts), the grace in
 [UsageLimitRecoveryWorker](../apps/server/src/orchestration-v2/UsageLimitRecoveryWorker.ts),
 [UsageLimitRecoveryBanner](../apps/web/src/components/chat/UsageLimitRecoveryBanner.tsx), and

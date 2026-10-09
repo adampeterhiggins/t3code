@@ -118,8 +118,10 @@ export class ElectronDialog extends Context.Service<
     readonly saveFile: (
       input: ElectronDialogSaveFileInput,
     ) => Effect.Effect<Option.Option<string>, ElectronDialogSaveFileError>;
+    /** Pass `owner` to attach the box to that window so it cannot fall behind it. */
     readonly showMessageBox: (
       options: Electron.MessageBoxOptions,
+      owner?: Electron.BrowserWindow,
     ) => Effect.Effect<Electron.MessageBoxReturnValue, ElectronDialogShowMessageBoxError>;
     readonly showErrorBox: (title: string, content: string) => Effect.Effect<void>;
   }
@@ -210,9 +212,12 @@ export const make = ElectronDialog.of({
     });
     return result.canceled ? Option.none() : Option.fromNullishOr(result.filePath || undefined);
   }),
-  showMessageBox: (options) =>
+  showMessageBox: (options, owner) =>
     Effect.tryPromise({
-      try: () => Electron.dialog.showMessageBox(options),
+      try: () =>
+        owner === undefined
+          ? Electron.dialog.showMessageBox(options)
+          : Electron.dialog.showMessageBox(owner, options),
       catch: (cause) =>
         new ElectronDialogShowMessageBoxError({
           type: options.type ?? null,

@@ -226,6 +226,7 @@ function formatComposerContextProviderPayload(record: KnownComposerContextRecord
         `range: ${record.rangeLabel} (${record.startIndex}-${record.endIndex})`,
         `section: ${record.sectionTitle}`,
       ];
+      if (record.instructions?.trim()) lines.push(record.instructions.trim());
       if (record.text.trim()) lines.push("comment:", indent(record.text.trim()));
       if (record.diff.trim()) {
         lines.push(`${record.fenceLanguage ?? "diff"}:`, indent(record.diff.trimEnd()));

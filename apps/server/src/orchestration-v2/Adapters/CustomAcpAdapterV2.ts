@@ -12,28 +12,24 @@ import type { CustomAcpSettings, ProviderInstanceId } from "@t3tools/contracts";
 import type { SelfInvocation } from "@t3tools/shared/nodeRuntime";
 import type * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
-import type * as FileSystem from "effect/FileSystem";
 import type * as Scope from "effect/Scope";
 import type { ChildProcessSpawner } from "effect/process";
 import type * as EffectAcpErrors from "effect-acp/errors";
 import type * as EffectAcpSchema from "effect-acp/compat";
 
-import type * as ServerConfig from "../../config.ts";
-import type * as AcpSessionRuntime from "../../provider/acp/AcpSessionRuntime.ts";
+import type * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSessionRuntime";
 import {
   CUSTOM_ACP_DRIVER_KIND,
   makeCustomAcpRuntime,
   resolveCustomAcpModeId,
   resolveCustomAcpModelUpdate,
 } from "../../provider/acp/CustomAcpSupport.ts";
-import type * as IdAllocator from "../IdAllocator.ts";
-import type * as ProviderAdapter from "../ProviderAdapter.ts";
 import {
   AcpProviderCapabilitiesV2,
   makeAcpAdapterV2,
   type AcpAdapterV2Flavor,
   type AcpAdapterV2RuntimeInput,
-} from "./AcpAdapterV2.ts";
+} from "@t3tools/provider-acp/server/adapter";
 
 export interface CustomAcpAdapterV2Options {
   readonly instanceId: ProviderInstanceId;
@@ -42,10 +38,6 @@ export interface CustomAcpAdapterV2Options {
   readonly harness: string;
   readonly environment: NodeJS.ProcessEnv;
   readonly childProcessSpawner: ChildProcessSpawner.ChildProcessSpawner["Service"];
-  readonly crypto: Crypto.Crypto;
-  readonly fileSystem: FileSystem.FileSystem;
-  readonly idAllocator: IdAllocator.IdAllocatorV2["Service"];
-  readonly serverConfig: ServerConfig.ServerConfig["Service"];
   readonly selfInvocation: SelfInvocation;
   /** Slash commands the agent advertised for a workspace. */
   readonly onAvailableCommands: (
@@ -105,16 +97,10 @@ export function makeCustomAcpAdapterFlavor(options: CustomAcpAdapterV2Options): 
   };
 }
 
-export function makeCustomAcpAdapterV2(
-  options: CustomAcpAdapterV2Options,
-): ProviderAdapter.ProviderAdapterV2Shape {
+export function makeCustomAcpAdapterV2(options: CustomAcpAdapterV2Options) {
   return makeAcpAdapterV2({
     instanceId: options.instanceId,
     flavor: makeCustomAcpAdapterFlavor(options),
-    crypto: options.crypto,
-    fileSystem: options.fileSystem,
-    idAllocator: options.idAllocator,
-    serverConfig: options.serverConfig,
     selfInvocation: options.selfInvocation,
     ...(options.nativeLogging === undefined ? {} : { nativeLogging: options.nativeLogging }),
   });

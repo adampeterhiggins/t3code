@@ -26,10 +26,16 @@ import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import type * as EffectAcpErrors from "effect-acp/errors";
 import type * as EffectAcpSchema from "effect-acp/compat";
 
-import { buildBooleanOptionDescriptor, buildSelectOptionDescriptor } from "../providerSnapshot.ts";
+import {
+  buildBooleanOptionDescriptor,
+  buildSelectOptionDescriptor,
+} from "@t3tools/provider-core/server/snapshotProbe";
 import { findAcpModeByAliases } from "./AcpModeAliases.ts";
-import { type AcpSessionModeState, parseSessionModeState } from "./AcpRuntimeModel.ts";
-import * as AcpSessionRuntime from "./AcpSessionRuntime.ts";
+import {
+  type AcpSessionModeState,
+  parseSessionModeState,
+} from "@t3tools/provider-acp/server/runtimeModel";
+import * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSessionRuntime";
 
 export const CUSTOM_ACP_DRIVER_KIND = ProviderDriverKind.make("customAcp");
 

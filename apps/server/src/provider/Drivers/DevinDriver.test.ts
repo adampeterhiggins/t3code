@@ -13,32 +13,22 @@ import * as Schema from "effect/Schema";
 import { ChildProcessSpawner } from "effect/process";
 import { HttpClient } from "effect/http";
 
-import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
-import { ServerConfig } from "../../config.ts";
-import * as IdAllocator from "../../orchestration-v2/IdAllocator.ts";
-import { ServerSettingsService } from "../../serverSettings.ts";
+import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import { layerTestProviderHost } from "@t3tools/provider-testing/host";
 import { NoOpProviderEventLoggers, ProviderEventLoggers } from "../ProviderEventLoggers.ts";
 import { DevinDriver } from "./DevinDriver.ts";
 
 const encodeUnknownJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 
-const layerTest = ServerConfig.layerTest(process.cwd(), {
-  prefix: "t3-devin-driver-skills-",
-}).pipe(
+const layerTest = layerTestProviderHost({ runBackgroundWork: false }).pipe(
   Layer.provideMerge(NodeServices.layer),
   Layer.provideMerge(IdAllocator.layer),
-  Layer.provideMerge(ServerSettingsService.layerTest()),
   Layer.provideMerge(Layer.succeed(ProviderEventLoggers, NoOpProviderEventLoggers)),
   Layer.provideMerge(
     Layer.succeed(
       HttpClient.HttpClient,
       HttpClient.make(() => Effect.die("Skill discovery must not make an HTTP request")),
     ),
-  ),
-  Layer.provideMerge(
-    Layer.mock(BackgroundPolicy.BackgroundPolicy)({
-      shouldRunScopeWork: () => Effect.succeed(false),
-    }),
   ),
 );
 

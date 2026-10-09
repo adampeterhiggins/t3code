@@ -1,7 +1,10 @@
 import * as Schema from "effect/Schema";
 import { MessageId, RunId, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { ModelSelection } from "./modelSelection.ts";
-import { OrchestrationV2CreationSource } from "./orchestrationV2.ts";
+import {
+  OrchestrationV2CreationSource,
+  type OrchestrationV2ProjectedTurnItem,
+} from "./orchestrationV2.ts";
 
 export const ThreadTab = Schema.Struct({
   threadId: ThreadId,
@@ -43,12 +46,13 @@ export type CreateThreadTabInput = typeof CreateThreadTabInput.Type;
 /**
  * Forks a chat into a new tab: a native `thread.fork` of `sourceThreadId` at `runId`, joined to
  * the group of the thread in the path. The source differs from that thread when the response was
- * inherited from an earlier fork.
+ * inherited from an earlier fork. Without `runId`, the fork starts at the source's latest
+ * finished response, so a client can continue a chat it has not loaded.
  */
 export const ForkThreadTabInput = Schema.Struct({
   threadId: ThreadId,
   sourceThreadId: ThreadId,
-  runId: RunId,
+  runId: Schema.optional(RunId),
   title: Schema.optional(TrimmedNonEmptyString),
   /**
    * The new tab's model when it differs from the source's. It is set before the tab's first
@@ -70,3 +74,30 @@ export type ThreadTabHandoffInput = typeof ThreadTabHandoffInput.Type;
 
 export const ThreadTabHandoff = Schema.Struct({ text: Schema.String });
 export type ThreadTabHandoff = typeof ThreadTabHandoff.Type;
+
+/** Where a native fork starts: the run of a completed response, in the thread that owns it. */
+export interface ThreadForkPoint {
+  readonly sourceThreadId: ThreadId;
+  readonly runId: RunId;
+}
+
+const forkPointOf = (entry: OrchestrationV2ProjectedTurnItem): ThreadForkPoint | null =>
+  entry.item.type === "assistant_message" &&
+  entry.item.status === "completed" &&
+  entry.item.runId !== null
+    ? { sourceThreadId: entry.sourceThreadId, runId: entry.item.runId }
+    : null;
+
+/**
+ * The fork point for carrying a whole chat into a new tab: its latest completed response, which
+ * may be inherited from an earlier fork. Null when no response has finished yet.
+ */
+export function latestThreadForkPoint(
+  items: ReadonlyArray<OrchestrationV2ProjectedTurnItem>,
+): ThreadForkPoint | null {
+  for (let index = items.length - 1; index >= 0; index--) {
+    const point = forkPointOf(items[index]!);
+    if (point) return point;
+  }
+  return null;
+}

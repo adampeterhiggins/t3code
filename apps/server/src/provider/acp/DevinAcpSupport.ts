@@ -20,8 +20,11 @@ import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import type * as EffectAcpErrors from "effect-acp/errors";
 
 import { findAcpModeByAliases } from "./AcpModeAliases.ts";
-import { type AcpSessionModeState, collectSessionConfigOptionValues } from "./AcpRuntimeModel.ts";
-import * as AcpSessionRuntime from "./AcpSessionRuntime.ts";
+import {
+  type AcpSessionModeState,
+  collectSessionConfigOptionValues,
+} from "@t3tools/provider-acp/server/runtimeModel";
+import * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSessionRuntime";
 import { resolveDevinModelUid } from "../devinModelCatalog.ts";
 
 type DevinAcpRuntimeDevinSettings = Pick<DevinSettings, "binaryPath">;

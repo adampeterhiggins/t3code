@@ -2,7 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import type * as EffectAcpSchema from "effect-acp/compat";
 
-import type { AcpSessionModeState } from "./AcpRuntimeModel.ts";
+import type { AcpSessionModeState } from "@t3tools/provider-acp/server/runtimeModel";
 import {
   applyDevinAcpModelSelection,
   buildDevinAcpSpawnInput,

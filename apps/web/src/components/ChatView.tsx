@@ -1,4 +1,5 @@
-import { ChatCanvas } from "./chat/ChatCanvas";
+import { ThreadFind, ThreadFindCanvas, type ThreadFindControls } from "./chat/ThreadFindProvider";
+import { THREAD_FIND_BAR_RESERVED_HEIGHT } from "./chat/ThreadFindBar";
 import { usageLimitRecoveryBannerItem } from "./chat/UsageLimitRecoveryBanner";
 import { resolveModelForAccountSwitch } from "./chat/providerAccountSelection";
 import {
@@ -227,6 +228,7 @@ import {
   togglePendingUserInputOptionSelection,
   type PendingUserInputDraftAnswer,
 } from "../pendingUserInput";
+import { seedUserInputDraftAnswers } from "@t3tools/client-runtime/state/thread-requests";
 import { useUiStateStore } from "../uiStateStore";
 import { useWorkspaceMutationRefresh } from "../hooks/useWorkspaceMutationRefresh";
 import {
@@ -488,6 +490,7 @@ import {
   forkResponseIntoTab,
   forkThreadTab,
   useRightPanelFollowsTabSwitch,
+  useThreadTabActions,
   useThreadTabGroup,
 } from "./chat/ThreadTabs";
 import { useRemoteOpenState } from "~/remoteOpen";
@@ -657,7 +660,7 @@ import {
 const EMPTY_PROVIDERS: ServerProvider[] = [];
 const EMPTY_PROVIDER_MODELS: ServerProvider["models"] = [];
 const EMPTY_USAGE_LIMIT_SOURCES: UsageLimitSourceSnapshots = [];
-import type { CodexArtifactTemplate } from "@t3tools/client-runtime/codex-artifact-templates";
+import type { CodexArtifactTemplate } from "@t3tools/shared/codexArtifactTemplates";
 
 const TIMELINE_SCROLL_CANCEL_SENTINEL = Object.freeze({});
 const EMPTY_FEEDBACK_SUBMISSIONS: ReadonlyArray<CodexFeedbackSubmission> = [];
@@ -1675,6 +1678,7 @@ export default function ChatView(props: ChatViewProps) {
   const draftId = routeKind === "draft" ? props.draftId : null;
   const handleNewThread = useNewThreadHandler();
   const { settleThread, pinThread, confirmAndUnpinThread } = useThreadActions();
+  const { closeTab } = useThreadTabActions();
   const routeThreadRef = useMemo(
     () => scopeThreadRef(environmentId, threadId),
     [environmentId, threadId],
@@ -1837,10 +1841,13 @@ export default function ChatView(props: ChatViewProps) {
       hasMoreHistory: serverThreadHistory.hasMoreHistory,
       loading: serverThreadHistory.loading,
       error: serverThreadHistory.error,
-      onLoadEarlier: () => {
+      onLoadEarlier: (throughEntryId) => {
         void loadEarlierThreadHistory({
           environmentId: routeThreadDetailRef.environmentId,
-          input: { threadId: routeThreadDetailRef.threadId },
+          input: {
+            threadId: routeThreadDetailRef.threadId,
+            ...(throughEntryId === undefined ? {} : { throughEntryId }),
+          },
         });
       },
     };
@@ -3467,6 +3474,19 @@ export default function ChatView(props: ChatViewProps) {
     activeThreadId,
     activePendingUserInput?.requestId,
   ]);
+  const activePendingAnswerDrafts =
+    pendingUserInputAnswersByRequestId[activePendingRequestKey] ?? EMPTY_PENDING_USER_INPUT_ANSWERS;
+  if (
+    activePendingUserInput &&
+    seedUserInputDraftAnswers(activePendingUserInput.questions, activePendingAnswerDrafts) !==
+      activePendingAnswerDrafts
+  ) {
+    setPendingUserInputAnswersByRequestId((existing) => {
+      const drafts = existing[activePendingRequestKey] ?? EMPTY_PENDING_USER_INPUT_ANSWERS;
+      const seeded = seedUserInputDraftAnswers(activePendingUserInput.questions, drafts);
+      return seeded === drafts ? existing : { ...existing, [activePendingRequestKey]: seeded };
+    });
+  }
   const pendingQuestionDraftKeys = useMemo(
     () =>
       activeThreadId
@@ -8342,6 +8362,18 @@ export default function ChatView(props: ChatViewProps) {
     }),
     [composerRef, previewPanelOpen, terminalUiState.terminalOpen, routeKind, phase],
   );
+  const timelineSkills = activeProviderStatus
+    ? resolveProviderSkillsForCwd(activeProviderStatus, gitCwd)
+    : EMPTY_PROVIDER_SKILLS;
+  const threadFindControlsRef = useRef<ThreadFindControls | null>(null);
+  const [isThreadFindActive, setIsThreadFindActive] = useState(false);
+  const openThreadFind = useCallback(() => threadFindControlsRef.current?.open(), []);
+  const closeThreadFind = useCallback(() => threadFindControlsRef.current?.close(), []);
+  // The details popover hangs off the header over the find bar; opening find dismisses it.
+  useEffect(() => {
+    if (!isThreadFindActive || threadPanelPresentation !== "popover" || !activeThreadRef) return;
+    useRightPanelStore.getState().setThreadPanelOpen(activeThreadRef, "popover", false);
+  }, [activeThreadRef, isThreadFindActive, threadPanelPresentation]);
 
   useEffect(() => {
     if (unfocusedSplitPane) return;
@@ -8350,6 +8382,8 @@ export default function ChatView(props: ChatViewProps) {
         event.stopPropagation();
         return;
       }
+      // Let contextual controls claim Escape before the bubbling find handler.
+      if (isThreadFindActive && event.key === "Escape") return;
       if (isTerminalCloseConfirmPending() && preventTerminalCloseShortcut(event, keybindings)) {
         event.stopPropagation();
         return;
@@ -8449,10 +8483,25 @@ export default function ChatView(props: ChatViewProps) {
         return;
       }
 
+      // Drafts and servers without thread search leave Mod+F to the browser.
+      if (command === "chat.find" && isServerThread && serverConfig?.threadFind === true) {
+        event.preventDefault();
+        event.stopPropagation();
+        openThreadFind();
+        return;
+      }
+
       if (command === "rightPanel.toggle") {
         event.preventDefault();
         event.stopPropagation();
         toggleRightPanel();
+        return;
+      }
+
+      if (command === "rightPanel.toggleMaximized") {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!event.repeat) toggleRightPanelMaximized();
         return;
       }
 
@@ -8631,8 +8680,28 @@ export default function ChatView(props: ChatViewProps) {
       event.stopPropagation();
       void runProjectScript(script);
     };
+    const dismissFind = (event: KeyboardEvent) => {
+      if (
+        event.key !== "Escape" ||
+        !isThreadFindActive ||
+        event.defaultPrevented ||
+        event.isComposing ||
+        event.keyCode === 229 ||
+        isCommandPaletteOpen()
+      )
+        return;
+      const context = getShortcutContext(event.target);
+      if (context.terminalFocus || context.previewFocus || context.modelPickerOpen) return;
+      event.preventDefault();
+      closeThreadFind();
+      focusComposer();
+    };
     window.addEventListener("keydown", handler, true);
-    return () => window.removeEventListener("keydown", handler, true);
+    window.addEventListener("keydown", dismissFind);
+    return () => {
+      window.removeEventListener("keydown", handler, true);
+      window.removeEventListener("keydown", dismissFind);
+    };
   }, [
     unfocusedSplitPane,
     handleSplitViewAction,
@@ -8661,6 +8730,7 @@ export default function ChatView(props: ChatViewProps) {
     scriptKeybindings,
     handleUnsettleActiveThread,
     isServerThread,
+    serverConfig?.threadFind,
     onInterrupt,
     onToggleDiff,
     pinThread,
@@ -8670,7 +8740,11 @@ export default function ChatView(props: ChatViewProps) {
     confirmAndUnpinThread,
     copyActiveThreadReference,
     getShortcutContext,
+    openThreadFind,
+    closeThreadFind,
+    isThreadFindActive,
     toggleRightPanel,
+    toggleRightPanelMaximized,
     toggleThreadPanel,
     toggleTerminalVisibility,
     composerRef,
@@ -8681,6 +8755,14 @@ export default function ChatView(props: ChatViewProps) {
     logicalProjectEnvironments,
     onEnvironmentChange,
   ]);
+
+  // A focused desktop browser page forwards these chords as menu actions.
+  useEffect(() => {
+    return window.desktopBridge?.onMenuAction((action) => {
+      if (action === "rightPanel.toggle") toggleRightPanel();
+      else if (action === "rightPanel.toggleMaximized") toggleRightPanelMaximized();
+    });
+  }, [toggleRightPanel, toggleRightPanelMaximized]);
 
   // Paste-to-focus: the resting composer blurs on a click into the timeline,
   // so a paste that follows has no editable target and would be dropped.
@@ -9089,6 +9171,50 @@ export default function ChatView(props: ChatViewProps) {
       await openForkedTab(tabRef);
     });
 
+  // Copies everything of this tab's draft but its text into `tabRef`: the records its chips
+  // resolve against, with ids kept, and its images, files, and other attached context.
+  const copyDraftAttachmentsInto = (tabRef: ScopedThreadRef) => {
+    if (!activeThread) return;
+    const store = useComposerDraftStore.getState();
+    const draft = store.getComposerDraft(composerDraftTarget);
+    for (const record of readThreadTabContextRecords(activeThread.id)) {
+      useThreadTabContextStore.getState().upsert(tabRef.threadId, record);
+    }
+    for (const record of readIssueContextRecords(activeThread.id)) {
+      useIssueContextStore.getState().upsert(tabRef.threadId, record);
+    }
+    for (const record of readRepositoryContextRecords(activeThread.id)) {
+      useRepositoryContextStore.getState().upsert(tabRef.threadId, record);
+    }
+    if (draft) {
+      store.addImages(tabRef, draft.images.map(cloneComposerImageForRetry), {
+        allowDuplicates: true,
+      });
+      store.addFiles(tabRef, draft.files, { allowDuplicates: true });
+      store.setTerminalContexts(tabRef, draft.terminalContexts);
+      store.setPreviewAnnotations(tabRef, draft.previewAnnotations);
+      store.setReviewComments(tabRef, draft.reviewComments);
+    }
+  };
+
+  // From a context pill of an empty tab: a sibling's conversation continues in a native fork that
+  // takes this tab's place, on the sibling's own model and with this tab's draft. Closing archives
+  // this tab, so undo brings it back.
+  const onContinueFromTab = (sourceThreadId: ThreadId, sourceTitle: string) =>
+    runFork(async (connection) => {
+      if (!activeThread || !threadTabGroup) return;
+      const tabRef = await forkResponseIntoTab(connection, {
+        environmentId,
+        tabThreadId: activeThread.id,
+        sourceThreadId,
+        title: `${sourceTitle} fork`,
+      });
+      const draft = useComposerDraftStore.getState().getComposerDraft(composerDraftTarget);
+      useComposerDraftStore.getState().setPrompt(tabRef, draft?.prompt.trim() ?? "");
+      copyDraftAttachmentsInto(tabRef);
+      await closeTab(scopeThreadRef(environmentId, activeThread.id), tabRef);
+    });
+
   // From the model or account picker: the new tab carries the whole chat onto the picked model,
   // and this tab's draft is copied into it. The draft here is left as it was. `emptyDraftPrompt`
   // stands in for the draft when there is none.
@@ -9097,9 +9223,6 @@ export default function ChatView(props: ChatViewProps) {
       if (!activeThread) return;
       const store = useComposerDraftStore.getState();
       const draft = store.getComposerDraft(composerDraftTarget);
-      const tabContexts = readThreadTabContextRecords(activeThread.id);
-      const issueContexts = readIssueContextRecords(activeThread.id);
-      const repositoryContexts = readRepositoryContextRecords(activeThread.id);
       const modelSelection = createModelSelection(instanceId, model);
       const prompt = draft?.prompt.trim() || emptyDraftPrompt;
       const forkPoint = serverProjection
@@ -9125,25 +9248,7 @@ export default function ChatView(props: ChatViewProps) {
           hasHistory: threadHasStarted(activeThread),
         });
       }
-      // Chips in the copied prompt resolve against these, so ids are kept.
-      for (const record of tabContexts) {
-        useThreadTabContextStore.getState().upsert(tabRef.threadId, record);
-      }
-      for (const record of issueContexts) {
-        useIssueContextStore.getState().upsert(tabRef.threadId, record);
-      }
-      for (const record of repositoryContexts) {
-        useRepositoryContextStore.getState().upsert(tabRef.threadId, record);
-      }
-      if (draft) {
-        store.addImages(tabRef, draft.images.map(cloneComposerImageForRetry), {
-          allowDuplicates: true,
-        });
-        store.addFiles(tabRef, draft.files, { allowDuplicates: true });
-        store.setTerminalContexts(tabRef, draft.terminalContexts);
-        store.setPreviewAnnotations(tabRef, draft.previewAnnotations);
-        store.setReviewComments(tabRef, draft.reviewComments);
-      }
+      copyDraftAttachmentsInto(tabRef);
       await openForkedTab(tabRef);
     });
 
@@ -10955,6 +11060,7 @@ export default function ChatView(props: ChatViewProps) {
           [questionId]: setPendingUserInputCustomAnswer(
             existing[activePendingRequestKey]?.[questionId],
             value,
+            question,
           ),
         },
       }));
@@ -11996,7 +12102,18 @@ export default function ChatView(props: ChatViewProps) {
         {/* Main content area with optional plan sidebar */}
         <div className="relative flex min-h-0 min-w-0 flex-1">
           {/* Chat column */}
-          <ChatCanvas
+          <ThreadFindCanvas
+            findOptions={{
+              skills: timelineSkills,
+              progressive: serverConfig?.threadFindProgressive === true,
+              thread: activeThreadRef,
+              enabled:
+                isServerThread && serverConfig?.threadFind === true && !paintOnlyDisplayedTimeline,
+              content: serverProjection ?? undefined,
+            }}
+            controlsRef={threadFindControlsRef}
+            onOpenChange={setIsThreadFindActive}
+            detailsCardTopInset={isThreadFindActive ? THREAD_FIND_BAR_RESERVED_HEIGHT : 0}
             composerOverlayElement={isDraftHeroState ? null : composerOverlayElement}
             data-chat-workspace-drop-target="true"
             onDragEnter={workspaceFileDropHandlers.onDragEnter}
@@ -12004,6 +12121,7 @@ export default function ChatView(props: ChatViewProps) {
             onDragLeave={workspaceFileDropHandlers.onDragLeave}
             onDrop={workspaceFileDropHandlers.onDrop}
           >
+            <ThreadFind onClose={focusComposer} />
             {isWorkspaceFileDragActive ? (
               <div
                 className="pointer-events-none absolute inset-2 z-40 flex items-center justify-center rounded-2xl border-2 border-dashed border-primary/60 bg-primary/[0.035]"
@@ -12129,11 +12247,7 @@ export default function ChatView(props: ChatViewProps) {
                     ? (heldPaintContext?.workspaceRoot ?? undefined)
                     : activeWorkspaceRoot
                 }
-                skills={
-                  activeProviderStatus
-                    ? resolveProviderSkillsForCwd(activeProviderStatus, gitCwd)
-                    : EMPTY_PROVIDER_SKILLS
-                }
+                skills={timelineSkills}
                 anchorMessageId={paintOnlyDisplayedTimeline ? null : timelineAnchorMessageId}
                 onAnchorReady={onTimelineAnchorReady}
                 onAnchorSizeChanged={onTimelineAnchorSizeChanged}
@@ -12152,7 +12266,7 @@ export default function ChatView(props: ChatViewProps) {
               />
 
               {/* scroll to end pill — shown when user has scrolled away from the live edge */}
-              {showScrollToBottom && (
+              {showScrollToBottom && !isThreadFindActive && (
                 <div
                   className="chat-scroll-to-bottom pointer-events-none absolute z-30 flex justify-center py-1.5"
                   style={{ bottom: scrollToEndClearance + 4 }}
@@ -12212,7 +12326,11 @@ export default function ChatView(props: ChatViewProps) {
                       </div>
                     </div>
                   ) : null}
-                  {threadTabGroup && !threadHasStarted(activeThread) ? (
+                  {threadTabGroup &&
+                  !threadHasStarted(activeThread) &&
+                  // A native fork carries history the shell does not count as started, so the
+                  // pills must follow the timeline or they cover the inherited conversation.
+                  serverVisibleTurnItems.length === 0 ? (
                     <ThreadTabContextPills
                       key={activeThread.id}
                       environmentId={activeThread.environmentId}
@@ -12221,6 +12339,7 @@ export default function ChatView(props: ChatViewProps) {
                       onInsert={(reference) =>
                         composerRef.current?.insertContextReference(reference)
                       }
+                      onContinue={onContinueFromTab}
                     />
                   ) : null}
                   <div
@@ -12628,7 +12747,7 @@ export default function ChatView(props: ChatViewProps) {
                 onPrepared={handlePreparedPullRequestThread}
               />
             ) : null}
-          </ChatCanvas>
+          </ThreadFindCanvas>
           {/* end chat column */}
         </div>
         {/* end horizontal flex container */}

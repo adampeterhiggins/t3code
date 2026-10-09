@@ -13,7 +13,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 
-import { expandHomePathWith } from "../pathExpansion.ts";
+import { expandHomePathWith } from "@t3tools/provider-core/server/pathExpansion";
 
 const VIRTUAL_ENVIRONMENT_DIRECTORIES = [".venv", "venv"] as const;
 

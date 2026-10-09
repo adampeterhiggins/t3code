@@ -43,10 +43,10 @@ import { cn } from "~/lib/utils";
 import { formatSecondsTimestamp } from "~/timestampFormat";
 
 import { elapsedBetween } from "../AgentStatus";
+import { shouldPreserveAssistantLineBreaks } from "@t3tools/shared/markdownPipeline";
 import ChatMarkdown from "../ChatMarkdown";
 import { TOOL_KIND_ICONS } from "./agentToolKinds";
 import { agentTranscriptToolRowIndex, type AgentTranscriptRow } from "./agentTranscript";
-import { shouldPreserveAssistantLineBreaks } from "./MessagesTimeline.logic";
 import { V2ItemInspector } from "./V2ItemInspector";
 import { WorkLogDetails, WorkLogRow } from "./WorkLog";
 

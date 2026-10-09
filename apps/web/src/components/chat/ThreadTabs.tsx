@@ -32,7 +32,15 @@ import { sanitizeComposerContextLabel } from "@t3tools/shared/composerContextRef
 import { useAtomValue } from "@effect/atom-react";
 import * as Option from "effect/Option";
 import { useNavigate } from "@tanstack/react-router";
-import { Columns2Icon, PlusIcon, RotateCcwIcon, XIcon } from "lucide-react";
+import {
+  ChevronDownIcon,
+  Columns2Icon,
+  GitBranchIcon,
+  PaperclipIcon,
+  PlusIcon,
+  RotateCcwIcon,
+  XIcon,
+} from "lucide-react";
 import {
   type ComponentProps,
   useCallback,
@@ -478,6 +486,10 @@ export function ThreadTabMenu({
   );
 }
 
+/**
+ * A sibling tab as a pill whose menu either continues its conversation in a fork that replaces
+ * this tab, or attaches its summary alongside any others.
+ */
 function ThreadTabContextPill(props: {
   environmentId: EnvironmentId;
   group: ThreadTabGroup;
@@ -485,40 +497,60 @@ function ThreadTabContextPill(props: {
   summary: TabSummary | undefined;
   disabled: boolean;
   loadSummary: ReturnType<typeof createThreadAttachSummaryLoader>;
-  onSelect: (title: string) => void;
+  onAttach: (title: string) => void;
+  onContinue: (title: string) => void;
 }) {
   const label = useTabLabel(props.environmentId, props.group, props.threadId);
+  const [menuOpen, setMenuOpen] = useState(false);
+  // A tab that never ran has no response to fork from; the server refuses other unfinished ones.
+  const canContinue = props.summary === undefined || props.summary.thread.latestRun !== null;
   return (
-    <CursorPreviewCard
-      trigger={
-        <Toggle
-          size="compact"
-          variant="pill"
-          pressed={false}
-          disabled={props.disabled}
-          aria-label={`Include context from ${label}`}
-          className="min-w-0"
-          onClick={() => props.onSelect(label)}
-        >
-          {props.summary ? (
-            // Trailing room keeps the instance badge, which overhangs the icon, inside the pill.
-            <span className="flex min-w-0 flex-1 items-center gap-2 pe-1">
-              <SidebarTabSummary {...props.summary} compact />
-            </span>
-          ) : (
-            <span className="truncate">{label}</span>
-          )}
-        </Toggle>
-      }
-    >
-      <ThreadSummaryPreview
-        environmentId={props.environmentId}
-        threadId={props.threadId}
-        title={label}
-        parentTitle={null}
-        loadSummary={props.loadSummary}
-      />
-    </CursorPreviewCard>
+    <Menu open={menuOpen} onOpenChange={setMenuOpen}>
+      <CursorPreviewCard
+        suppressed={menuOpen}
+        trigger={
+          <MenuTrigger
+            disabled={props.disabled}
+            render={
+              <Toggle
+                size="compact"
+                variant="pill"
+                pressed={false}
+                aria-label={`Context from ${label}`}
+                className="min-w-0"
+              />
+            }
+          >
+            {props.summary ? (
+              <span className="flex min-w-0 flex-1 items-center gap-2">
+                <SidebarTabSummary {...props.summary} compact />
+              </span>
+            ) : (
+              <span className="min-w-0 flex-1 truncate text-left">{label}</span>
+            )}
+            <ChevronDownIcon className="size-3 shrink-0 opacity-60" />
+          </MenuTrigger>
+        }
+      >
+        <ThreadSummaryPreview
+          environmentId={props.environmentId}
+          threadId={props.threadId}
+          title={label}
+          parentTitle={null}
+          loadSummary={props.loadSummary}
+        />
+      </CursorPreviewCard>
+      <MenuPopup align="start" side="bottom">
+        <MenuItem disabled={!canContinue} onClick={() => props.onContinue(label)}>
+          <GitBranchIcon />
+          Continue this conversation
+        </MenuItem>
+        <MenuItem onClick={() => props.onAttach(label)}>
+          <PaperclipIcon />
+          Attach summary
+        </MenuItem>
+      </MenuPopup>
+    </Menu>
   );
 }
 
@@ -672,8 +704,8 @@ export async function forkThreadTab(
 /**
  * Forks a chat at a completed response into a new tab of `tabThreadId`'s group with the native
  * thread fork, so the new tab carries the conversation itself rather than a summary of it. With
- * `modelSelection`, the new tab runs that model. Resolves to the new tab once the client knows
- * about it.
+ * `modelSelection`, the new tab runs that model. Without `runId`, the server forks from the
+ * source's latest finished response. Resolves to the new tab once the client knows about it.
  */
 export async function forkResponseIntoTab(
   connection: PreparedConnection,
@@ -681,7 +713,7 @@ export async function forkResponseIntoTab(
     environmentId: EnvironmentId;
     tabThreadId: ThreadId;
     sourceThreadId: ThreadId;
-    runId: RunId;
+    runId?: RunId;
     title: string;
     modelSelection?: ModelSelection;
   },
@@ -691,7 +723,7 @@ export async function forkResponseIntoTab(
     forkThreadTabFromRun(connection, input.tabThreadId, {
       threadId,
       sourceThreadId: input.sourceThreadId,
-      runId: input.runId,
+      ...(input.runId ? { runId: input.runId } : {}),
       title: input.title,
       ...(input.modelSelection ? { modelSelection: input.modelSelection } : {}),
     }),
@@ -802,19 +834,22 @@ type TabSummary = Omit<ComponentProps<typeof SidebarTabSummary>, "compact">;
 
 /**
  * Sibling tabs an empty tab can pull context from, in the sidebar's order and up to its tab
- * limit, with the rest behind a "more" pill. Clicking one captures that tab's transcript
- * summary and hands back a chip reference for the composer to place at the caret.
+ * limit, with the rest behind a "more" pill. Each one's menu either continues that tab's
+ * conversation through `onContinue`, or captures its transcript summary and hands back a chip
+ * reference for the composer to place at the caret.
  */
 export function ThreadTabContextPills({
   environmentId,
   threadId,
   group,
   onInsert,
+  onContinue,
 }: {
   environmentId: EnvironmentId;
   threadId: ThreadId;
   group: ThreadTabGroup;
   onInsert: (reference: ComposerContextReference) => void;
+  onContinue: (sourceThreadId: ThreadId, title: string) => Promise<void>;
 }) {
   const threadTabContext = useCaptureThreadTabContext(environmentId, threadId);
   // Summaries fetched on hover are kept so a later click inserts what the preview showed.
@@ -834,18 +869,28 @@ export function ThreadTabContextPills({
   }
   const siblings = expanded ? [...shown, ...hidden] : shown;
 
-  const insert = async (sourceThreadId: ThreadId, title: string) => {
+  const runFor = async (
+    sourceThreadId: ThreadId,
+    fallbackError: string,
+    action: () => Promise<void>,
+  ) => {
     setLoadingId(sourceThreadId);
     setError(null);
     try {
-      const summary = await loadSummary(sourceThreadId);
-      onInsert(await threadTabContext.capture(sourceThreadId, title, summary));
+      await action();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not summarize that tab.");
+      setError(cause instanceof Error ? cause.message : fallbackError);
     } finally {
       setLoadingId(null);
     }
   };
+  const insert = (sourceThreadId: ThreadId, title: string) =>
+    runFor(sourceThreadId, "Could not summarize that tab.", async () => {
+      const summary = await loadSummary(sourceThreadId);
+      onInsert(await threadTabContext.capture(sourceThreadId, title, summary));
+    });
+  const continueFrom = (sourceThreadId: ThreadId, title: string) =>
+    runFor(sourceThreadId, "Could not continue that tab.", () => onContinue(sourceThreadId, title));
 
   return (
     <div className="pb-3">
@@ -861,7 +906,8 @@ export function ThreadTabContextPills({
             summary={summaryOf(tab.threadId)}
             disabled={loadingId !== null}
             loadSummary={loadSummary}
-            onSelect={(title) => void insert(tab.threadId, title)}
+            onAttach={(title) => void insert(tab.threadId, title)}
+            onContinue={(title) => void continueFrom(tab.threadId, title)}
           />
         ))}
         {hidden.length > 0 && expanded ? (
