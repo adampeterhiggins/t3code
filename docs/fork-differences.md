@@ -142,6 +142,12 @@ turn analytics and the usage of delegated tasks run on Cursor
 over the run's model calls, not context occupancy, so Cursor threads still have no context meter.
 The usage page keeps reading Cursor's account history, so nothing is counted twice.
 
+Native Grok turns also record the CLI's prompt-wide input, output, cache, and reasoning usage,
+feeding turn analytics and app-owned delegated task totals. Counts cover the prompt's model calls,
+with incomplete reports marked partial; older builds and interrupted prompts that report no counts
+remain unavailable. The context meter stays separate. See
+[`GrokTurnTokenUsage.ts`](../apps/server/src/provider/acp/GrokTurnTokenUsage.ts).
+
 Code: `apps/web/src/components/settings/ProviderAuthSection.tsx`,
 `apps/server/src/provider/Services/ProviderAuthService.ts`,
 `apps/server/src/provider/ProviderInstanceEnvironment.ts`, and

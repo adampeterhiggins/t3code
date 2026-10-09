@@ -4,6 +4,7 @@ import * as NodeOS from "node:os";
 import type { ProviderUserInputAnswers, UserInputQuestion } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Deferred from "effect/Deferred";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Ref from "effect/Ref";
@@ -23,6 +24,7 @@ const XAiPromptCompleteNotification = Schema.Struct({
   promptId: Schema.optional(Schema.String),
   stopReason: Schema.optional(Schema.String),
   agentResult: Schema.optional(Schema.NullOr(Schema.Unknown)),
+  usage: Schema.optional(Schema.Json),
 });
 
 type XAiPromptCompleteNotification = typeof XAiPromptCompleteNotification.Type;
@@ -46,6 +48,7 @@ const XAiSessionUpdateNotification = Schema.Struct({
     stop_reason: Schema.optional(Schema.String),
     stopReason: Schema.optional(Schema.String),
     agent_result: Schema.optional(Schema.NullOr(Schema.Unknown)),
+    usage: Schema.optional(Schema.Json),
     // subagent_finished
     child_session_id: Schema.optional(Schema.String),
     status: Schema.optional(Schema.String),
@@ -91,6 +94,7 @@ export function xAiPromptCompleteFromSessionUpdate(
     promptId,
     ...(stopReason === undefined ? {} : { stopReason }),
     ...(update.agent_result === undefined ? {} : { agentResult: update.agent_result }),
+    ...(update.usage === undefined ? {} : { usage: update.usage }),
   };
 }
 
@@ -106,6 +110,10 @@ export function isXAiTaskCompletedWakeNotification(
 }
 
 interface PendingXAiPromptCompletion {
+  readonly usageCompletion: Deferred.Deferred<
+    EffectAcpSchema.PromptResponse,
+    EffectAcpErrors.AcpRequestError
+  >;
   readonly sessionId: string;
   readonly promptId: string;
   readonly deferred: Deferred.Deferred<
@@ -1391,6 +1399,7 @@ function promptResponseFromXAi(
     meta.promptId = notification.promptId;
     meta.requestId = notification.promptId;
   }
+  if (notification.usage !== undefined) meta.usage = notification.usage;
   if (notification.agentResult !== undefined) {
     meta.agentResult = notification.agentResult as Schema.Json;
   }
@@ -1439,12 +1448,21 @@ const registerXAiPromptCompletionFallback = (
   sessionId: string,
   promptId: string,
 ) =>
-  Deferred.make<EffectAcpSchema.PromptResponse, EffectAcpErrors.AcpRequestError>().pipe(
-    Effect.tap((deferred) =>
-      Ref.update(pendingRef, (pending) => [...pending, { sessionId, promptId, deferred }]),
-    ),
-    Effect.map((deferred) => ({ deferred, promptId })),
-  );
+  Effect.gen(function* () {
+    const deferred = yield* Deferred.make<
+      EffectAcpSchema.PromptResponse,
+      EffectAcpErrors.AcpRequestError
+    >();
+    const usageCompletion = yield* Deferred.make<
+      EffectAcpSchema.PromptResponse,
+      EffectAcpErrors.AcpRequestError
+    >();
+    yield* Ref.update(pendingRef, (pending) => [
+      ...pending,
+      { sessionId, promptId, deferred, usageCompletion },
+    ]);
+    return { deferred, usageCompletion, promptId };
+  });
 
 const unregisterXAiPromptCompletionFallback = (
   pendingRef: Ref.Ref<ReadonlyArray<PendingXAiPromptCompletion>>,
@@ -1471,16 +1489,17 @@ const abortPendingPromptCompletions = (
     return [
       Effect.forEach(
         toAbort,
-        (entry) =>
-          Deferred.succeed(
-            entry.deferred,
-            promptResponseFromXAi({
-              sessionId: entry.sessionId,
-              promptId: entry.promptId,
-              stopReason: "cancelled",
-              agentResult: null,
-            }),
-          ),
+        (entry) => {
+          const response = promptResponseFromXAi({
+            sessionId: entry.sessionId,
+            promptId: entry.promptId,
+            stopReason: "cancelled",
+            agentResult: null,
+          });
+          return Deferred.succeed(entry.deferred, response).pipe(
+            Effect.andThen(Deferred.succeed(entry.usageCompletion, response)),
+          );
+        },
         { concurrency: "unbounded" },
       ).pipe(Effect.asVoid),
       remaining,
@@ -1535,7 +1554,19 @@ const resolveXAiPromptCompletionFallback = ({
             : Deferred.succeed(entry.deferred, promptResponseFromXAi(notification)).pipe(
                 Effect.asVoid,
               );
-        return [settle, [...pending.slice(0, index), ...pending.slice(index + 1)]] as const;
+        return [
+          settle.pipe(
+            Effect.andThen(
+              failure !== null
+                ? Deferred.fail(entry.usageCompletion, failure)
+                : notification.usage === undefined
+                  ? Effect.void
+                  : Deferred.succeed(entry.usageCompletion, promptResponseFromXAi(notification)),
+            ),
+            Effect.asVoid,
+          ),
+          pending,
+        ] as const;
       }).pipe(Effect.flatten);
     }),
   );
@@ -1680,7 +1711,23 @@ export const makeXAiPromptCompletionRuntime = Effect.fn("makeXAiPromptCompletion
                   : Effect.failCause(cause),
               ),
             ),
-            Deferred.await(fallback.deferred),
+            Deferred.await(fallback.deferred).pipe(
+              Effect.flatMap((response) => {
+                if (response.stopReason === "cancelled" || response._meta?.usage !== undefined) {
+                  return Effect.succeed(response);
+                }
+                // Grok 1.0.41 sends an empty prompt_complete before turn_completed
+                // and the RPC response, both of which carry prompt-wide usage.
+                // Keep the legacy hung-RPC fallback, but let either measured
+                // terminal payload win without adding latency to normal replies.
+                return Deferred.await(fallback.usageCompletion).pipe(
+                  Effect.timeoutOrElse({
+                    duration: Duration.millis(250),
+                    orElse: () => Effect.succeed(response),
+                  }),
+                );
+              }),
+            ),
           ).pipe(
             Effect.tap((response) =>
               rememberCompletedXAiPromptId(completedXAiPromptIdsRef, response, fallback.promptId),
