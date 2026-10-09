@@ -6,7 +6,7 @@
  *   changes with its status.
  * - Hovering a row previews the agent (prompt, outcome, latest tool calls, usage). Clicking the
  *   row or its preview opens the agent; clicking a tool call in the preview opens the agent on
- *   that call. Right-click for the agent menu; Alt-click references the agent in chat by its
+ *   that call. Right-click for the agent menu; Alt-click attaches the agent to chat by its
  *   `@handle`. An agent recorded before its child thread exists
  *   opens too, with its record alone.
  * - The Agents panel's details toggle hides every row's second line (`agentListViewStore.ts`).
@@ -261,8 +261,8 @@ export function AgentRow(props: {
   /** Opens the agent; `toolCallId` opens it on that call. */
   onOpen: (entry: AgentFleetEntry, toolCallId?: TurnItemId) => void;
   onContextMenu: (event: MouseEvent<HTMLElement>, entry: AgentFleetEntry) => void;
-  /** Alt-click: reference the agent in the chat's composer. */
-  onReference?: (entry: AgentFleetEntry) => void;
+  /** Alt-click: attach the agent to the chat's composer. */
+  onAttach?: (entry: AgentFleetEntry) => void;
 }) {
   const { row } = props;
   const { entry } = row;
@@ -294,9 +294,9 @@ export function AgentRow(props: {
           <button
             type="button"
             onClick={(event) => {
-              if (event.altKey && props.onReference) {
+              if (event.altKey && props.onAttach) {
                 previewActions.current?.close();
-                props.onReference(entry);
+                props.onAttach(entry);
                 return;
               }
               open();

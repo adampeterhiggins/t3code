@@ -1,8 +1,8 @@
 /**
  * Fork: the right-click menu of a subagent, wherever the parent chat lists it (thread lineage,
- * the conversation's agent rows, the Agents panel): reference it in this chat by its `@handle`,
- * copy the handle, open it in an agent tab, continue from its work in a new chat tab, attach its
- * result to this chat, or find it in the Agents panel.
+ * the conversation's agent rows, the Agents panel): attach it to this chat as its `@handle` chip,
+ * which carries its task and result, copy the handle, open it in an agent tab, continue from its
+ * work in a new chat tab, or find it in the Agents panel.
  */
 import {
   scopedThreadKey,
@@ -26,23 +26,14 @@ import { useRightPanelStore } from "~/rightPanelStore";
 import { loadThreadProjection, readProject, readThreadProjection } from "~/state/entities";
 import { buildThreadRouteParams } from "~/threadRoutes";
 
-import {
-  copyAgentHandle,
-  referenceAgentInChat,
-  resolveAgentContextRecord,
-} from "./agentReferences";
-import {
-  canAttachAgentResult,
-  continueAgentInChat,
-  subagentContextSubject,
-} from "./agentChatActions";
+import { copyAgentHandle, attachAgentToChat, resolveAgentContextRecord } from "./agentReferences";
+import { continueAgentInChat } from "./agentChatActions";
 
 type AgentMenuAction =
-  | "reference"
+  | "attach"
   | "copy-handle"
   | "open-in-tab"
   | "continue-in-chat"
-  | "attach-result"
   | "show-in-agents";
 
 function menuPosition(event: MouseEvent<HTMLElement>): { x: number; y: number } {
@@ -112,7 +103,6 @@ export function useAgentContextMenu(
       void (async () => {
         const subagent = findSubagent(loadedOwner ?? (await loadThreadProjection(ownerRef)));
         if (!subagent) return;
-        const subject = subagentContextSubject(subagent, agent.title);
         const childThreadId = agent.childThreadId;
         const referenceTarget = {
           environmentId: parentRef.environmentId,
@@ -122,7 +112,7 @@ export function useAgentContextMenu(
         };
         const record = await resolveAgentContextRecord(referenceTarget);
         const items: ContextMenuItem<AgentMenuAction>[] = [
-          { id: "reference", label: "Reference in chat" },
+          { id: "attach", label: "Attach to chat" },
           ...(record === null
             ? []
             : [{ id: "copy-handle" as const, label: `Copy @${record.handle}` }]),
@@ -130,16 +120,13 @@ export function useAgentContextMenu(
             ? []
             : [{ id: "open-in-tab" as const, label: "Open in new tab" }]),
           { id: "continue-in-chat", label: "Continue in chat" },
-          ...(canAttachAgentResult(subject)
-            ? [{ id: "attach-result" as const, label: "Attach result to chat" }]
-            : []),
           ...(showInAgentsPanel
             ? [{ id: "show-in-agents" as const, label: "Show in Agents panel" }]
             : []),
         ];
         const action = await api.contextMenu.show(items, position);
-        if (action === "reference") {
-          await referenceAgentInChat(parentRef, referenceTarget);
+        if (action === "attach") {
+          await attachAgentToChat(parentRef, referenceTarget);
         } else if (action === "copy-handle") {
           if (record !== null) copyAgentHandle(record.handle);
         } else if (action === "open-in-tab") {
@@ -171,9 +158,6 @@ export function useAgentContextMenu(
                 params: buildThreadRouteParams(tabRef),
               }),
           });
-        } else if (action === "attach-result") {
-          // The agent's chip carries its task and result.
-          await referenceAgentInChat(parentRef, referenceTarget);
         }
       })().catch(() => undefined);
     },

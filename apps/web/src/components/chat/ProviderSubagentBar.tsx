@@ -26,9 +26,9 @@ export function ProviderSubagentBar(props: {
   readonly effortLabel: string | null;
   /** Null until the subagent's root turn arrives. */
   readonly status: ProviderSubagentStatus | null;
-  /** Fork: references the subagent in the parent's composer, the way to steer it. The thread's
+  /** Fork: attaches the subagent to the parent's chat, the way to steer it. The thread's
       "Subagent of" divider shows its `@handle`. */
-  readonly onReferenceInParent: (() => void) | null;
+  readonly onAttachToParent: (() => void) | null;
   readonly onOpenParent: (() => void) | null;
 }) {
   const statusRef = useRef<HTMLSpanElement>(null);
@@ -86,21 +86,21 @@ export function ProviderSubagentBar(props: {
         {`${modelDescription} subagent: ${announcement}`}
       </span>
       <span className="ms-auto shrink-0 text-muted-foreground max-sm:hidden">Runs on its own</span>
-      {props.onReferenceInParent ? (
+      {props.onAttachToParent ? (
         <Tooltip>
           <TooltipTrigger
             render={
               <Button
                 size="icon-sm"
                 variant="ghost"
-                aria-label="Reference in parent"
-                onClick={props.onReferenceInParent}
+                aria-label="Attach to parent chat"
+                onClick={props.onAttachToParent}
               />
             }
           >
             <AtSignIcon />
           </TooltipTrigger>
-          <TooltipPopup>Reference in parent</TooltipPopup>
+          <TooltipPopup>Attach to parent chat</TooltipPopup>
         </Tooltip>
       ) : null}
       {props.onOpenParent ? (

@@ -54,7 +54,6 @@ import {
   CircleStopIcon,
   ListFilterIcon,
   MessageSquarePlusIcon,
-  MessageSquareShareIcon,
   PanelRightOpenIcon,
   SquareArrowOutUpRightIcon,
   XIcon,
@@ -110,7 +109,7 @@ import { ScrollArea } from "../ui/scroll-area";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { AgentUsageFooter, ToolCallList, type ToolCallFocus } from "./AgentActivityParts";
 import { AgentHandle } from "./AgentHandle";
-import { agentReferenceTargetOf, referenceAgentInChat, useAgentHandle } from "./agentReferences";
+import { agentReferenceTargetOf, attachAgentToChat, useAgentHandle } from "./agentReferences";
 import { AgentRow, useEnvironmentShells, useProviderEntries } from "./AgentFleetRow";
 import { AgentTranscriptList } from "./AgentTranscriptList";
 import {
@@ -129,11 +128,7 @@ import {
   showAgentsPanel,
   useAgentContextMenu,
 } from "./agentContextMenu";
-import {
-  canAttachAgentResult,
-  continueAgentInChat,
-  subagentContextSubject,
-} from "./agentChatActions";
+import { continueAgentInChat, subagentContextSubject } from "./agentChatActions";
 
 const TOOL_SORT_LABELS: Record<SubagentToolCallSort, string> = {
   newest: "Newest first",
@@ -816,9 +811,9 @@ export function AgentDetailPanel(props: {
           <h2 className="min-w-0 flex-1 truncate text-sm font-medium">{title}</h2>
           <AgentHandle handle={handle ?? subagentHandleSlug(title)} copyable />
           <ActionButton
-            label="Reference in chat"
+            label="Attach to chat"
             onClick={() =>
-              void referenceAgentInChat(parentRef, {
+              void attachAgentToChat(parentRef, {
                 environmentId: parentRef.environmentId,
                 ownerThreadId: subagent.threadId,
                 childThreadId,
@@ -847,21 +842,6 @@ export function AgentDetailPanel(props: {
               <SquareArrowOutUpRightIcon />
             </ActionButton>
           )}
-          {canAttachAgentResult(subject) ? (
-            <ActionButton
-              label="Attach result to chat"
-              onClick={() =>
-                void referenceAgentInChat(parentRef, {
-                  environmentId: parentRef.environmentId,
-                  ownerThreadId: subagent.threadId,
-                  childThreadId,
-                  subagentId: subagent.id,
-                })
-              }
-            >
-              <MessageSquareShareIcon />
-            </ActionButton>
-          ) : null}
           <ActionButton label="Continue in chat" onClick={continueInChat}>
             <MessageSquarePlusIcon />
           </ActionButton>
@@ -923,8 +903,8 @@ export function AgentDetailPanel(props: {
                     workspaceRoot={props.workspaceRoot}
                     onOpen={openChildEntry}
                     onContextMenu={onChildContextMenu}
-                    onReference={(entry) =>
-                      void referenceAgentInChat(
+                    onAttach={(entry) =>
+                      void attachAgentToChat(
                         parentRef,
                         agentReferenceTargetOf(parentRef.environmentId, entry),
                       )

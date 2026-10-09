@@ -428,7 +428,7 @@ The detail's buttons also open the agent's own thread. The Agents panel and agen
 the current thread and are restored when you reopen the app; the agent you had open inside the
 panel is not. Close a tab with its close button and open it again the same way.
 
-To use what an agent found in your next message, choose **Attach result to chat** in its detail or
+To use what an agent found in your next message, choose **Attach to chat** in its detail or
 from the right-click menu. T3 Code adds the agent as a chip in the composer, and the agent you
 send to receives its task and result.
 

@@ -68,7 +68,7 @@ export function useAgentReferences(
 }
 
 /** Puts an agent's chip into its owner thread's composer draft, at the caret or the end. */
-export function referenceAgentInChat(
+export function attachAgentToChat(
   environmentId: EnvironmentId,
   subagent: OrchestrationV2Subagent,
   reference: AgentReference,

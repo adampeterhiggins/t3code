@@ -275,13 +275,13 @@ function formatComposerContextProviderPayload(record: KnownComposerContextRecord
 }
 
 /**
- * Who the agent is, how it can be reached, and its task and outcome when the user referenced it.
+ * Who the agent is, how it can be reached, and its task and outcome when the user attached it.
  * Only the agent that started a provider's own subagent can message it.
  */
 function formatSubagentPayload(record: SubagentContextRecord): string {
   const lines = [
     `agent: @${record.handle} (${record.title})`,
-    `status when referenced: ${record.status}`,
+    `status when attached: ${record.status}`,
   ];
   if (record.subagentId !== null) lines.push(`taskId: ${record.subagentId}`);
   if (record.childThreadId !== null) lines.push(`childThreadId: ${record.childThreadId}`);

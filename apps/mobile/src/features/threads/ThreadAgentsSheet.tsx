@@ -26,7 +26,7 @@ import { environmentThreadDetails } from "../../state/threads";
 import { nativeHeaderScrollEdgeEffects } from "../../native/StackHeader";
 import {
   agentReferenceKey,
-  referenceAgentInChat,
+  attachAgentToChat,
   useAgentReferences,
   type AgentReference,
 } from "./agent-references";
@@ -71,8 +71,8 @@ export function ThreadAgentsSheet({ route }: StaticScreenProps<AgentsTarget>) {
     );
   };
 
-  const referenceInChat = (subagent: OrchestrationV2Subagent, reference: AgentReference) => {
-    if (!referenceAgentInChat(target.environmentId, subagent, reference)) return;
+  const attachInChat = (subagent: OrchestrationV2Subagent, reference: AgentReference) => {
+    if (!attachAgentToChat(target.environmentId, subagent, reference)) return;
     void Haptics.selectionAsync();
     navigation.goBack();
   };
@@ -99,7 +99,7 @@ export function ThreadAgentsSheet({ route }: StaticScreenProps<AgentsTarget>) {
             reference={references.get(agentReferenceKey(subagent)) ?? null}
             tickSeconds={hasLiveAgent}
             onOpen={openChildThread}
-            onReference={referenceInChat}
+            onAttach={attachInChat}
           />
         ))
       )}
@@ -155,7 +155,7 @@ function AgentRow(props: {
   readonly reference: AgentReference | null;
   readonly tickSeconds: boolean;
   readonly onOpen: (childThreadId: ThreadId) => void;
-  readonly onReference: (subagent: OrchestrationV2Subagent, reference: AgentReference) => void;
+  readonly onAttach: (subagent: OrchestrationV2Subagent, reference: AgentReference) => void;
 }) {
   const { subagent, reference } = props;
   const childThreadId = subagent.childThreadId;
@@ -199,7 +199,7 @@ function AgentRow(props: {
 
   if (reference === null) return pressable;
   const actions = [
-    { id: "reference", title: "Reference in chat" },
+    { id: "attach", title: "Attach to chat" },
     { id: "copy-handle", title: "Copy handle" },
     ...(childThreadId === null ? [] : [{ id: "open", title: "Open agent" }]),
   ];
@@ -209,7 +209,7 @@ function AgentRow(props: {
       shouldOpenOnLongPress
       actions={actions}
       onPressAction={({ nativeEvent }) => {
-        if (nativeEvent.event === "reference") props.onReference(subagent, reference);
+        if (nativeEvent.event === "attach") props.onAttach(subagent, reference);
         else if (nativeEvent.event === "copy-handle") {
           copyTextWithHaptic(`@${reference.handle}`, { target: "agent handle" });
         } else if (nativeEvent.event === "open" && childThreadId !== null) {

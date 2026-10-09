@@ -302,7 +302,7 @@ import { slackGetThreadInput, useAttachSlackMessage } from "./SlackMessagePicker
 import { useResolveComposerObjectLink } from "./useResolveComposerObjectLink";
 import { useComposerRepositoryItems } from "./useComposerRepositoryItems";
 import { useComposerAgentItems } from "./useComposerAgentItems";
-import { agentReferenceTargetOf, referenceAgentInChat } from "./agentReferences";
+import { agentReferenceTargetOf, attachAgentToChat } from "./agentReferences";
 import { attachRepository } from "./RepositoryAttachPicker";
 import {
   type ComposerReferenceTab,
@@ -4506,7 +4506,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         });
         if (!applied) return;
         setComposerHighlightedItemId(null);
-        void referenceAgentInChat(
+        void attachAgentToChat(
           item.parentRef,
           agentReferenceTargetOf(item.parentRef.environmentId, item.entry),
         );

@@ -1,7 +1,8 @@
 /**
- * Fork: referencing a subagent in chat by its `@handle` (`subagentHandles.ts`). The composer's
- * `@` menu, the agent context menu, and the Reference buttons on agent surfaces all insert the
- * same chip, whose payload tells the provider how to reach the agent.
+ * Fork: attaching a subagent to chat as its `@handle` chip (`subagentHandles.ts`). The composer's
+ * `@` menu, the agent context menu, and the Attach buttons on agent surfaces all insert the
+ * same chip, whose payload carries the agent's task and result and tells the provider how to
+ * reach it.
  */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
@@ -171,7 +172,7 @@ export async function resolveAgentContextRecord(
 }
 
 /** Puts an agent's chip at the caret of `composerRef`'s composer, or at the end of its draft. */
-export async function referenceAgentInChat(
+export async function attachAgentToChat(
   composerRef: ScopedThreadRef,
   target: AgentReferenceTarget,
 ): Promise<boolean> {
@@ -179,7 +180,7 @@ export async function referenceAgentInChat(
   if (record === null) {
     toastManager.add({
       type: "error",
-      title: "Could not reference the agent",
+      title: "Could not attach the agent",
       description: "Its record isn't available yet. Try again in a moment.",
     });
     return false;

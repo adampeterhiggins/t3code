@@ -286,8 +286,8 @@ thread details panel, one row each, newest first, and removed the right-panel Ag
   Lineage, or in the conversation, keeps it in a thread-scoped right-panel tab beside the fleet,
   with the same detail view. Agent tabs close like other tabs, reopen the same way, and are
   restored when the app restarts.
-- **Attach result to chat** (right-click or the agent detail) puts a finished agent's `@handle`
-  chip in the composer; the chip carries its task and result (see Reference agents by handle).
+- **Attach to chat** (right-click or the agent detail) puts the agent's `@handle` chip in the
+  composer; the chip carries its task and result (see Attach agents to chat by handle).
 - **Continue in chat** (right-click or the agent detail) opens a new chat tab of the thread whose
   draft carries the agent's task, result or error, and latest tool calls as a chat-summary chip;
   `subagentContinuationContext` builds the text. It starts a fresh conversation rather than
@@ -329,7 +329,7 @@ field mapping in `ClaudeAdapterV2.ts` and `CodexAdapterV2.ts`, and `finalizeAppO
 [`Orchestrator.ts`](../apps/server/src/orchestration-v2/Orchestrator.ts). User guide:
 [thread-sidebar.md](./user/thread-sidebar.md#inspect-agent-work).
 
-## Reference agents by handle
+## Attach agents to chat by handle
 
 Every subagent has an `@handle`: its title as a slug, numbered `-2`, `-3` in spawn order when
 agents started by the same thread slug alike
@@ -347,13 +347,13 @@ an agent's own thread show it.
   depends on how the agent can be reached: a T3 delegated task carries `task_status` and
   `t3_thread_send` instructions, a Claude subagent its `SendMessage` agent id, and other native
   subagents are marked as unable to take messages. Each also carries its task and its outcome at
-  the time it was referenced (`formatSubagentPayload` in
+  the time it was attached (`formatSubagentPayload` in
   [`composerContextReferences.ts`](../packages/shared/src/composerContextReferences.ts)). An agent
-  whose record the client has not loaded (an older run's) is referenced by its child thread alone.
+  whose record the client has not loaded (an older run's) is attached by its child thread alone.
   Chip payloads live in memory like issue chips, so a reloaded draft shows them as unavailable.
-- **Other ways in.** **Reference in chat** and **Copy @handle** in the agent right-click menu,
+- **Other ways in.** **Attach to chat** and **Copy @handle** in the agent right-click menu,
   Alt-click on an Agents panel row, the `@` button on the detail header and on conversation agent
-  rows, and **Reference in parent** on an agent's own thread, which puts the chip in the parent's
+  rows, and **Attach to parent chat** on an agent's own thread, which puts the chip in the parent's
   draft and opens the parent. On mobile, the Agents sheet rows show the handle and offer the same
   actions on long-press. The mobile composer's `@` menu has the same tabs.
 

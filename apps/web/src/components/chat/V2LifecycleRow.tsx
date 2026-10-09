@@ -6,7 +6,7 @@ import { useThreadShell, useProject } from "../../state/entities";
 import { SubagentTooltipContent } from "./SubagentTooltipContent";
 import { showAgentInPanel, useAgentContextMenu } from "./agentContextMenu";
 import { AgentHandle } from "./AgentHandle";
-import { referenceAgentInChat, useAgentHandle } from "./agentReferences";
+import { attachAgentToChat, useAgentHandle } from "./agentReferences";
 import { useAtomValue } from "@effect/atom-react";
 import { scopeThreadRef, scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { environmentThreadDetails } from "../../state/threads";
@@ -620,9 +620,9 @@ function SubagentPanelControls(props: {
               type="button"
               size="icon-xs"
               variant="ghost-muted"
-              aria-label={`Reference ${props.title} in chat`}
+              aria-label={`Attach ${props.title} to chat`}
               onClick={() =>
-                void referenceAgentInChat(props.parentRef, {
+                void attachAgentToChat(props.parentRef, {
                   environmentId: props.parentRef.environmentId,
                   ownerThreadId: props.parentRef.threadId,
                   childThreadId: props.childThreadId,
@@ -634,7 +634,7 @@ function SubagentPanelControls(props: {
         >
           <AtSignIcon />
         </TooltipTrigger>
-        <TooltipPopup>Reference in chat</TooltipPopup>
+        <TooltipPopup>Attach to chat</TooltipPopup>
       </Tooltip>
       <Tooltip>
         <TooltipTrigger

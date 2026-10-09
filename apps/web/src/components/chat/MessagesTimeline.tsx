@@ -522,8 +522,8 @@ interface MessagesTimelineProps {
     readonly title: string;
     /** Fork: this subagent thread's `@handle` among its parent's agents. */
     readonly handle?: string | null;
-    /** Fork: references this agent in the parent's composer and opens the parent. */
-    readonly onReference?: (() => void) | null;
+    /** Fork: attaches this agent to the parent's chat and opens the parent. */
+    readonly onAttach?: (() => void) | null;
   } | null;
   onForkFromRun: (input: {
     readonly sourceThreadId: ThreadId;
@@ -1396,7 +1396,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                 (parentThreadLink.handle ?? null) === null ? null : (
                   <span className="flex shrink-0 items-center gap-1">
                     <AgentHandle handle={parentThreadLink.handle!} copyable />
-                    {parentThreadLink.onReference ? (
+                    {parentThreadLink.onAttach ? (
                       <Tooltip>
                         <TooltipTrigger
                           render={
@@ -1404,14 +1404,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                               type="button"
                               size="icon-xs"
                               variant="ghost-muted"
-                              aria-label="Reference in parent"
-                              onClick={parentThreadLink.onReference}
+                              aria-label="Attach to parent chat"
+                              onClick={parentThreadLink.onAttach}
                             />
                           }
                         >
                           <AtSignIcon />
                         </TooltipTrigger>
-                        <TooltipPopup side="top">Reference in parent</TooltipPopup>
+                        <TooltipPopup side="top">Attach to parent chat</TooltipPopup>
                       </Tooltip>
                     ) : null}
                   </span>

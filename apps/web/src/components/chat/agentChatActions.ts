@@ -1,8 +1,8 @@
 /**
  * Fork: carry a subagent's work into chat, from its agents list row or its agent tab.
  *
- * - Attach result (`canAttachAgentResult`) puts the agent's `@handle` chip, which carries its task
- *   and result, in this chat's composer (`agentReferences.ts`).
+ * - Attach to chat lives in `agentReferences.ts`: the agent's `@handle` chip carries its task and
+ *   result.
  * - Continue in chat opens a new chat tab whose draft carries the agent's task, outcome and
  *   latest tool calls as a chat-summary chip. It starts a fresh conversation; the agent's own
  *   provider session is not resumed.
@@ -11,7 +11,6 @@ import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   deriveSubagentToolCalls,
   subagentContinuationContext,
-  subagentResultChatContext,
   type SubagentContextSubject,
 } from "@t3tools/client-runtime/state/agent-list-view";
 import type {
@@ -41,11 +40,6 @@ export function subagentContextSubject(
     error: failed ? (subagent.result ?? "The subagent failed.") : null,
     progress: subagent.progress ?? null,
   };
-}
-
-/** True when the agent has a settled result worth attaching. */
-export function canAttachAgentResult(subject: SubagentContextSubject): boolean {
-  return subagentResultChatContext(subject) !== null;
 }
 
 /**

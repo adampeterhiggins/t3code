@@ -11,7 +11,6 @@ import {
   latestSubagentToolCall,
   subagentContinuationContext,
   subagentEmptyToolCallsText,
-  subagentResultChatContext,
   subagentWorkspaceRoot,
   type AgentListSubject,
   type SubagentToolCall,
@@ -398,17 +397,6 @@ describe("chat context", () => {
     result: "It is in src/a.test.ts",
     error: null,
   };
-
-  it("attaches a settled agent's task and result, and nothing while it works", () => {
-    expect(subagentResultChatContext(finished)).toBe(
-      'Findings from the "Scout" subagent.\n\nTask:\nFind the flaky test\n\nResult:\nIt is in src/a.test.ts',
-    );
-    expect(subagentResultChatContext({ ...finished, status: "running" })).toBeNull();
-    expect(subagentResultChatContext({ ...finished, result: "  " })).toBeNull();
-    expect(
-      subagentResultChatContext({ ...finished, status: "failed", error: "Out of budget" }),
-    ).toContain('The "Scout" subagent failed.');
-  });
 
   it("carries the task, outcome and latest tool calls into a continuation", () => {
     const call = (id: string, status: SubagentToolCall["status"]): SubagentToolCall => ({
