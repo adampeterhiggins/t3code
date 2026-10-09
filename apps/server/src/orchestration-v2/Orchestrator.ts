@@ -10706,6 +10706,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             manualContinuationOfRunId: command.runId,
             text: USAGE_LIMIT_CONTINUATION_TEXT,
             attachments: [],
+            ...(command.modelSelection === undefined
+              ? {}
+              : { modelSelection: command.modelSelection }),
             dispatchMode: { type: "start_immediately" },
             createdBy: command.createdBy,
             creationSource: command.creationSource,

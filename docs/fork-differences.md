@@ -1327,7 +1327,8 @@ Upstream shows a recovery banner when Codex or Claude ends a turn on a usage lim
 reset**, **Cancel auto-resume**, and **Snooze until reset**. The fork adds:
 
 - **Resume now**, on web, desktop, and mobile, which sends the same "Continue where you left off."
-  continuation into the same session at once. It is the `thread.usage-limit.resume-now` command, so
+  continuation at once, on the composer's model, so picking another provider first continues there
+  instead of into the same limit. It is the `thread.usage-limit.resume-now` command, so
   the server owns the message and any client or future agent tool can send it. Servers advertise it
   with the `usageLimitResumeNow` capability; clients hide the button without it.
 - **Continue in new tab** on web and desktop, which forks the chat onto another ready account or
