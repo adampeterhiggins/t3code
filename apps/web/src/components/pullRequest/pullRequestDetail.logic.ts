@@ -25,6 +25,7 @@ import {
   type PullRequestThreadComment,
   type PullRequestState,
   type PullRequestUpdateMethod,
+  type ReviewCommentThreadContext,
   type SourceControlProviderKind,
   type ThreadLinkedPullRequest,
   type ThreadPullRequestLink,
@@ -750,11 +751,37 @@ function boundedField(value: string): string {
   return bounded(value.replace(/\s+/gu, " "));
 }
 
+/** The thread as the chip shows it: each visible remark under its author, linking to the first. */
+function reviewThreadDisplay(
+  comments: ReadonlyArray<{
+    readonly author: PullRequestActor | null;
+    readonly body: string;
+    readonly url?: string | null;
+  }>,
+): ReviewCommentThreadContext {
+  const url = comments.find((comment) => comment.url)?.url;
+  return {
+    ...(url ? { url } : {}),
+    comments: comments.slice(0, 50).flatMap((comment) => {
+      const body = visibleBody(comment.body);
+      if (body === null) return [];
+      const avatarUrl = comment.author?.avatarUrl;
+      return [
+        {
+          author: comment.author?.login ?? "ghost",
+          ...(avatarUrl ? { avatarUrl } : {}),
+          body: bounded(body),
+        },
+      ];
+    }),
+  };
+}
+
 /**
  * A review thread as the composer's own annotation context, so a finding arrives as the same
- * `path L5` chip that annotating a file gives, rather than as quoted text in the prompt. No code
- * travels with it: the thread names a line of the pull request's diff, which the fresh checkout
- * has not fetched and the reader can open for themselves.
+ * `path L5` chip that annotating a file gives, rather than as quoted text in the prompt. The code
+ * is the tail of the hunk the host reports the thread against, where it reports one: the fresh
+ * checkout has not fetched the pull request's diff, so this is the only copy the agent sees.
  */
 function reviewThreadContext(
   thread: PullRequestReviewThread,
@@ -781,8 +808,9 @@ function reviewThreadContext(
         })
         .join("\n"),
     ),
-    diff: "",
-    fenceLanguage: inferReviewCommentFenceLanguage(thread.path),
+    diff: thread.diffHunk ?? "",
+    fenceLanguage: thread.diffHunk ? "diff" : inferReviewCommentFenceLanguage(thread.path),
+    thread: reviewThreadDisplay(thread.comments),
   };
 }
 
@@ -1332,14 +1360,13 @@ export function buildPullRequestCommentReferenceContext(
   const id = `pr-comment-reference:${choice.comment.id}`;
 
   if (choice.kind === "thread") {
+    const conversation = choice.thread.comments.slice(0, choice.index + 1);
     return {
       ...reviewThreadContext(choice.thread, pullRequest.number),
       id,
-      text: choice.thread.comments
-        .slice(0, choice.index + 1)
-        .flatMap(quote)
-        .join("\n"),
+      text: conversation.flatMap(quote).join("\n"),
       instructions,
+      thread: reviewThreadDisplay(conversation),
     };
   }
   const comment = choice.comment;
@@ -1355,6 +1382,7 @@ export function buildPullRequestCommentReferenceContext(
     text: quote(comment).join("\n"),
     instructions,
     diff: "",
+    thread: reviewThreadDisplay([comment]),
   };
 }
 

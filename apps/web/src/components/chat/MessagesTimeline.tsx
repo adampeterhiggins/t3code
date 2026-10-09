@@ -113,8 +113,6 @@ import {
   type LegendListRef,
   type MaintainScrollAtEndOptions,
 } from "@legendapp/list/react";
-import { FileDiff } from "@pierre/diffs/react";
-import { DiffWorkerPoolProvider } from "../DiffWorkerPoolProvider";
 import {
   type TimelineEntry,
   providerErrorPresentation,
@@ -134,12 +132,6 @@ import {
   isVideoAttachment,
   type TurnDiffSummary,
 } from "../../types";
-import {
-  getRenderablePatch,
-  resolveDiffThemeName,
-  resolveFileDiffPath,
-} from "../../lib/diffRendering";
-import { PREFERRED_HIGHLIGHTER } from "../../lib/syntaxHighlighting";
 import ChatMarkdown, { ChatMarkdownAssetImage } from "../ChatMarkdown";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -341,11 +333,8 @@ import { TimelineSystemDivider } from "./TimelineSystemDivider";
 import { SkillChipIcon, SkillInlineText } from "./SkillInlineText";
 import * as DateTime from "effect/DateTime";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
-import {
-  buildReviewCommentRenderablePatch,
-  formatReviewCommentFence,
-  type ReviewCommentContext,
-} from "../../reviewCommentContext";
+import { type ReviewCommentContext } from "../../reviewCommentContext";
+import { ReviewCommentCard } from "../ReviewCommentCard";
 
 // ---------------------------------------------------------------------------
 // Context — shared state consumed by every row component via Context.
@@ -4802,6 +4791,7 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
                   ? { fenceLanguage: record.fenceLanguage }
                   : {}),
                 ...(record.pullRequest !== undefined ? { pullRequest: record.pullRequest } : {}),
+                ...(record.thread !== undefined ? { thread: record.thread } : {}),
               }}
             />
           </UserMessageContextPopover>
@@ -5100,58 +5090,29 @@ const UserMessageBody = memo(function UserMessageBody(props: {
 
 function UserMessageReviewCommentCard({ comment }: { comment: ReviewCommentContext }) {
   const ctx = use(TimelineRowCtx);
-  const fenceLanguage = comment.fenceLanguage ?? "diff";
-  const renderablePatch = getRenderablePatch(
-    buildReviewCommentRenderablePatch(comment),
-    `review-comment:${comment.id}`,
+  const renderRemark = (body: string) => (
+    <ChatMarkdown
+      text={body}
+      cwd={ctx.markdownCwd}
+      threadRef={ctx.threadRef ?? undefined}
+      skills={ctx.skills}
+      className="text-foreground"
+    />
   );
-
   return (
-    <div className="space-y-2 rounded-lg border border-border/70 bg-background/70 p-3">
-      <div className="space-y-1">
-        <div className="text-xs font-medium text-foreground">
-          {formatWorkspaceRelativePath(comment.filePath, ctx.workspaceRoot)}
-        </div>
-        <div className="text-2xs text-muted-foreground">
-          {comment.sectionTitle} · {comment.rangeLabel}
-        </div>
-      </div>
-      {comment.text.length > 0 && (
-        <div className="whitespace-pre-wrap wrap-break-word text-sm">
-          <SkillInlineText text={comment.text} skills={ctx.skills} />
-        </div>
-      )}
-      {fenceLanguage !== "diff" && comment.diff.trim().length > 0 && (
-        <ChatMarkdown
-          text={formatReviewCommentFence(fenceLanguage, comment.diff)}
-          cwd={ctx.markdownCwd}
-          threadRef={ctx.threadRef ?? undefined}
-          skills={ctx.skills}
-          className="text-foreground"
-        />
-      )}
-      {renderablePatch?.kind === "files" && (
-        <DiffWorkerPoolProvider>
-          {renderablePatch.files.map((fileDiff) => (
-            <FileDiff
-              key={resolveFileDiffPath(fileDiff)}
-              fileDiff={fileDiff}
-              options={{
-                collapsed: false,
-                diffStyle: "unified",
-                theme: resolveDiffThemeName(ctx.resolvedTheme),
-                preferredHighlighter: PREFERRED_HIGHLIGHTER,
-              }}
-            />
-          ))}
-        </DiffWorkerPoolProvider>
-      )}
-      {renderablePatch?.kind === "raw" && (
-        <pre className="overflow-x-auto rounded-md bg-muted/40 p-2 text-xs">
-          {renderablePatch.text}
-        </pre>
-      )}
-    </div>
+    <ReviewCommentCard
+      comment={comment}
+      displayPath={formatWorkspaceRelativePath(comment.filePath, ctx.workspaceRoot)}
+      renderRemark={renderRemark}
+      note={
+        comment.text.length > 0 ? (
+          <div className="whitespace-pre-wrap wrap-break-word">
+            <SkillInlineText text={comment.text} skills={ctx.skills} />
+          </div>
+        ) : null
+      }
+      threadRef={ctx.threadRef}
+    />
   );
 }
 

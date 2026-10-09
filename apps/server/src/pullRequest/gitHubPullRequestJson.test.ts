@@ -1185,6 +1185,42 @@ describe("review thread decoding", () => {
     ).toBe("2026-07-02T00:00:00Z");
   });
 
+  it("keeps the tail of the thread's diff hunk, renumbered to where the tail starts", () => {
+    const reviewThreads = expectSuccess(
+      decodeReviewThreadsJson(
+        threadsJson([
+          {
+            id: "PRRT_3",
+            isResolved: false,
+            isOutdated: false,
+            path: "src/a.ts",
+            line: 13,
+            diffSide: "RIGHT",
+            anchor: {
+              nodes: [
+                {
+                  diffHunk: [
+                    "@@ -10,5 +10,6 @@ function a() {",
+                    " one",
+                    "-two",
+                    "+deux",
+                    "+trois",
+                    " four",
+                    "+five",
+                  ].join("\n"),
+                },
+              ],
+            },
+            comments: { totalCount: 1, nodes: [comment("c4", "here")] },
+          },
+        ]),
+      ),
+    );
+    expect(reviewThreads.threads[0]?.thread.diffHunk).toBe(
+      ["@@ -12,1 +11,4 @@", "+deux", "+trois", " four", "+five"].join("\n"),
+    );
+  });
+
   it("leaves an outdated thread without a line rather than pinning it to a stale one", () => {
     const reviewThreads = expectSuccess(
       decodeReviewThreadsJson(

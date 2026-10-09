@@ -575,6 +575,15 @@ const RawReviewThreadsSchema = Schema.Struct({
               line: Schema.optional(Schema.NullOr(Schema.Int)),
               diffSide: Schema.optional(Schema.NullOr(Schema.String)),
               comments: RawThreadCommentsSchema,
+              anchor: Schema.optional(
+                Schema.NullOr(
+                  Schema.Struct({
+                    nodes: Schema.Array(
+                      Schema.Struct({ diffHunk: Schema.optional(Schema.NullOr(Schema.String)) }),
+                    ),
+                  }),
+                ),
+              ),
             }),
           ),
         }),
@@ -1032,6 +1041,7 @@ export const REVIEW_THREADS_GRAPHQL_QUERY = `query($owner: String!, $name: Strin
           path
           line
           diffSide
+          anchor: comments(first: 1) { nodes { diffHunk } }
           comments(first: 10) {
             totalCount
             pageInfo { hasNextPage endCursor }
@@ -2701,6 +2711,35 @@ export function decodeReviewDismissalsJson(raw: string): Result.Result<
   });
 }
 
+const DIFF_HUNK_MAX_LINES = 4;
+
+/**
+ * GitHub's hunk runs from the top of the diff hunk down to the commented line, which can be
+ * hundreds of lines. Only the tail is shown beside the comment, so only the tail is kept, under a
+ * header renumbered to where that tail starts.
+ */
+export function trimDiffHunk(hunk: string, maxLines = DIFF_HUNK_MAX_LINES): string | null {
+  const [header, ...body] = hunk.replace(/\n+$/u, "").split("\n");
+  const match = header?.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/u);
+  if (!match) return null;
+  const lines = body.filter((line) => !line.startsWith("\\"));
+  if (lines.length === 0) return null;
+  const skipped = lines.slice(0, Math.max(0, lines.length - maxLines));
+  const kept = lines.slice(skipped.length);
+  const count = (rows: ReadonlyArray<string>, marker: "+" | "-") =>
+    rows.filter((line) => !line.startsWith(marker)).length;
+  const oldStart = Number(match[1]) + count(skipped, "+");
+  const newStart = Number(match[2]) + count(skipped, "-");
+  return [`@@ -${oldStart},${count(kept, "+")} +${newStart},${count(kept, "-")} @@`, ...kept].join(
+    "\n",
+  );
+}
+
+function diffHunkField(hunk: string | null | undefined): { diffHunk?: string } {
+  const trimmedHunk = hunk ? trimDiffHunk(hunk) : null;
+  return trimmedHunk === null ? {} : { diffHunk: trimmedHunk };
+}
+
 export function decodeReviewThreadsJson(
   raw: string,
 ): Result.Result<GitHubReviewThreadPage, DecodeFailure> {
@@ -2728,6 +2767,7 @@ export function decodeReviewThreadsJson(
           side: thread.diffSide?.toUpperCase() === "LEFT" ? "left" : "right",
           isResolved: thread.isResolved === true,
           isOutdated: thread.isOutdated === true,
+          ...diffHunkField(thread.anchor?.nodes[0]?.diffHunk),
           comments: thread.comments.nodes.map((comment) => ({
             id: comment.id,
             author: toActor(comment.author),
