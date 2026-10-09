@@ -14,6 +14,7 @@ import type {
   OrchestrationV2Subagent,
   OrchestrationV2SubagentUsage,
   OrchestrationV2ThreadShell,
+  ProviderInstanceId,
   ThreadId,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
@@ -159,6 +160,8 @@ export interface AgentFleetEntry {
   readonly shell: OrchestrationV2ThreadShell | null;
   /** The agent as rows render it, following a live follow-up run. */
   readonly agent: RuntimeSubagent;
+  /** The provider the agent runs on: its child thread's current one, else the one it was spawned on. */
+  readonly providerInstanceId: ProviderInstanceId;
   readonly title: string;
   readonly subject: AgentListSubject;
 }
@@ -214,6 +217,7 @@ export function deriveThreadAgentFleet(input: {
       subagent: null,
       shell,
       agent,
+      providerInstanceId: shell.providerInstanceId,
       title,
       subject: subjectOf(agent, title, subagentSpawnedAt(null, shell)),
     });
@@ -235,6 +239,7 @@ export function deriveThreadAgentFleet(input: {
       subagent,
       shell,
       agent,
+      providerInstanceId: shell?.providerInstanceId ?? subagent.providerInstanceId,
       title,
       subject: subjectOf(agent, title, subagentSpawnedAt(subagent, shell)),
     });
