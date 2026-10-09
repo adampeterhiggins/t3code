@@ -72,16 +72,16 @@ describe("objectLinkLabel", () => {
     ).toBe("acme/api#7 L4-L14");
     expect(objectLinkLabel("https://github.com/acme/api/issues/12")).toBe("acme/api#12");
     expect(objectLinkLabel("https://github.com/acme/api/pull/7#issuecomment-42")).toBe(
-      "acme/api#7 comment",
+      "acme/api#7issuecomment-42",
     );
     expect(objectLinkLabel("https://github.com/acme/api/pull/7#discussion_r42")).toBe(
-      "acme/api#7 review comment",
+      "acme/api#7discussion_r42",
     );
     expect(objectLinkLabel("https://github.com/acme/api/pull/7#pullrequestreview-42")).toBe(
-      "acme/api#7 review",
+      "acme/api#7pullrequestreview-42",
     );
     expect(objectLinkLabel("https://github.com/acme/api/issues/12#issuecomment-42")).toBe(
-      "acme/api#12 comment",
+      "acme/api#12issuecomment-42",
     );
     expect(objectLinkLabel("https://linear.app/acme/issue/eng-123/fix-the-thing")).toBe("ENG-123");
     expect(objectLinkLabel("https://github.com/acme/api.git")).toBe("acme/api");

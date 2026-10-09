@@ -105,18 +105,17 @@ export function parseComposerObjectLink(url: string): ComposerObjectLink | null 
   return null;
 }
 
-/** What a GitHub fragment like `#issuecomment-1` or `#discussion_r1` points at, if a remark. */
-function commentAnchorLabel(hash: string): string | null {
-  if (/^#issuecomment-\d+$/u.test(hash)) return "comment";
-  if (/^#(?:discussion_)?r\d+$/u.test(hash)) return "review comment";
-  if (/^#pullrequestreview-\d+$/u.test(hash)) return "review";
-  return null;
+/** The fragment of a link to one remark (`#issuecomment-1`, `#discussion_r1`), without its `#`. */
+function commentAnchor(hash: string): string {
+  return /^#(?:issuecomment-|discussion_r|r|pullrequestreview-)\d+$/u.test(hash)
+    ? hash.slice(1)
+    : "";
 }
 
 /**
  * The short name a bare link reads as once it is recognised: `owner/repo#7` for a pull request
- * or issue (`owner/repo#7 L4-L14` for lines of one of its files, `owner/repo#7 comment` for one
- * remark on it), `ENG-123` for a Linear issue,
+ * or issue (`owner/repo#7 L4-L14` for lines of one of its files, `owner/repo#7issuecomment-1` for
+ * one remark on it), `ENG-123` for a Linear issue,
  * `owner/repo` for a repository. Null for ordinary links, and for Slack messages: an attached one
  * is already a chip, so a bare one was not attached and should not read as if it were.
  */
@@ -136,8 +135,7 @@ export function objectLinkLabel(url: string): string | null {
     case "github-issue": {
       const issue = parseGitHubIssueUrl(url);
       if (issue === null) return null;
-      const comment = commentAnchorLabel(new URL(url).hash);
-      return `${issue.repository}#${issue.number}${comment === null ? "" : ` ${comment}`}`;
+      return `${issue.repository}#${issue.number}${commentAnchor(new URL(url).hash)}`;
     }
     case "pull-request": {
       const changeRequest = parseChangeRequestUrl(url);
@@ -151,9 +149,10 @@ export function objectLinkLabel(url: string): string | null {
       // A link to lines of one file, or to one remark, keeps it, or the label would name the
       // whole change.
       const hash = new URL(url).hash;
-      const anchor =
-        /^#diff-[0-9a-f]{64}([LR]\d+(?:-[LR]\d+)?)$/iu.exec(hash)?.[1] ?? commentAnchorLabel(hash);
-      return `${repository}#${changeRequest.number}${anchor == null ? "" : ` ${anchor}`}`;
+      const lines = /^#diff-[0-9a-f]{64}([LR]\d+(?:-[LR]\d+)?)$/iu.exec(hash)?.[1];
+      return lines === undefined
+        ? `${repository}#${changeRequest.number}${commentAnchor(hash)}`
+        : `${repository}#${changeRequest.number} ${lines}`;
     }
   }
 }
