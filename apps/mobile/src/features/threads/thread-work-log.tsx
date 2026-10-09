@@ -3,6 +3,7 @@ import {
   toolPathTargets,
 } from "@t3tools/client-runtime/work-log/tool-paths";
 import { ToolPathText } from "./ToolPathText";
+import { ToolPreviewCard } from "./ToolPreviewCard";
 import { SubagentStatusDot } from "./SubagentStatusDot";
 import { ThreadSubagentGroup } from "./thread-subagent-group";
 import {
@@ -75,6 +76,7 @@ import {
   turnItemOutputImages,
   turnItemOutputText,
 } from "@t3tools/client-runtime/work-log/item-detail";
+import { resolveToolPreview } from "@t3tools/client-runtime/work-log/tool-preview";
 import { useTurnItemDetail } from "../../state/queries";
 import {
   resolveThreadWorkGroupInitialScroll,
@@ -976,6 +978,8 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
           : row.getFullDetail()))
       : null;
   const outputImages = expanded && fetchedItem ? turnItemOutputImages(fetchedItem) : [];
+  // Thread, PR, browser and other common tools show what they did instead of their JSON.
+  const toolPreview = expanded && fetchedItem ? resolveToolPreview(fetchedItem) : null;
   const fetchedOutput = !expanded
     ? null
     : shownItem.type === "file_change"
@@ -1197,7 +1201,19 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
             className="max-h-60"
             contentContainerStyle={{ paddingRight: 8 }}
           >
-            {reasoning ? (
+            {toolPreview ? (
+              <ToolPreviewCard
+                preview={toolPreview}
+                onOpenThread={(threadId) =>
+                  navigation.dispatch(
+                    StackActions.push("Thread", {
+                      environmentId: String(props.environmentId),
+                      threadId,
+                    }),
+                  )
+                }
+              />
+            ) : reasoning ? (
               props.renderReasoning(reasoning.text)
             ) : call ? (
               [
@@ -1229,7 +1245,7 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
                 )}
               </Text>
             ) : null}
-            {fetchedOutput ? (
+            {fetchedOutput && !toolPreview ? (
               <Text
                 selectable
                 className={cn(

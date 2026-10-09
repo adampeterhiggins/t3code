@@ -375,6 +375,10 @@
       "types": "./src/work-log/itemDetail.ts",
       "default": "./src/work-log/itemDetail.ts"
     },
+    "./work-log/tool-preview": {
+      "types": "./src/work-log/toolPreview.ts",
+      "default": "./src/work-log/toolPreview.ts"
+    },
     "./work-log/presentation": {
       "types": "./src/work-log/presentation.ts",
       "default": "./src/work-log/presentation.ts"

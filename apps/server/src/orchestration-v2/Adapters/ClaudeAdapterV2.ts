@@ -2449,6 +2449,16 @@ function claudeToolResultBlocksFromUserMessage(
   return message.message.content.filter(isClaudeUserToolResultContentBlock);
 }
 
+function isMetadataOnlyToolResult(value: unknown): boolean {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.keys(value).length > 0 &&
+    Object.keys(value).every((key) => key === "_meta")
+  );
+}
+
 function claudeToolResultEntriesFromMessage(message: SDKMessage): ReadonlyArray<{
   readonly toolResult: ClaudeToolResultContentBlock;
   readonly output: ClaudeNativeToolOutput;
@@ -2457,8 +2467,11 @@ function claudeToolResultEntriesFromMessage(message: SDKMessage): ReadonlyArray<
     (toolResult) => ({ toolResult, output: claudeNativeToolOutputFromToolResult(toolResult) }),
   );
   const userResults = claudeToolResultBlocksFromUserMessage(message);
-  const structuredOutput =
+  const structured =
     message.type === "user" && userResults.length === 1 ? message.tool_use_result : undefined;
+  // Some MCP servers (Notion, Linear) reply with `_meta` alongside their content; the SDK's
+  // structured result then holds only that metadata, so the content block is the result.
+  const structuredOutput = isMetadataOnlyToolResult(structured) ? undefined : structured;
   return [
     ...assistantResults,
     ...userResults.map((toolResult) => ({
@@ -3385,6 +3398,10 @@ export function makeClaudeAdapterV2(
         // they live here rather than on a turn context: a turn that ends while
         // one runs neither fails it nor hides it from the turn that follows.
         const subagentToolCalls = new Map<string, ActiveClaudeToolCall>();
+        // A subagent call stays here until its result arrives, including after a
+        // settle or status update ended it, so a late result completes the call it
+        // belongs to rather than an anonymous `tool` row that overwrites it.
+        const unresolvedSubagentToolCalls = new Map<string, ActiveClaudeToolCall>();
         // Launches seen before their task_started. A running subagent's Agent
         // call can be projected while the root is idle and its task_started
         // only in the continuation turn, so these outlive a turn too.
@@ -4963,6 +4980,15 @@ export function makeClaudeAdapterV2(
         // Only a subagent's calls have no run: they belong to its child thread.
         const toolCallsFor = (context: ActiveClaudeTurnContext, toolCall: ActiveClaudeToolCall) =>
           toolCall.runId === null ? subagentToolCalls : context.toolCalls;
+        const registerToolCall = (
+          context: ActiveClaudeTurnContext,
+          toolCall: ActiveClaudeToolCall,
+        ) => {
+          toolCallsFor(context, toolCall).set(toolCall.nativeItemId, toolCall);
+          if (toolCall.runId === null) {
+            unresolvedSubagentToolCalls.set(toolCall.nativeItemId, toolCall);
+          }
+        };
 
         const ensureToolCallStarted = Effect.fnUntraced(function* (input: {
           readonly context: ActiveClaudeTurnContext;
@@ -4980,7 +5006,7 @@ export function makeClaudeAdapterV2(
               return existing;
             }
             const presented = { ...existing, presentation: input.presentation };
-            toolCallsFor(input.context, presented).set(input.nativeItemId, presented);
+            registerToolCall(input.context, presented);
             const updatedAt = yield* DateTime.now;
             yield* emitToolCallArtifacts(
               buildToolCallArtifacts({
@@ -5030,7 +5056,7 @@ export function makeClaudeAdapterV2(
             startedAt,
             ...(input.presentation === undefined ? {} : { presentation: input.presentation }),
           };
-          toolCallsFor(input.context, toolCall).set(input.nativeItemId, toolCall);
+          registerToolCall(input.context, toolCall);
           yield* emitToolCallArtifacts(
             buildToolCallArtifacts({
               context: input.context,
@@ -5257,6 +5283,8 @@ export function makeClaudeAdapterV2(
             completedAt: yield* DateTime.now,
           });
           subagentToolCalls.clear();
+          // No result can arrive once the process is gone.
+          unresolvedSubagentToolCalls.clear();
         });
 
         const finalizeActiveTurn = Effect.fnUntraced(function* (input: {
@@ -6700,6 +6728,7 @@ export function makeClaudeAdapterV2(
             const parentToolUseId = parentToolUseIdFromSdkMessage(message);
             const toolCall =
               findToolCall(context, toolResult.tool_use_id) ??
+              unresolvedSubagentToolCalls.get(toolResult.tool_use_id) ??
               (yield* ensureToolCallStarted({
                 context,
                 nativeItemId: toolResult.tool_use_id,
@@ -6737,6 +6766,7 @@ export function makeClaudeAdapterV2(
             });
             yield* emitToolCallArtifacts(artifacts);
             toolCallsFor(context, toolCall).delete(toolCall.nativeItemId);
+            unresolvedSubagentToolCalls.delete(toolCall.nativeItemId);
             // Fork: the Workflow tool's result links the task it started to its remote session.
             const workflowLink =
               toolCall.toolName.toLowerCase() === "workflow" && !isClaudeToolResultError(toolResult)

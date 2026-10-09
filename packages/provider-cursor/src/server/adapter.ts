@@ -371,6 +371,37 @@ function cursorToolOutput(toolCall: ToolCall): unknown {
   return result.status === "success" ? result.value : result.error;
 }
 
+/**
+ * An MCP call's own arguments. Cursor wraps them as `{ providerIdentifier, toolName, args }`;
+ * other providers store the arguments alone, so clients read one shape.
+ */
+function cursorToolInput(toolCall: ToolCall): unknown {
+  if (toolCall.type !== "mcp") {
+    return toolCall.args;
+  }
+  // Replayed subagent calls are cast from untyped envelopes, so guard the shape.
+  return unknownRecord(unknownRecord(toolCall.args)?.args) ?? {};
+}
+
+/** An MCP result with Cursor's `{ text: { text } }` blocks as standard `{ type: "text", text }`. */
+function cursorDynamicToolOutput(toolCall: ToolCall): unknown {
+  const output = cursorToolOutput(toolCall);
+  const value = unknownRecord(output);
+  if (toolCall.type !== "mcp" || toolCall.result?.status !== "success" || !value) {
+    return output;
+  }
+  if (!Array.isArray(value.content)) {
+    return output;
+  }
+  return {
+    ...value,
+    content: value.content.map((part: unknown) => {
+      const text = unknownRecord(unknownRecord(part)?.text);
+      return typeof text?.text === "string" ? { type: "text", text: text.text } : part;
+    }),
+  };
+}
+
 function cursorToolOutputText(toolCall: ToolCall): string {
   if (toolCall.type === "shell" && toolCall.result?.status === "success") {
     return [toolCall.result.value.stdout, toolCall.result.value.stderr]
@@ -1322,10 +1353,10 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
                     })
                   : {}),
                 toolName: cursorToolName(toolCall),
-                input: toolCall.args,
+                input: cursorToolInput(toolCall),
                 ...(cursorToolOutput(toolCall) === undefined
                   ? {}
-                  : { output: cursorToolOutput(toolCall) }),
+                  : { output: cursorDynamicToolOutput(toolCall) }),
               };
           }
           yield* emitProviderEvent({

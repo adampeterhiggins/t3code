@@ -16,23 +16,23 @@ import {
   turnItemOutputText,
   turnItemReadFile,
 } from "@t3tools/client-runtime/work-log/item-detail";
+import { resolveToolPreview } from "@t3tools/client-runtime/work-log/tool-preview";
 import { ExternalLinkIcon, GitBranchIcon, RotateCcwIcon } from "lucide-react";
-import { memo, Suspense, use, useMemo } from "react";
+import { memo, useMemo } from "react";
 
-import { useTheme } from "../../hooks/useTheme";
 import { cn } from "../../lib/utils";
-import { resolveDiffThemeName } from "../../lib/diffRendering";
-import { getSyntaxHighlighterPromise } from "../../lib/syntaxHighlighting";
 import { useTurnItemDetail } from "../../state/queries";
 import { useV2ItemSupport } from "../../state/v2ItemSupport";
 import { Button } from "../ui/button";
 import ChatMarkdown, { ChatMarkdownAssetImage } from "../ChatMarkdown";
-import { RenderErrorBoundary } from "../RenderErrorBoundary";
 import { ToolCallBody as ToolPreviewBody } from "../ToolCallBody";
 import { resolveExternalWebLinkHref } from "./externalLinkContextMenu";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import { ReadFileView } from "./ReadFileView";
+import { HighlightedSnippet } from "./HighlightedSnippet";
 import { ShellCommandBlock } from "./ShellCommandBlock";
+import { parseJsonDocument, ToolJsonTree } from "./ToolJsonTree";
+import { ToolPreviewCard } from "./ToolPreviewCard";
 
 interface V2ItemInspectorProps {
   readonly projectedItem: OrchestrationV2ProjectedTurnItem;
@@ -50,24 +50,6 @@ interface V2ItemInspectorProps {
     readonly scopeId: string;
   }) => void;
   readonly onImageExpand?: ((preview: ExpandedImagePreview) => void) | undefined;
-}
-
-function JsonTokens({ text }: { readonly text: string }) {
-  const { resolvedTheme } = useTheme();
-  const highlighter = use(getSyntaxHighlighterPromise("json"));
-  const { tokens } = useMemo(
-    () =>
-      highlighter.codeToTokens(text, { lang: "json", theme: resolveDiffThemeName(resolvedTheme) }),
-    [highlighter, text, resolvedTheme],
-  );
-  return tokens.flatMap((line, lineIndex) => [
-    lineIndex > 0 ? "\n" : "",
-    ...line.map((token) => (
-      <span key={token.offset} style={{ color: token.color }}>
-        {token.content}
-      </span>
-    )),
-  ]);
 }
 
 const monoClassName =
@@ -93,15 +75,7 @@ function StructuredValue({
   if (!text) return null;
   return (
     <pre className={cn("max-h-80 overflow-auto text-muted-foreground", monoClassName)}>
-      {isJson ? (
-        <RenderErrorBoundary fallback={text}>
-          <Suspense fallback={text}>
-            <JsonTokens text={text} />
-          </Suspense>
-        </RenderErrorBoundary>
-      ) : (
-        text
-      )}
+      {isJson ? <HighlightedSnippet text={text} lang="json" /> : text}
     </pre>
   );
 }
@@ -158,10 +132,14 @@ interface ToolOutputState {
   readonly error: string | null;
   readonly empty: boolean;
   readonly onImageExpand?: ((preview: ExpandedImagePreview) => void) | undefined;
+  /** Anchors links in markdown output. */
+  readonly cwd?: string | undefined;
 }
 
-function ToolOutput(props: ToolOutputState) {
-  const images = props.images.map((resource) => (
+function ToolOutputImages(
+  props: Pick<ToolOutputState, "images" | "environmentId" | "onImageExpand">,
+) {
+  return props.images.map((resource) => (
     <ChatMarkdownAssetImage
       key={resource.index}
       environmentId={props.environmentId}
@@ -171,15 +149,44 @@ function ToolOutput(props: ToolOutputState) {
       onImageExpand={props.onImageExpand}
     />
   ));
+}
+
+// Markdown results (search results, fetched pages) open with a heading.
+const MARKDOWN_HEADING = /^#{1,6} \S/;
+
+/**
+ * Tool output text. A structured tool's JSON shows as a tree and its markdown rendered;
+ * a command's output stays the text the terminal printed.
+ */
+function ToolOutputText(props: {
+  readonly text: string;
+  readonly cwd: string | undefined;
+  readonly structured: boolean;
+}) {
+  const { text, cwd, structured } = props;
+  const json = useMemo(() => (structured ? parseJsonDocument(text) : null), [structured, text]);
+  if (json) return <ToolJsonTree value={json} />;
+  if (structured && MARKDOWN_HEADING.test(text.trimStart())) {
+    return (
+      <div className="max-h-80 overflow-auto font-sans whitespace-normal text-foreground/85">
+        <ChatMarkdown text={text} cwd={cwd} />
+      </div>
+    );
+  }
+  return <div className="max-h-80 overflow-auto text-muted-foreground">{text}</div>;
+}
+
+function ToolOutput(props: ToolOutputState & { readonly structured?: boolean }) {
+  const images = <ToolOutputImages {...props} />;
   const text = props.readFile ? (
     <ReadFileView file={props.readFile} className="max-h-80" />
   ) : props.output ? (
-    <div className="max-h-80 overflow-auto text-muted-foreground">{props.output}</div>
+    <ToolOutputText text={props.output} cwd={props.cwd} structured={props.structured ?? false} />
   ) : props.pending ? (
     <div className="text-muted-foreground italic">Loading output…</div>
   ) : props.error ? (
     <div className="text-destructive">Couldn&apos;t load output: {props.error}</div>
-  ) : props.empty && images.length === 0 ? (
+  ) : props.empty && props.images.length === 0 ? (
     <div className="text-muted-foreground italic">No output.</div>
   ) : null;
   return (
@@ -232,7 +239,7 @@ function ToolCallBody(
       {call.argsText ? (
         <StructuredValue value={call.argsText} highlightJson={props.highlightSyntax ?? false} />
       ) : null}
-      <ToolOutput {...props} />
+      <ToolOutput {...props} structured={props.command === undefined} />
       {props.exitCode !== undefined ? (
         <div className={props.exitCode === 0 ? "text-muted-foreground" : "text-destructive"}>
           exit {props.exitCode}
@@ -268,6 +275,7 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
   const fetched = useFetchedTurnItem(props.projectedItem, props.environmentId);
   const item = fetched.item;
   const outputState = fetched.output;
+  const preview = useMemo(() => resolveToolPreview(item), [item]);
   const support = useV2ItemSupport({
     environmentId: props.environmentId,
     sourceThreadId: props.projectedItem.sourceThreadId,
@@ -414,12 +422,33 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
       ) : null}
 
       {item.type === "dynamic_tool" ? (
-        <ToolCallBody
-          args={item.input}
-          highlightSyntax={props.highlightSyntax}
-          {...outputState}
-          onImageExpand={props.onImageExpand}
-        />
+        preview ? (
+          <ToolPreviewCard
+            preview={preview}
+            environmentId={props.environmentId}
+            threadId={props.projectedItem.sourceThreadId}
+            cwd={props.cwd}
+            onOpenThread={props.onOpenThread}
+            images={<ToolOutputImages {...outputState} onImageExpand={props.onImageExpand} />}
+            raw={
+              <ToolCallBody
+                args={item.input}
+                highlightSyntax={props.highlightSyntax}
+                {...outputState}
+                images={[]}
+                cwd={props.cwd}
+              />
+            }
+          />
+        ) : (
+          <ToolCallBody
+            args={item.input}
+            highlightSyntax={props.highlightSyntax}
+            {...outputState}
+            cwd={props.cwd}
+            onImageExpand={props.onImageExpand}
+          />
+        )
       ) : null}
 
       {item.type === "approval_request" ? <StructuredValue value={item.prompt} /> : null}

@@ -31,13 +31,19 @@ function textFromBlocks(value: unknown, depth: number): string | null {
   if (value.type === "text" && typeof value.text === "string") return value.text;
   // Images clients can show render on their own (see turnItemOutputImages).
   if (value.type === "image") return readToolOutputImage(value) ? "" : "[image]";
+  // Cursor nests block text as `{ text: { text } }` and images as `{ image: { data } }`.
+  if (isRecord(value.text) && typeof value.text.text === "string") return value.text.text;
+  if (isRecord(value.image) && Object.keys(value).length === 1) return "[image]";
   if (value.type === "resource_link" && typeof value.uri === "string") return value.uri;
   if (value.type === "resource" && isRecord(value.resource)) {
     const resource = value.resource;
     if (typeof resource.text === "string") return resource.text;
     if (typeof resource.uri === "string") return resource.uri;
   }
-  const keys = Object.keys(value).filter((key) => key !== "isError" && key !== "is_error");
+  // `_meta` is server metadata (Notion and Linear send it beside their content).
+  const keys = Object.keys(value).filter(
+    (key) => key !== "isError" && key !== "is_error" && key !== "_meta",
+  );
   // MCP results and provider tool results wrap their text in `content`.
   // `structuredContent` usually repeats it as data, so it only shows when the
   // text is empty.
@@ -47,6 +53,54 @@ function textFromBlocks(value: unknown, depth: number): string | null {
     return text?.trim() ? text : null;
   }
   return null;
+}
+
+// Keys servers attach for transport or for T3's own row chrome, not as a result:
+// `_meta` (MCP server info), `toolIcon` (a browser row's site icon).
+const TRANSPORT_KEYS = new Set(["_meta", "toolIcon"]);
+
+/** A result without the metadata keys above; undefined when nothing else is left. */
+function withoutTransportKeys(value: unknown): unknown {
+  if (!isRecord(value) || !Object.keys(value).some((key) => TRANSPORT_KEYS.has(key))) {
+    return value;
+  }
+  const entries = Object.entries(value).filter(([key]) => !TRANSPORT_KEYS.has(key));
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+/**
+ * Cursor reports an MCP call's input as `{ providerIdentifier, toolName, args }`.
+ * The call's own arguments are `args`; other inputs pass through.
+ */
+export function toolCallArgs(input: unknown): unknown {
+  if (
+    isRecord(input) &&
+    typeof input.providerIdentifier === "string" &&
+    typeof input.toolName === "string" &&
+    Object.keys(input).length === 3 &&
+    isRecord(input.args)
+  ) {
+    return input.args;
+  }
+  return input;
+}
+
+/** A tool result's text blocks joined, or null when it carries no text. */
+export function toolResultText(output: unknown): string | null {
+  const text = textFromBlocks(output, 0);
+  return text?.trim() ? text : null;
+}
+
+/**
+ * A tool's result as data: an MCP result's `structuredContent`, or the JSON its text
+ * blocks carry, or the value itself. Undefined when the result is neither JSON nor data.
+ */
+export function toolResultData(output: unknown): unknown {
+  if (isRecord(output) && isRecord(output.structuredContent)) return output.structuredContent;
+  const text = textFromBlocks(output, 0);
+  if (text === null) return output;
+  const trimmed = text.trim();
+  return /^[[{]/.test(trimmed) ? parseJson(trimmed) : undefined;
 }
 
 function parseJson(text: string): unknown {
@@ -65,10 +119,23 @@ function parseJson(text: string): unknown {
 function prettyJsonText(text: string): string {
   const trimmed = text.trim();
   if (!/^[[{]/.test(trimmed)) return text;
-  const whole = parseJson(trimmed);
+  const parsed = parseJson(trimmed);
+  const whole = withoutTransportKeys(parsed);
+  if (parsed !== undefined && whole === undefined) return "";
   if (isRecord(whole)) {
     const values = Object.values(whole);
     if (values.length === 1 && typeof values[0] === "string") return values[0];
+    // Text-shaped results (Slack's `{ messages, pagination_info }`) read as their
+    // text: multi-line values as blocks, short ones as `key: value`.
+    const texts = Object.entries(whole).flatMap(([key, value]) =>
+      typeof value === "string" ? [[key, value] as const] : [],
+    );
+    if (texts.length === values.length && texts.some(([, value]) => value.includes("\n"))) {
+      return texts
+        .filter(([, value]) => value.trim())
+        .map(([key, value]) => (value.includes("\n") ? value.trim() : `${key}: ${value}`))
+        .join("\n\n");
+    }
   }
   if (whole !== undefined) return JSON.stringify(whole, null, 2);
   const lines = trimmed.split("\n").filter((line) => line.trim());
@@ -78,7 +145,8 @@ function prettyJsonText(text: string): string {
 }
 
 /** Formats a tool input or output for display: text blocks as text, the rest as JSON. */
-function formatToolValue(value: unknown): string | null {
+function formatToolValue(input: unknown): string | null {
+  const value = withoutTransportKeys(input);
   if (value === undefined || value === null) return null;
   const text = textFromBlocks(value, 0);
   if (text !== null) return text.trim() ? prettyJsonText(text) : null;
@@ -109,7 +177,7 @@ export function toolCallLines(input: {
     const command = input.command.trim();
     return { command: command || null, args: null, argsText: null };
   }
-  const args = input.args;
+  const args = toolCallArgs(input.args);
   if (isRecord(args) && !isSummarizedValue(args)) {
     const entries = Object.entries(args).flatMap(
       ([key, value]): Array<readonly [string, string]> => {
@@ -321,7 +389,7 @@ export function turnItemOutputText(item: OrchestrationV2TurnItem): string | null
     case "dynamic_tool":
       return item.outputOmitted === true
         ? null
-        : (turnItemReadFile(item)?.text ?? formatToolValue(item.output));
+        : (turnItemReadFile(item)?.text ?? formatToolValue(item.output)) || null;
     case "file_search":
       return item.results?.length
         ? item.results
