@@ -19,15 +19,19 @@ const shell = (
 });
 
 describe("matchComposerThreadItems", () => {
-  it("offers nothing for a bare @ so the picker stays a file picker", () => {
-    expect(
-      matchComposerThreadItems({
-        shells: [shell("t1", "Fix login")],
-        environmentId: env,
-        excludeThreadId: null,
-        query: "  ",
-      }),
-    ).toEqual([]);
+  it("lists the most recent threads for a bare @", () => {
+    const items = matchComposerThreadItems({
+      shells: Array.from({ length: 25 }, (_, index) =>
+        shell(`t${index}`, `Thread ${index}`, {
+          updatedAt: `2026-01-${String(index + 1).padStart(2, "0")}T00:00:00.000Z`,
+        }),
+      ),
+      environmentId: env,
+      excludeThreadId: null,
+      query: "  ",
+    });
+    expect(items).toHaveLength(20);
+    expect(items[0]?.thread.threadId).toBe("t24");
   });
 
   it("matches titles within the environment, newest first, skipping self and archived", () => {

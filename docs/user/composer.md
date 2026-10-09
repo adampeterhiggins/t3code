@@ -284,8 +284,9 @@ Pasting a file path, or several on separate lines, turns each into a file chip, 
 picking it with `@`. This works for paths outside the project too, such as `/tmp/notes.md`. A
 paste that has other text around the path stays as text, as does one made with `Cmd+Shift+V`.
 
-Another thread can be context too. Type `@` followed by part of its title to pick one from
-the same server, or on web and desktop drag a thread out of the sidebar and drop it on the
+Another thread can be context too. Type `@` and switch to the **Chats** tab to pick one from
+the same server, newest first, or type part of its title (the menu opens on Chats when no file
+matches), or on web and desktop drag a thread out of the sidebar and drop it on the
 composer; a multi-selection drops together. The chip shows the thread's current title and
 opens it when selected. Your prompt only carries a reference: the agent reads the thread's
 history on demand, so attaching a long thread costs nothing until the agent looks. Attaching a

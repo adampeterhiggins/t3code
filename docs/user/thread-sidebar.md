@@ -50,8 +50,8 @@ every chat resets those choices. Moving, pinning, or settling the chat's row app
 and its tabs stay under it. Hover a listed tab and click **×**, or right-click it and choose
 **Close tab**, to close it.
 
-To bring in another tab's conversation, type `@` in the composer and pick the tab; its summary
-lands as a chip at the cursor. On web and desktop, the same menu also lists other threads on that
+To bring in another tab's conversation, type `@` in the composer, switch to **Chats** and pick
+the tab; its summary lands as a chip at the cursor. On web and desktop, the same tab also lists other threads on that
 server, from any project, by title, so you can pull in a chat that was never a tab here. You can
 also choose **Thread** from the composer's attachment menu, or **Attach thread** from the command
 palette, to search other unarchived threads on that server. Filter by project or provider, sort

@@ -381,27 +381,49 @@ export function useComposerCommandMenu({
         .map((shell) => shell.source),
     }).filter((entry) => entry.subagent !== null);
   }, [currentThreadId, environmentId, pathTriggerOpen, threadShells, threadSubagents]);
-  // The tab the user picked for this `@`; otherwise Agents when the query starts a handle.
+  const chatItems = useMemo(
+    () =>
+      trigger?.kind === "path" && environmentId
+        ? matchComposerThreadItems({
+            shells: threadShells,
+            environmentId,
+            excludeThreadId: currentThreadId,
+            query: trigger.query,
+          })
+        : [],
+    [currentThreadId, environmentId, threadShells, trigger],
+  );
+  // The tab the user picked for this `@`; otherwise Agents when the query starts a handle,
+  // Chats when only chats match, else Files.
   const [pathTabChoice, setPathTabChoice] = useState<{
     readonly rangeStart: number;
     readonly tab: ComposerPathTab;
   } | null>(null);
   const pathTab = useMemo(() => {
-    if (trigger?.kind !== "path" || agentFleet.length === 0) return null;
+    if (trigger?.kind !== "path") return null;
     const needle = trigger.query.trim().toLowerCase();
+    const showAgents = agentFleet.length > 0;
     const prefersAgents =
       needle.length > 0 && agentFleet.some((entry) => entry.handle.startsWith(needle));
+    const prefersChats =
+      needle.length > 0 &&
+      chatItems.length > 0 &&
+      !pathSearch.isPending &&
+      pathSearch.entries.length === 0;
     const rangeStart = trigger.rangeStart;
     return {
       active:
-        pathTabChoice?.rangeStart === rangeStart
+        pathTabChoice?.rangeStart === rangeStart && (pathTabChoice.tab !== "agents" || showAgents)
           ? pathTabChoice.tab
           : prefersAgents
             ? ("agents" as const)
-            : ("files" as const),
+            : prefersChats
+              ? ("chats" as const)
+              : ("files" as const),
+      showAgents,
       onChange: (tab: ComposerPathTab) => setPathTabChoice({ rangeStart, tab }),
     };
-  }, [agentFleet, pathTabChoice, trigger]);
+  }, [agentFleet, chatItems, pathSearch.entries, pathSearch.isPending, pathTabChoice, trigger]);
   const pullRequestSearch = useComposerPullRequestSearch({
     environmentId,
     projectId: pullRequestProjectId,
@@ -560,39 +582,28 @@ export function useComposerCommandMenu({
         }));
     }
 
+    if (trigger.kind === "path" && pathTab?.active === "chats") return chatItems;
+
     if (trigger.kind === "path") {
-      const threadItems = environmentId
-        ? matchComposerThreadItems({
-            shells: threadShells,
-            environmentId,
-            excludeThreadId: currentThreadId,
-            query: trigger.query,
-          })
-        : [];
-      return [
-        ...threadItems,
-        ...pathSearch.entries.map((entry) => {
-          const parts = entry.path.split("/");
-          return {
-            id: `path:${entry.path}`,
-            type: "path" as const,
-            path: entry.path,
-            kind: entry.kind,
-            label: parts[parts.length - 1] ?? entry.path,
-            description: parts.length > 1 ? parts.slice(0, -1).join("/") : "",
-          };
-        }),
-      ];
+      return pathSearch.entries.map((entry) => {
+        const parts = entry.path.split("/");
+        return {
+          id: `path:${entry.path}`,
+          type: "path" as const,
+          path: entry.path,
+          kind: entry.kind,
+          label: parts[parts.length - 1] ?? entry.path,
+          description: parts.length > 1 ? parts.slice(0, -1).join("/") : "",
+        };
+      });
     }
 
     return [];
   }, [
     agentFleet,
-    currentThreadId,
-    environmentId,
+    chatItems,
     pathTab?.active,
     providers,
-    threadShells,
     hasThread,
     hasCompactableConversation,
     onUpdateInteractionMode,
@@ -746,7 +757,7 @@ export function useComposerCommandMenu({
     isLoading:
       trigger?.kind === "pull-request"
         ? pullRequestSearch.isPending
-        : pathTab?.active !== "agents" && pathSearch.isPending,
+        : (pathTab === null || pathTab.active === "files") && pathSearch.isPending,
     error:
       trigger?.kind === "pull-request"
         ? pullRequestProjectId === null || pullRequestRepository === null
