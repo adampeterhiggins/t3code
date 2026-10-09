@@ -19,6 +19,7 @@ import { usePrimaryEnvironment } from "../../state/environments";
 import { linearEnvironment } from "../../state/linear";
 import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { LinearAssignmentTriggerRows } from "./LinearAssignmentTriggerSettings";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
@@ -270,6 +271,12 @@ function LinearConnectionRows({
           }
         />
       ) : null}
+      {state === null ? null : (
+        <LinearAssignmentTriggerRows
+          environmentId={environmentId}
+          connected={state.phase === "connected"}
+        />
+      )}
     </>
   );
 }

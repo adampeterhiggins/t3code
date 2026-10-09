@@ -722,6 +722,17 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["linear app desktop open in linear links browser"],
   },
   {
+    id: "linear-assignment-triggers",
+    title: "Start threads from Linear assignments",
+    to: "/settings/integrations",
+    targetId: "linear",
+    searchTerms: [
+      "linear assigned assignment trigger automation start thread new issue label team",
+    ],
+    environmentOnly: true,
+    scope: "environment-defaults",
+  },
+  {
     id: "notion",
     title: "Notion",
     to: "/settings/integrations",

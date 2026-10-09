@@ -6,12 +6,12 @@ import type {
   ThreadId,
 } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
-import {
-  linearIssueContextRecord,
-  threadsForLinearIssue,
-} from "@t3tools/client-runtime/state/linear";
+import { threadsForLinearIssue } from "@t3tools/client-runtime/state/linear";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
-import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
+import {
+  formatComposerContextReference,
+  linearIssueContextRecord,
+} from "@t3tools/shared/composerContextReferences";
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";

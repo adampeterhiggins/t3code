@@ -46,6 +46,7 @@ import * as ModelManifest from "./provider/ModelManifest.ts";
 import * as ResetCreditCoordinator from "./provider/resetCreditCoordinator.ts";
 import * as ProviderEventLoggers from "./provider/ProviderEventLoggers.ts";
 import * as LinearApi from "./linear/LinearApi.ts";
+import * as LinearAssignmentTriggers from "./linear/LinearAssignmentTriggers.ts";
 import * as LinearAuth from "./linear/LinearAuth.ts";
 import * as LinearThreadLinks from "./linear/LinearThreadLinks.ts";
 import * as NotionApi from "./notion/NotionApi.ts";
@@ -600,6 +601,13 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
     Layer.provide(layerPullRequestService),
     Layer.provide(ProjectionStoreV2.layer),
   ),
+  // Fork: Linear issues newly assigned to the connected account start threads.
+  Layer.effectDiscard(
+    Effect.gen(function* () {
+      const service = yield* LinearAssignmentTriggers.LinearAssignmentTriggers;
+      yield* service.start();
+    }),
+  ).pipe(Layer.provide(LinearAssignmentTriggers.layer), Layer.provide(layerGitWorkflow)),
   // Fork: a chat tab group settles, snoozes, and wakes as one sidebar row.
   Layer.effectDiscard(
     Effect.gen(function* () {

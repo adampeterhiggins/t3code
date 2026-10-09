@@ -65,6 +65,32 @@ from Linear, so it can lag for up to a minute after a change there.
 When you start a thread from an issue that another thread is already linked to, the picker marks
 it **In use** and asks whether to open that thread or start a new one.
 
+## Start threads when issues are assigned to you
+
+T3 Code can start a thread on its own when a Linear issue is newly assigned to you. It's off until
+you add a rule.
+
+1. Open **Settings > Integrations > Linear** and click **Add rule** under **Start threads from
+   assignments**.
+2. Pick the project the work belongs in and the model to run it with. Optionally narrow the rule
+   to one Linear team or one label, and write the prompt the thread starts with.
+3. Click **Save**.
+
+Each matching issue starts one thread in a new worktree, with the issue attached to the first
+message and linked to the thread. The server checks Linear every 2 minutes, so a thread can take
+that long to appear. The server has to be running; assignments made while it's off are picked up
+when it starts again.
+
+Issues already assigned to you when you add a rule never start threads, and neither do issues
+already assigned when you change a rule's team or label, switch Linear accounts, or turn the
+last rule off and on again. An issue starts at most one thread, even if several rules match or you
+unassign and reassign it. An issue assigned without the rule's label starts a thread once it gets
+the label. Completed and canceled issues are skipped.
+
+Adding or changing rules needs permission to run tasks on the server, like scheduled tasks. On
+mobile, **Settings > Linear** lists each server's rules so you can remove them; add and edit rules
+from desktop or web.
+
 ## Open issues in the Linear app
 
 The **Open in Linear** link on an issue chip follows **Open links in** by default. To open issues in

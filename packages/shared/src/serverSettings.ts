@@ -297,6 +297,8 @@ export function applyServerSettingsPatch(
     // Whole-map replacement, so removing a group's style sticks.
     threadGroups,
     organisations,
+    // Whole-list replacement, so removing a trigger sticks.
+    linearAssignmentTriggers,
     // Already translated into `projectSettingsOverrides` above; the legacy
     // maps are derived views and must never be merged directly.
     projectAgentBrowserAccessOverrides: _legacyBrowserAccess,
@@ -346,6 +348,7 @@ export function applyServerSettingsPatch(
     fileOpenRules: fileOpenRules ?? current.fileOpenRules,
     threadGroups: threadGroups ?? current.threadGroups,
     organisations: organisations ?? current.organisations,
+    linearAssignmentTriggers: linearAssignmentTriggers ?? current.linearAssignmentTriggers,
   };
   const storageCleanupRules =
     storageCleanupPatch === undefined

@@ -1,6 +1,7 @@
 import { CustomEditor, EditorId, FileOpenTarget, FileOpenRule } from "./editor.ts";
 import { SshDeviceHostConfigs } from "./device.ts";
 import {
+  AuthOrchestrationOperateScope,
   AuthSettingsWriteScope,
   AuthProvidersManageScope,
   type AuthEnvironmentScope,
@@ -1274,6 +1275,28 @@ export type Organisation = typeof Organisation.Type;
 export const Organisations = Schema.Record(Schema.String, Organisation);
 export type Organisations = typeof Organisations.Type;
 
+/**
+ * Starts a thread when a Linear issue is newly assigned to the connected account. Issues already
+ * assigned when the rule is added never fire, and each issue starts at most one thread.
+ */
+export const LinearAssignmentTrigger = Schema.Struct({
+  id: TrimmedNonEmptyString.check(Schema.isMaxLength(64)),
+  projectId: ProjectId,
+  /** Linear team id; null matches every team. */
+  teamId: Schema.NullOr(TrimmedNonEmptyString.check(Schema.isMaxLength(64))),
+  /** Label name, matched case-insensitively; null matches any labels. */
+  labelName: Schema.NullOr(TrimmedNonEmptyString.check(Schema.isMaxLength(256))),
+  /** What the thread's first message asks; the issue is attached after it. Null uses a default. */
+  prompt: Schema.NullOr(TrimmedNonEmptyString.check(Schema.isMaxLength(10_000))).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
+  modelSelection: ModelSelection,
+});
+export type LinearAssignmentTrigger = typeof LinearAssignmentTrigger.Type;
+export const LinearAssignmentTriggers = Schema.Array(LinearAssignmentTrigger).check(
+  Schema.isMaxLength(50),
+);
+
 export const ServerSettings = Schema.Struct({
   customEditors: Schema.Array(CustomEditor).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   fileOpenDefault: FileOpenTarget.pipe(Schema.withDecodingDefault(Effect.succeed("t3" as const))),
@@ -1324,6 +1347,10 @@ export const ServerSettings = Schema.Struct({
   enableSlackIntegration: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   /** Enable Notion attachment entry points and automatic link resolution for this environment. */
   enableNotionIntegration: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  /** Fork: Linear issues assigned to the connected account start threads. Empty is off. */
+  linearAssignmentTriggers: LinearAssignmentTriggers.pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
   // Retain the update-era key; recovery now needs an environment-owned opt-in.
   continueThreadsAfterServerUpdate: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(false)),
@@ -1712,6 +1739,7 @@ export const ServerSettingsPatch = Schema.Struct({
   pythonInterpreterPath: Schema.optionalKey(Schema.NullOr(TrimmedString)),
   enableSlackIntegration: Schema.optionalKey(Schema.Boolean),
   enableNotionIntegration: Schema.optionalKey(Schema.Boolean),
+  linearAssignmentTriggers: Schema.optionalKey(LinearAssignmentTriggers),
   continueThreadsAfterServerUpdate: Schema.optionalKey(Schema.Boolean),
   enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
   projectAgentBrowserAccessOverrides: Schema.optionalKey(
@@ -1854,6 +1882,8 @@ export function requiredScopesForServerSettingsPatch(
   return [
     ...(changesSettings || !changesProviders ? [AuthSettingsWriteScope] : []),
     ...(changesProviders ? [AuthProvidersManageScope] : []),
+    // Assignment triggers start agent runs unattended, like scheduled tasks.
+    ...(patch.linearAssignmentTriggers !== undefined ? [AuthOrchestrationOperateScope] : []),
   ];
 }
 

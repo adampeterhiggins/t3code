@@ -762,6 +762,18 @@ and GitHub issue links with `list_thread_issues`
 tools, they default to the caller's thread, need the `pull-requests` MCP capability, and write
 through the same thread access checks.
 
+`linearAssignmentTriggers` in server settings (off when empty) holds rules that start a thread
+when an issue is newly assigned to the connected account. The server polls the read-only API
+every 2 minutes, since a webhook would need a public address. It launches like a scheduled task
+(new worktree, rule's model and prompt) with the issue attached as context and linked to the
+thread. Dedupe lives in fork-owned tables: an issue row means the issue never starts another
+thread, and the command id is derived from the issue so a retry returns the same thread. A rule's
+baseline is keyed by its id, filters, and the Linear account, so adding a rule, editing its
+filters, or switching accounts records the issues already assigned instead of starting them.
+Changing the rules needs the `orchestration:operate` scope. Mobile lists and removes rules but
+cannot add them. Code: [`LinearAssignmentTriggers.ts`](../apps/server/src/linear/LinearAssignmentTriggers.ts),
+[`LinearAssignmentTriggerSettings.tsx`](../apps/web/src/components/settings/LinearAssignmentTriggerSettings.tsx).
+
 The attach menu's pull request option, also in the web command palette, opens a searchable picker
 ([`PullRequestAttachPicker.tsx`](../apps/web/src/components/chat/PullRequestAttachPicker.tsx)) and
 inserts the same context chip as picking the pull request from the `#` menu. It is not a thread

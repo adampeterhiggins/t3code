@@ -6,6 +6,8 @@ import {
   type ContextRepositoryGitStatus,
   type ElementContextDetails,
   type KnownComposerContextRecord,
+  type LinearIssueContext,
+  type LinearIssueContextRecord,
   type RepositoryContextRecord,
   type SubagentContextRecord,
 } from "@t3tools/contracts";
@@ -440,5 +442,25 @@ export function remapComposerContextAttachments(
         ? { ...record, attachmentId: ids.get(record.attachmentId) ?? record.attachmentId }
         : record,
     ),
+  };
+}
+
+/**
+ * The composer chip record for a fetched issue. The id is stable per issue, so attaching the
+ * same issue twice in one draft points both chips at one payload.
+ */
+export function linearIssueContextRecord(issue: LinearIssueContext): LinearIssueContextRecord {
+  return {
+    version: 1,
+    kind: "linear-issue",
+    // Linear issue ids are UUIDs, which already fit the context id pattern.
+    contextId: `linear-issue_${issue.id}` as ComposerContextId,
+    label: sanitizeComposerContextLabel(issue.identifier, "linear-issue"),
+    issueId: issue.id,
+    identifier: issue.identifier,
+    title: issue.title.slice(0, 2_048),
+    url: issue.url,
+    stateName: issue.stateName,
+    markdown: issue.markdown,
   };
 }

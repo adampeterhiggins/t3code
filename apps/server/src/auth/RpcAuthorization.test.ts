@@ -325,6 +325,31 @@ describe("settings mutation authorization", () => {
       expect(handled).toBe(false);
     }).pipe(Effect.scoped),
   );
+
+  it.effect("requires task permission to change Linear assignment triggers", () =>
+    Effect.gen(function* () {
+      let handled = false;
+      const client = yield* RpcTest.makeClient(group).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            group.toLayerHandler(WS_METHODS.serverUpdateSettings, () =>
+              Effect.sync(() => {
+                handled = true;
+                return DEFAULT_SERVER_SETTINGS;
+              }),
+            ),
+            RpcAuthorization.layer([AuthSettingsWriteScope]),
+          ),
+        ),
+      );
+      expect(
+        yield* client[WS_METHODS.serverUpdateSettings]({
+          patch: { linearAssignmentTriggers: [] },
+        }).pipe(Effect.flip),
+      ).toMatchObject({ requiredPermission: AuthOrchestrationOperateScope });
+      expect(handled).toBe(false);
+    }).pipe(Effect.scoped),
+  );
 });
 
 it.effect("requires task permission before attaching a prepared worktree to a thread", () =>
