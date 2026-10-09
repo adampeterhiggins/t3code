@@ -501,6 +501,196 @@ describe("resolveToolPreview", () => {
     ).toMatchObject({ kind: "browser", target: null, page: null });
   });
 
+  it("lists threads created in a batch", () => {
+    expect(
+      resolveToolPreview(
+        tool(
+          "t3-code.create_threads",
+          { threads: [{ title: "A" }] },
+          {
+            threads: [{ threadId: "a", title: "A", status: "starting", model: "gpt-6.1-sol" }],
+          },
+        ),
+      ),
+    ).toEqual({
+      kind: "threads",
+      threads: [{ threadId: "a", title: "A", status: "starting", model: "gpt-6.1-sol" }],
+    });
+  });
+
+  it("names what a thread action did", () => {
+    const action = (toolName: string, input: unknown, output?: unknown) =>
+      resolveToolPreview(tool(`t3-code.${toolName}`, input, output));
+    expect(
+      action(
+        "t3_thread_wait",
+        { threadId: "a" },
+        {
+          threadId: "a",
+          status: "running",
+          timedOut: true,
+        },
+      ),
+    ).toEqual({
+      kind: "thread-action",
+      headline: "Stopped waiting",
+      status: "running",
+      details: ["The wait timed out"],
+      threadId: "a",
+    });
+    expect(
+      action(
+        "t3_thread_interrupt",
+        { threadId: "a", reason: "Wrong branch" },
+        {
+          threadId: "a",
+          status: "interrupt_requested",
+        },
+      ),
+    ).toMatchObject({
+      headline: "Interrupted the run",
+      status: "interrupt_requested",
+      details: ["Wrong branch"],
+    });
+    expect(
+      action(
+        "t3_thread_configuration",
+        {},
+        {
+          threadId: "a",
+          modelSelection: {
+            instanceId: "codex",
+            model: "gpt-6.1-sol",
+            options: [{ id: "reasoningEffort", value: "high" }],
+          },
+          runtimeMode: "full-access",
+          interactionMode: "default",
+        },
+      ),
+    ).toMatchObject({
+      headline: "gpt-6.1-sol",
+      details: ["codex", "reasoningEffort high", "full-access · default"],
+      threadId: null,
+    });
+    expect(
+      action("t3_thread_configure", {
+        modelSelection: { instanceId: "claudeAgent", model: "claude-opus-5-5" },
+      }),
+    ).toMatchObject({ headline: "Switched to claude-opus-5-5", details: ["claudeAgent"] });
+    expect(
+      action(
+        "t3_thread_fork",
+        { title: "Try B", sourcePoint: { type: "latest_stable" } },
+        {
+          sequence: 4,
+          targetThreadId: "fork",
+        },
+      ),
+    ).toMatchObject({
+      headline: "Forked as “Try B”",
+      details: ["From the latest stable point"],
+      threadId: "fork",
+    });
+    expect(
+      action("t3_thread_merge_back", {
+        targetThreadId: "parent",
+        sourcePoint: { type: "run", runId: "r" },
+      }),
+    ).toMatchObject({ headline: "Merged context back", threadId: "parent" });
+    expect(
+      action(
+        "t3_thread_organize",
+        { action: "move_to_group", groupName: "Release" },
+        {
+          sequence: 1,
+        },
+      ),
+    ).toMatchObject({ headline: "Moved to “Release”", threadId: null });
+    expect(
+      action("t3_thread_organize", { action: "settle" }, { settlesWhenTurnEnds: true }),
+    ).toMatchObject({ headline: "Settled", details: ["Takes effect when this turn ends"] });
+    expect(
+      action(
+        "t3_thread_group_name",
+        { name: "Release" },
+        {
+          groupId: "g",
+          name: "Release",
+          tabs: [{ threadId: "a", title: "Cut RC" }],
+        },
+      ),
+    ).toMatchObject({ headline: "Named the group “Release”", details: ["Cut RC"] });
+    expect(
+      action(
+        "t3_thread_update",
+        { action: "rename", title: "Fix order" },
+        {
+          threadId: "a",
+          title: "Fix order",
+        },
+      ),
+    ).toMatchObject({ headline: "Renamed to “Fix order”", threadId: "a" });
+    expect(
+      action("t3_thread_update", {
+        action: "link_pull_request",
+        pullRequest: { repository: "o/r", number: 7 },
+      }),
+    ).toMatchObject({ headline: "Linked o/r#7" });
+  });
+
+  it("lists thread search matches and context transfers", () => {
+    expect(
+      resolveToolPreview(
+        tool(
+          "t3-code.t3_thread_search",
+          { query: "parity" },
+          {
+            matches: [{ threadId: "a", source: "assistant", snippet: "parity is green" }],
+          },
+        ),
+      ),
+    ).toEqual({
+      kind: "thread-search",
+      query: "parity",
+      matches: [{ threadId: "a", source: "assistant", snippet: "parity is green" }],
+    });
+    expect(
+      resolveToolPreview(
+        tool(
+          "t3-code.t3_thread_transfers",
+          {},
+          {
+            transfers: [{ id: "t", sourceThreadId: "a", targetThreadId: "b", status: "completed" }],
+          },
+        ),
+      ),
+    ).toEqual({
+      kind: "context-transfers",
+      transfers: [{ id: "t", sourceThreadId: "a", targetThreadId: "b", status: "completed" }],
+    });
+  });
+
+  it("counts the attachments sent to a thread", () => {
+    expect(
+      resolveToolPreview(
+        tool(
+          "t3-code.t3_thread_send_attachments",
+          { attachments: [{}, {}] },
+          {
+            threadId: "a",
+            status: "running",
+          },
+        ),
+      ),
+    ).toEqual({
+      kind: "agent-message",
+      recipient: null,
+      threadId: "a",
+      summary: "Sent 2 attachments",
+      message: "",
+    });
+  });
+
   it("leaves failed calls and unknown tools on the generic body", () => {
     expect(resolveToolPreview(tool("mcp__notion__notion-fetch", { id: "x" }, {}))).toBeNull();
     expect(

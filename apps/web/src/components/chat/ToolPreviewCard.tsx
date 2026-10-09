@@ -135,6 +135,28 @@ function PullRequestRowView(props: {
   );
 }
 
+/** A thread named by its title when this client knows it, opening the thread on click. */
+function ThreadName(props: {
+  readonly environmentId: EnvironmentId;
+  readonly threadId: string;
+  readonly onOpenThread: (threadId: ThreadId) => void;
+  readonly className?: string;
+}) {
+  const threadId = ThreadId.make(props.threadId);
+  const shell = useThreadShell(
+    useMemo(() => scopeThreadRef(props.environmentId, threadId), [props.environmentId, threadId]),
+  );
+  return (
+    <button
+      type="button"
+      className={cn("min-w-0 truncate text-left hover:underline", props.className)}
+      onClick={() => props.onOpenThread(threadId)}
+    >
+      {shell?.title ?? "Open thread"}
+    </button>
+  );
+}
+
 function WakeTime({ at }: { readonly at: string }) {
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   return <p className="text-foreground">Wakes at {formatShortTimestamp(at, timestampFormat)}</p>;
@@ -324,9 +346,11 @@ function PreviewBody(props: {
           {preview.summary ? (
             <p className="font-medium text-foreground">{preview.summary}</p>
           ) : null}
-          <div className="max-h-60 overflow-auto">
-            <ChatMarkdown text={preview.message} cwd={props.cwd} lineBreaks />
-          </div>
+          {preview.message ? (
+            <div className="max-h-60 overflow-auto">
+              <ChatMarkdown text={preview.message} cwd={props.cwd} lineBreaks />
+            </div>
+          ) : null}
           <OpenThreadButton threadId={preview.threadId} onOpenThread={props.onOpenThread} />
         </>
       );
@@ -361,6 +385,84 @@ function PreviewBody(props: {
             <p className="line-clamp-4 break-words text-foreground/85">{preview.prompt}</p>
           ) : null}
         </>
+      );
+    case "thread-action":
+      return (
+        <>
+          <div className="flex items-start gap-2">
+            <span className="min-w-0 flex-1 font-medium text-foreground">{preview.headline}</span>
+            <StatusBadge status={preview.status} />
+          </div>
+          {preview.details.map((detail) => (
+            <p key={detail} className="break-words text-muted-foreground">
+              {detail}
+            </p>
+          ))}
+          {preview.threadId && preview.threadId !== props.threadId ? (
+            <ThreadName
+              environmentId={props.environmentId}
+              threadId={preview.threadId}
+              onOpenThread={props.onOpenThread}
+              className="block text-foreground/85"
+            />
+          ) : null}
+        </>
+      );
+    case "thread-search":
+      return (
+        <>
+          {preview.query ? (
+            <p className="text-muted-foreground">
+              “{preview.query}” · {preview.matches.length} match
+              {preview.matches.length === 1 ? "" : "es"}
+            </p>
+          ) : null}
+          <ul className="space-y-1.5">
+            {preview.matches.map((match) => (
+              <li key={`${match.threadId}\n${match.snippet}`} className="min-w-0">
+                <ThreadName
+                  environmentId={props.environmentId}
+                  threadId={match.threadId}
+                  onOpenThread={props.onOpenThread}
+                  className="block font-medium text-foreground"
+                />
+                {match.snippet ? (
+                  <p className="line-clamp-2 break-words text-muted-foreground">
+                    {match.source ? `${match.source}: ` : ""}
+                    {match.snippet}
+                  </p>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </>
+      );
+    case "context-transfers":
+      return preview.transfers.length === 0 ? (
+        <p className="text-muted-foreground italic">No context transfers.</p>
+      ) : (
+        <ul className="space-y-1">
+          {preview.transfers.map((transfer) => (
+            <li key={transfer.id} className="flex min-w-0 items-center gap-1.5">
+              <ThreadName
+                environmentId={props.environmentId}
+                threadId={transfer.sourceThreadId}
+                onOpenThread={props.onOpenThread}
+                className="text-foreground/85"
+              />
+              <span className="shrink-0 text-muted-foreground">→</span>
+              <ThreadName
+                environmentId={props.environmentId}
+                threadId={transfer.targetThreadId}
+                onOpenThread={props.onOpenThread}
+                className="text-foreground/85"
+              />
+              <span className="ml-auto">
+                <StatusBadge status={transfer.status} />
+              </span>
+            </li>
+          ))}
+        </ul>
       );
     case "threads":
       return preview.threads.length === 0 ? (

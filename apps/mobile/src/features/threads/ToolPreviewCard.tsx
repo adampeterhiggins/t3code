@@ -71,6 +71,7 @@ function Link(props: {
 function OpenThread(props: {
   readonly threadId: string | null;
   readonly onOpenThread: (threadId: string) => void;
+  readonly label?: string;
 }) {
   const { threadId } = props;
   if (!threadId) return null;
@@ -80,7 +81,7 @@ function OpenThread(props: {
       className="self-start rounded-md border border-border px-2 py-1"
       onPress={() => props.onOpenThread(threadId)}
     >
-      <Text className="text-2xs text-foreground">Open thread</Text>
+      <Text className="text-2xs text-foreground">{props.label ?? "Open thread"}</Text>
     </Pressable>
   );
 }
@@ -112,6 +113,58 @@ function PreviewBody(props: {
           {preview.model ? <Muted>{preview.model}</Muted> : null}
           {preview.summary ? <Body lines={4}>{preview.summary}</Body> : null}
           <OpenThread threadId={preview.threadId} onOpenThread={props.onOpenThread} />
+        </>
+      );
+    case "thread-action":
+      return (
+        <>
+          <Title status={preview.status}>{preview.headline}</Title>
+          {preview.details.map((detail) => (
+            <Muted key={detail}>{detail}</Muted>
+          ))}
+          <OpenThread threadId={preview.threadId} onOpenThread={props.onOpenThread} />
+        </>
+      );
+    case "thread-search":
+      return (
+        <>
+          {preview.query ? (
+            <Muted>{`“${preview.query}” · ${preview.matches.length} matches`}</Muted>
+          ) : null}
+          {preview.matches.map((match) => (
+            <Pressable
+              key={`${match.threadId}\n${match.snippet}`}
+              accessibilityRole="button"
+              onPress={() => props.onOpenThread(match.threadId)}
+            >
+              <Body lines={2}>
+                {match.source ? `${match.source}: ${match.snippet}` : match.snippet}
+              </Body>
+            </Pressable>
+          ))}
+        </>
+      );
+    case "context-transfers":
+      return preview.transfers.length === 0 ? (
+        <Muted>No context transfers.</Muted>
+      ) : (
+        <>
+          {preview.transfers.map((transfer) => (
+            <View key={transfer.id} className="flex-row items-center gap-2">
+              <OpenThread
+                threadId={transfer.sourceThreadId}
+                onOpenThread={props.onOpenThread}
+                label="Source"
+              />
+              <Muted>→</Muted>
+              <OpenThread
+                threadId={transfer.targetThreadId}
+                onOpenThread={props.onOpenThread}
+                label="Target"
+              />
+              {transfer.status ? <Muted>{transfer.status.replaceAll("_", " ")}</Muted> : null}
+            </View>
+          ))}
         </>
       );
     case "threads":
@@ -244,7 +297,7 @@ function PreviewBody(props: {
         <>
           {preview.recipient ? <Muted>{`To ${preview.recipient}`}</Muted> : null}
           {preview.summary ? <Title>{preview.summary}</Title> : null}
-          <Body lines={8}>{preview.message}</Body>
+          {preview.message ? <Body lines={8}>{preview.message}</Body> : null}
           <OpenThread threadId={preview.threadId} onOpenThread={props.onOpenThread} />
         </>
       );

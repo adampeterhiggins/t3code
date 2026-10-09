@@ -14,6 +14,9 @@ import { toolCallArgs, toolResultData } from "./itemDetail.ts";
 export type ToolPreview =
   | ThreadToolPreview
   | ThreadListToolPreview
+  | ThreadActionToolPreview
+  | ThreadSearchToolPreview
+  | ContextTransfersToolPreview
   | TaskToolPreview
   | ScheduledTasksToolPreview
   | PullRequestToolPreview
@@ -51,6 +54,36 @@ export interface ThreadListToolPreview {
     readonly title: string;
     readonly status: string | null;
     readonly model: string | null;
+  }>;
+}
+
+/** A call that did one thing to a thread: interrupt, fork, rename, configure, organize. */
+export interface ThreadActionToolPreview {
+  readonly kind: "thread-action";
+  readonly headline: string;
+  readonly status: string | null;
+  readonly details: ReadonlyArray<string>;
+  /** The thread acted on or created; null when the call acted on its own thread. */
+  readonly threadId: string | null;
+}
+
+export interface ThreadSearchToolPreview {
+  readonly kind: "thread-search";
+  readonly query: string | null;
+  readonly matches: ReadonlyArray<{
+    readonly threadId: string;
+    readonly source: string | null;
+    readonly snippet: string;
+  }>;
+}
+
+export interface ContextTransfersToolPreview {
+  readonly kind: "context-transfers";
+  readonly transfers: ReadonlyArray<{
+    readonly id: string;
+    readonly sourceThreadId: string;
+    readonly targetThreadId: string;
+    readonly status: string | null;
   }>;
 }
 
@@ -505,6 +538,141 @@ function scheduledTasksPreview(result: Record_): ScheduledTasksToolPreview | nul
     : null;
 }
 
+function threadAction(
+  headline: string,
+  fields: Partial<Omit<ThreadActionToolPreview, "kind" | "headline">> = {},
+): ThreadActionToolPreview {
+  return {
+    kind: "thread-action",
+    headline,
+    status: fields.status ?? null,
+    details: fields.details ?? [],
+    threadId: fields.threadId ?? null,
+  };
+}
+
+function modelSelectionDetails(value: unknown): { model: string | null; details: string[] } {
+  const selection = isRecord(value) ? value : null;
+  const options = Array.isArray(selection?.options)
+    ? selection.options.filter(isRecord).flatMap((option) => {
+        const id = str(option.id);
+        return id && option.value !== undefined ? [`${id} ${String(option.value)}`] : [];
+      })
+    : [];
+  const instance = str(selection?.instanceId);
+  return {
+    model: str(selection?.model),
+    details: [instance, ...options].filter((detail) => detail !== null),
+  };
+}
+
+function sourcePointLabel(value: unknown): string | null {
+  const point = isRecord(value) ? value : null;
+  switch (point?.type) {
+    case "latest_stable":
+      return "From the latest stable point";
+    case "run":
+      return "From a run";
+    case "checkpoint":
+      return "From a checkpoint";
+    default:
+      return null;
+  }
+}
+
+const ORGANIZE_LABELS: Readonly<Record<string, string>> = {
+  pin: "Pinned",
+  unpin: "Unpinned",
+  snooze: "Snoozed",
+  unsnooze: "Unsnoozed",
+  settle: "Settled",
+  unsettle: "Unsettled",
+  archive: "Archived",
+  unarchive: "Unarchived",
+  mark_unread: "Marked unread",
+  hide: "Hidden from the sidebar",
+  unhide: "Shown in the sidebar",
+  move_to_group: "Moved to a group",
+  remove_from_group: "Removed from its group",
+};
+
+function organizePreview(input: Record_, result: Record_ | null): ThreadActionToolPreview | null {
+  const action = str(input.action);
+  if (!action) return null;
+  const group = str(input.groupName);
+  const until = str(input.snoozedUntil);
+  const headline =
+    action === "move_to_group" && group
+      ? `Moved to “${group}”`
+      : (ORGANIZE_LABELS[action] ?? action.replaceAll("_", " "));
+  return threadAction(headline, {
+    threadId: str(input.threadId),
+    details: [
+      action === "snooze" && until ? `Until ${until}` : null,
+      result?.settlesWhenTurnEnds === true ? "Takes effect when this turn ends" : null,
+    ].filter((detail) => detail !== null),
+  });
+}
+
+function metadataUpdatePreview(
+  input: Record_,
+  result: Record_ | null,
+): ThreadActionToolPreview | null {
+  const action = str(input.action);
+  const title = str(result?.title) ?? str(input.title);
+  const threadId = str(result?.threadId) ?? str(input.threadId);
+  const pr = isRecord(input.pullRequest) ? input.pullRequest : null;
+  switch (action) {
+    case "rename":
+      return threadAction(title ? `Renamed to “${title}”` : "Renamed the thread", { threadId });
+    case "regenerate_title":
+      return threadAction("Regenerated the title", {
+        threadId,
+        details: title ? [title] : [],
+      });
+    case "link_pull_request": {
+      const label =
+        str(pr?.repository) && positiveInt(pr?.number)
+          ? `${str(pr?.repository)}#${positiveInt(pr?.number)}`
+          : "a pull request";
+      return threadAction(`Linked ${label}`, { threadId });
+    }
+    case "unlink_pull_request":
+      return threadAction("Unlinked the pull request", { threadId });
+    default:
+      return null;
+  }
+}
+
+function threadSearchPreview(input: Record_, result: Record_): ThreadSearchToolPreview | null {
+  if (!Array.isArray(result.matches)) return null;
+  return {
+    kind: "thread-search",
+    query: str(input.query),
+    matches: result.matches.filter(isRecord).flatMap((match) => {
+      const threadId = str(match.threadId);
+      return threadId
+        ? [{ threadId, source: str(match.source), snippet: str(match.snippet) ?? "" }]
+        : [];
+    }),
+  };
+}
+
+function contextTransfersPreview(result: Record_): ContextTransfersToolPreview | null {
+  if (!Array.isArray(result.transfers)) return null;
+  return {
+    kind: "context-transfers",
+    transfers: result.transfers.filter(isRecord).flatMap((transfer) => {
+      const id = str(transfer.id);
+      const sourceThreadId = str(transfer.sourceThreadId);
+      const targetThreadId = str(transfer.targetThreadId);
+      return id && sourceThreadId && targetThreadId
+        ? [{ id, sourceThreadId, targetThreadId, status: str(transfer.status) }]
+        : [];
+    }),
+  };
+}
+
 const DELIVERY_LABELS: Readonly<Record<string, string>> = {
   started: "Started a run",
   queued: "Queued",
@@ -523,7 +691,87 @@ function t3ToolPreview(tool: string, input: Record_, result: Record_ | null): To
     case "t3_thread_launch":
       return result ? launchedThreadPreview(input, result) : null;
     case "t3_thread_list":
+    case "create_threads":
       return result ? threadListPreview(result) : null;
+    case "t3_thread_start":
+      return result ? (threadListPreview(result) ?? launchedThreadPreview(input, result)) : null;
+    case "t3_thread_wait":
+      return result
+        ? threadAction(result.timedOut === true ? "Stopped waiting" : "Waited for the run", {
+            threadId: str(result.threadId) ?? str(input.threadId),
+            status: str(result.status),
+            details: result.timedOut === true ? ["The wait timed out"] : [],
+          })
+        : null;
+    case "t3_thread_interrupt":
+      return threadAction("Interrupted the run", {
+        threadId: str(result?.threadId) ?? str(input.threadId),
+        status: str(result?.status),
+        details: [str(input.reason)].filter((detail) => detail !== null),
+      });
+    case "t3_thread_configuration": {
+      if (!result) return null;
+      const { model, details } = modelSelectionDetails(result.modelSelection);
+      return threadAction(model ?? "Thread configuration", {
+        threadId: str(input.threadId),
+        details: [
+          ...details,
+          [str(result.runtimeMode), str(result.interactionMode)]
+            .filter((mode) => mode !== null)
+            .join(" · "),
+        ].filter((detail) => detail.length > 0),
+      });
+    }
+    case "t3_thread_configure": {
+      const { model, details } = modelSelectionDetails(input.modelSelection);
+      return model
+        ? threadAction(`Switched to ${model}`, { threadId: str(input.threadId), details })
+        : null;
+    }
+    case "t3_thread_fork": {
+      const title = str(input.title);
+      return threadAction(title ? `Forked as “${title}”` : "Forked the thread", {
+        threadId: str(result?.targetThreadId),
+        details: [sourcePointLabel(input.sourcePoint)].filter((detail) => detail !== null),
+      });
+    }
+    case "t3_thread_merge_back":
+      return threadAction("Merged context back", {
+        threadId: str(result?.targetThreadId) ?? str(input.targetThreadId),
+        details: [sourcePointLabel(input.sourcePoint)].filter((detail) => detail !== null),
+      });
+    case "t3_thread_search":
+      return result ? threadSearchPreview(input, result) : null;
+    case "t3_thread_transfers":
+      return result ? contextTransfersPreview(result) : null;
+    case "t3_thread_group_name": {
+      const name = str(result?.name) ?? str(input.name);
+      const tabs = Array.isArray(result?.tabs)
+        ? result.tabs.filter(isRecord).flatMap((tab) => {
+            const title = str(tab.title);
+            return title ? [title] : [];
+          })
+        : [];
+      return threadAction(name ? `Named the group “${name}”` : "Cleared the group name", {
+        threadId: str(input.threadId),
+        details: tabs.length > 0 ? [tabs.join(", ")] : [],
+      });
+    }
+    case "t3_thread_organize":
+      return organizePreview(input, result);
+    case "t3_thread_update":
+      return metadataUpdatePreview(input, result);
+    case "t3_thread_send_attachments": {
+      const count = Array.isArray(input.attachments) ? input.attachments.length : 0;
+      const label = `Sent ${count} attachment${count === 1 ? "" : "s"}`;
+      return {
+        kind: "agent-message",
+        recipient: null,
+        threadId: str(result?.threadId) ?? str(input.threadId),
+        summary: label,
+        message: str(input.message) ?? "",
+      };
+    }
     case "t3_thread_send": {
       const message = str(input.message);
       if (!message) return null;

@@ -332,8 +332,9 @@ limited to hover previews; expanded chat rows show plain text. Thoughts and answ
 [`toolCallPreview.ts`](../apps/web/src/lib/toolCallPreview.ts)).
 A tool call's expanded row, and its hover card on web and desktop, show common tools as what
 they did rather than their arguments and JSON result, with the raw call one click away on web: T3
-thread and task tools (read, launch, list, send, delegate, status, cancel) as the thread's title,
-status, model and latest items with an Open thread button; pull request tools as PR rows, with the
+thread and task tools as the thread's title, status, model and latest items, or as what the call
+did to the thread (interrupted, forked, renamed, reconfigured, organized), with a link to the
+thread; thread search as matches by thread title; pull request tools as PR rows, with the
 title, state and branch from the thread's linked-PR snapshot when the result omits them; scheduled
 task tools as each task's title and schedule; browser preview actions as their target, page, and
 evaluated code and value; Slack thread reads and searches as messages; and Claude's ToolSearch,
