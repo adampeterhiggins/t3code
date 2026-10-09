@@ -76,7 +76,10 @@ export function ContextChipShell({
   );
 }
 
-/** A chip that opens its details in a popover; the chip itself is the trigger. */
+/**
+ * A chip that previews its details on hover, matching pull request link previews; a click
+ * pins the popover open for keyboard and touch users.
+ */
 export function ContextChipPopover(props: {
   kind: ContextChipKind;
   icon: ReactNode;
@@ -88,6 +91,9 @@ export function ContextChipPopover(props: {
   return (
     <Popover>
       <PopoverTrigger
+        openOnHover
+        delay={350}
+        closeDelay={120}
         render={
           <ContextChip
             kind={props.kind}
