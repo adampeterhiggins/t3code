@@ -319,6 +319,10 @@
       "types": "./src/state/attentionInbox.ts",
       "default": "./src/state/attentionInbox.ts"
     },
+    "./state/notification-rules": {
+      "types": "./src/state/notificationRules.ts",
+      "default": "./src/state/notificationRules.ts"
+    },
     "./state/thread-inbox": {
       "types": "./src/state/threadInbox.ts",
       "default": "./src/state/threadInbox.ts"

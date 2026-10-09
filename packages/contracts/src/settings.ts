@@ -282,6 +282,22 @@ export const NotificationMode = Schema.Literals([
 ]);
 export type NotificationMode = typeof NotificationMode.Type;
 
+/**
+ * What a thread notification is about. The first four match the attention
+ * inbox's reasons; `limited` is a failure caused by a provider usage limit and
+ * `pull-request` is news from a watched pull request (failed checks, requested
+ * changes, a merge conflict).
+ */
+export const NotificationEvent = Schema.Literals([
+  "approval",
+  "input",
+  "completed",
+  "failed",
+  "limited",
+  "pull-request",
+]);
+export type NotificationEvent = typeof NotificationEvent.Type;
+
 export const QuitConfirmationMode = Schema.Literals(["direct", "hold", "double-click"]);
 export type QuitConfirmationMode = typeof QuitConfirmationMode.Type;
 const DEFAULT_QUIT_CONFIRMATION_MODE: QuitConfirmationMode = "hold";
@@ -361,6 +377,14 @@ export const ClientSettingsSchema = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed("off" as const)),
   ),
   inAppNotificationsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  /** Events this device stays quiet about. Stored as mutes so new events default on. */
+  mutedNotificationEvents: Schema.Array(NotificationEvent).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
+  /** `environmentId:projectId` keys of projects this device never notifies about. */
+  mutedNotificationProjects: Schema.Array(TrimmedNonEmptyString).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
   diffColorScheme: DiffColorScheme.pipe(
     Schema.withDecodingDefault(Effect.succeed("red-green" as const)),
   ),
@@ -1922,6 +1946,8 @@ export function requiredScopesForServerSettingsPatch(
 export const ClientSettingsPatch = Schema.Struct({
   notificationMode: Schema.optionalKey(NotificationMode),
   inAppNotificationsEnabled: Schema.optionalKey(Schema.Boolean),
+  mutedNotificationEvents: Schema.optionalKey(Schema.Array(NotificationEvent)),
+  mutedNotificationProjects: Schema.optionalKey(Schema.Array(TrimmedNonEmptyString)),
   diffColorScheme: Schema.optionalKey(DiffColorScheme),
   chatWidth: Schema.optionalKey(ChatWidth),
   loadBalancingEnabled: Schema.optionalKey(Schema.Boolean),

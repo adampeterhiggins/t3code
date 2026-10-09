@@ -390,6 +390,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["notification toast popup completion input approval failure"],
   },
   {
+    id: "notification-events",
+    title: "Notify about",
+    to: "/settings/general",
+    searchTerms: [
+      "notification events mute approval question finished failed usage limit pull request checks review conflict",
+    ],
+  },
+  {
     id: "time-format",
     title: "Time format",
     to: "/settings/general",

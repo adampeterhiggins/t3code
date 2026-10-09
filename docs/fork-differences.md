@@ -1394,6 +1394,31 @@ Code: [`attentionInbox.ts`](../packages/client-runtime/src/state/attentionInbox.
 the `attention-inbox` view in [`CommandPalette.tsx`](../apps/web/src/components/CommandPalette.tsx).
 User guide: [thread-sidebar.md](./user/thread-sidebar.md#see-what-needs-you).
 
+## Per-event notification rules
+
+Upstream notifies about every thread event or none. The fork lets each device choose:
+
+- Web and desktop: **Settings → General → Notify about** mutes individual events (approval,
+  question, failed turn, usage limit, finished turn, pull request watch news), and a
+  **Notifications** switch on each project's settings page mutes every checkout of that project.
+  Both are client settings (`mutedNotificationEvents`, `mutedNotificationProjects`), stored as mutes
+  so new events default on. When several events land at once, the most urgent unmuted one alerts.
+  Pull request watch news is new to the fork: a newly failed check on the head commit, a requested
+  change, or a merge conflict on a watched PR alerts even if the agent is mid-turn.
+- Mobile: **Settings → Notifications → Notify me about** sends the relay's existing per-device
+  `notifyOn*` flags, which upstream always sends as on. The relay classifies by turn phase, so
+  usage limits count as failures and pull request wakes as completions. Mobile has no per-project
+  mute.
+
+Notifications carry no approve or reply actions on any surface; they open the thread.
+
+Code: [`notificationRules.ts`](../packages/client-runtime/src/state/notificationRules.ts),
+[`ThreadNotificationCoordinator.tsx`](../apps/web/src/components/ThreadNotificationCoordinator.tsx),
+[`NotificationSettings.tsx`](../apps/web/src/components/settings/NotificationSettings.tsx), and
+[`SettingsNotificationsRouteScreen.tsx`](../apps/mobile/src/features/settings/SettingsNotificationsRouteScreen.tsx).
+User guides: [project-settings.md](./user/project-settings.md#choose-what-notifies-you) and
+[mobile-notifications.md](./user/mobile-notifications.md#choose-what-notifies-you).
+
 ## Provider service status
 
 **Usage → Limits** reads the public status page for Claude, Codex, Cursor, Devin, and Grok. A

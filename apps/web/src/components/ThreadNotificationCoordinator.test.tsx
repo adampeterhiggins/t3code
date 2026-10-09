@@ -21,6 +21,9 @@ const state = vi.hoisted(() => ({
   limited: false,
   subagent: false,
   background: [] as Array<{ taskId: string; kind: "command" | "monitor" }>,
+  mutedEvents: [] as ClientSettings["mutedNotificationEvents"],
+  mutedProjects: [] as ClientSettings["mutedNotificationProjects"],
+  conflicting: false,
   add: vi.fn(
     (_toast: { title: string; description: string; actionProps: { onClick: () => void } }) =>
       "toast-1",
@@ -84,6 +87,29 @@ function mockThreadShell() {
     settledAt: null,
     lastVisitedAt: null,
     deletedAt: null,
+    pullRequests: [
+      {
+        host: "github.com",
+        repository: "acme/app",
+        number: 7,
+        url: "https://github.com/acme/app/pull/7",
+        source: "agent",
+        linkedAt: "2026-09-13T09:00:00.000Z",
+        snapshot: null,
+        stack: null,
+        watch: {
+          startedAt: "2026-09-13T09:00:00.000Z",
+          headSha: "abc",
+          failedChecks: [],
+          passed: false,
+          passedChecks: [],
+          remarksThrough: "2026-09-13T09:00:00.000Z",
+          remarkIds: [],
+          conflicting: state.conflicting,
+          wakes: 0,
+        },
+      },
+    ],
   };
 }
 
@@ -100,9 +126,21 @@ vi.mock("@tanstack/react-router", () => ({
 vi.mock("../hooks/useSettings", () => ({
   useClientSettings: (
     select: (
-      settings: Pick<ClientSettings, "notificationMode" | "inAppNotificationsEnabled">,
+      settings: Pick<
+        ClientSettings,
+        | "notificationMode"
+        | "inAppNotificationsEnabled"
+        | "mutedNotificationEvents"
+        | "mutedNotificationProjects"
+      >,
     ) => unknown,
-  ) => select({ notificationMode: state.mode, inAppNotificationsEnabled: state.inApp }),
+  ) =>
+    select({
+      notificationMode: state.mode,
+      inAppNotificationsEnabled: state.inApp,
+      mutedNotificationEvents: state.mutedEvents,
+      mutedNotificationProjects: state.mutedProjects,
+    }),
   getClientSettings: () => ({ notificationMode: state.mode }),
 }));
 vi.mock("../state/environments", () => ({
@@ -154,6 +192,9 @@ beforeEach(() => {
     limited: false,
     subagent: false,
     background: [],
+    mutedEvents: [],
+    mutedProjects: [],
+    conflicting: false,
   });
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("window", new EventTarget());
@@ -309,6 +350,38 @@ describe("thread notifications", () => {
     expect(state.sound).toHaveBeenCalledWith("completion", expect.any(Function));
     expect(state.add).toHaveBeenCalledTimes(1);
     expect(state.notification).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a muted event", () => (state.mutedEvents = ["completed"])],
+    ["a muted project", () => (state.mutedProjects = ["env-1:project-1"])],
+  ])("stays silent everywhere for %s", async (_label, mute) => {
+    mute();
+    state.mode = "notifications-and-sound";
+    await render();
+    await complete();
+    state.focused = false;
+    await render();
+    expect(state.sound).not.toHaveBeenCalled();
+    expect(state.add).not.toHaveBeenCalled();
+    expect(state.notification).not.toHaveBeenCalled();
+  });
+
+  it("alerts on pull request watch news unless that event is muted", async () => {
+    await render();
+    state.conflicting = true;
+    await render();
+    expect(state.add).toHaveBeenCalledTimes(1);
+    expect(state.add).toHaveBeenLastCalledWith(
+      expect.objectContaining({ title: "Pull request needs attention" }),
+    );
+
+    state.conflicting = false;
+    await render();
+    state.mutedEvents = ["pull-request"];
+    state.conflicting = true;
+    await render();
+    expect(state.add).toHaveBeenCalledTimes(1);
   });
 
   it("keeps system alerts when the app is in the background", async () => {

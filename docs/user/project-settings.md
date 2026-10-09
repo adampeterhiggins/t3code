@@ -206,6 +206,15 @@ Existing prompts for deleting a worktree manually remain available when this pol
 Browser captures and rotated logs have separate retention periods. Expired capture links stop
 working. Current logs, message attachments, and browser profiles are kept.
 
+## Choose what notifies you
+
+On web and desktop, **Settings → General → Notify about** picks which events raise system alerts,
+sounds, and in-app toasts: approvals, questions, failed turns, usage limits, finished turns, and
+news from a watched pull request (a failed check, requested changes, or a merge conflict). Every
+event is on until you turn it off. To silence one project entirely, turn off **Notifications** on
+its page under **Settings → Projects**. Both choices are saved on this device only; your phone has
+its own, described in [Mobile notifications](./mobile-notifications.md#choose-what-notifies-you).
+
 ## Project icons
 
 Select the project and open Project to choose an icon, emoji, monogram, or image. The choice applies to
