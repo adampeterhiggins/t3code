@@ -206,10 +206,7 @@ import {
   resolvePullRequestPreviewTarget,
   useOpenChangeRequestLink,
 } from "~/lib/openPullRequestLink";
-import {
-  objectLinkLabel,
-  parseComposerObjectLink,
-} from "@t3tools/client-runtime/composer-object-links";
+import { objectLinkLabel, parseComposerObjectLink } from "@t3tools/shared/composerObjectLinks";
 import { useOpenLink } from "../browser/useOpenLink";
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
 import { isPreviewAvailableFor } from "../browser/previewRuntime";

@@ -86,6 +86,7 @@ import { isSnoozed } from "../orchestration-v2/ThreadSettlementService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
+import type { AttachedContextLinks } from "./McpContextLinks.ts";
 import { assertMaySpawn, assertNotSelf } from "./spawnPolicy.ts";
 import {
   clientRuntimeModeCeiling,
@@ -174,9 +175,16 @@ export interface OrchestratorMcpServiceShape {
     scope: McpInvocationScope,
     input: OrchestratorMcpThreadReadInput,
   ) => Effect.Effect<OrchestratorMcpThreadReadResult, OrchestratorMcpFailure>;
+  /**
+   * `attachContext` resolves the message's `contextLinks` (see McpContextLinks). It runs only
+   * once the send is authorized, and not at all when a retry finds its message already sent.
+   */
   readonly sendToThread: (
     scope: McpInvocationScope,
     input: OrchestratorMcpThreadSendInput,
+    attachContext?: (
+      message: string,
+    ) => Effect.Effect<AttachedContextLinks, OrchestratorMcpFailure>,
   ) => Effect.Effect<OrchestratorMcpThreadSendResult, OrchestratorMcpFailure>;
   readonly waitForThread: (
     scope: McpInvocationScope,
@@ -2428,7 +2436,7 @@ const make = Effect.gen(function* () {
           hasMore: timeline.hasMore,
         } satisfies OrchestratorMcpThreadReadResult;
       }),
-    sendToThread: (scope, input) =>
+    sendToThread: (scope, input, attachContext) =>
       Effect.gen(function* () {
         yield* assertNotSelf(scope.thread?.threadId, input.threadId);
         const { parent, limits, target } = yield* loadScopedThread(scope, input.threadId);
@@ -2443,6 +2451,25 @@ const make = Effect.gen(function* () {
           requestKey: key,
           operation: "thread-send",
         });
+        // A retried send whose message already landed replays its receipt, so skip reading
+        // the integrations and cloning repositories again.
+        const alreadySent =
+          attachContext !== undefined &&
+          (yield* threadManagement
+            .getThreadRecords(input.threadId, ["messages"], { messageIds: [messageId] })
+            .pipe(Effect.mapError(threadManagementFailure))).messages.length > 0;
+        const attached =
+          attachContext === undefined || alreadySent
+            ? { text: input.message, context: undefined }
+            : yield* attachContext(input.message);
+        // Attached repositories are cloned before the message lands, as for a composer send.
+        const preparedContext =
+          attached.context === undefined
+            ? undefined
+            : yield* threadLaunch.prepareMessageWorkspace({
+                threadId: input.threadId,
+                context: attached.context,
+              });
         const result = yield* threadManagement
           .sendToThread({
             projectId: target.thread.projectId,
@@ -2454,7 +2481,8 @@ const make = Effect.gen(function* () {
             threadId: input.threadId,
             ...(parent === undefined ? {} : { senderThreadId: parent.thread.id }),
             messageId,
-            text: input.message,
+            text: attached.text,
+            ...(preparedContext === undefined ? {} : { context: preparedContext }),
             attachments: [],
             mode,
             createdBy: "agent",

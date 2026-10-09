@@ -1,4 +1,4 @@
-import type { ComposerObjectLink } from "@t3tools/client-runtime/composer-object-links";
+import type { ComposerObjectLink } from "@t3tools/shared/composerObjectLinks";
 import { repositoryContextRecord } from "@t3tools/client-runtime/context-repositories";
 import { gitHubIssueContextRecord } from "@t3tools/client-runtime/state/github-issues";
 import { linearIssueContextRecord } from "@t3tools/client-runtime/state/linear";

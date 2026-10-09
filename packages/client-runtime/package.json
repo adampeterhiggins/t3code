@@ -27,10 +27,6 @@
       "types": "./src/conductorRunScripts.ts",
       "default": "./src/conductorRunScripts.ts"
     },
-    "./composer-object-links": {
-      "types": "./src/composerObjectLinks.ts",
-      "default": "./src/composerObjectLinks.ts"
-    },
     "./context-repositories": {
       "types": "./src/contextRepositories.ts",
       "default": "./src/contextRepositories.ts"

@@ -1,36 +1,12 @@
 import {
   contextRepositoryRemoteKey,
-  type ComposerContextId,
   type ContextRepositoryCandidate,
   type ContextRepositoryClone,
   type ContextRepositoryGitStatus,
   type ContextRepositoryOutcome,
-  type RepositoryContextRecord,
 } from "@t3tools/contracts";
 
-/** The chip record for one repository to clone into the workspace's context folder. */
-export function repositoryContextRecord(input: {
-  readonly nameWithOwner: string;
-  readonly remoteUrl: string;
-}): RepositoryContextRecord {
-  const nameWithOwner = input.nameWithOwner.trim().slice(0, 255);
-  const slug = nameWithOwner
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 100);
-  const repositoryName = nameWithOwner.split("/").at(-1) ?? nameWithOwner;
-  const directoryName = repositoryName.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^\.+$/, "repo");
-  return {
-    version: 1,
-    kind: "repository",
-    contextId: `repository_${slug || "repo"}` as ComposerContextId,
-    label: nameWithOwner.slice(0, 200),
-    nameWithOwner,
-    remoteUrl: input.remoteUrl,
-    directoryName: directoryName || "repo",
-  };
-}
+export { repositoryContextRecord } from "@t3tools/shared/integrationContextRecords";
 
 /**
  * Reads what a user pasted into the picker: `owner/repo`, an https or ssh clone URL, or a

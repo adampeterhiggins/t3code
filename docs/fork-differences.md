@@ -1087,7 +1087,7 @@ request or GitHub issue (with `L4-L14` appended for a link to lines), `ENG-123` 
 writer chose is left alone. A bare Slack link is not one of these: it names the message only when
 Slack is on and connected (see [Slack messages and threads](#slack-messages-and-threads)).
 
-Code: `packages/client-runtime/src/composerObjectLinks.ts`,
+Code: `packages/shared/src/composerObjectLinks.ts`,
 `apps/web/src/components/chat/useResolveComposerObjectLink.ts`, and `convertObjectLinks` in
 `apps/web/src/components/chat/ChatComposer.tsx`. User guide:
 [composer.md](./user/composer.md#context-in-your-message).
@@ -1209,6 +1209,23 @@ Code: [`spawnPolicy.ts`](../apps/server/src/mcp/spawnPolicy.ts), its callers in
 [`StartedByChip.tsx`](../apps/web/src/components/chat/StartedByChip.tsx), and
 [`ThreadStartedByChip.tsx`](../apps/mobile/src/features/threads/ThreadStartedByChip.tsx). User
 guide: [agent-access.md](./user/agent-access.md#let-agents-start-threads).
+
+## Agents attach integration context to messages
+
+`t3_thread_send` and `t3_thread_launch` take `contextLinks`: Slack message permalinks, Notion
+pages, Linear issues, GitHub issues, and GitHub repository roots. The server reads each one through
+the same integration the composer uses and attaches the same chip record, so the message reads as
+if a user had pasted the links: a link already in the message text becomes its chip there, the rest
+are appended. Repositories are cloned before the message lands. An unrecognized link, a pull
+request link, a disconnected or turned-off integration, or an unreadable object fails the call with
+the reason; nothing is sent. Links are read only once the caller is allowed to send, and a
+`clientRequestId` retry of a message that already landed does not read them again. Agents cannot
+search Slack or Notion over MCP; they attach links they already have.
+
+Code: [`McpContextLinks.ts`](../apps/server/src/mcp/McpContextLinks.ts), the link parser in
+[`composerObjectLinks.ts`](../packages/shared/src/composerObjectLinks.ts), and the chip records in
+[`integrationContextRecords.ts`](../packages/shared/src/integrationContextRecords.ts). User guide:
+[agent-access.md](./user/agent-access.md#attach-links-as-context).
 
 ## Delegated subagents in their own worktree
 

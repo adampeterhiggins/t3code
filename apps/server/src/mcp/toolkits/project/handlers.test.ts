@@ -23,10 +23,15 @@ import * as Project from "../../../project/ProjectService.ts";
 import * as ManagedProjectFolders from "../../../project/ManagedProjectFolders.ts";
 import * as GitVcsDriver from "../../../vcs/GitVcsDriver.ts";
 import * as VcsProcess from "../../../vcs/VcsProcess.ts";
+import * as McpContextLinks from "../../McpContextLinks.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import * as ProjectHandlers from "./handlers.ts";
 import { ProjectToolkit } from "./tools.ts";
+
+const noContextLinks = Layer.succeed(McpContextLinks.McpContextLinks, {
+  attach: ({ text }) => Effect.succeed({ text, context: undefined }),
+});
 
 const emptyShellSnapshot = {
   schemaVersion: 1,
@@ -55,8 +60,14 @@ it.effect("attributes a launched thread's first message to the calling thread", 
     } as OrchestrationV2ThreadShell;
     let launchedSender: ThreadId | undefined;
     let launchedStartedBy: ThreadLaunch.ThreadLaunchInput["startedBy"];
+    let launchedMessage: ThreadLaunch.ThreadLaunchInput["initialMessage"];
+    const context = { version: 1, records: [] } as const;
     const layerDependencies = Layer.mergeAll(
       NodeCrypto.layer,
+      Layer.succeed(McpContextLinks.McpContextLinks, {
+        attach: ({ text, links }) =>
+          Effect.succeed({ text: `${text} ${links?.join(" ")}`, context }),
+      }),
       Layer.succeed(McpInvocationContext.McpInvocationContext, {
         environmentId: EnvironmentId.make("environment"),
         requestNamespace: "session",
@@ -76,6 +87,7 @@ it.effect("attributes a launched thread's first message to the calling thread", 
       Layer.mock(ThreadLaunch.ThreadLaunchService)({
         launch: (input) => {
           launchedSender = input.initialMessage?.senderThreadId;
+          launchedMessage = input.initialMessage;
           launchedStartedBy = input.startedBy;
           return Effect.succeed({
             threadId: input.threadId,
@@ -103,10 +115,19 @@ it.effect("attributes a launched thread's first message to the calling thread", 
       ),
     );
     const result = yield* toolkit
-      .handle("t3_thread_launch", { title: "Audit", message: "Review the change" })
+      .handle("t3_thread_launch", {
+        title: "Audit",
+        message: "Review the change",
+        contextLinks: ["https://linear.app/acme/issue/ENG-1"],
+      })
       .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(layerDependencies));
     expect(result.at(-1)?.result).toMatchObject({ projectId, modelSelection });
     expect(launchedSender).toBe(sourceThreadId);
+    // The first message carries the attached links as the composer would send them.
+    expect(launchedMessage).toMatchObject({
+      text: "Review the change https://linear.app/acme/issue/ENG-1",
+      context,
+    });
     expect(launchedStartedBy).toEqual({ kind: "thread", threadId: sourceThreadId });
   }),
 );
@@ -132,6 +153,7 @@ it.effect("launches a scratch thread into the Scratch project", () =>
     const launched: Array<ThreadLaunch.ThreadLaunchInput> = [];
     const layerDependencies = Layer.mergeAll(
       NodeCrypto.layer,
+      noContextLinks,
       Layer.succeed(McpInvocationContext.McpInvocationContext, {
         environmentId: EnvironmentId.make("environment"),
         requestNamespace: "session",
@@ -231,6 +253,7 @@ it.effect("starts a project from just a title when workspaceRoot is omitted", ()
     };
     const layerDependencies = Layer.mergeAll(
       NodeCrypto.layer,
+      noContextLinks,
       Layer.succeed(McpInvocationContext.McpInvocationContext, {
         environmentId: EnvironmentId.make("environment"),
         requestNamespace: "session",
@@ -322,6 +345,7 @@ const clientLaunchHarness = (input: {
   const modelSelection = { instanceId: ProviderInstanceId.make("claude"), model: "claude-opus" };
   const layerDependencies = Layer.mergeAll(
     NodeCrypto.layer,
+    noContextLinks,
     Layer.succeed(McpInvocationContext.McpInvocationContext, {
       environmentId: EnvironmentId.make("environment"),
       requestNamespace: "client:session-1",

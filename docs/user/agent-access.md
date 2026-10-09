@@ -81,6 +81,16 @@ delegated task until it finishes. It cannot message, wait on, or stop its own th
 tools, and it cannot answer another thread's approvals; those still come to you. It can archive
 threads but never delete them.
 
+## Attach links as context
+
+When an agent sends a message with `t3_thread_send` or starts a thread with `t3_thread_launch`, it
+can pass `contextLinks`: Slack message links, Notion pages, Linear issues, GitHub issues, and
+GitHub repositories. Each becomes a context chip, the same as pasting the link into the composer,
+so the receiving agent gets the thread, page, or issue with the message and repositories are
+cloned into its context folder. The integration must be connected and turned on under
+**Settings → Integrations**; if a link cannot be read, the message is not sent and the agent is
+told why. Pull request links stay plain links.
+
 ## Revoke a token
 
 Click **Revoke** next to the token under **Agent access**. The agent loses access immediately.

@@ -1,10 +1,4 @@
-import {
-  type ComposerContextId,
-  type NotionPageContext,
-  type NotionPageContextRecord,
-  WS_METHODS,
-} from "@t3tools/contracts";
-import { sanitizeComposerContextLabel } from "@t3tools/shared/composerContextReferences";
+import { WS_METHODS } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 import {
   createEnvironmentRpcCommand,
@@ -12,6 +6,9 @@ import {
   createEnvironmentRpcSubscriptionAtomFamily,
 } from "./runtime.ts";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
+
+export { notionPageContextRecord } from "@t3tools/shared/integrationContextRecords";
+
 export function createNotionEnvironmentAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
 ) {
@@ -46,17 +43,5 @@ export function createNotionEnvironmentAtoms<R, E>(
       label: "environment-data:notion:get-page",
       tag: WS_METHODS.notionGetPage,
     }),
-  };
-}
-export function notionPageContextRecord(page: NotionPageContext): NotionPageContextRecord {
-  return {
-    version: 1,
-    kind: "notion-page",
-    contextId: `notion-page_${page.id}` as ComposerContextId,
-    label: sanitizeComposerContextLabel(page.title, "notion-page"),
-    pageId: page.id,
-    title: page.title.slice(0, 2048),
-    url: page.url.slice(0, 2048),
-    markdown: page.markdown,
   };
 }

@@ -202,7 +202,7 @@ import {
   findComposerObjectLinks,
   findTypedComposerObjectLink,
   locateComposerObjectLink,
-} from "@t3tools/client-runtime/composer-object-links";
+} from "@t3tools/shared/composerObjectLinks";
 import {
   getRestingComposerImagePreviewCounts,
   resolveRestingComposerControlsLayout,

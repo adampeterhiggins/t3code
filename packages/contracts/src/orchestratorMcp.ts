@@ -431,9 +431,23 @@ export const OrchestratorMcpThreadReadResult = Schema.Struct({
 });
 export type OrchestratorMcpThreadReadResult = typeof OrchestratorMcpThreadReadResult.Type;
 
+/**
+ * Links an agent attaches to a message the way a user pastes them into the composer: each
+ * becomes a context chip whose content the server reads when the message is sent.
+ */
+export const OrchestratorMcpContextLinks = Schema.Array(
+  TrimmedNonEmptyString.check(Schema.isMaxLength(2_048)),
+)
+  .check(Schema.isMaxLength(10))
+  .annotate({
+    description:
+      "Links to attach as context, read now and sent with the message: Slack message permalinks (the whole thread), Notion pages, Linear issues, GitHub issues, and GitHub repository roots (cloned into the thread's context folder). A link that also appears in the message text is replaced there by its chip; the rest are appended. Pull request links are not attachable; leave them in the text. Fails if an integration is not connected or the link cannot be read.",
+  });
+
 export const OrchestratorMcpThreadSendInput = Schema.Struct({
   threadId: ThreadId,
   message: OrchestratorMcpPrompt,
+  contextLinks: Schema.optional(OrchestratorMcpContextLinks),
   mode: Schema.optional(Schema.Literals(["auto", "queue", "steer", "restart"])),
   clientRequestId: Schema.optional(OrchestratorMcpClientRequestId),
 });
