@@ -1,6 +1,6 @@
 import { ArrowLeftIcon, ArrowRightIcon, ChartNoAxesColumnIcon, SettingsIcon } from "lucide-react";
 import type { ReactNode } from "react";
-import { memo, useCallback } from "react";
+import { memo, useCallback, useSyncExternalStore } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { useAtomValue } from "@effect/atom-react";
 
@@ -120,9 +120,25 @@ export function SidebarBrandWidthProbe({
   );
 }
 
+function subscribeToHistoryEntry(onChange: () => void) {
+  window.navigation?.addEventListener("currententrychange", onChange);
+  return () => window.navigation?.removeEventListener("currententrychange", onChange);
+}
+
+// Browsers without the Navigation API keep both buttons enabled, since history depth is unknowable there.
+function readCanGoBack() {
+  return window.navigation?.canGoBack ?? true;
+}
+
+function readCanGoForward() {
+  return window.navigation?.canGoForward ?? true;
+}
+
 // Browser history buttons, matching the navigation.back/forward shortcuts.
 function SidebarHistoryNavigation() {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+  const canGoBack = useSyncExternalStore(subscribeToHistoryEntry, readCanGoBack);
+  const canGoForward = useSyncExternalStore(subscribeToHistoryEntry, readCanGoForward);
   const backShortcut = shortcutLabelForCommand(keybindings, "navigation.back");
   const forwardShortcut = shortcutLabelForCommand(keybindings, "navigation.forward");
 
@@ -132,12 +148,14 @@ function SidebarHistoryNavigation() {
         icon={<ArrowLeftIcon />}
         label="Back"
         shortcut={backShortcut}
+        disabled={!canGoBack}
         onClick={() => window.history.back()}
       />
       <SidebarHistoryButton
         icon={<ArrowRightIcon />}
         label="Forward"
         shortcut={forwardShortcut}
+        disabled={!canGoForward}
         onClick={() => window.history.forward()}
       />
     </div>
@@ -148,18 +166,26 @@ function SidebarHistoryButton({
   icon,
   label,
   shortcut,
+  disabled = false,
   onClick,
 }: {
   icon: ReactNode;
   label: string;
   shortcut: string | null;
+  disabled?: boolean;
   onClick: () => void;
 }) {
   return (
     <Tooltip>
       <TooltipTrigger
         render={
-          <Button aria-label={label} onClick={onClick} size="icon-xs" variant="ghost-muted">
+          <Button
+            aria-label={label}
+            disabled={disabled}
+            onClick={onClick}
+            size="icon-xs"
+            variant="ghost-muted"
+          >
             {icon}
           </Button>
         }
