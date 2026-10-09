@@ -1065,6 +1065,14 @@ the folder to the repository's `info/exclude` so checkpoints and diffs ignore th
 owners and the folder are server settings in **Settings > General**. Mobile's attach menu
 has the same picker, without the recently attached ranking.
 
+A project's **Settings > Storage** lists the clones in each of its checkouts' context folder, with
+their remote and git status, and removes one after a confirmation that names any unpushed commits
+or changed files it throws away. The server refuses a name that is not one folder, a folder that is
+not a git repository, one that resolves outside the context folder through a symlink, and any
+removal while a turn in that checkout is running or waiting on the user. A turn that starts during a
+removal, or a removal that meets a clone in progress, waits for the other to finish. Removal needs the source control write grant and
+is on web and desktop only; it is not an MCP tool, since thread agents cannot delete.
+
 Code: `apps/server/src/contextRepositories/ContextRepositories.ts`,
 `packages/contracts/src/contextRepositories.ts`, `RepositoryContextRecord` in
 `packages/contracts/src/composerContext.ts`,
@@ -1072,8 +1080,9 @@ Code: `apps/server/src/contextRepositories/ContextRepositories.ts`,
 `apps/server/src/orchestration-v2/ThreadLaunchService.ts`), the `context` of `prepared-run.release`
 in `packages/contracts/src/orchestrationV2.ts` and its message restatement in
 `apps/server/src/orchestration-v2/Orchestrator.ts`,
-`packages/client-runtime/src/contextRepositories.ts`, and
+`packages/client-runtime/src/contextRepositories.ts`,
 `apps/web/src/components/chat/RepositoryAttachPicker.tsx`,
+`apps/web/src/components/settings/ContextRepositoriesSettings.tsx`,
 `apps/web/src/components/chat/useComposerRepositoryItems.ts`, and
 `apps/mobile/src/components/RepositoryPickerSheet.tsx`. User guide:
 [composer.md](./user/composer.md#attach-repositories).

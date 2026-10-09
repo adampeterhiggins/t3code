@@ -15,6 +15,7 @@ import { resolveWorktreeCleanupModelSelection } from "@t3tools/shared/serverSett
 import { useRef, useState } from "react";
 
 import { ProviderModelPicker } from "../chat/ProviderModelPicker";
+import { ContextRepositoriesSection } from "./ContextRepositoriesSettings";
 import { connectionAtomRuntime } from "../../connection/runtime";
 import {
   getCustomModelOptionsByInstance,
@@ -590,6 +591,8 @@ export function StorageSettingsPanel() {
           </>
         )}
       </SettingsSection>
+
+      {isProjectScope && <ContextRepositoriesSection members={scope.members} />}
 
       {!isProjectScope && (
         <SettingsSection id="storage-artifacts" title="Artifacts and logs">

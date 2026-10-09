@@ -136,6 +136,15 @@ describe("RPC authorization scopes", () => {
     );
   });
 
+  it("lists context repository clones as a read and removes them as a source control write", () => {
+    expect(requiredScopeForRpcMethod(WS_METHODS.contextRepositoriesInspect)).toBe(
+      AuthOrchestrationReadScope,
+    );
+    expect(requiredScopeForRpcMethod(WS_METHODS.contextRepositoriesRemove)).toBe(
+      AuthSourceControlWriteScope,
+    );
+  });
+
   it("separates viewing pull request file progress from writing it", () => {
     expect(requiredScopeForRpcMethod(WS_METHODS.pullRequestsFilesViewed)).toBe(
       AuthOrchestrationReadScope,

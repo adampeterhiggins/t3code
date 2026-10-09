@@ -393,6 +393,8 @@ const layerProjectCloneTracker = ProjectCloneTracker.layer.pipe(
 
 const layerContextRepositories = ContextRepositories.layer.pipe(
   Layer.provide(layerSourceControlRepositoryService),
+  // Removal refuses while a turn runs in the workspace.
+  Layer.provide(Layer.merge(ProjectionStoreV2.layer, ProjectStore.layer)),
   Layer.provide(GitVcsDriver.layer),
   Layer.provide(GitHubCli.layer),
 );

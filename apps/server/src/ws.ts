@@ -2644,6 +2644,10 @@ const layerWsRpc = (
           Effect.flatMap(contextRepositoryDirectory, (directory) =>
             contextRepositories.inspect({ cwd: input.cwd, directory }),
           ),
+        [WS_METHODS.contextRepositoriesRemove]: (input) =>
+          Effect.flatMap(contextRepositoryDirectory, (directory) =>
+            contextRepositories.remove({ ...input, directory }),
+          ),
         [WS_METHODS.sourceControlCloneRepository]: (input) =>
           sourceControlRepositories.cloneRepository(input),
         [WS_METHODS.projectCloneStart]: (input) =>

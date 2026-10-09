@@ -252,6 +252,10 @@ clone fails, the agent still starts. Select the chip in the sent message to see 
 the agent is told the same thing. Clones use the server machine's git and `gh` credentials, and
 are not tracked by the workspace's own git.
 
+To delete clones you no longer need, open the project's **Settings > Storage** on web or desktop and
+remove them under **Context repositories**. The confirmation warns about unpushed commits or
+changed files. Removal is refused while a turn in that checkout is running or waiting on you.
+
 ## Context in your message
 
 Context you attach lands where your cursor is, as a chip inside your text: a terminal excerpt,

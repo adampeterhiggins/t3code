@@ -1,22 +1,75 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
-import { ComposerContextId, type RepositoryContextRecord } from "@t3tools/contracts";
+import {
+  ComposerContextId,
+  ProjectId,
+  type OrchestrationProjectShell,
+  type OrchestrationV2ThreadShell,
+  type RepositoryContextRecord,
+} from "@t3tools/contracts";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import { ChildProcessSpawner } from "effect/process";
 
 import * as ServerConfig from "../config.ts";
+import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
+import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
 import * as GitHubCli from "../sourceControl/GitHubCli.ts";
 import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
 import * as SourceControlRepositoryService from "../sourceControl/SourceControlRepositoryService.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
+import { withWorkspaceLease } from "../workspace/workspaceLease.ts";
 
 import * as ContextRepositories from "./ContextRepositories.ts";
 
+/** Threads with unfinished work, as the removal guard sees them. */
+const runningThreads: Array<{
+  readonly worktreePath: string | null;
+  readonly root: string;
+  readonly status?: "running" | "waiting";
+}> = [];
+/** Runs as the removal guard reads running work, so a test can hold a removal there. */
+let beforeRunningCheck: Effect.Effect<void> = Effect.void;
+const ORCHESTRATION_MOCKS = Layer.merge(
+  Layer.mock(ProjectionStore.ProjectionStoreV2)({
+    getShellSnapshot: () =>
+      Effect.suspend(() => beforeRunningCheck).pipe(
+        Effect.as({
+          schemaVersion: 1,
+          snapshotSequence: 0,
+          archivedThreads: [],
+          threads: runningThreads.map(
+            (thread, index) =>
+              ({
+                projectId: ProjectId.make(`project-${index}`),
+                worktreePath: thread.worktreePath,
+                activityRunStatus: thread.status ?? "running",
+              }) as OrchestrationV2ThreadShell,
+          ),
+        }),
+      ),
+  }),
+  Layer.mock(ProjectStore.ProjectStoreV2)({
+    listShells: () =>
+      Effect.succeed(
+        runningThreads.map(
+          (thread, index) =>
+            ({
+              id: ProjectId.make(`project-${index}`),
+              workspaceRoot: thread.root,
+            }) as OrchestrationProjectShell,
+        ),
+      ),
+  }),
+);
+
 const TestLayer = ContextRepositories.layer.pipe(
+  Layer.provide(ORCHESTRATION_MOCKS),
   Layer.provide(SourceControlRepositoryService.layer),
   Layer.provide(
     Layer.mock(SourceControlProviderRegistry.SourceControlProviderRegistry)({
@@ -170,11 +223,139 @@ it.layer(TestLayer)("ContextRepositories", (it) => {
       expect(outcome?.outcome?.detail).toContain("must be inside the workspace");
     }),
   );
+
+  it.effect("removes a clone so it no longer lists", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const service = yield* ContextRepositories.ContextRepositories;
+      const { remote, workspace } = yield* makeFixture();
+      yield* service.ensure({ cwd: workspace, directory: "", repositories: [record(remote)] });
+
+      yield* service.remove({ cwd: workspace, directory: "", directoryName: "api" });
+      expect(yield* fs.exists(path.join(workspace, ".context/api"))).toBe(false);
+      expect((yield* service.inspect({ cwd: workspace, directory: "" })).clones).toEqual([]);
+    }),
+  );
+
+  it.effect("refuses names that are not one folder, and folders that are not clones", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const service = yield* ContextRepositories.ContextRepositories;
+      const { workspace } = yield* makeFixture();
+      yield* fs.makeDirectory(path.join(workspace, ".context/notes"), { recursive: true });
+
+      for (const directoryName of ["..", ".", "a/b", "../index.ts", ""]) {
+        const error = yield* Effect.flip(
+          service.remove({ cwd: workspace, directory: "", directoryName }),
+        );
+        expect(error.detail).toBe("The folder name must be a single path segment.");
+      }
+      const notClone = yield* Effect.flip(
+        service.remove({ cwd: workspace, directory: "", directoryName: "notes" }),
+      );
+      expect(notClone.detail).toContain("not a git repository");
+      expect(yield* fs.exists(path.join(workspace, ".context/notes"))).toBe(true);
+      expect(yield* fs.exists(path.join(workspace, "index.ts"))).toBe(true);
+      const outside = yield* Effect.flip(
+        service.remove({ cwd: workspace, directory: "../elsewhere", directoryName: "api" }),
+      );
+      expect(outside.detail).toContain("must be inside the workspace");
+    }),
+  );
+
+  it.effect("refuses a clone, or a context folder, that links outside the workspace", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const service = yield* ContextRepositories.ContextRepositories;
+      const { base, seed, workspace } = yield* makeFixture();
+      // `seed` is a real git repository outside the workspace.
+      yield* fs.makeDirectory(path.join(workspace, ".context"));
+      yield* fs.symlink(seed, path.join(workspace, ".context/linked"));
+
+      const linkedClone = yield* Effect.flip(
+        service.remove({ cwd: workspace, directory: "", directoryName: "linked" }),
+      );
+      expect(linkedClone.detail).toContain("resolves outside .context");
+      expect(yield* fs.exists(path.join(seed, ".git"))).toBe(true);
+
+      yield* fs.symlink(base, path.join(workspace, "linked-context"));
+      const linkedDirectory = yield* Effect.flip(
+        service.remove({ cwd: workspace, directory: "linked-context", directoryName: "seed" }),
+      );
+      expect(linkedDirectory.detail).toContain("resolves outside linked-context");
+      expect(yield* fs.exists(path.join(seed, ".git"))).toBe(true);
+    }),
+  );
+
+  it.effect("refuses while a turn runs in the workspace, not in another one", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const service = yield* ContextRepositories.ContextRepositories;
+      const { base, remote, workspace } = yield* makeFixture();
+      yield* service.ensure({ cwd: workspace, directory: "", repositories: [record(remote)] });
+
+      // A project-root thread: its workspace is the project's root. A run
+      // waiting on the user resumes in the workspace, so it counts too.
+      runningThreads.push({ worktreePath: null, root: workspace, status: "waiting" });
+      const busy = yield* Effect.flip(
+        service.remove({ cwd: workspace, directory: "", directoryName: "api" }),
+      );
+      expect(busy.detail).toContain("A turn is running in this workspace");
+      expect(yield* fs.exists(path.join(workspace, ".context/api/.git"))).toBe(true);
+
+      // A worktree thread of the same project runs somewhere else.
+      runningThreads.splice(0, runningThreads.length, {
+        worktreePath: path.join(base, "worktree"),
+        root: workspace,
+      });
+      yield* service.remove({ cwd: workspace, directory: "", directoryName: "api" });
+      expect(yield* fs.exists(path.join(workspace, ".context/api"))).toBe(false);
+    }).pipe(Effect.ensuring(Effect.sync(() => runningThreads.splice(0)))),
+  );
+
+  it.effect("a turn starting in the workspace waits for a removal under way", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const service = yield* ContextRepositories.ContextRepositories;
+      const { remote, workspace } = yield* makeFixture();
+      yield* service.ensure({ cwd: workspace, directory: "", repositories: [record(remote)] });
+      const clonePath = path.join(workspace, ".context/api");
+
+      // Hold the removal after it has checked for running work.
+      const checked = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      beforeRunningCheck = Deferred.succeed(checked, undefined).pipe(
+        Effect.andThen(Deferred.await(release)),
+      );
+      const removal = yield* service
+        .remove({ cwd: workspace, directory: "", directoryName: "api" })
+        .pipe(Effect.forkChild);
+      yield* Deferred.await(checked);
+
+      // What provider turn start does before handing the provider its cwd.
+      const turnStarting = yield* Deferred.make<void>();
+      const turn = yield* Deferred.succeed(turnStarting, undefined).pipe(
+        Effect.andThen(withWorkspaceLease(workspace, fs.exists(clonePath))),
+        Effect.forkChild,
+      );
+      yield* Deferred.await(turnStarting);
+      yield* Deferred.succeed(release, undefined);
+
+      yield* Fiber.join(removal);
+      expect(yield* Fiber.join(turn)).toBe(false);
+    }).pipe(Effect.ensuring(Effect.sync(() => (beforeRunningCheck = Effect.void)))),
+  );
 });
 
 const listingLayer = (repositoriesByOwner: Record<string, ReadonlyArray<string>>) => {
   const calls: Array<string> = [];
   const layer = ContextRepositories.layer.pipe(
+    Layer.provide(ORCHESTRATION_MOCKS),
     Layer.provide(SourceControlRepositoryService.layer),
     Layer.provide(
       Layer.mock(SourceControlProviderRegistry.SourceControlProviderRegistry)({

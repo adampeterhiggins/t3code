@@ -19,6 +19,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.serverGetResourceUsage]: "server",
   [WS_METHODS.contextRepositoriesList]: "source-control",
   [WS_METHODS.contextRepositoriesInspect]: "source-control",
+  [WS_METHODS.contextRepositoriesRemove]: "source-control",
   [WS_METHODS.linearSubscribeState]: "linear",
   [WS_METHODS.linearStartLogin]: "linear",
   [WS_METHODS.linearCompleteLogin]: "linear",

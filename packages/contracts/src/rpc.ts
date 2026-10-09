@@ -57,6 +57,7 @@ import {
   ContextRepositoryInspectResult,
   ContextRepositoryListInput,
   ContextRepositoryListResult,
+  ContextRepositoryRemoveInput,
 } from "./contextRepositories.ts";
 import {
   AcpRegistryAcceptUrlAuthInput,
@@ -625,6 +626,7 @@ export const WS_METHODS = {
   // Context repository methods
   contextRepositoriesList: "contextRepositories.list",
   contextRepositoriesInspect: "contextRepositories.inspect",
+  contextRepositoriesRemove: "contextRepositories.remove",
 
   // Linear methods
   linearSubscribeState: "linear.subscribeState",
@@ -1479,6 +1481,11 @@ const WsContextRepositoriesInspectRpc = Rpc.make(WS_METHODS.contextRepositoriesI
   error: ContextRepositoryRpcError,
 });
 
+const WsContextRepositoriesRemoveRpc = Rpc.make(WS_METHODS.contextRepositoriesRemove, {
+  payload: ContextRepositoryRemoveInput,
+  error: ContextRepositoryRpcError,
+});
+
 // Clone-backed project creation. `start` returns once the project exists and
 // the clone is running; progress arrives on the subscription.
 const WsProjectCloneStartRpc = Rpc.make(WS_METHODS.projectCloneStart, {
@@ -2291,6 +2298,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsSourceControlPublishRepositoryRpc,
   WsContextRepositoriesListRpc,
   WsContextRepositoriesInspectRpc,
+  WsContextRepositoriesRemoveRpc,
   WsLinearSubscribeStateRpc,
   WsLinearStartLoginRpc,
   WsLinearCompleteLoginRpc,
