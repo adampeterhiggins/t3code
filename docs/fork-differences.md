@@ -224,7 +224,8 @@ thread details panel, one row each, newest first, and removed the right-panel Ag
   status dot, the provider's icon (`AgentFleetEntry.providerInstanceId`), token total, elapsed time,
   and start time, a second line with a working agent's latest tool call
   (a static `…` while it runs, a `waiting` badge when the agent waits on the user), a finished
-  agent's first result line (`subagentResultSummaryLine`) or a failed agent's error, and hover previews (status, provider, compact model with reasoning effort and `run N`,
+  agent's first result line (`subagentResultSummaryLine`) or a failed agent's error (the toolbar's
+  details toggle hides these second lines, remembered per device), and hover previews (status, provider, compact model with reasoning effort and `run N`,
   prompt, result or error, the latest five tool calls, usage). Clicking a tool call in a preview
   opens the agent on that call, expanded and scrolled into view (`agentDrillStore.ts`
   `focusToolCall`). Agents spawned by an agent sit indented under it, found through child-thread

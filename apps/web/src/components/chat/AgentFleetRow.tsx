@@ -9,6 +9,7 @@
  *   that call. Right-click for the agent menu; Alt-click references the agent in chat by its
  *   `@handle`. An agent recorded before its child thread exists
  *   opens too, with its record alone.
+ * - The Agents panel's details toggle hides every row's second line (`agentListViewStore.ts`).
  * - Only a working row on screen (or an open preview) subscribes to its child thread.
  */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
@@ -39,6 +40,7 @@ import type {
 import { CheckIcon, CornerDownRightIcon, XIcon } from "lucide-react";
 import { useMemo, useRef, type MouseEvent, type ReactNode } from "react";
 
+import { useAgentListViewStore } from "~/agentListViewStore";
 import { useClientSettings } from "~/hooks/useSettings";
 import { useArchivedThreadSnapshots } from "~/lib/archivedThreadsState";
 import { cn } from "~/lib/utils";
@@ -268,6 +270,7 @@ export function AgentRow(props: {
   const provider = props.providers.get(entry.providerInstanceId);
   const previewActions = useRef<{ close: () => void; unmount: () => void } | null>(null);
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
+  const showDetails = useAgentListViewStore((state) => state.showRowDetails);
   const live = isActiveSubagentStatus(agent.status);
   const failed = agent.status === "failed";
   const open = (toolCallId?: TurnItemId) => {
@@ -346,7 +349,7 @@ export function AgentRow(props: {
             {agent.startedAt ? formatSecondsTimestamp(agent.startedAt, timestampFormat) : null}
           </span>
         </span>
-        {live ? (
+        {!showDetails ? null : live ? (
           <span className="flex h-5 min-w-0 items-center ps-3.5">
             <SubagentActivityLine
               childRef={
