@@ -19,6 +19,7 @@ export const ReviewCommentContextSchema = Schema.Struct({
   endIndex: Schema.Number,
   rangeLabel: Schema.String,
   text: Schema.String,
+  instructions: Schema.optional(Schema.String),
   diff: Schema.String,
   fenceLanguage: Schema.optional(Schema.String),
   selection: Schema.optional(ReviewCommentSelectionSchema),
@@ -33,7 +34,10 @@ export interface ReviewCommentContext {
   readonly startIndex: number;
   readonly endIndex: number;
   readonly rangeLabel: string;
+  /** What the chip shows: the reader's note, or quoted material it carries. */
   readonly text: string;
+  /** Sent to the agent but never shown, such as how to treat the quoted material. */
+  readonly instructions?: string | undefined;
   readonly diff: string;
   readonly fenceLanguage?: string | undefined;
   readonly selection?: ReviewCommentSelection | undefined;

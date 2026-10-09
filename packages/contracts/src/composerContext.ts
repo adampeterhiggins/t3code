@@ -212,6 +212,8 @@ export const ReviewCommentContextRecord = Schema.Struct({
   endIndex: NonNegativeInt,
   rangeLabel: ShortString,
   text: BoundedString(COMPOSER_CONTEXT_REVIEW_TEXT_MAX_CHARS),
+  /** Read by the agent only: framing the chip needs that the reader should not see as their note. */
+  instructions: Schema.optionalKey(BoundedString(COMPOSER_CONTEXT_REVIEW_TEXT_MAX_CHARS)),
   diff: BoundedString(COMPOSER_CONTEXT_REVIEW_DIFF_MAX_CHARS),
   fenceLanguage: Schema.optionalKey(BoundedString(64)),
   pullRequest: Schema.optionalKey(PullRequestContextMetadata),

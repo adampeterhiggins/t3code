@@ -154,8 +154,12 @@ function renderReviewComment(record: ComposerContextRecord): string {
     ...[...record.diff.matchAll(/`+/g)].map((match) => match[0].length),
   );
   const fence = "`".repeat(Math.max(3, longestRun + 1));
+  // An older host has nowhere to keep agent-only instructions apart, so they lead the text again.
+  const text = [record.instructions?.trim(), record.text]
+    .filter((part) => part !== undefined && part.length > 0)
+    .join("\n");
   const body = record.diff
-    ? `${record.text}\n\n${fence}${record.fenceLanguage ?? "diff"}\n${record.diff}\n${fence}`
-    : record.text;
+    ? `${text}\n\n${fence}${record.fenceLanguage ?? "diff"}\n${record.diff}\n${fence}`
+    : text;
   return `<review_comment ${attributes}>\n${body}\n</review_comment>`;
 }
