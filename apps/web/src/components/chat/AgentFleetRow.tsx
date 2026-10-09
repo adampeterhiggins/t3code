@@ -366,8 +366,9 @@ export function AgentRow(props: {
             </span>
           </span>
         ) : resultLine ? (
-          <span className="flex h-5 min-w-0 items-center ps-3.5">
-            <span className="min-w-0 truncate text-2xs text-muted-foreground">{resultLine}</span>
+          <span className="flex h-5 min-w-0 items-center gap-1 ps-3.5 text-muted-foreground">
+            <CornerDownRightIcon aria-label="Result" className="size-3 shrink-0 opacity-70" />
+            <span className="min-w-0 truncate text-2xs">{resultLine}</span>
           </span>
         ) : null}
       </PreviewCardTrigger>
