@@ -160,7 +160,7 @@ export const make = Effect.gen(function* () {
     const projectId = settings.slackMentionTrigger.projectId;
     if (!isActive(settings) || projectId === null) {
       // Turning the trigger back on starts from that moment.
-      yield* store.remove(STATE_KEY);
+      if (yield* store.has(STATE_KEY)) yield* store.remove(STATE_KEY);
       return;
     }
     const account = yield* auth.account;

@@ -189,6 +189,35 @@ it.effect("disable and account changes baseline historical mentions again", () =
   }).pipe(Effect.provide(KeyValueStore.layerMemory)),
 );
 
+it.effect("disabled polling only removes durable state when it exists", () =>
+  Effect.gen(function* () {
+    const h = yield* harness;
+    const backing = yield* KeyValueStore.KeyValueStore;
+    let removals = 0;
+    const trigger = yield* h.create.pipe(
+      Effect.provideService(KeyValueStore.KeyValueStore, {
+        ...backing,
+        remove: (key) => {
+          removals++;
+          return backing.remove(key);
+        },
+      }),
+    );
+    h.setSettings({ enabled: false });
+    yield* trigger.pollOnce;
+    yield* trigger.pollOnce;
+    assert.strictEqual(removals, 0);
+    h.setSettings({ enabled: true });
+    yield* trigger.pollOnce;
+    h.setSettings({ enabled: false });
+    yield* trigger.pollOnce;
+    yield* trigger.pollOnce;
+    assert.strictEqual(removals, 1);
+    assert.strictEqual(h.searches, 0);
+    assert.strictEqual(h.launches.length, 0);
+  }).pipe(Effect.provide(KeyValueStore.layerMemory)),
+);
+
 it("matches explicit channel scope, optional DMs and literal whole-word keywords", () => {
   const config = {
     ...DEFAULT_SERVER_SETTINGS.slackMentionTrigger,
