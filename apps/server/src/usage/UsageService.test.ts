@@ -31,6 +31,8 @@ import * as TestClock from "effect/testing/TestClock";
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
+import * as BackgroundPolicy from "../background/BackgroundPolicy.ts";
+import * as ProviderHostLive from "../provider/ProviderHostLive.ts";
 import * as ProviderCredentialStore from "../provider/ProviderCredentialStore.ts";
 import * as ServerConfig from "../config.ts";
 import * as ServerSettings from "../serverSettings.ts";
@@ -75,9 +77,15 @@ const setup = Effect.gen(function* () {
     home,
     transcript: NodePath.join(transcriptDir, "session.jsonl"),
     settings: {
-      providers: {
-        claudeAgent: { homePath: NodePath.join(home, "claude") },
-        codex: { homePath: NodePath.join(home, "codex") },
+      providerInstances: {
+        [ProviderInstanceId.make("claudeAgent")]: {
+          driver: ProviderDriverKind.make("claudeAgent"),
+          config: { homePath: NodePath.join(home, "claude") },
+        },
+        [ProviderInstanceId.make("codex")]: {
+          driver: ProviderDriverKind.make("codex"),
+          config: { homePath: NodePath.join(home, "codex") },
+        },
       },
     },
   };
@@ -95,7 +103,13 @@ const layerService = (input: {
   /** Answers the Cursor SDK key exchange; the default refuses every key. */
   readonly onCursorRequest?: (request: HttpClientRequest.HttpClientRequest) => Response | undefined;
 }) =>
-  ServerSecretStore.layer.pipe(
+  ProviderHostLive.layer.pipe(
+    Layer.provideMerge(ServerSecretStore.layer),
+    Layer.provideMerge(
+      Layer.mock(BackgroundPolicy.BackgroundPolicy)({
+        shouldRunScopeWork: () => Effect.succeed(false),
+      }),
+    ),
     Layer.provideMerge(ServerConfig.layerTest(process.cwd(), { prefix: input.prefix })),
     Layer.provideMerge(NodeServices.layer),
     Layer.provideMerge(CursorUsageReader.layer),
@@ -317,98 +331,86 @@ describe("UsageService", () => {
     }).pipe(Effect.scoped),
   );
 
-  it.live.each([
-    { explicitDefault: true, label: "explicit" },
-    { explicitDefault: false, label: "legacy" },
-  ])(
-    "reads shared managed $label default and disabled extra account history once",
-    ({ explicitDefault }) =>
-      Effect.gen(function* () {
-        const { home, settings } = yield* setup;
-        const summary = yield* Effect.gen(function* () {
-          for (const [id, output] of [
-            ["codex", 17],
-            ["codex-personal", 23],
-          ] as const) {
-            const sessions = NodePath.join(home, "shared-codex", "sessions");
-            yield* Effect.promise(async () => {
-              await NodeFSP.mkdir(sessions, { recursive: true });
-              await NodeFSP.writeFile(
-                NodePath.join(sessions, `${id}-rollout.jsonl`),
-                [
-                  { type: "session_meta", payload: { id } },
-                  { type: "turn_context", payload: { model: "gpt-5.6-sol" } },
-                  {
-                    type: "event_msg",
-                    timestamp: "2026-08-01T10:00:00Z",
-                    payload: {
-                      type: "token_count",
-                      info: { last_token_usage: { input_tokens: 10, output_tokens: output } },
-                    },
+  it.live("reads shared managed default and disabled extra account history once", () =>
+    Effect.gen(function* () {
+      const { home, settings } = yield* setup;
+      const summary = yield* Effect.gen(function* () {
+        for (const [id, output] of [
+          ["codex", 17],
+          ["codex-personal", 23],
+        ] as const) {
+          const sessions = NodePath.join(home, "shared-codex", "sessions");
+          yield* Effect.promise(async () => {
+            await NodeFSP.mkdir(sessions, { recursive: true });
+            await NodeFSP.writeFile(
+              NodePath.join(sessions, `${id}-rollout.jsonl`),
+              [
+                { type: "session_meta", payload: { id } },
+                { type: "turn_context", payload: { model: "gpt-5.6-sol" } },
+                {
+                  type: "event_msg",
+                  timestamp: "2026-08-01T10:00:00Z",
+                  payload: {
+                    type: "token_count",
+                    info: { last_token_usage: { input_tokens: 10, output_tokens: output } },
                   },
-                ]
-                  .map((line) => encodeUnknownJsonString(line))
-                  .join("\n") + "\n",
-              );
-            });
-          }
-          const service = yield* UsageService.make;
-          return yield* service.readSummary(WINDOW);
-        }).pipe(
-          // Scoped inside the state directory, so pending cache writes land
-          // before it is removed.
-          Effect.scoped,
-          Effect.provide(
-            layerService({
-              prefix: "usage-managed-accounts",
-              home,
-              settings: {
-                ...settings,
-                providers: {
-                  ...settings.providers,
-                  codex: { setupMode: "managed", homePath: NodePath.join(home, "shared-codex") },
                 },
-                providerInstances: {
-                  ...(explicitDefault
-                    ? {
-                        [ProviderInstanceId.make("codex")]: {
-                          driver: ProviderDriverKind.make("codex"),
-                          config: {
-                            setupMode: "managed",
-                            homePath: NodePath.join(home, "shared-codex"),
-                          },
-                        },
-                      }
-                    : {}),
-                  [ProviderInstanceId.make("codex-personal")]: {
-                    driver: ProviderDriverKind.make("codex"),
-                    enabled: false,
-                    config: {
-                      setupMode: "managed",
-                      homePath: NodePath.join(home, "shared-codex"),
-                      shadowHomePath: NodePath.join(home, "personal-shadow"),
-                    },
-                    environment: [
-                      {
-                        name: "CODEX_HOME",
-                        value: NodePath.join(home, "ignored-environment"),
-                        sensitive: false,
-                      },
-                    ],
+              ]
+                .map((line) => encodeUnknownJsonString(line))
+                .join("\n") + "\n",
+            );
+          });
+        }
+        const service = yield* UsageService.make;
+        return yield* service.readSummary(WINDOW);
+      }).pipe(
+        // Scoped inside the state directory, so pending cache writes land
+        // before it is removed.
+        Effect.scoped,
+        Effect.provide(
+          layerService({
+            prefix: "usage-managed-accounts",
+            home,
+            settings: {
+              ...settings,
+              providerInstances: {
+                ...settings.providerInstances,
+                [ProviderInstanceId.make("codex")]: {
+                  driver: ProviderDriverKind.make("codex"),
+                  config: {
+                    setupMode: "managed",
+                    homePath: NodePath.join(home, "shared-codex"),
                   },
+                },
+                [ProviderInstanceId.make("codex-personal")]: {
+                  driver: ProviderDriverKind.make("codex"),
+                  enabled: false,
+                  config: {
+                    setupMode: "managed",
+                    homePath: NodePath.join(home, "shared-codex"),
+                    shadowHomePath: NodePath.join(home, "personal-shadow"),
+                  },
+                  environment: [
+                    {
+                      name: "CODEX_HOME",
+                      value: NodePath.join(home, "ignored-environment"),
+                      sensitive: false,
+                    },
+                  ],
                 },
               },
-            }),
-          ),
-        );
-        assert.strictEqual(totalOutputTokens(summary), 40);
-        assert.strictEqual(
-          summary.sources.filter(
-            (source) => source.fingerprint.provider === "codex" && source.status === "ok",
-          ).length,
-          1,
-        );
-      }).pipe(Effect.scoped),
+            },
+          }),
+        ),
+      );
+      assert.strictEqual(totalOutputTokens(summary), 40);
+      assert.strictEqual(
+        summary.sources.filter(
+          (source) => source.fingerprint.provider === "codex" && source.status === "ok",
+        ).length,
+        1,
+      );
+    }).pipe(Effect.scoped),
   );
   it.live("omits Cursor account usage when no file login is saved", () =>
     Effect.gen(function* () {
@@ -978,6 +980,7 @@ describe("UsageService", () => {
             settings: {
               ...settings,
               providerInstances: {
+                ...settings.providerInstances,
                 [ProviderInstanceId.make("claude-work")]: {
                   driver: ProviderDriverKind.make("claudeAgent"),
                   enabled: false,
@@ -1037,7 +1040,7 @@ describe("UsageService", () => {
   );
 
   it.live(
-    "uses explicit account settings before environment and legacy homes, then refreshes them",
+    "uses explicit account settings before environment and default homes, then refreshes them",
     () =>
       Effect.gen(function* () {
         const { transcript, settings, home } = yield* setup;
@@ -1074,6 +1077,7 @@ describe("UsageService", () => {
           );
           yield* settingsService.updateSettings({
             providerInstances: {
+              ...settings.providerInstances,
               [ProviderInstanceId.make("claudeAgent")]: {
                 driver: ProviderDriverKind.make("claudeAgent"),
                 config: { homePath: "" },
@@ -1102,6 +1106,7 @@ describe("UsageService", () => {
               settings: {
                 ...settings,
                 providerInstances: {
+                  ...settings.providerInstances,
                   [ProviderInstanceId.make("claudeAgent")]: {
                     driver: ProviderDriverKind.make("claudeAgent"),
                     config: { homePath: configured },
@@ -1462,7 +1467,15 @@ describe("UsageService", () => {
           layerService({
             prefix: "usage-service-cleanup-test",
             home,
-            settings: { providers: { ...settings.providers, claudeAgent: { homePath: alias } } },
+            settings: {
+              providerInstances: {
+                ...settings.providerInstances,
+                [ProviderInstanceId.make("claudeAgent")]: {
+                  driver: ProviderDriverKind.make("claudeAgent"),
+                  config: { homePath: alias },
+                },
+              },
+            },
             ratesDocument: {
               "claude-fable-5": { input_cost_per_token: 1e-5, output_cost_per_token: 5e-5 },
             },

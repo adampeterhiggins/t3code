@@ -10,7 +10,7 @@ import { CustomAcpSettings } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-import { execScriptSource, writeFakeCli } from "../testUtils/fakeCli.ts";
+import { execScriptSource, writeFakeCli } from "@t3tools/provider-testing/fakeCli";
 import { checkCustomAcpProviderStatus } from "./CustomAcpProvider.ts";
 
 const decodeSettings = Schema.decodeSync(CustomAcpSettings);

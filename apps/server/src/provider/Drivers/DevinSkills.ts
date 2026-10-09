@@ -25,7 +25,7 @@ import * as Schema from "effect/Schema";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
 
-import { collectUint8StreamText } from "../../stream/collectUint8StreamText.ts";
+import { collectUint8StreamText } from "@t3tools/provider-core/server/collectStreamText";
 import { isWindowsCommandNotFound } from "../../processRunner.ts";
 
 /** Discovery budget matches the other provider skill probes (Codex uses 20s). */

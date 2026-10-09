@@ -38,11 +38,11 @@ import {
   spawnAndCollect,
   type CommandResult,
   type ServerProviderDraft,
-} from "./providerSnapshot.ts";
+} from "@t3tools/provider-core/server/snapshotProbe";
 import {
   enrichProviderSnapshotWithVersionAdvisory,
   type ProviderMaintenanceCapabilities,
-} from "./providerMaintenance.ts";
+} from "@t3tools/provider-core/server/maintenanceResolver";
 const PROVIDER_KIND = ProviderDriverKind.make("devin");
 
 const DEVIN_PRESENTATION = {

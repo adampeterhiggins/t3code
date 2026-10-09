@@ -34,12 +34,12 @@ import {
   providerModelsFromSettings,
   spawnAndCollect,
   type ServerProviderDraft,
-} from "./providerSnapshot.ts";
+} from "@t3tools/provider-core/server/snapshotProbe";
 import { resolveClaudeSdkExecutablePath } from "./Drivers/ClaudeExecutable.ts";
 import { makeClaudeEnvironment, resolveClaudeHomePath } from "./Drivers/ClaudeHome.ts";
 import { discoverClaudeSkills } from "./Drivers/ClaudeSkills.ts";
-import type { ProviderWorkspaceSnapshot } from "./ProviderDriver.ts";
-import { makeUnavailableUsageLimits } from "./providerUsageLimits.ts";
+import type { ProviderWorkspaceSnapshot } from "@t3tools/provider-core/server/driver";
+import { makeUnavailableUsageLimits } from "@t3tools/provider-core/server/usageLimits";
 import {
   type ClaudeScopedLimitNames,
   claudeUsageResponseToLimits,
@@ -50,6 +50,7 @@ import {
   type ClaudeModelCatalog,
   formatClaudeVersionUpgradeMessage,
   resolveClaudeModelsForVersion,
+  resolveClaudeUpdateRequiredModels,
 } from "./ClaudeModelCatalog.ts";
 
 const DEFAULT_CLAUDE_MODEL_CAPABILITIES: ModelCapabilities = createModelCapabilities({
@@ -165,6 +166,38 @@ function apiProviderAuthMetadata(
   apiProvider: string | undefined,
 ): { readonly type: string; readonly label: string } | undefined {
   return apiProvider === "bedrock" ? { type: "bedrock", label: "Amazon Bedrock" } : undefined;
+}
+
+/**
+ * Whether the SDK's account payload evidences a credential the CLI can use.
+ *
+ * The capability probe resolves for a logged-out CLI, so a completed probe only
+ * proves Claude Code started. `tokenSource: "none"` is the CLI reporting it
+ * found no token at all, and is the one shape that disproves authentication.
+ * Everything else either names a credential or, on a third-party backend, omits
+ * these fields by design because auth lives with AWS or gcloud instead.
+ *
+ * Silence is deliberately not disproof. Profile-authenticated installs report no
+ * token source, and a CLI too old to send an account payload reports nothing at
+ * all; treating either as logged out would sign working setups out of Settings.
+ * `apiKeySource: "none"` means no API key is in use, so it is no evidence either.
+ */
+function claudeAuthStatus(
+  capabilities: Pick<
+    ClaudeCapabilitiesProbe,
+    "email" | "subscriptionType" | "tokenSource" | "apiKeySource" | "apiProvider"
+  >,
+): "authenticated" | "unauthenticated" {
+  if (capabilities.apiProvider !== undefined && capabilities.apiProvider !== "firstParty") {
+    return "authenticated";
+  }
+  if (capabilities.tokenSource !== "none") return "authenticated";
+  // An `ANTHROPIC_API_KEY` install reports no token source but is authenticated
+  // all the same, so the key and account fields still get a say.
+  const hasApiKey = Boolean(capabilities.apiKeySource) && capabilities.apiKeySource !== "none";
+  return hasApiKey || capabilities.email || capabilities.subscriptionType
+    ? "authenticated"
+    : "unauthenticated";
 }
 
 // ── SDK capability probe ────────────────────────────────────────────
@@ -601,6 +634,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     claudeSettings.customModels,
     DEFAULT_CLAUDE_MODEL_CAPABILITIES,
   );
+  const updateRequiredModels = resolveClaudeUpdateRequiredModels(modelCatalog, parsedVersion);
   const versionUpgradeMessage = formatClaudeVersionUpgradeMessage(modelCatalog, parsedVersion);
 
   const capabilities = resolveCapabilities
@@ -616,6 +650,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
       enabled: claudeSettings.enabled,
       checkedAt,
       models,
+      updateRequiredModels,
       slashCommands: dedupedSlashCommands,
       skills,
       probe: {
@@ -628,14 +663,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     });
   }
 
-  // The SDK init resolves even with no credentials — `tokenSource: "none"`
-  // with no `apiKeySource` means the CLI is signed out, and probe success
-  // alone cannot stand in for authentication.
-  const authenticated =
-    capabilities.tokenSource !== "none" ||
-    (capabilities.apiKeySource !== undefined && capabilities.apiKeySource !== "none");
-
-  if (!authenticated) {
+  if (claudeAuthStatus(capabilities) === "unauthenticated") {
     return buildServerProvider({
       presentation: CLAUDE_PRESENTATION,
       enabled: claudeSettings.enabled,
@@ -702,6 +730,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     enabled: claudeSettings.enabled,
     checkedAt,
     models,
+    updateRequiredModels,
     slashCommands: dedupedSlashCommands,
     skills,
     probe: {

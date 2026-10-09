@@ -7,7 +7,7 @@ import { ChildProcessSpawner } from "effect/process";
 
 import { type DevinSettings, TextGenerationError } from "@t3tools/contracts";
 
-import * as TextGenerationOperations from "./TextGenerationOperations.ts";
+import * as TextGenerationOperations from "@t3tools/provider-core/server/textGenerationOperations";
 import {
   applyDevinAcpModelSelection,
   makeDevinAcpRuntime,

@@ -118,25 +118,19 @@ export function resolveOnboardingProviderLoginCommand(
   const instance = settings.providerInstances[provider.instanceId];
 
   if (provider.driver === "claudeAgent") {
-    const config = decodeClaudeSettings(
-      instance ? (instance.config ?? {}) : settings.providers.claudeAgent,
-    );
+    const config = decodeClaudeSettings(instance?.config ?? {});
     const binaryPath = Option.isSome(config) ? config.value.binaryPath : "claude";
     return `${quoteProviderBinary(binaryPath, "claude", platform)} auth login`;
   }
 
   if (provider.driver === "codex") {
-    const config = decodeCodexSettings(
-      instance ? (instance.config ?? {}) : settings.providers.codex,
-    );
+    const config = decodeCodexSettings(instance?.config ?? {});
     const binaryPath = Option.isSome(config) ? config.value.binaryPath : "codex";
     return `${quoteProviderBinary(binaryPath, "codex", platform)} login`;
   }
 
   if (provider.driver === "devin") {
-    const config = decodeDevinSettings(
-      instance ? (instance.config ?? {}) : settings.providers.devin,
-    );
+    const config = decodeDevinSettings(instance?.config ?? {});
     const binaryPath = Option.isSome(config) ? config.value.binaryPath : "devin";
     return `${quoteProviderBinary(binaryPath, "devin", platform)} auth login`;
   }

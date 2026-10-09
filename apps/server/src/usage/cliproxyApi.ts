@@ -17,12 +17,12 @@ import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 import { claudeUsageResponseToLimits } from "../provider/claudeUsageLimits.ts";
 import { codexPlanLabel } from "../provider/CodexProvider.ts";
 import { codexRateLimitsToLimits } from "../provider/codexUsageLimits.ts";
-import { GrokUsageResponse, grokUsageResponseToLimits } from "../provider/grokUsageLimits.ts";
+import { GrokUsageResponse, grokUsageResponseToLimits } from "@t3tools/provider-grok/server";
 import {
   clampPercent,
   makeUnavailableUsageLimits,
   makeUsageLimits,
-} from "../provider/providerUsageLimits.ts";
+} from "@t3tools/provider-core/server/usageLimits";
 
 const AuthFile = Schema.Struct({
   id: Schema.String,
