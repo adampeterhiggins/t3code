@@ -2850,7 +2850,8 @@ export const OrchestrationV2Command = Schema.Union([
   /**
    * Sends the usage-limit continuation into the same session now, without
    * waiting for the reset. Rejected unless `runId` is still the run stopped on
-   * the usage limit.
+   * the usage limit. `modelSelection` continues on the model the user picked
+   * since, so the continuation can leave the limited provider.
    */
   Schema.Struct({
     type: Schema.Literal("thread.usage-limit.resume-now"),
@@ -2858,6 +2859,7 @@ export const OrchestrationV2Command = Schema.Union([
     commandId: CommandId,
     threadId: ThreadId,
     runId: RunId,
+    modelSelection: Schema.optional(ModelSelection),
   }),
   Schema.Struct({
     type: Schema.Literal("thread.pull-request.link"),

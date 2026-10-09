@@ -124,6 +124,8 @@ export type MarkThreadUnreadInput = ThreadCommandInput;
 export interface ResumeUsageLimitedThreadInput extends ThreadCommandInput {
   /** The run stopped on the usage limit. */
   readonly runId: RunId;
+  /** The composer's model, when the user switched away from the limited one. */
+  readonly modelSelection?: ModelSelection;
 }
 
 export interface UpdateThreadMetadataInput extends ThreadCommandInput {
@@ -606,6 +608,7 @@ export const resumeUsageLimitedThread = Effect.fn("EnvironmentCommands.resumeUsa
       commandId: yield* allocateCommandId(input),
       threadId: input.threadId,
       runId: input.runId,
+      ...(input.modelSelection === undefined ? {} : { modelSelection: input.modelSelection }),
       createdBy: "user",
       creationSource: input.creationSource ?? "web",
     });

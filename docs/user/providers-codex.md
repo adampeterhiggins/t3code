@@ -109,8 +109,9 @@ The thread keeps its work and offers a way to pick it back up:
   reset, even if no app is open. **Cancel auto-resume** turns it off again. It
   appears only when Codex reported a reset time. **Snooze until reset** hides
   the thread until then.
-- **Resume now** continues the same session straight away, for example after
-  your workspace added credits.
+- **Resume now** continues straight away, for example after your workspace
+  added credits. Pick another model in the composer first to continue there
+  instead of on the limited account.
 - **Continue in new tab** (web and desktop) forks the chat into a new tab on
   another account or model, carrying this conversation over. See
   [Switch accounts in an existing thread](#switch-accounts-in-an-existing-thread).

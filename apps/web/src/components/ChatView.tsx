@@ -8132,11 +8132,14 @@ export default function ChatView(props: ChatViewProps) {
           onResumeNow:
             serverConfig?.environment.capabilities.usageLimitResumeNow === true
               ? async () => {
+                  const modelSelection =
+                    composerRef.current?.getSendContext()?.selectedModelSelection;
                   const result = await resumeUsageLimitedThread({
                     environmentId,
                     input: {
                       threadId: activeThreadShell.id,
                       runId: activeThreadShell.latestRun!.runId,
+                      ...(modelSelection === undefined ? {} : { modelSelection }),
                     },
                   });
                   if (result._tag === "Failure") throw squashAtomCommandFailure(result);
@@ -9281,6 +9284,7 @@ export default function ChatView(props: ChatViewProps) {
           return resumeThreadQueue({ environmentId, input: { threadId } });
         }
         const createdAt = new Date().toISOString();
+        const modelSelection = composerRef.current?.getSendContext()?.selectedModelSelection;
         const settingsResult = await persistThreadSettingsForNextTurn({
           threadId,
           createdAt,
@@ -9302,6 +9306,8 @@ export default function ChatView(props: ChatViewProps) {
               text: "Continue where you left off.",
               attachments: [],
             },
+            // A model picked after the limit continues there, not on the limited provider.
+            ...(modelSelection === undefined ? {} : { modelSelection }),
             runtimeMode,
             interactionMode,
             dispatchMode: "start",

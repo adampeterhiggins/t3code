@@ -54,7 +54,13 @@ export function UsageLimitRecoveryCard({
     try {
       const result = await resumeUsageLimited({
         environmentId,
-        input: { threadId: thread.id, runId, creationSource: "mobile" },
+        // The thread carries the composer's model, so a switch away from the limited provider sticks.
+        input: {
+          threadId: thread.id,
+          runId,
+          modelSelection: thread.modelSelection,
+          creationSource: "mobile",
+        },
       });
       if (result._tag === "Failure") throw squashAtomCommandFailure(result);
     } catch (cause) {

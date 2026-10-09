@@ -5220,6 +5220,106 @@ it.layer(layerTest)("usage-limit recovery", (it) => {
     }),
   );
 
+  it.effect("resumes a usage-limited run now on the model picked since the limit", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const events = yield* EventSink.EventSinkV2;
+      const threadId = ThreadId.make("resume-now-switch:thread");
+      const projectId = ProjectId.make("resume-now-switch:project");
+      const now = yield* DateTime.now;
+      yield* seedProject({
+        projectId,
+        title: "Resume now switch project",
+        workspaceRoot: process.cwd(),
+        defaultModelSelection: modelSelection,
+        createdAt: DateTime.formatIso(now),
+      });
+      yield* orchestrator.dispatch({
+        type: "thread.create",
+        commandId: CommandId.make("resume-now-switch:create"),
+        threadId,
+        projectId,
+        title: "Limited thread",
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+        createdBy: "user",
+        creationSource: "web",
+      });
+      yield* orchestrator.dispatch({
+        type: "message.dispatch",
+        commandId: CommandId.make("resume-now-switch:message"),
+        threadId,
+        messageId: MessageId.make("resume-now-switch:message"),
+        text: "Work on this.",
+        attachments: [],
+        dispatchMode: { type: "defer_start" },
+        createdBy: "user",
+        creationSource: "web",
+      });
+      const run = (yield* orchestrator.getThreadProjection(threadId)).runs[0]!;
+      yield* events.write({
+        commandId: CommandId.make("resume-now-switch:failure"),
+        events: [
+          {
+            id: EventId.make("resume-now-switch:run"),
+            type: "run.updated",
+            threadId,
+            occurredAt: now,
+            payload: { ...run, status: "failed", completedAt: now },
+          },
+          {
+            id: EventId.make("resume-now-switch:error"),
+            type: "turn-item.updated",
+            threadId,
+            occurredAt: now,
+            payload: {
+              id: TurnItemId.make("resume-now-switch:error"),
+              type: "error",
+              threadId,
+              runId: run.id,
+              nodeId: run.rootNodeId,
+              providerThreadId: null,
+              providerTurnId: null,
+              nativeItemRef: null,
+              parentItemId: null,
+              ordinal: 2,
+              status: "failed",
+              title: "Usage limit reached",
+              startedAt: now,
+              completedAt: now,
+              updatedAt: now,
+              failure: {
+                class: "usage_limit",
+                message: "Plan limit reached.",
+                code: "usageLimitExceeded",
+                retryable: null,
+                resetAt: DateTime.formatIso(DateTime.add(now, { hours: 1 })),
+              },
+            },
+          },
+        ],
+      });
+
+      const switched = { instanceId: alternateInstanceId, model: "gpt-5.5" } as const;
+      yield* orchestrator.dispatch({
+        type: "thread.usage-limit.resume-now",
+        commandId: CommandId.make("resume-now-switch:resume"),
+        threadId,
+        runId: run.id,
+        modelSelection: switched,
+        createdBy: "user",
+        creationSource: "web",
+      });
+      const after = yield* orchestrator.getThreadProjection(threadId);
+      assert.lengthOf(after.runs, 2);
+      assert.equal(after.runs[1]?.providerInstanceId, alternateInstanceId);
+      assert.deepEqual(after.runs[1]?.modelSelection, switched);
+    }),
+  );
+
   it.effect.each([
     "resume",
     "queued-resume",
