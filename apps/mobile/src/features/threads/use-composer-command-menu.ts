@@ -8,7 +8,10 @@ import type {
   ThreadId,
 } from "@t3tools/contracts";
 import { matchComposerThreadItems } from "@t3tools/client-runtime/composerThreadItems";
-import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
+import type {
+  EnvironmentProject,
+  EnvironmentThreadShell,
+} from "@t3tools/client-runtime/state/models";
 import { deriveThreadAgentFleet } from "@t3tools/client-runtime/state/agent-fleet";
 import {
   matchesSubagentQuery,
@@ -16,6 +19,7 @@ import {
 } from "@t3tools/client-runtime/state/subagent-handles";
 
 const EMPTY_THREAD_SHELLS: ReadonlyArray<EnvironmentThreadShell> = [];
+const EMPTY_PROJECTS: ReadonlyArray<EnvironmentProject> = [];
 const EMPTY_SUBAGENTS: ReadonlyArray<OrchestrationV2Subagent> = [];
 const EMPTY_PROVIDERS: ReadonlyArray<ServerProvider> = [];
 import {
@@ -184,6 +188,7 @@ export function useComposerCommandMenu({
   ownerKey,
   environmentId,
   threadShells = EMPTY_THREAD_SHELLS,
+  projects = EMPTY_PROJECTS,
   currentThreadId = null,
   threadSubagents = EMPTY_SUBAGENTS,
   providers = EMPTY_PROVIDERS,
@@ -204,6 +209,8 @@ export function useComposerCommandMenu({
   readonly environmentId: EnvironmentId | null;
   /** Candidates for `@` thread suggestions; the caller reads them from the entity store. */
   readonly threadShells?: ReadonlyArray<EnvironmentThreadShell>;
+  /** Names the project beside each `@` thread suggestion. */
+  readonly projects?: ReadonlyArray<EnvironmentProject>;
   /** Left out of `@` thread suggestions: a thread is never context for itself. */
   readonly currentThreadId?: ThreadId | null;
   /** The current thread's subagent records, for the `@` menu's Agents tab. */
@@ -381,27 +388,54 @@ export function useComposerCommandMenu({
         .map((shell) => shell.source),
     }).filter((entry) => entry.subagent !== null);
   }, [currentThreadId, environmentId, pathTriggerOpen, threadShells, threadSubagents]);
-  // The tab the user picked for this `@`; otherwise Agents when the query starts a handle.
+  const chatItems = useMemo(
+    () =>
+      trigger?.kind === "path" && environmentId
+        ? matchComposerThreadItems({
+            shells: threadShells,
+            environmentId,
+            excludeThreadId: currentThreadId,
+            query: trigger.query,
+            projectTitles: new Map(
+              projects
+                .filter((project) => project.environmentId === environmentId)
+                .map((project) => [project.id, project.title]),
+            ),
+          })
+        : [],
+    [currentThreadId, environmentId, projects, threadShells, trigger],
+  );
+  // The tab the user picked for this `@`; otherwise Agents when the query starts a handle,
+  // Chats when only chats match, else Files.
   const [pathTabChoice, setPathTabChoice] = useState<{
     readonly rangeStart: number;
     readonly tab: ComposerPathTab;
   } | null>(null);
   const pathTab = useMemo(() => {
-    if (trigger?.kind !== "path" || agentFleet.length === 0) return null;
+    if (trigger?.kind !== "path") return null;
     const needle = trigger.query.trim().toLowerCase();
+    const showAgents = agentFleet.length > 0;
     const prefersAgents =
       needle.length > 0 && agentFleet.some((entry) => entry.handle.startsWith(needle));
+    const prefersChats =
+      needle.length > 0 &&
+      chatItems.length > 0 &&
+      !pathSearch.isPending &&
+      pathSearch.entries.length === 0;
     const rangeStart = trigger.rangeStart;
     return {
       active:
-        pathTabChoice?.rangeStart === rangeStart
+        pathTabChoice?.rangeStart === rangeStart && (pathTabChoice.tab !== "agents" || showAgents)
           ? pathTabChoice.tab
           : prefersAgents
             ? ("agents" as const)
-            : ("files" as const),
+            : prefersChats
+              ? ("chats" as const)
+              : ("files" as const),
+      showAgents,
       onChange: (tab: ComposerPathTab) => setPathTabChoice({ rangeStart, tab }),
     };
-  }, [agentFleet, pathTabChoice, trigger]);
+  }, [agentFleet, chatItems, pathSearch.entries, pathSearch.isPending, pathTabChoice, trigger]);
   const pullRequestSearch = useComposerPullRequestSearch({
     environmentId,
     projectId: pullRequestProjectId,
@@ -560,39 +594,28 @@ export function useComposerCommandMenu({
         }));
     }
 
+    if (trigger.kind === "path" && pathTab?.active === "chats") return chatItems;
+
     if (trigger.kind === "path") {
-      const threadItems = environmentId
-        ? matchComposerThreadItems({
-            shells: threadShells,
-            environmentId,
-            excludeThreadId: currentThreadId,
-            query: trigger.query,
-          })
-        : [];
-      return [
-        ...threadItems,
-        ...pathSearch.entries.map((entry) => {
-          const parts = entry.path.split("/");
-          return {
-            id: `path:${entry.path}`,
-            type: "path" as const,
-            path: entry.path,
-            kind: entry.kind,
-            label: parts[parts.length - 1] ?? entry.path,
-            description: parts.length > 1 ? parts.slice(0, -1).join("/") : "",
-          };
-        }),
-      ];
+      return pathSearch.entries.map((entry) => {
+        const parts = entry.path.split("/");
+        return {
+          id: `path:${entry.path}`,
+          type: "path" as const,
+          path: entry.path,
+          kind: entry.kind,
+          label: parts[parts.length - 1] ?? entry.path,
+          description: parts.length > 1 ? parts.slice(0, -1).join("/") : "",
+        };
+      });
     }
 
     return [];
   }, [
     agentFleet,
-    currentThreadId,
-    environmentId,
+    chatItems,
     pathTab?.active,
     providers,
-    threadShells,
     hasThread,
     hasCompactableConversation,
     onUpdateInteractionMode,
@@ -746,7 +769,7 @@ export function useComposerCommandMenu({
     isLoading:
       trigger?.kind === "pull-request"
         ? pullRequestSearch.isPending
-        : pathTab?.active !== "agents" && pathSearch.isPending,
+        : (pathTab === null || pathTab.active === "files") && pathSearch.isPending,
     error:
       trigger?.kind === "pull-request"
         ? pullRequestProjectId === null || pullRequestRepository === null

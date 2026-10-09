@@ -31,8 +31,8 @@ import { cn } from "../../lib/cn";
 import { SUBAGENT_TONE_TEXT_CLASS, SubagentStatusDot } from "./SubagentStatusDot";
 import { subagentStatusLabel, subagentStatusTone } from "./threadAgentsPresentation";
 
-/** The `@` menu's tabs, shown when the thread has agents to reference. */
-export type ComposerPathTab = "files" | "agents";
+/** The `@` menu's tabs. Agents shows only when the thread has agents to reference. */
+export type ComposerPathTab = "files" | "chats" | "agents";
 
 export type ComposerCommandItem =
   | {
@@ -92,9 +92,10 @@ interface ComposerCommandPopoverProps {
   readonly triggerKind: ComposerTriggerKind | null;
   readonly isLoading: boolean;
   readonly error?: string | null;
-  /** Files/Agents tabs for the `@` menu; null when the thread has no agents. */
+  /** Files/Chats/Agents tabs for the `@` menu. */
   readonly pathTab?: {
     readonly active: ComposerPathTab;
+    readonly showAgents: boolean;
     readonly onChange: (tab: ComposerPathTab) => void;
   } | null;
   readonly onSelect: (item: ComposerCommandItem) => void;
@@ -102,8 +103,12 @@ interface ComposerCommandPopoverProps {
 
 const PATH_TAB_OPTIONS = [
   { value: "files", label: "Files" },
+  { value: "chats", label: "Chats" },
   { value: "agents", label: "Agents" },
 ] as const satisfies ReadonlyArray<{ value: ComposerPathTab; label: string }>;
+const PATH_TAB_OPTIONS_WITHOUT_AGENTS = PATH_TAB_OPTIONS.filter(
+  (option) => option.value !== "agents",
+);
 
 function PopoverSurface(props: { readonly children: React.ReactNode; readonly style?: ViewStyle }) {
   const baseStyle: ViewStyle = {
@@ -171,6 +176,7 @@ function emptyText(
   pathTab: ComposerPathTab | null,
 ): string {
   if (pathTab === "agents") return "No matching agents.";
+  if (pathTab === "chats") return "No matching chats.";
   if (isLoading) {
     return triggerKind === "path" ? "Searching files…" : "Loading…";
   }
@@ -314,7 +320,7 @@ export const ComposerCommandPopover = memo(function ComposerCommandPopover(
           <SegmentedControl
             size="compact"
             role="tab"
-            options={PATH_TAB_OPTIONS}
+            options={pathTab.showAgents ? PATH_TAB_OPTIONS : PATH_TAB_OPTIONS_WITHOUT_AGENTS}
             selected={pathTab.active}
             onSelect={pathTab.onChange}
           />

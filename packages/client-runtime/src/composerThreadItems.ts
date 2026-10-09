@@ -1,11 +1,13 @@
-import type { EnvironmentId, ScopedThreadRef, ThreadId } from "@t3tools/contracts";
+import type { EnvironmentId, ProjectId, ScopedThreadRef, ThreadId } from "@t3tools/contracts";
 
-const COMPOSER_THREAD_RESULT_LIMIT = 5;
+const COMPOSER_THREAD_RESULT_LIMIT = 20;
 
 export interface ComposerThreadCandidate {
   readonly environmentId: EnvironmentId;
   readonly id: ThreadId;
+  readonly projectId: ProjectId;
   readonly title: string;
+  readonly branch: string | null;
   readonly updatedAt: string;
   readonly archivedAt: string | null;
 }
@@ -19,18 +21,18 @@ export interface ComposerThreadItem {
 }
 
 /**
- * Threads the `@` picker offers next to file paths. The agent can only read threads on its
- * own server, so candidates stay within the composer's environment. A query is required:
- * bare `@` stays a file picker.
+ * Threads the `@` picker's Chats tab offers, newest first. The agent can only read threads on
+ * its own server, so candidates stay within the composer's environment. An empty query lists
+ * the most recent threads. Each item's description is its project and branch.
  */
 export function matchComposerThreadItems(input: {
   shells: ReadonlyArray<ComposerThreadCandidate>;
   environmentId: EnvironmentId;
   excludeThreadId: ThreadId | null;
   query: string;
+  projectTitles?: ReadonlyMap<ProjectId, string>;
 }): ComposerThreadItem[] {
   const query = input.query.trim().toLowerCase();
-  if (query.length === 0) return [];
   return input.shells
     .filter(
       (shell) =>
@@ -46,6 +48,8 @@ export function matchComposerThreadItems(input: {
       type: "thread",
       thread: { environmentId: shell.environmentId, threadId: shell.id },
       label: shell.title,
-      description: "Thread",
+      description:
+        [input.projectTitles?.get(shell.projectId), shell.branch].filter(Boolean).join(" · ") ||
+        "Thread",
     }));
 }

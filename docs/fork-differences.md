@@ -353,8 +353,8 @@ derives it from thread shells, so nothing is stored. Agents panel rows, the agen
 conversation agent rows, agent hover cards (Lineage's included) and the **Subagent of** divider on
 an agent's own thread show it.
 
-- **Composer.** When the thread has agents, the `@` menu gets **Files** and **Agents** tabs. A
-  query that starts an agent's handle opens on Agents. Rows show status, provider, title, handle,
+- **Composer.** When the thread has agents, the `@` menu adds an **Agents** tab next to **Files**
+  and **Chats**. A query that starts an agent's handle opens on Agents. Rows show status, provider, title, handle,
   model, tokens, elapsed time and a working agent's latest tool call, and hover to preview the
   agent like an Agents panel row.
 - **Chip.** Picking an agent inserts a `subagent` context chip (`SubagentContextRecord`) that shows
@@ -442,7 +442,8 @@ editable. Names are stored by the [ThreadTabs service](../apps/server/src/thread
 - **Right panel.** Each tab keeps its own right-panel surfaces, but the panel stays open or closed
   as you move between tabs, including new, forked, and closed-into tabs
   (`useRightPanelFollowsTabSwitch` in `ThreadTabs.tsx`).
-- **Context from other chats.** Type `@` in the composer and pick a sibling tab, or, before the
+- **Context from other chats.** Type `@` in the composer and pick a sibling tab from the
+  **Chats** tab, which a query with chat matches but no file matches opens on, or, before the
   first message, pick one under **Include context from** (hovering one previews its summary).
   Those pills follow the sidebar's tab order and limit and show each tab's provider, status, and
   time, with the rest behind a **more** pill that lists them on hover
@@ -451,7 +452,8 @@ editable. Names are stored by the [ThreadTabs service](../apps/server/src/thread
   resolved by the server when the tab fork omits `runId`, replaces the empty tab and takes its
   draft (`onContinueFromTab` in `ChatView.tsx`, `continueFrom` in
   `apps/mobile/src/features/threads/ThreadTabs.tsx`).
-  The `@` menu also lists other unarchived threads in the environment, matched by title
+  The **Chats** tab also lists other unarchived threads in the environment, newest first and
+  matched by title
   (`apps/web/src/components/chat/composerThreadReferences.ts`), and works in a new draft thread
   too. On web and desktop, **Attach → Thread** and **Attach thread** in the command palette open
   a searchable picker of those threads. A thread's tabs sit together behind a side rule, and

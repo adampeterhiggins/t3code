@@ -65,7 +65,7 @@ import {
 } from "../../state/use-composer-drafts";
 import { appAtomRegistry } from "../../state/atom-registry";
 import type { ComposerDocumentAttachment } from "../../lib/composerContext";
-import { useProject, useThreadShells } from "../../state/entities";
+import { useProject, useProjects, useThreadShells } from "../../state/entities";
 import { environmentThreadDetails } from "../../state/threads";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 
@@ -532,6 +532,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     ownerKey: composerOwnerKey,
     environmentId: props.environmentId,
     threadShells: useThreadShells(),
+    projects: useProjects(),
     currentThreadId: props.selectedThread.id,
     ...(threadSubagents ? { threadSubagents } : {}),
     ...(props.serverConfig ? { providers: props.serverConfig.providers } : {}),

@@ -18,7 +18,6 @@ import {
   BlocksIcon,
   FolderGit2Icon,
   FolderIcon,
-  MessagesSquareIcon,
   PackageIcon,
   SettingsIcon,
   UserRoundIcon,
@@ -36,6 +35,7 @@ import { Checkbox } from "../ui/checkbox";
 import { Kbd } from "../ui/kbd";
 import { Command, CommandGroup, CommandItem, CommandList } from "../ui/command";
 import { AgentCommandRow } from "./AgentFleetRow";
+import { ComposerChatRow } from "./ComposerChatRow";
 import { PierreEntryIcon } from "./PierreEntryIcon";
 import { ComposerBanner } from "./ComposerBanner";
 import {
@@ -402,9 +402,6 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
           theme={props.resolvedTheme}
         />
       ) : null}
-      {props.item.type === "thread-tab" ? (
-        <MessagesSquareIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
-      ) : null}
       {props.item.type === "linear-issue" ? (
         <LinearIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
       ) : null}
@@ -420,9 +417,6 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
       {props.item.type === "repository" ? (
         <FolderGit2Icon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
       ) : null}
-      {props.item.type === "thread" ? (
-        <MessagesSquareIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
-      ) : null}
       {pullRequestPresentation ? (
         <pullRequestPresentation.Icon
           role="img"
@@ -436,6 +430,14 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
         <GitHubIssueRow item={props.item} environmentId={props.environmentId} />
       ) : props.item.type === "slack-message" ? (
         <SlackMessageCommandRow item={props.item} />
+      ) : props.item.type === "thread" ? (
+        <ComposerChatRow threadRef={props.item.thread} label={props.item.label} isTab={false} />
+      ) : props.item.type === "thread-tab" && props.environmentId !== null ? (
+        <ComposerChatRow
+          threadRef={{ environmentId: props.environmentId, threadId: props.item.threadId }}
+          label={props.item.label}
+          isTab
+        />
       ) : props.item.type === "subagent" ? (
         <AgentCommandRow
           parentRef={props.item.parentRef}
