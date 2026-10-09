@@ -12,6 +12,12 @@ To use a different connection, disconnect and enter its client ID and secret. A 
 
 If you approve from another device, Notion redirects to a page that may not load. Copy its full address into **Approving from another device?** in the Notion settings to finish sign-in.
 
+## Approve from another device
+
+The server can receive approval directly from a browser on another device when it has a stable HTTPS address reachable from that device. Register `https://YOUR-SERVER/oauth/notion/callback` on your Notion OAuth app, set `T3CODE_NOTION_REDIRECT_URI` to that exact URL on the server, and restart it. The browser must reach this callback on the environment itself, without a proxy login prompt; a client-only URL such as app.t3.codes or a relay address that does not forward the callback will not work. T3 Code does not register URLs or create a tunnel automatically.
+
+Without this setting, approval uses the existing local callback. If that page cannot load on another device, copy its full address back into the sign-in settings.
+
 ## Attach pages
 
 - Paste a `notion.so`, `notion.com`, or `notion.site` page link into the composer on web or desktop. A readable page becomes a chip. A page that isn't shared with your connection stays as text, and a notice offers **Open in Notion**: add the connection from the page's **•••** menu → **Connections**, then choose **Retry** to turn the link into a chip.

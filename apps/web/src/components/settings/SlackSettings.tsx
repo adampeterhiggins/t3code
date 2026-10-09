@@ -9,7 +9,6 @@ import {
   type SlackMentionTriggerSettings,
   AuthSettingsWriteScope,
   AuthOrchestrationOperateScope,
-  SLACK_REDIRECT_URI,
   slackAppManifest,
   type SlackConnectionState,
 } from "@t3tools/contracts";
@@ -300,7 +299,7 @@ function SlackConnectionRows({
               <Input
                 size="sm"
                 aria-label="Redirect URL from Slack"
-                placeholder={`${SLACK_REDIRECT_URI}?code=…`}
+                placeholder="Full redirect URL from Slack"
                 value={pastedValue}
                 onChange={(event) => setPasted({ flowId, value: event.target.value })}
               />

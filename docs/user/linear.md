@@ -21,6 +21,12 @@ your phone, that page won't load. Copy its full URL from the address bar and pas
 
 Sign-in needs port 47831 free on the server machine while you approve.
 
+## Approve from another device
+
+The server can receive approval directly from a browser on another device when it has a stable HTTPS address reachable from that device. Register `https://YOUR-SERVER/oauth/linear/callback` on your Linear OAuth app, set `T3CODE_LINEAR_REDIRECT_URI` to that exact URL on the server, and restart it. Use your own registered client ID through `T3CODE_LINEAR_CLIENT_ID`; the built-in client does not register arbitrary server addresses. The browser must reach this callback on the environment itself, without a proxy login prompt; a client-only URL such as app.t3.codes or a relay address that does not forward the callback will not work. T3 Code does not register URLs or create a tunnel automatically.
+
+Without this setting, approval uses the existing local callback. If that page cannot load on another device, copy its full address back into the sign-in settings.
+
 ## Attach an issue
 
 Attach a Linear issue to a message so the agent gets its details without you pasting them in:

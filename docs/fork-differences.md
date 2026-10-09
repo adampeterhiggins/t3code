@@ -816,6 +816,10 @@ Code: `apps/server/src/linear/`, `packages/contracts/src/linear.ts`, `LinearIssu
 `apps/mobile/src/features/settings/SettingsLinearRouteScreen.tsx`. User guide:
 [linear.md](./user/linear.md).
 
+Linear, Slack, and Notion sign-in can return directly to the environment from another device using an explicitly registered HTTPS URL at `/oauth/<integration>/callback` and the corresponding `T3CODE_<INTEGRATION>_REDIRECT_URI` server setting. Local sign-in and paste-back remain available by default. Each provider must allow the exact URL on the user's OAuth app; Linear requires a custom client ID for custom URLs. This works with a reachable HTTPS server or tunnel forwarding the callback, rather than assuming the client's origin is the environment. Callback state is checked against the active login, and cancelled or completed flows cannot be reused.
+
+Code: [redirect configuration](../apps/server/src/integrationOAuth.ts), [Linear auth](../apps/server/src/linear/LinearAuth.ts), [Slack auth](../apps/server/src/slack/SlackAuth.ts), and [Notion auth](../apps/server/src/notion/NotionAuth.ts). Setup: [Linear](./user/linear.md#approve-from-another-device), [Slack](./user/slack.md#approve-from-another-device), and [Notion](./user/notion.md#approve-from-another-device).
+
 ## Slack messages and threads
 
 **Settings > Integrations > Slack** connects a Slack account to the environment with OAuth (PKCE,
@@ -825,7 +829,8 @@ messages each. Each workspace makes its own app from a manifest the settings sec
 (`slackAppManifest` in `packages/contracts/src/slack.ts`), and the user enters its client ID. The
 server keeps that client ID across disconnects, and `T3CODE_SLACK_CLIENT_ID` can supply one. The
 redirect is `http://localhost:47832/callback`, since Slack only treats `localhost` as a desktop
-redirect, with the same paste-back path as Linear for remote browsers.
+redirect by default, with the same paste-back path as Linear for remote browsers. A registered
+HTTPS callback set through `T3CODE_SLACK_REDIRECT_URI` receives approval on the environment directly.
 
 A message or its whole thread attaches as a `slack-thread` context chip: from a pasted or typed
 permalink, the attach menu's picker (Slack search syntax, right-click for the message alone), a
@@ -1479,7 +1484,7 @@ Code: `cursorRunFailure` in
 
 ## Notion page context
 
-Web and desktop support Notion OAuth sign-in in Integrations settings, where the user enters their own Notion connection's client ID and secret (kept on the server, with `T3CODE_NOTION_CLIENT_ID` and `T3CODE_NOTION_CLIENT_SECRET` as a fallback), page attachments from the paperclip picker and command palette, a Notion tab in the `#` menu, and conversion of pasted `notion.so`, `notion.com`, and `notion.site` page links to context chips. A pasted link to a page the connection cannot read stays as text, with a notice that opens the page in Notion and retries the conversion once the user shares it. Turning off **Enable Notion integration** in those settings keeps pasted Notion links as links without setup prompts and hides Notion attachment actions on web, desktop, and mobile for the environment, keeping the connected account. Mobile can pick pages using the environment's connection and inspect captured page contents. Pages are captured as bounded Markdown snapshots and sent through the shared context projection to every provider. Remote sign-in supports pasting the OAuth redirect URL back into settings.
+Web and desktop support Notion OAuth sign-in in Integrations settings, where the user enters their own Notion connection's client ID and secret (kept on the server, with `T3CODE_NOTION_CLIENT_ID` and `T3CODE_NOTION_CLIENT_SECRET` as a fallback), page attachments from the paperclip picker and command palette, a Notion tab in the `#` menu, and conversion of pasted `notion.so`, `notion.com`, and `notion.site` page links to context chips. A pasted link to a page the connection cannot read stays as text, with a notice that opens the page in Notion and retries the conversion once the user shares it. Turning off **Enable Notion integration** in those settings keeps pasted Notion links as links without setup prompts and hides Notion attachment actions on web, desktop, and mobile for the environment, keeping the connected account. Mobile can pick pages using the environment's connection and inspect captured page contents. Pages are captured as bounded Markdown snapshots and sent through the shared context projection to every provider. Remote sign-in can use a registered HTTPS callback through `T3CODE_NOTION_REDIRECT_URI`, or paste the OAuth redirect URL back into settings.
 
 A thread's chat-tab group can also be linked to one Notion page, from the thread menu, the web command palette, or the mobile tab menu, which open the page picker in link mode. The link lives in the fork-owned `fork_notion_thread_links` table, keyed by tab group, and streams over `notion.subscribeThreadLinks`; the page's title and URL are copied when linked. The web chat header chip shows the title and offers open, change, and unlink; mobile shows the same chip beside the tab switcher. Linking and unlinking are client-guarded RPCs that need the orchestration-operate grant. Unlinking stays available with the integration turned off.
 

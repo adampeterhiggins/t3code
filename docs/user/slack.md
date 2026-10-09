@@ -38,6 +38,12 @@ device?** under the Slack setting.
 
 Sign-in needs port 47832 free on the server machine while you approve.
 
+## Approve from another device
+
+The server can receive approval directly from a browser on another device when it has a stable HTTPS address reachable from that device. Register `https://YOUR-SERVER/oauth/slack/callback` on your Slack OAuth app, set `T3CODE_SLACK_REDIRECT_URI` to that exact URL on the server, and restart it. Keep PKCE enabled on the Slack app and add this URL to its allowed redirects. The copied setup manifest starts with the local callback; add the HTTPS callback in the app settings. The browser must reach this callback on the environment itself, without a proxy login prompt; a client-only URL such as app.t3.codes or a relay address that does not forward the callback will not work. T3 Code does not register URLs or create a tunnel automatically.
+
+Without this setting, approval uses the existing local callback. If that page cannot load on another device, copy its full address back into the sign-in settings.
+
 ## Attach a message or thread
 
 - Paste or type a Slack message link (**Copy link** on a message in Slack) into the composer on

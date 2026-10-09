@@ -47,6 +47,9 @@ import {
 } from "./auth/http.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import { WEBHOOK_ROUTE_PREFIX } from "./scheduledTasks/ScheduledTaskService.ts";
+import { LINEAR_SERVER_CALLBACK_PATH } from "./linear/linearOAuth.ts";
+import { SLACK_SERVER_CALLBACK_PATH } from "./slack/slackOAuth.ts";
+import { NOTION_SERVER_CALLBACK_PATH } from "./notion/notionOAuth.ts";
 import { browserApiCorsAllowedHeaders, browserApiCorsAllowedMethods } from "./httpCors.ts";
 
 const OTLP_TRACES_PROXY_PATH = "/api/observability/v1/traces";
@@ -376,7 +379,13 @@ export const layerOtlpTracesProxyRoute = HttpRouter.add(
   ),
 );
 
-const UNTRACED_REQUEST_PATHS: ReadonlySet<string> = new Set([OTLP_TRACES_PROXY_PATH]);
+// Integration OAuth callbacks carry an authorization code in the query.
+const UNTRACED_REQUEST_PATHS: ReadonlySet<string> = new Set([
+  OTLP_TRACES_PROXY_PATH,
+  LINEAR_SERVER_CALLBACK_PATH,
+  NOTION_SERVER_CALLBACK_PATH,
+  SLACK_SERVER_CALLBACK_PATH,
+]);
 
 // Skips the HTTP server span for UNTRACED_REQUEST_PATHS. That span starts
 // before routing, so a route handler cannot skip it. TracerDisabledWhen is one

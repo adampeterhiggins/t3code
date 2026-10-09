@@ -236,3 +236,56 @@ it.effect("drops the credential when Slack rejects the refresh token", () => {
     assert.isTrue(Option.isSome(yield* firstStateWhere(auth, "failed")));
   }).pipe(Effect.provide(harness.layer));
 });
+
+it.effect("receives a remote callback with the same registered URI used for exchange", () => {
+  const redirectUri = "https://t3.example.test/oauth/slack/callback";
+  const harness = makeHarness({
+    env: { T3CODE_SLACK_REDIRECT_URI: redirectUri },
+    clientId: "client",
+  });
+  return Effect.gen(function* () {
+    const auth = yield* SlackAuth.SlackAuth;
+    const waiting = yield* auth.startLogin({});
+    const authorize = new URL(waiting.authorizationUrl ?? "");
+    assert.strictEqual(authorize.searchParams.get("redirect_uri"), redirectUri);
+    const state = authorize.searchParams.get("state");
+    assert.strictEqual(
+      (yield* auth.receiveCallback(new URL(`${redirectUri}?code=bad&state=wrong`))).status,
+      400,
+    );
+    assert.strictEqual(harness.requests.length, 0);
+    assert.strictEqual(
+      (yield* auth.receiveCallback(new URL(`${redirectUri}?code=remote-code&state=${state}`)))
+        .status,
+      200,
+    );
+    yield* firstStateWhere(auth, "connected");
+    const exchange = harness.requests.find((request) => request.url.endsWith("/oauth.v2.access"));
+    assert.strictEqual(exchange?.params?.get("redirect_uri"), redirectUri);
+    assert.strictEqual(
+      (yield* auth.receiveCallback(new URL(`${redirectUri}?code=remote-code&state=${state}`)))
+        .status,
+      400,
+    );
+    assert.isNotNull(harness.storedToken());
+  }).pipe(Effect.provide(harness.layer));
+});
+
+it.effect("does not accept a cancelled remote callback", () => {
+  const redirectUri = "https://t3.example.test/oauth/slack/callback";
+  const harness = makeHarness({
+    env: { T3CODE_SLACK_REDIRECT_URI: redirectUri },
+    clientId: "client",
+  });
+  return Effect.gen(function* () {
+    const auth = yield* SlackAuth.SlackAuth;
+    const waiting = yield* auth.startLogin({});
+    const state = new URL(waiting.authorizationUrl ?? "").searchParams.get("state");
+    yield* auth.cancelLogin({ flowId: waiting.flowId ?? "" });
+    assert.strictEqual(
+      (yield* auth.receiveCallback(new URL(`${redirectUri}?code=late&state=${state}`))).status,
+      400,
+    );
+    assert.strictEqual(harness.requests.length, 0);
+  }).pipe(Effect.provide(harness.layer));
+});

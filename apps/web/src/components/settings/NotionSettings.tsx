@@ -281,12 +281,14 @@ function NotionConnectionRows({
                   id={fieldId("redirect-uri")}
                   size="sm"
                   readOnly
-                  value={NOTION_REDIRECT_URI}
+                  value={state?.redirectUri ?? NOTION_REDIRECT_URI}
                 />
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => writeTextToClipboard(NOTION_REDIRECT_URI, "Redirect URI")}
+                  onClick={() =>
+                    writeTextToClipboard(state?.redirectUri ?? NOTION_REDIRECT_URI, "Redirect URI")
+                  }
                 >
                   Copy
                 </Button>
@@ -351,7 +353,7 @@ function NotionConnectionRows({
               <Input
                 size="sm"
                 aria-label="Redirect URL from Notion"
-                placeholder={`${NOTION_REDIRECT_URI}?code=…`}
+                placeholder="Full redirect URL from Notion"
                 value={pastedValue}
                 onChange={(event) => setPasted({ flowId, value: event.target.value })}
               />

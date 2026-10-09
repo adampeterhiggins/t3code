@@ -15,6 +15,12 @@ export const NotionConnectionState = Schema.Struct({
   configured: Schema.Boolean,
   /** The client ID it signs in with; the secret never leaves the server. */
   clientId: Schema.NullOr(Schema.String),
+  /**
+   * The redirect URI the connection must register: `NOTION_REDIRECT_URI`, or
+   * the server's own callback when `T3CODE_NOTION_REDIRECT_URI` is set. Older
+   * servers omit it and always use `NOTION_REDIRECT_URI`.
+   */
+  redirectUri: Schema.optional(Schema.String),
   account: Schema.NullOr(NotionAccount),
   flowId: Schema.NullOr(TrimmedNonEmptyString),
   authorizationUrl: Schema.NullOr(Schema.String),

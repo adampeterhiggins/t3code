@@ -190,7 +190,7 @@ function LinearEnvironmentSection(props: {
               autoCapitalize="none"
               autoCorrect={false}
               keyboardType="url"
-              placeholder="http://127.0.0.1:47831/callback?code=…"
+              placeholder="Full redirect URL from Linear"
               returnKeyType="done"
               value={pastedValue}
               editable={!pending}

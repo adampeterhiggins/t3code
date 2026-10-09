@@ -260,7 +260,7 @@ function LinearConnectionRows({
               <Input
                 size="sm"
                 aria-label="Redirect URL from Linear"
-                placeholder="http://127.0.0.1:47831/callback?code=…"
+                placeholder="Full redirect URL from Linear"
                 value={pastedValue}
                 onChange={(event) => setPasted({ flowId, value: event.target.value })}
               />
