@@ -56,7 +56,14 @@ export function attachAgentResultToChat(
   const context = subagentResultChatContext(subject);
   if (context === null) return;
   const composer = composerRef?.current;
-  if (composer?.pasteTextAtEnd(context)) return;
+  // pasteTextAtEnd only takes text long enough to fold into an attachment; shorter results
+  // go in as text.
+  if (
+    composer?.pasteTextAtEnd(context) ||
+    composer?.insertTextAtEnd(context, { ensureLeadingBoundary: true })
+  ) {
+    return;
+  }
   toastManager.add({
     type: "error",
     title: "Unable to attach result",
