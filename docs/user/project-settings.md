@@ -172,6 +172,10 @@ personal overrides; **Repository** saves to `.conductor/settings.toml`, which yo
 everyone. Clear a field or use its reset button to fall back to the other file. Saving rewrites the
 file without its comments.
 
+## Review worktree storage
+
+Open **Settings → Storage → Managed worktrees** to review each selected machine’s checkouts, linked threads, and last synced pull request state. Measure sizes when needed. Select clean worktrees and remove them together, or remove one at a time. Running work and local changes are protected, including changes made since the list was loaded. Branches and thread history are kept; resuming a thread recreates its checkout. On mobile, open a machine in **Settings → Environments** to review and remove its worktrees.
+
 ## Storage cleanup
 
 Open **Settings → Storage** to enable automatic cleanup on one machine or all connected

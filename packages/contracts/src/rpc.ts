@@ -42,6 +42,14 @@ import * as RpcGroup from "effect/rpc/RpcGroup";
 import * as RpcMiddleware from "effect/rpc/RpcMiddleware";
 import { NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import {
+  WorktreeInventoryListError,
+  WorktreeInventoryListResult,
+  WorktreeInventoryRemoveInput,
+  WorktreeInventoryRemoveResult,
+  WorktreeInventorySizeInput,
+  WorktreeInventorySizeResult,
+} from "./worktreeInventory.ts";
+import {
   CodexAuthCallbackInput,
   CodexAuthCallbackState,
   ProviderAuthCancelInput,
@@ -498,6 +506,11 @@ export const WS_METHODS = {
   vcsCreateRef: "vcs.createRef",
   vcsSwitchRef: "vcs.switchRef",
   vcsInit: "vcs.init",
+
+  // Worktree inventory (Settings -> Storage)
+  worktreesList: "worktrees.list",
+  worktreesSize: "worktrees.size",
+  worktreesRemove: "worktrees.remove",
 
   // Git workflow methods
   gitRunStackedAction: "git.runStackedAction",
@@ -1792,6 +1805,24 @@ const WsVcsRemoveWorktreeRpc = Rpc.make(WS_METHODS.vcsRemoveWorktree, {
   error: Schema.Union([GitCommandError, EnvironmentAuthorizationError]),
 });
 
+const WsWorktreesListRpc = Rpc.make(WS_METHODS.worktreesList, {
+  payload: Schema.Struct({}),
+  success: WorktreeInventoryListResult,
+  error: Schema.Union([WorktreeInventoryListError, EnvironmentAuthorizationError]),
+});
+
+const WsWorktreesSizeRpc = Rpc.make(WS_METHODS.worktreesSize, {
+  payload: WorktreeInventorySizeInput,
+  success: WorktreeInventorySizeResult,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsWorktreesRemoveRpc = Rpc.make(WS_METHODS.worktreesRemove, {
+  payload: WorktreeInventoryRemoveInput,
+  success: WorktreeInventoryRemoveResult,
+  error: Schema.Union([WorktreeInventoryListError, EnvironmentAuthorizationError]),
+});
+
 const WsVcsCreateRefRpc = Rpc.make(WS_METHODS.vcsCreateRef, {
   payload: VcsCreateRefInput,
   success: VcsCreateRefResult,
@@ -2426,6 +2457,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsVcsListRefsRpc,
   WsVcsCreateWorktreeRpc,
   WsVcsRemoveWorktreeRpc,
+  WsWorktreesListRpc,
+  WsWorktreesSizeRpc,
+  WsWorktreesRemoveRpc,
   WsVcsCreateRefRpc,
   WsVcsSwitchRefRpc,
   WsVcsInitRpc,

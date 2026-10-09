@@ -292,3 +292,26 @@ it.effect("guards Slack and Notion thread links with the orchestration grant", (
     }),
   ),
 );
+
+it.effect("worktree inventory removal requires the destination source control grant", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const registry = yield* setup;
+      const command = createCommandPermissions(runtime, WS_METHODS.worktreesRemove);
+      registry.set(sessions(env), AsyncResult.success(grant(false)));
+      registry.set(
+        sessions(other),
+        AsyncResult.success({
+          ...grant(false),
+          scopes: [AuthSourceControlWriteScope],
+          permissions: [AuthSourceControlWriteScope],
+        }),
+      );
+      expect(registry.get(command.permissionAtom(env))).toBe(false);
+      expect((yield* command.authorize(registry, env).pipe(Effect.flip)).requiredPermission).toBe(
+        AuthSourceControlWriteScope,
+      );
+      yield* command.authorize(registry, other);
+    }),
+  ),
+);

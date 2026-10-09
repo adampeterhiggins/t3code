@@ -61,6 +61,8 @@ import {
   useUpdateScopedSettings,
 } from "./useScopedSettings";
 
+import { WorktreeInventorySection } from "./WorktreeInventory";
+
 const IGNORED_NAME_ERROR =
   "Enter one file or directory name per line, up to 50. Names cannot include *, ?, or a path.";
 
@@ -593,6 +595,7 @@ export function StorageSettingsPanel() {
       </SettingsSection>
 
       {isProjectScope && <ContextRepositoriesSection members={scope.members} />}
+      {!isProjectScope && <WorktreeInventorySection />}
 
       {!isProjectScope && (
         <SettingsSection id="storage-artifacts" title="Artifacts and logs">

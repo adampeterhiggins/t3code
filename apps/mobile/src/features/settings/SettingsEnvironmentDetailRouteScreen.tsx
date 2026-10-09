@@ -25,6 +25,7 @@ import { EnvironmentRoutesSection } from "./EnvironmentRoutesSection";
 import { SettingsActionRow } from "./components/SettingsActionRow";
 import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsSection } from "./components/SettingsSection";
+import { WorktreeInventorySection } from "./components/WorktreeInventorySection";
 import {
   canMaintainEnvironment,
   canUpdateEnvironmentProvider,
@@ -294,6 +295,9 @@ function EnvironmentDetail({ environmentId }: { readonly environmentId: Environm
                     />
                   ) : null}
                 </SettingsSection>
+                {capabilities?.worktreeInventory === true && (
+                  <WorktreeInventorySection key={environmentId} environmentId={environmentId} />
+                )}
                 <SettingsSection title="Providers">
                   <SettingsActionRow
                     icon="arrow.clockwise"

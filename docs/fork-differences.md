@@ -1560,3 +1560,9 @@ this check. A bugfix or refactor that leaves the described behavior the same doe
 entry.
 
 `README.md` only points here. Do not add a second feature list there.
+
+## Managed worktree storage
+
+**Settings → Storage → Managed worktrees** inventories managed checkouts per selected environment with linked threads, branch, local changes, and last synced pull request state. Sizes are measured on demand. Individual and bulk removal rechecks local changes and running work under the workspace lease, refuses project checkouts and unmanaged paths, and keeps branches and thread history. Mobile offers the same inventory and safe cleanup in each environment’s Settings page.
+
+Code: [`WorktreeInventory.ts`](../apps/server/src/git/WorktreeInventory.ts) and [`WorktreeInventory.tsx`](../apps/web/src/components/settings/WorktreeInventory.tsx). User guide: [Review worktree storage](user/project-settings.md#review-worktree-storage).
