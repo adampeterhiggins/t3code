@@ -325,7 +325,10 @@ export function AgentRow(props: {
             <CheckIcon aria-hidden className="size-3 shrink-0 text-success" />
           ) : failed ? (
             <XIcon aria-hidden className="size-3 shrink-0 text-destructive" />
-          ) : null}
+          ) : (
+            // Holds the outcome icon's slot so handles line up across rows.
+            <span aria-hidden className="size-3 shrink-0" />
+          )}
           {/* Fixed widths keep the columns aligned across rows. */}
           <span className="w-[5ch] shrink-0 truncate text-right font-mono text-2xs tabular-nums text-muted-foreground/80">
             {agent.usage ? formatSubagentTokenCount(agent.usage.totalTokens) : ""}
