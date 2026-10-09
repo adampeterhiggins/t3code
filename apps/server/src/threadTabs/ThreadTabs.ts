@@ -1,5 +1,6 @@
 import {
   CommandId,
+  latestThreadForkPoint,
   ThreadId,
   type CreateThreadTabInput,
   type ForkThreadTabInput,
@@ -277,19 +278,52 @@ export const make = Effect.gen(function* () {
     },
   );
 
+  /**
+   * The latest finished response of `sourceThreadId`. The recent window usually holds it; a chat
+   * whose recent turns all failed or are still running is read in full.
+   */
+  const latestForkPoint = Effect.fn("ThreadTabs.latestForkPoint")(function* (
+    sourceThreadId: ThreadId,
+  ) {
+    const read = internal(`Could not read thread ${sourceThreadId}.`);
+    const recent = yield* threads
+      .getThreadSnapshotWindow(sourceThreadId, {
+        rowLimit: THREAD_HISTORY_SNAPSHOT_ROW_LIMIT,
+        userTurnLimit: HANDOFF_USER_TURN_LIMIT,
+      })
+      .pipe(Effect.mapError(read));
+    const point =
+      latestThreadForkPoint(recent.projection.visibleTurnItems) ??
+      latestThreadForkPoint(
+        (yield* threads.getThreadSnapshot(sourceThreadId).pipe(Effect.mapError(read))).projection
+          .visibleTurnItems,
+      );
+    if (point === null) {
+      return yield* new ThreadTabsError({
+        reason: "invalid_request",
+        detail: "That chat has no finished response to continue from yet.",
+      });
+    }
+    return point;
+  });
+
   const fork: ThreadTabs["Service"]["fork"] = Effect.fn("ThreadTabs.fork")(
     function* (threadId, input) {
       const tab = yield* requireShell(threadId);
       // The fork copies its source's branch and worktree, which a sibling tab already shares.
       const source = yield* requireShell(input.sourceThreadId);
+      const point =
+        input.runId === undefined
+          ? yield* latestForkPoint(input.sourceThreadId)
+          : { sourceThreadId: input.sourceThreadId, runId: input.runId };
       const forked = yield* addTab(tab, input.threadId, {
         type: "thread.fork",
         commandId: yield* newCommandId("thread-tab-fork"),
         createdBy: "user",
         creationSource: input.creationSource ?? "web",
-        sourceThreadId: input.sourceThreadId,
+        sourceThreadId: point.sourceThreadId,
         targetThreadId: input.threadId,
-        sourcePoint: { type: "run", runId: input.runId },
+        sourcePoint: { type: "run", runId: point.runId },
         ...(input.title === undefined ? {} : { title: input.title }),
       });
       const modelSelection = input.modelSelection;

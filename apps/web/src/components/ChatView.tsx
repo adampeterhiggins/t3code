@@ -487,6 +487,7 @@ import {
   forkResponseIntoTab,
   forkThreadTab,
   useRightPanelFollowsTabSwitch,
+  useThreadTabActions,
   useThreadTabGroup,
 } from "./chat/ThreadTabs";
 import { useRemoteOpenState } from "~/remoteOpen";
@@ -1674,6 +1675,7 @@ export default function ChatView(props: ChatViewProps) {
   const draftId = routeKind === "draft" ? props.draftId : null;
   const handleNewThread = useNewThreadHandler();
   const { settleThread, pinThread, confirmAndUnpinThread } = useThreadActions();
+  const { closeTab } = useThreadTabActions();
   const routeThreadRef = useMemo(
     () => scopeThreadRef(environmentId, threadId),
     [environmentId, threadId],
@@ -9062,6 +9064,50 @@ export default function ChatView(props: ChatViewProps) {
       await openForkedTab(tabRef);
     });
 
+  // Copies everything of this tab's draft but its text into `tabRef`: the records its chips
+  // resolve against, with ids kept, and its images, files, and other attached context.
+  const copyDraftAttachmentsInto = (tabRef: ScopedThreadRef) => {
+    if (!activeThread) return;
+    const store = useComposerDraftStore.getState();
+    const draft = store.getComposerDraft(composerDraftTarget);
+    for (const record of readThreadTabContextRecords(activeThread.id)) {
+      useThreadTabContextStore.getState().upsert(tabRef.threadId, record);
+    }
+    for (const record of readIssueContextRecords(activeThread.id)) {
+      useIssueContextStore.getState().upsert(tabRef.threadId, record);
+    }
+    for (const record of readRepositoryContextRecords(activeThread.id)) {
+      useRepositoryContextStore.getState().upsert(tabRef.threadId, record);
+    }
+    if (draft) {
+      store.addImages(tabRef, draft.images.map(cloneComposerImageForRetry), {
+        allowDuplicates: true,
+      });
+      store.addFiles(tabRef, draft.files, { allowDuplicates: true });
+      store.setTerminalContexts(tabRef, draft.terminalContexts);
+      store.setPreviewAnnotations(tabRef, draft.previewAnnotations);
+      store.setReviewComments(tabRef, draft.reviewComments);
+    }
+  };
+
+  // From a context pill of an empty tab: a sibling's conversation continues in a native fork that
+  // takes this tab's place, on the sibling's own model and with this tab's draft. Closing archives
+  // this tab, so undo brings it back.
+  const onContinueFromTab = (sourceThreadId: ThreadId, sourceTitle: string) =>
+    runFork(async (connection) => {
+      if (!activeThread || !threadTabGroup) return;
+      const tabRef = await forkResponseIntoTab(connection, {
+        environmentId,
+        tabThreadId: activeThread.id,
+        sourceThreadId,
+        title: `${sourceTitle} fork`,
+      });
+      const draft = useComposerDraftStore.getState().getComposerDraft(composerDraftTarget);
+      useComposerDraftStore.getState().setPrompt(tabRef, draft?.prompt.trim() ?? "");
+      copyDraftAttachmentsInto(tabRef);
+      await closeTab(scopeThreadRef(environmentId, activeThread.id), tabRef);
+    });
+
   // From the model or account picker: the new tab carries the whole chat onto the picked model,
   // and this tab's draft is copied into it. The draft here is left as it was. `emptyDraftPrompt`
   // stands in for the draft when there is none.
@@ -9070,9 +9116,6 @@ export default function ChatView(props: ChatViewProps) {
       if (!activeThread) return;
       const store = useComposerDraftStore.getState();
       const draft = store.getComposerDraft(composerDraftTarget);
-      const tabContexts = readThreadTabContextRecords(activeThread.id);
-      const issueContexts = readIssueContextRecords(activeThread.id);
-      const repositoryContexts = readRepositoryContextRecords(activeThread.id);
       const modelSelection = createModelSelection(instanceId, model);
       const prompt = draft?.prompt.trim() || emptyDraftPrompt;
       const forkPoint = serverProjection
@@ -9098,25 +9141,7 @@ export default function ChatView(props: ChatViewProps) {
           hasHistory: threadHasStarted(activeThread),
         });
       }
-      // Chips in the copied prompt resolve against these, so ids are kept.
-      for (const record of tabContexts) {
-        useThreadTabContextStore.getState().upsert(tabRef.threadId, record);
-      }
-      for (const record of issueContexts) {
-        useIssueContextStore.getState().upsert(tabRef.threadId, record);
-      }
-      for (const record of repositoryContexts) {
-        useRepositoryContextStore.getState().upsert(tabRef.threadId, record);
-      }
-      if (draft) {
-        store.addImages(tabRef, draft.images.map(cloneComposerImageForRetry), {
-          allowDuplicates: true,
-        });
-        store.addFiles(tabRef, draft.files, { allowDuplicates: true });
-        store.setTerminalContexts(tabRef, draft.terminalContexts);
-        store.setPreviewAnnotations(tabRef, draft.previewAnnotations);
-        store.setReviewComments(tabRef, draft.reviewComments);
-      }
+      copyDraftAttachmentsInto(tabRef);
       await openForkedTab(tabRef);
     });
 
@@ -12185,7 +12210,11 @@ export default function ChatView(props: ChatViewProps) {
                       </div>
                     </div>
                   ) : null}
-                  {threadTabGroup && !threadHasStarted(activeThread) ? (
+                  {threadTabGroup &&
+                  !threadHasStarted(activeThread) &&
+                  // A native fork carries history the shell does not count as started, so the
+                  // pills must follow the timeline or they cover the inherited conversation.
+                  serverVisibleTurnItems.length === 0 ? (
                     <ThreadTabContextPills
                       key={activeThread.id}
                       environmentId={activeThread.environmentId}
@@ -12194,6 +12223,7 @@ export default function ChatView(props: ChatViewProps) {
                       onInsert={(reference) =>
                         composerRef.current?.insertContextReference(reference)
                       }
+                      onContinue={onContinueFromTab}
                     />
                   ) : null}
                   <div

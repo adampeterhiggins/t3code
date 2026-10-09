@@ -41,7 +41,8 @@ export function tabSortTimeLabel(
 
 /**
  * A tab's title, status, time, and provider as its sidebar row shows them, laid out inline for a
- * flex parent. `compact` fits a pill: status shows only its icon and colors stay the parent's.
+ * flex parent. `compact` fits a pill: the provider leads, status shows only its icon, and colors
+ * stay the parent's.
  */
 export function SidebarTabSummary(props: {
   thread: SidebarThreadSummary;
@@ -78,8 +79,21 @@ export function SidebarTabSummary(props: {
   });
   const timeLabel =
     tabSortTimeLabel(thread, props.tabSortOrder, props.openedAt) ?? threadTimeLabel(thread);
+  const providerIcon = providerEntry ? (
+    <span aria-hidden className="inline-flex shrink-0 items-center">
+      <ProviderInstanceIcon
+        driverKind={providerEntry.driverKind}
+        displayName={providerEntry.displayName}
+        accentColor={providerEntry.accentColor}
+        showBadge={showInstanceBadge}
+        iconClassName={compact ? "size-3 opacity-60" : "size-3.5 opacity-60"}
+        badgeClassName="right-[-0.1875rem] bottom-[-0.1875rem] h-3 min-w-3 px-0.5 text-5xs"
+      />
+    </span>
+  ) : null;
   return (
     <>
+      {compact ? providerIcon : null}
       <span
         className={cn(
           "min-w-0 flex-1 truncate text-left",
@@ -115,18 +129,7 @@ export function SidebarTabSummary(props: {
         </span>
       ) : null}
       <span className="shrink-0 text-xs tabular-nums text-secondary-label">{timeLabel}</span>
-      {providerEntry ? (
-        <span aria-hidden className="inline-flex shrink-0 items-center">
-          <ProviderInstanceIcon
-            driverKind={providerEntry.driverKind}
-            displayName={providerEntry.displayName}
-            accentColor={providerEntry.accentColor}
-            showBadge={showInstanceBadge}
-            iconClassName={compact ? "size-3 opacity-60" : "size-3.5 opacity-60"}
-            badgeClassName="right-[-0.1875rem] bottom-[-0.1875rem] h-3 min-w-3 px-0.5 text-5xs"
-          />
-        </span>
-      ) : null}
+      {compact ? null : providerIcon}
     </>
   );
 }
