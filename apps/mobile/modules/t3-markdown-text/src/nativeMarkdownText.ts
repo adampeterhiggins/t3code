@@ -104,7 +104,7 @@ export function contextChipPresentation(
     : CONTEXT_CHIP_PRESENTATIONS.file;
 }
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
-import { objectLinkLabel } from "@t3tools/client-runtime/composer-object-links";
+import { objectLinkLabel } from "@t3tools/shared/composerObjectLinks";
 import {
   formatComposerContextReference,
   parseComposerContextHref,

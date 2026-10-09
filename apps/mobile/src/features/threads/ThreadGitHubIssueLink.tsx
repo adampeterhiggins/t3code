@@ -1,3 +1,4 @@
+import { useAtomValue } from "@effect/atom-react";
 import { gitHubIssueLinkForThread } from "@t3tools/client-runtime/state/github-issues";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentId, GitHubIssueThreadLink, ThreadId } from "@t3tools/contracts";
@@ -10,20 +11,20 @@ import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
 
 const OPEN_ACTION = "github-issue:open";
+const CHANGE_ACTION = "github-issue:change";
 const UNLINK_ACTION = "github-issue:unlink";
 
 /** Green open, purple closed, the way GitHub colours issues; matches the composer chip. */
 const STATE_COLORS = { open: "#009f6e", closed: "#8a70dd" } as const;
 
 /** The GitHub issue linked to the thread's tab group, if any. Older servers have no links. */
-export function useThreadGitHubIssueLink(
-  environmentId: EnvironmentId,
-  threadId: ThreadId,
-): GitHubIssueThreadLink | null {
+export function useThreadGitHubIssueLink(environmentId: EnvironmentId, threadId: ThreadId) {
   const links = useEnvironmentQuery(
     gitHubIssueEnvironment.threadLinks({ environmentId, input: {} }),
   ).data;
-  return gitHubIssueLinkForThread(links, threadId);
+  const canEdit = useAtomValue(gitHubIssueEnvironment.linkThread.permissionAtom(environmentId));
+  const link = gitHubIssueLinkForThread(links, threadId);
+  return { link, canLink: canEdit && links != null && link === null, canEdit };
 }
 
 /**
@@ -34,8 +35,10 @@ export function ThreadGitHubIssueLinkChip(props: {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
   readonly link: GitHubIssueThreadLink;
+  /** Opens the picker to link a different issue; omitted where issues cannot be listed. */
+  readonly onChange?: () => void;
 }) {
-  const { environmentId, threadId, link } = props;
+  const { environmentId, threadId, link, onChange } = props;
   const summary = useEnvironmentQuery(
     gitHubIssueEnvironment.issueSummary({ environmentId, input: { url: link.url } }),
   ).data;
@@ -43,6 +46,7 @@ export function ThreadGitHubIssueLinkChip(props: {
     label: "github issue thread unlink",
     reportFailure: false,
   });
+  const canEdit = useAtomValue(gitHubIssueEnvironment.unlinkThread.permissionAtom(environmentId));
   const title = summary?.title ?? link.title;
   const label = `${link.repository}#${link.number}`;
 
@@ -61,7 +65,8 @@ export function ThreadGitHubIssueLinkChip(props: {
       void tryOpenExternalUrl(link.url, "github-issue").then((opened) => {
         if (!opened) Alert.alert("Could not open GitHub", "Try again later.");
       });
-    } else if (id === UNLINK_ACTION) void unlink();
+    } else if (id === CHANGE_ACTION) onChange?.();
+    else if (id === UNLINK_ACTION) void unlink();
   };
 
   return (
@@ -72,12 +77,19 @@ export function ThreadGitHubIssueLinkChip(props: {
       title={`${label} ${title}`}
       actions={[
         { id: OPEN_ACTION, title: "Open on GitHub", image: "arrow.up.right.square" },
-        {
-          id: UNLINK_ACTION,
-          title: "Unlink issue",
-          image: "link",
-          attributes: { destructive: true },
-        },
+        ...(canEdit && onChange
+          ? [{ id: CHANGE_ACTION, title: "Change issue…", image: "pencil" }]
+          : []),
+        ...(canEdit
+          ? [
+              {
+                id: UNLINK_ACTION,
+                title: "Unlink issue",
+                image: "link",
+                attributes: { destructive: true },
+              },
+            ]
+          : []),
       ]}
       onPressAction={({ nativeEvent }) => onMenuAction(nativeEvent.event)}
     >

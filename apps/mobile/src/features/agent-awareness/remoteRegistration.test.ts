@@ -306,6 +306,22 @@ describe("makeRelayDeviceRegistrationRequest", () => {
     });
   });
 
+  it("sends the per-event notification rules saved on this device", () => {
+    const request = makeRelayDeviceRegistrationRequest({
+      deviceId: "device-1",
+      label: "Julius's iPhone",
+      iosMajorVersion: 18,
+      notificationsEnabled: true,
+      preferences: { notifyOnCompletion: false, notifyOnInput: false },
+    });
+    expect(request.preferences).toMatchObject({
+      notifyOnApproval: true,
+      notifyOnInput: false,
+      notifyOnCompletion: false,
+      notifyOnFailure: true,
+    });
+  });
+
   it("registers the app's APNs routing so the relay targets the right bundle", () => {
     expect(
       makeRelayDeviceRegistrationRequest({

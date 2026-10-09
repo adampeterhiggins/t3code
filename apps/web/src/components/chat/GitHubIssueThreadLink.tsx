@@ -1,6 +1,7 @@
+import { useAtomValue } from "@effect/atom-react";
 import { gitHubIssueLinkForThread } from "@t3tools/client-runtime/state/github-issues";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import { ExternalLinkIcon, UnlinkIcon } from "lucide-react";
+import { ExternalLinkIcon, PencilIcon, UnlinkIcon } from "lucide-react";
 
 import { useLinkClickHandler } from "~/browser/useOpenLink";
 import { cn } from "~/lib/utils";
@@ -11,6 +12,7 @@ import { GitHubIcon } from "../Icons";
 import { Button } from "../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
 import { GITHUB_ISSUE_STATE_PRESENTATION } from "./GitHubIssueHoverPreview";
+import { openGitHubIssuePicker } from "./GitHubIssuePicker";
 
 /** Every GitHub issue link in the environment. Null until the server answers. */
 export function useGitHubIssueThreadLinks(environmentId: EnvironmentId | null) {
@@ -54,6 +56,9 @@ export function GitHubIssueThreadLinkChip(props: { threadRef: ScopedThreadRef })
   ).data;
   const openLink = useLinkClickHandler(threadRef);
   const unlink = useUnlinkGitHubIssue();
+  const canEdit = useAtomValue(
+    githubIssueEnvironment.linkThread.permissionAtom(threadRef.environmentId),
+  );
   if (link === null) return null;
   const title = summary?.title ?? link.title;
   const url = summary?.url ?? link.url;
@@ -83,11 +88,19 @@ export function GitHubIssueThreadLinkChip(props: { threadRef: ScopedThreadRef })
           <ExternalLinkIcon />
           Open on GitHub
         </MenuItem>
-        <MenuSeparator />
-        <MenuItem onClick={() => void unlink(threadRef)}>
-          <UnlinkIcon />
-          Unlink issue
-        </MenuItem>
+        {canEdit ? (
+          <>
+            <MenuItem onClick={() => openGitHubIssuePicker(threadRef, "link")}>
+              <PencilIcon />
+              Change issue…
+            </MenuItem>
+            <MenuSeparator />
+            <MenuItem onClick={() => void unlink(threadRef)}>
+              <UnlinkIcon />
+              Unlink issue
+            </MenuItem>
+          </>
+        ) : null}
       </MenuPopup>
     </Menu>
   );

@@ -10,6 +10,7 @@ import {
   type AtomCommandResult,
 } from "@t3tools/client-runtime/state/runtime";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { notificationProjectKey } from "@t3tools/client-runtime/state/notification-rules";
 import { AsyncResult } from "effect/reactivity";
 import { type EnvironmentId, type ProjectIconOverride } from "@t3tools/contracts";
 import { useLocation, useNavigate } from "@tanstack/react-router";
@@ -18,6 +19,7 @@ import { InfoIcon, Trash2Icon } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useComposerDraftStore } from "../../composerDraftStore";
+import { useClientSettings, useUpdateClientSettings } from "../../hooks/useSettings";
 import { releaseProjectDraftUploads } from "../../lib/composerDraftUploads";
 import { readLocalApi } from "../../localApi";
 import {
@@ -31,6 +33,7 @@ import { ProjectFavicon } from "../ProjectFavicon";
 import { Alert, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { Switch } from "../ui/switch";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import {
   SettingResetButton,
@@ -56,6 +59,37 @@ const ProjectIconPickerDialog = lazy(() =>
 
 function memberKey(member: { environmentId: string; id: string }): string {
   return `${member.environmentId}:${member.id}`;
+}
+
+/** Device-local: mutes every checkout in the group, whatever the event rules say. */
+function ProjectNotificationsRow({
+  members,
+}: {
+  members: ReadonlyArray<SidebarProjectGroupMember>;
+}) {
+  const muted = useClientSettings((settings) => settings.mutedNotificationProjects);
+  const updateSettings = useUpdateClientSettings();
+  const keys = members.map((member) => notificationProjectKey(member.environmentId, member.id));
+  const enabled = keys.some((key) => !muted.includes(key));
+  return (
+    <SettingsRow
+      title="Notifications"
+      description="Alerts, sounds, and toasts on this device for threads in this project."
+      control={
+        <Switch
+          checked={enabled}
+          onCheckedChange={(checked) =>
+            updateSettings({
+              mutedNotificationProjects: checked
+                ? muted.filter((key) => !keys.includes(key))
+                : [...muted, ...keys.filter((key) => !muted.includes(key))],
+            })
+          }
+          aria-label="Project notifications"
+        />
+      }
+    />
+  );
 }
 
 /** `project` is the Projects page shortcut: the new-thread defaults people change most. */
@@ -536,6 +570,7 @@ function ProjectDetail({
               </div>
             }
           />
+          <ProjectNotificationsRow members={group.memberProjects} />
         </SettingsSection>
         <ProjectDefaultsSettings category="project" />
         <ProjectActionsSettings />

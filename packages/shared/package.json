@@ -271,6 +271,14 @@
       "types": "./src/composerContextReferences.ts",
       "import": "./src/composerContextReferences.ts"
     },
+    "./composerObjectLinks": {
+      "types": "./src/composerObjectLinks.ts",
+      "import": "./src/composerObjectLinks.ts"
+    },
+    "./integrationContextRecords": {
+      "types": "./src/integrationContextRecords.ts",
+      "import": "./src/integrationContextRecords.ts"
+    },
     "./composerContextLegacy": {
       "types": "./src/composerContextLegacy.ts",
       "import": "./src/composerContextLegacy.ts"

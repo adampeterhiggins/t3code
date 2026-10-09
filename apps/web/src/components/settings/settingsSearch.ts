@@ -390,6 +390,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["notification toast popup completion input approval failure"],
   },
   {
+    id: "notification-events",
+    title: "Notify about",
+    to: "/settings/general",
+    searchTerms: [
+      "notification events mute approval question finished failed usage limit pull request checks review conflict",
+    ],
+  },
+  {
     id: "time-format",
     title: "Time format",
     to: "/settings/general",
@@ -722,6 +730,17 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["linear app desktop open in linear links browser"],
   },
   {
+    id: "linear-assignment-triggers",
+    title: "Start threads from Linear assignments",
+    to: "/settings/integrations",
+    targetId: "linear",
+    searchTerms: [
+      "linear assigned assignment trigger automation start thread new issue label team",
+    ],
+    environmentOnly: true,
+    scope: "environment-defaults",
+  },
+  {
     id: "notion",
     title: "Notion",
     to: "/settings/integrations",
@@ -736,7 +755,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Slack",
     to: "/settings/integrations",
     searchTerms: [
-      "slack messages threads channels connect account sign in oauth app manifest client id attach context enable disable integration pasted links setup prompts",
+      "slack messages threads channels connect account sign in oauth app manifest client id attach context enable disable integration pasted links setup prompts mentions trigger keyword automation",
     ],
     environmentOnly: true,
     scope: "environment-defaults",

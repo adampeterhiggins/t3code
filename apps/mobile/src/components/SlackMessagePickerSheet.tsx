@@ -1,8 +1,8 @@
-import type { EnvironmentId, SlackMessageSummary } from "@t3tools/contracts";
+import type { EnvironmentId, SlackMessageSummary, ThreadId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
-import { slackThreadContextRecord } from "@t3tools/client-runtime/state/slack";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
+import { slackThreadContextRecord } from "@t3tools/shared/integrationContextRecords";
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";
@@ -39,14 +39,19 @@ function slackErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message.trim() ? error.message : fallback;
 }
 
-export interface SlackMessagePickerTarget {
-  readonly environmentId: EnvironmentId;
-  readonly draftKey: string;
-}
+/** Attach inserts the message's thread into a composer draft; link links it to the thread's tab group. */
+export type SlackMessagePickerTarget =
+  | { readonly mode?: "attach"; readonly environmentId: EnvironmentId; readonly draftKey: string }
+  | { readonly mode: "link"; readonly environmentId: EnvironmentId; readonly threadId: ThreadId };
 
-type OpenedSlackMessagePicker = SlackMessagePickerTarget & {
-  readonly insertion: ComposerDraftInsertion;
-};
+type OpenedSlackMessagePicker =
+  | {
+      readonly mode: "attach";
+      readonly environmentId: EnvironmentId;
+      readonly draftKey: string;
+      readonly insertion: ComposerDraftInsertion;
+    }
+  | { readonly mode: "link"; readonly environmentId: EnvironmentId; readonly threadId: ThreadId };
 
 /**
  * A Slack message picker. The owner renders `sheet` somewhere that outlives composer focus:
@@ -63,7 +68,16 @@ export function useSlackMessagePicker(target: SlackMessagePickerTarget | null): 
   return {
     open:
       target && enabled
-        ? () => setOpened({ ...target, insertion: captureComposerDraftInsertion(target.draftKey) })
+        ? () =>
+            setOpened(
+              target.mode === "link"
+                ? target
+                : {
+                    ...target,
+                    mode: "attach",
+                    insertion: captureComposerDraftInsertion(target.draftKey),
+                  },
+            )
         : undefined,
     sheet:
       opened && openedServerConfig?.settings.enableSlackIntegration ? (
@@ -73,8 +87,9 @@ export function useSlackMessagePicker(target: SlackMessagePickerTarget | null): 
 }
 
 /**
- * Attaches a Slack thread at the caret the composer had when the sheet opened. Mobile has no
- * Slack settings, so an unconnected environment points at desktop or web.
+ * Attaches a Slack thread at the caret the composer had when the sheet opened, or links it to the
+ * thread's tab group. Mobile has no Slack settings, so an unconnected environment points at
+ * desktop or web.
  */
 function SlackMessagePickerSheet(
   props: OpenedSlackMessagePicker & { readonly onClose: () => void },
@@ -84,7 +99,10 @@ function SlackMessagePickerSheet(
   );
   const phase = connection.data?.phase;
   return (
-    <PickerSheet title="Slack message" onClose={props.onClose}>
+    <PickerSheet
+      title={props.mode === "link" ? "Link Slack thread" : "Slack message"}
+      onClose={props.onClose}
+    >
       {phase === "connected" ? (
         <SlackMessageSearch {...props} />
       ) : (
@@ -111,12 +129,41 @@ function SlackMessageSearch(props: OpenedSlackMessagePicker & { readonly onClose
     label: "slack thread fetch",
     reportFailure: false,
   });
+  const linkThread = useAtomCommand(slackEnvironment.linkThread, {
+    label: "slack thread link",
+    reportFailure: false,
+  });
   const [attaching, setAttaching] = useState<string | null>(null);
+
+  const link = async (threadId: ThreadId, message: SlackMessageSummary) => {
+    const result = await linkThread({
+      environmentId: props.environmentId,
+      input: {
+        threadId,
+        channelId: message.channelId,
+        ts: message.ts,
+        ...(message.threadTs === null ? {} : { threadTs: message.threadTs }),
+        url: message.url,
+      },
+    });
+    if (result._tag === "Failure") {
+      Alert.alert(
+        "Could not link Slack thread",
+        slackErrorMessage(squashAtomCommandFailure(result), "Try again."),
+      );
+      return;
+    }
+    props.onClose();
+  };
 
   const attach = async (message: SlackMessageSummary) => {
     if (attaching) return;
     setAttaching(message.url);
     try {
+      if (props.mode === "link") {
+        await link(props.threadId, message);
+        return;
+      }
       const fetched = await getThread({
         environmentId: props.environmentId,
         input: {

@@ -1,9 +1,13 @@
 import {
   CommandId,
   latestThreadForkPoint,
+  MessageId,
   ThreadId,
   type CreateThreadTabInput,
   type ForkThreadTabInput,
+  type ModelSelection,
+  type OrchestrationV2ThreadStartedBy,
+  type RunId,
   type OrchestrationV2ServerCommand,
   type OrchestrationV2ThreadShell,
   type ThreadTabGroup,
@@ -22,6 +26,8 @@ import { modelSelectionsEqual } from "@t3tools/shared/model";
 
 import { GitHubIssueThreadLinks } from "../githubIssues/GitHubIssueThreadLinks.ts";
 import { LinearThreadLinks } from "../linear/LinearThreadLinks.ts";
+import { NotionThreadLinks } from "../notion/NotionThreadLinks.ts";
+import { SlackThreadLinks } from "../slack/SlackThreadLinks.ts";
 import { ThreadManagementService } from "../orchestration-v2/ThreadManagementService.ts";
 import { THREAD_HISTORY_SNAPSHOT_ROW_LIMIT } from "../orchestration-v2/threadHistoryPaging.ts";
 import {
@@ -38,6 +44,25 @@ export class ThreadTabsError extends Schema.TaggedError<ThreadTabsError>()("Thre
 
 /** Recent user turns a whole-chat handoff summarizes; forks read the full history to their cut. */
 const HANDOFF_USER_TURN_LIMIT = 8;
+
+/** A tab an agent opens over MCP: empty, or forked from a chat, optionally with a first message. */
+export interface OpenThreadTabInput {
+  readonly threadId: ThreadId;
+  /** Defaults to the group thread's model, or the fork source's when forking. */
+  readonly modelSelection?: ModelSelection | undefined;
+  /** Carries `sourceThreadId`'s conversation, from `runId` or its latest finished response. */
+  readonly fork?: { readonly sourceThreadId: ThreadId; readonly runId?: RunId | undefined };
+  readonly title?: string | undefined;
+  readonly message?: string | undefined;
+  /** The thread or agent access token that opened the tab. */
+  readonly startedBy?: OrchestrationV2ThreadStartedBy | undefined;
+}
+
+export interface OpenedThreadTab {
+  readonly group: ThreadTabGroup;
+  /** The first message's run, when one was sent. */
+  readonly runId: RunId | null;
+}
 
 /**
  * Chat tabs: threads grouped in the fork-owned `fork_thread_tabs` table so they share one
@@ -73,6 +98,14 @@ export class ThreadTabs extends Context.Service<
       threadId: ThreadId,
       input: ForkThreadTabInput,
     ) => Effect.Effect<ThreadTabGroup, ThreadTabsError>;
+    /**
+     * Opens a tab for an agent in `threadId`'s group: `create` or `fork`, recorded as agent-started,
+     * then its first message when there is one.
+     */
+    readonly open: (
+      threadId: ThreadId,
+      input: OpenThreadTabInput,
+    ) => Effect.Effect<OpenedThreadTab, ThreadTabsError>;
     /** Summaries of other chats for `threadId`, which may still be a draft. */
     readonly handoff: (
       threadId: ThreadId,
@@ -96,6 +129,18 @@ export const make = Effect.gen(function* () {
   const threads = yield* ThreadManagementService;
   const linearThreadLinks = yield* LinearThreadLinks;
   const githubIssueThreadLinks = yield* GitHubIssueThreadLinks;
+  const slackThreadLinks = yield* SlackThreadLinks;
+  const notionThreadLinks = yield* NotionThreadLinks;
+  // Every link kind follows tab-group membership, so each re-reads after the group changes.
+  const refreshLinks = Effect.all(
+    [
+      linearThreadLinks.refresh,
+      githubIssueThreadLinks.refresh,
+      slackThreadLinks.refresh,
+      notionThreadLinks.refresh,
+    ],
+    { discard: true },
+  );
   const crypto = yield* Crypto.Crypto;
 
   const shellOf = (threadId: ThreadId) =>
@@ -206,15 +251,13 @@ export const make = Effect.gen(function* () {
         }),
       )
       .pipe(Effect.mapError(internal("Could not save tab membership.")));
-    // The group's issue links, if any, now cover the new tab too.
-    yield* linearThreadLinks.refresh;
-    yield* githubIssueThreadLinks.refresh;
+    // The group's links, if any, now cover the new tab too.
+    yield* refreshLinks;
 
     yield* threads.dispatch(command).pipe(
       Effect.tapError(() =>
         sql`DELETE FROM fork_thread_tabs WHERE thread_id = ${tabThreadId}`.pipe(
-          Effect.andThen(linearThreadLinks.refresh),
-          Effect.andThen(githubIssueThreadLinks.refresh),
+          Effect.andThen(refreshLinks),
           Effect.ignore,
         ),
       ),
@@ -247,8 +290,7 @@ export const make = Effect.gen(function* () {
           ),
         )
         .pipe(Effect.mapError(internal("Could not save tab membership.")));
-      yield* linearThreadLinks.refresh;
-      yield* githubIssueThreadLinks.refresh;
+      yield* refreshLinks;
     },
   );
 
@@ -258,25 +300,40 @@ export const make = Effect.gen(function* () {
       Effect.mapError(internal("Could not allocate a command id.")),
     );
 
-  const create: ThreadTabs["Service"]["create"] = Effect.fn("ThreadTabs.create")(
-    function* (sourceThreadId, input) {
-      const source = yield* requireShell(sourceThreadId);
-      return yield* addTab(source, input.threadId, {
-        type: "thread.create",
-        commandId: yield* newCommandId("thread-tab-create"),
-        createdBy: "user",
-        creationSource: input.creationSource ?? "web",
-        threadId: input.threadId,
-        projectId: source.projectId,
-        title: "New tab",
-        modelSelection: input.modelSelection,
-        runtimeMode: source.runtimeMode,
-        interactionMode: source.interactionMode,
-        branch: source.branch,
-        worktreePath: source.worktreePath,
-      });
+  type Provenance = Pick<
+    Extract<OrchestrationV2ServerCommand, { readonly type: "thread.create" }>,
+    "createdBy" | "creationSource" | "startedBy"
+  >;
+  const byUser = (input: Pick<CreateThreadTabInput, "creationSource">): Provenance => ({
+    createdBy: "user",
+    creationSource: input.creationSource ?? "web",
+  });
+
+  const createTab = Effect.fn("ThreadTabs.createTab")(function* (
+    sourceThreadId: ThreadId,
+    input: Pick<CreateThreadTabInput, "threadId" | "modelSelection"> & {
+      readonly title?: string | undefined;
     },
-  );
+    provenance: Provenance,
+  ) {
+    const source = yield* requireShell(sourceThreadId);
+    return yield* addTab(source, input.threadId, {
+      type: "thread.create",
+      commandId: yield* newCommandId("thread-tab-create"),
+      ...provenance,
+      threadId: input.threadId,
+      projectId: source.projectId,
+      title: input.title ?? "New tab",
+      modelSelection: input.modelSelection,
+      runtimeMode: source.runtimeMode,
+      interactionMode: source.interactionMode,
+      branch: source.branch,
+      worktreePath: source.worktreePath,
+    });
+  });
+
+  const create: ThreadTabs["Service"]["create"] = (sourceThreadId, input) =>
+    createTab(sourceThreadId, input, byUser(input));
 
   /**
    * The latest finished response of `sourceThreadId`. The recent window usually holds it; a chat
@@ -307,52 +364,122 @@ export const make = Effect.gen(function* () {
     return point;
   });
 
-  const fork: ThreadTabs["Service"]["fork"] = Effect.fn("ThreadTabs.fork")(
+  const forkTab = Effect.fn("ThreadTabs.forkTab")(function* (
+    threadId: ThreadId,
+    input: Omit<ForkThreadTabInput, "creationSource">,
+    provenance: Provenance,
+  ) {
+    const tab = yield* requireShell(threadId);
+    // The fork copies its source's branch and worktree, which a sibling tab already shares.
+    const source = yield* requireShell(input.sourceThreadId);
+    const point =
+      input.runId === undefined
+        ? yield* latestForkPoint(input.sourceThreadId)
+        : { sourceThreadId: input.sourceThreadId, runId: input.runId };
+    const forked = yield* addTab(tab, input.threadId, {
+      type: "thread.fork",
+      commandId: yield* newCommandId("thread-tab-fork"),
+      ...provenance,
+      sourceThreadId: point.sourceThreadId,
+      targetThreadId: input.threadId,
+      sourcePoint: { type: "run", runId: point.runId },
+      ...(input.title === undefined ? {} : { title: input.title }),
+    });
+    const modelSelection = input.modelSelection;
+    if (
+      modelSelection === undefined ||
+      modelSelectionsEqual(modelSelection, source.modelSelection)
+    ) {
+      return forked;
+    }
+    // The fork has no provider session yet, so its first message hands the conversation to
+    // the new model's provider instead of resuming the source's.
+    yield* threads
+      .dispatch({
+        type: "thread.model-selection.set",
+        commandId: yield* newCommandId("thread-tab-fork-model"),
+        threadId: input.threadId,
+        modelSelection,
+      })
+      .pipe(
+        Effect.mapError(
+          (cause) =>
+            new ThreadTabsError({
+              reason: "dispatch_failed",
+              detail: `Forked tab ${input.threadId} could not switch to ${modelSelection.model}.`,
+              cause,
+            }),
+        ),
+      );
+    return yield* group(input.threadId);
+  });
+
+  const fork: ThreadTabs["Service"]["fork"] = (threadId, input) =>
+    forkTab(threadId, input, byUser(input));
+
+  const open: ThreadTabs["Service"]["open"] = Effect.fn("ThreadTabs.open")(
     function* (threadId, input) {
-      const tab = yield* requireShell(threadId);
-      // The fork copies its source's branch and worktree, which a sibling tab already shares.
-      const source = yield* requireShell(input.sourceThreadId);
-      const point =
-        input.runId === undefined
-          ? yield* latestForkPoint(input.sourceThreadId)
-          : { sourceThreadId: input.sourceThreadId, runId: input.runId };
-      const forked = yield* addTab(tab, input.threadId, {
-        type: "thread.fork",
-        commandId: yield* newCommandId("thread-tab-fork"),
-        createdBy: "user",
-        creationSource: input.creationSource ?? "web",
-        sourceThreadId: point.sourceThreadId,
-        targetThreadId: input.threadId,
-        sourcePoint: { type: "run", runId: point.runId },
-        ...(input.title === undefined ? {} : { title: input.title }),
-      });
-      const modelSelection = input.modelSelection;
-      if (
-        modelSelection === undefined ||
-        modelSelectionsEqual(modelSelection, source.modelSelection)
-      ) {
-        return forked;
-      }
-      // The fork has no provider session yet, so its first message hands the conversation to
-      // the new model's provider instead of resuming the source's.
-      yield* threads
-        .dispatch({
-          type: "thread.model-selection.set",
-          commandId: yield* newCommandId("thread-tab-fork-model"),
+      const provenance: Provenance = {
+        createdBy: "agent",
+        creationSource: "mcp",
+        ...(input.startedBy === undefined ? {} : { startedBy: input.startedBy }),
+      };
+      const title = input.title?.trim() || undefined;
+      const group =
+        input.fork === undefined
+          ? yield* createTab(
+              threadId,
+              {
+                threadId: input.threadId,
+                modelSelection:
+                  input.modelSelection ?? (yield* requireShell(threadId)).modelSelection,
+                title,
+              },
+              provenance,
+            )
+          : yield* forkTab(
+              threadId,
+              {
+                threadId: input.threadId,
+                sourceThreadId: input.fork.sourceThreadId,
+                ...(input.fork.runId === undefined ? {} : { runId: input.fork.runId }),
+                ...(title === undefined ? {} : { title }),
+                ...(input.modelSelection === undefined
+                  ? {}
+                  : { modelSelection: input.modelSelection }),
+              },
+              provenance,
+            );
+      const text = input.message?.trim();
+      if (!text) return { group, runId: null };
+      const tab = yield* requireShell(input.threadId);
+      const commandId = yield* newCommandId("thread-tab-open-message");
+      const sent = yield* threads
+        .sendToThread({
+          projectId: tab.projectId,
+          commandId,
           threadId: input.threadId,
-          modelSelection,
+          messageId: MessageId.make(commandId),
+          ...(input.startedBy?.kind === "thread"
+            ? { senderThreadId: input.startedBy.threadId }
+            : {}),
+          text,
+          attachments: [],
+          mode: "auto",
+          createdBy: provenance.createdBy,
+          creationSource: provenance.creationSource,
         })
         .pipe(
           Effect.mapError(
             (cause) =>
               new ThreadTabsError({
                 reason: "dispatch_failed",
-                detail: `Forked tab ${input.threadId} could not switch to ${modelSelection.model}.`,
+                detail: `Opened tab ${input.threadId}, but its first message was not sent.`,
                 cause,
               }),
           ),
         );
-      return yield* group(input.threadId);
+      return { group, runId: sent.run.id };
     },
   );
 
@@ -430,7 +557,7 @@ export const make = Effect.gen(function* () {
     ORDER BY tabs.group_id, tabs.position, tabs.created_at
   `.pipe(Effect.mapError(internal("Could not read tab memberships.")));
 
-  return ThreadTabs.of({ memberships, group, setName, create, adopt, fork, handoff });
+  return ThreadTabs.of({ memberships, group, setName, create, adopt, fork, open, handoff });
 });
 
 export const layer = Layer.effect(ThreadTabs, make);

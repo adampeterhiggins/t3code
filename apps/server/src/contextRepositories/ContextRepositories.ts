@@ -23,10 +23,13 @@ import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 
 import { ServerConfig } from "../config.ts";
+import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
+import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
 import type { GitCloneProgressLine } from "../project/gitCloneProgress.ts";
 import * as GitHubCli from "../sourceControl/GitHubCli.ts";
 import * as SourceControlRepositoryService from "../sourceControl/SourceControlRepositoryService.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
+import { withWorkspaceLease } from "../workspace/workspaceLease.ts";
 
 /**
  * Clones repositories attached to a message into the workspace's context
@@ -51,6 +54,19 @@ export class ContextRepositories extends Context.Service<
       readonly cwd: string;
       readonly directory: string;
     }) => Effect.Effect<ContextRepositoryInspectResult, ContextRepositoryError>;
+    /**
+     * Deletes one clone from the workspace's context directory. Refuses a
+     * folder that resolves outside that directory (a symlink, or a context
+     * directory that is itself a link out of the workspace), one that is not a
+     * git repository, and any removal while a turn is running in the workspace.
+     * Waits for a clone of the same folder to finish, and holds the workspace
+     * lease while deleting so a turn starting in the workspace waits for it.
+     */
+    readonly remove: (input: {
+      readonly cwd: string;
+      readonly directory: string;
+      readonly directoryName: string;
+    }) => Effect.Effect<void, ContextRepositoryError>;
     /**
      * Makes sure every record's clone exists and returns each record with its
      * outcome filled in. Never fails: a problem is that record's outcome.
@@ -167,6 +183,8 @@ export const make = Effect.gen(function* () {
   const git = yield* GitVcsDriver.GitVcsDriver;
   const github = yield* GitHubCli.GitHubCli;
   const repositories = yield* SourceControlRepositoryService.SourceControlRepositoryService;
+  const projections = yield* ProjectionStore.ProjectionStoreV2;
+  const projects = yield* ProjectStore.ProjectStoreV2;
   const ownerLists = new Map<
     string,
     { readonly fetchedAt: number; readonly repositories: ReadonlyArray<ContextRepositoryCandidate> }
@@ -364,6 +382,9 @@ export const make = Effect.gen(function* () {
           ),
         );
     }).pipe(
+      // Keyed by the clone's own path, so a removal of the same folder waits
+      // for the clone instead of deleting it half-written.
+      (effect) => withWorkspaceLease(path.join(directory.absolute, record.directoryName), effect),
       Effect.tap((outcome) => onProgress({ type: "finished", record, outcome })),
       Effect.map((outcome): RepositoryContextRecord => ({ ...record, outcome })),
     );
@@ -435,6 +456,119 @@ export const make = Effect.gen(function* () {
         directory: directory.relative,
         clones: clones.filter((clone) => clone !== null),
       };
+    });
+
+  const isInside = (root: string, target: string) => {
+    const relative = path.relative(root, target);
+    return (
+      relative.length > 0 &&
+      relative !== ".." &&
+      !relative.startsWith(`..${path.sep}`) &&
+      !path.isAbsolute(relative)
+    );
+  };
+
+  /**
+   * Whether a thread has unfinished work in this exact workspace (a worktree,
+   * or its project's root): a run preparing, starting, running, or waiting on
+   * the user.
+   */
+  const hasRunningTurn = (workspace: string) =>
+    Effect.gen(function* () {
+      const snapshot = yield* projections.getShellSnapshot({ unsettledOnly: true });
+      const running = snapshot.threads.filter(
+        (thread) => (thread.activityRunStatus ?? null) !== null,
+      );
+      if (running.length === 0) return false;
+      const roots = new Map(
+        (yield* projects.listShells({
+          projectIds: [...new Set(running.map((thread) => thread.projectId))],
+        })).map((project) => [project.id, project.workspaceRoot] as const),
+      );
+      return running.some((thread) => {
+        const cwd = thread.worktreePath ?? roots.get(thread.projectId);
+        return cwd !== undefined && path.resolve(cwd) === workspace;
+      });
+    }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new ContextRepositoryError({
+            detail: "Could not check for running turns in this workspace.",
+            cause,
+          }),
+      ),
+    );
+
+  const removeLocked = (input: {
+    readonly workspace: string;
+    readonly directory: { readonly relative: string; readonly absolute: string };
+    readonly clonePath: string;
+    readonly directoryName: string;
+  }) =>
+    Effect.gen(function* () {
+      const { workspace, directory, clonePath } = input;
+      const relativePath = `${directory.relative}/${input.directoryName}`;
+      const realPathOf = (target: string) =>
+        fileSystem
+          .realPath(target)
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new ContextRepositoryError({ detail: `${relativePath} does not exist.`, cause }),
+            ),
+          );
+      // Compare resolved paths so a symlinked clone, or a context folder that
+      // links out of the workspace, is refused rather than followed.
+      const realWorkspace = yield* realPathOf(workspace);
+      const realDirectory = yield* realPathOf(directory.absolute);
+      const realClone = yield* realPathOf(clonePath);
+      if (
+        !isInside(realWorkspace, realDirectory) ||
+        realClone !== path.join(realDirectory, input.directoryName)
+      ) {
+        return yield* new ContextRepositoryError({
+          detail: `${relativePath} resolves outside ${directory.relative}; it was not removed.`,
+        });
+      }
+      if (!(yield* isGitRepository(realClone))) {
+        return yield* new ContextRepositoryError({
+          detail: `${relativePath} is not a git repository; it was not removed.`,
+        });
+      }
+      if (yield* hasRunningTurn(workspace)) {
+        return yield* new ContextRepositoryError({
+          detail: "A turn is running in this workspace. Remove the repository once it finishes.",
+        });
+      }
+      yield* fileSystem
+        .remove(realClone, { recursive: true })
+        .pipe(
+          Effect.mapError(
+            (cause) =>
+              new ContextRepositoryError({ detail: `Could not remove ${relativePath}.`, cause }),
+          ),
+        );
+    });
+
+  const remove: ContextRepositories["Service"]["remove"] = (input) =>
+    Effect.gen(function* () {
+      if (!isDirectoryName(input.directoryName)) {
+        return yield* new ContextRepositoryError({
+          detail: "The folder name must be a single path segment.",
+        });
+      }
+      const workspace = path.resolve(input.cwd);
+      const directory = yield* resolveDirectory(workspace, input.directory);
+      const clonePath = path.join(directory.absolute, input.directoryName);
+      // The clone's lease first, so waiting on a clone never holds up turns
+      // and terminals in the workspace; turn start takes only the workspace's.
+      return yield* withWorkspaceLease(
+        clonePath,
+        withWorkspaceLease(
+          workspace,
+          removeLocked({ workspace, directory, clonePath, directoryName: input.directoryName }),
+        ),
+      );
     });
 
   const fetchOwner = (owner: string, limit: number) =>
@@ -526,7 +660,7 @@ export const make = Effect.gen(function* () {
       return { repositories: lists.flat() };
     });
 
-  return ContextRepositories.of({ list, inspect, ensure });
+  return ContextRepositories.of({ list, inspect, remove, ensure });
 });
 
 export const layer = Layer.effect(ContextRepositories, make);

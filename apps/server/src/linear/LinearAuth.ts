@@ -35,12 +35,18 @@ import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
+import {
+  type CallbackReply,
+  type IntegrationRedirect,
+  resolveIntegrationRedirect,
+} from "../integrationOAuth.ts";
 import { linearGraphqlRequest } from "./linearGraphql.ts";
 import {
   buildLinearAuthorizeUrl,
   DEFAULT_LINEAR_CLIENT_ID,
   LINEAR_LOOPBACK_PORT,
   LINEAR_REDIRECT_URI,
+  LINEAR_SERVER_CALLBACK_PATH,
   LINEAR_REVOKE_URL,
   LINEAR_TOKEN_URL,
   readLinearCallback,
@@ -100,9 +106,12 @@ const failedState = (message: string): LinearConnectionState => ({
   message,
 });
 
+type UsableRedirect = Exclude<IntegrationRedirect, { readonly _tag: "Invalid" }>;
+
 interface ActiveFlow {
   readonly flowId: string;
   readonly state: string;
+  readonly redirect: UsableRedirect;
   readonly callback: Deferred.Deferred<string, LinearError>;
   /** What to show again if the flow is cancelled. */
   readonly previous: LinearConnectionState;
@@ -127,6 +136,8 @@ export class LinearAuth extends Context.Service<
     readonly accessToken: Effect.Effect<string, LinearError>;
     /** Drops the stored credential after Linear rejects it. */
     readonly markRevoked: Effect.Effect<void>;
+    /** Settles the active login from a redirect that reached the main server. */
+    readonly receiveCallback: (url: URL) => Effect.Effect<CallbackReply>;
   }
 >()("t3/linear/LinearAuth") {}
 
@@ -135,6 +146,12 @@ export const make = Effect.gen(function* () {
   const clientId = yield* Config.String("T3CODE_LINEAR_CLIENT_ID").pipe(
     Config.withDefault(DEFAULT_LINEAR_CLIENT_ID),
   );
+  const redirect = resolveIntegrationRedirect({
+    configured: yield* Config.String("T3CODE_LINEAR_REDIRECT_URI").pipe(Config.option),
+    variable: "T3CODE_LINEAR_REDIRECT_URI",
+    loopbackUri: LINEAR_REDIRECT_URI,
+    callbackPath: LINEAR_SERVER_CALLBACK_PATH,
+  });
   const crypto = yield* Crypto.Crypto;
   const httpClient = yield* HttpClient.HttpClient;
   const secrets = yield* ServerSecretStore.ServerSecretStore;
@@ -195,11 +212,12 @@ export const make = Effect.gen(function* () {
   const exchangeCode = Effect.fn("linear.auth.exchange_code")(function* (
     code: string,
     verifier: string,
+    redirectUri: string,
   ) {
     const result = yield* postToken({
       grant_type: "authorization_code",
       code,
-      redirect_uri: LINEAR_REDIRECT_URI,
+      redirect_uri: redirectUri,
       client_id: clientId,
       code_verifier: verifier,
     }).pipe(
@@ -230,31 +248,83 @@ export const make = Effect.gen(function* () {
     return token.account;
   });
 
+  /** Settles a login from the redirect the browser followed. The reply never carries the code. */
+  const settleCallback = (flow: ActiveFlow | null, url: URL) =>
+    Effect.gen(function* () {
+      if (flow === null) {
+        return {
+          status: 400,
+          message: "This Linear sign-in is no longer active. Start again in T3 Code.",
+        } satisfies CallbackReply;
+      }
+      const result = readLinearCallback(url, flow.state);
+      switch (result._tag) {
+        case "Invalid":
+          return { status: 400, message: result.reason } satisfies CallbackReply;
+        case "Denied":
+          yield* Deferred.fail(flow.callback, loginError("Linear sign-in was cancelled."));
+          return {
+            status: 200,
+            message: "Linear sign-in was cancelled. You can close this tab.",
+          } satisfies CallbackReply;
+        case "Code":
+          const accepted = yield* Deferred.succeed(flow.callback, result.code);
+          if (!accepted)
+            return {
+              status: 400,
+              message: "This sign-in callback was already received.",
+            } satisfies CallbackReply;
+          return {
+            status: 200,
+            message: "Linear authorization received. Return to T3 Code to check the connection.",
+          } satisfies CallbackReply;
+      }
+    });
+
   const callbackRoute = (flow: ActiveFlow) =>
     HttpRouter.add(
       "GET",
       "/callback",
       Effect.gen(function* () {
         const request = yield* HttpServerRequest.HttpServerRequest;
-        const result = readLinearCallback(
+        const reply = yield* settleCallback(
+          flow,
           new URL(request.originalUrl, LINEAR_REDIRECT_URI),
-          flow.state,
         );
-        switch (result._tag) {
-          case "Invalid":
-            return HttpServerResponse.text(result.reason, { status: 400 });
-          case "Denied":
-            yield* Deferred.fail(flow.callback, loginError("Linear sign-in was cancelled."));
-            return HttpServerResponse.text("Linear sign-in was cancelled. You can close this tab.");
-          case "Code":
-            yield* Deferred.succeed(flow.callback, result.code);
-            return HttpServerResponse.text("Linear connected. You can close this tab.");
-        }
+        return HttpServerResponse.text(reply.message, { status: reply.status });
       }),
     );
 
+  /** Binds the loopback port for one login; a server redirect needs no listener. */
+  const listenOnLoopback = (flow: ActiveFlow) =>
+    Effect.gen(function* () {
+      const listener = HttpRouter.serve(callbackRoute(flow), {
+        disableListenLog: true,
+        disableLogger: true,
+      }).pipe(
+        Layer.provide(
+          NodeHttpServer.layer(NodeHttp.createServer, {
+            host: "127.0.0.1",
+            port: LINEAR_LOOPBACK_PORT,
+            disablePreemptiveShutdown: true,
+          }),
+        ),
+      );
+      // A fresh memo map: requests inside the server carry the app's memo
+      // map, and reusing its memoized HttpRouter would serve the whole app
+      // on the loopback port and fail the next login's route registration.
+      yield* Layer.buildWithMemoMap(listener, yield* Layer.makeMemoMap, yield* Effect.scope).pipe(
+        Effect.mapError((cause) =>
+          loginError(
+            `Port ${LINEAR_LOOPBACK_PORT} is in use, so the Linear callback cannot be received. Free the port and try again.`,
+            cause,
+          ),
+        ),
+      );
+    });
+
   /**
-   * Owns the loopback listener for one login. `listening` settles once the
+   * Owns one login and its loopback listener. `listening` settles once the
    * port is bound (or failed to bind) so `startLogin` can report a busy port.
    */
   const runFlow = (
@@ -264,29 +334,7 @@ export const make = Effect.gen(function* () {
   ) =>
     Effect.scoped(
       Effect.gen(function* () {
-        const listener = HttpRouter.serve(callbackRoute(flow), {
-          disableListenLog: true,
-          disableLogger: true,
-        }).pipe(
-          Layer.provide(
-            NodeHttpServer.layer(NodeHttp.createServer, {
-              host: "127.0.0.1",
-              port: LINEAR_LOOPBACK_PORT,
-              disablePreemptiveShutdown: true,
-            }),
-          ),
-        );
-        // A fresh memo map: requests inside the server carry the app's memo
-        // map, and reusing its memoized HttpRouter would serve the whole app
-        // on the loopback port and fail the next login's route registration.
-        yield* Layer.buildWithMemoMap(listener, yield* Layer.makeMemoMap, yield* Effect.scope).pipe(
-          Effect.mapError((cause) =>
-            loginError(
-              `Port ${LINEAR_LOOPBACK_PORT} is in use, so the Linear callback cannot be received. Free the port and try again.`,
-              cause,
-            ),
-          ),
-        );
+        if (flow.redirect._tag === "Loopback") yield* listenOnLoopback(flow);
         yield* Deferred.succeed(listening, undefined);
         const code = yield* Deferred.await(flow.callback).pipe(
           Effect.timeout(LOGIN_TIMEOUT),
@@ -294,7 +342,7 @@ export const make = Effect.gen(function* () {
             TimeoutError: () => Effect.fail(loginError("Linear sign-in timed out. Start again.")),
           }),
         );
-        return yield* exchangeCode(code, verifier);
+        return yield* exchangeCode(code, verifier, flow.redirect.uri);
       }),
     ).pipe(
       Effect.matchEffect({
@@ -339,6 +387,7 @@ export const make = Effect.gen(function* () {
   }).pipe(Effect.mapError((cause) => loginError("Could not start Linear sign-in.", cause)));
 
   const startLogin = Effect.gen(function* () {
+    if (redirect._tag === "Invalid") return yield* loginError(redirect.reason);
     const interrupted = yield* clearFlow;
     const current = yield* SubscriptionRef.get(state);
     const previous = interrupted?.previous ?? current;
@@ -346,6 +395,7 @@ export const make = Effect.gen(function* () {
     const flow: ActiveFlow = {
       flowId: pkce.flowId,
       state: pkce.state,
+      redirect,
       callback: yield* Deferred.make<string, LinearError>(),
       previous,
     };
@@ -360,6 +410,7 @@ export const make = Effect.gen(function* () {
       flowId: flow.flowId,
       authorizationUrl: buildLinearAuthorizeUrl({
         clientId,
+        redirectUri: redirect.uri,
         state: flow.state,
         challenge: pkce.challenge,
       }),
@@ -382,7 +433,7 @@ export const make = Effect.gen(function* () {
     input: LinearCompleteLoginInput,
   ) {
     const flow = yield* requireFlow(input.flowId);
-    const result = readPastedLinearCallback(input.callbackUrl, flow.state);
+    const result = readPastedLinearCallback(input.callbackUrl, flow.state, flow.redirect.uri);
     switch (result._tag) {
       case "Invalid":
         return yield* loginError(result.reason);
@@ -499,7 +550,27 @@ export const make = Effect.gen(function* () {
     disconnect,
     accessToken,
     markRevoked,
+    receiveCallback: (url) =>
+      Ref.get(activeFlow).pipe(Effect.flatMap((flow) => settleCallback(flow, url))),
   });
 });
 
 export const layer = Layer.effect(LinearAuth, make);
+
+/**
+ * The main server's end of `T3CODE_LINEAR_REDIRECT_URI`. It needs no session:
+ * the browser arrives from Linear, and only the login's state is accepted.
+ */
+export const layerCallbackRoute = HttpRouter.add(
+  "GET",
+  LINEAR_SERVER_CALLBACK_PATH,
+  Effect.gen(function* () {
+    const auth = yield* LinearAuth;
+    const request = yield* HttpServerRequest.HttpServerRequest;
+    const reply = yield* auth.receiveCallback(new URL(request.originalUrl, "http://localhost"));
+    return HttpServerResponse.text(reply.message, {
+      status: reply.status,
+      headers: { "cache-control": "no-store", "referrer-policy": "no-referrer" },
+    });
+  }),
+);

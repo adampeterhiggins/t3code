@@ -1,4 +1,10 @@
 import { presentThreadShell } from "@t3tools/client-runtime/state/models";
+import {
+  hasNewPullRequestNews,
+  pickThreadNotification,
+  pullRequestWatchNews,
+  type ThreadNotificationEvent,
+} from "@t3tools/client-runtime/state/notification-rules";
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import type { EnvironmentId, OrchestrationV2ThreadShell, ThreadId } from "@t3tools/contracts";
@@ -9,6 +15,7 @@ import {
   MessageCircleQuestionIcon,
   ShieldQuestionIcon,
 } from "lucide-react";
+import { PullRequestGlyph } from "./pullRequest/pullRequestIcons";
 import { useCallback, useEffect, useRef } from "react";
 
 import { getClientSettings, useClientSettings } from "../hooks/useSettings";
@@ -92,7 +99,17 @@ interface NotificationState {
   readonly raw: OrchestrationV2ThreadShell;
   readonly attention: string | null;
   readonly completion: number | null;
+  readonly pullRequestNews: ReadonlyArray<string>;
 }
+
+const NOTIFICATION_TITLES = {
+  approval: "Approval needed",
+  input: "Input needed",
+  completed: "Thread completed",
+  failed: "Thread failed",
+  limited: "Usage limit reached",
+  "pull-request": "Pull request needs attention",
+} satisfies Record<ThreadNotificationEvent, string>;
 
 function EnvironmentNotifications({
   environmentId,
@@ -109,6 +126,10 @@ function EnvironmentNotifications({
   const mode = useClientSettings((settings) => settings.notificationMode);
   const inAppNotificationsEnabled = useClientSettings(
     (settings) => settings.inAppNotificationsEnabled,
+  );
+  const mutedNotificationEvents = useClientSettings((settings) => settings.mutedNotificationEvents);
+  const mutedNotificationProjects = useClientSettings(
+    (settings) => settings.mutedNotificationProjects,
   );
   const navigate = useNavigate();
   const { environmentId: activeEnvironmentId, threadId: activeThreadId } = useParams({
@@ -145,25 +166,32 @@ function EnvironmentNotifications({
         Number.isFinite(completedAt)
           ? completedAt
           : (prior?.completion ?? null);
-      next.set(thread.id, { raw: rawThread, attention, completion });
+      const pullRequestNews = pullRequestWatchNews(thread.pullRequests);
+      next.set(thread.id, { raw: rawThread, attention, completion, pullRequestNews });
       if (!prior || thread.archivedAt !== null) continue;
-      const kind =
-        attention && attention !== prior.attention
-          ? "input"
-          : completion !== null && (prior.completion === null || completion > prior.completion)
-            ? "completion"
-            : null;
-      if (!kind) continue;
-      const title =
-        kind === "completion"
-          ? "Thread completed"
-          : status === "approval"
-            ? "Approval needed"
-            : status === "limited"
-              ? "Usage limit reached"
-              : status === "failed"
-                ? "Thread failed"
-                : "Input needed";
+      // Candidates in urgency order; the user's rules pick the first one they allow.
+      const candidates: ThreadNotificationEvent[] = [];
+      if (
+        attention &&
+        attention !== prior.attention &&
+        (status === "approval" || status === "input" || status === "failed" || status === "limited")
+      ) {
+        candidates.push(status);
+      }
+      if (completion !== null && (prior.completion === null || completion > prior.completion)) {
+        candidates.push("completed");
+      }
+      if (hasNewPullRequestNews(prior.pullRequestNews, pullRequestNews)) {
+        candidates.push("pull-request");
+      }
+      const event = pickThreadNotification(
+        candidates,
+        { mutedNotificationEvents, mutedNotificationProjects },
+        { environmentId, projectId: thread.projectId },
+      );
+      if (!event) continue;
+      const kind = event === "completed" ? "completion" : "input";
+      const title = NOTIFICATION_TITLES[event];
       if (hasNotificationSound(mode)) {
         void playNotificationSound(kind, () =>
           hasNotificationSound(getClientSettings().notificationMode),
@@ -176,7 +204,7 @@ function EnvironmentNotifications({
         (activeEnvironmentId !== environmentId || activeThreadId !== thread.id)
       ) {
         const toastId = toastManager.add({
-          type: kind === "completion" ? "success" : status === "failed" ? "error" : "warning",
+          type: kind === "completion" ? "success" : event === "failed" ? "error" : "warning",
           title,
           description: thread.title,
           data: {
@@ -184,10 +212,15 @@ function EnvironmentNotifications({
             leadingIcon:
               kind === "completion" ? (
                 <CircleCheckIcon aria-hidden className="size-4 text-success-foreground" />
-              ) : status === "approval" ? (
+              ) : event === "approval" ? (
                 <ShieldQuestionIcon aria-hidden className="size-4 text-warning-foreground" />
-              ) : status === "failed" ? (
+              ) : event === "failed" ? (
                 <CircleAlertIcon aria-hidden className="size-4 text-destructive-foreground" />
+              ) : event === "pull-request" ? (
+                <PullRequestGlyph.pullRequest
+                  aria-hidden
+                  className="size-4 text-warning-foreground"
+                />
               ) : (
                 <MessageCircleQuestionIcon aria-hidden className="size-4 text-info-foreground" />
               ),
@@ -238,6 +271,8 @@ function EnvironmentNotifications({
     environmentId,
     inAppNotificationsEnabled,
     mode,
+    mutedNotificationEvents,
+    mutedNotificationProjects,
     navigate,
     onNotification,
     threads,

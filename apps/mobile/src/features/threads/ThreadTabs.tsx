@@ -30,6 +30,7 @@ import { Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { showTextInputDialog } from "../../components/ConfirmDialogHost";
 import { SymbolView } from "../../components/AppSymbol";
 import { ControlPillMenu } from "../../components/ControlPillMenu";
+import { useGitHubIssuePicker } from "../../components/GitHubIssuePickerSheet";
 import { useLinearIssuePicker } from "../../components/LinearIssuePickerSheet";
 import { buildModelOptions, groupByProvider, type ModelOption } from "../../lib/modelOptions";
 import { runtime } from "../../lib/runtime";
@@ -46,17 +47,19 @@ import {
 } from "../../state/use-composer-drafts";
 import { refreshArchivedThreadsForEnvironment } from "../archive/useArchivedThreadSnapshots";
 import { ThreadGitHubIssueLinkChip, useThreadGitHubIssueLink } from "./ThreadGitHubIssueLink";
+import { ThreadLinearLinkChip, useThreadLinearLink } from "./ThreadLinearLink";
 import {
-  ThreadLinearLinkButton,
-  ThreadLinearLinkChip,
-  useThreadLinearLink,
-} from "./ThreadLinearLink";
+  handleSlackNotionMenuAction,
+  ThreadSlackNotionLinkChips,
+  useThreadSlackNotionLinks,
+} from "./ThreadSlackNotionLinks";
 import { ThreadStartedByChip } from "./ThreadStartedByChip";
 
 const NEW_TAB_ACTION = "tab:new";
 const CLOSE_TAB_ACTION = "tab:close";
 const RESTART_SESSION_ACTION = "tab:restart-session";
 const LINK_LINEAR_ACTION = "tab:link-linear";
+const LINK_GITHUB_ACTION = "tab:link-github";
 const HAND_OFF_PREFIX = "tab:hand-off:";
 const CONTINUE_PREFIX = "tab:continue:";
 const INCLUDE_PREFIX = "tab:include:";
@@ -86,11 +89,14 @@ export function ThreadTabs({
   forkPoint,
   empty,
   working,
+  gitHubIssueCwd,
 }: {
   environmentId: EnvironmentId;
   threadId: ThreadId;
   title: string;
   modelSelection: ModelSelection;
+  /** The checkout GitHub issues are listed from; null when the project is not on GitHub. */
+  gitHubIssueCwd: string | null;
   /** The chat's latest finished response, which a hand-off forks from natively. */
   forkPoint: ThreadForkPoint | null;
   empty: boolean;
@@ -110,7 +116,22 @@ export function ThreadTabs({
   const [busy, setBusy] = useState(false);
   const linear = useThreadLinearLink(environmentId, threadId);
   const linearPicker = useLinearIssuePicker({ mode: "link", environmentId, threadId });
-  const gitHubIssueLink = useThreadGitHubIssueLink(environmentId, threadId);
+  const gitHub = useThreadGitHubIssueLink(environmentId, threadId);
+  const gitHubIssueLink = gitHub.link;
+  const slackNotion = useThreadSlackNotionLinks(environmentId, threadId);
+  const gitHubIssuePicker = useGitHubIssuePicker(
+    gitHubIssueCwd !== null ? { mode: "link", environmentId, threadId, cwd: gitHubIssueCwd } : null,
+  );
+  const canLinkGitHubIssue = gitHubIssueCwd !== null && gitHub.canLink;
+  const linkActions = [
+    ...(linear.canLink
+      ? [{ id: LINK_LINEAR_ACTION, title: "Link Linear issue", image: "link" }]
+      : []),
+    ...(canLinkGitHubIssue
+      ? [{ id: LINK_GITHUB_ACTION, title: "Link GitHub issue", image: "link" }]
+      : []),
+    ...slackNotion.menuActions,
+  ];
   const serverConfig = useEnvironmentServerConfig(environmentId);
   const handOffModels = useMemo(
     () =>
@@ -333,6 +354,8 @@ export function ThreadTabs({
     else if (id === CLOSE_TAB_ACTION) void close();
     else if (id === RESTART_SESSION_ACTION) void restartSession();
     else if (id === LINK_LINEAR_ACTION) linearPicker.open();
+    else if (handleSlackNotionMenuAction(slackNotion, id)) return;
+    else if (id === LINK_GITHUB_ACTION) gitHubIssuePicker.open();
     else if (id.startsWith(HAND_OFF_PREFIX)) {
       const key = id.slice(HAND_OFF_PREFIX.length);
       const option = handOffModels
@@ -397,9 +420,7 @@ export function ThreadTabs({
                 title: "Restart agent session",
                 image: "arrow.clockwise",
               },
-              ...(linear.canLink
-                ? [{ id: LINK_LINEAR_ACTION, title: "Link Linear issue", image: "link" }]
-                : []),
+              ...linkActions,
             ]}
             onPressAction={({ nativeEvent }) => onMenuAction(nativeEvent.event)}
           >
@@ -458,10 +479,28 @@ export function ThreadTabs({
             environmentId={environmentId}
             threadId={threadId}
             link={linear.link}
-            onChange={linearPicker.open}
+            {...(linear.canChange ? { onChange: linearPicker.open } : {})}
           />
-        ) : linear.canLink && group.tabs.length <= 1 && !group.name ? (
-          <ThreadLinearLinkButton onPress={linearPicker.open} />
+        ) : null}
+        {linkActions.length > 0 && group.tabs.length <= 1 && !group.name ? (
+          <ControlPillMenu
+            accessible
+            accessibilityRole="button"
+            accessibilityLabel="Link"
+            title="Link"
+            actions={linkActions}
+            onPressAction={({ nativeEvent }) => onMenuAction(nativeEvent.event)}
+          >
+            <Pressable
+              accessibilityLabel="Link"
+              accessibilityRole="button"
+              disabled={busy}
+              className="shrink-0 flex-row items-center gap-1.5 rounded-full bg-subtle px-3 py-1.5 active:opacity-70 disabled:opacity-50"
+            >
+              <SymbolView name="link" size={13} tintColorClassName="accent-foreground" />
+              <Text className="text-sm font-medium text-foreground">Link</Text>
+            </Pressable>
+          </ControlPillMenu>
         ) : null}
         <ThreadStartedByChip environmentId={environmentId} threadId={threadId} />
         {gitHubIssueLink ? (
@@ -469,10 +508,16 @@ export function ThreadTabs({
             environmentId={environmentId}
             threadId={threadId}
             link={gitHubIssueLink}
+            {...(gitHubIssueCwd !== null && gitHub.canEdit
+              ? { onChange: gitHubIssuePicker.open }
+              : {})}
           />
         ) : null}
+        <ThreadSlackNotionLinkChips links={slackNotion} />
       </View>
       {linearPicker.sheet}
+      {slackNotion.sheets}
+      {gitHubIssuePicker.sheet}
       {empty && group.tabs.length > 1 ? (
         <ScrollView
           horizontal

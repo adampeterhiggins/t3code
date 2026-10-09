@@ -1,4 +1,4 @@
-import type { EnvironmentId, NotionPageSummary } from "@t3tools/contracts";
+import type { EnvironmentId, NotionPageSummary, ThreadId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { notionPageContextRecord } from "@t3tools/client-runtime/state/notion";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
@@ -39,14 +39,19 @@ function notionErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message.trim() ? error.message : fallback;
 }
 
-export interface NotionPagePickerTarget {
-  readonly environmentId: EnvironmentId;
-  readonly draftKey: string;
-}
+/** Attach inserts the page into a composer draft; link links it to the thread's tab group. */
+export type NotionPagePickerTarget =
+  | { readonly mode?: "attach"; readonly environmentId: EnvironmentId; readonly draftKey: string }
+  | { readonly mode: "link"; readonly environmentId: EnvironmentId; readonly threadId: ThreadId };
 
-type OpenedNotionPagePicker = NotionPagePickerTarget & {
-  readonly insertion: ComposerDraftInsertion;
-};
+type OpenedNotionPagePicker =
+  | {
+      readonly mode: "attach";
+      readonly environmentId: EnvironmentId;
+      readonly draftKey: string;
+      readonly insertion: ComposerDraftInsertion;
+    }
+  | { readonly mode: "link"; readonly environmentId: EnvironmentId; readonly threadId: ThreadId };
 
 /**
  * A Notion page picker. The owner renders `sheet` somewhere that outlives composer focus:
@@ -63,7 +68,16 @@ export function useNotionPagePicker(target: NotionPagePickerTarget | null): {
   return {
     open:
       target && enabled
-        ? () => setOpened({ ...target, insertion: captureComposerDraftInsertion(target.draftKey) })
+        ? () =>
+            setOpened(
+              target.mode === "link"
+                ? target
+                : {
+                    ...target,
+                    mode: "attach",
+                    insertion: captureComposerDraftInsertion(target.draftKey),
+                  },
+            )
         : undefined,
     sheet:
       opened && openedServerConfig?.settings.enableNotionIntegration ? (
@@ -73,8 +87,9 @@ export function useNotionPagePicker(target: NotionPagePickerTarget | null): {
 }
 
 /**
- * Attaches a Notion page at the caret the composer had when the sheet opened. Mobile has no
- * Notion settings, so an unconnected environment points at desktop or web.
+ * Attaches a Notion page at the caret the composer had when the sheet opened, or links it to the
+ * thread's tab group. Mobile has no Notion settings, so an unconnected environment points at
+ * desktop or web.
  */
 function NotionPagePickerSheet(props: OpenedNotionPagePicker & { readonly onClose: () => void }) {
   const connection = useEnvironmentQuery(
@@ -82,7 +97,10 @@ function NotionPagePickerSheet(props: OpenedNotionPagePicker & { readonly onClos
   );
   const phase = connection.data?.phase;
   return (
-    <PickerSheet title="Notion page" onClose={props.onClose}>
+    <PickerSheet
+      title={props.mode === "link" ? "Link Notion page" : "Notion page"}
+      onClose={props.onClose}
+    >
       {phase === "connected" ? (
         <NotionPageSearch {...props} />
       ) : (
@@ -109,12 +127,35 @@ function NotionPageSearch(props: OpenedNotionPagePicker & { readonly onClose: ()
     label: "notion page fetch",
     reportFailure: false,
   });
+  const linkThread = useAtomCommand(notionEnvironment.linkThread, {
+    label: "notion thread link",
+    reportFailure: false,
+  });
   const [attaching, setAttaching] = useState<string | null>(null);
+
+  const link = async (threadId: ThreadId, page: NotionPageSummary) => {
+    const result = await linkThread({
+      environmentId: props.environmentId,
+      input: { threadId, pageId: page.id },
+    });
+    if (result._tag === "Failure") {
+      Alert.alert(
+        "Could not link Notion page",
+        notionErrorMessage(squashAtomCommandFailure(result), "Try again."),
+      );
+      return;
+    }
+    props.onClose();
+  };
 
   const attach = async (page: NotionPageSummary) => {
     if (attaching) return;
     setAttaching(page.url);
     try {
+      if (props.mode === "link") {
+        await link(props.threadId, page);
+        return;
+      }
       const fetched = await getPage({
         environmentId: props.environmentId,
         input: { id: page.id },

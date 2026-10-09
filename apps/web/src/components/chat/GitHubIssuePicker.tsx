@@ -1,7 +1,8 @@
 import { useAtomValue } from "@effect/atom-react";
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   gitHubIssueContextRecord,
+  isGitHubProject,
   threadsForGitHubIssue,
 } from "@t3tools/client-runtime/state/github-issues";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
@@ -24,7 +25,7 @@ import { useComposerDraftStore } from "~/composerDraftStore";
 import { useIssueContextStore } from "~/issueContextStore";
 import { cn } from "~/lib/utils";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
-import { useThreadShellsForProjectRefs } from "~/state/entities";
+import { useProject, useThreadShell, useThreadShellsForProjectRefs } from "~/state/entities";
 import { githubIssueEnvironment } from "~/state/githubIssues";
 import { useDebouncedValue } from "~/state/queries";
 import { useEnvironmentQuery } from "~/state/query";
@@ -46,7 +47,6 @@ import {
   GITHUB_ISSUE_STATE_PRESENTATION,
   GitHubIssueHoverPreview,
 } from "./GitHubIssueHoverPreview";
-import { useGitHubIssueThreadLinks } from "./GitHubIssueThreadLink";
 import { SourceTabs } from "./SourceTabs";
 
 // Each search runs `gh` on the server, so typing settles before one goes out.
@@ -59,22 +59,28 @@ const STATE_OPTIONS: ReadonlyArray<{ id: GitHubIssueStateFilter; label: string }
   { id: "all", label: "All" },
 ];
 
+type GitHubIssuePickerMode = "attach" | "link";
+
 /**
- * The thread whose composer the picker attaches to. Set by whichever entry point asked (the
- * attach menu, the command palette) and rendered once by the chat view, so the picker outlives a
+ * The thread the picker serves, and whether it attaches an issue to the thread's composer or
+ * links one to the thread's tab group. Set by whichever entry point asked (the attach menu, the
+ * thread menu, the command palette) and rendered once by the app shell, so the picker outlives a
  * palette that closes the moment its command runs.
  */
-const gitHubIssuePickerThreadAtom = Atom.make<ScopedThreadRef | null>(null).pipe(
-  Atom.keepAlive,
-  Atom.withLabel("github-issues:issue-picker-thread"),
-);
+const gitHubIssuePickerAtom = Atom.make<{
+  readonly threadRef: ScopedThreadRef;
+  readonly mode: GitHubIssuePickerMode;
+} | null>(null).pipe(Atom.keepAlive, Atom.withLabel("github-issues:issue-picker"));
 
-export function openGitHubIssuePicker(threadRef: ScopedThreadRef): void {
-  appAtomRegistry.set(gitHubIssuePickerThreadAtom, threadRef);
+export function openGitHubIssuePicker(
+  threadRef: ScopedThreadRef,
+  mode: GitHubIssuePickerMode = "attach",
+): void {
+  appAtomRegistry.set(gitHubIssuePickerAtom, { threadRef, mode });
 }
 
 function closeGitHubIssuePicker(): void {
-  appAtomRegistry.set(gitHubIssuePickerThreadAtom, null);
+  appAtomRegistry.set(gitHubIssuePickerAtom, null);
 }
 
 /**
@@ -219,36 +225,62 @@ export function GitHubIssueRow(props: { issue: GitHubIssueSummary; inUse: boolea
 }
 
 /**
- * Mounted by a chat view whose project is a GitHub repository; shows the picker for whichever
- * thread asked for it. `cwd` is the checkout `gh` lists issues from.
+ * Mounted once by the app shell, so the thread menu can open the picker from any route; shows it
+ * for whichever thread or draft asked. Issues are listed with `gh` in that thread's own checkout,
+ * or the project folder for a draft headed for a new worktree; any checkout answers the same.
  */
-export function GitHubIssuePickerHost(props: { projectRef: ScopedProjectRef; cwd: string }) {
-  const threadRef = useAtomValue(gitHubIssuePickerThreadAtom);
-  if (threadRef === null) return null;
-  return <GitHubIssuePickerDialog {...props} threadRef={threadRef} />;
+export function GitHubIssuePickerHost() {
+  const target = useAtomValue(gitHubIssuePickerAtom);
+  const threadRef = target?.threadRef ?? null;
+  const thread = useThreadShell(threadRef);
+  const draft = useComposerDraftStore((store) =>
+    threadRef && !thread ? store.getDraftThreadByRef(threadRef) : null,
+  );
+  const owner = thread ? { projectId: thread.projectId, worktreePath: thread.worktreePath } : draft;
+  const project = useProject(
+    threadRef && owner ? scopeProjectRef(threadRef.environmentId, owner.projectId) : null,
+  );
+  if (target === null || owner === null || !project || !isGitHubProject(project)) return null;
+  return (
+    <GitHubIssuePickerDialog
+      projectRef={scopeProjectRef(project.environmentId, project.id)}
+      cwd={owner.worktreePath ?? project.workspaceRoot}
+      threadRef={target.threadRef}
+      mode={target.mode}
+    />
+  );
 }
 
 function GitHubIssuePickerDialog(props: {
   projectRef: ScopedProjectRef;
   cwd: string;
   threadRef: ScopedThreadRef;
+  mode: GitHubIssuePickerMode;
 }) {
-  const { projectRef, cwd, threadRef } = props;
+  const { projectRef, cwd, threadRef, mode } = props;
   const environmentId = threadRef.environmentId;
   const navigate = useNavigate();
   const attachIssue = useAttachGitHubIssue();
+  const linkIssue = useLinkGitHubIssue();
   const [query, setQuery] = useState("");
   const [state, setState] = useState<GitHubIssueStateFilter>("open");
   const [attaching, setAttaching] = useState(false);
   const { issues, status } = useGitHubIssueList({ environmentId, cwd, query, state });
-  const projectRefs = useMemo(() => [projectRef], [projectRef]);
+  // The host builds a fresh ref each render; key the list on its ids.
+  const { projectId } = projectRef;
+  const projectRefs = useMemo(
+    () => [scopeProjectRef(environmentId, projectId)],
+    [environmentId, projectId],
+  );
   const threads = useThreadShellsForProjectRefs(projectRefs);
-  const links = useGitHubIssueThreadLinks(environmentId);
+  const links = useEnvironmentQuery(
+    githubIssueEnvironment.threadLinks({ environmentId, input: {} }),
+  ).data;
 
   async function select(issue: GitHubIssueSummary) {
     if (attaching) return;
     setAttaching(true);
-    const done = await attachIssue(threadRef, issue.url);
+    const done = await (mode === "link" ? linkIssue : attachIssue)(threadRef, issue.url);
     setAttaching(false);
     if (done) closeGitHubIssuePicker();
   }
@@ -268,13 +300,24 @@ function GitHubIssuePickerDialog(props: {
         if (!open) closeGitHubIssuePicker();
       }}
     >
-      <CommandDialogPopup aria-label="Attach GitHub issue" className="overflow-hidden">
+      <CommandDialogPopup
+        aria-label={mode === "link" ? "Link GitHub issue" : "Attach GitHub issue"}
+        className="overflow-hidden"
+      >
         <CommandPaletteContent
           inputProps={{
             placeholder: "Search GitHub issues, or paste #123 or an issue link",
             startAddon: <GitHubIcon />,
           }}
-          footerActionLabel={attaching ? "Attaching…" : "Attach"}
+          footerActionLabel={
+            mode === "link"
+              ? attaching
+                ? "Linking…"
+                : "Link"
+              : attaching
+                ? "Attaching…"
+                : "Attach"
+          }
           inputAccessory={<GitHubIssueStateTabs state={state} onChange={setState} />}
           mode="none"
           value={query}

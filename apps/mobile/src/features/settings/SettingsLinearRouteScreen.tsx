@@ -3,7 +3,12 @@ import {
   squashAtomCommandFailure,
   type AtomCommandResult,
 } from "@t3tools/client-runtime/state/runtime";
-import type { EnvironmentId, LinearConnectionState } from "@t3tools/contracts";
+import {
+  AuthOrchestrationOperateScope,
+  type EnvironmentId,
+  type LinearAssignmentTrigger,
+  type LinearConnectionState,
+} from "@t3tools/contracts";
 import { useRef, useState } from "react";
 import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -12,8 +17,11 @@ import { AppText as Text, AppTextInput } from "../../components/AppText";
 import { showConfirmDialog } from "../../components/ConfirmDialogHost";
 import { ScreenScrollView as ScrollView } from "../../components/ScreenScrollView";
 import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
+import { useProjects } from "../../state/entities";
 import { linearEnvironment } from "../../state/linear";
 import { useEnvironmentQuery } from "../../state/query";
+import { serverEnvironment } from "../../state/server";
+import { useEnvironmentScope } from "../../state/session";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { SettingsActionRow } from "./components/SettingsActionRow";
 import {
@@ -53,6 +61,7 @@ export function SettingsLinearRouteScreen() {
                 key={target.environmentId}
                 environmentId={target.environmentId}
                 environmentLabel={target.label}
+                assignmentTriggers={target.serverConfig.settings.linearAssignmentTriggers}
               />
             ))
           )}
@@ -80,6 +89,7 @@ function describeConnection(state: LinearConnectionState): string {
 function LinearEnvironmentSection(props: {
   readonly environmentId: EnvironmentId;
   readonly environmentLabel: string;
+  readonly assignmentTriggers: ReadonlyArray<LinearAssignmentTrigger>;
 }) {
   const { environmentId } = props;
   const connection = useEnvironmentQuery(
@@ -180,7 +190,7 @@ function LinearEnvironmentSection(props: {
               autoCapitalize="none"
               autoCorrect={false}
               keyboardType="url"
-              placeholder="http://127.0.0.1:47831/callback?code=…"
+              placeholder="Full redirect URL from Linear"
               returnKeyType="done"
               value={pastedValue}
               editable={!pending}
@@ -231,6 +241,80 @@ function LinearEnvironmentSection(props: {
           onPress={() => void connect()}
         />
       ) : null}
+      <AssignmentTriggerRows
+        environmentId={environmentId}
+        rules={props.assignmentTriggers}
+        connected={state?.phase === "connected"}
+      />
     </SettingsSection>
+  );
+}
+
+/**
+ * Lists the environment's assignment rules so they can be removed here. Adding and editing a
+ * rule needs a project and model picker, which lives in the desktop and web settings.
+ */
+function AssignmentTriggerRows(props: {
+  readonly environmentId: EnvironmentId;
+  readonly rules: ReadonlyArray<LinearAssignmentTrigger>;
+  readonly connected: boolean;
+}) {
+  const { environmentId, rules } = props;
+  const projects = useProjects();
+  const canOperate = useEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
+  const updateSettings = useAtomCommand(serverEnvironment.updateSettings, {
+    label: "linear assignment trigger remove",
+    reportFailure: true,
+  });
+  const [pending, setPending] = useState(false);
+  if (rules.length === 0) return null;
+
+  function remove(rule: LinearAssignmentTrigger) {
+    showConfirmDialog({
+      title: "Remove rule?",
+      message: "Newly assigned issues stop starting threads for this rule.",
+      confirmText: "Remove",
+      destructive: true,
+      onConfirm: () => {
+        setPending(true);
+        void updateSettings({
+          environmentId,
+          input: {
+            patch: { linearAssignmentTriggers: rules.filter((entry) => entry.id !== rule.id) },
+          },
+        }).finally(() => setPending(false));
+      },
+    });
+  }
+
+  return (
+    <>
+      <View className="gap-1 border-t border-border-subtle p-4">
+        <Text className="text-sm font-t3-medium text-foreground">
+          Start threads from assignments
+        </Text>
+        <Text className="text-sm text-foreground-muted">
+          {props.connected
+            ? "Issues newly assigned to you start a thread. Add or edit rules in desktop or web settings."
+            : "Paused until Linear is connected."}
+        </Text>
+      </View>
+      {rules.map((rule) => {
+        const project = projects.find(
+          (entry) => entry.environmentId === environmentId && entry.id === rule.projectId,
+        );
+        const label = rule.labelName === null ? "" : ` · ${rule.labelName}`;
+        return (
+          <SettingsActionRow
+            key={rule.id}
+            icon="trash"
+            tone="danger"
+            label={`Remove ${project?.title ?? "missing project"}${label}`}
+            disabled={pending || !canOperate}
+            onPress={() => remove(rule)}
+          />
+        );
+      })}
+    </>
   );
 }

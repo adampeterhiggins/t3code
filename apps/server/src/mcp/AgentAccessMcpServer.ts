@@ -29,6 +29,8 @@ import { QueryToolkitHandlersLive } from "./query/handlers.ts";
 import { QueryToolkit } from "./query/tools.ts";
 import { ApprovalToolkitHandlersLive } from "./toolkits/approval/handlers.ts";
 import { ApprovalToolkit } from "./toolkits/approval/tools.ts";
+import { ThreadDeleteToolkitHandlersLive } from "./toolkits/threadDelete/handlers.ts";
+import { ThreadDeleteToolkit } from "./toolkits/threadDelete/tools.ts";
 
 /**
  * `/mcp/query` and `/mcp/operate` serve agents outside T3 Code, such as a
@@ -38,7 +40,7 @@ import { ApprovalToolkit } from "./toolkits/approval/tools.ts";
  * `/mcp/query` needs `orchestration:read` and lists only the history tools.
  * `/mcp/operate` also needs `orchestration:operate`; it adds upstream's thread,
  * project, and environment tools, acting as a client caller with the token's
- * label, plus answering approvals. Fork-only; see docs/fork-differences.md.
+ * label, plus answering approvals and deleting threads. Fork-only; see docs/fork-differences.md.
  */
 
 /** A token on `/mcp/operate` acts as the user, so it may hand threads any permission mode. */
@@ -199,6 +201,7 @@ export const layer = Layer.mergeAll(
       layerProjectRegistration,
       layerEnvironmentRegistration,
       toolkitRegistration(ApprovalToolkit, ApprovalToolkitHandlersLive),
+      toolkitRegistration(ThreadDeleteToolkit, ThreadDeleteToolkitHandlersLive),
     ).pipe(Layer.provideMerge(OperateTransportLive)),
   ),
 );

@@ -1,4 +1,5 @@
 import type {
+  OrchestrationMessageContext,
   OrchestrationV2SearchThreadInput,
   OrchestrationV2SearchThreadResult,
 } from "@t3tools/contracts";
@@ -56,14 +57,14 @@ export function withCreationProvenance(
   provenance: ThreadManagementProvenance,
 ): OrchestrationV2Command {
   switch (command.type) {
-    case "thread.create": {
+    case "thread.create":
+    case "thread.fork": {
       // Only the server's MCP paths record who started a thread; a client cannot claim it.
       const { startedBy: _startedBy, ...rest } = command;
       return { ...(provenance.createdBy === "user" ? rest : command), ...provenance };
     }
     case "message.dispatch":
     case "thread.usage-limit.resume-now":
-    case "thread.fork":
     case "thread.merge_back":
     case "delegated_task.request":
       return { ...command, ...provenance };
@@ -118,6 +119,7 @@ export interface ThreadManagementSendInput {
   readonly scheduledTaskId?: ScheduledTaskId;
   readonly senderThreadId?: ThreadId;
   readonly text: string;
+  readonly context?: OrchestrationMessageContext;
   readonly attachments: ReadonlyArray<ChatAttachment>;
   readonly modelSelection?: ModelSelection;
   readonly mode: ThreadManagementSendMode;
@@ -657,6 +659,7 @@ const make = Effect.gen(function* () {
         ...(input.scheduledTaskId === undefined ? {} : { scheduledTaskId: input.scheduledTaskId }),
         ...(input.senderThreadId === undefined ? {} : { senderThreadId: input.senderThreadId }),
         text: input.text,
+        ...(input.context === undefined ? {} : { context: input.context }),
         attachments: input.attachments,
         ...(input.modelSelection === undefined ? {} : { modelSelection: input.modelSelection }),
         dispatchMode,

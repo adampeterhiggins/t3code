@@ -159,6 +159,25 @@ Code: `apps/web/src/components/settings/ProviderAuthSection.tsx`,
 [providers-devin.md](./user/providers-devin.md) and
 [providers-opencode.md](./user/providers-opencode.md).
 
+## Thread usage and context notices
+
+Web, desktop, and mobile show processed thread tokens separately from context occupancy. Main
+turn counts exclude provider threads owned by subagents; reported subagent totals appear separately.
+Missing or partial main-turn counts mark the token total as a lower bound. Providers that report
+session costs also show a cost subtotal, grouped by currency. Sessions without cost reports are
+excluded; no model-price estimate or subscription charge is inferred.
+
+At 80% of a reported context window, the composer suggests reducing context. Web and desktop offer
+the existing Compact action when the provider advertises it and Continue in new tab when tabs are
+available. Mobile can insert `/compact` into an empty composer when supported. Web and desktop remember dismissal until the provider reports real usage below 80%; mobile
+hides it for the current thread view, also rearming below 80%. Providers without context occupancy reports,
+such as native Cursor and Grok, show token totals without a context notice.
+
+Code: [`threadUsage.ts`](../packages/client-runtime/src/threadUsage.ts),
+[`ContextWindowMeter.tsx`](../apps/web/src/components/chat/ContextWindowMeter.tsx), and
+[`ThreadUsageNotice.tsx`](../apps/mobile/src/features/threads/ThreadUsageNotice.tsx).
+User guide: [composer.md](./user/composer.md).
+
 ## Model change marker
 
 Changing the model in an existing thread leaves a divider in the transcript, the same kind of
@@ -510,6 +529,13 @@ editable. Names are stored by the [ThreadTabs service](../apps/server/src/thread
     being hidden. Their rows show a not-allowed cursor and a tooltip, and only the fork button
     opens them, so a stray click never forks (`matchesModelPickerLock` in `ModelPickerContent.tsx`).
   - The account picker forks the same way when the chosen account cannot take over the tab.
+- **Agents.** Over MCP, `t3_thread_tabs` lists a thread's group and `t3_thread_tab_open` opens a
+  tab in it: empty, or a native fork of a tab's latest (or chosen) response, on any model, with an
+  optional first message. One service call, `ThreadTabs.open`, does what **New tab** or a
+  model-picker fork does, then sends the message. The tab inherits its group's modes, so its group
+  (and fork source) must sit within the caller's, and it records `startedBy` and counts toward the
+  caller's spawn limits like a launched thread
+  ([`toolkits/thread/handlers.ts`](../apps/server/src/mcp/toolkits/thread/handlers.ts)).
 - **Mobile.** A switcher menu switches, creates, and closes tabs, and restarts the open tab's
   agent session (`apps/mobile/src/features/threads/ThreadTabs.tsx`). An empty tab can attach sibling context when
   sending. A started chat's **Hand off** menu forks it into a new tab on any provider's model, the
@@ -748,7 +774,24 @@ palette, and starting a thread from an issue links it. The link lives in the for
 `fork_linear_thread_links` table, keyed by tab group, and streams to clients over
 `linear.subscribeThreadLinks`. Only the issue's identity is stored; the chat header chip reads its
 status live, and offers open, change, and unlink. Mobile shows the same chip beside the tab
-switcher (`apps/mobile/src/features/threads/ThreadLinearLink.tsx`).
+switcher (`apps/mobile/src/features/threads/ThreadLinearLink.tsx`). Agents link and unlink it
+through the thread MCP's `link_linear_issue` / `unlink_linear_issue`, and read the thread's Linear
+and GitHub issue links with `list_thread_issues`
+([`toolkits/issueLinks/`](../apps/server/src/mcp/toolkits/issueLinks/)). Like the pull request
+tools, they default to the caller's thread, need the `pull-requests` MCP capability, and write
+through the same thread access checks.
+
+`linearAssignmentTriggers` in server settings (off when empty) holds rules that start a thread
+when an issue is newly assigned to the connected account. The server polls the read-only API
+every 2 minutes, since a webhook would need a public address. It launches like a scheduled task
+(new worktree, rule's model and prompt) with the issue attached as context and linked to the
+thread. Dedupe lives in fork-owned tables: an issue row means the issue never starts another
+thread, and the command id is derived from the issue so a retry returns the same thread. A rule's
+baseline is keyed by its id, filters, and the Linear account, so adding a rule, editing its
+filters, or switching accounts records the issues already assigned instead of starting them.
+Changing the rules needs the `orchestration:operate` scope. Mobile lists and removes rules but
+cannot add them. Code: [`LinearAssignmentTriggers.ts`](../apps/server/src/linear/LinearAssignmentTriggers.ts),
+[`LinearAssignmentTriggerSettings.tsx`](../apps/web/src/components/settings/LinearAssignmentTriggerSettings.tsx).
 
 The attach menu's pull request option, also in the web command palette, opens a searchable picker
 ([`PullRequestAttachPicker.tsx`](../apps/web/src/components/chat/PullRequestAttachPicker.tsx)) and
@@ -773,6 +816,10 @@ Code: `apps/server/src/linear/`, `packages/contracts/src/linear.ts`, `LinearIssu
 `apps/mobile/src/features/settings/SettingsLinearRouteScreen.tsx`. User guide:
 [linear.md](./user/linear.md).
 
+Linear, Slack, and Notion sign-in can return directly to the environment from another device using an explicitly registered HTTPS URL at `/oauth/<integration>/callback` and the corresponding `T3CODE_<INTEGRATION>_REDIRECT_URI` server setting. Local sign-in and paste-back remain available by default. Each provider must allow the exact URL on the user's OAuth app; Linear requires a custom client ID for custom URLs. This works with a reachable HTTPS server or tunnel forwarding the callback, rather than assuming the client's origin is the environment. Callback state is checked against the active login, and cancelled or completed flows cannot be reused.
+
+Code: [redirect configuration](../apps/server/src/integrationOAuth.ts), [Linear auth](../apps/server/src/linear/LinearAuth.ts), [Slack auth](../apps/server/src/slack/SlackAuth.ts), and [Notion auth](../apps/server/src/notion/NotionAuth.ts). Setup: [Linear](./user/linear.md#approve-from-another-device), [Slack](./user/slack.md#approve-from-another-device), and [Notion](./user/notion.md#approve-from-another-device).
+
 ## Slack messages and threads
 
 **Settings > Integrations > Slack** connects a Slack account to the environment with OAuth (PKCE,
@@ -782,14 +829,35 @@ messages each. Each workspace makes its own app from a manifest the settings sec
 (`slackAppManifest` in `packages/contracts/src/slack.ts`), and the user enters its client ID. The
 server keeps that client ID across disconnects, and `T3CODE_SLACK_CLIENT_ID` can supply one. The
 redirect is `http://localhost:47832/callback`, since Slack only treats `localhost` as a desktop
-redirect, with the same paste-back path as Linear for remote browsers.
+redirect by default, with the same paste-back path as Linear for remote browsers. A registered
+HTTPS callback set through `T3CODE_SLACK_REDIRECT_URI` receives approval on the environment directly.
 
 A message or its whole thread attaches as a `slack-thread` context chip: from a pasted or typed
 permalink, the attach menu's picker (Slack search syntax, right-click for the message alone), a
 `#` menu tab shown once Slack is connected, the command palette, and the mobile attach menu. The
 server renders the thread to capped markdown when it is attached. That markdown always keeps the
 first message and the linked one, fills the rest newest first, and resolves mentions to names.
-The snapshot is inlined into the prompt for every provider. Slack has no thread links.
+The snapshot is inlined into the prompt for every provider.
+
+A thread's chat-tab group can also be linked to one Slack thread, from the thread menu, the web
+command palette, or the mobile tab menu, which open the same picker in link mode. Picking a reply links its whole thread.
+The link lives in the fork-owned `fork_slack_thread_links` table, keyed by tab group, and streams
+over `slack.subscribeThreadLinks`. Slack threads have no status, so the channel, author, and the
+picked message's first line are copied when linked. The web chat header chip shows the channel and
+offers open, change, and unlink; mobile shows the same chip beside the tab switcher. Linking and
+unlinking are client-guarded RPCs that need the orchestration-operate grant. Unlinking stays
+available with the integration turned off.
+
+An off-by-default mention trigger in the same setting polls once a minute for explicit @mentions
+of the connected account in selected channels, optionally including direct messages and requiring
+a keyword. It starts threads in a selected project's root workspace with configured instructions,
+a provider/model override or project defaults, the project's permission mode, and the same Slack
+snapshot and link. Web and desktop configure it; all clients can use the resulting threads. It
+requires both settings-write and orchestration-operate permissions. Older mentions are baselined
+on enable or account change, processed mentions persist across restarts, and retried launches use
+a stable command id. Polls read the latest 50 search results; Slack's visibility, indexing and rate
+limits apply. Disabling the trigger or integration stops new launches. Code:
+[`SlackMentionTrigger.ts`](../apps/server/src/slack/SlackMentionTrigger.ts).
 
 A bare Slack message link left in any rendered message on web or desktop (an agent's reply, a
 paste-as-text, a message sent from mobile) shows `#channel · Author` once `slack.getLinkPreview`
@@ -806,8 +874,10 @@ Code: `apps/server/src/slack/`, `packages/contracts/src/slack.ts`, `SlackThreadC
 `packages/contracts/src/composerContext.ts`, `packages/client-runtime/src/state/slack.ts`,
 `apps/web/src/components/settings/SlackSettings.tsx`,
 `apps/web/src/components/chat/SlackMessagePicker.tsx`,
-`apps/web/src/components/chat/useComposerSlackItems.ts`, and
-`apps/mobile/src/components/SlackMessagePickerSheet.tsx`. User guide: [slack.md](./user/slack.md).
+`apps/web/src/components/chat/SlackThreadLink.tsx`,
+`apps/web/src/components/chat/useComposerSlackItems.ts`,
+`apps/mobile/src/components/SlackMessagePickerSheet.tsx`, and
+`apps/mobile/src/features/threads/ThreadSlackNotionLinks.tsx`. User guide: [slack.md](./user/slack.md).
 
 ## GitHub issues
 
@@ -824,8 +894,13 @@ provider.
 Starting a thread from a GitHub issue links it to the thread's chat-tab group, in the fork-owned
 `fork_github_issue_thread_links` table, streamed over `githubIssues.subscribeThreadLinks`. A group
 can hold one GitHub link beside its Linear link. The web chat header and the mobile tab switcher
-show `#123` with its live open or closed state, and offer open and unlink. Pickers mark a linked
+show `#123` with its live open or closed state, and offer open, change, and unlink. An existing
+thread links or changes its issue from the thread menu (web sidebar and chat header), the web
+command palette (which also unlinks), or the mobile tab menu and **Link issue** pill, through the
+same picker in link mode, listing issues from the thread's own checkout. Pickers mark a linked
 issue **In use**; the web attach picker's hover preview lists those threads and opens one on click.
+Agents link and unlink it with `link_github_issue` / `unlink_github_issue`, beside the Linear tools
+in [`toolkits/issueLinks/`](../apps/server/src/mcp/toolkits/issueLinks/).
 
 Code: `apps/server/src/githubIssues/`, `packages/contracts/src/githubIssues.ts`,
 `GitHubIssueContextRecord` in `packages/contracts/src/composerContext.ts`,
@@ -1039,6 +1114,14 @@ the folder to the repository's `info/exclude` so checkpoints and diffs ignore th
 owners and the folder are server settings in **Settings > General**. Mobile's attach menu
 has the same picker, without the recently attached ranking.
 
+A project's **Settings > Storage** lists the clones in each of its checkouts' context folder, with
+their remote and git status, and removes one after a confirmation that names any unpushed commits
+or changed files it throws away. The server refuses a name that is not one folder, a folder that is
+not a git repository, one that resolves outside the context folder through a symlink, and any
+removal while a turn in that checkout is running or waiting on the user. A turn that starts during a
+removal, or a removal that meets a clone in progress, waits for the other to finish. Removal needs the source control write grant and
+is on web and desktop only; it is not an MCP tool, since thread agents cannot delete.
+
 Code: `apps/server/src/contextRepositories/ContextRepositories.ts`,
 `packages/contracts/src/contextRepositories.ts`, `RepositoryContextRecord` in
 `packages/contracts/src/composerContext.ts`,
@@ -1046,8 +1129,9 @@ Code: `apps/server/src/contextRepositories/ContextRepositories.ts`,
 `apps/server/src/orchestration-v2/ThreadLaunchService.ts`), the `context` of `prepared-run.release`
 in `packages/contracts/src/orchestrationV2.ts` and its message restatement in
 `apps/server/src/orchestration-v2/Orchestrator.ts`,
-`packages/client-runtime/src/contextRepositories.ts`, and
+`packages/client-runtime/src/contextRepositories.ts`,
 `apps/web/src/components/chat/RepositoryAttachPicker.tsx`,
+`apps/web/src/components/settings/ContextRepositoriesSettings.tsx`,
 `apps/web/src/components/chat/useComposerRepositoryItems.ts`, and
 `apps/mobile/src/components/RepositoryPickerSheet.tsx`. User guide:
 [composer.md](./user/composer.md#attach-repositories).
@@ -1073,7 +1157,7 @@ request or GitHub issue (with `L4-L14` appended for a link to lines), `ENG-123` 
 writer chose is left alone. A bare Slack link is not one of these: it names the message only when
 Slack is on and connected (see [Slack messages and threads](#slack-messages-and-threads)).
 
-Code: `packages/client-runtime/src/composerObjectLinks.ts`,
+Code: `packages/shared/src/composerObjectLinks.ts`,
 `apps/web/src/components/chat/useResolveComposerObjectLink.ts`, and `convertObjectLinks` in
 `apps/web/src/components/chat/ChatComposer.tsx`. User guide:
 [composer.md](./user/composer.md#context-in-your-message).
@@ -1150,7 +1234,7 @@ It reads the orchestration v2 projections; threads imported from before v2 carry
 messages. `/mcp/operate` adds upstream's orchestrator, thread, project, and environment tools,
 acting as a client caller labelled with the token's name, plus `t3_approval_respond` for
 answering a thread's approvals (upstream's `t3_pending_request_respond` answers questions but
-refuses approvals). It acts as the user, in any permission mode, without the spawn limits, and
+refuses approvals) and `t3_thread_delete`, which sends the app's own `thread.delete` command. It acts as the user, in any permission mode, without the spawn limits, and
 threads it starts with `t3_thread_launch` record the token's label.
 Both authenticate with an environment bearer token, never a cookie: `/mcp/query` needs
 `orchestration:read`, `/mcp/operate` also `orchestration:operate`.
@@ -1161,7 +1245,8 @@ normal client session, so revoking it works like revoking any client. Web and de
 
 Code: [`AgentAccessMcpServer.ts`](../apps/server/src/mcp/AgentAccessMcpServer.ts),
 [`mcp/query/`](../apps/server/src/mcp/query/),
-[`toolkits/approval/`](../apps/server/src/mcp/toolkits/approval/), the `agentAccessToken`
+[`toolkits/approval/`](../apps/server/src/mcp/toolkits/approval/),
+[`toolkits/threadDelete/`](../apps/server/src/mcp/toolkits/threadDelete/), the `agentAccessToken`
 handler in [`auth/http.ts`](../apps/server/src/auth/http.ts), `AuthReadOnlyClientScopes` and
 `AuthAgentOperateScopes` in [`contracts/src/auth.ts`](../packages/contracts/src/auth.ts), and
 [`AgentAccessSettings.tsx`](../apps/web/src/components/settings/AgentAccessSettings.tsx).
@@ -1175,15 +1260,28 @@ thread: chains of agent-started threads stop two levels deep, a thread keeps at 
 threads going at once (a started thread counts until it settles or is archived, a delegated task
 while its child runs), and `t3_thread_send`, `t3_thread_wait`, and `t3_thread_interrupt` refuse
 the caller's own thread. Metadata tools such as `t3_thread_update` still default to the caller's
-own thread, as upstream intends. A thread's agent never answers another thread's approvals.
+own thread, as upstream intends. A thread's agent never answers another thread's approvals and
+never deletes a thread; it archives instead. `t3_thread_organize` also takes `mark_read`, the
+reverse of upstream's `mark_unread`, which marks a thread read as opening it in the app does
+([`thread/handlers.ts`](../apps/server/src/mcp/toolkits/thread/handlers.ts)).
 
-A thread an agent starts with `create_threads` or `t3_thread_launch` records `startedBy` (the
-starting thread, or the agent access token's label). The chat header on web, desktop, and mobile
+The fork also adds `t3_thread_rollback`, which reverts another thread to the checkpoint after one of
+its runs (`runOrdinal` from `t3_thread_read`'s `recentRuns`, 0 for before the first run), like the
+app's revert: later runs are discarded and, unless `restoreFiles` is false, the files are restored.
+It follows `t3_thread_interrupt`'s rules (never the caller's own thread, a live caller, the target
+within the caller's modes) and also refuses a thread with a turn running. `/mcp/operate` tokens get
+it too. The tool returns `rollback_requested` and a command ID when accepted; provider and
+file restoration run afterward and can fail. `t3_thread_read` exposes the latest rollback
+request ID and terminal failure.
+
+A thread an agent starts with `create_threads`, `t3_thread_launch`, or `t3_thread_tab_open`
+records `startedBy` (the starting thread, or the agent access token's label). The chat header on web, desktop, and mobile
 names the starting thread (and opens it) or the token, and web sidebar rows mark the thread with a
 bot icon. A client cannot set `startedBy`; only the server's MCP paths do.
 
 Code: [`spawnPolicy.ts`](../apps/server/src/mcp/spawnPolicy.ts), its callers in
-[`OrchestratorMcpService.ts`](../apps/server/src/mcp/OrchestratorMcpService.ts) and
+[`OrchestratorMcpService.ts`](../apps/server/src/mcp/OrchestratorMcpService.ts) (which also holds
+`rollbackThread`) and
 [`toolkits/project/handlers.ts`](../apps/server/src/mcp/toolkits/project/handlers.ts),
 `OrchestrationV2ThreadStartedBy` in
 [`orchestrationV2.ts`](../packages/contracts/src/orchestrationV2.ts),
@@ -1191,6 +1289,23 @@ Code: [`spawnPolicy.ts`](../apps/server/src/mcp/spawnPolicy.ts), its callers in
 [`StartedByChip.tsx`](../apps/web/src/components/chat/StartedByChip.tsx), and
 [`ThreadStartedByChip.tsx`](../apps/mobile/src/features/threads/ThreadStartedByChip.tsx). User
 guide: [agent-access.md](./user/agent-access.md#let-agents-start-threads).
+
+## Agents attach integration context to messages
+
+`t3_thread_send` and `t3_thread_launch` take `contextLinks`: Slack message permalinks, Notion
+pages, Linear issues, GitHub issues, and GitHub repository roots. The server reads each one through
+the same integration the composer uses and attaches the same chip record, so the message reads as
+if a user had pasted the links: a link already in the message text becomes its chip there, the rest
+are appended. Repositories are cloned before the message lands. An unrecognized link, a pull
+request link, a disconnected or turned-off integration, or an unreadable object fails the call with
+the reason; nothing is sent. Links are read only once the caller is allowed to send, and a
+`clientRequestId` retry of a message that already landed does not read them again. Agents cannot
+search Slack or Notion over MCP; they attach links they already have.
+
+Code: [`McpContextLinks.ts`](../apps/server/src/mcp/McpContextLinks.ts), the link parser in
+[`composerObjectLinks.ts`](../packages/shared/src/composerObjectLinks.ts), and the chip records in
+[`integrationContextRecords.ts`](../packages/shared/src/integrationContextRecords.ts). User guide:
+[agent-access.md](./user/agent-access.md#attach-links-as-context).
 
 ## Delegated subagents in their own worktree
 
@@ -1308,6 +1423,31 @@ Code: [`attentionInbox.ts`](../packages/client-runtime/src/state/attentionInbox.
 the `attention-inbox` view in [`CommandPalette.tsx`](../apps/web/src/components/CommandPalette.tsx).
 User guide: [thread-sidebar.md](./user/thread-sidebar.md#see-what-needs-you).
 
+## Per-event notification rules
+
+Upstream notifies about every thread event or none. The fork lets each device choose:
+
+- Web and desktop: **Settings → General → Notify about** mutes individual events (approval,
+  question, failed turn, usage limit, finished turn, pull request watch news), and a
+  **Notifications** switch on each project's settings page mutes every checkout of that project.
+  Both are client settings (`mutedNotificationEvents`, `mutedNotificationProjects`), stored as mutes
+  so new events default on. When several events land at once, the most urgent unmuted one alerts.
+  Pull request watch news is new to the fork: a newly failed check on the head commit, a requested
+  change, or a merge conflict on a watched PR alerts even if the agent is mid-turn.
+- Mobile: **Settings → Notifications → Notify me about** sends the relay's existing per-device
+  `notifyOn*` flags, which upstream always sends as on. The relay classifies by turn phase, so
+  usage limits count as failures and pull request wakes as completions. Mobile has no per-project
+  mute.
+
+Notifications carry no approve or reply actions on any surface; they open the thread.
+
+Code: [`notificationRules.ts`](../packages/client-runtime/src/state/notificationRules.ts),
+[`ThreadNotificationCoordinator.tsx`](../apps/web/src/components/ThreadNotificationCoordinator.tsx),
+[`NotificationSettings.tsx`](../apps/web/src/components/settings/NotificationSettings.tsx), and
+[`SettingsNotificationsRouteScreen.tsx`](../apps/mobile/src/features/settings/SettingsNotificationsRouteScreen.tsx).
+User guides: [project-settings.md](./user/project-settings.md#choose-what-notifies-you) and
+[mobile-notifications.md](./user/mobile-notifications.md#choose-what-notifies-you).
+
 ## Provider service status
 
 **Usage → Limits** reads the public status page for Claude, Codex, Cursor, Devin, and Grok. A
@@ -1329,8 +1469,12 @@ reset**, **Cancel auto-resume**, and **Snooze until reset**. The fork adds:
 - **Resume now**, on web, desktop, and mobile, which sends the same "Continue where you left off."
   continuation at once, on the composer's model, so picking another provider first continues there
   instead of into the same limit. It is the `thread.usage-limit.resume-now` command, so
-  the server owns the message and any client or future agent tool can send it. Servers advertise it
+  the server owns the continuation. Servers advertise it
   with the `usageLimitResumeNow` capability; clients hide the button without it.
+- Agents see the stopped state as `usageLimit` (stopped run and reset time) in `t3_thread_read` and
+  `t3_thread_wait`, and send the same command with `t3_thread_usage_limit_resume`, under the usual
+  rules for writing to another thread. It continues on the thread's current model, so an agent
+  switches models with `t3_thread_configure` first.
 - **Continue in new tab** on web and desktop, which forks the chat onto another ready account or
   model through the [Chat tabs](#chat-tabs) fork, with the continuation as the new tab's prompt.
 - A one-minute grace after the reported reset before an armed auto-resume is sent, since a request
@@ -1345,6 +1489,7 @@ Code: `cursorRunFailure` in
 [Cursor adapter](../packages/provider-cursor/src/server/adapter.ts), the `thread.usage-limit.resume-now` case and limit-recovery notice in
 [Orchestrator](../apps/server/src/orchestration-v2/Orchestrator.ts), the grace in
 [UsageLimitRecoveryWorker](../apps/server/src/orchestration-v2/UsageLimitRecoveryWorker.ts),
+`resumeUsageLimitedThread` in [OrchestratorMcpService](../apps/server/src/mcp/OrchestratorMcpService.ts),
 [UsageLimitRecoveryBanner](../apps/web/src/components/chat/UsageLimitRecoveryBanner.tsx), and
 [UsageLimitRecoveryCard](../apps/mobile/src/features/threads/UsageLimitRecoveryCard.tsx). User guides:
 [providers-codex.md](./user/providers-codex.md#codex-says-i-hit-a-usage-limit) and
@@ -1352,9 +1497,11 @@ Code: `cursorRunFailure` in
 
 ## Notion page context
 
-Web and desktop support Notion OAuth sign-in in Integrations settings, where the user enters their own Notion connection's client ID and secret (kept on the server, with `T3CODE_NOTION_CLIENT_ID` and `T3CODE_NOTION_CLIENT_SECRET` as a fallback), page attachments from the paperclip picker and command palette, a Notion tab in the `#` menu, and conversion of pasted `notion.so`, `notion.com`, and `notion.site` page links to context chips. A pasted link to a page the connection cannot read stays as text, with a notice that opens the page in Notion and retries the conversion once the user shares it. Turning off **Enable Notion integration** in those settings keeps pasted Notion links as links without setup prompts and hides Notion attachment actions on web, desktop, and mobile for the environment, keeping the connected account. Mobile can pick pages using the environment's connection and inspect captured page contents. Pages are captured as bounded Markdown snapshots and sent through the shared context projection to every provider. Remote sign-in supports pasting the OAuth redirect URL back into settings.
+Web and desktop support Notion OAuth sign-in in Integrations settings, where the user enters their own Notion connection's client ID and secret (kept on the server, with `T3CODE_NOTION_CLIENT_ID` and `T3CODE_NOTION_CLIENT_SECRET` as a fallback), page attachments from the paperclip picker and command palette, a Notion tab in the `#` menu, and conversion of pasted `notion.so`, `notion.com`, and `notion.site` page links to context chips. A pasted link to a page the connection cannot read stays as text, with a notice that opens the page in Notion and retries the conversion once the user shares it. Turning off **Enable Notion integration** in those settings keeps pasted Notion links as links without setup prompts and hides Notion attachment actions on web, desktop, and mobile for the environment, keeping the connected account. Mobile can pick pages using the environment's connection and inspect captured page contents. Pages are captured as bounded Markdown snapshots and sent through the shared context projection to every provider. Remote sign-in can use a registered HTTPS callback through `T3CODE_NOTION_REDIRECT_URI`, or paste the OAuth redirect URL back into settings.
 
-Code: [NotionAuth](../apps/server/src/notion/NotionAuth.ts), [NotionApi](../apps/server/src/notion/NotionApi.ts), [NotionPagePicker](../apps/web/src/components/chat/NotionPagePicker.tsx), and [NotionPagePickerSheet](../apps/mobile/src/components/NotionPagePickerSheet.tsx). User guide: [Notion](./user/notion.md).
+A thread's chat-tab group can also be linked to one Notion page, from the thread menu, the web command palette, or the mobile tab menu, which open the page picker in link mode. The link lives in the fork-owned `fork_notion_thread_links` table, keyed by tab group, and streams over `notion.subscribeThreadLinks`; the page's title and URL are copied when linked. The web chat header chip shows the title and offers open, change, and unlink; mobile shows the same chip beside the tab switcher. Linking and unlinking are client-guarded RPCs that need the orchestration-operate grant. Unlinking stays available with the integration turned off.
+
+Code: [NotionAuth](../apps/server/src/notion/NotionAuth.ts), [NotionApi](../apps/server/src/notion/NotionApi.ts), [NotionPagePicker](../apps/web/src/components/chat/NotionPagePicker.tsx), [NotionThreadLinks](../apps/server/src/notion/NotionThreadLinks.ts), [NotionThreadLink](../apps/web/src/components/chat/NotionThreadLink.tsx), and [NotionPagePickerSheet](../apps/mobile/src/components/NotionPagePickerSheet.tsx). User guide: [Notion](./user/notion.md).
 
 ## Terminal colors, cursor, and line height
 
@@ -1426,3 +1573,9 @@ this check. A bugfix or refactor that leaves the described behavior the same doe
 entry.
 
 `README.md` only points here. Do not add a second feature list there.
+
+## Managed worktree storage
+
+**Settings → Storage → Managed worktrees** inventories managed checkouts per selected environment with linked threads, branch, local changes, and last synced pull request state. Sizes are measured on demand. Individual and bulk removal rechecks local changes and running work under the workspace lease, refuses project checkouts and unmanaged paths, and keeps branches and thread history. Mobile offers the same inventory and safe cleanup in each environment’s Settings page.
+
+Code: [`WorktreeInventory.ts`](../apps/server/src/git/WorktreeInventory.ts) and [`WorktreeInventory.tsx`](../apps/web/src/components/settings/WorktreeInventory.tsx). User guide: [Review worktree storage](user/project-settings.md#review-worktree-storage).

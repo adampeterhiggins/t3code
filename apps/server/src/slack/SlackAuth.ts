@@ -37,6 +37,11 @@ import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
+import {
+  type CallbackReply,
+  type IntegrationRedirect,
+  resolveIntegrationRedirect,
+} from "../integrationOAuth.ts";
 import { slackApiRequest } from "./slackWebApi.ts";
 import {
   buildSlackAuthorizeUrl,
@@ -44,6 +49,7 @@ import {
   readSlackCallback,
   SLACK_API_URL,
   SLACK_LOOPBACK_PORT,
+  SLACK_SERVER_CALLBACK_PATH,
 } from "./slackOAuth.ts";
 
 const SLACK_TOKEN_SECRET = "slack-oauth-token";
@@ -126,7 +132,10 @@ const failedState = (message: string, clientId: string | null): SlackConnectionS
   message,
 });
 
+type UsableRedirect = Exclude<IntegrationRedirect, { readonly _tag: "Invalid" }>;
+
 interface ActiveFlow {
+  readonly redirect: UsableRedirect;
   readonly flowId: string;
   readonly state: string;
   readonly clientId: string;
@@ -171,12 +180,19 @@ export class SlackAuth extends Context.Service<
     readonly account: Effect.Effect<SlackAccount, SlackError>;
     /** Drops the stored credential after Slack rejects it. */
     readonly markRevoked: Effect.Effect<void>;
+    readonly receiveCallback: (url: URL) => Effect.Effect<CallbackReply>;
   }
 >()("t3/slack/SlackAuth") {}
 
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = Effect.gen(function* () {
   const envClientId = yield* Config.String("T3CODE_SLACK_CLIENT_ID").pipe(Config.option);
+  const redirect = resolveIntegrationRedirect({
+    configured: yield* Config.String("T3CODE_SLACK_REDIRECT_URI").pipe(Config.option),
+    variable: "T3CODE_SLACK_REDIRECT_URI",
+    loopbackUri: SLACK_REDIRECT_URI,
+    callbackPath: SLACK_SERVER_CALLBACK_PATH,
+  });
   const crypto = yield* Crypto.Crypto;
   const httpClient = yield* HttpClient.HttpClient;
   const secrets = yield* ServerSecretStore.ServerSecretStore;
@@ -277,12 +293,13 @@ export const make = Effect.gen(function* () {
     code: string,
     verifier: string,
     clientId: string,
+    redirectUri: string,
   ) {
     const result = yield* postToken({
       client_id: clientId,
       code,
       code_verifier: verifier,
-      redirect_uri: SLACK_REDIRECT_URI,
+      redirect_uri: redirectUri,
     }).pipe(
       Effect.mapError((cause) => loginError("Could not reach Slack to finish sign-in.", cause)),
     );
@@ -304,28 +321,77 @@ export const make = Effect.gen(function* () {
     return account;
   });
 
+  /** Settles a login from the redirect the browser followed. The reply never carries the code. */
+  const settleCallback = (flow: ActiveFlow | null, url: URL) =>
+    Effect.gen(function* () {
+      if (flow === null) {
+        return {
+          status: 400,
+          message: "This Slack sign-in is no longer active. Start again in T3 Code.",
+        } satisfies CallbackReply;
+      }
+      const result = readSlackCallback(url, flow.state);
+      switch (result._tag) {
+        case "Invalid":
+          return { status: 400, message: result.reason } satisfies CallbackReply;
+        case "Denied":
+          yield* Deferred.fail(flow.callback, loginError("Slack sign-in was cancelled."));
+          return {
+            status: 200,
+            message: "Slack sign-in was cancelled. You can close this tab.",
+          } satisfies CallbackReply;
+        case "Code":
+          const accepted = yield* Deferred.succeed(flow.callback, result.code);
+          if (!accepted)
+            return {
+              status: 400,
+              message: "This sign-in callback was already received.",
+            } satisfies CallbackReply;
+          return {
+            status: 200,
+            message: "Slack authorization received. Return to T3 Code to check the connection.",
+          } satisfies CallbackReply;
+      }
+    });
+
   const callbackRoute = (flow: ActiveFlow) =>
     HttpRouter.add(
       "GET",
       "/callback",
       Effect.gen(function* () {
         const request = yield* HttpServerRequest.HttpServerRequest;
-        const result = readSlackCallback(
-          new URL(request.originalUrl, SLACK_REDIRECT_URI),
-          flow.state,
-        );
-        switch (result._tag) {
-          case "Invalid":
-            return HttpServerResponse.text(result.reason, { status: 400 });
-          case "Denied":
-            yield* Deferred.fail(flow.callback, loginError("Slack sign-in was cancelled."));
-            return HttpServerResponse.text("Slack sign-in was cancelled. You can close this tab.");
-          case "Code":
-            yield* Deferred.succeed(flow.callback, result.code);
-            return HttpServerResponse.text("Slack connected. You can close this tab.");
-        }
+        const reply = yield* settleCallback(flow, new URL(request.originalUrl, SLACK_REDIRECT_URI));
+        return HttpServerResponse.text(reply.message, { status: reply.status });
       }),
     );
+
+  /** Binds the loopback port for one login; a server redirect needs no listener. */
+  const listenOnLoopback = (flow: ActiveFlow) =>
+    Effect.gen(function* () {
+      const listener = HttpRouter.serve(callbackRoute(flow), {
+        disableListenLog: true,
+        disableLogger: true,
+      }).pipe(
+        Layer.provide(
+          NodeHttpServer.layer(NodeHttp.createServer, {
+            host: "127.0.0.1",
+            port: SLACK_LOOPBACK_PORT,
+            disablePreemptiveShutdown: true,
+          }),
+        ),
+      );
+      // A fresh memo map: requests inside the server carry the app's memo
+      // map, and reusing its memoized HttpRouter would serve the whole app
+      // on the loopback port and fail the next login's route registration.
+      yield* Layer.buildWithMemoMap(listener, yield* Layer.makeMemoMap, yield* Effect.scope).pipe(
+        Effect.mapError((cause) =>
+          loginError(
+            `Port ${SLACK_LOOPBACK_PORT} is in use, so the Slack callback cannot be received. Free the port and try again.`,
+            cause,
+          ),
+        ),
+      );
+    });
 
   /**
    * Owns the loopback listener for one login. `listening` settles once the
@@ -338,29 +404,7 @@ export const make = Effect.gen(function* () {
   ) =>
     Effect.scoped(
       Effect.gen(function* () {
-        const listener = HttpRouter.serve(callbackRoute(flow), {
-          disableListenLog: true,
-          disableLogger: true,
-        }).pipe(
-          Layer.provide(
-            NodeHttpServer.layer(NodeHttp.createServer, {
-              host: "127.0.0.1",
-              port: SLACK_LOOPBACK_PORT,
-              disablePreemptiveShutdown: true,
-            }),
-          ),
-        );
-        // A fresh memo map: requests inside the server carry the app's memo
-        // map, and reusing its memoized HttpRouter would serve the whole app
-        // on the loopback port and fail the next login's route registration.
-        yield* Layer.buildWithMemoMap(listener, yield* Layer.makeMemoMap, yield* Effect.scope).pipe(
-          Effect.mapError((cause) =>
-            loginError(
-              `Port ${SLACK_LOOPBACK_PORT} is in use, so the Slack callback cannot be received. Free the port and try again.`,
-              cause,
-            ),
-          ),
-        );
+        if (flow.redirect._tag === "Loopback") yield* listenOnLoopback(flow);
         yield* Deferred.succeed(listening, undefined);
         const code = yield* Deferred.await(flow.callback).pipe(
           Effect.timeout(LOGIN_TIMEOUT),
@@ -368,7 +412,7 @@ export const make = Effect.gen(function* () {
             TimeoutError: () => Effect.fail(loginError("Slack sign-in timed out. Start again.")),
           }),
         );
-        return yield* exchangeCode(code, verifier, flow.clientId);
+        return yield* exchangeCode(code, verifier, flow.clientId, flow.redirect.uri);
       }),
     ).pipe(
       Effect.matchEffect({
@@ -417,6 +461,7 @@ export const make = Effect.gen(function* () {
   }).pipe(Effect.mapError((cause) => loginError("Could not start Slack sign-in.", cause)));
 
   const startLogin = Effect.fn("slack.auth.start_login")(function* (input: SlackStartLoginInput) {
+    if (redirect._tag === "Invalid") return yield* loginError(redirect.reason);
     const clientId = input.clientId ?? (yield* resolvedClientId);
     if (clientId === null) {
       return yield* new SlackError({
@@ -429,6 +474,7 @@ export const make = Effect.gen(function* () {
     const previous = interrupted?.previous ?? current;
     const pkce = yield* makePkce;
     const flow: ActiveFlow = {
+      redirect,
       flowId: pkce.flowId,
       state: pkce.state,
       clientId,
@@ -446,6 +492,7 @@ export const make = Effect.gen(function* () {
       clientId,
       flowId: flow.flowId,
       authorizationUrl: buildSlackAuthorizeUrl({
+        redirectUri: redirect.uri,
         clientId,
         state: flow.state,
         challenge: pkce.challenge,
@@ -469,7 +516,7 @@ export const make = Effect.gen(function* () {
     input: SlackCompleteLoginInput,
   ) {
     const flow = yield* requireFlow(input.flowId);
-    const result = readPastedSlackCallback(input.callbackUrl, flow.state);
+    const result = readPastedSlackCallback(input.callbackUrl, flow.state, flow.redirect.uri);
     switch (result._tag) {
       case "Invalid":
         return yield* loginError(result.reason);
@@ -590,7 +637,26 @@ export const make = Effect.gen(function* () {
     accessToken,
     account: storedToken.pipe(Effect.map((token) => token.account)),
     markRevoked,
+    receiveCallback: (url) =>
+      Ref.get(activeFlow).pipe(Effect.flatMap((flow) => settleCallback(flow, url))),
   });
 });
 
 export const layer = Layer.effect(SlackAuth, make);
+/**
+ * The main server's end of `T3CODE_SLACK_REDIRECT_URI`. It needs no session:
+ * the browser arrives from Slack, and only the login's state is accepted.
+ */
+export const layerCallbackRoute = HttpRouter.add(
+  "GET",
+  SLACK_SERVER_CALLBACK_PATH,
+  Effect.gen(function* () {
+    const auth = yield* SlackAuth;
+    const request = yield* HttpServerRequest.HttpServerRequest;
+    const reply = yield* auth.receiveCallback(new URL(request.originalUrl, "http://localhost"));
+    return HttpServerResponse.text(reply.message, {
+      status: reply.status,
+      headers: { "cache-control": "no-store", "referrer-policy": "no-referrer" },
+    });
+  }),
+);

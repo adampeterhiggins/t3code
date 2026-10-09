@@ -158,9 +158,12 @@ on GitHub don't change a message you already sent.
 
 Starting a thread from an issue links the issue to the thread and its chat tabs. The chat header (on
 mobile, the tab switcher) shows its number and whether it is open or closed; click or tap it to open
-the issue on GitHub or unlink it. Pickers mark an issue that another live thread is linked to as
-**In use**, and starting from it asks whether to open that thread or start a new one. On web and
+the issue on GitHub, change it, or unlink it. To link an issue to a thread you already have,
+choose **Link GitHub issue…** from the thread's menu, run **Link GitHub issue** from the command
+palette, or on mobile use the tab menu or the **Link issue** button. Pickers mark an issue that
+another live thread is linked to as **In use**, and starting from it asks whether to open that thread or start a new one. On web and
 desktop, hovering an issue in the attach picker lists those threads; click one to open it.
+Agents can also link or unlink an issue on their thread.
 
 ## Review and merge
 

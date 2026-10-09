@@ -119,6 +119,13 @@ export const ContextRepositoryInspectResult = Schema.Struct({
 });
 export type ContextRepositoryInspectResult = typeof ContextRepositoryInspectResult.Type;
 
+/** Deletes one clone from a workspace's context directory. */
+export const ContextRepositoryRemoveInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  directoryName: ContextRepositoryDirectoryName,
+});
+export type ContextRepositoryRemoveInput = typeof ContextRepositoryRemoveInput.Type;
+
 export class ContextRepositoryError extends Schema.TaggedError<ContextRepositoryError>()(
   "ContextRepositoryError",
   {

@@ -38,6 +38,12 @@ device?** under the Slack setting.
 
 Sign-in needs port 47832 free on the server machine while you approve.
 
+## Approve from another device
+
+The server can receive approval directly from a browser on another device when it has a stable HTTPS address reachable from that device. Register `https://YOUR-SERVER/oauth/slack/callback` on your Slack OAuth app, set `T3CODE_SLACK_REDIRECT_URI` to that exact URL on the server, and restart it. Keep PKCE enabled on the Slack app and add this URL to its allowed redirects. The copied setup manifest starts with the local callback; add the HTTPS callback in the app settings. The browser must reach this callback on the environment itself, without a proxy login prompt; a client-only URL such as app.t3.codes or a relay address that does not forward the callback will not work. T3 Code does not register URLs or create a tunnel automatically.
+
+Without this setting, approval uses the existing local callback. If that page cannot load on another device, copy its full address back into the sign-in settings.
+
 ## Attach a message or thread
 
 - Paste or type a Slack message link (**Copy link** on a message in Slack) into the composer on
@@ -64,7 +70,23 @@ first line.
 If T3 Code can't read a pasted link, it stays as text. The first time that happens because Slack
 isn't connected, a notice says so.
 
-## Disconnect
+## Link a thread to a T3 Code thread
+
+A linked Slack thread stays with the thread and all of its chat tabs, so you can see which
+conversation the work is for. A thread links one Slack thread at a time.
+
+- On web and desktop, choose **Link Slack thread…** from the thread's menu (the sidebar row or the
+  chat header title), or run **Link Slack thread** from the command palette.
+- On mobile, choose **Link Slack thread** from the chat tab menu, or from **Link** beside **New
+  tab** when the thread has one tab.
+
+Pick any message in the thread; a reply links its whole thread. The chat header shows the linked
+thread's channel; on mobile the chip sits beside the tab switcher. Tap or click it to open the
+thread in Slack, change it, or unlink it. The channel, author, and first line are copied when you
+link and don't update. Connections without permission to change threads see the chip but can only
+open it.
+
+## Turn off or disconnect
 
 To stop Slack setup prompts and automatic link attachments, turn off **Enable Slack integration**
 under **Settings > Integrations > Slack**. Slack links stay as links, and Slack attachment actions
@@ -76,3 +98,28 @@ Slack and deletes it. The client ID stays, so reconnecting is one click. Message
 stay as they were.
 
 If Slack revokes access, the setting shows **Reconnect Slack**.
+
+## Start a thread when you are mentioned
+
+In **Settings > Integrations > Slack** on web or desktop, choose a mention project and enter the
+channel names or IDs to watch. You can also include direct and group messages, require a keyword,
+set the instructions to send, and choose a provider and model. Then turn on **Start threads from
+Slack mentions**. It is off by default. Changing these settings requires permission to write
+settings and operate threads on the selected environment.
+
+The environment checks once a minute for explicit @mentions of its connected Slack account in
+messages that account can read. Each matching mention starts a thread in the project's root
+workspace with a Slack thread snapshot and link. It uses the selected model, or the project's
+default model, and the project's permission mode. The resulting threads are available on mobile
+as well. T3 Code does not reply to Slack.
+
+Mentions from before you enable the trigger are ignored. Turning it off and back on, or changing
+the connected account, starts a fresh baseline. Changing filters does not replay mentions already
+checked. Restarting the server retains the baseline and processed mentions; failed reads and
+launches retry with the same thread request. The server must be running, and each poll reads the
+newest 50 search results, so a larger backlog can miss older messages. Search visibility, indexing
+delays, retention, and rate limits are controlled by Slack. This watches one account and workspace
+per environment, not every workspace you use.
+
+Turn off the trigger to stop starting new threads. Turning off the Slack integration also stops
+polling. Threads already started continue normally.

@@ -18,6 +18,11 @@ const PREFERENCES_FALLBACK_KEY = "t3code.preferences.fallback";
 
 export interface Preferences {
   readonly liveActivitiesEnabled?: boolean;
+  /** Per-event push rules the relay applies to this device. Missing means on. */
+  readonly notifyOnApproval?: boolean;
+  readonly notifyOnInput?: boolean;
+  readonly notifyOnCompletion?: boolean;
+  readonly notifyOnFailure?: boolean;
   readonly themeId?: MobileThemeId;
   readonly lightThemeId?: MobileThemeId;
   readonly darkThemeId?: MobileThemeId;
@@ -111,10 +116,23 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     workingShelfEnabled?: boolean;
     modelFavorites?: Preferences["modelFavorites"];
     threadListWorkingShelfExpanded?: boolean;
+    notifyOnApproval?: boolean;
+    notifyOnInput?: boolean;
+    notifyOnCompletion?: boolean;
+    notifyOnFailure?: boolean;
   } = {};
 
   if (typeof parsed.liveActivitiesEnabled === "boolean") {
     preferences.liveActivitiesEnabled = parsed.liveActivitiesEnabled;
+  }
+  for (const key of [
+    "notifyOnApproval",
+    "notifyOnInput",
+    "notifyOnCompletion",
+    "notifyOnFailure",
+  ] as const) {
+    const value = parsed[key];
+    if (typeof value === "boolean") preferences[key] = value;
   }
   if (
     typeof parsed.themeId === "string" &&

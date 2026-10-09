@@ -399,6 +399,15 @@ export function summarizeT3ToolCalls(
         `linked pull requests${selected.length === 1 ? "" : ` ${times}`}`,
       );
       break;
+    case "link-issue":
+      label = phrase("Linked", "link", quantity(selected.length, "issue"));
+      break;
+    case "unlink-issue":
+      label = phrase("Unlinked", "unlink", quantity(selected.length, "issue"));
+      break;
+    case "list-issues":
+      label = phrase("Checked", "check", `linked issues${selected.length === 1 ? "" : ` ${times}`}`);
+      break;
     case "browser":
       label = phrase("Used", "use", `browser ${times}`);
       break;

@@ -1,5 +1,5 @@
 import { parseNotionPageId, parseGitHubIssueUrl } from "@t3tools/contracts";
-import { parseChangeRequestUrl } from "@t3tools/shared/changeRequestUrl";
+import { parseChangeRequestUrl } from "./changeRequestUrl.ts";
 
 /**
  * A link in composer text to something the composer can attach as a chip instead: a Linear

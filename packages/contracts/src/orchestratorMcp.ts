@@ -3,6 +3,8 @@ import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 
 import {
+  CheckpointId,
+  CommandId,
   ContextTransferId,
   IsoDateTime,
   MessageId,
@@ -346,6 +348,17 @@ export const OrchestratorMcpThreadListResult = Schema.Struct({
 });
 export type OrchestratorMcpThreadListResult = typeof OrchestratorMcpThreadListResult.Type;
 
+/** Present while the thread's latest run is stopped on a provider usage limit. */
+export const OrchestratorMcpThreadUsageLimit = Schema.Struct({
+  runId: RunId,
+  /** When the provider said the limit resets; null when it gave no time. */
+  resetAt: Schema.NullOr(IsoDateTime),
+}).annotate({
+  description:
+    "The thread stopped on a provider usage limit. Call t3_thread_usage_limit_resume to continue now, or leave it to resume at resetAt if the user enabled auto-resume.",
+});
+export type OrchestratorMcpThreadUsageLimit = typeof OrchestratorMcpThreadUsageLimit.Type;
+
 export const OrchestratorMcpThreadReadInput = Schema.Struct({
   threadId: ThreadId,
   itemId: Schema.optional(TurnItemId),
@@ -373,6 +386,17 @@ export const OrchestratorMcpThreadDetail = Schema.Struct({
   interactionMode: ProviderInteractionMode,
   linkedPullRequest: Schema.NullOr(ThreadLinkedPullRequest),
   titleRegeneration: Schema.NullOr(ThreadTitleRegeneration),
+  /** Latest accepted rollback; acceptance does not imply restoration has finished. */
+  rollbackRequestId: Schema.optional(Schema.NullOr(CommandId)),
+  /** The latest rollback's terminal failure, if any. */
+  rollbackFailure: Schema.optional(
+    Schema.NullOr(
+      Schema.Struct({
+        requestId: CommandId,
+        message: TrimmedNonEmptyString,
+      }),
+    ),
+  ),
   branch: Schema.NullOr(Schema.String),
   worktreePath: Schema.NullOr(Schema.String),
   parentThreadId: Schema.NullOr(ThreadId),
@@ -386,6 +410,7 @@ export const OrchestratorMcpThreadDetail = Schema.Struct({
   snoozed: Schema.Boolean,
   /** When a snoozed thread wakes; null when it is not snoozed. */
   snoozedUntil: Schema.NullOr(IsoDateTime),
+  usageLimit: Schema.NullOr(OrchestratorMcpThreadUsageLimit),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
 });
@@ -431,9 +456,23 @@ export const OrchestratorMcpThreadReadResult = Schema.Struct({
 });
 export type OrchestratorMcpThreadReadResult = typeof OrchestratorMcpThreadReadResult.Type;
 
+/**
+ * Links an agent attaches to a message the way a user pastes them into the composer: each
+ * becomes a context chip whose content the server reads when the message is sent.
+ */
+export const OrchestratorMcpContextLinks = Schema.Array(
+  TrimmedNonEmptyString.check(Schema.isMaxLength(2_048)),
+)
+  .check(Schema.isMaxLength(10))
+  .annotate({
+    description:
+      "Links to attach as context, read now and sent with the message: Slack message permalinks (the whole thread), Notion pages, Linear issues, GitHub issues, and GitHub repository roots (cloned into the thread's context folder). A link that also appears in the message text is replaced there by its chip; the rest are appended. Pull request links are not attachable; leave them in the text. Fails if an integration is not connected or the link cannot be read.",
+  });
+
 export const OrchestratorMcpThreadSendInput = Schema.Struct({
   threadId: ThreadId,
   message: OrchestratorMcpPrompt,
+  contextLinks: Schema.optional(OrchestratorMcpContextLinks),
   mode: Schema.optional(Schema.Literals(["auto", "queue", "steer", "restart"])),
   clientRequestId: Schema.optional(OrchestratorMcpClientRequestId),
 });
@@ -460,6 +499,8 @@ export const OrchestratorMcpThreadWaitResult = Schema.Struct({
   runId: Schema.NullOr(RunId),
   status: OrchestratorMcpThreadStatus,
   timedOut: Schema.Boolean,
+  /** Set when the waited run is the thread's latest and it stopped on a usage limit. */
+  usageLimit: Schema.NullOr(OrchestratorMcpThreadUsageLimit),
 });
 export type OrchestratorMcpThreadWaitResult = typeof OrchestratorMcpThreadWaitResult.Type;
 
@@ -481,6 +522,45 @@ export const OrchestratorMcpThreadInterruptResult = Schema.Struct({
   ]),
 });
 export type OrchestratorMcpThreadInterruptResult = typeof OrchestratorMcpThreadInterruptResult.Type;
+
+export const OrchestratorMcpThreadUsageLimitResumeInput = Schema.Struct({
+  threadId: ThreadId,
+  /** The run stopped on the usage limit. Omit for the thread's latest run. */
+  runId: Schema.optional(RunId),
+  clientRequestId: Schema.optional(OrchestratorMcpClientRequestId),
+});
+export type OrchestratorMcpThreadUsageLimitResumeInput =
+  typeof OrchestratorMcpThreadUsageLimitResumeInput.Type;
+
+export const OrchestratorMcpThreadUsageLimitResumeResult = Schema.Struct({
+  threadId: ThreadId,
+  messageId: MessageId,
+  /** The run carrying the continuation. */
+  runId: RunId,
+  status: OrchestrationV2RunStatus,
+});
+export type OrchestratorMcpThreadUsageLimitResumeResult =
+  typeof OrchestratorMcpThreadUsageLimitResumeResult.Type;
+export const OrchestratorMcpThreadRollbackInput = Schema.Struct({
+  threadId: ThreadId,
+  /** Keep runs up to this ordinal (from t3_thread_read's recentRuns); 0 discards every run. */
+  runOrdinal: NonNegativeInt,
+  /** Restore the workspace files too. Defaults to true; false rewinds only the conversation. */
+  restoreFiles: Schema.optional(Schema.Boolean),
+  clientRequestId: Schema.optional(OrchestratorMcpClientRequestId),
+});
+export type OrchestratorMcpThreadRollbackInput = typeof OrchestratorMcpThreadRollbackInput.Type;
+
+export const OrchestratorMcpThreadRollbackResult = Schema.Struct({
+  /** The rollback is accepted; provider and file restoration run asynchronously. */
+  status: Schema.Literal("rollback_requested"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  runOrdinal: NonNegativeInt,
+  checkpointId: CheckpointId,
+  restoreFiles: Schema.Boolean,
+});
+export type OrchestratorMcpThreadRollbackResult = typeof OrchestratorMcpThreadRollbackResult.Type;
 
 export const OrchestratorMcpProviderCapability = Schema.Struct({
   providerInstanceId: ProviderInstanceId,
@@ -667,6 +747,7 @@ export class OrchestratorMcpFailure extends Schema.TaggedError<OrchestratorMcpFa
       "run_not_found",
       "thread_not_sendable",
       "thread_not_interruptible",
+      "thread_not_usage_limited",
       "invalid_request",
       "orchestration_error",
       "thread_credential_required",

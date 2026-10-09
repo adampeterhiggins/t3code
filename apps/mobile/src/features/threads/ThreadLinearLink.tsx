@@ -1,9 +1,9 @@
+import { useAtomValue } from "@effect/atom-react";
 import { linearLinkForThread } from "@t3tools/client-runtime/state/linear";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentId, LinearThreadLink, ThreadId } from "@t3tools/contracts";
 import { Alert, Pressable, Text, View } from "react-native";
 
-import { SymbolView } from "../../components/AppSymbol";
 import { ControlPillMenu } from "../../components/ControlPillMenu";
 import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
 import { linearEnvironment } from "../../state/linear";
@@ -25,10 +25,13 @@ export function useThreadLinearLink(environmentId: EnvironmentId, threadId: Thre
   const links = useEnvironmentQuery(
     linearEnvironment.threadLinks({ environmentId, input: {} }),
   ).data;
+  const canEdit = useAtomValue(linearEnvironment.linkThread.permissionAtom(environmentId));
+  const canChange = canEdit && links != null && connection?.phase === "connected";
   const link = linearLinkForThread(links, threadId);
   return {
     link,
-    canLink: link === null && links !== null && connection?.phase === "connected",
+    canChange,
+    canLink: link === null && canChange,
   };
 }
 
@@ -40,7 +43,7 @@ export function ThreadLinearLinkChip(props: {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
   readonly link: LinearThreadLink;
-  readonly onChange: () => void;
+  readonly onChange?: () => void;
 }) {
   const { environmentId, threadId, link } = props;
   const summary = useEnvironmentQuery(
@@ -50,6 +53,7 @@ export function ThreadLinearLinkChip(props: {
     label: "linear thread unlink",
     reportFailure: false,
   });
+  const canEdit = useAtomValue(linearEnvironment.unlinkThread.permissionAtom(environmentId));
   const identifier = summary?.identifier ?? link.identifier;
   const title = summary?.title ?? link.title;
   const url = summary?.url ?? link.url;
@@ -69,7 +73,7 @@ export function ThreadLinearLinkChip(props: {
       void tryOpenExternalUrl(url, "linear").then((opened) => {
         if (!opened) Alert.alert("Could not open Linear", "Try again later.");
       });
-    } else if (id === CHANGE_ACTION) props.onChange();
+    } else if (id === CHANGE_ACTION) props.onChange?.();
     else if (id === UNLINK_ACTION) void unlink();
   };
 
@@ -81,13 +85,19 @@ export function ThreadLinearLinkChip(props: {
       title={`${identifier} ${title}`}
       actions={[
         { id: OPEN_ACTION, title: "Open in Linear", image: "arrow.up.right.square" },
-        { id: CHANGE_ACTION, title: "Change issue…", image: "pencil" },
-        {
-          id: UNLINK_ACTION,
-          title: "Unlink issue",
-          image: "link",
-          attributes: { destructive: true },
-        },
+        ...(canEdit && props.onChange
+          ? [{ id: CHANGE_ACTION, title: "Change issue…", image: "pencil" }]
+          : []),
+        ...(canEdit
+          ? [
+              {
+                id: UNLINK_ACTION,
+                title: "Unlink issue",
+                image: "link",
+                attributes: { destructive: true },
+              },
+            ]
+          : []),
       ]}
       onPressAction={({ nativeEvent }) => onMenuAction(nativeEvent.event)}
     >
@@ -107,20 +117,5 @@ export function ThreadLinearLinkChip(props: {
         ) : null}
       </Pressable>
     </ControlPillMenu>
-  );
-}
-
-/** The way in when the thread has no issue and its tabs have no menu to hold the action. */
-export function ThreadLinearLinkButton(props: { readonly onPress: () => void }) {
-  return (
-    <Pressable
-      accessibilityLabel="Link Linear issue"
-      accessibilityRole="button"
-      onPress={props.onPress}
-      className="shrink-0 flex-row items-center gap-1.5 rounded-full bg-subtle px-3 py-1.5 active:opacity-70"
-    >
-      <SymbolView name="link" size={13} tintColorClassName="accent-foreground" />
-      <Text className="text-sm font-medium text-foreground">Link issue</Text>
-    </Pressable>
   );
 }

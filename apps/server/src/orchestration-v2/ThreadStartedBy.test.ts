@@ -104,3 +104,24 @@ it("drops a client's claim to have been started by an agent", () => {
     label: "Spoofed",
   });
 });
+
+it("drops a client's claim on a fork too", () => {
+  const fork: OrchestrationV2Command = {
+    type: "thread.fork",
+    commandId: CommandId.make("fork:client"),
+    sourceThreadId: ThreadId.make("thread:source"),
+    targetThreadId: ThreadId.make("thread:fork"),
+    sourcePoint: { type: "latest_stable" },
+    createdBy: "agent",
+    creationSource: "mcp",
+    startedBy: { kind: "thread", threadId: ThreadId.make("thread:caller") },
+  };
+  assert.strictEqual(
+    "startedBy" in withCreationProvenance(fork, { createdBy: "user", creationSource: "web" }),
+    false,
+  );
+  assert.strictEqual(
+    "startedBy" in withCreationProvenance(fork, { createdBy: "agent", creationSource: "mcp" }),
+    true,
+  );
+});

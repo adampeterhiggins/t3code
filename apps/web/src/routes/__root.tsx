@@ -22,6 +22,9 @@ import { CustomSnoozeDialogHost } from "../components/CustomSnoozeDialog";
 import { ThreadTabGroupNameDialogHost } from "../components/ThreadTabGroupNameDialog";
 import { ThreadGroupDialogHost } from "../components/ThreadGroupDialog";
 import { TranscriptExportDialogHost } from "../components/TranscriptExportDialog";
+import { NotionPagePickerHost } from "../components/chat/NotionPagePicker";
+import { SlackMessagePickerHost } from "../components/chat/SlackMessagePicker";
+import { GitHubIssuePickerHost } from "../components/chat/GitHubIssuePicker";
 import { ImportConversationDialogHost } from "../components/ImportConversationDialog";
 import { ConfirmDialogHost } from "../components/ConfirmDialogHost";
 import { KeybindingsConfigWarning } from "../components/KeybindingsConfigWarning";
@@ -246,7 +249,11 @@ function RootRouteView() {
           <ThreadGroupDialogHost />
           <ThreadTabGroupNameDialogHost />
           <TranscriptExportDialogHost />
+          <GitHubIssuePickerHost />
           <ImportConversationDialogHost />
+          {/* Thread menus and the palette open these from any route, Settings included. */}
+          <SlackMessagePickerHost />
+          <NotionPagePickerHost />
           <SlowRpcRequestToastCoordinator />
           <PermissionUpdateNotice />
           {primaryEnvironmentAuthenticated ? <LegacyThreadMigrationToast /> : null}

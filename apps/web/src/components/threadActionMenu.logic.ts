@@ -41,6 +41,9 @@ export type ThreadActionMenuId =
   | "copy-thread-id"
   | "export-transcript"
   | "link-linear-issue"
+  | "link-slack-thread"
+  | "link-notion-page"
+  | "link-github-issue"
   | "archive"
   | "delete";
 
@@ -110,6 +113,8 @@ export interface ThreadActionMenuState {
    * tab group's root thread rather than the open tab.
    */
   readonly canRestartSession?: boolean;
+  /** The thread's project is on GitHub, so a GitHub issue can be linked to it. */
+  readonly canLinkGitHubIssue?: boolean;
   readonly isPinned: boolean;
   readonly isSettled: boolean;
   /** False while the user has turned automatic settlement off for this thread. */
@@ -136,6 +141,8 @@ export interface ThreadActionMenuState {
     readonly titleRegeneration: boolean;
   };
   readonly snoozePresets: ReadonlyArray<SnoozePreset>;
+  /** Integrations the thread's environment has turned on, which add their "Link …" items. */
+  readonly integrations?: { readonly slack: boolean; readonly notion: boolean };
 }
 
 /** Local navigation, read markers, and copying remain available to read-only clients. */
@@ -311,6 +318,15 @@ export function buildThreadActionMenuItems(
     },
     { id: "export-transcript", label: "Export transcript…", icon: "download" },
     { id: "link-linear-issue", label: "Link Linear issue…", icon: "link" },
+    ...(state.canLinkGitHubIssue
+      ? [{ id: "link-github-issue" as const, label: "Link GitHub issue…", icon: "link" }]
+      : []),
+    ...(state.integrations?.slack
+      ? [{ id: "link-slack-thread" as const, label: "Link Slack thread…", icon: "link" }]
+      : []),
+    ...(state.integrations?.notion
+      ? [{ id: "link-notion-page" as const, label: "Link Notion page…", icon: "link" }]
+      : []),
     { id: "project-settings", label: "Project settings", icon: "settings" },
     // Archive removes the thread from the sidebar while keeping its
     // conversation under Settings > Archived threads — distinct from Settle

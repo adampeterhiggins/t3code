@@ -22,6 +22,7 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.pullRequestsSetLabels]: AuthSourceControlWriteScope,
   [WS_METHODS.sourceControlCloneRepository]: AuthSourceControlWriteScope,
   [WS_METHODS.sourceControlPublishRepository]: AuthSourceControlWriteScope,
+  [WS_METHODS.contextRepositoriesRemove]: AuthSourceControlWriteScope,
   [WS_METHODS.projectCloneStart]: AuthSourceControlWriteScope,
   [WS_METHODS.projectCloneCancel]: AuthSourceControlWriteScope,
   [WS_METHODS.projectCloneRetry]: AuthSourceControlWriteScope,
@@ -30,6 +31,7 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.gitPreparePullRequestThread]: AuthSourceControlWriteScope,
   [WS_METHODS.vcsCreateWorktree]: AuthSourceControlWriteScope,
   [WS_METHODS.vcsRemoveWorktree]: AuthSourceControlWriteScope,
+  [WS_METHODS.worktreesRemove]: AuthSourceControlWriteScope,
   [WS_METHODS.vcsCreateRef]: AuthSourceControlWriteScope,
   [WS_METHODS.vcsSwitchRef]: AuthSourceControlWriteScope,
   [WS_METHODS.vcsInit]: AuthSourceControlWriteScope,
@@ -39,6 +41,15 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.scheduledTasksDelete]: AuthOrchestrationOperateScope,
   [WS_METHODS.scheduledTasksRunNow]: AuthOrchestrationOperateScope,
   [WS_METHODS.scheduledTasksRotateWebhookToken]: AuthOrchestrationOperateScope,
+
+  [WS_METHODS.linearLinkThread]: AuthOrchestrationOperateScope,
+  [WS_METHODS.linearUnlinkThread]: AuthOrchestrationOperateScope,
+  [WS_METHODS.githubIssuesLinkThread]: AuthOrchestrationOperateScope,
+  [WS_METHODS.githubIssuesUnlinkThread]: AuthOrchestrationOperateScope,
+  [WS_METHODS.slackLinkThread]: AuthOrchestrationOperateScope,
+  [WS_METHODS.slackUnlinkThread]: AuthOrchestrationOperateScope,
+  [WS_METHODS.notionLinkThread]: AuthOrchestrationOperateScope,
+  [WS_METHODS.notionUnlinkThread]: AuthOrchestrationOperateScope,
 } as const;
 export type ClientGuardedRpcTag = keyof typeof CLIENT_GUARDED_RPC_SCOPES;
 

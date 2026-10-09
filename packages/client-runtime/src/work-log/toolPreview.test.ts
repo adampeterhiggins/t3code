@@ -598,6 +598,29 @@ describe("resolveToolPreview", () => {
     });
     expect(
       action(
+        "t3_thread_rollback",
+        { threadId: "a", runOrdinal: 2, restoreFiles: false },
+        { threadId: "a", runOrdinal: 2, restoreFiles: false, status: "rollback_requested" },
+      ),
+    ).toMatchObject({
+      headline: "Requested a checkpoint rollback",
+      status: "rollback_requested",
+      threadId: "a",
+      details: ["Keep through run 2", "Keep workspace files"],
+    });
+    expect(
+      action(
+        "t3_thread_usage_limit_resume",
+        { threadId: "a" },
+        { threadId: "a", messageId: "m", runId: "r", status: "queued" },
+      ),
+    ).toMatchObject({
+      headline: "Resumed after the usage limit",
+      status: "queued",
+      threadId: "a",
+    });
+    expect(
+      action(
         "t3_thread_configuration",
         {},
         {
@@ -664,6 +687,16 @@ describe("resolveToolPreview", () => {
         },
       ),
     ).toMatchObject({ headline: "Named the group “Release”", details: ["Cut RC"] });
+    expect(
+      action(
+        "t3_thread_tab_open",
+        { fork: {}, title: "Review", modelSelection: { instanceId: "claude", model: "opus" } },
+        { threadId: "t", group: { groupId: "g", tabs: [] }, runId: null },
+      ),
+    ).toMatchObject({ headline: "Forked into a tab “Review”", threadId: "t", details: ["opus"] });
+    expect(
+      action("t3_thread_tabs", {}, { groupId: "g", tabs: [{ threadId: "a", title: "Cut RC" }] }),
+    ).toMatchObject({ headline: "1 tab", details: ["Cut RC"] });
     expect(
       action(
         "t3_thread_update",

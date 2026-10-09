@@ -30,7 +30,10 @@ import {
   getAgentAwarenessRegistrationStatus,
   refreshAgentAwarenessRegistration,
   subscribeAgentAwarenessRegistrationStatus,
+  updateAgentAwarenessRegistrationPreferences,
 } from "../agent-awareness/remoteRegistration";
+import type { AppSymbolName } from "../../components/AppSymbol";
+import type { Preferences } from "../../persistence/mobile-preferences";
 import { refreshManagedRelayEnvironments } from "../cloud/managedRelayState";
 import { hasCloudPublicConfig, resolveRelayClerkTokenOptions } from "../cloud/publicConfig";
 import { runtime } from "../../lib/runtime";
@@ -43,6 +46,28 @@ import { SettingsScreen } from "./components/SettingsScreen";
 import { resolveAgentAwarenessPlatformPresentation } from "./SettingsRouteScreen.logic";
 
 type NotificationStatus = "checking" | "enabled" | "disabled" | "unsupported";
+
+type NotificationEventPreference = keyof Pick<
+  Preferences,
+  "notifyOnApproval" | "notifyOnInput" | "notifyOnCompletion" | "notifyOnFailure"
+>;
+
+// The relay classifies pushes by phase, so usage limits arrive as failures and
+// pull request watch wakes arrive as the turn they start.
+const NOTIFICATION_EVENT_ROWS = [
+  {
+    key: "notifyOnApproval",
+    label: "Approval needed",
+    icon: { ios: "checkmark.shield", android: "lock" },
+  },
+  { key: "notifyOnInput", label: "Question or input needed", icon: "questionmark.bubble" },
+  { key: "notifyOnFailure", label: "Turn failed or usage limit", icon: "exclamationmark.triangle" },
+  { key: "notifyOnCompletion", label: "Turn finished", icon: "checkmark.circle" },
+] as const satisfies ReadonlyArray<{
+  readonly key: NotificationEventPreference;
+  readonly label: string;
+  readonly icon: AppSymbolName;
+}>;
 type LiveActivityStatus = "checking" | "enabled" | "disabled" | "signed-out" | "linking";
 
 // Reflects whether the relay actually accepted this device's registration.
@@ -421,6 +446,21 @@ function ConfiguredSettingsNotificationsRouteScreen() {
     ],
   );
 
+  const handleNotificationEventChange = useCallback(
+    (key: NotificationEventPreference, enabled: boolean) => {
+      savePreferences({ [key]: enabled });
+      // The relay filters pushes per device, so it needs the new rule now.
+      void settleAsyncResult(() =>
+        runtime.runPromiseExit(updateAgentAwarenessRegistrationPreferences({ [key]: enabled })),
+      ).then((result) => {
+        if (result._tag === "Failure") {
+          reportAtomCommandResult(result, { label: "notification event preference update" });
+        }
+      });
+    },
+    [savePreferences],
+  );
+
   return (
     <SettingsScreen title="Notifications">
       <ScrollView
@@ -498,6 +538,27 @@ function ConfiguredSettingsNotificationsRouteScreen() {
               }}
             />
           ) : null}
+        </SettingsSection>
+        <SettingsSection title="Notify me about">
+          {NOTIFICATION_EVENT_ROWS.map((row) => (
+            <SettingsSwitchRow
+              key={row.key}
+              icon={row.icon}
+              label={row.label}
+              disabled={
+                !agentAwarenessPushAvailable ||
+                notificationStatus !== "enabled" ||
+                !deviceRegistered ||
+                !AsyncResult.isSuccess(preferencesResult)
+              }
+              value={
+                AsyncResult.isSuccess(preferencesResult)
+                  ? preferencesResult.value[row.key] !== false
+                  : true
+              }
+              onValueChange={(enabled) => handleNotificationEventChange(row.key, enabled)}
+            />
+          ))}
         </SettingsSection>
       </ScrollView>
     </SettingsScreen>

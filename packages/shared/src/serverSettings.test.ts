@@ -923,3 +923,18 @@ describe("worktreesDirectory", () => {
     expect(back.previousWorktreesDirectories).toEqual(["/b"]);
   });
 });
+
+it("clears mention channels when replacing trigger settings", () => {
+  const enabled = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, {
+    slackMentionTrigger: {
+      ...DEFAULT_SERVER_SETTINGS.slackMentionTrigger,
+      channels: ["eng", "ops"],
+      enabled: true,
+    },
+  });
+  expect(
+    applyServerSettingsPatch(enabled, {
+      slackMentionTrigger: DEFAULT_SERVER_SETTINGS.slackMentionTrigger,
+    }).slackMentionTrigger,
+  ).toEqual(DEFAULT_SERVER_SETTINGS.slackMentionTrigger);
+});

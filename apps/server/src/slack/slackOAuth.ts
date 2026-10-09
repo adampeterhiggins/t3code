@@ -10,16 +10,18 @@ export const SLACK_API_URL = "https://slack.com/api";
  * `localhost` while the listener binds 127.0.0.1.
  */
 export const SLACK_LOOPBACK_PORT = 47832;
+export const SLACK_SERVER_CALLBACK_PATH = "/oauth/slack/callback";
 
 export function buildSlackAuthorizeUrl(input: {
   readonly clientId: string;
+  readonly redirectUri?: string;
   readonly state: string;
   readonly challenge: string;
 }): string {
   const url = new URL(SLACK_AUTHORIZE_URL);
   url.search = new URLSearchParams({
     client_id: input.clientId,
-    redirect_uri: SLACK_REDIRECT_URI,
+    redirect_uri: input.redirectUri ?? SLACK_REDIRECT_URI,
     // Desktop redirects cannot request bot scopes.
     scope: "",
     user_scope: SLACK_USER_SCOPES.join(" "),
@@ -61,6 +63,7 @@ export function readSlackCallback(url: URL, expectedState: string): SlackCallbac
 export function readPastedSlackCallback(
   pasted: string,
   expectedState: string,
+  redirectUri: string = SLACK_REDIRECT_URI,
 ): SlackCallbackResult {
   let url: URL;
   try {
@@ -68,11 +71,11 @@ export function readPastedSlackCallback(
   } catch {
     return { _tag: "Invalid", reason: "Paste the full URL from the browser's address bar." };
   }
-  const expected = new URL(SLACK_REDIRECT_URI);
+  const expected = new URL(redirectUri);
   if (url.origin !== expected.origin || url.pathname !== expected.pathname) {
     return {
       _tag: "Invalid",
-      reason: `Paste the URL that starts with ${SLACK_REDIRECT_URI}.`,
+      reason: `Paste the URL that starts with ${redirectUri}.`,
     };
   }
   return readSlackCallback(url, expectedState);

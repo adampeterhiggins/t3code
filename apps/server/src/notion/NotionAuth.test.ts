@@ -32,6 +32,7 @@ interface RecordedRequest {
 }
 
 function makeHarness(input: {
+  readonly redirectUri?: string;
   readonly configured?: boolean;
   readonly stored?: { readonly refreshToken: string };
   readonly tokenReply?: { readonly status: number; readonly body: unknown };
@@ -89,7 +90,11 @@ function makeHarness(input: {
           env:
             input.configured === false
               ? {}
-              : { T3CODE_NOTION_CLIENT_ID: "client", T3CODE_NOTION_CLIENT_SECRET: "secret" },
+              : {
+                  T3CODE_NOTION_CLIENT_ID: "client",
+                  T3CODE_NOTION_CLIENT_SECRET: "secret",
+                  ...(input.redirectUri ? { T3CODE_NOTION_REDIRECT_URI: input.redirectUri } : {}),
+                },
         }),
       ),
     ),
@@ -257,4 +262,51 @@ it.effect("signs in with credentials entered in Settings and keeps them for late
       );
     }).pipe(Effect.provide(h.layer));
   });
+});
+
+it.effect("receives a remote callback with the same registered URI used for exchange", () => {
+  const redirectUri = "https://t3.example.test/oauth/notion/callback";
+  const harness = makeHarness({ redirectUri });
+  return Effect.gen(function* () {
+    const auth = yield* NotionAuth.NotionAuth;
+    const waiting = yield* auth.startLogin({});
+    const authorize = new URL(waiting.authorizationUrl ?? "");
+    assert.strictEqual(authorize.searchParams.get("redirect_uri"), redirectUri);
+    const state = authorize.searchParams.get("state");
+    assert.strictEqual(
+      (yield* auth.receiveCallback(new URL(`${redirectUri}?code=bad&state=wrong`))).status,
+      400,
+    );
+    assert.strictEqual(harness.requests.length, 0);
+    assert.strictEqual(
+      (yield* auth.receiveCallback(new URL(`${redirectUri}?code=remote-code&state=${state}`)))
+        .status,
+      200,
+    );
+    yield* firstStateWhere(auth, "connected");
+    const exchange = harness.requests.find((request) => request.url.endsWith("/oauth/token"));
+    assert.strictEqual(exchange?.params?.redirect_uri, redirectUri);
+    assert.strictEqual(
+      (yield* auth.receiveCallback(new URL(`${redirectUri}?code=remote-code&state=${state}`)))
+        .status,
+      400,
+    );
+    assert.isNotNull(harness.storedToken());
+  }).pipe(Effect.provide(harness.layer));
+});
+
+it.effect("does not accept a cancelled remote callback", () => {
+  const redirectUri = "https://t3.example.test/oauth/notion/callback";
+  const harness = makeHarness({ redirectUri });
+  return Effect.gen(function* () {
+    const auth = yield* NotionAuth.NotionAuth;
+    const waiting = yield* auth.startLogin({});
+    const state = new URL(waiting.authorizationUrl ?? "").searchParams.get("state");
+    yield* auth.cancelLogin({ flowId: waiting.flowId ?? "" });
+    assert.strictEqual(
+      (yield* auth.receiveCallback(new URL(`${redirectUri}?code=late&state=${state}`))).status,
+      400,
+    );
+    assert.strictEqual(harness.requests.length, 0);
+  }).pipe(Effect.provide(harness.layer));
 });

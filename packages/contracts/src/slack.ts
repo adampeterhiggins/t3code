@@ -1,6 +1,6 @@
 import * as Schema from "effect/Schema";
 
-import { IsoDateTime, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { IsoDateTime, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 
 /** Longest rendered thread sent to a client or inlined into a prompt. */
 export const SLACK_THREAD_MARKDOWN_MAX_CHARS = 32_000;
@@ -173,6 +173,45 @@ export const SlackLinkPreview = Schema.Struct({
   title: Schema.String,
 });
 export type SlackLinkPreview = typeof SlackLinkPreview.Type;
+
+/**
+ * A Slack thread linked to a T3 thread and its chat tabs, the same way a Linear issue is.
+ * `groupId` is the tab group's id (the thread itself when it has no tabs). Slack threads have no
+ * status, so the channel, author, and first line are copied when linked and shown as they were.
+ * `threadTs` is the root message's ts, which identifies the thread within its channel.
+ */
+export const SlackThreadLink = Schema.Struct({
+  groupId: ThreadId,
+  threadIds: Schema.Array(ThreadId),
+  channelId: Schema.String,
+  threadTs: Schema.String,
+  channelLabel: Schema.String,
+  authorName: Schema.String,
+  /** The picked message's first line. */
+  title: Schema.String,
+  url: Schema.String,
+  linkedAt: IsoDateTime,
+});
+export type SlackThreadLink = typeof SlackThreadLink.Type;
+
+export const SlackThreadLinks = Schema.Array(SlackThreadLink);
+export type SlackThreadLinks = typeof SlackThreadLinks.Type;
+
+/**
+ * Links the thread's tab group to the Slack thread a message belongs to (or starts), replacing
+ * any Slack thread it was linked to.
+ */
+export const SlackLinkThreadInput = Schema.Struct({
+  threadId: ThreadId,
+  channelId: SlackId,
+  ts: SlackMessageTs,
+  threadTs: Schema.optional(SlackMessageTs),
+  url: TrimmedNonEmptyString.check(Schema.isMaxLength(2_048)),
+});
+export type SlackLinkThreadInput = typeof SlackLinkThreadInput.Type;
+
+export const SlackUnlinkThreadInput = Schema.Struct({ threadId: ThreadId });
+export type SlackUnlinkThreadInput = typeof SlackUnlinkThreadInput.Type;
 
 export const SlackErrorReason = Schema.Literals([
   "not-configured",

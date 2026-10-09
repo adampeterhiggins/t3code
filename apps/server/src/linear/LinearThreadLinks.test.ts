@@ -67,20 +67,29 @@ it.layer(testLayer)("LinearThreadLinks", (it) => {
       `;
       yield* links.refresh;
 
-      const linked = yield* links.link({ threadId: second, issueId: "ENG-1" });
+      const initial = yield* links.linkWithReplacement({ threadId: second, issueId: "ENG-1" });
+      const linked = initial.link;
+      assert.strictEqual(initial.replacedUrl, null);
+      const sameIssue = yield* links.linkWithReplacement({ threadId: first, issueId: "ENG-1" });
+      assert.strictEqual(sameIssue.replacedUrl, null);
       assert.strictEqual(linked.groupId, first);
       assert.deepEqual(linked.threadIds, [first, second]);
       assert.strictEqual(linked.issueId, "uuid-1");
 
       // Linking again from the other tab replaces the group's issue.
-      const relinked = yield* links.link({ threadId: first, issueId: "ENG-2" });
-      assert.strictEqual(relinked.identifier, "ENG-2");
+      const relinked = yield* links.linkWithReplacement({ threadId: first, issueId: "ENG-2" });
+      assert.strictEqual(relinked.link.identifier, "ENG-2");
+      assert.strictEqual(relinked.replacedUrl, linked.url);
       const rows = yield* sql<{ readonly n: number }>`
         SELECT COUNT(*) AS n FROM fork_linear_thread_links
       `;
       assert.strictEqual(rows[0]?.n, 1);
+      // Either tab reads the group's link.
+      assert.strictEqual((yield* links.forThread(second))?.identifier, "ENG-2");
 
-      yield* links.unlink({ threadId: second });
+      assert.strictEqual(yield* links.unlink({ threadId: second }), true);
+      assert.strictEqual(yield* links.forThread(first), undefined);
+      assert.strictEqual(yield* links.unlink({ threadId: first }), false);
       const remaining = yield* sql<{ readonly n: number }>`
         SELECT COUNT(*) AS n FROM fork_linear_thread_links
       `;
@@ -91,10 +100,13 @@ it.layer(testLayer)("LinearThreadLinks", (it) => {
   it.effect("refuses an issue Linear does not know", () =>
     Effect.gen(function* () {
       const links = yield* LinearThreadLinks.LinearThreadLinks;
+      const threadId = ThreadId.make("solo");
+      const original = yield* links.link({ threadId, issueId: "ENG-1" });
       const error = yield* links
-        .link({ threadId: ThreadId.make("solo"), issueId: "ENG-404" })
+        .linkWithReplacement({ threadId, issueId: "ENG-404" })
         .pipe(Effect.flip);
       assert.strictEqual(error.reason, "not-found");
+      assert.deepEqual(yield* links.forThread(threadId), original);
     }),
   );
 });

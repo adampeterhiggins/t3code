@@ -1,5 +1,5 @@
 import * as Schema from "effect/Schema";
-import { IsoDateTime, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { IsoDateTime, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 
 export const NOTION_PAGE_MARKDOWN_MAX_CHARS = 64_000;
 /** Notion rejects IP-address redirect URIs, so this uses `localhost`. */
@@ -15,6 +15,12 @@ export const NotionConnectionState = Schema.Struct({
   configured: Schema.Boolean,
   /** The client ID it signs in with; the secret never leaves the server. */
   clientId: Schema.NullOr(Schema.String),
+  /**
+   * The redirect URI the connection must register: `NOTION_REDIRECT_URI`, or
+   * the server's own callback when `T3CODE_NOTION_REDIRECT_URI` is set. Older
+   * servers omit it and always use `NOTION_REDIRECT_URI`.
+   */
+  redirectUri: Schema.optional(Schema.String),
   account: Schema.NullOr(NotionAccount),
   flowId: Schema.NullOr(TrimmedNonEmptyString),
   authorizationUrl: Schema.NullOr(Schema.String),
@@ -63,6 +69,30 @@ export const NotionPageContext = Schema.Struct({
   markdown: Schema.String.check(Schema.isMaxLength(NOTION_PAGE_MARKDOWN_MAX_CHARS)),
 });
 export type NotionPageContext = typeof NotionPageContext.Type;
+/**
+ * A Notion page linked to a thread and its chat tabs, the same way a Linear issue is. `groupId`
+ * is the tab group's id (the thread itself when it has no tabs). The title and url are copied
+ * when linked.
+ */
+export const NotionThreadLink = Schema.Struct({
+  groupId: ThreadId,
+  threadIds: Schema.Array(ThreadId),
+  pageId: Schema.String,
+  title: Schema.String,
+  url: Schema.String,
+  linkedAt: IsoDateTime,
+});
+export type NotionThreadLink = typeof NotionThreadLink.Type;
+export const NotionThreadLinks = Schema.Array(NotionThreadLink);
+export type NotionThreadLinks = typeof NotionThreadLinks.Type;
+/** Links the thread's tab group to a page (id or link), replacing any page it was linked to. */
+export const NotionLinkThreadInput = Schema.Struct({
+  threadId: ThreadId,
+  pageId: TrimmedNonEmptyString.check(Schema.isMaxLength(2048)),
+});
+export type NotionLinkThreadInput = typeof NotionLinkThreadInput.Type;
+export const NotionUnlinkThreadInput = Schema.Struct({ threadId: ThreadId });
+export type NotionUnlinkThreadInput = typeof NotionUnlinkThreadInput.Type;
 export class NotionError extends Schema.TaggedError<NotionError>()("NotionError", {
   reason: Schema.Literals([
     "not-configured",

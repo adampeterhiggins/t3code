@@ -4,7 +4,7 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { slackThreadContextRecord } from "@t3tools/client-runtime/state/slack";
+import { slackThreadContextRecord } from "@t3tools/shared/integrationContextRecords";
 import type { ScopedThreadRef, SlackGetThreadInput, SlackMessageSummary } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
@@ -37,18 +37,24 @@ import { toastManager } from "../ui/toast";
 const SEARCH_DEBOUNCE_MS = 400;
 const EMPTY_MESSAGES: ReadonlyArray<SlackMessageSummary> = [];
 
-/**
- * The thread whose composer the picker attaches to. Set by whichever entry point asked (the
- * attach menu, the command palette) and rendered once by the chat view, so the picker outlives a
- * palette that closes the moment its command runs.
- */
-const slackMessagePickerThreadAtom = Atom.make<ScopedThreadRef | null>(null).pipe(
-  Atom.keepAlive,
-  Atom.withLabel("slack:message-picker-thread"),
-);
+type SlackMessagePickerMode = "attach" | "link";
 
-export function openSlackMessagePicker(threadRef: ScopedThreadRef): void {
-  appAtomRegistry.set(slackMessagePickerThreadAtom, threadRef);
+/**
+ * The thread the picker acts on and what picking does: attach the message to that thread's
+ * composer, or link its Slack thread to the thread's tab group. Set by whichever entry point
+ * asked (the attach menu, the thread menu, the command palette) and rendered once by the chat
+ * view, so the picker outlives a palette that closes the moment its command runs.
+ */
+const slackMessagePickerThreadAtom = Atom.make<{
+  readonly threadRef: ScopedThreadRef;
+  readonly mode: SlackMessagePickerMode;
+} | null>(null).pipe(Atom.keepAlive, Atom.withLabel("slack:message-picker-thread"));
+
+export function openSlackMessagePicker(
+  threadRef: ScopedThreadRef,
+  mode: SlackMessagePickerMode = "attach",
+): void {
+  appAtomRegistry.set(slackMessagePickerThreadAtom, { threadRef, mode });
 }
 
 function closeSlackMessagePicker(): void {
@@ -102,6 +108,38 @@ export function useAttachSlackMessage() {
   );
 }
 
+/** Links the Slack thread a message belongs to (or starts) to the thread's tab group. */
+export function useLinkSlackThread() {
+  const linkThread = useAtomCommand(slackEnvironment.linkThread, { reportFailure: false });
+  return useCallback(
+    async (threadRef: ScopedThreadRef, message: SlackMessageSummary): Promise<boolean> => {
+      const result = await linkThread({
+        environmentId: threadRef.environmentId,
+        input: {
+          threadId: threadRef.threadId,
+          channelId: message.channelId,
+          ts: message.ts,
+          ...(message.threadTs === null ? {} : { threadTs: message.threadTs }),
+          url: message.url,
+        },
+      });
+      if (result._tag === "Failure") {
+        if (!isAtomCommandInterrupted(result)) {
+          const failure = squashAtomCommandFailure(result);
+          toastManager.add({
+            type: "error",
+            title: "Could not link the Slack thread",
+            description: failure instanceof Error ? failure.message : undefined,
+          });
+        }
+        return false;
+      }
+      return true;
+    },
+    [linkThread],
+  );
+}
+
 /** A search result row. Fixed widths so channels and times line up down the list. */
 export function SlackMessageRow(props: { message: SlackMessageSummary }) {
   const { message } = props;
@@ -124,19 +162,23 @@ export function SlackMessageRow(props: { message: SlackMessageSummary }) {
   );
 }
 
-/** Mounted once by the chat view; shows the picker for whichever thread asked for it. */
+/** Mounted once at the app root; shows the picker for whichever thread asked for it. */
 export function SlackMessagePickerHost() {
-  const threadRef = useAtomValue(slackMessagePickerThreadAtom);
-  if (threadRef === null) return null;
-  return <SlackMessagePickerDialog threadRef={threadRef} />;
+  const target = useAtomValue(slackMessagePickerThreadAtom);
+  if (target === null) return null;
+  return <SlackMessagePickerDialog threadRef={target.threadRef} mode={target.mode} />;
 }
 
-function SlackMessagePickerDialog(props: { threadRef: ScopedThreadRef }) {
-  const { threadRef } = props;
+function SlackMessagePickerDialog(props: {
+  threadRef: ScopedThreadRef;
+  mode: SlackMessagePickerMode;
+}) {
+  const { threadRef, mode } = props;
   const environmentId = threadRef.environmentId;
   const slackEnabled = useEnvironmentSettings(environmentId, (s) => s.enableSlackIntegration);
   const navigate = useNavigate();
   const attachMessage = useAttachSlackMessage();
+  const linkThread = useLinkSlackThread();
   const [query, setQuery] = useState("");
   const [attaching, setAttaching] = useState(false);
   const [menuMessage, setMenuMessage] = useState<SlackMessageSummary | null>(null);
@@ -163,7 +205,10 @@ function SlackMessagePickerDialog(props: { threadRef: ScopedThreadRef }) {
     if (!slackEnabled) return;
     if (attaching) return;
     setAttaching(true);
-    const done = await attachMessage(threadRef, slackGetThreadInput(message, scope));
+    const done =
+      mode === "link"
+        ? await linkThread(threadRef, message)
+        : await attachMessage(threadRef, slackGetThreadInput(message, scope));
     setAttaching(false);
     if (done) closeSlackMessagePicker();
   }
@@ -189,15 +234,19 @@ function SlackMessagePickerDialog(props: { threadRef: ScopedThreadRef }) {
         if (!open) closeSlackMessagePicker();
       }}
     >
-      <CommandDialogPopup aria-label="Attach Slack message" className="overflow-hidden">
+      <CommandDialogPopup
+        aria-label={mode === "link" ? "Link Slack thread" : "Attach Slack message"}
+        className="overflow-hidden"
+      >
         {connected || connection.data === null ? (
           <ContextMenu.Root
             open={menuMessage !== null}
             onOpenChange={(open, details) => {
-              // One menu serves every row, so it names whichever row was right-clicked.
+              // One menu serves every row, so it names whichever row was right-clicked. Linking
+              // always takes the whole thread, so it has no menu.
               const target = details.event?.target;
               const url =
-                open && target instanceof Element
+                open && mode === "attach" && target instanceof Element
                   ? target.closest("[data-slack-url]")?.getAttribute("data-slack-url")
                   : null;
               setMenuMessage(messages.find((message) => message.url === url) ?? null);
@@ -208,7 +257,15 @@ function SlackMessagePickerDialog(props: { threadRef: ScopedThreadRef }) {
                 placeholder: "Search Slack messages",
                 startAddon: <SlackIcon />,
               }}
-              footerActionLabel={attaching ? "Attaching…" : "Attach thread"}
+              footerActionLabel={
+                mode === "link"
+                  ? attaching
+                    ? "Linking…"
+                    : "Link thread"
+                  : attaching
+                    ? "Attaching…"
+                    : "Attach thread"
+              }
               mode="none"
               value={query}
               onValueChange={setQuery}
@@ -252,7 +309,9 @@ function SlackMessagePickerDialog(props: { threadRef: ScopedThreadRef }) {
         ) : (
           <div className="flex flex-col items-center gap-3 px-6 py-10 text-center text-sm">
             <p className="text-muted-foreground">
-              Connect Slack to attach messages. T3 Code reads them as you and never posts.
+              {mode === "link"
+                ? "Connect Slack to link a thread. T3 Code reads it as you and never posts."
+                : "Connect Slack to attach messages. T3 Code reads them as you and never posts."}
             </p>
             <Button
               size="sm"

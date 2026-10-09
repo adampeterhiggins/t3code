@@ -1,3 +1,4 @@
+import * as ConfigProvider from "effect/ConfigProvider";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -27,6 +28,7 @@ interface RecordedRequest {
 }
 
 function makeHarness(input: {
+  readonly redirectUri?: string;
   readonly stored?: { readonly refreshToken: string; readonly expiresAtEpochMs: number };
   readonly tokenReply?: { readonly status: number; readonly body: unknown };
 }) {
@@ -89,6 +91,13 @@ function makeHarness(input: {
       }),
     ),
     Layer.provide(NodeServices.layer),
+    Layer.provide(
+      ConfigProvider.layer(
+        ConfigProvider.fromEnv({
+          env: input.redirectUri ? { T3CODE_LINEAR_REDIRECT_URI: input.redirectUri } : {},
+        }),
+      ),
+    ),
   );
   const storedToken = () => {
     const bytes = secrets.get(SECRET);
@@ -226,4 +235,51 @@ it.effect("keeps its callback listener apart from a router the host server alrea
     assert.strictEqual(second.phase, "waiting");
     assert.strictEqual(yield* requestLoopback("/api/auth/session"), 404);
   }).pipe(Effect.scoped, Effect.provide(harness.layer));
+});
+
+it.effect("receives a remote callback with the same registered URI used for exchange", () => {
+  const redirectUri = "https://t3.example.test/oauth/linear/callback";
+  const harness = makeHarness({ redirectUri });
+  return Effect.gen(function* () {
+    const auth = yield* LinearAuth.LinearAuth;
+    const waiting = yield* auth.startLogin;
+    const authorize = new URL(waiting.authorizationUrl ?? "");
+    assert.strictEqual(authorize.searchParams.get("redirect_uri"), redirectUri);
+    const state = authorize.searchParams.get("state");
+    assert.strictEqual(
+      (yield* auth.receiveCallback(new URL(`${redirectUri}?code=bad&state=wrong`))).status,
+      400,
+    );
+    assert.strictEqual(harness.requests.length, 0);
+    assert.strictEqual(
+      (yield* auth.receiveCallback(new URL(`${redirectUri}?code=remote-code&state=${state}`)))
+        .status,
+      200,
+    );
+    yield* firstStateWhere(auth, "connected");
+    const exchange = harness.requests.find((request) => request.url.endsWith("/oauth/token"));
+    assert.strictEqual(exchange?.params?.get("redirect_uri"), redirectUri);
+    assert.strictEqual(
+      (yield* auth.receiveCallback(new URL(`${redirectUri}?code=remote-code&state=${state}`)))
+        .status,
+      400,
+    );
+    assert.isNotNull(harness.storedToken());
+  }).pipe(Effect.provide(harness.layer));
+});
+
+it.effect("does not accept a cancelled remote callback", () => {
+  const redirectUri = "https://t3.example.test/oauth/linear/callback";
+  const harness = makeHarness({ redirectUri });
+  return Effect.gen(function* () {
+    const auth = yield* LinearAuth.LinearAuth;
+    const waiting = yield* auth.startLogin;
+    const state = new URL(waiting.authorizationUrl ?? "").searchParams.get("state");
+    yield* auth.cancelLogin({ flowId: waiting.flowId ?? "" });
+    assert.strictEqual(
+      (yield* auth.receiveCallback(new URL(`${redirectUri}?code=late&state=${state}`))).status,
+      400,
+    );
+    assert.strictEqual(harness.requests.length, 0);
+  }).pipe(Effect.provide(harness.layer));
 });

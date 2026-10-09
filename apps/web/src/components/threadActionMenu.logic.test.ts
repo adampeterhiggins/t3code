@@ -169,6 +169,48 @@ describe("buildThreadActionMenuItems", () => {
     expect(items[copyIndex + 4]?.id).toBe("archive");
   });
 
+  it("offers linking Slack and Notion only where the integration is on", () => {
+    expect(ids(baseState)).not.toContain("link-slack-thread");
+    expect(ids(baseState)).not.toContain("link-notion-page");
+    const linkIds = ids({ ...baseState, integrations: { slack: true, notion: true } });
+    const linearIndex = linkIds.indexOf("link-linear-issue");
+    expect(linkIds.slice(linearIndex, linearIndex + 3)).toEqual([
+      "link-linear-issue",
+      "link-slack-thread",
+      "link-notion-page",
+    ]);
+  });
+
+  it("offers linking a GitHub issue only for threads in a GitHub project", () => {
+    expect(ids(baseState)).not.toContain("link-github-issue");
+    const linkIds = ids({ ...baseState, canLinkGitHubIssue: true });
+    expect(linkIds.indexOf("link-github-issue")).toBe(linkIds.indexOf("link-linear-issue") + 1);
+    expect(
+      buildThreadActionMenuItems({
+        ...baseState,
+        canOperate: false,
+        canLinkGitHubIssue: true,
+      }).find((item) => item.id === "link-github-issue")?.disabled,
+    ).toBe(true);
+  });
+
+  it("offers every enabled issue and document link together, disabled on read-only connections", () => {
+    const items = buildThreadActionMenuItems({
+      ...baseState,
+      canOperate: false,
+      canLinkGitHubIssue: true,
+      integrations: { slack: true, notion: true },
+    });
+    const links = items.filter((item) => item.id.startsWith("link-"));
+    expect(links.map((item) => item.id)).toEqual([
+      "link-linear-issue",
+      "link-github-issue",
+      "link-slack-thread",
+      "link-notion-page",
+    ]);
+    expect(links.every((item) => item.disabled)).toBe(true);
+  });
+
   it("offers project filtering only for surfaces with a scoped thread list", () => {
     expect(ids(baseState)).not.toContain("filter-by-project");
     expect(

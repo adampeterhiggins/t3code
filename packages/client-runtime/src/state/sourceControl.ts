@@ -37,6 +37,15 @@ export function createSourceControlEnvironmentAtoms<R, E>(
       label: "environment-data:context-repositories:inspect",
       tag: WS_METHODS.contextRepositoriesInspect,
     }),
+    removeContextRepository: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:context-repositories:remove",
+      tag: WS_METHODS.contextRepositoriesRemove,
+      scheduler: commandScheduler,
+      concurrency: {
+        mode: "serial",
+        key: ({ environmentId }) => environmentId,
+      },
+    }),
     cloneRepository: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:source-control:clone-repository",
       tag: WS_METHODS.sourceControlCloneRepository,

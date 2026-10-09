@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./thread-usage": {
+      "types": "./src/threadUsage.ts",
+      "default": "./src/threadUsage.ts"
+    },
     "./thread-tabs": {
       "types": "./src/threadTabs.ts",
       "default": "./src/threadTabs.ts"
@@ -26,10 +30,6 @@
     "./conductor-run-scripts": {
       "types": "./src/conductorRunScripts.ts",
       "default": "./src/conductorRunScripts.ts"
-    },
-    "./composer-object-links": {
-      "types": "./src/composerObjectLinks.ts",
-      "default": "./src/composerObjectLinks.ts"
     },
     "./context-repositories": {
       "types": "./src/contextRepositories.ts",
@@ -318,6 +318,10 @@
     "./state/attention-inbox": {
       "types": "./src/state/attentionInbox.ts",
       "default": "./src/state/attentionInbox.ts"
+    },
+    "./state/notification-rules": {
+      "types": "./src/state/notificationRules.ts",
+      "default": "./src/state/notificationRules.ts"
     },
     "./state/thread-inbox": {
       "types": "./src/state/threadInbox.ts",

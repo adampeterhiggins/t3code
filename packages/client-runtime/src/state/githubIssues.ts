@@ -1,12 +1,9 @@
 import {
-  type ComposerContextId,
-  type GitHubIssueContext,
-  type GitHubIssueContextRecord,
   type GitHubIssueThreadLink,
+  type RepositoryIdentity,
   type ThreadId,
   WS_METHODS,
 } from "@t3tools/contracts";
-import { sanitizeComposerContextLabel } from "@t3tools/shared/composerContextReferences";
 import { Atom } from "effect/reactivity";
 
 import {
@@ -15,6 +12,11 @@ import {
   createEnvironmentRpcSubscriptionAtomFamily,
 } from "./runtime.ts";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
+
+export {
+  gitHubIssueContextRecord,
+  gitHubIssueLabel,
+} from "@t3tools/shared/integrationContextRecords";
 
 export function createGitHubIssueEnvironmentAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
@@ -59,6 +61,16 @@ export function createGitHubIssueEnvironmentAtoms<R, E>(
   };
 }
 
+/** Whether a project's repository is hosted on GitHub, so its issues can be listed with `gh`. */
+export function isGitHubProject(
+  project:
+    | { readonly repositoryIdentity?: RepositoryIdentity | null | undefined }
+    | null
+    | undefined,
+): boolean {
+  return project?.repositoryIdentity?.provider === "github";
+}
+
 /** The GitHub issue linked to the thread's tab group, if any. */
 export function gitHubIssueLinkForThread(
   links: ReadonlyArray<GitHubIssueThreadLink> | null | undefined,
@@ -89,29 +101,4 @@ export function threadsForGitHubIssue<
   return threads
     .filter((thread) => thread.archivedAt === null && linkedThreadIds.has(thread.id))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-}
-
-/** `#123`, the label an issue's chip and list rows show. */
-export function gitHubIssueLabel(issue: { readonly number: number }): string {
-  return `#${issue.number}`;
-}
-
-/**
- * The composer chip record for a fetched issue. The id is stable per issue, so attaching the
- * same issue twice in one draft points both chips at one payload.
- */
-export function gitHubIssueContextRecord(issue: GitHubIssueContext): GitHubIssueContextRecord {
-  const repository = issue.repository.toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
-  return {
-    version: 1,
-    kind: "github-issue",
-    contextId: `github-issue_${repository}_${issue.number}`.slice(0, 128) as ComposerContextId,
-    label: sanitizeComposerContextLabel(gitHubIssueLabel(issue), "github-issue"),
-    repository: issue.repository,
-    number: issue.number,
-    title: issue.title.slice(0, 2_048),
-    url: issue.url,
-    state: issue.state,
-    markdown: issue.markdown,
-  };
 }

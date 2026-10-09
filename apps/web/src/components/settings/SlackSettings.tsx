@@ -5,13 +5,32 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import {
   type EnvironmentId,
-  SLACK_REDIRECT_URI,
+  ProjectId,
+  type SlackMentionTriggerSettings,
+  AuthSettingsWriteScope,
+  AuthOrchestrationOperateScope,
   slackAppManifest,
   type SlackConnectionState,
 } from "@t3tools/contracts";
+import { useAtomValue } from "@effect/atom-react";
+import { createModelSelection } from "@t3tools/shared/model";
+import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { ExternalLinkIcon } from "lucide-react";
 import { useRef, useState } from "react";
 
+import { getCustomModelOptionsByInstance } from "../../modelSelection";
+import {
+  applyProviderInstanceSettings,
+  deriveProviderInstanceEntries,
+  resolveDefaultProviderModelSelection,
+  sortProviderInstanceEntries,
+} from "../../providerInstances";
+import { useProjects } from "../../state/entities";
+import { useEnvironmentScope } from "../../state/session";
+import { serverEnvironment, EMPTY_SERVER_PROVIDERS } from "../../state/server";
+import { ProviderModelPicker } from "../chat/ProviderModelPicker";
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
+import { Textarea } from "../ui/textarea";
 import { isElectron } from "../../env";
 import { writeTextToClipboard } from "../../hooks/useCopyToClipboard";
 import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "../../hooks/useSettings";
@@ -78,7 +97,12 @@ function SlackIntegrationRows(props: {
           />
         }
       />
-      {enabled ? <SlackConnectionRows {...props} /> : null}
+      {enabled ? (
+        <>
+          <SlackConnectionRows {...props} />
+          <SlackMentionTriggerRows environmentId={props.environmentId} />
+        </>
+      ) : null}
     </>
   );
 }
@@ -275,7 +299,7 @@ function SlackConnectionRows({
               <Input
                 size="sm"
                 aria-label="Redirect URL from Slack"
-                placeholder={`${SLACK_REDIRECT_URI}?code=…`}
+                placeholder="Full redirect URL from Slack"
                 value={pastedValue}
                 onChange={(event) => setPasted({ flowId, value: event.target.value })}
               />
@@ -286,6 +310,179 @@ function SlackConnectionRows({
           }
         />
       ) : null}
+    </>
+  );
+}
+
+/** The environment owns the trigger, including when clients disconnect. */
+function SlackMentionTriggerRows({ environmentId }: { readonly environmentId: EnvironmentId }) {
+  const settings = useEnvironmentSettings(environmentId);
+  const trigger = settings.slackMentionTrigger;
+  const updateSettings = useUpdateEnvironmentSettings(environmentId);
+  const canWrite = useEnvironmentScope(environmentId, AuthSettingsWriteScope);
+  const canOperate = useEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
+  const disabled = !canWrite || !canOperate;
+  const projects = useProjects().filter((project) => project.environmentId === environmentId);
+  const project = projects.find((entry) => entry.id === trigger.projectId);
+  const providers =
+    useAtomValue(serverEnvironment.providersValueAtom(environmentId)) ?? EMPTY_SERVER_PROVIDERS;
+  const selection = resolveDefaultProviderModelSelection(
+    providers,
+    trigger.modelSelection ??
+      resolveProjectSettings(settings, trigger.projectId ?? ProjectId.make("unselected"), project)
+        .settings.defaultModelSelection,
+  );
+  const entries = sortProviderInstanceEntries(
+    applyProviderInstanceSettings(deriveProviderInstanceEntries(providers), settings),
+  );
+  const modelOptions = getCustomModelOptionsByInstance(
+    settings,
+    providers,
+    selection?.instanceId,
+    selection?.model,
+  );
+  const save = (patch: Partial<SlackMentionTriggerSettings>) =>
+    updateSettings({ slackMentionTrigger: { ...trigger, ...patch } });
+  return (
+    <>
+      <SettingsRow
+        title="Start threads from Slack mentions"
+        description="Poll once a minute for new @mentions of the connected account. Choose channels and a project first. Older mentions are ignored. Threads use the project's permission mode and run while this server is online."
+        control={
+          <Switch
+            aria-label="Start threads from Slack mentions"
+            checked={trigger.enabled}
+            disabled={
+              disabled ||
+              trigger.projectId === null ||
+              (trigger.channels.length === 0 && !trigger.includeDirectMessages)
+            }
+            onCheckedChange={(enabled) => save({ enabled })}
+          />
+        }
+      />
+      <SettingsRow
+        title="Mention project"
+        description="The project whose workspace receives the request."
+        control={
+          <Select
+            value={trigger.projectId ?? "none"}
+            onValueChange={(value) =>
+              save({ projectId: value === null || value === "none" ? null : ProjectId.make(value) })
+            }
+          >
+            <SelectTrigger disabled={disabled}>
+              <SelectValue>{project?.title ?? "Choose project"}</SelectValue>
+            </SelectTrigger>
+            <SelectPopup>
+              <SelectItem value="none">Choose project</SelectItem>
+              {projects.map((entry) => (
+                <SelectItem key={entry.id} value={entry.id}>
+                  {entry.title}
+                </SelectItem>
+              ))}
+            </SelectPopup>
+          </Select>
+        }
+      />
+      <SettingsRow
+        title="Mention channels"
+        description="Comma-separated channel names or IDs. Only channels your account can read are included."
+        control={
+          <Input
+            key={trigger.channels.join(",")}
+            size="sm"
+            aria-label="Mention channels"
+            disabled={disabled}
+            defaultValue={trigger.channels.join(", ")}
+            onBlur={(event) =>
+              save({
+                channels: event.target.value
+                  .split(",")
+                  .map((name) => name.trim())
+                  .filter(Boolean)
+                  .slice(0, 100)
+                  .map((name) => name.slice(0, 128)),
+              })
+            }
+          />
+        }
+      />
+      <SettingsRow
+        title="Include direct messages"
+        description="Also include @mentions in direct and group messages. Ordinary messages without an @mention do not start threads."
+        control={
+          <Switch
+            aria-label="Include direct messages in mention trigger"
+            disabled={disabled}
+            checked={trigger.includeDirectMessages}
+            onCheckedChange={(includeDirectMessages) => save({ includeDirectMessages })}
+          />
+        }
+      />
+      <SettingsRow
+        title="Mention keyword"
+        description="Optional word or phrase that must also appear in the mention."
+        control={
+          <Input
+            key={trigger.keyword}
+            size="sm"
+            aria-label="Mention keyword"
+            disabled={disabled}
+            maxLength={64}
+            defaultValue={trigger.keyword}
+            onBlur={(event) => save({ keyword: event.target.value.trim() })}
+          />
+        }
+      />
+      <SettingsRow
+        title="Mention prompt"
+        description="Instructions sent with the Slack thread snapshot."
+        control={
+          <Textarea
+            key={trigger.prompt}
+            size="sm"
+            aria-label="Mention prompt"
+            disabled={disabled}
+            maxLength={8000}
+            defaultValue={trigger.prompt}
+            onBlur={(event) => save({ prompt: event.target.value.trim() })}
+          />
+        }
+      />
+      <SettingsRow
+        title="Mention model"
+        description={
+          trigger.modelSelection === null
+            ? "Uses the project's default provider and model."
+            : "Provider and model used for mention threads."
+        }
+        control={
+          <div className="flex flex-wrap items-center gap-2">
+            {selection ? (
+              <ProviderModelPicker
+                activeInstanceId={selection.instanceId}
+                model={selection.model}
+                lockedProvider={null}
+                instanceEntries={entries}
+                modelOptionsByInstance={modelOptions}
+                disabled={disabled}
+                onInstanceModelChange={(instanceId, model) =>
+                  save({ modelSelection: createModelSelection(instanceId, model) })
+                }
+              />
+            ) : null}
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={disabled || trigger.modelSelection === null}
+              onClick={() => save({ modelSelection: null })}
+            >
+              Use project default
+            </Button>
+          </div>
+        }
+      />
     </>
   );
 }

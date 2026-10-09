@@ -172,6 +172,10 @@ personal overrides; **Repository** saves to `.conductor/settings.toml`, which yo
 everyone. Clear a field or use its reset button to fall back to the other file. Saving rewrites the
 file without its comments.
 
+## Review worktree storage
+
+Open **Settings → Storage → Managed worktrees** to review each selected machine’s checkouts, linked threads, and last synced pull request state. Measure sizes when needed. Select clean worktrees and remove them together, or remove one at a time. Running work and local changes are protected, including changes made since the list was loaded. Branches and thread history are kept; resuming a thread recreates its checkout. On mobile, open a machine in **Settings → Environments** to review and remove its worktrees.
+
 ## Storage cleanup
 
 Open **Settings → Storage** to enable automatic cleanup on one machine or all connected
@@ -205,6 +209,15 @@ Existing prompts for deleting a worktree manually remain available when this pol
 
 Browser captures and rotated logs have separate retention periods. Expired capture links stop
 working. Current logs, message attachments, and browser profiles are kept.
+
+## Choose what notifies you
+
+On web and desktop, **Settings → General → Notify about** picks which events raise system alerts,
+sounds, and in-app toasts: approvals, questions, failed turns, usage limits, finished turns, and
+news from a watched pull request (a failed check, requested changes, or a merge conflict). Every
+event is on until you turn it off. To silence one project entirely, turn off **Notifications** on
+its page under **Settings → Projects**. Both choices are saved on this device only; your phone has
+its own, described in [Mobile notifications](./mobile-notifications.md#choose-what-notifies-you).
 
 ## Project icons
 

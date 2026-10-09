@@ -59,6 +59,9 @@ export type T3McpToolSummaryAction =
   | "list-prs"
   | "watch-pr"
   | "unwatch-pr"
+  | "link-issue"
+  | "unlink-issue"
+  | "list-issues"
   | "browser"
   | "device"
   | "html-preview"
@@ -109,6 +112,11 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
     "unwatch-pr",
     "pull-request",
   ),
+  link_linear_issue: tool(["Link", "Linking", "Linked", "a Linear issue"], "link-issue"),
+  unlink_linear_issue: tool(["Unlink", "Unlinking", "Unlinked", "a Linear issue"], "unlink-issue"),
+  link_github_issue: tool(["Link", "Linking", "Linked", "a GitHub issue"], "link-issue"),
+  unlink_github_issue: tool(["Unlink", "Unlinking", "Unlinked", "a GitHub issue"], "unlink-issue"),
+  list_thread_issues: tool(["Check", "Checking", "Checked", "linked issues"], "list-issues"),
   orchestrator_capabilities: tool(
     ["Get", "Getting", "Got", "orchestration capabilities"],
     "capabilities",
@@ -142,6 +150,14 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   t3_thread_interrupt: tool(
     ["Interrupt", "Interrupting", "Requested an interrupt of", "a T3 thread"],
     "thread-interrupt",
+  ),
+  t3_thread_rollback: tool(
+    ["Roll back", "Rolling back", "Requested rollback of", "a T3 thread"],
+    "thread-update",
+  ),
+  t3_thread_usage_limit_resume: tool(
+    ["Resume", "Resuming", "Resumed", "a usage-limited T3 thread"],
+    "thread-send",
   ),
   t3_worktree_handoff: tool(
     ["Hand off", "Handing off", "Handed off", "thread to a git worktree"],
@@ -291,6 +307,8 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   t3_thread_search: tool(["Search", "Searching", "Searched", "thread content"], "thread-search"),
   t3_thread_transfers: tool(["Read", "Reading", "Read", "thread transfers"], "thread-transfers"),
   t3_thread_group_name: tool(["Name", "Naming", "Named", "a thread group"], "thread-organize"),
+  t3_thread_tabs: tool(["List", "Listing", "Listed", "chat tabs"], "thread-list"),
+  t3_thread_tab_open: tool(["Open", "Opening", "Opened", "a chat tab"], "thread-create"),
   t3_thread_organize: tool(["Organize", "Organizing", "Organized", "a thread"], "thread-organize"),
   t3_thread_update: tool(["Update", "Updating", "Updated", "T3 thread metadata"], "thread-update"),
   t3_worktree_list: tool(["List", "Listing", "Listed", "workspace branches"], "worktree-list"),

@@ -14,6 +14,10 @@ import {
   NotionSearchPagesResult,
   NotionGetPageInput,
   NotionPageContext,
+  NotionLinkThreadInput,
+  NotionThreadLink,
+  NotionThreadLinks,
+  NotionUnlinkThreadInput,
 } from "./notion.ts";
 import {
   McpAppCallToolInput,
@@ -38,6 +42,14 @@ import * as RpcGroup from "effect/rpc/RpcGroup";
 import * as RpcMiddleware from "effect/rpc/RpcMiddleware";
 import { NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import {
+  WorktreeInventoryListError,
+  WorktreeInventoryListResult,
+  WorktreeInventoryRemoveInput,
+  WorktreeInventoryRemoveResult,
+  WorktreeInventorySizeInput,
+  WorktreeInventorySizeResult,
+} from "./worktreeInventory.ts";
+import {
   CodexAuthCallbackInput,
   CodexAuthCallbackState,
   ProviderAuthCancelInput,
@@ -57,6 +69,7 @@ import {
   ContextRepositoryInspectResult,
   ContextRepositoryListInput,
   ContextRepositoryListResult,
+  ContextRepositoryRemoveInput,
 } from "./contextRepositories.ts";
 import {
   AcpRegistryAcceptUrlAuthInput,
@@ -112,6 +125,10 @@ import {
   SlackSearchMessagesResult,
   SlackStartLoginInput,
   SlackThreadContext,
+  SlackLinkThreadInput,
+  SlackThreadLink,
+  SlackThreadLinks,
+  SlackUnlinkThreadInput,
 } from "./slack.ts";
 import {
   GitHubGetIssueInput,
@@ -490,6 +507,11 @@ export const WS_METHODS = {
   vcsSwitchRef: "vcs.switchRef",
   vcsInit: "vcs.init",
 
+  // Worktree inventory (Settings -> Storage)
+  worktreesList: "worktrees.list",
+  worktreesSize: "worktrees.size",
+  worktreesRemove: "worktrees.remove",
+
   // Git workflow methods
   gitRunStackedAction: "git.runStackedAction",
   gitResolvePullRequest: "git.resolvePullRequest",
@@ -625,6 +647,7 @@ export const WS_METHODS = {
   // Context repository methods
   contextRepositoriesList: "contextRepositories.list",
   contextRepositoriesInspect: "contextRepositories.inspect",
+  contextRepositoriesRemove: "contextRepositories.remove",
 
   // Linear methods
   linearSubscribeState: "linear.subscribeState",
@@ -648,6 +671,9 @@ export const WS_METHODS = {
   notionDisconnect: "notion.disconnect",
   notionSearchPages: "notion.searchPages",
   notionGetPage: "notion.getPage",
+  notionSubscribeThreadLinks: "notion.subscribeThreadLinks",
+  notionLinkThread: "notion.linkThread",
+  notionUnlinkThread: "notion.unlinkThread",
   slackSubscribeState: "slack.subscribeState",
   slackStartLogin: "slack.startLogin",
   slackCompleteLogin: "slack.completeLogin",
@@ -656,6 +682,9 @@ export const WS_METHODS = {
   slackSearchMessages: "slack.searchMessages",
   slackGetThread: "slack.getThread",
   slackGetLinkPreview: "slack.getLinkPreview",
+  slackSubscribeThreadLinks: "slack.subscribeThreadLinks",
+  slackLinkThread: "slack.linkThread",
+  slackUnlinkThread: "slack.unlinkThread",
 
   // GitHub issue methods
   githubIssuesList: "githubIssues.list",
@@ -995,6 +1024,22 @@ const WsNotionGetPageRpc = Rpc.make(WS_METHODS.notionGetPage, {
   success: NotionPageContext,
   error: NotionRpcError,
 });
+const WsNotionSubscribeThreadLinksRpc = Rpc.make(WS_METHODS.notionSubscribeThreadLinks, {
+  payload: Schema.Struct({}),
+  success: NotionThreadLinks,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+const WsNotionLinkThreadRpc = Rpc.make(WS_METHODS.notionLinkThread, {
+  payload: NotionLinkThreadInput,
+  success: NotionThreadLink,
+  error: NotionRpcError,
+});
+const WsNotionUnlinkThreadRpc = Rpc.make(WS_METHODS.notionUnlinkThread, {
+  payload: NotionUnlinkThreadInput,
+  success: Schema.Struct({}),
+  error: NotionRpcError,
+});
 
 const SlackRpcError = Schema.Union([SlackError, EnvironmentAuthorizationError]);
 
@@ -1044,6 +1089,25 @@ const WsSlackGetThreadRpc = Rpc.make(WS_METHODS.slackGetThread, {
 const WsSlackGetLinkPreviewRpc = Rpc.make(WS_METHODS.slackGetLinkPreview, {
   payload: SlackLinkPreviewInput,
   success: SlackLinkPreview,
+  error: SlackRpcError,
+});
+
+const WsSlackSubscribeThreadLinksRpc = Rpc.make(WS_METHODS.slackSubscribeThreadLinks, {
+  payload: Schema.Struct({}),
+  success: SlackThreadLinks,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
+const WsSlackLinkThreadRpc = Rpc.make(WS_METHODS.slackLinkThread, {
+  payload: SlackLinkThreadInput,
+  success: SlackThreadLink,
+  error: SlackRpcError,
+});
+
+const WsSlackUnlinkThreadRpc = Rpc.make(WS_METHODS.slackUnlinkThread, {
+  payload: SlackUnlinkThreadInput,
+  success: Schema.Struct({}),
   error: SlackRpcError,
 });
 
@@ -1479,6 +1543,11 @@ const WsContextRepositoriesInspectRpc = Rpc.make(WS_METHODS.contextRepositoriesI
   error: ContextRepositoryRpcError,
 });
 
+const WsContextRepositoriesRemoveRpc = Rpc.make(WS_METHODS.contextRepositoriesRemove, {
+  payload: ContextRepositoryRemoveInput,
+  error: ContextRepositoryRpcError,
+});
+
 // Clone-backed project creation. `start` returns once the project exists and
 // the clone is running; progress arrives on the subscription.
 const WsProjectCloneStartRpc = Rpc.make(WS_METHODS.projectCloneStart, {
@@ -1734,6 +1803,24 @@ const WsVcsCreateWorktreeRpc = Rpc.make(WS_METHODS.vcsCreateWorktree, {
 const WsVcsRemoveWorktreeRpc = Rpc.make(WS_METHODS.vcsRemoveWorktree, {
   payload: VcsRemoveWorktreeInput,
   error: Schema.Union([GitCommandError, EnvironmentAuthorizationError]),
+});
+
+const WsWorktreesListRpc = Rpc.make(WS_METHODS.worktreesList, {
+  payload: Schema.Struct({}),
+  success: WorktreeInventoryListResult,
+  error: Schema.Union([WorktreeInventoryListError, EnvironmentAuthorizationError]),
+});
+
+const WsWorktreesSizeRpc = Rpc.make(WS_METHODS.worktreesSize, {
+  payload: WorktreeInventorySizeInput,
+  success: WorktreeInventorySizeResult,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsWorktreesRemoveRpc = Rpc.make(WS_METHODS.worktreesRemove, {
+  payload: WorktreeInventoryRemoveInput,
+  success: WorktreeInventoryRemoveResult,
+  error: Schema.Union([WorktreeInventoryListError, EnvironmentAuthorizationError]),
 });
 
 const WsVcsCreateRefRpc = Rpc.make(WS_METHODS.vcsCreateRef, {
@@ -2291,6 +2378,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsSourceControlPublishRepositoryRpc,
   WsContextRepositoriesListRpc,
   WsContextRepositoriesInspectRpc,
+  WsContextRepositoriesRemoveRpc,
   WsLinearSubscribeStateRpc,
   WsLinearStartLoginRpc,
   WsLinearCompleteLoginRpc,
@@ -2310,6 +2398,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsNotionDisconnectRpc,
   WsNotionSearchPagesRpc,
   WsNotionGetPageRpc,
+  WsNotionSubscribeThreadLinksRpc,
+  WsNotionLinkThreadRpc,
+  WsNotionUnlinkThreadRpc,
   WsSlackSubscribeStateRpc,
   WsSlackStartLoginRpc,
   WsSlackCompleteLoginRpc,
@@ -2318,6 +2409,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsSlackSearchMessagesRpc,
   WsSlackGetThreadRpc,
   WsSlackGetLinkPreviewRpc,
+  WsSlackSubscribeThreadLinksRpc,
+  WsSlackLinkThreadRpc,
+  WsSlackUnlinkThreadRpc,
   WsGitHubIssuesListRpc,
   WsGitHubIssuesGetRpc,
   WsGitHubIssuesGetSummaryRpc,
@@ -2363,6 +2457,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsVcsListRefsRpc,
   WsVcsCreateWorktreeRpc,
   WsVcsRemoveWorktreeRpc,
+  WsWorktreesListRpc,
+  WsWorktreesSizeRpc,
+  WsWorktreesRemoveRpc,
   WsVcsCreateRefRpc,
   WsVcsSwitchRefRpc,
   WsVcsInitRpc,

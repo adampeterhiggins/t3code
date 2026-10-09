@@ -19,6 +19,7 @@ import { usePrimaryEnvironment } from "../../state/environments";
 import { linearEnvironment } from "../../state/linear";
 import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { LinearAssignmentTriggerRows } from "./LinearAssignmentTriggerSettings";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
@@ -259,7 +260,7 @@ function LinearConnectionRows({
               <Input
                 size="sm"
                 aria-label="Redirect URL from Linear"
-                placeholder="http://127.0.0.1:47831/callback?code=…"
+                placeholder="Full redirect URL from Linear"
                 value={pastedValue}
                 onChange={(event) => setPasted({ flowId, value: event.target.value })}
               />
@@ -270,6 +271,12 @@ function LinearConnectionRows({
           }
         />
       ) : null}
+      {state === null ? null : (
+        <LinearAssignmentTriggerRows
+          environmentId={environmentId}
+          connected={state.phase === "connected"}
+        />
+      )}
     </>
   );
 }

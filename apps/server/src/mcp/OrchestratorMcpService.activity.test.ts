@@ -9,6 +9,7 @@ import {
   RunId,
   ScheduledTaskId,
   ThreadId,
+  type OrchestrationMessageContext,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -415,12 +416,21 @@ it("readThread and sendToThread reach threads in other projects", async () => {
       updatedAt: now,
     }) as unknown as OrchestrationV2ThreadProjection;
 
+  const sent: Array<{ text: string; context: OrchestrationMessageContext | undefined }> = [];
+  const sentMessageIds = new Set<string>();
   const layer = OrchestratorMcpService.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
         Layer.mock(ThreadManagementService.ThreadManagementService)({
-          getThreadRecords: (threadId) => {
+          getThreadRecords: (threadId, _fields, filter) => {
             if (threadId === parentThreadId) return Effect.succeed(parentProjection);
+            if (threadId === foreignThreadId && filter?.messageIds !== undefined)
+              return Effect.succeed({
+                ...foreignProjection(threadId),
+                messages: filter.messageIds
+                  .filter((id) => sentMessageIds.has(id))
+                  .map((id) => ({ id })),
+              } as unknown as OrchestrationV2ThreadProjection);
             if (threadId === foreignThreadId) return Effect.succeed(foreignProjection(threadId));
             return Effect.die(`unexpected thread ${threadId}`);
           },
@@ -445,11 +455,14 @@ it("readThread and sendToThread reach threads in other projects", async () => {
                     threadId: input.threadId,
                   }),
                 ),
-          sendToThread: () =>
-            Effect.succeed({
+          sendToThread: (input) => {
+            sent.push({ text: input.text, context: input.context });
+            sentMessageIds.add(input.messageId);
+            return Effect.succeed({
               run: { id: "run-foreign", status: "queued" },
               delivery: "started",
-            } as unknown as ThreadManagementService.ThreadManagementSendResult),
+            } as unknown as ThreadManagementService.ThreadManagementSendResult);
+          },
         } satisfies Partial<ThreadManagementService.ThreadManagementService["Service"]>),
         Layer.mock(ProviderRegistry.ProviderRegistry)({
           getProviders: Effect.succeed([]),
@@ -469,7 +482,11 @@ it("readThread and sendToThread reach threads in other projects", async () => {
               ],
             }),
         } satisfies Partial<ScheduledTaskService.ScheduledTaskService["Service"]>),
-        Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
+        Layer.mock(ThreadLaunchService.ThreadLaunchService)({
+          // Stands in for cloning the attached repositories into the thread's workspace.
+          prepareMessageWorkspace: ({ context }) =>
+            Effect.succeed(context && { ...context, records: context.records.toReversed() }),
+        }),
         Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({
           list: () => Effect.succeed([]),
         } satisfies Partial<ProviderAdapterRegistry.ProviderAdapterRegistryV2["Service"]>),
@@ -485,19 +502,48 @@ it("readThread and sendToThread reach threads in other projects", async () => {
     expect(foreign.thread.projectId).toBe(foreignProjectId);
     expect(foreign.items.map((item) => item.text)).toEqual(["Foreign thread said hello"]);
 
-    const sent = yield* service.sendToThread(makeScope(), {
+    const plain = yield* service.sendToThread(makeScope(), {
       threadId: foreignThreadId,
       message: "hi",
     });
-    expect(sent.threadId).toBe(foreignThreadId);
+    expect(plain.threadId).toBe(foreignThreadId);
+    // Attached context lands with the message as the workspace preparation left it.
+    const records = [
+      { version: 1, kind: "repository", contextId: "repository_a" },
+      { version: 1, kind: "repository", contextId: "repository_b" },
+    ] as unknown as OrchestrationMessageContext["records"];
+    let attachCalls = 0;
+    const attachContext = (message: string) => {
+      attachCalls += 1;
+      return Effect.succeed({
+        text: `${message} @chips`,
+        context: { version: 1 as const, records },
+      });
+    };
+    const withContext = {
+      threadId: foreignThreadId,
+      message: "with context",
+      clientRequestId: "send-with-context",
+    };
+    yield* service.sendToThread(makeScope(), withContext, attachContext);
+    expect(attachCalls).toBe(1);
+    expect(sent).toEqual([
+      { text: "hi", context: undefined },
+      { text: "with context @chips", context: { version: 1, records: records.toReversed() } },
+    ]);
+    // A retry replays the original command without reading the integrations again.
+    yield* service.sendToThread(makeScope(), withContext, attachContext);
+    expect(attachCalls).toBe(1);
 
     // Once the caller's run ends, it can still read other threads but no longer write to them.
     parentRuns = [];
     yield* service.readThread(makeScope(), { threadId: foreignThreadId });
     const stale = yield* service
-      .sendToThread(makeScope(), { threadId: foreignThreadId, message: "hi again" })
+      .sendToThread(makeScope(), { threadId: foreignThreadId, message: "hi again" }, attachContext)
       .pipe(Effect.flip);
     expect(stale.code).toBe("parent_not_active");
+    // A caller that may not send never gets its links read.
+    expect(attachCalls).toBe(1);
     const staleInterrupt = yield* service
       .interruptThread(makeScope(), { threadId: foreignThreadId })
       .pipe(Effect.flip);

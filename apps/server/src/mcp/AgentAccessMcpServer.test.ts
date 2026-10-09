@@ -211,6 +211,7 @@ it.effect("authenticates /mcp/query and /mcp/operate by the token's scopes", () 
       expect(queryTools).not.toContain("t3_thread_launch");
       expect(queryTools).not.toContain("thread_only_tool");
 
+      // Thread agents archive; only an agent access token deletes.
       expect(yield* listTools("/mcp", {})).toEqual(["thread_only_tool"]);
 
       const readOnOperate = yield* post("/mcp/operate", INITIALIZE, {
@@ -226,11 +227,14 @@ it.effect("authenticates /mcp/query and /mcp/operate by the token's scopes", () 
         "t3_thread_send",
         "t3_thread_wait",
         "t3_thread_interrupt",
+        "t3_thread_usage_limit_resume",
+        "t3_thread_rollback",
         "t3_thread_organize",
         "t3_pending_request_respond",
         "t3_project_create",
         "t3_environment_read",
         "t3_approval_respond",
+        "t3_thread_delete",
       ]) {
         expect(operateTools).toContain(name);
       }

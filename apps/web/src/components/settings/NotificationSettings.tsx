@@ -1,11 +1,15 @@
 import { useState } from "react";
 
+import { useClientSettings, useUpdateClientSettings } from "../../hooks/useSettings";
 import {
   hasDesktopNotifications,
   hasNotificationSound,
+  NOTIFICATION_EVENT_LABELS,
   NOTIFICATION_MODE_LABELS,
   unlockNotificationAudio,
 } from "../../threadNotifications";
+import { Button } from "../ui/button";
+import { Menu, MenuCheckboxItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { SettingsRow } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
@@ -22,7 +26,7 @@ export function NotificationSettings() {
       {...searchableSetting("thread-notifications")}
       description={
         permissionMessage ??
-        "System alerts when a thread finishes, fails, or needs input or approval. Applies to this device while T3 Code is open."
+        "System alerts when a thread needs you, finishes, or fails. Applies to this device while T3 Code is open."
       }
       control={
         <Select
@@ -77,6 +81,55 @@ export function NotificationSettings() {
             ))}
           </SelectPopup>
         </Select>
+      }
+    />
+  );
+}
+
+const NOTIFICATION_EVENTS = Object.keys(NOTIFICATION_EVENT_LABELS) as Array<
+  keyof typeof NOTIFICATION_EVENT_LABELS
+>;
+
+/** Which events raise system alerts, sounds, and in-app toasts on this device. */
+export function NotificationEventSettings() {
+  const muted = useClientSettings((settings) => settings.mutedNotificationEvents);
+  const updateSettings = useUpdateClientSettings();
+  const enabledCount = NOTIFICATION_EVENTS.length - muted.length;
+
+  return (
+    <SettingsRow
+      {...searchableSetting("notification-events")}
+      description="Choose which events alert you. Mute a single project from its project settings."
+      control={
+        <Menu>
+          <MenuTrigger
+            render={<Button type="button" variant="outline" size="sm" />}
+            aria-label="Notification events"
+          >
+            {enabledCount === NOTIFICATION_EVENTS.length
+              ? "All events"
+              : enabledCount === 0
+                ? "No events"
+                : `${enabledCount} of ${NOTIFICATION_EVENTS.length} events`}
+          </MenuTrigger>
+          <MenuPopup align="end">
+            {NOTIFICATION_EVENTS.map((event) => (
+              <MenuCheckboxItem
+                key={event}
+                checked={!muted.includes(event)}
+                onCheckedChange={(checked) =>
+                  updateSettings({
+                    mutedNotificationEvents: checked
+                      ? muted.filter((candidate) => candidate !== event)
+                      : [...muted, event],
+                  })
+                }
+              >
+                {NOTIFICATION_EVENT_LABELS[event]}
+              </MenuCheckboxItem>
+            ))}
+          </MenuPopup>
+        </Menu>
       }
     />
   );

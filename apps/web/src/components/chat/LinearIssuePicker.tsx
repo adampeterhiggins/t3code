@@ -3,7 +3,7 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { linearIssueContextRecord } from "@t3tools/client-runtime/state/linear";
+import { linearIssueContextRecord } from "@t3tools/shared/integrationContextRecords";
 import type { LinearIssueSummary, ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";

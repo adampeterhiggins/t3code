@@ -3,6 +3,7 @@ import { assert, describe, it } from "@effect/vitest";
 import {
   CommandId,
   EnvironmentId,
+  MessageId,
   NodeId,
   type OrchestrationV2ThreadShell,
   type ScheduledTask,
@@ -1930,4 +1931,105 @@ describe("OrchestratorMcpService provider resolution", () => {
       }),
     );
   });
+});
+
+describe("OrchestratorMcpService usage-limit resume", () => {
+  it.effect("resumes a usage-limited thread once per request", () =>
+    Effect.gen(function* () {
+      const threadId = ThreadId.make("thread:mcp-limited");
+      const limitedRunId = RunId.make("run:mcp-limited");
+      const continuationRunId = RunId.make("run:mcp-limited-continuation");
+      const resetAt = "2026-10-09T20:00:00.000Z";
+      let shell: OrchestrationV2ThreadShell = {
+        ...liveThreadShell(threadId, { activeRunId: null }),
+        status: "failed",
+        latestRunId: limitedRunId,
+        lastErrorClass: "usage_limit",
+        usageLimitResetAt: resetAt,
+      };
+      let records = { messages: [] as Array<unknown>, runs: [] as Array<unknown> };
+      const dispatched = yield* Ref.make<ReadonlyArray<unknown>>([]);
+      const layerDependencies = Layer.mergeAll(
+        NodeServices.layer,
+        Layer.mock(ThreadManagementService.ThreadManagementService)({
+          getThreadShell: () => Effect.succeed(shell),
+          getProjectThreadRecords: () => Effect.succeed(idleThreadProjection(shell)),
+          getThreadRecords: () => Effect.sync(() => records as never),
+          dispatch: (command) =>
+            Ref.update(dispatched, (commands) => [...commands, command]).pipe(
+              Effect.andThen(
+                Effect.sync(() => {
+                  records = {
+                    messages: [
+                      {
+                        id: MessageId.make(`limit-resume-now:${command.commandId}`),
+                        runId: continuationRunId,
+                      },
+                    ],
+                    runs: [{ id: continuationRunId, status: "queued" }],
+                  };
+                  shell = { ...shell, status: "running", lastErrorClass: null };
+                }),
+              ),
+              Effect.as({} as never),
+            ),
+        }),
+        Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
+        Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({
+          list: () => Effect.succeed([]),
+        }),
+        Layer.mock(ProjectService.ProjectService)({}),
+        Layer.mock(SecretRequests.SecretRequests)({}),
+        Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
+        Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
+      );
+      const scope: McpInvocationScope = {
+        environmentId: EnvironmentId.make("environment:mcp-limited"),
+        requestNamespace: "client:mcp-limited",
+        thread: undefined,
+        client: { sessionId: "session-limited", label: "Claude Code", access: "full-access" },
+        capabilities: new Set(["orchestration"]),
+        issuedAt: 1,
+      };
+
+      yield* Effect.gen(function* () {
+        const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+        const stale = yield* service
+          .resumeUsageLimitedThread(scope, {
+            threadId,
+            runId: RunId.make("run:mcp-older"),
+          })
+          .pipe(Effect.flip);
+        assert.equal(stale.code, "thread_not_usage_limited");
+
+        const resumed = yield* service.resumeUsageLimitedThread(scope, {
+          threadId,
+          clientRequestId: "resume-1",
+        });
+        assert.equal(resumed.runId, continuationRunId);
+        assert.equal(resumed.status, "queued");
+        const [command] = yield* Ref.get(dispatched);
+        assert.deepInclude(command as object, {
+          type: "thread.usage-limit.resume-now",
+          threadId,
+          runId: limitedRunId,
+          createdBy: "agent",
+          creationSource: "mcp",
+        });
+
+        // A retry finds the continuation it already sent instead of failing.
+        const retried = yield* service.resumeUsageLimitedThread(scope, {
+          threadId,
+          clientRequestId: "resume-1",
+        });
+        assert.deepEqual(retried, resumed);
+        assert.lengthOf(yield* Ref.get(dispatched), 1);
+
+        const again = yield* service
+          .resumeUsageLimitedThread(scope, { threadId, clientRequestId: "resume-2" })
+          .pipe(Effect.flip);
+        assert.equal(again.code, "thread_not_usage_limited");
+      }).pipe(Effect.provide(OrchestratorMcpService.layer.pipe(Layer.provide(layerDependencies))));
+    }),
+  );
 });

@@ -19,11 +19,13 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 
 import * as GitWorkflowService from "../git/GitWorkflowService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
+import { withWorkspaceLease } from "../workspace/workspaceLease.ts";
 import * as ProviderAuthService from "../provider/ProviderAuthService.ts";
 import * as EventSink from "./EventSink.ts";
 import * as ContextHandoffService from "./ContextHandoffService.ts";
@@ -95,6 +97,7 @@ export const layer: Layer.Layer<
   | ContextHandoffService.ContextHandoffServiceV2
   | IdAllocator.IdAllocatorV2
   | FileSystem.FileSystem
+  | Path.Path
   | GitWorkflowService.GitWorkflowService
   | ProjectService.ProjectService
   | ProviderAuthService.ProviderAuthService
@@ -109,6 +112,7 @@ export const layer: Layer.Layer<
     const contextHandoffService = yield* ContextHandoffService.ContextHandoffServiceV2;
     const idAllocator = yield* IdAllocator.IdAllocatorV2;
     const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
     const gitWorkflow = yield* GitWorkflowService.GitWorkflowService;
     const projects = yield* ProjectService.ProjectService;
     const providerAuth = yield* ProviderAuthService.ProviderAuthService;
@@ -526,6 +530,12 @@ export const layer: Layer.Layer<
         thread: projection.thread,
         modelSelection: run.modelSelection,
       });
+      // The run is already active, so workspace removals (context repository
+      // clones) that check for running work refuse from here on. One already
+      // under way holds the lease; wait for it before the provider sees the cwd.
+      if (resolvedRuntimePolicy.cwd != null) {
+        yield* withWorkspaceLease(path.resolve(resolvedRuntimePolicy.cwd), Effect.void);
+      }
       const existingSessionProjection = projection.providerSessions.find(
         (candidate) => candidate.id === providerSessionId,
       );

@@ -35,6 +35,17 @@ const ASSIGNED_ISSUES_QUERY = `query LinearAssignedIssues {
   }
 }`;
 
+// What assignment triggers match on. Newly assigned issues sort first, since assigning updates them.
+// 250 is Linear's page limit; it bounds how many already-assigned issues a new rule records.
+const TRIGGER_ISSUES_QUERY = `query LinearTriggerIssues {
+  viewer {
+    id
+    assignedIssues(first: 250, orderBy: updatedAt, filter: { state: { type: { nin: ["completed", "canceled"] } } }) {
+      nodes { id team { id } labels(first: 20) { nodes { name } } }
+    }
+  }
+}`;
+
 // `searchIssues` is limited to 30 requests a minute; clients debounce typing.
 // `searchIssues` is ranked by relevance and can only reorder by created or updated time.
 const SEARCH_ISSUES_QUERY = `query LinearSearchIssues($term: String!, $filter: IssueFilter, $orderBy: PaginationOrderBy) {
@@ -122,6 +133,20 @@ const AssignedIssuesData = Schema.Struct({
     assignedIssues: Schema.Struct({ nodes: Schema.Array(IssueSummaryNode) }),
   }),
 });
+const TriggerIssuesData = Schema.Struct({
+  viewer: Schema.Struct({
+    id: Schema.String,
+    assignedIssues: Schema.Struct({
+      nodes: Schema.Array(
+        Schema.Struct({
+          id: Schema.String,
+          team: Schema.Struct({ id: Schema.String }),
+          labels: Schema.Struct({ nodes: Schema.Array(Named) }),
+        }),
+      ),
+    }),
+  }),
+});
 const SearchIssuesData = Schema.Struct({
   searchIssues: Schema.Struct({ nodes: Schema.Array(IssueSummaryNode) }),
 });
@@ -193,6 +218,19 @@ function toSummary(node: IssueSummaryNode): LinearIssueSummary {
   };
 }
 
+/** An open issue assigned to the connected account, with what assignment triggers filter on. */
+export interface LinearAssignedIssue {
+  readonly id: string;
+  readonly teamId: string;
+  readonly labelNames: ReadonlyArray<string>;
+}
+
+export interface LinearAssignedIssues {
+  /** The connected Linear user, so a switched account is not mistaken for new assignments. */
+  readonly accountId: string;
+  readonly issues: ReadonlyArray<LinearAssignedIssue>;
+}
+
 export class LinearApi extends Context.Service<
   LinearApi,
   {
@@ -207,6 +245,8 @@ export class LinearApi extends Context.Service<
     readonly getIssueSummary: (
       input: LinearGetIssueInput,
     ) => Effect.Effect<LinearIssueSummary, LinearError>;
+    /** The connected account's 250 most recently updated open assigned issues. */
+    readonly listAssignedIssues: Effect.Effect<LinearAssignedIssues, LinearError>;
   }
 >()("t3/linear/LinearApi") {}
 
@@ -373,11 +413,24 @@ export const make = Effect.gen(function* () {
     return toSummary(issue);
   });
 
+  const listAssignedIssues = query(TRIGGER_ISSUES_QUERY, {}, TriggerIssuesData).pipe(
+    Effect.map((data): LinearAssignedIssues => ({
+      accountId: data.viewer.id,
+      issues: data.viewer.assignedIssues.nodes.map((node) => ({
+        id: node.id,
+        teamId: node.team.id,
+        labelNames: node.labels.nodes.map((label) => label.name),
+      })),
+    })),
+    Effect.withSpan("linear.list_assigned_issues"),
+  );
+
   return LinearApi.of({
     listIssues,
     getIssue,
     getFilterOptions: getFilterOptions(),
     getIssueSummary,
+    listAssignedIssues,
   });
 });
 

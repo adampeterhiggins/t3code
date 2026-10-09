@@ -27,8 +27,19 @@ vi.mock("../state/environments", () => ({
 }));
 vi.mock("../hooks/useSettings", () => ({
   useClientSettings: (
-    select: (settings: { notificationMode: string; inAppNotificationsEnabled: boolean }) => unknown,
-  ) => select({ notificationMode: state.mode, inAppNotificationsEnabled: state.inApp }),
+    select: (settings: {
+      notificationMode: string;
+      inAppNotificationsEnabled: boolean;
+      mutedNotificationEvents: string[];
+      mutedNotificationProjects: string[];
+    }) => unknown,
+  ) =>
+    select({
+      notificationMode: state.mode,
+      inAppNotificationsEnabled: state.inApp,
+      mutedNotificationEvents: [],
+      mutedNotificationProjects: [],
+    }),
   getClientSettings: () => ({ notificationMode: state.mode }),
 }));
 vi.mock("../threadNotifications", async (importOriginal) => ({

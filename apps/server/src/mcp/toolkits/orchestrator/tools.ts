@@ -19,10 +19,14 @@ import {
   OrchestratorMcpTaskStatusInput,
   OrchestratorMcpThreadInterruptInput,
   OrchestratorMcpThreadInterruptResult,
+  OrchestratorMcpThreadUsageLimitResumeInput,
+  OrchestratorMcpThreadUsageLimitResumeResult,
   OrchestratorMcpThreadListInput,
   OrchestratorMcpThreadListResult,
   OrchestratorMcpThreadReadInput,
   OrchestratorMcpThreadReadResult,
+  OrchestratorMcpThreadRollbackInput,
+  OrchestratorMcpThreadRollbackResult,
   OrchestratorMcpThreadSendInput,
   OrchestratorMcpThreadSendResult,
   OrchestratorMcpThreadWaitInput,
@@ -33,6 +37,7 @@ import {
 import { Tool, Toolkit } from "effect/ai";
 
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
+import * as McpContextLinks from "../../McpContextLinks.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as OrchestratorMcpService from "../../OrchestratorMcpService.ts";
 import * as ThreadMetadataMcpService from "../../ThreadMetadataMcpService.ts";
@@ -219,12 +224,12 @@ export const ThreadUpdateTool = Tool.make("t3_thread_update", {
 
 const ThreadSendTool = Tool.make("t3_thread_send", {
   description:
-    "Send a message to any T3 thread in this environment. The target cannot have broader permission modes than the caller. Do not use a delegated task's childThreadId to start another review round here; use delegate_task with the full review context and a new clientRequestId for that round. Thread messages do not create a new delegated task or reopen a completed task. mode='auto' starts an idle thread, steers a fully active turn, or queues behind a turn that is not yet steerable. Use queue for a separate follow-up turn, steer for an in-flight update, or restart to interrupt-and-restart the active turn. clientRequestId makes retries idempotent.",
+    "Send a message to any T3 thread in this environment. The target cannot have broader permission modes than the caller. Do not use a delegated task's childThreadId to start another review round here; use delegate_task with the full review context and a new clientRequestId for that round. Thread messages do not create a new delegated task or reopen a completed task. mode='auto' starts an idle thread, steers a fully active turn, or queues behind a turn that is not yet steerable. Use queue for a separate follow-up turn, steer for an in-flight update, or restart to interrupt-and-restart the active turn. Pass contextLinks to attach Slack threads, Notion pages, Linear issues, GitHub issues, or repositories as context chips, as a user would. clientRequestId makes retries idempotent.",
   parameters: OrchestratorMcpThreadSendInput,
   success: OrchestratorMcpThreadSendResult,
   failure: OrchestratorMcpFailure,
   failureMode: "return",
-  dependencies,
+  dependencies: [...dependencies, McpContextLinks.McpContextLinks],
 })
   .annotate(Tool.Title, "Send to a T3 thread")
   .annotate(Tool.Destructive, true)
@@ -256,6 +261,31 @@ const ThreadInterruptTool = Tool.make("t3_thread_interrupt", {
   .annotate(Tool.Title, "Interrupt a T3 thread")
   .annotate(Tool.Destructive, true);
 
+const ThreadUsageLimitResumeTool = Tool.make("t3_thread_usage_limit_resume", {
+  description:
+    "Resume a T3 thread stopped on a provider usage limit now, without waiting for the reset: sends 'Continue where you left off.' into the same session, like the user's Resume now. t3_thread_read and t3_thread_wait report usageLimit when a thread is stopped this way. It runs on the thread's current model, so change the model with t3_thread_configure first to leave the limited provider; otherwise the provider may refuse again until the limit resets. Fails with thread_not_usage_limited otherwise. clientRequestId makes retries idempotent.",
+  parameters: OrchestratorMcpThreadUsageLimitResumeInput,
+  success: OrchestratorMcpThreadUsageLimitResumeResult,
+  failure: OrchestratorMcpFailure,
+  failureMode: "return",
+  dependencies,
+})
+  .annotate(Tool.Title, "Resume a usage-limited T3 thread")
+  .annotate(Tool.Destructive, true)
+  .annotate(Tool.OpenWorld, true);
+
+const ThreadRollbackTool = Tool.make("t3_thread_rollback", {
+  description:
+    "Roll another T3 thread back to the checkpoint after one of its runs, as the user's revert does: later runs are discarded and, unless restoreFiles=false, the workspace files are restored to that point. This cannot be undone. runOrdinal is a run's ordinal from t3_thread_read's recentRuns; 0 discards every run. Refuses your own thread, a thread with a turn running (use t3_thread_interrupt or t3_thread_wait first), a provider without conversation rollback, and restoring files in a checkout other threads share. To keep the history, use t3_thread_fork instead. clientRequestId makes retries idempotent. Returns rollback_requested when accepted; provider and file restoration run asynchronously, so acceptance does not mean restoration succeeded.",
+  parameters: OrchestratorMcpThreadRollbackInput,
+  success: OrchestratorMcpThreadRollbackResult,
+  failure: OrchestratorMcpFailure,
+  failureMode: "return",
+  dependencies,
+})
+  .annotate(Tool.Title, "Roll back a T3 thread")
+  .annotate(Tool.Destructive, true);
+
 export const OrchestratorToolkit = Toolkit.make(
   OrchestratorCapabilitiesTool,
   DelegateTaskTool,
@@ -273,4 +303,6 @@ export const OrchestratorToolkit = Toolkit.make(
   ThreadSendTool,
   ThreadWaitTool,
   ThreadInterruptTool,
+  ThreadUsageLimitResumeTool,
+  ThreadRollbackTool,
 );

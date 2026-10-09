@@ -1,6 +1,7 @@
 import { CustomEditor, EditorId, FileOpenTarget, FileOpenRule } from "./editor.ts";
 import { SshDeviceHostConfigs } from "./device.ts";
 import {
+  AuthOrchestrationOperateScope,
   AuthSettingsWriteScope,
   AuthProvidersManageScope,
   type AuthEnvironmentScope,
@@ -280,6 +281,22 @@ export const NotificationMode = Schema.Literals([
 ]);
 export type NotificationMode = typeof NotificationMode.Type;
 
+/**
+ * What a thread notification is about. The first four match the attention
+ * inbox's reasons; `limited` is a failure caused by a provider usage limit and
+ * `pull-request` is news from a watched pull request (failed checks, requested
+ * changes, a merge conflict).
+ */
+export const NotificationEvent = Schema.Literals([
+  "approval",
+  "input",
+  "completed",
+  "failed",
+  "limited",
+  "pull-request",
+]);
+export type NotificationEvent = typeof NotificationEvent.Type;
+
 export const QuitConfirmationMode = Schema.Literals(["direct", "hold", "double-click"]);
 export type QuitConfirmationMode = typeof QuitConfirmationMode.Type;
 const DEFAULT_QUIT_CONFIRMATION_MODE: QuitConfirmationMode = "hold";
@@ -359,6 +376,14 @@ export const ClientSettingsSchema = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed("off" as const)),
   ),
   inAppNotificationsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  /** Events this device stays quiet about. Stored as mutes so new events default on. */
+  mutedNotificationEvents: Schema.Array(NotificationEvent).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
+  /** `environmentId:projectId` keys of projects this device never notifies about. */
+  mutedNotificationProjects: Schema.Array(TrimmedNonEmptyString).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
   diffColorScheme: DiffColorScheme.pipe(
     Schema.withDecodingDefault(Effect.succeed("red-green" as const)),
   ),
@@ -1233,6 +1258,31 @@ const NULLABLE_PROJECT_SETTINGS_OVERRIDES: ReadonlySet<ProjectScopedServerSettin
   "sidebarAutoSettleAfterDays",
 ]);
 
+/**
+ * Starts a thread in `projectId` when someone @mentions the connected Slack account in one of
+ * `channels` (names without `#`, or channel IDs) or, with `includeDirectMessages`, in a direct or
+ * group message. A non-empty `keyword` must also appear as a word in the message. Off by default;
+ * mentions from before it was turned on are ignored. Fork-only; see docs/fork-differences.md.
+ */
+export const SlackMentionTriggerSettings = Schema.Struct({
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  projectId: Schema.NullOr(ProjectId).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
+  prompt: TrimmedString.check(Schema.isMaxLength(8_000)).pipe(
+    Schema.withDecodingDefault(Effect.succeed("Help with the request in this Slack mention.")),
+  ),
+  modelSelection: Schema.NullOr(ModelSelection).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
+  channels: Schema.Array(TrimmedString.check(Schema.isMaxLength(128)))
+    .check(Schema.isMaxLength(100))
+    .pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+  includeDirectMessages: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  keyword: TrimmedString.check(Schema.isMaxLength(64)).pipe(
+    Schema.withDecodingDefault(Effect.succeed("")),
+  ),
+});
+export type SlackMentionTriggerSettings = typeof SlackMentionTriggerSettings.Type;
+
 export const StorageCleanupSettings = Schema.Struct({
   worktreeAfterDays: StorageRetentionDays.pipe(Schema.withDecodingDefault(Effect.succeed(null))),
   worktreeOnMerge: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
@@ -1273,6 +1323,28 @@ export const Organisation = Schema.Struct({
 export type Organisation = typeof Organisation.Type;
 export const Organisations = Schema.Record(Schema.String, Organisation);
 export type Organisations = typeof Organisations.Type;
+
+/**
+ * Starts a thread when a Linear issue is newly assigned to the connected account. Issues already
+ * assigned when the rule is added never fire, and each issue starts at most one thread.
+ */
+export const LinearAssignmentTrigger = Schema.Struct({
+  id: TrimmedNonEmptyString.check(Schema.isMaxLength(64)),
+  projectId: ProjectId,
+  /** Linear team id; null matches every team. */
+  teamId: Schema.NullOr(TrimmedNonEmptyString.check(Schema.isMaxLength(64))),
+  /** Label name, matched case-insensitively; null matches any labels. */
+  labelName: Schema.NullOr(TrimmedNonEmptyString.check(Schema.isMaxLength(256))),
+  /** What the thread's first message asks; the issue is attached after it. Null uses a default. */
+  prompt: Schema.NullOr(TrimmedNonEmptyString.check(Schema.isMaxLength(10_000))).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
+  modelSelection: ModelSelection,
+});
+export type LinearAssignmentTrigger = typeof LinearAssignmentTrigger.Type;
+export const LinearAssignmentTriggers = Schema.Array(LinearAssignmentTrigger).check(
+  Schema.isMaxLength(50),
+);
 
 export const ServerSettings = Schema.Struct({
   customEditors: Schema.Array(CustomEditor).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
@@ -1322,8 +1394,15 @@ export const ServerSettings = Schema.Struct({
   ),
   /** Enable Slack attachment entry points and automatic link resolution for this environment. */
   enableSlackIntegration: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  slackMentionTrigger: SlackMentionTriggerSettings.pipe(
+    Schema.withDecodingDefault(Effect.succeed(Schema.decodeSync(SlackMentionTriggerSettings)({}))),
+  ),
   /** Enable Notion attachment entry points and automatic link resolution for this environment. */
   enableNotionIntegration: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  /** Fork: Linear issues assigned to the connected account start threads. Empty is off. */
+  linearAssignmentTriggers: LinearAssignmentTriggers.pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
   // Retain the update-era key; recovery now needs an environment-owned opt-in.
   continueThreadsAfterServerUpdate: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(false)),
@@ -1711,7 +1790,10 @@ export const ServerSettingsPatch = Schema.Struct({
   terminalActivatePythonEnvironment: Schema.optionalKey(Schema.Boolean),
   pythonInterpreterPath: Schema.optionalKey(Schema.NullOr(TrimmedString)),
   enableSlackIntegration: Schema.optionalKey(Schema.Boolean),
+  /** Replaces the whole trigger, so a cleared channel list sticks. */
+  slackMentionTrigger: Schema.optionalKey(SlackMentionTriggerSettings),
   enableNotionIntegration: Schema.optionalKey(Schema.Boolean),
+  linearAssignmentTriggers: Schema.optionalKey(LinearAssignmentTriggers),
   continueThreadsAfterServerUpdate: Schema.optionalKey(Schema.Boolean),
   enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
   projectAgentBrowserAccessOverrides: Schema.optionalKey(
@@ -1854,12 +1936,18 @@ export function requiredScopesForServerSettingsPatch(
   return [
     ...(changesSettings || !changesProviders ? [AuthSettingsWriteScope] : []),
     ...(changesProviders ? [AuthProvidersManageScope] : []),
+    // Assignment triggers start agent runs unattended, like scheduled tasks.
+    ...(patch.linearAssignmentTriggers !== undefined || patch.slackMentionTrigger !== undefined
+      ? [AuthOrchestrationOperateScope]
+      : []),
   ];
 }
 
 export const ClientSettingsPatch = Schema.Struct({
   notificationMode: Schema.optionalKey(NotificationMode),
   inAppNotificationsEnabled: Schema.optionalKey(Schema.Boolean),
+  mutedNotificationEvents: Schema.optionalKey(Schema.Array(NotificationEvent)),
+  mutedNotificationProjects: Schema.optionalKey(Schema.Array(TrimmedNonEmptyString)),
   diffColorScheme: Schema.optionalKey(DiffColorScheme),
   chatWidth: Schema.optionalKey(ChatWidth),
   loadBalancingEnabled: Schema.optionalKey(Schema.Boolean),

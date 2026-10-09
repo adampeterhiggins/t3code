@@ -136,6 +136,15 @@ describe("RPC authorization scopes", () => {
     );
   });
 
+  it("lists context repository clones as a read and removes them as a source control write", () => {
+    expect(requiredScopeForRpcMethod(WS_METHODS.contextRepositoriesInspect)).toBe(
+      AuthOrchestrationReadScope,
+    );
+    expect(requiredScopeForRpcMethod(WS_METHODS.contextRepositoriesRemove)).toBe(
+      AuthSourceControlWriteScope,
+    );
+  });
+
   it("separates viewing pull request file progress from writing it", () => {
     expect(requiredScopeForRpcMethod(WS_METHODS.pullRequestsFilesViewed)).toBe(
       AuthOrchestrationReadScope,
@@ -322,6 +331,31 @@ describe("settings mutation authorization", () => {
           providerInstanceMutation,
         }).pipe(Effect.flip),
       ).toMatchObject({ requiredPermission: AuthProvidersManageScope });
+      expect(handled).toBe(false);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("requires task permission to change Linear assignment triggers", () =>
+    Effect.gen(function* () {
+      let handled = false;
+      const client = yield* RpcTest.makeClient(group).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            group.toLayerHandler(WS_METHODS.serverUpdateSettings, () =>
+              Effect.sync(() => {
+                handled = true;
+                return DEFAULT_SERVER_SETTINGS;
+              }),
+            ),
+            RpcAuthorization.layer([AuthSettingsWriteScope]),
+          ),
+        ),
+      );
+      expect(
+        yield* client[WS_METHODS.serverUpdateSettings]({
+          patch: { linearAssignmentTriggers: [] },
+        }).pipe(Effect.flip),
+      ).toMatchObject({ requiredPermission: AuthOrchestrationOperateScope });
       expect(handled).toBe(false);
     }).pipe(Effect.scoped),
   );

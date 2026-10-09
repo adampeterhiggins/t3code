@@ -52,9 +52,15 @@ you replay a past day. Titles, archive state, and pull request state are always 
 An agent connected to `/mcp/operate` has the history tools plus the thread, project, and
 environment tools an agent inside T3 Code has. It can start a thread in any project with
 `t3_thread_launch`, message a thread with `t3_thread_send`, wait for it with `t3_thread_wait`, and
-stop its turn with `t3_thread_interrupt`. It can rename a thread, change its model, archive,
-settle, pin, snooze, hide, or group it, answer its questions with `t3_pending_request_respond` and its
-approvals with `t3_approval_respond`, and add or change projects. It acts as you would: the
+stop its turn with `t3_thread_interrupt`, and resume a thread stopped on a usage limit with
+`t3_thread_usage_limit_resume`. It can roll a thread back to an earlier turn with
+`t3_thread_rollback`, which, like reverting in the app, discards the later turns and restores the
+files unless it asks to keep them; it cannot do this while the thread is working. Acceptance
+starts the rollback; provider and file restoration finish afterward. `t3_thread_read` reports
+the latest rollback request ID and any terminal restoration failure. It can rename a thread, change its model, archive,
+settle, pin, snooze, hide, group, or mark it read or unread, delete it with `t3_thread_delete`,
+answer its questions with `t3_pending_request_respond` and its approvals with
+`t3_approval_respond`, and add or change projects. It acts as you would: the
 threads it starts appear in your sidebar with a bot icon, their header names the token, and they
 run in whichever permission mode it asks for.
 
@@ -62,7 +68,9 @@ run in whichever permission mode it asks for.
 
 An agent working in a thread can start other threads with `create_threads` or `t3_thread_launch`,
 hand a task to a child agent with `delegate_task`, message threads, and wait for their results,
-for example to split a large change into parallel pieces. There is nothing to turn on.
+for example to split a large change into parallel pieces. There is nothing to turn on. It can
+also open a chat tab beside any thread with `t3_thread_tab_open`: empty, or continuing a tab's
+conversation, on any model, with an optional first message. `t3_thread_tabs` lists a thread's tabs.
 
 A child agent works in its parent's checkout unless the agent asks for a worktree of its own. Then
 the child gets a new worktree (or an existing one), set up like a thread's worktree with your
@@ -70,12 +78,23 @@ setup script, before it starts, so parallel children do not edit the same files.
 under its parent in Lineage and the Agents panel. Only a thread in full-access, non-plan mode can
 ask for one.
 
-Threads an agent starts appear in your sidebar with a bot icon, and their header shows which
+Threads and tabs an agent starts appear in your sidebar with a bot icon, and their header shows which
 thread started them; click it to open that thread. An agent cannot give a thread more freedom
 than its own permission mode allows. It can start threads two levels deep, and keep at most five
-of its own going at once: a thread it started counts until it settles or you archive it, a
-delegated task until it finishes. It cannot message, wait on, or stop its own thread with these
-tools, and it cannot answer another thread's approvals; those still come to you.
+of its own going at once: a thread or tab it started counts until it settles or you archive it, a
+delegated task until it finishes. It cannot message, wait on, stop, or roll back its own thread with these
+tools, and it cannot answer another thread's approvals; those still come to you. It can archive
+threads but never delete them.
+
+## Attach links as context
+
+When an agent sends a message with `t3_thread_send` or starts a thread with `t3_thread_launch`, it
+can pass `contextLinks`: Slack message links, Notion pages, Linear issues, GitHub issues, and
+GitHub repositories. Each becomes a context chip, the same as pasting the link into the composer,
+so the receiving agent gets the thread, page, or issue with the message and repositories are
+cloned into its context folder. The integration must be connected and turned on under
+**Settings → Integrations**; if a link cannot be read, the message is not sent and the agent is
+told why. Pull request links stay plain links.
 
 ## Revoke a token
 

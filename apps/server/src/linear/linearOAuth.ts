@@ -9,6 +9,8 @@ export const LINEAR_GRAPHQL_URL = "https://api.linear.app/graphql";
  */
 export const LINEAR_LOOPBACK_PORT = 47831;
 export const LINEAR_REDIRECT_URI = `http://127.0.0.1:${LINEAR_LOOPBACK_PORT}/callback`;
+/** The main server's callback, for a `T3CODE_LINEAR_REDIRECT_URI` registered on the app. */
+export const LINEAR_SERVER_CALLBACK_PATH = "/oauth/linear/callback";
 
 /**
  * The fork's public PKCE client. It carries no secret; forks registering
@@ -18,13 +20,14 @@ export const DEFAULT_LINEAR_CLIENT_ID = "56a88f61b2b549a59361a1846f680e7e";
 
 export function buildLinearAuthorizeUrl(input: {
   readonly clientId: string;
+  readonly redirectUri?: string;
   readonly state: string;
   readonly challenge: string;
 }): string {
   const url = new URL(LINEAR_AUTHORIZE_URL);
   url.search = new URLSearchParams({
     client_id: input.clientId,
-    redirect_uri: LINEAR_REDIRECT_URI,
+    redirect_uri: input.redirectUri ?? LINEAR_REDIRECT_URI,
     response_type: "code",
     scope: "read",
     state: input.state,
@@ -45,7 +48,7 @@ function singleParam(url: URL, name: string): string | null {
   return values.length === 1 && values[0] ? values[0] : null;
 }
 
-/** Reads the loopback callback query. `state` must match the flow exactly once. */
+/** Reads the redirect's query. `state` must match the flow exactly once. */
 export function readLinearCallback(url: URL, expectedState: string): LinearCallbackResult {
   if (singleParam(url, "state") !== expectedState) {
     return { _tag: "Invalid", reason: "The sign-in link does not belong to this Linear login." };
@@ -61,11 +64,12 @@ export function readLinearCallback(url: URL, expectedState: string): LinearCallb
 
 /**
  * Validates a redirect URL pasted back from a browser that could not reach
- * this machine's loopback listener (remote clients, phones).
+ * the redirect URI (remote clients, phones).
  */
 export function readPastedLinearCallback(
   pasted: string,
   expectedState: string,
+  redirectUri: string = LINEAR_REDIRECT_URI,
 ): LinearCallbackResult {
   let url: URL;
   try {
@@ -73,11 +77,11 @@ export function readPastedLinearCallback(
   } catch {
     return { _tag: "Invalid", reason: "Paste the full URL from the browser's address bar." };
   }
-  const expected = new URL(LINEAR_REDIRECT_URI);
+  const expected = new URL(redirectUri);
   if (url.origin !== expected.origin || url.pathname !== expected.pathname) {
     return {
       _tag: "Invalid",
-      reason: `Paste the URL that starts with ${LINEAR_REDIRECT_URI}.`,
+      reason: `Paste the URL that starts with ${redirectUri}.`,
     };
   }
   return readLinearCallback(url, expectedState);

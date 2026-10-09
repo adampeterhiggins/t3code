@@ -10,6 +10,7 @@ import {
   DEFAULT_SERVER_SETTINGS,
   parseWorktreeCleanupIgnoredNames,
   resolveProviderInstanceEnabled,
+  requiredScopesForServerSettingsPatch,
   ServerSettings,
   ServerSettingsPatch,
   WORKTREE_CLEANUP_IGNORED_NAME_MAX_COUNT,
@@ -1132,4 +1133,13 @@ describe("ClientSettings sidebar thread views", () => {
       decodeClientSettingsPatch({ sidebarThreadViews: { hidden: "invalid" } }),
     ).toThrow();
   });
+});
+
+it("Slack mention trigger is off by default and requires both settings and orchestration grants", () => {
+  expect(decodeServerSettings({}).slackMentionTrigger.enabled).toBe(false);
+  expect(
+    requiredScopesForServerSettingsPatch({
+      slackMentionTrigger: DEFAULT_SERVER_SETTINGS.slackMentionTrigger,
+    }),
+  ).toEqual(["settings:write", "orchestration:operate"]);
 });

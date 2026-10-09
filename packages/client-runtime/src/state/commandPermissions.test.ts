@@ -168,6 +168,8 @@ it.effect(
         const registry = yield* setup;
         registry.set(sessions(env), AsyncResult.success(grant(true)));
         const git = createCommandPermissions(runtime, WS_METHODS.vcsInit);
+        const removeClone = createCommandPermissions(runtime, WS_METHODS.contextRepositoriesRemove);
+        expect(registry.get(removeClone.permissionAtom(env))).toBe(false);
         expect((yield* git.authorize(registry, env).pipe(Effect.flip)).requiredPermission).toBe(
           AuthSourceControlWriteScope,
         );
@@ -180,6 +182,7 @@ it.effect(
           }),
         );
         yield* git.authorize(registry, env);
+        expect(registry.get(removeClone.permissionAtom(env))).toBe(true);
         const prepare = createCommandPermissions(runtime, WS_METHODS.gitPreparePullRequestThread);
         const input = {
           cwd: "/repo",
@@ -260,4 +263,59 @@ it.effect("rejects protected unary and streamed RPCs outside a guarded command",
     expect(streamed._tag).toBe("EnvironmentAuthorizationError");
     expect(writes).toBe(0);
   }),
+);
+
+it.effect("guards integration thread links with the orchestration grant", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const registry = yield* setup;
+      const methods = [
+        WS_METHODS.linearLinkThread,
+        WS_METHODS.linearUnlinkThread,
+        WS_METHODS.githubIssuesLinkThread,
+        WS_METHODS.githubIssuesUnlinkThread,
+        WS_METHODS.slackLinkThread,
+        WS_METHODS.slackUnlinkThread,
+        WS_METHODS.notionLinkThread,
+        WS_METHODS.notionUnlinkThread,
+      ];
+      registry.set(sessions(env), AsyncResult.success(grant(false)));
+      for (const method of methods) {
+        const command = createCommandPermissions(runtime, method);
+        expect(registry.get(command.permissionAtom(env))).toBe(false);
+        expect((yield* command.authorize(registry, env).pipe(Effect.flip)).requiredScope).toBe(
+          AuthOrchestrationOperateScope,
+        );
+      }
+      registry.set(sessions(env), AsyncResult.success(grant(true)));
+      for (const method of methods) {
+        const command = createCommandPermissions(runtime, method);
+        expect(registry.get(command.permissionAtom(env))).toBe(true);
+        yield* command.authorize(registry, env);
+      }
+    }),
+  ),
+);
+
+it.effect("worktree inventory removal requires the destination source control grant", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const registry = yield* setup;
+      const command = createCommandPermissions(runtime, WS_METHODS.worktreesRemove);
+      registry.set(sessions(env), AsyncResult.success(grant(false)));
+      registry.set(
+        sessions(other),
+        AsyncResult.success({
+          ...grant(false),
+          scopes: [AuthSourceControlWriteScope],
+          permissions: [AuthSourceControlWriteScope],
+        }),
+      );
+      expect(registry.get(command.permissionAtom(env))).toBe(false);
+      expect((yield* command.authorize(registry, env).pipe(Effect.flip)).requiredPermission).toBe(
+        AuthSourceControlWriteScope,
+      );
+      yield* command.authorize(registry, other);
+    }),
+  ),
 );

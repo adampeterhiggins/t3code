@@ -15,6 +15,7 @@ import { resolveWorktreeCleanupModelSelection } from "@t3tools/shared/serverSett
 import { useRef, useState } from "react";
 
 import { ProviderModelPicker } from "../chat/ProviderModelPicker";
+import { ContextRepositoriesSection } from "./ContextRepositoriesSettings";
 import { connectionAtomRuntime } from "../../connection/runtime";
 import {
   getCustomModelOptionsByInstance,
@@ -59,6 +60,8 @@ import {
   useScopedSettingsMixed,
   useUpdateScopedSettings,
 } from "./useScopedSettings";
+
+import { WorktreeInventorySection } from "./WorktreeInventory";
 
 const IGNORED_NAME_ERROR =
   "Enter one file or directory name per line, up to 50. Names cannot include *, ?, or a path.";
@@ -590,6 +593,9 @@ export function StorageSettingsPanel() {
           </>
         )}
       </SettingsSection>
+
+      {isProjectScope && <ContextRepositoriesSection members={scope.members} />}
+      {!isProjectScope && <WorktreeInventorySection />}
 
       {!isProjectScope && (
         <SettingsSection id="storage-artifacts" title="Artifacts and logs">

@@ -46,10 +46,13 @@ import {
 } from "@t3tools/contracts";
 import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
 import { openGitHubIssuePicker } from "./chat/GitHubIssuePicker";
+import { useThreadGitHubIssueLink, useUnlinkGitHubIssue } from "./chat/GitHubIssueThreadLink";
 import { openNotionPagePicker } from "./chat/NotionPagePicker";
 import { openSlackMessagePicker } from "./chat/SlackMessagePicker";
 import { openLinearIssuePicker } from "./chat/LinearIssuePicker";
 import { useThreadLinearLink, useUnlinkLinearIssue } from "./chat/LinearThreadLink";
+import { useThreadNotionLink, useUnlinkNotionPage } from "./chat/NotionThreadLink";
+import { useThreadSlackLink, useUnlinkSlackThread } from "./chat/SlackThreadLink";
 import { openThreadAttachPicker } from "./chat/ThreadAttachPicker";
 import { openPullRequestAttachPicker } from "./chat/PullRequestAttachPicker";
 import { openRepositoryAttachPicker } from "./chat/RepositoryAttachPicker";
@@ -122,7 +125,11 @@ import {
 import { readLocalApi } from "../localApi";
 import { desktopLocalBackendId } from "../connection/desktopLocal";
 import { filesystemEnvironment, useFilesystemReadAccess } from "../state/filesystem";
+import { githubIssueEnvironment } from "../state/githubIssues";
+import { linearEnvironment } from "../state/linear";
+import { notionEnvironment } from "../state/notion";
 import { projectEnvironment } from "../state/projects";
+import { slackEnvironment } from "../state/slack";
 import { useEnvironmentQuery } from "../state/query";
 import { readEnvironmentScope, useEnvironmentScope } from "~/state/session";
 import { sourceControlEnvironment } from "../state/sourceControl";
@@ -134,7 +141,7 @@ import { useNewProject } from "../hooks/useNewProject";
 import { isScratchProject } from "@t3tools/client-runtime/state/projects";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
 import { useProjects, useServerConfigs, useThreadShells, waitForProject } from "../state/entities";
-import { isGitHubProject } from "../state/githubIssues";
+import { isGitHubProject } from "@t3tools/client-runtime/state/github-issues";
 import { useThreadSearch } from "../state/queries";
 import { resolveThreadActionProjectRef, startNewThreadFromContext } from "../lib/chatThreadActions";
 import {
@@ -816,14 +823,31 @@ function OpenCommandPaletteDialog(props: {
         ? scopeThreadRef(activeThread.environmentId, activeThread.id)
         : null;
   const openPanelPullRequestUrl = useOpenPanelPullRequestUrl(referenceThreadRef);
-  const activeLinearLink = useThreadLinearLink(
-    activeThread
-      ? scopeThreadRef(activeThread.environmentId, activeThread.id)
-      : activeDraftThread
-        ? scopeThreadRef(activeDraftThread.environmentId, activeDraftThread.threadId)
-        : null,
-  );
+  const activeLinkThreadRef = activeThread
+    ? scopeThreadRef(activeThread.environmentId, activeThread.id)
+    : activeDraftThread
+      ? scopeThreadRef(activeDraftThread.environmentId, activeDraftThread.threadId)
+      : null;
+  const activeLinearLink = useThreadLinearLink(activeLinkThreadRef);
   const unlinkLinearIssue = useUnlinkLinearIssue();
+  const canLinkLinearIssue = useAtomValue(
+    linearEnvironment.linkThread.permissionAtom(activeLinkThreadRef?.environmentId ?? null),
+  );
+  const activeSlackLink = useThreadSlackLink(activeLinkThreadRef);
+  const unlinkSlackThread = useUnlinkSlackThread();
+  const activeNotionLink = useThreadNotionLink(activeLinkThreadRef);
+  const unlinkNotionPage = useUnlinkNotionPage();
+  const canLinkSlack = useAtomValue(
+    slackEnvironment.linkThread.permissionAtom(activeLinkThreadRef?.environmentId ?? null),
+  );
+  const canLinkNotion = useAtomValue(
+    notionEnvironment.linkThread.permissionAtom(activeLinkThreadRef?.environmentId ?? null),
+  );
+  const activeGitHubIssueLink = useThreadGitHubIssueLink(activeLinkThreadRef);
+  const unlinkGitHubIssue = useUnlinkGitHubIssue();
+  const canLinkGitHubIssue = useAtomValue(
+    githubIssueEnvironment.linkThread.permissionAtom(activeLinkThreadRef?.environmentId ?? null),
+  );
   const serverConfigs = useServerConfigs();
   const activeThreadServerConfig = serverConfigs.get(
     activeThread?.environmentId ?? ("" as EnvironmentId),
@@ -2198,7 +2222,7 @@ function OpenCommandPaletteDialog(props: {
         },
       });
     }
-    // The picker is mounted by a chat view whose project is on GitHub, so only offer it there.
+    // Issues are listed from the project's GitHub repository, so only offer them there.
     const composerProject = projectByKey.get(
       `${composerThreadRef.environmentId}:${currentProjectId ?? ""}`,
     );
@@ -2213,20 +2237,50 @@ function OpenCommandPaletteDialog(props: {
           openGitHubIssuePicker(composerThreadRef);
         },
       });
+      if (canLinkGitHubIssue) {
+        actionItems.push({
+          kind: "action",
+          value: "action:link-github-issue",
+          searchTerms: ["github", "issue", "ticket", "link", "thread"],
+          title: activeGitHubIssueLink
+            ? `Change linked GitHub issue (#${activeGitHubIssueLink.number})`
+            : "Link GitHub issue",
+          icon: <GitHubIcon className={ITEM_ICON_CLASS} />,
+          run: async () => {
+            openGitHubIssuePicker(composerThreadRef, "link");
+          },
+        });
+      }
     }
-    actionItems.push({
-      kind: "action",
-      value: "action:link-linear-issue",
-      searchTerms: ["linear", "issue", "ticket", "link", "thread"],
-      title: activeLinearLink
-        ? `Change linked Linear issue (${activeLinearLink.identifier})`
-        : "Link Linear issue",
-      icon: <LinearIcon className={ITEM_ICON_CLASS} />,
-      run: async () => {
-        openLinearIssuePicker(composerThreadRef, "link");
-      },
-    });
-    if (activeLinearLink) {
+
+    // Unlinking needs no listing, so it stays offered even if the project stops being on GitHub.
+    if (canLinkGitHubIssue && activeGitHubIssueLink) {
+      actionItems.push({
+        kind: "action",
+        value: "action:unlink-github-issue",
+        searchTerms: ["github", "issue", "ticket", "unlink", "remove"],
+        title: `Unlink GitHub issue #${activeGitHubIssueLink.number}`,
+        icon: <GitHubIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          await unlinkGitHubIssue(composerThreadRef);
+        },
+      });
+    }
+    if (canLinkLinearIssue) {
+      actionItems.push({
+        kind: "action",
+        value: "action:link-linear-issue",
+        searchTerms: ["linear", "issue", "ticket", "link", "thread"],
+        title: activeLinearLink
+          ? `Change linked Linear issue (${activeLinearLink.identifier})`
+          : "Link Linear issue",
+        icon: <LinearIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          openLinearIssuePicker(composerThreadRef, "link");
+        },
+      });
+    }
+    if (canLinkLinearIssue && activeLinearLink) {
       actionItems.push({
         kind: "action",
         value: "action:unlink-linear-issue",
@@ -2235,6 +2289,65 @@ function OpenCommandPaletteDialog(props: {
         icon: <LinearIcon className={ITEM_ICON_CLASS} />,
         run: async () => {
           await unlinkLinearIssue(composerThreadRef);
+        },
+      });
+    }
+    if (
+      canLinkSlack &&
+      serverConfigs.get(composerThreadRef.environmentId)?.settings.enableSlackIntegration === true
+    ) {
+      actionItems.push({
+        kind: "action",
+        value: "action:link-slack-thread",
+        searchTerms: ["slack", "thread", "conversation", "link"],
+        title: activeSlackLink
+          ? `Change linked Slack thread (${activeSlackLink.channelLabel})`
+          : "Link Slack thread",
+        icon: <SlackIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          openSlackMessagePicker(composerThreadRef, "link");
+        },
+      });
+    }
+    // Unlinking stays reachable with the integration off: it is the way out of a link.
+    if (canLinkSlack && activeSlackLink) {
+      actionItems.push({
+        kind: "action",
+        value: "action:unlink-slack-thread",
+        searchTerms: ["slack", "thread", "conversation", "unlink", "remove"],
+        title: `Unlink Slack thread in ${activeSlackLink.channelLabel}`,
+        icon: <SlackIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          await unlinkSlackThread(composerThreadRef);
+        },
+      });
+    }
+    if (
+      canLinkNotion &&
+      serverConfigs.get(composerThreadRef.environmentId)?.settings.enableNotionIntegration === true
+    ) {
+      actionItems.push({
+        kind: "action",
+        value: "action:link-notion-page",
+        searchTerms: ["notion", "page", "document", "link"],
+        title: activeNotionLink
+          ? `Change linked Notion page (${activeNotionLink.title})`
+          : "Link Notion page",
+        icon: <NotionIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          openNotionPagePicker(composerThreadRef, "link");
+        },
+      });
+    }
+    if (canLinkNotion && activeNotionLink) {
+      actionItems.push({
+        kind: "action",
+        value: "action:unlink-notion-page",
+        searchTerms: ["notion", "page", "document", "unlink", "remove"],
+        title: `Unlink Notion page ${activeNotionLink.title}`,
+        icon: <NotionIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          await unlinkNotionPage(composerThreadRef);
         },
       });
     }

@@ -77,6 +77,7 @@ import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts
 import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
+import * as McpContextLinks from "./McpContextLinks.ts";
 import * as McpHttpServer from "./McpHttpServer.ts";
 import * as McpInvocationContext from "./McpInvocationContext.ts";
 import { delegatedTaskRun, hasPendingChildRuns } from "./OrchestratorMcpService.ts";
@@ -498,6 +499,10 @@ const layerMemorySecretStore = Layer.sync(ServerSecretStore.ServerSecretStore, (
   });
 });
 
+const layerNoContextLinks = Layer.mock(McpContextLinks.McpContextLinks)({
+  attach: ({ text }) => Effect.succeed({ text, context: undefined }),
+});
+
 const layerUnusedScheduledTaskStub = Layer.succeed(
   ScheduledTaskService.ScheduledTaskService,
   ScheduledTaskService.ScheduledTaskService.of({
@@ -684,6 +689,7 @@ describe("orchestrator MCP toolkit", () => {
             Layer.provide(layerProviderRegistry),
             Layer.provide(layerScheduledTaskStub),
             Layer.provide(Layer.mock(ThreadLaunchService.ThreadLaunchService)({})),
+            Layer.provide(layerNoContextLinks),
             Layer.provide(
               Layer.mock(ProjectService.ProjectService)({
                 getById: (id) =>
@@ -785,6 +791,11 @@ describe("orchestrator MCP toolkit", () => {
             expect((yield* orchestrator.getThreadShell(parentThreadId))?.pinnedAt).not.toBeNull();
             yield* invoke("t3_thread_organize", { action: "unpin" });
             expect((yield* orchestrator.getThreadShell(parentThreadId))?.pinnedAt).toBeNull();
+
+            const markedRead = yield* invoke("t3_thread_organize", { action: "mark_read" });
+            expect(markedRead.isError).toBe(false);
+            const readShell = yield* orchestrator.getThreadShell(parentThreadId);
+            expect(readShell?.lastVisitedAt).toEqual(readShell?.updatedAt);
 
             if (parentRun === undefined || parentRun.rootNodeId === null) {
               return yield* Effect.die(new Error("Parent run missing."));
@@ -3820,6 +3831,7 @@ describe("orchestrator MCP toolkit", () => {
           Layer.provide(layerProviderRegistry),
           Layer.provide(layerUnusedScheduledTaskStub),
           Layer.provide(Layer.mock(ThreadLaunchService.ThreadLaunchService)({})),
+          Layer.provide(layerNoContextLinks),
           Layer.provide(Layer.mock(ProjectService.ProjectService)({})),
           Layer.provideMerge(
             SecretRequests.layer.pipe(

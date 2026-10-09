@@ -37,6 +37,7 @@ import * as ProviderRegistry from "../../provider/ProviderRegistry.ts";
 import * as SecretRequests from "../../secrets/SecretRequests.ts";
 import * as ScheduledTaskService from "../../scheduledTasks/ScheduledTaskService.ts";
 import * as ThreadLaunchService from "../../orchestration-v2/ThreadLaunchService.ts";
+import * as ThreadTabs from "../../threadTabs/ThreadTabs.ts";
 import * as McpHttpServer from "../McpHttpServer.ts";
 import * as McpInvocationContext from "../McpInvocationContext.ts";
 import * as McpToolAccessTestkit from "../McpToolAccess.testkit.ts";
@@ -59,6 +60,7 @@ const declaredFailure = (result: McpSchema.CallToolResult) => {
   const text = result.content[0];
   return result.isError === true && text?.type === "text" ? JSON.parse(text.text) : undefined;
 };
+import { IssueLinksToolkit } from "./issueLinks/tools.ts";
 import { PullRequestsToolkit } from "./pullRequests/tools.ts";
 import { HtmlToolkit } from "./html/tools.ts";
 import {
@@ -83,6 +85,7 @@ it("publishes unique tool names with reference-free object-root inputs", () => {
     PreviewControlsToolkit,
     DeviceToolkit,
     PullRequestsToolkit,
+    IssueLinksToolkit,
     HtmlToolkit,
   ]) {
     for (const tool of Object.values(toolkit.tools)) {
@@ -760,3 +763,66 @@ it.effect("only the caller that prepared a pending upload can discard it", () =>
     ),
   ),
 );
+
+it.effect("a thread's agent opens chat tabs as itself, within its spawn limit", () => {
+  const opened: Array<ThreadTabs.OpenThreadTabInput> = [];
+  let liveChildren = 5;
+  return Effect.gen(function* () {
+    const server = yield* McpServer.McpServer;
+    const open = (args: Record<string, unknown>) =>
+      server
+        .callTool({ name: "t3_thread_tab_open", arguments: args })
+        .pipe(
+          Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
+          Effect.provideService(McpSchema.McpServerClient, client),
+        );
+
+    const refused = yield* open({ message: "Review the diff" });
+    expect(declaredFailure(refused)).toMatchObject({ code: "capability_denied" });
+    expect(opened).toEqual([]);
+
+    liveChildren = 4;
+    const forked = yield* open({ fork: {}, message: "Review the diff" });
+    expect(forked.isError).toBe(false);
+    expect(opened[0]).toMatchObject({
+      fork: { sourceThreadId: threadId },
+      message: "Review the diff",
+      startedBy: { kind: "thread", threadId },
+    });
+    expect(forked.structuredContent).toMatchObject({ threadId: opened[0]?.threadId, runId: "run" });
+  }).pipe(
+    Effect.provide(
+      McpHttpServer.layerThreadToolkit.pipe(
+        Layer.provideMerge(McpServer.McpServer.layer),
+        Layer.provide(NodeCrypto.layer),
+        Layer.provide(
+          Layer.mock(ThreadTabs.ThreadTabs)({
+            open: (_threadId, input) => {
+              opened.push(input);
+              return Effect.succeed({
+                group: { groupId: threadId, tabs: [] },
+                runId: RunId.make("run"),
+              });
+            },
+          }),
+        ),
+        Layer.provide(
+          Layer.mock(ThreadManagement.ThreadManagementService)({
+            getThreadShell: (id) => Effect.succeed(McpToolAccessTestkit.liveThreadShell(id)),
+            getProjectThreadRecords: () =>
+              Effect.succeed({
+                thread: McpToolAccessTestkit.liveThreadShell(threadId),
+              } as never),
+            getShellSnapshot: () =>
+              Effect.succeed({
+                threads: Array.from({ length: liveChildren }, (_, index) => ({
+                  ...McpToolAccessTestkit.liveThreadShell(ThreadId.make(`child-${index}`)),
+                  startedBy: { kind: "thread" as const, threadId },
+                })),
+              } as never),
+          }),
+        ),
+      ),
+    ),
+  );
+});

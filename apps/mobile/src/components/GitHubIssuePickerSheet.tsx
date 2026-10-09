@@ -4,6 +4,7 @@ import type {
   GitHubIssueSummary,
   OrchestrationMessageContext,
   ProjectId,
+  ThreadId,
 } from "@t3tools/contracts";
 import {
   gitHubIssueContextRecord,
@@ -60,20 +61,41 @@ function gitHubIssueErrorMessage(error: unknown, fallback: string): string {
 }
 
 /**
- * Attach inserts the issue into a composer draft. `cwd` is the checkout whose repository lists
- * issues. With `startFrom` it starts a new thread from the issue: it first offers threads already
- * linked to it, and the thread the draft creates is linked once it sends.
+ * Attach inserts the issue into a composer draft; link links it to the thread's tab group. `cwd`
+ * is the checkout whose repository lists issues. An attach with `startFrom` starts a new thread
+ * from the issue: it first offers threads already linked to it, and the thread the draft creates
+ * is linked once it sends.
  */
-export interface GitHubIssuePickerTarget {
-  readonly environmentId: EnvironmentId;
-  readonly draftKey: string;
-  readonly cwd: string;
-  readonly startFrom?: { readonly projectId: ProjectId };
-}
+export type GitHubIssuePickerTarget =
+  | {
+      readonly mode?: "attach";
+      readonly environmentId: EnvironmentId;
+      readonly draftKey: string;
+      readonly cwd: string;
+      readonly startFrom?: { readonly projectId: ProjectId };
+    }
+  | {
+      readonly mode: "link";
+      readonly environmentId: EnvironmentId;
+      readonly threadId: ThreadId;
+      readonly cwd: string;
+    };
 
-type OpenedGitHubIssuePicker = GitHubIssuePickerTarget & {
-  readonly insertion: ComposerDraftInsertion;
-};
+type OpenedGitHubIssuePicker =
+  | {
+      readonly mode: "attach";
+      readonly environmentId: EnvironmentId;
+      readonly draftKey: string;
+      readonly cwd: string;
+      readonly startFrom?: { readonly projectId: ProjectId };
+      readonly insertion: ComposerDraftInsertion;
+    }
+  | {
+      readonly mode: "link";
+      readonly environmentId: EnvironmentId;
+      readonly threadId: ThreadId;
+      readonly cwd: string;
+    };
 
 /** Issues picked to start a draft's thread from, by draft key, until the draft sends. */
 const startFromIssueUrls = new Map<string, string>();
@@ -106,19 +128,29 @@ export function useGitHubIssuePicker(target: GitHubIssuePickerTarget | null): {
   const [opened, setOpened] = useState<OpenedGitHubIssuePicker | null>(null);
   return {
     open: () => {
-      if (target) {
-        setOpened({ ...target, insertion: captureComposerDraftInsertion(target.draftKey) });
-      }
+      if (!target) return;
+      setOpened(
+        target.mode === "link"
+          ? target
+          : {
+              ...target,
+              mode: "attach",
+              insertion: captureComposerDraftInsertion(target.draftKey),
+            },
+      );
     },
     sheet: opened ? <GitHubIssuePickerSheet {...opened} onClose={() => setOpened(null)} /> : null,
   };
 }
 
-/** Attaches a GitHub issue at the caret the composer had when the sheet opened. */
+/**
+ * Attaches a GitHub issue at the caret the composer had when the sheet opened, or links one to
+ * the thread's tab group.
+ */
 function GitHubIssuePickerSheet(props: OpenedGitHubIssuePicker & { readonly onClose: () => void }) {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
-  const { startFrom } = props;
+  const startFrom = props.mode === "attach" ? props.startFrom : undefined;
   const [query, setQuery] = useState("");
   const [state, setState] = useState<GitHubIssueStateFilter>("open");
   const trimmed = query.trim();
@@ -140,6 +172,10 @@ function GitHubIssuePickerSheet(props: OpenedGitHubIssuePicker & { readonly onCl
   );
   const getIssue = useAtomCommand(gitHubIssueEnvironment.getIssue, {
     label: "github issue fetch",
+    reportFailure: false,
+  });
+  const linkThread = useAtomCommand(gitHubIssueEnvironment.linkThread, {
+    label: "github issue thread link",
     reportFailure: false,
   });
   const [attaching, setAttaching] = useState<string | null>(null);
@@ -175,6 +211,21 @@ function GitHubIssuePickerSheet(props: OpenedGitHubIssuePicker & { readonly onCl
   const attach = async (issue: GitHubIssueSummary) => {
     setAttaching(issue.url);
     try {
+      if (props.mode === "link") {
+        const linked = await linkThread({
+          environmentId: props.environmentId,
+          input: { threadId: props.threadId, url: issue.url },
+        });
+        if (linked._tag === "Failure") {
+          Alert.alert(
+            "Could not link issue",
+            gitHubIssueErrorMessage(squashAtomCommandFailure(linked), "Try again."),
+          );
+          return;
+        }
+        props.onClose();
+        return;
+      }
       const fetched = await getIssue({
         environmentId: props.environmentId,
         input: { url: issue.url },
@@ -208,7 +259,16 @@ function GitHubIssuePickerSheet(props: OpenedGitHubIssuePicker & { readonly onCl
   };
 
   return (
-    <PickerSheet title={startFrom ? "Start from issue" : "GitHub issue"} onClose={props.onClose}>
+    <PickerSheet
+      title={
+        props.mode === "link"
+          ? "Link GitHub issue"
+          : startFrom
+            ? "Start from issue"
+            : "GitHub issue"
+      }
+      onClose={props.onClose}
+    >
       <View className="gap-3 px-4 pb-3">
         <AppTextInput
           accessibilityLabel="Search GitHub issues"

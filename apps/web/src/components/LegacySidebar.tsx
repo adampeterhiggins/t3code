@@ -95,6 +95,7 @@ import { isMacPlatform } from "../lib/utils";
 import { useSidebarPendingFileDropStore } from "../sidebarPendingFileDropStore";
 import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
 import {
+  readEnvironmentLinkIntegrations,
   readThreadShell,
   useProjects,
   useServerConfigs,
@@ -235,7 +236,11 @@ import {
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
 import { openTranscriptExportDialog } from "./TranscriptExportDialog";
 import { openImportConversationDialog } from "./ImportConversationDialog";
+import { isGitHubProject } from "@t3tools/client-runtime/state/github-issues";
+import { openGitHubIssuePicker } from "./chat/GitHubIssuePicker";
 import { openLinearIssuePicker } from "./chat/LinearIssuePicker";
+import { openNotionPagePicker } from "./chat/NotionPagePicker";
+import { openSlackMessagePicker } from "./chat/SlackMessagePicker";
 const SIDEBAR_SORT_LABELS: Record<SidebarProjectSortOrder, string> = {
   updated_at: "Last user message",
   created_at: "Created at",
@@ -2371,6 +2376,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         thread.environmentId,
         AuthOrchestrationOperateScope,
       );
+      const linkIntegrations = readEnvironmentLinkIntegrations(thread.environmentId);
       const clicked = await api.contextMenu.show(
         [
           ...(tabEnvironmentIds.has(thread.environmentId)
@@ -2395,6 +2401,27 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
           { id: "copy-thread-id", label: "Copy Thread ID" },
           { id: "export-transcript", label: "Export transcript…" },
           { id: "link-linear-issue", label: "Link Linear issue…" },
+          ...(isGitHubProject(threadProject)
+            ? [
+                {
+                  id: "link-github-issue",
+                  label: "Link GitHub issue…",
+                  disabled: !canOperateThread,
+                },
+              ]
+            : []),
+          ...(linkIntegrations.slack
+            ? [
+                {
+                  id: "link-slack-thread",
+                  label: "Link Slack thread…",
+                  disabled: !canOperateThread,
+                },
+              ]
+            : []),
+          ...(linkIntegrations.notion
+            ? [{ id: "link-notion-page", label: "Link Notion page…", disabled: !canOperateThread }]
+            : []),
           { id: "project-settings", label: "Project settings" },
           {
             id: "delete",
@@ -2496,6 +2523,18 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       }
       if (clicked === "link-linear-issue") {
         openLinearIssuePicker(threadRef, "link");
+        return;
+      }
+      if (clicked === "link-slack-thread") {
+        openSlackMessagePicker(threadRef, "link");
+        return;
+      }
+      if (clicked === "link-notion-page") {
+        openNotionPagePicker(threadRef, "link");
+        return;
+      }
+      if (clicked === "link-github-issue") {
+        openGitHubIssuePicker(threadRef, "link");
         return;
       }
       if (clicked !== "delete") return;

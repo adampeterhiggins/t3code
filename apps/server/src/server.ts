@@ -46,12 +46,16 @@ import * as ModelManifest from "./provider/ModelManifest.ts";
 import * as ResetCreditCoordinator from "./provider/resetCreditCoordinator.ts";
 import * as ProviderEventLoggers from "./provider/ProviderEventLoggers.ts";
 import * as LinearApi from "./linear/LinearApi.ts";
+import * as LinearAssignmentTriggers from "./linear/LinearAssignmentTriggers.ts";
 import * as LinearAuth from "./linear/LinearAuth.ts";
 import * as LinearThreadLinks from "./linear/LinearThreadLinks.ts";
 import * as NotionApi from "./notion/NotionApi.ts";
 import * as NotionAuth from "./notion/NotionAuth.ts";
+import * as NotionThreadLinks from "./notion/NotionThreadLinks.ts";
 import * as SlackApi from "./slack/SlackApi.ts";
 import * as SlackAuth from "./slack/SlackAuth.ts";
+import * as SlackMentionTrigger from "./slack/SlackMentionTrigger.ts";
+import * as SlackThreadLinks from "./slack/SlackThreadLinks.ts";
 import * as GitHubIssues from "./githubIssues/GitHubIssues.ts";
 import * as GitHubIssueThreadLinks from "./githubIssues/GitHubIssueThreadLinks.ts";
 import * as OpenCodeRuntime from "@t3tools/provider-opencode/server/OpenCodeRuntime";
@@ -69,6 +73,7 @@ import * as TextGeneration from "./textGeneration/TextGeneration.ts";
 import * as ProviderInstanceRegistryHydration from "./provider/ProviderInstanceRegistryHydration.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
 import * as AgentAccessMcpServer from "./mcp/AgentAccessMcpServer.ts";
+import * as McpContextLinks from "./mcp/McpContextLinks.ts";
 import * as McpHttpServer from "./mcp/McpHttpServer.ts";
 import * as McpSessionRegistry from "./mcp/McpSessionRegistry.ts";
 import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
@@ -391,6 +396,8 @@ const layerProjectCloneTracker = ProjectCloneTracker.layer.pipe(
 
 const layerContextRepositories = ContextRepositories.layer.pipe(
   Layer.provide(layerSourceControlRepositoryService),
+  // Removal refuses while a turn runs in the workspace.
+  Layer.provide(Layer.merge(ProjectionStoreV2.layer, ProjectStore.layer)),
   Layer.provide(GitVcsDriver.layer),
   Layer.provide(GitHubCli.layer),
 );
@@ -599,6 +606,13 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
     Layer.provide(layerPullRequestService),
     Layer.provide(ProjectionStoreV2.layer),
   ),
+  // Fork: Linear issues newly assigned to the connected account start threads.
+  Layer.effectDiscard(
+    Effect.gen(function* () {
+      const service = yield* LinearAssignmentTriggers.LinearAssignmentTriggers;
+      yield* service.start();
+    }),
+  ).pipe(Layer.provide(LinearAssignmentTriggers.layer), Layer.provide(layerGitWorkflow)),
   // Fork: a chat tab group settles, snoozes, and wakes as one sidebar row.
   Layer.effectDiscard(
     Effect.gen(function* () {
@@ -613,6 +627,8 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
       yield* service.start();
     }),
   ).pipe(Layer.provide(ThreadTabHidingReactor.layer)),
+  // Fork: starts a thread when the user is @mentioned in Slack (opt-in).
+  SlackMentionTrigger.layerStarted,
   // Subscribes to `account.rate-limits.updated` so usage bars track live
   // telemetry instead of waiting for the next status probe.
   ProviderUsageLimitsIngestion.layer,
@@ -636,8 +652,18 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
       Layer.provideMerge(LinearAuth.layer),
     ),
   ),
-  Layer.provideMerge(NotionApi.layer.pipe(Layer.provideMerge(NotionAuth.layer))),
-  Layer.provideMerge(SlackApi.layer.pipe(Layer.provideMerge(SlackAuth.layer))),
+  Layer.provideMerge(
+    NotionThreadLinks.layer.pipe(
+      Layer.provideMerge(NotionApi.layer),
+      Layer.provideMerge(NotionAuth.layer),
+    ),
+  ),
+  Layer.provideMerge(
+    SlackThreadLinks.layer.pipe(
+      Layer.provideMerge(SlackApi.layer),
+      Layer.provideMerge(SlackAuth.layer),
+    ),
+  ),
   Layer.provideMerge(
     GitHubIssueThreadLinks.layer.pipe(
       Layer.provideMerge(GitHubIssues.layer),
@@ -775,6 +801,9 @@ const layerMakeRoutes = Layer.mergeAll(
     ServerHttp.layerOtlpTracesProxyRoute,
     ServerHttp.layerAssetRoute,
     ServerHttp.layerAttachmentUploadRoute,
+    LinearAuth.layerCallbackRoute,
+    NotionAuth.layerCallbackRoute,
+    SlackAuth.layerCallbackRoute,
     DeviceHubProxy.layer,
     ServerBrowserStream.routeLayer,
     ServerHttp.layerStaticAndDevRoute,
@@ -799,6 +828,8 @@ const layerMakeRoutes = Layer.mergeAll(
   // Both transports consume the same service instance, so caches single-flight across clients
   // and mutations observed on WebSocket invalidate patches subsequently read over HTTP.
   Layer.provide(layerPullRequestService),
+  // Both MCP servers let agents attach integration links to the messages they send.
+  Layer.provide(McpContextLinks.layer),
   // The stream route and the WebSocket RPCs share one browser.
   Layer.provide(ServerBrowser.layer.pipe(Layer.provide(DesktopBrowserChannel.layer))),
   // Server browser tabs and HTML render previews install and run the same headless browser.

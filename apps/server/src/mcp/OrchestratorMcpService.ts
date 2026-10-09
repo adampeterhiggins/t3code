@@ -37,6 +37,11 @@ import {
   type OrchestratorMcpThreadDetail,
   type OrchestratorMcpThreadInterruptInput,
   type OrchestratorMcpThreadInterruptResult,
+  type OrchestratorMcpThreadUsageLimit,
+  type OrchestratorMcpThreadUsageLimitResumeInput,
+  type OrchestratorMcpThreadUsageLimitResumeResult,
+  type OrchestratorMcpThreadRollbackInput,
+  type OrchestratorMcpThreadRollbackResult,
   type OrchestratorMcpThreadListInput,
   type OrchestratorMcpThreadListItem,
   type OrchestratorMcpThreadListResult,
@@ -86,6 +91,7 @@ import { isSnoozed } from "../orchestration-v2/ThreadSettlementService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
+import type { AttachedContextLinks } from "./McpContextLinks.ts";
 import { assertMaySpawn, assertNotSelf } from "./spawnPolicy.ts";
 import {
   clientRuntimeModeCeiling,
@@ -174,9 +180,16 @@ export interface OrchestratorMcpServiceShape {
     scope: McpInvocationScope,
     input: OrchestratorMcpThreadReadInput,
   ) => Effect.Effect<OrchestratorMcpThreadReadResult, OrchestratorMcpFailure>;
+  /**
+   * `attachContext` resolves the message's `contextLinks` (see McpContextLinks). It runs only
+   * once the send is authorized, and not at all when a retry finds its message already sent.
+   */
   readonly sendToThread: (
     scope: McpInvocationScope,
     input: OrchestratorMcpThreadSendInput,
+    attachContext?: (
+      message: string,
+    ) => Effect.Effect<AttachedContextLinks, OrchestratorMcpFailure>,
   ) => Effect.Effect<OrchestratorMcpThreadSendResult, OrchestratorMcpFailure>;
   readonly waitForThread: (
     scope: McpInvocationScope,
@@ -186,6 +199,20 @@ export interface OrchestratorMcpServiceShape {
     scope: McpInvocationScope,
     input: OrchestratorMcpThreadInterruptInput,
   ) => Effect.Effect<OrchestratorMcpThreadInterruptResult, OrchestratorMcpFailure>;
+  /** Sends the usage-limit continuation into a thread stopped on a usage limit, like Resume now. */
+  readonly resumeUsageLimitedThread: (
+    scope: McpInvocationScope,
+    input: OrchestratorMcpThreadUsageLimitResumeInput,
+  ) => Effect.Effect<OrchestratorMcpThreadUsageLimitResumeResult, OrchestratorMcpFailure>;
+  /**
+   * Rolls another thread back to the checkpoint after one of its runs,
+   * discarding later runs and, unless `restoreFiles` is false, their file
+   * changes. Refuses the caller's own thread and a thread with a turn running.
+   */
+  readonly rollbackThread: (
+    scope: McpInvocationScope,
+    input: OrchestratorMcpThreadRollbackInput,
+  ) => Effect.Effect<OrchestratorMcpThreadRollbackResult, OrchestratorMcpFailure>;
 }
 
 export class OrchestratorMcpService extends Context.Service<
@@ -635,6 +662,20 @@ function threadSnooze(
   };
 }
 
+/** The same stalled state the recovery banner shows: the latest run failed on a usage limit. */
+function threadUsageLimit(
+  shell: Pick<
+    OrchestrationV2ThreadShell,
+    "status" | "lastErrorClass" | "latestRunId" | "usageLimitResetAt"
+  >,
+): OrchestratorMcpThreadUsageLimit | null {
+  return shell.status === "failed" &&
+    shell.lastErrorClass === "usage_limit" &&
+    shell.latestRunId !== null
+    ? { runId: shell.latestRunId, resetAt: shell.usageLimitResetAt ?? null }
+    : null;
+}
+
 function listItemFromShell(
   shell: OrchestrationV2ThreadShell,
   nowMs: number,
@@ -691,6 +732,8 @@ function threadDetail(
             requestId: projection.thread.titleRegeneration.requestId,
             startedAt: DateTime.formatIso(projection.thread.titleRegeneration.startedAt),
           },
+    rollbackRequestId: projection.thread.rollbackRequestId ?? null,
+    rollbackFailure: projection.thread.rollbackFailure ?? null,
     branch: projection.thread.branch,
     worktreePath: projection.thread.worktreePath,
     parentThreadId: projection.thread.lineage.parentThreadId,
@@ -704,6 +747,7 @@ function threadDetail(
     ...threadSettlement(projection.thread),
     // From the shell, like the list, so read and list agree on snooze state.
     ...threadSnooze(shell, nowMs),
+    usageLimit: threadUsageLimit(shell),
     createdAt: DateTime.formatIso(projection.thread.createdAt),
     updatedAt: DateTime.formatIso(projection.thread.updatedAt),
   };
@@ -2428,7 +2472,7 @@ const make = Effect.gen(function* () {
           hasMore: timeline.hasMore,
         } satisfies OrchestratorMcpThreadReadResult;
       }),
-    sendToThread: (scope, input) =>
+    sendToThread: (scope, input, attachContext) =>
       Effect.gen(function* () {
         yield* assertNotSelf(scope.thread?.threadId, input.threadId);
         const { parent, limits, target } = yield* loadScopedThread(scope, input.threadId);
@@ -2443,6 +2487,25 @@ const make = Effect.gen(function* () {
           requestKey: key,
           operation: "thread-send",
         });
+        // A retried send whose message already landed replays its receipt, so skip reading
+        // the integrations and cloning repositories again.
+        const alreadySent =
+          attachContext !== undefined &&
+          (yield* threadManagement
+            .getThreadRecords(input.threadId, ["messages"], { messageIds: [messageId] })
+            .pipe(Effect.mapError(threadManagementFailure))).messages.length > 0;
+        const attached =
+          attachContext === undefined || alreadySent
+            ? { text: input.message, context: undefined }
+            : yield* attachContext(input.message);
+        // Attached repositories are cloned before the message lands, as for a composer send.
+        const preparedContext =
+          attached.context === undefined
+            ? undefined
+            : yield* threadLaunch.prepareMessageWorkspace({
+                threadId: input.threadId,
+                context: attached.context,
+              });
         const result = yield* threadManagement
           .sendToThread({
             projectId: target.thread.projectId,
@@ -2454,7 +2517,8 @@ const make = Effect.gen(function* () {
             threadId: input.threadId,
             ...(parent === undefined ? {} : { senderThreadId: parent.thread.id }),
             messageId,
-            text: input.message,
+            text: attached.text,
+            ...(preparedContext === undefined ? {} : { context: preparedContext }),
             attachments: [],
             mode,
             createdBy: "agent",
@@ -2494,11 +2558,19 @@ const make = Effect.gen(function* () {
             ),
           })
           .pipe(Effect.mapError(threadManagementFailure));
+        const shell =
+          result.run?.status === "failed"
+            ? yield* threadManagement
+                .getThreadShell(input.threadId)
+                .pipe(Effect.mapError(threadManagementFailure))
+            : null;
+        const usageLimit = shell === null ? null : threadUsageLimit(shell);
         return {
           threadId: input.threadId,
           runId: result.run?.id ?? null,
           status: result.run?.status ?? "idle",
           timedOut: result.timedOut,
+          usageLimit: usageLimit?.runId === result.run?.id ? usageLimit : null,
         } satisfies OrchestratorMcpThreadWaitResult;
       }),
     interruptThread: (scope, input) =>
@@ -2544,6 +2616,145 @@ const make = Effect.gen(function* () {
           runId: result.run.id,
           status: result.type === "already_terminal" ? result.run.status : "interrupt_requested",
         } satisfies OrchestratorMcpThreadInterruptResult;
+      }),
+    resumeUsageLimitedThread: (scope, input) =>
+      Effect.gen(function* () {
+        yield* assertNotSelf(scope.thread?.threadId, input.threadId);
+        const { parent, limits, target } = yield* loadScopedThread(scope, input.threadId);
+        yield* assertLiveCallerForOtherThread(scope, parent, target);
+        // Resuming starts a turn in the target, so it must run within the caller's modes.
+        yield* resolveRuntimeMode(limits.runtimeMode, target.thread.runtimeMode);
+        yield* resolveInteractionMode(limits.interactionMode, target.thread.interactionMode);
+        const key = yield* requestKey(input.clientRequestId);
+        const commandId = stableCommandId({
+          scope,
+          requestKey: key,
+          operation: "thread-usage-limit-resume",
+        });
+        // The orchestrator names the continuation after the command, so a retry finds it.
+        const messageId = MessageId.make(`limit-resume-now:${commandId}`);
+        const findContinuation = threadManagement
+          .getThreadRecords(input.threadId, ["messages", "runs"], { messageIds: [messageId] })
+          .pipe(
+            Effect.mapError(threadManagementFailure),
+            Effect.map((records) => {
+              const message = records.messages.find((candidate) => candidate.id === messageId);
+              return message?.runId == null
+                ? undefined
+                : records.runs.find((candidate) => candidate.id === message.runId);
+            }),
+          );
+        const resultFor = (
+          run: OrchestrationV2Run,
+        ): OrchestratorMcpThreadUsageLimitResumeResult => ({
+          threadId: input.threadId,
+          messageId,
+          runId: run.id,
+          status: run.status,
+        });
+        const existing = yield* findContinuation;
+        if (existing !== undefined) return resultFor(existing);
+        const shell = yield* threadManagement
+          .getThreadShell(input.threadId)
+          .pipe(Effect.mapError(threadManagementFailure));
+        const stalled = shell === null ? null : threadUsageLimit(shell);
+        if (stalled === null || (input.runId !== undefined && input.runId !== stalled.runId)) {
+          return yield* failure(
+            "thread_not_usage_limited",
+            `Thread ${input.threadId} is not stopped on a usage limit${input.runId === undefined ? "" : ` at run ${input.runId}`}.`,
+          );
+        }
+        yield* threadManagement
+          .dispatch({
+            type: "thread.usage-limit.resume-now",
+            commandId,
+            threadId: input.threadId,
+            runId: stalled.runId,
+            createdBy: "agent",
+            creationSource: "mcp",
+          })
+          .pipe(
+            Effect.mapError((error) =>
+              failure(
+                "orchestration_error",
+                `Unable to resume thread ${input.threadId}: ${errorMessage(error)}`,
+              ),
+            ),
+          );
+        const continuation = yield* findContinuation;
+        if (continuation === undefined) {
+          return yield* failure(
+            "orchestration_error",
+            `Thread ${input.threadId} accepted the resume but its continuation run was not found.`,
+          );
+        }
+        return resultFor(continuation);
+      }),
+    rollbackThread: (scope, input) =>
+      Effect.gen(function* () {
+        // Its own thread would have the files and history of its running turn rewritten.
+        yield* assertNotSelf(scope.thread?.threadId, input.threadId);
+        const { parent, limits, target } = yield* loadScopedThread(scope, input.threadId);
+        yield* assertLiveCallerForOtherThread(scope, parent, target);
+        yield* resolveRuntimeMode(limits.runtimeMode, target.thread.runtimeMode);
+        yield* resolveInteractionMode(limits.interactionMode, target.thread.interactionMode);
+        if (ThreadManagementService.latestActiveRun(target) !== undefined) {
+          return yield* failure(
+            "invalid_request",
+            `Thread ${input.threadId} has a turn running. Interrupt it, or wait for it to finish, before rolling back.`,
+          );
+        }
+        const { checkpoints } = yield* threadManagement
+          .getProjectThreadRecords(
+            { projectId: target.thread.projectId, threadId: input.threadId },
+            ["checkpoints"],
+          )
+          .pipe(Effect.mapError(threadManagementFailure));
+        // The same checkpoint the app's revert picks for a turn count.
+        const checkpoint = checkpoints.findLast((candidate) =>
+          input.runOrdinal === 0
+            ? candidate.ordinalWithinScope === 0 && candidate.appRunOrdinal === null
+            : candidate.appRunOrdinal === input.runOrdinal,
+        );
+        if (checkpoint === undefined || checkpoint.status !== "ready") {
+          return yield* failure(
+            "invalid_request",
+            `Thread ${input.threadId} has no restorable checkpoint after run ${input.runOrdinal}.`,
+          );
+        }
+        const restoreFiles = input.restoreFiles ?? true;
+        const key = yield* requestKey(input.clientRequestId);
+        const commandId = stableCommandId({ scope, requestKey: key, operation: "thread-rollback" });
+        yield* threadManagement
+          .dispatch({
+            type: "checkpoint.rollback",
+            commandId,
+            threadId: input.threadId,
+            scopeId: checkpoint.scopeId,
+            checkpointId: checkpoint.id,
+            restoreFiles,
+          })
+          .pipe(
+            // The decider's refusals (shared workspace, unsupported provider) are worth showing.
+            Effect.mapError((error) =>
+              failure(
+                "orchestration_error",
+                `Unable to roll back thread ${input.threadId}: ${
+                  "cause" in error && typeof error.cause === "string"
+                    ? error.cause
+                    : errorMessage(error)
+                }`,
+              ),
+            ),
+          );
+        return {
+          status: "rollback_requested",
+          commandId,
+          threadId: input.threadId,
+          runOrdinal: input.runOrdinal,
+          checkpointId: checkpoint.id,
+          restoreFiles,
+        } satisfies OrchestratorMcpThreadRollbackResult;
       }),
   });
 });

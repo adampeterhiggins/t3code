@@ -7,6 +7,7 @@ import {
   OrchestratorMcpFailure,
   type OrchestrationV2Command,
 } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import { modelSelectionCommandType } from "@t3tools/shared/model";
 
@@ -23,6 +24,7 @@ import * as ThreadTabs from "../../../threadTabs/ThreadTabs.ts";
 import * as ThreadSearch from "../../../orchestration-v2/ThreadSearch.ts";
 import * as ScheduledTasks from "../../../scheduledTasks/ScheduledTaskService.ts";
 import { queuedRunsInDeliveryOrder } from "../../../orchestration-v2/QueuedRunOrder.ts";
+import { assertMaySpawn } from "../../spawnPolicy.ts";
 import { ThreadToolkit } from "./tools.ts";
 
 function queueEntry(
@@ -77,20 +79,78 @@ const writesThread = <P extends { readonly threadId?: ThreadId | undefined }, A,
   handle: (params: P) => Effect.Effect<A, E, R>,
 ) => McpToolAccess.writesThreads((params: P) => [params.threadId], handle);
 
+/** Chat tabs are fork-owned and served only where their service is provided. */
+const threadTabs = Effect.serviceOption(ThreadTabs.ThreadTabs).pipe(
+  Effect.flatMap((tabs) =>
+    Option.isNone(tabs)
+      ? Effect.fail(
+          new OrchestratorMcpFailure({
+            code: "capability_denied",
+            message: "Chat-tab groups are unavailable.",
+          }),
+        )
+      : Effect.succeed(tabs.value),
+  ),
+);
+
+/** The service's own refusals are for the agent to read; anything else stays opaque. */
+const tabsFailure = (error: ThreadTabs.ThreadTabsError) =>
+  error.reason === "thread_not_found" || error.reason === "invalid_request"
+    ? new OrchestratorMcpFailure({ code: error.reason, message: error.detail })
+    : unavailable();
+
 export const layer = McpToolAccess.toLayer(ThreadToolkit, {
   t3_thread_group_name: writesThread((input) =>
     Effect.gen(function* () {
       const { projection } = yield* readThread(input.threadId);
-      const tabs = yield* Effect.serviceOption(ThreadTabs.ThreadTabs);
-      if (Option.isNone(tabs))
-        return yield* new OrchestratorMcpFailure({
-          code: "capability_denied",
-          message: "Chat-tab groups are unavailable.",
-        });
-      return yield* tabs.value
+      const tabs = yield* threadTabs;
+      return yield* tabs
         .setName(projection.thread.id, input.name)
         .pipe(Effect.mapError(unavailable));
     }),
+  ),
+  t3_thread_tabs: McpToolAccess.reads((input) =>
+    Effect.gen(function* () {
+      const { projection } = yield* readThread(input.threadId);
+      const tabs = yield* threadTabs;
+      return yield* tabs.group(projection.thread.id).pipe(Effect.mapError(tabsFailure));
+    }),
+  ),
+  // The new tab inherits its group's modes, or its fork source's, so both must sit within the
+  // caller's limits; the orchestrator checks the fork source again when it copies them.
+  t3_thread_tab_open: McpToolAccess.writesThreads(
+    (input) => [input.threadId, input.fork?.sourceThreadId],
+    (input) =>
+      Effect.gen(function* () {
+        const { threads, projection, caller, scope } = yield* readThread(input.threadId);
+        const tabs = yield* threadTabs;
+        // A tab is a new thread, so a thread's agent opens one under the same limits as a launch.
+        if (caller !== undefined) yield* assertMaySpawn(threads, caller.id, 1);
+        const threadId = ThreadId.make(yield* newCommandId());
+        const opened = yield* tabs
+          .open(projection.thread.id, {
+            threadId,
+            modelSelection: input.modelSelection,
+            ...(input.fork === undefined
+              ? {}
+              : {
+                  fork: {
+                    sourceThreadId: input.fork.sourceThreadId ?? projection.thread.id,
+                    runId: input.fork.runId,
+                  },
+                }),
+            title: input.title,
+            message: input.message,
+            startedBy:
+              caller !== undefined
+                ? { kind: "thread", threadId: caller.id }
+                : scope.client !== undefined
+                  ? { kind: "agent-access", label: scope.client.label }
+                  : undefined,
+          })
+          .pipe(Effect.mapError(tabsFailure));
+        return { threadId, ...opened };
+      }),
   ),
   run_scheduled_task_now: McpToolAccess.writesEnvironment((input) =>
     Effect.gen(function* () {
@@ -329,6 +389,14 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
         case "unsnooze":
         case "unsettle":
           command = { ...common, type: `thread.${input.action}`, reason: "user" };
+          break;
+        case "mark_read":
+          // Like opening the thread in the app: everything up to its latest update is seen.
+          command = {
+            ...common,
+            type: "thread.visit",
+            visitedAt: DateTime.formatIso(projection.thread.updatedAt),
+          };
           break;
         case "mark_unread":
           command = { ...common, type: "thread.mark-unread" };

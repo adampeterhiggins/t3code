@@ -9,7 +9,10 @@ import { runMigrations } from "./Migrations.ts";
 import { initializeV2Database } from "./initializeV2Database.ts";
 import { ensureThreadTabsSchema } from "../threadTabs/schema.ts";
 import { ensureLinearThreadLinksSchema } from "../linear/threadLinksSchema.ts";
+import { ensureLinearAssignmentTriggerSchema } from "../linear/assignmentTriggerSchema.ts";
 import { ensureGitHubIssueThreadLinksSchema } from "../githubIssues/threadLinksSchema.ts";
+import { ensureNotionThreadLinksSchema } from "../notion/threadLinksSchema.ts";
+import { ensureSlackThreadLinksSchema } from "../slack/threadLinksSchema.ts";
 import * as ServerConfig from "../config.ts";
 
 // Size the -wal file is cut back to on the first commit after a WAL reset.
@@ -29,7 +32,10 @@ const layerSetup = Layer.effectDiscard(
     // Fork tables live outside the upstream ledger; thread tabs creates fork_schema_migrations.
     yield* ensureThreadTabsSchema();
     yield* ensureLinearThreadLinksSchema();
+    yield* ensureLinearAssignmentTriggerSchema();
     yield* ensureGitHubIssueThreadLinksSchema();
+    yield* ensureSlackThreadLinksSchema();
+    yield* ensureNotionThreadLinksSchema();
   }),
 );
 

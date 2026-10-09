@@ -11,6 +11,16 @@ export const NOTIFICATION_MODE_LABELS = {
   "notifications-and-sound": "Notifications with sound",
 } satisfies Record<NotificationMode, string>;
 
+/** In urgency order, the order the settings menu lists them. */
+export const NOTIFICATION_EVENT_LABELS = {
+  approval: "Approval needed",
+  input: "Question or input needed",
+  failed: "Turn failed",
+  limited: "Usage limit reached",
+  completed: "Turn finished",
+  "pull-request": "Pull request checks failed, changes requested, or conflict",
+} satisfies Record<ClientSettings["mutedNotificationEvents"][number], string>;
+
 export function hasNotificationSound(mode: NotificationMode) {
   return mode === "sound" || mode === "notifications-and-sound";
 }

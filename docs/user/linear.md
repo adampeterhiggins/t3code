@@ -21,6 +21,12 @@ your phone, that page won't load. Copy its full URL from the address bar and pas
 
 Sign-in needs port 47831 free on the server machine while you approve.
 
+## Approve from another device
+
+The server can receive approval directly from a browser on another device when it has a stable HTTPS address reachable from that device. Register `https://YOUR-SERVER/oauth/linear/callback` on your Linear OAuth app, set `T3CODE_LINEAR_REDIRECT_URI` to that exact URL on the server, and restart it. Use your own registered client ID through `T3CODE_LINEAR_CLIENT_ID`; the built-in client does not register arbitrary server addresses. The browser must reach this callback on the environment itself, without a proxy login prompt; a client-only URL such as app.t3.codes or a relay address that does not forward the callback will not work. T3 Code does not register URLs or create a tunnel automatically.
+
+Without this setting, approval uses the existing local callback. If that page cannot load on another device, copy its full address back into the sign-in settings.
+
 ## Attach an issue
 
 Attach a Linear issue to a message so the agent gets its details without you pasting them in:
@@ -55,6 +61,8 @@ is for and find that work again later. A thread links one issue at a time.
 - Starting a new thread from an issue with the composer's **⋯** picker links that issue too.
 - On mobile, tap **Link issue** beside the tab switcher, or choose **Link Linear issue** from the
   tab menu.
+- Agents can link or unlink the issue for their thread themselves, for example when you ask them
+  to pick up `ENG-123`.
 
 The chat header (on mobile, the tab switcher) then shows the issue's identifier and its current
 Linear status. Click or tap it to open the issue, change it, or unlink it. The status is read
@@ -62,6 +70,32 @@ from Linear, so it can lag for up to a minute after a change there.
 
 When you start a thread from an issue that another thread is already linked to, the picker marks
 it **In use** and asks whether to open that thread or start a new one.
+
+## Start threads when issues are assigned to you
+
+T3 Code can start a thread on its own when a Linear issue is newly assigned to you. It's off until
+you add a rule.
+
+1. Open **Settings > Integrations > Linear** and click **Add rule** under **Start threads from
+   assignments**.
+2. Pick the project the work belongs in and the model to run it with. Optionally narrow the rule
+   to one Linear team or one label, and write the prompt the thread starts with.
+3. Click **Save**.
+
+Each matching issue starts one thread in a new worktree, with the issue attached to the first
+message and linked to the thread. The server checks Linear every 2 minutes, so a thread can take
+that long to appear. The server has to be running; assignments made while it's off are picked up
+when it starts again.
+
+Issues already assigned to you when you add a rule never start threads, and neither do issues
+already assigned when you change a rule's team or label, switch Linear accounts, or turn the
+last rule off and on again. An issue starts at most one thread, even if several rules match or you
+unassign and reassign it. An issue assigned without the rule's label starts a thread once it gets
+the label. Completed and canceled issues are skipped.
+
+Adding or changing rules needs permission to run tasks on the server, like scheduled tasks. On
+mobile, **Settings > Linear** lists each server's rules so you can remove them; add and edit rules
+from desktop or web.
 
 ## Open issues in the Linear app
 

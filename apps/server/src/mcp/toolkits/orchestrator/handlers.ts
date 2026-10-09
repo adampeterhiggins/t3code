@@ -1,6 +1,7 @@
 import { OrchestratorToolkit } from "./tools.ts";
 import * as Effect from "effect/Effect";
 
+import * as McpContextLinks from "../../McpContextLinks.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import * as OrchestratorMcpService from "../../OrchestratorMcpService.ts";
@@ -111,8 +112,15 @@ const handlers = {
     (input) =>
       Effect.gen(function* () {
         const scope = yield* McpInvocationContext.McpInvocationContext;
+        const contextLinks = yield* McpContextLinks.McpContextLinks;
         const service = yield* OrchestratorMcpService.OrchestratorMcpService;
-        return yield* service.sendToThread(scope, input);
+        return yield* service.sendToThread(
+          scope,
+          input,
+          input.contextLinks === undefined || input.contextLinks.length === 0
+            ? undefined
+            : (message) => contextLinks.attach({ text: message, links: input.contextLinks }),
+        );
       }),
   ),
   t3_thread_wait: McpToolAccess.reads((input) =>
@@ -129,6 +137,24 @@ const handlers = {
         const scope = yield* McpInvocationContext.McpInvocationContext;
         const service = yield* OrchestratorMcpService.OrchestratorMcpService;
         return yield* service.interruptThread(scope, input);
+      }),
+  ),
+  t3_thread_usage_limit_resume: McpToolAccess.writesThreads(
+    (input) => [input.threadId],
+    (input) =>
+      Effect.gen(function* () {
+        const scope = yield* McpInvocationContext.McpInvocationContext;
+        const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+        return yield* service.resumeUsageLimitedThread(scope, input);
+      }),
+  ),
+  t3_thread_rollback: McpToolAccess.writesThreads(
+    (input) => [input.threadId],
+    (input) =>
+      Effect.gen(function* () {
+        const scope = yield* McpInvocationContext.McpInvocationContext;
+        const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+        return yield* service.rollbackThread(scope, input);
       }),
   ),
 } satisfies McpToolAccess.Handlers<typeof OrchestratorToolkit.tools>;

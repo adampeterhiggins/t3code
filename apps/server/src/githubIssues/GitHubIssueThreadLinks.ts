@@ -61,7 +61,17 @@ export class GitHubIssueThreadLinks extends Context.Service<
     readonly link: (
       input: GitHubLinkThreadInput,
     ) => Effect.Effect<GitHubIssueThreadLink, GitHubIssueError>;
-    readonly unlink: (input: GitHubUnlinkThreadInput) => Effect.Effect<void, GitHubIssueError>;
+    /** Links the issue and reports the URL of the different issue it replaced, if any. */
+    readonly linkWithReplacement: (
+      input: GitHubLinkThreadInput,
+    ) => Effect.Effect<
+      { readonly link: GitHubIssueThreadLink; readonly replacedUrl: string | null },
+      GitHubIssueError
+    >;
+    /** Removes the thread's link; succeeds with whether there was one. */
+    readonly unlink: (input: GitHubUnlinkThreadInput) => Effect.Effect<boolean, GitHubIssueError>;
+    /** The link covering `threadId`, directly or through its tab group. */
+    readonly forThread: (threadId: ThreadId) => Effect.Effect<GitHubIssueThreadLink | undefined>;
     /** Re-reads group membership after a tab joins a group. */
     readonly refresh: Effect.Effect<void>;
   }
@@ -93,10 +103,13 @@ export const make = Effect.gen(function* () {
       SELECT group_id AS "groupId" FROM fork_thread_tabs WHERE thread_id = ${threadId}
     `.pipe(Effect.map((rows) => rows[0]?.groupId ?? threadId));
 
-  const link = Effect.fn("github_issues.link_thread")(function* (input: GitHubLinkThreadInput) {
+  const linkWithReplacement = Effect.fn("github_issues.link_thread")(function* (
+    input: GitHubLinkThreadInput,
+  ) {
     // Validates the issue and copies what identifies it; the state stays live.
     const issue = yield* issues.getIssueSummary({ url: input.url });
     const groupId = yield* groupIdFor(input.threadId).pipe(Effect.mapError(storageError));
+    const previous = (yield* SubscriptionRef.get(state)).find((entry) => entry.groupId === groupId);
     const linkedAt = DateTime.formatIso(yield* DateTime.now);
     yield* sql`
       INSERT INTO fork_github_issue_thread_links (group_id, repository, number, title, url, linked_at)
@@ -109,23 +122,42 @@ export const make = Effect.gen(function* () {
     const links = yield* SubscriptionRef.get(state);
     const linked = links.find((entry) => entry.groupId === groupId);
     if (linked === undefined) return yield* storageError("The link was not saved");
-    return linked;
+    return {
+      link: linked,
+      replacedUrl:
+        previous !== undefined &&
+        (previous.repository !== linked.repository || previous.number !== linked.number)
+          ? previous.url
+          : null,
+    };
   });
+
+  const link = (input: GitHubLinkThreadInput) =>
+    linkWithReplacement(input).pipe(Effect.map((result) => result.link));
 
   const unlink = Effect.fn("github_issues.unlink_thread")(function* (
     input: GitHubUnlinkThreadInput,
   ) {
     const groupId = yield* groupIdFor(input.threadId).pipe(Effect.mapError(storageError));
+    const wasLinked = (yield* SubscriptionRef.get(state)).some(
+      (entry) => entry.groupId === groupId,
+    );
     yield* sql`DELETE FROM fork_github_issue_thread_links WHERE group_id = ${groupId}`.pipe(
       Effect.mapError(storageError),
     );
     yield* refresh;
+    return wasLinked;
   });
 
   return GitHubIssueThreadLinks.of({
     links: SubscriptionRef.changes(state),
     link,
+    linkWithReplacement,
     unlink,
+    forThread: (threadId) =>
+      SubscriptionRef.get(state).pipe(
+        Effect.map((links) => links.find((entry) => entry.threadIds.includes(threadId))),
+      ),
     refresh,
   });
 });
