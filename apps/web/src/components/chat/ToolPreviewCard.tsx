@@ -2,6 +2,7 @@ import { ThreadId, type EnvironmentId } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type {
   PullRequestToolPreview,
+  RecordsToolPreview,
   ToolPreview,
 } from "@t3tools/client-runtime/work-log/tool-preview";
 import { ExternalLinkIcon } from "lucide-react";
@@ -22,6 +23,8 @@ import { ShellCommandBlock } from "./ShellCommandBlock";
 
 // A search can return dozens of messages; the card is a glance, the raw call has the rest.
 const MAX_SLACK_MESSAGES = 5;
+const MAX_RECORDS = 8;
+const MAX_TABLE_ROWS = 10;
 
 const monoClassName =
   "font-mono text-(length:--font-size-code,var(--text-2xs)) leading-relaxed whitespace-pre-wrap break-words select-text";
@@ -155,6 +158,192 @@ function ThreadName(props: {
       {shell?.title ?? "Open thread"}
     </button>
   );
+}
+
+type GenericPreview = Extract<
+  ToolPreview,
+  { readonly kind: "records" | "table" | "document" | "properties" }
+>;
+
+/** The query, link out and notes above a generic card. */
+function GenericHeader({ preview }: { readonly preview: GenericPreview }) {
+  if (!preview.summary && !preview.link && preview.notes.length === 0) return null;
+  return (
+    <div className="space-y-0.5">
+      {preview.summary ? (
+        <p className="line-clamp-2 font-mono text-2xs break-all text-muted-foreground">
+          {preview.summary}
+        </p>
+      ) : null}
+      {preview.notes.map((note) => (
+        <p key={note} className="line-clamp-2 text-muted-foreground">
+          {note}
+        </p>
+      ))}
+      {preview.link ? (
+        <div className="text-muted-foreground">
+          <ExternalLink href={preview.link.url}>{preview.link.label}</ExternalLink>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function TitleLink(props: { readonly title: string; readonly url: string | null }) {
+  return props.url ? (
+    <ExternalLink href={props.url}>{props.title}</ExternalLink>
+  ) : (
+    <span className="min-w-0 truncate">{props.title}</span>
+  );
+}
+
+function RecordsView(props: {
+  readonly preview: RecordsToolPreview;
+  readonly environmentId: EnvironmentId;
+  readonly onOpenThread: (threadId: ThreadId) => void;
+}) {
+  const { preview } = props;
+  const hidden = Math.max(0, preview.items.length - MAX_RECORDS) + preview.more;
+  if (preview.items.length === 0)
+    return <p className="text-muted-foreground italic">No results.</p>;
+  return (
+    <ul className="space-y-1.5">
+      {preview.items.slice(0, MAX_RECORDS).map((item) => {
+        const threadId = item.url ? null : item.threadId;
+        return (
+          <li key={item.key} className="min-w-0">
+            <div className="flex min-w-0 items-center gap-1.5 font-medium text-foreground">
+              {threadId ? (
+                <button
+                  type="button"
+                  className="min-w-0 truncate text-left hover:underline"
+                  onClick={() => props.onOpenThread(ThreadId.make(threadId))}
+                >
+                  {item.title}
+                </button>
+              ) : (
+                <TitleLink title={item.title} url={item.url} />
+              )}
+              {item.subtitle ? (
+                <span className="ml-auto">
+                  <StatusBadge status={item.subtitle} />
+                </span>
+              ) : null}
+            </div>
+            {item.meta.length > 0 ? (
+              <p className="truncate text-muted-foreground">{item.meta.join(" · ")}</p>
+            ) : null}
+            {item.body ? (
+              <p className="line-clamp-3 break-words whitespace-pre-wrap text-foreground/85">
+                {item.body}
+              </p>
+            ) : null}
+          </li>
+        );
+      })}
+      {hidden > 0 ? <li className="text-muted-foreground">+{hidden} more</li> : null}
+    </ul>
+  );
+}
+
+function GenericBody(props: {
+  readonly preview: GenericPreview;
+  readonly environmentId: EnvironmentId;
+  readonly cwd: string | undefined;
+  readonly onOpenThread: (threadId: ThreadId) => void;
+}) {
+  const { preview } = props;
+  switch (preview.kind) {
+    case "records":
+      return (
+        <RecordsView
+          preview={preview}
+          environmentId={props.environmentId}
+          onOpenThread={props.onOpenThread}
+        />
+      );
+    case "table": {
+      const hidden = Math.max(0, preview.rows.length - MAX_TABLE_ROWS) + preview.more;
+      return preview.rows.length === 0 ? (
+        <p className="text-muted-foreground italic">No rows.</p>
+      ) : (
+        <div className="max-h-72 overflow-auto">
+          <table className="w-full border-collapse font-mono text-2xs">
+            <thead>
+              <tr>
+                {preview.columns.map((column) => (
+                  <th
+                    key={column}
+                    className="border-b border-border px-1.5 py-1 text-left font-medium text-muted-foreground"
+                  >
+                    {column}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {preview.rows.slice(0, MAX_TABLE_ROWS).map((row, rowIndex) => (
+                // Rows have no identity of their own and never reorder.
+                // oxlint-disable-next-line react/no-array-index-key
+                <tr key={rowIndex}>
+                  {preview.columns.map((column, cellIndex) => (
+                    <td
+                      key={column}
+                      className="max-w-48 truncate border-b border-border/40 px-1.5 py-0.5 text-foreground/85"
+                    >
+                      {row[cellIndex]}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {hidden > 0 ? <p className="mt-1 text-muted-foreground">+{hidden} more rows</p> : null}
+        </div>
+      );
+    }
+    case "document":
+      return (
+        <>
+          {preview.title ? (
+            <p className="font-medium text-foreground">
+              <TitleLink title={preview.title} url={preview.url} />
+            </p>
+          ) : preview.url ? (
+            <ExternalLink href={preview.url}>Open</ExternalLink>
+          ) : null}
+          {preview.markdown ? (
+            preview.preformatted ? (
+              <pre className={cn("max-h-60 overflow-auto text-foreground/85", monoClassName)}>
+                {preview.markdown}
+              </pre>
+            ) : (
+              <div className="max-h-60 overflow-auto">
+                <ChatMarkdown text={preview.markdown} cwd={props.cwd} />
+              </div>
+            )
+          ) : null}
+        </>
+      );
+    case "properties":
+      return (
+        <>
+          {preview.title ? (
+            <p className="font-medium text-foreground">
+              <TitleLink title={preview.title} url={preview.url} />
+            </p>
+          ) : null}
+          <dl className="grid grid-cols-[minmax(0,auto)_minmax(0,1fr)] gap-x-3 gap-y-0.5">
+            {preview.rows.map(([key, value]) => (
+              <div key={key} className="contents">
+                <dt className="truncate text-muted-foreground">{key}</dt>
+                <dd className="line-clamp-3 break-words text-foreground/85">{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </>
+      );
+  }
 }
 
 function WakeTime({ at }: { readonly at: string }) {
@@ -507,6 +696,21 @@ function PreviewBody(props: {
             </li>
           ))}
         </ul>
+      );
+    case "records":
+    case "table":
+    case "document":
+    case "properties":
+      return (
+        <>
+          <GenericHeader preview={preview} />
+          <GenericBody
+            preview={preview}
+            environmentId={props.environmentId}
+            cwd={props.cwd}
+            onOpenThread={props.onOpenThread}
+          />
+        </>
       );
     case "html-page":
       return (

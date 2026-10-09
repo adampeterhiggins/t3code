@@ -8,6 +8,150 @@ import { tryOpenExternalUrl, type ExternalUrlTarget } from "../../lib/openExtern
 import { formatScheduledTaskInterval } from "../settings/scheduledTaskPresentation";
 
 const MAX_SLACK_MESSAGES = 5;
+const MAX_RECORDS = 8;
+const MAX_TABLE_ROWS = 10;
+
+type GenericPreview = Extract<
+  ToolPreview,
+  { readonly kind: "records" | "table" | "document" | "properties" }
+>;
+
+/** The query, link out and notes above a generic card. */
+function GenericHeader({ preview }: { readonly preview: GenericPreview }) {
+  return (
+    <>
+      {preview.summary ? (
+        <Text selectable numberOfLines={2} className="font-mono text-2xs text-foreground-muted">
+          {preview.summary}
+        </Text>
+      ) : null}
+      {preview.notes.map((note) => (
+        <Text key={note} numberOfLines={2} className="text-2xs text-foreground-muted">
+          {note}
+        </Text>
+      ))}
+      {preview.link ? (
+        <Link url={preview.link.url} target="markdown-link">
+          {preview.link.label}
+        </Link>
+      ) : null}
+    </>
+  );
+}
+
+function GenericBody(props: {
+  readonly preview: GenericPreview;
+  readonly onOpenThread: (threadId: string) => void;
+}) {
+  const { preview } = props;
+  switch (preview.kind) {
+    case "records": {
+      const hidden = Math.max(0, preview.items.length - MAX_RECORDS) + preview.more;
+      return preview.items.length === 0 ? (
+        <Muted>No results.</Muted>
+      ) : (
+        <>
+          {preview.items.slice(0, MAX_RECORDS).map((item) => {
+            const threadId = item.url ? null : item.threadId;
+            return (
+              <View key={item.key}>
+                {item.url ? (
+                  <Link url={item.url} target="markdown-link">
+                    {item.title}
+                  </Link>
+                ) : threadId ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => props.onOpenThread(threadId)}
+                  >
+                    <Title status={item.subtitle}>{item.title}</Title>
+                  </Pressable>
+                ) : (
+                  <Title status={item.subtitle}>{item.title}</Title>
+                )}
+                {item.meta.length > 0 ? <Muted>{item.meta.join(" · ")}</Muted> : null}
+                {item.body ? <Body lines={3}>{item.body}</Body> : null}
+              </View>
+            );
+          })}
+          {hidden > 0 ? <Muted>{`+${hidden} more`}</Muted> : null}
+        </>
+      );
+    }
+    case "table": {
+      const hidden = Math.max(0, preview.rows.length - MAX_TABLE_ROWS) + preview.more;
+      // Narrow screens read a table best as one line per row.
+      return preview.rows.length === 0 ? (
+        <Muted>No rows.</Muted>
+      ) : (
+        <>
+          <Text className="font-mono text-2xs text-foreground-muted">
+            {preview.columns.join(" · ")}
+          </Text>
+          {preview.rows.slice(0, MAX_TABLE_ROWS).map((row, index) => (
+            <Text
+              // Rows have no identity of their own and never reorder.
+              // oxlint-disable-next-line react/no-array-index-key
+              key={index}
+              selectable
+              numberOfLines={2}
+              className="font-mono text-2xs text-foreground"
+            >
+              {row.join(" · ")}
+            </Text>
+          ))}
+          {hidden > 0 ? <Muted>{`+${hidden} more rows`}</Muted> : null}
+        </>
+      );
+    }
+    case "document":
+      return (
+        <>
+          {preview.title ? (
+            preview.url ? (
+              <Link url={preview.url} target="markdown-link">
+                {preview.title}
+              </Link>
+            ) : (
+              <Title>{preview.title}</Title>
+            )
+          ) : null}
+          {preview.markdown ? (
+            <Text
+              selectable
+              numberOfLines={12}
+              className={cn(
+                "text-xs leading-normal text-foreground",
+                preview.preformatted && "font-mono text-2xs",
+              )}
+            >
+              {preview.markdown}
+            </Text>
+          ) : null}
+        </>
+      );
+    case "properties":
+      return (
+        <>
+          {preview.title ? (
+            preview.url ? (
+              <Link url={preview.url} target="markdown-link">
+                {preview.title}
+              </Link>
+            ) : (
+              <Title>{preview.title}</Title>
+            )
+          ) : null}
+          {preview.rows.map(([key, value]) => (
+            <Text key={key} selectable numberOfLines={3} className="text-xs text-foreground">
+              <Text className="text-foreground-muted">{`${key}  `}</Text>
+              {value}
+            </Text>
+          ))}
+        </>
+      );
+  }
+}
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
@@ -331,6 +475,16 @@ function PreviewBody(props: {
           ) : null}
           {preview.reason ? <Muted>{preview.reason}</Muted> : null}
           {preview.prompt ? <Body lines={4}>{preview.prompt}</Body> : null}
+        </>
+      );
+    case "records":
+    case "table":
+    case "document":
+    case "properties":
+      return (
+        <>
+          <GenericHeader preview={preview} />
+          <GenericBody preview={preview} onOpenThread={props.onOpenThread} />
         </>
       );
     case "html-page":

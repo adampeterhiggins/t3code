@@ -40,7 +40,10 @@ function textFromBlocks(value: unknown, depth: number): string | null {
     if (typeof resource.text === "string") return resource.text;
     if (typeof resource.uri === "string") return resource.uri;
   }
-  const keys = Object.keys(value).filter((key) => key !== "isError" && key !== "is_error");
+  // `_meta` is server metadata (Notion and Linear send it beside their content).
+  const keys = Object.keys(value).filter(
+    (key) => key !== "isError" && key !== "is_error" && key !== "_meta",
+  );
   // MCP results and provider tool results wrap their text in `content`.
   // `structuredContent` usually repeats it as data, so it only shows when the
   // text is empty.
@@ -80,6 +83,12 @@ export function toolCallArgs(input: unknown): unknown {
     return input.args;
   }
   return input;
+}
+
+/** A tool result's text blocks joined, or null when it carries no text. */
+export function toolResultText(output: unknown): string | null {
+  const text = textFromBlocks(output, 0);
+  return text?.trim() ? text : null;
 }
 
 /**

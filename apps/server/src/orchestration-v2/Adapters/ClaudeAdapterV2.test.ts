@@ -4726,6 +4726,89 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     ),
   );
 
+  it.effect("keeps an MCP result's content when its structured result is only metadata", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const harness = yield* makeWakeHarness;
+        const now = yield* DateTime.now;
+        const toolUseId = "toolu_01NotionFetch";
+
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now,
+            attemptId: RunAttemptId.make("attempt-claude-mcp-meta"),
+            text: "Fetch it.",
+            attachments: [],
+          }),
+        );
+        yield* Queue.offer(
+          harness.sdkMessages,
+          claudeSdkFrame({
+            type: "assistant",
+            message: {
+              model: "claude-sonnet-4-6",
+              id: "msg_mcp_meta",
+              type: "message",
+              role: "assistant",
+              content: [
+                {
+                  type: "tool_use",
+                  id: toolUseId,
+                  name: "mcp__notion__notion-fetch",
+                  input: { id: "page" },
+                },
+              ],
+            },
+            parent_tool_use_id: null,
+            uuid: "00000000-0000-4000-8000-0000000007a0",
+            session_id: WAKE_NATIVE_SESSION,
+          }),
+        );
+        yield* Queue.offer(
+          harness.sdkMessages,
+          claudeSdkFrame({
+            type: "user",
+            message: {
+              role: "user",
+              content: [
+                {
+                  type: "tool_result",
+                  tool_use_id: toolUseId,
+                  content: [{ type: "text", text: "# Release notes" }],
+                },
+              ],
+            },
+            parent_tool_use_id: null,
+            uuid: "00000000-0000-4000-8000-0000000007a1",
+            session_id: WAKE_NATIVE_SESSION,
+            tool_use_result: {
+              _meta: { "io.modelcontextprotocol/serverInfo": { name: "Notion" } },
+            },
+          }),
+        );
+        yield* Queue.offer(
+          harness.sdkMessages,
+          makeResultFrame({ uuid: "00000000-0000-4000-8000-0000000007a2", result: "Done." }),
+        );
+        yield* awaitUntil(() => harness.terminalEvents().length === 1, "turn terminal");
+
+        const fetched = harness.events.findLast(
+          (event) =>
+            event.type === "turn_item.updated" &&
+            event.turnItem.nativeItemRef?.nativeId === toolUseId,
+        );
+        const output =
+          fetched?.type === "turn_item.updated" && fetched.turnItem.type === "dynamic_tool"
+            ? fetched.turnItem.output
+            : undefined;
+        assert.include(JSON.stringify(output), "# Release notes");
+        assert.notInclude(JSON.stringify(output), "serverInfo");
+      }).pipe(Effect.provide(Layer.merge(IdAllocator.layer, NodeServices.layer))),
+    ),
+  );
+
   it.effect("answers an approval a held wake turn raises without waiting for the echo", () =>
     Effect.scoped(
       Effect.gen(function* () {

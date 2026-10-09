@@ -2449,6 +2449,16 @@ function claudeToolResultBlocksFromUserMessage(
   return message.message.content.filter(isClaudeUserToolResultContentBlock);
 }
 
+function isMetadataOnlyToolResult(value: unknown): boolean {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.keys(value).length > 0 &&
+    Object.keys(value).every((key) => key === "_meta")
+  );
+}
+
 function claudeToolResultEntriesFromMessage(message: SDKMessage): ReadonlyArray<{
   readonly toolResult: ClaudeToolResultContentBlock;
   readonly output: ClaudeNativeToolOutput;
@@ -2457,8 +2467,11 @@ function claudeToolResultEntriesFromMessage(message: SDKMessage): ReadonlyArray<
     (toolResult) => ({ toolResult, output: claudeNativeToolOutputFromToolResult(toolResult) }),
   );
   const userResults = claudeToolResultBlocksFromUserMessage(message);
-  const structuredOutput =
+  const structured =
     message.type === "user" && userResults.length === 1 ? message.tool_use_result : undefined;
+  // Some MCP servers (Notion, Linear) reply with `_meta` alongside their content; the SDK's
+  // structured result then holds only that metadata, so the content block is the result.
+  const structuredOutput = isMetadataOnlyToolResult(structured) ? undefined : structured;
   return [
     ...assistantResults,
     ...userResults.map((toolResult) => ({

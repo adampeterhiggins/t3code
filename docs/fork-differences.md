@@ -340,8 +340,14 @@ task tools as each task's title and schedule; browser preview actions as their t
 evaluated code and value; Slack thread reads and searches as messages; and Claude's ToolSearch,
 AskUserQuestion, SendMessage, Skill, Monitor and ScheduleWakeup and HTML pages by what they carry
 (`resolveToolPreview`, [`ToolPreviewCard.tsx`](../apps/web/src/components/chat/ToolPreviewCard.tsx),
-[mobile](../apps/mobile/src/features/threads/ToolPreviewCard.tsx)). On web, other tools' JSON
-results show as a collapsible tree with long IDs shortened, and markdown results rendered. On every
+[mobile](../apps/mobile/src/features/threads/ToolPreviewCard.tsx)). Third-party MCP tools get
+cards too: Notion page edits from what the call changed, fetched pages and queries; Datadog logs,
+aggregates and monitors with a link to Datadog; Calendar events; Slack sends, drafts and channel
+reads; Granola meetings; Linear issues; Drive files; and T3 history threads and messages. Any other
+server's JSON result shows as records or properties picked from its title, status, time and link
+fields ([`integrationToolPreview.ts`](../packages/client-runtime/src/work-log/integrationToolPreview.ts)).
+On web, results no card describes show as a collapsible JSON tree with long IDs shortened, and
+markdown results rendered. On every
 client, server metadata such as an MCP `_meta` block or a browser row's `toolIcon` is left out of a
 tool's output, and a Cursor MCP call shows its own arguments rather than Cursor's envelope.
 

@@ -4,7 +4,12 @@ import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import { toolCallArgs, toolResultData } from "./itemDetail.ts";
+import {
+  claudeUtilityToolPreview,
+  genericToolPreview,
+  integrationToolPreview,
+} from "./integrationToolPreview.ts";
+import { toolCallArgs, toolResultData, toolResultText } from "./itemDetail.ts";
 
 /**
  * A tool call's preview as data, for tools whose arguments and result read better
@@ -28,7 +33,66 @@ export type ToolPreview =
   | SkillToolPreview
   | MonitorToolPreview
   | WakeupToolPreview
-  | HtmlPageToolPreview;
+  | HtmlPageToolPreview
+  | RecordsToolPreview
+  | TableToolPreview
+  | DocumentToolPreview
+  | PropertiesToolPreview;
+
+/** What a generic card says above its content: the query, a link out, and notes. */
+interface PreviewHeader {
+  /** The query or target the call ran with. */
+  readonly summary: string | null;
+  readonly link: { readonly label: string; readonly url: string } | null;
+  /** Short facts such as a result count, a truncation, or an empty-result hint. */
+  readonly notes: ReadonlyArray<string>;
+}
+
+export interface PreviewRecord {
+  readonly key: string;
+  readonly title: string;
+  /** A status or type, shown as a badge. */
+  readonly subtitle: string | null;
+  /** Times, people and other short facts. */
+  readonly meta: ReadonlyArray<string>;
+  readonly url: string | null;
+  readonly body: string | null;
+  /** A T3 thread the record belongs to, which the card opens. */
+  readonly threadId: string | null;
+}
+
+/** A list of items, such as search results, events, issues or log lines. */
+export interface RecordsToolPreview extends PreviewHeader {
+  readonly kind: "records";
+  readonly items: ReadonlyArray<PreviewRecord>;
+  /** Items the result held beyond `items`. */
+  readonly more: number;
+}
+
+export interface TableToolPreview extends PreviewHeader {
+  readonly kind: "table";
+  readonly columns: ReadonlyArray<string>;
+  readonly rows: ReadonlyArray<ReadonlyArray<string>>;
+  readonly more: number;
+}
+
+/** A page, message or file whose text is the point, as markdown. */
+export interface DocumentToolPreview extends PreviewHeader {
+  readonly kind: "document";
+  readonly title: string | null;
+  readonly url: string | null;
+  readonly markdown: string;
+  /** Plain monospace text rather than markdown, for listings and raw data. */
+  readonly preformatted: boolean;
+}
+
+/** One object's fields as a two-column list. */
+export interface PropertiesToolPreview extends PreviewHeader {
+  readonly kind: "properties";
+  readonly title: string | null;
+  readonly url: string | null;
+  readonly rows: ReadonlyArray<readonly [string, string]>;
+}
 
 export interface ThreadToolPreview {
   readonly kind: "thread";
@@ -809,9 +873,16 @@ export function resolveToolPreview(item: OrchestrationV2TurnItem): ToolPreview |
   if (!isRecord(input)) return null;
   const result = item.outputOmitted === true ? null : toolResultData(item.output);
   const resultRecord = isRecord(result) ? result : null;
+  const text = item.outputOmitted === true ? null : toolResultText(item.output);
   const t3Tool = resolveT3McpToolId(item.toolName);
-  if (t3Tool) return t3ToolPreview(t3Tool, input, resultRecord);
-  return claudeToolPreview(item, input, resultRecord);
+  // T3 tools without their own card still show their result as one.
+  if (t3Tool) return t3ToolPreview(t3Tool, input, resultRecord) ?? genericToolPreview(result, text);
+  const toolName = item.toolName ?? "";
+  return (
+    claudeToolPreview(item, input, resultRecord) ??
+    claudeUtilityToolPreview(toolName, input, result, text) ??
+    integrationToolPreview(toolName, input, result, text)
+  );
 }
 
 function claudeToolPreview(
