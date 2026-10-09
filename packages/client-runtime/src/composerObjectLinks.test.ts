@@ -71,6 +71,18 @@ describe("objectLinkLabel", () => {
       objectLinkLabel(`https://github.com/acme/api/pull/7/changes#diff-${"a".repeat(64)}L4-L14`),
     ).toBe("acme/api#7 L4-L14");
     expect(objectLinkLabel("https://github.com/acme/api/issues/12")).toBe("acme/api#12");
+    expect(objectLinkLabel("https://github.com/acme/api/pull/7#issuecomment-42")).toBe(
+      "acme/api#7 comment",
+    );
+    expect(objectLinkLabel("https://github.com/acme/api/pull/7#discussion_r42")).toBe(
+      "acme/api#7 review comment",
+    );
+    expect(objectLinkLabel("https://github.com/acme/api/pull/7#pullrequestreview-42")).toBe(
+      "acme/api#7 review",
+    );
+    expect(objectLinkLabel("https://github.com/acme/api/issues/12#issuecomment-42")).toBe(
+      "acme/api#12 comment",
+    );
     expect(objectLinkLabel("https://linear.app/acme/issue/eng-123/fix-the-thing")).toBe("ENG-123");
     expect(objectLinkLabel("https://github.com/acme/api.git")).toBe("acme/api");
   });
