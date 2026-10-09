@@ -1,3 +1,4 @@
+import { useAtomValue } from "@effect/atom-react";
 import { linearLinkForThread } from "@t3tools/client-runtime/state/linear";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import { ExternalLinkIcon, PencilIcon, UnlinkIcon } from "lucide-react";
@@ -52,6 +53,9 @@ export function LinearThreadLinkChip(props: { threadRef: ScopedThreadRef }) {
   ).data;
   const openLink = useLinearLinkClickHandler(useLinkClickHandler(threadRef));
   const unlink = useUnlinkLinearIssue();
+  const canEdit = useAtomValue(
+    linearEnvironment.linkThread.permissionAtom(threadRef.environmentId),
+  );
   if (link === null) return null;
   const title = summary?.title ?? link.title;
   const url = summary?.url ?? link.url;
@@ -89,15 +93,19 @@ export function LinearThreadLinkChip(props: { threadRef: ScopedThreadRef }) {
           <ExternalLinkIcon />
           Open in Linear
         </MenuItem>
-        <MenuItem onClick={() => openLinearIssuePicker(threadRef, "link")}>
-          <PencilIcon />
-          Change issue…
-        </MenuItem>
-        <MenuSeparator />
-        <MenuItem onClick={() => void unlink(threadRef)}>
-          <UnlinkIcon />
-          Unlink issue
-        </MenuItem>
+        {canEdit ? (
+          <>
+            <MenuItem onClick={() => openLinearIssuePicker(threadRef, "link")}>
+              <PencilIcon />
+              Change issue…
+            </MenuItem>
+            <MenuSeparator />
+            <MenuItem onClick={() => void unlink(threadRef)}>
+              <UnlinkIcon />
+              Unlink issue
+            </MenuItem>
+          </>
+        ) : null}
       </MenuPopup>
     </Menu>
   );

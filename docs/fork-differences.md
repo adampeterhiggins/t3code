@@ -894,7 +894,10 @@ provider.
 Starting a thread from a GitHub issue links it to the thread's chat-tab group, in the fork-owned
 `fork_github_issue_thread_links` table, streamed over `githubIssues.subscribeThreadLinks`. A group
 can hold one GitHub link beside its Linear link. The web chat header and the mobile tab switcher
-show `#123` with its live open or closed state, and offer open and unlink. Pickers mark a linked
+show `#123` with its live open or closed state, and offer open, change, and unlink. An existing
+thread links or changes its issue from the thread menu (web sidebar and chat header), the web
+command palette (which also unlinks), or the mobile tab menu and **Link issue** pill, through the
+same picker in link mode, listing issues from the thread's own checkout. Pickers mark a linked
 issue **In use**; the web attach picker's hover preview lists those threads and opens one on click.
 Agents link and unlink it with `link_github_issue` / `unlink_github_issue`, beside the Linear tools
 in [`toolkits/issueLinks/`](../apps/server/src/mcp/toolkits/issueLinks/).

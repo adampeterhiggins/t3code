@@ -151,6 +151,10 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
     ["Interrupt", "Interrupting", "Requested an interrupt of", "a T3 thread"],
     "thread-interrupt",
   ),
+  t3_thread_rollback: tool(
+    ["Roll back", "Rolling back", "Requested rollback of", "a T3 thread"],
+    "thread-update",
+  ),
   t3_thread_usage_limit_resume: tool(
     ["Resume", "Resuming", "Resumed", "a usage-limited T3 thread"],
     "thread-send",

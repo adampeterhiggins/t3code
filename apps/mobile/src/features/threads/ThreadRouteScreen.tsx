@@ -15,6 +15,7 @@ import { ThreadTabs, selectedThreadTabSources, clearSelectedThreadTabSources } f
 import { buildProjectThreadStartTurnInput } from "../../lib/projectThreadStartTurn";
 import { useWorktreeSetup } from "./use-worktree-setup";
 import { worktreeSetupAgentStarted } from "@t3tools/client-runtime/worktree-setup";
+import { isGitHubProject } from "@t3tools/client-runtime/state/github-issues";
 import {
   StackActions,
   useFocusEffect,
@@ -1154,6 +1155,11 @@ function ThreadRouteContent(
             }
             empty={selectedThreadIsEmptyTab}
             working={threadRuntimeIsActive(selectedThread.runtime)}
+            gitHubIssueCwd={
+              selectedThreadProject && isGitHubProject(selectedThreadProject)
+                ? (selectedThread.worktreePath ?? selectedThreadProject.workspaceRoot)
+                : null
+            }
           />
         ) : null}
         <ThreadDetailScreen

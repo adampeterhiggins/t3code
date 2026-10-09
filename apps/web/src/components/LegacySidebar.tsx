@@ -236,6 +236,8 @@ import {
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
 import { openTranscriptExportDialog } from "./TranscriptExportDialog";
 import { openImportConversationDialog } from "./ImportConversationDialog";
+import { isGitHubProject } from "@t3tools/client-runtime/state/github-issues";
+import { openGitHubIssuePicker } from "./chat/GitHubIssuePicker";
 import { openLinearIssuePicker } from "./chat/LinearIssuePicker";
 import { openNotionPagePicker } from "./chat/NotionPagePicker";
 import { openSlackMessagePicker } from "./chat/SlackMessagePicker";
@@ -2399,11 +2401,26 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
           { id: "copy-thread-id", label: "Copy Thread ID" },
           { id: "export-transcript", label: "Export transcript…" },
           { id: "link-linear-issue", label: "Link Linear issue…" },
+          ...(isGitHubProject(threadProject)
+            ? [
+                {
+                  id: "link-github-issue",
+                  label: "Link GitHub issue…",
+                  disabled: !canOperateThread,
+                },
+              ]
+            : []),
           ...(linkIntegrations.slack
-            ? [{ id: "link-slack-thread", label: "Link Slack thread…" }]
+            ? [
+                {
+                  id: "link-slack-thread",
+                  label: "Link Slack thread…",
+                  disabled: !canOperateThread,
+                },
+              ]
             : []),
           ...(linkIntegrations.notion
-            ? [{ id: "link-notion-page", label: "Link Notion page…" }]
+            ? [{ id: "link-notion-page", label: "Link Notion page…", disabled: !canOperateThread }]
             : []),
           { id: "project-settings", label: "Project settings" },
           {
@@ -2514,6 +2531,10 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       }
       if (clicked === "link-notion-page") {
         openNotionPagePicker(threadRef, "link");
+        return;
+      }
+      if (clicked === "link-github-issue") {
+        openGitHubIssuePicker(threadRef, "link");
         return;
       }
       if (clicked !== "delete") return;

@@ -9,10 +9,8 @@ import {
   type ServerSettings,
   type SlackMentionTriggerSettings,
 } from "@t3tools/contracts";
-import {
-  formatComposerContextReference,
-  slackThreadContextRecord,
-} from "@t3tools/shared/composerContextReferences";
+import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
+import { slackThreadContextRecord } from "@t3tools/shared/integrationContextRecords";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";

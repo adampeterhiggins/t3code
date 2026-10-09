@@ -176,6 +176,7 @@ import {
 } from "../state/environments";
 import {
   readEnvironmentLinkIntegrations,
+  readProject,
   readThreadShell,
   useAllEnvironmentProjectSnapshotsReady,
   useProjects,
@@ -219,6 +220,8 @@ import {
   collectThreadGroupNames,
   resolveThreadGroupMenuPick,
 } from "./threadActionMenu.logic";
+import { isGitHubProject } from "@t3tools/client-runtime/state/github-issues";
+import { openGitHubIssuePicker } from "./chat/GitHubIssuePicker";
 import { openLinearIssuePicker } from "./chat/LinearIssuePicker";
 import { openNotionPagePicker } from "./chat/NotionPagePicker";
 import { openSlackMessagePicker } from "./chat/SlackMessagePicker";
@@ -6397,6 +6400,9 @@ export default function Sidebar() {
                   : null,
                 split: splitAction,
                 canRestartSession: true,
+                canLinkGitHubIssue: isGitHubProject(
+                  readProject(scopeProjectRef(thread.environmentId, thread.projectId)),
+                ),
                 isPinned,
                 isSettled,
                 autoSettleEnabled: thread.autoSettleDisabledAt == null,
@@ -6598,6 +6604,9 @@ export default function Sidebar() {
             return;
           case "link-notion-page":
             openNotionPagePicker(threadRef, "link");
+            return;
+          case "link-github-issue":
+            openGitHubIssuePicker(threadRef, "link");
             return;
           case "archive": {
             if (confirmThreadArchive) {

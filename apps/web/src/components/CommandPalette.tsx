@@ -46,6 +46,7 @@ import {
 } from "@t3tools/contracts";
 import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
 import { openGitHubIssuePicker } from "./chat/GitHubIssuePicker";
+import { useThreadGitHubIssueLink, useUnlinkGitHubIssue } from "./chat/GitHubIssueThreadLink";
 import { openNotionPagePicker } from "./chat/NotionPagePicker";
 import { openSlackMessagePicker } from "./chat/SlackMessagePicker";
 import { openLinearIssuePicker } from "./chat/LinearIssuePicker";
@@ -124,6 +125,8 @@ import {
 import { readLocalApi } from "../localApi";
 import { desktopLocalBackendId } from "../connection/desktopLocal";
 import { filesystemEnvironment, useFilesystemReadAccess } from "../state/filesystem";
+import { githubIssueEnvironment } from "../state/githubIssues";
+import { linearEnvironment } from "../state/linear";
 import { notionEnvironment } from "../state/notion";
 import { projectEnvironment } from "../state/projects";
 import { slackEnvironment } from "../state/slack";
@@ -138,7 +141,7 @@ import { useNewProject } from "../hooks/useNewProject";
 import { isScratchProject } from "@t3tools/client-runtime/state/projects";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
 import { useProjects, useServerConfigs, useThreadShells, waitForProject } from "../state/entities";
-import { isGitHubProject } from "../state/githubIssues";
+import { isGitHubProject } from "@t3tools/client-runtime/state/github-issues";
 import { useThreadSearch } from "../state/queries";
 import { resolveThreadActionProjectRef, startNewThreadFromContext } from "../lib/chatThreadActions";
 import {
@@ -827,6 +830,9 @@ function OpenCommandPaletteDialog(props: {
       : null;
   const activeLinearLink = useThreadLinearLink(activeLinkThreadRef);
   const unlinkLinearIssue = useUnlinkLinearIssue();
+  const canLinkLinearIssue = useAtomValue(
+    linearEnvironment.linkThread.permissionAtom(activeLinkThreadRef?.environmentId ?? null),
+  );
   const activeSlackLink = useThreadSlackLink(activeLinkThreadRef);
   const unlinkSlackThread = useUnlinkSlackThread();
   const activeNotionLink = useThreadNotionLink(activeLinkThreadRef);
@@ -836,6 +842,11 @@ function OpenCommandPaletteDialog(props: {
   );
   const canLinkNotion = useAtomValue(
     notionEnvironment.linkThread.permissionAtom(activeLinkThreadRef?.environmentId ?? null),
+  );
+  const activeGitHubIssueLink = useThreadGitHubIssueLink(activeLinkThreadRef);
+  const unlinkGitHubIssue = useUnlinkGitHubIssue();
+  const canLinkGitHubIssue = useAtomValue(
+    githubIssueEnvironment.linkThread.permissionAtom(activeLinkThreadRef?.environmentId ?? null),
   );
   const serverConfigs = useServerConfigs();
   const activeThreadServerConfig = serverConfigs.get(
@@ -2211,7 +2222,7 @@ function OpenCommandPaletteDialog(props: {
         },
       });
     }
-    // The picker is mounted by a chat view whose project is on GitHub, so only offer it there.
+    // Issues are listed from the project's GitHub repository, so only offer them there.
     const composerProject = projectByKey.get(
       `${composerThreadRef.environmentId}:${currentProjectId ?? ""}`,
     );
@@ -2226,20 +2237,50 @@ function OpenCommandPaletteDialog(props: {
           openGitHubIssuePicker(composerThreadRef);
         },
       });
+      if (canLinkGitHubIssue) {
+        actionItems.push({
+          kind: "action",
+          value: "action:link-github-issue",
+          searchTerms: ["github", "issue", "ticket", "link", "thread"],
+          title: activeGitHubIssueLink
+            ? `Change linked GitHub issue (#${activeGitHubIssueLink.number})`
+            : "Link GitHub issue",
+          icon: <GitHubIcon className={ITEM_ICON_CLASS} />,
+          run: async () => {
+            openGitHubIssuePicker(composerThreadRef, "link");
+          },
+        });
+      }
     }
-    actionItems.push({
-      kind: "action",
-      value: "action:link-linear-issue",
-      searchTerms: ["linear", "issue", "ticket", "link", "thread"],
-      title: activeLinearLink
-        ? `Change linked Linear issue (${activeLinearLink.identifier})`
-        : "Link Linear issue",
-      icon: <LinearIcon className={ITEM_ICON_CLASS} />,
-      run: async () => {
-        openLinearIssuePicker(composerThreadRef, "link");
-      },
-    });
-    if (activeLinearLink) {
+
+    // Unlinking needs no listing, so it stays offered even if the project stops being on GitHub.
+    if (canLinkGitHubIssue && activeGitHubIssueLink) {
+      actionItems.push({
+        kind: "action",
+        value: "action:unlink-github-issue",
+        searchTerms: ["github", "issue", "ticket", "unlink", "remove"],
+        title: `Unlink GitHub issue #${activeGitHubIssueLink.number}`,
+        icon: <GitHubIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          await unlinkGitHubIssue(composerThreadRef);
+        },
+      });
+    }
+    if (canLinkLinearIssue) {
+      actionItems.push({
+        kind: "action",
+        value: "action:link-linear-issue",
+        searchTerms: ["linear", "issue", "ticket", "link", "thread"],
+        title: activeLinearLink
+          ? `Change linked Linear issue (${activeLinearLink.identifier})`
+          : "Link Linear issue",
+        icon: <LinearIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          openLinearIssuePicker(composerThreadRef, "link");
+        },
+      });
+    }
+    if (canLinkLinearIssue && activeLinearLink) {
       actionItems.push({
         kind: "action",
         value: "action:unlink-linear-issue",

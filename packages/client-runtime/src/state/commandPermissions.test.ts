@@ -265,11 +265,15 @@ it.effect("rejects protected unary and streamed RPCs outside a guarded command",
   }),
 );
 
-it.effect("guards Slack and Notion thread links with the orchestration grant", () =>
+it.effect("guards integration thread links with the orchestration grant", () =>
   Effect.scoped(
     Effect.gen(function* () {
       const registry = yield* setup;
       const methods = [
+        WS_METHODS.linearLinkThread,
+        WS_METHODS.linearUnlinkThread,
+        WS_METHODS.githubIssuesLinkThread,
+        WS_METHODS.githubIssuesUnlinkThread,
         WS_METHODS.slackLinkThread,
         WS_METHODS.slackUnlinkThread,
         WS_METHODS.notionLinkThread,

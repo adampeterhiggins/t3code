@@ -598,6 +598,18 @@ describe("resolveToolPreview", () => {
     });
     expect(
       action(
+        "t3_thread_rollback",
+        { threadId: "a", runOrdinal: 2, restoreFiles: false },
+        { threadId: "a", runOrdinal: 2, restoreFiles: false, status: "rollback_requested" },
+      ),
+    ).toMatchObject({
+      headline: "Requested a checkpoint rollback",
+      status: "rollback_requested",
+      threadId: "a",
+      details: ["Keep through run 2", "Keep workspace files"],
+    });
+    expect(
+      action(
         "t3_thread_usage_limit_resume",
         { threadId: "a" },
         { threadId: "a", messageId: "m", runId: "r", status: "queued" },

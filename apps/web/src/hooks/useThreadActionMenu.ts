@@ -25,6 +25,8 @@ import {
 } from "../components/threadActionMenu.logic";
 import { requestThreadGroup } from "../components/ThreadGroupDialog";
 import { useThreadGroups } from "./useThreadGroups";
+import { isGitHubProject } from "@t3tools/client-runtime/state/github-issues";
+import { openGitHubIssuePicker } from "../components/chat/GitHubIssuePicker";
 import { openLinearIssuePicker } from "../components/chat/LinearIssuePicker";
 import { openNotionPagePicker } from "../components/chat/NotionPagePicker";
 import { openSlackMessagePicker } from "../components/chat/SlackMessagePicker";
@@ -174,6 +176,13 @@ export function useThreadActionMenu(input: {
           projectFilter: null,
           // Closing tabs belongs to the tab crumb; this menu acts on the group's root thread.
           tabs: tabsSupported ? { canClose: false } : null,
+          canLinkGitHubIssue: isGitHubProject(
+            projects.find(
+              (candidate) =>
+                candidate.environmentId === thread.environmentId &&
+                candidate.id === thread.projectId,
+            ),
+          ),
           isPinned: thread.pinnedAt != null,
           isSettled: supports.settlement && thread.settledOverride === "settled",
           autoSettleEnabled: thread.autoSettleDisabledAt == null,
@@ -351,6 +360,9 @@ export function useThreadActionMenu(input: {
             return;
           case "link-notion-page":
             openNotionPagePicker(threadRef, "link");
+            return;
+          case "link-github-issue":
+            openGitHubIssuePicker(threadRef, "link");
             return;
           case "archive": {
             if (confirmThreadArchive) {

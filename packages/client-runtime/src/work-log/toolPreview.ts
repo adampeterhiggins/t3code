@@ -858,6 +858,17 @@ function t3ToolPreview(tool: string, input: Record_, result: Record_ | null): To
         status: str(result?.status),
         details: [str(input.reason)].filter((detail) => detail !== null),
       });
+    case "t3_thread_rollback":
+      return threadAction("Requested a checkpoint rollback", {
+        threadId: str(result?.threadId) ?? str(input.threadId),
+        status: str(result?.status),
+        details: [
+          `Keep through run ${result?.runOrdinal ?? input.runOrdinal ?? 0}`,
+          (result?.restoreFiles ?? input.restoreFiles ?? true) === false
+            ? "Keep workspace files"
+            : "Restore workspace files",
+        ],
+      });
     case "t3_thread_usage_limit_resume":
       return threadAction("Resumed after the usage limit", {
         threadId: str(result?.threadId) ?? str(input.threadId),

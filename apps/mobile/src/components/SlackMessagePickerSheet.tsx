@@ -1,10 +1,8 @@
 import type { EnvironmentId, SlackMessageSummary, ThreadId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
-import {
-  formatComposerContextReference,
-  slackThreadContextRecord,
-} from "@t3tools/shared/composerContextReferences";
+import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
+import { slackThreadContextRecord } from "@t3tools/shared/integrationContextRecords";
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";

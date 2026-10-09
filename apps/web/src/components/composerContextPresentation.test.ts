@@ -1,5 +1,8 @@
 import { type ComposerContextId, ThreadId } from "@t3tools/contracts";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
+
+// Record conversion does not use the diff worker pulled in by presentation components.
+vi.mock("@pierre/diffs/worker/worker.js?worker", () => ({ default: class {} }));
 
 import { buildMessageContext } from "~/lib/composerContextRecords";
 import {

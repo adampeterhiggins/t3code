@@ -6,11 +6,7 @@ import {
   type ContextRepositoryGitStatus,
   type ElementContextDetails,
   type KnownComposerContextRecord,
-  type LinearIssueContext,
-  type LinearIssueContextRecord,
   type RepositoryContextRecord,
-  type SlackThreadContext,
-  type SlackThreadContextRecord,
   type SubagentContextRecord,
 } from "@t3tools/contracts";
 
@@ -444,54 +440,5 @@ export function remapComposerContextAttachments(
         ? { ...record, attachmentId: ids.get(record.attachmentId) ?? record.attachmentId }
         : record,
     ),
-  };
-}
-
-/**
- * The composer chip record for a fetched issue. The id is stable per issue, so attaching the
- * same issue twice in one draft points both chips at one payload.
- */
-export function linearIssueContextRecord(issue: LinearIssueContext): LinearIssueContextRecord {
-  return {
-    version: 1,
-    kind: "linear-issue",
-    // Linear issue ids are UUIDs, which already fit the context id pattern.
-    contextId: `linear-issue_${issue.id}` as ComposerContextId,
-    label: sanitizeComposerContextLabel(issue.identifier, "linear-issue"),
-    issueId: issue.id,
-    identifier: issue.identifier,
-    title: issue.title.slice(0, 2_048),
-    url: issue.url,
-    stateName: issue.stateName,
-    markdown: issue.markdown,
-  };
-}
-
-/**
- * The composer chip record for a fetched thread. The id is stable per message and scope, so
- * attaching the same thread twice in one draft points both chips at one payload. The server builds
- * the same record when a Slack mention starts a thread.
- */
-export function slackThreadContextRecord(thread: SlackThreadContext): SlackThreadContextRecord {
-  const id = `${thread.teamId}_${thread.channelId}_${thread.ts.replace(".", "-")}`;
-  return {
-    version: 1,
-    kind: "slack-thread",
-    contextId: `slack-${thread.scope}_${id}`.slice(0, 128) as ComposerContextId,
-    label: sanitizeComposerContextLabel(
-      `${thread.channelLabel} · ${thread.authorName}`,
-      "slack-thread",
-    ),
-    teamId: thread.teamId,
-    channelId: thread.channelId,
-    channelLabel: thread.channelLabel.slice(0, 2_048),
-    ts: thread.ts,
-    threadTs: thread.threadTs,
-    url: thread.url,
-    authorName: thread.authorName.slice(0, 2_048),
-    title: thread.title.slice(0, 2_048),
-    replyCount: thread.replyCount,
-    scope: thread.scope,
-    markdown: thread.markdown,
   };
 }

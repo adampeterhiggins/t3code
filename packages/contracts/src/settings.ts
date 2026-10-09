@@ -3,7 +3,6 @@ import { SshDeviceHostConfigs } from "./device.ts";
 import {
   AuthOrchestrationOperateScope,
   AuthSettingsWriteScope,
-  AuthOrchestrationOperateScope,
   AuthProvidersManageScope,
   type AuthEnvironmentScope,
 } from "./auth.ts";
@@ -1938,8 +1937,9 @@ export function requiredScopesForServerSettingsPatch(
     ...(changesSettings || !changesProviders ? [AuthSettingsWriteScope] : []),
     ...(changesProviders ? [AuthProvidersManageScope] : []),
     // Assignment triggers start agent runs unattended, like scheduled tasks.
-    ...(patch.linearAssignmentTriggers !== undefined ? [AuthOrchestrationOperateScope] : []),
-    ...(patch.slackMentionTrigger === undefined ? [] : [AuthOrchestrationOperateScope]),
+    ...(patch.linearAssignmentTriggers !== undefined || patch.slackMentionTrigger !== undefined
+      ? [AuthOrchestrationOperateScope]
+      : []),
   ];
 }
 

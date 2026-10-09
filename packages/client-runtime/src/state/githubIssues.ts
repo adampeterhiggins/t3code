@@ -1,4 +1,9 @@
-import { type GitHubIssueThreadLink, type ThreadId, WS_METHODS } from "@t3tools/contracts";
+import {
+  type GitHubIssueThreadLink,
+  type RepositoryIdentity,
+  type ThreadId,
+  WS_METHODS,
+} from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 
 import {
@@ -54,6 +59,16 @@ export function createGitHubIssueEnvironmentAtoms<R, E>(
       tag: WS_METHODS.githubIssuesUnlinkThread,
     }),
   };
+}
+
+/** Whether a project's repository is hosted on GitHub, so its issues can be listed with `gh`. */
+export function isGitHubProject(
+  project:
+    | { readonly repositoryIdentity?: RepositoryIdentity | null | undefined }
+    | null
+    | undefined,
+): boolean {
+  return project?.repositoryIdentity?.provider === "github";
 }
 
 /** The GitHub issue linked to the thread's tab group, if any. */

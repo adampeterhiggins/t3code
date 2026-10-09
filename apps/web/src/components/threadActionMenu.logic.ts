@@ -43,6 +43,7 @@ export type ThreadActionMenuId =
   | "link-linear-issue"
   | "link-slack-thread"
   | "link-notion-page"
+  | "link-github-issue"
   | "archive"
   | "delete";
 
@@ -112,6 +113,8 @@ export interface ThreadActionMenuState {
    * tab group's root thread rather than the open tab.
    */
   readonly canRestartSession?: boolean;
+  /** The thread's project is on GitHub, so a GitHub issue can be linked to it. */
+  readonly canLinkGitHubIssue?: boolean;
   readonly isPinned: boolean;
   readonly isSettled: boolean;
   /** False while the user has turned automatic settlement off for this thread. */
@@ -315,6 +318,9 @@ export function buildThreadActionMenuItems(
     },
     { id: "export-transcript", label: "Export transcript…", icon: "download" },
     { id: "link-linear-issue", label: "Link Linear issue…", icon: "link" },
+    ...(state.canLinkGitHubIssue
+      ? [{ id: "link-github-issue" as const, label: "Link GitHub issue…", icon: "link" }]
+      : []),
     ...(state.integrations?.slack
       ? [{ id: "link-slack-thread" as const, label: "Link Slack thread…", icon: "link" }]
       : []),

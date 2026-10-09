@@ -4,10 +4,8 @@ import {
   MessageId,
   type ThreadId,
 } from "@t3tools/contracts";
-import {
-  formatComposerContextReference,
-  linearIssueContextRecord,
-} from "@t3tools/shared/composerContextReferences";
+import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
+import { linearIssueContextRecord } from "@t3tools/shared/integrationContextRecords";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";

@@ -42,6 +42,10 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.scheduledTasksRunNow]: AuthOrchestrationOperateScope,
   [WS_METHODS.scheduledTasksRotateWebhookToken]: AuthOrchestrationOperateScope,
 
+  [WS_METHODS.linearLinkThread]: AuthOrchestrationOperateScope,
+  [WS_METHODS.linearUnlinkThread]: AuthOrchestrationOperateScope,
+  [WS_METHODS.githubIssuesLinkThread]: AuthOrchestrationOperateScope,
+  [WS_METHODS.githubIssuesUnlinkThread]: AuthOrchestrationOperateScope,
   [WS_METHODS.slackLinkThread]: AuthOrchestrationOperateScope,
   [WS_METHODS.slackUnlinkThread]: AuthOrchestrationOperateScope,
   [WS_METHODS.notionLinkThread]: AuthOrchestrationOperateScope,

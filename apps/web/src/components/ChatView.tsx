@@ -304,7 +304,6 @@ import { PullRequestDetailGhost } from "./pullRequest/PullRequestGhosts";
 import { PullRequestsUnavailableState } from "./pullRequest/PullRequestsUnavailableState";
 import { RightPanelTabs } from "./RightPanelTabs";
 import { LinkPullRequestDialogHost } from "./pullRequest/LinkPullRequestDialog";
-import { GitHubIssuePickerHost } from "./chat/GitHubIssuePicker";
 import { LinearIssuePickerHost } from "./chat/LinearIssuePicker";
 import { ThreadAttachPickerHost } from "./chat/ThreadAttachPicker";
 import { RepositoryAttachPickerHost } from "./chat/RepositoryAttachPicker";
@@ -312,7 +311,7 @@ import { PullRequestAttachPickerHost } from "./chat/PullRequestAttachPicker";
 import { openStartFromPicker, StartFromPickerHost } from "./chat/StartFromPicker";
 import { ThreadPullRequestsPanel } from "./pullRequest/ThreadPullRequestsPanel";
 import { useDeviceState } from "~/state/device";
-import { isGitHubProject } from "~/state/githubIssues";
+import { isGitHubProject } from "@t3tools/client-runtime/state/github-issues";
 import { DeviceSetup } from "./device/DeviceSetup";
 import { Dialog } from "./ui/dialog";
 import { WizardPopup } from "./ui/wizard";
@@ -13044,9 +13043,6 @@ export default function ChatView(props: ChatViewProps) {
       </AlertDialog>
       <LinkPullRequestDialogHost />
       <LinearIssuePickerHost />
-      {githubIssueCwd !== null && activeProjectRef ? (
-        <GitHubIssuePickerHost projectRef={activeProjectRef} cwd={githubIssueCwd} />
-      ) : null}
       <ThreadAttachPickerHost />
       <RepositoryAttachPickerHost
         workspaceCwd={activeWorktreePath ?? (sendEnvMode === "worktree" ? null : activeProjectCwd)}

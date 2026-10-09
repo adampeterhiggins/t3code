@@ -1,14 +1,14 @@
 import type { ComposerObjectLink } from "@t3tools/shared/composerObjectLinks";
 import { repositoryContextRecord } from "@t3tools/client-runtime/context-repositories";
 import { gitHubIssueContextRecord } from "@t3tools/client-runtime/state/github-issues";
-import { linearIssueContextRecord } from "@t3tools/shared/composerContextReferences";
+import { linearIssueContextRecord } from "@t3tools/shared/integrationContextRecords";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { notionPageContextRecord } from "@t3tools/client-runtime/state/notion";
 import { notionEnvironment } from "~/state/notion";
-import { slackThreadContextRecord } from "@t3tools/shared/composerContextReferences";
+import { slackThreadContextRecord } from "@t3tools/shared/integrationContextRecords";
 import type {
   NotionError,
   PullRequestDetail,
