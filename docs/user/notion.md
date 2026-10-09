@@ -22,6 +22,17 @@ If you approve from another device, Notion redirects to a page that may not load
 
 T3 Code captures the title, source link, and page Markdown when you attach it. Later edits in Notion do not change sent messages. Large or inaccessible portions of pages can be incomplete; the captured content says when Notion reports truncation or the snapshot reaches its size limit. Embedded media stays as links. Remove a chip to remove it from your draft, or open it to inspect the captured contents.
 
+## Link a page to a thread
+
+A linked page stays with the thread and all of its chat tabs, so you can see which page the work is for. A thread links one page at a time.
+
+- On web and desktop, choose **Link Notion page…** from the thread's menu (the sidebar row or the chat header title), or run **Link Notion page** from the command palette.
+- On mobile, choose **Link Notion page** from the chat tab menu, or from **Link** beside **New tab** when the thread has one tab.
+
+The chat header shows the page's title; on mobile the chip sits beside the tab switcher. Tap or click it to open the page in Notion, change it, or unlink it. The title is copied when you link and doesn't follow later renames. Connections without permission to change threads see the chip but can only open it.
+
+## Turn off or disconnect
+
 To stop Notion setup prompts and automatic link attachments, turn off **Enable Notion integration** under **Settings > Integrations > Notion**. Notion links stay as links, and Notion attachment actions are hidden on web, desktop, and mobile for that environment. Your connected account and pages already attached are kept. Turn the setting back on to use Notion again without reconnecting.
 
 Choose **Disconnect** in the Notion settings to revoke and remove the environment's credential. Previously attached snapshots remain in their messages.

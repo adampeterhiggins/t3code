@@ -832,7 +832,16 @@ permalink, the attach menu's picker (Slack search syntax, right-click for the me
 `#` menu tab shown once Slack is connected, the command palette, and the mobile attach menu. The
 server renders the thread to capped markdown when it is attached. That markdown always keeps the
 first message and the linked one, fills the rest newest first, and resolves mentions to names.
-The snapshot is inlined into the prompt for every provider. Slack has no thread links.
+The snapshot is inlined into the prompt for every provider.
+
+A thread's chat-tab group can also be linked to one Slack thread, from the thread menu, the web
+command palette, or the mobile tab menu, which open the same picker in link mode. Picking a reply links its whole thread.
+The link lives in the fork-owned `fork_slack_thread_links` table, keyed by tab group, and streams
+over `slack.subscribeThreadLinks`. Slack threads have no status, so the channel, author, and the
+picked message's first line are copied when linked. The web chat header chip shows the channel and
+offers open, change, and unlink; mobile shows the same chip beside the tab switcher. Linking and
+unlinking are client-guarded RPCs that need the orchestration-operate grant. Unlinking stays
+available with the integration turned off.
 
 An off-by-default mention trigger in the same setting polls once a minute for explicit @mentions
 of the connected account in selected channels, optionally including direct messages and requiring
@@ -860,8 +869,10 @@ Code: `apps/server/src/slack/`, `packages/contracts/src/slack.ts`, `SlackThreadC
 `packages/contracts/src/composerContext.ts`, `packages/client-runtime/src/state/slack.ts`,
 `apps/web/src/components/settings/SlackSettings.tsx`,
 `apps/web/src/components/chat/SlackMessagePicker.tsx`,
-`apps/web/src/components/chat/useComposerSlackItems.ts`, and
-`apps/mobile/src/components/SlackMessagePickerSheet.tsx`. User guide: [slack.md](./user/slack.md).
+`apps/web/src/components/chat/SlackThreadLink.tsx`,
+`apps/web/src/components/chat/useComposerSlackItems.ts`,
+`apps/mobile/src/components/SlackMessagePickerSheet.tsx`, and
+`apps/mobile/src/features/threads/ThreadSlackNotionLinks.tsx`. User guide: [slack.md](./user/slack.md).
 
 ## GitHub issues
 
@@ -1470,7 +1481,9 @@ Code: `cursorRunFailure` in
 
 Web and desktop support Notion OAuth sign-in in Integrations settings, where the user enters their own Notion connection's client ID and secret (kept on the server, with `T3CODE_NOTION_CLIENT_ID` and `T3CODE_NOTION_CLIENT_SECRET` as a fallback), page attachments from the paperclip picker and command palette, a Notion tab in the `#` menu, and conversion of pasted `notion.so`, `notion.com`, and `notion.site` page links to context chips. A pasted link to a page the connection cannot read stays as text, with a notice that opens the page in Notion and retries the conversion once the user shares it. Turning off **Enable Notion integration** in those settings keeps pasted Notion links as links without setup prompts and hides Notion attachment actions on web, desktop, and mobile for the environment, keeping the connected account. Mobile can pick pages using the environment's connection and inspect captured page contents. Pages are captured as bounded Markdown snapshots and sent through the shared context projection to every provider. Remote sign-in supports pasting the OAuth redirect URL back into settings.
 
-Code: [NotionAuth](../apps/server/src/notion/NotionAuth.ts), [NotionApi](../apps/server/src/notion/NotionApi.ts), [NotionPagePicker](../apps/web/src/components/chat/NotionPagePicker.tsx), and [NotionPagePickerSheet](../apps/mobile/src/components/NotionPagePickerSheet.tsx). User guide: [Notion](./user/notion.md).
+A thread's chat-tab group can also be linked to one Notion page, from the thread menu, the web command palette, or the mobile tab menu, which open the page picker in link mode. The link lives in the fork-owned `fork_notion_thread_links` table, keyed by tab group, and streams over `notion.subscribeThreadLinks`; the page's title and URL are copied when linked. The web chat header chip shows the title and offers open, change, and unlink; mobile shows the same chip beside the tab switcher. Linking and unlinking are client-guarded RPCs that need the orchestration-operate grant. Unlinking stays available with the integration turned off.
+
+Code: [NotionAuth](../apps/server/src/notion/NotionAuth.ts), [NotionApi](../apps/server/src/notion/NotionApi.ts), [NotionPagePicker](../apps/web/src/components/chat/NotionPagePicker.tsx), [NotionThreadLinks](../apps/server/src/notion/NotionThreadLinks.ts), [NotionThreadLink](../apps/web/src/components/chat/NotionThreadLink.tsx), and [NotionPagePickerSheet](../apps/mobile/src/components/NotionPagePickerSheet.tsx). User guide: [Notion](./user/notion.md).
 
 ## Terminal colors, cursor, and line height
 

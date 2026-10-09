@@ -19,6 +19,8 @@ import * as SqlClient from "effect/sql/SqlClient";
 
 import { GitHubIssueThreadLinks } from "../githubIssues/GitHubIssueThreadLinks.ts";
 import { LinearThreadLinks } from "../linear/LinearThreadLinks.ts";
+import { NotionThreadLinks } from "../notion/NotionThreadLinks.ts";
+import { SlackThreadLinks } from "../slack/SlackThreadLinks.ts";
 import { OrchestratorDispatchError } from "../orchestration-v2/Orchestrator.ts";
 import {
   ThreadManagementService,
@@ -141,6 +143,8 @@ const makeHarness = (input: {
         threads,
         Layer.mock(LinearThreadLinks)({ refresh: Effect.void }),
         Layer.mock(GitHubIssueThreadLinks)({ refresh: Effect.void }),
+        Layer.mock(SlackThreadLinks)({ refresh: Effect.void }),
+        Layer.mock(NotionThreadLinks)({ refresh: Effect.void }),
         NodeCrypto.layer,
       ),
     ),

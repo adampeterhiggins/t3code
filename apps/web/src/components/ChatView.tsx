@@ -306,8 +306,6 @@ import { RightPanelTabs } from "./RightPanelTabs";
 import { LinkPullRequestDialogHost } from "./pullRequest/LinkPullRequestDialog";
 import { GitHubIssuePickerHost } from "./chat/GitHubIssuePicker";
 import { LinearIssuePickerHost } from "./chat/LinearIssuePicker";
-import { NotionPagePickerHost } from "./chat/NotionPagePicker";
-import { SlackMessagePickerHost } from "./chat/SlackMessagePicker";
 import { ThreadAttachPickerHost } from "./chat/ThreadAttachPicker";
 import { RepositoryAttachPickerHost } from "./chat/RepositoryAttachPicker";
 import { PullRequestAttachPickerHost } from "./chat/PullRequestAttachPicker";
@@ -13046,8 +13044,6 @@ export default function ChatView(props: ChatViewProps) {
       </AlertDialog>
       <LinkPullRequestDialogHost />
       <LinearIssuePickerHost />
-      <SlackMessagePickerHost />
-      <NotionPagePickerHost />
       {githubIssueCwd !== null && activeProjectRef ? (
         <GitHubIssuePickerHost projectRef={activeProjectRef} cwd={githubIssueCwd} />
       ) : null}

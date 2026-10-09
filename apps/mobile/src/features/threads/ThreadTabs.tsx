@@ -47,6 +47,11 @@ import {
 import { refreshArchivedThreadsForEnvironment } from "../archive/useArchivedThreadSnapshots";
 import { ThreadGitHubIssueLinkChip, useThreadGitHubIssueLink } from "./ThreadGitHubIssueLink";
 import {
+  handleSlackNotionMenuAction,
+  ThreadSlackNotionLinkChips,
+  useThreadSlackNotionLinks,
+} from "./ThreadSlackNotionLinks";
+import {
   ThreadLinearLinkButton,
   ThreadLinearLinkChip,
   useThreadLinearLink,
@@ -111,6 +116,7 @@ export function ThreadTabs({
   const linear = useThreadLinearLink(environmentId, threadId);
   const linearPicker = useLinearIssuePicker({ mode: "link", environmentId, threadId });
   const gitHubIssueLink = useThreadGitHubIssueLink(environmentId, threadId);
+  const slackNotion = useThreadSlackNotionLinks(environmentId, threadId);
   const serverConfig = useEnvironmentServerConfig(environmentId);
   const handOffModels = useMemo(
     () =>
@@ -333,6 +339,7 @@ export function ThreadTabs({
     else if (id === CLOSE_TAB_ACTION) void close();
     else if (id === RESTART_SESSION_ACTION) void restartSession();
     else if (id === LINK_LINEAR_ACTION) linearPicker.open();
+    else if (handleSlackNotionMenuAction(slackNotion, id)) return;
     else if (id.startsWith(HAND_OFF_PREFIX)) {
       const key = id.slice(HAND_OFF_PREFIX.length);
       const option = handOffModels
@@ -400,6 +407,7 @@ export function ThreadTabs({
               ...(linear.canLink
                 ? [{ id: LINK_LINEAR_ACTION, title: "Link Linear issue", image: "link" }]
                 : []),
+              ...slackNotion.menuActions,
             ]}
             onPressAction={({ nativeEvent }) => onMenuAction(nativeEvent.event)}
           >
@@ -460,7 +468,32 @@ export function ThreadTabs({
             link={linear.link}
             onChange={linearPicker.open}
           />
-        ) : linear.canLink && group.tabs.length <= 1 && !group.name ? (
+        ) : null}
+        {group.tabs.length > 1 || group.name ? null : slackNotion.menuActions.length > 0 ? (
+          // A lone tab has no menu, so its link actions share one pill.
+          <ControlPillMenu
+            accessible
+            accessibilityRole="button"
+            accessibilityLabel="Link"
+            title="Link"
+            actions={[
+              ...(linear.canLink
+                ? [{ id: LINK_LINEAR_ACTION, title: "Link Linear issue", image: "link" }]
+                : []),
+              ...slackNotion.menuActions,
+            ]}
+            onPressAction={({ nativeEvent }) => onMenuAction(nativeEvent.event)}
+          >
+            <Pressable
+              accessibilityLabel="Link"
+              accessibilityRole="button"
+              className="shrink-0 flex-row items-center gap-1.5 rounded-full bg-subtle px-3 py-1.5 active:opacity-70"
+            >
+              <SymbolView name="link" size={13} tintColorClassName="accent-foreground" />
+              <Text className="text-sm font-medium text-foreground">Link</Text>
+            </Pressable>
+          </ControlPillMenu>
+        ) : linear.canLink ? (
           <ThreadLinearLinkButton onPress={linearPicker.open} />
         ) : null}
         <ThreadStartedByChip environmentId={environmentId} threadId={threadId} />
@@ -471,8 +504,10 @@ export function ThreadTabs({
             link={gitHubIssueLink}
           />
         ) : null}
+        <ThreadSlackNotionLinkChips links={slackNotion} />
       </View>
       {linearPicker.sheet}
+      {slackNotion.sheets}
       {empty && group.tabs.length > 1 ? (
         <ScrollView
           horizontal

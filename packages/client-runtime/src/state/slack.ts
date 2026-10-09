@@ -1,4 +1,4 @@
-import { WS_METHODS } from "@t3tools/contracts";
+import { type SlackThreadLink, type ThreadId, WS_METHODS } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 
 import {
@@ -53,5 +53,26 @@ export function createSlackEnvironmentAtoms<R, E>(
       tag: WS_METHODS.slackGetLinkPreview,
       staleTimeMs: Number.POSITIVE_INFINITY,
     }),
+    // Every thread group's linked Slack thread in the environment.
+    threadLinks: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:slack:thread-links",
+      tag: WS_METHODS.slackSubscribeThreadLinks,
+    }),
+    linkThread: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:slack:link-thread",
+      tag: WS_METHODS.slackLinkThread,
+    }),
+    unlinkThread: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:slack:unlink-thread",
+      tag: WS_METHODS.slackUnlinkThread,
+    }),
   };
+}
+
+/** The Slack thread linked to the thread's tab group, if any. */
+export function slackLinkForThread(
+  links: ReadonlyArray<SlackThreadLink> | null | undefined,
+  threadId: ThreadId,
+): SlackThreadLink | null {
+  return links?.find((link) => link.threadIds.includes(threadId)) ?? null;
 }

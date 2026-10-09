@@ -28,6 +28,8 @@ import { toastManager } from "../ui/toast";
 import { Button } from "../ui/button";
 import { GitHubIssueThreadLinkChip } from "./GitHubIssueThreadLink";
 import { LinearThreadLinkChip } from "./LinearThreadLink";
+import { NotionThreadLinkChip } from "./NotionThreadLink";
+import { SlackThreadLinkChip } from "./SlackThreadLink";
 import { StartedByChip } from "./StartedByChip";
 import { ThreadTabMenu } from "./ThreadTabs";
 import { useSplitPaneFocus, useSplitViewActions } from "./splitPane";
@@ -398,6 +400,8 @@ export const ChatHeader = memo(function ChatHeader({
       <LinearThreadLinkChip threadRef={currentThreadRef} />
       <StartedByChip threadRef={currentThreadRef} />
       <GitHubIssueThreadLinkChip threadRef={currentThreadRef} />
+      <SlackThreadLinkChip threadRef={currentThreadRef} />
+      <NotionThreadLinkChip threadRef={currentThreadRef} />
       {splitPaneFocus !== null ? (
         <Tooltip>
           <TooltipTrigger

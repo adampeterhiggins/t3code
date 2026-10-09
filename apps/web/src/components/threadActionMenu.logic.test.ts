@@ -169,6 +169,18 @@ describe("buildThreadActionMenuItems", () => {
     expect(items[copyIndex + 4]?.id).toBe("archive");
   });
 
+  it("offers linking Slack and Notion only where the integration is on", () => {
+    expect(ids(baseState)).not.toContain("link-slack-thread");
+    expect(ids(baseState)).not.toContain("link-notion-page");
+    const linkIds = ids({ ...baseState, integrations: { slack: true, notion: true } });
+    const linearIndex = linkIds.indexOf("link-linear-issue");
+    expect(linkIds.slice(linearIndex, linearIndex + 3)).toEqual([
+      "link-linear-issue",
+      "link-slack-thread",
+      "link-notion-page",
+    ]);
+  });
+
   it("offers project filtering only for surfaces with a scoped thread list", () => {
     expect(ids(baseState)).not.toContain("filter-by-project");
     expect(

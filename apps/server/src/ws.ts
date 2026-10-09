@@ -179,6 +179,8 @@ import { NotionApi } from "./notion/NotionApi.ts";
 import { NotionAuth } from "./notion/NotionAuth.ts";
 import { SlackApi } from "./slack/SlackApi.ts";
 import { SlackAuth } from "./slack/SlackAuth.ts";
+import { SlackThreadLinks } from "./slack/SlackThreadLinks.ts";
+import { NotionThreadLinks } from "./notion/NotionThreadLinks.ts";
 import { GitHubIssues } from "./githubIssues/GitHubIssues.ts";
 import { GitHubIssueThreadLinks } from "./githubIssues/GitHubIssueThreadLinks.ts";
 import * as ProviderAuthService from "./provider/ProviderAuthService.ts";
@@ -1342,6 +1344,8 @@ const layerWsRpc = (
       const slackApi = yield* SlackApi;
       const notionApi = yield* NotionApi;
       const notionAuth = yield* NotionAuth;
+      const notionThreadLinks = yield* NotionThreadLinks;
+      const slackThreadLinks = yield* SlackThreadLinks;
       const githubIssues = yield* GitHubIssues;
       const githubIssueThreadLinks = yield* GitHubIssueThreadLinks;
       const providerInstallation = yield* makeProviderInstallation();
@@ -2722,6 +2726,10 @@ const layerWsRpc = (
         [WS_METHODS.notionDisconnect]: (_input) => notionAuth.disconnect,
         [WS_METHODS.notionSearchPages]: (input) => notionApi.searchPages(input),
         [WS_METHODS.notionGetPage]: (input) => notionApi.getPage(input),
+        [WS_METHODS.notionSubscribeThreadLinks]: (_input) => notionThreadLinks.links,
+        [WS_METHODS.notionLinkThread]: (input) => notionThreadLinks.link(input),
+        [WS_METHODS.notionUnlinkThread]: (input) =>
+          notionThreadLinks.unlink(input).pipe(Effect.as({})),
         [WS_METHODS.slackSubscribeState]: (_input) => slackAuth.state,
         [WS_METHODS.slackStartLogin]: (input) => slackAuth.startLogin(input),
         [WS_METHODS.slackCompleteLogin]: (input) => slackAuth.completeLogin(input),
@@ -2730,6 +2738,10 @@ const layerWsRpc = (
         [WS_METHODS.slackSearchMessages]: (input) => slackApi.searchMessages(input),
         [WS_METHODS.slackGetThread]: (input) => slackApi.getThread(input),
         [WS_METHODS.slackGetLinkPreview]: (input) => slackApi.getLinkPreview(input),
+        [WS_METHODS.slackSubscribeThreadLinks]: (_input) => slackThreadLinks.links,
+        [WS_METHODS.slackLinkThread]: (input) => slackThreadLinks.link(input),
+        [WS_METHODS.slackUnlinkThread]: (input) =>
+          slackThreadLinks.unlink(input).pipe(Effect.as({})),
         [WS_METHODS.githubIssuesList]: (input) => githubIssues.listIssues(input),
         [WS_METHODS.githubIssuesGet]: (input) => githubIssues.getIssue(input),
         [WS_METHODS.githubIssuesGetSummary]: (input) => githubIssues.getIssueSummary(input),

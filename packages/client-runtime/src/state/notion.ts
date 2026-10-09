@@ -1,4 +1,4 @@
-import { WS_METHODS } from "@t3tools/contracts";
+import { type NotionThreadLink, type ThreadId, WS_METHODS } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 import {
   createEnvironmentRpcCommand,
@@ -43,5 +43,25 @@ export function createNotionEnvironmentAtoms<R, E>(
       label: "environment-data:notion:get-page",
       tag: WS_METHODS.notionGetPage,
     }),
+    // Every thread group's linked Notion page in the environment.
+    threadLinks: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:notion:thread-links",
+      tag: WS_METHODS.notionSubscribeThreadLinks,
+    }),
+    linkThread: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:notion:link-thread",
+      tag: WS_METHODS.notionLinkThread,
+    }),
+    unlinkThread: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:notion:unlink-thread",
+      tag: WS_METHODS.notionUnlinkThread,
+    }),
   };
+}
+/** The Notion page linked to the thread's tab group, if any. */
+export function notionLinkForThread(
+  links: ReadonlyArray<NotionThreadLink> | null | undefined,
+  threadId: ThreadId,
+): NotionThreadLink | null {
+  return links?.find((link) => link.threadIds.includes(threadId)) ?? null;
 }

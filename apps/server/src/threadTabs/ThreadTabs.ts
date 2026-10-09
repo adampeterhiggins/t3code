@@ -26,6 +26,8 @@ import { modelSelectionsEqual } from "@t3tools/shared/model";
 
 import { GitHubIssueThreadLinks } from "../githubIssues/GitHubIssueThreadLinks.ts";
 import { LinearThreadLinks } from "../linear/LinearThreadLinks.ts";
+import { NotionThreadLinks } from "../notion/NotionThreadLinks.ts";
+import { SlackThreadLinks } from "../slack/SlackThreadLinks.ts";
 import { ThreadManagementService } from "../orchestration-v2/ThreadManagementService.ts";
 import { THREAD_HISTORY_SNAPSHOT_ROW_LIMIT } from "../orchestration-v2/threadHistoryPaging.ts";
 import {
@@ -127,6 +129,18 @@ export const make = Effect.gen(function* () {
   const threads = yield* ThreadManagementService;
   const linearThreadLinks = yield* LinearThreadLinks;
   const githubIssueThreadLinks = yield* GitHubIssueThreadLinks;
+  const slackThreadLinks = yield* SlackThreadLinks;
+  const notionThreadLinks = yield* NotionThreadLinks;
+  // Every link kind follows tab-group membership, so each re-reads after the group changes.
+  const refreshLinks = Effect.all(
+    [
+      linearThreadLinks.refresh,
+      githubIssueThreadLinks.refresh,
+      slackThreadLinks.refresh,
+      notionThreadLinks.refresh,
+    ],
+    { discard: true },
+  );
   const crypto = yield* Crypto.Crypto;
 
   const shellOf = (threadId: ThreadId) =>
@@ -237,15 +251,13 @@ export const make = Effect.gen(function* () {
         }),
       )
       .pipe(Effect.mapError(internal("Could not save tab membership.")));
-    // The group's issue links, if any, now cover the new tab too.
-    yield* linearThreadLinks.refresh;
-    yield* githubIssueThreadLinks.refresh;
+    // The group's links, if any, now cover the new tab too.
+    yield* refreshLinks;
 
     yield* threads.dispatch(command).pipe(
       Effect.tapError(() =>
         sql`DELETE FROM fork_thread_tabs WHERE thread_id = ${tabThreadId}`.pipe(
-          Effect.andThen(linearThreadLinks.refresh),
-          Effect.andThen(githubIssueThreadLinks.refresh),
+          Effect.andThen(refreshLinks),
           Effect.ignore,
         ),
       ),
@@ -278,8 +290,7 @@ export const make = Effect.gen(function* () {
           ),
         )
         .pipe(Effect.mapError(internal("Could not save tab membership.")));
-      yield* linearThreadLinks.refresh;
-      yield* githubIssueThreadLinks.refresh;
+      yield* refreshLinks;
     },
   );
 

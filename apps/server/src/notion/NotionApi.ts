@@ -45,6 +45,10 @@ export class NotionApi extends Context.Service<
       input: NotionSearchPagesInput,
     ) => Effect.Effect<{ pages: NotionPageSummary[]; hasMore: boolean }, NotionError>;
     readonly getPage: (input: NotionGetPageInput) => Effect.Effect<NotionPageContext, NotionError>;
+    /** The page's title and link, without reading its content. */
+    readonly getPageSummary: (
+      input: NotionGetPageInput,
+    ) => Effect.Effect<NotionPageSummary, NotionError>;
   }
 >()("t3/notion/NotionApi") {}
 
@@ -104,13 +108,22 @@ export const make = Effect.gen(function* () {
       ),
     );
   });
+  const pageId = (value: string) => {
+    const id = parseNotionPageId(value);
+    return id === null
+      ? Effect.fail(
+          new NotionError({ reason: "not-found", detail: "Use a Notion page link or page ID." }),
+        )
+      : Effect.succeed(id);
+  };
+  const getPageSummary = Effect.fn("notion.get_page_summary")(function* (
+    input: NotionGetPageInput,
+  ) {
+    const id = yield* pageId(input.id);
+    return summary(yield* request(`pages/${id}`, Page));
+  });
   const getPage = Effect.fn("notion.get_page")(function* (input: NotionGetPageInput) {
-    const id = parseNotionPageId(input.id);
-    if (id === null)
-      return yield* new NotionError({
-        reason: "not-found",
-        detail: "Use a Notion page link or page ID.",
-      });
+    const id = yield* pageId(input.id);
     const page = yield* request(`pages/${id}`, Page);
     const content = yield* request(`pages/${id}/markdown`, Markdown);
     const note = "\n\n[Notion page content is incomplete or truncated.]";
@@ -135,6 +148,6 @@ export const make = Effect.gen(function* () {
     });
     return { pages: result.results.map(summary), hasMore: result.has_more };
   });
-  return NotionApi.of({ getPage, searchPages });
+  return NotionApi.of({ getPage, getPageSummary, searchPages });
 });
 export const layer = Layer.effect(NotionApi, make);

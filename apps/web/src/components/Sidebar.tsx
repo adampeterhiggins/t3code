@@ -175,6 +175,7 @@ import {
   usePrimaryEnvironmentId,
 } from "../state/environments";
 import {
+  readEnvironmentLinkIntegrations,
   readThreadShell,
   useAllEnvironmentProjectSnapshotsReady,
   useProjects,
@@ -219,6 +220,8 @@ import {
   resolveThreadGroupMenuPick,
 } from "./threadActionMenu.logic";
 import { openLinearIssuePicker } from "./chat/LinearIssuePicker";
+import { openNotionPagePicker } from "./chat/NotionPagePicker";
+import { openSlackMessagePicker } from "./chat/SlackMessagePicker";
 import { openTranscriptExportDialog } from "./TranscriptExportDialog";
 import { StartedByHoverLine } from "./chat/StartedByChip";
 import {
@@ -6414,6 +6417,7 @@ export default function Sidebar() {
                   titleRegeneration: supportsTitleRegeneration,
                 },
                 snoozePresets,
+                integrations: readEnvironmentLinkIntegrations(thread.environmentId),
               }),
             ],
             position,
@@ -6588,6 +6592,12 @@ export default function Sidebar() {
             return;
           case "link-linear-issue":
             openLinearIssuePicker(threadRef, "link");
+            return;
+          case "link-slack-thread":
+            openSlackMessagePicker(threadRef, "link");
+            return;
+          case "link-notion-page":
+            openNotionPagePicker(threadRef, "link");
             return;
           case "archive": {
             if (confirmThreadArchive) {

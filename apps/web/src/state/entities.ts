@@ -289,6 +289,18 @@ export function readEnvironmentSupportsAutoSettleOptOut(environmentId: Environme
   );
 }
 
+/** The link integrations the environment has turned on, for its thread menus. */
+export function readEnvironmentLinkIntegrations(environmentId: EnvironmentId): {
+  readonly slack: boolean;
+  readonly notion: boolean;
+} {
+  const settings = appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.settings;
+  return {
+    slack: settings?.enableSlackIntegration === true,
+    notion: settings?.enableNotionIntegration === true,
+  };
+}
+
 /** Whether the environment's server understands thread.hidden.set. */
 export function readEnvironmentSupportsHiding(environmentId: EnvironmentId): boolean {
   return (

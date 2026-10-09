@@ -50,6 +50,8 @@ import { openNotionPagePicker } from "./chat/NotionPagePicker";
 import { openSlackMessagePicker } from "./chat/SlackMessagePicker";
 import { openLinearIssuePicker } from "./chat/LinearIssuePicker";
 import { useThreadLinearLink, useUnlinkLinearIssue } from "./chat/LinearThreadLink";
+import { useThreadNotionLink, useUnlinkNotionPage } from "./chat/NotionThreadLink";
+import { useThreadSlackLink, useUnlinkSlackThread } from "./chat/SlackThreadLink";
 import { openThreadAttachPicker } from "./chat/ThreadAttachPicker";
 import { openPullRequestAttachPicker } from "./chat/PullRequestAttachPicker";
 import { openRepositoryAttachPicker } from "./chat/RepositoryAttachPicker";
@@ -122,7 +124,9 @@ import {
 import { readLocalApi } from "../localApi";
 import { desktopLocalBackendId } from "../connection/desktopLocal";
 import { filesystemEnvironment, useFilesystemReadAccess } from "../state/filesystem";
+import { notionEnvironment } from "../state/notion";
 import { projectEnvironment } from "../state/projects";
+import { slackEnvironment } from "../state/slack";
 import { useEnvironmentQuery } from "../state/query";
 import { readEnvironmentScope, useEnvironmentScope } from "~/state/session";
 import { sourceControlEnvironment } from "../state/sourceControl";
@@ -816,14 +820,23 @@ function OpenCommandPaletteDialog(props: {
         ? scopeThreadRef(activeThread.environmentId, activeThread.id)
         : null;
   const openPanelPullRequestUrl = useOpenPanelPullRequestUrl(referenceThreadRef);
-  const activeLinearLink = useThreadLinearLink(
-    activeThread
-      ? scopeThreadRef(activeThread.environmentId, activeThread.id)
-      : activeDraftThread
-        ? scopeThreadRef(activeDraftThread.environmentId, activeDraftThread.threadId)
-        : null,
-  );
+  const activeLinkThreadRef = activeThread
+    ? scopeThreadRef(activeThread.environmentId, activeThread.id)
+    : activeDraftThread
+      ? scopeThreadRef(activeDraftThread.environmentId, activeDraftThread.threadId)
+      : null;
+  const activeLinearLink = useThreadLinearLink(activeLinkThreadRef);
   const unlinkLinearIssue = useUnlinkLinearIssue();
+  const activeSlackLink = useThreadSlackLink(activeLinkThreadRef);
+  const unlinkSlackThread = useUnlinkSlackThread();
+  const activeNotionLink = useThreadNotionLink(activeLinkThreadRef);
+  const unlinkNotionPage = useUnlinkNotionPage();
+  const canLinkSlack = useAtomValue(
+    slackEnvironment.linkThread.permissionAtom(activeLinkThreadRef?.environmentId ?? null),
+  );
+  const canLinkNotion = useAtomValue(
+    notionEnvironment.linkThread.permissionAtom(activeLinkThreadRef?.environmentId ?? null),
+  );
   const serverConfigs = useServerConfigs();
   const activeThreadServerConfig = serverConfigs.get(
     activeThread?.environmentId ?? ("" as EnvironmentId),
@@ -2235,6 +2248,65 @@ function OpenCommandPaletteDialog(props: {
         icon: <LinearIcon className={ITEM_ICON_CLASS} />,
         run: async () => {
           await unlinkLinearIssue(composerThreadRef);
+        },
+      });
+    }
+    if (
+      canLinkSlack &&
+      serverConfigs.get(composerThreadRef.environmentId)?.settings.enableSlackIntegration === true
+    ) {
+      actionItems.push({
+        kind: "action",
+        value: "action:link-slack-thread",
+        searchTerms: ["slack", "thread", "conversation", "link"],
+        title: activeSlackLink
+          ? `Change linked Slack thread (${activeSlackLink.channelLabel})`
+          : "Link Slack thread",
+        icon: <SlackIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          openSlackMessagePicker(composerThreadRef, "link");
+        },
+      });
+    }
+    // Unlinking stays reachable with the integration off: it is the way out of a link.
+    if (canLinkSlack && activeSlackLink) {
+      actionItems.push({
+        kind: "action",
+        value: "action:unlink-slack-thread",
+        searchTerms: ["slack", "thread", "conversation", "unlink", "remove"],
+        title: `Unlink Slack thread in ${activeSlackLink.channelLabel}`,
+        icon: <SlackIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          await unlinkSlackThread(composerThreadRef);
+        },
+      });
+    }
+    if (
+      canLinkNotion &&
+      serverConfigs.get(composerThreadRef.environmentId)?.settings.enableNotionIntegration === true
+    ) {
+      actionItems.push({
+        kind: "action",
+        value: "action:link-notion-page",
+        searchTerms: ["notion", "page", "document", "link"],
+        title: activeNotionLink
+          ? `Change linked Notion page (${activeNotionLink.title})`
+          : "Link Notion page",
+        icon: <NotionIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          openNotionPagePicker(composerThreadRef, "link");
+        },
+      });
+    }
+    if (canLinkNotion && activeNotionLink) {
+      actionItems.push({
+        kind: "action",
+        value: "action:unlink-notion-page",
+        searchTerms: ["notion", "page", "document", "unlink", "remove"],
+        title: `Unlink Notion page ${activeNotionLink.title}`,
+        icon: <NotionIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          await unlinkNotionPage(composerThreadRef);
         },
       });
     }

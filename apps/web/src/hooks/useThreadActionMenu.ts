@@ -26,6 +26,8 @@ import {
 import { requestThreadGroup } from "../components/ThreadGroupDialog";
 import { useThreadGroups } from "./useThreadGroups";
 import { openLinearIssuePicker } from "../components/chat/LinearIssuePicker";
+import { openNotionPagePicker } from "../components/chat/NotionPagePicker";
+import { openSlackMessagePicker } from "../components/chat/SlackMessagePicker";
 import { openTranscriptExportDialog } from "../components/TranscriptExportDialog";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
 import { threadEnvironment } from "../state/threads";
@@ -34,6 +36,7 @@ import { readEnvironmentScope } from "../state/session";
 import {
   readEnvironmentSupportsAutoSettleOptOut,
   readEnvironmentSupportsGroups,
+  readEnvironmentLinkIntegrations,
   readEnvironmentSupportsHiding,
   readEnvironmentSupportsPinning,
   readEnvironmentSupportsSettlement,
@@ -183,6 +186,7 @@ export function useThreadActionMenu(input: {
           isRunning: !threadRuntimeCanArchive(thread.runtime),
           supports,
           snoozePresets,
+          integrations: readEnvironmentLinkIntegrations(threadRef.environmentId),
         });
         const clicked = await settlePromise(() => api.contextMenu.show(items, position));
         if (clicked._tag === "Failure" || clicked.value === null) return;
@@ -341,6 +345,12 @@ export function useThreadActionMenu(input: {
             return;
           case "link-linear-issue":
             openLinearIssuePicker(threadRef, "link");
+            return;
+          case "link-slack-thread":
+            openSlackMessagePicker(threadRef, "link");
+            return;
+          case "link-notion-page":
+            openNotionPagePicker(threadRef, "link");
             return;
           case "archive": {
             if (confirmThreadArchive) {

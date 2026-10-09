@@ -264,3 +264,31 @@ it.effect("rejects protected unary and streamed RPCs outside a guarded command",
     expect(writes).toBe(0);
   }),
 );
+
+it.effect("guards Slack and Notion thread links with the orchestration grant", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const registry = yield* setup;
+      const methods = [
+        WS_METHODS.slackLinkThread,
+        WS_METHODS.slackUnlinkThread,
+        WS_METHODS.notionLinkThread,
+        WS_METHODS.notionUnlinkThread,
+      ];
+      registry.set(sessions(env), AsyncResult.success(grant(false)));
+      for (const method of methods) {
+        const command = createCommandPermissions(runtime, method);
+        expect(registry.get(command.permissionAtom(env))).toBe(false);
+        expect((yield* command.authorize(registry, env).pipe(Effect.flip)).requiredScope).toBe(
+          AuthOrchestrationOperateScope,
+        );
+      }
+      registry.set(sessions(env), AsyncResult.success(grant(true)));
+      for (const method of methods) {
+        const command = createCommandPermissions(runtime, method);
+        expect(registry.get(command.permissionAtom(env))).toBe(true);
+        yield* command.authorize(registry, env);
+      }
+    }),
+  ),
+);

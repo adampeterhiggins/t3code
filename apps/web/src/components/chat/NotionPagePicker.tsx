@@ -13,6 +13,11 @@ import { useDebouncedValue } from "~/state/queries";
 import { useEnvironmentQuery } from "~/state/query";
 import { notionEnvironment } from "~/state/notion";
 import { useAtomCommand } from "~/state/use-atom-command";
+import {
+  isAtomCommandInterrupted,
+  squashAtomCommandFailure,
+} from "@t3tools/client-runtime/state/runtime";
+import { toastManager } from "../ui/toast";
 import { CommandPaletteContent } from "../CommandPaletteContent";
 import { Button } from "../ui/button";
 import {
@@ -23,12 +28,17 @@ import {
   CommandItem,
   CommandList,
 } from "../ui/command";
-const pickerThread = Atom.make<ScopedThreadRef | null>(null).pipe(
-  Atom.keepAlive,
-  Atom.withLabel("notion:page-picker-thread"),
-);
-export function openNotionPagePicker(threadRef: ScopedThreadRef) {
-  appAtomRegistry.set(pickerThread, threadRef);
+type NotionPagePickerMode = "attach" | "link";
+/** The thread the picker acts on, and whether picking attaches the page or links it. */
+const pickerThread = Atom.make<{
+  readonly threadRef: ScopedThreadRef;
+  readonly mode: NotionPagePickerMode;
+} | null>(null).pipe(Atom.keepAlive, Atom.withLabel("notion:page-picker-thread"));
+export function openNotionPagePicker(
+  threadRef: ScopedThreadRef,
+  mode: NotionPagePickerMode = "attach",
+) {
+  appAtomRegistry.set(pickerThread, { threadRef, mode });
 }
 const closePicker = () => appAtomRegistry.set(pickerThread, null);
 export function useAttachNotionPage() {
@@ -49,17 +59,51 @@ export function useAttachNotionPage() {
     [getPage],
   );
 }
-export function NotionPagePickerHost() {
-  const threadRef = useAtomValue(pickerThread);
-  return threadRef === null ? null : <NotionPagePickerDialog threadRef={threadRef} />;
+/** Links a page to the thread's tab group, replacing the one it had. */
+export function useLinkNotionPage() {
+  const linkThread = useAtomCommand(notionEnvironment.linkThread, { reportFailure: false });
+  return useCallback(
+    async (threadRef: ScopedThreadRef, pageId: string): Promise<boolean> => {
+      const result = await linkThread({
+        environmentId: threadRef.environmentId,
+        input: { threadId: threadRef.threadId, pageId },
+      });
+      if (result._tag === "Failure") {
+        if (!isAtomCommandInterrupted(result)) {
+          const failure = squashAtomCommandFailure(result);
+          toastManager.add({
+            type: "error",
+            title: "Could not link the Notion page",
+            description: failure instanceof Error ? failure.message : undefined,
+          });
+        }
+        return false;
+      }
+      return true;
+    },
+    [linkThread],
+  );
 }
-function NotionPagePickerDialog({ threadRef }: { threadRef: ScopedThreadRef }) {
+export function NotionPagePickerHost() {
+  const target = useAtomValue(pickerThread);
+  return target === null ? null : (
+    <NotionPagePickerDialog threadRef={target.threadRef} mode={target.mode} />
+  );
+}
+function NotionPagePickerDialog({
+  threadRef,
+  mode,
+}: {
+  threadRef: ScopedThreadRef;
+  mode: NotionPagePickerMode;
+}) {
   const notionEnabled = useEnvironmentSettings(
     threadRef.environmentId,
     (s) => s.enableNotionIntegration,
   );
   const navigate = useNavigate();
-  const attach = useAttachNotionPage();
+  const attachPage = useAttachNotionPage();
+  const linkPage = useLinkNotionPage();
   const [query, setQuery] = useState("");
   const [attaching, setAttaching] = useState(false);
   const settled = useDebouncedValue(query.trim(), 400);
@@ -96,14 +140,25 @@ function NotionPagePickerDialog({ threadRef }: { threadRef: ScopedThreadRef }) {
         if (!open) closePicker();
       }}
     >
-      <CommandDialogPopup aria-label="Attach Notion page" className="overflow-hidden">
+      <CommandDialogPopup
+        aria-label={mode === "link" ? "Link Notion page" : "Attach Notion page"}
+        className="overflow-hidden"
+      >
         {connected || connection.data === null ? (
           <CommandPaletteContent
             inputProps={{
               placeholder: "Search Notion pages or paste a page link",
               startAddon: <NotionIcon />,
             }}
-            footerActionLabel={attaching ? "Attaching…" : "Attach page"}
+            footerActionLabel={
+              mode === "link"
+                ? attaching
+                  ? "Linking…"
+                  : "Link page"
+                : attaching
+                  ? "Attaching…"
+                  : "Attach page"
+            }
             mode="none"
             value={query}
             onValueChange={setQuery}
@@ -124,7 +179,8 @@ function NotionPagePickerDialog({ threadRef }: { threadRef: ScopedThreadRef }) {
                           if (attaching) return;
                           setAttaching(true);
                           try {
-                            if (await attach(threadRef, page.id)) closePicker();
+                            const pick = mode === "link" ? linkPage : attachPage;
+                            if (await pick(threadRef, page.id)) closePicker();
                           } finally {
                             setAttaching(false);
                           }
@@ -146,7 +202,9 @@ function NotionPagePickerDialog({ threadRef }: { threadRef: ScopedThreadRef }) {
         ) : (
           <div className="flex flex-col items-center gap-3 px-6 py-10 text-center text-sm">
             <p className="text-muted-foreground">
-              Connect Notion to attach pages selected during sign-in.
+              {mode === "link"
+                ? "Connect Notion to link a page selected during sign-in."
+                : "Connect Notion to attach pages selected during sign-in."}
             </p>
             <Button
               size="sm"

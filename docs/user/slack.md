@@ -64,7 +64,23 @@ first line.
 If T3 Code can't read a pasted link, it stays as text. The first time that happens because Slack
 isn't connected, a notice says so.
 
-## Disconnect
+## Link a thread to a T3 Code thread
+
+A linked Slack thread stays with the thread and all of its chat tabs, so you can see which
+conversation the work is for. A thread links one Slack thread at a time.
+
+- On web and desktop, choose **Link Slack thread…** from the thread's menu (the sidebar row or the
+  chat header title), or run **Link Slack thread** from the command palette.
+- On mobile, choose **Link Slack thread** from the chat tab menu, or from **Link** beside **New
+  tab** when the thread has one tab.
+
+Pick any message in the thread; a reply links its whole thread. The chat header shows the linked
+thread's channel; on mobile the chip sits beside the tab switcher. Tap or click it to open the
+thread in Slack, change it, or unlink it. The channel, author, and first line are copied when you
+link and don't update. Connections without permission to change threads see the chip but can only
+open it.
+
+## Turn off or disconnect
 
 To stop Slack setup prompts and automatic link attachments, turn off **Enable Slack integration**
 under **Settings > Integrations > Slack**. Slack links stay as links, and Slack attachment actions

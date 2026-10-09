@@ -14,6 +14,10 @@ import {
   NotionSearchPagesResult,
   NotionGetPageInput,
   NotionPageContext,
+  NotionLinkThreadInput,
+  NotionThreadLink,
+  NotionThreadLinks,
+  NotionUnlinkThreadInput,
 } from "./notion.ts";
 import {
   McpAppCallToolInput,
@@ -113,6 +117,10 @@ import {
   SlackSearchMessagesResult,
   SlackStartLoginInput,
   SlackThreadContext,
+  SlackLinkThreadInput,
+  SlackThreadLink,
+  SlackThreadLinks,
+  SlackUnlinkThreadInput,
 } from "./slack.ts";
 import {
   GitHubGetIssueInput,
@@ -650,6 +658,9 @@ export const WS_METHODS = {
   notionDisconnect: "notion.disconnect",
   notionSearchPages: "notion.searchPages",
   notionGetPage: "notion.getPage",
+  notionSubscribeThreadLinks: "notion.subscribeThreadLinks",
+  notionLinkThread: "notion.linkThread",
+  notionUnlinkThread: "notion.unlinkThread",
   slackSubscribeState: "slack.subscribeState",
   slackStartLogin: "slack.startLogin",
   slackCompleteLogin: "slack.completeLogin",
@@ -658,6 +669,9 @@ export const WS_METHODS = {
   slackSearchMessages: "slack.searchMessages",
   slackGetThread: "slack.getThread",
   slackGetLinkPreview: "slack.getLinkPreview",
+  slackSubscribeThreadLinks: "slack.subscribeThreadLinks",
+  slackLinkThread: "slack.linkThread",
+  slackUnlinkThread: "slack.unlinkThread",
 
   // GitHub issue methods
   githubIssuesList: "githubIssues.list",
@@ -997,6 +1011,22 @@ const WsNotionGetPageRpc = Rpc.make(WS_METHODS.notionGetPage, {
   success: NotionPageContext,
   error: NotionRpcError,
 });
+const WsNotionSubscribeThreadLinksRpc = Rpc.make(WS_METHODS.notionSubscribeThreadLinks, {
+  payload: Schema.Struct({}),
+  success: NotionThreadLinks,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+const WsNotionLinkThreadRpc = Rpc.make(WS_METHODS.notionLinkThread, {
+  payload: NotionLinkThreadInput,
+  success: NotionThreadLink,
+  error: NotionRpcError,
+});
+const WsNotionUnlinkThreadRpc = Rpc.make(WS_METHODS.notionUnlinkThread, {
+  payload: NotionUnlinkThreadInput,
+  success: Schema.Struct({}),
+  error: NotionRpcError,
+});
 
 const SlackRpcError = Schema.Union([SlackError, EnvironmentAuthorizationError]);
 
@@ -1046,6 +1076,25 @@ const WsSlackGetThreadRpc = Rpc.make(WS_METHODS.slackGetThread, {
 const WsSlackGetLinkPreviewRpc = Rpc.make(WS_METHODS.slackGetLinkPreview, {
   payload: SlackLinkPreviewInput,
   success: SlackLinkPreview,
+  error: SlackRpcError,
+});
+
+const WsSlackSubscribeThreadLinksRpc = Rpc.make(WS_METHODS.slackSubscribeThreadLinks, {
+  payload: Schema.Struct({}),
+  success: SlackThreadLinks,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
+const WsSlackLinkThreadRpc = Rpc.make(WS_METHODS.slackLinkThread, {
+  payload: SlackLinkThreadInput,
+  success: SlackThreadLink,
+  error: SlackRpcError,
+});
+
+const WsSlackUnlinkThreadRpc = Rpc.make(WS_METHODS.slackUnlinkThread, {
+  payload: SlackUnlinkThreadInput,
+  success: Schema.Struct({}),
   error: SlackRpcError,
 });
 
@@ -2318,6 +2367,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsNotionDisconnectRpc,
   WsNotionSearchPagesRpc,
   WsNotionGetPageRpc,
+  WsNotionSubscribeThreadLinksRpc,
+  WsNotionLinkThreadRpc,
+  WsNotionUnlinkThreadRpc,
   WsSlackSubscribeStateRpc,
   WsSlackStartLoginRpc,
   WsSlackCompleteLoginRpc,
@@ -2326,6 +2378,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsSlackSearchMessagesRpc,
   WsSlackGetThreadRpc,
   WsSlackGetLinkPreviewRpc,
+  WsSlackSubscribeThreadLinksRpc,
+  WsSlackLinkThreadRpc,
+  WsSlackUnlinkThreadRpc,
   WsGitHubIssuesListRpc,
   WsGitHubIssuesGetRpc,
   WsGitHubIssuesGetSummaryRpc,
