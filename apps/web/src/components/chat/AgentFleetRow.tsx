@@ -27,20 +27,63 @@ import {
   isActiveSubagentStatus,
   type RuntimeSubagent,
 } from "@t3tools/client-runtime/state/subagentRuntime";
-import type { OrchestrationV2ThreadShell, ScopedThreadRef, TurnItemId } from "@t3tools/contracts";
+import type {
+  OrchestrationV2ThreadShell,
+  ProviderInstanceId,
+  ScopedThreadRef,
+  TurnItemId,
+} from "@t3tools/contracts";
 import { CheckIcon, CornerDownRightIcon, XIcon } from "lucide-react";
 import { useMemo, useRef, type MouseEvent, type ReactNode } from "react";
 
 import { useClientSettings } from "~/hooks/useSettings";
 import { useArchivedThreadSnapshots } from "~/lib/archivedThreadsState";
 import { cn } from "~/lib/utils";
-import { useThreadProjection, useThreadShells } from "~/state/entities";
+import {
+  deriveProviderInstanceEntries,
+  shouldShowInstanceBadge,
+  type ProviderInstanceEntry,
+} from "~/providerInstances";
+import { useServerConfigs, useThreadProjection, useThreadShells } from "~/state/entities";
 import { formatSecondsTimestamp } from "~/timestampFormat";
 
 import { AgentElapsed, STATUS_VISUALS, StatusDot } from "../AgentStatus";
 import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
 import { AgentUsageFooter, ToolCallList } from "./AgentActivityParts";
+import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 import { SubagentActivityLine } from "./SubagentActivityLine";
+
+export type ProviderEntries = ReadonlyMap<ProviderInstanceId, ProviderInstanceEntry>;
+
+/** An environment's provider instances by id, for naming the provider each agent runs on. */
+export function useProviderEntries(environmentId: ScopedThreadRef["environmentId"]) {
+  const serverConfigs = useServerConfigs();
+  return useMemo(
+    (): ProviderEntries =>
+      new Map(
+        deriveProviderInstanceEntries(serverConfigs.get(environmentId)?.providers ?? []).map(
+          (provider) => [provider.instanceId, provider],
+        ),
+      ),
+    [environmentId, serverConfigs],
+  );
+}
+
+/** The provider's glyph, dimmed and badged like the thread sidebar's. */
+function AgentProviderIcon(props: { provider: ProviderInstanceEntry; providers: ProviderEntries }) {
+  return (
+    <ProviderInstanceIcon
+      driverKind={props.provider.driverKind}
+      displayName={props.provider.displayName}
+      accentColor={props.provider.accentColor}
+      acpRegistryAgentId={props.provider.acpRegistryAgentId}
+      acpRegistryIconUrl={props.provider.acpRegistryIconUrl}
+      showBadge={shouldShowInstanceBadge(props.provider, props.providers.values())}
+      iconClassName="size-3.5 opacity-60"
+      badgeClassName="right-[-0.1875rem] bottom-[-0.1875rem] h-3 min-w-3 px-0.5 text-5xs"
+    />
+  );
+}
 
 const PREVIEW_TOOL_CALLS = 5;
 
@@ -73,6 +116,7 @@ function PreviewSection(props: { title: ReactNode; children: ReactNode }) {
 function AgentPreviewContent(props: {
   parentRef: ScopedThreadRef;
   entry: AgentFleetEntry;
+  provider: ProviderInstanceEntry | undefined;
   workspaceRoot: string | null;
   onOpen: (toolCallId?: TurnItemId) => void;
 }) {
@@ -121,6 +165,7 @@ function AgentPreviewContent(props: {
   const prompt = record?.prompt.trim() || null;
   const identity = [
     STATUS_VISUALS[agent.status].label,
+    ...(props.provider ? [props.provider.displayName] : []),
     ...subagentIdentityParts(agent, runStats.runs),
   ];
   return (
@@ -198,6 +243,7 @@ function AgentPreviewContent(props: {
 export function AgentRow(props: {
   parentRef: ScopedThreadRef;
   row: AgentFleetRow;
+  providers: ProviderEntries;
   workspaceRoot: string | null;
   /** Opens the agent; `toolCallId` opens it on that call. */
   onOpen: (entry: AgentFleetEntry, toolCallId?: TurnItemId) => void;
@@ -206,6 +252,7 @@ export function AgentRow(props: {
   const { row } = props;
   const { entry } = row;
   const { agent } = entry;
+  const provider = props.providers.get(entry.providerInstanceId);
   const previewActions = useRef<{ close: () => void; unmount: () => void } | null>(null);
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const live = isActiveSubagentStatus(agent.status);
@@ -248,6 +295,12 @@ export function AgentRow(props: {
             <CornerDownRightIcon aria-hidden className="-me-1 size-3 shrink-0 text-icon-muted" />
           ) : null}
           <StatusDot status={agent.status} />
+          {/* An instance since removed from settings keeps its slot so titles stay aligned. */}
+          {provider ? (
+            <AgentProviderIcon provider={provider} providers={props.providers} />
+          ) : (
+            <span aria-hidden className="size-3.5 shrink-0" />
+          )}
           <span className="min-w-0 flex-1 truncate text-sm">{entry.title}</span>
           {agent.status === "completed" ? (
             <CheckIcon aria-hidden className="size-3 shrink-0 text-success" />
@@ -290,6 +343,7 @@ export function AgentRow(props: {
         <AgentPreviewContent
           parentRef={props.parentRef}
           entry={entry}
+          provider={provider}
           workspaceRoot={props.workspaceRoot}
           onOpen={open}
         />

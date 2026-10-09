@@ -50,7 +50,7 @@ import { ScrollArea } from "../ui/scroll-area";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { AgentUsageFooter } from "./AgentActivityParts";
 import { AgentDetailPanel } from "./AgentDetailPanel";
-import { AgentRow, useEnvironmentShells } from "./AgentFleetRow";
+import { AgentRow, useEnvironmentShells, useProviderEntries } from "./AgentFleetRow";
 import { AgentListToolbar } from "./AgentListToolbar";
 import { agentMenuTargetOf, useAgentContextMenu } from "./agentContextMenu";
 
@@ -182,6 +182,7 @@ function AgentFleetList(props: AgentsPanelProps) {
   const threadKey = scopedThreadKey(threadRef);
   const projection = useThreadProjection(threadRef)?.projection ?? null;
   const shells = useEnvironmentShells(threadRef.environmentId);
+  const providers = useProviderEntries(threadRef.environmentId);
   const view = useAgentListViewStore((state) => state.view);
   const setView = useAgentListViewStore((state) => state.setView);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
@@ -272,6 +273,7 @@ function AgentFleetList(props: AgentsPanelProps) {
               key={row.entry.key}
               parentRef={threadRef}
               row={row}
+              providers={providers}
               workspaceRoot={props.workspaceRoot}
               onOpen={openAgent}
               onContextMenu={onContextMenu}

@@ -108,7 +108,7 @@ import {
 import { ScrollArea } from "../ui/scroll-area";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { AgentUsageFooter, ToolCallList, type ToolCallFocus } from "./AgentActivityParts";
-import { AgentRow, useEnvironmentShells } from "./AgentFleetRow";
+import { AgentRow, useEnvironmentShells, useProviderEntries } from "./AgentFleetRow";
 import { AgentTranscriptList } from "./AgentTranscriptList";
 import {
   agentTranscriptKindOf,
@@ -428,6 +428,7 @@ export function AgentDetailPanel(props: {
   const visibleTurnItems = useThreadVisibleTurnItems(childRef);
   const history = useThreadHistory(childRef);
   const shells = useEnvironmentShells(parentRef.environmentId);
+  const providers = useProviderEntries(parentRef.environmentId);
   const loadEarlierHistory = useAtomCommand(threadEnvironment.loadEarlierHistory, {
     label: "load earlier agent activity",
     reportFailure: false,
@@ -453,6 +454,10 @@ export function AgentDetailPanel(props: {
     () => (subagent ? subagentFromRecord(subagent, childShell?.source) : null),
     [childShell?.source, subagent],
   );
+  const providerInstanceId =
+    childShell?.source.providerInstanceId ?? subagent?.providerInstanceId ?? null;
+  const providerName =
+    providerInstanceId === null ? null : (providers.get(providerInstanceId)?.displayName ?? null);
   const runStats = useMemo(
     () =>
       child === null || childThreadId === null
@@ -846,6 +851,7 @@ export function AgentDetailPanel(props: {
         <p className="truncate ps-3.5 font-mono text-2xs text-muted-foreground">
           {[
             STATUS_VISUALS[runtime.status].label,
+            ...(providerName ? [providerName] : []),
             ...subagentIdentityParts(runtime, runStats.runs),
           ].join(" · ")}
           {runtime.startedAt ? (
@@ -890,6 +896,7 @@ export function AgentDetailPanel(props: {
                     key={row.entry.key}
                     parentRef={parentRef}
                     row={row}
+                    providers={providers}
                     workspaceRoot={props.workspaceRoot}
                     onOpen={openChildEntry}
                     onContextMenu={onChildContextMenu}

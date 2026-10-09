@@ -130,6 +130,24 @@ describe("deriveThreadAgentFleet", () => {
     });
   });
 
+  it("names the child thread's current provider, else the one the record was spawned on", () => {
+    const fleet = deriveThreadAgentFleet({
+      threadId: parentId,
+      subagents: [subagent("switched", "switched-thread"), subagent("unstarted", null)],
+      shells: [
+        shell("switched-thread", "parent", { providerInstanceId: ProviderInstanceId.make("grok") }),
+        shell("nested", "switched-thread", {
+          providerInstanceId: ProviderInstanceId.make("codex"),
+        }),
+      ],
+    });
+    expect(fleet.map((entry) => [entry.key, entry.providerInstanceId])).toEqual([
+      ["switched-thread", "grok"],
+      ["subagent:unstarted", "claude"],
+      ["nested", "codex"],
+    ]);
+  });
+
   it("does not loop on a lineage cycle", () => {
     const fleet = deriveThreadAgentFleet({
       threadId: parentId,

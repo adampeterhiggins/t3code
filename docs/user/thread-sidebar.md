@@ -394,8 +394,9 @@ With two or more agents you can search either list, filter it by status, or sort
 tokens, or duration; both lists share the same filter and sort. Agents are listed in the order they
 started, and token and duration sorts keep working agents at the top in that order, so rows don't
 jump while you read them. A working agent's row shows its latest tool call, with `…` while the call
-runs and **waiting** when the agent needs you, and a failed agent's row its error. Hover an agent in
-the Agents panel to preview its model, prompt, result, latest tool calls, and usage; the preview
+runs and **waiting** when the agent needs you, and a failed agent's row its error. Each row in the
+Agents panel shows the icon of the provider the agent runs on. Hover an agent in the Agents panel to
+preview its provider, model, prompt, result, latest tool calls, and usage; the preview
 stays open while you move onto it, so you can hover a tool call inside it to see the whole call.
 Click the preview to open the agent, or click a tool call to open the agent with that call expanded.
 Hover an agent in Lineage to preview its model, status, result, and token usage.
