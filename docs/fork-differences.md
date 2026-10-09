@@ -1364,8 +1364,12 @@ reset**, **Cancel auto-resume**, and **Snooze until reset**. The fork adds:
 - **Resume now**, on web, desktop, and mobile, which sends the same "Continue where you left off."
   continuation at once, on the composer's model, so picking another provider first continues there
   instead of into the same limit. It is the `thread.usage-limit.resume-now` command, so
-  the server owns the message and any client or future agent tool can send it. Servers advertise it
+  the server owns the continuation. Servers advertise it
   with the `usageLimitResumeNow` capability; clients hide the button without it.
+- Agents see the stopped state as `usageLimit` (stopped run and reset time) in `t3_thread_read` and
+  `t3_thread_wait`, and send the same command with `t3_thread_usage_limit_resume`, under the usual
+  rules for writing to another thread. It continues on the thread's current model, so an agent
+  switches models with `t3_thread_configure` first.
 - **Continue in new tab** on web and desktop, which forks the chat onto another ready account or
   model through the [Chat tabs](#chat-tabs) fork, with the continuation as the new tab's prompt.
 - A one-minute grace after the reported reset before an armed auto-resume is sent, since a request
@@ -1380,6 +1384,7 @@ Code: `cursorRunFailure` in
 [Cursor adapter](../packages/provider-cursor/src/server/adapter.ts), the `thread.usage-limit.resume-now` case and limit-recovery notice in
 [Orchestrator](../apps/server/src/orchestration-v2/Orchestrator.ts), the grace in
 [UsageLimitRecoveryWorker](../apps/server/src/orchestration-v2/UsageLimitRecoveryWorker.ts),
+`resumeUsageLimitedThread` in [OrchestratorMcpService](../apps/server/src/mcp/OrchestratorMcpService.ts),
 [UsageLimitRecoveryBanner](../apps/web/src/components/chat/UsageLimitRecoveryBanner.tsx), and
 [UsageLimitRecoveryCard](../apps/mobile/src/features/threads/UsageLimitRecoveryCard.tsx). User guides:
 [providers-codex.md](./user/providers-codex.md#codex-says-i-hit-a-usage-limit) and

@@ -52,7 +52,8 @@ you replay a past day. Titles, archive state, and pull request state are always 
 An agent connected to `/mcp/operate` has the history tools plus the thread, project, and
 environment tools an agent inside T3 Code has. It can start a thread in any project with
 `t3_thread_launch`, message a thread with `t3_thread_send`, wait for it with `t3_thread_wait`, and
-stop its turn with `t3_thread_interrupt`. It can rename a thread, change its model, archive,
+stop its turn with `t3_thread_interrupt`, and resume a thread stopped on a usage limit with
+`t3_thread_usage_limit_resume`. It can rename a thread, change its model, archive,
 settle, pin, snooze, hide, group, or mark it read or unread, delete it with `t3_thread_delete`,
 answer its questions with `t3_pending_request_respond` and its approvals with
 `t3_approval_respond`, and add or change projects. It acts as you would: the

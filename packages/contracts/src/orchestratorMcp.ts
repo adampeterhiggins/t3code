@@ -346,6 +346,17 @@ export const OrchestratorMcpThreadListResult = Schema.Struct({
 });
 export type OrchestratorMcpThreadListResult = typeof OrchestratorMcpThreadListResult.Type;
 
+/** Present while the thread's latest run is stopped on a provider usage limit. */
+export const OrchestratorMcpThreadUsageLimit = Schema.Struct({
+  runId: RunId,
+  /** When the provider said the limit resets; null when it gave no time. */
+  resetAt: Schema.NullOr(IsoDateTime),
+}).annotate({
+  description:
+    "The thread stopped on a provider usage limit. Call t3_thread_usage_limit_resume to continue now, or leave it to resume at resetAt if the user enabled auto-resume.",
+});
+export type OrchestratorMcpThreadUsageLimit = typeof OrchestratorMcpThreadUsageLimit.Type;
+
 export const OrchestratorMcpThreadReadInput = Schema.Struct({
   threadId: ThreadId,
   itemId: Schema.optional(TurnItemId),
@@ -386,6 +397,7 @@ export const OrchestratorMcpThreadDetail = Schema.Struct({
   snoozed: Schema.Boolean,
   /** When a snoozed thread wakes; null when it is not snoozed. */
   snoozedUntil: Schema.NullOr(IsoDateTime),
+  usageLimit: Schema.NullOr(OrchestratorMcpThreadUsageLimit),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
 });
@@ -474,6 +486,8 @@ export const OrchestratorMcpThreadWaitResult = Schema.Struct({
   runId: Schema.NullOr(RunId),
   status: OrchestratorMcpThreadStatus,
   timedOut: Schema.Boolean,
+  /** Set when the waited run is the thread's latest and it stopped on a usage limit. */
+  usageLimit: Schema.NullOr(OrchestratorMcpThreadUsageLimit),
 });
 export type OrchestratorMcpThreadWaitResult = typeof OrchestratorMcpThreadWaitResult.Type;
 
@@ -495,6 +509,25 @@ export const OrchestratorMcpThreadInterruptResult = Schema.Struct({
   ]),
 });
 export type OrchestratorMcpThreadInterruptResult = typeof OrchestratorMcpThreadInterruptResult.Type;
+
+export const OrchestratorMcpThreadUsageLimitResumeInput = Schema.Struct({
+  threadId: ThreadId,
+  /** The run stopped on the usage limit. Omit for the thread's latest run. */
+  runId: Schema.optional(RunId),
+  clientRequestId: Schema.optional(OrchestratorMcpClientRequestId),
+});
+export type OrchestratorMcpThreadUsageLimitResumeInput =
+  typeof OrchestratorMcpThreadUsageLimitResumeInput.Type;
+
+export const OrchestratorMcpThreadUsageLimitResumeResult = Schema.Struct({
+  threadId: ThreadId,
+  messageId: MessageId,
+  /** The run carrying the continuation. */
+  runId: RunId,
+  status: OrchestrationV2RunStatus,
+});
+export type OrchestratorMcpThreadUsageLimitResumeResult =
+  typeof OrchestratorMcpThreadUsageLimitResumeResult.Type;
 
 export const OrchestratorMcpProviderCapability = Schema.Struct({
   providerInstanceId: ProviderInstanceId,
@@ -681,6 +714,7 @@ export class OrchestratorMcpFailure extends Schema.TaggedError<OrchestratorMcpFa
       "run_not_found",
       "thread_not_sendable",
       "thread_not_interruptible",
+      "thread_not_usage_limited",
       "invalid_request",
       "orchestration_error",
       "thread_credential_required",

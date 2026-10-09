@@ -598,6 +598,17 @@ describe("resolveToolPreview", () => {
     });
     expect(
       action(
+        "t3_thread_usage_limit_resume",
+        { threadId: "a" },
+        { threadId: "a", messageId: "m", runId: "r", status: "queued" },
+      ),
+    ).toMatchObject({
+      headline: "Resumed after the usage limit",
+      status: "queued",
+      threadId: "a",
+    });
+    expect(
+      action(
         "t3_thread_configuration",
         {},
         {

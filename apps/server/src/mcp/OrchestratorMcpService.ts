@@ -37,6 +37,9 @@ import {
   type OrchestratorMcpThreadDetail,
   type OrchestratorMcpThreadInterruptInput,
   type OrchestratorMcpThreadInterruptResult,
+  type OrchestratorMcpThreadUsageLimit,
+  type OrchestratorMcpThreadUsageLimitResumeInput,
+  type OrchestratorMcpThreadUsageLimitResumeResult,
   type OrchestratorMcpThreadListInput,
   type OrchestratorMcpThreadListItem,
   type OrchestratorMcpThreadListResult,
@@ -194,6 +197,11 @@ export interface OrchestratorMcpServiceShape {
     scope: McpInvocationScope,
     input: OrchestratorMcpThreadInterruptInput,
   ) => Effect.Effect<OrchestratorMcpThreadInterruptResult, OrchestratorMcpFailure>;
+  /** Sends the usage-limit continuation into a thread stopped on a usage limit, like Resume now. */
+  readonly resumeUsageLimitedThread: (
+    scope: McpInvocationScope,
+    input: OrchestratorMcpThreadUsageLimitResumeInput,
+  ) => Effect.Effect<OrchestratorMcpThreadUsageLimitResumeResult, OrchestratorMcpFailure>;
 }
 
 export class OrchestratorMcpService extends Context.Service<
@@ -643,6 +651,20 @@ function threadSnooze(
   };
 }
 
+/** The same stalled state the recovery banner shows: the latest run failed on a usage limit. */
+function threadUsageLimit(
+  shell: Pick<
+    OrchestrationV2ThreadShell,
+    "status" | "lastErrorClass" | "latestRunId" | "usageLimitResetAt"
+  >,
+): OrchestratorMcpThreadUsageLimit | null {
+  return shell.status === "failed" &&
+    shell.lastErrorClass === "usage_limit" &&
+    shell.latestRunId !== null
+    ? { runId: shell.latestRunId, resetAt: shell.usageLimitResetAt ?? null }
+    : null;
+}
+
 function listItemFromShell(
   shell: OrchestrationV2ThreadShell,
   nowMs: number,
@@ -712,6 +734,7 @@ function threadDetail(
     ...threadSettlement(projection.thread),
     // From the shell, like the list, so read and list agree on snooze state.
     ...threadSnooze(shell, nowMs),
+    usageLimit: threadUsageLimit(shell),
     createdAt: DateTime.formatIso(projection.thread.createdAt),
     updatedAt: DateTime.formatIso(projection.thread.updatedAt),
   };
@@ -2522,11 +2545,19 @@ const make = Effect.gen(function* () {
             ),
           })
           .pipe(Effect.mapError(threadManagementFailure));
+        const shell =
+          result.run?.status === "failed"
+            ? yield* threadManagement
+                .getThreadShell(input.threadId)
+                .pipe(Effect.mapError(threadManagementFailure))
+            : null;
+        const usageLimit = shell === null ? null : threadUsageLimit(shell);
         return {
           threadId: input.threadId,
           runId: result.run?.id ?? null,
           status: result.run?.status ?? "idle",
           timedOut: result.timedOut,
+          usageLimit: usageLimit?.runId === result.run?.id ? usageLimit : null,
         } satisfies OrchestratorMcpThreadWaitResult;
       }),
     interruptThread: (scope, input) =>
@@ -2572,6 +2603,79 @@ const make = Effect.gen(function* () {
           runId: result.run.id,
           status: result.type === "already_terminal" ? result.run.status : "interrupt_requested",
         } satisfies OrchestratorMcpThreadInterruptResult;
+      }),
+    resumeUsageLimitedThread: (scope, input) =>
+      Effect.gen(function* () {
+        yield* assertNotSelf(scope.thread?.threadId, input.threadId);
+        const { parent, limits, target } = yield* loadScopedThread(scope, input.threadId);
+        yield* assertLiveCallerForOtherThread(scope, parent, target);
+        // Resuming starts a turn in the target, so it must run within the caller's modes.
+        yield* resolveRuntimeMode(limits.runtimeMode, target.thread.runtimeMode);
+        yield* resolveInteractionMode(limits.interactionMode, target.thread.interactionMode);
+        const key = yield* requestKey(input.clientRequestId);
+        const commandId = stableCommandId({
+          scope,
+          requestKey: key,
+          operation: "thread-usage-limit-resume",
+        });
+        // The orchestrator names the continuation after the command, so a retry finds it.
+        const messageId = MessageId.make(`limit-resume-now:${commandId}`);
+        const findContinuation = threadManagement
+          .getThreadRecords(input.threadId, ["messages", "runs"], { messageIds: [messageId] })
+          .pipe(
+            Effect.mapError(threadManagementFailure),
+            Effect.map((records) => {
+              const message = records.messages.find((candidate) => candidate.id === messageId);
+              return message?.runId == null
+                ? undefined
+                : records.runs.find((candidate) => candidate.id === message.runId);
+            }),
+          );
+        const resultFor = (
+          run: OrchestrationV2Run,
+        ): OrchestratorMcpThreadUsageLimitResumeResult => ({
+          threadId: input.threadId,
+          messageId,
+          runId: run.id,
+          status: run.status,
+        });
+        const existing = yield* findContinuation;
+        if (existing !== undefined) return resultFor(existing);
+        const shell = yield* threadManagement
+          .getThreadShell(input.threadId)
+          .pipe(Effect.mapError(threadManagementFailure));
+        const stalled = shell === null ? null : threadUsageLimit(shell);
+        if (stalled === null || (input.runId !== undefined && input.runId !== stalled.runId)) {
+          return yield* failure(
+            "thread_not_usage_limited",
+            `Thread ${input.threadId} is not stopped on a usage limit${input.runId === undefined ? "" : ` at run ${input.runId}`}.`,
+          );
+        }
+        yield* threadManagement
+          .dispatch({
+            type: "thread.usage-limit.resume-now",
+            commandId,
+            threadId: input.threadId,
+            runId: stalled.runId,
+            createdBy: "agent",
+            creationSource: "mcp",
+          })
+          .pipe(
+            Effect.mapError((error) =>
+              failure(
+                "orchestration_error",
+                `Unable to resume thread ${input.threadId}: ${errorMessage(error)}`,
+              ),
+            ),
+          );
+        const continuation = yield* findContinuation;
+        if (continuation === undefined) {
+          return yield* failure(
+            "orchestration_error",
+            `Thread ${input.threadId} accepted the resume but its continuation run was not found.`,
+          );
+        }
+        return resultFor(continuation);
       }),
   });
 });

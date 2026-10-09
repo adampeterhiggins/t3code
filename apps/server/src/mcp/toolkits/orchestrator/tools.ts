@@ -19,6 +19,8 @@ import {
   OrchestratorMcpTaskStatusInput,
   OrchestratorMcpThreadInterruptInput,
   OrchestratorMcpThreadInterruptResult,
+  OrchestratorMcpThreadUsageLimitResumeInput,
+  OrchestratorMcpThreadUsageLimitResumeResult,
   OrchestratorMcpThreadListInput,
   OrchestratorMcpThreadListResult,
   OrchestratorMcpThreadReadInput,
@@ -257,6 +259,19 @@ const ThreadInterruptTool = Tool.make("t3_thread_interrupt", {
   .annotate(Tool.Title, "Interrupt a T3 thread")
   .annotate(Tool.Destructive, true);
 
+const ThreadUsageLimitResumeTool = Tool.make("t3_thread_usage_limit_resume", {
+  description:
+    "Resume a T3 thread stopped on a provider usage limit now, without waiting for the reset: sends 'Continue where you left off.' into the same session, like the user's Resume now. t3_thread_read and t3_thread_wait report usageLimit when a thread is stopped this way. It runs on the thread's current model, so change the model with t3_thread_configure first to leave the limited provider; otherwise the provider may refuse again until the limit resets. Fails with thread_not_usage_limited otherwise. clientRequestId makes retries idempotent.",
+  parameters: OrchestratorMcpThreadUsageLimitResumeInput,
+  success: OrchestratorMcpThreadUsageLimitResumeResult,
+  failure: OrchestratorMcpFailure,
+  failureMode: "return",
+  dependencies,
+})
+  .annotate(Tool.Title, "Resume a usage-limited T3 thread")
+  .annotate(Tool.Destructive, true)
+  .annotate(Tool.OpenWorld, true);
+
 export const OrchestratorToolkit = Toolkit.make(
   OrchestratorCapabilitiesTool,
   DelegateTaskTool,
@@ -274,4 +289,5 @@ export const OrchestratorToolkit = Toolkit.make(
   ThreadSendTool,
   ThreadWaitTool,
   ThreadInterruptTool,
+  ThreadUsageLimitResumeTool,
 );
