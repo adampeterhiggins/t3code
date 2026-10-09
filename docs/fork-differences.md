@@ -1164,7 +1164,7 @@ It reads the orchestration v2 projections; threads imported from before v2 carry
 messages. `/mcp/operate` adds upstream's orchestrator, thread, project, and environment tools,
 acting as a client caller labelled with the token's name, plus `t3_approval_respond` for
 answering a thread's approvals (upstream's `t3_pending_request_respond` answers questions but
-refuses approvals). It acts as the user, in any permission mode, without the spawn limits, and
+refuses approvals) and `t3_thread_delete`, which sends the app's own `thread.delete` command. It acts as the user, in any permission mode, without the spawn limits, and
 threads it starts with `t3_thread_launch` record the token's label.
 Both authenticate with an environment bearer token, never a cookie: `/mcp/query` needs
 `orchestration:read`, `/mcp/operate` also `orchestration:operate`.
@@ -1175,7 +1175,8 @@ normal client session, so revoking it works like revoking any client. Web and de
 
 Code: [`AgentAccessMcpServer.ts`](../apps/server/src/mcp/AgentAccessMcpServer.ts),
 [`mcp/query/`](../apps/server/src/mcp/query/),
-[`toolkits/approval/`](../apps/server/src/mcp/toolkits/approval/), the `agentAccessToken`
+[`toolkits/approval/`](../apps/server/src/mcp/toolkits/approval/),
+[`toolkits/threadDelete/`](../apps/server/src/mcp/toolkits/threadDelete/), the `agentAccessToken`
 handler in [`auth/http.ts`](../apps/server/src/auth/http.ts), `AuthReadOnlyClientScopes` and
 `AuthAgentOperateScopes` in [`contracts/src/auth.ts`](../packages/contracts/src/auth.ts), and
 [`AgentAccessSettings.tsx`](../apps/web/src/components/settings/AgentAccessSettings.tsx).
@@ -1189,7 +1190,10 @@ thread: chains of agent-started threads stop two levels deep, a thread keeps at 
 threads going at once (a started thread counts until it settles or is archived, a delegated task
 while its child runs), and `t3_thread_send`, `t3_thread_wait`, and `t3_thread_interrupt` refuse
 the caller's own thread. Metadata tools such as `t3_thread_update` still default to the caller's
-own thread, as upstream intends. A thread's agent never answers another thread's approvals.
+own thread, as upstream intends. A thread's agent never answers another thread's approvals and
+never deletes a thread; it archives instead. `t3_thread_organize` also takes `mark_read`, the
+reverse of upstream's `mark_unread`, which marks a thread read as opening it in the app does
+([`thread/handlers.ts`](../apps/server/src/mcp/toolkits/thread/handlers.ts)).
 
 A thread an agent starts with `create_threads`, `t3_thread_launch`, or `t3_thread_tab_open`
 records `startedBy` (the starting thread, or the agent access token's label). The chat header on web, desktop, and mobile

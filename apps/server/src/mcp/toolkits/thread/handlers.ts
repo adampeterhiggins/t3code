@@ -7,6 +7,7 @@ import {
   OrchestratorMcpFailure,
   type OrchestrationV2Command,
 } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import { modelSelectionCommandType } from "@t3tools/shared/model";
 
@@ -388,6 +389,14 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
         case "unsnooze":
         case "unsettle":
           command = { ...common, type: `thread.${input.action}`, reason: "user" };
+          break;
+        case "mark_read":
+          // Like opening the thread in the app: everything up to its latest update is seen.
+          command = {
+            ...common,
+            type: "thread.visit",
+            visitedAt: DateTime.formatIso(projection.thread.updatedAt),
+          };
           break;
         case "mark_unread":
           command = { ...common, type: "thread.mark-unread" };

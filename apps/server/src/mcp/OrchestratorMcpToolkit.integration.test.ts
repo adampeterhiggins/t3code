@@ -786,6 +786,11 @@ describe("orchestrator MCP toolkit", () => {
             yield* invoke("t3_thread_organize", { action: "unpin" });
             expect((yield* orchestrator.getThreadShell(parentThreadId))?.pinnedAt).toBeNull();
 
+            const markedRead = yield* invoke("t3_thread_organize", { action: "mark_read" });
+            expect(markedRead.isError).toBe(false);
+            const readShell = yield* orchestrator.getThreadShell(parentThreadId);
+            expect(readShell?.lastVisitedAt).toEqual(readShell?.updatedAt);
+
             if (parentRun === undefined || parentRun.rootNodeId === null) {
               return yield* Effect.die(new Error("Parent run missing."));
             }
