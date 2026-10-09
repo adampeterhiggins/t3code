@@ -742,7 +742,7 @@ export function ToolPreviewCard(props: {
   return (
     <div className="space-y-1.5 text-xs" data-tool-preview={props.preview.kind}>
       <PreviewBody {...props} />
-      {props.images}
+      <div className="space-y-1.5">{props.images}</div>
       <button
         type="button"
         className="text-2xs text-muted-foreground hover:text-foreground"
