@@ -74,8 +74,8 @@ import { terminalEnvironment } from "../../state/terminal";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { connectPairing } from "../../connection/onboarding";
 import { getProviderSummary } from "../settings/providerStatus";
-import { getDriverOption } from "../settings/providerDriverMeta";
 import { useUpdateEnvironmentSettings } from "../../hooks/useSettings";
+import { providerClients } from "../settings/providerDriverMeta";
 import { ChatGptWelcomeCoordinator } from "../settings/ChatGptWelcomeCoordinator";
 import { AddManagedCodexAccountDialog, CodexSetupSection } from "../settings/CodexSetupSection";
 import { readCodexSetupMode } from "../settings/CodexSetupSection.logic";
@@ -735,16 +735,11 @@ function ConnectedAgentsStep({
   const byDriver = useMemo(() => selectOnboardingProvidersByDriver(providers), [providers]);
 
   // Opt-in drivers (Devin) arrive disabled by default; the card's Enable
-  // button flips the instance envelope, which is authoritative over the
-  // legacy `providers.<kind>.enabled` flag.
+  // button flips the instance envelope.
   const enableProvider = (provider: ServerProvider, driver: OnboardingAgentDriver) => {
     if (serverConfig === null) return;
     const settings = serverConfig.settings;
     const existing = settings.providerInstances?.[provider.instanceId];
-    const legacyConfig = (settings.providers as Record<string, { enabled?: boolean } | undefined>)[
-      driver
-    ];
-    const { enabled: _legacyEnabled, ...legacyConfigRest } = legacyConfig ?? {};
     updateSettings({
       providerInstances: {
         ...settings.providerInstances,
@@ -752,7 +747,6 @@ function ConnectedAgentsStep({
           ...existing,
           driver: ProviderDriverKind.make(driver),
           enabled: true,
-          config: existing?.config ?? legacyConfigRest,
         },
       },
     });
@@ -925,8 +919,7 @@ function OnboardingCodexSetup({
   const settings = serverConfig.settings;
   const instance = settings.providerInstances[instanceId] ?? {
     driver: ProviderDriverKind.make("codex"),
-    enabled: settings.providers.codex.enabled,
-    config: createdAccount ? { enabled: true, setupMode: "managed" } : settings.providers.codex,
+    config: createdAccount ? { enabled: true, setupMode: "managed" } : {},
   };
   const mode = readCodexSetupMode(instance.config);
   const existingChosen =
@@ -942,8 +935,6 @@ function OnboardingCodexSetup({
         patch: buildProviderInstanceUpdatePatch({
           settings,
           instanceId,
-          driver: ProviderDriverKind.make("codex"),
-          isDefault: instanceId === defaultInstanceIdForDriver(ProviderDriverKind.make("codex")),
           instance: {
             ...instance,
             enabled: true,
@@ -999,7 +990,7 @@ function AgentCard({
   readonly onEnable: (() => void) | undefined;
   readonly onOpenTerminal: () => void;
 }) {
-  const meta = getDriverOption(ProviderDriverKind.make(driver));
+  const meta = providerClients.get(ProviderDriverKind.make(driver));
   const displayName =
     provider?.displayName || (driver === "claudeAgent" ? "Claude Code" : (meta?.label ?? driver));
   const summary = getProviderSummary(provider);

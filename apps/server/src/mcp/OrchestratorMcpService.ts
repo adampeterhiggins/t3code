@@ -76,7 +76,7 @@ import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts
 import {
   subagentResultForRun,
   delegatedTaskProgress,
-} from "../orchestration-v2/SubagentProjection.ts";
+} from "@t3tools/provider-core/server/subagentProjection";
 import {
   DispatchModeLimit,
   type DispatchModeRefusal,

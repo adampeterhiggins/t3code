@@ -18,15 +18,13 @@ import {
   type OrchestrationV2ProviderCapabilities,
 } from "@t3tools/contracts";
 import type { SelfInvocation } from "@t3tools/shared/nodeRuntime";
-import * as Crypto from "effect/Crypto";
+import type * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
-import type * as FileSystem from "effect/FileSystem";
 import type * as Scope from "effect/Scope";
 import type { ChildProcessSpawner } from "effect/process";
 import type * as EffectAcpErrors from "effect-acp/errors";
 
-import type * as ServerConfig from "../../config.ts";
-import type * as AcpSessionRuntime from "../../provider/acp/AcpSessionRuntime.ts";
+import type * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSessionRuntime";
 import {
   applyDevinAcpModelSelection,
   DEVIN_ACP_CLIENT_CAPABILITIES_META,
@@ -41,19 +39,18 @@ import {
   hasCandidateSkillMention,
   planDevinSkillDispatch,
 } from "../../provider/Drivers/DevinSkillDispatch.ts";
-import type * as IdAllocator from "../IdAllocator.ts";
-import type * as ProviderAdapter from "../ProviderAdapter.ts";
+import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import {
   AcpProviderCapabilitiesV2,
   makeAcpAdapterV2,
   type AcpAdapterV2Flavor,
   type AcpAdapterV2RuntimeInput,
-} from "./AcpAdapterV2.ts";
+} from "@t3tools/provider-acp/server/adapter";
 import {
   extractDevinSubagentUpdate,
   normalizeDevinSessionUpdate,
   normalizeDevinToolCall,
-} from "./DevinAcp.ts";
+} from "@t3tools/provider-acp-registry/server/devinAcp";
 
 export const DEVIN_PROVIDER = ProviderDriverKind.make("devin");
 
@@ -81,10 +78,6 @@ export interface DevinAdapterV2Options {
   /** The instance's process environment, including its private `XDG_DATA_HOME`. */
   readonly environment: NodeJS.ProcessEnv;
   readonly childProcessSpawner: ChildProcessSpawner.ChildProcessSpawner["Service"];
-  readonly crypto: Crypto.Crypto;
-  readonly fileSystem: FileSystem.FileSystem;
-  readonly idAllocator: IdAllocator.IdAllocatorV2["Service"];
-  readonly serverConfig: ServerConfig.ServerConfig["Service"];
   readonly selfInvocation: SelfInvocation;
   /** Enabled, user-invocable skill names for a workspace (`devin skills list`). */
   readonly skillNames: (cwd: string) => Effect.Effect<ReadonlySet<string>>;
@@ -165,16 +158,12 @@ export function makeDevinAcpAdapterFlavor(options: DevinAdapterV2Options): AcpAd
   };
 }
 
-export function makeDevinAdapterV2(
+export const makeDevinAdapterV2 = Effect.fn("makeDevinAdapterV2")(function* (
   options: DevinAdapterV2Options,
-): ProviderAdapter.ProviderAdapterV2Shape {
-  const adapter = makeAcpAdapterV2({
+) {
+  const adapter = yield* makeAcpAdapterV2({
     instanceId: options.instanceId,
     flavor: makeDevinAcpAdapterFlavor(options),
-    crypto: options.crypto,
-    fileSystem: options.fileSystem,
-    idAllocator: options.idAllocator,
-    serverConfig: options.serverConfig,
     selfInvocation: options.selfInvocation,
     // Same ownership as Devin through the ACP Registry: Devin runs commands
     // through client terminals, so T3 streams their output and owns the
@@ -195,5 +184,5 @@ export function makeDevinAdapterV2(
           getModelContextWindow: devinModelContextWindow,
         })),
       ),
-  };
-}
+  } satisfies ProviderAdapter.ProviderAdapterV2Shape;
+});

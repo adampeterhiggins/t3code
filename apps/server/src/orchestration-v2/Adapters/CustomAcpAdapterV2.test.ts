@@ -7,7 +7,6 @@ import {
   ThreadId,
 } from "@t3tools/contracts";
 import { resolveSelfInvocation } from "@t3tools/shared/nodeRuntime";
-import * as Crypto from "effect/Crypto";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -15,10 +14,10 @@ import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import { ChildProcessSpawner } from "effect/process";
 
-import * as ServerConfig from "../../config.ts";
 import { CUSTOM_ACP_DRIVER_KIND } from "../../provider/acp/CustomAcpSupport.ts";
-import * as IdAllocator from "../IdAllocator.ts";
-import { ProviderAdapterV2RuntimePolicy } from "../ProviderAdapter.ts";
+import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import { layerTestProviderHost } from "@t3tools/provider-testing/host";
+import { ProviderAdapterV2RuntimePolicy } from "@t3tools/provider-core/server/ProviderAdapter";
 import {
   decodeAcpReplayTranscript,
   makeAcpReplayCompletenessAssertion,
@@ -29,9 +28,7 @@ import { makeCustomAcpAdapterV2 } from "./CustomAcpAdapterV2.ts";
 const testLayer = Layer.mergeAll(
   NodeServices.layer,
   IdAllocator.layer,
-  ServerConfig.layerTest(process.cwd(), { prefix: "t3-custom-acp-v2-adapter-" }).pipe(
-    Layer.provide(NodeServices.layer),
-  ),
+  layerTestProviderHost().pipe(Layer.provide(NodeServices.layer)),
 );
 
 type Frame = Record<string, unknown>;
@@ -104,16 +101,12 @@ const openSession = Effect.fn("openCustomAcpSession")(function* (input: {
     CUSTOM_ACP_DRIVER_KIND,
   );
   const instanceId = ProviderInstanceId.make("custom-acp-v2-test");
-  const adapter = makeCustomAcpAdapterV2({
+  const adapter = yield* makeCustomAcpAdapterV2({
     instanceId,
     settings: { binaryPath: "agent", arguments: "" },
     harness: "Test agent",
     environment: {},
     childProcessSpawner,
-    crypto: yield* Crypto.Crypto,
-    fileSystem,
-    idAllocator: yield* IdAllocator.IdAllocatorV2,
-    serverConfig: yield* ServerConfig.ServerConfig,
     selfInvocation: yield* resolveSelfInvocation(),
     onAvailableCommands: input.onAvailableCommands ?? (() => Effect.void),
     makeRuntime: makeAcpReplayRuntime({

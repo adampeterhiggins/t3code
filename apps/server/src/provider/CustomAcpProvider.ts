@@ -26,7 +26,7 @@ import {
   providerModelsFromSettings,
   type ServerProviderDraft,
   type ServerProviderPresentation,
-} from "./providerSnapshot.ts";
+} from "@t3tools/provider-core/server/snapshotProbe";
 import {
   customAcpModelsFromSession,
   customAcpSupportsPlanMode,

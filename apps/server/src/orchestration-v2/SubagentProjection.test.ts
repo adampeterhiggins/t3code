@@ -22,7 +22,7 @@ import {
   subagentResultForRun,
   subagentUsageFromChildTurns,
   makeSubagentConversationArtifacts,
-} from "./SubagentProjection.ts";
+} from "@t3tools/provider-core/server/subagentProjection";
 
 import { emptyProjection } from "./ProjectionStore.ts";
 

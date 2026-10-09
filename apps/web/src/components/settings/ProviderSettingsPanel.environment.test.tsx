@@ -276,12 +276,13 @@ describe("EnvironmentProviderSettings routing", () => {
   it("keeps legacy provider configuration visible when disabled", () => {
     settingsState.value = {
       ...DEFAULT_UNIFIED_SETTINGS,
-      providers: {
-        ...DEFAULT_UNIFIED_SETTINGS.providers,
-        grok: {
-          ...DEFAULT_UNIFIED_SETTINGS.providers.grok,
+      providerInstances: {
+        [ProviderInstanceId.make("grok")]: {
+          driver: ProviderDriverKind.make("grok"),
           enabled: false,
-          binaryPath: "/custom/grok",
+          config: {
+            binaryPath: "/custom/grok",
+          },
         },
       },
     };
@@ -510,14 +511,15 @@ describe("EnvironmentProviderSettings routing", () => {
     await flushPromises();
 
     const [resetMutation, resetPatch] = settingsState.mutateProviderInstance.mock.lastCall ?? [];
-    expect(resetMutation).toEqual({ operation: "remove", instanceId: codexId });
-    expect(Object.keys(resetPatch ?? {}).sort()).toEqual(["providers"]);
-    expect(resetPatch).not.toHaveProperty("favorites");
-    expect(resetPatch).not.toHaveProperty("providerModelPreferences");
-    // The slot resets to factory defaults with enabled cleared — the resulting
-    // unconfigured, disabled row is what drops it out of the provider list.
-    const providers = resetPatch?.providers as Record<string, { enabled?: boolean } | undefined>;
-    expect(providers.codex?.enabled).toBe(false);
+    // Codex runs unconfigured, so deleting it keeps a disabled marker entry
+    // rather than removing the slot, which would bring it straight back enabled.
+    expect(resetMutation).toEqual({
+      operation: "upsert",
+      instanceId: codexId,
+      instance: { driver: "codex", enabled: false, config: { enabled: false } },
+    });
+    // Deleting touches only the instance; shared preferences stay untouched.
+    expect(resetPatch ?? {}).toEqual({});
   });
 
   it("deletes an enabled built-in provider that has no explicit instance", async () => {
@@ -539,10 +541,49 @@ describe("EnvironmentProviderSettings routing", () => {
     (card?.props.onDelete as (() => void) | undefined)?.();
     await flushPromises();
 
-    const [mutation, patch] = settingsState.mutateProviderInstance.mock.lastCall ?? [];
-    expect(mutation).toEqual({ operation: "remove", instanceId: codexId });
-    const providers = patch?.providers as Record<string, { enabled?: boolean } | undefined>;
-    expect(providers.codex?.enabled).toBe(false);
+    const [mutation] = settingsState.mutateProviderInstance.mock.lastCall ?? [];
+    expect(mutation).toEqual({
+      operation: "upsert",
+      instanceId: codexId,
+      instance: { driver: "codex", enabled: false, config: { enabled: false } },
+    });
+
+    settingsState.value = {
+      ...DEFAULT_UNIFIED_SETTINGS,
+      providerInstances: { [codexId]: mutation.instance },
+    };
+    expect(
+      visitElements(
+        renderPanel(),
+        (element) => element.props.instanceId === codexId && element.props.mode === "list",
+      ),
+    ).toBeNull();
+  });
+
+  it("removes the entry when deleting a provider that is off by default", async () => {
+    const grokId = ProviderInstanceId.make("grok");
+    settingsState.value = {
+      ...DEFAULT_UNIFIED_SETTINGS,
+      providerInstances: {
+        [grokId]: { driver: ProviderDriverKind.make("grok"), enabled: false },
+      },
+    };
+    const row = visitElements(
+      renderPanel(),
+      (element) => element.props.instanceId === grokId && element.props.mode === "list",
+    );
+    (row?.props.onSelect as (() => void) | undefined)?.();
+    const card = visitElements(
+      renderPanel(),
+      (element) => element.props.instanceId === grokId && element.props.mode === "editor",
+    );
+    (card?.props.onDelete as (() => void) | undefined)?.();
+    await flushPromises();
+
+    expect(settingsState.mutateProviderInstance.mock.lastCall?.[0]).toEqual({
+      operation: "remove",
+      instanceId: grokId,
+    });
   });
 
   it("updates one provider instance without sending a stale whole map", async () => {
