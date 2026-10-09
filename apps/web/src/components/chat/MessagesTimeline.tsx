@@ -5650,8 +5650,20 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
             {failureItem.failure.message}
           </p>
         ) : null}
-        {retryRunId !== null && onRetryWorkspacePreparation ? (
-          <div className="ms-7 pb-1">
+        <div className="ms-7 flex flex-wrap gap-2 pb-1">
+          <Button
+            size="xs"
+            variant="outline"
+            render={
+              <Link
+                to="/settings/diagnostics"
+                search={{ machine: ctx.activeThreadEnvironmentId }}
+              />
+            }
+          >
+            View diagnostics
+          </Button>
+          {retryRunId !== null && onRetryWorkspacePreparation ? (
             <Button
               type="button"
               size="xs"
@@ -5661,8 +5673,8 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
               <RotateCcwIcon aria-hidden />
               Retry
             </Button>
-          </div>
-        ) : null}
+          ) : null}
+        </div>
       </WorkLogRow>
     );
   }

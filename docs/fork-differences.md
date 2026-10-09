@@ -587,10 +587,14 @@ Code: [`SettingsSidebarNav.tsx`](../apps/web/src/components/settings/SettingsSid
 ## Diagnostics settings tab
 
 Diagnostics has its own entry in the settings sidebar, between Connections and Archive. Upstream
-only reaches it from the View diagnostics button in General. This is web and desktop.
+only reaches it from the View diagnostics button in General. Failed-turn callouts also offer
+**View diagnostics**, selecting the thread's environment so its process information, recent logs,
+and **Open logs folder** action are reachable from the error. This is web and desktop; mobile's
+Diagnostics screen reports native app startup crashes rather than environment logs.
 
 Code: `SETTINGS_SECTION_LABELS` in `apps/web/src/components/settings/settingsSearch.ts` and
-`SETTINGS_SECTION_ICONS` in `apps/web/src/components/settings/SettingsSidebarNav.tsx`.
+`SETTINGS_SECTION_ICONS` in `apps/web/src/components/settings/SettingsSidebarNav.tsx`, and
+`WorkEntryLogRow` in [MessagesTimeline.tsx](../apps/web/src/components/chat/MessagesTimeline.tsx).
 
 ## Conductor workspace settings
 
