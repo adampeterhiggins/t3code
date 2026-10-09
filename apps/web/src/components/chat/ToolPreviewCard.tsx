@@ -439,6 +439,9 @@ function PreviewBody(props: {
             </div>
           ) : null}
           {preview.text ? <p className="break-words text-foreground/85">“{preview.text}”</p> : null}
+          {preview.detail ? (
+            <p className="break-words text-foreground/85">{preview.detail}</p>
+          ) : null}
           {preview.expression ? (
             <pre className={cn("rounded-md bg-muted/40 px-2 py-1.5", monoClassName)}>
               <HighlightedSnippet text={preview.expression} lang="javascript" />

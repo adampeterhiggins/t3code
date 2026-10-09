@@ -379,6 +379,7 @@ function PreviewBody(props: {
             </Text>
           ) : null}
           {preview.text ? <Body>{`“${preview.text}”`}</Body> : null}
+          {preview.detail ? <Body>{preview.detail}</Body> : null}
           {preview.expression ? (
             <Text selectable className="font-mono text-2xs leading-normal text-foreground">
               {preview.expression}

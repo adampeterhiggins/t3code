@@ -174,6 +174,7 @@ describe("resolveToolPreview", () => {
       kind: "browser",
       target: "Alt+ArrowLeft",
       text: null,
+      detail: null,
       expression: null,
       value: null,
       page: { url: "http://localhost:7356/pair", title: null },
@@ -305,6 +306,31 @@ describe("resolveToolPreview", () => {
         tool("ScheduleWakeup", { reason: "CI", prompt: "Check CI" }, { scheduledFor: 0 }),
       ),
     ).toEqual({ kind: "wakeup", at: "1970-01-01T00:00:00.000Z", reason: "CI", prompt: "Check CI" });
+  });
+
+  it("reads a concise Slack thread", () => {
+    const messages =
+      "THREAD: *v1.4 status*\n\nAll green on <https://example.com/p|the pack>.\n> Jo Patel: Thanks!\n> Sam Rivera: Shipping at 2pm.";
+    expect(
+      resolveToolPreview(
+        tool("mcp__slack__slack_read_thread", { response_format: "concise" }, [
+          { type: "text", text: JSON.stringify({ messages }) },
+        ]),
+      ),
+    ).toEqual({
+      kind: "slack-messages",
+      messages: [
+        {
+          author: "Thread",
+          time: null,
+          channel: null,
+          url: null,
+          text: "*v1.4 status*\n\nAll green on the pack.",
+        },
+        { author: "Jo Patel", time: null, channel: null, url: null, text: "Thanks!" },
+        { author: "Sam Rivera", time: null, channel: null, url: null, text: "Shipping at 2pm." },
+      ],
+    });
   });
 
   it("splits Slack search results in both formats", () => {

@@ -416,7 +416,7 @@ describe("Linear and T3 history", () => {
 });
 
 describe("other servers", () => {
-  it("infers records and properties from plain JSON results", () => {
+  it("shows Forge orders, respondents and quality checks", () => {
     expect(
       resolveToolPreview(
         tool(
@@ -426,7 +426,14 @@ describe("other servers", () => {
             structuredContent: {
               survey_order: {
                 status: "Pending",
-                panel_supplier_orders: [{ order_description: "Base order", status: "Pending" }],
+                panel_supplier_orders: [
+                  {
+                    order_description: "Base order",
+                    status: "Pending",
+                    cpi: 7,
+                    created_date: "2026-08-20T14:57:42Z",
+                  },
+                ],
               },
             },
           },
@@ -434,8 +441,8 @@ describe("other servers", () => {
       ),
     ).toMatchObject({
       kind: "records",
-      notes: ["Status: Pending"],
-      items: [{ title: "Base order", subtitle: "Pending" }],
+      summary: "Survey order Pending",
+      items: [{ title: "Base order", subtitle: "Pending", meta: ["CPI 7", "2026-08-20"] }],
     });
     expect(
       resolveToolPreview(
@@ -447,7 +454,11 @@ describe("other servers", () => {
           },
         ),
       ),
-    ).toMatchObject({ kind: "document", markdown: "Success: respondent 'flat-003' created" });
+    ).toMatchObject({
+      kind: "thread-action",
+      headline: "respondent 'flat-003' created",
+      status: "completed",
+    });
     expect(
       resolveToolPreview(
         tool(
@@ -457,8 +468,16 @@ describe("other servers", () => {
             structuredContent: {
               survey_id: "s",
               respondent_data_quality_check_results: [
-                { survey_id: "s", supplier_respondent_id: "flat-001", check_result: "passed" },
-                { survey_id: "s", supplier_respondent_id: "flat-002", check_result: "failed" },
+                {
+                  supplier_respondent_id: "flat-001",
+                  check_result: "passed",
+                  failed_check_types: [],
+                },
+                {
+                  supplier_respondent_id: "flat-002",
+                  check_result: "failed",
+                  failed_check_types: ["speeder"],
+                },
               ],
             },
           },
@@ -467,9 +486,104 @@ describe("other servers", () => {
     ).toMatchObject({
       items: [
         { title: "flat-001", subtitle: "passed" },
-        { title: "flat-002", subtitle: "failed" },
+        { title: "flat-002", subtitle: "failed", meta: ["speeder"] },
       ],
     });
+    expect(
+      resolveToolPreview(
+        tool(
+          "mcp__claude_ai_Forge-dev__add_matrix_question",
+          { entry: { text: "Joined offline?" } },
+          {
+            structuredContent: {
+              questionnaire: {
+                entries: [
+                  {
+                    id: "q1",
+                    number: 0,
+                    entry_type: "matrix",
+                    title: "Joined offline?",
+                    matrix_rows: [{}, {}],
+                  },
+                ],
+              },
+            },
+          },
+        ),
+      ),
+    ).toMatchObject({
+      kind: "records",
+      summary: "Added a matrix question",
+      notes: ["“Joined offline?”", "1 entry in the questionnaire"],
+      items: [{ title: "Joined offline?", subtitle: "matrix", meta: ["Q1", "2 rows"] }],
+    });
+  });
+
+  it("shows PostHog SQL, LangSmith runs, Linear lists and Codex pull requests", () => {
+    expect(
+      resolveToolPreview(
+        tool(
+          "mcp__claude_ai_PostHog_2__exec",
+          { command: 'call execute-sql {"query": "SELECT key FROM flags"}' },
+          { content: [{ type: "text", text: "key|active\ndark-mode|true" }] },
+        ),
+      ),
+    ).toMatchObject({
+      kind: "table",
+      summary: "SELECT key FROM flags",
+      columns: ["key", "active"],
+      rows: [["dark-mode", "true"]],
+    });
+    expect(
+      resolveToolPreview(
+        tool(
+          "mcp__LangSmith__fetch_runs",
+          { project_name: "app" },
+          {
+            page_number: 1,
+            total_pages: 2,
+            runs: [
+              {
+                id: "r1",
+                name: "ChatModel",
+                run_type: "llm",
+                status: "success",
+                total_tokens: 120,
+              },
+            ],
+          },
+        ),
+      ),
+    ).toMatchObject({
+      kind: "records",
+      notes: ["Page 1 of 2"],
+      items: [{ title: "ChatModel", subtitle: "success", meta: ["llm", "120 tokens"] }],
+    });
+    expect(
+      resolveToolPreview(
+        tool(
+          "mcp__claude_ai_Linear__list_issues",
+          { query: "dark" },
+          {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  issues: [
+                    {
+                      identifier: "APP-1",
+                      title: "Dark mode",
+                      status: { name: "Todo" },
+                      assignee: { name: "Sam" },
+                    },
+                  ],
+                }),
+              },
+            ],
+          },
+        ),
+      ),
+    ).toMatchObject({ items: [{ title: "APP-1 Dark mode", subtitle: "Todo", meta: ["Sam"] }] });
     expect(
       resolveToolPreview(
         tool(
@@ -477,15 +591,97 @@ describe("other servers", () => {
           {},
           {
             title: "Match sums",
-            url: "https://github.com/o/r/pull/3",
+            html_url: "https://github.com/o/r/pull/3",
             number: 3,
+            state: "open",
+            head: { ref: "fix/sums" },
           },
         ),
       ),
     ).toMatchObject({
-      kind: "properties",
-      title: "Match sums",
-      url: "https://github.com/o/r/pull/3",
+      kind: "pull-requests",
+      pullRequests: [
+        {
+          title: "Match sums",
+          repository: "o/r",
+          number: 3,
+          headBranch: "fix/sums",
+          note: "Created",
+        },
+      ],
+    });
+  });
+
+  it("covers the T3 history and utility tools", () => {
+    expect(
+      resolveToolPreview(
+        tool(
+          "mcp__t3-code-history__list_turns",
+          {},
+          {
+            turns: [
+              {
+                turnId: "t",
+                threadId: "th",
+                turnCount: 3,
+                state: "completed",
+                prompt: "kill them",
+                response: "Stopped.",
+                fileCount: 0,
+                additions: 0,
+                deletions: 0,
+              },
+            ],
+          },
+        ),
+      ),
+    ).toMatchObject({
+      items: [{ title: "kill them", subtitle: "completed", body: "Stopped.", threadId: "th" }],
+    });
+    expect(
+      resolveToolPreview(
+        tool(
+          "t3-code.orchestrator_capabilities",
+          {},
+          {
+            inheritedModel: "gpt-6.1-sol",
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            providers: [
+              {
+                providerInstanceId: "codex",
+                displayName: "Codex",
+                driverKind: "codex",
+                models: [{ id: "a", label: "A" }],
+              },
+            ],
+          },
+        ),
+      ),
+    ).toMatchObject({
+      kind: "records",
+      summary: "gpt-6.1-sol · full-access · default",
+      items: [{ title: "Codex", meta: ["codex", "1 model"], body: "A" }],
+    });
+    expect(
+      resolveToolPreview(
+        tool(
+          "t3-code.t3_worktree_handoff",
+          { branch: "feat/x" },
+          {
+            worktreePath: "/w/x",
+            branch: "feat/x",
+            created: true,
+            baseRef: "main",
+            setupScript: { status: "no-script" },
+            continuation: { status: "scheduled", delivery: "started" },
+          },
+        ),
+      ),
+    ).toMatchObject({
+      kind: "thread-action",
+      headline: "Created worktree feat/x",
+      details: ["/w/x", "from main", "Continuing (started)"],
     });
   });
 

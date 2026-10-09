@@ -9,6 +9,7 @@ import {
   genericToolPreview,
   integrationToolPreview,
 } from "./integrationToolPreview.ts";
+import { t3UtilityToolPreview } from "./t3UtilityToolPreview.ts";
 import { toolCallArgs, toolResultData, toolResultText } from "./itemDetail.ts";
 
 /**
@@ -190,6 +191,8 @@ export interface BrowserToolPreview {
   /** What was acted on: a locator, key, URL, or typed text. */
   readonly target: string | null;
   readonly text: string | null;
+  /** What the call did when that is not a target or typed text: a resize, a scroll, a recording. */
+  readonly detail: string | null;
   /** JavaScript the call evaluated, shown as code. */
   readonly expression: string | null;
   /** The evaluation's value as JSON, when the call returned one. */
@@ -382,7 +385,50 @@ function browserPage(result: Record_ | null): BrowserToolPreview["page"] {
   return pageUrl ? { url: pageUrl, title: null } : null;
 }
 
-function browserPreview(input: Record_, result: Record_ | null): BrowserToolPreview {
+/** What a browser call acted on or changed, for tools whose input is not a locator, key or URL. */
+function browserDetail(tool: string, input: Record_, result: Record_ | null): string | null {
+  switch (tool) {
+    case "preview_resize": {
+      const viewport = isRecord(result?.viewport) ? result.viewport : null;
+      const size = viewport ? `${String(viewport.width)}×${String(viewport.height)}` : null;
+      return [str(input.preset) ?? str(input.mode), size].filter(Boolean).join(" · ") || null;
+    }
+    case "preview_set_appearance":
+      return str(result?.colorScheme) ?? str(input.colorScheme);
+    case "preview_select": {
+      const selected = Array.isArray(result?.selected) ? result.selected : input.values;
+      return Array.isArray(selected) ? `Selected ${selected.filter(isText).join(", ")}` : null;
+    }
+    case "preview_upload": {
+      const paths = Array.isArray(input.paths) ? input.paths.filter(isText) : [];
+      return paths.length === 0 ? "Cancelled the file picker" : paths.join(", ");
+    }
+    case "preview_drag":
+      return str(input.source) && str(input.target)
+        ? `${str(input.source)} → ${str(input.target)}`
+        : null;
+    case "preview_dialog":
+      return input.accept === false ? "Dismissed the dialog" : "Accepted the dialog";
+    case "preview_recording_start":
+      return "Started recording";
+    case "preview_recording_stop":
+      return str(result?.path) ? `Saved ${str(result?.path)}` : "Stopped recording";
+    case "preview_wait_for":
+      return str(input.text)
+        ? `Waited for “${str(input.text)}”`
+        : str(input.urlIncludes)
+          ? `Waited for a URL with ${str(input.urlIncludes)}`
+          : null;
+    case "preview_scroll":
+      return typeof input.deltaY === "number"
+        ? `Scrolled ${input.deltaY > 0 ? "down" : "up"} ${Math.abs(input.deltaY)}px`
+        : null;
+    default:
+      return null;
+  }
+}
+
+function browserPreview(tool: string, input: Record_, result: Record_ | null): BrowserToolPreview {
   const modifiers = Array.isArray(input.modifiers) ? input.modifiers.filter(isText) : [];
   const key = str(input.key);
   const target =
@@ -395,7 +441,8 @@ function browserPreview(input: Record_, result: Record_ | null): BrowserToolPrev
   return {
     kind: "browser",
     target,
-    text: str(input.text),
+    text: tool === "preview_type" ? str(input.text) : null,
+    detail: browserDetail(tool, input, result),
     expression: str(input.expression),
     value: hasValue ? (JSON.stringify(result.value, null, 2) ?? "undefined") : null,
     page: browserPage(result),
@@ -485,8 +532,32 @@ function slackConciseResults(text: string): SlackMessagesPreview["messages"] {
   return messages;
 }
 
+/** Concise thread reads: `THREAD: <parent>` then one `> Author: reply` line per reply. */
+function slackConciseThread(text: string): SlackMessagesPreview["messages"] {
+  const [parent = "", ...rest] = text.slice("THREAD: ".length).split(/\n(?=> )/);
+  const replies = rest.flatMap((block) => {
+    const reply = /^> ([^:\n]+): ([\s\S]*)$/.exec(block.trim());
+    if (!reply) return [];
+    const body = slackPlainText(reply[2]!.replace(/^> ?/gm, ""));
+    return body
+      ? [{ author: reply[1]!.trim(), time: null, channel: null, url: null, text: body }]
+      : [];
+  });
+  const parentText = slackPlainText(parent);
+  return [
+    ...(parentText
+      ? [{ author: "Thread", time: null, channel: null, url: null, text: parentText }]
+      : []),
+    ...replies,
+  ];
+}
+
 function slackPreview(text: string | null): SlackMessagesPreview | null {
   if (!text) return null;
+  if (text.startsWith("THREAD: ")) {
+    const messages = slackConciseThread(text);
+    return messages.length > 0 ? { kind: "slack-messages", messages } : null;
+  }
   const separator = SLACK_THREAD_SECTION.test(text)
     ? SLACK_THREAD_SECTION
     : SLACK_SEARCH_SECTION.test(text)
@@ -866,7 +937,7 @@ function t3ToolPreview(tool: string, input: Record_, result: Record_ | null): To
     case "html_render":
       return htmlPagePreview(input, result);
     default:
-      return tool.startsWith("preview_") ? browserPreview(input, result) : null;
+      return tool.startsWith("preview_") ? browserPreview(tool, input, result) : null;
   }
 }
 
@@ -880,7 +951,13 @@ export function resolveToolPreview(item: OrchestrationV2TurnItem): ToolPreview |
   const text = item.outputOmitted === true ? null : toolResultText(item.output);
   const t3Tool = resolveT3McpToolId(item.toolName);
   // T3 tools without their own card still show their result as one.
-  if (t3Tool) return t3ToolPreview(t3Tool, input, resultRecord) ?? genericToolPreview(result, text);
+  if (t3Tool) {
+    return (
+      t3ToolPreview(t3Tool, input, resultRecord) ??
+      t3UtilityToolPreview(t3Tool, input, result) ??
+      genericToolPreview(result, text)
+    );
+  }
   const toolName = item.toolName ?? "";
   return (
     claudeToolPreview(item, input, resultRecord) ??
