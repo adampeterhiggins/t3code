@@ -27,6 +27,7 @@ import {
 import { GitHubIcon, LinearIcon, NotionIcon, SlackIcon } from "../Icons";
 import { memo, useCallback, useLayoutEffect, useRef } from "react";
 
+import type { AgentFleetEntry } from "@t3tools/client-runtime/state/agent-fleet";
 import { type ComposerSlashCommand, type ComposerTriggerKind } from "../../composer-logic";
 import { cn } from "~/lib/utils";
 import { Badge } from "../ui/badge";
@@ -34,6 +35,7 @@ import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Kbd } from "../ui/kbd";
 import { Command, CommandGroup, CommandItem, CommandList } from "../ui/command";
+import { AgentCommandRow } from "./AgentFleetRow";
 import { PierreEntryIcon } from "./PierreEntryIcon";
 import { ComposerBanner } from "./ComposerBanner";
 import {
@@ -129,6 +131,16 @@ export type ComposerCommandItem =
       id: string;
       type: "thread";
       thread: ScopedThreadRef;
+      label: string;
+      description: string;
+    }
+  | {
+      id: string;
+      type: "subagent";
+      /** The thread being composed in, whose agents the `@` menu lists. */
+      parentRef: ScopedThreadRef;
+      entry: AgentFleetEntry;
+      workspaceRoot: string | null;
       label: string;
       description: string;
     };
@@ -424,6 +436,12 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
         <GitHubIssueRow item={props.item} environmentId={props.environmentId} />
       ) : props.item.type === "slack-message" ? (
         <SlackMessageCommandRow item={props.item} />
+      ) : props.item.type === "subagent" ? (
+        <AgentCommandRow
+          parentRef={props.item.parentRef}
+          entry={props.item.entry}
+          workspaceRoot={props.item.workspaceRoot}
+        />
       ) : (
         <span className="flex min-w-0 flex-1 items-center gap-2">
           <span className="min-w-0 max-w-[45%] shrink-0 truncate font-sans text-xs font-medium">

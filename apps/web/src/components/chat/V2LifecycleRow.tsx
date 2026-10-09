@@ -5,6 +5,8 @@ import type { ReactNode } from "react";
 import { useThreadShell, useProject } from "../../state/entities";
 import { SubagentTooltipContent } from "./SubagentTooltipContent";
 import { showAgentInPanel, useAgentContextMenu } from "./agentContextMenu";
+import { AgentHandle } from "./AgentHandle";
+import { attachAgentToChat, useAgentHandle } from "./agentReferences";
 import { useAtomValue } from "@effect/atom-react";
 import { scopeThreadRef, scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { environmentThreadDetails } from "../../state/threads";
@@ -31,6 +33,7 @@ import type { TimestampFormat } from "@t3tools/contracts/settings";
 import {
   BotIcon,
   PanelRightOpenIcon,
+  AtSignIcon,
   ChevronRightIcon,
   ArrowRightLeftIcon,
   ArrowRightIcon,
@@ -454,6 +457,7 @@ function SubagentTimelineLink(props: {
   );
   const threadId = props.threadId;
   const openAgentMenu = useAgentContextMenu(props.parentRef);
+  const handle = useAgentHandle(props.parentRef.environmentId, props.parentRef.threadId, threadId);
   const liveStatus = agent?.status ?? props.status;
   const status = props.event ? props.event.status : liveStatus;
   const statusLabel = props.event?.label ?? subagentStatusVisual(liveStatus).label;
@@ -481,6 +485,7 @@ function SubagentTimelineLink(props: {
           <span className="min-w-0 truncate text-xs font-medium text-foreground">
             {props.title}
           </span>
+          {handle === null ? null : <AgentHandle handle={handle} className="self-center" />}
           {detail !== null && (props.event !== undefined || status !== "completed") ? (
             <span
               className={cn(
@@ -577,6 +582,7 @@ function SubagentTimelineLink(props: {
               result={agent?.result ?? props.result}
               progress={agent?.progress ?? props.progress}
               usage={agent?.usage ?? null}
+              handle={handle}
             />
           </ThreadHoverCardPopup>
         </Tooltip>
@@ -585,6 +591,8 @@ function SubagentTimelineLink(props: {
         parentRef={props.parentRef}
         agentKey={threadId ?? `subagent:${props.subagentId}`}
         title={props.title}
+        childThreadId={threadId}
+        subagentId={props.subagentId}
       />
     </div>
   );
@@ -600,9 +608,34 @@ function SubagentPanelControls(props: {
   /** The agent's Agents panel key (`AgentFleetEntry.key`). */
   readonly agentKey: string;
   readonly title: string;
+  readonly childThreadId: ThreadId | null;
+  readonly subagentId: NodeId;
 }) {
   return (
-    <span className="shrink-0 opacity-0 transition-opacity focus-within:opacity-100 group-any-hover/subagent-row:opacity-100">
+    <span className="flex shrink-0 items-center opacity-0 transition-opacity focus-within:opacity-100 group-any-hover/subagent-row:opacity-100">
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              type="button"
+              size="icon-xs"
+              variant="ghost-muted"
+              aria-label={`Attach ${props.title} to chat`}
+              onClick={() =>
+                void attachAgentToChat(props.parentRef, {
+                  environmentId: props.parentRef.environmentId,
+                  ownerThreadId: props.parentRef.threadId,
+                  childThreadId: props.childThreadId,
+                  subagentId: props.subagentId,
+                })
+              }
+            />
+          }
+        >
+          <AtSignIcon />
+        </TooltipTrigger>
+        <TooltipPopup>Attach to chat</TooltipPopup>
+      </Tooltip>
       <Tooltip>
         <TooltipTrigger
           render={
@@ -629,6 +662,7 @@ function SubagentTimelineTooltip(
     elapsed: ReactNode;
     usage: OrchestrationV2SubagentUsage | null;
     modelSelection: OrchestrationV2Subagent["modelSelection"];
+    handle: string | null;
   },
 ) {
   const environmentId = props.parentRef.environmentId;
@@ -659,6 +693,7 @@ function SubagentTimelineTooltip(
       childThread={child}
       parentProject={parentProject ?? undefined}
       childProject={childProject ?? undefined}
+      handle={props.handle}
     />
   );
 }

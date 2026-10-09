@@ -69,6 +69,7 @@ import { AgentElapsed } from "./AgentElapsed";
 import { SubagentActivityLine } from "./SubagentActivityLine";
 import { AgentListToolbar } from "./AgentListToolbar";
 import { useAgentContextMenu } from "./agentContextMenu";
+import { useAgentHandles } from "./agentReferences";
 import { ThreadRelationshipIcon, threadRelationshipStatusLabel } from "./ThreadRelationshipIcon";
 
 import { Button } from "../ui/button";
@@ -233,6 +234,7 @@ export function ThreadRelationshipsPanel(props: {
   const currentProject = projects.find((project) => project.id === currentThread?.projectId);
   const navigate = useNavigate();
   const openAgentMenu = useAgentContextMenu(ref);
+  const agentHandles = useAgentHandles(ref.environmentId, ref.threadId);
   const agentListView = useAgentListViewStore((state) => state.view);
   const setAgentListView = useAgentListViewStore((state) => state.setView);
   const workspaceRoot = currentThread?.worktreePath ?? currentProject?.workspaceRoot ?? null;
@@ -495,6 +497,7 @@ export function ThreadRelationshipsPanel(props: {
                   result={agent.result}
                   progress={agent.progress}
                   usage={agent.usage}
+                  handle={agentHandles.get(threadId)}
                   parentThread={currentThread ?? undefined}
                   childThread={node?.thread ?? undefined}
                   parentProject={currentProject}

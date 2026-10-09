@@ -36,7 +36,7 @@ import type {
   ThreadId,
   TurnItemId,
 } from "@t3tools/contracts";
-import { BotIcon, PanelTopIcon } from "lucide-react";
+import { BotIcon, ListCollapseIcon, ListIcon, PanelTopIcon } from "lucide-react";
 import { useCallback, useMemo, useState, type MouseEvent } from "react";
 
 import { selectAgentDrillStack, useAgentDrillStore } from "~/agentDrillStore";
@@ -50,6 +50,7 @@ import { ScrollArea } from "../ui/scroll-area";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { AgentUsageFooter } from "./AgentActivityParts";
 import { AgentDetailPanel } from "./AgentDetailPanel";
+import { agentReferenceTargetOf, attachAgentToChat } from "./agentReferences";
 import { AgentRow, useEnvironmentShells, useProviderEntries } from "./AgentFleetRow";
 import { AgentListToolbar } from "./AgentListToolbar";
 import { agentMenuTargetOf, useAgentContextMenu } from "./agentContextMenu";
@@ -81,6 +82,32 @@ function StatusCount(props: { status: RuntimeSubagent["status"]; count: number; 
       <TooltipPopup>
         {props.label} · {props.count}
       </TooltipPopup>
+    </Tooltip>
+  );
+}
+
+/** Shows or hides each agent row's second line: its latest tool call, result, or error. */
+function RowDetailsToggle() {
+  const show = useAgentListViewStore((state) => state.showRowDetails);
+  const setShow = useAgentListViewStore((state) => state.setShowRowDetails);
+  const label = show ? "Hide agent details" : "Show agent details";
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            type="button"
+            size="icon-xs"
+            variant="ghost-muted"
+            aria-label={label}
+            aria-pressed={!show}
+            onClick={() => setShow(!show)}
+          />
+        }
+      >
+        {show ? <ListCollapseIcon /> : <ListIcon />}
+      </TooltipTrigger>
+      <TooltipPopup>{label}</TooltipPopup>
     </Tooltip>
   );
 }
@@ -252,7 +279,10 @@ function AgentFleetList(props: AgentsPanelProps) {
         <div className="min-w-0 flex-1">
           <AgentListToolbar view={view} onChange={setView} />
         </div>
-        <div className="pb-1">{lineageButton}</div>
+        <div className="flex items-center pb-1">
+          <RowDetailsToggle />
+          {lineageButton}
+        </div>
       </div>
       <ScrollArea className="min-h-0 flex-1">
         <div className="flex flex-col p-2 pt-0">
@@ -277,6 +307,12 @@ function AgentFleetList(props: AgentsPanelProps) {
               workspaceRoot={props.workspaceRoot}
               onOpen={openAgent}
               onContextMenu={onContextMenu}
+              onAttach={(entry) =>
+                void attachAgentToChat(
+                  threadRef,
+                  agentReferenceTargetOf(threadRef.environmentId, entry),
+                )
+              }
             />
           ))}
           {hiddenCount > 0 ? (

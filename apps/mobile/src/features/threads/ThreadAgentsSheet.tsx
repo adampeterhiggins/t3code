@@ -1,4 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
+import { MenuView } from "@react-native-menu/menu";
+import type { EnvironmentThread } from "@t3tools/client-runtime/state/shell";
 import type { ThreadTurnSubagents } from "@t3tools/client-runtime/state/thread-subagents";
 import {
   isOrchestrationV2WorkActive,
@@ -17,14 +19,26 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AndroidSheetHeader } from "../../components/AndroidScreenHeader";
 import { AppText as Text } from "../../components/AppText";
+import { ControlPillMenu } from "../../components/ControlPill";
+import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import { environmentThreadDetails } from "../../state/threads";
 import { nativeHeaderScrollEdgeEffects } from "../../native/StackHeader";
+import {
+  agentReferenceKey,
+  attachAgentToChat,
+  useAgentReferences,
+  type AgentReference,
+} from "./agent-references";
 import { SubagentRow } from "./SubagentRow";
 
 const HEADER_SCROLL_EDGE_EFFECTS = nativeHeaderScrollEdgeEffects(Platform.OS, Platform.Version);
 
 type AgentsTarget = { readonly environmentId: EnvironmentId; readonly threadId: ThreadId };
+
+const EMPTY_SUBAGENTS: ReadonlyArray<OrchestrationV2Subagent> = [];
+const selectSubagents = (thread: EnvironmentThread | null) =>
+  thread?.projection.subagents ?? EMPTY_SUBAGENTS;
 
 export function useThreadTurnSubagents(target: AgentsTarget): ThreadTurnSubagents | null {
   return useAtomValue(environmentThreadDetails.turnSubagentsAtom(target));
@@ -38,6 +52,12 @@ export function ThreadAgentsSheet({ route }: StaticScreenProps<AgentsTarget>) {
   const turn = useThreadTurnSubagents(target);
   const subagents = turn?.subagents ?? [];
   const hasLiveAgent = (turn?.liveCount ?? 0) > 0;
+  // Handles are deduped across every agent the thread started, not only this turn's.
+  const references = useAgentReferences(
+    target.environmentId,
+    target.threadId,
+    useAtomValue(environmentThreadDetails.threadAtom(target), selectSubagents),
+  );
 
   const openChildThread = (childThreadId: ThreadId) => {
     void Haptics.selectionAsync();
@@ -49,6 +69,12 @@ export function ThreadAgentsSheet({ route }: StaticScreenProps<AgentsTarget>) {
         threadId: childThreadId,
       }),
     );
+  };
+
+  const attachInChat = (subagent: OrchestrationV2Subagent, reference: AgentReference) => {
+    if (!attachAgentToChat(target.environmentId, subagent, reference)) return;
+    void Haptics.selectionAsync();
+    navigation.goBack();
   };
 
   const content = (
@@ -70,8 +96,10 @@ export function ThreadAgentsSheet({ route }: StaticScreenProps<AgentsTarget>) {
             key={subagent.id}
             subagent={subagent}
             environmentId={target.environmentId}
+            reference={references.get(agentReferenceKey(subagent)) ?? null}
             tickSeconds={hasLiveAgent}
             onOpen={openChildThread}
+            onAttach={attachInChat}
           />
         ))
       )}
@@ -118,13 +146,18 @@ export function ThreadAgentsSheet({ route }: StaticScreenProps<AgentsTarget>) {
   );
 }
 
+// The sheet is a native modal, where Android's anchored menu would sit behind it.
+const AgentRowMenu = Platform.OS === "android" ? MenuView : ControlPillMenu;
+
 function AgentRow(props: {
   readonly environmentId: EnvironmentId;
   readonly subagent: OrchestrationV2Subagent;
+  readonly reference: AgentReference | null;
   readonly tickSeconds: boolean;
   readonly onOpen: (childThreadId: ThreadId) => void;
+  readonly onAttach: (subagent: OrchestrationV2Subagent, reference: AgentReference) => void;
 }) {
-  const { subagent } = props;
+  const { subagent, reference } = props;
   const childThreadId = subagent.childThreadId;
 
   const row = (
@@ -132,31 +165,60 @@ function AgentRow(props: {
       <SubagentRow
         environmentId={props.environmentId}
         subagent={subagent}
+        handle={reference?.handle ?? null}
         elapsed={<AgentElapsed subagent={subagent} tickSeconds={props.tickSeconds} />}
       />
     </View>
   );
 
-  if (childThreadId === null) {
-    return (
-      <View
-        accessible
-        accessibilityHint="Provider-managed agent. Its work appears in the transcript."
+  const pressable =
+    childThreadId === null ? (
+      <Pressable
+        accessibilityHint={
+          reference
+            ? "Provider-managed agent. Its work appears in the transcript. Long press for actions."
+            : "Provider-managed agent. Its work appears in the transcript."
+        }
       >
         {row}
-      </View>
+      </Pressable>
+    ) : (
+      <Pressable
+        accessibilityRole="link"
+        accessibilityHint={
+          reference
+            ? "Opens this agent's thread. Long press for actions."
+            : "Opens this agent's thread"
+        }
+        onPress={() => props.onOpen(childThreadId)}
+        className="active:opacity-70"
+      >
+        {row}
+      </Pressable>
     );
-  }
 
+  if (reference === null) return pressable;
+  const actions = [
+    { id: "attach", title: "Attach to chat" },
+    { id: "copy-handle", title: "Copy handle" },
+    ...(childThreadId === null ? [] : [{ id: "open", title: "Open agent" }]),
+  ];
   return (
-    <Pressable
-      accessibilityRole="link"
-      accessibilityHint="Opens this agent's thread"
-      onPress={() => props.onOpen(childThreadId)}
-      className="active:opacity-70"
+    <AgentRowMenu
+      title={`@${reference.handle}`}
+      shouldOpenOnLongPress
+      actions={actions}
+      onPressAction={({ nativeEvent }) => {
+        if (nativeEvent.event === "attach") props.onAttach(subagent, reference);
+        else if (nativeEvent.event === "copy-handle") {
+          copyTextWithHaptic(`@${reference.handle}`, { target: "agent handle" });
+        } else if (nativeEvent.event === "open" && childThreadId !== null) {
+          props.onOpen(childThreadId);
+        }
+      }}
     >
-      {row}
-    </Pressable>
+      {pressable}
+    </AgentRowMenu>
   );
 }
 

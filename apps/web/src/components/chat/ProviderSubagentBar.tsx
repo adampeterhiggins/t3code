@@ -3,11 +3,12 @@ import {
   type ProviderSubagentStatus,
 } from "@t3tools/client-runtime/state/thread-execution";
 import { isOrchestrationV2WorkActive } from "@t3tools/contracts";
-import { ArrowUpLeftIcon } from "lucide-react";
+import { ArrowUpLeftIcon, AtSignIcon } from "lucide-react";
 import { useLayoutEffect, useRef } from "react";
 
 import type { ProviderInstanceEntry } from "../../providerInstances";
 import { Button } from "../ui/button";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 
 /**
@@ -25,6 +26,9 @@ export function ProviderSubagentBar(props: {
   readonly effortLabel: string | null;
   /** Null until the subagent's root turn arrives. */
   readonly status: ProviderSubagentStatus | null;
+  /** Fork: attaches the subagent to the parent's chat, the way to steer it. The thread's
+      "Subagent of" divider shows its `@handle`. */
+  readonly onAttachToParent: (() => void) | null;
   readonly onOpenParent: (() => void) | null;
 }) {
   const statusRef = useRef<HTMLSpanElement>(null);
@@ -82,6 +86,23 @@ export function ProviderSubagentBar(props: {
         {`${modelDescription} subagent: ${announcement}`}
       </span>
       <span className="ms-auto shrink-0 text-muted-foreground max-sm:hidden">Runs on its own</span>
+      {props.onAttachToParent ? (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                aria-label="Attach to parent chat"
+                onClick={props.onAttachToParent}
+              />
+            }
+          >
+            <AtSignIcon />
+          </TooltipTrigger>
+          <TooltipPopup>Attach to parent chat</TooltipPopup>
+        </Tooltip>
+      ) : null}
       {props.onOpenParent ? (
         <Button size="sm" variant="ghost" onClick={props.onOpenParent}>
           <ArrowUpLeftIcon />

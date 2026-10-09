@@ -1,7 +1,8 @@
 /**
  * Fork: carry a subagent's work into chat, from its agents list row or its agent tab.
  *
- * - Attach result pastes a finished agent's task and result into this chat's composer.
+ * - Attach to chat lives in `agentReferences.ts`: the agent's `@handle` chip carries its task and
+ *   result.
  * - Continue in chat opens a new chat tab whose draft carries the agent's task, outcome and
  *   latest tool calls as a chat-summary chip. It starts a fresh conversation; the agent's own
  *   provider session is not resumed.
@@ -10,7 +11,6 @@ import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   deriveSubagentToolCalls,
   subagentContinuationContext,
-  subagentResultChatContext,
   type SubagentContextSubject,
 } from "@t3tools/client-runtime/state/agent-list-view";
 import type {
@@ -21,7 +21,6 @@ import type {
   ThreadId,
 } from "@t3tools/contracts";
 
-import type { ComposerHandleRef } from "~/composerHandleContext";
 import { loadThreadProjection } from "~/state/entities";
 import { readPreparedConnection } from "~/state/session";
 
@@ -41,29 +40,6 @@ export function subagentContextSubject(
     error: failed ? (subagent.result ?? "The subagent failed.") : null,
     progress: subagent.progress ?? null,
   };
-}
-
-/** True when the agent has a settled result worth attaching. */
-export function canAttachAgentResult(subject: SubagentContextSubject): boolean {
-  return subagentResultChatContext(subject) !== null;
-}
-
-/** Adds a finished agent's findings to the chat composer; long results fold into an attachment. */
-export function attachAgentResultToChat(
-  composerRef: ComposerHandleRef | null,
-  subject: SubagentContextSubject,
-): void {
-  const context = subagentResultChatContext(subject);
-  if (context === null) return;
-  const composer = composerRef?.current;
-  if (composer?.pasteTextAtEnd(context)) return;
-  toastManager.add({
-    type: "error",
-    title: "Unable to attach result",
-    description: composer
-      ? "The chat isn't ready to accept input right now."
-      : "Open the parent chat and try again.",
-  });
 }
 
 /**

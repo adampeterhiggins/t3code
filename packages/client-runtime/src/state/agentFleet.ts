@@ -29,6 +29,7 @@ import {
   type AgentStatusFilter,
 } from "./agentListView.ts";
 import { formatSubagentDisplayTitle } from "./subagentDisplay.ts";
+import { assignSubagentHandles } from "./subagentHandles.ts";
 import {
   formatSubagentModelLabel,
   projectedSubagentsToRuntime,
@@ -163,6 +164,8 @@ export interface AgentFleetEntry {
   /** The provider the agent runs on: its child thread's current one, else the one it was spawned on. */
   readonly providerInstanceId: ProviderInstanceId;
   readonly title: string;
+  /** What the composer's `@` menu and agent UI call it (`subagentHandles.ts`), without the `@`. */
+  readonly handle: string;
   readonly subject: AgentListSubject;
 }
 
@@ -205,7 +208,7 @@ export function deriveThreadAgentFleet(input: {
     else subagentChildren.set(parentThreadId, [shell]);
   }
 
-  const entries: AgentFleetEntry[] = [];
+  const entries: Array<Omit<AgentFleetEntry, "handle">> = [];
   const seen = new Set<ThreadId>([input.threadId]);
   const fromShell = (shell: OrchestrationV2ThreadShell, ownerThreadId: ThreadId) => {
     const agent = shellSubagent(shell);
@@ -260,7 +263,15 @@ export function deriveThreadAgentFleet(input: {
       fromShell(shell, owner);
     }
   }
-  return entries;
+  const handles = assignSubagentHandles(
+    entries.map((entry) => ({
+      key: entry.key,
+      ownerThreadId: entry.ownerThreadId,
+      title: entry.title,
+      spawnedAt: entry.subject.spawnedAt,
+    })),
+  );
+  return entries.map((entry) => ({ ...entry, handle: handles.get(entry.key) ?? "agent" }));
 }
 
 export interface AgentFleetRow {
@@ -387,6 +398,22 @@ export function subagentRunStats(
     if (candidate.runId === latest.id) attempt = Math.max(attempt, candidate.attemptOrdinal);
   }
   return { runs: latest.ordinal, attempt: attempt > 0 ? attempt : null };
+}
+
+/**
+ * The first line of a finished agent's result, for its row: Markdown heading, list and quote
+ * markers dropped, cut to 160 characters. Null when the result has no text.
+ */
+export function subagentResultSummaryLine(result: string | null | undefined): string | null {
+  for (const raw of result?.split("\n") ?? []) {
+    const line = raw
+      .replace(/^\s*(?:#{1,6}\s+|[-*+]\s+|>\s*|\d+[.)]\s+)/, "")
+      .replace(/\*\*|__/g, "")
+      .trim();
+    if (line.length === 0) continue;
+    return line.length > 160 ? `${line.slice(0, 159)}…` : line;
+  }
+  return null;
 }
 
 /** The identity line after an agent's status: compact model with effort, then `run N` past the first. */

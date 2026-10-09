@@ -291,6 +291,15 @@ opens it when selected. Your prompt only carries a reference: the agent reads th
 history on demand, so attaching a long thread costs nothing until the agent looks. Attaching a
 thread does not change it, and the agent cannot send messages to it unless you ask.
 
+Agents a thread started can be attached too. Each agent has an `@handle` made from its title,
+shown next to it in the Agents panel, its detail view and its own thread. Type `@` and switch to
+the **Agents** tab, or keep typing a handle, to pick one. Hover a row or the chip to preview the
+agent. You can also right-click an agent and choose **Attach to chat**, Alt-click it in the
+Agents panel, or use **Attach to parent chat** from the agent's own thread. The chip carries the
+agent's task and result, and the agent you are talking to learns how to reach it. It can send follow-ups to agents T3 Code delegated
+and to Claude subagents it started itself. Other providers' subagents cannot take messages, so they
+come along as their task and result.
+
 Images keep their thumbnail shelf above the text and also get a chip at your cursor, so you can
 say exactly which image you mean. Deleting an image chip leaves the image on the shelf; removing
 the thumbnail asks first when the image is still mentioned in your text, then removes both. Files

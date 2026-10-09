@@ -522,6 +522,31 @@ export function ComposerContextSheet(props: {
                     ) : null}
                   </View>
                 ) : null}
+                {record.kind === "subagent" ? (
+                  <View className="gap-3">
+                    <ContextField label="Agent" value={`@${record.handle}`} />
+                    <ContextField label="Title" value={record.title} />
+                    <ContextField label="Status when referenced" value={record.status} />
+                    {/* Exactly what the agent receives about the referenced agent. */}
+                    <ContextField label="Task" value={record.prompt} />
+                    <ContextField label="Result" value={record.result} />
+                    {props.onOpenThread && record.childThreadId !== null ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        onPress={() =>
+                          record.childThreadId !== null &&
+                          props.onOpenThread?.({
+                            environmentId: record.environmentId,
+                            threadId: record.childThreadId,
+                          })
+                        }
+                        className="rounded-xl bg-subtle p-4"
+                      >
+                        <Text className="text-foreground">Open agent</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                ) : null}
                 {record.kind === "skill" ? (
                   <View className="gap-3">
                     <ContextField label="Skill" value={record.name} />

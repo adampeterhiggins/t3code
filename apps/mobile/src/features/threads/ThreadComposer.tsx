@@ -1,6 +1,9 @@
 import type { ComposerTextPaste } from "../../native/T3ComposerEditor.types";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
-import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
+import type {
+  EnvironmentThread,
+  EnvironmentThreadShell,
+} from "@t3tools/client-runtime/state/shell";
 import { useAtomValue } from "@effect/atom-react";
 import { clampFileAttachmentUploadBytes } from "@t3tools/client-runtime/state/attachments";
 import { pastedTextDisposition, replaceTextSelection } from "@t3tools/client-runtime/text-paste";
@@ -63,7 +66,8 @@ import {
 import { appAtomRegistry } from "../../state/atom-registry";
 import type { ComposerDocumentAttachment } from "../../lib/composerContext";
 import { useProject, useThreadShells } from "../../state/entities";
-import { scopeProjectRef } from "@t3tools/client-runtime/environment";
+import { environmentThreadDetails } from "../../state/threads";
+import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 
 import { AppText as Text } from "../../components/AppText";
 import { ComposerAttachmentButton } from "../../components/ComposerAttachmentButton";
@@ -256,6 +260,10 @@ const COMPOSER_ATTACHMENT_ENTERING =
     : FadeIn.delay(COMPOSER_TRANSITION_DURATION_MS).duration(160).reduceMotion(ReduceMotion.System);
 
 const AnimatedGlassSurface = Animated.createAnimatedComponent(GlassSurface);
+
+/** The `@` menu's Agents tab reads only the thread's subagent records. */
+const selectThreadSubagents = (thread: EnvironmentThread | null) =>
+  thread?.projection.subagents ?? null;
 
 const FOLLOW_UP_ACTION_LABEL = {
   queue: "Queue",
@@ -513,12 +521,20 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     return report !== null;
   }, [currentModelSelection.instanceId, onShowUsageLimits, props.serverConfig]);
 
+  const threadSubagents = useAtomValue(
+    environmentThreadDetails.threadAtom(
+      scopeThreadRef(props.environmentId, props.selectedThread.id),
+    ),
+    selectThreadSubagents,
+  );
   const composerMenu = useComposerCommandMenu({
     draftMessage: props.draftMessage,
     ownerKey: composerOwnerKey,
     environmentId: props.environmentId,
     threadShells: useThreadShells(),
     currentThreadId: props.selectedThread.id,
+    ...(threadSubagents ? { threadSubagents } : {}),
+    ...(props.serverConfig ? { providers: props.serverConfig.providers } : {}),
     projectCwd: props.projectCwd,
     pullRequestProjectId: props.serverConfig?.environment.capabilities.pullRequests
       ? (project?.id ?? null)
@@ -801,13 +817,16 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       >
         {!voiceInput.isBusy &&
         composerMenu.trigger &&
-        (composerMenu.items.length > 0 || composerMenu.trigger.kind === "pull-request") ? (
+        (composerMenu.items.length > 0 ||
+          composerMenu.trigger.kind === "pull-request" ||
+          composerMenu.pathTab !== null) ? (
           <ComposerPopoverAnchor>
             <ComposerCommandPopover
               items={composerMenu.items}
               triggerKind={composerMenu.trigger.kind}
               isLoading={composerMenu.isLoading}
               error={composerMenu.error}
+              pathTab={composerMenu.pathTab}
               onSelect={composerMenu.onSelect}
             />
           </ComposerPopoverAnchor>

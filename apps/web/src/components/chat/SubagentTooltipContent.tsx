@@ -17,6 +17,7 @@ import { getModelSelectionStringOptionValue, resolveSelectableModel } from "@t3t
 import { getTraitsSpeedDisplay, TraitsSpeedIcon } from "./TraitsSpeed";
 import type { ReactNode } from "react";
 import {
+  AtSignIcon,
   BotIcon,
   CheckIcon,
   CircleDashedIcon,
@@ -55,6 +56,8 @@ export function SubagentTooltipContent(props: {
   progress?: string | null | undefined;
   /** Fork: the subagent's reported usage, where the provider reports it. */
   usage?: OrchestrationV2SubagentUsage | null | undefined;
+  /** Fork: the `@handle` it is referenced by in chat. */
+  handle?: string | null | undefined;
 }) {
   const { modelLabel, workspace: metadata } = resolveSubagentMetadata(props);
   const preview = subagentDetailPreview(props);
@@ -126,6 +129,12 @@ export function SubagentTooltipContent(props: {
         : CircleDashedIcon;
   return (
     <ThreadHoverCard title={props.title}>
+      {props.handle ? (
+        <div className="flex min-w-0 items-center gap-2">
+          <AtSignIcon className="size-3 shrink-0" />
+          <span className="min-w-0 truncate font-mono text-foreground/75">{props.handle}</span>
+        </div>
+      ) : null}
       <div className="flex min-w-0 items-center gap-2">
         {driver ? (
           <ProviderInstanceIcon

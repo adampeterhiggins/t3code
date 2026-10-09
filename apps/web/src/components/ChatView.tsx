@@ -474,6 +474,7 @@ import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import type { AssistantCitationRequest } from "./chat/AssistantCitationSource";
 import { MessagesTimeline, type MessagesTimelineHistoryControls } from "./chat/MessagesTimeline";
 import { ProviderSubagentBar } from "./chat/ProviderSubagentBar";
+import { attachAgentToChat, useAgentHandle } from "./chat/agentReferences";
 import { getTriggerDisplayModelName } from "./chat/providerIconUtils";
 import { resolveTimelineIsAtEnd, worktreeSetupAgentStarted } from "./chat/MessagesTimeline.logic";
 import {
@@ -2289,6 +2290,30 @@ export default function ChatView(props: ChatViewProps) {
     return scopeThreadRef(parentSubagentEnvironmentId, parentSubagentThreadId);
   }, [parentSubagentEnvironmentId, parentSubagentThreadId]);
   const parentSubagentThread = useThreadShell(parentSubagentThreadRef);
+  const subagentThreadId = activeThread?.id ?? null;
+  const subagentHandle = useAgentHandle(
+    parentSubagentEnvironmentId,
+    parentSubagentThreadId,
+    subagentThreadId,
+  );
+  // Fork: the chip lands in the parent's draft, then the parent opens with it.
+  const attachToParent = useMemo(() => {
+    if (parentSubagentThreadRef === null || subagentThreadId === null) return null;
+    return () => {
+      void attachAgentToChat(parentSubagentThreadRef, {
+        environmentId: parentSubagentThreadRef.environmentId,
+        ownerThreadId: parentSubagentThreadRef.threadId,
+        childThreadId: subagentThreadId,
+        subagentId: null,
+      }).then((referenced) => {
+        if (!referenced) return;
+        void navigate({
+          to: "/$environmentId/$threadId",
+          params: buildThreadRouteParams(parentSubagentThreadRef),
+        });
+      });
+    };
+  }, [subagentThreadId, navigate, parentSubagentThreadRef]);
   const parentThreadLink = useMemo(
     () =>
       parentSubagentThreadRef === null
@@ -2296,8 +2321,10 @@ export default function ChatView(props: ChatViewProps) {
         : {
             threadId: parentSubagentThreadRef.threadId,
             title: parentSubagentThread?.title ?? "Parent thread",
+            handle: subagentHandle,
+            onAttach: attachToParent,
           },
-    [parentSubagentThread?.title, parentSubagentThreadRef],
+    [parentSubagentThread?.title, parentSubagentThreadRef, attachToParent, subagentHandle],
   );
   const threadError = isServerThread
     ? (localServerError ?? serverRuntime?.lastError ?? null)
@@ -12345,6 +12372,7 @@ export default function ChatView(props: ChatViewProps) {
                               modelLabel={providerSubagentModelLabel}
                               effortLabel={providerSubagentEffortLabel}
                               status={providerSubagentStatus}
+                              onAttachToParent={attachToParent}
                               onOpenParent={
                                 parentThreadLink
                                   ? () => onOpenRelatedThread(parentThreadLink.threadId)

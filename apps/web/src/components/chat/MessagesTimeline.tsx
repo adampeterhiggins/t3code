@@ -145,8 +145,11 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Root, RootContent } from "mdast";
 import { T3Wordmark } from "../T3Wordmark";
+import { SubagentContextChip } from "./SubagentContextChip";
+import { AgentHandle } from "./AgentHandle";
 import { ThreadContextChip } from "../ThreadContextChip";
 import {
+  AtSignIcon,
   BotIcon,
   BrainIcon,
   CheckIcon,
@@ -527,6 +530,10 @@ interface MessagesTimelineProps {
   parentThreadLink?: {
     readonly threadId: ThreadId;
     readonly title: string;
+    /** Fork: this subagent thread's `@handle` among its parent's agents. */
+    readonly handle?: string | null;
+    /** Fork: attaches this agent to the parent's chat and opens the parent. */
+    readonly onAttach?: (() => void) | null;
   } | null;
   onForkFromRun: (input: {
     readonly sourceThreadId: ThreadId;
@@ -1480,6 +1487,31 @@ const ConversationTimeline = memo(function ConversationTimeline({
               icon={BotIcon}
               actionLabel="Open parent thread"
               onAction={() => onOpenThread(parentThreadLink.threadId)}
+              trailing={
+                (parentThreadLink.handle ?? null) === null ? null : (
+                  <span className="flex shrink-0 items-center gap-1">
+                    <AgentHandle handle={parentThreadLink.handle!} copyable />
+                    {parentThreadLink.onAttach ? (
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <Button
+                              type="button"
+                              size="icon-xs"
+                              variant="ghost-muted"
+                              aria-label="Attach to parent chat"
+                              onClick={parentThreadLink.onAttach}
+                            />
+                          }
+                        >
+                          <AtSignIcon />
+                        </TooltipTrigger>
+                        <TooltipPopup side="top">Attach to parent chat</TooltipPopup>
+                      </Tooltip>
+                    ) : null}
+                  </span>
+                )
+              }
             />
           </div>
         </div>
@@ -4614,6 +4646,16 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
       render: (record, context) =>
         record.kind === "thread" ? (
           <ThreadContextChip record={record} copyMarkdown={context.copyMarkdown} />
+        ) : (
+          <UnavailableUserMessageContextChip {...context} />
+        ),
+    },
+    {
+      kind: "subagent",
+      canRender: (record) => record.kind === "subagent",
+      render: (record, context) =>
+        record.kind === "subagent" ? (
+          <SubagentContextChip record={record} copyMarkdown={context.copyMarkdown} />
         ) : (
           <UnavailableUserMessageContextChip {...context} />
         ),

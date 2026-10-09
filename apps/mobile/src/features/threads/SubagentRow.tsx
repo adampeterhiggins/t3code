@@ -37,6 +37,8 @@ export function SubagentRow(props: {
   readonly environmentId: EnvironmentId;
   readonly subagent: SubagentRowSubagent;
   readonly elapsed: ReactNode;
+  /** What the composer's `@` menu calls the agent, without the `@`. */
+  readonly handle?: string | null;
 }) {
   const presentation = resolveSubagentRowPresentation(props.subagent);
   const detail = subagentCardDetail(presentation.detail);
@@ -75,7 +77,11 @@ export function SubagentRow(props: {
             <SymbolView name="chevron.right" size={12} tintColorClassName="accent-icon-subtle" />
           ) : null}
         </View>
-        <SubagentMetadata environmentId={props.environmentId} subagent={props.subagent} />
+        <SubagentMetadata
+          environmentId={props.environmentId}
+          subagent={props.subagent}
+          handle={props.handle ?? null}
+        />
         {detail ? (
           <Text
             numberOfLines={3}
@@ -96,6 +102,7 @@ export function SubagentRow(props: {
 function SubagentMetadata(props: {
   readonly environmentId: EnvironmentId;
   readonly subagent: SubagentRowSubagent;
+  readonly handle: string | null;
 }) {
   const { environmentId, subagent } = props;
   const config = useEnvironmentServerConfig(environmentId);
@@ -120,6 +127,17 @@ function SubagentMetadata(props: {
   });
   return (
     <View className="min-w-0 flex-row items-center gap-1.5">
+      {props.handle ? (
+        <>
+          <Text
+            numberOfLines={1}
+            className="min-w-0 shrink font-t3-medium text-xs text-foreground-secondary"
+          >
+            @{props.handle}
+          </Text>
+          <Text className="text-xs text-foreground-muted">·</Text>
+        </>
+      ) : null}
       <ProviderIcon
         provider={provider?.driver ?? subagent.driver}
         iconUrl={provider?.iconUrl}

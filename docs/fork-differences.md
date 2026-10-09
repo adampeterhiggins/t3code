@@ -238,8 +238,9 @@ thread details panel, one row each, newest first, and removed the right-panel Ag
 - **Agents panel.** A right-panel surface with the thread's whole fleet: one line per agent with a
   status dot, the provider's icon (`AgentFleetEntry.providerInstanceId`), token total, elapsed time,
   and start time, a second line with a working agent's latest tool call
-  (a static `…` while it runs, a `waiting` badge when the agent waits on the user) or a failed
-  agent's error, and hover previews (status, provider, compact model with reasoning effort and `run N`,
+  (a static `…` while it runs, a `waiting` badge when the agent waits on the user), a finished
+  agent's first result line (`subagentResultSummaryLine`) or a failed agent's error (the toolbar's
+  details toggle hides these second lines, remembered per device), and hover previews (status, provider, compact model with reasoning effort and `run N`,
   prompt, result or error, the latest five tool calls, usage). Clicking a tool call in a preview
   opens the agent on that call, expanded and scrolled into view (`agentDrillStore.ts`
   `focusToolCall`). Agents spawned by an agent sit indented under it, found through child-thread
@@ -300,8 +301,8 @@ thread details panel, one row each, newest first, and removed the right-panel Ag
   Lineage, or in the conversation, keeps it in a thread-scoped right-panel tab beside the fleet,
   with the same detail view. Agent tabs close like other tabs, reopen the same way, and are
   restored when the app restarts.
-- **Attach result to chat** (right-click or the agent detail) pastes a finished agent's task and
-  result into the composer; `subagentResultChatContext` builds the text.
+- **Attach to chat** (right-click or the agent detail) puts the agent's `@handle` chip in the
+  composer; the chip carries its task and result (see Attach agents to chat by handle).
 - **Continue in chat** (right-click or the agent detail) opens a new chat tab of the thread whose
   draft carries the agent's task, result or error, and latest tool calls as a chat-summary chip;
   `subagentContinuationContext` builds the text. It starts a fresh conversation rather than
@@ -342,6 +343,41 @@ Code: [`agentListView.ts`](../packages/client-runtime/src/state/agentListView.ts
 field mapping in `ClaudeAdapterV2.ts` and `CodexAdapterV2.ts`, and `finalizeAppOwnedSubagent` in
 [`Orchestrator.ts`](../apps/server/src/orchestration-v2/Orchestrator.ts). User guide:
 [thread-sidebar.md](./user/thread-sidebar.md#inspect-agent-work).
+
+## Attach agents to chat by handle
+
+Every subagent has an `@handle`: its title as a slug, numbered `-2`, `-3` in spawn order when
+agents started by the same thread slug alike
+([`subagentHandles.ts`](../packages/client-runtime/src/state/subagentHandles.ts)). Every client
+derives it from thread shells, so nothing is stored. Agents panel rows, the agent detail header,
+conversation agent rows, agent hover cards (Lineage's included) and the **Subagent of** divider on
+an agent's own thread show it.
+
+- **Composer.** When the thread has agents, the `@` menu gets **Files** and **Agents** tabs. A
+  query that starts an agent's handle opens on Agents. Rows show status, provider, title, handle,
+  model, tokens, elapsed time and a working agent's latest tool call, and hover to preview the
+  agent like an Agents panel row.
+- **Chip.** Picking an agent inserts a `subagent` context chip (`SubagentContextRecord`) that shows
+  the handle and the agent's live status and previews the agent on hover. What the provider receives
+  depends on how the agent can be reached: a T3 delegated task carries `task_status` and
+  `t3_thread_send` instructions, a Claude subagent its `SendMessage` agent id, and other native
+  subagents are marked as unable to take messages. Each also carries its task and its outcome at
+  the time it was attached (`formatSubagentPayload` in
+  [`composerContextReferences.ts`](../packages/shared/src/composerContextReferences.ts)). An agent
+  whose record the client has not loaded (an older run's) is attached by its child thread alone.
+  Chip payloads live in memory like issue chips, so a reloaded draft shows them as unavailable.
+- **Other ways in.** **Attach to chat** and **Copy @handle** in the agent right-click menu,
+  Alt-click on an Agents panel row, the `@` button on the detail header and on conversation agent
+  rows, and **Attach to parent chat** on an agent's own thread, which puts the chip in the parent's
+  draft and opens the parent. On mobile, the Agents sheet rows show the handle and offer the same
+  actions on long-press. The mobile composer's `@` menu has the same tabs.
+
+## Click inline code to copy it
+
+In chat Markdown (messages, plans, agent results), clicking an inline `` `code` `` span copies its
+text and marks it copied for a moment. A click that ends a text selection does not copy, and inline
+code that is a file path still opens the file (`CopyableInlineCode` in
+[`ChatMarkdown.tsx`](../apps/web/src/components/ChatMarkdown.tsx)).
 
 ## Chat tabs
 

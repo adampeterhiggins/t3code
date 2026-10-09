@@ -302,6 +302,8 @@ import { useComposerNotionItems } from "./useComposerNotionItems";
 import { slackGetThreadInput, useAttachSlackMessage } from "./SlackMessagePicker";
 import { useResolveComposerObjectLink } from "./useResolveComposerObjectLink";
 import { useComposerRepositoryItems } from "./useComposerRepositoryItems";
+import { useComposerAgentItems } from "./useComposerAgentItems";
+import { agentReferenceTargetOf, attachAgentToChat } from "./agentReferences";
 import { attachRepository } from "./RepositoryAttachPicker";
 import {
   type ComposerReferenceTab,
@@ -382,6 +384,14 @@ import {
   suppressActiveComposerScrollGesture,
 } from "./composerScrollGesture";
 import { prepareVideoFirstFrame } from "../../lib/videoFirstFrame";
+
+type ComposerPathTab = "files" | "agents";
+
+/** Fork: the `@` menu's tabs, shown when the thread has agents. Files also lists chats. */
+const PATH_MENU_TABS: ReadonlyArray<{ id: ComposerPathTab; label: string }> = [
+  { id: "files", label: "Files" },
+  { id: "agents", label: "Agents" },
+];
 
 const REFERENCE_MENU_TABS: ReadonlyArray<{ id: ComposerReferenceTab; label: string }> = [
   { id: "pull-requests", label: "Pull requests" },
@@ -2690,6 +2700,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const isPathTrigger = composerTriggerKind === "path";
   // Thread shells only feed `@` thread matches, so skip shell updates otherwise.
   const environmentThreadShells = useThreadShells(isPathTrigger);
+  const agentMenu = useComposerAgentItems(routeThreadRef, isPathTrigger, pathTriggerQuery, gitCwd);
+  // A tab picked by hand holds until this `@` token closes; otherwise the query picks it.
+  const [pathTabChoice, setPathTabChoice] = useState<{
+    rangeStart: number;
+    tab: ComposerPathTab;
+  } | null>(null);
+  const pathTab: ComposerPathTab =
+    composerTrigger?.kind !== "path" || !agentMenu.available
+      ? "files"
+      : pathTabChoice?.rangeStart === composerTrigger.rangeStart
+        ? pathTabChoice.tab
+        : agentMenu.prefersAgents
+          ? "agents"
+          : "files";
+  const showAgents = pathTab === "agents";
   const workspaceEntries = useComposerPathSearch({
     environmentId,
     cwd: isPathTrigger ? gitCwd : null,
@@ -2872,6 +2897,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     if (composerTrigger.kind === "pull-request" && showRepositories) {
       return repositoryMenu.items;
     }
+    if (composerTrigger.kind === "path" && showAgents) return [...agentMenu.items];
     if (composerTrigger.kind === "path") {
       const tabQuery = composerTrigger.query.trim().toLowerCase();
       const tabThreadIds = new Set((threadTabGroup?.tabs ?? []).map((tab) => tab.threadId));
@@ -3067,6 +3093,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     activeThreadId,
     environmentId,
     workspaceEntries.entries,
+    showAgents,
+    agentMenu.items,
   ]);
 
   const composerMenuOpen = Boolean(composerTrigger);
@@ -3140,7 +3168,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   ]);
 
   const isComposerMenuLoading =
-    (composerTriggerKind === "path" && pathTriggerQuery.length > 0 && workspaceEntries.isPending) ||
+    (composerTriggerKind === "path" &&
+      !showAgents &&
+      pathTriggerQuery.length > 0 &&
+      workspaceEntries.isPending) ||
     (composerTriggerKind === "pull-request" &&
       !showLinearIssues &&
       !showGitHubIssues &&
@@ -3161,6 +3192,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const composerMenuEmptyState = useMemo(() => {
     if (composerTriggerKind === "skill") {
       return "No skills found. Try / to browse provider commands.";
+    }
+    if (showAgents) {
+      return composerTrigger?.query
+        ? `No agent matches ${composerTrigger.query}.`
+        : "This thread has no agents.";
     }
     if (showLinearIssues) {
       if (linearIssueMenu.error !== null) return linearIssueMenu.error;
@@ -3224,6 +3260,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     pullRequestLookup.error,
     pullRequestProjectId,
     pullRequestRepository,
+    showAgents,
   ]);
 
   // ------------------------------------------------------------------
@@ -4486,6 +4523,20 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         if (applied) {
           setComposerHighlightedItemId(null);
         }
+        return;
+      }
+      if (item.type === "subagent") {
+        if (trigger.kind !== "path") return;
+        // The query text leaves first; the chip lands at the caret once its record resolves.
+        const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
+          expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
+        });
+        if (!applied) return;
+        setComposerHighlightedItemId(null);
+        void attachAgentToChat(
+          item.parentRef,
+          agentReferenceTargetOf(item.parentRef.environmentId, item.entry),
+        );
         return;
       }
       if (item.type === "thread") {
@@ -7616,6 +7667,19 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     {...(showGitHubIssues ? { loadingText: "Searching GitHub issues..." } : {})}
                     {...(showRepositories ? { loadingText: "Listing repositories..." } : {})}
                     {...(showSlackMessages ? { loadingText: "Searching Slack..." } : {})}
+                    {...(agentMenu.available && composerTrigger?.kind === "path"
+                      ? {
+                          tabs: {
+                            options: PATH_MENU_TABS,
+                            activeId: pathTab,
+                            onSelect: (tab: string) =>
+                              setPathTabChoice({
+                                rangeStart: composerTrigger.rangeStart,
+                                tab: tab === "agents" ? "agents" : "files",
+                              }),
+                          },
+                        }
+                      : {})}
                     {...(referenceMenuTabs.length > 1 && composerTrigger?.kind === "pull-request"
                       ? {
                           tabs: {

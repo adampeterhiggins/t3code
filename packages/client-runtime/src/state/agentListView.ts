@@ -618,30 +618,8 @@ export interface SubagentContextSubject {
   readonly progress?: string | null;
 }
 
-/** Characters of launch prompt kept when a result is attached to chat. */
-const RESULT_CONTEXT_PROMPT_CHAR_LIMIT = 600;
-
 function clip(text: string, limit: number): string {
   return text.length <= limit ? text : `${text.slice(0, limit - 1)}…`;
-}
-
-/**
- * A finished agent's findings as text for the composer, so a follow-up turn knows what was asked
- * and what came back. Null while the agent works or when it reported nothing.
- */
-export function subagentResultChatContext(agent: SubagentContextSubject): string | null {
-  if (isActiveSubagentStatus(agent.status)) return null;
-  const outcome = agent.error ?? agent.result;
-  if (!outcome?.trim()) return null;
-  const prompt = agent.prompt?.trim();
-  const sections = [
-    agent.error
-      ? `The "${agent.title}" subagent failed.`
-      : `Findings from the "${agent.title}" subagent.`,
-    prompt ? `Task:\n${clip(prompt, RESULT_CONTEXT_PROMPT_CHAR_LIMIT)}` : null,
-    `${agent.error ? "Error" : "Result"}:\n${outcome.trim()}`,
-  ];
-  return sections.filter((section) => section !== null).join("\n\n");
 }
 
 const CONTINUATION_PROMPT_CHAR_LIMIT = 6_000;
@@ -667,7 +645,7 @@ function continuationStatusLine(name: string, status: RuntimeSubagentStatus): st
 
 /**
  * Everything needed to pick up where an agent left off in a fresh chat: its assignment, its
- * outcome, and its latest tool calls. Unlike `subagentResultChatContext`, this also works mid-run.
+ * outcome, and its latest tool calls. Works mid-run too.
  * Null when the agent left nothing to go on.
  */
 export function subagentContinuationContext(

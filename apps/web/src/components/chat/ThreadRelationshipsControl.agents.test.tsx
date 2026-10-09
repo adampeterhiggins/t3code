@@ -30,6 +30,7 @@ vi.mock("../../state/entities", () => ({
       ? null
       : { projection: state.projection },
   useThreadShells: () => state.shells,
+  useThreadShellsValue: <T,>(select: (shells: typeof state.shells) => T) => select(state.shells),
   useProjects: () => state.projects,
   useServerConfigs: () => state.configs,
 }));
