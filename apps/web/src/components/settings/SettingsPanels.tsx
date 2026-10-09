@@ -69,6 +69,7 @@ import * as Schema from "effect/Schema";
 import { APP_VERSION, HOSTED_APP_CHANNEL, HOSTED_APP_CHANNEL_LABEL } from "../../branding";
 import { IS_NIGHTLY_BUILD, NightlyMobileBetaRow } from "../NightlyMobileBeta";
 import { CliCommandSettingsRow } from "./CliCommandSettingsRow";
+import { RepositoryOwnersAddInput, RepositoryOwnersList } from "./RepositoryOwnersEditor";
 import {
   canCheckForUpdate,
   getDesktopUpdateButtonTooltip,
@@ -696,9 +697,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.addProjectBaseDirectory !== DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory
         ? ["Add project base directory"]
         : []),
-      ...(settings.contextRepositoryOwner !== DEFAULT_UNIFIED_SETTINGS.contextRepositoryOwner
-        ? ["Repository owner"]
-        : []),
+      ...(settings.contextRepositoryOwners.length > 0 ? ["Repository owners"] : []),
       ...(settings.contextRepositoryDirectory !==
       DEFAULT_UNIFIED_SETTINGS.contextRepositoryDirectory
         ? ["Repository folder"]
@@ -743,7 +742,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.sendShortcut,
       settings.followUpBehavior,
       settings.addProjectBaseDirectory,
-      settings.contextRepositoryOwner,
+      settings.contextRepositoryOwners,
       settings.contextRepositoryDirectory,
       settings.defaultThreadEnvMode,
       settings.newWorktreesStartFromOrigin,
@@ -906,6 +905,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       terminalActivatePythonEnvironment: DEFAULT_UNIFIED_SETTINGS.terminalActivatePythonEnvironment,
       pythonInterpreterPath: DEFAULT_UNIFIED_SETTINGS.pythonInterpreterPath,
       addProjectBaseDirectory: DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory,
+      contextRepositoryOwners: DEFAULT_UNIFIED_SETTINGS.contextRepositoryOwners,
       contextRepositoryOwner: DEFAULT_UNIFIED_SETTINGS.contextRepositoryOwner,
       contextRepositoryDirectory: DEFAULT_UNIFIED_SETTINGS.contextRepositoryDirectory,
       confirmThreadArchive: DEFAULT_UNIFIED_SETTINGS.confirmThreadArchive,
@@ -2433,7 +2433,12 @@ export function GeneralSettingsPanel() {
   const backgroundActivityProfileOption = resolveBackgroundActivityProfileOption(settings);
   const mixedBackgroundActivity = useScopedSettingsMixed(["backgroundActivity"]);
   const mixedAddProjectBaseDirectory = useScopedSettingsMixed(["addProjectBaseDirectory"]);
-  const mixedContextRepositoryOwner = useScopedSettingsMixed(["contextRepositoryOwner"]);
+  const mixedContextRepositoryOwners = useScopedSettingsMixed(["contextRepositoryOwners"]);
+  const contextRepositoryOwners = mixedContextRepositoryOwners
+    ? []
+    : settings.contextRepositoryOwners;
+  const updateContextRepositoryOwners = (owners: ReadonlyArray<string>) =>
+    updateSettings({ contextRepositoryOwners: [...owners] });
   const mixedContextRepositoryDirectory = useScopedSettingsMixed(["contextRepositoryDirectory"]);
   const mixedTextGenerationModel = useScopedSettingsMixed(["textGenerationModelSelection"]);
   const backgroundActivityDescription =
@@ -3571,33 +3576,30 @@ export function GeneralSettingsPanel() {
         />
         <SettingsRow
           serverScoped
-          settingKeys={["contextRepositoryOwner"]}
+          settingKeys={["contextRepositoryOwners"]}
           {...searchableSetting("context-repository-owner")}
-          description="GitHub organization or user whose repositories the composer's Attach > Repository list shows first."
+          description="GitHub organizations or users whose repositories Attach > Repository and the # menu list, top first. A repository name more than one owner has is shown with its owner."
           resetAction={
-            settings.contextRepositoryOwner !== DEFAULT_UNIFIED_SETTINGS.contextRepositoryOwner ? (
+            settings.contextRepositoryOwners.length > 0 ? (
               <SettingResetButton
-                label="repository owner"
-                onClick={() =>
-                  updateSettings({
-                    contextRepositoryOwner: DEFAULT_UNIFIED_SETTINGS.contextRepositoryOwner,
-                  })
-                }
+                label="repository owners"
+                onClick={() => updateContextRepositoryOwners([])}
               />
             ) : null
           }
           control={
-            <DraftInput
-              size="sm"
-              className="w-full sm:w-72"
-              value={mixedContextRepositoryOwner ? "" : settings.contextRepositoryOwner}
-              onCommit={(next) => updateSettings({ contextRepositoryOwner: next })}
-              placeholder={mixedContextRepositoryOwner ? "Mixed" : "e.g. acme"}
-              spellCheck={false}
-              aria-label="Repository owner"
+            <RepositoryOwnersAddInput
+              owners={contextRepositoryOwners}
+              mixed={mixedContextRepositoryOwners}
+              onChange={updateContextRepositoryOwners}
             />
           }
-        />
+        >
+          <RepositoryOwnersList
+            owners={contextRepositoryOwners}
+            onChange={updateContextRepositoryOwners}
+          />
+        </SettingsRow>
         <SettingsRow
           serverScoped
           settingKeys={["contextRepositoryDirectory"]}

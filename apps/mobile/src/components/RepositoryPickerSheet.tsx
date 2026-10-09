@@ -1,5 +1,9 @@
 import {
+  configuredContextRepositoryOwners,
+  contextRepositoryCandidateLabels,
+  contextRepositoryListInput,
   describeContextRepositoryGitStatus,
+  describeContextRepositoryOwners,
   findContextRepositoryClone,
   pastedContextRepositoryEntry,
   rankContextRepositoryCandidates,
@@ -8,7 +12,7 @@ import {
 } from "@t3tools/client-runtime/context-repositories";
 import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
 import type { EnvironmentId } from "@t3tools/contracts";
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { ActivityIndicator, Alert, FlatList, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -26,6 +30,7 @@ import { PickerSheet } from "./PickerSheet";
 
 const OWNER_DEBOUNCE_MS = 300;
 const NO_RECENTS: ReadonlyMap<string, number> = new Map();
+const NO_OWNERS: ReadonlyArray<string> = [];
 
 export interface RepositoryPickerTarget {
   readonly environmentId: EnvironmentId;
@@ -58,19 +63,27 @@ export function useRepositoryPicker(target: RepositoryPickerTarget | null): {
 
 function RepositoryPickerSheet(props: OpenedRepositoryPicker & { readonly onClose: () => void }) {
   const insets = useSafeAreaInsets();
-  const defaultOwner =
-    useEnvironmentServerConfig(props.environmentId)?.settings.contextRepositoryOwner ?? "";
+  const settings = useEnvironmentServerConfig(props.environmentId)?.settings;
+  const defaultOwners = useMemo(
+    () => (settings ? configuredContextRepositoryOwners(settings) : NO_OWNERS),
+    [settings],
+  );
   const [query, setQuery] = useState("");
   const trimmed = query.trim();
-  const { owner, filter } = splitContextRepositoryOwnerQuery(trimmed, defaultOwner);
-  const settledOwner = useDebouncedValue(owner, OWNER_DEBOUNCE_MS);
+  const { owners, filter } = splitContextRepositoryOwnerQuery(trimmed, defaultOwners);
+  // Keyed by text so a new array with the same owners does not reset the debounce.
+  const ownersKey = owners.join("\n");
+  const settledOwnersKey = useDebouncedValue(ownersKey, OWNER_DEBOUNCE_MS);
+  const listInput = contextRepositoryListInput(
+    settledOwnersKey.length > 0 ? settledOwnersKey.split("\n") : [],
+  );
   const list = useEnvironmentQuery(
-    settledOwner
-      ? sourceControlEnvironment.contextRepositories({
+    listInput === null
+      ? null
+      : sourceControlEnvironment.contextRepositories({
           environmentId: props.environmentId,
-          input: { owner: settledOwner },
-        })
-      : null,
+          input: listInput,
+        }),
   );
   const clones = useEnvironmentQuery(
     props.workspaceCwd
@@ -80,12 +93,17 @@ function RepositoryPickerSheet(props: OpenedRepositoryPicker & { readonly onClos
         })
       : null,
   ).data;
-  const shown = rankContextRepositoryCandidates(list.data?.repositories ?? [], filter, NO_RECENTS);
+  const candidates = list.data?.repositories ?? [];
+  const labels = contextRepositoryCandidateLabels(candidates);
+  const shown = rankContextRepositoryCandidates(candidates, filter, NO_RECENTS);
   const pasted = pastedContextRepositoryEntry(trimmed, shown);
   const rows = [
-    ...(pasted ? [{ ...pasted, description: pasted.remoteUrl, isPrivate: null }] : []),
+    ...(pasted
+      ? [{ ...pasted, label: pasted.nameWithOwner, description: pasted.remoteUrl, isPrivate: null }]
+      : []),
     ...shown.map((candidate) => ({
       nameWithOwner: candidate.nameWithOwner,
+      label: labels.get(candidate.nameWithOwner) ?? candidate.nameWithOwner,
       remoteUrl: candidate.url,
       description: candidate.description,
       isPrivate: candidate.isPrivate,
@@ -119,11 +137,11 @@ function RepositoryPickerSheet(props: OpenedRepositoryPicker & { readonly onClos
   const status =
     rows.length > 0
       ? null
-      : !owner
-        ? "Type an owner followed by a slash, like acme/, or paste a repository URL. A default owner can be set in Settings > General on desktop or web."
-        : list.isPending || owner !== settledOwner
+      : owners.length === 0
+        ? "Type an owner followed by a slash, like acme/, or paste a repository URL. Repository owners can be set in Settings > General on desktop or web."
+        : list.isPending || ownersKey !== settledOwnersKey
           ? null
-          : (list.error ?? `No repositories in ${owner} match.`);
+          : (list.error ?? `No repositories in ${describeContextRepositoryOwners(owners)} match.`);
 
   return (
     <PickerSheet title="Attach repository" onClose={props.onClose}>
@@ -135,8 +153,8 @@ function RepositoryPickerSheet(props: OpenedRepositoryPicker & { readonly onClos
           autoCorrect={false}
           clearButtonMode="while-editing"
           placeholder={
-            defaultOwner
-              ? `Search ${defaultOwner}, type another-org/, or paste a URL`
+            defaultOwners.length > 0
+              ? `Search ${describeContextRepositoryOwners(defaultOwners)}, type another-org/, or paste a URL`
               : "Type an owner like acme/, or paste a URL"
           }
           returnKeyType="search"
@@ -169,7 +187,7 @@ function RepositoryPickerSheet(props: OpenedRepositoryPicker & { readonly onClos
               className="gap-0.5 px-4 py-3 active:bg-subtle"
             >
               <Text className="text-base text-foreground" numberOfLines={1}>
-                {item.nameWithOwner}
+                {item.label}
                 {item.isPrivate ? <Text className="text-foreground-muted"> · private</Text> : null}
               </Text>
               {detail ? (

@@ -44,6 +44,7 @@ import {
   type ProviderDriverKind,
 } from "./providerInstance.ts";
 import { PullRequestMergeMethod } from "./pullRequest.ts";
+import { ContextRepositoryOwners } from "./contextRepositories.ts";
 
 // ── Client Settings (local-only) ───────────────────────────────
 
@@ -1703,8 +1704,15 @@ export const ServerSettings = Schema.Struct({
   ),
   addProjectBaseDirectory: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   /**
-   * GitHub owner (org or user) whose repositories the composer's repository picker lists
-   * first. Empty means the picker asks for one.
+   * GitHub owners (orgs or users) whose repositories the composer's repository picker lists,
+   * highest priority first. Empty means the picker asks for one.
+   */
+  contextRepositoryOwners: ContextRepositoryOwners.pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
+  /**
+   * Legacy single owner, kept for older clients. The server folds it into
+   * `contextRepositoryOwners` and mirrors the first owner back into it.
    */
   contextRepositoryOwner: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   /** Workspace-relative folder attached repositories are cloned into. Empty means `.context`. */
@@ -2074,6 +2082,7 @@ export const ServerSettingsPatch = Schema.Struct({
   newWorktreesStartFromOrigin: Schema.optionalKey(Schema.Boolean),
   worktreeSubmodules: Schema.optionalKey(Schema.NullOr(WorktreeSubmodules)),
   addProjectBaseDirectory: Schema.optionalKey(TrimmedString),
+  contextRepositoryOwners: Schema.optionalKey(ContextRepositoryOwners),
   contextRepositoryOwner: Schema.optionalKey(TrimmedString),
   contextRepositoryDirectory: Schema.optionalKey(TrimmedString),
   textGenerationModelSelection: Schema.optionalKey(ModelSelectionPatch),

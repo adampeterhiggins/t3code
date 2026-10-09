@@ -233,14 +233,14 @@ row above the composer shows the goal and its progress.
 ## Attach repositories
 
 Give the agent another repository's source to read by attaching it: choose **Repository** from the
-paperclip menu (the **+** menu on mobile), or **Attach repository** in the command palette. Set a
-default GitHub owner in
-**Settings > General > Repository owner** so the list opens ready. Type `another-org/` to list a
-different owner, or paste `owner/repo` or a clone URL. The list notes repositories already cloned
+paperclip menu (the **+** menu on mobile), or **Attach repository** in the command palette. Add the
+GitHub organizations and users you work with in **Settings > General > Repository owners** so the
+list opens ready; owners higher in that list come first, and a repository name more than one owner
+has shows its owner, like `api (acme)`. Type `another-org/` to list a different owner, or paste `owner/repo` or a clone URL. The list notes repositories already cloned
 into this thread's workspace, with their branch and how far behind they are.
 
 On web and desktop you can also type `#` and a repository's name in your message, then pick it from
-the `#` menu's **Repositories** tab. `#my-repo` searches your default owner and `#another-org/repo`
+the `#` menu's **Repositories** tab. `#my-repo` searches your repository owners and `#another-org/repo`
 searches that owner. A name with a hyphen or slash opens the Repositories tab straight away; for a
 one-word name, switch to the tab.
 

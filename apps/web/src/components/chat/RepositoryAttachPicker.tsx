@@ -1,6 +1,10 @@
 import { useAtomValue } from "@effect/atom-react";
 import {
+  configuredContextRepositoryOwners,
+  contextRepositoryCandidateLabels,
+  contextRepositoryListInput,
   describeContextRepositoryGitStatus,
+  describeContextRepositoryOwners,
   findContextRepositoryClone,
   pastedContextRepositoryEntry,
   rankContextRepositoryCandidates,
@@ -153,21 +157,20 @@ function RepositoryAttachPickerDialog(props: {
   const { threadRef, workspaceCwd, onClose } = props;
   const environmentId: EnvironmentId = threadRef.environmentId;
   const navigate = useNavigate();
-  const defaultOwner = useEnvironmentSettings(
-    environmentId,
-    (settings) => settings.contextRepositoryOwner,
-  );
+  const defaultOwners = useEnvironmentSettings(environmentId, configuredContextRepositoryOwners);
   const [query, setQuery] = useState("");
   const trimmedQuery = query.trim();
-  const { owner, filter } = splitContextRepositoryOwnerQuery(trimmedQuery, defaultOwner);
-  const debouncedOwner = useDebouncedValue(owner, OWNER_DEBOUNCE_MS);
+  const { owners, filter } = splitContextRepositoryOwnerQuery(trimmedQuery, defaultOwners);
+  // Keyed by text so a new array with the same owners does not reset the debounce.
+  const ownersKey = owners.join("\n");
+  const debouncedOwnersKey = useDebouncedValue(ownersKey, OWNER_DEBOUNCE_MS);
+  const listInput = contextRepositoryListInput(
+    debouncedOwnersKey.length > 0 ? debouncedOwnersKey.split("\n") : [],
+  );
   const listQuery = useEnvironmentQuery(
-    debouncedOwner.length > 0
-      ? sourceControlEnvironment.contextRepositories({
-          environmentId,
-          input: { owner: debouncedOwner },
-        })
-      : null,
+    listInput === null
+      ? null
+      : sourceControlEnvironment.contextRepositories({ environmentId, input: listInput }),
   );
   const clonesQuery = useEnvironmentQuery(
     workspaceCwd
@@ -183,6 +186,7 @@ function RepositoryAttachPickerDialog(props: {
     () => new Map(readRepositoryRecents().map((name, index) => [name, index] as const)),
   );
   const shown = rankContextRepositoryCandidates(candidates, filter, recentRank);
+  const labels = contextRepositoryCandidateLabels(candidates);
 
   const pastedEntry = pastedContextRepositoryEntry(trimmedQuery, shown);
 
@@ -204,15 +208,16 @@ function RepositoryAttachPickerDialog(props: {
     );
   };
 
-  const needsOwner = owner.length === 0 && !pastedEntry;
+  const needsOwner = owners.length === 0 && !pastedEntry;
+  const ownersLabel = describeContextRepositoryOwners(owners);
   const status = needsOwner
     ? null
     : listQuery.error !== null && shown.length === 0 && !pastedEntry
       ? listQuery.error
       : shown.length === 0 && !pastedEntry
-        ? listQuery.isPending || owner !== debouncedOwner
-          ? `Listing ${owner}'s repositories…`
-          : `No repositories in ${owner} match.`
+        ? listQuery.isPending || ownersKey !== debouncedOwnersKey
+          ? `Listing ${ownersLabel}'s repositories…`
+          : `No repositories in ${ownersLabel} match.`
         : null;
 
   return (
@@ -225,9 +230,10 @@ function RepositoryAttachPickerDialog(props: {
       <CommandDialogPopup aria-label="Attach repository" className="overflow-hidden">
         <CommandPaletteContent
           inputProps={{
-            placeholder: defaultOwner
-              ? `Search ${defaultOwner}, type another-org/, or paste a repository URL`
-              : "Type an owner like acme/, or paste a repository URL",
+            placeholder:
+              defaultOwners.length > 0
+                ? `Search ${describeContextRepositoryOwners(defaultOwners)}, type another-org/, or paste a repository URL`
+                : "Type an owner like acme/, or paste a repository URL",
             startAddon: <FolderGit2Icon />,
           }}
           footerActionLabel="Attach"
@@ -238,7 +244,7 @@ function RepositoryAttachPickerDialog(props: {
           {needsOwner ? (
             <div className="flex flex-col items-center gap-3 px-6 py-10 text-center text-sm">
               <p className="text-muted-foreground">
-                Type an owner followed by a slash to list its repositories, or set a default owner
+                Type an owner followed by a slash to list its repositories, or add repository owners
                 so the list opens ready.
               </p>
               <Button
@@ -249,7 +255,7 @@ function RepositoryAttachPickerDialog(props: {
                   void navigate({ to: "/settings/general" });
                 }}
               >
-                Set default owner
+                Add repository owners
               </Button>
             </div>
           ) : status !== null ? (
@@ -310,7 +316,7 @@ function RepositoryAttachPickerDialog(props: {
                         )}
                         {/* A fixed width so descriptions line up down the list. */}
                         <span className="w-44 shrink-0 truncate text-foreground text-sm">
-                          {candidate.name}
+                          {labels.get(candidate.nameWithOwner) ?? candidate.name}
                         </span>
                         <span className="min-w-0 flex-1 truncate text-muted-foreground text-xs">
                           {candidate.description ?? ""}

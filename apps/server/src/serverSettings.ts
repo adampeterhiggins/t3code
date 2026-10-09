@@ -120,6 +120,34 @@ const foldProviderInstanceEnabledFlags = (settings: ServerSettings): ServerSetti
   };
 };
 
+/**
+ * Keeps the legacy single `contextRepositoryOwner` and the ordered `contextRepositoryOwners` in
+ * step. Whichever an update changed wins: the list's first owner is mirrored into the legacy field
+ * for older clients, and an older client's owner edit becomes the list's head. With no update to
+ * compare against, an old settings file's owner seeds an empty list.
+ */
+export const foldContextRepositoryOwners = (
+  settings: ServerSettings,
+  previous?: ServerSettings,
+): ServerSettings => {
+  const { contextRepositoryOwners: owners, contextRepositoryOwner: owner } = settings;
+  const listChanged =
+    previous === undefined
+      ? owners.length > 0
+      : owners.join("\n") !== previous.contextRepositoryOwners.join("\n");
+  const nextOwners = listChanged
+    ? owners
+    : owner.length === 0
+      ? previous === undefined || owner === previous.contextRepositoryOwner
+        ? owners
+        : []
+      : [owner, ...owners.filter((existing) => existing !== owner)];
+  const nextOwner = nextOwners[0] ?? "";
+  return nextOwner === owner && nextOwners.join("\n") === owners.join("\n")
+    ? settings
+    : { ...settings, contextRepositoryOwners: nextOwners, contextRepositoryOwner: nextOwner };
+};
+
 const normalizeServerSettings = (
   settings: ServerSettings,
 ): Effect.Effect<ServerSettings, ServerSettingsError> =>
@@ -879,8 +907,8 @@ const make = Effect.gen(function* () {
             ),
           );
 
-    const loaded = foldProviderInstanceEnabledFlags(
-      restoreUsedProviders(settings, persisted, providerHistory),
+    const loaded = foldContextRepositoryOwners(
+      foldProviderInstanceEnabledFlags(restoreUsedProviders(settings, persisted, providerHistory)),
     );
     const folded = settingsFileTrusted
       ? foldLegacyProjectSettings(
@@ -1285,7 +1313,10 @@ const make = Effect.gen(function* () {
       Effect.gen(function* () {
         const current = yield* getSettingsFromCache;
         const updated = yield* update(current);
-        const persisted = yield* persistProviderEnvironmentSecrets(current, updated);
+        const persisted = yield* persistProviderEnvironmentSecrets(
+          current,
+          foldContextRepositoryOwners(updated, current),
+        );
         const next = yield* normalizeServerSettings(persisted.settings);
         const materialized = yield* Effect.uninterruptibleMask(() =>
           Effect.gen(function* () {

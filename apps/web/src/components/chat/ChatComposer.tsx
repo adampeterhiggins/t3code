@@ -257,6 +257,10 @@ import {
   threadContextReference,
 } from "~/lib/composerContextRecords";
 import { matchComposerThreadItems } from "@t3tools/client-runtime/composerThreadItems";
+import {
+  configuredContextRepositoryOwners,
+  describeContextRepositoryOwners,
+} from "@t3tools/client-runtime/context-repositories";
 import { THREAD_CONTEXT_DROP_EVENT, threadContextDropTargetProps } from "./threadContextDrag";
 import { readThreadShell, useThreadShells } from "~/state/entities";
 import { requestConfirmDialog } from "~/confirmDialog";
@@ -2786,16 +2790,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     () => new Set(selectedReferenceItems.map((item) => item.id)),
     [selectedReferenceItems],
   );
-  const defaultRepositoryOwner = useEnvironmentSettings(
+  const defaultRepositoryOwners = useEnvironmentSettings(
     environmentId,
-    (environmentSettings) => environmentSettings.contextRepositoryOwner,
+    configuredContextRepositoryOwners,
   );
   const referenceTab: ComposerReferenceTab =
     composerTrigger?.kind !== "pull-request"
       ? "pull-requests"
       : referenceTabChoice?.rangeStart === composerTrigger.rangeStart
         ? referenceTabChoice.tab
-        : defaultComposerReferenceTab(composerTrigger.query, defaultRepositoryOwner.length > 0);
+        : defaultComposerReferenceTab(composerTrigger.query, defaultRepositoryOwners.length > 0);
   const linearIssueMenu = useComposerLinearIssueItems(
     environmentId,
     composerTrigger,
@@ -2831,7 +2835,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   });
   const repositoryMenu = useComposerRepositoryItems(
     environmentId,
-    defaultRepositoryOwner,
+    defaultRepositoryOwners,
     composerTrigger,
     referenceTab === "repositories",
   );
@@ -3174,11 +3178,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         : "No open GitHub issues in this repository.";
     }
     if (showRepositories) {
-      if (repositoryMenu.owner.length === 0) {
-        return "Type an owner like #acme/ to list its repositories, or set a default repository owner in Settings.";
+      if (repositoryMenu.owners.length === 0) {
+        return "Type an owner like #acme/ to list its repositories, or add repository owners in Settings.";
       }
       if (repositoryMenu.error !== null) return repositoryMenu.error;
-      return `No repositories in ${repositoryMenu.owner} match.`;
+      return `No repositories in ${describeContextRepositoryOwners(repositoryMenu.owners)} match.`;
     }
     if (composerTriggerKind === "pull-request") {
       if (pullRequestProjectId === null || pullRequestRepository === null) {
@@ -3203,7 +3207,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     githubIssueMenu.error,
     linearIssueMenu.error,
     repositoryMenu.error,
-    repositoryMenu.owner,
+    repositoryMenu.owners,
     showGitHubIssues,
     showLinearIssues,
     showRepositories,
