@@ -286,8 +286,8 @@ thread details panel, one row each, newest first, and removed the right-panel Ag
   Lineage, or in the conversation, keeps it in a thread-scoped right-panel tab beside the fleet,
   with the same detail view. Agent tabs close like other tabs, reopen the same way, and are
   restored when the app restarts.
-- **Attach result to chat** (right-click or the agent detail) pastes a finished agent's task and
-  result into the composer; `subagentResultChatContext` builds the text.
+- **Attach result to chat** (right-click or the agent detail) puts a finished agent's `@handle`
+  chip in the composer; the chip carries its task and result (see Reference agents by handle).
 - **Continue in chat** (right-click or the agent detail) opens a new chat tab of the thread whose
   draft carries the agent's task, result or error, and latest tool calls as a chat-summary chip;
   `subagentContinuationContext` builds the text. It starts a fresh conversation rather than

@@ -73,7 +73,6 @@ import {
 
 import { useAgentDrillStore } from "~/agentDrillStore";
 import { useAgentListViewStore } from "~/agentListViewStore";
-import { useComposerHandleContext } from "~/composerHandleContext";
 import { useDiffPanelStore } from "~/diffPanelStore";
 import { useClientSettings } from "~/hooks/useSettings";
 import { cn } from "~/lib/utils";
@@ -131,7 +130,6 @@ import {
   useAgentContextMenu,
 } from "./agentContextMenu";
 import {
-  attachAgentResultToChat,
   canAttachAgentResult,
   continueAgentInChat,
   subagentContextSubject,
@@ -407,7 +405,6 @@ export function AgentDetailPanel(props: {
 }) {
   const { parentRef } = props;
   const navigate = useNavigate();
-  const composerRef = useComposerHandleContext();
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const mode = useAgentListViewStore((state) => state.activityMode);
   const setMode = useAgentListViewStore((state) => state.setActivityMode);
@@ -853,7 +850,14 @@ export function AgentDetailPanel(props: {
           {canAttachAgentResult(subject) ? (
             <ActionButton
               label="Attach result to chat"
-              onClick={() => attachAgentResultToChat(composerRef, subject)}
+              onClick={() =>
+                void referenceAgentInChat(parentRef, {
+                  environmentId: parentRef.environmentId,
+                  ownerThreadId: subagent.threadId,
+                  childThreadId,
+                  subagentId: subagent.id,
+                })
+              }
             >
               <MessageSquareShareIcon />
             </ActionButton>

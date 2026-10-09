@@ -1,7 +1,8 @@
 /**
  * Fork: carry a subagent's work into chat, from its agents list row or its agent tab.
  *
- * - Attach result pastes a finished agent's task and result into this chat's composer.
+ * - Attach result (`canAttachAgentResult`) puts the agent's `@handle` chip, which carries its task
+ *   and result, in this chat's composer (`agentReferences.ts`).
  * - Continue in chat opens a new chat tab whose draft carries the agent's task, outcome and
  *   latest tool calls as a chat-summary chip. It starts a fresh conversation; the agent's own
  *   provider session is not resumed.
@@ -21,7 +22,6 @@ import type {
   ThreadId,
 } from "@t3tools/contracts";
 
-import type { ComposerHandleRef } from "~/composerHandleContext";
 import { loadThreadProjection } from "~/state/entities";
 import { readPreparedConnection } from "~/state/session";
 
@@ -46,31 +46,6 @@ export function subagentContextSubject(
 /** True when the agent has a settled result worth attaching. */
 export function canAttachAgentResult(subject: SubagentContextSubject): boolean {
   return subagentResultChatContext(subject) !== null;
-}
-
-/** Adds a finished agent's findings to the chat composer; long results fold into an attachment. */
-export function attachAgentResultToChat(
-  composerRef: ComposerHandleRef | null,
-  subject: SubagentContextSubject,
-): void {
-  const context = subagentResultChatContext(subject);
-  if (context === null) return;
-  const composer = composerRef?.current;
-  // pasteTextAtEnd only takes text long enough to fold into an attachment; shorter results
-  // go in as text.
-  if (
-    composer?.pasteTextAtEnd(context) ||
-    composer?.insertTextAtEnd(context, { ensureLeadingBoundary: true })
-  ) {
-    return;
-  }
-  toastManager.add({
-    type: "error",
-    title: "Unable to attach result",
-    description: composer
-      ? "The chat isn't ready to accept input right now."
-      : "Open the parent chat and try again.",
-  });
 }
 
 /**

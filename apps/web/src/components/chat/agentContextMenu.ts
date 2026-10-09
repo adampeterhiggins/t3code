@@ -21,7 +21,6 @@ import { useNavigate } from "@tanstack/react-router";
 import { useCallback, type MouseEvent } from "react";
 
 import { useAgentDrillStore } from "~/agentDrillStore";
-import { useComposerHandleContext } from "~/composerHandleContext";
 import { readLocalApi } from "~/localApi";
 import { useRightPanelStore } from "~/rightPanelStore";
 import { loadThreadProjection, readProject, readThreadProjection } from "~/state/entities";
@@ -33,7 +32,6 @@ import {
   resolveAgentContextRecord,
 } from "./agentReferences";
 import {
-  attachAgentResultToChat,
   canAttachAgentResult,
   continueAgentInChat,
   subagentContextSubject,
@@ -89,7 +87,6 @@ export function useAgentContextMenu(
   options?: { readonly showInAgentsPanel?: boolean },
 ) {
   const navigate = useNavigate();
-  const composerRef = useComposerHandleContext();
   const showInAgentsPanel = options?.showInAgentsPanel ?? true;
   return useCallback(
     (event: MouseEvent<HTMLElement>, agent: AgentMenuTarget) => {
@@ -175,11 +172,12 @@ export function useAgentContextMenu(
               }),
           });
         } else if (action === "attach-result") {
-          attachAgentResultToChat(composerRef, subject);
+          // The agent's chip carries its task and result.
+          await referenceAgentInChat(parentRef, referenceTarget);
         }
       })().catch(() => undefined);
     },
-    [composerRef, navigate, parentRef, showInAgentsPanel],
+    [navigate, parentRef, showInAgentsPanel],
   );
 }
 
