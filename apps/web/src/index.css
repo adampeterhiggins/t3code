@@ -1955,6 +1955,20 @@ code {
   font-size: 0.75rem;
 }
 
+/* Fork: inline code copies on click (`CopyableInlineCode`). */
+.chat-markdown code[data-copyable-code] {
+  cursor: pointer;
+}
+
+.chat-markdown code[data-copyable-code]:hover {
+  background: var(--accent);
+}
+
+.chat-markdown code[data-copyable-code][data-copied] {
+  border-color: var(--success);
+  color: var(--success-foreground);
+}
+
 .chat-markdown pre {
   max-width: 100%;
   overflow-x: auto;

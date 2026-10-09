@@ -1532,6 +1532,41 @@ function buildFileLinkParentSuffixByPath(filePaths: ReadonlyArray<string>): Map<
 const FENCED_CODE_SEGMENT_PATTERN = /(```[\s\S]*?(?:```|$))/;
 const INLINE_CODE_SPAN_PATTERN = /`([^`\n]+)`/g;
 
+/**
+ * Fork: inline code copies its text when clicked, unless the click ends a text selection, and
+ * marks itself copied for a moment.
+ */
+function CopyableInlineCode({
+  text,
+  children,
+  ...props
+}: React.ComponentProps<"code"> & { text: string }) {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timeout = window.setTimeout(() => setCopied(false), 1_200);
+    return () => window.clearTimeout(timeout);
+  }, [copied]);
+  return (
+    <code
+      {...props}
+      data-copyable-code=""
+      data-copied={copied ? "" : undefined}
+      title={copied ? "Copied" : "Click to copy"}
+      onClick={(event) => {
+        if ((window.getSelection()?.toString() ?? "").length > 0) return;
+        event.stopPropagation();
+        void writeTextToClipboard(text).then(
+          () => setCopied(true),
+          () => undefined,
+        );
+      }}
+    >
+      {children}
+    </code>
+  );
+}
+
 function extractInlineCodeSpans(text: string): string[] {
   const spans: string[] = [];
   const segments = text.split(FENCED_CODE_SEGMENT_PATTERN);
@@ -3595,6 +3630,11 @@ const CHAT_MARKDOWN_COMPONENTS = {
           inlineCodeFilePathCandidate(codeText) ?? codeText.trim(),
         );
       }
+      return (
+        <CopyableInlineCode {...props} className={className} text={codeText}>
+          {children}
+        </CopyableInlineCode>
+      );
     }
     return (
       <code {...props} className={className}>

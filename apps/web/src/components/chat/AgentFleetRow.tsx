@@ -186,7 +186,7 @@ export function AgentPreviewContent(props: {
           </span>
         </div>
         <div className="flex min-w-0 items-center gap-2 ps-3.5">
-          <AgentHandle handle={entry.handle} />
+          <AgentHandle handle={entry.handle} copyable />
           <span className="ms-auto shrink-0 font-mono text-2xs text-muted-foreground">
             <AgentElapsed agent={agent} />
           </span>

@@ -357,6 +357,13 @@ an agent's own thread show it.
   draft and opens the parent. On mobile, the Agents sheet rows show the handle and offer the same
   actions on long-press. The mobile composer's `@` menu has the same tabs.
 
+## Click inline code to copy it
+
+In chat Markdown (messages, plans, agent results), clicking an inline `` `code` `` span copies its
+text and marks it copied for a moment. A click that ends a text selection does not copy, and inline
+code that is a file path still opens the file (`CopyableInlineCode` in
+[`ChatMarkdown.tsx`](../apps/web/src/components/ChatMarkdown.tsx)).
+
 ## Chat tabs
 
 A thread can have several chat tabs that share one workspace (same checkout and worktree). Each tab
