@@ -2191,3 +2191,36 @@ it.layer(NodeServices.layer)("server settings", (it) => {
     }).pipe(Effect.provide(layerServerSettings())),
   );
 });
+
+it("keeps the repository owner list and its legacy single owner in step", () => {
+  const { foldContextRepositoryOwners } = ServerSettingsModule;
+  const withOwners = (
+    contextRepositoryOwners: ReadonlyArray<string>,
+    contextRepositoryOwner = "",
+  ) =>
+    ({
+      ...DEFAULT_SERVER_SETTINGS,
+      contextRepositoryOwners,
+      contextRepositoryOwner,
+    }) as ServerSettings;
+  const owners = (settings: ServerSettings) => [
+    settings.contextRepositoryOwners,
+    settings.contextRepositoryOwner,
+  ];
+
+  // An old settings file's single owner seeds the list.
+  assert.deepEqual(owners(foldContextRepositoryOwners(withOwners([], "acme"))), [["acme"], "acme"]);
+  // The list's head is mirrored back for older clients.
+  const listed = withOwners(["me", "acme"], "me");
+  assert.deepEqual(owners(foldContextRepositoryOwners(withOwners(["acme", "me"], "me"), listed)), [
+    ["acme", "me"],
+    "acme",
+  ]);
+  // Clearing the list clears the legacy owner instead of being re-seeded by it.
+  assert.deepEqual(owners(foldContextRepositoryOwners(withOwners([], "me"), listed)), [[], ""]);
+  // An older client's owner edit becomes the head of the list.
+  assert.deepEqual(
+    owners(foldContextRepositoryOwners(withOwners(["me", "acme"], "corp"), listed)),
+    [["corp", "me", "acme"], "corp"],
+  );
+});

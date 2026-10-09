@@ -526,10 +526,12 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "context-repository-owner",
-    title: "Repository owner",
+    title: "Repository owners",
     to: "/settings/general",
     scope: "environment-defaults",
-    searchTerms: ["attach repository github organization org user ctxclone context clone"],
+    searchTerms: [
+      "attach repository github organizations organisations orgs users order ctxclone context clone",
+    ],
   },
   {
     id: "context-repository-directory",

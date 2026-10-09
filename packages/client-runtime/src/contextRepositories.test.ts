@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  contextRepositoryCandidateLabels,
   parseRepositoryInput,
   pastedContextRepositoryEntry,
   repositoryContextRecord,
@@ -58,12 +59,30 @@ describe("repositoryContextRecord", () => {
 });
 
 describe("splitContextRepositoryOwnerQuery", () => {
-  it("searches another owner after a slash, and the default owner otherwise", () => {
-    expect(splitContextRepositoryOwnerQuery("acme/Api", "me")).toEqual({
-      owner: "acme",
+  it("searches another owner after a slash, and the configured owners otherwise", () => {
+    expect(splitContextRepositoryOwnerQuery("acme/Api", ["me", "corp"])).toEqual({
+      owners: ["acme"],
       filter: "api",
     });
-    expect(splitContextRepositoryOwnerQuery("Web", "me")).toEqual({ owner: "me", filter: "web" });
+    expect(splitContextRepositoryOwnerQuery("Web", ["me", "corp"])).toEqual({
+      owners: ["me", "corp"],
+      filter: "web",
+    });
+  });
+});
+
+describe("contextRepositoryCandidateLabels", () => {
+  it("names repositories bare, adding the owner only when another owner shares the name", () => {
+    const labels = contextRepositoryCandidateLabels([
+      { name: "fd-manager", nameWithOwner: "me/fd-manager" },
+      { name: "fd-manager", nameWithOwner: "focaldata/fd-manager" },
+      { name: "fd-questionnaire", nameWithOwner: "focaldata/fd-questionnaire" },
+    ]);
+    expect([...labels.values()]).toEqual([
+      "fd-manager (me)",
+      "fd-manager (focaldata)",
+      "fd-questionnaire",
+    ]);
   });
 });
 

@@ -920,14 +920,17 @@ User guide: [thread-sidebar.md](./user/thread-sidebar.md#import-a-conductor-work
 
 The composer's attach menu (and **Attach repository** in the web command palette) picks other
 repositories to clone into the workspace's context folder, `.context/` by default, the way the
-`ctxclone` shell tool does. The picker lists the default owner's GitHub repositories (via
-`gh repo list`), most recently attached first. Typing `org/` lists another owner, and a pasted
+`ctxclone` shell tool does. The picker lists the GitHub repositories (via `gh repo list`) of an
+ordered list of owners, most recently attached first, then by owner order. A name more than one
+owner has is labelled with its owner, like `api (acme)`. The server keeps each owner's list in
+memory and serves it at once, refetching in the background once it is five minutes old. Typing
+`org/` lists another owner, and a pasted
 `owner/repo` or clone URL also works. Rows for repositories already cloned into the thread's
 workspace show their branch, ahead/behind, and changed-file count.
 
 On web and desktop the composer's `#` menu also has a **Repositories** tab over the same list:
-`#name` searches the default owner and `#owner/name` another one. `#owner/name`, and a hyphenated
-name once a default owner is set, open that tab by default instead of pull requests.
+`#name` searches the configured owners and `#owner/name` another one. `#owner/name`, and a
+hyphenated name once an owner is configured, open that tab by default instead of pull requests.
 
 A picked repository becomes a `repository` context chip. When the message sends, the server
 clones what is missing before the turn starts. It leaves an existing clone of the same remote
@@ -938,7 +941,7 @@ before the message is recorded, with a one-step setup card showing progress. Eac
 outcome and git status are written back onto the message. The chip shows them, and the agent's prompt includes them, so the
 agent knows what is there. A failed clone is a warning and the agent still starts. The server adds
 the folder to the repository's `info/exclude` so checkpoints and diffs ignore the clones. The
-default owner and the folder are server settings in **Settings > General**. Mobile's attach menu
+owners and the folder are server settings in **Settings > General**. Mobile's attach menu
 has the same picker, without the recently attached ranking.
 
 Code: `apps/server/src/contextRepositories/ContextRepositories.ts`,

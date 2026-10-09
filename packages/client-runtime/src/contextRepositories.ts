@@ -75,14 +75,69 @@ export function parseRepositoryInput(
 
 const MAX_SHOWN_CANDIDATES = 50;
 
-/** `org/` or `org/partial-name` searches another owner; anything else searches the default. */
-export function splitContextRepositoryOwnerQuery(query: string, defaultOwner: string) {
+/**
+ * `org/` or `org/partial-name` searches that owner; anything else searches the configured owners,
+ * highest priority first.
+ */
+export function splitContextRepositoryOwnerQuery(
+  query: string,
+  defaultOwners: ReadonlyArray<string>,
+): { readonly owners: ReadonlyArray<string>; readonly filter: string } {
   const match = /^([A-Za-z0-9_.-]+)\/(.*)$/.exec(query);
-  if (match) return { owner: match[1]!, filter: match[2]!.toLowerCase() };
-  return { owner: defaultOwner, filter: query.toLowerCase() };
+  if (match) return { owners: [match[1]!], filter: match[2]!.toLowerCase() };
+  return { owners: defaultOwners, filter: query.toLowerCase() };
 }
 
-/** Recently attached first, then the server's order (most recently pushed). */
+/** The configured owners, falling back to the single owner a server older than the list sends. */
+export function configuredContextRepositoryOwners(settings: {
+  readonly contextRepositoryOwners: ReadonlyArray<string>;
+  readonly contextRepositoryOwner: string;
+}): ReadonlyArray<string> {
+  if (settings.contextRepositoryOwners.length > 0 || settings.contextRepositoryOwner.length === 0) {
+    return settings.contextRepositoryOwners;
+  }
+  return [settings.contextRepositoryOwner];
+}
+
+/** The `contextRepositories.list` input for these owners; null when there are none. */
+export function contextRepositoryListInput(owners: ReadonlyArray<string>) {
+  const [owner] = owners;
+  if (owner === undefined) return null;
+  return owners.length === 1 ? { owner } : { owner, owners };
+}
+
+/** Names a list of owners for picker copy: `acme`, `acme and me`, `acme, me and 2 more`. */
+export function describeContextRepositoryOwners(owners: ReadonlyArray<string>): string {
+  if (owners.length <= 2) return owners.join(" and ");
+  return owners.length === 3
+    ? `${owners[0]}, ${owners[1]} and ${owners[2]}`
+    : `${owners[0]}, ${owners[1]} and ${owners.length - 2} more`;
+}
+
+/**
+ * Display labels keyed by `nameWithOwner`: the bare repository name, with the owner in brackets
+ * only when another listed owner has a repository of the same name, e.g. `api (acme)`.
+ */
+export function contextRepositoryCandidateLabels(
+  candidates: ReadonlyArray<Pick<ContextRepositoryCandidate, "name" | "nameWithOwner">>,
+): ReadonlyMap<string, string> {
+  const owners = new Map<string, Set<string>>();
+  for (const candidate of candidates) {
+    const name = candidate.name.toLowerCase();
+    const owner = candidate.nameWithOwner.split("/")[0]!.toLowerCase();
+    owners.set(name, (owners.get(name) ?? new Set()).add(owner));
+  }
+  return new Map(
+    candidates.map((candidate) => [
+      candidate.nameWithOwner,
+      (owners.get(candidate.name.toLowerCase())?.size ?? 0) > 1
+        ? `${candidate.name} (${candidate.nameWithOwner.split("/")[0]})`
+        : candidate.name,
+    ]),
+  );
+}
+
+/** Recently attached first, then the server's order (owner priority, then most recently pushed). */
 export function rankContextRepositoryCandidates(
   candidates: ReadonlyArray<ContextRepositoryCandidate>,
   filter: string,

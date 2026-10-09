@@ -13,11 +13,13 @@ import {
   type ContextRepositoryOutcome,
   type RepositoryContextRecord,
 } from "@t3tools/contracts";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 
 import { ServerConfig } from "../config.ts";
@@ -37,7 +39,10 @@ import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 export class ContextRepositories extends Context.Service<
   ContextRepositories,
   {
-    /** The owner's repositories, most recently pushed first. GitHub only. */
+    /**
+     * Each owner's repositories in the owners' order, most recently pushed first
+     * within an owner. Fails only when every owner does. GitHub only.
+     */
     readonly list: (
       input: ContextRepositoryListInput,
     ) => Effect.Effect<ContextRepositoryListResult, ContextRepositoryError>;
@@ -73,6 +78,11 @@ export type ContextRepositoryProgress =
     };
 
 const DEFAULT_LIST_LIMIT = 200;
+const LIST_CONCURRENCY = 4;
+// `gh repo list` takes a second or more per owner and the picker lists every
+// configured owner on each open, so lists are kept in memory per owner the way
+// ctxclone keeps them on disk, and refreshed in the background once this old.
+const LIST_REFRESH_AFTER_MS = 5 * 60_000;
 // A full clone of a large repository takes minutes; a stuck one must still
 // end so the turn it holds up can start.
 const CLONE_TIMEOUT_MS = 10 * 60_000;
@@ -157,6 +167,12 @@ export const make = Effect.gen(function* () {
   const git = yield* GitVcsDriver.GitVcsDriver;
   const github = yield* GitHubCli.GitHubCli;
   const repositories = yield* SourceControlRepositoryService.SourceControlRepositoryService;
+  const ownerLists = new Map<
+    string,
+    { readonly fetchedAt: number; readonly repositories: ReadonlyArray<ContextRepositoryCandidate> }
+  >();
+  const refreshingOwners = new Set<string>();
+  const ownerListKey = (owner: string, limit: number) => `${owner.toLowerCase()}\n${limit}`;
 
   /**
    * The context directory, relative to the workspace for display and absolute
@@ -421,17 +437,17 @@ export const make = Effect.gen(function* () {
       };
     });
 
-  const list: ContextRepositories["Service"]["list"] = (input) =>
+  const fetchOwner = (owner: string, limit: number) =>
     github
       .execute({
         cwd: config.cwd,
         args: [
           "repo",
           "list",
-          input.owner,
+          owner,
           "--no-archived",
           "--limit",
-          String(input.limit ?? DEFAULT_LIST_LIMIT),
+          String(limit),
           "--json",
           "name,nameWithOwner,url,description,pushedAt,isPrivate",
         ],
@@ -451,8 +467,8 @@ export const make = Effect.gen(function* () {
             ),
           ),
         ),
-        Effect.map((raw) => ({
-          repositories: raw
+        Effect.map((raw) =>
+          raw
             .map((entry): ContextRepositoryCandidate => ({
               name: entry.name,
               nameWithOwner: entry.nameWithOwner,
@@ -462,8 +478,53 @@ export const make = Effect.gen(function* () {
               isPrivate: entry.isPrivate ?? false,
             }))
             .toSorted((left, right) => (right.pushedAt ?? "").localeCompare(left.pushedAt ?? "")),
-        })),
+        ),
+        Effect.tap((repositories) =>
+          Clock.currentTimeMillis.pipe(
+            Effect.map((fetchedAt) =>
+              ownerLists.set(ownerListKey(owner, limit), { fetchedAt, repositories }),
+            ),
+          ),
+        ),
       );
+
+  /**
+   * One owner's list, served from memory when there is one. A list older than
+   * `LIST_REFRESH_AFTER_MS` is still served, and refetched in the background for
+   * the next open; a failed refetch keeps the old list.
+   */
+  const listOwner = (owner: string, limit: number) =>
+    Effect.gen(function* () {
+      const key = ownerListKey(owner, limit);
+      const cached = ownerLists.get(key);
+      if (cached === undefined) return yield* fetchOwner(owner, limit);
+      const now = yield* Clock.currentTimeMillis;
+      if (now - cached.fetchedAt > LIST_REFRESH_AFTER_MS && !refreshingOwners.has(key)) {
+        refreshingOwners.add(key);
+        yield* fetchOwner(owner, limit).pipe(
+          Effect.ignoreCause({ log: true }),
+          Effect.ensuring(Effect.sync(() => refreshingOwners.delete(key))),
+          Effect.forkDetach,
+        );
+      }
+      return cached.repositories;
+    });
+
+  const list: ContextRepositories["Service"]["list"] = (input) =>
+    Effect.gen(function* () {
+      const limit = input.limit ?? DEFAULT_LIST_LIMIT;
+      const owners = [...new Set(input.owners ?? [input.owner])];
+      const results = yield* Effect.forEach(
+        owners,
+        (owner) => Effect.result(listOwner(owner, limit)),
+        { concurrency: LIST_CONCURRENCY },
+      );
+      const lists = results.filter(Result.isSuccess).map((result) => result.success);
+      // One misspelled owner should not hide every other owner's repositories.
+      const failure = results.find(Result.isFailure);
+      if (lists.length === 0 && failure !== undefined) return yield* failure.failure;
+      return { repositories: lists.flat() };
+    });
 
   return ContextRepositories.of({ list, inspect, ensure });
 });

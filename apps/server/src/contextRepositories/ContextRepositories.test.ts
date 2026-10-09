@@ -5,6 +5,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+import { ChildProcessSpawner } from "effect/process";
 
 import * as ServerConfig from "../config.ts";
 import * as GitHubCli from "../sourceControl/GitHubCli.ts";
@@ -169,6 +170,82 @@ it.layer(TestLayer)("ContextRepositories", (it) => {
       expect(outcome?.outcome?.detail).toContain("must be inside the workspace");
     }),
   );
+});
+
+const listingLayer = (repositoriesByOwner: Record<string, ReadonlyArray<string>>) => {
+  const calls: Array<string> = [];
+  const layer = ContextRepositories.layer.pipe(
+    Layer.provide(SourceControlRepositoryService.layer),
+    Layer.provide(
+      Layer.mock(SourceControlProviderRegistry.SourceControlProviderRegistry)({
+        resolveLink: () => undefined,
+        get: () => Effect.die("listing never clones"),
+      }),
+    ),
+    Layer.provide(
+      Layer.mock(GitHubCli.GitHubCli)({
+        execute: ({ args, cwd }) => {
+          const owner = args[2]!;
+          calls.push(owner);
+          const names = repositoriesByOwner[owner];
+          if (names === undefined) {
+            return Effect.fail(
+              new GitHubCli.GitHubCliCommandError({
+                command: "gh",
+                cwd,
+                cause: new Error(`Could not resolve to a user with the login of '${owner}'.`),
+              }),
+            );
+          }
+          const stdout = JSON.stringify(
+            names.map((name, index) => ({
+              name,
+              nameWithOwner: `${owner}/${name}`,
+              url: `https://github.com/${owner}/${name}`,
+              pushedAt: `2026-10-0${9 - index}T00:00:00Z`,
+            })),
+          );
+          return Effect.succeed({
+            exitCode: ChildProcessSpawner.ExitCode(0),
+            stdout,
+            stderr: "",
+            stdoutTruncated: false,
+            stderrTruncated: false,
+          });
+        },
+      }),
+    ),
+    Layer.provideMerge(GitVcsDriver.layer),
+    Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "t3-context-repos-list-" })),
+    Layer.provideMerge(VcsProcess.layer),
+    Layer.provideMerge(NodeServices.layer),
+  );
+  return { calls, layer };
+};
+
+it.effect("lists owners in priority order, keeps each list, and skips an owner that fails", () => {
+  const { calls, layer } = listingLayer({
+    me: ["fd-manager", "dotfiles"],
+    focaldata: ["fd-manager", "fd-questionnaire"],
+  });
+  return Effect.gen(function* () {
+    const service = yield* ContextRepositories.ContextRepositories;
+    const input = { owner: "me", owners: ["me", "missing", "focaldata"] };
+    const first = yield* service.list(input);
+    expect(first.repositories.map((candidate) => candidate.nameWithOwner)).toEqual([
+      "me/fd-manager",
+      "me/dotfiles",
+      "focaldata/fd-manager",
+      "focaldata/fd-questionnaire",
+    ]);
+    // The next open is served from memory; only the failed owner is asked again.
+    const second = yield* service.list(input);
+    expect(second).toEqual(first);
+    expect(calls.toSorted()).toEqual(["focaldata", "me", "missing", "missing"]);
+    // When every owner fails, the error surfaces.
+    const failed = yield* Effect.flip(service.list({ owner: "missing" }));
+    expect(failed.message).toContain("missing");
+  }).pipe(Effect.provide(layer));
 });
 
 it("parses porcelain v2 branch headers and counts changed paths", () => {

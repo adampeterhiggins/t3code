@@ -75,8 +75,20 @@ export const ContextRepositoryCandidate = Schema.Struct({
 });
 export type ContextRepositoryCandidate = typeof ContextRepositoryCandidate.Type;
 
+/** A GitHub org or user whose repositories the picker lists. */
+export const ContextRepositoryOwner = TrimmedNonEmptyString.check(Schema.isMaxLength(255));
+export const MAX_CONTEXT_REPOSITORY_OWNERS = 20;
+/** Owners in priority order: the picker lists the first owner's repositories first. */
+export const ContextRepositoryOwners = Schema.Array(ContextRepositoryOwner).check(
+  Schema.isMaxLength(MAX_CONTEXT_REPOSITORY_OWNERS),
+);
+
 export const ContextRepositoryListInput = Schema.Struct({
-  owner: TrimmedNonEmptyString.check(Schema.isMaxLength(255)),
+  /** The first owner. A server older than `owners` lists only this one. */
+  owner: ContextRepositoryOwner,
+  /** Every owner to list, in priority order. Lists `owner` alone when absent. */
+  owners: Schema.optional(ContextRepositoryOwners),
+  /** Per owner. */
   limit: Schema.optional(PositiveInt.check(Schema.isLessThanOrEqualTo(1_000))),
 });
 export type ContextRepositoryListInput = typeof ContextRepositoryListInput.Type;
