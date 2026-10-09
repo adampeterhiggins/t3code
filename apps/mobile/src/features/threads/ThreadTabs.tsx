@@ -224,7 +224,8 @@ export function ThreadTabs({
     }
   };
   // From an empty tab: a sibling's conversation continues in a native fork that takes this tab's
-  // place, on this tab's model and with its draft. This tab is archived, so it can be reopened.
+  // place, on the sibling's own model and with this tab's draft. This tab is archived, so it can
+  // be reopened.
   const continueFrom = async (sourceThreadId: ThreadId, sourceTitle: string) => {
     setBusy(true);
     try {
@@ -235,7 +236,6 @@ export function ThreadTabs({
           sourceThreadId,
           title: `${sourceTitle} fork`,
           creationSource: "mobile",
-          modelSelection,
         }),
       );
       const source = getComposerDraftSnapshot(scopedThreadKey(environmentId, threadId));

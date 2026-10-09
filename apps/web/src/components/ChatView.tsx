@@ -9091,8 +9091,8 @@ export default function ChatView(props: ChatViewProps) {
   };
 
   // From a context pill of an empty tab: a sibling's conversation continues in a native fork that
-  // takes this tab's place, on this tab's model and with its draft. Closing archives this tab,
-  // so undo brings it back.
+  // takes this tab's place, on the sibling's own model and with this tab's draft. Closing archives
+  // this tab, so undo brings it back.
   const onContinueFromTab = (sourceThreadId: ThreadId, sourceTitle: string) =>
     runFork(async (connection) => {
       if (!activeThread || !threadTabGroup) return;
@@ -9101,7 +9101,6 @@ export default function ChatView(props: ChatViewProps) {
         tabThreadId: activeThread.id,
         sourceThreadId,
         title: `${sourceTitle} fork`,
-        modelSelection: activeThread.modelSelection,
       });
       const draft = useComposerDraftStore.getState().getComposerDraft(composerDraftTarget);
       useComposerDraftStore.getState().setPrompt(tabRef, draft?.prompt.trim() ?? "");
@@ -12211,7 +12210,11 @@ export default function ChatView(props: ChatViewProps) {
                       </div>
                     </div>
                   ) : null}
-                  {threadTabGroup && !threadHasStarted(activeThread) ? (
+                  {threadTabGroup &&
+                  !threadHasStarted(activeThread) &&
+                  // A native fork carries history the shell does not count as started, so the
+                  // pills must follow the timeline or they cover the inherited conversation.
+                  serverVisibleTurnItems.length === 0 ? (
                     <ThreadTabContextPills
                       key={activeThread.id}
                       environmentId={activeThread.environmentId}
