@@ -25,6 +25,8 @@ import {
   OrchestratorMcpThreadListResult,
   OrchestratorMcpThreadReadInput,
   OrchestratorMcpThreadReadResult,
+  OrchestratorMcpThreadRollbackInput,
+  OrchestratorMcpThreadRollbackResult,
   OrchestratorMcpThreadSendInput,
   OrchestratorMcpThreadSendResult,
   OrchestratorMcpThreadWaitInput,
@@ -272,6 +274,18 @@ const ThreadUsageLimitResumeTool = Tool.make("t3_thread_usage_limit_resume", {
   .annotate(Tool.Destructive, true)
   .annotate(Tool.OpenWorld, true);
 
+const ThreadRollbackTool = Tool.make("t3_thread_rollback", {
+  description:
+    "Roll another T3 thread back to the checkpoint after one of its runs, as the user's revert does: later runs are discarded and, unless restoreFiles=false, the workspace files are restored to that point. This cannot be undone. runOrdinal is a run's ordinal from t3_thread_read's recentRuns; 0 discards every run. Refuses your own thread, a thread with a turn running (use t3_thread_interrupt or t3_thread_wait first), a provider without conversation rollback, and restoring files in a checkout other threads share. To keep the history, use t3_thread_fork instead. clientRequestId makes retries idempotent. Returns rollback_requested when accepted; provider and file restoration run asynchronously, so acceptance does not mean restoration succeeded.",
+  parameters: OrchestratorMcpThreadRollbackInput,
+  success: OrchestratorMcpThreadRollbackResult,
+  failure: OrchestratorMcpFailure,
+  failureMode: "return",
+  dependencies,
+})
+  .annotate(Tool.Title, "Roll back a T3 thread")
+  .annotate(Tool.Destructive, true);
+
 export const OrchestratorToolkit = Toolkit.make(
   OrchestratorCapabilitiesTool,
   DelegateTaskTool,
@@ -290,4 +304,5 @@ export const OrchestratorToolkit = Toolkit.make(
   ThreadWaitTool,
   ThreadInterruptTool,
   ThreadUsageLimitResumeTool,
+  ThreadRollbackTool,
 );

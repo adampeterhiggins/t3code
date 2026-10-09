@@ -40,6 +40,8 @@ import {
   type OrchestratorMcpThreadUsageLimit,
   type OrchestratorMcpThreadUsageLimitResumeInput,
   type OrchestratorMcpThreadUsageLimitResumeResult,
+  type OrchestratorMcpThreadRollbackInput,
+  type OrchestratorMcpThreadRollbackResult,
   type OrchestratorMcpThreadListInput,
   type OrchestratorMcpThreadListItem,
   type OrchestratorMcpThreadListResult,
@@ -202,6 +204,15 @@ export interface OrchestratorMcpServiceShape {
     scope: McpInvocationScope,
     input: OrchestratorMcpThreadUsageLimitResumeInput,
   ) => Effect.Effect<OrchestratorMcpThreadUsageLimitResumeResult, OrchestratorMcpFailure>;
+  /**
+   * Rolls another thread back to the checkpoint after one of its runs,
+   * discarding later runs and, unless `restoreFiles` is false, their file
+   * changes. Refuses the caller's own thread and a thread with a turn running.
+   */
+  readonly rollbackThread: (
+    scope: McpInvocationScope,
+    input: OrchestratorMcpThreadRollbackInput,
+  ) => Effect.Effect<OrchestratorMcpThreadRollbackResult, OrchestratorMcpFailure>;
 }
 
 export class OrchestratorMcpService extends Context.Service<
@@ -721,6 +732,8 @@ function threadDetail(
             requestId: projection.thread.titleRegeneration.requestId,
             startedAt: DateTime.formatIso(projection.thread.titleRegeneration.startedAt),
           },
+    rollbackRequestId: projection.thread.rollbackRequestId ?? null,
+    rollbackFailure: projection.thread.rollbackFailure ?? null,
     branch: projection.thread.branch,
     worktreePath: projection.thread.worktreePath,
     parentThreadId: projection.thread.lineage.parentThreadId,
@@ -2676,6 +2689,72 @@ const make = Effect.gen(function* () {
           );
         }
         return resultFor(continuation);
+      }),
+    rollbackThread: (scope, input) =>
+      Effect.gen(function* () {
+        // Its own thread would have the files and history of its running turn rewritten.
+        yield* assertNotSelf(scope.thread?.threadId, input.threadId);
+        const { parent, limits, target } = yield* loadScopedThread(scope, input.threadId);
+        yield* assertLiveCallerForOtherThread(scope, parent, target);
+        yield* resolveRuntimeMode(limits.runtimeMode, target.thread.runtimeMode);
+        yield* resolveInteractionMode(limits.interactionMode, target.thread.interactionMode);
+        if (ThreadManagementService.latestActiveRun(target) !== undefined) {
+          return yield* failure(
+            "invalid_request",
+            `Thread ${input.threadId} has a turn running. Interrupt it, or wait for it to finish, before rolling back.`,
+          );
+        }
+        const { checkpoints } = yield* threadManagement
+          .getProjectThreadRecords(
+            { projectId: target.thread.projectId, threadId: input.threadId },
+            ["checkpoints"],
+          )
+          .pipe(Effect.mapError(threadManagementFailure));
+        // The same checkpoint the app's revert picks for a turn count.
+        const checkpoint = checkpoints.findLast((candidate) =>
+          input.runOrdinal === 0
+            ? candidate.ordinalWithinScope === 0 && candidate.appRunOrdinal === null
+            : candidate.appRunOrdinal === input.runOrdinal,
+        );
+        if (checkpoint === undefined || checkpoint.status !== "ready") {
+          return yield* failure(
+            "invalid_request",
+            `Thread ${input.threadId} has no restorable checkpoint after run ${input.runOrdinal}.`,
+          );
+        }
+        const restoreFiles = input.restoreFiles ?? true;
+        const key = yield* requestKey(input.clientRequestId);
+        const commandId = stableCommandId({ scope, requestKey: key, operation: "thread-rollback" });
+        yield* threadManagement
+          .dispatch({
+            type: "checkpoint.rollback",
+            commandId,
+            threadId: input.threadId,
+            scopeId: checkpoint.scopeId,
+            checkpointId: checkpoint.id,
+            restoreFiles,
+          })
+          .pipe(
+            // The decider's refusals (shared workspace, unsupported provider) are worth showing.
+            Effect.mapError((error) =>
+              failure(
+                "orchestration_error",
+                `Unable to roll back thread ${input.threadId}: ${
+                  "cause" in error && typeof error.cause === "string"
+                    ? error.cause
+                    : errorMessage(error)
+                }`,
+              ),
+            ),
+          );
+        return {
+          status: "rollback_requested",
+          commandId,
+          threadId: input.threadId,
+          runOrdinal: input.runOrdinal,
+          checkpointId: checkpoint.id,
+          restoreFiles,
+        } satisfies OrchestratorMcpThreadRollbackResult;
       }),
   });
 });

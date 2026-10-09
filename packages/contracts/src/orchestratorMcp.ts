@@ -3,6 +3,8 @@ import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 
 import {
+  CheckpointId,
+  CommandId,
   ContextTransferId,
   IsoDateTime,
   MessageId,
@@ -384,6 +386,17 @@ export const OrchestratorMcpThreadDetail = Schema.Struct({
   interactionMode: ProviderInteractionMode,
   linkedPullRequest: Schema.NullOr(ThreadLinkedPullRequest),
   titleRegeneration: Schema.NullOr(ThreadTitleRegeneration),
+  /** Latest accepted rollback; acceptance does not imply restoration has finished. */
+  rollbackRequestId: Schema.optional(Schema.NullOr(CommandId)),
+  /** The latest rollback's terminal failure, if any. */
+  rollbackFailure: Schema.optional(
+    Schema.NullOr(
+      Schema.Struct({
+        requestId: CommandId,
+        message: TrimmedNonEmptyString,
+      }),
+    ),
+  ),
   branch: Schema.NullOr(Schema.String),
   worktreePath: Schema.NullOr(Schema.String),
   parentThreadId: Schema.NullOr(ThreadId),
@@ -528,6 +541,26 @@ export const OrchestratorMcpThreadUsageLimitResumeResult = Schema.Struct({
 });
 export type OrchestratorMcpThreadUsageLimitResumeResult =
   typeof OrchestratorMcpThreadUsageLimitResumeResult.Type;
+export const OrchestratorMcpThreadRollbackInput = Schema.Struct({
+  threadId: ThreadId,
+  /** Keep runs up to this ordinal (from t3_thread_read's recentRuns); 0 discards every run. */
+  runOrdinal: NonNegativeInt,
+  /** Restore the workspace files too. Defaults to true; false rewinds only the conversation. */
+  restoreFiles: Schema.optional(Schema.Boolean),
+  clientRequestId: Schema.optional(OrchestratorMcpClientRequestId),
+});
+export type OrchestratorMcpThreadRollbackInput = typeof OrchestratorMcpThreadRollbackInput.Type;
+
+export const OrchestratorMcpThreadRollbackResult = Schema.Struct({
+  /** The rollback is accepted; provider and file restoration run asynchronously. */
+  status: Schema.Literal("rollback_requested"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  runOrdinal: NonNegativeInt,
+  checkpointId: CheckpointId,
+  restoreFiles: Schema.Boolean,
+});
+export type OrchestratorMcpThreadRollbackResult = typeof OrchestratorMcpThreadRollbackResult.Type;
 
 export const OrchestratorMcpProviderCapability = Schema.Struct({
   providerInstanceId: ProviderInstanceId,

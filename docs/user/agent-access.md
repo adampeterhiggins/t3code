@@ -53,7 +53,11 @@ An agent connected to `/mcp/operate` has the history tools plus the thread, proj
 environment tools an agent inside T3 Code has. It can start a thread in any project with
 `t3_thread_launch`, message a thread with `t3_thread_send`, wait for it with `t3_thread_wait`, and
 stop its turn with `t3_thread_interrupt`, and resume a thread stopped on a usage limit with
-`t3_thread_usage_limit_resume`. It can rename a thread, change its model, archive,
+`t3_thread_usage_limit_resume`. It can roll a thread back to an earlier turn with
+`t3_thread_rollback`, which, like reverting in the app, discards the later turns and restores the
+files unless it asks to keep them; it cannot do this while the thread is working. Acceptance
+starts the rollback; provider and file restoration finish afterward. `t3_thread_read` reports
+the latest rollback request ID and any terminal restoration failure. It can rename a thread, change its model, archive,
 settle, pin, snooze, hide, group, or mark it read or unread, delete it with `t3_thread_delete`,
 answer its questions with `t3_pending_request_respond` and its approvals with
 `t3_approval_respond`, and add or change projects. It acts as you would: the
@@ -78,7 +82,7 @@ Threads and tabs an agent starts appear in your sidebar with a bot icon, and the
 thread started them; click it to open that thread. An agent cannot give a thread more freedom
 than its own permission mode allows. It can start threads two levels deep, and keep at most five
 of its own going at once: a thread or tab it started counts until it settles or you archive it, a
-delegated task until it finishes. It cannot message, wait on, or stop its own thread with these
+delegated task until it finishes. It cannot message, wait on, stop, or roll back its own thread with these
 tools, and it cannot answer another thread's approvals; those still come to you. It can archive
 threads but never delete them.
 

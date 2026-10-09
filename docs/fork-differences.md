@@ -1262,13 +1262,23 @@ never deletes a thread; it archives instead. `t3_thread_organize` also takes `ma
 reverse of upstream's `mark_unread`, which marks a thread read as opening it in the app does
 ([`thread/handlers.ts`](../apps/server/src/mcp/toolkits/thread/handlers.ts)).
 
+The fork also adds `t3_thread_rollback`, which reverts another thread to the checkpoint after one of
+its runs (`runOrdinal` from `t3_thread_read`'s `recentRuns`, 0 for before the first run), like the
+app's revert: later runs are discarded and, unless `restoreFiles` is false, the files are restored.
+It follows `t3_thread_interrupt`'s rules (never the caller's own thread, a live caller, the target
+within the caller's modes) and also refuses a thread with a turn running. `/mcp/operate` tokens get
+it too. The tool returns `rollback_requested` and a command ID when accepted; provider and
+file restoration run afterward and can fail. `t3_thread_read` exposes the latest rollback
+request ID and terminal failure.
+
 A thread an agent starts with `create_threads`, `t3_thread_launch`, or `t3_thread_tab_open`
 records `startedBy` (the starting thread, or the agent access token's label). The chat header on web, desktop, and mobile
 names the starting thread (and opens it) or the token, and web sidebar rows mark the thread with a
 bot icon. A client cannot set `startedBy`; only the server's MCP paths do.
 
 Code: [`spawnPolicy.ts`](../apps/server/src/mcp/spawnPolicy.ts), its callers in
-[`OrchestratorMcpService.ts`](../apps/server/src/mcp/OrchestratorMcpService.ts) and
+[`OrchestratorMcpService.ts`](../apps/server/src/mcp/OrchestratorMcpService.ts) (which also holds
+`rollbackThread`) and
 [`toolkits/project/handlers.ts`](../apps/server/src/mcp/toolkits/project/handlers.ts),
 `OrchestrationV2ThreadStartedBy` in
 [`orchestrationV2.ts`](../packages/contracts/src/orchestrationV2.ts),
