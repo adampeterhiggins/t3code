@@ -147,6 +147,35 @@ export function toolPathTargets(
   return paths.length > 0 ? paths : (entry.changedFiles ?? []);
 }
 
+/**
+ * Timelines show an in-workspace file as `worktree/file` (the checkout's directory name, then the
+ * relative path). Cursor's read titles are rewritten that way, so the absolute target is no longer
+ * in the label. The shortened spelling is still that file: matching it keeps the worktree name,
+ * including a branch that contains a slash, as the underlined root.
+ */
+function workspaceLabelSpelling(
+  target: string,
+  workspaceRoot: string | null | undefined,
+): string | null {
+  if (!workspaceRoot) return null;
+  const windows = isWindowsAbsolutePath(target) || isWindowsAbsolutePath(workspaceRoot);
+  const normalized = (windows ? target.replaceAll("\\", "/") : target).replace(/^\.\//, "");
+  if (normalized.split("/").includes("..")) return null;
+  const workspace = normalize(workspaceRoot);
+  const absolute = normalized.startsWith("/") || isWindowsAbsolutePath(normalized);
+  const full = absolute ? normalize(normalized) : `${workspace}/${normalized}`;
+  const fold = isWindowsAbsolutePath(workspace);
+  const fullCompare = fold ? full.toLowerCase() : full;
+  const workspaceCompare = fold ? workspace.toLowerCase() : workspace;
+  if (fullCompare !== workspaceCompare && !fullCompare.startsWith(`${workspaceCompare}/`)) {
+    return null;
+  }
+  const relative = full.slice(workspace.length).replace(/^\//, "");
+  const label = basename(workspace);
+  if (!label || label === "." || label === "..") return null;
+  return relative.length > 0 ? `${label}/${relative}` : label;
+}
+
 /** Split tool labels/targets, never arbitrary provider output or source-code bodies. */
 export function toolPathTextParts(
   text: string,
@@ -166,7 +195,11 @@ export function toolPathTextParts(
   for (const target of targets) {
     const path = resolveToolPath(target, workspaceRoot, roots);
     if (!path) continue;
-    for (const spelling of new Set([target, normalize(target)])) {
+    for (const spelling of new Set([
+      target,
+      normalize(target),
+      workspaceLabelSpelling(target, workspaceRoot),
+    ])) {
       if (!spelling) continue;
       let start = text.indexOf(spelling);
       while (start !== -1) {
