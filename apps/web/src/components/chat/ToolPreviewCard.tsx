@@ -1,18 +1,27 @@
 import { ThreadId, type EnvironmentId } from "@t3tools/contracts";
-import type { ToolPreview } from "@t3tools/client-runtime/work-log/tool-preview";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import type {
+  PullRequestToolPreview,
+  ToolPreview,
+} from "@t3tools/client-runtime/work-log/tool-preview";
 import { ExternalLinkIcon } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import { useClientSettings } from "../../hooks/useSettings";
+import { useThreadShell } from "../../state/entities";
 import { cn } from "../../lib/utils";
 import { formatShortTimestamp } from "../../timestampFormat";
 import { PullRequestStateGlyph } from "../pullRequest/pullRequestPresentation";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import { scheduleLabel } from "../settings/ScheduledTasksSettings";
 import ChatMarkdown from "../ChatMarkdown";
 import { resolveExternalWebLinkHref } from "./externalLinkContextMenu";
 import { HighlightedSnippet } from "./HighlightedSnippet";
 import { ShellCommandBlock } from "./ShellCommandBlock";
+
+// A search can return dozens of messages; the card is a glance, the raw call has the rest.
+const MAX_SLACK_MESSAGES = 5;
 
 const monoClassName =
   "font-mono text-(length:--font-size-code,var(--text-2xs)) leading-relaxed whitespace-pre-wrap break-words select-text";
@@ -73,6 +82,59 @@ function OpenThreadButton(props: {
   );
 }
 
+type PullRequestRow = PullRequestToolPreview["pullRequests"][number];
+
+/**
+ * A pull request row. Link and watch results name only the PR, so its title, state and
+ * branch come from the thread's own snapshot of the PR when the thread links it.
+ */
+function PullRequestRowView(props: {
+  readonly pr: PullRequestRow;
+  readonly environmentId: EnvironmentId;
+  readonly threadId: ThreadId;
+}) {
+  const shell = useThreadShell(
+    useMemo(
+      () => scopeThreadRef(props.environmentId, props.threadId),
+      [props.environmentId, props.threadId],
+    ),
+  );
+  const { pr } = props;
+  const snapshot =
+    pr.title === null
+      ? (shell?.pullRequests.find(
+          (link) =>
+            link.url === pr.url || (link.repository === pr.repository && link.number === pr.number),
+        )?.snapshot ?? null)
+      : null;
+  const title = pr.title ?? snapshot?.title ?? null;
+  const state = pr.state ?? snapshot?.state ?? null;
+  const isDraft = pr.state ? pr.isDraft : (snapshot?.isDraft ?? false);
+  const branch = pr.headBranch ?? snapshot?.headBranch ?? null;
+  return (
+    <li className="min-w-0 space-y-0.5">
+      <div className="flex min-w-0 items-center gap-1.5">
+        {state ? (
+          <PullRequestStateGlyph state={state} isDraft={isDraft} className="size-3.5" />
+        ) : null}
+        <ExternalLink href={pr.url}>
+          {title ?? (pr.repository && pr.number ? `${pr.repository}#${pr.number}` : pr.url)}
+        </ExternalLink>
+        {title && pr.number ? (
+          <span className="shrink-0 font-mono text-muted-foreground">#{pr.number}</span>
+        ) : null}
+      </div>
+      {branch || pr.note ? (
+        <p className="truncate pl-5 text-muted-foreground">
+          {[branch ? `${pr.repository ?? ""} ${branch}`.trim() : null, pr.note]
+            .filter(Boolean)
+            .join(" · ")}
+        </p>
+      ) : null}
+    </li>
+  );
+}
+
 function WakeTime({ at }: { readonly at: string }) {
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   return <p className="text-foreground">Wakes at {formatShortTimestamp(at, timestampFormat)}</p>;
@@ -81,6 +143,8 @@ function WakeTime({ at }: { readonly at: string }) {
 function PreviewBody(props: {
   readonly preview: ToolPreview;
   readonly environmentId: EnvironmentId;
+  /** The thread the call ran in. */
+  readonly threadId: ThreadId;
   readonly cwd: string | undefined;
   readonly onOpenThread: (threadId: ThreadId) => void;
 }) {
@@ -134,21 +198,14 @@ function PreviewBody(props: {
       return preview.pullRequests.length === 0 ? (
         <p className="text-muted-foreground italic">No pull requests.</p>
       ) : (
-        <ul className="space-y-1">
+        <ul className="space-y-1.5">
           {preview.pullRequests.map((pr) => (
-            <li key={pr.url} className="flex min-w-0 items-center gap-1.5">
-              {pr.state ? (
-                <PullRequestStateGlyph state={pr.state} isDraft={pr.isDraft} className="size-3.5" />
-              ) : null}
-              <ExternalLink href={pr.url}>
-                {pr.title ??
-                  (pr.repository && pr.number ? `${pr.repository}#${pr.number}` : pr.url)}
-              </ExternalLink>
-              {pr.title && pr.number ? (
-                <span className="shrink-0 font-mono text-muted-foreground">#{pr.number}</span>
-              ) : null}
-              {pr.note ? <span className="shrink-0 text-muted-foreground">· {pr.note}</span> : null}
-            </li>
+            <PullRequestRowView
+              key={pr.url}
+              pr={pr}
+              environmentId={props.environmentId}
+              threadId={props.threadId}
+            />
           ))}
         </ul>
       );
@@ -191,18 +248,26 @@ function PreviewBody(props: {
           ))}
         </div>
       );
-    case "slack-thread":
+    case "slack-messages":
       return (
         <ul className="space-y-2">
-          {preview.messages.map((message) => (
+          {preview.messages.slice(0, MAX_SLACK_MESSAGES).map((message) => (
             <li
               key={`${message.time}\n${message.author}\n${message.text}`}
               className="border-l-2 border-border pl-2"
             >
-              <p>
-                <span className="font-medium text-foreground">{message.author}</span>
+              <p className="flex min-w-0 items-baseline gap-1.5">
+                <span className="shrink-0 font-medium text-foreground">{message.author}</span>
+                {message.channel ? (
+                  <span className="min-w-0 truncate text-muted-foreground">{message.channel}</span>
+                ) : null}
                 {message.time ? (
-                  <span className="ml-1.5 text-muted-foreground">{message.time}</span>
+                  <span className="shrink-0 text-muted-foreground">{message.time}</span>
+                ) : null}
+                {message.url ? (
+                  <span className="ml-auto shrink-0">
+                    <ExternalLink href={message.url}>Open</ExternalLink>
+                  </span>
                 ) : null}
               </p>
               <p className="line-clamp-6 break-words whitespace-pre-wrap text-foreground/85">
@@ -210,6 +275,11 @@ function PreviewBody(props: {
               </p>
             </li>
           ))}
+          {preview.messages.length > MAX_SLACK_MESSAGES ? (
+            <li className="text-muted-foreground">
+              +{preview.messages.length - MAX_SLACK_MESSAGES} more
+            </li>
+          ) : null}
         </ul>
       );
     case "questions":
@@ -246,15 +316,18 @@ function PreviewBody(props: {
     case "agent-message":
       return (
         <>
-          <div className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
-            To <Chip>{preview.recipient}</Chip>
-          </div>
+          {preview.recipient ? (
+            <div className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+              To <Chip>{preview.recipient}</Chip>
+            </div>
+          ) : null}
           {preview.summary ? (
             <p className="font-medium text-foreground">{preview.summary}</p>
           ) : null}
           <div className="max-h-60 overflow-auto">
             <ChatMarkdown text={preview.message} cwd={props.cwd} lineBreaks />
           </div>
+          <OpenThreadButton threadId={preview.threadId} onOpenThread={props.onOpenThread} />
         </>
       );
     case "skill":
@@ -289,6 +362,50 @@ function PreviewBody(props: {
           ) : null}
         </>
       );
+    case "threads":
+      return preview.threads.length === 0 ? (
+        <p className="text-muted-foreground italic">No threads.</p>
+      ) : (
+        <ul className="space-y-1">
+          {preview.threads.map((thread) => (
+            <li key={thread.threadId} className="flex min-w-0 items-center gap-1.5">
+              <button
+                type="button"
+                className="min-w-0 truncate text-left text-foreground hover:underline"
+                onClick={() => props.onOpenThread(ThreadId.make(thread.threadId))}
+              >
+                {thread.title}
+              </button>
+              {thread.model ? (
+                <span className="shrink-0 text-muted-foreground">{thread.model}</span>
+              ) : null}
+              <span className="ml-auto">
+                <StatusBadge status={thread.status} />
+              </span>
+            </li>
+          ))}
+        </ul>
+      );
+    case "scheduled-tasks":
+      return preview.tasks.length === 0 ? (
+        <p className="text-muted-foreground italic">No scheduled tasks.</p>
+      ) : (
+        <ul className="space-y-1">
+          {preview.tasks.map((task) => (
+            <li key={task.id} className="min-w-0">
+              <p className="truncate font-medium text-foreground">{task.title}</p>
+              <p className="truncate text-muted-foreground">
+                {[
+                  task.schedule ? scheduleLabel(task.schedule) : null,
+                  task.enabled ? null : "paused",
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            </li>
+          ))}
+        </ul>
+      );
     case "html-page":
       return (
         <>
@@ -308,6 +425,7 @@ function PreviewBody(props: {
 export function ToolPreviewCard(props: {
   readonly preview: ToolPreview;
   readonly environmentId: EnvironmentId;
+  readonly threadId: ThreadId;
   readonly cwd: string | undefined;
   readonly onOpenThread: (threadId: ThreadId) => void;
   readonly images: ReactNode;

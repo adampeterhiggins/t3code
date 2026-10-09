@@ -17,9 +17,26 @@ export function parseJsonDocument(text: string): object | null {
   }
 }
 
+// Encoded IDs and URLs carry no spaces; their ends tell them apart.
+const MAX_TOKEN_PREVIEW = 48;
+
 function JsonString({ value }: { readonly value: string }) {
   const [expanded, setExpanded] = useState(false);
-  if (expanded || value.length <= MAX_STRING_PREVIEW) {
+  if (expanded || value.length <= MAX_TOKEN_PREVIEW) {
+    return <span className="text-success-foreground">{JSON.stringify(value)}</span>;
+  }
+  if (!/\s/.test(value)) {
+    return (
+      <button
+        type="button"
+        className="text-left text-success-foreground hover:underline"
+        onClick={() => setExpanded(true)}
+      >
+        {JSON.stringify(`${value.slice(0, 24)}…${value.slice(-16)}`)}
+      </button>
+    );
+  }
+  if (value.length <= MAX_STRING_PREVIEW) {
     return <span className="text-success-foreground">{JSON.stringify(value)}</span>;
   }
   return (

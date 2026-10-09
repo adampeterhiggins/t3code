@@ -1,6 +1,8 @@
-import type { OrchestrationV2TurnItem } from "@t3tools/contracts";
+import { ScheduledTaskSchedule, type OrchestrationV2TurnItem } from "@t3tools/contracts";
 import { resolveT3McpToolId } from "@t3tools/shared/t3McpToolPresentation";
 import * as DateTime from "effect/DateTime";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 
 import { toolCallArgs, toolResultData } from "./itemDetail.ts";
 
@@ -11,11 +13,13 @@ import { toolCallArgs, toolResultData } from "./itemDetail.ts";
  */
 export type ToolPreview =
   | ThreadToolPreview
+  | ThreadListToolPreview
   | TaskToolPreview
+  | ScheduledTasksToolPreview
   | PullRequestToolPreview
   | BrowserToolPreview
   | LoadedToolsPreview
-  | SlackThreadPreview
+  | SlackMessagesPreview
   | QuestionsToolPreview
   | AgentMessageToolPreview
   | SkillToolPreview
@@ -40,6 +44,26 @@ export interface ThreadToolPreview {
   readonly moreItems: number;
 }
 
+export interface ThreadListToolPreview {
+  readonly kind: "threads";
+  readonly threads: ReadonlyArray<{
+    readonly threadId: string;
+    readonly title: string;
+    readonly status: string | null;
+    readonly model: string | null;
+  }>;
+}
+
+export interface ScheduledTasksToolPreview {
+  readonly kind: "scheduled-tasks";
+  readonly tasks: ReadonlyArray<{
+    readonly id: string;
+    readonly title: string;
+    readonly enabled: boolean;
+    readonly schedule: ScheduledTaskSchedule | null;
+  }>;
+}
+
 export interface TaskToolPreview {
   readonly kind: "task";
   readonly threadId: string | null;
@@ -58,6 +82,7 @@ export interface PullRequestToolPreview {
     readonly title: string | null;
     readonly state: "open" | "closed" | "merged" | null;
     readonly isDraft: boolean;
+    readonly headBranch: string | null;
     /** What the call did to it: `Already linked`, `Watching`, and so on. */
     readonly note: string | null;
   }>;
@@ -80,11 +105,14 @@ export interface LoadedToolsPreview {
   readonly names: ReadonlyArray<string>;
 }
 
-export interface SlackThreadPreview {
-  readonly kind: "slack-thread";
+export interface SlackMessagesPreview {
+  readonly kind: "slack-messages";
   readonly messages: ReadonlyArray<{
     readonly author: string;
     readonly time: string | null;
+    /** The channel a search result came from. */
+    readonly channel: string | null;
+    readonly url: string | null;
     readonly text: string;
   }>;
 }
@@ -101,7 +129,10 @@ export interface QuestionsToolPreview {
 
 export interface AgentMessageToolPreview {
   readonly kind: "agent-message";
-  readonly recipient: string;
+  /** A subagent's name or id; null for a message to a T3 thread. */
+  readonly recipient: string | null;
+  /** The T3 thread the message went to. */
+  readonly threadId: string | null;
   readonly summary: string | null;
   readonly message: string;
 }
@@ -195,7 +226,8 @@ function taskPreview(result: Record_, input: Record_): TaskToolPreview | null {
     title: str(input.title),
     status: status === "running" && str(result.workState) ? str(result.workState) : status,
     model: str(result.model),
-    summary: str(result.summary) ?? str(result.latestTerminalSummary),
+    // A cancellation reports no summary; its reason says why.
+    summary: str(result.summary) ?? str(result.latestTerminalSummary) ?? str(input.reason),
   };
 }
 
@@ -228,6 +260,7 @@ function pullRequestRow(
     title: str(value.title),
     state: state === "open" || state === "closed" || state === "merged" ? state : null,
     isDraft: value.isDraft === true,
+    headBranch: str(value.headBranch),
     note,
   };
 }
@@ -277,31 +310,101 @@ function shortToolName(name: string): string {
   return /^mcp__.+?__(.+)$/.exec(name)?.[1] ?? name;
 }
 
-// Slack MCP prints threads as `=== THREAD PARENT MESSAGE ===` and `--- Reply 1 of 4 ---`
-// sections, each opening with `From:`, `Time:` and `Message TS:` lines.
-const SLACK_SECTION = /^(?:=== THREAD PARENT MESSAGE ===|--- Reply \d+ of \d+ ---)$/m;
+/** Slack's `<url|label>`, `<@U123|Name>` and `<url>` markup as the text a reader sees. */
+function slackPlainText(text: string): string {
+  return text
+    .replace(/<@[A-Z0-9]+\|([^>]+)>/g, "@$1")
+    .replace(/<#[A-Z0-9]+\|([^>]+)>/g, "#$1")
+    .replace(/<([^>|]+)\|([^>]+)>/g, "$2")
+    .replace(/<(https?:[^>]+)>/g, "$1")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&amp;", "&")
+    .trim();
+}
 
-function slackThreadPreview(result: Record_): SlackThreadPreview | null {
-  const text = str(result.messages);
-  if (!text || !SLACK_SECTION.test(text)) return null;
-  const messages = text
-    .split(SLACK_SECTION)
-    .slice(1)
-    .flatMap((section) => {
-      const lines = section.replace(/\n=== THREAD REPLIES[^\n]*===\n/, "\n").split("\n");
-      let author: string | null = null;
-      let time: string | null = null;
-      const body: string[] = [];
-      for (const line of lines) {
-        const from = /^From: (.+?)(?: \([A-Z0-9]+\))?$/.exec(line);
-        if (from && author === null) author = from[1]!;
-        else if (line.startsWith("Time: ") && time === null) time = line.slice(6).trim();
-        else if (!line.startsWith("Message TS: ")) body.push(line);
-      }
-      const message = body.join("\n").trim();
-      return author && message ? [{ author, time, text: message }] : [];
-    });
-  return messages.length > 0 ? { kind: "slack-thread", messages } : null;
+// Slack MCP prints threads as `=== THREAD PARENT MESSAGE ===` and `--- Reply 1 of 4 ---`
+// sections, and detailed search results as `### Result 1 of 3` sections. Each opens with
+// `Field: value` lines (`From:`, `Time:`, `Channel:`), then the message text.
+const SLACK_THREAD_SECTION = /^(?:=== THREAD PARENT MESSAGE ===|--- Reply \d+ of \d+ ---)$/m;
+const SLACK_SEARCH_SECTION = /^### Result \d+ of \d+$/m;
+const SLACK_FIELD =
+  /^(From|Time|Message TS|Message_ts|Channel|Participants|Reply count|Permalink|Text): ?(.*)$/;
+// Concise search results: `1. #channel - Author: text 2026-10-07 15:44:14 BST`.
+const SLACK_CONCISE_RESULT = /^\d+\. (#?\S+) - ([^:\n]+): /m;
+
+function slackSection(section: string): SlackMessagesPreview["messages"][number] | null {
+  const lines = section
+    .replace(/\n=== THREAD REPLIES[^\n]*===\n/, "\n")
+    .trim()
+    .split("\n");
+  const fields = new Map<string, string>();
+  let index = 0;
+  for (; index < lines.length; index += 1) {
+    const field = SLACK_FIELD.exec(lines[index]!);
+    if (!field) break;
+    fields.set(field[1]!, field[2]!.trim());
+    // `Text:` opens the message itself.
+    if (field[1] === "Text") {
+      index += 1;
+      break;
+    }
+  }
+  const author = fields.get("From")?.replace(/ \((?:ID: )?[A-Z0-9]+\)$/, "");
+  const text = slackPlainText(
+    // Detailed search results end each message with a `---` rule.
+    [fields.get("Text") ?? "", ...lines.slice(index)].join("\n").replace(/(?:\n|^)-{3,}\s*$/, ""),
+  );
+  if (!author || !text) return null;
+  const permalink = /\((https?:[^)]+)\)/.exec(fields.get("Permalink") ?? "")?.[1] ?? null;
+  return {
+    author,
+    time: fields.get("Time") ?? null,
+    channel: fields.get("Channel")?.replace(/ \(ID: [A-Z0-9]+\)$/, "") ?? null,
+    url: permalink,
+    text,
+  };
+}
+
+function slackConciseResults(text: string): SlackMessagesPreview["messages"] {
+  const parts = text.split(SLACK_CONCISE_RESULT);
+  const messages: Array<SlackMessagesPreview["messages"][number]> = [];
+  // split with two capture groups yields [before, channel, author, body, channel, ...].
+  for (let index = 1; index + 2 < parts.length; index += 3) {
+    const body = slackPlainText(parts[index + 2]!.replace(/\n\d+\. [\s\S]*$/, ""));
+    const time = /\s(\d{4}-\d\d-\d\d \d\d:\d\d(?::\d\d)? [A-Z]{2,5})$/.exec(body);
+    const text = time ? body.slice(0, time.index).trimEnd() : body;
+    if (text) {
+      messages.push({
+        author: parts[index + 1]!.trim(),
+        time: time?.[1] ?? null,
+        channel: parts[index]!,
+        url: null,
+        text,
+      });
+    }
+  }
+  return messages;
+}
+
+function slackPreview(text: string | null): SlackMessagesPreview | null {
+  if (!text) return null;
+  const separator = SLACK_THREAD_SECTION.test(text)
+    ? SLACK_THREAD_SECTION
+    : SLACK_SEARCH_SECTION.test(text)
+      ? SLACK_SEARCH_SECTION
+      : null;
+  const messages =
+    separator === null
+      ? slackConciseResults(text)
+      : text
+          .split(separator)
+          .slice(1)
+          .flatMap((section) => {
+            const message = slackSection(section);
+            return message ? [message] : [];
+          });
+  return messages.length > 0 ? { kind: "slack-messages", messages } : null;
 }
 
 function questionsPreview(input: Record_, result: Record_ | null): QuestionsToolPreview | null {
@@ -342,13 +445,101 @@ function htmlPagePreview(input: Record_, result: Record_ | null): HtmlPageToolPr
   };
 }
 
+function launchedThreadPreview(input: Record_, result: Record_): ThreadToolPreview | null {
+  const threadId = str(result.threadId);
+  if (!threadId) return null;
+  const selection = isRecord(result.modelSelection) ? result.modelSelection : null;
+  const workspace = isRecord(input.workspaceStrategy) ? input.workspaceStrategy : null;
+  const message = str(input.message);
+  return {
+    kind: "thread",
+    threadId,
+    title: str(input.title) ?? "New thread",
+    status: str(result.status),
+    model: str(selection?.model),
+    branch: str(workspace?.branch),
+    items: message ? [{ key: "message", label: "Message", text: message.trim() }] : [],
+    moreItems: 0,
+  };
+}
+
+function threadListPreview(result: Record_): ThreadListToolPreview | null {
+  if (!Array.isArray(result.threads)) return null;
+  return {
+    kind: "threads",
+    threads: result.threads.filter(isRecord).flatMap((thread) => {
+      const threadId = str(thread.threadId);
+      return threadId
+        ? [
+            {
+              threadId,
+              title: str(thread.title) ?? "Untitled thread",
+              status: str(thread.status),
+              model: str(thread.model),
+            },
+          ]
+        : [];
+    }),
+  };
+}
+
+const decodeSchedule = Schema.decodeUnknownOption(ScheduledTaskSchedule);
+
+function scheduledTasksPreview(result: Record_): ScheduledTasksToolPreview | null {
+  const tasks = Array.isArray(result.tasks) ? result.tasks.filter(isRecord) : [result];
+  const shown = tasks.flatMap((task) => {
+    const id = str(task.scheduledTaskId);
+    return id
+      ? [
+          {
+            id,
+            title: str(task.title) ?? "Scheduled task",
+            enabled: task.enabled !== false,
+            schedule: Option.getOrNull(decodeSchedule(task.schedule)),
+          },
+        ]
+      : [];
+  });
+  return shown.length > 0 || Array.isArray(result.tasks)
+    ? { kind: "scheduled-tasks", tasks: shown }
+    : null;
+}
+
+const DELIVERY_LABELS: Readonly<Record<string, string>> = {
+  started: "Started a run",
+  queued: "Queued",
+  steered: "Steered the running turn",
+  restarted: "Restarted the run",
+};
+
 function t3ToolPreview(tool: string, input: Record_, result: Record_ | null): ToolPreview | null {
   switch (tool) {
     case "t3_thread_read":
       return result ? threadPreview(result) : null;
     case "task_status":
     case "delegate_task":
+    case "task_cancel":
       return result ? taskPreview(result, input) : null;
+    case "t3_thread_launch":
+      return result ? launchedThreadPreview(input, result) : null;
+    case "t3_thread_list":
+      return result ? threadListPreview(result) : null;
+    case "t3_thread_send": {
+      const message = str(input.message);
+      if (!message) return null;
+      const delivery = str(result?.delivery);
+      return {
+        kind: "agent-message",
+        recipient: null,
+        threadId: str(input.threadId),
+        summary: delivery ? (DELIVERY_LABELS[delivery] ?? delivery) : null,
+        message,
+      };
+    }
+    case "schedule_task":
+    case "update_scheduled_task":
+    case "list_scheduled_tasks":
+      return result ? scheduledTasksPreview(result) : null;
     case "link_pull_request":
     case "unlink_pull_request":
     case "watch_pull_request":
@@ -359,9 +550,7 @@ function t3ToolPreview(tool: string, input: Record_, result: Record_ | null): To
     case "html_render":
       return htmlPagePreview(input, result);
     default:
-      return tool.startsWith("preview_") && tool !== "preview_snapshot"
-        ? browserPreview(input, result)
-        : null;
+      return tool.startsWith("preview_") ? browserPreview(input, result) : null;
   }
 }
 
@@ -383,7 +572,8 @@ function claudeToolPreview(
   result: Record_ | null,
 ): ToolPreview | null {
   const tool = item.toolName ?? "";
-  if (tool.endsWith("slack_read_thread")) return result ? slackThreadPreview(result) : null;
+  if (tool.endsWith("slack_read_thread")) return slackPreview(str(result?.messages));
+  if (/slack_search_public(?:_and_private)?$/.test(tool)) return slackPreview(str(result?.results));
   switch (tool) {
     case "ToolSearch": {
       const matches = Array.isArray(result?.matches) ? result.matches.filter(isText) : [];
@@ -397,7 +587,7 @@ function claudeToolPreview(
       const recipient = str(input.to) ?? str(input.recipient);
       const message = str(input.message);
       return recipient && message
-        ? { kind: "agent-message", recipient, summary: str(input.summary), message }
+        ? { kind: "agent-message", recipient, threadId: null, summary: str(input.summary), message }
         : null;
     }
     case "Skill": {

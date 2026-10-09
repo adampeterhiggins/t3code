@@ -120,6 +120,7 @@ describe("resolveToolPreview", () => {
               title: "Plan the layer",
               state: "open",
               isDraft: true,
+              headBranch: "docs/plan",
             },
           ],
         },
@@ -135,6 +136,7 @@ describe("resolveToolPreview", () => {
           title: "Plan the layer",
           state: "open",
           isDraft: true,
+          headBranch: "docs/plan",
           note: null,
         },
       ],
@@ -247,7 +249,7 @@ describe("resolveToolPreview", () => {
       "From: Adam (U06F5V4996F)",
       "Time: 2026-10-09 09:24:47 BST",
       "Message TS: 1791534287.463029",
-      "We only have one shared account.",
+      "We only have <https://slack.com/x|one shared account>.",
     ].join("\n");
     const preview = resolveToolPreview(
       tool("mcp__claude_ai_Slack__slack_read_thread", { channel_id: "D1" }, [
@@ -255,16 +257,20 @@ describe("resolveToolPreview", () => {
       ]),
     );
     expect(preview).toEqual({
-      kind: "slack-thread",
+      kind: "slack-messages",
       messages: [
         {
           author: "Matt Gill",
           time: "2026-10-09 09:19:44 BST",
+          channel: null,
+          url: null,
           text: "Can you invite me to dbt cloud?",
         },
         {
           author: "Adam",
           time: "2026-10-09 09:24:47 BST",
+          channel: null,
+          url: null,
           text: "We only have one shared account.",
         },
       ],
@@ -290,6 +296,7 @@ describe("resolveToolPreview", () => {
     ).toEqual({
       kind: "agent-message",
       recipient: "a7257",
+      threadId: null,
       summary: "Reword",
       message: "Replace the comment.",
     });
@@ -298,6 +305,200 @@ describe("resolveToolPreview", () => {
         tool("ScheduleWakeup", { reason: "CI", prompt: "Check CI" }, { scheduledFor: 0 }),
       ),
     ).toEqual({ kind: "wakeup", at: "1970-01-01T00:00:00.000Z", reason: "CI", prompt: "Check CI" });
+  });
+
+  it("splits Slack search results in both formats", () => {
+    const detailed = [
+      "# Search Results for: ",
+      "",
+      "## Messages (1 results)",
+      "### Result 1 of 1",
+      "Channel: DM (ID: D06FJMPFDUZ)",
+      "From: Adam Higgins (ID: U06F5V4996F) ",
+      "Time: 2026-09-09 17:00:37 BST",
+      "Message_ts: 1788969637.553269",
+      "Permalink: [link](https://focaldata.slack.com/archives/D06/p1)",
+      "Text: ",
+      "Here is what I did today:",
+      "• Raised a <https://github.com/o/r/pull/1|PR>",
+      "",
+      "---",
+    ].join("\n");
+    expect(
+      resolveToolPreview(
+        tool("mcp__slack__slack_search_public_and_private", { keywords: ["x"] }, [
+          { type: "text", text: JSON.stringify({ results: detailed, pagination_info: "End." }) },
+        ]),
+      ),
+    ).toEqual({
+      kind: "slack-messages",
+      messages: [
+        {
+          author: "Adam Higgins",
+          time: "2026-09-09 17:00:37 BST",
+          channel: "DM",
+          url: "https://focaldata.slack.com/archives/D06/p1",
+          text: "Here is what I did today:\n• Raised a PR",
+        },
+      ],
+    });
+    const concise = [
+      "# Search Results for: ",
+      "",
+      "## Messages (2 results)",
+      "1. #canary-release - Adam Higgins: v3.188.5 is on canary &amp; fixed 2026-10-07 15:44:14 BST",
+      "2. #general - Matt Gill: Thanks!",
+    ].join("\n");
+    const preview = resolveToolPreview(
+      tool("mcp__slack__slack_search_public_and_private", {}, [
+        { type: "text", text: JSON.stringify({ results: concise }) },
+      ]),
+    );
+    expect(preview?.kind === "slack-messages" && preview.messages).toEqual([
+      {
+        author: "Adam Higgins",
+        time: "2026-10-07 15:44:14 BST",
+        channel: "#canary-release",
+        url: null,
+        text: "v3.188.5 is on canary & fixed",
+      },
+      { author: "Matt Gill", time: null, channel: "#general", url: null, text: "Thanks!" },
+    ]);
+  });
+
+  it("shows a cancellation's reason and a launched thread's title and branch", () => {
+    expect(
+      resolveToolPreview(
+        tool(
+          "mcp__t3-code__task_cancel",
+          { taskId: "t", reason: "User chose ingress JWT validation." },
+          { structuredContent: { taskId: "t", status: "cancel_requested" } },
+        ),
+      ),
+    ).toEqual({
+      kind: "task",
+      threadId: null,
+      title: null,
+      status: "cancel_requested",
+      model: null,
+      summary: "User chose ingress JWT validation.",
+    });
+    expect(
+      resolveToolPreview(
+        tool(
+          "mcp__t3-code__t3_thread_launch",
+          {
+            title: "Cut v3.188.6",
+            workspaceStrategy: { type: "existing_worktree", branch: "release/v3.188.6" },
+            message: "Cut the release.",
+          },
+          {
+            structuredContent: {
+              threadId: "mcp:43df",
+              modelSelection: { instanceId: "claudeAgent", model: "claude-opus-5-5" },
+              status: null,
+            },
+          },
+        ),
+      ),
+    ).toEqual({
+      kind: "thread",
+      threadId: "mcp:43df",
+      title: "Cut v3.188.6",
+      status: null,
+      model: "claude-opus-5-5",
+      branch: "release/v3.188.6",
+      items: [{ key: "message", label: "Message", text: "Cut the release." }],
+      moreItems: 0,
+    });
+  });
+
+  it("lists threads, messages sent to a thread, and scheduled tasks", () => {
+    expect(
+      resolveToolPreview(
+        tool(
+          "t3-code.t3_thread_list",
+          {},
+          {
+            threads: [{ threadId: "a", title: "Fix order", status: "running", model: "grok-4.7" }],
+          },
+        ),
+      ),
+    ).toEqual({
+      kind: "threads",
+      threads: [{ threadId: "a", title: "Fix order", status: "running", model: "grok-4.7" }],
+    });
+    expect(
+      resolveToolPreview(
+        tool(
+          "t3-code.t3_thread_send",
+          { threadId: "a", message: "Rebase it." },
+          {
+            delivery: "queued",
+          },
+        ),
+      ),
+    ).toEqual({
+      kind: "agent-message",
+      recipient: null,
+      threadId: "a",
+      summary: "Queued",
+      message: "Rebase it.",
+    });
+    expect(
+      resolveToolPreview(
+        tool(
+          "t3-code.list_scheduled_tasks",
+          {},
+          {
+            tasks: [
+              {
+                scheduledTaskId: "s1",
+                title: "Review the stack",
+                enabled: true,
+                schedule: { type: "interval", everyMs: 600000 },
+              },
+              {
+                scheduledTaskId: "s2",
+                title: "Morning brief",
+                enabled: false,
+                schedule: { type: "fixed_time", timeOfDay: "09:00", weekdays: [1, 2, 3, 4, 5] },
+              },
+            ],
+          },
+        ),
+      ),
+    ).toEqual({
+      kind: "scheduled-tasks",
+      tasks: [
+        {
+          id: "s1",
+          title: "Review the stack",
+          enabled: true,
+          schedule: { type: "interval", everyMs: 600000 },
+        },
+        {
+          id: "s2",
+          title: "Morning brief",
+          enabled: false,
+          schedule: { type: "fixed_time", timeOfDay: "09:00", weekdays: [1, 2, 3, 4, 5] },
+        },
+      ],
+    });
+  });
+
+  it("previews a browser snapshot by its page, leaving the image to the output", () => {
+    expect(
+      resolveToolPreview(
+        tool(
+          "mcp__t3-code__preview_snapshot",
+          { includeImage: true, save: true },
+          {
+            content: [{ type: "image", source: { type: "base64", media_type: "image/png" } }],
+          },
+        ),
+      ),
+    ).toMatchObject({ kind: "browser", target: null, page: null });
   });
 
   it("leaves failed calls and unknown tools on the generic body", () => {

@@ -330,16 +330,19 @@ time and status in a compact footer. Syntax highlighting for commands and tool a
 limited to hover previews; expanded chat rows show plain text. Thoughts and answered questions do not preview
 ([`MessagesTimeline.tsx`](../apps/web/src/components/chat/MessagesTimeline.tsx),
 [`toolCallPreview.ts`](../apps/web/src/lib/toolCallPreview.ts)).
-On web and desktop, a tool call's expanded row and hover card show common tools as what they
-did rather than their arguments and JSON result, with the raw call one click away: T3 thread and
-task tools as the thread's title, status, model and latest items with an Open thread button; pull
-request tools as linked PR rows; browser preview actions as their target, page, and evaluated
-code and value; and Claude's ToolSearch, AskUserQuestion, SendMessage, Skill, Monitor and
-ScheduleWakeup, Slack threads and HTML pages by what they carry (`resolveToolPreview`,
-[`ToolPreviewCard.tsx`](../apps/web/src/components/chat/ToolPreviewCard.tsx)). Other tools' JSON
-results show as a collapsible tree and markdown results rendered. On every client, server
-metadata such as an MCP `_meta` block or a browser row's `toolIcon` is left out of a tool's
-output, and a Cursor MCP call shows its own arguments rather than Cursor's envelope.
+A tool call's expanded row, and its hover card on web and desktop, show common tools as what
+they did rather than their arguments and JSON result, with the raw call one click away on web: T3
+thread and task tools (read, launch, list, send, delegate, status, cancel) as the thread's title,
+status, model and latest items with an Open thread button; pull request tools as PR rows, with the
+title, state and branch from the thread's linked-PR snapshot when the result omits them; scheduled
+task tools as each task's title and schedule; browser preview actions as their target, page, and
+evaluated code and value; Slack thread reads and searches as messages; and Claude's ToolSearch,
+AskUserQuestion, SendMessage, Skill, Monitor and ScheduleWakeup and HTML pages by what they carry
+(`resolveToolPreview`, [`ToolPreviewCard.tsx`](../apps/web/src/components/chat/ToolPreviewCard.tsx),
+[mobile](../apps/mobile/src/features/threads/ToolPreviewCard.tsx)). On web, other tools' JSON
+results show as a collapsible tree with long IDs shortened, and markdown results rendered. On every
+client, server metadata such as an MCP `_meta` block or a browser row's `toolIcon` is left out of a
+tool's output, and a Cursor MCP call shows its own arguments rather than Cursor's envelope.
 
 Code: [`agentListView.ts`](../packages/client-runtime/src/state/agentListView.ts),
 [`agentFleet.ts`](../packages/client-runtime/src/state/agentFleet.ts),
