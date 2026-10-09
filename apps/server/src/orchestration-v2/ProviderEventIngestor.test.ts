@@ -1430,4 +1430,182 @@ layer("ProviderEventIngestorV2", (it) => {
       });
     }),
   );
+
+  it.effect(
+    "updates delegated usage before completion without double-counting or overwriting task state",
+    () =>
+      Effect.gen(function* () {
+        const now = yield* DateTime.now;
+        const eventSink = yield* EventSink.EventSinkV2;
+        const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
+        const ingestor = yield* ProviderEventIngestor.ProviderEventIngestorV2;
+        const idAllocator = yield* IdAllocator.IdAllocatorV2;
+        const rootEvent = yield* threadCreatedEvent(now);
+        if (rootEvent.type !== "thread.created") {
+          throw new Error("Expected a thread.created fixture event");
+        }
+        const childThreadId = idAllocator.derive.threadFromProviderThread({
+          driver: CODEX_DRIVER,
+          nativeThreadId: "app-owned-usage-child",
+        });
+        const providerSessionId = yield* idAllocator.allocate.providerSession({
+          providerInstanceId: modelSelection.instanceId,
+          threadId: rootEvent.threadId,
+        });
+        const ingest = (event: ProviderEventIngestor.ProviderEventIngestInput["event"]) =>
+          ingestor.ingestNormalized({
+            providerSessionId,
+            providerInstanceId: modelSelection.instanceId,
+            threadId: rootEvent.threadId,
+            event,
+          });
+        yield* eventSink.write({ events: [rootEvent] });
+        // The subagent's thread starts on the parent's model and options.
+        yield* ingest({
+          type: "app_thread.created",
+          driver: CODEX_DRIVER,
+          appThread: {
+            ...rootEvent.payload,
+            id: childThreadId,
+            title: "review design",
+            modelSelection: {
+              ...modelSelection,
+              options: [{ id: "reasoningEffort", value: "xhigh" }],
+            },
+            activeProviderThreadId: null,
+            forkedFrom: {
+              type: "node",
+              nodeId: NodeId.make("node:app-owned-usage"),
+            },
+            lineage: {
+              parentThreadId: rootEvent.threadId,
+              relationshipToParent: "subagent",
+              rootThreadId: rootEvent.threadId,
+            },
+          },
+        });
+        const subagentUpdated = {
+          type: "subagent.updated",
+          driver: CODEX_DRIVER,
+          subagent: {
+            id: NodeId.make("node:app-owned-usage"),
+            threadId: rootEvent.threadId,
+            runId: null,
+            parentNodeId: NodeId.make("node:root"),
+            origin: "app_owned",
+            createdBy: "agent",
+            driver: CODEX_DRIVER,
+            providerInstanceId: modelSelection.instanceId,
+            providerThreadId: null,
+            childThreadId,
+            nativeTaskRef: null,
+            prompt: "Review the design",
+            title: "review design",
+            model: "gpt-6.1-sol",
+            status: "running",
+            completionWake: "always",
+            result: null,
+            startedAt: now,
+            completedAt: null,
+            updatedAt: now,
+          },
+        } satisfies ProviderEventIngestor.ProviderEventIngestInput["event"];
+
+        yield* ingest(subagentUpdated);
+        const providerThreadId = idAllocator.derive.providerThread({
+          driver: CODEX_DRIVER,
+          nativeThreadId: "child-usage-provider-thread",
+        });
+        const providerTurn = {
+          id: idAllocator.derive.providerTurn({
+            driver: CODEX_DRIVER,
+            nativeTurnId: "child-usage-turn-1",
+          }),
+          providerThreadId,
+          nodeId: NodeId.make("node:child-usage-turn"),
+          runAttemptId: null,
+          nativeTurnRef: null,
+          ordinal: 1,
+          status: "running" as const,
+          startedAt: now,
+          completedAt: null,
+          turnTokenUsage: {
+            usageStatus: "partial" as const,
+            usageScope: "main_agent" as const,
+            hasSubagents: false,
+            inputTokens: 40,
+            outputTokens: 10,
+            cachedInputTokens: 20,
+          },
+        };
+        const update = {
+          type: "provider_turn.updated" as const,
+          driver: CODEX_DRIVER,
+          threadId: childThreadId,
+          providerTurn,
+        };
+        const first = yield* ingest(update);
+        const repeated = yield* ingest(update);
+        assert.deepEqual(
+          first.map((stored) => [stored.event.type, stored.event.threadId]),
+          [
+            ["provider-turn.updated", childThreadId],
+            ["subagent.updated", rootEvent.threadId],
+          ],
+        );
+        assert.deepEqual(
+          repeated.map((stored) => stored.event.type),
+          ["provider-turn.updated"],
+        );
+        const parent = yield* projectionStore.getThreadRecords(rootEvent.threadId, ["subagents"]);
+        assert.deepEqual(parent.subagents[0]?.usage, {
+          totalTokens: 50,
+          inputTokens: 40,
+          outputTokens: 10,
+          cachedInputTokens: 20,
+          toolUses: 0,
+        });
+        assert.equal(parent.subagents[0]?.status, "running");
+        assert.equal(parent.subagents[0]?.completionWake, "always");
+        // A later child turn adds to the first, rather than replacing the task's total.
+        yield* ingest({
+          ...update,
+          providerTurn: {
+            ...providerTurn,
+            id: idAllocator.derive.providerTurn({
+              driver: CODEX_DRIVER,
+              nativeTurnId: "child-usage-turn-2",
+            }),
+            ordinal: 2,
+          },
+        });
+        const next = yield* projectionStore.getThreadRecords(rootEvent.threadId, ["subagents"]);
+        assert.equal(next.subagents[0]?.usage?.totalTokens, 100);
+        // Usage refresh must preserve a result already published by the parent.
+        yield* ingest({
+          ...subagentUpdated,
+          subagent: {
+            ...next.subagents[0]!,
+            status: "completed",
+            result: "Done",
+            completedAt: now,
+            completionWake: "settled_only",
+          },
+        });
+        yield* ingest({
+          ...update,
+          providerTurn: {
+            ...providerTurn,
+            turnTokenUsage: { ...providerTurn.turnTokenUsage, inputTokens: 60 },
+          },
+        });
+        const completed = yield* projectionStore.getThreadRecords(rootEvent.threadId, [
+          "subagents",
+        ]);
+        assert.equal(completed.subagents[0]?.status, "completed");
+        assert.equal(completed.subagents[0]?.result, "Done");
+        assert.equal(completed.subagents[0]?.completionWake, "settled_only");
+        assert.equal(completed.subagents[0]?.usage?.totalTokens, 120);
+      }),
+  );
 });

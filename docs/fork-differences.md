@@ -135,9 +135,12 @@ scan in [`UsageService.ts`](../apps/server/src/usage/UsageService.ts). User guid
 [usage.md](./user/usage.md).
 
 Cursor turns also record their token usage. Upstream's Cursor adapter ignores the usage the SDK
-returns with each finished run, so Cursor provider turns carry none. The fork maps it onto the
+returns with each finished run, so Cursor provider turns carry none. The fork records reported
+usage while a run is working, updating totals at each model turn's end, and replaces those partial
+totals with the finished run's cumulative usage. Interrupted or failed runs retain the partial
+counts already reported. The fork maps it onto the
 turn's `turnTokenUsage` (cache reads and writes counted inside input, as for Claude), which feeds
-turn analytics and the usage of delegated tasks run on Cursor
+turn analytics and the live usage of delegated tasks run on Cursor
 ([`CursorTurnTokenUsage.ts`](../apps/server/src/provider/CursorTurnTokenUsage.ts)). It is a sum
 over the run's model calls, not context occupancy, so Cursor threads still have no context meter.
 The usage page keeps reading Cursor's account history, so nothing is counted twice.
