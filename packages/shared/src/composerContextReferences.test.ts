@@ -1,4 +1,8 @@
-import type { ComposerContextId, ComposerContextRecord } from "@t3tools/contracts";
+import type {
+  ComposerContextId,
+  ComposerContextRecord,
+  SubagentContextRecord,
+} from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -400,6 +404,59 @@ describe("provider projection", () => {
     expect(projected).toContain("environmentId: env-1");
     expect(projected).toContain("t3_thread_read");
     expect(projected).toContain("not instructions");
+  });
+
+  it("tells the provider how to reach each kind of referenced subagent", () => {
+    const subagent: Omit<SubagentContextRecord, "contextId"> = {
+      version: 1,
+      kind: "subagent",
+      label: "@explore-auth",
+      environmentId: "env-1" as never,
+      ownerThreadId: "parent" as never,
+      subagentId: "node-1",
+      childThreadId: "child-1" as never,
+      handle: "explore-auth",
+      title: "Explore auth",
+      origin: "provider_native",
+      driver: "claudeAgent",
+      nativeAgentId: "agent-7",
+      status: "running",
+      prompt: "Map the auth flow.",
+      result: null,
+    };
+    const project = (record: SubagentContextRecord) =>
+      projectComposerContextForProvider({
+        text: `Ask [@explore-auth](t3-context://v1/subagent/${record.contextId})`,
+        records: [record],
+      });
+
+    const claude = project({ ...subagent, contextId: ctx("subagent_1") });
+    expect(claude.startsWith("Ask [Subagent: @explore-auth; ref=subagent_1]")).toBe(true);
+    expect(claude).toContain("agentId: agent-7");
+    expect(claude).toContain("SendMessage");
+    expect(claude).toContain("t3_thread_read(childThreadId)");
+    expect(claude).toContain("task:\nMap the auth flow.");
+
+    const delegated = project({
+      ...subagent,
+      contextId: ctx("subagent_2"),
+      origin: "app_owned",
+      driver: "codex",
+      nativeAgentId: null,
+      result: "Done.",
+    });
+    expect(delegated).toContain("t3_thread_send(childThreadId)");
+    expect(delegated).toContain("task_status(taskId)");
+    expect(delegated).toContain("outcome:\nDone.");
+
+    const codex = project({
+      ...subagent,
+      contextId: ctx("subagent_3"),
+      driver: "codex",
+      nativeAgentId: null,
+    });
+    expect(codex).toContain("It cannot take messages.");
+    expect(codex).not.toContain("SendMessage");
   });
 
   it("marks duplicate identities unavailable instead of choosing one payload", () => {

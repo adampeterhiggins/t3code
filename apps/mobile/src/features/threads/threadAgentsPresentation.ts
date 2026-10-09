@@ -30,14 +30,14 @@ function rowTitle(subagent: Pick<OrchestrationV2Subagent, "title" | "prompt">): 
     : prompt;
 }
 
-function rowTone(status: OrchestrationV2Subagent["status"]): SubagentRowTone {
+export function subagentStatusTone(status: OrchestrationV2Subagent["status"]): SubagentRowTone {
   if (isActiveSubagentStatus(status)) return "working";
   if (status === "completed") return "completed";
   if (status === "failed") return "failed";
   return "stopped";
 }
 
-function rowStatusLabel(status: OrchestrationV2Subagent["status"]): string {
+export function subagentStatusLabel(status: OrchestrationV2Subagent["status"]): string {
   switch (status) {
     case "pending":
     case "running":
@@ -67,8 +67,8 @@ export function resolveSubagentRowPresentation(
   return {
     title: rowTitle(subagent),
     detail: subagentDetailPreview(subagent),
-    statusLabel: rowStatusLabel(subagent.status),
-    tone: rowTone(subagent.status),
+    statusLabel: subagentStatusLabel(subagent.status),
+    tone: subagentStatusTone(subagent.status),
     live,
     canOpenThread: subagent.childThreadId !== null,
   };

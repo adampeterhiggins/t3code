@@ -31,6 +31,7 @@ import {
   type SubagentToolCallView,
   type SubagentToolKind,
 } from "@t3tools/client-runtime/state/agent-list-view";
+import { subagentHandleSlug } from "@t3tools/client-runtime/state/subagent-handles";
 import { formatSubagentDisplayTitle } from "@t3tools/client-runtime/state/subagent-display";
 import { isActiveSubagentStatus } from "@t3tools/client-runtime/state/subagentRuntime";
 import { deriveThreadRuntime } from "@t3tools/client-runtime/state/thread-execution";
@@ -57,6 +58,7 @@ import {
   PanelRightOpenIcon,
   SquareArrowOutUpRightIcon,
   XIcon,
+  AtSignIcon,
 } from "lucide-react";
 import {
   useCallback,
@@ -108,6 +110,8 @@ import {
 import { ScrollArea } from "../ui/scroll-area";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { AgentUsageFooter, ToolCallList, type ToolCallFocus } from "./AgentActivityParts";
+import { AgentHandle } from "./AgentHandle";
+import { agentReferenceTargetOf, referenceAgentInChat, useAgentHandle } from "./agentReferences";
 import { AgentRow, useEnvironmentShells, useProviderEntries } from "./AgentFleetRow";
 import { AgentTranscriptList } from "./AgentTranscriptList";
 import {
@@ -606,6 +610,7 @@ export function AgentDetailPanel(props: {
     [children, openAgent],
   );
 
+  const handle = useAgentHandle(parentRef.environmentId, subagent?.threadId ?? null, childThreadId);
   const backButton = props.onBack ? (
     <div className="flex min-w-0">
       <Button size="xs" variant="ghost-muted" onClick={props.onBack}>
@@ -812,6 +817,20 @@ export function AgentDetailPanel(props: {
         <div className="flex min-w-0 items-center gap-2">
           <StatusDot status={runtime.status} />
           <h2 className="min-w-0 flex-1 truncate text-sm font-medium">{title}</h2>
+          <AgentHandle handle={handle ?? subagentHandleSlug(title)} copyable />
+          <ActionButton
+            label="Reference in chat"
+            onClick={() =>
+              void referenceAgentInChat(parentRef, {
+                environmentId: parentRef.environmentId,
+                ownerThreadId: subagent.threadId,
+                childThreadId,
+                subagentId: subagent.id,
+              })
+            }
+          >
+            <AtSignIcon />
+          </ActionButton>
           {props.onOpenInTab ? (
             childThreadId === null ? null : (
               <ActionButton
@@ -900,6 +919,12 @@ export function AgentDetailPanel(props: {
                     workspaceRoot={props.workspaceRoot}
                     onOpen={openChildEntry}
                     onContextMenu={onChildContextMenu}
+                    onReference={(entry) =>
+                      void referenceAgentInChat(
+                        parentRef,
+                        agentReferenceTargetOf(parentRef.environmentId, entry),
+                      )
+                    }
                   />
                 ))}
               </div>

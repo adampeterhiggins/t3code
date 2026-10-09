@@ -7,6 +7,7 @@ import type {
   PreviewAnnotationPayload,
   RepositoryContextRecord,
   SlackThreadContextRecord,
+  SubagentContextRecord,
   ThreadContextRecord,
   ThreadTabContextRecord,
 } from "@t3tools/contracts";
@@ -49,6 +50,7 @@ import type { TerminalContextDraft } from "~/lib/terminalContext";
 import type { ReviewCommentContext } from "~/reviewCommentContext";
 import { ComposerPendingTerminalContextChip } from "./chat/ComposerPendingTerminalContexts";
 import { ThreadContextChip } from "./ThreadContextChip";
+import { SubagentContextChip } from "./chat/SubagentContextChip";
 import {
   createContextPresentationRegistry,
   type ContextPresentationCapability,
@@ -87,7 +89,8 @@ export type ComposerDraftContextRecord =
   | { kind: "slack-thread"; record: SlackThreadContextRecord }
   | { kind: "image"; record: ComposerImageAttachment; upload?: AttachmentUploadState | undefined }
   | { kind: "file"; record: ComposerFileAttachment; upload?: AttachmentUploadState | undefined }
-  | { kind: "thread"; record: ThreadContextRecord };
+  | { kind: "thread"; record: ThreadContextRecord }
+  | { kind: "subagent"; record: SubagentContextRecord };
 
 /** What a chip can do beyond showing itself; the composer supplies the handlers. */
 export interface ComposerContextActions {
@@ -184,6 +187,8 @@ function issueDraftContextRecord(record: IssueContextRecord): ComposerDraftConte
       return { kind: "github-issue", record };
     case "slack-thread":
       return { kind: "slack-thread", record };
+    case "subagent":
+      return { kind: "subagent", record };
   }
 }
 
@@ -578,6 +583,16 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
       render: (entry, context) =>
         entry.kind === "thread" ? (
           <ThreadContextChip record={entry.record} />
+        ) : (
+          <UnresolvedContextChip label={context.label} />
+        ),
+    },
+    {
+      kind: "subagent",
+      canRender: (entry) => entry.kind === "subagent",
+      render: (entry, context) =>
+        entry.kind === "subagent" ? (
+          <SubagentContextChip record={entry.record} />
         ) : (
           <UnresolvedContextChip label={context.label} />
         ),

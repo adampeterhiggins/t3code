@@ -2066,6 +2066,13 @@ function UserMessageContent(props: UserMessageContentProps) {
           environmentId={props.environmentId}
           records={props.context?.records}
           record={props.context?.records.find((record) => record.contextId === selected.contextId)}
+          onOpenThread={(thread) => {
+            setSelected(null);
+            navigation.navigate("Thread", {
+              environmentId: String(thread.environmentId),
+              threadId: String(thread.threadId),
+            });
+          }}
           onClose={() => setSelected(null)}
         />
       ) : null}

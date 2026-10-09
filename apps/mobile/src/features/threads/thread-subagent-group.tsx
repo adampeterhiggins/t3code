@@ -3,6 +3,7 @@ import { StackActions, useIsFocused, useNavigation } from "@react-navigation/nat
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { summarizeSubagentStatuses } from "@t3tools/client-runtime/state/subagent-display";
 import { isActiveSubagentStatus } from "@t3tools/client-runtime/state/subagentRuntime";
+import type { EnvironmentThread } from "@t3tools/client-runtime/state/shell";
 import type {
   EnvironmentId,
   OrchestrationV2Subagent,
@@ -18,9 +19,12 @@ import { cn } from "../../lib/cn";
 import type { ThreadFeedActivity } from "../../lib/threadActivity";
 import { serverEnvironment } from "../../state/server";
 import { environmentThreadDetails } from "../../state/threads";
+import { agentReferenceKey, useAgentReferences } from "./agent-references";
 import { subagentCardElapsed } from "./subagent-card-presentation";
 import { SubagentRow } from "./SubagentRow";
 import { WorkLogBlock } from "./work-log-layout";
+
+const EMPTY_SUBAGENTS: ReadonlyArray<OrchestrationV2Subagent> = [];
 
 type SubagentItem = Extract<OrchestrationV2TurnItem, { type: "subagent" }>;
 type AgentTiming = Pick<OrchestrationV2Subagent, "status" | "startedAt" | "completedAt">;
@@ -61,6 +65,8 @@ function SubagentAvatar(props: {
   );
 }
 
+const selectSubagents = (thread: EnvironmentThread | null) => thread?.projection.subagents;
+
 export function ThreadSubagentGroup(props: {
   readonly activities: ReadonlyArray<ThreadFeedActivity>;
   readonly environmentId: EnvironmentId;
@@ -76,7 +82,12 @@ export function ThreadSubagentGroup(props: {
   );
   const liveAgents = useAtomValue(
     environmentThreadDetails.threadAtom(scopeThreadRef(props.environmentId, members[0]!.threadId)),
-    (thread) => thread?.projection.subagents,
+    selectSubagents,
+  );
+  const references = useAgentReferences(
+    props.environmentId,
+    members[0]!.threadId,
+    liveAgents ?? EMPTY_SUBAGENTS,
   );
   const agents = members.map((item) => {
     const live = liveAgents?.find((agent) => agent.id === item.subagentId);
@@ -173,6 +184,11 @@ export function ThreadSubagentGroup(props: {
                 <SubagentRow
                   environmentId={props.environmentId}
                   subagent={agent}
+                  handle={
+                    references.get(
+                      agentReferenceKey({ id: agent.item.subagentId, childThreadId: threadId }),
+                    )?.handle ?? null
+                  }
                   elapsed={<SubagentElapsed agents={[agent]} />}
                 />
               </Pressable>

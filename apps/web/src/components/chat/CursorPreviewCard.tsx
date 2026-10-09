@@ -75,6 +75,8 @@ export function useCursorAnchor() {
 export function CursorPreviewCard(props: {
   trigger: ReactElement;
   className?: string;
+  /** Children lay out their own padding. */
+  bare?: boolean;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -118,7 +120,7 @@ export function CursorPreviewCard(props: {
         {...cursorAnchor.popupProps}
         className={props.className ?? "w-96 max-w-[calc(100vw-2rem)]"}
       >
-        <div className="p-3 text-xs">{props.children}</div>
+        {props.bare ? props.children : <div className="p-3 text-xs">{props.children}</div>}
       </PreviewCardPopup>
     </PreviewCard>
   );

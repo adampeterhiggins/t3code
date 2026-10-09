@@ -197,6 +197,23 @@ const knownRecords: Record<(typeof COMPOSER_CONTEXT_KINDS)[number], Record<strin
     threadId: "thread-1",
     title: "Fix login flow",
   },
+  subagent: {
+    ...base,
+    kind: "subagent",
+    label: "@explore-auth-flow",
+    environmentId: "environment-1",
+    ownerThreadId: "thread-1",
+    subagentId: "node-1",
+    childThreadId: "thread-2",
+    handle: "explore-auth-flow",
+    title: "Explore auth flow",
+    origin: "provider_native",
+    driver: "claudeAgent",
+    nativeAgentId: "agent-1",
+    status: "running",
+    prompt: "Map the auth flow.",
+    result: null,
+  },
 };
 
 describe("ComposerContextRecord", () => {

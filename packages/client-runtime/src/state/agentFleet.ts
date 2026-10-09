@@ -29,6 +29,7 @@ import {
   type AgentStatusFilter,
 } from "./agentListView.ts";
 import { formatSubagentDisplayTitle } from "./subagentDisplay.ts";
+import { assignSubagentHandles } from "./subagentHandles.ts";
 import {
   formatSubagentModelLabel,
   projectedSubagentsToRuntime,
@@ -163,6 +164,8 @@ export interface AgentFleetEntry {
   /** The provider the agent runs on: its child thread's current one, else the one it was spawned on. */
   readonly providerInstanceId: ProviderInstanceId;
   readonly title: string;
+  /** What the composer's `@` menu and agent UI call it (`subagentHandles.ts`), without the `@`. */
+  readonly handle: string;
   readonly subject: AgentListSubject;
 }
 
@@ -205,7 +208,7 @@ export function deriveThreadAgentFleet(input: {
     else subagentChildren.set(parentThreadId, [shell]);
   }
 
-  const entries: AgentFleetEntry[] = [];
+  const entries: Array<Omit<AgentFleetEntry, "handle">> = [];
   const seen = new Set<ThreadId>([input.threadId]);
   const fromShell = (shell: OrchestrationV2ThreadShell, ownerThreadId: ThreadId) => {
     const agent = shellSubagent(shell);
@@ -260,7 +263,15 @@ export function deriveThreadAgentFleet(input: {
       fromShell(shell, owner);
     }
   }
-  return entries;
+  const handles = assignSubagentHandles(
+    entries.map((entry) => ({
+      key: entry.key,
+      ownerThreadId: entry.ownerThreadId,
+      title: entry.title,
+      spawnedAt: entry.subject.spawnedAt,
+    })),
+  );
+  return entries.map((entry) => ({ ...entry, handle: handles.get(entry.key) ?? "agent" }));
 }
 
 export interface AgentFleetRow {

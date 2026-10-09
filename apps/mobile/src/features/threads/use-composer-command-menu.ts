@@ -1,5 +1,7 @@
 import type {
+  ComposerContextRecord,
   EnvironmentId,
+  OrchestrationV2Subagent,
   ProjectId,
   ProviderInteractionMode,
   ServerProvider,
@@ -7,8 +9,15 @@ import type {
 } from "@t3tools/contracts";
 import { matchComposerThreadItems } from "@t3tools/client-runtime/composerThreadItems";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
+import { deriveThreadAgentFleet } from "@t3tools/client-runtime/state/agent-fleet";
+import {
+  matchesSubagentQuery,
+  subagentContextRecord,
+} from "@t3tools/client-runtime/state/subagent-handles";
 
 const EMPTY_THREAD_SHELLS: ReadonlyArray<EnvironmentThreadShell> = [];
+const EMPTY_SUBAGENTS: ReadonlyArray<OrchestrationV2Subagent> = [];
+const EMPTY_PROVIDERS: ReadonlyArray<ServerProvider> = [];
 import {
   COMPOSER_CONTEXT_MAX_RECORDS,
   PROVIDER_WORKSPACE_SNAPSHOT_TTL_MS,
@@ -50,7 +59,7 @@ import type { ComposerEditorSelection } from "../../components/ComposerEditor";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useComposerPathSearch, useComposerPullRequestSearch } from "../../state/queries";
-import type { ComposerCommandItem } from "./ComposerCommandPopover";
+import type { ComposerCommandItem, ComposerPathTab } from "./ComposerCommandPopover";
 import { matchesSlashSkillQuery } from "./composerSlashSkillSearch";
 
 const WORKSPACE_SNAPSHOT_RETRY_COOLDOWN_MS = 10_000;
@@ -176,6 +185,8 @@ export function useComposerCommandMenu({
   environmentId,
   threadShells = EMPTY_THREAD_SHELLS,
   currentThreadId = null,
+  threadSubagents = EMPTY_SUBAGENTS,
+  providers = EMPTY_PROVIDERS,
   projectCwd,
   pullRequestProjectId = null,
   pullRequestRepository = null,
@@ -195,6 +206,10 @@ export function useComposerCommandMenu({
   readonly threadShells?: ReadonlyArray<EnvironmentThreadShell>;
   /** Left out of `@` thread suggestions: a thread is never context for itself. */
   readonly currentThreadId?: ThreadId | null;
+  /** The current thread's subagent records, for the `@` menu's Agents tab. */
+  readonly threadSubagents?: ReadonlyArray<OrchestrationV2Subagent>;
+  /** The environment's providers, to name each agent's provider in the Agents tab. */
+  readonly providers?: ReadonlyArray<ServerProvider>;
   readonly projectCwd: string | null;
   readonly pullRequestProjectId?: ProjectId | null;
   readonly pullRequestRepository?: string | null;
@@ -353,6 +368,40 @@ export function useComposerCommandMenu({
     cwd: trigger?.kind === "path" ? projectCwd : null,
     query: trigger?.kind === "path" ? trigger.query : null,
   });
+  // Agents the current thread started, with handles deduped against its whole fleet. Nested
+  // agents have no record in this projection to build a chip from, so they are left out.
+  const pathTriggerOpen = trigger?.kind === "path";
+  const agentFleet = useMemo(() => {
+    if (!pathTriggerOpen || environmentId === null || currentThreadId === null) return [];
+    return deriveThreadAgentFleet({
+      threadId: currentThreadId,
+      subagents: threadSubagents,
+      shells: threadShells
+        .filter((shell) => shell.environmentId === environmentId)
+        .map((shell) => shell.source),
+    }).filter((entry) => entry.subagent !== null);
+  }, [currentThreadId, environmentId, pathTriggerOpen, threadShells, threadSubagents]);
+  // The tab the user picked for this `@`; otherwise Agents when the query starts a handle.
+  const [pathTabChoice, setPathTabChoice] = useState<{
+    readonly rangeStart: number;
+    readonly tab: ComposerPathTab;
+  } | null>(null);
+  const pathTab = useMemo(() => {
+    if (trigger?.kind !== "path" || agentFleet.length === 0) return null;
+    const needle = trigger.query.trim().toLowerCase();
+    const prefersAgents =
+      needle.length > 0 && agentFleet.some((entry) => entry.handle.startsWith(needle));
+    const rangeStart = trigger.rangeStart;
+    return {
+      active:
+        pathTabChoice?.rangeStart === rangeStart
+          ? pathTabChoice.tab
+          : prefersAgents
+            ? ("agents" as const)
+            : ("files" as const),
+      onChange: (tab: ComposerPathTab) => setPathTabChoice({ rangeStart, tab }),
+    };
+  }, [agentFleet, pathTabChoice, trigger]);
   const pullRequestSearch = useComposerPullRequestSearch({
     environmentId,
     projectId: pullRequestProjectId,
@@ -498,6 +547,19 @@ export function useComposerCommandMenu({
       }));
     }
 
+    if (trigger.kind === "path" && pathTab?.active === "agents") {
+      return agentFleet
+        .filter((entry) => matchesSubagentQuery(entry, trigger.query))
+        .map((entry) => ({
+          id: `subagent:${entry.key}`,
+          type: "subagent" as const,
+          entry,
+          provider: providers.find((provider) => provider.instanceId === entry.providerInstanceId),
+          label: `@${entry.handle}`,
+          description: entry.title,
+        }));
+    }
+
     if (trigger.kind === "path") {
       const threadItems = environmentId
         ? matchComposerThreadItems({
@@ -525,8 +587,11 @@ export function useComposerCommandMenu({
 
     return [];
   }, [
+    agentFleet,
     currentThreadId,
     environmentId,
+    pathTab?.active,
+    providers,
     threadShells,
     hasThread,
     hasCompactableConversation,
@@ -543,15 +608,9 @@ export function useComposerCommandMenu({
   const onSelect = useCallback(
     (item: ComposerCommandItem) => {
       if (!trigger) return;
-      if (item.type === "thread") {
-        if (!ownerKey || trigger.kind !== "path") return;
-        const shell = threadShells.find(
-          (candidate) =>
-            candidate.environmentId === item.thread.environmentId &&
-            candidate.id === item.thread.threadId,
-        );
-        if (!shell) return;
-        const record = threadComposerContext(item.thread, shell.title);
+      // Threads and agents are one chip each, however often they are referenced.
+      const insertReference = (record: ComposerContextRecord) => {
+        if (!ownerKey) return;
         const existing = getComposerDraftSnapshot(ownerKey).context?.records ?? [];
         const alreadyAttached = existing.some((entry) => entry.contextId === record.contextId);
         if (!alreadyAttached && existing.length >= COMPOSER_CONTEXT_MAX_RECORDS) {
@@ -576,6 +635,31 @@ export function useComposerCommandMenu({
           });
         }
         setSelection({ start: result.cursor, end: result.cursor });
+      };
+      if (item.type === "thread") {
+        if (!ownerKey || trigger.kind !== "path") return;
+        const shell = threadShells.find(
+          (candidate) =>
+            candidate.environmentId === item.thread.environmentId &&
+            candidate.id === item.thread.threadId,
+        );
+        if (!shell) return;
+        insertReference(threadComposerContext(item.thread, shell.title));
+        return;
+      }
+      if (item.type === "subagent") {
+        const subagent = item.entry.subagent;
+        if (!ownerKey || trigger.kind !== "path" || environmentId === null || subagent === null)
+          return;
+        insertReference(
+          subagentContextRecord({
+            environmentId,
+            subagent,
+            handle: item.entry.handle,
+            title: item.entry.title,
+            status: item.entry.agent.status,
+          }),
+        );
         return;
       }
       if (item.type === "pull-request") {
@@ -640,6 +724,7 @@ export function useComposerCommandMenu({
     },
     [
       draftMessage,
+      environmentId,
       ownerKey,
       items,
       onChangeDraftMessage,
@@ -657,8 +742,11 @@ export function useComposerCommandMenu({
     trigger,
     items,
     skills,
+    pathTab,
     isLoading:
-      trigger?.kind === "pull-request" ? pullRequestSearch.isPending : pathSearch.isPending,
+      trigger?.kind === "pull-request"
+        ? pullRequestSearch.isPending
+        : pathTab?.active !== "agents" && pathSearch.isPending,
     error:
       trigger?.kind === "pull-request"
         ? pullRequestProjectId === null || pullRequestRepository === null

@@ -50,6 +50,7 @@ import { ScrollArea } from "../ui/scroll-area";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { AgentUsageFooter } from "./AgentActivityParts";
 import { AgentDetailPanel } from "./AgentDetailPanel";
+import { agentReferenceTargetOf, referenceAgentInChat } from "./agentReferences";
 import { AgentRow, useEnvironmentShells, useProviderEntries } from "./AgentFleetRow";
 import { AgentListToolbar } from "./AgentListToolbar";
 import { agentMenuTargetOf, useAgentContextMenu } from "./agentContextMenu";
@@ -277,6 +278,12 @@ function AgentFleetList(props: AgentsPanelProps) {
               workspaceRoot={props.workspaceRoot}
               onOpen={openAgent}
               onContextMenu={onContextMenu}
+              onReference={(entry) =>
+                void referenceAgentInChat(
+                  threadRef,
+                  agentReferenceTargetOf(threadRef.environmentId, entry),
+                )
+              }
             />
           ))}
           {hiddenCount > 0 ? (

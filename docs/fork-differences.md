@@ -328,6 +328,34 @@ field mapping in `ClaudeAdapterV2.ts` and `CodexAdapterV2.ts`, and `finalizeAppO
 [`Orchestrator.ts`](../apps/server/src/orchestration-v2/Orchestrator.ts). User guide:
 [thread-sidebar.md](./user/thread-sidebar.md#inspect-agent-work).
 
+## Reference agents by handle
+
+Every subagent has an `@handle`: its title as a slug, numbered `-2`, `-3` in spawn order when
+agents started by the same thread slug alike
+([`subagentHandles.ts`](../packages/client-runtime/src/state/subagentHandles.ts)). Every client
+derives it from thread shells, so nothing is stored. Agents panel rows, the agent detail header,
+conversation agent rows, agent hover cards (Lineage's included) and the **Subagent of** divider on
+an agent's own thread show it.
+
+- **Composer.** When the thread has agents, the `@` menu gets **Files** and **Agents** tabs. A
+  query that starts an agent's handle opens on Agents. Rows show status, provider, title, handle,
+  model, tokens, elapsed time and a working agent's latest tool call, and hover to preview the
+  agent like an Agents panel row.
+- **Chip.** Picking an agent inserts a `subagent` context chip (`SubagentContextRecord`) that shows
+  the handle and the agent's live status and previews the agent on hover. What the provider receives
+  depends on how the agent can be reached: a T3 delegated task carries `task_status` and
+  `t3_thread_send` instructions, a Claude subagent its `SendMessage` agent id, and other native
+  subagents are marked as unable to take messages. Each also carries its task and its outcome at
+  the time it was referenced (`formatSubagentPayload` in
+  [`composerContextReferences.ts`](../packages/shared/src/composerContextReferences.ts)). An agent
+  whose record the client has not loaded (an older run's) is referenced by its child thread alone.
+  Chip payloads live in memory like issue chips, so a reloaded draft shows them as unavailable.
+- **Other ways in.** **Reference in chat** and **Copy @handle** in the agent right-click menu,
+  Alt-click on an Agents panel row, the `@` button on the detail header and on conversation agent
+  rows, and **Reference in parent** on an agent's own thread, which puts the chip in the parent's
+  draft and opens the parent. On mobile, the Agents sheet rows show the handle and offer the same
+  actions on long-press. The mobile composer's `@` menu has the same tabs.
+
 ## Chat tabs
 
 A thread can have several chat tabs that share one workspace (same checkout and worktree). Each tab

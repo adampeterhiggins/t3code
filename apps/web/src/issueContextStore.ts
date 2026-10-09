@@ -5,15 +5,20 @@ import type {
   GitHubIssueContextRecord,
   LinearIssueContextRecord,
   SlackThreadContextRecord,
+  SubagentContextRecord,
   ThreadId,
 } from "@t3tools/contracts";
 
-/** An attached snapshot fetched from another service: a Linear or GitHub issue, a Slack thread, or a Notion page. */
+/**
+ * An attached snapshot fetched from another service (a Linear or GitHub issue, a Slack thread, a
+ * Notion page) or, in the fork, a referenced subagent.
+ */
 export type IssueContextRecord =
   | LinearIssueContextRecord
   | GitHubIssueContextRecord
   | SlackThreadContextRecord
-  | NotionPageContextRecord;
+  | NotionPageContextRecord
+  | SubagentContextRecord;
 
 const EMPTY: ReadonlyArray<IssueContextRecord> = [];
 

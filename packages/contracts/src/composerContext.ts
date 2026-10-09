@@ -39,6 +39,7 @@ export const COMPOSER_CONTEXT_KINDS = [
   "slack-thread",
   "notion-page",
   "thread",
+  "subagent",
 ] as const;
 export type KnownComposerContextKind = (typeof COMPOSER_CONTEXT_KINDS)[number];
 
@@ -320,6 +321,36 @@ export const ThreadContextRecord = Schema.Struct({
 });
 export type ThreadContextRecord = typeof ThreadContextRecord.Type;
 
+export const COMPOSER_CONTEXT_SUBAGENT_TEXT_MAX_CHARS = 16_000;
+
+/**
+ * Fork: a subagent of a thread, referenced by its `@handle`. Carries what the agent that started
+ * it needs to address it (`subagentId` is the T3 task id; `nativeAgentId` the provider's own id,
+ * such as the id Claude's SendMessage takes) and a snapshot of its task and outcome when the chip
+ * was inserted. An agent known only from its child thread, whose record the client has not
+ * loaded, has neither id and no snapshot.
+ */
+export const SubagentContextRecord = Schema.Struct({
+  ...recordBase,
+  kind: Schema.Literal("subagent"),
+  environmentId: EnvironmentId,
+  /** The thread that started the agent. */
+  ownerThreadId: ThreadId,
+  subagentId: Schema.NullOr(
+    TrimmedNonEmptyString.check(Schema.isMaxLength(CONTEXT_ID_MAX_CHARS * 2)),
+  ),
+  childThreadId: Schema.NullOr(ThreadId),
+  handle: TrimmedNonEmptyString.check(Schema.isMaxLength(64)),
+  title: ContextLabel,
+  origin: Schema.Literals(["provider_native", "app_owned"]),
+  driver: TrimmedNonEmptyString.check(Schema.isMaxLength(64)),
+  nativeAgentId: NullableShortString,
+  status: TrimmedNonEmptyString.check(Schema.isMaxLength(32)),
+  prompt: BoundedString(COMPOSER_CONTEXT_SUBAGENT_TEXT_MAX_CHARS),
+  result: Schema.NullOr(BoundedString(COMPOSER_CONTEXT_SUBAGENT_TEXT_MAX_CHARS)),
+});
+export type SubagentContextRecord = typeof SubagentContextRecord.Type;
+
 const isJson = Schema.is(Schema.Json);
 
 /**
@@ -373,6 +404,7 @@ export const KnownComposerContextRecord = Schema.Union([
   SlackThreadContextRecord,
   NotionPageContextRecord,
   ThreadContextRecord,
+  SubagentContextRecord,
 ]);
 export type KnownComposerContextRecord = typeof KnownComposerContextRecord.Type;
 

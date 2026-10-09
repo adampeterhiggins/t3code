@@ -1,6 +1,9 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { ProviderDriverKind } from "@t3tools/contracts";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
+
+// Agent rows reach the diff worker through their hover preview, which needs a browser.
+vi.mock("./AgentFleetRow", () => ({ AgentCommandRow: () => null }));
 
 import { ComposerCommandMenu, composerSuggestionOptionId } from "./ComposerCommandMenu";
 

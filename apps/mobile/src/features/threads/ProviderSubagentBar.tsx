@@ -2,11 +2,12 @@ import {
   formatProviderSubagentStatus,
   type ProviderSubagentStatus,
 } from "@t3tools/client-runtime/state/thread-execution";
-import { isOrchestrationV2WorkActive } from "@t3tools/contracts";
+import { isOrchestrationV2WorkActive, type EnvironmentId, type ThreadId } from "@t3tools/contracts";
 import { View } from "react-native";
 
 import { AppText as Text } from "../../components/AppText";
 import { ProviderIcon } from "../../components/ProviderIcon";
+import { useAgentReferences } from "./agent-references";
 import { RequestActionButton } from "./RequestActionButton";
 import { useVisibleSecondClock } from "./use-visible-second-clock";
 
@@ -15,7 +16,13 @@ import { useVisibleSecondClock } from "./use-visible-second-clock";
  * runs that conversation, so there is nothing to send; the bar says which
  * model is working, for how long, and leads back to the parent.
  */
+const NO_SUBAGENTS: [] = [];
+
 export function ProviderSubagentBar(props: {
+  /** The subagent's own thread and the thread that started it, to name it by its handle. */
+  readonly environmentId: EnvironmentId;
+  readonly threadId: ThreadId;
+  readonly parentThreadId: ThreadId | null;
   /** Driver and catalog icon of the provider running the subagent. */
   readonly provider: { readonly driver: string; readonly iconUrl?: string | undefined } | null;
   readonly modelLabel: string;
@@ -28,6 +35,9 @@ export function ProviderSubagentBar(props: {
   const live = props.status !== null && isOrchestrationV2WorkActive(props.status.status);
   const nowMs = useVisibleSecondClock(live);
   const statusLabel = formatProviderSubagentStatus(props.status, nowMs);
+  const handle =
+    useAgentReferences(props.environmentId, props.parentThreadId, NO_SUBAGENTS).get(props.threadId)
+      ?.handle ?? null;
   const modelDescription =
     props.effortLabel === null ? props.modelLabel : `${props.modelLabel}, ${props.effortLabel}`;
 
@@ -36,7 +46,7 @@ export function ProviderSubagentBar(props: {
       {/* Only the text is one element, so "Open parent" stays reachable. */}
       <View
         accessible
-        accessibilityLabel={`${modelDescription} subagent, ${statusLabel}. It runs on its own and cannot take messages.`}
+        accessibilityLabel={`${modelDescription} subagent${handle ? ` @${handle}` : ""}, ${statusLabel}. It runs on its own and cannot take messages.`}
         className="min-w-0 flex-1 gap-0.5"
       >
         <View className="min-w-0 flex-row items-center gap-1.5">
@@ -64,6 +74,7 @@ export function ProviderSubagentBar(props: {
           className="font-sans text-xs text-foreground-secondary"
           style={{ fontVariant: ["tabular-nums"] }}
         >
+          {handle ? `@${handle} · ` : ""}
           {statusLabel} · Runs on its own
         </Text>
       </View>
