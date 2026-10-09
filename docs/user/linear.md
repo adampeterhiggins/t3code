@@ -55,6 +55,8 @@ is for and find that work again later. A thread links one issue at a time.
 - Starting a new thread from an issue with the composer's **⋯** picker links that issue too.
 - On mobile, tap **Link issue** beside the tab switcher, or choose **Link Linear issue** from the
   tab menu.
+- Agents can link or unlink the issue for their thread themselves, for example when you ask them
+  to pick up `ENG-123`.
 
 The chat header (on mobile, the tab switcher) then shows the issue's identifier and its current
 Linear status. Click or tap it to open the issue, change it, or unlink it. The status is read

@@ -160,7 +160,8 @@ Starting a thread from an issue links the issue to the thread and its chat tabs.
 mobile, the tab switcher) shows its number and whether it is open or closed; click or tap it to open
 the issue on GitHub or unlink it. Pickers mark an issue that another live thread is linked to as
 **In use**, and starting from it asks whether to open that thread or start a new one. On web and
-desktop, hovering an issue in the attach picker lists those threads; click one to open it.
+desktop, hovering an issue in the attach picker lists those threads; click one to open it. Agents
+can also link or unlink an issue on their thread, for example when you ask them to work on one.
 
 ## Review and merge
 

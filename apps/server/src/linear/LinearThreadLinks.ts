@@ -59,7 +59,17 @@ export class LinearThreadLinks extends Context.Service<
     /** Every link in the environment, re-emitted whenever a link or tab group changes. */
     readonly links: Stream.Stream<LinearThreadLinksList>;
     readonly link: (input: LinearLinkThreadInput) => Effect.Effect<LinearThreadLink, LinearError>;
-    readonly unlink: (input: LinearUnlinkThreadInput) => Effect.Effect<void, LinearError>;
+    /** Links the issue and reports the URL of the different issue it replaced, if any. */
+    readonly linkWithReplacement: (
+      input: LinearLinkThreadInput,
+    ) => Effect.Effect<
+      { readonly link: LinearThreadLink; readonly replacedUrl: string | null },
+      LinearError
+    >;
+    /** Removes the thread's link; succeeds with whether there was one. */
+    readonly unlink: (input: LinearUnlinkThreadInput) => Effect.Effect<boolean, LinearError>;
+    /** The link covering `threadId`, directly or through its tab group. */
+    readonly forThread: (threadId: ThreadId) => Effect.Effect<LinearThreadLink | undefined>;
     /** Re-reads group membership after a tab joins a group. */
     readonly refresh: Effect.Effect<void>;
   }
@@ -89,10 +99,13 @@ export const make = Effect.gen(function* () {
       SELECT group_id AS "groupId" FROM fork_thread_tabs WHERE thread_id = ${threadId}
     `.pipe(Effect.map((rows) => rows[0]?.groupId ?? threadId));
 
-  const link = Effect.fn("linear.link_thread")(function* (input: LinearLinkThreadInput) {
+  const linkWithReplacement = Effect.fn("linear.link_thread")(function* (
+    input: LinearLinkThreadInput,
+  ) {
     // Validates the issue and copies what identifies it; the status stays live.
     const issue = yield* api.getIssueSummary({ id: input.issueId });
     const groupId = yield* groupIdFor(input.threadId).pipe(Effect.mapError(storageError));
+    const previous = (yield* SubscriptionRef.get(state)).find((entry) => entry.groupId === groupId);
     const linkedAt = DateTime.formatIso(yield* DateTime.now);
     yield* sql`
       INSERT INTO fork_linear_thread_links (group_id, issue_id, identifier, title, url, linked_at)
@@ -105,21 +118,37 @@ export const make = Effect.gen(function* () {
     const links = yield* SubscriptionRef.get(state);
     const linked = links.find((entry) => entry.groupId === groupId);
     if (linked === undefined) return yield* storageError("The link was not saved");
-    return linked;
+    return {
+      link: linked,
+      replacedUrl:
+        previous !== undefined && previous.issueId !== linked.issueId ? previous.url : null,
+    };
   });
+
+  const link = (input: LinearLinkThreadInput) =>
+    linkWithReplacement(input).pipe(Effect.map((result) => result.link));
 
   const unlink = Effect.fn("linear.unlink_thread")(function* (input: LinearUnlinkThreadInput) {
     const groupId = yield* groupIdFor(input.threadId).pipe(Effect.mapError(storageError));
+    const wasLinked = (yield* SubscriptionRef.get(state)).some(
+      (entry) => entry.groupId === groupId,
+    );
     yield* sql`DELETE FROM fork_linear_thread_links WHERE group_id = ${groupId}`.pipe(
       Effect.mapError(storageError),
     );
     yield* refresh;
+    return wasLinked;
   });
 
   return LinearThreadLinks.of({
     links: SubscriptionRef.changes(state),
     link,
+    linkWithReplacement,
     unlink,
+    forThread: (threadId) =>
+      SubscriptionRef.get(state).pipe(
+        Effect.map((links) => links.find((entry) => entry.threadIds.includes(threadId))),
+      ),
     refresh,
   });
 });

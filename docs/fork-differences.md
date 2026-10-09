@@ -755,7 +755,12 @@ palette, and starting a thread from an issue links it. The link lives in the for
 `fork_linear_thread_links` table, keyed by tab group, and streams to clients over
 `linear.subscribeThreadLinks`. Only the issue's identity is stored; the chat header chip reads its
 status live, and offers open, change, and unlink. Mobile shows the same chip beside the tab
-switcher (`apps/mobile/src/features/threads/ThreadLinearLink.tsx`).
+switcher (`apps/mobile/src/features/threads/ThreadLinearLink.tsx`). Agents link and unlink it
+through the thread MCP's `link_linear_issue` / `unlink_linear_issue`, and read the thread's Linear
+and GitHub issue links with `list_thread_issues`
+([`toolkits/issueLinks/`](../apps/server/src/mcp/toolkits/issueLinks/)). Like the pull request
+tools, they default to the caller's thread, need the `pull-requests` MCP capability, and write
+through the same thread access checks.
 
 The attach menu's pull request option, also in the web command palette, opens a searchable picker
 ([`PullRequestAttachPicker.tsx`](../apps/web/src/components/chat/PullRequestAttachPicker.tsx)) and
@@ -833,6 +838,8 @@ Starting a thread from a GitHub issue links it to the thread's chat-tab group, i
 can hold one GitHub link beside its Linear link. The web chat header and the mobile tab switcher
 show `#123` with its live open or closed state, and offer open and unlink. Pickers mark a linked
 issue **In use**; the web attach picker's hover preview lists those threads and opens one on click.
+Agents link and unlink it with `link_github_issue` / `unlink_github_issue`, beside the Linear tools
+in [`toolkits/issueLinks/`](../apps/server/src/mcp/toolkits/issueLinks/).
 
 Code: `apps/server/src/githubIssues/`, `packages/contracts/src/githubIssues.ts`,
 `GitHubIssueContextRecord` in `packages/contracts/src/composerContext.ts`,

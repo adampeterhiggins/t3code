@@ -59,6 +59,9 @@ export type T3McpToolSummaryAction =
   | "list-prs"
   | "watch-pr"
   | "unwatch-pr"
+  | "link-issue"
+  | "unlink-issue"
+  | "list-issues"
   | "browser"
   | "device"
   | "html-preview"
@@ -109,6 +112,11 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
     "unwatch-pr",
     "pull-request",
   ),
+  link_linear_issue: tool(["Link", "Linking", "Linked", "a Linear issue"], "link-issue"),
+  unlink_linear_issue: tool(["Unlink", "Unlinking", "Unlinked", "a Linear issue"], "unlink-issue"),
+  link_github_issue: tool(["Link", "Linking", "Linked", "a GitHub issue"], "link-issue"),
+  unlink_github_issue: tool(["Unlink", "Unlinking", "Unlinked", "a GitHub issue"], "unlink-issue"),
+  list_thread_issues: tool(["Check", "Checking", "Checked", "linked issues"], "list-issues"),
   orchestrator_capabilities: tool(
     ["Get", "Getting", "Got", "orchestration capabilities"],
     "capabilities",
