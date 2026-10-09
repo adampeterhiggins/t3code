@@ -348,6 +348,7 @@ describe("resolveToolPreview", () => {
       "## Messages (2 results)",
       "1. #canary-release - Adam Higgins: v3.188.5 is on canary &amp; fixed 2026-10-07 15:44:14 BST",
       "2. #general - Matt Gill: Thanks!",
+      "3. DM with Sam Rivera, Jo Patel - Sam Rivera: Can you review the checklist?",
     ].join("\n");
     const preview = resolveToolPreview(
       tool("mcp__slack__slack_search_public_and_private", {}, [
@@ -363,7 +364,24 @@ describe("resolveToolPreview", () => {
         text: "v3.188.5 is on canary & fixed",
       },
       { author: "Matt Gill", time: null, channel: "#general", url: null, text: "Thanks!" },
+      {
+        author: "Sam Rivera",
+        time: null,
+        channel: "DM with Sam Rivera, Jo Patel",
+        url: null,
+        text: "Can you review the checklist?",
+      },
     ]);
+  });
+
+  it("shows a Slack search that found nothing as an empty message list", () => {
+    expect(
+      resolveToolPreview(
+        tool("mcp__slack__slack_search_public_and_private", {}, [
+          { type: "text", text: JSON.stringify({ results: "# Search Results for: \n" }) },
+        ]),
+      ),
+    ).toEqual({ kind: "slack-messages", messages: [] });
   });
 
   it("shows a cancellation's reason and a launched thread's title and branch", () => {

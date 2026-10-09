@@ -460,6 +460,9 @@ function PreviewBody(props: {
         </div>
       );
     case "slack-messages":
+      if (preview.messages.length === 0) {
+        return <p className="text-muted-foreground italic">No messages found.</p>;
+      }
       return (
         <ul className="space-y-2">
           {preview.messages.slice(0, MAX_SLACK_MESSAGES).map((message) => (

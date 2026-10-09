@@ -427,8 +427,9 @@ const SLACK_THREAD_SECTION = /^(?:=== THREAD PARENT MESSAGE ===|--- Reply \d+ of
 const SLACK_SEARCH_SECTION = /^### Result \d+ of \d+$/m;
 const SLACK_FIELD =
   /^(From|Time|Message TS|Message_ts|Channel|Participants|Reply count|Permalink|Text): ?(.*)$/;
-// Concise search results: `1. #channel - Author: text 2026-10-07 15:44:14 BST`.
-const SLACK_CONCISE_RESULT = /^\d+\. (#?\S+) - ([^:\n]+): /m;
+// Concise search results: `1. #channel - Author: text 2026-10-07 15:44:14 BST`, where a DM's
+// channel is `DM with Sam Rivera, Jo Patel`.
+const SLACK_CONCISE_RESULT = /^\d+\. (#\S+|DM with [^\n]+?|\S+) - ([^:\n]+?): /m;
 
 function slackSection(section: string): SlackMessagesPreview["messages"][number] | null {
   const lines = section
@@ -501,7 +502,10 @@ function slackPreview(text: string | null): SlackMessagesPreview | null {
             const message = slackSection(section);
             return message ? [message] : [];
           });
-  return messages.length > 0 ? { kind: "slack-messages", messages } : null;
+  // A search that found nothing still reads as a Slack search, not as its raw fields.
+  const emptySearch =
+    /^## Messages \(0 results\)$/m.test(text) || /^# Search Results for:[^\n]*\s*$/.test(text);
+  return messages.length > 0 || emptySearch ? { kind: "slack-messages", messages } : null;
 }
 
 function questionsPreview(input: Record_, result: Record_ | null): QuestionsToolPreview | null {

@@ -394,6 +394,7 @@ function PreviewBody(props: {
     case "loaded-tools":
       return <Body>{preview.names.join(", ")}</Body>;
     case "slack-messages":
+      if (preview.messages.length === 0) return <Muted>No messages found.</Muted>;
       return (
         <>
           {preview.messages.slice(0, MAX_SLACK_MESSAGES).map((message) => (
