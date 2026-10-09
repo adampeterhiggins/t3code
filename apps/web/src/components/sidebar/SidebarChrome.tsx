@@ -125,7 +125,11 @@ function subscribeToHistoryEntry(onChange: () => void) {
   return () => window.navigation?.removeEventListener("currententrychange", onChange);
 }
 
-// Browsers without the Navigation API keep Forward enabled, since history depth is unknowable there.
+// Browsers without the Navigation API keep both buttons enabled, since history depth is unknowable there.
+function readCanGoBack() {
+  return window.navigation?.canGoBack ?? true;
+}
+
 function readCanGoForward() {
   return window.navigation?.canGoForward ?? true;
 }
@@ -133,6 +137,7 @@ function readCanGoForward() {
 // Browser history buttons, matching the navigation.back/forward shortcuts.
 function SidebarHistoryNavigation() {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+  const canGoBack = useSyncExternalStore(subscribeToHistoryEntry, readCanGoBack);
   const canGoForward = useSyncExternalStore(subscribeToHistoryEntry, readCanGoForward);
   const backShortcut = shortcutLabelForCommand(keybindings, "navigation.back");
   const forwardShortcut = shortcutLabelForCommand(keybindings, "navigation.forward");
@@ -143,6 +148,7 @@ function SidebarHistoryNavigation() {
         icon={<ArrowLeftIcon />}
         label="Back"
         shortcut={backShortcut}
+        disabled={!canGoBack}
         onClick={() => window.history.back()}
       />
       <SidebarHistoryButton
