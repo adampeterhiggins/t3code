@@ -175,11 +175,15 @@ export function AgentPreviewContent(props: {
   return (
     <div className="flex cursor-pointer flex-col" onClick={() => props.onOpen()}>
       <div className="flex flex-col gap-0.5 border-b border-border/60 px-3 pt-2.5 pb-2">
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 items-baseline gap-2">
           <StatusDot status={agent.status} />
-          <span className="min-w-0 flex-1 truncate text-sm font-medium">{entry.title}</span>
+          <span className="line-clamp-2 min-w-0 flex-1 break-words text-sm font-medium">
+            {entry.title}
+          </span>
+        </div>
+        <div className="flex min-w-0 items-center gap-2 ps-3.5">
           <AgentHandle handle={entry.handle} />
-          <span className="shrink-0 font-mono text-2xs text-muted-foreground">
+          <span className="ms-auto shrink-0 font-mono text-2xs text-muted-foreground">
             <AgentElapsed agent={agent} />
           </span>
         </div>
