@@ -15,6 +15,7 @@ import {
   modelSelectionEffort,
   subagentFromRecord,
   subagentIdentityParts,
+  subagentResultSummaryLine,
   subagentRunStats,
   subagentRunUsageRows,
   summarizeAgentFleet,
@@ -340,5 +341,19 @@ describe("edgeAgentStatus", () => {
     expect(edgeAgentStatus("rolled_back")).toBe("cancelled");
     expect(edgeAgentStatus("error")).toBe("failed");
     expect(edgeAgentStatus(null)).toBe("idle");
+  });
+});
+
+describe("subagentResultSummaryLine", () => {
+  it("takes the first line with text, without Markdown markers", () => {
+    expect(subagentResultSummaryLine("\n## Slack digest: Thu\n\nFacts")).toBe("Slack digest: Thu");
+    expect(subagentResultSummaryLine("- **Done** and green")).toBe("Done and green");
+    expect(subagentResultSummaryLine("Haiku, the teapot\nsecond line")).toBe("Haiku, the teapot");
+  });
+
+  it("cuts long lines and returns null without text", () => {
+    expect(subagentResultSummaryLine("x".repeat(200))).toHaveLength(160);
+    expect(subagentResultSummaryLine("  \n\n")).toBeNull();
+    expect(subagentResultSummaryLine(null)).toBeNull();
   });
 });

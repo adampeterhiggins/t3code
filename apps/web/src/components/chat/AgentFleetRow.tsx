@@ -1,8 +1,9 @@
 /**
  * Fork: one agent's row in the Agents panel and in an agent's list of the agents it started.
  *
- * - A row is one line. Working agents add their latest tool call and failed agents their error
- *   as a second line, so a row's height only changes with its status.
+ * - A row is one line. Working agents add their latest tool call, finished agents the first line
+ *   of their result, and failed agents their error as a second line, so a row's height only
+ *   changes with its status.
  * - Hovering a row previews the agent (prompt, outcome, latest tool calls, usage). Clicking the
  *   row or its preview opens the agent; clicking a tool call in the preview opens the agent on
  *   that call. Right-click for the agent menu; Alt-click references the agent in chat by its
@@ -15,6 +16,7 @@ import {
   subagentFromRecord,
   subagentIdentityParts,
   subagentRunStats,
+  subagentResultSummaryLine,
   subagentRunUsageRows,
   type AgentFleetEntry,
   type AgentFleetRow,
@@ -279,6 +281,7 @@ export function AgentRow(props: {
         ? `${agent.error.slice(0, 159)}…`
         : agent.error
       : null;
+  const resultLine = agent.status === "completed" ? subagentResultSummaryLine(agent.result) : null;
   return (
     <PreviewCard actionsRef={previewActions}>
       <PreviewCardTrigger
@@ -361,6 +364,10 @@ export function AgentRow(props: {
             <span className="min-w-0 truncate font-mono text-2xs text-destructive-foreground">
               {error}
             </span>
+          </span>
+        ) : resultLine ? (
+          <span className="flex h-5 min-w-0 items-center ps-3.5">
+            <span className="min-w-0 truncate text-2xs text-muted-foreground">{resultLine}</span>
           </span>
         ) : null}
       </PreviewCardTrigger>

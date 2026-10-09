@@ -400,6 +400,22 @@ export function subagentRunStats(
   return { runs: latest.ordinal, attempt: attempt > 0 ? attempt : null };
 }
 
+/**
+ * The first line of a finished agent's result, for its row: Markdown heading, list and quote
+ * markers dropped, cut to 160 characters. Null when the result has no text.
+ */
+export function subagentResultSummaryLine(result: string | null | undefined): string | null {
+  for (const raw of result?.split("\n") ?? []) {
+    const line = raw
+      .replace(/^\s*(?:#{1,6}\s+|[-*+]\s+|>\s*|\d+[.)]\s+)/, "")
+      .replace(/\*\*|__/g, "")
+      .trim();
+    if (line.length === 0) continue;
+    return line.length > 160 ? `${line.slice(0, 159)}…` : line;
+  }
+  return null;
+}
+
 /** The identity line after an agent's status: compact model with effort, then `run N` past the first. */
 export function subagentIdentityParts(
   agent: Pick<RuntimeSubagent, "model" | "effort">,
