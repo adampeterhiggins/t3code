@@ -3,6 +3,7 @@ import { SshDeviceHostConfigs } from "./device.ts";
 import {
   AuthOrchestrationOperateScope,
   AuthSettingsWriteScope,
+  AuthOrchestrationOperateScope,
   AuthProvidersManageScope,
   type AuthEnvironmentScope,
 } from "./auth.ts";
@@ -1234,6 +1235,31 @@ const NULLABLE_PROJECT_SETTINGS_OVERRIDES: ReadonlySet<ProjectScopedServerSettin
   "sidebarAutoSettleAfterDays",
 ]);
 
+/**
+ * Starts a thread in `projectId` when someone @mentions the connected Slack account in one of
+ * `channels` (names without `#`, or channel IDs) or, with `includeDirectMessages`, in a direct or
+ * group message. A non-empty `keyword` must also appear as a word in the message. Off by default;
+ * mentions from before it was turned on are ignored. Fork-only; see docs/fork-differences.md.
+ */
+export const SlackMentionTriggerSettings = Schema.Struct({
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  projectId: Schema.NullOr(ProjectId).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
+  prompt: TrimmedString.check(Schema.isMaxLength(8_000)).pipe(
+    Schema.withDecodingDefault(Effect.succeed("Help with the request in this Slack mention.")),
+  ),
+  modelSelection: Schema.NullOr(ModelSelection).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
+  channels: Schema.Array(TrimmedString.check(Schema.isMaxLength(128)))
+    .check(Schema.isMaxLength(100))
+    .pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+  includeDirectMessages: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  keyword: TrimmedString.check(Schema.isMaxLength(64)).pipe(
+    Schema.withDecodingDefault(Effect.succeed("")),
+  ),
+});
+export type SlackMentionTriggerSettings = typeof SlackMentionTriggerSettings.Type;
+
 export const StorageCleanupSettings = Schema.Struct({
   worktreeAfterDays: StorageRetentionDays.pipe(Schema.withDecodingDefault(Effect.succeed(null))),
   worktreeOnMerge: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
@@ -1345,6 +1371,9 @@ export const ServerSettings = Schema.Struct({
   ),
   /** Enable Slack attachment entry points and automatic link resolution for this environment. */
   enableSlackIntegration: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  slackMentionTrigger: SlackMentionTriggerSettings.pipe(
+    Schema.withDecodingDefault(Effect.succeed(Schema.decodeSync(SlackMentionTriggerSettings)({}))),
+  ),
   /** Enable Notion attachment entry points and automatic link resolution for this environment. */
   enableNotionIntegration: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   /** Fork: Linear issues assigned to the connected account start threads. Empty is off. */
@@ -1738,6 +1767,8 @@ export const ServerSettingsPatch = Schema.Struct({
   terminalActivatePythonEnvironment: Schema.optionalKey(Schema.Boolean),
   pythonInterpreterPath: Schema.optionalKey(Schema.NullOr(TrimmedString)),
   enableSlackIntegration: Schema.optionalKey(Schema.Boolean),
+  /** Replaces the whole trigger, so a cleared channel list sticks. */
+  slackMentionTrigger: Schema.optionalKey(SlackMentionTriggerSettings),
   enableNotionIntegration: Schema.optionalKey(Schema.Boolean),
   linearAssignmentTriggers: Schema.optionalKey(LinearAssignmentTriggers),
   continueThreadsAfterServerUpdate: Schema.optionalKey(Schema.Boolean),
@@ -1884,6 +1915,7 @@ export function requiredScopesForServerSettingsPatch(
     ...(changesProviders ? [AuthProvidersManageScope] : []),
     // Assignment triggers start agent runs unattended, like scheduled tasks.
     ...(patch.linearAssignmentTriggers !== undefined ? [AuthOrchestrationOperateScope] : []),
+    ...(patch.slackMentionTrigger === undefined ? [] : [AuthOrchestrationOperateScope]),
   ];
 }
 

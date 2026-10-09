@@ -251,3 +251,41 @@ it.effect("reads a link preview once and keeps it", () => {
     assert.strictEqual(harness.calls.length, reads);
   }).pipe(Effect.provide(harness.layer));
 });
+
+it.effect(
+  "searches explicit mentions since the preceding day and preserves channel and reply identity",
+  () => {
+    const harness = makeHarness({
+      "search.messages": {
+        ok: true,
+        messages: {
+          matches: [
+            {
+              ts: REPLY_TS,
+              user: "U2",
+              text: "<@U1> fix this",
+              permalink: threadInput.url,
+              channel: { id: "C1", name: "eng" },
+            },
+            {
+              ts: LAST_TS,
+              user: "U3",
+              text: "<@U1> hello",
+              permalink: "https://acme.slack.com/archives/D1/p1727779740000300",
+              channel: { id: "D1", name: "ada", is_im: true },
+            },
+          ],
+        },
+      },
+    });
+    return Effect.gen(function* () {
+      const api = yield* SlackApi.SlackApi;
+      const matches = yield* api.searchMentions({ userId: "U1", afterDay: "2024-10-01" });
+      assert.strictEqual(harness.calls[0]?.params.get("query"), "<@U1> after:2024-09-30");
+      assert.strictEqual(harness.calls[0]?.params.get("sort_dir"), "desc");
+      assert.strictEqual(matches[0]?.threadTs, PARENT_TS);
+      assert.strictEqual(matches[0]?.channelName, "eng");
+      assert.strictEqual(matches[1]?.channelName, null);
+    }).pipe(Effect.provide(harness.layer));
+  },
+);

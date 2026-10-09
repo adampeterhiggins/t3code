@@ -8,7 +8,7 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import { notionPageContextRecord } from "@t3tools/client-runtime/state/notion";
 import { notionEnvironment } from "~/state/notion";
-import { slackThreadContextRecord } from "@t3tools/client-runtime/state/slack";
+import { slackThreadContextRecord } from "@t3tools/shared/composerContextReferences";
 import type {
   NotionError,
   PullRequestDetail,

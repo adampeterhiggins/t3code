@@ -53,6 +53,7 @@ import * as NotionApi from "./notion/NotionApi.ts";
 import * as NotionAuth from "./notion/NotionAuth.ts";
 import * as SlackApi from "./slack/SlackApi.ts";
 import * as SlackAuth from "./slack/SlackAuth.ts";
+import * as SlackMentionTrigger from "./slack/SlackMentionTrigger.ts";
 import * as GitHubIssues from "./githubIssues/GitHubIssues.ts";
 import * as GitHubIssueThreadLinks from "./githubIssues/GitHubIssueThreadLinks.ts";
 import * as OpenCodeRuntime from "@t3tools/provider-opencode/server/OpenCodeRuntime";
@@ -624,6 +625,8 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
       yield* service.start();
     }),
   ).pipe(Layer.provide(ThreadTabHidingReactor.layer)),
+  // Fork: starts a thread when the user is @mentioned in Slack (opt-in).
+  SlackMentionTrigger.layerStarted,
   // Subscribes to `account.rate-limits.updated` so usage bars track live
   // telemetry instead of waiting for the next status probe.
   ProviderUsageLimitsIngestion.layer,

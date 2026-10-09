@@ -747,7 +747,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Slack",
     to: "/settings/integrations",
     searchTerms: [
-      "slack messages threads channels connect account sign in oauth app manifest client id attach context enable disable integration pasted links setup prompts",
+      "slack messages threads channels connect account sign in oauth app manifest client id attach context enable disable integration pasted links setup prompts mentions trigger keyword automation",
     ],
     environmentOnly: true,
     scope: "environment-defaults",

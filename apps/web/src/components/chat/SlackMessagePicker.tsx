@@ -4,7 +4,7 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { slackThreadContextRecord } from "@t3tools/client-runtime/state/slack";
+import { slackThreadContextRecord } from "@t3tools/shared/composerContextReferences";
 import type { ScopedThreadRef, SlackGetThreadInput, SlackMessageSummary } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";

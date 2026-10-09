@@ -834,6 +834,17 @@ server renders the thread to capped markdown when it is attached. That markdown 
 first message and the linked one, fills the rest newest first, and resolves mentions to names.
 The snapshot is inlined into the prompt for every provider. Slack has no thread links.
 
+An off-by-default mention trigger in the same setting polls once a minute for explicit @mentions
+of the connected account in selected channels, optionally including direct messages and requiring
+a keyword. It starts threads in a selected project's root workspace with configured instructions,
+a provider/model override or project defaults, the project's permission mode, and the same Slack
+snapshot and link. Web and desktop configure it; all clients can use the resulting threads. It
+requires both settings-write and orchestration-operate permissions. Older mentions are baselined
+on enable or account change, processed mentions persist across restarts, and retried launches use
+a stable command id. Polls read the latest 50 search results; Slack's visibility, indexing and rate
+limits apply. Disabling the trigger or integration stops new launches. Code:
+[`SlackMentionTrigger.ts`](../apps/server/src/slack/SlackMentionTrigger.ts).
+
 A bare Slack message link left in any rendered message on web or desktop (an agent's reply, a
 paste-as-text, a message sent from mobile) shows `#channel · Author` once `slack.getLinkPreview`
 reads it, with the message's first line on hover. It shows its URL while Slack is off, disconnected,

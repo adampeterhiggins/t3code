@@ -11,6 +11,7 @@ import {
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as DateTime from "effect/DateTime";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
@@ -106,6 +107,20 @@ function threadTsFromPermalink(permalink: string, ts: string): string | null {
   }
 }
 
+/** A message that @mentions a user, as the mention trigger reads it. */
+export interface SlackMention {
+  readonly channelId: string;
+  /** The channel's name without `#`; null for a direct or group message. */
+  readonly channelName: string | null;
+  readonly ts: string;
+  readonly threadTs: string | null;
+  /** The author, when a person wrote it. */
+  readonly userId: string | null;
+  /** Slack's own text, mentions unresolved. */
+  readonly text: string;
+  readonly url: string;
+}
+
 export class SlackApi extends Context.Service<
   SlackApi,
   {
@@ -115,6 +130,11 @@ export class SlackApi extends Context.Service<
     readonly getThread: (
       input: SlackGetThreadInput,
     ) => Effect.Effect<SlackThreadContext, SlackError>;
+    /** The newest messages that @mention `userId`, posted on or after `afterDay` (`YYYY-MM-DD`). */
+    readonly searchMentions: (input: {
+      readonly userId: string;
+      readonly afterDay: string;
+    }) => Effect.Effect<ReadonlyArray<SlackMention>, SlackError>;
     /** Who and where a bare link points, read once and kept. Needs a connected account. */
     readonly getLinkPreview: (
       input: SlackLinkPreviewInput,
@@ -205,6 +225,39 @@ export const make = Effect.gen(function* () {
         postedAt: slackTsToIso(match.ts),
       })),
     };
+  });
+
+  const searchMentions = Effect.fn("slack.search_mentions")(function* (input: {
+    readonly userId: string;
+    readonly afterDay: string;
+  }) {
+    // Slack's `after:` is exclusive, so search from the day before.
+    const after = DateTime.formatIsoDateUtc(
+      DateTime.subtract(DateTime.makeUnsafe(`${input.afterDay}T00:00:00Z`), { days: 1 }),
+    );
+    const data = yield* call(
+      "search.messages",
+      {
+        query: `<@${input.userId}> after:${after}`,
+        count: "50",
+        sort: "timestamp",
+        sort_dir: "desc",
+        highlight: "false",
+      },
+      SearchData,
+    );
+    return data.messages.matches.map((match): SlackMention => ({
+      channelId: match.channel.id,
+      channelName:
+        match.channel.is_im || match.channel.is_mpim || match.channel.id.startsWith("D")
+          ? null
+          : (match.channel.name ?? null),
+      ts: match.ts,
+      threadTs: threadTsFromPermalink(match.permalink, match.ts),
+      userId: match.user ?? null,
+      text: match.text ?? "",
+      url: match.permalink,
+    }));
   });
 
   const authorName = (message: ThreadMessage) =>
@@ -308,7 +361,7 @@ export const make = Effect.gen(function* () {
     return preview;
   });
 
-  return SlackApi.of({ searchMessages, getThread, getLinkPreview });
+  return SlackApi.of({ searchMessages, searchMentions, getThread, getLinkPreview });
 });
 
 /** Link previews persist under the caches directory, or in memory when it cannot be used. */

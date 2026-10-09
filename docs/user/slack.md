@@ -76,3 +76,28 @@ Slack and deletes it. The client ID stays, so reconnecting is one click. Message
 stay as they were.
 
 If Slack revokes access, the setting shows **Reconnect Slack**.
+
+## Start a thread when you are mentioned
+
+In **Settings > Integrations > Slack** on web or desktop, choose a mention project and enter the
+channel names or IDs to watch. You can also include direct and group messages, require a keyword,
+set the instructions to send, and choose a provider and model. Then turn on **Start threads from
+Slack mentions**. It is off by default. Changing these settings requires permission to write
+settings and operate threads on the selected environment.
+
+The environment checks once a minute for explicit @mentions of its connected Slack account in
+messages that account can read. Each matching mention starts a thread in the project's root
+workspace with a Slack thread snapshot and link. It uses the selected model, or the project's
+default model, and the project's permission mode. The resulting threads are available on mobile
+as well. T3 Code does not reply to Slack.
+
+Mentions from before you enable the trigger are ignored. Turning it off and back on, or changing
+the connected account, starts a fresh baseline. Changing filters does not replay mentions already
+checked. Restarting the server retains the baseline and processed mentions; failed reads and
+launches retry with the same thread request. The server must be running, and each poll reads the
+newest 50 search results, so a larger backlog can miss older messages. Search visibility, indexing
+delays, retention, and rate limits are controlled by Slack. This watches one account and workspace
+per environment, not every workspace you use.
+
+Turn off the trigger to stop starting new threads. Turning off the Slack integration also stops
+polling. Threads already started continue normally.
