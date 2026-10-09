@@ -214,6 +214,12 @@ export interface AcpAdapterV2ExtensionContext {
 }
 
 export interface AcpAdapterV2Flavor {
+  /** Maps a provider-reported prompt aggregate, independently of context occupancy. */
+  readonly turnTokenUsage?: (
+    response: EffectAcpSchema.PromptResponse | undefined,
+    hasSubagents: boolean,
+    status: OrchestrationV2ProviderTurn["status"],
+  ) => OrchestrationV2ProviderTurn["turnTokenUsage"];
   /** Interprets provider-specific prompt errors before they cross into orchestration. */
   readonly promptFailure?: (cause: unknown) => OrchestrationV2ProviderFailure;
   readonly driver: ProviderDriverKind;
@@ -1176,6 +1182,7 @@ interface ActiveAcpTurn {
         readonly itemOrdinal: number;
       }
     | undefined;
+  promptResponse?: EffectAcpSchema.PromptResponse;
   contextUsage: ThreadTokenUsageSnapshot | null;
   nativeMetadata: OrchestrationV2ProviderThreadNativeMetadata | null;
   readonly tools: Map<string, AcpToolCallState>;
@@ -6524,6 +6531,15 @@ export function makeAcpAdapterV2(
           status,
           startedAt: context.startedAt,
           completedAt,
+          ...(flavor.turnTokenUsage === undefined
+            ? {}
+            : {
+                turnTokenUsage: flavor.turnTokenUsage(
+                  context.promptResponse,
+                  context.subagents.size > 0,
+                  status,
+                ),
+              }),
         });
 
         const terminalizeOpenRunOwnedItems = Effect.fnUntraced(function* (
@@ -7194,6 +7210,7 @@ export function makeAcpAdapterV2(
                   promptGeneration,
                   Effect.gen(function* () {
                     if (context.finalized) return;
+                    context.promptResponse = result;
                     const status =
                       result.stopReason === "cancelled"
                         ? context.interrupted

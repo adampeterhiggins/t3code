@@ -4,6 +4,7 @@ import { it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as TestClock from "effect/testing/TestClock";
 import * as Schema from "effect/Schema";
 import { describe, expect } from "vite-plus/test";
 
@@ -1412,10 +1413,78 @@ describe("XAiAcpExtension", () => {
         sessionId: "root-session",
         stopReason: "end_turn",
       });
+      yield* TestClock.adjust("250 millis");
       const response = yield* Fiber.join(promptFiber);
       expect(response.stopReason).toBe("end_turn");
       expect(handlers.has("_x.ai/session/prompt_complete")).toBe(true);
     }),
+  );
+
+  it.effect.each(["notification", "rpc"] as const)(
+    "retains prompt usage from %s after an empty completion, without counting duplicate snapshots",
+    (source) =>
+      Effect.gen(function* () {
+        const handlers = new Map<string, (notification: unknown) => Effect.Effect<void>>();
+        const rpc = yield* Deferred.make<import("effect-acp/compat").PromptResponse>();
+        const baseRuntime = {
+          start: () => Effect.succeed({ sessionId: "root-session" }),
+          prompt: () => Deferred.await(rpc),
+          cancel: Effect.void,
+          handleExtNotification: (
+            method: string,
+            _schema: unknown,
+            handler: (notification: unknown) => Effect.Effect<void>,
+          ) => {
+            handlers.set(method, handler);
+            return Effect.void;
+          },
+        } as unknown as AcpSessionRuntime.AcpSessionRuntime["Service"];
+        const runtime = yield* makeXAiPromptCompletionRuntime(baseRuntime);
+        const promptFiber = yield* runtime
+          .prompt({ prompt: [{ type: "text", text: "first" }] })
+          .pipe(Effect.forkChild);
+        yield* Effect.yieldNow;
+        yield* handlers.get("_x.ai/session/prompt_complete")!({
+          sessionId: "root-session",
+          promptId: "t3-xai-prompt-1",
+          stopReason: "end_turn",
+        });
+        yield* Effect.yieldNow;
+        const usage = {
+          inputTokens: 40,
+          outputTokens: 8,
+          cachedReadTokens: 20,
+          reasoningTokens: 4,
+        };
+        if (source === "notification") {
+          const payload = {
+            sessionId: "root-session",
+            update: {
+              sessionUpdate: "turn_completed",
+              prompt_id: "t3-xai-prompt-1",
+              stop_reason: "end_turn",
+              usage,
+            },
+          };
+          yield* handlers.get("_x.ai/session_notification")!(payload);
+          yield* handlers.get("_x.ai/session_notification")!(payload);
+        } else {
+          yield* Deferred.succeed(rpc, { stopReason: "end_turn", _meta: { usage } });
+        }
+        const result = yield* Fiber.join(promptFiber);
+        expect(result._meta?.usage).toEqual(usage);
+        // A completed prompt's duplicate must not settle the next prompt.
+        const next = yield* runtime
+          .prompt({ prompt: [{ type: "text", text: "second" }] })
+          .pipe(Effect.forkChild);
+        yield* Effect.yieldNow;
+        yield* handlers.get("_x.ai/session_notification")!({
+          sessionId: "root-session",
+          update: { sessionUpdate: "turn_completed", prompt_id: "t3-xai-prompt-1", usage },
+        });
+        if (source === "notification") expect(next.pollUnsafe()).toBeUndefined();
+        yield* Fiber.interrupt(next);
+      }),
   );
 
   it.effect("fails a hung prompt from an xAI rate-limit completion (#8358)", () =>
@@ -1565,6 +1634,7 @@ describe("XAiAcpExtension", () => {
           stop_reason: "end_turn",
         },
       });
+      yield* TestClock.adjust("250 millis");
       const response = yield* Fiber.join(promptFiber);
       expect(response.stopReason).toBe("end_turn");
       expect(notices).toHaveLength(1);
@@ -1617,6 +1687,7 @@ describe("XAiAcpExtension", () => {
           stop_reason: "end_turn",
         },
       });
+      yield* TestClock.adjust("250 millis");
       const response = yield* Fiber.join(promptFiber);
       expect(response.stopReason).toBe("end_turn");
     }),
@@ -1662,6 +1733,7 @@ describe("XAiAcpExtension", () => {
           stop_reason: "end_turn",
         },
       });
+      yield* TestClock.adjust("250 millis");
       const response = yield* Fiber.join(promptFiber);
       expect(response.stopReason).toBe("end_turn");
       expect(handlers.has("_x.ai/session/update")).toBe(true);
@@ -1838,44 +1910,63 @@ describe("XAiAcpExtension", () => {
     }),
   );
 
-  it.effect("cancels pending completions without restarting a stalled runtime", () =>
-    Effect.gen(function* () {
-      const hungStart = yield* Deferred.make<never>();
-      const hungPrompt = yield* Deferred.make<never>();
-      let startCount = 0;
-      let cancelCalled = false;
-      const baseRuntime = {
-        start: () => {
-          startCount += 1;
-          return startCount === 1
-            ? Effect.succeed({
-                sessionId: "root-session",
-                initializeResult: {},
-                sessionSetupResult: {},
-                modelConfigId: undefined,
-              })
-            : Deferred.await(hungStart);
-        },
-        prompt: () => Deferred.await(hungPrompt),
-        cancel: Effect.sync(() => {
-          cancelCalled = true;
-        }),
-        handleExtNotification: () => Effect.void,
-        handleExtRequest: () => Effect.void,
-      } as unknown as AcpSessionRuntime.AcpSessionRuntime["Service"];
+  it.effect.each([false, true])(
+    "cancels pending completions without restarting a stalled runtime (completed=%s)",
+    (completed) =>
+      Effect.gen(function* () {
+        const handlers = new Map<string, (notification: unknown) => Effect.Effect<void>>();
+        const hungStart = yield* Deferred.make<never>();
+        const hungPrompt = yield* Deferred.make<never>();
+        let startCount = 0;
+        let cancelCalled = false;
+        const baseRuntime = {
+          start: () => {
+            startCount += 1;
+            return startCount === 1
+              ? Effect.succeed({
+                  sessionId: "root-session",
+                  initializeResult: {},
+                  sessionSetupResult: {},
+                  modelConfigId: undefined,
+                })
+              : Deferred.await(hungStart);
+          },
+          prompt: () => Deferred.await(hungPrompt),
+          cancel: Effect.sync(() => {
+            cancelCalled = true;
+          }),
+          handleExtNotification: (
+            method: string,
+            _schema: unknown,
+            handler: (notification: unknown) => Effect.Effect<void>,
+          ) => {
+            handlers.set(method, handler);
+            return Effect.void;
+          },
+          handleExtRequest: () => Effect.void,
+        } as unknown as AcpSessionRuntime.AcpSessionRuntime["Service"];
 
-      const runtime = yield* makeXAiPromptCompletionRuntime(baseRuntime);
-      const promptFiber = yield* runtime
-        .prompt({ prompt: [{ type: "text", text: "hi" }] })
-        .pipe(Effect.forkChild);
-      yield* Effect.yieldNow;
+        const runtime = yield* makeXAiPromptCompletionRuntime(baseRuntime);
+        const promptFiber = yield* runtime
+          .prompt({ prompt: [{ type: "text", text: "hi" }] })
+          .pipe(Effect.forkChild);
+        yield* Effect.yieldNow;
 
-      yield* runtime.cancel;
+        if (completed) {
+          yield* handlers.get("_x.ai/session/prompt_complete")!({
+            sessionId: "root-session",
+            promptId: "t3-xai-prompt-1",
+            stopReason: "end_turn",
+          });
+          yield* Effect.yieldNow;
+        }
 
-      expect(cancelCalled).toBe(true);
-      expect(startCount).toBe(1);
-      expect((yield* Fiber.join(promptFiber)).stopReason).toBe("cancelled");
-    }),
+        yield* runtime.cancel;
+
+        expect(cancelCalled).toBe(true);
+        expect(startCount).toBe(1);
+        expect((yield* Fiber.join(promptFiber)).stopReason).toBe("cancelled");
+      }),
   );
 });
 

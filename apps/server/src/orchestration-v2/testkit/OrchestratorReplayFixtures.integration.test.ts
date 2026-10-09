@@ -21,6 +21,7 @@ import {
 } from "../Adapters/OpenCode2AdapterV2.testkit.ts";
 import { MuseOrchestratorReplayHarness } from "../Adapters/MuseAdapterV2.testkit.ts";
 import { PiOrchestratorReplayHarness } from "../Adapters/PiAdapterV2.testkit.ts";
+import { subagentUsageFromChildTurns } from "../SubagentProjection.ts";
 import * as IdAllocator from "../IdAllocator.ts";
 import { provideDeterministicTestRuntime } from "./DeterministicRuntime.ts";
 import { ORCHESTRATOR_REPLAY_FIXTURES } from "./fixtures/index.ts";
@@ -139,6 +140,44 @@ const runFixtureProvider = Effect.fn("runOrchestratorReplayFixture")(function* <
     input.driver.runContinuationWorker === true ? { runContinuationWorker: true } : {},
   ).pipe(provideDeterministicTestRuntime);
   input.driver.assertOutput(result, transcript);
+  if (input.driver.driver === "grok") {
+    const expectedUsage = new Map<string, ReadonlyArray<ReadonlyArray<number | undefined>>>(
+      Object.entries({
+        simple: [[22229, 34, 1664, 31]],
+        multi_turn: [
+          [22168, 36, 1664, 32],
+          [22548, 19, 1152, 15],
+        ],
+        todo_list: [[117264, 1322, 72448, 898]],
+        grok_prompt_error: [
+          [undefined, undefined, undefined, undefined],
+          [24205, 39, 11264, 33],
+        ],
+      }),
+    ).get(input.fixtureName);
+    if (expectedUsage !== undefined) {
+      const turns = [...result.projections.values()].flatMap(
+        (projection) => projection.providerTurns,
+      );
+      assert.deepEqual(
+        turns.map(({ turnTokenUsage: usage }) => [
+          usage?.inputTokens,
+          usage?.outputTokens,
+          usage?.cachedInputTokens,
+          usage?.reasoningTokens,
+        ]),
+        expectedUsage,
+      );
+      assert.equal(
+        subagentUsageFromChildTurns(turns, 0)?.totalTokens,
+        expectedUsage.reduce((total, [input, output]) => total + (input ?? 0) + (output ?? 0), 0),
+      );
+      assert.deepEqual(
+        turns.map(({ turnTokenUsage: usage }) => usage?.usageStatus),
+        expectedUsage.map(([input]) => (input === undefined ? "unavailable" : "complete")),
+      );
+    }
+  }
   assertProviderNativeSubagentRootTurns(result);
   const expectedAbsentWorkspacePaths = input.driver.expectedAbsentWorkspacePaths;
   if (expectedAbsentWorkspacePaths !== undefined) {

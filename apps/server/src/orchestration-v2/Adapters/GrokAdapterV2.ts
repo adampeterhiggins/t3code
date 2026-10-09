@@ -23,6 +23,7 @@ import type * as Scope from "effect/Scope";
 import { ChildProcessSpawner } from "effect/process";
 import * as EffectAcpErrors from "effect-acp/errors";
 
+import { normalizeGrokTurnTokenUsage } from "../../provider/acp/GrokTurnTokenUsage.ts";
 import * as ServerConfig from "../../config.ts";
 import { makeAcpNativeLoggerFactory } from "../../provider/acp/AcpNativeLogging.ts";
 import {
@@ -304,6 +305,7 @@ export function makeGrokAcpAdapterFlavor(options: GrokAdapterV2Options): AcpAdap
             }
           : { class: "provider_error" }),
       }),
+    turnTokenUsage: normalizeGrokTurnTokenUsage,
     registerExtensions: registerGrokAcpExtensions,
     extractSubagentUpdate: extractXAiAcpSubagentUpdate,
     extractSubagentEndNotice: extractXAiAcpSubagentEndNotice,
