@@ -1,11 +1,13 @@
 "use client";
 
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
-import { CheckIcon, ChevronRightIcon } from "lucide-react";
+import { CheckIcon, ChevronRightIcon, SearchIcon } from "lucide-react";
+import { useState } from "react";
 import type * as React from "react";
 
 import { cn } from "~/lib/utils";
 import { buttonVariants } from "./button";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "./input-group";
 
 const Menu = MenuPrimitive.Root;
 
@@ -324,6 +326,98 @@ function MenuSubPopup({
   );
 }
 
+/** Past this many options a menu offers a search field at its top. */
+const MENU_SEARCH_THRESHOLD = 8;
+
+/**
+ * A search field for the top of a menu. It takes focus when the menu opens and keeps typing
+ * to itself, so letters filter rather than jump; ArrowDown moves into the items and Escape
+ * closes the menu as usual.
+ */
+function MenuSearchInput({
+  value,
+  placeholder,
+  onChange,
+}: {
+  value: string;
+  placeholder: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="p-1 pb-2">
+      <InputGroup>
+        <InputGroupAddon>
+          <SearchIcon aria-hidden />
+        </InputGroupAddon>
+        <InputGroupInput
+          autoFocus
+          size="compact"
+          value={value}
+          onChange={(event) => onChange(event.currentTarget.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "ArrowDown" && event.key !== "Escape") event.stopPropagation();
+          }}
+          placeholder={placeholder}
+          aria-label={placeholder}
+        />
+      </InputGroup>
+    </div>
+  );
+}
+
+/** The search text as matching compares it: trimmed, case-insensitive. */
+function normalizeMenuSearch(query: string): string {
+  return query.trim().toLowerCase();
+}
+
+/**
+ * Filters a long menu's options as the user types, case-insensitively by `getText`. Short
+ * lists (MENU_SEARCH_THRESHOLD or fewer) render without the field. Render it inside the popup
+ * so the search clears whenever the menu closes. `children` gets the matching options and the
+ * normalized query, which is empty while nothing is typed.
+ */
+function MenuSearch<T>({
+  items,
+  getText,
+  placeholder = "Search…",
+  children,
+}: {
+  items: ReadonlyArray<T>;
+  getText: (item: T) => string;
+  placeholder?: string;
+  children: (matches: ReadonlyArray<T>, query: string) => React.ReactNode;
+}) {
+  const [value, setValue] = useState("");
+  if (items.length <= MENU_SEARCH_THRESHOLD) return children(items, "");
+  const query = normalizeMenuSearch(value);
+  const matches =
+    query.length === 0
+      ? items
+      : items.filter((item) => getText(item).toLowerCase().includes(query));
+  return (
+    <>
+      <MenuSearchInput value={value} placeholder={placeholder} onChange={setValue} />
+      {matches.length === 0 ? <MenuItem disabled>No matches</MenuItem> : children(matches, query)}
+    </>
+  );
+}
+
+/** `text` with the first match of a normalized `query` underlined, so it is clear why it matched. */
+function MenuSearchHighlight({ text, query }: { text: string; query: string }) {
+  const start = query.length === 0 ? -1 : text.toLowerCase().indexOf(query);
+  if (start === -1) return text;
+  const end = start + query.length;
+  return (
+    <>
+      {text.slice(0, start)}
+      <span className="underline decoration-primary underline-offset-2">
+        {text.slice(start, end)}
+      </span>
+      {text.slice(end)}
+    </>
+  );
+}
+
 export {
   Menu,
   Menu as DropdownMenu,
@@ -355,4 +449,8 @@ export {
   MenuSubTrigger as DropdownMenuSubTrigger,
   MenuSubPopup,
   MenuSubPopup as DropdownMenuSubContent,
+  MenuSearch,
+  MenuSearchHighlight,
+  MenuSearchInput,
+  normalizeMenuSearch,
 };

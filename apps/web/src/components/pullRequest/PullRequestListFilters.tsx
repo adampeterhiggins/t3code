@@ -38,11 +38,15 @@ import {
   MenuRadioGroup,
   MenuRadioItem,
   MenuRadioItemIndicator,
+  MenuSearch,
+  MenuSearchHighlight,
+  MenuSearchInput,
   MenuSeparator,
   MenuSub,
   MenuSubPopup,
   MenuSubTrigger,
   MenuTrigger,
+  normalizeMenuSearch,
 } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
@@ -270,7 +274,7 @@ function PullRequestAuthorFilter({
   onChange: (author: string | undefined) => void;
 }) {
   const [query, setQuery] = useState("");
-  const needle = query.trim().toLowerCase();
+  const needle = normalizeMenuSearch(query);
   const login = value?.toLowerCase() ?? "";
   const selected = options.find((option) => option.actor.login.toLowerCase() === login);
   const visible = [
@@ -294,24 +298,7 @@ function PullRequestAuthorFilter({
         </span>
       </MenuSubTrigger>
       <MenuSubPopup>
-        <div className="p-1 pb-2">
-          <InputGroup>
-            <InputGroupAddon>
-              <SearchIcon aria-hidden />
-            </InputGroupAddon>
-            <InputGroupInput
-              autoFocus
-              size="compact"
-              value={query}
-              onChange={(event) => setQuery(event.currentTarget.value)}
-              onKeyDown={(event) => {
-                if (event.key !== "ArrowDown" && event.key !== "Escape") event.stopPropagation();
-              }}
-              placeholder="Search authors"
-              aria-label="Search authors"
-            />
-          </InputGroup>
-        </div>
+        <MenuSearchInput value={query} placeholder="Search authors" onChange={setQuery} />
         <MenuRadioGroup value={selected?.actor.login ?? value ?? ""} onValueChange={select}>
           <MenuRadioItem value="">
             <span className="flex min-w-0 items-center gap-2">
@@ -366,36 +353,44 @@ function PullRequestLabelFilter({
         {visible.length === 0 ? (
           <MenuItem disabled>No labels in this view</MenuItem>
         ) : (
-          visible.map((option) => {
-            const key = option.name.toLowerCase();
-            const checked = selected.has(key);
-            const dot = pullRequestLabelColor(option.color);
-            return (
-              <MenuCheckboxItem
-                key={key}
-                checked={checked}
-                onCheckedChange={(next) =>
-                  onChange(
-                    next
-                      ? [...value, option.name]
-                      : value.filter((name) => name.toLowerCase() !== option.name.toLowerCase()),
-                  )
-                }
-              >
-                <span className="flex min-w-0 items-center gap-2">
-                  <span
-                    aria-hidden
-                    className="size-2.5 shrink-0 rounded-full bg-muted-foreground"
-                    {...(dot ? { style: { backgroundColor: dot } } : {})}
-                  />
-                  <span className="min-w-0 flex-1 truncate">{option.name}</span>
-                  <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                    {option.count}
-                  </span>
-                </span>
-              </MenuCheckboxItem>
-            );
-          })
+          <MenuSearch items={visible} getText={(option) => option.name} placeholder="Search labels">
+            {(matches, query) =>
+              matches.map((option) => {
+                const key = option.name.toLowerCase();
+                const checked = selected.has(key);
+                const dot = pullRequestLabelColor(option.color);
+                return (
+                  <MenuCheckboxItem
+                    key={key}
+                    checked={checked}
+                    onCheckedChange={(next) =>
+                      onChange(
+                        next
+                          ? [...value, option.name]
+                          : value.filter(
+                              (name) => name.toLowerCase() !== option.name.toLowerCase(),
+                            ),
+                      )
+                    }
+                  >
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span
+                        aria-hidden
+                        className="size-2.5 shrink-0 rounded-full bg-muted-foreground"
+                        {...(dot ? { style: { backgroundColor: dot } } : {})}
+                      />
+                      <span className="min-w-0 flex-1 truncate">
+                        <MenuSearchHighlight text={option.name} query={query} />
+                      </span>
+                      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                        {option.count}
+                      </span>
+                    </span>
+                  </MenuCheckboxItem>
+                );
+              })
+            }
+          </MenuSearch>
         )}
       </MenuSubPopup>
     </MenuSub>

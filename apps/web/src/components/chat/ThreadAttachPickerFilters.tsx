@@ -8,6 +8,8 @@ import {
   MenuPopup,
   MenuRadioGroup,
   MenuRadioItem,
+  MenuSearch,
+  MenuSearchHighlight,
   MenuSub,
   MenuSubPopup,
   MenuSubTrigger,
@@ -53,20 +55,28 @@ export function ThreadAttachPickerFilterBar(props: {
               Project{view.projectIds.length > 0 ? ` (${view.projectIds.length})` : ""}
             </MenuSubTrigger>
             <MenuSubPopup>
-              {props.projects.map((project) => (
-                <MenuCheckboxItem
-                  key={project.value}
-                  checked={view.projectIds.includes(project.value)}
-                  onCheckedChange={(checked) =>
-                    props.onChange({
-                      ...view,
-                      projectIds: toggle(view.projectIds, project.value, checked),
-                    })
-                  }
-                >
-                  {project.label}
-                </MenuCheckboxItem>
-              ))}
+              <MenuSearch
+                items={props.projects}
+                getText={(project) => project.label}
+                placeholder="Search projects"
+              >
+                {(matches, query) =>
+                  matches.map((project) => (
+                    <MenuCheckboxItem
+                      key={project.value}
+                      checked={view.projectIds.includes(project.value)}
+                      onCheckedChange={(checked) =>
+                        props.onChange({
+                          ...view,
+                          projectIds: toggle(view.projectIds, project.value, checked),
+                        })
+                      }
+                    >
+                      <MenuSearchHighlight text={project.label} query={query} />
+                    </MenuCheckboxItem>
+                  ))
+                }
+              </MenuSearch>
             </MenuSubPopup>
           </MenuSub>
           <MenuSub>
@@ -75,24 +85,32 @@ export function ThreadAttachPickerFilterBar(props: {
               {view.providerInstanceIds.length > 0 ? ` (${view.providerInstanceIds.length})` : ""}
             </MenuSubTrigger>
             <MenuSubPopup>
-              {props.providers.map((provider) => (
-                <MenuCheckboxItem
-                  key={provider.value}
-                  checked={view.providerInstanceIds.includes(provider.value)}
-                  onCheckedChange={(checked) =>
-                    props.onChange({
-                      ...view,
-                      providerInstanceIds: toggle(
-                        view.providerInstanceIds,
-                        provider.value,
-                        checked,
-                      ),
-                    })
-                  }
-                >
-                  {provider.label}
-                </MenuCheckboxItem>
-              ))}
+              <MenuSearch
+                items={props.providers}
+                getText={(provider) => provider.label}
+                placeholder="Search providers"
+              >
+                {(matches, query) =>
+                  matches.map((provider) => (
+                    <MenuCheckboxItem
+                      key={provider.value}
+                      checked={view.providerInstanceIds.includes(provider.value)}
+                      onCheckedChange={(checked) =>
+                        props.onChange({
+                          ...view,
+                          providerInstanceIds: toggle(
+                            view.providerInstanceIds,
+                            provider.value,
+                            checked,
+                          ),
+                        })
+                      }
+                    >
+                      <MenuSearchHighlight text={provider.label} query={query} />
+                    </MenuCheckboxItem>
+                  ))
+                }
+              </MenuSearch>
             </MenuSubPopup>
           </MenuSub>
         </MenuPopup>
