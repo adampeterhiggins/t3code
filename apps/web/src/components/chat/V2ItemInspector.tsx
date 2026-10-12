@@ -41,6 +41,8 @@ interface V2ItemInspectorProps {
   readonly workspaceRoot?: string | undefined;
   /** Omit a command's text when the surrounding surface already shows it, as the hover preview does. */
   readonly hideCommand?: boolean | undefined;
+  /** The command preview's output disclosure already shows its exit code. */
+  readonly hideExitCode?: boolean | undefined;
   /** Hover previews opt in; expanded chat rows keep commands and arguments plain. */
   readonly highlightSyntax?: boolean | undefined;
   readonly onOpenThread: (threadId: ThreadId) => void;
@@ -301,7 +303,7 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
         <ToolCallBody
           command={props.hideCommand ? "" : item.input}
           highlightSyntax={props.highlightSyntax}
-          exitCode={item.exitCode}
+          exitCode={props.hideExitCode ? undefined : item.exitCode}
           {...outputState}
           onImageExpand={props.onImageExpand}
         />

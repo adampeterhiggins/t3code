@@ -343,10 +343,12 @@ the agent views fetch a read's stored output when its call is hovered or expande
 carries what it reported back, such as an `Error:` line, when its output came with the timeline;
 v2 command items record no working directory, so none is shown. On web and desktop, collapsed tool calls in
 the main chat also preview on hover; clicking still expands them inline. The card shows the tool
-heading, the workspace-relative syntax-highlighted command or full label, then the same details the
-row expands to (output loads only once the card opens, and a non-zero exit code shows with it), with
-time and status in a compact footer. Syntax highlighting for commands and tool arguments is
-limited to hover previews; expanded chat rows show plain text. Thoughts and answered questions do not preview
+heading and the workspace-relative command or full label. Command hover cards show plain command
+text and status, with output behind **View output**; opening that disclosure loads the output.
+The exit code and time stay visible beside the disclosure, including failed exits. Other tool
+cards show the same details the row expands to, with time and status in a compact footer.
+Syntax highlighting for tool arguments is limited to hover previews; expanded chat rows show
+plain text. Thoughts and answered questions do not preview
 ([`MessagesTimeline.tsx`](../apps/web/src/components/chat/MessagesTimeline.tsx),
 [`toolCallPreview.ts`](../apps/web/src/lib/toolCallPreview.ts)).
 A tool call's expanded row, and its hover card on web and desktop, show common tools as what

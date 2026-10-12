@@ -316,7 +316,7 @@ import {
   formatUpcomingTimestamp,
 } from "../../timestampFormat";
 import { FetchedToolOutput, V2ItemInspector } from "./V2ItemInspector";
-import { ShellCommandBlock } from "./ShellCommandBlock";
+import { CommandToolPreview } from "./CommandToolPreview";
 import { useV2ItemSupport } from "../../state/v2ItemSupport";
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "../ui/collapsible";
 import {
@@ -5533,6 +5533,7 @@ function WorkEntryDetailBody(
   props: WorkEntryDetailProps & {
     textBody: string | null;
     hideCommand?: boolean;
+    hideExitCode?: boolean;
     highlightSyntax?: boolean;
   },
 ) {
@@ -5546,6 +5547,7 @@ function WorkEntryDetailBody(
         cwd={ctx.markdownCwd}
         workspaceRoot={props.workspaceRoot}
         hideCommand={props.hideCommand}
+        hideExitCode={props.hideExitCode}
         highlightSyntax={props.highlightSyntax}
         onOpenThread={ctx.onOpenThread}
         onOpenTurnDiff={ctx.onOpenTurnDiff}
@@ -5581,9 +5583,6 @@ function WorkEntryDetailBody(
   );
 }
 
-const toolCallPreviewCommandClassName =
-  "max-h-40 overflow-auto font-mono text-(length:--font-size-code,var(--text-2xs)) leading-relaxed whitespace-pre-wrap break-words select-text";
-
 /**
  * A collapsed tool row's hover card: the tool's heading, the command or full
  * label, then the same details the row expands to. Mounts only while open, so
@@ -5611,6 +5610,25 @@ function ToolCallPreviewContent(
             heading.command ?? props.previewText,
             null,
           );
+  if (heading.command) {
+    const item = workEntry.projectedItem?.item;
+    return (
+      <CommandToolPreview
+        heading={
+          <>
+            {props.icon}
+            <span className="min-w-0 break-all">{heading.title}</span>
+          </>
+        }
+        command={heading.command}
+        status={toolCallPreviewStatus(workEntry)}
+        timestamp={formatSecondsTimestamp(workEntry.createdAt, timestampFormat)}
+        exitCode={item?.type === "command_execution" ? item.exitCode : undefined}
+      >
+        <WorkEntryDetailBody {...props} textBody={textBody} hideCommand hideExitCode />
+      </CommandToolPreview>
+    );
+  }
   return (
     <div className="flex max-h-[60vh] flex-col gap-1.5 overflow-auto p-3">
       <div className="flex items-start gap-1.5 text-xs text-secondary-label">
@@ -5624,11 +5642,7 @@ function ToolCallPreviewContent(
           />
         </span>
       </div>
-      {heading.command ? (
-        <div className={toolCallPreviewCommandClassName}>
-          <ShellCommandBlock command={heading.command} highlightSyntax />
-        </div>
-      ) : headingText ? (
+      {headingText ? (
         <p className="text-xs break-words whitespace-pre-wrap text-foreground/85 select-text">
           {toolEntryShowsPathBreadcrumbs(workEntry) ? (
             <ToolPathText
