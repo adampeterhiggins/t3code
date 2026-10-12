@@ -349,12 +349,11 @@ export const make = Effect.gen(function* () {
         userTurnLimit: HANDOFF_USER_TURN_LIMIT,
       })
       .pipe(Effect.mapError(read));
+    const pointOf = ({ projection }: typeof recent) =>
+      latestThreadForkPoint(projection.visibleTurnItems, projection.runs);
     const point =
-      latestThreadForkPoint(recent.projection.visibleTurnItems) ??
-      latestThreadForkPoint(
-        (yield* threads.getThreadSnapshot(sourceThreadId).pipe(Effect.mapError(read))).projection
-          .visibleTurnItems,
-      );
+      pointOf(recent) ??
+      pointOf(yield* threads.getThreadSnapshot(sourceThreadId).pipe(Effect.mapError(read)));
     if (point === null) {
       return yield* new ThreadTabsError({
         reason: "invalid_request",
@@ -376,6 +375,13 @@ export const make = Effect.gen(function* () {
       input.runId === undefined
         ? yield* latestForkPoint(input.sourceThreadId)
         : { sourceThreadId: input.sourceThreadId, runId: input.runId };
+    // The orchestrator refuses an unfinished turn too, but as a dispatch failure.
+    if (point.runId === source.activeRunId) {
+      return yield* new ThreadTabsError({
+        reason: "invalid_request",
+        detail: "That response's turn is still running. Fork it once the turn finishes.",
+      });
+    }
     const forked = yield* addTab(tab, input.threadId, {
       type: "thread.fork",
       commandId: yield* newCommandId("thread-tab-fork"),

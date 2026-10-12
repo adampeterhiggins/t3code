@@ -1,6 +1,7 @@
 import {
   EnvironmentId,
   MessageId,
+  RunId,
   ThreadId,
   type OrchestrationV2ProjectedTurnItem,
 } from "@t3tools/contracts";
@@ -208,16 +209,32 @@ describe("native fork points", () => {
   ];
 
   it("forks a whole chat from its latest finished response", () => {
-    expect(latestThreadForkPoint(items)).toEqual({ sourceThreadId: fork, runId: "r2" });
-    expect(latestThreadForkPoint(items.slice(0, 1))).toBeNull();
+    expect(latestThreadForkPoint(items, [])).toEqual({ sourceThreadId: fork, runId: "r2" });
+    expect(latestThreadForkPoint(items.slice(0, 1), [])).toBeNull();
+  });
+
+  it("skips responses a still-running turn completed between its tool calls", () => {
+    const running = [
+      ...items.slice(0, 4),
+      entry(fork, { type: "user_message", messageId: "m3", runId: "r3" }),
+      entry(fork, { type: "assistant_message", status: "completed", runId: "r3" }),
+    ];
+    const runs = [
+      { id: RunId.make("r2"), status: "completed" },
+      { id: RunId.make("r3"), status: "running" },
+    ] as const;
+    expect(latestThreadForkPoint(running, runs)).toEqual({ sourceThreadId: fork, runId: "r2" });
+    expect(latestThreadForkPoint(running, [{ id: RunId.make("r3"), status: "completed" }])).toEqual(
+      { sourceThreadId: fork, runId: "r3" },
+    );
   });
 
   it("forks before a message from the response it followed, in the thread that owns it", () => {
-    expect(threadForkPointBeforeMessage(items, MessageId.make("m2"))).toEqual({
+    expect(threadForkPointBeforeMessage(items, [], MessageId.make("m2"))).toEqual({
       sourceThreadId: parent,
       runId: "r1",
     });
-    expect(threadForkPointBeforeMessage(items, MessageId.make("m1"))).toBeNull();
-    expect(threadForkPointBeforeMessage(items, MessageId.make("unloaded"))).toBeNull();
+    expect(threadForkPointBeforeMessage(items, [], MessageId.make("m1"))).toBeNull();
+    expect(threadForkPointBeforeMessage(items, [], MessageId.make("unloaded"))).toBeNull();
   });
 });

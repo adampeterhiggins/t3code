@@ -2,8 +2,10 @@ import * as Schema from "effect/Schema";
 import { MessageId, RunId, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { ModelSelection } from "./modelSelection.ts";
 import {
+  isForkableSourceRunStatus,
   OrchestrationV2CreationSource,
   type OrchestrationV2ProjectedTurnItem,
+  type OrchestrationV2Run,
 } from "./orchestrationV2.ts";
 
 export const ThreadTab = Schema.Struct({
@@ -81,23 +83,29 @@ export interface ThreadForkPoint {
   readonly runId: RunId;
 }
 
-const forkPointOf = (entry: OrchestrationV2ProjectedTurnItem): ThreadForkPoint | null =>
-  entry.item.type === "assistant_message" &&
-  entry.item.status === "completed" &&
-  entry.item.runId !== null
-    ? { sourceThreadId: entry.sourceThreadId, runId: entry.item.runId }
-    : null;
-
 /**
  * The fork point for carrying a whole chat into a new tab: its latest completed response, which
- * may be inherited from an earlier fork. Null when no response has finished yet.
+ * may be inherited from an earlier fork. A running turn completes messages between its tool calls,
+ * so responses whose run in `runs` has not finished are skipped. Runs missing from `runs`, such as
+ * inherited ones, count as finished. Null when no response has finished yet.
  */
 export function latestThreadForkPoint(
   items: ReadonlyArray<OrchestrationV2ProjectedTurnItem>,
+  runs: ReadonlyArray<Pick<OrchestrationV2Run, "id" | "status">>,
 ): ThreadForkPoint | null {
+  const unfinished = new Set(
+    runs.filter((run) => !isForkableSourceRunStatus(run.status)).map((run) => run.id),
+  );
   for (let index = items.length - 1; index >= 0; index--) {
-    const point = forkPointOf(items[index]!);
-    if (point) return point;
+    const { item, sourceThreadId } = items[index]!;
+    if (
+      item.type === "assistant_message" &&
+      item.status === "completed" &&
+      item.runId !== null &&
+      !unfinished.has(item.runId)
+    ) {
+      return { sourceThreadId, runId: item.runId };
+    }
   }
   return null;
 }
