@@ -5219,6 +5219,24 @@ function BrowserAppIcon({ className }: { className: string }) {
   );
 }
 
+/**
+ * Whether a provider-supplied icon is Linear's, either hosted on linear.app or a favicon-service
+ * URL for it (Claude connectors send `…/s2/favicons?domain=linear.app`). Linear tool rows use our
+ * monochrome mark instead, so they match the other integration icons.
+ */
+function toolActivityIconIsLinear(icon: ToolActivityIcon): boolean {
+  const rawUrl =
+    icon._tag === "website" ? icon.pageUrl : icon._tag === "themed-logo" ? icon.logoUrl : null;
+  if (!rawUrl) return false;
+  try {
+    const url = new URL(rawUrl);
+    const host = (url.searchParams.get("domain") ?? url.hostname).toLowerCase();
+    return host === "linear.app" || host.endsWith(".linear.app");
+  } catch {
+    return false;
+  }
+}
+
 function ToolActivityIconView(props: {
   icon: ToolActivityIcon | undefined;
   fallbackName: WorkEntryIconName;
@@ -5229,6 +5247,9 @@ function ToolActivityIconView(props: {
   const fallbackClassName = cn(props.className, props.muted && "opacity-70 light:brightness-60");
   if (!props.icon) {
     return <WorkEntryIcon name={props.fallbackName} className={fallbackClassName} />;
+  }
+  if (toolActivityIconIsLinear(props.icon)) {
+    return <LinearIcon className={fallbackClassName} aria-hidden />;
   }
   if (props.icon._tag === "website") {
     const src = toolActivityFaviconUrl(props.icon, resolvedTheme, 32);
