@@ -21,7 +21,6 @@ import {
   ListFilterIcon,
   ListIcon,
   PlusIcon,
-  SearchIcon,
   SettingsIcon,
   XIcon,
 } from "lucide-react";
@@ -36,12 +35,13 @@ import { OrganisationIcon } from "./OrganisationIcon";
 import { ThreadGroupIcon } from "./ThreadGroupIcon";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { Button } from "../ui/button";
-import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
+import { HighlightedSearchText } from "../ui/highlighted-search-text";
 import {
   Menu,
   MenuCheckboxItem,
   MenuItem,
   MenuPopup,
+  MenuSearch,
   MenuSeparator,
   MenuSub,
   MenuSubPopup,
@@ -76,9 +76,6 @@ function SidebarPageIcon(props: { page: SidebarPage; groupStyles: ThreadGroups }
   return <Icon aria-hidden className="size-3.5 shrink-0" />;
 }
 
-/** Past this many projects the submenu offers a search field. */
-const PROJECT_SEARCH_THRESHOLD = 8;
-
 /** Rows kept in the hover preview before the rest collapse to a count. */
 const FILTER_PREVIEW_ROW_LIMIT = 8;
 
@@ -102,10 +99,12 @@ function OnlyButton(props: { onClick: () => void }) {
   );
 }
 
-function ChoiceLabel(props: { label: string; onOnly: () => void }) {
+function ChoiceLabel(props: { label: string; query?: string; onOnly: () => void }) {
   return (
     <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
-      <span className="min-w-0 truncate">{props.label}</span>
+      <span className="min-w-0 truncate">
+        <HighlightedSearchText text={props.label} query={props.query ?? ""} />
+      </span>
       <OnlyButton onClick={props.onOnly} />
     </span>
   );
@@ -180,13 +179,7 @@ function SidebarProjectFilter(props: {
   onProjectSettings: (event: ReactMouseEvent<HTMLElement>, project: SidebarProjectSnapshot) => void;
   projectBadge: (project: SidebarProjectSnapshot) => ReactNode;
 }) {
-  const [query, setQuery] = useState("");
-  const needle = query.trim().toLowerCase();
   const scoped = new Set(props.scopedProjectKeys);
-  const visible =
-    needle.length === 0
-      ? props.projects
-      : props.projects.filter((project) => project.displayName.toLowerCase().includes(needle));
   const scopedProjects = props.projects.filter((project) => scoped.has(project.projectKey));
   const single = scopedProjects.length === 1 ? scopedProjects[0]! : null;
   return (
@@ -207,72 +200,62 @@ function SidebarProjectFilter(props: {
         </span>
       </MenuSubTrigger>
       <MenuSubPopup className="max-w-[min(18rem,var(--available-width))] min-w-56">
-        {props.projects.length > PROJECT_SEARCH_THRESHOLD ? (
-          <div className="p-1 pb-2">
-            <InputGroup>
-              <InputGroupAddon>
-                <SearchIcon aria-hidden />
-              </InputGroupAddon>
-              <InputGroupInput
-                autoFocus
-                size="compact"
-                value={query}
-                onChange={(event) => setQuery(event.currentTarget.value)}
-                onKeyDown={(event) => {
-                  if (event.key !== "ArrowDown" && event.key !== "Escape") event.stopPropagation();
-                }}
-                placeholder="Search projects"
-                aria-label="Search projects"
-              />
-            </InputGroup>
-          </div>
-        ) : null}
-        {needle.length === 0 ? (
-          <MenuCheckboxItem
-            checked={scoped.size === 0}
-            onCheckedChange={() => props.onScopedProjectKeysChange([])}
-          >
-            <span className="flex min-w-0 items-center gap-2">
-              <LayersIcon aria-hidden className="size-3.5 shrink-0" />
-              All projects
-            </span>
-          </MenuCheckboxItem>
-        ) : null}
-        {visible.map((project) => (
-          <MenuCheckboxItem
-            key={project.projectKey}
-            checked={scoped.has(project.projectKey)}
-            onCheckedChange={(checked) =>
-              props.onScopedProjectKeysChange(
-                checked
-                  ? [...props.scopedProjectKeys, project.projectKey]
-                  : props.scopedProjectKeys.filter((key) => key !== project.projectKey),
-              )
-            }
-            onContextMenu={(event) => props.onProjectSettings(event, project)}
-          >
-            <span className="flex w-full min-w-0 items-center gap-2">
-              <ProjectFavicon project={project} className="size-3.5 shrink-0" />
-              <ChoiceLabel
-                label={project.displayName}
-                onOnly={() => props.onScopedProjectKeysChange([project.projectKey])}
-              />
-              {props.projectBadge(project)}
-              <Button
-                size="icon-xs"
-                variant="ghost-muted"
-                tabIndex={-1}
-                aria-hidden="true"
-                title={`Project settings for ${project.displayName}`}
-                onPointerDown={(event) => event.stopPropagation()}
-                onClick={(event) => props.onProjectSettings(event, project)}
-              >
-                <SettingsIcon className="size-3.5" />
-              </Button>
-            </span>
-          </MenuCheckboxItem>
-        ))}
-        {visible.length === 0 ? <MenuItem disabled>No matching projects</MenuItem> : null}
+        <MenuSearch
+          items={props.projects}
+          getText={(project) => project.displayName}
+          placeholder="Search projects"
+        >
+          {(visible, query) => (
+            <>
+              {query.length === 0 ? (
+                <MenuCheckboxItem
+                  checked={scoped.size === 0}
+                  onCheckedChange={() => props.onScopedProjectKeysChange([])}
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <LayersIcon aria-hidden className="size-3.5 shrink-0" />
+                    All projects
+                  </span>
+                </MenuCheckboxItem>
+              ) : null}
+              {visible.map((project) => (
+                <MenuCheckboxItem
+                  key={project.projectKey}
+                  checked={scoped.has(project.projectKey)}
+                  onCheckedChange={(checked) =>
+                    props.onScopedProjectKeysChange(
+                      checked
+                        ? [...props.scopedProjectKeys, project.projectKey]
+                        : props.scopedProjectKeys.filter((key) => key !== project.projectKey),
+                    )
+                  }
+                  onContextMenu={(event) => props.onProjectSettings(event, project)}
+                >
+                  <span className="flex w-full min-w-0 items-center gap-2">
+                    <ProjectFavicon project={project} className="size-3.5 shrink-0" />
+                    <ChoiceLabel
+                      label={project.displayName}
+                      query={query}
+                      onOnly={() => props.onScopedProjectKeysChange([project.projectKey])}
+                    />
+                    {props.projectBadge(project)}
+                    <Button
+                      size="icon-xs"
+                      variant="ghost-muted"
+                      tabIndex={-1}
+                      aria-hidden="true"
+                      title={`Project settings for ${project.displayName}`}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => props.onProjectSettings(event, project)}
+                    >
+                      <SettingsIcon className="size-3.5" />
+                    </Button>
+                  </span>
+                </MenuCheckboxItem>
+              ))}
+            </>
+          )}
+        </MenuSearch>
       </MenuSubPopup>
     </MenuSub>
   );
@@ -300,36 +283,49 @@ function SidebarOrganisationFilter(props: {
         </span>
       </MenuSubTrigger>
       <MenuSubPopup className="max-w-[min(18rem,var(--available-width))] min-w-48">
-        <MenuCheckboxItem
-          checked={scoped.size === 0}
-          onCheckedChange={() => props.onScopedKeysChange([])}
+        <MenuSearch
+          items={props.organisations}
+          getText={(option) => option.label}
+          placeholder="Search organisations"
         >
-          <span className="flex min-w-0 items-center gap-2">
-            <LayersIcon aria-hidden className="size-3.5 shrink-0" />
-            All organisations
-          </span>
-        </MenuCheckboxItem>
-        {props.organisations.map((option) => (
-          <MenuCheckboxItem
-            key={option.key}
-            checked={scoped.has(option.key)}
-            onCheckedChange={(checked) =>
-              props.onScopedKeysChange(
-                checked
-                  ? [...props.scopedKeys, option.key]
-                  : props.scopedKeys.filter((key) => key !== option.key),
-              )
-            }
-          >
-            <span className="flex w-full min-w-0 items-center gap-2">
-              <OrganisationIcon organisation={option.organisation} />
-              <ChoiceLabel
-                label={option.label}
-                onOnly={() => props.onScopedKeysChange([option.key])}
-              />
-            </span>
-          </MenuCheckboxItem>
-        ))}
+          {(visible, query) => (
+            <>
+              {query.length === 0 ? (
+                <MenuCheckboxItem
+                  checked={scoped.size === 0}
+                  onCheckedChange={() => props.onScopedKeysChange([])}
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <LayersIcon aria-hidden className="size-3.5 shrink-0" />
+                    All organisations
+                  </span>
+                </MenuCheckboxItem>
+              ) : null}
+              {visible.map((option) => (
+                <MenuCheckboxItem
+                  key={option.key}
+                  checked={scoped.has(option.key)}
+                  onCheckedChange={(checked) =>
+                    props.onScopedKeysChange(
+                      checked
+                        ? [...props.scopedKeys, option.key]
+                        : props.scopedKeys.filter((key) => key !== option.key),
+                    )
+                  }
+                >
+                  <span className="flex w-full min-w-0 items-center gap-2">
+                    <OrganisationIcon organisation={option.organisation} />
+                    <ChoiceLabel
+                      label={option.label}
+                      query={query}
+                      onOnly={() => props.onScopedKeysChange([option.key])}
+                    />
+                  </span>
+                </MenuCheckboxItem>
+              ))}
+            </>
+          )}
+        </MenuSearch>
         <MenuSeparator />
         <MenuItem onClick={() => void navigate({ to: "/settings/organisations" })}>
           <span className="flex min-w-0 items-center gap-2">

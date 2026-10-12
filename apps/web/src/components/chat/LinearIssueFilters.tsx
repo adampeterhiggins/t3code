@@ -10,6 +10,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 import { Button } from "../ui/button";
+import { HighlightedSearchText } from "../ui/highlighted-search-text";
 import {
   Menu,
   MenuCheckboxItem,
@@ -18,6 +19,7 @@ import {
   MenuPopup,
   MenuRadioGroup,
   MenuRadioItem,
+  MenuSearch,
   MenuSeparator,
   MenuSub,
   MenuSubPopup,
@@ -156,20 +158,51 @@ export function LinearIssueFilterBar(props: {
   const { filters, sort } = view;
   const setFilters = (patch: Partial<LinearIssueFilters>) =>
     props.onChange({ ...view, filters: { ...filters, ...patch } });
+  const checkbox = <T,>(
+    entry: { value: T; label: string },
+    query: string,
+    selected: ReadonlyArray<T>,
+    onToggle: (value: T, checked: boolean) => void,
+  ) => (
+    <MenuCheckboxItem
+      key={String(entry.value)}
+      checked={selected.includes(entry.value)}
+      onCheckedChange={(checked) => onToggle(entry.value, checked)}
+    >
+      <HighlightedSearchText text={entry.label} query={query} />
+    </MenuCheckboxItem>
+  );
   const checkboxes = <T,>(
+    placeholder: string,
     entries: ReadonlyArray<{ value: T; label: string }>,
     selected: ReadonlyArray<T>,
     onToggle: (value: T, checked: boolean) => void,
-  ) =>
-    entries.map((entry) => (
-      <MenuCheckboxItem
-        key={String(entry.value)}
-        checked={selected.includes(entry.value)}
-        onCheckedChange={(checked) => onToggle(entry.value, checked)}
-      >
-        {entry.label}
-      </MenuCheckboxItem>
-    ));
+  ) => (
+    <MenuSearch items={entries} getText={(entry) => entry.label} placeholder={placeholder}>
+      {(matches, query) => matches.map((entry) => checkbox(entry, query, selected, onToggle))}
+    </MenuSearch>
+  );
+  // One search across every group, so the matches keep their group headings.
+  const groupedCheckboxes = <T,>(
+    placeholder: string,
+    entries: ReadonlyArray<{ value: T; label: string; groupKey: string; groupLabel: string }>,
+    selected: ReadonlyArray<T>,
+    onToggle: (value: T, checked: boolean) => void,
+  ) => (
+    <MenuSearch items={entries} getText={(entry) => entry.label} placeholder={placeholder}>
+      {(matches, query) =>
+        [...new Set(matches.map((entry) => entry.groupKey))].map((groupKey) => {
+          const inGroup = matches.filter((entry) => entry.groupKey === groupKey);
+          return (
+            <MenuGroup key={groupKey}>
+              <MenuGroupLabel>{inGroup[0]!.groupLabel}</MenuGroupLabel>
+              {inGroup.map((entry) => checkbox(entry, query, selected, onToggle))}
+            </MenuGroup>
+          );
+        })
+      }
+    </MenuSearch>
+  );
 
   const users = [
     { value: "me", label: "Me" },
@@ -194,13 +227,16 @@ export function LinearIssueFilterBar(props: {
       (filters.projectIds.length === 0 || filters.projectIds.includes(project.id)),
   );
   const milestones = (options?.projects ?? []).flatMap((project) => project.milestones);
-  const stateGroups = Object.entries(STATE_TYPE_LABELS)
-    .map(([type, label]) => ({
-      type,
-      label,
-      states: (options?.states ?? []).filter((state) => state.type === type),
-    }))
-    .filter((group) => group.states.length > 0);
+  const states = Object.entries(STATE_TYPE_LABELS).flatMap(([type, label]) =>
+    (options?.states ?? [])
+      .filter((state) => state.type === type)
+      .map((state) => ({
+        value: state.name,
+        label: state.name,
+        groupKey: type,
+        groupLabel: label,
+      })),
+  );
   const labelOf = <T,>(entries: ReadonlyArray<{ value: T; label: string }>, value: T) =>
     entries.find((entry) => entry.value === value)?.label ?? "Unknown";
 
@@ -209,7 +245,7 @@ export function LinearIssueFilterBar(props: {
       id: "assignee",
       label: "Assignee",
       summary: summarize(filters.assigneeIds.map((id) => labelOf(users, id))),
-      items: checkboxes(users, filters.assigneeIds, (value, checked) =>
+      items: checkboxes("Search people", users, filters.assigneeIds, (value, checked) =>
         setFilters({ assigneeIds: toggle(filters.assigneeIds, value, checked) }),
       ),
       clear: () => setFilters({ assigneeIds: [] }),
@@ -220,7 +256,7 @@ export function LinearIssueFilterBar(props: {
       summary: summarize(
         filters.teamIds.map((id) => teams.find((team) => team.value === id)?.key ?? "Team"),
       ),
-      items: checkboxes(teams, filters.teamIds, (value, checked) =>
+      items: checkboxes("Search teams", teams, filters.teamIds, (value, checked) =>
         setFilters({ teamIds: toggle(filters.teamIds, value, checked) }),
       ),
       clear: () => setFilters({ teamIds: [] }),
@@ -229,7 +265,7 @@ export function LinearIssueFilterBar(props: {
       id: "project",
       label: "Project",
       summary: summarize(filters.projectIds.map((id) => labelOf(projects, id))),
-      items: checkboxes(projects, filters.projectIds, (value, checked) =>
+      items: checkboxes("Search projects", projects, filters.projectIds, (value, checked) =>
         setFilters({ projectIds: toggle(filters.projectIds, value, checked) }),
       ),
       clear: () => setFilters({ projectIds: [] }),
@@ -244,17 +280,20 @@ export function LinearIssueFilterBar(props: {
         milestoneProjects.length === 0 ? (
           <MenuCheckboxItem disabled>No milestones</MenuCheckboxItem>
         ) : (
-          milestoneProjects.map((project) => (
-            <MenuGroup key={project.id}>
-              <MenuGroupLabel>{project.name}</MenuGroupLabel>
-              {checkboxes(
-                project.milestones.map((m) => ({ value: m.id, label: m.name })),
-                filters.milestoneIds,
-                (value, checked) =>
-                  setFilters({ milestoneIds: toggle(filters.milestoneIds, value, checked) }),
-              )}
-            </MenuGroup>
-          ))
+          groupedCheckboxes(
+            "Search milestones",
+            milestoneProjects.flatMap((project) =>
+              project.milestones.map((m) => ({
+                value: m.id,
+                label: m.name,
+                groupKey: project.id,
+                groupLabel: project.name,
+              })),
+            ),
+            filters.milestoneIds,
+            (value, checked) =>
+              setFilters({ milestoneIds: toggle(filters.milestoneIds, value, checked) }),
+          )
         ),
       clear: () => setFilters({ milestoneIds: [] }),
     },
@@ -264,17 +303,9 @@ export function LinearIssueFilterBar(props: {
       summary: summarize(filters.stateNames) ?? (filters.includeClosed ? "Any" : null),
       items: (
         <>
-          {stateGroups.map((group) => (
-            <MenuGroup key={group.type}>
-              <MenuGroupLabel>{group.label}</MenuGroupLabel>
-              {checkboxes(
-                group.states.map((state) => ({ value: state.name, label: state.name })),
-                filters.stateNames,
-                (value, checked) =>
-                  setFilters({ stateNames: toggle(filters.stateNames, value, checked) }),
-              )}
-            </MenuGroup>
-          ))}
+          {groupedCheckboxes("Search statuses", states, filters.stateNames, (value, checked) =>
+            setFilters({ stateNames: toggle(filters.stateNames, value, checked) }),
+          )}
           <MenuSeparator />
           <MenuCheckboxItem
             checked={filters.includeClosed}
@@ -293,7 +324,7 @@ export function LinearIssueFilterBar(props: {
       summary: summarize(
         PRIORITIES.filter((p) => filters.priorities.includes(p.value)).map((p) => p.label),
       ),
-      items: checkboxes(PRIORITIES, filters.priorities, (value, checked) =>
+      items: checkboxes("Search priorities", PRIORITIES, filters.priorities, (value, checked) =>
         setFilters({ priorities: toggle(filters.priorities, value, checked) }),
       ),
       clear: () => setFilters({ priorities: [] }),
@@ -303,6 +334,7 @@ export function LinearIssueFilterBar(props: {
       label: "Label",
       summary: summarize(filters.labelNames),
       items: checkboxes(
+        "Search labels",
         (options?.labels ?? []).map((label) => ({ value: label.name, label: label.name })),
         filters.labelNames,
         (value, checked) => setFilters({ labelNames: toggle(filters.labelNames, value, checked) }),
