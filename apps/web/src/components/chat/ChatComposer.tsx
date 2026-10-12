@@ -1569,7 +1569,12 @@ export interface ChatComposerHandle {
   hasPendingAttachments: () => boolean;
   insertTextAtEnd: (
     text: string,
-    options?: { ensureLeadingBoundary?: boolean; clipboardData?: DataTransfer },
+    options?: {
+      ensureLeadingBoundary?: boolean;
+      clipboardData?: DataTransfer;
+      /** The paste-as-text shortcut: file paths and links stay text. */
+      pasteAsText?: boolean;
+    },
   ) => boolean;
   /** Apply large-paste folding for text redirected from a blurred composer. */
   pasteTextAtEnd: (text: string, options?: { bypassAutoAttachment?: boolean }) => boolean;
@@ -6759,15 +6764,18 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     }
   };
 
-  const convertPastedObjectLinks = (pastedText: string, keepAsText: boolean) => {
+  /** `pasteStart` is where the paste lands, so offsets into the pasted text are offsets from it. */
+  const convertPastedObjectLinks = (
+    pastedText: string,
+    keepAsText: boolean,
+    pasteStart: number,
+  ) => {
     const links = findComposerObjectLinks(pastedText);
     if (links.length === 0) return;
     if (keepAsText) {
       for (const { link } of links) handledObjectLinks().add(link.url);
       return;
     }
-    // The paste lands at the caret, so offsets into the pasted text are offsets from it.
-    const pasteStart = readComposerSnapshot().expandedCursor;
     convertObjectLinks(links.map(({ link, index }) => ({ link, index: pasteStart + index })));
   };
 
@@ -6810,13 +6818,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         insertComposerText(plainText, "cursor");
         return;
       }
-      convertPastedObjectLinks(plainText, bypassAutoAttachment);
+      convertPastedObjectLinks(
+        plainText,
+        bypassAutoAttachment,
+        readComposerSnapshot().expandedCursor,
+      );
       return;
     }
 
     event.preventDefault();
     event.stopPropagation();
   };
+
+  // Read by `insertComposerText`, so a paste redirected from a blurred composer converts too.
+  const convertPastedObjectLinksRef = useRef(convertPastedObjectLinks);
+  convertPastedObjectLinksRef.current = convertPastedObjectLinks;
 
   const insertComposerText = useCallback(
     (
@@ -6826,6 +6842,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         ensureLeadingBoundary?: boolean;
         citationCommentAnchor?: AssistantCitationSourceAnchor;
         clipboardData?: DataTransfer;
+        pasteAsText?: boolean;
       },
     ): boolean => {
       if (
@@ -6838,7 +6855,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       ) {
         return false;
       }
-      if (options?.clipboardData) {
+      const clipboardText = options?.clipboardData?.getData("text/plain");
+      // Paste-as-text keeps file paths as text, the same as a focused paste.
+      if (
+        options?.clipboardData &&
+        !(options.pasteAsText && pastedFilePathsAsComposerFileLinks(clipboardText ?? "") !== null)
+      ) {
         text = importPastedComposerText(options.clipboardData, importContextFragment);
       }
       const prompt = promptRef.current;
@@ -6848,7 +6870,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         cursor > 0 &&
         !/\s/.test(prompt[cursor - 1] ?? "");
       const rangeEnd = extendReplacementRangeForTrailingSpace(prompt, cursor, text);
-      return applyPromptReplacement(
+      const inserted = applyPromptReplacement(
         cursor,
         rangeEnd,
         needsLeadingSpace ? ` ${text}` : text,
@@ -6864,6 +6886,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             }
           : undefined,
       );
+      if (inserted && clipboardText) {
+        convertPastedObjectLinksRef.current(
+          clipboardText,
+          options?.pasteAsText ?? false,
+          cursor + (needsLeadingSpace ? 1 : 0),
+        );
+      }
+      return inserted;
     },
     [
       applyPromptReplacement,

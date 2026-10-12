@@ -12,6 +12,7 @@ import {
   buildDocJson,
   buildTiptapContent,
   caretTakesMarksBefore,
+  chipTokenEndingAt,
   ComposerBlockExtensions,
   ComposerCodeBlockExtension,
   ComposerListExtensions,
@@ -1118,5 +1119,54 @@ describe("caret stops at styled edges", () => {
     expect(stepCaretAcrossStyledEdge(stateAt("**bold** tail", 3), -1)).toBeNull();
     expect(stepCaretAcrossStyledEdge(stateAt("plain text", 1), -1)).toBeNull();
     expect(caretTakesMarksBefore(stateAt("plain text", 1))).toBe(false);
+  });
+});
+
+describe("chipTokenEndingAt", () => {
+  const skillLabelFor = (name: string) => ({ label: name, description: null });
+
+  /** Types `char` at the end of `value`, chipping a token it ends. A new line only chips. */
+  function typeAtEnd(value: string, char = " ") {
+    const doc = ProseMirrorNode.fromJSON(schema, buildDocJson(value, skillLabelFor));
+    const end = doc.content.size - 1;
+    const state = EditorState.create({ doc, selection: TextSelection.create(doc, end) });
+    const tr = chipTokenEndingAt(state, end, char, skillLabelFor);
+    if (!tr) return null;
+    const next = state.apply(char === "\n" ? tr : tr.insertText(char));
+    const chips: string[] = [];
+    next.doc.descendants((node) => {
+      if (node.isAtom && node.isInline && !node.isText) chips.push(node.type.name);
+    });
+    return { value: serializeEditorDoc(next.doc).value, chips, caret: next.selection.from };
+  }
+
+  it("chips a mention, skill or file link once whitespace follows it", () => {
+    expect(typeAtEnd("see @index.ts")).toMatchObject({
+      value: "see @index.ts ",
+      chips: ["composer-mention"],
+    });
+    expect(typeAtEnd("use $review")?.chips).toEqual(["composer-skill"]);
+    expect(typeAtEnd("open [a.ts](src/a.ts)")?.chips).toEqual(["composer-mention"]);
+    expect(typeAtEnd("@a.ts", "\t")?.value).toBe("@a.ts\t");
+    expect(typeAtEnd("@a.ts", "\n")?.chips).toEqual(["composer-mention"]);
+  });
+
+  it("leaves the caret after the typed whitespace", () => {
+    // Paragraph opens at 1; "see " is 4, the chip 1, the space 1.
+    expect(typeAtEnd("see @a.ts")?.caret).toBe(7);
+  });
+
+  it("types as usual when no token ends at the caret", () => {
+    expect(typeAtEnd("plain text")).toBeNull();
+    expect(typeAtEnd("@a.ts", "?")).toBeNull();
+    expect(typeAtEnd("costs $20")).toBeNull();
+    expect(typeAtEnd("mail a@b.com")).toBeNull();
+    expect(typeAtEnd("**@a.ts**")).toBeNull();
+    expect(typeAtEnd("`@a.ts`")).toBeNull();
+  });
+
+  it("needs whitespace before the token, not a chip", () => {
+    expect(typeAtEnd("@a.ts @b.ts")?.chips).toEqual(["composer-mention", "composer-mention"]);
+    expect(typeAtEnd("[a.ts](src/a.ts)@b.ts")).toBeNull();
   });
 });

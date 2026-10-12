@@ -57,6 +57,7 @@ import {
   ComposerCodeBlockExtension,
   ComposerListExtensions,
   buildTiptapContent,
+  chipTokenEndingAt,
   collapsedToFlat,
   caretTakesMarksBefore,
   convertBulletItemToTask,
@@ -1334,6 +1335,13 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
               return true;
             }
             event.preventDefault();
+            // A new line ends a token the way a typed space does.
+            const { selection } = view.state;
+            const chipped =
+              !literalText && selection.empty
+                ? chipTokenEndingAt(view.state, selection.from, "\n", skillLabelFor)
+                : null;
+            if (chipped) view.dispatch(chipped);
             if ((isTaskItem || isListItem) && instance && splitOrLiftListItem(instance)) {
               return true;
             }
@@ -1363,6 +1371,12 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
         },
         handleTextInput: (view, from, to, text) => {
           if (literalText || text.length !== 1) return false;
+          const chipped =
+            from === to ? chipTokenEndingAt(view.state, from, text, skillLabelFor) : null;
+          if (chipped) {
+            view.dispatch(chipped.insertText(text).scrollIntoView());
+            return true;
+          }
           const closer = SURROUND_CLOSE[text];
           if (!closer || from === to) return false;
           // Never wrap chips or other atoms, and never wrap styled text: the
