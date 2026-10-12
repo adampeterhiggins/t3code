@@ -83,6 +83,29 @@ export function toolActivityFaviconUrl(
 }
 
 /**
+ * Whether a provider-supplied tool icon is Linear's, either hosted on linear.app or a
+ * favicon-service URL for it (Claude connectors send `…/s2/favicons?domain=linear.app`).
+ * Clients draw their monochrome Linear mark instead, so it matches the other integration icons.
+ */
+export function toolActivityIconIsLinear(
+  icon:
+    | { readonly _tag: "website"; readonly pageUrl: string }
+    | { readonly _tag: "themed-logo"; readonly logoUrl: string }
+    | { readonly _tag: "native-app" },
+): boolean {
+  const rawUrl =
+    icon._tag === "website" ? icon.pageUrl : icon._tag === "themed-logo" ? icon.logoUrl : null;
+  if (!rawUrl) return false;
+  try {
+    const url = new URL(rawUrl);
+    const host = (url.searchParams.get("domain") ?? url.hostname).toLowerCase();
+    return host === "linear.app" || host.endsWith(".linear.app");
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Return a public favicon URL that discloses only a public hostname, never the
  * port, path, or a private or internal-looking host. Callers show a generic
  * icon when this returns null.

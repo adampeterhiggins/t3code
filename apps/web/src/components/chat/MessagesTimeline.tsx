@@ -88,7 +88,7 @@ const NOOP_USE_ARTIFACT_TEMPLATE = () => {};
 const NOOP_OPEN_ATTACHMENT = (_attachment: ChatFileAttachment) => {};
 
 import { resolveChatListAnchoredEndSpace } from "@t3tools/shared/chatList";
-import { toolActivityFaviconUrl } from "@t3tools/shared/favicon";
+import { toolActivityFaviconUrl, toolActivityIconIsLinear } from "@t3tools/shared/favicon";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
 import { getProjectFaviconCacheKey } from "@t3tools/shared/projectFavicon";
 import { claudeSkillInvocation } from "@t3tools/shared/toolActivity";
@@ -5217,24 +5217,6 @@ function BrowserAppIcon({ className }: { className: string }) {
       <path d="m12.4 11.4 7.5 2.6-3.4 1.6-1.5 3.6z" fill="currentColor" stroke="none" />
     </svg>
   );
-}
-
-/**
- * Whether a provider-supplied icon is Linear's, either hosted on linear.app or a favicon-service
- * URL for it (Claude connectors send `…/s2/favicons?domain=linear.app`). Linear tool rows use our
- * monochrome mark instead, so they match the other integration icons.
- */
-function toolActivityIconIsLinear(icon: ToolActivityIcon): boolean {
-  const rawUrl =
-    icon._tag === "website" ? icon.pageUrl : icon._tag === "themed-logo" ? icon.logoUrl : null;
-  if (!rawUrl) return false;
-  try {
-    const url = new URL(rawUrl);
-    const host = (url.searchParams.get("domain") ?? url.hostname).toLowerCase();
-    return host === "linear.app" || host.endsWith(".linear.app");
-  } catch {
-    return false;
-  }
 }
 
 function ToolActivityIconView(props: {
