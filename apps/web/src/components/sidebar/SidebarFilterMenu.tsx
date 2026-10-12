@@ -35,13 +35,13 @@ import { OrganisationIcon } from "./OrganisationIcon";
 import { ThreadGroupIcon } from "./ThreadGroupIcon";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { Button } from "../ui/button";
+import { HighlightedSearchText } from "../ui/highlighted-search-text";
 import {
   Menu,
   MenuCheckboxItem,
   MenuItem,
   MenuPopup,
   MenuSearch,
-  MenuSearchHighlight,
   MenuSeparator,
   MenuSub,
   MenuSubPopup,
@@ -103,7 +103,7 @@ function ChoiceLabel(props: { label: string; query?: string; onOnly: () => void 
   return (
     <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
       <span className="min-w-0 truncate">
-        <MenuSearchHighlight text={props.label} query={props.query ?? ""} />
+        <HighlightedSearchText text={props.label} query={props.query ?? ""} />
       </span>
       <OnlyButton onClick={props.onOnly} />
     </span>

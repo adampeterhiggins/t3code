@@ -29,6 +29,7 @@ import { ProjectFavicon, type ProjectFaviconProject } from "../ProjectFavicon";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
 import { Button } from "../ui/button";
 
+import { HighlightedSearchText } from "../ui/highlighted-search-text";
 import {
   Menu,
   MenuCheckboxItem,
@@ -39,7 +40,6 @@ import {
   MenuRadioItem,
   MenuRadioItemIndicator,
   MenuSearch,
-  MenuSearchHighlight,
   MenuSearchInput,
   MenuSeparator,
   MenuSub,
@@ -380,7 +380,7 @@ function PullRequestLabelFilter({
                         {...(dot ? { style: { backgroundColor: dot } } : {})}
                       />
                       <span className="min-w-0 flex-1 truncate">
-                        <MenuSearchHighlight text={option.name} query={query} />
+                        <HighlightedSearchText text={option.name} query={query} />
                       </span>
                       <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
                         {option.count}

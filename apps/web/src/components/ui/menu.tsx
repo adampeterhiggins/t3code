@@ -402,22 +402,6 @@ function MenuSearch<T>({
   );
 }
 
-/** `text` with the first match of a normalized `query` underlined, so it is clear why it matched. */
-function MenuSearchHighlight({ text, query }: { text: string; query: string }) {
-  const start = query.length === 0 ? -1 : text.toLowerCase().indexOf(query);
-  if (start === -1) return text;
-  const end = start + query.length;
-  return (
-    <>
-      {text.slice(0, start)}
-      <span className="underline decoration-primary underline-offset-2">
-        {text.slice(start, end)}
-      </span>
-      {text.slice(end)}
-    </>
-  );
-}
-
 export {
   Menu,
   Menu as DropdownMenu,
@@ -450,7 +434,6 @@ export {
   MenuSubPopup,
   MenuSubPopup as DropdownMenuSubContent,
   MenuSearch,
-  MenuSearchHighlight,
   MenuSearchInput,
   normalizeMenuSearch,
 };

@@ -2,6 +2,7 @@ import type { ProjectId, ProviderInstanceId } from "@t3tools/contracts";
 import { ArrowDownUpIcon, ListFilterIcon } from "lucide-react";
 
 import { Button } from "../ui/button";
+import { HighlightedSearchText } from "../ui/highlighted-search-text";
 import {
   Menu,
   MenuCheckboxItem,
@@ -9,7 +10,6 @@ import {
   MenuRadioGroup,
   MenuRadioItem,
   MenuSearch,
-  MenuSearchHighlight,
   MenuSub,
   MenuSubPopup,
   MenuSubTrigger,
@@ -72,7 +72,7 @@ export function ThreadAttachPickerFilterBar(props: {
                         })
                       }
                     >
-                      <MenuSearchHighlight text={project.label} query={query} />
+                      <HighlightedSearchText text={project.label} query={query} />
                     </MenuCheckboxItem>
                   ))
                 }
@@ -106,7 +106,7 @@ export function ThreadAttachPickerFilterBar(props: {
                         })
                       }
                     >
-                      <MenuSearchHighlight text={provider.label} query={query} />
+                      <HighlightedSearchText text={provider.label} query={query} />
                     </MenuCheckboxItem>
                   ))
                 }

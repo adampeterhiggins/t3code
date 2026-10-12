@@ -10,6 +10,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 import { Button } from "../ui/button";
+import { HighlightedSearchText } from "../ui/highlighted-search-text";
 import {
   Menu,
   MenuCheckboxItem,
@@ -19,7 +20,6 @@ import {
   MenuRadioGroup,
   MenuRadioItem,
   MenuSearch,
-  MenuSearchHighlight,
   MenuSeparator,
   MenuSub,
   MenuSubPopup,
@@ -169,7 +169,7 @@ export function LinearIssueFilterBar(props: {
       checked={selected.includes(entry.value)}
       onCheckedChange={(checked) => onToggle(entry.value, checked)}
     >
-      <MenuSearchHighlight text={entry.label} query={query} />
+      <HighlightedSearchText text={entry.label} query={query} />
     </MenuCheckboxItem>
   );
   const checkboxes = <T,>(
