@@ -1,59 +1,39 @@
-import type { EnvironmentId } from "@t3tools/contracts";
-import { useMemo } from "react";
+import type { EnvironmentId, SlackMessageSummary } from "@t3tools/contracts";
+import { useCallback } from "react";
 
-import type { ComposerTrigger } from "~/composer-logic";
-import { useEnvironmentSettings } from "~/hooks/useSettings";
-import { useDebouncedValue } from "~/state/queries";
-import { useEnvironmentQuery } from "~/state/query";
 import { slackEnvironment } from "~/state/slack";
-import type { ComposerCommandItem } from "./ComposerCommandMenu";
+import type { ComposerReferenceItem } from "./composerReferenceMenu.logic";
+import { useComposerReferenceSearch } from "./useComposerReferenceSearch";
 
 // Slack search is rate-limited per minute, so the `#` query settles longer than pull requests do.
 const SLACK_SEARCH_DEBOUNCE_MS = 400;
 const SLACK_RESULT_LIMIT = 20;
 
-/**
- * Slack messages for the composer's `#` menu, on their own tab. The tab only shows once Slack is
- * connected, and only searches while it is visible, which keeps typing within Slack's limit.
- */
+function toItems(data: { readonly messages: ReadonlyArray<SlackMessageSummary> }) {
+  return data.messages.map((message): ComposerReferenceItem => ({
+    id: `slack-message:${message.url}`,
+    type: "slack-message",
+    message,
+    label: message.channelLabel,
+    description: `${message.authorName} · ${message.text}`,
+  }));
+}
+
+/** Slack messages for the composer's `#` menu. Slack needs a word to search, so nothing preloads. */
 export function useComposerSlackItems(
   environmentId: EnvironmentId,
-  trigger: ComposerTrigger | null,
-  active: boolean,
+  input: { readonly enabled: boolean; readonly active: boolean; readonly query: string },
 ) {
-  const slackEnabled = useEnvironmentSettings(environmentId, (s) => s.enableSlackIntegration);
-  const connection = useEnvironmentQuery(
-    slackEnabled && trigger?.kind === "pull-request"
-      ? slackEnvironment.connection({ environmentId, input: {} })
-      : null,
+  const atomFor = useCallback(
+    (query: string) => slackEnvironment.messages({ environmentId, input: { query } }),
+    [environmentId],
   );
-  const enabled =
-    slackEnabled && trigger?.kind === "pull-request" && connection.data?.phase === "connected";
-  const query = enabled && active && trigger.query.length > 0 ? trigger.query : null;
-  const debouncedQuery = useDebouncedValue(query, SLACK_SEARCH_DEBOUNCE_MS);
-  const settledQuery = query === debouncedQuery ? query : null;
-  const messages = useEnvironmentQuery(
-    settledQuery === null
-      ? null
-      : slackEnvironment.messages({ environmentId, input: { query: settledQuery } }),
-  );
-  const items = useMemo<ComposerCommandItem[]>(
-    () =>
-      settledQuery === null
-        ? []
-        : (messages.data?.messages ?? []).slice(0, SLACK_RESULT_LIMIT).map((message) => ({
-            id: `slack-message:${message.url}`,
-            type: "slack-message",
-            message,
-            label: message.channelLabel,
-            description: `${message.authorName} · ${message.text}`,
-          })),
-    [messages.data, settledQuery],
-  );
-  return {
-    enabled,
-    items,
-    error: messages.error,
-    isPending: query !== null && (query !== debouncedQuery || messages.isPending),
-  };
+  return useComposerReferenceSearch({
+    ...input,
+    debounceMs: SLACK_SEARCH_DEBOUNCE_MS,
+    limit: SLACK_RESULT_LIMIT,
+    searchesEmptyQuery: false,
+    atomFor,
+    toItems,
+  });
 }

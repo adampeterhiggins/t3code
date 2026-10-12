@@ -1,84 +1,41 @@
-import type { EnvironmentId } from "@t3tools/contracts";
-import { useMemo } from "react";
+import type { EnvironmentId, LinearIssueSummary } from "@t3tools/contracts";
+import { useCallback } from "react";
 
-import type { ComposerTrigger } from "~/composer-logic";
 import { linearEnvironment } from "~/state/linear";
-import { useDebouncedValue } from "~/state/queries";
-import { useEnvironmentQuery } from "~/state/query";
-import type { ComposerCommandItem } from "./ComposerCommandMenu";
+import type { ComposerReferenceItem } from "./composerReferenceMenu.logic";
+import { useComposerReferenceSearch } from "./useComposerReferenceSearch";
 
 // Linear allows 30 searches a minute, so the `#` query settles longer than pull requests do.
 const LINEAR_SEARCH_DEBOUNCE_MS = 300;
 const LINEAR_RESULT_LIMIT = 20;
-const LINEAR_IDENTIFIER_PATTERN = /^[a-z][a-z0-9_]*-\d+$/i;
 
-export type ComposerReferenceTab =
-  | "pull-requests"
-  | "linear-issues"
-  | "notion-pages"
-  | "slack-messages"
-  | "github-issues"
-  | "repositories";
-
-/**
- * The `#` menu's starting tab: an identifier (`#ENG-123`) names a Linear issue, `#owner/name` a
- * repository, and so does a hyphenated name (`#cin-questionnaire`) once a default repository
- * owner is set. Anything else searches pull requests.
- */
-export function defaultComposerReferenceTab(
-  query: string,
-  hasDefaultRepositoryOwner: boolean,
-): ComposerReferenceTab {
-  if (LINEAR_IDENTIFIER_PATTERN.test(query)) return "linear-issues";
-  if (query.includes("/")) return "repositories";
-  if (hasDefaultRepositoryOwner && /[\p{L}\p{N}]-[\p{L}\p{N}]/u.test(query)) {
-    return "repositories";
-  }
-  return "pull-requests";
+function toItems(data: { readonly issues: ReadonlyArray<LinearIssueSummary> }) {
+  return data.issues.map((issue): ComposerReferenceItem => ({
+    id: `linear-issue:${issue.id}`,
+    type: "linear-issue",
+    issueId: issue.id,
+    label: issue.identifier,
+    description: issue.title,
+    assigneeName: issue.assigneeName,
+    stateName: issue.stateName,
+  }));
 }
 
-/**
- * Linear issues for the composer's `#` menu, shown on their own tab beside pull requests. Only
- * the visible tab searches, which keeps typing within Linear's search limit.
- */
+/** Linear issues for the composer's `#` menu; an empty query lists the user's assigned issues. */
 export function useComposerLinearIssueItems(
   environmentId: EnvironmentId,
-  trigger: ComposerTrigger | null,
-  active: boolean,
+  input: { readonly enabled: boolean; readonly active: boolean; readonly query: string },
 ) {
-  const connection = useEnvironmentQuery(
-    trigger?.kind === "pull-request"
-      ? linearEnvironment.connection({ environmentId, input: {} })
-      : null,
+  const atomFor = useCallback(
+    (query: string) => linearEnvironment.issues({ environmentId, input: { query } }),
+    [environmentId],
   );
-  const enabled = trigger?.kind === "pull-request" && connection.data?.phase === "connected";
-  const query = enabled && active ? trigger.query : null;
-  const debouncedQuery = useDebouncedValue(query, LINEAR_SEARCH_DEBOUNCE_MS);
-  const settledQuery = query === debouncedQuery ? query : null;
-  const issues = useEnvironmentQuery(
-    settledQuery === null
-      ? null
-      : linearEnvironment.issues({ environmentId, input: { query: settledQuery } }),
-  );
-  const items = useMemo<ComposerCommandItem[]>(
-    () =>
-      settledQuery === null
-        ? []
-        : (issues.data?.issues ?? []).slice(0, LINEAR_RESULT_LIMIT).map((issue) => ({
-            id: `linear-issue:${issue.id}`,
-            type: "linear-issue",
-            issueId: issue.id,
-            label: issue.identifier,
-            description: issue.title,
-            assigneeName: issue.assigneeName,
-            stateName: issue.stateName,
-          })),
-    [issues.data, settledQuery],
-  );
-  return {
-    enabled,
-    items,
-    error: issues.error,
-    isPending: query !== null && (query !== debouncedQuery || issues.isPending),
-  };
+  return useComposerReferenceSearch({
+    ...input,
+    debounceMs: LINEAR_SEARCH_DEBOUNCE_MS,
+    limit: LINEAR_RESULT_LIMIT,
+    searchesEmptyQuery: true,
+    atomFor,
+    toItems,
+  });
 }

@@ -291,6 +291,10 @@ pull request is older than the recent list. Type a single word after `#` to sear
 the repository by text. Choose a result to insert it as a chip. To attach several at once, `Cmd`-click
 (`Ctrl`-click on Windows and Linux) each one, across any of the `#` menu's tabs, then press `Enter`.
 
+The `#` menu opens on the tab it expects you want: `#ENG-123` or a Linear team key like `#ENG` opens
+Linear issues, `#owner/repo` opens repositories, and an empty `#` opens the tab you insert from most.
+Items you inserted recently are listed first and match as you type, without waiting for a search.
+
 On web and desktop, pasting or typing a link to a Linear issue, a GitHub issue, a pull request, a
 GitHub repository, a Notion page, or a Slack message turns the link into the same chip attaching it would make. A typed link
 converts when you type a space or new line after it. The chip replaces the link once the item

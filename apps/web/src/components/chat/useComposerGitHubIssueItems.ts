@@ -1,58 +1,50 @@
-import type { EnvironmentId } from "@t3tools/contracts";
-import { useMemo } from "react";
+import type { EnvironmentId, GitHubIssueSummary } from "@t3tools/contracts";
+import { useCallback } from "react";
 
-import type { ComposerTrigger } from "~/composer-logic";
 import { githubIssueEnvironment } from "~/state/githubIssues";
-import { useDebouncedValue } from "~/state/queries";
-import { useEnvironmentQuery } from "~/state/query";
-import type { ComposerCommandItem } from "./ComposerCommandMenu";
+import type { ComposerReferenceItem } from "./composerReferenceMenu.logic";
+import { useComposerReferenceSearch } from "./useComposerReferenceSearch";
 
 // Each search runs `gh` on the server, so the `#` query settles longer than pull requests do.
 const GITHUB_SEARCH_DEBOUNCE_MS = 300;
 const GITHUB_RESULT_LIMIT = 20;
 
+function toItems(data: { readonly issues: ReadonlyArray<GitHubIssueSummary> }) {
+  return data.issues.map((issue): ComposerReferenceItem => ({
+    id: `github-issue:${issue.url}`,
+    type: "github-issue",
+    url: issue.url,
+    label: `#${issue.number}`,
+    description: issue.title,
+    authorLogin: issue.authorLogin,
+    state: issue.state,
+  }));
+}
+
 /**
- * GitHub issues for the composer's `#` menu, shown on their own tab beside pull requests. `cwd`
- * is the checkout `gh` lists from, null when the project is not a GitHub repository. Only the
- * visible tab searches.
+ * GitHub issues for the composer's `#` menu. `cwd` is the checkout `gh` lists from; the tab is
+ * only enabled when the project is a GitHub repository.
  */
 export function useComposerGitHubIssueItems(
   environmentId: EnvironmentId,
   cwd: string | null,
-  trigger: ComposerTrigger | null,
-  active: boolean,
+  input: { readonly enabled: boolean; readonly active: boolean; readonly query: string },
 ) {
-  const enabled = trigger?.kind === "pull-request" && cwd !== null;
-  const query = enabled && active ? trigger.query : null;
-  const debouncedQuery = useDebouncedValue(query, GITHUB_SEARCH_DEBOUNCE_MS);
-  const settledQuery = query === debouncedQuery ? query : null;
-  const issues = useEnvironmentQuery(
-    settledQuery === null || cwd === null
-      ? null
-      : githubIssueEnvironment.issues({
-          environmentId,
-          input: { cwd, ...(settledQuery.length > 0 ? { query: settledQuery } : {}) },
-        }),
+  const atomFor = useCallback(
+    (query: string) =>
+      githubIssueEnvironment.issues({
+        environmentId,
+        input: { cwd: cwd ?? "", ...(query.length > 0 ? { query } : {}) },
+      }),
+    [cwd, environmentId],
   );
-  const items = useMemo<ComposerCommandItem[]>(
-    () =>
-      settledQuery === null
-        ? []
-        : (issues.data?.issues ?? []).slice(0, GITHUB_RESULT_LIMIT).map((issue) => ({
-            id: `github-issue:${issue.url}`,
-            type: "github-issue",
-            url: issue.url,
-            label: `#${issue.number}`,
-            description: issue.title,
-            authorLogin: issue.authorLogin,
-            state: issue.state,
-          })),
-    [issues.data, settledQuery],
-  );
-  return {
-    enabled,
-    items,
-    error: issues.error,
-    isPending: query !== null && (query !== debouncedQuery || issues.isPending),
-  };
+  return useComposerReferenceSearch({
+    ...input,
+    enabled: input.enabled && cwd !== null,
+    debounceMs: GITHUB_SEARCH_DEBOUNCE_MS,
+    limit: GITHUB_RESULT_LIMIT,
+    searchesEmptyQuery: true,
+    atomFor,
+    toItems,
+  });
 }

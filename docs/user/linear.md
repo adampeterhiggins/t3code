@@ -34,7 +34,8 @@ Attach a Linear issue to a message so the agent gets its details without you pas
 - Click the paperclip in the composer and choose **Linear issue**. Search your issues, or paste an
   identifier like `ENG-123` or an issue link. With no search, it lists your open assigned issues.
 - Type `#` in the composer. Linear issues appear beside pull requests; `#ENG-123` jumps to that
-  issue, and a bare number like `#42` only matches pull requests.
+  issue, `#ENG` opens the Linear tab once an `ENG` issue is assigned to you or attached before, and
+  a bare number like `#42` only matches pull requests.
 - On web and desktop, run **Attach Linear issue** from the command palette.
 - On mobile, tap **+** in the composer and choose **Linear issue**.
 

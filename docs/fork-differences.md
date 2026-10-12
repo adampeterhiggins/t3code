@@ -1166,6 +1166,21 @@ Code: `packages/shared/src/composerObjectLinks.ts`,
 `apps/web/src/components/chat/ChatComposer.tsx`. User guide:
 [composer.md](./user/composer.md#context-in-your-message).
 
+## The `#` menu predicts its tab and remembers inserts
+
+On web and desktop the composer's `#` menu picks its starting tab from the query and your history:
+issue identifiers and known Linear team keys open Linear, `owner/name` opens repositories, a query
+that matches a recent insert or an already-loaded row opens that row's tab, and an empty `#` opens
+the tab you insert from most. Recently inserted references are listed first on their tab and
+filter locally. Every tab's first page loads when `#` opens, and while a search settles the
+previous results stay visible, narrowed to the new query, instead of the list emptying. Mobile's
+`#` pull request list keeps its rows while typing the same way.
+
+Code: `apps/web/src/components/chat/composerReferenceMenu.logic.ts`,
+`apps/web/src/components/chat/useComposerReferenceSearch.ts`, and
+`apps/web/src/components/chat/composerReferenceRecents.ts`. User guide:
+[composer.md](./user/composer.md#context-in-your-message).
+
 ## Pick several items from the `#` menu
 
 On web and desktop, `Cmd`-click (`Ctrl`-click on Windows and Linux) a row in the composer's `#` menu
