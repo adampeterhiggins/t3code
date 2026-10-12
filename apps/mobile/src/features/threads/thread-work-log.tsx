@@ -1184,7 +1184,10 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
               {props.renderImage({ href: viewedImagePath, alt: null, title: null })}
             </View>
           ) : null}
-          {outputImages.map((resource) => (
+          {(toolPreview?.kind === "browser" && toolPreview.snapshot?.screenshotPath
+            ? []
+            : outputImages
+          ).map((resource) => (
             <View key={resource.index} className="pb-1.5">
               <ThreadMarkdownImage
                 environmentId={props.environmentId}
@@ -1204,6 +1207,9 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
             {toolPreview ? (
               <ToolPreviewCard
                 preview={toolPreview}
+                renderSnapshotImage={(path) =>
+                  props.renderImage({ href: path, alt: "Captured page screenshot", title: null })
+                }
                 onOpenThread={(threadId) =>
                   navigation.dispatch(
                     StackActions.push("Thread", {

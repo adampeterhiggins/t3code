@@ -172,6 +172,7 @@ describe("resolveToolPreview", () => {
     );
     expect(pressed).toEqual({
       kind: "browser",
+      snapshot: null,
       target: "Alt+ArrowLeft",
       text: null,
       detail: null,
@@ -543,6 +544,52 @@ describe("resolveToolPreview", () => {
         ),
       ),
     ).toMatchObject({ kind: "browser", target: null, page: null });
+  });
+
+  it.each(["structured", "text blocks", "text"])(
+    "shows captured snapshot content from %s results",
+    (shape) => {
+      const page = {
+        url: "https://example.test",
+        title: "Example",
+        visibleText: "Welcome\nSave",
+        screenshotPath: "/tmp/browser-screenshot.png",
+      };
+      const blocks = [
+        { type: "text", text: JSON.stringify({ url: page.url }) },
+        { type: "text", text: JSON.stringify(page) },
+      ];
+      const output =
+        shape === "structured"
+          ? { structuredContent: page, content: blocks }
+          : shape === "text blocks"
+            ? { content: blocks }
+            : blocks.map((block) => block.text).join("\n");
+      expect(resolveToolPreview(tool("mcp__t3-code__preview_snapshot", {}, output))).toMatchObject({
+        kind: "browser",
+        page: { url: page.url, title: page.title },
+        snapshot: { screenshotPath: page.screenshotPath, visibleText: page.visibleText },
+      });
+    },
+  );
+
+  it("shows snapshot text when capture was skipped and handles old snapshots", () => {
+    expect(
+      resolveToolPreview(
+        tool(
+          "t3-code.preview_snapshot",
+          { includeImage: false },
+          { url: "https://example.test", visibleText: "Text only" },
+        ),
+      ),
+    ).toMatchObject({
+      snapshot: { screenshotPath: null, visibleText: "Text only" },
+    });
+    expect(
+      resolveToolPreview(tool("t3-code.preview_snapshot", {}, { url: "https://example.test" })),
+    ).toMatchObject({
+      snapshot: { screenshotPath: null, visibleText: null },
+    });
   });
 
   it("lists threads created in a batch", () => {

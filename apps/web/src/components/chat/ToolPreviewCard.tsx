@@ -16,9 +16,11 @@ import { PullRequestStateGlyph } from "../pullRequest/pullRequestPresentation";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { scheduleLabel } from "../settings/ScheduledTasksSettings";
-import ChatMarkdown from "../ChatMarkdown";
+import ChatMarkdown, { ChatMarkdownAssetImage } from "../ChatMarkdown";
 import { resolveExternalWebLinkHref } from "./externalLinkContextMenu";
 import { HighlightedSnippet } from "./HighlightedSnippet";
+import { ExpandedImageDialog } from "./ExpandedImageDialog";
+import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import { ShellCommandBlock } from "./ShellCommandBlock";
 
 // A search can return dozens of messages; the card is a glance, the raw call has the rest.
@@ -358,6 +360,7 @@ function PreviewBody(props: {
   readonly threadId: ThreadId;
   readonly cwd: string | undefined;
   readonly onOpenThread: (threadId: ThreadId) => void;
+  readonly onImageExpand?: ((preview: ExpandedImagePreview) => void) | undefined;
 }) {
   const { preview } = props;
   switch (preview.kind) {
@@ -432,6 +435,27 @@ function PreviewBody(props: {
                 <span className="min-w-0 truncate font-mono text-2xs">{preview.page.url}</span>
               ) : null}
             </div>
+          ) : null}
+          {preview.snapshot?.screenshotPath ? (
+            <ChatMarkdownAssetImage
+              environmentId={props.environmentId}
+              resource={{
+                _tag: "media-file",
+                threadId: props.threadId,
+                path: preview.snapshot.screenshotPath,
+              }}
+              alt="Captured page screenshot"
+              maxHeightRem={16}
+              onImageExpand={props.onImageExpand}
+            />
+          ) : null}
+          {preview.snapshot?.visibleText ? (
+            <details>
+              <summary className="cursor-pointer text-muted-foreground">Captured page text</summary>
+              <pre className={cn("max-h-60 overflow-auto text-foreground/85", monoClassName)}>
+                {preview.snapshot.visibleText}
+              </pre>
+            </details>
           ) : null}
           {preview.target && preview.target !== preview.page?.url ? (
             <div>
@@ -740,15 +764,21 @@ export function ToolPreviewCard(props: {
   readonly threadId: ThreadId;
   readonly cwd: string | undefined;
   readonly onOpenThread: (threadId: ThreadId) => void;
+  readonly onImageExpand?: ((preview: ExpandedImagePreview) => void) | undefined;
   readonly images: ReactNode;
   /** The generic body, mounted only once asked for. */
   readonly raw: ReactNode;
 }) {
   const [showRaw, setShowRaw] = useState(false);
+  const [localImagePreview, setLocalImagePreview] = useState<ExpandedImagePreview | null>(null);
   return (
     <div className="space-y-1.5 text-xs" data-tool-preview={props.preview.kind}>
-      <PreviewBody {...props} />
-      <div className="space-y-1.5">{props.images}</div>
+      <PreviewBody {...props} onImageExpand={props.onImageExpand ?? setLocalImagePreview} />
+      <div className="space-y-1.5">
+        {props.preview.kind === "browser" && props.preview.snapshot?.screenshotPath
+          ? null
+          : props.images}
+      </div>
       <button
         type="button"
         className="text-2xs text-muted-foreground hover:text-foreground"
@@ -757,6 +787,12 @@ export function ToolPreviewCard(props: {
         {showRaw ? "Hide raw call" : "Show raw call"}
       </button>
       {showRaw ? props.raw : null}
+      {localImagePreview ? (
+        <ExpandedImageDialog
+          preview={localImagePreview}
+          onClose={() => setLocalImagePreview(null)}
+        />
+      ) : null}
     </div>
   );
 }
