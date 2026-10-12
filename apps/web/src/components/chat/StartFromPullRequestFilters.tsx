@@ -78,6 +78,7 @@ export function narrowPickerPullRequests(
 /** The start-from picker's pull request filters and sort, the pull requests page's in small. */
 export function PullRequestPickerFilterBar(props: {
   entries: ReadonlyArray<EnvironmentPullRequestEntry>;
+  optionsPending: boolean;
   view: PullRequestPickerView;
   onChange: (view: PullRequestPickerView) => void;
 }) {
@@ -96,6 +97,7 @@ export function PullRequestPickerFilterBar(props: {
         onInvolvement={(involvement) => props.onChange({ ...view, involvement })}
         filters={view.filters}
         onFilters={(filters) => props.onChange({ ...view, filters })}
+        optionsPending={props.optionsPending}
         authorOptions={facets.authors}
         labelOptions={facets.labels}
         host={undefined}

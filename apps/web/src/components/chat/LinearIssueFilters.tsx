@@ -16,6 +16,8 @@ import {
   MenuCheckboxItem,
   MenuGroup,
   MenuGroupLabel,
+  MenuItem,
+  MenuLoadingItem,
   MenuPopup,
   MenuRadioGroup,
   MenuRadioItem,
@@ -121,10 +123,16 @@ interface FilterDimension {
 }
 
 /** An active filter: its menu to change the pick, and a button to drop it. */
-function ActiveFilterChip({ dimension }: { dimension: FilterDimension }) {
+function ActiveFilterChip({
+  dimension,
+  onOpenChange,
+}: {
+  dimension: FilterDimension;
+  onOpenChange: (open: boolean) => void;
+}) {
   return (
     <span className="flex shrink-0 items-center">
-      <Menu>
+      <Menu onOpenChange={onOpenChange}>
         <MenuTrigger render={<Button type="button" size="xs" variant="secondary" />}>
           {dimension.label}: {dimension.summary}
         </MenuTrigger>
@@ -150,6 +158,9 @@ function ActiveFilterChip({ dimension }: { dimension: FilterDimension }) {
  */
 export function LinearIssueFilterBar(props: {
   options: LinearFilterOptions | null;
+  optionsError: string | null;
+  optionsPending: boolean;
+  onRetryOptions: () => void;
   view: PickerView;
   searching: boolean;
   onChange: (view: PickerView) => void;
@@ -158,6 +169,20 @@ export function LinearIssueFilterBar(props: {
   const { filters, sort } = view;
   const setFilters = (patch: Partial<LinearIssueFilters>) =>
     props.onChange({ ...view, filters: { ...filters, ...patch } });
+  const unavailableOptions = (emptyLabel: string) => {
+    if (props.optionsPending && options !== null) return null;
+    if (options === null && (props.optionsPending || props.optionsError === null)) {
+      return <MenuLoadingItem>Loading filters…</MenuLoadingItem>;
+    }
+    return (
+      <MenuItem disabled>
+        {props.optionsError !== null ? "Could not load filters" : emptyLabel}
+      </MenuItem>
+    );
+  };
+  const retryFailedOptions = (open: boolean) => {
+    if (open && props.optionsError !== null && !props.optionsPending) props.onRetryOptions();
+  };
   const checkbox = <T,>(
     entry: { value: T; label: string },
     query: string,
@@ -177,32 +202,40 @@ export function LinearIssueFilterBar(props: {
     entries: ReadonlyArray<{ value: T; label: string }>,
     selected: ReadonlyArray<T>,
     onToggle: (value: T, checked: boolean) => void,
-  ) => (
-    <MenuSearch items={entries} getText={(entry) => entry.label} placeholder={placeholder}>
-      {(matches, query) => matches.map((entry) => checkbox(entry, query, selected, onToggle))}
-    </MenuSearch>
-  );
+    emptyLabel = "No options",
+  ) =>
+    entries.length === 0 ? (
+      unavailableOptions(emptyLabel)
+    ) : (
+      <MenuSearch items={entries} getText={(entry) => entry.label} placeholder={placeholder}>
+        {(matches, query) => matches.map((entry) => checkbox(entry, query, selected, onToggle))}
+      </MenuSearch>
+    );
   // One search across every group, so the matches keep their group headings.
   const groupedCheckboxes = <T,>(
     placeholder: string,
     entries: ReadonlyArray<{ value: T; label: string; groupKey: string; groupLabel: string }>,
     selected: ReadonlyArray<T>,
     onToggle: (value: T, checked: boolean) => void,
-  ) => (
-    <MenuSearch items={entries} getText={(entry) => entry.label} placeholder={placeholder}>
-      {(matches, query) =>
-        [...new Set(matches.map((entry) => entry.groupKey))].map((groupKey) => {
-          const inGroup = matches.filter((entry) => entry.groupKey === groupKey);
-          return (
-            <MenuGroup key={groupKey}>
-              <MenuGroupLabel>{inGroup[0]!.groupLabel}</MenuGroupLabel>
-              {inGroup.map((entry) => checkbox(entry, query, selected, onToggle))}
-            </MenuGroup>
-          );
-        })
-      }
-    </MenuSearch>
-  );
+    emptyLabel = "No options",
+  ) =>
+    entries.length === 0 ? (
+      unavailableOptions(emptyLabel)
+    ) : (
+      <MenuSearch items={entries} getText={(entry) => entry.label} placeholder={placeholder}>
+        {(matches, query) =>
+          [...new Set(matches.map((entry) => entry.groupKey))].map((groupKey) => {
+            const inGroup = matches.filter((entry) => entry.groupKey === groupKey);
+            return (
+              <MenuGroup key={groupKey}>
+                <MenuGroupLabel>{inGroup[0]!.groupLabel}</MenuGroupLabel>
+                {inGroup.map((entry) => checkbox(entry, query, selected, onToggle))}
+              </MenuGroup>
+            );
+          })
+        }
+      </MenuSearch>
+    );
 
   const users = [
     { value: "me", label: "Me" },
@@ -245,8 +278,13 @@ export function LinearIssueFilterBar(props: {
       id: "assignee",
       label: "Assignee",
       summary: summarize(filters.assigneeIds.map((id) => labelOf(users, id))),
-      items: checkboxes("Search people", users, filters.assigneeIds, (value, checked) =>
-        setFilters({ assigneeIds: toggle(filters.assigneeIds, value, checked) }),
+      items: (
+        <>
+          {options === null ? unavailableOptions("No assignees") : null}
+          {checkboxes("Search people", users, filters.assigneeIds, (value, checked) =>
+            setFilters({ assigneeIds: toggle(filters.assigneeIds, value, checked) }),
+          )}
+        </>
       ),
       clear: () => setFilters({ assigneeIds: [] }),
     },
@@ -256,8 +294,12 @@ export function LinearIssueFilterBar(props: {
       summary: summarize(
         filters.teamIds.map((id) => teams.find((team) => team.value === id)?.key ?? "Team"),
       ),
-      items: checkboxes("Search teams", teams, filters.teamIds, (value, checked) =>
-        setFilters({ teamIds: toggle(filters.teamIds, value, checked) }),
+      items: checkboxes(
+        "Search teams",
+        teams,
+        filters.teamIds,
+        (value, checked) => setFilters({ teamIds: toggle(filters.teamIds, value, checked) }),
+        "No teams",
       ),
       clear: () => setFilters({ teamIds: [] }),
     },
@@ -265,8 +307,13 @@ export function LinearIssueFilterBar(props: {
       id: "project",
       label: "Project",
       summary: summarize(filters.projectIds.map((id) => labelOf(projects, id))),
-      items: checkboxes("Search projects", projects, filters.projectIds, (value, checked) =>
-        setFilters({ projectIds: toggle(filters.projectIds, value, checked) }),
+      items: (
+        <>
+          {options === null ? unavailableOptions("No projects") : null}
+          {checkboxes("Search projects", projects, filters.projectIds, (value, checked) =>
+            setFilters({ projectIds: toggle(filters.projectIds, value, checked) }),
+          )}
+        </>
       ),
       clear: () => setFilters({ projectIds: [] }),
     },
@@ -277,24 +324,22 @@ export function LinearIssueFilterBar(props: {
         filters.milestoneIds.map((id) => milestones.find((m) => m.id === id)?.name ?? "Unknown"),
       ),
       items:
-        milestoneProjects.length === 0 ? (
-          <MenuCheckboxItem disabled>No milestones</MenuCheckboxItem>
-        ) : (
-          groupedCheckboxes(
-            "Search milestones",
-            milestoneProjects.flatMap((project) =>
-              project.milestones.map((m) => ({
-                value: m.id,
-                label: m.name,
-                groupKey: project.id,
-                groupLabel: project.name,
-              })),
+        milestoneProjects.length === 0
+          ? unavailableOptions("No milestones")
+          : groupedCheckboxes(
+              "Search milestones",
+              milestoneProjects.flatMap((project) =>
+                project.milestones.map((m) => ({
+                  value: m.id,
+                  label: m.name,
+                  groupKey: project.id,
+                  groupLabel: project.name,
+                })),
+              ),
+              filters.milestoneIds,
+              (value, checked) =>
+                setFilters({ milestoneIds: toggle(filters.milestoneIds, value, checked) }),
             ),
-            filters.milestoneIds,
-            (value, checked) =>
-              setFilters({ milestoneIds: toggle(filters.milestoneIds, value, checked) }),
-          )
-        ),
       clear: () => setFilters({ milestoneIds: [] }),
     },
     {
@@ -303,8 +348,13 @@ export function LinearIssueFilterBar(props: {
       summary: summarize(filters.stateNames) ?? (filters.includeClosed ? "Any" : null),
       items: (
         <>
-          {groupedCheckboxes("Search statuses", states, filters.stateNames, (value, checked) =>
-            setFilters({ stateNames: toggle(filters.stateNames, value, checked) }),
+          {groupedCheckboxes(
+            "Search statuses",
+            states,
+            filters.stateNames,
+            (value, checked) =>
+              setFilters({ stateNames: toggle(filters.stateNames, value, checked) }),
+            "No statuses",
           )}
           <MenuSeparator />
           <MenuCheckboxItem
@@ -338,76 +388,115 @@ export function LinearIssueFilterBar(props: {
         (options?.labels ?? []).map((label) => ({ value: label.name, label: label.name })),
         filters.labelNames,
         (value, checked) => setFilters({ labelNames: toggle(filters.labelNames, value, checked) }),
+        "No labels",
       ),
       clear: () => setFilters({ labelNames: [] }),
     },
   ];
-  const active = dimensions.filter((dimension) => dimension.summary !== null);
+  const shownDimensions = dimensions.map((dimension) =>
+    dimension.id !== "priority" && props.optionsPending && options !== null
+      ? {
+          ...dimension,
+          items: (
+            <>
+              <MenuLoadingItem>Loading filters…</MenuLoadingItem>
+              {dimension.items}
+            </>
+          ),
+        }
+      : dimension,
+  );
+  const active = shownDimensions.filter((dimension) => dimension.summary !== null);
   const isDefault = JSON.stringify(view) === JSON.stringify(DEFAULT_PICKER_VIEW);
 
   return (
-    <div className="flex items-center gap-1.5 px-3 pb-2">
-      <Menu>
-        <MenuTrigger render={<Button type="button" size="xs" variant="outline" />}>
-          <ListFilterIcon />
-          Filter
-        </MenuTrigger>
-        <MenuPopup align="start">
-          {dimensions.map((dimension) => (
-            <MenuSub key={dimension.id}>
-              <MenuSubTrigger>{dimension.label}</MenuSubTrigger>
-              <MenuSubPopup>{dimension.items}</MenuSubPopup>
-            </MenuSub>
-          ))}
-        </MenuPopup>
-      </Menu>
-      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none]">
-        {active.map((dimension) => (
-          <ActiveFilterChip key={dimension.id} dimension={dimension} />
-        ))}
-      </div>
-      {isDefault ? null : (
-        <Button
-          type="button"
-          size="xs"
-          variant="ghost-muted"
-          onClick={() => props.onChange(DEFAULT_PICKER_VIEW)}
-        >
-          Reset
-        </Button>
-      )}
-      <Menu>
-        <MenuTrigger render={<Button type="button" size="xs" variant="ghost" />}>
-          <ArrowDownUpIcon />
-          {props.searching && sort.field !== "updated" && sort.field !== "created"
-            ? "Relevance"
-            : `${SORT_LABELS[sort.field]} ${sort.direction === "desc" ? "↓" : "↑"}`}
-        </MenuTrigger>
-        <MenuPopup align="end">
-          <MenuRadioGroup
-            value={sort.field}
-            onValueChange={(field: LinearIssueSort["field"]) =>
-              props.onChange({ ...view, sort: { ...sort, field } })
-            }
-          >
-            {(Object.keys(SORT_LABELS) as Array<LinearIssueSort["field"]>).map((field) => (
-              <MenuRadioItem key={field} value={field}>
-                {SORT_LABELS[field]}
-              </MenuRadioItem>
+    <>
+      <div className="flex items-center gap-1.5 px-3 pb-2">
+        <Menu onOpenChange={retryFailedOptions}>
+          <MenuTrigger render={<Button type="button" size="xs" variant="outline" />}>
+            <ListFilterIcon />
+            Filter
+          </MenuTrigger>
+          <MenuPopup align="start">
+            {shownDimensions.map((dimension) => (
+              <MenuSub key={dimension.id}>
+                <MenuSubTrigger>{dimension.label}</MenuSubTrigger>
+                <MenuSubPopup>{dimension.items}</MenuSubPopup>
+              </MenuSub>
             ))}
-          </MenuRadioGroup>
-          <MenuSeparator />
-          <MenuRadioGroup
-            value={sort.direction}
-            onValueChange={(direction: LinearIssueSort["direction"]) =>
-              props.onChange({ ...view, sort: { ...sort, direction } })
-            }
+          </MenuPopup>
+        </Menu>
+        <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none]">
+          {active.map((dimension) => (
+            <ActiveFilterChip
+              key={dimension.id}
+              dimension={dimension}
+              onOpenChange={retryFailedOptions}
+            />
+          ))}
+        </div>
+        {isDefault ? null : (
+          <Button
+            type="button"
+            size="xs"
+            variant="ghost-muted"
+            onClick={() => props.onChange(DEFAULT_PICKER_VIEW)}
           >
-            <MenuRadioItem value="desc">Descending</MenuRadioItem>
-            <MenuRadioItem value="asc">Ascending</MenuRadioItem>
-          </MenuRadioGroup>
-        </MenuPopup>
-      </Menu>
-    </div>
+            Reset
+          </Button>
+        )}
+        <Menu>
+          <MenuTrigger render={<Button type="button" size="xs" variant="ghost" />}>
+            <ArrowDownUpIcon />
+            {props.searching && sort.field !== "updated" && sort.field !== "created"
+              ? "Relevance"
+              : `${SORT_LABELS[sort.field]} ${sort.direction === "desc" ? "↓" : "↑"}`}
+          </MenuTrigger>
+          <MenuPopup align="end">
+            <MenuRadioGroup
+              value={sort.field}
+              onValueChange={(field: LinearIssueSort["field"]) =>
+                props.onChange({ ...view, sort: { ...sort, field } })
+              }
+            >
+              {(Object.keys(SORT_LABELS) as Array<LinearIssueSort["field"]>).map((field) => (
+                <MenuRadioItem key={field} value={field}>
+                  {SORT_LABELS[field]}
+                </MenuRadioItem>
+              ))}
+            </MenuRadioGroup>
+            <MenuSeparator />
+            <MenuRadioGroup
+              value={sort.direction}
+              onValueChange={(direction: LinearIssueSort["direction"]) =>
+                props.onChange({ ...view, sort: { ...sort, direction } })
+              }
+            >
+              <MenuRadioItem value="desc">Descending</MenuRadioItem>
+              <MenuRadioItem value="asc">Ascending</MenuRadioItem>
+            </MenuRadioGroup>
+          </MenuPopup>
+        </Menu>
+      </div>
+      {props.optionsError !== null ? (
+        <div
+          role="status"
+          className="flex items-center gap-2 px-3 pb-2 text-muted-foreground text-xs"
+        >
+          <span className="min-w-0 flex-1">
+            Could not load Linear filters: {props.optionsError}
+          </span>
+          <Button
+            type="button"
+            size="xs"
+            variant="outline"
+            disabled={props.optionsPending}
+            onClick={props.onRetryOptions}
+          >
+            {props.optionsPending ? "Retrying…" : "Retry"}
+          </Button>
+        </div>
+      ) : null}
+    </>
   );
 }

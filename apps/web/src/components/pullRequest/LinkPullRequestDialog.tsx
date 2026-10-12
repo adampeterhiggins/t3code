@@ -423,7 +423,12 @@ function LinkPullRequestPicker({
           }}
           inputAccessory={
             targets.length > 0 ? (
-              <PullRequestPickerFilterBar entries={loaded} view={view} onChange={setView} />
+              <PullRequestPickerFilterBar
+                entries={loaded}
+                optionsPending={pullRequests.isPending}
+                view={view}
+                onChange={setView}
+              />
             ) : null
           }
           footerActionLabel="Select"

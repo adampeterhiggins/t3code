@@ -172,7 +172,12 @@ function PullRequestList(props: {
           startAddon: <PullRequestGlyph.pullRequest />,
         }}
         inputAccessory={
-          <PullRequestPickerFilterBar entries={loaded} view={view} onChange={setView} />
+          <PullRequestPickerFilterBar
+            entries={loaded}
+            optionsPending={pullRequests.isPending}
+            view={view}
+            onChange={setView}
+          />
         }
         footerActionLabel="Attach"
         mode="none"
