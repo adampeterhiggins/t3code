@@ -42,6 +42,8 @@ import * as SynchronizedRef from "effect/SynchronizedRef";
 
 import * as McpInvocationContext from "./McpInvocationContext.ts";
 
+const HOST_RESPONSE_GRACE_MS = 1_000;
+
 export interface PreviewAutomationInvokeInput {
   /** Preview tabs belong to a thread, so only thread callers reach the broker. */
   readonly scope: McpInvocationContext.McpThreadInvocationScope;
@@ -721,7 +723,17 @@ export const make = Effect.gen(function* PreviewAutomationBrokerMake() {
               }
               return yield* new PreviewAutomationRequestQueueClosedError(requestContext);
             }
-            const remainingTimeoutMs = Math.max(0, deadlineMs - (yield* Clock.currentTimeMillis));
+            // A remote browser starts its operation timer after delivery. Allow its
+            // timeout response to arrive before treating the entire host as unresponsive.
+            // An in-process host already runs against this deadline.
+            const responseDeadlineMs =
+              connection.disconnectOnTimeout && input.updateCurrentTab !== false
+                ? deadlineMs + HOST_RESPONSE_GRACE_MS
+                : deadlineMs;
+            const remainingTimeoutMs = Math.max(
+              0,
+              responseDeadlineMs - (yield* Clock.currentTimeMillis),
+            );
             const result = yield* Deferred.await(deferred).pipe(
               Effect.timeoutOption(remainingTimeoutMs),
             );

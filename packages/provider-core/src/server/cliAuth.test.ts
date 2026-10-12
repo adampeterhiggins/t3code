@@ -11,7 +11,7 @@ import {
   type ProviderAuthState,
   type ServerProviderAuth,
 } from "@t3tools/contracts";
-import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import { applyServerSettingsPatch } from "@t3tools/shared/serverSettings";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -47,7 +47,7 @@ const makeTestSettings = Effect.gen(function* () {
 });
 
 // `#!/bin/sh` stubs cannot be resolved as executables on Windows.
-const windowsHost = HostProcessPlatform.defaultValue() === "win32";
+const windowsHost = HostProcess.Platform.defaultValue() === "win32";
 
 const authenticated: ServerProviderAuth = { status: "authenticated" };
 const unauthenticated: ServerProviderAuth = { status: "unauthenticated" };

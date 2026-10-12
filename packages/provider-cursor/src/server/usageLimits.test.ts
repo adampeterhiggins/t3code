@@ -1,14 +1,24 @@
 import { describe, expect, it } from "@effect/vitest";
 import { NodeServices } from "@effect/platform-node";
-import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
-import { HttpClient, HttpClientResponse } from "effect/http";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
+import * as CursorKeychain from "./CursorKeychain.ts";
 import { cursorUsageResponseToLimits, readCursorUsageLimits } from "./usageLimits.ts";
 
-const withNodeServices = <A, E>(effect: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path>) =>
-  effect.pipe(Effect.provide(NodeServices.layer));
+const withNodeServices = <A, E>(
+  effect: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path | CursorKeychain.CursorKeychain>,
+  accessToken: CursorKeychain.CursorKeychain["Service"]["accessToken"] = Effect.die(
+    "must not read Keychain",
+  ),
+) =>
+  effect.pipe(
+    Effect.provideService(CursorKeychain.CursorKeychain, { accessToken }),
+    Effect.provide(NodeServices.layer),
+  );
 
 describe("Cursor usage limits", () => {
   const checkedAt = "2026-09-16T00:00:00.000Z";
@@ -96,7 +106,7 @@ describe("Cursor usage limits", () => {
               { apiEndpoint: "https://cursor.example/" },
               { XDG_CONFIG_HOME: directory, HOME: directory, AGENT_CLI_CREDENTIAL_STORE: "file" },
             ).pipe(
-              Effect.provideService(HostProcessPlatform, platform),
+              Effect.provideService(HostProcess.Platform, platform),
               Effect.provideService(HttpClient.HttpClient, client),
             );
             expect(limits.windows[0]?.usedPercent).toBe(42);
@@ -119,14 +129,9 @@ describe("Cursor usage limits", () => {
                   AGENT_CLI_CREDENTIAL_STORE: platform === "linux" ? "memory" : "default",
                   ...(token ? { CURSOR_AUTH_TOKEN: token } : {}),
                 },
-                {
-                  allowKeychain: false,
-                  keychainToken: async () => {
-                    throw new Error("must not read Keychain before opt-in");
-                  },
-                },
+                { allowKeychain: false },
               ).pipe(
-                Effect.provideService(HostProcessPlatform, platform),
+                Effect.provideService(HostProcess.Platform, platform),
                 Effect.provideService(
                   FileSystem.FileSystem,
                   FileSystem.makeNoop({
@@ -196,12 +201,8 @@ describe("Cursor usage limits", () => {
   it.effect("reads the default macOS Cursor login from Keychain for limits", () =>
     Effect.gen(function* () {
       const limits = yield* withNodeServices(
-        readCursorUsageLimits(
-          { apiEndpoint: "" },
-          {},
-          { allowKeychain: true, keychainToken: async () => "keychain-token" },
-        ).pipe(
-          Effect.provideService(HostProcessPlatform, "darwin"),
+        readCursorUsageLimits({ apiEndpoint: "" }, {}, { allowKeychain: true }).pipe(
+          Effect.provideService(HostProcess.Platform, "darwin"),
           Effect.provideService(
             FileSystem.FileSystem,
             FileSystem.makeNoop({
@@ -221,6 +222,7 @@ describe("Cursor usage limits", () => {
             }),
           ),
         ),
+        Effect.succeed("keychain-token"),
       );
       expect(limits.windows[0]?.usedPercent).toBe(42);
     }),
@@ -229,21 +231,17 @@ describe("Cursor usage limits", () => {
   it.effect("reports a Keychain initialization failure without failing the provider refresh", () =>
     Effect.gen(function* () {
       const limits = yield* withNodeServices(
-        readCursorUsageLimits(
-          { apiEndpoint: "" },
-          {},
-          {
-            allowKeychain: true,
-            keychainToken: async () => {
-              throw new Error("Keychain initialization failed");
-            },
-          },
-        ).pipe(
-          Effect.provideService(HostProcessPlatform, "darwin"),
+        readCursorUsageLimits({ apiEndpoint: "" }, {}, { allowKeychain: true }).pipe(
+          Effect.provideService(HostProcess.Platform, "darwin"),
           Effect.provideService(
             HttpClient.HttpClient,
             HttpClient.make(() => Effect.die("must not request limits without a login")),
           ),
+        ),
+        Effect.fail(
+          new CursorKeychain.CursorKeychainReadError({
+            cause: new Error("Keychain initialization failed"),
+          }),
         ),
       );
       expect(limits.unavailable?.reason).toBe("probeFailed");
@@ -259,13 +257,8 @@ describe("Cursor usage limits", () => {
         ["", { CURSOR_API_ENDPOINT: "https://cursor-proxy.example" }],
       ] as const) {
         const limits = yield* withNodeServices(
-          readCursorUsageLimits({ apiEndpoint }, environment, {
-            allowKeychain: true,
-            keychainToken: async () => {
-              throw new Error("must not read Keychain for a custom endpoint");
-            },
-          }).pipe(
-            Effect.provideService(HostProcessPlatform, "darwin"),
+          readCursorUsageLimits({ apiEndpoint }, environment, { allowKeychain: true }).pipe(
+            Effect.provideService(HostProcess.Platform, "darwin"),
             Effect.provideService(
               HttpClient.HttpClient,
               HttpClient.make(() => Effect.die("must not send a Keychain credential to a proxy")),
@@ -304,14 +297,11 @@ describe("Cursor usage limits", () => {
             { CURSOR_AUTH_TOKEN: "host-token", CURSOR_API_KEY: "host-key" },
             {
               allowKeychain: true,
-              keychainToken: async () => {
-                throw new Error("must not read the shared Keychain login");
-              },
               sdkCredential: credential,
               sharedLogin: false,
             },
           ).pipe(
-            Effect.provideService(HostProcessPlatform, "darwin"),
+            Effect.provideService(HostProcess.Platform, "darwin"),
             Effect.provideService(HttpClient.HttpClient, client),
           ),
         );
@@ -349,12 +339,11 @@ describe("Cursor usage limits", () => {
           {},
           {
             allowKeychain: true,
-            keychainToken: async () => "shared-keychain-token",
             sdkCredential: { apiKey: "revoked" },
             sharedLogin: true,
           },
         ).pipe(
-          Effect.provideService(HostProcessPlatform, "darwin"),
+          Effect.provideService(HostProcess.Platform, "darwin"),
           Effect.provideService(
             HttpClient.HttpClient,
             HttpClient.make((request) => {
@@ -365,6 +354,7 @@ describe("Cursor usage limits", () => {
             }),
           ),
         ),
+        Effect.succeed("shared-keychain-token"),
       );
       expect(limits.unavailable?.reason).toBe("probeFailed");
     }),
@@ -378,13 +368,10 @@ describe("Cursor usage limits", () => {
           {},
           {
             allowKeychain: true,
-            keychainToken: async () => {
-              throw new Error("must not read the shared Keychain login");
-            },
             sharedLogin: false,
           },
         ).pipe(
-          Effect.provideService(HostProcessPlatform, "darwin"),
+          Effect.provideService(HostProcess.Platform, "darwin"),
           Effect.provideService(
             HttpClient.HttpClient,
             HttpClient.make(() => Effect.die("must not request usage")),

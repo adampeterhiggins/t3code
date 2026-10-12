@@ -5,14 +5,33 @@ When a server is behind your web or desktop app, an update notice appears in the
 conversation and **Settings → Connections**. Update the machine named in that
 notice.
 
+## Update everything at once
+
+The update button at the bottom of the sidebar updates every connected machine
+in one step. It updates outdated providers, then servers that are behind, then
+the desktop app you are using, which restarts last. Servers move to the
+version your desktop app is installing, or to your web app's version. A
+background service stays on its current release channel. A remote desktop app
+installs the latest release from its own channel. Hover the button to see what
+it will update.
+
+Server updates appear only after that version is published to npm. Remote
+desktop apps do not wait for npm. Servers that need
+a manual update are not included. Use the notice or **Settings → Connections**
+for those.
+
+The confirmation counts the running threads that the restarts will interrupt,
+and how many can resume afterwards. See **Continue threads after restarts**
+below.
+
 ## Before you update
 
 Server and desktop updates restart the connection. Running threads are paused
 first, so when T3 Code is back you can resume each one from the thread. Saved
 threads, settings, and project files remain.
 
-**Settings → General → Continue threads after restarts** is off by default.
-Enable it to resume supported threads after a crash or machine restart. An
+**Settings → General → Continue threads after restarts** is on by default.
+It resumes supported active threads after a crash or machine restart. An
 application update always pauses running threads for you to resume, including
 when this setting is on. Changes are saved to connected environments that
 support this setting;
@@ -21,8 +40,9 @@ different value, use **Apply to all** in Settings after it connects.
 T3 Code must start again on that machine;
 the setting does not enable automatic startup. Terminal commands may still be
 interrupted, and threads without saved provider resume state need a new message.
-If you previously enabled continuation for updates, enable this setting once
-to allow recovery without a connected client.
+A thread is not resumed while it waits for your approval, answer, or secret, or
+while it is archived, snoozed, or settled. After three automatic resumes in a row,
+the thread waits for your next message.
 
 Updates from the previous orchestration system preserve conversation transcripts but cannot carry
 every kind of runtime history forward. Read [Threads from older T3 Code versions](./thread-migration.md)

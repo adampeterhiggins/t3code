@@ -13,7 +13,8 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 
-import { expandHomePathWith } from "@t3tools/provider-core/server/pathExpansion";
+import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 
 const VIRTUAL_ENVIRONMENT_DIRECTORIES = [".venv", "venv"] as const;
 
@@ -113,7 +114,10 @@ export const findPythonEnvironmentActivation = Effect.fn(
     return null;
   }
 
-  const configured = path.resolve(input.cwd, expandHomePathWith(input.interpreterPath, path));
+  const configured = path.resolve(
+    input.cwd,
+    expandHomePath(input.interpreterPath, yield* HostProcess.HomeDirectory),
+  );
   const info = yield* fileSystem.stat(configured).pipe(Effect.option);
   if (info._tag === "None") return null;
   let environment = configured;

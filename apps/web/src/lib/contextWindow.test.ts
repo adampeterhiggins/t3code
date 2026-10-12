@@ -6,6 +6,7 @@ import {
   deriveKnownContextWindowSnapshot,
   deriveLatestContextWindowSnapshot,
   formatContextWindowTokens,
+  latestProviderTurnTokenUsage,
 } from "./contextWindow";
 
 describe("V2 context window presentation", () => {
@@ -59,6 +60,16 @@ describe("V2 context window presentation", () => {
 
   it("formats compact token values", () => {
     expect(formatContextWindowTokens(1_500)).toBe("1.5k");
+  });
+
+  it.each([
+    [999_499, "999k"],
+    [999_500, "1m"],
+    [999_999, "1m"],
+    [1_000_000, "1m"],
+    [1_100_000, "1.1m"],
+  ])("formats %d tokens as %s at the million boundary", (tokens, expected) => {
+    expect(formatContextWindowTokens(tokens)).toBe(expected);
   });
 });
 
@@ -187,5 +198,20 @@ describe("known context window from the provider catalog", () => {
         updatedAt: "2026-03-23T00:00:00.000Z",
       }),
     ).toBeNull();
+  });
+});
+
+describe("latestProviderTurnTokenUsage", () => {
+  it("picks the newest report, not the last turn in snapshot order", () => {
+    const usage = (usedTokens: number, updatedAt: string) => ({
+      tokenUsage: { usedTokens, updatedAt },
+    });
+    // Snapshots sort by provider thread id, so an older thread can come last.
+    const latest = latestProviderTurnTokenUsage([
+      usage(300_000, "2026-06-20T12:00:00.000Z"),
+      {},
+      usage(90_000, "2026-06-20T09:00:00.000Z"),
+    ]);
+    expect(latest?.usedTokens).toBe(300_000);
   });
 });

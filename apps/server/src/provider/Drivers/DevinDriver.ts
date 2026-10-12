@@ -9,7 +9,7 @@ import {
   ProviderSetupError,
   type ServerProvider,
 } from "@t3tools/contracts";
-import { HostProcessWorkingDirectory } from "@t3tools/shared/hostProcess";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import { resolveSelfInvocation } from "@t3tools/shared/nodeRuntime";
 import * as Schema from "effect/Schema";
 import * as Crypto from "effect/Crypto";
@@ -21,6 +21,7 @@ import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import { AcpTransportError } from "effect-acp/errors";
 
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import { makeDevinAdapterV2 } from "../../orchestration-v2/Adapters/DevinAdapterV2.ts";
 import { ProviderHost } from "@t3tools/provider-core/server/ProviderHost";
 import { ProviderDriverError } from "../Errors.ts";
@@ -31,7 +32,8 @@ import {
   checkDevinProviderStatus,
   enrichDevinSnapshot,
 } from "../DevinProvider.ts";
-import { ProviderEventLoggers } from "../ProviderEventLoggers.ts";
+import { ProviderEventLoggers } from "@t3tools/provider-core/server/ProviderEventLoggers";
+import * as ProviderLatestVersions from "@t3tools/provider-core/server/ProviderLatestVersions";
 import { makeManagedServerProvider } from "@t3tools/provider-core/server/managedProvider";
 import {
   authMethodDescriptors,
@@ -65,6 +67,7 @@ import {
   type ProviderSnapshotSettings,
 } from "@t3tools/provider-core/server/snapshotSettings";
 import { makeDevinTextGeneration } from "../../textGeneration/DevinTextGeneration.ts";
+import { devinUsageReader, type DevinUsageReaderEnv } from "./devinUsage.ts";
 const decodeDevinSettings = Schema.decodeSync(DevinSettings);
 
 const DRIVER_KIND = ProviderDriverKind.make("devin");
@@ -96,11 +99,13 @@ export type DevinDriverEnv =
   | FileSystem.FileSystem
   | HttpClient.HttpClient
   | IdAllocator.IdAllocatorV2
+  | McpProviderSessions.McpProviderSessions
   | Path.Path
   | ProviderEventLoggers
-  | ProviderHost;
+  | ProviderHost
+  | ProviderLatestVersions.ProviderLatestVersions;
 
-export const DevinDriver: ProviderDriver<DevinSettings, DevinDriverEnv> = {
+export const DevinDriver: ProviderDriver<DevinSettings, DevinDriverEnv, DevinUsageReaderEnv> = {
   driverKind: DRIVER_KIND,
   metadata: {
     displayName: "Devin",
@@ -108,6 +113,7 @@ export const DevinDriver: ProviderDriver<DevinSettings, DevinDriverEnv> = {
   },
   configSchema: DevinSettings,
   defaultConfig: (): DevinSettings => decodeDevinSettings({}),
+  usage: devinUsageReader,
   create: ({ instanceId, displayName, accentColor, environment, enabled, config: configured }) =>
     Effect.gen(function* () {
       const config = {
@@ -126,6 +132,7 @@ export const DevinDriver: ProviderDriver<DevinSettings, DevinDriverEnv> = {
       const fileSystem = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const httpClient = yield* HttpClient.HttpClient;
+      const latestVersions = yield* ProviderLatestVersions.ProviderLatestVersions;
       const host = yield* ProviderHost;
       const eventLoggers = yield* ProviderEventLoggers;
       const selfInvocation = yield* resolveSelfInvocation();
@@ -133,7 +140,7 @@ export const DevinDriver: ProviderDriver<DevinSettings, DevinDriverEnv> = {
       const processEnv = yield* mergeProviderHomePathEnvironment(
         config.homePath,
         ["XDG_DATA_HOME"],
-        mergeProviderInstanceEnvironment(environment),
+        yield* mergeProviderInstanceEnvironment(environment),
       );
       const continuationIdentity = defaultProviderContinuationIdentity({
         driverKind: DRIVER_KIND,
@@ -201,7 +208,7 @@ export const DevinDriver: ProviderDriver<DevinSettings, DevinDriverEnv> = {
         driverKind: DRIVER_KIND,
         envName: "WINDSURF_API_KEY",
       });
-      const authCwd = yield* HostProcessWorkingDirectory;
+      const authCwd = yield* HostProcess.WorkingDirectory;
       const authMethods: ReadonlyArray<CliAuthMethodSpec> = [
         {
           kind: "effect",
@@ -293,7 +300,7 @@ export const DevinDriver: ProviderDriver<DevinSettings, DevinDriverEnv> = {
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
       );
 
-      const snapshotSettings = makeProviderSnapshotSettingsSource(effectiveConfig, host.settings);
+      const snapshotSettings = yield* makeProviderSnapshotSettingsSource(effectiveConfig);
       const snapshot = yield* makeManagedServerProvider<ProviderSnapshotSettings<DevinSettings>>({
         resolveMaintenance,
         getSettings: snapshotSettings.getSettings,
@@ -318,6 +325,7 @@ export const DevinDriver: ProviderDriver<DevinSettings, DevinDriverEnv> = {
                 publishSnapshot,
                 stampIdentity,
                 httpClient,
+                latestVersions,
               }),
             ),
           ),

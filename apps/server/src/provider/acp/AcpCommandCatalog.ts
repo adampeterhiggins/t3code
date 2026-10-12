@@ -5,7 +5,7 @@ import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import type * as EffectAcpSchema from "effect-acp/compat";
 
-import type { ServerProviderShape } from "@t3tools/provider-core/server/snapshot";
+import type { ManagedServerProvider } from "@t3tools/provider-core/server/snapshot";
 
 /**
  * Keeps the slash commands an ACP agent advertises (`available_commands_update`)
@@ -13,7 +13,7 @@ import type { ServerProviderShape } from "@t3tools/provider-core/server/snapshot
  * `builtInCommands` lead the list; T3 handles them itself.
  */
 export const makeAcpCommandCatalog = Effect.fn("makeAcpCommandCatalog")(function* (
-  provider: ServerProviderShape,
+  provider: ManagedServerProvider,
   builtInCommands: ReadonlyArray<ServerProviderSlashCommand> = [],
 ) {
   const workspaces = yield* SubscriptionRef.make<NonNullable<ServerProvider["workspaceSnapshots"]>>(
@@ -95,6 +95,6 @@ export const makeAcpCommandCatalog = Effect.fn("makeAcpCommandCatalog")(function
         provider.streamChanges.pipe(Stream.map(() => undefined)),
         SubscriptionRef.changes(workspaces).pipe(Stream.map(() => undefined)),
       ).pipe(Stream.mapEffect(() => getSnapshot)),
-    } satisfies ServerProviderShape,
+    } satisfies ManagedServerProvider,
   };
 });

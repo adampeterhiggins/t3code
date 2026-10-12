@@ -5,10 +5,14 @@ import * as PlatformError from "effect/PlatformError";
 import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 import type { VcsError } from "@t3tools/contracts";
-import { HostProcessEnvironment } from "@t3tools/shared/hostProcess";
+import * as HostProcess from "@t3tools/shared/HostProcess";
+import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
+import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
-import * as GitHubApi from "./GitHubApi.ts";
-import * as GitHubCredentials from "./GitHubCredentials.ts";
+import * as VcsProjectConfig from "../vcs/VcsProjectConfig.ts";
+import * as ServerSourceControlHost from "./ServerSourceControlHost.ts";
+import * as GitHubApi from "@t3tools/source-control-github/server/GitHubApi";
+import * as GitHubCredentials from "@t3tools/source-control-github/server/GitHubCredentials";
 
 const gitHubCliFailureFields = {
   command: Schema.Literal("gh"),
@@ -159,7 +163,7 @@ export class GitHubCli extends Context.Service<
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = Effect.gen(function* () {
   const process = yield* VcsProcess.VcsProcess;
-  const environment = yield* HostProcessEnvironment;
+  const environment = yield* HostProcess.Environment;
   const api = yield* GitHubApi.GitHubApi;
   const execute: GitHubCli["Service"]["execute"] = Effect.fn("GitHubCli.execute")(
     function* (input) {
@@ -196,5 +200,15 @@ export const make = Effect.gen(function* () {
 });
 
 export const layer = Layer.effect(GitHubCli, make).pipe(
-  Layer.provide(GitHubApi.layerWithDependencies),
+  // GitHub API reads run against the server's source control host port.
+  Layer.provide(
+    GitHubApi.layerWithDependencies.pipe(
+      Layer.provide(
+        ServerSourceControlHost.layer.pipe(
+          Layer.provide(GitVcsDriver.layer),
+          Layer.provide(VcsDriverRegistry.layer.pipe(Layer.provide(VcsProjectConfig.layer))),
+        ),
+      ),
+    ),
+  ),
 );

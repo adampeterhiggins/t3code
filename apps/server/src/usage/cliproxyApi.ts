@@ -665,6 +665,9 @@ export const makeCliproxyApi = Effect.gen(function* () {
       id: account.id,
       driver: driverFor(provider),
       ...(account.email ? { email: account.email } : {}),
+      ...(account.id_token?.chatgpt_account_id?.trim()
+        ? { workspaceId: account.id_token.chatgpt_account_id.trim() }
+        : {}),
     };
     const read = Effect.gen(function* () {
       switch (provider) {

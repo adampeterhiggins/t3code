@@ -16,7 +16,8 @@ import { ChildProcessSpawner } from "effect/process";
 
 import { CUSTOM_ACP_DRIVER_KIND } from "../../provider/acp/CustomAcpSupport.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
-import { layerTestProviderHost } from "@t3tools/provider-testing/host";
+import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
+import * as TestProviderHost from "@t3tools/provider-testing/TestProviderHost";
 import { ProviderAdapterV2RuntimePolicy } from "@t3tools/provider-core/server/ProviderAdapter";
 import {
   decodeAcpReplayTranscript,
@@ -28,7 +29,8 @@ import { makeCustomAcpAdapterV2 } from "./CustomAcpAdapterV2.ts";
 const testLayer = Layer.mergeAll(
   NodeServices.layer,
   IdAllocator.layer,
-  layerTestProviderHost().pipe(Layer.provide(NodeServices.layer)),
+  McpProviderSessions.layer,
+  TestProviderHost.layer().pipe(Layer.provide(NodeServices.layer)),
 );
 
 type Frame = Record<string, unknown>;

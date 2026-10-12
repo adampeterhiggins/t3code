@@ -169,7 +169,6 @@ export const makeDevinAdapterV2 = Effect.fn("makeDevinAdapterV2")(function* (
     // through client terminals, so T3 streams their output and owns the
     // process tree on interrupt, with the instance's environment.
     clientTerminals: {
-      childProcessSpawner: options.childProcessSpawner,
       environment: options.environment,
       shellCommands: true,
     },
@@ -184,5 +183,5 @@ export const makeDevinAdapterV2 = Effect.fn("makeDevinAdapterV2")(function* (
           getModelContextWindow: devinModelContextWindow,
         })),
       ),
-  } satisfies ProviderAdapter.ProviderAdapterV2Shape;
+  } satisfies ProviderAdapter.ProviderAdapterV2["Service"];
 });

@@ -5,7 +5,7 @@ import * as NodePath from "node:path";
 import * as NodeFSP from "node:fs/promises";
 import { expect, it } from "@effect/vitest";
 import { ProviderInstanceId } from "@t3tools/contracts";
-import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
@@ -14,15 +14,22 @@ import { ChildProcessSpawner } from "effect/process";
 import { HttpClient } from "effect/http";
 
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
-import { layerTestProviderHost } from "@t3tools/provider-testing/host";
-import { NoOpProviderEventLoggers, ProviderEventLoggers } from "../ProviderEventLoggers.ts";
+import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
+import {
+  NoOpProviderEventLoggers,
+  ProviderEventLoggers,
+} from "@t3tools/provider-core/server/ProviderEventLoggers";
+import * as ProviderLatestVersions from "@t3tools/provider-core/server/ProviderLatestVersions";
+import * as TestProviderHost from "@t3tools/provider-testing/TestProviderHost";
 import { DevinDriver } from "./DevinDriver.ts";
 
 const encodeUnknownJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 
-const layerTest = layerTestProviderHost({ runBackgroundWork: false }).pipe(
+const layerTest = TestProviderHost.layer({ runBackgroundWork: false }).pipe(
   Layer.provideMerge(NodeServices.layer),
   Layer.provideMerge(IdAllocator.layer),
+  Layer.provideMerge(McpProviderSessions.layer),
+  Layer.provideMerge(ProviderLatestVersions.layer),
   Layer.provideMerge(Layer.succeed(ProviderEventLoggers, NoOpProviderEventLoggers)),
   Layer.provideMerge(
     Layer.succeed(
@@ -33,7 +40,7 @@ const layerTest = layerTestProviderHost({ runBackgroundWork: false }).pipe(
 );
 
 // The `#!/bin/sh` stub below cannot be resolved as an executable on Windows.
-const windowsHost = HostProcessPlatform.defaultValue() === "win32";
+const windowsHost = HostProcess.Platform.defaultValue() === "win32";
 
 const makeSkillsBinary = Effect.fn("makeDevinSkillsBinary")(function* (options: {
   readonly skillsJson: string;

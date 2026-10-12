@@ -85,7 +85,7 @@ Code: [`DevinDriver.ts`](../apps/server/src/provider/Drivers/DevinDriver.ts),
 [`DevinAcpSupport.ts`](../apps/server/src/provider/acp/DevinAcpSupport.ts),
 `apps/server/src/provider/**/Devin*`, `apps/server/src/provider/devinModelCatalog.ts`,
 `apps/server/src/textGeneration/DevinTextGeneration.ts`, `apps/server/src/usage/devinAccountUsage.ts`,
-`apps/server/src/usage/devinUsageReader.ts`, `apps/web/src/components/usage/usageExport.ts`, and
+`apps/server/src/provider/Drivers/devinUsageReader.ts`, `apps/web/src/components/usage/usageExport.ts`, and
 `DevinSettings` in `packages/contracts/src/settings.ts`. User guides:
 [providers-devin.md](./user/providers-devin.md) and [usage.md](./user/usage.md).
 
@@ -131,7 +131,7 @@ CLI login, and one account counts once. Code:
 [`usageLimits.ts`](../packages/provider-cursor/src/server/usageLimits.ts),
 `readCursorSdkCredential` in
 [`credentialStore.ts`](../packages/provider-cursor/src/server/credentialStore.ts), and the Cursor
-scan in [`UsageService.ts`](../apps/server/src/usage/UsageService.ts). User guide:
+account scan in [`CursorUsageAccounts.ts`](../packages/provider-cursor/src/server/CursorUsageAccounts.ts). User guide:
 [usage.md](./user/usage.md).
 
 Cursor turns also record their token usage. Upstream's Cursor adapter ignores the usage the SDK
@@ -609,10 +609,10 @@ Code: `useLinkClickHandler` in `apps/web/src/browser/useOpenLink.ts` and
 
 ## Worktree cleanup ignored names
 
-Automatic worktree cleanup still refuses to delete a checkout that has uncommitted work.
-Regenerable caches such as `node_modules`, virtualenvs, and `__pycache__` no longer count as that
-work. **Settings → Storage → Ignored names that do not block cleanup** adds more file and directory
-names, applied to every project on that machine. **Suggest from projects** asks the selected model,
+With **Keep worktrees with local changes** set to **Any local files**, upstream keeps a worktree
+for any ignored file except `node_modules`. In the fork, regenerable caches such as virtualenvs and
+`__pycache__` don't keep it either, and **Settings → Storage → Ignored names that do not block
+cleanup** adds more file and directory names, applied to every project on that machine. **Suggest from projects** asks the selected model,
 or the environment's text-generation model when that control is off, to propose ignored directories
 that appear in more than one project. Credential paths such as `.env` and `.ssh` stay blocking.
 
