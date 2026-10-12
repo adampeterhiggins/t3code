@@ -106,6 +106,15 @@ function MenuItem({
   );
 }
 
+/** An asynchronous menu keeps its known choices while more options arrive. */
+function MenuLoadingItem({ children = "Loading…" }: { children?: React.ReactNode }) {
+  return (
+    <MenuItem disabled>
+      <span role="status">{children}</span>
+    </MenuItem>
+  );
+}
+
 // Trim font leading so visible letters center with the icons in touch rows.
 // Symmetric padding keeps accents and descenders inside truncated labels.
 function MenuItemLabel({ className, ...props }: React.ComponentProps<"span">) {
@@ -412,6 +421,7 @@ export {
   MenuGroup,
   MenuGroup as DropdownMenuGroup,
   MenuItem,
+  MenuLoadingItem,
   MenuItemLabel,
   MenuItem as DropdownMenuItem,
   MenuCheckboxItem,

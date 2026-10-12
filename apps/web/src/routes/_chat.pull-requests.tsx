@@ -2032,6 +2032,7 @@ function PullRequestsRouteView() {
           labels: next.labels?.flatMap((group) => group),
         })
       }
+      optionsPending={baselineQuery.isPending || facetQuery.isPending || listQuery.isPending}
       authorOptions={facets.authors}
       labelOptions={facets.labels}
       host={search.host}

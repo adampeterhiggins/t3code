@@ -766,6 +766,9 @@ function ImportConversationList({
               label="Source"
               value={source}
               options={sourceOptions}
+              optionsPending={listings.some(
+                (listing) => listing.conductor._tag === "Initial" || listing.conductor.waiting,
+              )}
               onChange={setSource}
             />
           </MenuPopup>

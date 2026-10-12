@@ -221,6 +221,9 @@ function LinearIssuePickerDialog(props: {
             inputAccessory={
               <LinearIssueFilterBar
                 options={filterOptions.data}
+                optionsError={filterOptions.error}
+                optionsPending={filterOptions.isPending}
+                onRetryOptions={filterOptions.refresh}
                 view={view}
                 searching={debouncedQuery.length > 0}
                 onChange={(next) => setView(environmentId, next)}

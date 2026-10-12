@@ -35,6 +35,7 @@ import {
   MenuCheckboxItem,
   MenuGroupLabel,
   MenuItem,
+  MenuLoadingItem,
   MenuPopup,
   MenuRadioGroup,
   MenuRadioItem,
@@ -235,24 +236,27 @@ export function PullRequestFilterRadioSubmenu<Value extends string>({
   value,
   options,
   onChange,
+  optionsPending = false,
 }: {
   label: string;
   value: Value;
+  optionsPending?: boolean;
   options: ReadonlyArray<PullRequestFilterOption<Value>>;
   onChange: (value: Value) => void;
 }) {
   const current = options.find((option) => option.value === value) ?? options[0];
-  if (!current) return null;
+  if (!current && !optionsPending) return null;
   return (
     <MenuSub>
       <MenuSubTrigger>
-        <PullRequestFilterOptionIcon option={current} />
+        {current ? <PullRequestFilterOptionIcon option={current} /> : null}
         <span className="flex-1">{label}</span>
         <span className="min-w-0 max-w-32 truncate text-xs text-muted-foreground">
-          {current.label}
+          {current?.label ?? "Loading…"}
         </span>
       </MenuSubTrigger>
       <MenuSubPopup>
+        {optionsPending ? <MenuLoadingItem>Loading filters…</MenuLoadingItem> : null}
         <PullRequestFilterRadioGroup
           label={label}
           value={value}
@@ -267,10 +271,12 @@ export function PullRequestFilterRadioSubmenu<Value extends string>({
 function PullRequestAuthorFilter({
   value,
   options,
+  optionsPending,
   onChange,
 }: {
   value: string | undefined;
   options: ReadonlyArray<PullRequestAuthorFacet>;
+  optionsPending: boolean;
   onChange: (author: string | undefined) => void;
 }) {
   const [query, setQuery] = useState("");
@@ -317,7 +323,10 @@ function PullRequestAuthorFilter({
               </span>
             </MenuRadioItem>
           ))}
-          {visible.length === 0 ? <MenuItem disabled>No authors found</MenuItem> : null}
+          {optionsPending ? <MenuLoadingItem>Loading authors…</MenuLoadingItem> : null}
+          {visible.length === 0 && !optionsPending ? (
+            <MenuItem disabled>No authors found</MenuItem>
+          ) : null}
         </MenuRadioGroup>
       </MenuSubPopup>
     </MenuSub>
@@ -327,10 +336,12 @@ function PullRequestAuthorFilter({
 function PullRequestLabelFilter({
   value,
   options,
+  optionsPending,
   onChange,
 }: {
   value: ReadonlyArray<string>;
   options: ReadonlyArray<PullRequestLabelFacet>;
+  optionsPending: boolean;
   onChange: (labels: ReadonlyArray<string>) => void;
 }) {
   const selected = new Set(value.map((name) => name.toLowerCase()));
@@ -350,7 +361,8 @@ function PullRequestLabelFilter({
         </span>
       </MenuSubTrigger>
       <MenuSubPopup>
-        {visible.length === 0 ? (
+        {optionsPending ? <MenuLoadingItem>Loading labels…</MenuLoadingItem> : null}
+        {visible.length === 0 && !optionsPending ? (
           <MenuItem disabled>No labels in this view</MenuItem>
         ) : (
           <MenuSearch items={visible} getText={(option) => option.name} placeholder="Search labels">
@@ -408,6 +420,7 @@ export function PullRequestFiltersMenu({
   onInvolvement,
   filters,
   onFilters,
+  optionsPending = false,
   authorOptions = [],
   labelOptions = [],
   host,
@@ -434,6 +447,8 @@ export function PullRequestFiltersMenu({
   /** The narrowings beyond state and involvement; an absent field is that group unfiltered. */
   filters: PullRequestListFilters;
   onFilters: (filters: PullRequestListFilters) => void;
+  /** Authors and labels come from asynchronous listings; fixed choices stay available. */
+  optionsPending?: boolean;
   authorOptions?: ReadonlyArray<PullRequestAuthorFacet>;
   labelOptions?: ReadonlyArray<PullRequestLabelFacet>;
   host: string | undefined;
@@ -543,11 +558,13 @@ export function PullRequestFiltersMenu({
         <PullRequestAuthorFilter
           value={filters.author}
           options={authorOptions}
+          optionsPending={optionsPending}
           onChange={(author) => updateFilters({ author })}
         />
         <PullRequestLabelFilter
           value={selectedLabels}
           options={labelOptions}
+          optionsPending={optionsPending}
           onChange={(labels) =>
             updateFilters({
               labels: labels.length === 0 ? undefined : labels.slice(0, 10).map((label) => [label]),

@@ -580,6 +580,7 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
                 {tab === "pull-requests" ? (
                   <PullRequestPickerFilterBar
                     entries={loadedPullRequests}
+                    optionsPending={pullRequests.isPending}
                     view={pullRequestView}
                     onChange={setPullRequestView}
                   />
@@ -590,6 +591,9 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
                 {tab === "linear" && linearConnected ? (
                   <LinearIssueFilterBar
                     options={issueFilterOptions.data}
+                    optionsError={issueFilterOptions.error}
+                    optionsPending={issueFilterOptions.isPending}
+                    onRetryOptions={issueFilterOptions.refresh}
                     view={issueView}
                     searching={debouncedQuery.length > 0}
                     onChange={(next) => setIssueView(environmentId, next)}
