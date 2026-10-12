@@ -248,12 +248,13 @@ export { latestThreadForkPoint, type ThreadForkPoint };
  */
 export function threadForkPointBeforeMessage(
   items: ReadonlyArray<OrchestrationV2ProjectedTurnItem>,
+  runs: Parameters<typeof latestThreadForkPoint>[1],
   messageId: MessageId,
 ): ThreadForkPoint | null {
   const index = items.findIndex(
     (entry) => entry.item.type === "user_message" && entry.item.messageId === messageId,
   );
-  return index < 0 ? null : latestThreadForkPoint(items.slice(0, index));
+  return index < 0 ? null : latestThreadForkPoint(items.slice(0, index), runs);
 }
 
 export const prepareThreadTabHandoff = Effect.fn("clientRuntime.threadTabs.handoff")(function* (

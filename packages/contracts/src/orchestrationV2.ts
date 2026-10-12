@@ -482,6 +482,23 @@ export const OrchestrationV2RunStatus = Schema.Literals([
 ]);
 export type OrchestrationV2RunStatus = typeof OrchestrationV2RunStatus.Type;
 
+/**
+ * Fork copies a provider-finished conversation. Usage-limited and other
+ * failed, interrupted, or cancelled turns still have a native thread (or a
+ * portable transcript) even though the run did not complete successfully.
+ * `waiting` is provider-finished with checkpoint capture still pending.
+ * In-progress and rolled-back runs are not forkable.
+ */
+export function isForkableSourceRunStatus(status: OrchestrationV2RunStatus): boolean {
+  return (
+    status === "completed" ||
+    status === "waiting" ||
+    status === "failed" ||
+    status === "interrupted" ||
+    status === "cancelled"
+  );
+}
+
 export const OrchestrationV2DelegatedCompletionTaskDeliveryState = Schema.Literals([
   "pending",
   "claimed",

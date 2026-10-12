@@ -321,6 +321,49 @@ it.effect("a fork without a run continues the source's latest finished response"
   );
 });
 
+it.effect("a fork never starts from a turn that is still running", () => {
+  const response = (runId: string) => ({
+    sourceThreadId: ThreadId.make("source"),
+    item: { type: "assistant_message", status: "completed", runId: RunId.make(runId) },
+  });
+  const harness = makeHarness({
+    shells: [makeShell("source", { activeRunId: RunId.make("run-2") }), makeShell("tab")],
+    projections: {
+      // The running turn has already completed a message between its tool calls.
+      source: {
+        runs: [
+          { id: RunId.make("run-1"), status: "completed" },
+          { id: RunId.make("run-2"), status: "running" },
+        ],
+        visibleTurnItems: [response("run-1"), response("run-2")],
+      } as unknown as OrchestrationV2ThreadProjection,
+    },
+  });
+  return withTabs(harness, (tabs) =>
+    Effect.gen(function* () {
+      yield* tabs.fork(ThreadId.make("tab"), {
+        threadId: ThreadId.make("fork"),
+        sourceThreadId: ThreadId.make("source"),
+      });
+      const command = harness.dispatched[0];
+      assert.strictEqual(command?.type, "thread.fork");
+      if (command?.type === "thread.fork") {
+        assert.deepStrictEqual(command.sourcePoint, { type: "run", runId: RunId.make("run-1") });
+      }
+
+      const running = yield* Effect.flip(
+        tabs.fork(ThreadId.make("tab"), {
+          threadId: ThreadId.make("fork-2"),
+          sourceThreadId: ThreadId.make("source"),
+          runId: RunId.make("run-2"),
+        }),
+      );
+      assert.strictEqual(running.reason, "invalid_request");
+      assert.strictEqual(harness.dispatched.length, 1);
+    }),
+  );
+});
+
 it.effect("a fork onto another model switches the new tab before its first message", () => {
   const harness = makeHarness({ shells: [makeShell("source")] });
   const claude = { instanceId: ProviderInstanceId.make("claude"), model: "claude-opus-5-5" };

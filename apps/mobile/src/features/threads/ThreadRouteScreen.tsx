@@ -1207,7 +1207,10 @@ function ThreadRouteContent(
             modelSelection={selectedThread.modelSelection}
             forkPoint={
               selectedThreadDetail
-                ? latestThreadForkPoint(selectedThreadDetail.visibleTurnItems)
+                ? latestThreadForkPoint(
+                    selectedThreadDetail.visibleTurnItems,
+                    selectedThreadDetail.runs,
+                  )
                 : null
             }
             empty={selectedThreadIsEmptyTab}

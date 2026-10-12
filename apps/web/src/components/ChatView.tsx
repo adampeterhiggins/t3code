@@ -9303,7 +9303,11 @@ export default function ChatView(props: ChatViewProps) {
         createAssetUrl: createAttachmentAssetUrl,
       });
       const prompt = recallableComposerPrompt(message.text);
-      const forkPoint = threadForkPointBeforeMessage(serverProjection.visibleTurnItems, messageId);
+      const forkPoint = threadForkPointBeforeMessage(
+        serverProjection.visibleTurnItems,
+        serverProjection.runs,
+        messageId,
+      );
       let tabRef: ScopedThreadRef;
       if (forkPoint) {
         tabRef = await forkResponseIntoTab(connection, {
@@ -9390,7 +9394,7 @@ export default function ChatView(props: ChatViewProps) {
       const modelSelection = createModelSelection(instanceId, model);
       const prompt = draft?.prompt.trim() || emptyDraftPrompt;
       const forkPoint = serverProjection
-        ? latestThreadForkPoint(serverProjection.visibleTurnItems)
+        ? latestThreadForkPoint(serverProjection.visibleTurnItems, serverProjection.runs)
         : null;
       let tabRef: ScopedThreadRef;
       if (forkPoint) {
