@@ -17,7 +17,10 @@ import {
   type Transaction,
 } from "@tiptap/pm/state";
 
-import { splitPromptIntoComposerSegments } from "~/composer-editor-mentions";
+import {
+  collectComposerPromptInlineTokens,
+  splitPromptIntoComposerSegments,
+} from "~/composer-editor-mentions";
 import { nextOrderedMarkerText } from "~/composer-list-continuation";
 import { parseInlineMarkdown, RICH_TEXT_DELIMITERS, type RichTextMark } from "~/composer-rich-text";
 import { collectInlineContextIds } from "~/lib/composerContextReferences";
@@ -1570,4 +1573,37 @@ export function stepCaretAcrossStyledEdge(
   const target = direction === -1 ? edge.before : edge.after;
   if (Mark.sameSet(edge.current, target)) return null;
   return state.tr.setStoredMarks(target);
+}
+
+/**
+ * Turns the `@mention`, `$skill` or file link that ends at `pos` into its
+ * chip, for typing `boundary` (whitespace, or `\n` for a new line) after it:
+ * the same boundary a paste and a stored draft read tokens at. Null when no
+ * token ends there, so the key does what it always does.
+ */
+export function chipTokenEndingAt(
+  state: EditorState,
+  pos: number,
+  boundary: string,
+  skillLabelFor: (name: string) => SkillMeta,
+): Transaction | null {
+  if (!/^\s$/u.test(boundary)) return null;
+  const $pos = state.doc.resolve(pos);
+  if (!$pos.parent.isTextblock || $pos.parent.type.spec.code) return null;
+  // Tokens never span a chip or styled text, so read back to the nearest one.
+  let start = pos;
+  while (start > $pos.start()) {
+    const node = state.doc.resolve(start).nodeBefore;
+    if (!node?.isText || node.marks.length > 0) break;
+    start -= node.nodeSize;
+  }
+  const before = state.doc.textBetween(start, pos);
+  const token = collectComposerPromptInlineTokens(`${before}${boundary}`).at(-1);
+  if (!token || token.end !== before.length) return null;
+  // A token needs whitespace or the line start before it; a chip or styled text is neither.
+  if (token.start === 0 && start !== $pos.start()) return null;
+  const segment = splitPromptIntoComposerSegments(`${token.source}${boundary}`)[0];
+  if (!segment || segment.type === "text") return null;
+  const chip = state.schema.nodeFromJSON(atomJsonForSegment(segment, skillLabelFor));
+  return state.tr.replaceWith(start + token.start, pos, chip);
 }
