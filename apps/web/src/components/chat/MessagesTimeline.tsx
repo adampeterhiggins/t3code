@@ -88,7 +88,7 @@ const NOOP_USE_ARTIFACT_TEMPLATE = () => {};
 const NOOP_OPEN_ATTACHMENT = (_attachment: ChatFileAttachment) => {};
 
 import { resolveChatListAnchoredEndSpace } from "@t3tools/shared/chatList";
-import { toolActivityFaviconUrl } from "@t3tools/shared/favicon";
+import { toolActivityFaviconUrl, toolActivityIconIsLinear } from "@t3tools/shared/favicon";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
 import { getProjectFaviconCacheKey } from "@t3tools/shared/projectFavicon";
 import { claudeSkillInvocation } from "@t3tools/shared/toolActivity";
@@ -5229,6 +5229,9 @@ function ToolActivityIconView(props: {
   const fallbackClassName = cn(props.className, props.muted && "opacity-70 light:brightness-60");
   if (!props.icon) {
     return <WorkEntryIcon name={props.fallbackName} className={fallbackClassName} />;
+  }
+  if (toolActivityIconIsLinear(props.icon)) {
+    return <LinearIcon className={fallbackClassName} aria-hidden />;
   }
   if (props.icon._tag === "website") {
     const src = toolActivityFaviconUrl(props.icon, resolvedTheme, 32);

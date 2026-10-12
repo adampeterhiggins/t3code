@@ -1,6 +1,10 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { faviconUrlForOrigin, toolActivityFaviconUrl } from "./favicon.ts";
+import {
+  faviconUrlForOrigin,
+  toolActivityFaviconUrl,
+  toolActivityIconIsLinear,
+} from "./favicon.ts";
 
 describe("faviconUrlForOrigin", () => {
   it.each([
@@ -98,5 +102,32 @@ describe("toolActivityFaviconUrl", () => {
         "light",
       ),
     ).toBe("https://example.com/favicon.ico");
+  });
+});
+
+describe("toolActivityIconIsLinear", () => {
+  it("recognizes Linear logos and favicon-service URLs for linear.app", () => {
+    expect(
+      toolActivityIconIsLinear({
+        _tag: "themed-logo",
+        logoUrl: "https://www.google.com/s2/favicons?domain=linear.app&sz=64",
+      }),
+    ).toBe(true);
+    expect(
+      toolActivityIconIsLinear({ _tag: "website", pageUrl: "https://linear.app/acme/issue/ENG-1" }),
+    ).toBe(true);
+  });
+
+  it("leaves other icons alone", () => {
+    expect(
+      toolActivityIconIsLinear({
+        _tag: "themed-logo",
+        logoUrl: "https://www.google.com/s2/favicons?domain=firecrawl.dev&sz=64",
+      }),
+    ).toBe(false);
+    expect(toolActivityIconIsLinear({ _tag: "website", pageUrl: "https://notlinear.app/" })).toBe(
+      false,
+    );
+    expect(toolActivityIconIsLinear({ _tag: "native-app" })).toBe(false);
   });
 });
