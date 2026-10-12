@@ -8,7 +8,6 @@ import { useRightPanelStore } from "~/rightPanelStore";
 import { useEnvironmentSettings } from "~/hooks/useSettings";
 import { AttachmentFilePreview } from "../files/AttachmentFilePreview";
 import { Dialog, DialogPopup, DialogTitle } from "../ui/dialog";
-import { filterComposerPullRequestMatches } from "@t3tools/shared/composerPullRequestMatches";
 import { importPastedComposerText, readPastedComposerContext } from "../composerInlineTokenPaste";
 import { elementContextToPreviewAnnotation } from "../../lib/elementContext";
 import { RefreshIcon } from "~/components/ui/refresh-icon";
@@ -27,7 +26,6 @@ import type {
   EnvironmentId,
   ModelSelection,
   ProjectId,
-  PullRequestListInput,
   PreviewAnnotationPayload,
   ProviderApprovalDecision,
   ThreadContextRecord,
@@ -272,13 +270,6 @@ import { resolveAssetUrl } from "~/assets/assetUrls";
 import { assetEnvironment } from "~/state/assets";
 import { readPreparedConnection } from "~/state/session";
 import { useAtomQueryRunner } from "~/state/use-atom-query-runner";
-import {
-  pullRequestEnvironment,
-  usePullRequestList,
-  type EnvironmentQueryTarget,
-} from "~/state/pullRequests";
-import { useEnvironmentQuery } from "~/state/query";
-import { useDebouncedValue } from "~/state/queries";
 import { ProviderModelPicker } from "./ProviderModelPicker";
 import { ProviderAccountPicker } from "./ProviderAccountPicker";
 import {
@@ -306,11 +297,21 @@ import { useComposerRepositoryItems } from "./useComposerRepositoryItems";
 import { useComposerAgentItems } from "./useComposerAgentItems";
 import { agentReferenceTargetOf, attachAgentToChat } from "./agentReferences";
 import { attachRepository } from "./RepositoryAttachPicker";
+import { useComposerLinearIssueItems } from "./useComposerLinearIssueItems";
+import { useComposerPullRequestItems } from "./useComposerPullRequestItems";
+import { useComposerReferenceSources } from "./useComposerReferenceSources";
 import {
+  recordComposerReferenceRecents,
+  useComposerReferenceRecents,
+} from "./composerReferenceRecents";
+import {
+  type ComposerReferenceItem as ReferenceMenuItem,
   type ComposerReferenceTab,
-  defaultComposerReferenceTab,
-  useComposerLinearIssueItems,
-} from "./useComposerLinearIssueItems";
+  composerReferenceTabForItem,
+  isComposerReferenceItem as isReferenceMenuItem,
+  orderComposerReferenceItems,
+  predictComposerReferenceTab,
+} from "./composerReferenceMenu.logic";
 
 import { ComposerPendingApprovalActions } from "./ComposerPendingApprovalActions";
 import { CompactComposerControlsMenu } from "./CompactComposerControlsMenu";
@@ -327,10 +328,6 @@ import {
 } from "./ComposerControl";
 import { resolveComposerMenuActiveItemId } from "./composerMenuHighlight";
 import { buildPullRequestReferenceContext } from "../pullRequest/pullRequestDetail.logic";
-import {
-  matchesPullRequestQuery,
-  rankPullRequestMatches,
-} from "../pullRequest/pullRequestList.logic";
 import {
   searchSlashCommandItems,
   slashCommandItemsForPromptPosition,
@@ -405,32 +402,7 @@ const REFERENCE_MENU_TABS: ReadonlyArray<{ id: ComposerReferenceTab; label: stri
   { id: "repositories", label: "Repositories" },
 ];
 
-type ReferenceMenuItem = Extract<
-  ComposerCommandItem,
-  {
-    type:
-      | "pull-request"
-      | "github-issue"
-      | "linear-issue"
-      | "slack-message"
-      | "notion-page"
-      | "repository";
-  }
->;
-
 const EMPTY_REFERENCE_MENU_ITEMS: ReadonlyArray<ReferenceMenuItem> = [];
-
-/** Items offered by the `#` menu's tabs, which cmd/ctrl+click can pick several of at once. */
-function isReferenceMenuItem(item: ComposerCommandItem): item is ReferenceMenuItem {
-  return (
-    item.type === "pull-request" ||
-    item.type === "github-issue" ||
-    item.type === "linear-issue" ||
-    item.type === "slack-message" ||
-    item.type === "notion-page" ||
-    item.type === "repository"
-  );
-}
 
 function ComposerVideoThumbnail({ file }: { file: File }) {
   const setVideo = useCallback(
@@ -501,10 +473,7 @@ function SnapShotAttachmentFrame({
   );
 }
 
-const COMPOSER_PULL_REQUEST_LIST_LIMIT = 99;
-const COMPOSER_PULL_REQUEST_RESULT_LIMIT = 12;
-const EMPTY_PULL_REQUEST_LIST_TARGETS: ReadonlyArray<EnvironmentQueryTarget<PullRequestListInput>> =
-  [];
+const REFERENCE_MENU_RESULT_LIMIT = 20;
 
 const COMPOSER_SCROLL_COLLAPSE_THRESHOLD_PX = 24;
 const COMPOSER_SCROLL_GESTURE_RESET_MS = 120;
@@ -2746,17 +2715,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // ------------------------------------------------------------------
   const composerTriggerKind = composerTrigger?.kind ?? null;
   const pathTriggerQuery = composerTrigger?.kind === "path" ? composerTrigger.query : "";
-  const pullRequestTriggerQuery =
-    composerTrigger?.kind === "pull-request" ? composerTrigger.query : "";
-  const pullRequestTextQuery =
-    composerTriggerKind === "pull-request" &&
-    pullRequestTriggerQuery.length > 0 &&
-    !/^\d+$/u.test(pullRequestTriggerQuery)
-      ? pullRequestTriggerQuery
-      : null;
-  const debouncedPullRequestTextQuery = useDebouncedValue(pullRequestTextQuery, 180);
-  const settledPullRequestTextQuery =
-    pullRequestTextQuery === debouncedPullRequestTextQuery ? pullRequestTextQuery : null;
   const isPathTrigger = composerTriggerKind === "path";
   // Thread shells only feed `@` thread matches, so skip shell updates otherwise.
   const environmentThreadShells = useThreadShells(isPathTrigger);
@@ -2839,68 +2797,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       })
     : null;
 
-  const pullRequestListTargets = useMemo(
-    () =>
-      composerTriggerKind !== "pull-request" ||
-      pullRequestProjectId === null ||
-      (pullRequestTextQuery !== null && settledPullRequestTextQuery === null)
-        ? EMPTY_PULL_REQUEST_LIST_TARGETS
-        : [
-            {
-              environmentId,
-              input: {
-                state: "all" as const,
-                projectId: pullRequestProjectId,
-                limit: COMPOSER_PULL_REQUEST_LIST_LIMIT,
-                ...(settledPullRequestTextQuery === null
-                  ? {}
-                  : { query: settledPullRequestTextQuery }),
-              },
-            },
-          ],
-    [
-      composerTriggerKind,
-      environmentId,
-      pullRequestProjectId,
-      pullRequestTextQuery,
-      settledPullRequestTextQuery,
-    ],
-  );
-  const pullRequestLookup = usePullRequestList(pullRequestListTargets);
-  const pullRequestTriggerNumber = useMemo(() => {
-    if (composerTrigger?.kind !== "pull-request" || composerTrigger.query.length === 0) {
-      return null;
-    }
-    const number = Number(composerTrigger.query);
-    return Number.isSafeInteger(number) && number > 0 ? number : null;
-  }, [composerTrigger]);
-  const debouncedPullRequestNumber = useDebouncedValue(pullRequestTriggerNumber, 180);
-  const settledPullRequestNumber =
-    pullRequestTriggerNumber === debouncedPullRequestNumber ? pullRequestTriggerNumber : null;
-  const recentHasExactPullRequest =
-    settledPullRequestNumber !== null &&
-    pullRequestLookup.data?.entries.some(
-      (entry) =>
-        entry.projectId === pullRequestProjectId &&
-        entry.repository.trim().toLowerCase() === pullRequestRepository?.trim().toLowerCase() &&
-        entry.number === settledPullRequestNumber,
-    ) === true;
-  const exactPullRequestLookup = useEnvironmentQuery(
-    settledPullRequestNumber === null ||
-      pullRequestProjectId === null ||
-      pullRequestRepository === null ||
-      recentHasExactPullRequest
-      ? null
-      : pullRequestEnvironment.detail({
-          environmentId,
-          input: {
-            projectId: pullRequestProjectId,
-            repository: pullRequestRepository,
-            number: settledPullRequestNumber,
-          },
-        }),
-  );
-
+  const referenceMenuOpen = composerTrigger?.kind === "pull-request";
+  const referenceQuery = referenceMenuOpen ? composerTrigger.query : "";
   // A tab picked by hand holds until this `#` token closes; otherwise the query picks it.
   const [referenceTabChoice, setReferenceTabChoice] = useState<{
     rangeStart: number;
@@ -2926,79 +2824,131 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     environmentId,
     configuredContextRepositoryOwners,
   );
-  const referenceTab: ComposerReferenceTab =
-    composerTrigger?.kind !== "pull-request"
-      ? "pull-requests"
-      : referenceTabChoice?.rangeStart === composerTrigger.rangeStart
-        ? referenceTabChoice.tab
-        : defaultComposerReferenceTab(composerTrigger.query, defaultRepositoryOwners.length > 0);
-  const linearIssueMenu = useComposerLinearIssueItems(
-    environmentId,
-    composerTrigger,
-    referenceTab === "linear-issues",
+  const referenceSources = useComposerReferenceSources(environmentId, referenceMenuOpen);
+  const referenceRecents = useComposerReferenceRecents(environmentId, pullRequestProjectId);
+  const availableReferenceTabs = useMemo(
+    () =>
+      new Set<ComposerReferenceTab>(
+        REFERENCE_MENU_TABS.flatMap((tab) =>
+          (tab.id === "linear-issues" && !referenceSources.linear) ||
+          (tab.id === "notion-pages" && !referenceSources.notion) ||
+          (tab.id === "slack-messages" && !referenceSources.slack) ||
+          (tab.id === "github-issues" && githubIssueCwd === null)
+            ? []
+            : [tab.id],
+        ),
+      ),
+    [githubIssueCwd, referenceSources.linear, referenceSources.notion, referenceSources.slack],
   );
-  const showLinearIssues = linearIssueMenu.enabled && referenceTab === "linear-issues";
+  const referenceMenuTabs = REFERENCE_MENU_TABS.filter((tab) => availableReferenceTabs.has(tab.id));
+  const referenceTabPickedByHand =
+    referenceMenuOpen && referenceTabChoice?.rangeStart === composerTrigger.rangeStart
+      ? referenceTabChoice.tab
+      : null;
+  // Every available tab preloads its empty-query rows while `#` is open; only the visible tab
+  // searches the typed query.
+  const [predictedReferenceTab, setPredictedReferenceTab] =
+    useState<ComposerReferenceTab>("pull-requests");
+  const referenceTab: ComposerReferenceTab = referenceMenuOpen
+    ? (referenceTabPickedByHand ?? predictedReferenceTab)
+    : "pull-requests";
+  const pullRequestMenu = useComposerPullRequestItems({
+    environmentId,
+    projectId: pullRequestProjectId,
+    repository: pullRequestRepository,
+    enabled: referenceMenuOpen,
+    active: referenceTab === "pull-requests",
+    query: referenceQuery,
+  });
+  const linearIssueMenu = useComposerLinearIssueItems(environmentId, {
+    enabled: availableReferenceTabs.has("linear-issues"),
+    active: referenceTab === "linear-issues",
+    query: referenceQuery,
+  });
+  const notionMenu = useComposerNotionItems(environmentId, {
+    enabled: availableReferenceTabs.has("notion-pages"),
+    active: referenceTab === "notion-pages",
+    query: referenceQuery,
+  });
+  const slackMenu = useComposerSlackItems(environmentId, {
+    enabled: availableReferenceTabs.has("slack-messages"),
+    active: referenceTab === "slack-messages",
+    query: referenceQuery,
+  });
+  const githubIssueMenu = useComposerGitHubIssueItems(environmentId, githubIssueCwd, {
+    enabled: referenceMenuOpen,
+    active: referenceTab === "github-issues",
+    query: referenceQuery,
+  });
+  const repositoryMenu = useComposerRepositoryItems(environmentId, defaultRepositoryOwners, {
+    enabled: referenceMenuOpen,
+    active: referenceTab === "repositories",
+    query: referenceQuery,
+  });
+  const nextPredictedReferenceTab = referenceMenuOpen
+    ? predictComposerReferenceTab({
+        query: referenceQuery,
+        available: availableReferenceTabs,
+        hasDefaultRepositoryOwner: defaultRepositoryOwners.length > 0,
+        recents: referenceRecents,
+        preloaded: {
+          "pull-requests": pullRequestMenu.preloaded,
+          "linear-issues": linearIssueMenu.preloaded,
+          "github-issues": githubIssueMenu.preloaded,
+          "notion-pages": notionMenu.preloaded,
+        },
+      })
+    : "pull-requests";
+  // Predicted from rows the tabs load, so it settles one render after they arrive.
+  if (nextPredictedReferenceTab !== predictedReferenceTab) {
+    setPredictedReferenceTab(nextPredictedReferenceTab);
+  }
+  const showLinearIssues = referenceMenuOpen && referenceTab === "linear-issues";
+  const showNotionPages = referenceMenuOpen && referenceTab === "notion-pages";
+  const showSlackMessages = referenceMenuOpen && referenceTab === "slack-messages";
+  const showGitHubIssues = referenceMenuOpen && referenceTab === "github-issues";
+  const showRepositories = referenceMenuOpen && referenceTab === "repositories";
+  const referenceTabItems: ReadonlyArray<ReferenceMenuItem> = !referenceMenuOpen
+    ? EMPTY_REFERENCE_MENU_ITEMS
+    : showLinearIssues
+      ? linearIssueMenu.items
+      : showNotionPages
+        ? notionMenu.items
+        : showSlackMessages
+          ? slackMenu.items
+          : showGitHubIssues
+            ? githubIssueMenu.items
+            : showRepositories
+              ? repositoryMenu.items
+              : pullRequestMenu.items;
+  const referenceTabRecents = useMemo(
+    () => referenceRecents.filter((item) => composerReferenceTabForItem(item) === referenceTab),
+    [referenceRecents, referenceTab],
+  );
+  const referenceMenuItems = useMemo(
+    () =>
+      referenceMenuOpen
+        ? orderComposerReferenceItems({
+            items: referenceTabItems,
+            recents: referenceTabRecents,
+            query: referenceQuery,
+            limit: REFERENCE_MENU_RESULT_LIMIT,
+          })
+        : EMPTY_REFERENCE_MENU_ITEMS,
+    [referenceMenuOpen, referenceQuery, referenceTabItems, referenceTabRecents],
+  );
   const attachLinearIssue = useAttachLinearIssue();
-  const notionMenu = useComposerNotionItems(
-    environmentId,
-    composerTrigger,
-    referenceTab === "notion-pages",
-  );
-  const showNotionPages = notionMenu.enabled && referenceTab === "notion-pages";
   const attachNotionPage = useAttachNotionPage();
-  const slackMenu = useComposerSlackItems(
-    environmentId,
-    composerTrigger,
-    referenceTab === "slack-messages",
-  );
-  const showSlackMessages = slackMenu.enabled && referenceTab === "slack-messages";
   const attachSlackMessage = useAttachSlackMessage();
-  const githubIssueMenu = useComposerGitHubIssueItems(
-    environmentId,
-    githubIssueCwd,
-    composerTrigger,
-    referenceTab === "github-issues",
-  );
-  const showGitHubIssues = githubIssueMenu.enabled && referenceTab === "github-issues";
   const attachGitHubIssue = useAttachGitHubIssue();
   const resolveComposerObjectLink = useResolveComposerObjectLink({
     threadRef: routeThreadRef,
     draftTarget: composerDraftTarget,
   });
-  const repositoryMenu = useComposerRepositoryItems(
-    environmentId,
-    defaultRepositoryOwners,
-    composerTrigger,
-    referenceTab === "repositories",
-  );
-  const showRepositories = repositoryMenu.enabled && referenceTab === "repositories";
-  const referenceMenuTabs = REFERENCE_MENU_TABS.filter((tab) =>
-    tab.id === "notion-pages"
-      ? notionMenu.enabled
-      : tab.id === "linear-issues"
-        ? linearIssueMenu.enabled
-        : tab.id === "slack-messages"
-          ? slackMenu.enabled
-          : tab.id === "github-issues"
-            ? githubIssueMenu.enabled
-            : true,
-  );
   const captureThreadTabContext = useCaptureThreadTabContext(environmentId, activeThreadId);
   const composerMenuItems = useMemo<ComposerCommandItem[]>(() => {
     if (!composerTrigger) return [];
-    if (composerTrigger.kind === "pull-request" && showNotionPages) return notionMenu.items;
-    if (composerTrigger.kind === "pull-request" && showLinearIssues) {
-      return linearIssueMenu.items;
-    }
-    if (composerTrigger.kind === "pull-request" && showGitHubIssues) {
-      return githubIssueMenu.items;
-    }
-    if (composerTrigger.kind === "pull-request" && showSlackMessages) {
-      return slackMenu.items;
-    }
-    if (composerTrigger.kind === "pull-request" && showRepositories) {
-      return repositoryMenu.items;
-    }
+    if (composerTrigger.kind === "pull-request") return [...referenceMenuItems];
     if (composerTrigger.kind === "path" && showAgents) return [...agentMenu.items];
     if (composerTrigger.kind === "path" && pathTab === "chats") return chatMenuItems;
     if (composerTrigger.kind === "path") {
@@ -3088,85 +3038,19 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           (skill.scope ? `${skill.scope} skill` : "Run provider skill"),
       }));
     }
-    if (
-      composerTrigger.kind === "pull-request" &&
-      pullRequestProjectId !== null &&
-      pullRequestRepository !== null
-    ) {
-      const exactPullRequest =
-        exactPullRequestLookup.data?.number === pullRequestTriggerNumber
-          ? [exactPullRequestLookup.data]
-          : [];
-      const matches = /^\d*$/u.test(composerTrigger.query)
-        ? filterComposerPullRequestMatches({
-            entries: [...exactPullRequest, ...(pullRequestLookup.data?.entries ?? [])],
-            projectId: pullRequestProjectId,
-            repository: pullRequestRepository,
-            query: composerTrigger.query,
-            limit: COMPOSER_PULL_REQUEST_RESULT_LIMIT,
-          })
-        : rankPullRequestMatches(
-            (pullRequestLookup.data?.entries ?? []).filter((entry) => {
-              if (
-                entry.projectId !== pullRequestProjectId ||
-                entry.repository.trim().toLowerCase() !== pullRequestRepository.trim().toLowerCase()
-              ) {
-                return false;
-              }
-              const provider = pullRequestLookup.data?.providers.find(
-                (candidate) => candidate.host === entry.host,
-              );
-              return (
-                provider?.searchesOnHost === true ||
-                matchesPullRequestQuery(entry, composerTrigger.query)
-              );
-            }),
-            composerTrigger.query,
-          ).slice(0, COMPOSER_PULL_REQUEST_RESULT_LIMIT);
-      const pullRequestItems = matches.map((pullRequest): ComposerCommandItem => ({
-        id: `pull-request:${pullRequest.projectId}:${pullRequest.repository}:${pullRequest.number}`,
-        type: "pull-request",
-        pullRequest: {
-          number: pullRequest.number,
-          title: pullRequest.title,
-          url: pullRequest.url,
-          headBranch: pullRequest.headBranch,
-          baseBranch: pullRequest.baseBranch,
-          state: pullRequest.state,
-          isDraft: pullRequest.isDraft,
-        },
-        label: `#${pullRequest.number}`,
-        description: pullRequest.title,
-      }));
-      return pullRequestItems;
-    }
     return [];
   }, [
     activeThreadId,
     compactSlashCommandAvailable,
     composerTrigger,
     environmentId,
-    exactPullRequestLookup.data,
-    githubIssueMenu.items,
-    linearIssueMenu.items,
     planModeUiEnabled,
-    pullRequestLookup.data,
-    pullRequestProjectId,
-    pullRequestRepository,
-    pullRequestTriggerNumber,
-    repositoryMenu.items,
-    notionMenu.items,
-    showNotionPages,
-    slackMenu.items,
+    referenceMenuItems,
     selectedProvider,
     selectedProviderSkills,
     selectedProviderSlashCommands,
     selectedProviderStatus,
     settings.showSkillsInSlashMenu,
-    showGitHubIssues,
-    showLinearIssues,
-    showRepositories,
-    showSlackMessages,
     workspaceEntries.entries,
     showAgents,
     agentMenu.items,
@@ -3249,23 +3133,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       pathTab === "files" &&
       pathTriggerQuery.length > 0 &&
       workspaceEntries.isPending) ||
-    (composerTriggerKind === "pull-request" &&
-      !showLinearIssues &&
-      !showGitHubIssues &&
-      !showRepositories &&
-      !showSlackMessages &&
-      !showNotionPages &&
-      pullRequestProjectId !== null &&
-      pullRequestRepository !== null &&
-      (pullRequestLookup.isPending ||
-        pullRequestTextQuery !== debouncedPullRequestTextQuery ||
-        pullRequestTriggerNumber !== debouncedPullRequestNumber ||
-        exactPullRequestLookup.isPending)) ||
     (showLinearIssues && linearIssueMenu.isPending) ||
     (showGitHubIssues && githubIssueMenu.isPending) ||
     (showRepositories && repositoryMenu.isPending) ||
     (showSlackMessages && slackMenu.isPending) ||
-    (showNotionPages && notionMenu.isPending);
+    (showNotionPages && notionMenu.isPending) ||
+    (referenceTab === "pull-requests" && pullRequestMenu.isPending);
   const composerMenuEmptyState = useMemo(() => {
     if (composerTriggerKind === "skill") {
       return "No skills found. Try / to browse provider commands.";
@@ -3308,15 +3181,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       return `No repositories in ${describeContextRepositoryOwners(repositoryMenu.owners)} match.`;
     }
     if (composerTriggerKind === "pull-request") {
-      if (pullRequestProjectId === null || pullRequestRepository === null) {
+      if (!pullRequestMenu.available) {
         return "Pull requests are not available for this project.";
       }
-      if (
-        pullRequestLookup.error !== null ||
-        pullRequestLookup.data?.errors.some((error) => error.projectId === pullRequestProjectId)
-      ) {
-        return "Pull requests could not be read for this project.";
-      }
+      if (pullRequestMenu.failed) return "Pull requests could not be read for this project.";
       return composerTrigger?.query
         ? `No pull request matches ${composerTrigger.query}.`
         : "No pull requests found in this repository.";
@@ -3338,10 +3206,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     notionMenu.error,
     showNotionPages,
     slackMenu.error,
-    pullRequestLookup.data?.errors,
-    pullRequestLookup.error,
-    pullRequestProjectId,
-    pullRequestRepository,
+    pullRequestMenu.available,
+    pullRequestMenu.failed,
     showAgents,
     pathTab,
   ]);
@@ -4420,6 +4286,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       if (!applied) return;
       setComposerHighlightedItemId(null);
       setReferenceSelection(null);
+      recordComposerReferenceRecents(environmentId, pullRequestProjectId, items);
       for (const comment of pullRequestComments) {
         addComposerDraftReviewComment(composerDraftTarget, comment, { appendReference: false });
       }
@@ -4446,6 +4313,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       attachNotionPage,
       attachSlackMessage,
       composerDraftTarget,
+      environmentId,
+      pullRequestProjectId,
       routeThreadRef,
     ],
   );

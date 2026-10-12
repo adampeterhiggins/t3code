@@ -77,40 +77,50 @@ export function useDebouncedValue<A>(value: A, delayMs: number): A {
   return debounced;
 }
 
+/**
+ * Pull requests for the composer's `#` menu. The project's recent pull requests load as soon as
+ * `#` opens and each keystroke filters them locally; a word also searches the host once typing
+ * settles, and the last search stays visible while the next one loads.
+ */
 export function useComposerPullRequestSearch(input: {
   environmentId: EnvironmentId | null;
   projectId: ProjectId | null;
   repository: string | null;
   query: string | null;
 }) {
-  const query = useDebouncedValue(input.query, 180);
-  const ready =
-    query === input.query &&
-    query !== null &&
+  const open =
+    input.query !== null &&
     input.environmentId !== null &&
     input.projectId !== null &&
     input.repository !== null;
-  const numeric = query !== null && /^\d*$/.test(query);
-  const list = useEnvironmentQuery(
-    ready
-      ? composerPullRequests.list({
-          environmentId: input.environmentId!,
-          input: {
-            projectId: input.projectId!,
-            state: "all",
-            limit: 200,
-            ...(!numeric && query ? { query } : {}),
-          },
-        })
-      : null,
-  );
-  const number = numeric && query ? Number(query) : null;
-  const hasExact = list.data?.entries.some(
+  const numeric = input.query !== null && /^\d*$/.test(input.query);
+  const textQuery = open && !numeric ? input.query : null;
+  const debouncedTextQuery = useDebouncedValue(textQuery, 180);
+  const settledTextQuery = textQuery === debouncedTextQuery ? textQuery : null;
+  const listFor = (query: string | null) =>
+    composerPullRequests.list({
+      environmentId: input.environmentId!,
+      input: {
+        projectId: input.projectId!,
+        state: "all",
+        limit: 200,
+        ...(query ? { query } : {}),
+      },
+    });
+  const base = useEnvironmentQuery(open ? listFor(null) : null);
+  const search = useEnvironmentQuery(settledTextQuery ? listFor(settledTextQuery) : null);
+  const freshSearch = settledTextQuery ? search.data : null;
+  const [retainedSearch, setRetainedSearch] = useState(freshSearch);
+  if (freshSearch !== null && freshSearch !== retainedSearch) setRetainedSearch(freshSearch);
+
+  const rawNumber = open && numeric && input.query ? Number(input.query) : null;
+  const number = useDebouncedValue(rawNumber, 180) === rawNumber ? rawNumber : null;
+  const hasExact = base.data?.entries.some(
     (entry) =>
       entry.number === number && entry.repository.toLowerCase() === input.repository?.toLowerCase(),
   );
   const exact = useEnvironmentQuery(
-    ready && number !== null && Number.isSafeInteger(number) && number > 0 && !hasExact
+    open && number !== null && Number.isSafeInteger(number) && number > 0 && !hasExact
       ? composerPullRequests.detail({
           environmentId: input.environmentId!,
           input: { projectId: input.projectId!, repository: input.repository!, number },
@@ -118,18 +128,22 @@ export function useComposerPullRequestSearch(input: {
       : null,
   );
   const entries = useMemo(() => {
-    if (!ready) return [];
+    if (!open) return [];
+    const exactEntries = exact.data && exact.data.number === rawNumber ? [exact.data] : [];
     if (numeric) {
       return filterComposerPullRequestMatches({
-        entries: [...(exact.data ? [exact.data] : []), ...(list.data?.entries ?? [])],
+        entries: [...exactEntries, ...(base.data?.entries ?? [])],
         projectId: input.projectId!,
         repository: input.repository!,
-        query: query ?? "",
+        query: input.query ?? "",
         limit: 20,
       });
     }
-    const words = (query ?? "").toLowerCase().split(/\s+/).filter(Boolean);
-    const found = [...(exact.data ? [exact.data] : []), ...(list.data?.entries ?? [])].filter(
+    const words = (input.query ?? "").toLowerCase().split(/\s+/).filter(Boolean);
+    const found = [
+      ...((freshSearch ?? retainedSearch)?.entries ?? []),
+      ...(base.data?.entries ?? []),
+    ].filter(
       (entry) =>
         entry.projectId === input.projectId &&
         entry.repository.toLowerCase() === input.repository?.toLowerCase() &&
@@ -142,11 +156,27 @@ export function useComposerPullRequestSearch(input: {
     return [...unique.values()]
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
       .slice(0, 20);
-  }, [ready, exact.data, list.data, input.projectId, input.repository, numeric, query]);
+  }, [
+    base.data,
+    exact.data,
+    freshSearch,
+    input.projectId,
+    input.query,
+    input.repository,
+    numeric,
+    open,
+    rawNumber,
+    retainedSearch,
+  ]);
   return {
     entries,
-    isPending: input.query !== null && (query !== input.query || list.isPending || exact.isPending),
-    error: list.error ?? list.data?.errors[0]?.message ?? exact.error,
+    isPending:
+      open &&
+      (base.isPending ||
+        (textQuery !== null && (settledTextQuery === null || search.isPending)) ||
+        rawNumber !== number ||
+        exact.isPending),
+    error: base.error ?? base.data?.errors[0]?.message ?? search.error ?? exact.error,
   };
 }
 
