@@ -32,7 +32,7 @@ describe("orchestrator MCP tool guidance", () => {
     );
     assert.include(
       OrchestratorToolkit.tools.t3_thread_send.description ?? "",
-      "Do not use a delegated task's childThreadId to start another review round",
+      "a requested follow-up creates a fresh task",
     );
     assert.include(
       OrchestratorToolkit.tools.task_cancel.description ?? "",

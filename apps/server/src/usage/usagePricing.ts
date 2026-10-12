@@ -16,7 +16,7 @@ import type {
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import type { UsageRecord, UsageSpeed } from "./usageTranscripts.ts";
+import type { UsageRecord, UsageSpeed } from "@t3tools/provider-core/server/usage";
 
 /** Token rates for one billing speed. All values are USD per token. */
 export interface TokenRates {

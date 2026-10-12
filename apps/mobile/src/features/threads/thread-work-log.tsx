@@ -93,6 +93,7 @@ import { resolveWorkGroupScrollAnchor } from "@t3tools/client-runtime/work-log/s
 import { notificationChildThreadId } from "@t3tools/client-runtime/state/thread-execution";
 import type { MarkdownImageRenderer } from "../../native/SelectableMarkdownText";
 import type { FilePreviewSource } from "../../components/FilePreviewModal";
+import { FilePreviewGallery } from "../../components/FilePreviewGallery";
 import { ThreadMarkdownImage } from "./ThreadMarkdownImage";
 import Animated, {
   cancelAnimation,
@@ -980,6 +981,7 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
   const outputImages = expanded && fetchedItem ? turnItemOutputImages(fetchedItem) : [];
   // Thread, PR, browser and other common tools show what they did instead of their JSON.
   const toolPreview = expanded && fetchedItem ? resolveToolPreview(fetchedItem) : null;
+  const viewedImagePath = workEntryViewedImagePath(row.workEntry);
   const fetchedOutput = !expanded
     ? null
     : shownItem.type === "file_change"
@@ -993,7 +995,8 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
       : shownItem.type === "file_search" || shownItem.type === "web_search"
         ? turnItemOutputText(shownItem)
         : fetchedItem
-          ? (turnItemOutputText(fetchedItem) ?? (outputImages.length > 0 ? null : "No output."))
+          ? (turnItemOutputText(fetchedItem) ??
+            (outputImages.length > 0 || viewedImagePath ? null : "No output."))
           : fetchedDetail.error
             ? `Couldn't load output: ${fetchedDetail.error}`
             : row.fetchesDetail
@@ -1001,7 +1004,9 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
                 ? "Output is no longer available."
                 : "Loading output…"
               : null;
-  const viewedImagePath = workEntryViewedImagePath(row.workEntry);
+  // A browser snapshot card already shows its screenshot.
+  const shownOutputImages =
+    toolPreview?.kind === "browser" && toolPreview.snapshot?.screenshotPath ? [] : outputImages;
   const toolPresentation = resolveWorkEntryToolPresentation(row.workEntry);
   const previewText = workEntryRowLabel(row.workEntry, false, props.workspaceRoot);
   const answerPreview = row.workEntry.questionAnswer
@@ -1184,19 +1189,24 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
               {props.renderImage({ href: viewedImagePath, alt: null, title: null })}
             </View>
           ) : null}
-          {(toolPreview?.kind === "browser" && toolPreview.snapshot?.screenshotPath
-            ? []
-            : outputImages
-          ).map((resource) => (
-            <View key={resource.index} className="pb-1.5">
-              <ThreadMarkdownImage
-                environmentId={props.environmentId}
-                resource={resource}
-                alt={null}
-                onPressPreview={props.onPressPreview}
-              />
-            </View>
-          ))}
+          <FilePreviewGallery
+            value={shownOutputImages.map((resource) => ({
+              kind: "image",
+              environmentId: props.environmentId,
+              resource,
+            }))}
+          >
+            {shownOutputImages.map((resource) => (
+              <View key={resource.index} className="pb-1.5">
+                <ThreadMarkdownImage
+                  environmentId={props.environmentId}
+                  resource={resource}
+                  alt={null}
+                  onPressPreview={props.onPressPreview}
+                />
+              </View>
+            ))}
+          </FilePreviewGallery>
           <ScrollView
             nestedScrollEnabled
             directionalLockEnabled
@@ -1612,7 +1622,7 @@ function ToolActivityImage(props: {
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   return (
-    <View className="h-4 w-4 items-center justify-center overflow-hidden rounded-[3px] bg-background">
+    <View className="h-4 w-4 items-center justify-center overflow-hidden rounded-[3px] bg-screen">
       {!loaded || failed ? <WorkLogIcon icon={props.fallback} color={props.color} /> : null}
       {!failed ? (
         <View

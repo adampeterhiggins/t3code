@@ -137,7 +137,10 @@ export const PROJECT_FILE_BACKED_SETTINGS = {
   // Empty finds a .venv or venv in the terminal's working directory.
   pythonInterpreterPath: { field: "pythonInterpreterPath", builtIn: "" },
 } as const satisfies {
-  readonly [K in ProjectScopedServerSettingKey]?: {
+  // `providerInstances` is scoped per project but overrides field by field
+  // rather than replacing a whole `ServerSettings` value (see its doc comment
+  // in settings.ts), so it cannot be file-backed and is excluded here.
+  readonly [K in ProjectScopedServerSettingKey & keyof ServerSettings]?: {
     readonly field: {
       readonly [F in keyof T3ProjectFile]: T3ProjectFile[F] extends
         | Exclude<ServerSettings[K], null>

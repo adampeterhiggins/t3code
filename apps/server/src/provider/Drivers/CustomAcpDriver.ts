@@ -20,6 +20,7 @@ import { ChildProcessSpawner } from "effect/process";
 
 import { makeCustomAcpAdapterV2 } from "../../orchestration-v2/Adapters/CustomAcpAdapterV2.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import { ProviderHost } from "@t3tools/provider-core/server/ProviderHost";
 import type { TextGeneration } from "../../textGeneration/TextGeneration.ts";
 import { makeAcpCommandCatalog } from "../acp/AcpCommandCatalog.ts";
@@ -30,7 +31,7 @@ import {
   buildInitialCustomAcpProviderSnapshot,
   checkCustomAcpProviderStatus,
 } from "../CustomAcpProvider.ts";
-import { ProviderEventLoggers } from "../ProviderEventLoggers.ts";
+import { ProviderEventLoggers } from "@t3tools/provider-core/server/ProviderEventLoggers";
 import { makeManagedServerProvider } from "@t3tools/provider-core/server/managedProvider";
 import {
   defaultProviderContinuationIdentity,
@@ -61,6 +62,7 @@ const unsupportedTextGeneration: TextGeneration["Service"] = (() => {
     generateBranchName: () => fail("generateBranchName"),
     generateThreadTitle: () => fail("generateThreadTitle"),
     generateIgnoredNames: () => fail("generateIgnoredNames"),
+    generateReviewGuide: () => fail("generateReviewGuide"),
   };
 })();
 
@@ -69,6 +71,7 @@ export type CustomAcpDriverEnv =
   | Crypto.Crypto
   | FileSystem.FileSystem
   | IdAllocator.IdAllocatorV2
+  | McpProviderSessions.McpProviderSessions
   | Path.Path
   | ProviderEventLoggers
   | ProviderHost;
@@ -91,7 +94,7 @@ export const CustomAcpDriver: ProviderDriver<CustomAcpSettings, CustomAcpDriverE
       const selfInvocation = yield* resolveSelfInvocation();
       const eventLoggers = yield* ProviderEventLoggers;
       const makeNativeLogger = yield* makeAcpNativeLoggerFactory();
-      const processEnv = mergeProviderInstanceEnvironment(environment);
+      const processEnv = yield* mergeProviderInstanceEnvironment(environment);
       const effectiveConfig = { ...config, enabled } satisfies CustomAcpSettings;
       const continuationIdentity = defaultProviderContinuationIdentity({
         driverKind: CUSTOM_ACP_DRIVER_KIND,

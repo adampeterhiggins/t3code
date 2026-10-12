@@ -23,9 +23,9 @@ import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
-import { layerTestProviderHost } from "@t3tools/provider-testing/host";
-import * as McpProviderSession from "@t3tools/provider-core/server/mcpSession";
+import * as TestProviderHost from "@t3tools/provider-testing/TestProviderHost";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import {
   CursorProviderCapabilitiesV2,
@@ -62,6 +62,17 @@ describe("CursorAdapterV2", () => {
         });
         const instanceId = ProviderInstanceId.make("cursor");
         const threadId = ThreadId.make("cursor-lifecycle-thread");
+        const mcpSessions = yield* McpProviderSessions.McpProviderSessions;
+        yield* mcpSessions.set({
+          environmentId: EnvironmentId.make("cursor-lifecycle-environment"),
+          threadId,
+          providerSessionId: "cursor-lifecycle-session",
+          providerInstanceId: instanceId,
+          endpoint: "http://127.0.0.1:43123/mcp",
+          authorizationHeader: "Bearer synthetic-cursor-token",
+          browserToolsAvailable: true,
+        });
+        let sentWithMcpOverride = true;
         const modelSelection = { instanceId, model: "composer-2.5" };
         const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
           runtimeMode: "full-access",
@@ -82,6 +93,7 @@ describe("CursorAdapterV2", () => {
                 close: Effect.void,
                 send: (input) =>
                   Effect.gen(function* () {
+                    sentWithMcpOverride = Object.hasOwn(input.options ?? {}, "mcpServers");
                     // Recorded Cursor task calls (see fixtures/subagent) stream a
                     // partial-tool-call before tool-call-started with the same args.
                     // The run then ends without tool-call-completed, which a live
@@ -179,7 +191,7 @@ describe("CursorAdapterV2", () => {
                   }),
               }),
           }),
-          Effect.provide(layerTestProviderHost({ cwd: workspace })),
+          Effect.provide(TestProviderHost.layer({ cwd: workspace })),
         );
         const runtime = yield* adapter.openSession({
           threadId,
@@ -238,6 +250,8 @@ describe("CursorAdapterV2", () => {
           Stream.takeUntil((event) => event.type === "turn.terminal"),
           Stream.runCollect,
         );
+        // Keep injected MCP at agent creation so sends preserve Cursor's ambient servers.
+        assert.isFalse(sentWithMcpOverride);
         const rows = events.filter((event) => event.type === "subagent.updated");
         assert.equal(rows[0]?.subagent.status, "running");
         assert.equal(rows[0]?.subagent.model, model ?? null);
@@ -319,7 +333,12 @@ describe("CursorAdapterV2", () => {
                 }
               : { usageStatus: "unavailable", usageScope: "main_agent", hasSubagents: true },
         );
-      }).pipe(Effect.scoped, Effect.provide(Layer.merge(NodeServices.layer, IdAllocator.layer))),
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          Layer.mergeAll(NodeServices.layer, IdAllocator.layer, McpProviderSessions.layer),
+        ),
+      ),
   );
 
   it.effect("fails standalone SDK transport diagnostics and sends compaction as /compress", () =>
@@ -374,7 +393,7 @@ describe("CursorAdapterV2", () => {
                 }),
             }),
         }),
-        Effect.provide(layerTestProviderHost({ cwd: workspace })),
+        Effect.provide(TestProviderHost.layer({ cwd: workspace })),
       );
       const runtime = yield* adapter.openSession({
         threadId,
@@ -465,7 +484,12 @@ describe("CursorAdapterV2", () => {
         Stream.runHead,
       );
       assert.equal(sentMessages[1], "/compress");
-    }).pipe(Effect.scoped, Effect.provide(Layer.merge(NodeServices.layer, IdAllocator.layer))),
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(NodeServices.layer, IdAllocator.layer, McpProviderSessions.layer),
+      ),
+    ),
   );
 
   it.effect("projects Cursor directory trees and lint diagnostics as file search results", () =>
@@ -714,7 +738,7 @@ describe("CursorAdapterV2", () => {
                 }),
             }),
         }),
-        Effect.provide(layerTestProviderHost({ cwd: workspace })),
+        Effect.provide(TestProviderHost.layer({ cwd: workspace })),
       );
       const runtime = yield* adapter.openSession({
         threadId,
@@ -873,7 +897,12 @@ describe("CursorAdapterV2", () => {
           },
         ],
       );
-    }).pipe(Effect.scoped, Effect.provide(Layer.merge(NodeServices.layer, IdAllocator.layer))),
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(NodeServices.layer, IdAllocator.layer, McpProviderSessions.layer),
+      ),
+    ),
   );
 
   it("maps Cursor auto and model parameters to SDK selections", () => {
@@ -970,6 +999,7 @@ describe("CursorAdapterV2", () => {
         },
         runtimePolicy: { runtimeMode, interactionMode: "default", cwd: "/workspace" },
         threadId: ThreadId.make("thread-cursor-setting-sources"),
+        mcpSession: undefined,
       });
       assert.deepEqual(options.local?.settingSources, [
         "project",
@@ -983,7 +1013,7 @@ describe("CursorAdapterV2", () => {
 
   it("injects thread-scoped MCP credentials without logging them", () => {
     const threadId = ThreadId.make("thread-cursor-mcp");
-    McpProviderSession.setMcpProviderSession({
+    const mcpSession = {
       environmentId: EnvironmentId.make("environment-cursor-mcp"),
       threadId,
       providerSessionId: "mcp-session-cursor",
@@ -991,40 +1021,37 @@ describe("CursorAdapterV2", () => {
       endpoint: "http://127.0.0.1:43123/mcp",
       authorizationHeader: "Bearer secret-cursor-mcp-token",
       browserToolsAvailable: true,
+    };
+
+    assert.deepEqual(cursorMcpServers(mcpSession), {
+      "t3-code": {
+        type: "http",
+        url: "http://127.0.0.1:43123/mcp",
+        headers: {
+          Authorization: "Bearer secret-cursor-mcp-token",
+        },
+      },
     });
 
-    try {
-      assert.deepEqual(cursorMcpServers(threadId), {
-        "t3-code": {
-          type: "http",
-          url: "http://127.0.0.1:43123/mcp",
-          headers: {
-            Authorization: "Bearer secret-cursor-mcp-token",
-          },
-        },
-      });
+    const options = makeCursorAgentOptions({
+      apiKey: "secret-cursor-api-key",
+      modelSelection: {
+        instanceId: ProviderInstanceId.make("cursor"),
+        model: "composer-2.5",
+      },
+      runtimePolicy: {
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        cwd: "/workspace",
+      },
+      threadId,
+      mcpSession,
+    });
+    assert.deepEqual(options.mcpServers, cursorMcpServers(mcpSession));
 
-      const options = makeCursorAgentOptions({
-        apiKey: "secret-cursor-api-key",
-        modelSelection: {
-          instanceId: ProviderInstanceId.make("cursor"),
-          model: "composer-2.5",
-        },
-        runtimePolicy: {
-          runtimeMode: "full-access",
-          interactionMode: "default",
-          cwd: "/workspace",
-        },
-        threadId,
-      });
-      assert.deepEqual(options.mcpServers, cursorMcpServers(threadId));
-
-      const logged = JSON.stringify(CursorAgentSdk.loggedCursorAgentOptions(options));
-      assert.notInclude(logged, "secret-cursor-api-key");
-      assert.notInclude(logged, "secret-cursor-mcp-token");
-    } finally {
-      McpProviderSession.clearMcpProviderSession(threadId);
-    }
+    const logged = JSON.stringify(CursorAgentSdk.loggedCursorAgentOptions(options));
+    assert.notInclude(logged, "secret-cursor-api-key");
+    assert.notInclude(logged, "secret-cursor-mcp-token");
   });
 
   it("recognizes direct and SDK-wrapped abort failures as cancellation", () => {
@@ -1139,7 +1166,7 @@ describe("CursorAdapterV2", () => {
                 }),
             }),
         }),
-        Effect.provide(layerTestProviderHost({ cwd: workspace })),
+        Effect.provide(TestProviderHost.layer({ cwd: workspace })),
       );
       const runtime = yield* adapter.openSession({
         threadId,
@@ -1244,6 +1271,11 @@ describe("CursorAdapterV2", () => {
         isProtocolError(inactive.cause) ? inactive.cause.detail : undefined,
         `Cursor provider turn ${providerTurnId} is not active.`,
       );
-    }).pipe(Effect.scoped, Effect.provide(Layer.merge(NodeServices.layer, IdAllocator.layer))),
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(NodeServices.layer, IdAllocator.layer, McpProviderSessions.layer),
+      ),
+    ),
   );
 });

@@ -4,6 +4,7 @@ import {
   type ProviderInstanceEnvironment,
   type ProviderInstanceId,
 } from "@t3tools/contracts";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
@@ -21,22 +22,24 @@ const HOME_EXPANDED_VARIABLE_NAMES = new Set([
   "XDG_DATA_HOME",
 ]);
 
-export function mergeProviderInstanceEnvironment(
+export const mergeProviderInstanceEnvironment = Effect.fn(function* (
   environment: ProviderInstanceEnvironment | undefined,
   baseEnv: NodeJS.ProcessEnv = process.env,
-): NodeJS.ProcessEnv {
+) {
   if (!environment || environment.length === 0) {
     return baseEnv;
   }
 
+  const home = yield* HostProcess.HomeDirectory;
   const next: NodeJS.ProcessEnv = { ...baseEnv };
   for (const variable of environment) {
+    // Child processes do not apply shell expansion to environment values.
     next[variable.name] = HOME_EXPANDED_VARIABLE_NAMES.has(variable.name)
-      ? expandHomePath(variable.value)
+      ? expandHomePath(variable.value, home)
       : variable.value;
   }
   return next;
-}
+});
 
 /**
  * Resolve an instance `homePath` to an absolute directory, or `undefined`
@@ -48,7 +51,7 @@ export const resolveProviderHomePath = Effect.fn("resolveProviderHomePath")(func
   const path = yield* Path.Path;
   const trimmed = homePath.trim();
   if (trimmed.length === 0) return undefined;
-  return path.resolve(expandHomePath(trimmed));
+  return path.resolve(expandHomePath(trimmed, yield* HostProcess.HomeDirectory));
 });
 
 /**

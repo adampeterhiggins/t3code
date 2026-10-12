@@ -171,21 +171,26 @@ function AssignmentTriggerDialog({
     () => allProjects.filter((project) => project.environmentId === environmentId),
     [allProjects, environmentId],
   );
+  const [projectId, setProjectId] = useState<string>(rule?.projectId ?? projects[0]?.id ?? "");
+  const project = projects.find((entry) => entry.id === projectId);
+  // The rule's project can turn providers off for itself.
   const instanceEntries = useMemo(
     () =>
       sortProviderInstanceEntries(
-        applyProviderInstanceSettings(deriveProviderInstanceEntries(providers), settings),
+        applyProviderInstanceSettings(
+          deriveProviderInstanceEntries(providers),
+          settings,
+          project?.id ?? null,
+        ),
       ),
-    [providers, settings],
+    [project?.id, providers, settings],
   );
-  const [projectId, setProjectId] = useState<string>(rule?.projectId ?? projects[0]?.id ?? "");
   const [teamId, setTeamId] = useState<string>(rule?.teamId ?? ANY_TEAM);
   const [labelName, setLabelName] = useState(rule?.labelName ?? "");
   const [prompt, setPrompt] = useState(rule?.prompt ?? "");
   const [modelSelection, setModelSelection] = useState<ModelSelection | null>(
     rule?.modelSelection ?? null,
   );
-  const project = projects.find((entry) => entry.id === projectId);
   const activeSelection =
     modelSelection ?? scheduledTaskDefaultModel(settings, project ?? null, instanceEntries);
   const activeInstanceId =
@@ -271,6 +276,7 @@ function AssignmentTriggerDialog({
             </Field>
             <Field label="Model">
               <ProviderModelPicker
+                environmentId={environmentId}
                 activeInstanceId={activeInstanceId}
                 model={activeModel}
                 lockedProvider={null}

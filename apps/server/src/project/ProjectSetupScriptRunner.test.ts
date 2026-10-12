@@ -1,7 +1,7 @@
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, describe, expect, it, vi } from "@effect/vitest";
 import { type Project, ProjectId, type TerminalEvent } from "@t3tools/contracts";
-import { HostProcessEnvironment, HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
@@ -449,8 +449,8 @@ describe("ProjectSetupScriptRunner", () => {
         expect(closeIdle).not.toHaveBeenCalled();
       }).pipe(
         Effect.provide(testLayer(project, { open, write, subscribe, closeIdle })),
-        Effect.provideService(HostProcessPlatform, "linux"),
-        Effect.provideService(HostProcessEnvironment, { SHELL: "/bin/zsh" }),
+        Effect.provideService(HostProcess.Platform, "linux"),
+        Effect.provideService(HostProcess.Environment, { SHELL: "/bin/zsh" }),
       );
     },
   );
@@ -516,8 +516,8 @@ describe("ProjectSetupScriptRunner", () => {
       expect(closeIdle).toHaveBeenCalledWith({ threadId: "thread-1", terminalId: "setup-setup" });
     }).pipe(
       Effect.provide(testLayer(project, { open, write, subscribe, closeIdle })),
-      Effect.provideService(HostProcessPlatform, "linux"),
-      Effect.provideService(HostProcessEnvironment, { SHELL: "/bin/zsh" }),
+      Effect.provideService(HostProcess.Platform, "linux"),
+      Effect.provideService(HostProcess.Environment, { SHELL: "/bin/zsh" }),
     );
   });
 
@@ -620,8 +620,8 @@ describe("ProjectSetupScriptRunner", () => {
       expect(writes[0]).toMatch(expected);
     }).pipe(
       Effect.provide(testLayer(project, { open, write })),
-      Effect.provideService(HostProcessPlatform, "linux"),
-      Effect.provideService(HostProcessEnvironment, { SHELL: shell }),
+      Effect.provideService(HostProcess.Platform, "linux"),
+      Effect.provideService(HostProcess.Environment, { SHELL: shell }),
     );
   });
 

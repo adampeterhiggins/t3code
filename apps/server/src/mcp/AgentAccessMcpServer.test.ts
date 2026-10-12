@@ -28,6 +28,8 @@ import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts
 import * as ServerSettings from "../serverSettings.ts";
 import * as SourceControlRepositoryService from "../sourceControl/SourceControlRepositoryService.ts";
 import { UsageService } from "../usage/UsageService.ts";
+import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
+import * as McpContextLinks from "./McpContextLinks.ts";
 import * as AgentAccessMcpServer from "./AgentAccessMcpServer.ts";
 
 const environmentId = EnvironmentId.make("environment-agent-access-test");
@@ -104,6 +106,8 @@ const RoutesLive = Layer.mergeAll(AgentAccessMcpServer.layer, ThreadMcpLive).pip
       Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({ namedProjectsRoot: "/projects" }),
       Layer.mock(SourceControlRepositoryService.SourceControlRepositoryService)({}),
       Layer.mock(ServerSettings.ServerSettingsService)({}),
+      Layer.mock(GitVcsDriver.GitVcsDriver)({}),
+      Layer.mock(McpContextLinks.McpContextLinks)({}),
       Layer.succeed(
         Crypto.Crypto,
         Crypto.make({

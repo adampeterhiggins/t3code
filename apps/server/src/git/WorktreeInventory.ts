@@ -11,6 +11,7 @@ import {
   type WorktreeInventorySizeResult,
   type WorktreeRemoveOutcome,
 } from "@t3tools/contracts";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -135,6 +136,7 @@ const make = Effect.gen(function* () {
       settings ?? { worktreesDirectory: "", previousWorktreesDirectories: [] },
       config.worktreesDir,
       path,
+      yield* HostProcess.HomeDirectory,
     );
     const result: string[] = [];
     for (const directory of directories) {

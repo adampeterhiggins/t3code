@@ -26,6 +26,7 @@ import * as Exit from "effect/Exit";
 import * as Option from "effect/Option";
 import * as Result from "effect/Result";
 import { HttpClient } from "effect/http";
+import * as ProviderLatestVersions from "@t3tools/provider-core/server/ProviderLatestVersions";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
@@ -463,6 +464,7 @@ export const enrichDevinSnapshot = (input: {
   readonly publishSnapshot: (snapshot: ServerProvider) => Effect.Effect<void>;
   readonly stampIdentity?: (snapshot: ServerProvider) => ServerProvider;
   readonly httpClient: HttpClient.HttpClient;
+  readonly latestVersions: ProviderLatestVersions.ProviderLatestVersions["Service"];
 }): Effect.Effect<void> => {
   const { settings, snapshot, publishSnapshot } = input;
   const stampIdentity = input.stampIdentity ?? ((value) => value);
@@ -475,6 +477,7 @@ export const enrichDevinSnapshot = (input: {
     enableProviderUpdateChecks: input.enableProviderUpdateChecks,
   }).pipe(
     Effect.provideService(HttpClient.HttpClient, input.httpClient),
+    Effect.provideService(ProviderLatestVersions.ProviderLatestVersions, input.latestVersions),
     Effect.flatMap((enrichedSnapshot) =>
       publishSnapshot(stampIdentity(enrichedSnapshot)).pipe(Effect.as(enrichedSnapshot)),
     ),

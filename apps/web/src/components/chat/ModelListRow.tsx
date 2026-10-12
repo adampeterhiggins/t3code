@@ -3,6 +3,7 @@ import { memo } from "react";
 import { CheckIcon, GitForkIcon, StarIcon } from "lucide-react";
 import {
   getDisplayModelName,
+  getProviderRowLabel,
   getTriggerDisplayModelLabel,
   type ModelEsque,
 } from "./providerIconUtils";
@@ -47,9 +48,7 @@ export const ModelListRow = memo(function ModelListRow(props: {
   /** The thread cannot switch to this model, so only the fork button opens it. */
   forkOnly?: boolean;
 }) {
-  const providerLabel = props.model.subProvider
-    ? `${props.providerDisplayName} · ${props.model.subProvider}`
-    : props.providerDisplayName;
+  const providerLabel = getProviderRowLabel(props.providerDisplayName, props.model.subProvider);
 
   const row = (
     <ComboboxItem

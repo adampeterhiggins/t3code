@@ -37,6 +37,8 @@ import {
   type RefObject,
 } from "react";
 import { Alert, Keyboard, Platform, Pressable, View, type ViewStyle } from "react-native";
+import { composerImageGallery } from "../../lib/composerImageGallery";
+import { filePreviewGallery } from "../../lib/filePreviewGallery";
 import { FilePreviewModal, type FilePreviewSource } from "../../components/FilePreviewModal";
 import {
   composerAttachmentUploadBlockReason,
@@ -448,7 +450,11 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   const currentRuntimeMode = props.selectedThread.runtimeMode;
   const modelUnavailable =
     props.connectionState === "connected" &&
-    isModelSelectionUnavailable(props.serverConfig, currentModelSelection);
+    isModelSelectionUnavailable(
+      props.serverConfig,
+      currentModelSelection,
+      props.selectedThread.projectId,
+    );
   const selectedProviderStatus = useMemo(() => {
     if (!props.serverConfig) return null;
     return (
@@ -602,9 +608,15 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     (source: FilePreviewSource) => {
       wasExpandedBeforePreviewRef.current = isFocused;
       setPreviewVideo(null);
-      setPreviewFile((current) => current ?? source);
+      setPreviewFile(
+        (current) =>
+          current ?? {
+            ...source,
+            gallery: filePreviewGallery(source, composerImageGallery(props.draftAttachments)),
+          },
+      );
     },
-    [isFocused],
+    [isFocused, props.draftAttachments],
   );
 
   const closePreview = useCallback(() => {
@@ -696,8 +708,19 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     ? undefined
     : currentModelSelection.instanceId;
   const modelOptions = useMemo(
-    () => buildModelOptions(props.serverConfig, currentModelSelection, lockedProviderInstanceId),
-    [props.serverConfig, currentModelSelection, lockedProviderInstanceId],
+    () =>
+      buildModelOptions(
+        props.serverConfig,
+        currentModelSelection,
+        lockedProviderInstanceId,
+        props.selectedThread.projectId,
+      ),
+    [
+      props.serverConfig,
+      currentModelSelection,
+      lockedProviderInstanceId,
+      props.selectedThread.projectId,
+    ],
   );
   const threadProviderGroups = useMemo(() => groupByProvider(modelOptions), [modelOptions]);
   const currentModelOption =
@@ -719,7 +742,9 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     () => ({
       ownerId: settingsOwnerId,
       environmentId: props.environmentId,
+      projectId: props.selectedThread.projectId,
       providerInstanceId: currentModelSelection.instanceId,
+      ...(lockedProviderInstanceId ? { lockedProviderInstanceId } : {}),
       providerGroups: threadProviderGroups,
       selectedModel: currentModelSelection,
       reportedModelSelection: props.reportedModelSelection,
@@ -745,7 +770,9 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       props.onUpdateRuntimeMode,
       providerOptionDescriptors,
       settingsOwnerId,
+      lockedProviderInstanceId,
       threadProviderGroups,
+      props.selectedThread.projectId,
     ],
   );
   const openSettings = useCallback(() => {

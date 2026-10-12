@@ -333,7 +333,11 @@ function SlackMentionTriggerRows({ environmentId }: { readonly environmentId: En
         .settings.defaultModelSelection,
   );
   const entries = sortProviderInstanceEntries(
-    applyProviderInstanceSettings(deriveProviderInstanceEntries(providers), settings),
+    applyProviderInstanceSettings(
+      deriveProviderInstanceEntries(providers),
+      settings,
+      trigger.projectId ?? null,
+    ),
   );
   const modelOptions = getCustomModelOptionsByInstance(
     settings,
@@ -461,6 +465,7 @@ function SlackMentionTriggerRows({ environmentId }: { readonly environmentId: En
           <div className="flex flex-wrap items-center gap-2">
             {selection ? (
               <ProviderModelPicker
+                environmentId={environmentId}
                 activeInstanceId={selection.instanceId}
                 model={selection.model}
                 lockedProvider={null}

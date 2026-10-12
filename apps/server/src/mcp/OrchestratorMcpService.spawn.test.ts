@@ -16,7 +16,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 
-import type { ProviderAdapterV2Shape } from "@t3tools/provider-core/server/ProviderAdapter";
+import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import * as ProviderAdapterRegistry from "../orchestration-v2/ProviderAdapterRegistry.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
@@ -24,6 +24,7 @@ import * as ProjectService from "../project/ProjectService.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
 import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
+import * as ServerSettings from "../serverSettings.ts";
 import type { McpInvocationScope } from "./McpInvocationContext.ts";
 import * as OrchestratorMcpService from "./OrchestratorMcpService.ts";
 import { MAX_LIVE_CHILDREN } from "./spawnPolicy.ts";
@@ -124,6 +125,8 @@ const run = <A, E>(
             ...commands,
             command as OrchestrationV2Command,
           ]).pipe(Effect.as({ sequence: 1, storedEvents: [] } as never)),
+        hasReceipt: () => Effect.succeed(false),
+        assertProviderInstanceEnabled: () => Effect.void,
       }),
       Layer.mock(ProviderRegistry.ProviderRegistry)({
         getProviders: Effect.succeed([
@@ -146,13 +149,17 @@ const run = <A, E>(
         ProviderAdapterRegistry.ProviderAdapterRegistryV2,
         ProviderAdapterRegistry.ProviderAdapterRegistryV2.of({
           list: () => Effect.succeed([codexInstanceId]),
-          get: (instanceId) => Effect.succeed({ instanceId } as unknown as ProviderAdapterV2Shape),
+          get: (instanceId) =>
+            Effect.succeed({
+              instanceId,
+            } as unknown as ProviderAdapter.ProviderAdapterV2["Service"]),
         }),
       ),
       Layer.mock(ProjectService.ProjectService)({}),
       Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
       Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
       Layer.mock(SecretRequests.SecretRequests)({}),
+      ServerSettings.layerTest(),
     );
     return yield* Effect.gen(function* () {
       const service = yield* OrchestratorMcpService.OrchestratorMcpService;

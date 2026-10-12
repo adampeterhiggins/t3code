@@ -22,8 +22,8 @@ import * as EffectWorker from "./EffectWorker.ts";
 import * as EventSink from "./EventSink.ts";
 import * as Orchestrator from "./Orchestrator.ts";
 import type {
+  ProviderAdapterV2,
   ProviderAdapterV2Event,
-  ProviderAdapterV2Shape,
   ProviderAdapterV2TurnInput,
 } from "@t3tools/provider-core/server/ProviderAdapter";
 import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
@@ -43,7 +43,7 @@ it.effect("a workspace change ends the running turn as interrupted, not a provid
       const cwd = yield* checkpointWorkspace("workspace-change-detach");
       const worktreePath = yield* checkpointWorkspace("workspace-change-detach-worktree");
       const started: ProviderAdapterV2TurnInput[] = [];
-      const adapter: ProviderAdapterV2Shape = {
+      const adapter: ProviderAdapterV2["Service"] = {
         instanceId,
         driver,
         getCapabilities: () => Effect.succeed(ClaudeProviderCapabilitiesV2),

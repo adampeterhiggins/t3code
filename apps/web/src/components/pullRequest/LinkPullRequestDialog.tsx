@@ -1,10 +1,5 @@
-import { changeRequestUrlFor as changeRequestWebUrl } from "@t3tools/shared/changeRequestUrl";
-export { changeRequestUrlFor as changeRequestWebUrl } from "@t3tools/shared/changeRequestUrl";
-import {
-  pullRequestHostOf,
-  type ScopedThreadRef,
-  type SourceControlProviderKind,
-} from "@t3tools/contracts";
+import { pullRequestHostOf, type ScopedThreadRef } from "@t3tools/contracts";
+import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import {
   threadPullRequestKeyOf,
   visibleThreadPullRequests,
@@ -195,15 +190,19 @@ function LinkPullRequestPicker({
       identity.displayName ??
       (identity.owner && identity.name ? `${identity.owner}/${identity.name}` : null);
     if (repository === null) return null;
-    const kind = identity.provider as SourceControlProviderKind;
-    const host = pullRequestHostOf(identity, kind);
+    const definition = sourceControlClients.get(identity.provider ?? "unknown");
+    const host = pullRequestHostOf(identity, definition.kind);
     return {
       host,
       repository,
       webUrl: (number: number) =>
-        kind === "forgejo" && identity.webUrl
-          ? `${identity.webUrl.replace(/\/+$/, "")}/pulls/${number}`
-          : changeRequestWebUrl(kind, host, repository, number, identity.locator.remoteUrl),
+        definition.changeRequestUrl({
+          host,
+          repository,
+          number,
+          remoteUrl: identity.locator.remoteUrl,
+          webUrl: identity.webUrl,
+        }),
     };
   }, [projectId, projects, threadRef.environmentId]);
 

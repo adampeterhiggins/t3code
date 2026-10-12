@@ -13,6 +13,7 @@ import {
   type ComposerContextId,
   type EnvironmentId,
   type ModelSelection,
+  type ProjectId,
   ThreadId,
   type ThreadTabContextRecord,
   type ThreadTabGroup,
@@ -84,6 +85,7 @@ export function clearSelectedThreadTabSources(threadId: ThreadId): void {
 export function ThreadTabs({
   environmentId,
   threadId,
+  projectId,
   title,
   modelSelection,
   forkPoint,
@@ -93,6 +95,8 @@ export function ThreadTabs({
 }: {
   environmentId: EnvironmentId;
   threadId: ThreadId;
+  /** Hand-off models skip providers turned off for this project. */
+  projectId: ProjectId;
   title: string;
   modelSelection: ModelSelection;
   /** The checkout GitHub issues are listed from; null when the project is not on GitHub. */
@@ -136,11 +140,11 @@ export function ThreadTabs({
   const handOffModels = useMemo(
     () =>
       groupByProvider(
-        buildModelOptions(serverConfig, modelSelection).filter(
+        buildModelOptions(serverConfig, modelSelection, undefined, projectId).filter(
           (option) => !option.isLegacy && !option.isUnavailable,
         ),
       ),
-    [modelSelection, serverConfig],
+    [modelSelection, projectId, serverConfig],
   );
 
   useEffect(() => {

@@ -24,7 +24,7 @@ import {
   resolveConductorSettings,
   type ResolvedConductorSettings,
 } from "@t3tools/shared/conductorSettings";
-import { HostProcessEnvironment, HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -69,8 +69,8 @@ export const make = Effect.gen(function* () {
   const path = yield* Path.Path;
   const git = yield* GitVcsDriver.GitVcsDriver;
   const processRunner = yield* ProcessRunner.ProcessRunner;
-  const platform = yield* HostProcessPlatform;
-  const hostEnv = yield* HostProcessEnvironment;
+  const platform = yield* HostProcess.Platform;
+  const hostEnv = yield* HostProcess.Environment;
 
   const readOptional = (filePath: string) =>
     fileSystem

@@ -14,7 +14,6 @@ import * as Effect from "effect/Effect";
 
 import { RemoteEnvironmentAuthorization } from "./authorization/service.ts";
 import type { PreparedConnection } from "./connection/model.ts";
-import { environmentEndpointUrl } from "./environment/endpoint.ts";
 import { ManagedRelayDpopSigner } from "./relay/managedRelay.ts";
 import { executeAuthenticatedEnvironmentHttpRequest } from "./state/environmentHttpAuth.ts";
 
@@ -28,7 +27,7 @@ export const listThreadTabMemberships = Effect.fn("clientRuntime.threadTabs.memb
       remoteAuthorization,
       group: "threadTabs",
       method: "GET",
-      url: (base) => environmentEndpointUrl(base, "/api/thread-tabs"),
+      url: (urls) => urls.memberships(),
       timeoutMs: 20_000,
       request: ({ client, headers }) => client.memberships({ headers }),
     });
@@ -147,7 +146,7 @@ export const listThreadTabs = Effect.fn("clientRuntime.threadTabs.list")(functio
     remoteAuthorization,
     group: "threadTabs",
     method: "GET",
-    url: (base) => environmentEndpointUrl(base, `/api/thread-tabs/${threadId}`),
+    url: (urls) => urls.list({ params: { threadId } }),
     timeoutMs: 20_000,
     request: ({ client, headers }) => client.list({ params: { threadId }, headers }),
   });
@@ -176,7 +175,7 @@ export const setThreadTabGroupName = Effect.fn("clientRuntime.threadTabs.setName
     remoteAuthorization,
     group: "threadTabs",
     method: "PUT",
-    url: (base) => environmentEndpointUrl(base, `/api/thread-tabs/${threadId}/name`),
+    url: (urls) => urls.setName({ params: { threadId } }),
     timeoutMs: 20_000,
     request: ({ client, headers }) =>
       client.setName({ params: { threadId }, payload: { name }, headers }),
@@ -213,7 +212,7 @@ export const createThreadTab = Effect.fn("clientRuntime.threadTabs.create")(func
     remoteAuthorization,
     group: "threadTabs",
     method: "POST",
-    url: (base) => environmentEndpointUrl(base, `/api/thread-tabs/${sourceThreadId}`),
+    url: (urls) => urls.create({ params: { threadId: sourceThreadId } }),
     timeoutMs: 20_000,
     request: ({ client, headers }) =>
       client.create({ params: { threadId: sourceThreadId }, payload: input, headers }),
@@ -234,7 +233,7 @@ export const forkThreadTabFromRun = Effect.fn("clientRuntime.threadTabs.fork")(f
     remoteAuthorization,
     group: "threadTabs",
     method: "POST",
-    url: (base) => environmentEndpointUrl(base, `/api/thread-tabs/${threadId}/fork`),
+    url: (urls) => urls.fork({ params: { threadId } }),
     timeoutMs: 20_000,
     request: ({ client, headers }) =>
       client.fork({ params: { threadId }, payload: input, headers }),
@@ -270,7 +269,7 @@ export const prepareThreadTabHandoff = Effect.fn("clientRuntime.threadTabs.hando
     remoteAuthorization,
     group: "threadTabs",
     method: "POST",
-    url: (base) => environmentEndpointUrl(base, `/api/thread-tabs/${threadId}/handoff`),
+    url: (urls) => urls.handoff({ params: { threadId } }),
     timeoutMs: 20_000,
     request: ({ client, headers }) =>
       client.handoff({ params: { threadId }, payload: input, headers }),

@@ -16,7 +16,7 @@ import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as McpInvocationContext from "./McpInvocationContext.ts";
 import {
-  layerEnvironmentRegistration,
+  layerEnvironmentToolkit,
   layerOrchestratorToolkit,
   layerProjectRegistration,
   layerThreadToolkit,
@@ -199,7 +199,7 @@ export const layer = Layer.mergeAll(
       layerOrchestratorToolkit,
       layerThreadToolkit,
       layerProjectRegistration,
-      layerEnvironmentRegistration,
+      layerEnvironmentToolkit,
       toolkitRegistration(ApprovalToolkit, ApprovalToolkitHandlersLive),
       toolkitRegistration(ThreadDeleteToolkit, ThreadDeleteToolkitHandlersLive),
     ).pipe(Layer.provideMerge(OperateTransportLive)),
