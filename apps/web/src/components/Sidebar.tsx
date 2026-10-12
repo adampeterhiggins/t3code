@@ -4590,20 +4590,15 @@ export default function Sidebar() {
     return routeThread === undefined ? EMPTY_THREADS : [routeThread];
   }, [sidebarRouteThreadKey, workingShelfExpanded, workingThreads]);
 
-  const orderedThreads = useMemo(
-    () =>
-      withSidebarTabThreads(
-        [
-          ...(showsThreads ? [...pinnedThreads, ...activeThreads, ...visibleWorkingThreads] : []),
-          ...visibleGroups.flatMap((group) => group.threads),
-          ...visibleSnoozedThreads,
-          ...visibleHiddenThreads,
-          ...renderedSettledThreads,
-        ],
-        sidebarThreadKey,
-        shownTabsByRowKey,
-        (rowKey) => tabLayoutByRowKey.get(rowKey)?.listsRow === true,
-      ),
+  // Every thread that renders a row, in list order, before tabs are spliced in.
+  const rowThreads = useMemo(
+    () => [
+      ...(showsThreads ? [...pinnedThreads, ...activeThreads, ...visibleWorkingThreads] : []),
+      ...visibleGroups.flatMap((group) => group.threads),
+      ...visibleSnoozedThreads,
+      ...visibleHiddenThreads,
+      ...renderedSettledThreads,
+    ],
     [
       pinnedThreads,
       activeThreads,
@@ -4613,9 +4608,17 @@ export default function Sidebar() {
       visibleGroups,
       showsThreads,
       renderedSettledThreads,
-      shownTabsByRowKey,
-      tabLayoutByRowKey,
     ],
+  );
+  const orderedThreads = useMemo(
+    () =>
+      withSidebarTabThreads(
+        rowThreads,
+        sidebarThreadKey,
+        shownTabsByRowKey,
+        (rowKey) => tabLayoutByRowKey.get(rowKey)?.listsRow === true,
+      ),
+    [rowThreads, shownTabsByRowKey, tabLayoutByRowKey],
   );
   const orderedThreadKeys = useMemo(
     () =>
@@ -4635,15 +4638,11 @@ export default function Sidebar() {
   const threadByKey = useMemo(
     () =>
       new Map(
-        [
-          ...pinnedThreads,
-          ...activeThreads,
-          ...visibleSnoozedThreads,
-          ...renderedSettledThreads,
-          ...orderedThreads,
-        ].map((thread) => [sidebarThreadKey(thread), thread] as const),
+        [...rowThreads, ...orderedThreads].map(
+          (thread) => [sidebarThreadKey(thread), thread] as const,
+        ),
       ),
-    [pinnedThreads, activeThreads, visibleSnoozedThreads, renderedSettledThreads, orderedThreads],
+    [rowThreads, orderedThreads],
   );
   // Handlers read these through refs: depending on per-update Map/Set
   // identities would give every row a fresh callback prop on each shell
