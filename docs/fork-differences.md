@@ -356,7 +356,9 @@ did to the thread (interrupted, forked, renamed, reconfigured, organized), with 
 thread; thread search as matches by thread title; pull request tools as PR rows, with the
 title, state and branch from the thread's linked-PR snapshot when the result omits them; scheduled
 task tools as each task's title and schedule; browser preview actions as their target, page, and
-evaluated code and value; Slack thread reads and searches as messages; and Claude's ToolSearch,
+evaluated code and value; browser snapshots with a clickable saved screenshot and expandable captured
+page text (explicit `includeImage: false` still skips capture unless `save: true`); Slack thread reads
+and searches as messages; and Claude's ToolSearch,
 AskUserQuestion, SendMessage, Skill, Monitor and ScheduleWakeup and HTML pages by what they carry
 (`resolveToolPreview`, [`ToolPreviewCard.tsx`](../apps/web/src/components/chat/ToolPreviewCard.tsx),
 [mobile](../apps/mobile/src/features/threads/ToolPreviewCard.tsx)). Third-party MCP tools get

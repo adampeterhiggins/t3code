@@ -1,5 +1,6 @@
 import type { ScheduledTaskSchedule } from "@t3tools/contracts";
 import type { ToolPreview } from "@t3tools/client-runtime/work-log/tool-preview";
+import { useState, type ReactNode } from "react";
 import { Pressable, View } from "react-native";
 
 import { AppText as Text } from "../../components/AppText";
@@ -233,6 +234,7 @@ function OpenThread(props: {
 function PreviewBody(props: {
   readonly preview: ToolPreview;
   readonly onOpenThread: (threadId: string) => void;
+  readonly renderSnapshotImage: (path: string) => ReactNode;
 }) {
   const { preview } = props;
   switch (preview.kind) {
@@ -373,6 +375,12 @@ function PreviewBody(props: {
               {preview.page.title ?? preview.page.url}
             </Link>
           ) : null}
+          {preview.snapshot?.screenshotPath
+            ? props.renderSnapshotImage(preview.snapshot.screenshotPath)
+            : null}
+          {preview.snapshot?.visibleText ? (
+            <SnapshotText text={preview.snapshot.visibleText} />
+          ) : null}
           {preview.target && preview.target !== preview.page?.url ? (
             <Text selectable className="font-mono text-2xs text-foreground">
               {preview.target}
@@ -499,14 +507,31 @@ function PreviewBody(props: {
   }
 }
 
+function SnapshotText({ text }: { readonly text: string }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded }}
+        onPress={() => setExpanded((value) => !value)}
+      >
+        <Muted>{expanded ? "Hide captured page text" : "Captured page text"}</Muted>
+      </Pressable>
+      {expanded ? <Body>{text}</Body> : null}
+    </View>
+  );
+}
+
 /** A tool call shown as what it did, the mobile counterpart of the web card. */
 export function ToolPreviewCard(props: {
   readonly preview: ToolPreview;
+  readonly renderSnapshotImage: (path: string) => ReactNode;
   readonly onOpenThread: (threadId: string) => void;
 }) {
   return (
     <View className="gap-1.5">
-      <PreviewBody preview={props.preview} onOpenThread={props.onOpenThread} />
+      <PreviewBody {...props} />
     </View>
   );
 }

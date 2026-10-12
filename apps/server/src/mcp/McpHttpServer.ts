@@ -1,12 +1,8 @@
 import * as Cause from "effect/Cause";
-import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
@@ -16,7 +12,7 @@ import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 import { OrchestratorMcpFailure, PreviewAutomationError } from "@t3tools/contracts";
 
 import packageJson from "../../package.json" with { type: "json" };
-import * as ServerConfig from "../config.ts";
+import * as PreviewArtifacts from "../preview/PreviewArtifacts.ts";
 import * as DeviceService from "../device/DeviceService.ts";
 import * as HtmlRender from "../htmlRender/HtmlRender.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
@@ -365,53 +361,6 @@ const boundSnapshotMetadata = (metadata: SnapshotMetadata) => {
   return { value: value(), text, omitted };
 };
 
-export class PreviewScreenshotSaveError extends Schema.TaggedError<PreviewScreenshotSaveError>()(
-  "PreviewScreenshotSaveError",
-  { screenshotPath: Schema.String, cause: Schema.Defect() },
-) {
-  override get message(): string {
-    return `Could not save preview screenshot to ${this.screenshotPath}.`;
-  }
-}
-
-const MAX_SCREENSHOT_SITE_SLUG_LENGTH = 40;
-
-/** Hostname reduced to a filename-safe slug, matching the desktop's own screenshot names. */
-const screenshotSiteSlug = (rawUrl: string): string => {
-  try {
-    const slug = new URL(rawUrl).hostname
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, MAX_SCREENSHOT_SITE_SLUG_LENGTH)
-      .replace(/-+$/g, "");
-    return slug || "site";
-  } catch {
-    return "site";
-  }
-};
-
-/** Writes the snapshot PNG under the browser artifacts directory and returns its path. */
-const saveScreenshot = Effect.fn("McpHttpServer.saveScreenshot")(function* (
-  pageUrl: string,
-  data: Uint8Array,
-) {
-  const config = yield* ServerConfig.ServerConfig;
-  const fileSystem = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const millis = yield* Clock.currentTimeMillis;
-  const crypto = yield* Crypto.Crypto;
-  // Two saves in the same millisecond must not overwrite each other.
-  const unique = (yield* crypto.randomUUIDv4.pipe(Effect.orDie)).slice(0, 8);
-  const fileName = `browser-screenshot-${screenshotSiteSlug(pageUrl)}-${millis.toString(36)}-${unique}.png`;
-  const screenshotPath = path.join(config.browserArtifactsDir, fileName);
-  yield* fileSystem.makeDirectory(config.browserArtifactsDir, { recursive: true }).pipe(
-    Effect.andThen(fileSystem.writeFile(screenshotPath, data)),
-    Effect.mapError((cause) => new PreviewScreenshotSaveError({ screenshotPath, cause })),
-  );
-  return screenshotPath;
-});
-
 const isPreviewAutomationError = Schema.is(PreviewAutomationError);
 
 const previewSnapshotFailure = <E>(cause: Cause.Cause<E>) => {
@@ -454,10 +403,7 @@ const registerPreviewSnapshot = Effect.fn("McpHttpServer.registerPreviewSnapshot
   const server = yield* McpServer.McpServer;
   const broker = yield* PreviewAutomationBroker.PreviewAutomationBroker;
   const threads = yield* ThreadManagementService.ThreadManagementService;
-  // The MCP tool runner only supplies the client, so hand the save path its services here.
-  const saveServices = yield* Effect.context<
-    ServerConfig.ServerConfig | FileSystem.FileSystem | Path.Path | Crypto.Crypto
-  >();
+  const artifacts = yield* PreviewArtifacts.PreviewArtifacts;
   const built = yield* PreviewSnapshotToolkit;
   const tool = PreviewSnapshotTool;
   yield* server.addTool({
@@ -507,13 +453,22 @@ const registerPreviewSnapshot = Effect.fn("McpHttpServer.registerPreviewSnapshot
                   ? undefined
                   : new Uint8Array(Buffer.from(screenshot.data, "base64"));
               const screenshotPath =
-                payload?.save === true && png !== undefined
-                  ? yield* saveScreenshot(snapshot.url, png)
-                  : undefined;
+                png === undefined
+                  ? undefined
+                  : yield* artifacts.saveScreenshot(snapshot.url, png).pipe(
+                      // A thumbnail failure must not prevent the agent from reading the page.
+                      Effect.catch((error) =>
+                        payload?.save === true
+                          ? Effect.fail(error)
+                          : Effect.logWarning("Could not save snapshot thumbnail", error).pipe(
+                              Effect.as(undefined),
+                            ),
+                      ),
+                    );
               // Images stay out of tool history unless asked for: providers replay them on every
               // later request, and some reject inline images outright.
               const includeImage = payload?.includeImage === true;
-              if (screenshotPath !== undefined && !includeImage) {
+              if (payload?.save === true && screenshotPath !== undefined && !includeImage) {
                 // The agent only wants a file to show the user. The url keeps the site icon on the tool row.
                 const saved = {
                   url: cutText(snapshot.url, MAX_SNAPSHOT_IDENTIFIER_CHARS),
@@ -569,7 +524,6 @@ const registerPreviewSnapshot = Effect.fn("McpHttpServer.registerPreviewSnapshot
               });
             }),
           ),
-          Effect.provide(saveServices),
           Effect.matchCauseEffect({
             onFailure: previewSnapshotFailure,
             onSuccess: Effect.succeed,
@@ -798,7 +752,7 @@ const layerPreviewStandardToolkitRegistration = toolkitRegistration(
 const layerPreviewSnapshotRegistration = imageToolRegistration(
   registerPreviewSnapshot(),
   PreviewHandlers.layerSnapshot,
-);
+).pipe(Layer.provide(PreviewArtifacts.layer));
 
 export const layerPreviewToolkit = Layer.mergeAll(
   layerPreviewStandardToolkitRegistration,

@@ -425,6 +425,7 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
         preview ? (
           <ToolPreviewCard
             preview={preview}
+            onImageExpand={props.onImageExpand}
             environmentId={props.environmentId}
             threadId={props.projectedItem.sourceThreadId}
             cwd={props.cwd}

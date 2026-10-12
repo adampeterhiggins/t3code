@@ -342,7 +342,7 @@ it.effect.each([
           const metadata = {
             ...page,
             title: `Snapshot ${call}`,
-            ...(capture || legacyHost ? { screenshot } : {}),
+            ...(capture || legacyHost ? { screenshot, screenshotPath: expect.any(String) } : {}),
           };
           const { accessibilityTree: _tree, ...boundedMetadata } = metadata;
           expect(snapshot.isError).toBe(false);
@@ -438,7 +438,7 @@ it.effect("rejects non-boolean snapshot image options before selecting a browser
   }).pipe(Effect.provide(layerTest)),
 );
 
-it.effect("saves the snapshot PNG on request and reports its path", () =>
+it.effect("saves captured snapshot PNGs without replaying image data by default", () =>
   Effect.scoped(
     Effect.gen(function* () {
       const config = yield* ServerConfig.ServerConfig;
@@ -463,8 +463,17 @@ it.effect("saves the snapshot PNG on request and reports its path", () =>
       const [, text] = snapshot.content;
       expect(text?.type === "text" ? text.text : "").toContain(screenshotPath);
 
-      const unsaved = yield* callSnapshot({});
-      expect(unsaved.structuredContent).not.toHaveProperty("screenshotPath");
+      const automatic = yield* callSnapshot({});
+      const automaticPage = automatic.structuredContent as { readonly screenshotPath: string };
+      expect(automatic.content.every((content) => content.type === "text")).toBe(true);
+      expect(automatic.structuredContent).toMatchObject({
+        visibleText: "Example",
+        title: "Example",
+      });
+      expect(automaticPage.screenshotPath).not.toBe(screenshotPath);
+      expect(Buffer.from(yield* fileSystem.readFile(automaticPage.screenshotPath)).toString()).toBe(
+        "png",
+      );
 
       // A save without the image skips the page dump.
       const pathOnly = yield* callSnapshot({ save: true });
@@ -498,6 +507,25 @@ it.effect("reports a tagged error when the screenshot cannot be saved", () =>
       expect(snapshot.structuredContent).toEqual({
         error: { _tag: "PreviewScreenshotSaveError", operation: "snapshot", failureCount: 1 },
       });
+    }),
+  ).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("keeps page text usable when automatic screenshot storage fails", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const config = yield* ServerConfig.ServerConfig;
+      const fileSystem = yield* FileSystem.FileSystem;
+      yield* fileSystem.writeFileString(config.browserArtifactsDir, "");
+      yield* serveSnapshots("mcp-thumbnail-failure-client", snapshotResult);
+      const snapshot = yield* callSnapshot({});
+      expect(snapshot.isError).toBe(false);
+      expect(snapshot.structuredContent).toMatchObject({
+        title: "Example",
+        visibleText: "Example",
+      });
+      expect(snapshot.structuredContent).not.toHaveProperty("screenshotPath");
+      expect(snapshot.content.every((content) => content.type === "text")).toBe(true);
     }),
   ).pipe(Effect.provide(layerTest)),
 );

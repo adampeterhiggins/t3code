@@ -187,6 +187,10 @@ export interface PullRequestToolPreview {
 }
 
 export interface BrowserToolPreview {
+  readonly snapshot: {
+    readonly screenshotPath: string | null;
+    readonly visibleText: string | null;
+  } | null;
   readonly kind: "browser";
   /** What was acted on: a locator, key, URL, or typed text. */
   readonly target: string | null;
@@ -440,6 +444,10 @@ function browserPreview(tool: string, input: Record_, result: Record_ | null): B
   const hasValue = result !== null && Object.hasOwn(result, "value");
   return {
     kind: "browser",
+    snapshot:
+      tool === "preview_snapshot" && result
+        ? { screenshotPath: str(result.screenshotPath), visibleText: str(result.visibleText) }
+        : null,
     target,
     text: tool === "preview_type" ? str(input.text) : null,
     detail: browserDetail(tool, input, result),
@@ -981,6 +989,30 @@ function t3ToolPreview(tool: string, input: Record_, result: Record_ | null): To
   }
 }
 
+/** Text-only providers keep the snapshot's JSON blocks but may drop structuredContent. */
+function snapshotResult(result: Record_ | null, text: string | null): Record_ | null {
+  if (
+    result &&
+    (typeof result.visibleText === "string" || typeof result.screenshotPath === "string")
+  ) {
+    return result;
+  }
+  for (const line of text?.split("\n") ?? []) {
+    try {
+      const value: unknown = JSON.parse(line);
+      if (
+        isRecord(value) &&
+        (typeof value.visibleText === "string" || typeof value.screenshotPath === "string")
+      ) {
+        return { ...result, ...value };
+      }
+    } catch {
+      // Snapshot truncation notes and image placeholders are not JSON.
+    }
+  }
+  return result;
+}
+
 /** A dynamic tool call's preview, or null when the generic body says it best. */
 export function resolveToolPreview(item: OrchestrationV2TurnItem): ToolPreview | null {
   if (item.type !== "dynamic_tool" || item.status === "failed") return null;
@@ -993,7 +1025,11 @@ export function resolveToolPreview(item: OrchestrationV2TurnItem): ToolPreview |
   // T3 tools without their own card still show their result as one.
   if (t3Tool) {
     return (
-      t3ToolPreview(t3Tool, input, resultRecord) ??
+      t3ToolPreview(
+        t3Tool,
+        input,
+        t3Tool === "preview_snapshot" ? snapshotResult(resultRecord, text) : resultRecord,
+      ) ??
       t3UtilityToolPreview(t3Tool, input, result) ??
       genericToolPreview(result, text)
     );
