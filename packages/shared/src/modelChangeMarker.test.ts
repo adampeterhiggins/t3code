@@ -9,10 +9,11 @@ import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  formatModelOptionChanges,
+  describeModelSelection,
+  formatModelSelectionTraits,
   modelChangeSourceSelection,
   modelChangeTurnItem,
-  modelOptionChanges,
+  modelSelectionChanged,
   pendingModelChangeProjection,
 } from "./modelChangeMarker.ts";
 
@@ -23,6 +24,7 @@ const claude = ProviderInstanceId.make("claudeAgent");
 
 const provider = {
   instanceId: codex,
+  driver: "codex",
   models: [
     {
       slug: "gpt-5.4",
@@ -105,7 +107,7 @@ describe("modelChangeTurnItem", () => {
       to: { instanceId: codex, model: "gpt-5.4", options: [{ id: "effort", value: "high" }] },
       now,
     });
-    expect(changed?.title).toBe("Model settings changed");
+    expect(changed?.title).toBe("Model changed");
     expect(changed?.to.options).toEqual([{ id: "effort", value: "high" }]);
   });
 
@@ -182,44 +184,66 @@ describe("modelChangeTurnItem", () => {
         providers,
         now,
       })?.item.title,
-    ).toBe("Model settings changed");
+    ).toBe("Model changed");
   });
 });
 
-describe("modelOptionChanges", () => {
+describe("modelSelectionChanged", () => {
   const descriptors = provider.models[0]!.capabilities?.optionDescriptors;
 
-  it("labels changes from the model's descriptors and resolves omitted defaults", () => {
-    const changes = modelOptionChanges(
-      { instanceId: codex, model: "gpt-5.4" },
-      {
-        instanceId: codex,
-        model: "gpt-5.4",
-        options: [
-          { id: "effort", value: "high" },
-          { id: "fastMode", value: true },
-          { id: "stale", value: "x" },
-        ],
-      },
-      descriptors,
-    );
-    expect(formatModelOptionChanges(changes)).toBe(
-      "Reasoning: Medium → High · Fast Mode: Off → On",
-    );
+  it("resolves omitted options to defaults and ignores options the model lacks", () => {
+    const base = { instanceId: codex, model: "gpt-5.4" };
+    expect(
+      modelSelectionChanged(
+        base,
+        {
+          ...base,
+          options: [
+            { id: "effort", value: "medium" },
+            { id: "stale", value: "x" },
+          ],
+        },
+        descriptors,
+      ),
+    ).toBe(false);
+    expect(
+      modelSelectionChanged(
+        base,
+        { ...base, options: [{ id: "fastMode", value: true }] },
+        descriptors,
+      ),
+    ).toBe(true);
   });
 
-  it("compares raw values without descriptors and ignores model switches", () => {
+  it("compares raw values without descriptors", () => {
+    const base = { instanceId: codex, model: "gpt-5.4" };
     expect(
-      modelOptionChanges(
-        { instanceId: codex, model: "gpt-5.4" },
-        { instanceId: codex, model: "gpt-5.4", options: [{ id: "effort", value: "high" }] },
-      ),
-    ).toEqual([{ id: "effort", label: "effort", from: "Default", to: "high" }]);
-    expect(
-      modelOptionChanges(
-        { instanceId: codex, model: "gpt-5.4" },
-        { instanceId: codex, model: "gpt-5.6", options: [{ id: "effort", value: "high" }] },
-      ),
-    ).toEqual([]);
+      modelSelectionChanged(base, { ...base, options: [{ id: "effort", value: "medium" }] }),
+    ).toBe(true);
+    expect(modelSelectionChanged(base, { ...base, model: "gpt-5.6" })).toBe(true);
+  });
+});
+
+describe("model selection labels", () => {
+  const selection = {
+    instanceId: codex,
+    model: "gpt-5.4",
+    options: [
+      { id: "effort", value: "high" },
+      { id: "fastMode", value: true },
+    ],
+  };
+
+  it("labels parameters the way the composer does", () => {
+    expect(formatModelSelectionTraits([provider], selection)).toBe("High Fast");
+    expect(formatModelSelectionTraits([provider], { instanceId: codex, model: "gpt-5.4" })).toBe(
+      "Medium",
+    );
+    expect(formatModelSelectionTraits([], selection)).toBeNull();
+  });
+
+  it("describes a selection without a provider catalog", () => {
+    expect(describeModelSelection(selection)).toBe("gpt-5.4 (effort: high, fastMode: true)");
+    expect(describeModelSelection({ instanceId: codex, model: "gpt-5.4" })).toBe("gpt-5.4");
   });
 });

@@ -17,10 +17,9 @@ import { resolveHandoffEndpoints, type HandoffTimelineRun } from "@t3tools/clien
 import { Fragment } from "react";
 import { formatSubagentDisplayTitle } from "@t3tools/client-runtime/state/subagent-display";
 import {
-  formatModelOptionChanges,
-  modelIdentitiesDiffer,
-  modelOptionChanges,
+  formatModelSelectionTraits,
   modelOptionDescriptors,
+  modelSelectionChanged,
 } from "@t3tools/shared/modelChangeMarker";
 import {
   ProviderDriverKind,
@@ -46,7 +45,6 @@ import {
   GitForkIcon,
   MessageSquareIcon,
   MinusIcon,
-  SlidersHorizontalIcon,
   XIcon,
 } from "lucide-react";
 
@@ -171,23 +169,17 @@ export function V2LifecycleRow(props: {
       />
     );
   }
-  if (item.type === "model_change" && !modelIdentitiesDiffer(item.from, item.to)) {
-    const changes = modelOptionChanges(
-      item.from,
-      item.to,
-      modelOptionDescriptors(props.providerStatuses, item.from),
-    );
-    // Explicitly picking an option's default records a change that is not one.
-    if (changes.length === 0) return null;
-    return (
-      <TimelineSystemDivider
-        label="Model settings changed"
-        icon={SlidersHorizontalIcon}
-        detail={formatModelOptionChanges(changes)}
-      />
-    );
-  }
   if (item.type === "model_change") {
+    // Explicitly picking an option's default records a change that is not one.
+    if (
+      !modelSelectionChanged(
+        item.from,
+        item.to,
+        modelOptionDescriptors(props.providerStatuses, item.from),
+      )
+    ) {
+      return null;
+    }
     return (
       <TimelineSystemDivider
         label="Model changed"
@@ -199,12 +191,14 @@ export function V2LifecycleRow(props: {
               providers={props.providerStatuses}
               instanceId={item.from.instanceId}
               model={item.from.model}
+              traits={formatModelSelectionTraits(props.providerStatuses, item.from)}
             />
             <ArrowRightIcon aria-hidden="true" className="size-3 shrink-0" />
             <HandoffEndpoint
               providers={props.providerStatuses}
               instanceId={item.to.instanceId}
               model={item.to.model}
+              traits={formatModelSelectionTraits(props.providerStatuses, item.to)}
             />
           </span>
         }
@@ -725,6 +719,8 @@ function HandoffEndpoint(props: {
   readonly providers: ReadonlyArray<ServerProvider>;
   readonly instanceId: ProviderInstanceId;
   readonly model?: string | undefined;
+  /** Parameters the model ran with, such as "Max Fast". */
+  readonly traits?: string | null | undefined;
 }) {
   const entry = getProviderInstanceEntry(props.providers, props.instanceId);
   const model = props.model?.trim();
@@ -762,11 +758,13 @@ function HandoffEndpoint(props: {
             >
               {label}
             </span>
+            {props.traits ? <span className="shrink-0">{props.traits}</span> : null}
           </span>
         }
       />
       <TooltipPopup>
         {entry?.displayName ?? props.instanceId} · {label}
+        {props.traits ? ` · ${props.traits}` : null}
       </TooltipPopup>
     </Tooltip>
   );

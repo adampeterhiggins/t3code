@@ -12,6 +12,7 @@ import {
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
+import { buildTraitsTriggerDisplay, getProviderOptionDescriptors } from "./model.ts";
 import { runRanAfter } from "./orchestrationV2ThreadError.ts";
 
 type ModelChangeRun = Pick<
@@ -22,13 +23,6 @@ type ModelChangeRun = Pick<
 /** Instance and model slug. Option-only changes are the same model. */
 export function modelIdentitiesDiffer(left: ModelSelection, right: ModelSelection): boolean {
   return left.instanceId !== right.instanceId || left.model !== right.model;
-}
-
-export interface ModelOptionChange {
-  readonly id: string;
-  readonly label: string;
-  readonly from: string;
-  readonly to: string;
 }
 
 /** The option descriptors the provider advertises for a selection's model. */
@@ -42,41 +36,26 @@ export function modelOptionDescriptors(
 }
 
 /**
- * Option values that differ between two selections of the same model, such as
+ * True when the selection moved to another model or changed an option such as
  * effort, fast mode, or context window. With descriptors, an omitted option
  * resolves to the provider default, so explicitly picking the default is not a
  * change, and options the model does not offer are ignored. Without them the
  * raw values are compared, which is all the server can do.
  */
-export function modelOptionChanges(
+export function modelSelectionChanged(
   from: ModelSelection,
   to: ModelSelection,
   descriptors?: ReadonlyArray<ProviderOptionDescriptor>,
-): ReadonlyArray<ModelOptionChange> {
-  if (modelIdentitiesDiffer(from, to)) return [];
+): boolean {
+  if (modelIdentitiesDiffer(from, to)) return true;
   const ids =
     descriptors !== undefined
       ? descriptors.map((descriptor) => descriptor.id)
-      : [...new Set([...(from.options ?? []), ...(to.options ?? [])].map((option) => option.id))];
-  const changes: Array<ModelOptionChange> = [];
-  for (const id of ids) {
+      : [...(from.options ?? []), ...(to.options ?? [])].map((option) => option.id);
+  return ids.some((id) => {
     const descriptor = descriptors?.find((candidate) => candidate.id === id);
-    const fromValue = optionValue(from, id, descriptor);
-    const toValue = optionValue(to, id, descriptor);
-    if (fromValue === toValue) continue;
-    changes.push({
-      id,
-      label: descriptor?.label ?? id,
-      from: optionValueLabel(fromValue, descriptor),
-      to: optionValueLabel(toValue, descriptor),
-    });
-  }
-  return changes;
-}
-
-/** One line for a divider, e.g. "Effort: Medium → High · Fast: Off → On". */
-export function formatModelOptionChanges(changes: ReadonlyArray<ModelOptionChange>): string {
-  return changes.map((change) => `${change.label}: ${change.from} → ${change.to}`).join(" · ");
+    return optionValue(from, id, descriptor) !== optionValue(to, id, descriptor);
+  });
 }
 
 function optionValue(
@@ -94,25 +73,37 @@ function optionValue(
   return descriptor.currentValue ?? descriptor.options.find((option) => option.isDefault)?.id;
 }
 
-function optionValueLabel(
-  value: string | boolean | undefined,
-  descriptor: ProviderOptionDescriptor | undefined,
-): string {
-  if (value === undefined) return "Default";
-  if (typeof value === "boolean") return value ? "On" : "Off";
-  if (descriptor?.type === "select") {
-    return descriptor.options.find((option) => option.id === value)?.label ?? value;
-  }
-  return value;
+/**
+ * A selection's parameters labelled the way the composer's traits picker shows
+ * them, e.g. "Max Fast · 1M". Null when the provider does not describe the model.
+ */
+export function formatModelSelectionTraits(
+  providers: ReadonlyArray<ServerProvider>,
+  selection: ModelSelection,
+): string | null {
+  const provider = providers.find((candidate) => candidate.instanceId === selection.instanceId);
+  const caps = provider?.models.find((model) => model.slug === selection.model)?.capabilities;
+  if (provider === undefined || !caps) return null;
+  const descriptors = getProviderOptionDescriptors({ caps, selections: selection.options });
+  const primary = descriptors.find(
+    (descriptor) => descriptor.type === "select" && descriptor.standalone !== true,
+  );
+  const { label } = buildTraitsTriggerDisplay({
+    provider: provider.driver,
+    descriptors,
+    primarySelectDescriptorId: primary?.id ?? null,
+    ultrathinkPromptControlled: false,
+    modelSelection: selection,
+  });
+  return label.length > 0 ? label : null;
 }
 
-/** True when the selection moved to another model or changed any of its options. */
-export function modelSelectionChanged(
-  from: ModelSelection,
-  to: ModelSelection,
-  descriptors?: ReadonlyArray<ProviderOptionDescriptor>,
-): boolean {
-  return modelIdentitiesDiffer(from, to) || modelOptionChanges(from, to, descriptors).length > 0;
+/** Plain text for transcripts without a provider catalog: "gpt-5.4 (effort: high)". */
+export function describeModelSelection(selection: ModelSelection): string {
+  const options = selection.options ?? [];
+  if (options.length === 0) return selection.model;
+  const values = options.map((option) => `${option.id}: ${String(option.value)}`).join(", ");
+  return `${selection.model} (${values})`;
 }
 
 /**
@@ -157,7 +148,7 @@ export function modelChangeTurnItem(input: {
     parentItemId: null,
     ordinal: input.ordinal,
     status: "completed",
-    title: modelIdentitiesDiffer(input.from, input.to) ? "Model changed" : "Model settings changed",
+    title: "Model changed",
     startedAt: input.now,
     completedAt: input.now,
     updatedAt: input.now,
