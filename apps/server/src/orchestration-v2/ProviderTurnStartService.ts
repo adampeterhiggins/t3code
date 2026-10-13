@@ -1,4 +1,5 @@
 import { modelSelectionsEqual } from "@t3tools/shared/model";
+import { checkoutDirectoriesForTurn, formatLinkedCheckoutPrompt } from "@t3tools/shared/checkouts";
 import { projectComposerContextForProvider } from "@t3tools/shared/composerContextReferences";
 import {
   CommandId,
@@ -957,9 +958,26 @@ export const layer: Layer.Layer<
       const routableSubagents = projection.subagents.filter((subagent) =>
         RunExecutionService.canRouteRelatedSubagent(subagent.status),
       );
-      const userText = projectComposerContextForProvider({
+      const contextRecords = message.context?.records ?? [];
+      const projectedUserText = projectComposerContextForProvider({
         text: message.text,
-        records: message.context?.records ?? [],
+        records: contextRecords,
+      });
+      const linkedCheckouts = projection.thread.linkedCheckouts ?? [];
+      const checkoutAccess = session.driver === "claudeAgent" ? "read" : "path-only";
+      const linkedCheckoutPrompt = formatLinkedCheckoutPrompt(
+        linkedCheckouts,
+        contextRecords,
+        checkoutAccess,
+      );
+      const userText =
+        linkedCheckoutPrompt === ""
+          ? projectedUserText
+          : `${projectedUserText}\n\n${linkedCheckoutPrompt}`;
+      const checkoutDirectories = checkoutDirectoriesForTurn({
+        driver: session.driver,
+        linked: linkedCheckouts,
+        records: contextRecords,
       });
       // Delivered once: this run's provider turn marks the work as told. A
       // restart continuation is prompted by its own text or resumes natively.
@@ -1288,6 +1306,7 @@ export const layer: Layer.Layer<
         },
         modelSelection: run.modelSelection,
         runtimePolicy: resolvedRuntimePolicy,
+        ...(checkoutDirectories.length === 0 ? {} : { additionalDirectories: checkoutDirectories }),
       });
     });
 

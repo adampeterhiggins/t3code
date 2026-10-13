@@ -544,6 +544,8 @@ export interface RunExecutionServiceV2StartRootRunInput {
   readonly message: ProviderAdapter.ProviderAdapterV2TurnMessage;
   readonly modelSelection: ModelSelection;
   readonly runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy;
+  /** Folders the provider may read in addition to the workspace. Claude uses these. */
+  readonly additionalDirectories?: ReadonlyArray<string>;
 }
 
 export interface RunExecutionServiceV2Shape {
@@ -1435,6 +1437,9 @@ export const layer: Layer.Layer<
             modelSelection: input.modelSelection,
             runtimePolicy: input.runtimePolicy,
             ...(appContext.length === 0 ? {} : { appContext }),
+            ...(input.additionalDirectories === undefined
+              ? {}
+              : { additionalDirectories: input.additionalDirectories }),
           };
           const compact =
             input.message.attachments.length === 0 &&

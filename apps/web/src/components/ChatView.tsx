@@ -307,6 +307,7 @@ import { RightPanelTabs } from "./RightPanelTabs";
 import { LinkPullRequestDialogHost } from "./pullRequest/LinkPullRequestDialog";
 import { LinearIssuePickerHost } from "./chat/LinearIssuePicker";
 import { ThreadAttachPickerHost } from "./chat/ThreadAttachPicker";
+import { CheckoutAttachPickerHost } from "./chat/CheckoutAttachPicker";
 import { RepositoryAttachPickerHost } from "./chat/RepositoryAttachPicker";
 import { PullRequestAttachPickerHost } from "./chat/PullRequestAttachPicker";
 import { openStartFromPicker, StartFromPickerHost } from "./chat/StartFromPicker";
@@ -418,6 +419,7 @@ import {
 } from "../lib/composerContextReferences";
 import { readThreadTabContextRecords, useThreadTabContextStore } from "../threadTabContextStore";
 import { readIssueContextRecords, useIssueContextStore } from "../issueContextStore";
+import { readCheckoutContextRecords, useCheckoutContextStore } from "../checkoutContextStore";
 import { readRepositoryContextRecords, useRepositoryContextStore } from "../repositoryContextStore";
 import { useThreadTabRecencyStore } from "../threadTabRecencyStore";
 import { serializeLegacyContextMessage } from "@t3tools/shared/composerContextLegacySend";
@@ -871,6 +873,7 @@ function readReferencedForkContexts(threadId: ThreadId, text: string) {
     threadTabs: referenced(readThreadTabContextRecords(threadId)),
     issues: referenced(readIssueContextRecords(threadId)),
     repositories: referenced(readRepositoryContextRecords(threadId)),
+    checkouts: referenced(readCheckoutContextRecords(threadId)),
   };
 }
 
@@ -9359,6 +9362,9 @@ export default function ChatView(props: ChatViewProps) {
     for (const record of readRepositoryContextRecords(activeThread.id)) {
       useRepositoryContextStore.getState().upsert(tabRef.threadId, record);
     }
+    for (const record of readCheckoutContextRecords(activeThread.id)) {
+      useCheckoutContextStore.getState().upsert(tabRef.threadId, record);
+    }
     if (draft) {
       store.addImages(tabRef, draft.images.map(cloneComposerImageForRetry), {
         allowDuplicates: true,
@@ -13174,6 +13180,7 @@ export default function ChatView(props: ChatViewProps) {
       <LinkPullRequestDialogHost />
       <LinearIssuePickerHost />
       <ThreadAttachPickerHost />
+      <CheckoutAttachPickerHost />
       <RepositoryAttachPickerHost
         workspaceCwd={activeWorktreePath ?? (sendEnvMode === "worktree" ? null : activeProjectCwd)}
       />

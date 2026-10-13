@@ -43,6 +43,7 @@ import {
   OrchestrationGetTurnDiffInput,
   OrchestrationGetTurnDiffResult,
 } from "./checkpointDiff.ts";
+import { ThreadLinkedCheckout } from "./checkouts.ts";
 import { ModelSelection } from "./modelSelection.ts";
 import {
   ThreadLinkedPullRequest,
@@ -388,6 +389,8 @@ export const OrchestrationV2AppThread = Schema.Struct({
       pre-linking servers still decode. */
   linkedPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
   pullRequests: Schema.optional(Schema.Array(ThreadPullRequestLink)),
+  /** Local checkouts linked to this thread. Optional so older servers still decode. */
+  linkedCheckouts: Schema.optional(Schema.Array(ThreadLinkedCheckout)),
   /** Pull request discovered from the thread's current branch. */
   branchPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
   activeProviderThreadId: Schema.NullOr(ProviderThreadId),
@@ -2019,6 +2022,7 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   /** Pull request the user linked to this thread (#8160). */
   linkedPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
   pullRequests: Schema.optional(Schema.Array(ThreadPullRequestLink)),
+  linkedCheckouts: Schema.optional(Schema.Array(ThreadLinkedCheckout)),
   /** Pull request discovered from the thread's current branch. */
   branchPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
   lineage: OrchestrationV2AppThreadLineage,
@@ -2983,6 +2987,27 @@ export const OrchestrationV2Command = Schema.Union([
     commandId: CommandId,
     threadId: ThreadId,
     ...ThreadPullRequestKey.fields,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("thread.checkout.link"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    path: TrimmedNonEmptyString,
+    name: TrimmedNonEmptyString,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("thread.checkout.unlink"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    path: TrimmedNonEmptyString,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("thread.checkout.relocate"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    fromPath: TrimmedNonEmptyString,
+    path: TrimmedNonEmptyString,
+    name: TrimmedNonEmptyString,
   }),
   Schema.Struct({
     type: Schema.Literal("thread.pull-request-link.sync"),

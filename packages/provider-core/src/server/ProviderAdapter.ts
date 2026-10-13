@@ -423,6 +423,12 @@ export interface ProviderAdapterV2TurnInput {
    * application context; others never receive any.
    */
   readonly appContext?: ReadonlyArray<{ readonly key: string; readonly text: string }>;
+  /**
+   * Extra folders this turn may read. Adapters that can grant a directory
+   * (Claude) pass them through; the others ignore them and see only the path
+   * in the prompt.
+   */
+  readonly additionalDirectories?: ReadonlyArray<string>;
 }
 
 export interface ProviderAdapterV2SteerInput {

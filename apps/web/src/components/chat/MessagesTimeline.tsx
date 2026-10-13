@@ -156,6 +156,7 @@ import {
   GitForkIcon,
   GlobeIcon,
   FolderGit2Icon,
+  FolderIcon,
   type LucideIcon,
   MessageCircleIcon,
   MessagesSquareIcon,
@@ -262,6 +263,10 @@ import { type ThreadFindMatch } from "./threadFind";
 import { useThreadFindNavigation } from "./useThreadFindNavigation";
 import { readThreadFindPosition } from "./threadFindPosition";
 import type { ThreadFindPositionReader } from "./threadFind";
+import { useOpenInPreferredEditor } from "~/editorPreferences";
+import { useAtomCommand } from "~/state/use-atom-command";
+import { primaryServerAvailableEditorsAtom } from "~/state/server";
+import { threadEnvironment } from "~/state/threads";
 import { TerminalContextInlineChip } from "./TerminalContextInlineChip";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Spinner } from "../ui/spinner";
@@ -275,6 +280,7 @@ import {
   PULL_REQUEST_CHIP_KINDS,
   PullRequestChip,
   ThreadTabSummaryDetails,
+  CheckoutDetails,
   GitHubIssueDetails,
   LinearIssueDetails,
   RepositoryDetails,
@@ -4966,6 +4972,16 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
         ),
     },
     {
+      kind: "checkout",
+      canRender: (record) => record.kind === "checkout",
+      render: (record, context) =>
+        record.kind === "checkout" ? (
+          <UserMessageCheckoutChip record={record} copyMarkdown={context.copyMarkdown} />
+        ) : (
+          <UnavailableUserMessageContextChip {...context} />
+        ),
+    },
+    {
       kind: "repository",
       canRender: (record) => record.kind === "repository",
       render: (record, context) =>
@@ -5040,6 +5056,46 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
   ],
   fallback: (_kind, _record, context) => <UnavailableUserMessageContextChip {...context} />,
 });
+
+function UserMessageCheckoutChip(props: {
+  record: Extract<KnownComposerContextRecord, { kind: "checkout" }>;
+  copyMarkdown: string;
+}) {
+  const { threadRef } = use(TimelineRowCtx);
+  const editors = useAtomValue(primaryServerAvailableEditorsAtom);
+  const openInEditor = useOpenInPreferredEditor(props.record.environmentId, editors);
+  const link = useAtomCommand(threadEnvironment.linkCheckout, { reportFailure: true });
+  return (
+    <UserMessageContextPopover
+      copyMarkdown={props.copyMarkdown}
+      accessibleLabel={`Checkout, ${props.record.label}`}
+      kind="checkout"
+      icon={<FolderIcon />}
+      label={props.record.label}
+    >
+      <CheckoutDetails
+        record={props.record}
+        onOpen={() => {
+          void openInEditor(props.record.path);
+        }}
+        {...(threadRef === null
+          ? {}
+          : {
+              onLink: () => {
+                void link({
+                  environmentId: threadRef.environmentId,
+                  input: {
+                    threadId: threadRef.threadId,
+                    path: props.record.path,
+                    name: props.record.label,
+                  },
+                });
+              },
+            })}
+      />
+    </UserMessageContextPopover>
+  );
+}
 
 function UserMessageRepositoryDetails({ record }: { record: RepositoryContextRecord }) {
   const { threadRef } = use(TimelineRowCtx);

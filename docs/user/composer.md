@@ -248,6 +248,21 @@ row above the composer shows the goal and its progress.
 - Stopping Claude ends the current turn, but the goal stays set. Claude checks it
   again at the end of your next message.
 
+## Reference a checkout
+
+Reference a folder that is already on disk, or link it to the thread so later turns include it.
+Type `#` and a folder name, and pick it from the **Checkouts** tab. Or choose **Checkout** from the
+paperclip menu (the **+** menu on mobile). The list is project roots and T3 worktrees this
+environment already knows, plus any path you paste. It does not search the disk.
+
+**Enter** inserts a chip for this message. **Command-Enter** (Control-Enter on Windows and Linux)
+also links the checkout to the thread. The picker has the same choice. Linked checkouts are listed
+in Thread Details, where you can open, unlink, or locate one whose folder has moved. Unlinking
+stops later turns from including it and leaves earlier messages as they were.
+
+A checkout on another connected machine is listed and cannot be selected. Claude is given the
+folder for the turn. Other providers receive the path in the message.
+
 ## Attach repositories
 
 Give the agent another repository's source to read by attaching it: choose **Repository** from the
@@ -295,7 +310,8 @@ the repository by text. Choose a result to insert it as a chip. To attach severa
 (`Ctrl`-click on Windows and Linux) each one, across any of the `#` menu's tabs, then press `Enter`.
 
 The `#` menu opens on the tab it expects you want: `#ENG-123` or a Linear team key like `#ENG` opens
-Linear issues, `#owner/repo` opens repositories, and an empty `#` opens the tab you insert from most.
+Linear issues, a path opens checkouts, `#owner/repo` opens repositories, and an empty `#` opens the
+tab you insert from most. A folder name that matches a local checkout opens Checkouts.
 Items you inserted recently are listed first and match as you type, without waiting for a search.
 
 On web and desktop, pasting or typing a link to a Linear issue, a GitHub issue, a pull request, a

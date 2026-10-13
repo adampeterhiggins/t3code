@@ -1160,6 +1160,48 @@ export const watchThreadPullRequest = Effect.fn("EnvironmentCommands.watchThread
     });
   },
 );
+export type LinkThreadCheckoutInput = Omit<
+  Extract<OrchestrationV2Command, { type: "thread.checkout.link" }>,
+  "type" | "commandId"
+> &
+  CommandMetadata;
+export type UnlinkThreadCheckoutInput = Omit<
+  Extract<OrchestrationV2Command, { type: "thread.checkout.unlink" }>,
+  "type" | "commandId"
+> &
+  CommandMetadata;
+export type RelocateThreadCheckoutInput = Omit<
+  Extract<OrchestrationV2Command, { type: "thread.checkout.relocate" }>,
+  "type" | "commandId"
+> &
+  CommandMetadata;
+export const linkThreadCheckout = Effect.fn("EnvironmentCommands.linkThreadCheckout")(function* (
+  input: LinkThreadCheckoutInput,
+) {
+  return yield* dispatch({
+    ...input,
+    type: "thread.checkout.link",
+    commandId: yield* allocateCommandId(input),
+  });
+});
+export const unlinkThreadCheckout = Effect.fn("EnvironmentCommands.unlinkThreadCheckout")(
+  function* (input: UnlinkThreadCheckoutInput) {
+    return yield* dispatch({
+      ...input,
+      type: "thread.checkout.unlink",
+      commandId: yield* allocateCommandId(input),
+    });
+  },
+);
+export const relocateThreadCheckout = Effect.fn("EnvironmentCommands.relocateThreadCheckout")(
+  function* (input: RelocateThreadCheckoutInput) {
+    return yield* dispatch({
+      ...input,
+      type: "thread.checkout.relocate",
+      commandId: yield* allocateCommandId(input),
+    });
+  },
+);
 export const unlinkThreadPullRequest = Effect.fn("EnvironmentCommands.unlinkThreadPullRequest")(
   function* (input: UnlinkThreadPullRequestInput) {
     return yield* dispatch({

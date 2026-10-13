@@ -7,6 +7,7 @@ import type {
   EnvironmentId,
   GitHubIssueContextRecord,
   SlackThreadContextRecord,
+  CheckoutContextRecord,
   PullRequestContextMetadata,
   RepositoryContextRecord,
 } from "@t3tools/contracts";
@@ -27,6 +28,7 @@ import ChatMarkdown from "./ChatMarkdown";
 import { PierreEntryIcon } from "./chat/PierreEntryIcon";
 import { middleTruncateAttachmentName } from "./composerInlineChip";
 import { PullRequestContextDetails } from "./PullRequestContextDetails";
+import { Button } from "./ui/button";
 import { ContextChip, ContextChipLabel, type ContextChipKind } from "./ContextChip";
 import { Popover, PopoverPopup, PopoverTitle, PopoverTrigger } from "./ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
@@ -438,6 +440,49 @@ export function SlackThreadDetails(props: {
  * An attached repository: where it goes and, once sent, what the server did with it. The draft
  * has no outcome yet; the clone happens when the message sends.
  */
+/** Snapshot of a local checkout referenced in a message. */
+export function CheckoutDetails(props: {
+  record: CheckoutContextRecord;
+  onOpen?: () => void;
+  onLink?: () => void;
+}) {
+  const { record } = props;
+  return (
+    <div className="flex w-72 flex-col gap-2 text-xs">
+      <dl className="grid grid-cols-[4.5rem_1fr] gap-x-2 gap-y-1">
+        <dt className="text-muted-foreground">Path</dt>
+        <dd className="truncate font-mono">{record.path}</dd>
+        <dt className="text-muted-foreground">Branch</dt>
+        <dd className="truncate font-mono">{record.branch ?? "detached HEAD"}</dd>
+        <dt className="text-muted-foreground">HEAD</dt>
+        <dd className="truncate font-mono">{record.headSha?.slice(0, 12) ?? "unknown"}</dd>
+        <dt className="text-muted-foreground">Changes</dt>
+        <dd className={record.changedFiles > 0 ? "text-warning" : undefined}>
+          {record.changedFiles === 0
+            ? "clean"
+            : `${record.changedFiles} uncommitted file${record.changedFiles === 1 ? "" : "s"}`}
+        </dd>
+        <dt className="text-muted-foreground">Agent</dt>
+        <dd>{record.access === "read" ? "Read access for this turn" : "Path shared only"}</dd>
+      </dl>
+      {props.onOpen || props.onLink ? (
+        <div className="flex gap-2">
+          {props.onOpen ? (
+            <Button type="button" size="xs" variant="outline" onClick={props.onOpen}>
+              Open in editor
+            </Button>
+          ) : null}
+          {props.onLink ? (
+            <Button type="button" size="xs" variant="outline" onClick={props.onLink}>
+              Link to thread
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function RepositoryDetails(props: {
   record: RepositoryContextRecord;
   onOpenLink: (event: MouseEvent<HTMLElement>, url: string) => void;

@@ -1491,6 +1491,9 @@ export function threadShellFromProjection(
     ...(projection.thread.linkedPullRequest === undefined
       ? {}
       : { linkedPullRequest: projection.thread.linkedPullRequest }),
+    ...(projection.thread.linkedCheckouts === undefined
+      ? {}
+      : { linkedCheckouts: projection.thread.linkedCheckouts }),
     ...(projection.thread.branchPullRequest === undefined
       ? {}
       : { branchPullRequest: projection.thread.branchPullRequest }),

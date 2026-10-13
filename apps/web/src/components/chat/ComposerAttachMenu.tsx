@@ -1,5 +1,5 @@
 import type { ScopedThreadRef } from "@t3tools/contracts";
-import { FolderGit2Icon, MessageSquareIcon, PaperclipIcon } from "lucide-react";
+import { FolderGit2Icon, LaptopIcon, MessageSquareIcon, PaperclipIcon } from "lucide-react";
 import { GitHubIcon, GranolaIcon, LinearIcon, NotionIcon, SlackIcon } from "../Icons";
 import { memo } from "react";
 import { useEnvironmentSettings } from "~/hooks/useSettings";
@@ -12,6 +12,7 @@ import { openGranolaNotePicker } from "./GranolaNotePicker";
 import { openLinearIssuePicker } from "./LinearIssuePicker";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { openPullRequestAttachPicker } from "./PullRequestAttachPicker";
+import { openCheckoutAttachPicker } from "./CheckoutAttachPicker";
 import { openRepositoryAttachPicker } from "./RepositoryAttachPicker";
 import { openNotionPagePicker } from "./NotionPagePicker";
 import { openSlackMessagePicker } from "./SlackMessagePicker";
@@ -27,6 +28,8 @@ export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
   pullRequestsAvailable: boolean;
   /** Whether the thread's project is a GitHub repository whose issues can be attached. */
   githubIssuesAvailable: boolean;
+  /** Whether this environment has a project root or worktree to attach. */
+  checkoutsAvailable: boolean;
   onAttachFiles: () => void;
 }) {
   const composerMenuProps = useComposerMenuProps();
@@ -90,6 +93,12 @@ export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
           <MenuItem onClick={() => openPullRequestAttachPicker(props.threadRef)}>
             <PullRequestGlyph.pullRequest />
             Pull request
+          </MenuItem>
+        ) : null}
+        {props.checkoutsAvailable ? (
+          <MenuItem onClick={() => openCheckoutAttachPicker(props.threadRef)}>
+            <LaptopIcon />
+            Checkout
           </MenuItem>
         ) : null}
         <MenuItem onClick={() => openRepositoryAttachPicker(props.threadRef)}>

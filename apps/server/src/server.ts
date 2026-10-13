@@ -122,6 +122,7 @@ import * as VcsProcess from "./vcs/VcsProcess.ts";
 import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
 import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
 import * as ProjectCloneTracker from "./project/ProjectCloneTracker.ts";
+import * as CheckoutInspect from "./checkouts/CheckoutInspect.ts";
 import * as ContextRepositories from "./contextRepositories/ContextRepositories.ts";
 import * as GitWorkflowService from "./git/GitWorkflowService.ts";
 import * as ReviewService from "./review/ReviewService.ts";
@@ -415,6 +416,8 @@ const layerProjectCloneTracker = ProjectCloneTracker.layer.pipe(
   Layer.provide(layerSourceControlRepositoryService),
 );
 
+const layerCheckoutInspect = CheckoutInspect.layer.pipe(Layer.provide(GitVcsDriver.layer));
+
 const layerContextRepositories = ContextRepositories.layer.pipe(
   Layer.provide(layerSourceControlRepositoryService),
   // Removal refuses while a turn runs in the workspace.
@@ -438,6 +441,7 @@ const layerVcs = Layer.empty.pipe(
   Layer.provideMerge(layerSourceControlRepositoryService),
   Layer.provideMerge(layerProjectCloneTracker),
   Layer.provideMerge(layerContextRepositories),
+  Layer.provideMerge(layerCheckoutInspect),
   Layer.provideMerge(
     VcsStatusBroadcaster.layer.pipe(
       Layer.provide(layerGitWorkflow),

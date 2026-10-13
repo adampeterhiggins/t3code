@@ -61,6 +61,10 @@ const DEFINITIONS = [
     capabilities: { details: "popover", expanded: "none", defaultDraftView: "compact" },
   },
   {
+    kind: "checkout",
+    capabilities: { details: "popover", expanded: "none", defaultDraftView: "compact" },
+  },
+  {
     kind: "slack-thread",
     capabilities: { details: "popover", expanded: "none", defaultDraftView: "compact" },
   },

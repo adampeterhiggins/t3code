@@ -15,6 +15,18 @@ git log --oneline --no-merges upstream/main..HEAD
 Agents update this page in the same change that adds, changes, or removes a difference. The rule
 is in [AGENTS.md](../AGENTS.md#fork-differences).
 
+## Checkout references
+
+A local working copy can be referenced in a message or linked to a thread. Type `#` and pick the
+**Checkouts** tab, or choose **Checkout** from the paperclip menu (the **+** menu on mobile).
+Linked checkouts are listed in Thread Details and included in later turns. Claude is given the
+folder; other providers receive the path.
+
+See [the user guide](user/composer.md#reference-a-checkout).
+Code: [checkouts.ts](../packages/contracts/src/checkouts.ts),
+[CheckoutAttachPicker.tsx](../apps/web/src/components/chat/CheckoutAttachPicker.tsx), and
+[CheckoutInspect.ts](../apps/server/src/checkouts/CheckoutInspect.ts).
+
 ## macOS Paste as Text shortcut
 
 In the macOS desktop app, **⌘⇧V** pastes text into the composer instead of doing nothing.

@@ -288,6 +288,8 @@ import {
 } from "./ComposerCommandMenu";
 import { useCaptureThreadTabContext } from "./ThreadTabs";
 import { ComposerAttachMenu } from "./ComposerAttachMenu";
+import { useAttachCheckout, useComposerCheckoutItems } from "./useComposerCheckoutItems";
+import { useCheckoutContextRecords } from "~/checkoutContextStore";
 import { useAttachGitHubIssue } from "./GitHubIssuePicker";
 import { useAttachLinearIssue } from "./LinearIssuePicker";
 import { useComposerGitHubIssueItems } from "./useComposerGitHubIssueItems";
@@ -399,6 +401,7 @@ const PATH_MENU_TABS: ReadonlyArray<{ id: ComposerPathTab; label: string }> = [
 ];
 
 const REFERENCE_MENU_TABS: ReadonlyArray<{ id: ComposerReferenceTab; label: string }> = [
+  { id: "checkouts", label: "Checkouts" },
   { id: "pull-requests", label: "Pull requests" },
   { id: "github-issues", label: "GitHub issues" },
   { id: "linear-issues", label: "Linear issues" },
@@ -2084,6 +2087,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const composerThreadTabContexts = useThreadTabContextRecords(routeThreadRef?.threadId);
   const composerIssueContexts = useIssueContextRecords(routeThreadRef?.threadId);
   const composerRepositoryContexts = useRepositoryContextRecords(routeThreadRef?.threadId);
+  const composerCheckoutContexts = useCheckoutContextRecords(routeThreadRef?.threadId);
   const composerContextRecords = useMemo(
     () =>
       composerContextRecordsFromDraft({
@@ -2093,6 +2097,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         threadTabs: composerThreadTabContexts,
         issues: composerIssueContexts,
         repositories: composerRepositoryContexts,
+        checkouts: composerCheckoutContexts,
         threadContexts: composerThreadContexts,
         images: composerImages,
         files: composerFiles,
@@ -2107,6 +2112,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       composerThreadTabContexts,
       composerIssueContexts,
       composerRepositoryContexts,
+      composerCheckoutContexts,
       composerThreadContexts,
       uploadsByImageId,
     ],
@@ -2927,6 +2933,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     active: referenceTab === "repositories",
     query: referenceQuery,
   });
+  const checkoutMenu = useComposerCheckoutItems(environmentId, {
+    enabled: referenceMenuOpen,
+    query: referenceTab === "checkouts" ? referenceQuery : "",
+  });
+  const attachCheckout = useAttachCheckout(selectedProvider);
   const nextPredictedReferenceTab = referenceMenuOpen
     ? predictComposerReferenceTab({
         query: referenceQuery,
@@ -2939,6 +2950,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           "github-issues": githubIssueMenu.preloaded,
           "notion-pages": notionMenu.preloaded,
           "granola-notes": granolaMenu.preloaded,
+          checkouts: checkoutMenu.preloaded,
         },
       })
     : "pull-requests";
@@ -2952,6 +2964,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const showSlackMessages = referenceMenuOpen && referenceTab === "slack-messages";
   const showGitHubIssues = referenceMenuOpen && referenceTab === "github-issues";
   const showRepositories = referenceMenuOpen && referenceTab === "repositories";
+  const showCheckouts = referenceMenuOpen && referenceTab === "checkouts";
   const referenceTabItems: ReadonlyArray<ReferenceMenuItem> = !referenceMenuOpen
     ? EMPTY_REFERENCE_MENU_ITEMS
     : showLinearIssues
@@ -2966,7 +2979,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               ? githubIssueMenu.items
               : showRepositories
                 ? repositoryMenu.items
-                : pullRequestMenu.items;
+                : showCheckouts
+                  ? checkoutMenu.items
+                  : pullRequestMenu.items;
   const referenceTabRecents = useMemo(
     () => referenceRecents.filter((item) => composerReferenceTabForItem(item) === referenceTab),
     [referenceRecents, referenceTab],
@@ -3183,6 +3198,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     (showLinearIssues && linearIssueMenu.isPending) ||
     (showGitHubIssues && githubIssueMenu.isPending) ||
     (showRepositories && repositoryMenu.isPending) ||
+    (showCheckouts && checkoutMenu.isPending) ||
     (showSlackMessages && slackMenu.isPending) ||
     (showNotionPages && notionMenu.isPending) ||
     (showGranolaNotes && granolaMenu.isPending) ||
@@ -3225,6 +3241,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       return composerTrigger?.query
         ? `No GitHub issue matches ${composerTrigger.query}.`
         : "No open GitHub issues in this repository.";
+    }
+    if (showCheckouts) {
+      if (checkoutMenu.error !== null) return checkoutMenu.error;
+      return composerTrigger?.query
+        ? `No checkout matches ${composerTrigger.query}. Paste a path to use another folder.`
+        : "No local checkouts yet. Paste a path to add one.";
     }
     if (showRepositories) {
       if (repositoryMenu.owners.length === 0) {
@@ -4322,7 +4344,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
    * land at the caret once fetched.
    */
   const attachReferenceItems = useCallback(
-    (prompt: string, trigger: ComposerTrigger, items: ReadonlyArray<ReferenceMenuItem>) => {
+    (
+      prompt: string,
+      trigger: ComposerTrigger,
+      items: ReadonlyArray<ReferenceMenuItem>,
+      options?: { readonly link?: boolean },
+    ) => {
+      if (items.some((item) => item.type === "checkout" && !item.selectable)) return;
       const pullRequestComments = items.flatMap((item) =>
         item.type === "pull-request" ? [buildPullRequestReferenceContext(item.pullRequest)] : [],
       );
@@ -4359,6 +4387,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             remoteUrl: item.remoteUrl,
           });
         }
+        if (item.type === "checkout") {
+          attachCheckout(routeThreadRef, item, { link: options?.link === true });
+        }
       }
     },
     [
@@ -4368,6 +4399,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       attachGranolaNote,
       attachLinearIssue,
       attachNotionPage,
+      attachCheckout,
       attachSlackMessage,
       composerDraftTarget,
       environmentId,
@@ -4387,7 +4419,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
 
   const { onUsageLimitsCommand } = props;
   const onSelectComposerItem = useCallback(
-    (item: ComposerCommandItem, options?: { toggle: boolean }) => {
+    (item: ComposerCommandItem, options?: { toggle?: boolean; link?: boolean }) => {
       if (composerSelectLockRef.current) return;
       composerSelectLockRef.current = true;
       window.requestAnimationFrame(() => {
@@ -4460,7 +4492,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         ) {
           return;
         }
-        attachReferenceItems(snapshot.value, trigger, [item]);
+        attachReferenceItems(snapshot.value, trigger, [item], { link: options?.link === true });
         return;
       }
       if (item.type === "slash-command") {
@@ -4935,7 +4967,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       }
       if (key === "Enter" && commitReferenceSelection()) return true;
       if ((key === "Enter" || key === "Tab") && selectedItem) {
-        onSelectComposerItem(selectedItem);
+        onSelectComposerItem(selectedItem, {
+          link: event.metaKey || event.ctrlKey,
+        });
         return true;
       }
     }
@@ -7712,6 +7746,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     {...(showLinearIssues ? { loadingText: "Searching Linear issues..." } : {})}
                     {...(showGitHubIssues ? { loadingText: "Searching GitHub issues..." } : {})}
                     {...(showRepositories ? { loadingText: "Listing repositories..." } : {})}
+                    {...(showCheckouts ? { loadingText: "Looking up checkouts..." } : {})}
+                    {...(showCheckouts
+                      ? { hint: "Enter references. Command-Enter also links it to the thread." }
+                      : {})}
                     {...(showSlackMessages ? { loadingText: "Searching Slack..." } : {})}
                     {...(composerTrigger?.kind === "path"
                       ? {
@@ -8341,6 +8379,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                         threadRef={routeThreadRef}
                         pullRequestsAvailable={pullRequestProjectId !== null}
                         githubIssuesAvailable={githubIssueCwd !== null}
+                        checkoutsAvailable={checkoutMenu.hasLocalCandidates}
                         onAttachFiles={() => attachmentInputRef.current?.click()}
                       />
                     </>

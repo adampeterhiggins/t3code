@@ -19,6 +19,7 @@ import type {
   ThreadContextRecord,
   ThreadId,
   ThreadTabContextRecord,
+  CheckoutContextRecord,
   RepositoryContextRecord,
 } from "@t3tools/contracts";
 import { upgradeLegacyContextMessage } from "@t3tools/shared/composerContextLegacy";
@@ -338,6 +339,7 @@ export function buildMessageContext(input: {
   threadTabs?: ReadonlyArray<ThreadTabContextRecord>;
   issues?: ReadonlyArray<IssueContextRecord>;
   repositories?: ReadonlyArray<RepositoryContextRecord>;
+  checkouts?: ReadonlyArray<CheckoutContextRecord>;
   threadContexts?: ReadonlyArray<ThreadContextRecord>;
   attachments?: ReadonlyArray<BoundComposerAttachment>;
 }): OrchestrationMessageContext | undefined {
@@ -359,6 +361,7 @@ export function buildMessageContext(input: {
     ...(input.threadTabs ?? []),
     ...(input.issues ?? []),
     ...(input.repositories ?? []),
+    ...(input.checkouts ?? []),
     ...(input.attachments ?? []).map(attachmentContextRecord),
   ];
   return records.length === 0 ? undefined : { version: 1, records };
