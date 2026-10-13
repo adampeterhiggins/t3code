@@ -1,7 +1,11 @@
 import { ScrollView } from "react-native";
 import type { ControlPillMenuProps } from "../../components/ControlPillMenu.types";
 import { ListFilterMenu } from "../workspace/ListFilterMenu";
-import { DEFAULT_PR_LIST_CONTROLS, type PullRequestListControls } from "./pullRequestList";
+import {
+  DEFAULT_PR_LIST_CONTROLS,
+  type PullRequestListControls,
+  type PullRequestListFacets,
+} from "./pullRequestList";
 
 const STATES = { open: "Open", closed: "Closed", merged: "Merged", all: "All states" } as const;
 const INVOLVEMENT = { all: "All PRs", reviewing: "Your review", authored: "By you" } as const;
@@ -20,10 +24,18 @@ const SORTS = {
   oldest: "Oldest updated",
 } as const;
 const id = (field: string, value: string) => JSON.stringify([field, value]);
-function choices(field: string, options: Readonly<Record<string, string>>, selected: string) {
+/** A choice's title with how many loaded rows it would show, where those are counted. */
+const counted = (title: string, count: number | undefined) =>
+  count === undefined ? title : `${title} (${count})`;
+function choices(
+  field: string,
+  options: Readonly<Record<string, string>>,
+  selected: string,
+  counts?: Readonly<Record<string, number>>,
+) {
   return Object.entries(options).map(([value, title]) => ({
     id: id(field, value),
-    title,
+    title: counted(title, counts && (counts[value] ?? 0)),
     state: value === selected ? ("on" as const) : ("off" as const),
   }));
 }
@@ -34,11 +46,11 @@ export function PullRequestListFilters(props: {
   readonly onEnvironmentChange: (id: string | null) => void;
   readonly value: PullRequestListControls;
   readonly onChange: (value: PullRequestListControls) => void;
-  readonly authors: readonly string[];
-  readonly labels: readonly string[];
+  /** Each menu's choices and counts under the other filters, from `pullRequestListFacets`. */
+  readonly facets: PullRequestListFacets;
   readonly projects: readonly { id: string; title: string; environmentId: string }[];
 }) {
-  const { value } = props;
+  const { value, facets } = props;
   const selectedLabels = value.filters.labels?.flat() ?? [];
   const selectedLabelSet = new Set(selectedLabels);
   const author = value.filters.author;
@@ -150,12 +162,12 @@ export function PullRequestListFilters(props: {
     {
       id: "drafts",
       title: value.filters.draft ? DRAFTS[value.filters.draft] : "Drafts",
-      subactions: choices("draft", DRAFTS, value.filters.draft ?? "all"),
+      subactions: choices("draft", DRAFTS, value.filters.draft ?? "all", facets.draft),
     },
     {
       id: "reviews",
       title: value.filters.review ? REVIEWS[value.filters.review] : "Reviews",
-      subactions: choices("review", REVIEWS, value.filters.review ?? "all"),
+      subactions: choices("review", REVIEWS, value.filters.review ?? "all", facets.review),
     },
     {
       id: "checks",
@@ -188,10 +200,9 @@ export function PullRequestListFilters(props: {
       attributes: { disabled: count === 0 && value.sort === "updated" },
     },
   ];
-  const labels = [...new Set([...selectedLabels, ...props.labels])].slice(0, 60);
-  const authors = [
-    ...new Set([...(author && author !== "me" ? [author] : []), ...props.authors]),
-  ].slice(0, 60);
+  // Picked values are already listed, at 0 where the other filters leave none.
+  const labels = facets.labels.slice(0, 60);
+  const authors = facets.authors.slice(0, 60);
   return (
     <ScrollView
       horizontal
@@ -228,14 +239,14 @@ export function PullRequestListFilters(props: {
         label={STATES[value.state]}
         active={value.state !== "open"}
         accessibilityLabel="Filter by state"
-        actions={choices("state", STATES, value.state)}
+        actions={choices("state", STATES, value.state, facets.state)}
         onSelect={select}
       />
       <ListFilterMenu
         label={INVOLVEMENT[value.involvement]}
         active={value.involvement !== "all"}
         accessibilityLabel="Filter by involvement"
-        actions={choices("involvement", INVOLVEMENT, value.involvement)}
+        actions={choices("involvement", INVOLVEMENT, value.involvement, facets.involvement)}
         onSelect={select}
       />
       <ListFilterMenu
@@ -249,9 +260,9 @@ export function PullRequestListFilters(props: {
             state: selectedLabels.length ? "off" : "on",
           },
           ...labels.map((label) => ({
-            id: id("label", label),
-            title: label,
-            state: selectedLabelSet.has(label) ? ("on" as const) : ("off" as const),
+            id: id("label", label.value),
+            title: counted(label.value, label.count),
+            state: selectedLabelSet.has(label.value) ? ("on" as const) : ("off" as const),
           })),
         ]}
         onSelect={select}
@@ -260,15 +271,14 @@ export function PullRequestListFilters(props: {
         label={author === "me" ? "By you" : (author ?? "Author")}
         active={Boolean(author)}
         accessibilityLabel="Filter by author"
-        actions={choices(
-          "author",
-          Object.fromEntries([
-            ["", "All authors"],
-            ["me", "Me"],
-            ...authors.map((login) => [login, login]),
-          ]),
-          author ?? "",
-        )}
+        actions={[
+          ...choices("author", { "": "All authors", me: "Me" }, author ?? ""),
+          ...authors.map((login) => ({
+            id: id("author", login.value),
+            title: counted(login.value, login.count),
+            state: login.value === author ? ("on" as const) : ("off" as const),
+          })),
+        ]}
         onSelect={select}
       />
     </ScrollView>

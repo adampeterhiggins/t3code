@@ -961,6 +961,26 @@ Code: `apps/web/src/components/chat/StartFromPicker.tsx`, `StartFromPicker.logic
 in `ChatComposer.tsx`, and `chat.startFrom` in `packages/contracts/src/keybindings.ts`. User guide:
 [source-control.md](./user/source-control.md#start-a-thread-from-a-pull-request-branch-or-issue).
 
+## Pull request filters count by the other filters
+
+Upstream's pull request filters list the authors and labels of whatever is loaded, already narrowed
+by every filter, so picking a label shrinks the label list itself. In the fork, every pull request
+filter menu (the pull requests page, the start-from picker's PRs tab, the link and attach pickers,
+and the mobile list) lists each choice with how many loaded pull requests it would show under the
+_other_ applied filters and the search. A menu never narrows itself, and a picked value the other
+filters exclude stays listed at 0 so it can be unpicked. State, involvement, draft, and review are
+counted too; project, host, server, and checks are not, because the host narrows those itself.
+
+The counts come from one broad page per server, read with the same project and search but none of
+the menu's filters (on web, only while the menu is open), plus the rows the list has already read.
+They cover those loaded rows, not the whole host, and the web menu says how many that is. On web
+and desktop, label rows offer **Only**, and the applied filters show as removable pills below the
+controls. Code: `collectPullRequestListFacets` in
+[`pullRequestList.logic.ts`](../apps/web/src/components/pullRequest/pullRequestList.logic.ts),
+`pullRequestListFacets` in
+[mobile `pullRequestList.ts`](../apps/mobile/src/features/pull-requests/pullRequestList.ts), both
+on [`filterFacets`](../packages/shared/src/filterFacets.ts).
+
 ## Link pull requests from a picker
 
 **Link pull request**, from the linked pull requests panel or the command palette, opens a
