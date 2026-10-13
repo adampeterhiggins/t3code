@@ -2,6 +2,11 @@ import { useAtomValue } from "@effect/atom-react";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { resolveHandoffEndpoints } from "@t3tools/client-runtime/handoff";
 import { resolveProviderInstanceDisplayName } from "@t3tools/client-runtime/state/provider-instance-display";
+import {
+  formatModelSelectionTraits,
+  modelOptionDescriptors,
+  modelSelectionChanged,
+} from "@t3tools/shared/modelChangeMarker";
 import type {
   EnvironmentId,
   OrchestrationV2ProjectedTurnItem,
@@ -83,6 +88,11 @@ export function ThreadModelChangeRow(props: {
   const { item } = props.projectedItem;
   const config = useAtomValue(serverEnvironment.configValueAtom(props.environmentId));
   if (item.type !== "model_change") return null;
+  const providers = config?.providers ?? [];
+  // Explicitly picking an option's default records a change that is not one.
+  if (!modelSelectionChanged(item.from, item.to, modelOptionDescriptors(providers, item.from))) {
+    return null;
+  }
   return (
     <ThreadContextDivider
       label="Model changed"
@@ -93,13 +103,15 @@ export function ThreadModelChangeRow(props: {
         <HandoffEndpoint
           instanceId={item.from.instanceId}
           model={item.from.model}
-          providers={config?.providers ?? []}
+          traits={formatModelSelectionTraits(providers, item.from)}
+          providers={providers}
         />
         <SymbolView name="arrow.right" size={12} tintColor={props.iconColor} />
         <HandoffEndpoint
           instanceId={item.to.instanceId}
           model={item.to.model}
-          providers={config?.providers ?? []}
+          traits={formatModelSelectionTraits(providers, item.to)}
+          providers={providers}
         />
       </View>
     </ThreadContextDivider>
@@ -109,6 +121,8 @@ export function ThreadModelChangeRow(props: {
 function HandoffEndpoint(props: {
   instanceId: ProviderInstanceId;
   model?: string | undefined;
+  /** Parameters the model ran with, such as "Max Fast". */
+  traits?: string | null;
   providers: ReadonlyArray<ServerProvider>;
 }) {
   const provider = props.providers.find((candidate) => candidate.instanceId === props.instanceId);
@@ -121,7 +135,7 @@ function HandoffEndpoint(props: {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={props.traits ? `${label} ${props.traits}` : label}
       accessibilityHint="Show provider account"
       className="min-h-6 max-w-full flex-row items-center justify-center gap-1"
       hitSlop={{ top: 8, bottom: 8 }}
@@ -139,6 +153,7 @@ function HandoffEndpoint(props: {
       />
       <Text numberOfLines={1} className="shrink text-xs text-foreground-muted">
         {label}
+        {props.traits ? ` ${props.traits}` : null}
       </Text>
     </Pressable>
   );

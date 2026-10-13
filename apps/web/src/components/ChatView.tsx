@@ -4137,6 +4137,7 @@ export default function ChatView(props: ChatViewProps) {
             threadId: serverProjection.thread.id,
             draft: composerDraftModelSelection,
             runs: serverProjection.runs,
+            providers: providerStatuses,
             now: DateTime.makeUnsafe(new Date()),
           });
     const visibleTurnItems =
@@ -4166,6 +4167,7 @@ export default function ChatView(props: ChatViewProps) {
     anchoredTimelineMessages,
     composerDraftModelSelection,
     optimisticUserMessages,
+    providerStatuses,
     serverVisibleTurnItems,
     serverProjection,
     timelineAttachmentUrlById,
