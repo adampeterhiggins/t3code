@@ -4,13 +4,24 @@ import type {
   LinearIssueFilters,
   LinearIssueSort,
 } from "@t3tools/contracts";
-import { ArrowDownUpIcon, ListFilterIcon, XIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import {
+  ArrowDownUpIcon,
+  BoxIcon,
+  CircleDotIcon,
+  FlagIcon,
+  ListFilterIcon,
+  SignalIcon,
+  TagIcon,
+  UserIcon,
+  UsersIcon,
+} from "lucide-react";
+import { type ReactNode, useState } from "react";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
+import { FilterPill } from "../FilterPill";
+import { MenuChoiceLabel } from "../MenuChoiceLabel";
 import { Button } from "../ui/button";
-import { HighlightedSearchText } from "../ui/highlighted-search-text";
 import {
   Menu,
   MenuCheckboxItem,
@@ -28,6 +39,7 @@ import {
   MenuSubTrigger,
   MenuTrigger,
 } from "../ui/menu";
+import { narrowLinearFilterOptions } from "./linearIssueFilters.logic";
 
 export const DEFAULT_LINEAR_ISSUE_FILTERS: LinearIssueFilters = {
   assigneeIds: ["me"],
@@ -107,54 +119,32 @@ function toggle<T>(values: ReadonlyArray<T>, value: T, checked: boolean): T[] {
     : values.filter((item) => item !== value);
 }
 
-/** "Label" alone, the one selected name, or a count once several are picked. */
-function summarize(names: ReadonlyArray<string>): string | null {
-  if (names.length === 0) return null;
-  return names.length === 1 ? names[0]! : `${names.length}`;
-}
-
 interface FilterDimension {
   readonly id: string;
   readonly label: string;
-  /** What is picked, or null when this filter is off. */
-  readonly summary: string | null;
   readonly items: ReactNode;
-  readonly clear: () => void;
 }
 
-/** An active filter: its menu to change the pick, and a button to drop it. */
-function ActiveFilterChip({
-  dimension,
-  onOpenChange,
-}: {
-  dimension: FilterDimension;
-  onOpenChange: (open: boolean) => void;
-}) {
-  return (
-    <span className="flex shrink-0 items-center">
-      <Menu onOpenChange={onOpenChange}>
-        <MenuTrigger render={<Button type="button" size="xs" variant="secondary" />}>
-          {dimension.label}: {dimension.summary}
-        </MenuTrigger>
-        <MenuPopup align="start">{dimension.items}</MenuPopup>
-      </Menu>
-      <Button
-        type="button"
-        size="icon-xs"
-        variant="ghost-muted"
-        aria-label={`Clear ${dimension.label} filter`}
-        onClick={dimension.clear}
-      >
-        <XIcon />
-      </Button>
-    </span>
-  );
+/** One dimension's picks: what is selected, ticking a choice, and "Only". */
+interface Selection<T> {
+  readonly selected: ReadonlyArray<T>;
+  readonly onToggle: (value: T, checked: boolean) => void;
+  readonly onOnly: (value: T) => void;
+}
+
+interface AppliedFilter {
+  readonly key: string;
+  readonly icon: ReactNode;
+  readonly label: string;
+  readonly remove: () => void;
 }
 
 /**
- * Linear-style filters for the issue picker, on one line: a Filter menu with a submenu per
- * dimension, chips for the active ones (scrolling sideways rather than wrapping), and Sort.
- * Statuses and labels match by name across teams; search text applies on top.
+ * Filters for the issue picker: a Filter menu with a submenu per dimension, Sort, and each
+ * applied selection as a removable pill on its own row below. Team, project, and milestone
+ * choices narrow to what the other picks allow (`narrowLinearFilterOptions`). Menus show no
+ * counts: issues are filtered by Linear and capped, so the loaded ones cannot say how many each
+ * choice would match. Statuses and labels match by name across teams; search text applies on top.
  */
 export function LinearIssueFilterBar(props: {
   options: LinearFilterOptions | null;
@@ -167,6 +157,7 @@ export function LinearIssueFilterBar(props: {
 }) {
   const { options, view } = props;
   const { filters, sort } = view;
+  const [menuOpen, setMenuOpen] = useState(false);
   const setFilters = (patch: Partial<LinearIssueFilters>) =>
     props.onChange({ ...view, filters: { ...filters, ...patch } });
   const unavailableOptions = (emptyLabel: string) => {
@@ -186,37 +177,38 @@ export function LinearIssueFilterBar(props: {
   const checkbox = <T,>(
     entry: { value: T; label: string },
     query: string,
-    selected: ReadonlyArray<T>,
-    onToggle: (value: T, checked: boolean) => void,
+    selection: Selection<T>,
   ) => (
     <MenuCheckboxItem
       key={String(entry.value)}
-      checked={selected.includes(entry.value)}
-      onCheckedChange={(checked) => onToggle(entry.value, checked)}
+      checked={selection.selected.includes(entry.value)}
+      onCheckedChange={(checked) => selection.onToggle(entry.value, checked)}
     >
-      <HighlightedSearchText text={entry.label} query={query} />
+      <MenuChoiceLabel
+        label={entry.label}
+        query={query}
+        onOnly={() => selection.onOnly(entry.value)}
+      />
     </MenuCheckboxItem>
   );
   const checkboxes = <T,>(
     placeholder: string,
     entries: ReadonlyArray<{ value: T; label: string }>,
-    selected: ReadonlyArray<T>,
-    onToggle: (value: T, checked: boolean) => void,
+    selection: Selection<T>,
     emptyLabel = "No options",
   ) =>
     entries.length === 0 ? (
       unavailableOptions(emptyLabel)
     ) : (
       <MenuSearch items={entries} getText={(entry) => entry.label} placeholder={placeholder}>
-        {(matches, query) => matches.map((entry) => checkbox(entry, query, selected, onToggle))}
+        {(matches, query) => matches.map((entry) => checkbox(entry, query, selection))}
       </MenuSearch>
     );
   // One search across every group, so the matches keep their group headings.
   const groupedCheckboxes = <T,>(
     placeholder: string,
     entries: ReadonlyArray<{ value: T; label: string; groupKey: string; groupLabel: string }>,
-    selected: ReadonlyArray<T>,
-    onToggle: (value: T, checked: boolean) => void,
+    selection: Selection<T>,
     emptyLabel = "No options",
   ) =>
     entries.length === 0 ? (
@@ -229,7 +221,7 @@ export function LinearIssueFilterBar(props: {
             return (
               <MenuGroup key={groupKey}>
                 <MenuGroupLabel>{inGroup[0]!.groupLabel}</MenuGroupLabel>
-                {inGroup.map((entry) => checkbox(entry, query, selected, onToggle))}
+                {inGroup.map((entry) => checkbox(entry, query, selection))}
               </MenuGroup>
             );
           })
@@ -237,6 +229,7 @@ export function LinearIssueFilterBar(props: {
       </MenuSearch>
     );
 
+  const narrowed = options === null ? null : narrowLinearFilterOptions(options, filters);
   const users = [
     { value: "me", label: "Me" },
     { value: "none", label: "Unassigned" },
@@ -244,21 +237,19 @@ export function LinearIssueFilterBar(props: {
       .filter((user) => !user.isMe)
       .map((user) => ({ value: user.id, label: user.name })),
   ];
-  const teams = (options?.teams ?? []).map((team) => ({
+  const allTeams = options?.teams ?? [];
+  const teams = (narrowed?.teams ?? []).map((team) => ({
     value: team.id,
     label: `${team.name} (${team.key})`,
-    key: team.key,
   }));
+  const projectEntry = (project: { id: string; name: string }) => ({
+    value: project.id,
+    label: project.name,
+  });
   const projects = [
     { value: "none", label: "No project" },
-    ...(options?.projects ?? []).map((project) => ({ value: project.id, label: project.name })),
+    ...(narrowed?.projects ?? []).map(projectEntry),
   ];
-  // Milestones of the picked projects, or of every project when none is picked.
-  const milestoneProjects = (options?.projects ?? []).filter(
-    (project) =>
-      project.milestones.length > 0 &&
-      (filters.projectIds.length === 0 || filters.projectIds.includes(project.id)),
-  );
   const milestones = (options?.projects ?? []).flatMap((project) => project.milestones);
   const states = Object.entries(STATE_TYPE_LABELS).flatMap(([type, label]) =>
     (options?.states ?? [])
@@ -270,92 +261,80 @@ export function LinearIssueFilterBar(props: {
         groupLabel: label,
       })),
   );
-  const labelOf = <T,>(entries: ReadonlyArray<{ value: T; label: string }>, value: T) =>
-    entries.find((entry) => entry.value === value)?.label ?? "Unknown";
+  const labels = (options?.labels ?? []).map((label) => ({ value: label.name, label: label.name }));
+  // A dimension's toggle and "Only", from its picked values and how to replace them.
+  const selection = <T,>(selected: ReadonlyArray<T>, set: (values: T[]) => void): Selection<T> => ({
+    selected,
+    onToggle: (value, checked) => set(toggle(selected, value, checked)),
+    // "Only" settles the filter, so it also closes the menu.
+    onOnly: (value) => {
+      set([value]);
+      setMenuOpen(false);
+    },
+  });
+  const assignees = selection(filters.assigneeIds, (assigneeIds) => setFilters({ assigneeIds }));
+  const pickedTeams = selection(filters.teamIds, (teamIds) => setFilters({ teamIds }));
+  const pickedProjects = selection(filters.projectIds, (projectIds) => setFilters({ projectIds }));
+  const pickedMilestones = selection(filters.milestoneIds, (milestoneIds) =>
+    setFilters({ milestoneIds }),
+  );
+  const pickedStates = selection(filters.stateNames, (stateNames) => setFilters({ stateNames }));
+  const pickedPriorities = selection(filters.priorities, (priorities) =>
+    setFilters({ priorities }),
+  );
+  const pickedLabels = selection(filters.labelNames, (labelNames) => setFilters({ labelNames }));
 
   const dimensions: ReadonlyArray<FilterDimension> = [
     {
       id: "assignee",
       label: "Assignee",
-      summary: summarize(filters.assigneeIds.map((id) => labelOf(users, id))),
       items: (
         <>
           {options === null ? unavailableOptions("No assignees") : null}
-          {checkboxes("Search people", users, filters.assigneeIds, (value, checked) =>
-            setFilters({ assigneeIds: toggle(filters.assigneeIds, value, checked) }),
-          )}
+          {checkboxes("Search people", users, assignees)}
         </>
       ),
-      clear: () => setFilters({ assigneeIds: [] }),
     },
     {
       id: "team",
       label: "Team",
-      summary: summarize(
-        filters.teamIds.map((id) => teams.find((team) => team.value === id)?.key ?? "Team"),
-      ),
-      items: checkboxes(
-        "Search teams",
-        teams,
-        filters.teamIds,
-        (value, checked) => setFilters({ teamIds: toggle(filters.teamIds, value, checked) }),
-        "No teams",
-      ),
-      clear: () => setFilters({ teamIds: [] }),
+      items: checkboxes("Search teams", teams, pickedTeams, "No teams"),
     },
     {
       id: "project",
       label: "Project",
-      summary: summarize(filters.projectIds.map((id) => labelOf(projects, id))),
       items: (
         <>
           {options === null ? unavailableOptions("No projects") : null}
-          {checkboxes("Search projects", projects, filters.projectIds, (value, checked) =>
-            setFilters({ projectIds: toggle(filters.projectIds, value, checked) }),
-          )}
+          {checkboxes("Search projects", projects, pickedProjects)}
         </>
       ),
-      clear: () => setFilters({ projectIds: [] }),
     },
     {
       id: "milestone",
       label: "Milestone",
-      summary: summarize(
-        filters.milestoneIds.map((id) => milestones.find((m) => m.id === id)?.name ?? "Unknown"),
-      ),
       items:
-        milestoneProjects.length === 0
+        (narrowed?.milestoneGroups.length ?? 0) === 0
           ? unavailableOptions("No milestones")
           : groupedCheckboxes(
               "Search milestones",
-              milestoneProjects.flatMap((project) =>
-                project.milestones.map((m) => ({
+              narrowed!.milestoneGroups.flatMap(({ project, milestones }) =>
+                milestones.map((m) => ({
                   value: m.id,
                   label: m.name,
                   groupKey: project.id,
                   groupLabel: project.name,
                 })),
               ),
-              filters.milestoneIds,
-              (value, checked) =>
-                setFilters({ milestoneIds: toggle(filters.milestoneIds, value, checked) }),
+              pickedMilestones,
             ),
-      clear: () => setFilters({ milestoneIds: [] }),
     },
     {
       id: "status",
       label: "Status",
-      summary: summarize(filters.stateNames) ?? (filters.includeClosed ? "Any" : null),
       items: (
         <>
-          {groupedCheckboxes(
-            "Search statuses",
-            states,
-            filters.stateNames,
-            (value, checked) =>
-              setFilters({ stateNames: toggle(filters.stateNames, value, checked) }),
-            "No statuses",
-          )}
+          {groupedCheckboxes("Search statuses", states, pickedStates, "No statuses")}
           <MenuSeparator />
           <MenuCheckboxItem
             checked={filters.includeClosed}
@@ -366,31 +345,16 @@ export function LinearIssueFilterBar(props: {
           </MenuCheckboxItem>
         </>
       ),
-      clear: () => setFilters({ stateNames: [], includeClosed: false }),
     },
     {
       id: "priority",
       label: "Priority",
-      summary: summarize(
-        PRIORITIES.filter((p) => filters.priorities.includes(p.value)).map((p) => p.label),
-      ),
-      items: checkboxes("Search priorities", PRIORITIES, filters.priorities, (value, checked) =>
-        setFilters({ priorities: toggle(filters.priorities, value, checked) }),
-      ),
-      clear: () => setFilters({ priorities: [] }),
+      items: checkboxes("Search priorities", PRIORITIES, pickedPriorities),
     },
     {
       id: "label",
       label: "Label",
-      summary: summarize(filters.labelNames),
-      items: checkboxes(
-        "Search labels",
-        (options?.labels ?? []).map((label) => ({ value: label.name, label: label.name })),
-        filters.labelNames,
-        (value, checked) => setFilters({ labelNames: toggle(filters.labelNames, value, checked) }),
-        "No labels",
-      ),
-      clear: () => setFilters({ labelNames: [] }),
+      items: checkboxes("Search labels", labels, pickedLabels, "No labels"),
     },
   ];
   const shownDimensions = dimensions.map((dimension) =>
@@ -406,77 +370,135 @@ export function LinearIssueFilterBar(props: {
         }
       : dimension,
   );
-  const active = shownDimensions.filter((dimension) => dimension.summary !== null);
+
+  const labelOf = <T,>(entries: ReadonlyArray<{ value: T; label: string }>, value: T) =>
+    entries.find((entry) => entry.value === value)?.label ?? "Unknown";
+  // One pill per picked value, in menu order, named "Dimension: value".
+  const pills = <T,>(
+    picked: Selection<T>,
+    dimension: string,
+    icon: ReactNode,
+    nameOf: (value: T) => string,
+  ): AppliedFilter[] =>
+    picked.selected.map((value) => ({
+      key: `${dimension}:${String(value)}`,
+      icon,
+      label: `${dimension}: ${nameOf(value)}`,
+      remove: () => picked.onToggle(value, false),
+    }));
+  const applied: AppliedFilter[] = [
+    ...pills(assignees, "Assignee", <UserIcon />, (id) => labelOf(users, id)),
+    ...pills(
+      pickedTeams,
+      "Team",
+      <UsersIcon />,
+      (id) => allTeams.find((team) => team.id === id)?.key ?? "Unknown",
+    ),
+    ...pills(pickedProjects, "Project", <BoxIcon />, (id) =>
+      labelOf([projects[0]!, ...(options?.projects ?? []).map(projectEntry)], id),
+    ),
+    ...pills(
+      pickedMilestones,
+      "Milestone",
+      <FlagIcon />,
+      (id) => milestones.find((m) => m.id === id)?.name ?? "Unknown",
+    ),
+    ...pills(pickedStates, "Status", <CircleDotIcon />, (name) => name),
+    ...(filters.includeClosed && filters.stateNames.length === 0
+      ? [
+          {
+            key: "includeClosed",
+            icon: <CircleDotIcon />,
+            label: "Status: Any",
+            remove: () => setFilters({ includeClosed: false }),
+          },
+        ]
+      : []),
+    ...pills(pickedPriorities, "Priority", <SignalIcon />, (value) => labelOf(PRIORITIES, value)),
+    ...pills(pickedLabels, "Label", <TagIcon />, (name) => name),
+  ];
   const isDefault = JSON.stringify(view) === JSON.stringify(DEFAULT_PICKER_VIEW);
 
   return (
     <>
-      <div className="flex items-center gap-1.5 px-3 pb-2">
-        <Menu onOpenChange={retryFailedOptions}>
-          <MenuTrigger render={<Button type="button" size="xs" variant="outline" />}>
-            <ListFilterIcon />
-            Filter
-          </MenuTrigger>
-          <MenuPopup align="start">
-            {shownDimensions.map((dimension) => (
-              <MenuSub key={dimension.id}>
-                <MenuSubTrigger>{dimension.label}</MenuSubTrigger>
-                <MenuSubPopup>{dimension.items}</MenuSubPopup>
-              </MenuSub>
-            ))}
-          </MenuPopup>
-        </Menu>
-        <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none]">
-          {active.map((dimension) => (
-            <ActiveFilterChip
-              key={dimension.id}
-              dimension={dimension}
-              onOpenChange={retryFailedOptions}
-            />
-          ))}
-        </div>
-        {isDefault ? null : (
-          <Button
-            type="button"
-            size="xs"
-            variant="ghost-muted"
-            onClick={() => props.onChange(DEFAULT_PICKER_VIEW)}
+      <div className="flex flex-col gap-1.5 px-3 pb-2">
+        <div className="flex items-center gap-1.5">
+          <Menu
+            open={menuOpen}
+            onOpenChange={(open) => {
+              setMenuOpen(open);
+              retryFailedOptions(open);
+            }}
           >
-            Reset
-          </Button>
-        )}
-        <Menu>
-          <MenuTrigger render={<Button type="button" size="xs" variant="ghost" />}>
-            <ArrowDownUpIcon />
-            {props.searching && sort.field !== "updated" && sort.field !== "created"
-              ? "Relevance"
-              : `${SORT_LABELS[sort.field]} ${sort.direction === "desc" ? "↓" : "↑"}`}
-          </MenuTrigger>
-          <MenuPopup align="end">
-            <MenuRadioGroup
-              value={sort.field}
-              onValueChange={(field: LinearIssueSort["field"]) =>
-                props.onChange({ ...view, sort: { ...sort, field } })
-              }
-            >
-              {(Object.keys(SORT_LABELS) as Array<LinearIssueSort["field"]>).map((field) => (
-                <MenuRadioItem key={field} value={field}>
-                  {SORT_LABELS[field]}
-                </MenuRadioItem>
+            <MenuTrigger render={<Button type="button" size="xs" variant="outline" />}>
+              <ListFilterIcon />
+              Filter
+            </MenuTrigger>
+            <MenuPopup align="start">
+              {shownDimensions.map((dimension) => (
+                <MenuSub key={dimension.id}>
+                  <MenuSubTrigger>{dimension.label}</MenuSubTrigger>
+                  <MenuSubPopup>{dimension.items}</MenuSubPopup>
+                </MenuSub>
               ))}
-            </MenuRadioGroup>
-            <MenuSeparator />
-            <MenuRadioGroup
-              value={sort.direction}
-              onValueChange={(direction: LinearIssueSort["direction"]) =>
-                props.onChange({ ...view, sort: { ...sort, direction } })
-              }
+            </MenuPopup>
+          </Menu>
+          <div className="flex-1" />
+          {isDefault ? null : (
+            <Button
+              type="button"
+              size="xs"
+              variant="ghost-muted"
+              onClick={() => props.onChange(DEFAULT_PICKER_VIEW)}
             >
-              <MenuRadioItem value="desc">Descending</MenuRadioItem>
-              <MenuRadioItem value="asc">Ascending</MenuRadioItem>
-            </MenuRadioGroup>
-          </MenuPopup>
-        </Menu>
+              Reset
+            </Button>
+          )}
+          <Menu>
+            <MenuTrigger render={<Button type="button" size="xs" variant="ghost" />}>
+              <ArrowDownUpIcon />
+              {props.searching && sort.field !== "updated" && sort.field !== "created"
+                ? "Relevance"
+                : `${SORT_LABELS[sort.field]} ${sort.direction === "desc" ? "↓" : "↑"}`}
+            </MenuTrigger>
+            <MenuPopup align="end">
+              <MenuRadioGroup
+                value={sort.field}
+                onValueChange={(field: LinearIssueSort["field"]) =>
+                  props.onChange({ ...view, sort: { ...sort, field } })
+                }
+              >
+                {(Object.keys(SORT_LABELS) as Array<LinearIssueSort["field"]>).map((field) => (
+                  <MenuRadioItem key={field} value={field}>
+                    {SORT_LABELS[field]}
+                  </MenuRadioItem>
+                ))}
+              </MenuRadioGroup>
+              <MenuSeparator />
+              <MenuRadioGroup
+                value={sort.direction}
+                onValueChange={(direction: LinearIssueSort["direction"]) =>
+                  props.onChange({ ...view, sort: { ...sort, direction } })
+                }
+              >
+                <MenuRadioItem value="desc">Descending</MenuRadioItem>
+                <MenuRadioItem value="asc">Ascending</MenuRadioItem>
+              </MenuRadioGroup>
+            </MenuPopup>
+          </Menu>
+        </div>
+        {applied.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-1">
+            {applied.map((filter) => (
+              <FilterPill
+                key={filter.key}
+                icon={filter.icon}
+                label={filter.label}
+                onRemove={filter.remove}
+              />
+            ))}
+          </div>
+        ) : null}
       </div>
       {props.optionsError !== null ? (
         <div

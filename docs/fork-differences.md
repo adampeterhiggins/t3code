@@ -787,7 +787,11 @@ When the browser is on another device, the user pastes the redirect URL back ins
 Issues attach to messages as a `linear-issue` context chip: from the composer's attach menu (which
 now asks between files, a Linear issue, and a pull request), the `#` menu beside pull requests, the command palette,
 and the mobile attach menu. The web picker filters by assignee, team, project, milestone, status,
-priority, and label, and sorts by the fields Linear's API offers. The server renders the issue to
+priority, and label, and sorts by the fields Linear's API offers. Team, project, and milestone
+choices narrow to what the other picks allow, using each project's teams
+([`linearIssueFilters.logic.ts`](../apps/web/src/components/chat/linearIssueFilters.logic.ts));
+rows offer **Only**, and applied picks show as removable pills below the controls. Menus show no
+counts, since issues are filtered by Linear and capped. The server renders the issue to
 capped markdown when it is attached, and that snapshot is inlined into the prompt for every
 provider. An **Open Linear links in** setting can send issue links to the Linear desktop app
 (`linear://`), which the desktop shell's external-URL allowlist permits.
