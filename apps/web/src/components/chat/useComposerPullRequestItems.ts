@@ -1,20 +1,27 @@
-import { filterComposerPullRequestMatches } from "@t3tools/shared/composerPullRequestMatches";
+import {
+  composerPullRequestRepositories,
+  filterComposerPullRequestMatches,
+} from "@t3tools/shared/composerPullRequestMatches";
 import type {
   EnvironmentId,
   ProjectId,
   PullRequestListEntry,
   PullRequestListInput,
+  ThreadPullRequestLink,
 } from "@t3tools/contracts";
 import { useMemo, useState } from "react";
 
 import { pullRequestEnvironment, usePullRequestList } from "~/state/pullRequests";
 import { useDebouncedValue } from "~/state/queries";
-import { useEnvironmentQuery } from "~/state/query";
+import { useAtomValue } from "@effect/atom-react";
+import { createComposerPullRequestLookupAtomFamily } from "@t3tools/client-runtime/state/pull-requests";
 import {
   matchesPullRequestQuery,
   rankPullRequestMatches,
 } from "../pullRequest/pullRequestList.logic";
 import type { ComposerReferenceItem } from "./composerReferenceMenu.logic";
+
+const exactLookup = createComposerPullRequestLookupAtomFamily(pullRequestEnvironment.detail);
 
 const PULL_REQUEST_SEARCH_DEBOUNCE_MS = 180;
 const PULL_REQUEST_LIST_LIMIT = 99;
@@ -39,7 +46,7 @@ type PullRequestRow = Pick<
 
 function toItem(entry: PullRequestRow): ComposerReferenceItem {
   return {
-    id: `pull-request:${entry.projectId}:${entry.repository}:${entry.number}`,
+    id: `pull-request:${entry.url}`,
     type: "pull-request",
     pullRequest: {
       number: entry.number,
@@ -51,7 +58,7 @@ function toItem(entry: PullRequestRow): ComposerReferenceItem {
       isDraft: entry.isDraft,
     },
     label: `#${entry.number}`,
-    description: entry.title,
+    description: `${entry.repository} · ${entry.title}`,
   };
 }
 
@@ -65,6 +72,8 @@ export function useComposerPullRequestItems(input: {
   readonly environmentId: EnvironmentId;
   readonly projectId: ProjectId | null;
   readonly repository: string | null;
+  readonly remoteUrls: ReadonlyArray<string>;
+  readonly pullRequests: ReadonlyArray<ThreadPullRequestLink>;
   readonly enabled: boolean;
   readonly active: boolean;
   readonly query: string;
@@ -119,22 +128,35 @@ export function useComposerPullRequestItems(input: {
     number !== null && number === debouncedNumber && Number.isSafeInteger(number) && number > 0
       ? number
       : null;
-  const baseHasNumber =
-    settledNumber !== null &&
-    base.data?.entries.some(
-      (entry) =>
-        entry.projectId === projectId &&
-        entry.repository.trim().toLowerCase() === repository?.trim().toLowerCase() &&
-        entry.number === settledNumber,
-    ) === true;
-  const exact = useEnvironmentQuery(
-    settledNumber === null || projectId === null || repository === null || baseHasNumber
-      ? null
-      : pullRequestEnvironment.detail({
-          environmentId,
-          input: { projectId, repository, number: settledNumber },
-        }),
+  const repositories = useMemo(
+    () =>
+      projectId !== null && repository !== null
+        ? composerPullRequestRepositories({
+            projectId,
+            repository,
+            remoteUrls: input.remoteUrls,
+            pullRequests: input.pullRequests,
+          })
+        : [],
+    [projectId, repository, input.remoteUrls, input.pullRequests],
   );
+  const exactTargets =
+    settledNumber === null
+      ? []
+      : repositories
+          .filter(
+            (scope) =>
+              !base.data?.entries.some(
+                (entry) =>
+                  entry.projectId === scope.projectId &&
+                  entry.repository.toLowerCase() === scope.repository.toLowerCase() &&
+                  (scope.host === undefined ||
+                    entry.host.toLowerCase() === scope.host.toLowerCase()) &&
+                  entry.number === settledNumber,
+              ),
+          )
+          .map((scope) => ({ environmentId, input: { ...scope, number: settledNumber } }));
+  const exact = useAtomValue(exactLookup(JSON.stringify(exactTargets)));
 
   // The last host search, kept so the next keystroke narrows it instead of dropping it.
   const freshSearch = settledTextQuery === null ? null : search.data;
@@ -145,11 +167,12 @@ export function useComposerPullRequestItems(input: {
     if (!enabled || !input.active || projectId === null || repository === null) return [];
     const baseEntries = base.data?.entries ?? [];
     if (isNumberQuery) {
-      const exactEntries = exact.data?.number === number ? [exact.data] : [];
+      const exactEntries = exact.entries.filter((entry) => entry.number === number);
       return filterComposerPullRequestMatches({
         entries: [...exactEntries, ...baseEntries],
         projectId,
         repository,
+        repositories,
         query,
         limit: PULL_REQUEST_RESULT_LIMIT,
       }).map(toItem);
@@ -178,7 +201,8 @@ export function useComposerPullRequestItems(input: {
   }, [
     base.data,
     enabled,
-    exact.data,
+    exact.entries,
+    repositories,
     freshSearch,
     input.active,
     isNumberQuery,

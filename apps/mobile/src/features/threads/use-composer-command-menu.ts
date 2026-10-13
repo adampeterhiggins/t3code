@@ -1,3 +1,5 @@
+import * as Option from "effect/Option";
+import { useEnvironmentThread } from "../../state/threads";
 import type {
   ComposerContextRecord,
   EnvironmentId,
@@ -32,6 +34,7 @@ import { pullRequestComposerContext, threadComposerContext } from "../../lib/com
 import { uuidv4 } from "../../lib/uuid";
 import {
   getComposerDraftSnapshot,
+  useComposerDraft,
   readComposerDraftSelection,
   setComposerDraftContext,
 } from "../../state/use-composer-drafts";
@@ -186,6 +189,7 @@ export function resolveComposerCommandSelection(input: {
 export function useComposerCommandMenu({
   draftMessage,
   ownerKey,
+  draftKey,
   environmentId,
   threadShells = EMPTY_THREAD_SHELLS,
   projects = EMPTY_PROJECTS,
@@ -206,6 +210,7 @@ export function useComposerCommandMenu({
 }: {
   readonly draftMessage: string;
   readonly ownerKey: string | null;
+  readonly draftKey?: string;
   readonly environmentId: EnvironmentId | null;
   /** Candidates for `@` thread suggestions; the caller reads them from the entity store. */
   readonly threadShells?: ReadonlyArray<EnvironmentThreadShell>;
@@ -436,10 +441,30 @@ export function useComposerCommandMenu({
       onChange: (tab: ComposerPathTab) => setPathTabChoice({ rangeStart, tab }),
     };
   }, [agentFleet, chatItems, pathSearch.entries, pathSearch.isPending, pathTabChoice, trigger]);
+  const referenceDraft = useComposerDraft(draftKey ?? ownerKey);
+  const referenceThread = useEnvironmentThread(
+    trigger?.kind === "pull-request" ? environmentId : null,
+    currentThreadId,
+  );
+  const referenceMessages = Option.getOrNull(referenceThread.data)?.messages ?? [];
+  const pullRequestRemoteUrls = useMemo(
+    () =>
+      [
+        ...(referenceDraft.context?.records ?? []),
+        ...referenceMessages.flatMap((message) => message.context?.records ?? []),
+      ].flatMap((record) =>
+        record.kind === "repository" && "remoteUrl" in record ? [record.remoteUrl] : [],
+      ),
+    [referenceDraft.context, referenceMessages],
+  );
   const pullRequestSearch = useComposerPullRequestSearch({
     environmentId,
     projectId: pullRequestProjectId,
     repository: pullRequestRepository,
+    remoteUrls: pullRequestRemoteUrls,
+    pullRequests: threadShells.find(
+      (thread) => thread.environmentId === environmentId && thread.id === currentThreadId,
+    )?.pullRequests,
     query: trigger?.kind === "pull-request" ? trigger.query : null,
   });
 
@@ -448,7 +473,7 @@ export function useComposerCommandMenu({
 
     if (trigger.kind === "pull-request") {
       return pullRequestSearch.entries.map((entry) => ({
-        id: `pr:${entry.projectId}:${entry.repository}:${entry.number}`,
+        id: `pr:${entry.url}`,
         type: "pull-request",
         pullRequest: {
           number: entry.number,
@@ -460,7 +485,7 @@ export function useComposerCommandMenu({
           isDraft: entry.isDraft,
         },
         label: `#${entry.number}`,
-        description: `${entry.isDraft ? "Draft" : entry.state} · ${entry.title}`,
+        description: `${entry.repository} · ${entry.isDraft ? "Draft" : entry.state} · ${entry.title}`,
       }));
     }
 

@@ -21,8 +21,12 @@ vi.mock("../../state/queries", () => ({
 }));
 vi.mock("../../state/use-composer-drafts", () => ({
   getComposerDraftSnapshot: vi.fn(),
+  useComposerDraft: () => ({ text: "", attachments: [] }),
   readComposerDraftSelection: vi.fn(),
   setComposerDraftContext: vi.fn(),
+}));
+vi.mock("../../state/threads", () => ({
+  useEnvironmentThread: () => ({ data: { _tag: "None" } }),
 }));
 vi.mock("../../lib/uuid", () => ({ uuidv4: () => "context-id" }));
 vi.mock("../../state/server", () => ({

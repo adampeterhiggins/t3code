@@ -1,4 +1,9 @@
-import { filterComposerPullRequestMatches } from "@t3tools/shared/composerPullRequestMatches";
+import { createComposerPullRequestLookupAtomFamily } from "@t3tools/client-runtime/state/pull-requests";
+import type { ThreadPullRequestLink } from "@t3tools/contracts";
+import {
+  composerPullRequestRepositories,
+  filterComposerPullRequestMatches,
+} from "@t3tools/shared/composerPullRequestMatches";
 import { resolveFilesystemReadAccess } from "@t3tools/client-runtime/state/filesystem";
 import { environmentSession } from "./session";
 import { useEnvironmentPresentation } from "./presentation";
@@ -82,11 +87,15 @@ export function useDebouncedValue<A>(value: A, delayMs: number): A {
  * `#` opens and each keystroke filters them locally; a word also searches the host once typing
  * settles, and the last search stays visible while the next one loads.
  */
+const exactLookup = createComposerPullRequestLookupAtomFamily(composerPullRequests.detail);
+
 export function useComposerPullRequestSearch(input: {
   environmentId: EnvironmentId | null;
   projectId: ProjectId | null;
   repository: string | null;
   query: string | null;
+  pullRequests?: ReadonlyArray<ThreadPullRequestLink>;
+  remoteUrls?: ReadonlyArray<string>;
 }) {
   const open =
     input.query !== null &&
@@ -115,26 +124,43 @@ export function useComposerPullRequestSearch(input: {
 
   const rawNumber = open && numeric && input.query ? Number(input.query) : null;
   const number = useDebouncedValue(rawNumber, 180) === rawNumber ? rawNumber : null;
-  const hasExact = base.data?.entries.some(
-    (entry) =>
-      entry.number === number && entry.repository.toLowerCase() === input.repository?.toLowerCase(),
+  const repositories = useMemo(
+    () =>
+      input.projectId !== null && input.repository !== null
+        ? composerPullRequestRepositories({
+            projectId: input.projectId,
+            repository: input.repository,
+            remoteUrls: input.remoteUrls ?? [],
+            pullRequests: input.pullRequests ?? [],
+          })
+        : [],
+    [input.projectId, input.repository, input.pullRequests, input.remoteUrls],
   );
-  const exact = useEnvironmentQuery(
-    open && number !== null && Number.isSafeInteger(number) && number > 0 && !hasExact
-      ? composerPullRequests.detail({
-          environmentId: input.environmentId!,
-          input: { projectId: input.projectId!, repository: input.repository!, number },
-        })
-      : null,
-  );
+  const targets =
+    open && number !== null && Number.isSafeInteger(number) && number > 0
+      ? repositories
+          .filter(
+            (scope) =>
+              !base.data?.entries.some(
+                (entry) =>
+                  entry.number === number &&
+                  entry.repository.toLowerCase() === scope.repository.toLowerCase() &&
+                  (scope.host === undefined ||
+                    entry.host.toLowerCase() === scope.host.toLowerCase()),
+              ),
+          )
+          .map((scope) => ({ environmentId: input.environmentId!, input: { ...scope, number } }))
+      : [];
+  const exact = useAtomValue(exactLookup(JSON.stringify(targets)));
   const entries = useMemo(() => {
     if (!open) return [];
-    const exactEntries = exact.data && exact.data.number === rawNumber ? [exact.data] : [];
+    const exactEntries = exact.entries.filter((entry) => entry.number === rawNumber);
     if (numeric) {
       return filterComposerPullRequestMatches({
         entries: [...exactEntries, ...(base.data?.entries ?? [])],
         projectId: input.projectId!,
         repository: input.repository!,
+        repositories,
         query: input.query ?? "",
         limit: 20,
       });
@@ -158,7 +184,8 @@ export function useComposerPullRequestSearch(input: {
       .slice(0, 20);
   }, [
     base.data,
-    exact.data,
+    exact.entries,
+    repositories,
     freshSearch,
     input.projectId,
     input.query,
@@ -176,7 +203,7 @@ export function useComposerPullRequestSearch(input: {
         (textQuery !== null && (settledTextQuery === null || search.isPending)) ||
         rawNumber !== number ||
         exact.isPending),
-    error: base.error ?? base.data?.errors[0]?.message ?? search.error ?? exact.error,
+    error: base.error ?? base.data?.errors[0]?.message ?? search.error,
   };
 }
 

@@ -1185,6 +1185,17 @@ Code: `packages/shared/src/composerObjectLinks.ts`,
 `apps/web/src/components/chat/ChatComposer.tsx`. User guide:
 [composer.md](./user/composer.md#context-in-your-message).
 
+## Numeric pull request references include linked repositories
+
+Typing `#` followed by a pull request number searches the project's repository and repositories
+attached to the thread as context or through a linked pull request. Web, desktop, and mobile
+fetch the exact number even when it is outside the recent PR list. Suggestions include the
+repository name, and identical numbers in different repositories remain separate choices.
+
+Code: [repository scoping and matching](../packages/shared/src/composerPullRequestMatches.ts),
+[web composer](../apps/web/src/components/chat/useComposerPullRequestItems.ts), and
+[mobile composer](../apps/mobile/src/state/queries.ts).
+
 ## The `#` menu predicts its tab and remembers inserts
 
 On web and desktop the composer's `#` menu picks its starting tab from the query and your history:
