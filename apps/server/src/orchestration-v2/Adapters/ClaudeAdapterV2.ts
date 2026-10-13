@@ -950,6 +950,17 @@ export const layerQueryRunner: Layer.Layer<
   }),
 );
 
+/**
+ * Claude Code's Bash tool keeps a `cd` across calls and its tool description
+ * says to prefer absolute paths, so agents prefix commands with
+ * `cd /abs/worktree` or spell out full paths. CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR
+ * returns the shell to the session cwd (or a worktree subagent's own
+ * worktree) after every command; the prompt note is what changes the habit,
+ * since the built-in description still claims the directory persists.
+ */
+const CLAUDE_SHELL_ENVIRONMENT = { CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR: "1" };
+const CLAUDE_SHELL_INSTRUCTIONS = `\n\n<shell_working_directory>Every Bash command starts in the thread's working directory, and a \`cd\` does not carry over to the next command, whatever the Bash tool description says. Run commands directly with paths relative to it. For a subdirectory, use the tool's own directory flag (\`git -C\`, \`npm --prefix\`) or \`cd dir && cmd\` within that single command.</shell_working_directory>`;
+
 export function makeClaudeQueryOptions(input: {
   readonly modelSelection: ModelSelection;
   readonly nativeThreadId: string;
@@ -1053,7 +1064,9 @@ export function makeClaudeQueryOptions(input: {
     ...(input.settings?.binaryPath
       ? { pathToClaudeCodeExecutable: input.settings.binaryPath }
       : {}),
-    ...(input.environment === undefined ? {} : { env: input.environment }),
+    ...(input.environment === undefined
+      ? {}
+      : { env: { ...input.environment, ...CLAUDE_SHELL_ENVIRONMENT } }),
     ...(input.mcpServers === undefined ? {} : { mcpServers: input.mcpServers }),
     ...(input.hooks === undefined ? {} : { hooks: input.hooks }),
     systemPrompt: {
@@ -1061,6 +1074,7 @@ export function makeClaudeQueryOptions(input: {
       preset: "claude_code" as const,
       append:
         buildRuntimeInstructions({ harness: "Claude Code" }) +
+        (input.environment === undefined ? "" : CLAUDE_SHELL_INSTRUCTIONS) +
         (input.mcpServers === undefined ? "" : T3_CODE_ORCHESTRATION_INSTRUCTIONS),
     },
     ...(Object.keys(extraArgs).length === 0 ? {} : { extraArgs }),

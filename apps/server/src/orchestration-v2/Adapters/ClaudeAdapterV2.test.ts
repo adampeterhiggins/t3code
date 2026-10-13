@@ -269,6 +269,22 @@ describe("ClaudeAdapterV2 runtime query policy", () => {
     assert.isUndefined(options.extraArgs?.["dangerously-skip-permissions"]);
   });
 
+  it("resets the Bash cwd after each command and tells the agent so", () => {
+    const options = ClaudeAdapterV2.makeClaudeQueryOptions({
+      modelSelection: CLAUDE_TEST_MODEL_SELECTION,
+      nativeThreadId: "native-thread-shell-cwd",
+      resume: false,
+      cwd: "/workspace",
+      environment: { PATH: "/usr/bin" },
+    });
+    assert.deepEqual(options.env, {
+      PATH: "/usr/bin",
+      CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR: "1",
+    });
+    const systemPrompt = options.systemPrompt as { readonly append?: string };
+    assert.include(systemPrompt.append ?? "", "a `cd` does not carry over");
+  });
+
   it("passes automatic compaction and resume-dialog controls to the SDK", () => {
     const onUserDialog = async () => ({
       behavior: "completed" as const,
