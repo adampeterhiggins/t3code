@@ -636,6 +636,28 @@ describe("GhosttyTerminalSurface visibility", () => {
     expect(surface.getSelectionPosition()?.end.y).toBe(39);
   });
 
+  it.each([false, true])(
+    "macOS native paste wins the clipboard fallback once (Shift: %s)",
+    async (shiftKey) => {
+      const harness = createHarness();
+      const read = Promise.withResolvers<string>();
+      const readText = vi.fn(() => read.promise);
+      vi.stubGlobal("navigator", { platform: "MacIntel", clipboard: { readText } });
+      const surface = await harness.create({ beforeKey: () => true });
+      key(surface, "v", "KeyV", { metaKey: true, shiftKey });
+      expect(readText).toHaveBeenCalledOnce();
+
+      const paste = Object.assign(new Event("paste", { cancelable: true }), {
+        clipboardData: { getData: () => "native paste" },
+      });
+      surface.input.dispatchEvent(paste);
+      expect(paste.defaultPrevented).toBe(true);
+      read.resolve("native paste");
+      await read.promise;
+      expect(harness.onData.mock.calls).toEqual([["native paste"]]);
+    },
+  );
+
   it("pastes the terminal selection, and only that, on a Linux middle click", async () => {
     const harness = createHarness();
     const readText = vi.fn(async () => "clipboard text");
