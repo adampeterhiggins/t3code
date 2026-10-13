@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { serializeRenderedMarkdownFragment } from "./markdown-clipboard";
+import {
+  serializeRenderedMarkdownFragment,
+  serializeRenderedMarkdownQuote,
+} from "./markdown-clipboard";
 import { EnvironmentId, MessageId, ThreadId } from "@t3tools/contracts";
 import {
   collectAssistantCitations,
@@ -30,6 +33,10 @@ class FakeElement {
     private readonly classNames: ReadonlyArray<string> = [],
     private readonly attributes: Readonly<Record<string, string>> = {},
   ) {}
+
+  get className(): string {
+    return this.classNames.join(" ");
+  }
 
   get localName(): string {
     return this.tagName.toLowerCase();
@@ -340,6 +347,47 @@ describe("serializeRenderedMarkdownFragment", () => {
 
     expect(serializeRenderedMarkdownFragment(asNode(container))).toBe(
       "Hello World (Document template)",
+    );
+  });
+});
+
+describe("serializeRenderedMarkdownQuote", () => {
+  beforeEach(() => {
+    vi.stubGlobal("Node", { TEXT_NODE, ELEMENT_NODE });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("keeps the fence on a quote that is only a code block", () => {
+    const container = new FakeElement("DIV").append(renderedCodeBlock(["pnpm test"]));
+
+    expect(serializeRenderedMarkdownQuote(asNode(container), null)).toBe("```\npnpm test\n```");
+  });
+
+  it("fences a selection made inside one code block, keeping its language", () => {
+    const code = new FakeElement("CODE", ["language-ts"]);
+    const pre = new FakeElement("PRE").append(code);
+    const container = new FakeElement("DIV").append(new FakeText("const a = 1;\nconst b = 2;"));
+
+    expect(serializeRenderedMarkdownQuote(asNode(container), pre as unknown as Element)).toBe(
+      "```ts\nconst a = 1;\nconst b = 2;\n```",
+    );
+  });
+
+  it("serializes mixed content like a copy", () => {
+    const container = new FakeElement("DIV").append(
+      new FakeElement("P").append(
+        new FakeElement("STRONG").append(new FakeText("Note:")),
+        new FakeText(" run this"),
+      ),
+      renderedCodeBlock(["gh pr checks"]),
+      new FakeElement("UL").append(new FakeElement("LI").append(new FakeText("then merge"))),
+    );
+
+    expect(serializeRenderedMarkdownQuote(asNode(container), null)).toBe(
+      "**Note:** run this\n\n```\ngh pr checks\n```\n\n- then merge",
     );
   });
 });

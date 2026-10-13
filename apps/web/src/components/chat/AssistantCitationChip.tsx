@@ -22,6 +22,7 @@ import {
   assistantCitationNavigation,
 } from "../../lib/assistantCitationNavigation";
 import { cn } from "~/lib/utils";
+import ChatMarkdown from "../ChatMarkdown";
 import { ContextChip, ContextChipAction, ContextChipLabel } from "../ContextChip";
 import { ContextChipPopover } from "../contextChipParts";
 import { Button } from "../ui/button";
@@ -279,14 +280,18 @@ function AssistantCitationQuote({ citation }: { citation: AssistantCitation }) {
       ref={observeFade}
       onScroll={(event) => updateFade(event.currentTarget)}
       className={cn(
-        "max-h-64 min-h-0 space-y-3 self-stretch overflow-y-auto whitespace-pre-wrap wrap-break-word",
+        "max-h-64 min-h-0 space-y-3 self-stretch overflow-y-auto wrap-break-word",
         getVirtualizedScrollFadeClassName(fade),
       )}
     >
       <blockquote className="border-l-2 border-border pl-3 text-muted-foreground">
-        {citation.text}
+        {citation.markdown === undefined ? (
+          <span className="whitespace-pre-wrap">{citation.text}</span>
+        ) : (
+          <ChatMarkdown text={citation.markdown} cwd={undefined} />
+        )}
       </blockquote>
-      {citation.comment ? <p>{citation.comment}</p> : null}
+      {citation.comment ? <p className="whitespace-pre-wrap">{citation.comment}</p> : null}
     </div>
   );
 }

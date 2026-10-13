@@ -1,5 +1,6 @@
 import {
   ASSISTANT_CITATION_MAX_COMMENT_LENGTH,
+  ASSISTANT_CITATION_MAX_MARKDOWN_LENGTH,
   ASSISTANT_CITATION_MAX_TEXT_LENGTH,
   AssistantCitation,
 } from "@t3tools/contracts";
@@ -10,7 +11,11 @@ const CITATION_PROTOCOL = "t3-citation:";
 const CITATION_HREF_PREFIX = `${CITATION_PROTOCOL}//v1/`;
 // Percent encoding needs up to nine characters per UTF-16 code unit; 16k covers selectors.
 const MAX_CITATION_HREF_LENGTH =
-  9 * (ASSISTANT_CITATION_MAX_TEXT_LENGTH + ASSISTANT_CITATION_MAX_COMMENT_LENGTH) + 16_000;
+  9 *
+    (ASSISTANT_CITATION_MAX_TEXT_LENGTH +
+      ASSISTANT_CITATION_MAX_MARKDOWN_LENGTH +
+      ASSISTANT_CITATION_MAX_COMMENT_LENGTH) +
+  16_000;
 const CITATION_LINK = new RegExp(
   String.raw`\[Assistant quote\]\((${CITATION_HREF_PREFIX}[^\s)]{1,${MAX_CITATION_HREF_LENGTH - CITATION_HREF_PREFIX.length}})\)`,
   "g",
@@ -46,6 +51,7 @@ export function formatAssistantCitationHref(citation: AssistantCitation): string
     prefix: citation.prefix,
     suffix: citation.suffix,
   });
+  if (citation.markdown !== undefined) query.set("markdown", citation.markdown);
   if (citation.comment !== undefined) query.set("comment", citation.comment);
   return `${CITATION_HREF_PREFIX}${path}?${query}`;
 }
@@ -69,10 +75,14 @@ export function parseAssistantCitationHref(href: string): AssistantCitation | nu
       return null;
     }
     const requiredKeys = ["text", "start", "end", "prefix", "suffix"];
+    const markdown = url.searchParams.get("markdown");
     const comment = url.searchParams.get("comment");
+    const optionalCount = (markdown === null ? 0 : 1) + (comment === null ? 0 : 1);
     if (
-      url.searchParams.size !== requiredKeys.length + (comment === null ? 0 : 1) ||
-      requiredKeys.some((key) => url.searchParams.getAll(key).length !== 1)
+      url.searchParams.size !== requiredKeys.length + optionalCount ||
+      [...requiredKeys, ...(markdown === null ? [] : ["markdown"])].some(
+        (key) => url.searchParams.getAll(key).length !== 1,
+      )
     ) {
       return null;
     }
@@ -90,6 +100,7 @@ export function parseAssistantCitationHref(href: string): AssistantCitation | nu
         end: Number(end),
         prefix: url.searchParams.get("prefix"),
         suffix: url.searchParams.get("suffix"),
+        ...(markdown === null ? {} : { markdown }),
         ...(comment === null ? {} : { comment }),
       }),
     );
@@ -135,6 +146,11 @@ export function assistantCitationsToPlainText(prompt: string): string {
   });
 }
 
+/** The quote as the agent should read it: its Markdown when captured, in place of the plain text. */
+function providerCitation({ markdown, ...citation }: AssistantCitation): AssistantCitation {
+  return markdown === undefined ? citation : { ...citation, text: markdown };
+}
+
 /** Provider adapters receive readable quote data; the persisted message keeps its clickable links. */
 export function expandAssistantCitationsForProvider(prompt: string): string {
   const matches = collectAssistantCitations(prompt);
@@ -148,7 +164,7 @@ export function expandAssistantCitationsForProvider(prompt: string): string {
     if (!id) {
       id = `assistant-quote-${citations.length + 1}`;
       idsBySource.set(match.source, id);
-      citations.push({ id, citation: match.citation });
+      citations.push({ id, citation: providerCitation(match.citation) });
     }
     text += `${prompt.slice(cursor, match.start)}[${id}]`;
     cursor = match.end;
@@ -178,7 +194,8 @@ export function renderAssistantCitationsAsText(prompt: string): string {
   let text = "";
   let cursor = 0;
   for (const match of matches) {
-    const quote = escapeMarkdownText(match.citation.text);
+    // Captured Markdown already renders as the quote looked; plain text is escaped to stay literal.
+    const quote = match.citation.markdown ?? escapeMarkdownText(match.citation.text);
     text += `${prompt.slice(cursor, match.start)}\n\n> Assistant quote:\n${quote
       .split("\n")
       .map((line) => `> ${line}`)

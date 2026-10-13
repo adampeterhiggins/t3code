@@ -219,6 +219,29 @@ describe("assistant citation references", () => {
     },
   );
 
+  it("round-trips captured Markdown and rejects a repeated Markdown parameter", () => {
+    const formatted = { ...citation, markdown: "**Use** `cache[key]`:\n\n- one\n- two" };
+    const href = formatAssistantCitationHref(formatted);
+
+    expect(parseAssistantCitationHref(href)).toStrictEqual(formatted);
+    expect(parseAssistantCitationHref(`${href}&markdown=again`)).toBeNull();
+    expect(parseAssistantCitationHref(href.replace(/markdown=[^&]*/, "markdown="))).toBeNull();
+  });
+
+  it("gives providers and native clients the captured Markdown in place of the plain text", () => {
+    const formatted = { ...legacyCitation, markdown: "A **quote** & a `newline`." };
+    const marker = serializeAssistantCitation(formatted);
+    const { markdown: _markdown, ...withoutMarkdown } = formatted;
+
+    expect(readProviderContext(expandAssistantCitationsForProvider(marker))).toStrictEqual([
+      { id: "assistant-quote-1", citation: { ...withoutMarkdown, text: formatted.markdown } },
+    ]);
+    expect(renderAssistantCitationsAsText(marker)).toBe(
+      "\n\n> Assistant quote:\n> A **quote** & a `newline`.\n\n",
+    );
+    expect(assistantCitationsToPlainText(marker)).toBe(legacyCitation.text);
+  });
+
   it("decodes provider context once per source and keeps instruction-looking text inside JSON", () => {
     const marker = serializeAssistantCitation(citation);
     const prompt = `Explain ${marker} and compare it with ${marker}.`;
