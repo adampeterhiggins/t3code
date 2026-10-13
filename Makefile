@@ -25,11 +25,17 @@ PORT     ?= 3000
 IDENTITY ?= T3 Code Local Signing
 MOCK_DIR := release-mock
 MANIFEST := $(MOCK_DIR)/latest-mac.yml
+# Fingerprint of the source the last mock release was built from: HEAD plus
+# uncommitted and untracked changes, so local edits count as changes too.
+SOURCE_STAMP := $(MOCK_DIR)/.source-fingerprint
+SOURCE_FINGERPRINT = { git rev-parse HEAD; git diff HEAD; git ls-files --others --exclude-standard | git hash-object --stdin-paths; } | shasum | cut -d' ' -f1
 
 # SKIP_BUILD=1 reuses the previous apps/*/dist output (~60s faster); the app
 # version is stamped at packaging time, so reusing dist is safe for update
 # payloads. Set to 0 for a clean rebuild.
 SKIP_BUILD ?= 0
+# FORCE=1 lets update-next rebuild even when nothing changed since the last one.
+FORCE ?= 0
 
 .DEFAULT_GOAL := help
 
@@ -47,6 +53,7 @@ help: ## Show the available targets
 	@printf "  \033[36mIDENTITY=name\033[0m          keychain identity to sign with\n"
 	@printf "  \033[36mPORT=3000\033[0m              mock update server port (baked into builds)\n"
 	@printf "  \033[36mARCH=arm64|x64\033[0m         build architecture\n"
+	@printf "  \033[36mFORCE=1\033[0m                update-next even with no changes since the last build\n"
 	@printf "\n\033[1mFirst run\033[0m\n"
 	@printf "  make update-cert            one-time self-signed cert in your keychain\n"
 	@printf "  make update-build-0.0.41    build the version the app will run\n"
@@ -105,6 +112,7 @@ update-build-%: deps ## Build version % into release-mock (signed, mock feed, zi
 	  --mock-updates --mock-update-server-port $(PORT) \
 	  $(if $(filter 1,$(SKIP_BUILD)),--skip-build,) \
 	  --build-version $*
+	@$(SOURCE_FINGERPRINT) > $(SOURCE_STAMP)
 	@echo "--> $(MANIFEST) now advertises $*"
 
 update-next: ## Bump the advertised patch version and build it
@@ -112,6 +120,10 @@ update-next: ## Bump the advertised patch version and build it
 	CUR="$$(awk '/^version:/{print $$2; exit}' $(MANIFEST) 2>/dev/null)"; \
 	if [ -z "$$CUR" ]; then \
 		echo "No $(MANIFEST) — run 'make update-build-X.Y.Z' to seed it first."; \
+		exit 1; \
+	fi; \
+	if [ "$(FORCE)" != 1 ] && [ "$$($(SOURCE_FINGERPRINT))" = "$$(cat $(SOURCE_STAMP) 2>/dev/null)" ]; then \
+		echo "No changes since $$CUR was built — nothing to release. FORCE=1 to rebuild anyway."; \
 		exit 1; \
 	fi; \
 	NEXT="$$(CUR="$$CUR" node -e 'const p=process.env.CUR.split(".").map(Number); p[2]+=1; console.log(p.join("."))')"; \
