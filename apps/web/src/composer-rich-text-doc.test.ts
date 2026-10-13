@@ -1,4 +1,4 @@
-import { getSchemaByResolvedExtensions, Node, resolveExtensions } from "@tiptap/core";
+import { Editor, getSchemaByResolvedExtensions, Node, resolveExtensions } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { TaskList } from "@tiptap/extension-task-list";
 import { Node as ProseMirrorNode } from "@tiptap/pm/model";
@@ -18,6 +18,7 @@ import {
   ComposerListExtensions,
   collapsedToFlat,
   ComposerCodeExtension,
+  ComposerEmphasisExtensions,
   ComposerTaskItemExtension,
   flatToCollapsed,
   flatToMarkdown,
@@ -1119,6 +1120,46 @@ describe("caret stops at styled edges", () => {
     expect(stepCaretAcrossStyledEdge(stateAt("**bold** tail", 3), -1)).toBeNull();
     expect(stepCaretAcrossStyledEdge(stateAt("plain text", 1), -1)).toBeNull();
     expect(caretTakesMarksBefore(stateAt("plain text", 1))).toBe(false);
+  });
+});
+
+describe("emphasis input rules", () => {
+  /** Types `char` at the end of `value` through the editor's input rules. */
+  function typeAtEnd(value: string, char: string) {
+    const editor = new Editor({
+      extensions: [
+        StarterKit.configure({ bold: false, italic: false, strike: false, code: false }),
+        ...ComposerEmphasisExtensions,
+        ComposerCodeExtension,
+      ],
+      content: buildDocJson(value, (name) => ({ label: name, description: null })),
+    });
+    const { view } = editor;
+    const end = view.state.doc.content.size - 1;
+    const handled = editor.extensionManager.plugins.some((plugin) =>
+      plugin.props.handleTextInput?.call(plugin, view, end, end, char, () =>
+        view.state.tr.insertText(char, end, end),
+      ),
+    );
+    if (!handled) view.dispatch(view.state.tr.insertText(char, end, end));
+    const result = { value: serializeEditorDoc(view.state.doc).value, styled: handled };
+    editor.destroy();
+    return result;
+  }
+
+  it("does not open emphasis from a marker inside inline code", () => {
+    expect(typeAtEnd("run `ls *.ts` then text", "*")).toEqual({
+      value: "run `ls *.ts` then text*",
+      styled: false,
+    });
+    expect(typeAtEnd("`*` then text", "*").value).toBe("`*` then text*");
+    expect(typeAtEnd("`**` then text*", "*").value).toBe("`**` then text**");
+    expect(typeAtEnd("`~~` then text~", "~").value).toBe("`~~` then text~~");
+  });
+
+  it("still styles emphasis that opens outside the code", () => {
+    expect(typeAtEnd("plain *text", "*")).toEqual({ value: "plain *text*", styled: true });
+    expect(typeAtEnd("*see `x` here", "*")).toEqual({ value: "*see `x` here*", styled: true });
   });
 });
 

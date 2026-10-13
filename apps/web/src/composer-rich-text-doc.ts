@@ -2,10 +2,13 @@ import { joinBackward, joinTextblockBackward, joinTextblockForward } from "@tipt
 import { Fragment, Mark, type Node as ProseMirrorNode, type ResolvedPos } from "@tiptap/pm/model";
 import { Code } from "@tiptap/extension-code";
 import { Blockquote } from "@tiptap/extension-blockquote";
+import { Bold } from "@tiptap/extension-bold";
+import { Italic } from "@tiptap/extension-italic";
+import { Strike } from "@tiptap/extension-strike";
 import { CodeBlock } from "@tiptap/extension-code-block";
 import { Heading } from "@tiptap/extension-heading";
 import { HorizontalRule } from "@tiptap/extension-horizontal-rule";
-import { type Command, type Editor, mergeAttributes } from "@tiptap/core";
+import { type Command, type Editor, InputRule, mergeAttributes } from "@tiptap/core";
 import { BulletList, ListItem, OrderedList } from "@tiptap/extension-list";
 import { TaskItem } from "@tiptap/extension-task-item";
 import { TaskList } from "@tiptap/extension-task-list";
@@ -72,6 +75,48 @@ export const ComposerCodeExtension = Code.extend({
   // stock exit (inserting a space at the end of a line) is not needed.
   exitable: false,
 });
+
+/**
+ * With code no longer excluding emphasis, Tiptap's mark input rules would
+ * take a `*`, `_` or `~` inside a code span as their opener: typing `*` after
+ * `` `ls *.ts` then `` italicised from inside the code and ate its marker.
+ * Code spans bind tighter than emphasis in Markdown, so an opener in code
+ * does not count.
+ */
+function withoutOpenersInCode(rules: InputRule[] | undefined): InputRule[] {
+  return (rules ?? []).map(
+    (rule) =>
+      new InputRule({
+        find: rule.find,
+        undoable: rule.undoable,
+        handler: (props) => {
+          const opener = props.range.from + Math.max(props.match[0].search(/\S/), 0);
+          const code = props.state.schema.marks.code;
+          if (code && props.state.doc.rangeHasMark(opener, opener + 1, code)) return null;
+          return rule.handler(props);
+        },
+      }),
+  );
+}
+
+/** Bold, italic and strike for the rich composer; StarterKit's own are turned off. */
+export const ComposerEmphasisExtensions = [
+  Bold.extend({
+    addInputRules() {
+      return withoutOpenersInCode(this.parent?.());
+    },
+  }),
+  Italic.extend({
+    addInputRules() {
+      return withoutOpenersInCode(this.parent?.());
+    },
+  }),
+  Strike.extend({
+    addInputRules() {
+      return withoutOpenersInCode(this.parent?.());
+    },
+  }),
+];
 
 /**
  * Tiptap's block extensions each bind a chord that turns the current block

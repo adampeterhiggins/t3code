@@ -62,6 +62,7 @@ import {
   caretTakesMarksBefore,
   convertBulletItemToTask,
   ComposerCodeExtension,
+  ComposerEmphasisExtensions,
   ComposerTaskItemExtension,
   ComposerTaskListExtension,
   flatToCollapsed,
@@ -1060,8 +1061,11 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
           // The list extensions handle Backspace and Delete themselves.
           listKeymap: false,
           undoRedo: { newGroupDelay: COMPOSER_UNDO_GROUP_DELAY },
-          // Plain mode has no marks: typed markers stay literal characters.
-          ...(richText ? {} : { bold: false, italic: false, strike: false }),
+          // Rich mode brings its own emphasis marks; plain mode has none, so
+          // typed markers stay literal characters.
+          bold: false,
+          italic: false,
+          strike: false,
         }),
         ComposerUndoGroupingExtension,
         ComposerMentionExtension,
@@ -1071,6 +1075,7 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
         ComposerMarkersExtension,
         ...(richText
           ? [
+              ...ComposerEmphasisExtensions,
               ComposerCodeExtension,
               ComposerCodeBlockExtension.extend({
                 addNodeView() {
