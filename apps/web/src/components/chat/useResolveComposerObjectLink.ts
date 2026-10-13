@@ -111,6 +111,7 @@ function reportUnreadableNotionLink(
       : {}),
     data: {
       hideCopyButton: true,
+      actionLayout: "stacked-end",
       secondaryActionProps: {
         children: "Open in Notion",
         onClick: () => void ensureLocalApi().shell.openExternal(url),
