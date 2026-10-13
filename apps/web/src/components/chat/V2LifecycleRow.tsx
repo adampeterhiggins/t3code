@@ -17,6 +17,12 @@ import { resolveHandoffEndpoints, type HandoffTimelineRun } from "@t3tools/clien
 import { Fragment } from "react";
 import { formatSubagentDisplayTitle } from "@t3tools/client-runtime/state/subagent-display";
 import {
+  formatModelOptionChanges,
+  modelIdentitiesDiffer,
+  modelOptionChanges,
+  modelOptionDescriptors,
+} from "@t3tools/shared/modelChangeMarker";
+import {
   ProviderDriverKind,
   type OrchestrationV2Notification,
   type OrchestrationV2SubagentUsage,
@@ -40,6 +46,7 @@ import {
   GitForkIcon,
   MessageSquareIcon,
   MinusIcon,
+  SlidersHorizontalIcon,
   XIcon,
 } from "lucide-react";
 
@@ -161,6 +168,22 @@ export function V2LifecycleRow(props: {
             />
           </span>
         }
+      />
+    );
+  }
+  if (item.type === "model_change" && !modelIdentitiesDiffer(item.from, item.to)) {
+    const changes = modelOptionChanges(
+      item.from,
+      item.to,
+      modelOptionDescriptors(props.providerStatuses, item.from),
+    );
+    // Explicitly picking an option's default records a change that is not one.
+    if (changes.length === 0) return null;
+    return (
+      <TimelineSystemDivider
+        label="Model settings changed"
+        icon={SlidersHorizontalIcon}
+        detail={formatModelOptionChanges(changes)}
       />
     );
   }

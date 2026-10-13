@@ -281,6 +281,7 @@ export function useThreadComposerState() {
               ? (composerDrafts[selectedThreadKey]?.modelSelection ?? null)
               : null,
             runs: selectedThreadProjection?.projection.runs ?? [],
+            providers: selectedEnvironmentRuntime?.serverConfig?.providers ?? [],
             now: DateTime.makeUnsafe(new Date()),
           });
     const visibleTurnItems =
@@ -310,6 +311,7 @@ export function useThreadComposerState() {
     selectedThreadVisibleTurnItems,
     selectedThreadCwd,
     selectedThreadShell,
+    selectedEnvironmentRuntime?.serverConfig?.providers,
     composerDrafts,
     pendingCreationMessage,
     selectedThreadKey,

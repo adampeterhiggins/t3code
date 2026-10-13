@@ -192,7 +192,9 @@ Changing the model in an existing thread leaves a divider in the transcript, the
 marker a fork leaves in the new thread. It names the model the conversation was on and the model
 the next message uses, and it appears as soon as the composer selection differs, before that
 message is sent. A provider switch that already shows a context handoff keeps that handoff instead
-of a second divider. Effort and other options on the same model do not add one.
+of a second divider. Changing an option on the same model, such as effort, fast mode, or context
+window, leaves a "Model settings changed" divider listing each option's old and new value.
+Explicitly picking an option's default does not count as a change.
 
 Code: [`modelChangeMarker.ts`](../packages/shared/src/modelChangeMarker.ts),
 [`V2LifecycleRow.tsx`](../apps/web/src/components/chat/V2LifecycleRow.tsx), and
