@@ -141,17 +141,25 @@ export const make = Effect.gen(function* () {
     const settingsClick = () => {
       runMenuEffect("open-settings", dispatchMenuAction("open-settings"));
     };
-    // Chromium already pastes as plain text for this chord, so the accelerator
-    // needs nothing from the menu: the composer and the terminal each arm
-    // themselves from the same keydown. Routing it through the renderer anyway
-    // lands a second, injected paste and doubles the text. Only a menu click,
-    // which produces no keystroke for them to see, needs that round trip.
+    // macOS needs the native editing action for this chord; Windows and Linux
+    // already paste through Chromium. Avoid a renderer round trip for shortcuts:
+    // a delayed paste can duplicate the terminal's clipboard-read fallback.
+    // Keep mouse clicks on the renderer path so the composer arms its inline
+    // paste bypass before the paste, even without a keydown.
     const pasteAsTextClick = (
       _item: Electron.MenuItem,
       _window: Electron.BaseWindow | undefined,
       event: Electron.KeyboardEvent,
     ) => {
-      if (event.triggeredByAccelerator === true) return;
+      if (event.triggeredByAccelerator === true) {
+        if (environment.platform === "darwin") {
+          runMenuEffect(
+            "paste-as-text",
+            electronMenu.sendActionToFirstResponder("pasteAndMatchStyle:"),
+          );
+        }
+        return;
+      }
       runMenuEffect("paste-as-text", dispatchMenuAction("paste-as-text"));
     };
     const zoomClick = (direction: DesktopWindow.MainWindowZoomDirection) => () => {

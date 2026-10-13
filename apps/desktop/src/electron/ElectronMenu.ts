@@ -53,6 +53,8 @@ export class ElectronMenu extends Context.Service<
     readonly setApplicationMenu: (
       template: readonly Electron.MenuItemConstructorOptions[],
     ) => Effect.Effect<void>;
+    /** macOS native editing actions, without a renderer round trip. */
+    readonly sendActionToFirstResponder: (action: string) => Effect.Effect<void>;
     readonly showContextMenu: (
       input: ElectronMenuContextInput,
     ) => Effect.Effect<Option.Option<string>>;
@@ -190,6 +192,8 @@ export const make = Effect.gen(function* () {
   };
 
   return ElectronMenu.of({
+    sendActionToFirstResponder: (action) =>
+      Effect.sync(() => Electron.Menu.sendActionToFirstResponder(action)),
     setApplicationMenu: (template) =>
       Effect.try({
         try: () => {

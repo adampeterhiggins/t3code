@@ -15,6 +15,14 @@ git log --oneline --no-merges upstream/main..HEAD
 Agents update this page in the same change that adds, changes, or removes a difference. The rule
 is in [AGENTS.md](../AGENTS.md#fork-differences).
 
+## macOS Paste as Text shortcut
+
+In the macOS desktop app, **⌘⇧V** pastes text into the composer instead of doing nothing.
+Both the shortcut and **Edit → Paste as Text** keep large text inline. The shortcut uses
+the native macOS editing action so it does not inject a second paste into the terminal.
+
+Code: [DesktopApplicationMenu.ts](../apps/desktop/src/window/DesktopApplicationMenu.ts).
+
 ## Browser automation survives request timeouts
 
 The server's built-in browser stays available when an individual automation request times out,

@@ -95,8 +95,13 @@ const layerDesktopWindow = (selectedAction: Deferred.Deferred<string>) =>
 
 const layerElectronMenu = (
   applicationMenuTemplate: Deferred.Deferred<readonly Electron.MenuItemConstructorOptions[]>,
+  nativeAction?: Deferred.Deferred<string>,
 ) =>
   Layer.succeed(ElectronMenu.ElectronMenu, {
+    sendActionToFirstResponder: (action) =>
+      nativeAction
+        ? Deferred.succeed(nativeAction, action).pipe(Effect.asVoid)
+        : Effect.die("unexpected native menu action"),
     setApplicationMenu: (template) =>
       Deferred.succeed(applicationMenuTemplate, template).pipe(Effect.asVoid),
     popupTemplate: () => Effect.void,
@@ -107,6 +112,7 @@ const configureMenu = (
   selectedAction: Deferred.Deferred<string>,
   applicationMenuTemplate: Deferred.Deferred<readonly Electron.MenuItemConstructorOptions[]>,
   environment: Partial<DesktopEnvironment.MakeDesktopEnvironmentInput> = {},
+  nativeAction?: Deferred.Deferred<string>,
 ) =>
   Effect.gen(function* () {
     const menu = yield* DesktopApplicationMenu.DesktopApplicationMenu;
@@ -114,7 +120,7 @@ const configureMenu = (
   }).pipe(
     Effect.provide(
       DesktopApplicationMenu.layer.pipe(
-        Layer.provideMerge(layerElectronMenu(applicationMenuTemplate)),
+        Layer.provideMerge(layerElectronMenu(applicationMenuTemplate, nativeAction)),
         Layer.provideMerge(layerDesktopWindow(selectedAction)),
         Layer.provideMerge(layerDesktopUpdates),
         Layer.provideMerge(layerElectronDialog),
@@ -188,13 +194,13 @@ describe("DesktopApplicationMenu", () => {
     }),
   );
 
-  it.effect("owns Paste as Text and routes it through the renderer", () =>
+  it.effect("keeps macOS mouse-menu Paste as Text on the renderer bypass path", () =>
     Effect.gen(function* () {
       const selectedAction = yield* Deferred.make<string>();
       const applicationMenuTemplate =
         yield* Deferred.make<readonly Electron.MenuItemConstructorOptions[]>();
 
-      yield* configureMenu(selectedAction, applicationMenuTemplate);
+      yield* configureMenu(selectedAction, applicationMenuTemplate, { platform: "darwin" });
 
       const template = yield* Deferred.await(applicationMenuTemplate);
       const editMenu = template.find((item) => item.label === "Edit");
@@ -204,6 +210,7 @@ describe("DesktopApplicationMenu", () => {
       }
       const pasteAsTextItem = editMenu.submenu.find((item) => item.label === "Paste as Text");
       assert.isDefined(pasteAsTextItem);
+      assert.isUndefined(pasteAsTextItem.role);
       assert.equal(pasteAsTextItem.accelerator, "CmdOrCtrl+Shift+V");
       if (typeof pasteAsTextItem.click !== "function") {
         throw new Error("Expected Paste as Text menu item to have a click handler.");
@@ -218,7 +225,38 @@ describe("DesktopApplicationMenu", () => {
     }),
   );
 
-  // Chromium pastes as plain text for the accelerator on its own. Dispatching
+  it.effect("uses the native macOS paste action without injecting a renderer paste", () =>
+    Effect.gen(function* () {
+      const selectedAction = yield* Deferred.make<string>();
+      const nativeAction = yield* Deferred.make<string>();
+      const applicationMenuTemplate =
+        yield* Deferred.make<readonly Electron.MenuItemConstructorOptions[]>();
+      yield* configureMenu(
+        selectedAction,
+        applicationMenuTemplate,
+        { platform: "darwin" },
+        nativeAction,
+      );
+      const template = yield* Deferred.await(applicationMenuTemplate);
+      const editMenu = template.find((item) => item.label === "Edit");
+      if (!Array.isArray(editMenu?.submenu)) {
+        throw new Error("Expected Edit menu submenu to be an array.");
+      }
+      const pasteAsTextItem = editMenu.submenu.find((item) => item.label === "Paste as Text");
+      if (typeof pasteAsTextItem?.click !== "function") {
+        throw new Error("Expected Paste as Text menu item to have a click handler.");
+      }
+      pasteAsTextItem.click(
+        {} as Electron.MenuItem,
+        {} as Electron.BrowserWindow,
+        { triggeredByAccelerator: true } as unknown as KeyboardEvent,
+      );
+      assert.equal(yield* Deferred.await(nativeAction), "pasteAndMatchStyle:");
+      assert.isFalse(yield* Deferred.isDone(selectedAction));
+    }),
+  );
+
+  // On Windows/Linux Chromium pastes for the accelerator on its own. Dispatching
   // the action as well injects a second paste, which doubles the pasted text.
   it.effect("leaves the accelerator to Chromium instead of injecting a paste", () =>
     Effect.gen(function* () {
