@@ -195,7 +195,10 @@ import {
   type TerminalContextSelection,
 } from "../../lib/terminalContext";
 import { useComposerPathSearch } from "../../lib/composerPathSearchState";
-import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
+import {
+  collectComposerContextReferences,
+  replaceComposerContextReferences,
+} from "@t3tools/shared/composerContextReferences";
 import {
   type ComposerObjectLink,
   findComposerObjectLinks,
@@ -2862,10 +2865,34 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const referenceTab: ComposerReferenceTab = referenceMenuOpen
     ? (referenceTabPickedByHand ?? predictedReferenceTab)
     : "pull-requests";
+  const threadRepositoryRemoteUrls = useMemo(
+    () =>
+      promptHistoryMessages.flatMap((message) =>
+        (message.context?.records ?? []).flatMap((record) =>
+          record.kind === "repository" && "remoteUrl" in record ? [record.remoteUrl] : [],
+        ),
+      ),
+    [promptHistoryMessages],
+  );
+  const pullRequestRemoteUrls = useMemo(() => {
+    const referencedIds = new Set(
+      collectComposerContextReferences(prompt)
+        .filter((reference) => reference.kind === "repository")
+        .map((reference) => reference.contextId),
+    );
+    return [
+      ...threadRepositoryRemoteUrls,
+      ...composerRepositoryContexts
+        .filter((record) => referencedIds.has(record.contextId))
+        .map((record) => record.remoteUrl),
+    ];
+  }, [composerRepositoryContexts, prompt, threadRepositoryRemoteUrls]);
   const pullRequestMenu = useComposerPullRequestItems({
     environmentId,
     projectId: pullRequestProjectId,
     repository: pullRequestRepository,
+    remoteUrls: pullRequestRemoteUrls,
+    pullRequests: (activeThread ?? props.activeThreadShell)?.pullRequests ?? [],
     enabled: referenceMenuOpen,
     active: referenceTab === "pull-requests",
     query: referenceQuery,
