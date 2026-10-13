@@ -686,7 +686,12 @@ On web and desktop, one filter button in the sidebar header replaces upstream's 
 Each row opens a multi-select submenu, like the pull request filters: **Show** picks which of
 Threads, your thread groups, Snoozed, Hidden, and Settled the list holds; **Organisations** scopes
 it to repository owners, read per checkout from `repositoryIdentity` (a fork counts under its own
-remote); and **Projects** scopes it to some projects. **Only**, on the highlighted row, picks just that one. Threads alone is the
+remote); and **Projects** scopes it to some projects. Each choice shows how many threads picking it
+would leave under the other two rows, and Organisations and Projects offer only the choices the
+other one leaves (an organisation that owns a picked project, a project in a picked organisation);
+a pick the others exclude stays listed at 0 so it can be unticked, and a picked organisation with
+no checkout left keeps narrowing the list until it is dropped. **Only**, on the highlighted row,
+picks just that one and closes the menu. Threads alone is the
 default; other picks list as titled sections below live threads, so snoozed and settled threads no longer sit in shelves under
 live work, and the drag targets for settling and waking are gone. On web and desktop, clicking a
 section's title collapses it to a count, remembered per client; the open thread stays listed under a
@@ -697,13 +702,18 @@ of those selections shows as a pill with an × that drops it, plus **Clear all**
 several. **Settings → Organisations** gives an organisation a display name and icon, saved as the
 shared `organisations` server setting so every environment and mobile's filter use them. A thread's **Filter by
 project** menu item still narrows the list to that one project. Mobile's
-thread list filter menu has the same **Show** submenu.
+thread list filter menus have the same **Show** submenu, and each of their Environment, Project,
+Organisations, and Show choices carries the same kind of count after its name, also following
+the search; mobile has no **Only**.
 
 Code: [`SidebarFilterMenu.tsx`](../apps/web/src/components/sidebar/SidebarFilterMenu.tsx),
 [`OrganisationsSettings.tsx`](../apps/web/src/components/settings/OrganisationsSettings.tsx),
 `sidebarPages` in [`Sidebar.tsx`](../apps/web/src/components/Sidebar.tsx),
 `sidebarProjectScopeKeys` in [`uiStateStore.ts`](../apps/web/src/uiStateStore.ts), and mobile's
-[`home-list-filter-menu.ts`](../apps/mobile/src/features/home/home-list-filter-menu.ts). User
+[`home-list-filter-menu.ts`](../apps/mobile/src/features/home/home-list-filter-menu.ts) and
+[`thread-list-filter-facets.ts`](../apps/mobile/src/features/home/thread-list-filter-facets.ts);
+the web counts come from `buildSidebarFilterFacets` in
+[`Sidebar.logic.ts`](../apps/web/src/components/Sidebar.logic.ts). User
 guide: [thread-sidebar.md](./user/thread-sidebar.md#pin-and-reorder-threads).
 
 ## Projects settings sidebar entry

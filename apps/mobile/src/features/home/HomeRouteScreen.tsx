@@ -13,6 +13,7 @@ import { NativeHeaderToolbar, NativeStackScreenOptions } from "../../native/Stac
 import { useProjects } from "../../state/entities";
 import { useThreadListPages } from "../threads/use-thread-list-pages";
 import { useThreadListOrganisations } from "./use-thread-list-organisations";
+import { useThreadListFilterFacets } from "./use-thread-list-filter-facets";
 import { environmentThreadShells } from "../../state/threads";
 import { usePendingNewTasks } from "../../state/use-pending-new-tasks";
 import { useWorkspaceState } from "../../state/workspace";
@@ -191,6 +192,25 @@ export function HomeRouteScreen() {
   )
     ? resolvedProjectKey
     : null;
+  const filterFacets = useThreadListFilterFacets({
+    threads: visibleThreads,
+    projects,
+    projectGroupingMode: listOptions.projectGroupingMode,
+    organisations,
+    environmentId: selectedEnvironmentId,
+    projectKey: selectedProjectKey,
+    organisationKeys,
+    pages,
+    searchQuery,
+  });
+  const filterEnvironments = useMemo(
+    () =>
+      environments.map((environment) => ({
+        ...environment,
+        count: filterFacets.environmentCounts.get(environment.environmentId) ?? 0,
+      })),
+    [environments, filterFacets.environmentCounts],
+  );
 
   // In split layouts the persistent sidebar IS the thread list — Home becomes
   // an empty detail pane so selecting a thread never transitions layouts.
@@ -271,8 +291,8 @@ export function HomeRouteScreen() {
         )}
         <HomeHeader
           usesWorkspaceToolbar={workspace !== null}
-          environments={environments}
-          projects={projectFilterOptions}
+          environments={filterEnvironments}
+          projects={filterFacets.projects}
           searchQuery={searchQuery}
           selectedEnvironmentId={selectedEnvironmentId}
           selectedProjectKey={selectedProjectKey}
@@ -281,9 +301,10 @@ export function HomeRouteScreen() {
           pages={pages}
           availablePages={availablePages}
           onTogglePage={togglePage}
+          pageCounts={filterFacets.pageCounts}
           groups={groups}
           onCreateGroup={groupsSupported ? createThreadGroup : undefined}
-          organisations={organisations}
+          organisations={filterFacets.organisations}
           organisationKeys={organisationKeys}
           onToggleOrganisation={toggleOrganisation}
           onClearOrganisations={clearOrganisations}
@@ -305,7 +326,7 @@ export function HomeRouteScreen() {
 
         <HomeScreen
           catalogState={catalogState}
-          environments={environments}
+          environments={filterEnvironments}
           onAddConnection={() =>
             navigation.navigate("SettingsSheet", {
               screen: "SettingsContent",
@@ -360,7 +381,9 @@ export function HomeRouteScreen() {
           selectedEnvironmentId={selectedEnvironmentId}
           selectedProjectKey={selectedProjectKey}
           organisationKeys={organisationKeys}
-          organisations={organisations}
+          organisations={filterFacets.organisations}
+          filterProjects={filterFacets.projects}
+          pageCounts={filterFacets.pageCounts}
           onToggleOrganisation={toggleOrganisation}
           onClearOrganisations={clearOrganisations}
           pages={pages}

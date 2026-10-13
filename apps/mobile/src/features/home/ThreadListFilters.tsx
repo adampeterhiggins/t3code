@@ -2,6 +2,7 @@ import { Pressable, ScrollView } from "react-native";
 import { SymbolView } from "../../components/AppSymbol";
 import { ListFilterMenu } from "../workspace/ListFilterMenu";
 import { isDefaultThreadListPages, threadListPageLabel } from "../threads/threadListV2";
+import { filterChoiceTitle } from "./home-list-filter-menu";
 import type { HomeHeaderProps } from "./HomeHeader.types";
 
 export function ThreadListFilters(
@@ -16,6 +17,7 @@ export function ThreadListFilters(
     | "pages"
     | "availablePages"
     | "onTogglePage"
+    | "pageCounts"
     | "groups"
     | "onCreateGroup"
     | "organisations"
@@ -48,7 +50,7 @@ export function ThreadListFilters(
           },
           ...props.environments.map((environment) => ({
             id: JSON.stringify(environment.environmentId),
-            title: environment.label,
+            title: filterChoiceTitle(environment.label, environment.count),
             state:
               environment.environmentId === props.selectedEnvironmentId
                 ? ("on" as const)
@@ -77,7 +79,7 @@ export function ThreadListFilters(
           },
           ...props.projects.map((project) => ({
             id: JSON.stringify(project.key),
-            title: project.label,
+            title: filterChoiceTitle(project.label, project.count),
             state: project.key === props.selectedProjectKey ? ("on" as const) : ("off" as const),
           })),
         ]}
@@ -112,7 +114,7 @@ export function ThreadListFilters(
             },
             ...props.organisations.map((organisation) => ({
               id: JSON.stringify(organisation.key),
-              title: organisation.label,
+              title: filterChoiceTitle(organisation.label, organisation.count),
               state: props.organisationKeys.includes(organisation.key)
                 ? ("on" as const)
                 : ("off" as const),
@@ -136,7 +138,10 @@ export function ThreadListFilters(
         actions={[
           ...props.availablePages.map((page) => ({
             id: JSON.stringify(page),
-            title: threadListPageLabel(page, props.groups),
+            title: filterChoiceTitle(
+              threadListPageLabel(page, props.groups),
+              props.pageCounts?.get(page),
+            ),
             state: props.pages.includes(page) ? ("on" as const) : ("off" as const),
           })),
           ...(props.onCreateGroup ? [{ id: "new-group", title: "New group…" }] : []),

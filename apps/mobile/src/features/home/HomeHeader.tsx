@@ -11,7 +11,7 @@ import { withNativeGlassHeaderItem } from "../layout/native-glass-header-items";
 import { createNativeMailSearchToolbarItem } from "../layout/native-mail-search-toolbar";
 import { useNativeMailSearchToolbar } from "../../native/use-native-mail-search-toolbar";
 import { isDefaultThreadListPages, threadListPageLabel } from "../threads/threadListV2";
-import { buildHomeListFilterMenu } from "./home-list-filter-menu";
+import { buildHomeListFilterMenu, filterChoiceTitle } from "./home-list-filter-menu";
 import { createSidebarHeaderItems } from "../threads/sidebar-native-header-items";
 import type { HomeHeaderProps } from "./HomeHeader.types";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
@@ -195,7 +195,9 @@ export function HomeHeader(props: HomeHeaderProps) {
                   isOn={props.selectedEnvironmentId === environment.environmentId}
                   onPress={() => props.onEnvironmentChange(environment.environmentId)}
                 >
-                  <NativeHeaderToolbar.Label>{environment.label}</NativeHeaderToolbar.Label>
+                  <NativeHeaderToolbar.Label>
+                    {filterChoiceTitle(environment.label, environment.count)}
+                  </NativeHeaderToolbar.Label>
                 </NativeHeaderToolbar.MenuAction>
               ))}
             </NativeHeaderToolbar.Menu>
@@ -216,7 +218,9 @@ export function HomeHeader(props: HomeHeaderProps) {
                     isOn={props.organisationKeys.includes(organisation.key)}
                     onPress={() => props.onToggleOrganisation(organisation.key)}
                   >
-                    <NativeHeaderToolbar.Label>{organisation.label}</NativeHeaderToolbar.Label>
+                    <NativeHeaderToolbar.Label>
+                      {filterChoiceTitle(organisation.label, organisation.count)}
+                    </NativeHeaderToolbar.Label>
                   </NativeHeaderToolbar.MenuAction>
                 ))}
               </NativeHeaderToolbar.Menu>
@@ -238,7 +242,9 @@ export function HomeHeader(props: HomeHeaderProps) {
                     isOn={props.selectedProjectKey === project.key}
                     onPress={() => props.onProjectChange(project.key)}
                   >
-                    <NativeHeaderToolbar.Label>{project.label}</NativeHeaderToolbar.Label>
+                    <NativeHeaderToolbar.Label>
+                      {filterChoiceTitle(project.label, project.count)}
+                    </NativeHeaderToolbar.Label>
                   </NativeHeaderToolbar.MenuAction>
                 ))}
               </NativeHeaderToolbar.Menu>
@@ -252,7 +258,10 @@ export function HomeHeader(props: HomeHeaderProps) {
                   onPress={() => props.onTogglePage(page)}
                 >
                   <NativeHeaderToolbar.Label>
-                    {threadListPageLabel(page, props.groups)}
+                    {filterChoiceTitle(
+                      threadListPageLabel(page, props.groups),
+                      props.pageCounts?.get(page),
+                    )}
                   </NativeHeaderToolbar.Label>
                 </NativeHeaderToolbar.MenuAction>
               ))}

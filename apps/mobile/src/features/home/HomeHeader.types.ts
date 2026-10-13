@@ -23,6 +23,8 @@ export interface HomeHeaderProps {
   readonly pages: ReadonlyArray<ThreadListPage>;
   readonly availablePages: ReadonlyArray<ThreadListPage>;
   readonly onTogglePage: (page: ThreadListPage) => void;
+  /** Threads each page would show under the other filters. */
+  readonly pageCounts?: ReadonlyMap<ThreadListPage, number>;
   readonly groups: ThreadGroups;
   /** Adds "New group…" to Show; omitted when no environment supports groups. */
   readonly onCreateGroup?: () => void;
