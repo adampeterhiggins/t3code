@@ -1,4 +1,10 @@
 import type { GranolaNoteSummary } from "@t3tools/contracts";
+import {
+  applyFilterDimensions,
+  type FacetChoice,
+  type FilterDimension,
+  filterFacets,
+} from "@t3tools/shared/filterFacets";
 
 export interface GranolaNotePickerView {
   /** Notes with any of these attendees. */
@@ -24,24 +30,40 @@ function meetingTime(note: GranolaNoteSummary): number {
 }
 
 /**
- * The notes the picker shows for its filters and sort. The server already matched the query; a
- * pasted note link (`pasted`) names one note, however old, so the date filter does not apply.
+ * The picker's filters as facet dimensions. The server already matched the query; a pasted note
+ * link (`pasted`) names one note, however old, so the date filter does not apply to it.
  */
+function granolaDimensions(view: GranolaNotePickerView, now: number, pasted: boolean) {
+  const inRange = (note: GranolaNoteSummary, range: GranolaNotePickerView["range"]) =>
+    pasted ||
+    note.meetingAt === null ||
+    meetingTime(note) >= now - (range === "week" ? 7 : 30) * DAY_MS;
+  return {
+    attendees: {
+      values: (note: GranolaNoteSummary) => note.participants,
+      selected: view.participants,
+    },
+    creators: {
+      values: (note: GranolaNoteSummary) => (note.creator ? [note.creator] : []),
+      selected: view.creators,
+    },
+    range: {
+      values: (note: GranolaNoteSummary) =>
+        (["week", "month"] as const).filter((range) => inRange(note, range)),
+      selected: [view.range],
+      matches: (note: GranolaNoteSummary) => inRange(note, view.range),
+    },
+  } satisfies Record<string, FilterDimension<GranolaNoteSummary>>;
+}
+
+/** The notes the picker shows for its filters, in its sort order. */
 export function filterGranolaNotes(
   notes: ReadonlyArray<GranolaNoteSummary>,
   view: GranolaNotePickerView,
   now: number,
   pasted = false,
 ): GranolaNoteSummary[] {
-  const since = now - (view.range === "week" ? 7 : 30) * DAY_MS;
-  const shown = notes.filter(
-    (note) =>
-      (pasted || note.meetingAt === null || meetingTime(note) >= since) &&
-      (view.participants.length === 0 ||
-        note.participants.some((name) => view.participants.includes(name))) &&
-      (view.creators.length === 0 ||
-        (note.creator !== null && view.creators.includes(note.creator))),
-  );
+  const shown = applyFilterDimensions(notes, granolaDimensions(view, now, pasted));
   switch (view.sort) {
     case "newest":
       return shown.toSorted((a, b) => meetingTime(b) - meetingTime(a));
@@ -58,26 +80,9 @@ export interface GranolaFilterOption {
   readonly count: number;
 }
 
-/** Everyone who appears in the notes and in how many, most frequent first. */
-function countPeople(
-  notes: ReadonlyArray<GranolaNoteSummary>,
-  pick: (note: GranolaNoteSummary) => ReadonlyArray<string>,
-  selected: ReadonlyArray<string>,
-): GranolaFilterOption[] {
-  const counts = new Map<string, number>();
-  for (const note of notes) {
-    for (const name of pick(note)) counts.set(name, (counts.get(name) ?? 0) + 1);
-  }
-  // A picked person the other filters exclude stays listed, so it can still be unpicked.
-  for (const name of selected) if (!counts.has(name)) counts.set(name, 0);
-  return [...counts]
-    .toSorted((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .map(([name, count]) => ({ value: name, label: name, count }));
-}
-
 /**
- * What each filter menu offers, and how many notes each choice would show. Every dimension is
- * counted under the other applied filters, so a choice's number is what picking it adds.
+ * What each filter menu offers, and how many notes each choice would show under the other
+ * applied filters (see `filterFacets`).
  */
 export function granolaFilterFacets(
   notes: ReadonlyArray<GranolaNoteSummary>,
@@ -85,20 +90,17 @@ export function granolaFilterFacets(
   now: number,
   pasted = false,
 ) {
+  const facets = filterFacets(notes, granolaDimensions(view, now, pasted));
+  const people = (choices: ReadonlyArray<FacetChoice>): GranolaFilterOption[] =>
+    choices.map((choice) => ({ ...choice, label: choice.value }));
+  const rangeCount = (range: GranolaNotePickerView["range"]) =>
+    facets.range.find((choice) => choice.value === range)?.count ?? 0;
   return {
-    attendees: countPeople(
-      filterGranolaNotes(notes, { ...view, participants: [] }, now, pasted),
-      (note) => note.participants,
-      view.participants,
-    ),
-    creators: countPeople(
-      filterGranolaNotes(notes, { ...view, creators: [] }, now, pasted),
-      (note) => (note.creator ? [note.creator] : []),
-      view.creators,
-    ),
+    attendees: people(facets.attendees),
+    creators: people(facets.creators),
     ranges: {
-      week: filterGranolaNotes(notes, { ...view, range: "week" }, now, pasted).length,
-      month: filterGranolaNotes(notes, { ...view, range: "month" }, now, pasted).length,
+      week: rangeCount("week"),
+      month: rangeCount("month"),
     } satisfies Record<GranolaNotePickerView["range"], number>,
   };
 }
