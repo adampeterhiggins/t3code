@@ -238,6 +238,7 @@ import { isGitHubProject } from "@t3tools/client-runtime/state/github-issues";
 import { openGitHubIssuePicker } from "./chat/GitHubIssuePicker";
 import { openLinearIssuePicker } from "./chat/LinearIssuePicker";
 import { openNotionPagePicker } from "./chat/NotionPagePicker";
+import { openGranolaNotePicker } from "./chat/GranolaNotePicker";
 import { openSlackMessagePicker } from "./chat/SlackMessagePicker";
 const SIDEBAR_SORT_LABELS: Record<SidebarProjectSortOrder, string> = {
   updated_at: "Last user message",
@@ -2405,6 +2406,15 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
           ...(linkIntegrations.notion
             ? [{ id: "link-notion-page", label: "Link Notion page…", disabled: !canOperateThread }]
             : []),
+          ...(linkIntegrations.granola
+            ? [
+                {
+                  id: "link-granola-note",
+                  label: "Link Granola note…",
+                  disabled: !canOperateThread,
+                },
+              ]
+            : []),
           { id: "project-settings", label: "Project settings" },
           {
             id: "delete",
@@ -2514,6 +2524,10 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       }
       if (clicked === "link-notion-page") {
         openNotionPagePicker(threadRef, "link");
+        return;
+      }
+      if (clicked === "link-granola-note") {
+        openGranolaNotePicker(threadRef, "link");
         return;
       }
       if (clicked === "link-github-issue") {

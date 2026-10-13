@@ -1,6 +1,6 @@
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { FolderGit2Icon, MessageSquareIcon, PaperclipIcon } from "lucide-react";
-import { GitHubIcon, LinearIcon, NotionIcon, SlackIcon } from "../Icons";
+import { GitHubIcon, GranolaIcon, LinearIcon, NotionIcon, SlackIcon } from "../Icons";
 import { memo } from "react";
 import { useEnvironmentSettings } from "~/hooks/useSettings";
 
@@ -8,6 +8,7 @@ import { Button } from "../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { useComposerMenuProps } from "./composerEventScope";
 import { openGitHubIssuePicker } from "./GitHubIssuePicker";
+import { openGranolaNotePicker } from "./GranolaNotePicker";
 import { openLinearIssuePicker } from "./LinearIssuePicker";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { openPullRequestAttachPicker } from "./PullRequestAttachPicker";
@@ -17,8 +18,8 @@ import { openSlackMessagePicker } from "./SlackMessagePicker";
 import { openThreadAttachPicker } from "./ThreadAttachPicker";
 
 /**
- * The composer's attach button: files, thread summaries, issues, Slack messages, pull requests,
- * and repositories.
+ * The composer's attach button: files, thread summaries, issues, Notion pages, Granola notes, Slack
+ * messages, pull requests, and repositories.
  */
 export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
   threadRef: ScopedThreadRef;
@@ -36,6 +37,10 @@ export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
   const notionEnabled = useEnvironmentSettings(
     props.threadRef.environmentId,
     (s) => s.enableNotionIntegration,
+  );
+  const granolaEnabled = useEnvironmentSettings(
+    props.threadRef.environmentId,
+    (s) => s.enableGranolaIntegration,
   );
   return (
     <Menu>
@@ -61,6 +66,12 @@ export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
           <MenuItem onClick={() => openNotionPagePicker(props.threadRef)}>
             <NotionIcon />
             Notion page
+          </MenuItem>
+        ) : null}
+        {granolaEnabled ? (
+          <MenuItem onClick={() => openGranolaNotePicker(props.threadRef)}>
+            <GranolaIcon />
+            Granola note
           </MenuItem>
         ) : null}
         {slackEnabled ? (

@@ -69,6 +69,10 @@ const DEFINITIONS = [
     capabilities: { details: "popover", expanded: "none", defaultDraftView: "compact" },
   },
   {
+    kind: "granola-note",
+    capabilities: { details: "popover", expanded: "none", defaultDraftView: "compact" },
+  },
+  {
     kind: "thread",
     capabilities: { details: "tooltip", expanded: "none", defaultDraftView: "compact" },
   },

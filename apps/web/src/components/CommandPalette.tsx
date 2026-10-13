@@ -58,10 +58,12 @@ import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
 import { openGitHubIssuePicker } from "./chat/GitHubIssuePicker";
 import { useThreadGitHubIssueLink, useUnlinkGitHubIssue } from "./chat/GitHubIssueThreadLink";
 import { openNotionPagePicker } from "./chat/NotionPagePicker";
+import { openGranolaNotePicker } from "./chat/GranolaNotePicker";
 import { openSlackMessagePicker } from "./chat/SlackMessagePicker";
 import { openLinearIssuePicker } from "./chat/LinearIssuePicker";
 import { useThreadLinearLink, useUnlinkLinearIssue } from "./chat/LinearThreadLink";
 import { useThreadNotionLink, useUnlinkNotionPage } from "./chat/NotionThreadLink";
+import { useThreadGranolaLink, useUnlinkGranolaNote } from "./chat/GranolaThreadLink";
 import { useThreadSlackLink, useUnlinkSlackThread } from "./chat/SlackThreadLink";
 import { openThreadAttachPicker } from "./chat/ThreadAttachPicker";
 import { openPullRequestAttachPicker } from "./chat/PullRequestAttachPicker";
@@ -98,7 +100,7 @@ import {
   SunIcon,
   TextSearchIcon,
 } from "lucide-react";
-import { GitHubIcon, LinearIcon, NotionIcon, SlackIcon } from "./Icons";
+import { GitHubIcon, GranolaIcon, LinearIcon, NotionIcon, SlackIcon } from "./Icons";
 import { requestThreadFindOpen } from "./chat/threadFindActionBus";
 import {
   useCallback,
@@ -143,6 +145,7 @@ import { filesystemEnvironment, useFilesystemReadAccess } from "../state/filesys
 import { githubIssueEnvironment } from "../state/githubIssues";
 import { linearEnvironment } from "../state/linear";
 import { notionEnvironment } from "../state/notion";
+import { granolaEnvironment } from "../state/granola";
 import { projectEnvironment } from "../state/projects";
 import { slackEnvironment } from "../state/slack";
 import { useEnvironmentQuery } from "../state/query";
@@ -747,6 +750,11 @@ function OpenCommandPaletteDialog(props: {
   );
   const canLinkNotion = useAtomValue(
     notionEnvironment.linkThread.permissionAtom(activeLinkThreadRef?.environmentId ?? null),
+  );
+  const activeGranolaLink = useThreadGranolaLink(activeLinkThreadRef);
+  const unlinkGranolaNote = useUnlinkGranolaNote();
+  const canLinkGranola = useAtomValue(
+    granolaEnvironment.linkThread.permissionAtom(activeLinkThreadRef?.environmentId ?? null),
   );
   const activeGitHubIssueLink = useThreadGitHubIssueLink(activeLinkThreadRef);
   const unlinkGitHubIssue = useUnlinkGitHubIssue();
@@ -2182,6 +2190,21 @@ function OpenCommandPaletteDialog(props: {
       });
     }
     if (
+      serverConfigs.get(composerThreadRef.environmentId)?.settings.enableGranolaIntegration !==
+      false
+    ) {
+      actionItems.push({
+        kind: "action",
+        value: "action:attach-granola-note",
+        searchTerms: ["granola", "meeting", "notes", "transcript", "call", "attach", "context"],
+        title: "Attach Granola note",
+        icon: <GranolaIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          openGranolaNotePicker(composerThreadRef);
+        },
+      });
+    }
+    if (
       serverConfigs.get(composerThreadRef.environmentId)?.settings.enableSlackIntegration !== false
     ) {
       actionItems.push({
@@ -2321,6 +2344,35 @@ function OpenCommandPaletteDialog(props: {
         icon: <NotionIcon className={ITEM_ICON_CLASS} />,
         run: async () => {
           await unlinkNotionPage(composerThreadRef);
+        },
+      });
+    }
+    if (
+      canLinkGranola &&
+      serverConfigs.get(composerThreadRef.environmentId)?.settings.enableGranolaIntegration === true
+    ) {
+      actionItems.push({
+        kind: "action",
+        value: "action:link-granola-note",
+        searchTerms: ["granola", "meeting", "notes", "link"],
+        title: activeGranolaLink
+          ? `Change linked Granola note (${activeGranolaLink.title})`
+          : "Link Granola note",
+        icon: <GranolaIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          openGranolaNotePicker(composerThreadRef, "link");
+        },
+      });
+    }
+    if (canLinkGranola && activeGranolaLink) {
+      actionItems.push({
+        kind: "action",
+        value: "action:unlink-granola-note",
+        searchTerms: ["granola", "meeting", "notes", "unlink", "remove"],
+        title: `Unlink Granola note ${activeGranolaLink.title}`,
+        icon: <GranolaIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          await unlinkGranolaNote(composerThreadRef);
         },
       });
     }

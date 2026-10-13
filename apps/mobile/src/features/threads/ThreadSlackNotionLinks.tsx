@@ -1,4 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
+import { granolaLinkForThread } from "@t3tools/client-runtime/state/granola";
 import { notionLinkForThread } from "@t3tools/client-runtime/state/notion";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { slackLinkForThread } from "@t3tools/client-runtime/state/slack";
@@ -6,9 +7,11 @@ import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { Alert, Pressable, Text } from "react-native";
 
 import { ControlPillMenu } from "../../components/ControlPillMenu";
+import { useGranolaNotePicker } from "../../components/GranolaNotePickerSheet";
 import { useNotionPagePicker } from "../../components/NotionPagePickerSheet";
 import { useSlackMessagePicker } from "../../components/SlackMessagePickerSheet";
 import { tryOpenExternalUrl, type ExternalUrlTarget } from "../../lib/openExternalUrl";
+import { granolaEnvironment } from "../../state/granola";
 import { notionEnvironment } from "../../state/notion";
 import { useEnvironmentQuery } from "../../state/query";
 import { slackEnvironment } from "../../state/slack";
@@ -19,9 +22,10 @@ const CHANGE_ACTION = "link:change";
 const UNLINK_ACTION = "link:unlink";
 export const LINK_SLACK_ACTION = "tab:link-slack";
 export const LINK_NOTION_ACTION = "tab:link-notion";
+export const LINK_GRANOLA_ACTION = "tab:link-granola";
 
 /**
- * The Slack thread and Notion page linked to the thread's tab group, with their link pickers.
+ * The Slack thread, Notion page, and Granola note linked to the thread's tab group, with their link pickers.
  * Linking needs the integration on, a server that answers with links (older servers have none),
  * and the orchestration grant; the server still authorizes every change.
  */
@@ -32,24 +36,34 @@ export function useThreadSlackNotionLinks(environmentId: EnvironmentId, threadId
   const notionLinks = useEnvironmentQuery(
     notionEnvironment.threadLinks({ environmentId, input: {} }),
   ).data;
+  const granolaLinks = useEnvironmentQuery(
+    granolaEnvironment.threadLinks({ environmentId, input: {} }),
+  ).data;
   const canEditSlack = useAtomValue(slackEnvironment.linkThread.permissionAtom(environmentId));
   const canEditNotion = useAtomValue(notionEnvironment.linkThread.permissionAtom(environmentId));
+  const canEditGranola = useAtomValue(granolaEnvironment.linkThread.permissionAtom(environmentId));
   const slackPicker = useSlackMessagePicker({ mode: "link", environmentId, threadId });
   const notionPicker = useNotionPagePicker({ mode: "link", environmentId, threadId });
+  const granolaPicker = useGranolaNotePicker({ mode: "link", environmentId, threadId });
   const slackLink = slackLinkForThread(slackLinks, threadId);
   const notionLink = notionLinkForThread(notionLinks, threadId);
+  const granolaLink = granolaLinkForThread(granolaLinks, threadId);
   const openSlackPicker = canEditSlack && slackLinks != null ? slackPicker.open : undefined;
   const openNotionPicker = canEditNotion && notionLinks != null ? notionPicker.open : undefined;
+  const openGranolaPicker = canEditGranola && granolaLinks != null ? granolaPicker.open : undefined;
   return {
     environmentId,
     threadId,
     slackLink,
     notionLink,
+    granolaLink,
     canEditSlack,
     canEditNotion,
+    canEditGranola,
     /** Opens the Slack link picker; undefined when linking is unavailable. */
     openSlackPicker,
     openNotionPicker,
+    openGranolaPicker,
     /** Tab-menu items for links the group does not have yet; the chips change existing ones. */
     menuActions: [
       ...(slackLink === null && openSlackPicker
@@ -58,11 +72,15 @@ export function useThreadSlackNotionLinks(environmentId: EnvironmentId, threadId
       ...(notionLink === null && openNotionPicker
         ? [{ id: LINK_NOTION_ACTION, title: "Link Notion page", image: "link" }]
         : []),
+      ...(granolaLink === null && openGranolaPicker
+        ? [{ id: LINK_GRANOLA_ACTION, title: "Link Granola note", image: "link" }]
+        : []),
     ],
     sheets: (
       <>
         {slackPicker.sheet}
         {notionPicker.sheet}
+        {granolaPicker.sheet}
       </>
     ),
   };
@@ -74,13 +92,14 @@ export type ThreadSlackNotionLinks = ReturnType<typeof useThreadSlackNotionLinks
 export function handleSlackNotionMenuAction(links: ThreadSlackNotionLinks, id: string): boolean {
   if (id === LINK_SLACK_ACTION) links.openSlackPicker?.();
   else if (id === LINK_NOTION_ACTION) links.openNotionPicker?.();
+  else if (id === LINK_GRANOLA_ACTION) links.openGranolaPicker?.();
   else return false;
   return true;
 }
 
-/** The linked Slack thread and Notion page as chips to open, change, or unlink them. */
+/** The linked Slack thread, Notion page, and Granola note as chips to open, change, or unlink them. */
 export function ThreadSlackNotionLinkChips(props: { readonly links: ThreadSlackNotionLinks }) {
-  const { environmentId, threadId, slackLink, notionLink } = props.links;
+  const { environmentId, threadId, slackLink, notionLink, granolaLink } = props.links;
   const unlinkSlack = useAtomCommand(slackEnvironment.unlinkThread, {
     label: "slack thread unlink",
     reportFailure: false,
@@ -89,7 +108,14 @@ export function ThreadSlackNotionLinkChips(props: { readonly links: ThreadSlackN
     label: "notion thread unlink",
     reportFailure: false,
   });
-  const unlink = async (command: typeof unlinkSlack | typeof unlinkNotion, title: string) => {
+  const unlinkGranola = useAtomCommand(granolaEnvironment.unlinkThread, {
+    label: "granola thread unlink",
+    reportFailure: false,
+  });
+  const unlink = async (
+    command: typeof unlinkSlack | typeof unlinkNotion | typeof unlinkGranola,
+    title: string,
+  ) => {
     const result = await command({ environmentId, input: { threadId } });
     if (result._tag !== "Failure") return;
     const error = squashAtomCommandFailure(result);
@@ -131,6 +157,23 @@ export function ThreadSlackNotionLinkChips(props: { readonly links: ThreadSlackN
           onUnlink={
             props.links.canEditNotion
               ? () => void unlink(unlinkNotion, "Could not unlink page")
+              : undefined
+          }
+        />
+      ) : null}
+      {granolaLink ? (
+        <LinkChip
+          label={granolaLink.title}
+          description={`Linked Granola note: ${granolaLink.title}`}
+          url={granolaLink.url}
+          target="granola"
+          openTitle="Open in Granola"
+          changeTitle="Change note…"
+          unlinkTitle="Unlink note"
+          onChange={props.links.openGranolaPicker}
+          onUnlink={
+            props.links.canEditGranola
+              ? () => void unlink(unlinkGranola, "Could not unlink note")
               : undefined
           }
         />

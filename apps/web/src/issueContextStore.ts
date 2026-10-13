@@ -2,6 +2,7 @@ import { create } from "zustand";
 
 import type {
   NotionPageContextRecord,
+  GranolaNoteContextRecord,
   GitHubIssueContextRecord,
   LinearIssueContextRecord,
   SlackThreadContextRecord,
@@ -11,13 +12,14 @@ import type {
 
 /**
  * An attached snapshot fetched from another service (a Linear or GitHub issue, a Slack thread, a
- * Notion page) or, in the fork, a referenced subagent.
+ * Notion page, a Granola note) or, in the fork, a referenced subagent.
  */
 export type IssueContextRecord =
   | LinearIssueContextRecord
   | GitHubIssueContextRecord
   | SlackThreadContextRecord
   | NotionPageContextRecord
+  | GranolaNoteContextRecord
   | SubagentContextRecord;
 
 const EMPTY: ReadonlyArray<IssueContextRecord> = [];

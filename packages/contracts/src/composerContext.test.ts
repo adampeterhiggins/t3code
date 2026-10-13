@@ -151,6 +151,17 @@ const knownRecords: Record<(typeof COMPOSER_CONTEXT_KINDS)[number], Record<strin
     url: "https://notion.so/aabbcc",
     markdown: "# Design\nDetails",
   },
+  "granola-note": {
+    ...base,
+    kind: "granola-note",
+    label: "Weekly sync",
+    noteId: "abd3f11c-e46a-4467-bfff-9a06519ef066",
+    title: "Weekly sync",
+    url: "https://notes.granola.ai/d/abd3f11c-e46a-4467-bfff-9a06519ef066",
+    meetingAt: "2026-10-12T09:30:00.000+01:00",
+    participants: "Ada, Grace",
+    markdown: "# Weekly sync\n\n## Summary\n\nShipped it.",
+  },
   "slack-thread": {
     ...base,
     kind: "slack-thread",

@@ -1,12 +1,13 @@
-import { parseNotionPageId, parseGitHubIssueUrl } from "@t3tools/contracts";
+import { parseGranolaNoteId, parseNotionPageId, parseGitHubIssueUrl } from "@t3tools/contracts";
 import { parseChangeRequestUrl } from "./changeRequestUrl.ts";
 
 /**
  * A link in composer text to something the composer can attach as a chip instead: a Linear
- * issue, a GitHub issue, a pull request, a GitHub repository root, a Slack message, or a Notion page.
+ * issue, a GitHub issue, a pull request, a GitHub repository root, a Slack message, a Notion page, or a Granola note.
  */
 export type ComposerObjectLink =
   | { readonly kind: "notion-page"; readonly url: string; readonly pageId: string }
+  | { readonly kind: "granola-note"; readonly url: string; readonly noteId: string }
   | { readonly kind: "linear-issue"; readonly url: string; readonly identifier: string }
   | {
       readonly kind: "slack-message";
@@ -77,6 +78,8 @@ export function parseComposerObjectLink(url: string): ComposerObjectLink | null 
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
   const notionPageId = parseNotionPageId(url);
   if (notionPageId !== null) return { kind: "notion-page", url, pageId: notionPageId };
+  const granolaNoteId = parseGranolaNoteId(url);
+  if (granolaNoteId !== null) return { kind: "granola-note", url, noteId: granolaNoteId };
   const segments = parsed.pathname.split("/").filter(Boolean);
 
   // https://linear.app/<workspace>/issue/<ENG-123>/<slug>
@@ -126,6 +129,8 @@ export function objectLinkLabel(url: string): string | null {
       return null;
     case "notion-page":
       return "Notion page";
+    case "granola-note":
+      return "Granola note";
     case "linear-issue":
       return link.identifier;
     case "slack-message":

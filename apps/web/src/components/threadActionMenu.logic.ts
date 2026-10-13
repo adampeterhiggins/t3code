@@ -43,6 +43,7 @@ export type ThreadActionMenuId =
   | "link-linear-issue"
   | "link-slack-thread"
   | "link-notion-page"
+  | "link-granola-note"
   | "link-github-issue"
   | "archive"
   | "delete";
@@ -142,7 +143,11 @@ export interface ThreadActionMenuState {
   };
   readonly snoozePresets: ReadonlyArray<SnoozePreset>;
   /** Integrations the thread's environment has turned on, which add their "Link …" items. */
-  readonly integrations?: { readonly slack: boolean; readonly notion: boolean };
+  readonly integrations?: {
+    readonly slack: boolean;
+    readonly notion: boolean;
+    readonly granola: boolean;
+  };
 }
 
 /** Local navigation, read markers, and copying remain available to read-only clients. */
@@ -326,6 +331,9 @@ export function buildThreadActionMenuItems(
       : []),
     ...(state.integrations?.notion
       ? [{ id: "link-notion-page" as const, label: "Link Notion page…", icon: "link" }]
+      : []),
+    ...(state.integrations?.granola
+      ? [{ id: "link-granola-note" as const, label: "Link Granola note…", icon: "link" }]
       : []),
     { id: "project-settings", label: "Project settings", icon: "settings" },
     // Archive removes the thread from the sidebar while keeping its

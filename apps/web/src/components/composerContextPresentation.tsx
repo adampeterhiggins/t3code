@@ -1,4 +1,4 @@
-import type { NotionPageContextRecord } from "@t3tools/contracts";
+import type { GranolaNoteContextRecord, NotionPageContextRecord } from "@t3tools/contracts";
 import ChatMarkdown from "./ChatMarkdown";
 import { ReviewCommentCard } from "./ReviewCommentCard";
 import type {
@@ -19,7 +19,7 @@ import {
   MessagesSquareIcon,
   MousePointerClickIcon,
 } from "lucide-react";
-import { GitHubIcon, LinearIcon, NotionIcon, SlackIcon } from "./Icons";
+import { GitHubIcon, GranolaIcon, LinearIcon, NotionIcon, SlackIcon } from "./Icons";
 import { createContext, type MouseEvent, type ReactElement, type ReactNode, use } from "react";
 import type { EnvironmentId } from "@t3tools/contracts";
 
@@ -67,6 +67,7 @@ import {
   RepositoryDetails,
   SlackThreadDetails,
   NotionPageDetails,
+  GranolaNoteDetails,
   PULL_REQUEST_CHIP_KINDS,
   PullRequestChip,
   ThreadTabSummaryDetails,
@@ -79,6 +80,7 @@ import {
  */
 export type ComposerDraftContextRecord =
   | { kind: "notion-page"; record: NotionPageContextRecord }
+  | { kind: "granola-note"; record: GranolaNoteContextRecord }
   | { kind: "terminal"; record: TerminalContextDraft }
   | { kind: "review-comment"; record: ReviewCommentContext }
   | {
@@ -192,6 +194,8 @@ function issueDraftContextRecord(record: IssueContextRecord): ComposerDraftConte
   switch (record.kind) {
     case "notion-page":
       return { kind: "notion-page", record };
+    case "granola-note":
+      return { kind: "granola-note", record };
     case "linear-issue":
       return { kind: "linear-issue", record };
     case "github-issue":
@@ -574,6 +578,23 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
         ),
     },
     {
+      kind: "granola-note",
+      canRender: (entry) => entry.kind === "granola-note",
+      render: (entry, context, definition) =>
+        entry.kind === "granola-note" ? (
+          <ContextChip
+            icon={<GranolaIcon />}
+            label={entry.record.label}
+            kindLabel="Granola note"
+            details={<ComposerGranolaNoteDetails record={entry.record} />}
+            detailsMode={definition.capabilities.details}
+            kind="granola-note"
+          />
+        ) : (
+          <UnresolvedContextChip label={context.label} />
+        ),
+    },
+    {
       kind: "slack-thread",
       canRender: (entry) => entry.kind === "slack-thread",
       render: (entry, context, definition) =>
@@ -653,6 +674,11 @@ export function ComposerContextReferenceChip(props: {
   return composerContextPresentationRegistry.render(props.kind, records.get(props.contextId), {
     label: props.label,
   });
+}
+
+function ComposerGranolaNoteDetails({ record }: { record: GranolaNoteContextRecord }) {
+  const actions = use(ComposerContextActionsContext);
+  return <GranolaNoteDetails record={record} onOpenLink={actions.openLink} />;
 }
 
 function ComposerNotionPageDetails({ record }: { record: NotionPageContextRecord }) {

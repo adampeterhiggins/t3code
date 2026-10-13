@@ -451,6 +451,10 @@
       "types": "./src/device/duoControl.ts",
       "default": "./src/device/duoControl.ts"
     },
+    "./state/granola": {
+      "types": "./src/state/granola.ts",
+      "default": "./src/state/granola.ts"
+    },
     "./state/notion": {
       "types": "./src/state/notion.ts",
       "default": "./src/state/notion.ts"

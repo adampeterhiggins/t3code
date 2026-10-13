@@ -52,6 +52,9 @@ import * as LinearApi from "./linear/LinearApi.ts";
 import * as LinearAssignmentTriggers from "./linear/LinearAssignmentTriggers.ts";
 import * as LinearAuth from "./linear/LinearAuth.ts";
 import * as LinearThreadLinks from "./linear/LinearThreadLinks.ts";
+import * as GranolaApi from "./granola/GranolaApi.ts";
+import * as GranolaAuth from "./granola/GranolaAuth.ts";
+import * as GranolaThreadLinks from "./granola/GranolaThreadLinks.ts";
 import * as NotionApi from "./notion/NotionApi.ts";
 import * as NotionAuth from "./notion/NotionAuth.ts";
 import * as NotionThreadLinks from "./notion/NotionThreadLinks.ts";
@@ -677,6 +680,12 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
     NotionThreadLinks.layer.pipe(
       Layer.provideMerge(NotionApi.layer),
       Layer.provideMerge(NotionAuth.layer),
+    ),
+  ),
+  Layer.provideMerge(
+    GranolaThreadLinks.layer.pipe(
+      Layer.provideMerge(GranolaApi.layer),
+      Layer.provideMerge(GranolaAuth.layer),
     ),
   ),
   Layer.provideMerge(

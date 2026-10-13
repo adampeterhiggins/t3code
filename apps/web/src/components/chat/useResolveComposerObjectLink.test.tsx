@@ -2,6 +2,7 @@ import { parseComposerObjectLink } from "@t3tools/shared/composerObjectLinks";
 import {
   EnvironmentId,
   ThreadId,
+  type GranolaNoteContext,
   type NotionPageContext,
   type SlackThreadContext,
 } from "@t3tools/contracts";
@@ -12,8 +13,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 const mocks = vi.hoisted(() => ({
   slackEnabled: true,
   notionEnabled: true,
+  granolaEnabled: true,
   getSlackThread: vi.fn(),
   getNotionPage: vi.fn(),
+  getGranolaNote: vi.fn(),
   upsert: vi.fn(),
   toast: vi.fn(),
 }));
@@ -24,11 +27,13 @@ vi.mock("~/hooks/useSettings", () => ({
     select: (settings: {
       enableSlackIntegration: boolean;
       enableNotionIntegration: boolean;
+      enableGranolaIntegration: boolean;
     }) => boolean,
   ) =>
     select({
       enableSlackIntegration: mocks.slackEnabled,
       enableNotionIntegration: mocks.notionEnabled,
+      enableGranolaIntegration: mocks.granolaEnabled,
     }),
 }));
 vi.mock("@effect/atom-react", () => ({ useAtomValue: () => null }));
@@ -38,6 +43,7 @@ vi.mock("~/state/slack", () => ({ slackEnvironment: { getThread: "slack" } }));
 vi.mock("~/state/linear", () => ({ linearEnvironment: { getIssue: "linear" } }));
 vi.mock("~/state/githubIssues", () => ({ githubIssueEnvironment: { getIssue: "github" } }));
 vi.mock("~/state/notion", () => ({ notionEnvironment: { getPage: "notion" } }));
+vi.mock("~/state/granola", () => ({ granolaEnvironment: { getNote: "granola" } }));
 vi.mock("~/state/pullRequests", () => ({
   pullRequestEnvironment: { detail: "detail", activity: "activity" },
 }));
@@ -47,7 +53,9 @@ vi.mock("~/state/use-atom-command", () => ({
       ? mocks.getSlackThread
       : command === "notion"
         ? mocks.getNotionPage
-        : vi.fn(),
+        : command === "granola"
+          ? mocks.getGranolaNote
+          : vi.fn(),
 }));
 vi.mock("~/state/use-atom-query-runner", () => ({ useAtomQueryRunner: () => vi.fn() }));
 vi.mock("~/issueContextStore", () => ({
@@ -93,6 +101,18 @@ const notionPage: NotionPageContext = {
   markdown: "# Methodology",
 };
 
+const granolaUrl = "https://notes.granola.ai/d/abd3f11c-e46a-4467-bfff-9a06519ef066";
+const granolaLink = parseComposerObjectLink(granolaUrl)!;
+const granolaNote: GranolaNoteContext = {
+  id: "abd3f11c-e46a-4467-bfff-9a06519ef066",
+  title: "Weekly sync",
+  url: granolaUrl,
+  meetingAt: "2026-10-12T09:30:00.000+01:00",
+  participants: ["Ada", "Grace"],
+  creator: "Ada",
+  markdown: "# Weekly sync",
+};
+
 let renderer: ReactTestRenderer;
 let resolveLink: ReturnType<typeof useResolveComposerObjectLink>;
 
@@ -109,6 +129,8 @@ beforeEach(async () => {
   vi.clearAllMocks();
   mocks.slackEnabled = true;
   mocks.notionEnabled = true;
+  mocks.granolaEnabled = true;
+  mocks.getGranolaNote.mockResolvedValue({ _tag: "Success", value: granolaNote });
   mocks.getNotionPage.mockResolvedValue({ _tag: "Success", value: notionPage });
   mocks.getSlackThread.mockResolvedValue({ _tag: "Success", value: thread });
   await act(() => {
@@ -179,6 +201,35 @@ describe("Notion link attachments", () => {
 
     expect(await resolveLink(notionLink)).toBeNull();
     expect(mocks.getNotionPage).not.toHaveBeenCalled();
+    expect(mocks.toast).not.toHaveBeenCalled();
+  });
+});
+
+describe("Granola link attachments", () => {
+  it("attaches a pasted Granola note link", async () => {
+    const attached = await resolveLink(granolaLink);
+    expect(attached?.reference).toEqual({
+      kind: "granola-note",
+      contextId: `granola-note_${granolaNote.id}`,
+      label: "Weekly sync",
+    });
+    expect(mocks.getGranolaNote).toHaveBeenCalledWith({
+      environmentId: threadRef.environmentId,
+      input: { id: granolaNote.id },
+    });
+    attached!.commit();
+    expect(mocks.upsert).toHaveBeenCalledWith(
+      threadRef.threadId,
+      expect.objectContaining({ kind: "granola-note", markdown: granolaNote.markdown }),
+    );
+  });
+
+  it("keeps links as text without requesting Granola when disabled", async () => {
+    mocks.granolaEnabled = false;
+    await act(() => renderer.update(<Probe />));
+
+    expect(await resolveLink(granolaLink)).toBeNull();
+    expect(mocks.getGranolaNote).not.toHaveBeenCalled();
     expect(mocks.toast).not.toHaveBeenCalled();
   });
 });

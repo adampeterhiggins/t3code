@@ -174,6 +174,9 @@ import * as ProviderMaintenanceRunner from "./provider/providerMaintenanceRunner
 import { LinearApi } from "./linear/LinearApi.ts";
 import { LinearAuth } from "./linear/LinearAuth.ts";
 import { LinearThreadLinks } from "./linear/LinearThreadLinks.ts";
+import { GranolaApi } from "./granola/GranolaApi.ts";
+import { GranolaAuth } from "./granola/GranolaAuth.ts";
+import { GranolaThreadLinks } from "./granola/GranolaThreadLinks.ts";
 import { NotionApi } from "./notion/NotionApi.ts";
 import { NotionAuth } from "./notion/NotionAuth.ts";
 import { SlackApi } from "./slack/SlackApi.ts";
@@ -1347,6 +1350,9 @@ const layerWsRpc = (
       const notionApi = yield* NotionApi;
       const notionAuth = yield* NotionAuth;
       const notionThreadLinks = yield* NotionThreadLinks;
+      const granolaApi = yield* GranolaApi;
+      const granolaAuth = yield* GranolaAuth;
+      const granolaThreadLinks = yield* GranolaThreadLinks;
       const slackThreadLinks = yield* SlackThreadLinks;
       const githubIssues = yield* GitHubIssues;
       const githubIssueThreadLinks = yield* GitHubIssueThreadLinks;
@@ -2751,6 +2757,17 @@ const layerWsRpc = (
         [WS_METHODS.notionLinkThread]: (input) => notionThreadLinks.link(input),
         [WS_METHODS.notionUnlinkThread]: (input) =>
           notionThreadLinks.unlink(input).pipe(Effect.as({})),
+        [WS_METHODS.granolaSubscribeState]: (_input) => granolaAuth.state,
+        [WS_METHODS.granolaStartLogin]: (_input) => granolaAuth.startLogin,
+        [WS_METHODS.granolaCancelLogin]: (input) => granolaAuth.cancelLogin(input),
+        [WS_METHODS.granolaDisconnect]: (_input) => granolaAuth.disconnect,
+        [WS_METHODS.granolaSearchNotes]: (input) => granolaApi.searchNotes(input),
+        [WS_METHODS.granolaGetNote]: (input) => granolaApi.getNote(input),
+        [WS_METHODS.granolaGetNoteSummary]: (input) => granolaApi.getNoteSummary(input),
+        [WS_METHODS.granolaSubscribeThreadLinks]: (_input) => granolaThreadLinks.links,
+        [WS_METHODS.granolaLinkThread]: (input) => granolaThreadLinks.link(input),
+        [WS_METHODS.granolaUnlinkThread]: (input) =>
+          granolaThreadLinks.unlink(input).pipe(Effect.as({})),
         [WS_METHODS.slackSubscribeState]: (_input) => slackAuth.state,
         [WS_METHODS.slackStartLogin]: (input) => slackAuth.startLogin(input),
         [WS_METHODS.slackCompleteLogin]: (input) => slackAuth.completeLogin(input),

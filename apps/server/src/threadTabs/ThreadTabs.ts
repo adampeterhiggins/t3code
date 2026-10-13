@@ -27,6 +27,7 @@ import { modelSelectionsEqual } from "@t3tools/shared/model";
 import { GitHubIssueThreadLinks } from "../githubIssues/GitHubIssueThreadLinks.ts";
 import { LinearThreadLinks } from "../linear/LinearThreadLinks.ts";
 import { NotionThreadLinks } from "../notion/NotionThreadLinks.ts";
+import { GranolaThreadLinks } from "../granola/GranolaThreadLinks.ts";
 import { SlackThreadLinks } from "../slack/SlackThreadLinks.ts";
 import { ThreadManagementService } from "../orchestration-v2/ThreadManagementService.ts";
 import { THREAD_HISTORY_SNAPSHOT_ROW_LIMIT } from "../orchestration-v2/threadHistoryPaging.ts";
@@ -131,6 +132,7 @@ export const make = Effect.gen(function* () {
   const githubIssueThreadLinks = yield* GitHubIssueThreadLinks;
   const slackThreadLinks = yield* SlackThreadLinks;
   const notionThreadLinks = yield* NotionThreadLinks;
+  const granolaThreadLinks = yield* GranolaThreadLinks;
   // Every link kind follows tab-group membership, so each re-reads after the group changes.
   const refreshLinks = Effect.all(
     [
@@ -138,6 +140,7 @@ export const make = Effect.gen(function* () {
       githubIssueThreadLinks.refresh,
       slackThreadLinks.refresh,
       notionThreadLinks.refresh,
+      granolaThreadLinks.refresh,
     ],
     { discard: true },
   );

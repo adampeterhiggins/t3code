@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./filterFacets": {
+      "types": "./src/filterFacets.ts",
+      "import": "./src/filterFacets.ts"
+    },
     "./githubMarkdownLinks": {
       "types": "./src/githubMarkdownLinks.ts",
       "import": "./src/githubMarkdownLinks.ts"

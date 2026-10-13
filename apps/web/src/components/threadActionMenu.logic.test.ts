@@ -169,15 +169,20 @@ describe("buildThreadActionMenuItems", () => {
     expect(items[copyIndex + 4]?.id).toBe("archive");
   });
 
-  it("offers linking Slack and Notion only where the integration is on", () => {
+  it("offers linking Slack, Notion, and Granola only where the integration is on", () => {
     expect(ids(baseState)).not.toContain("link-slack-thread");
     expect(ids(baseState)).not.toContain("link-notion-page");
-    const linkIds = ids({ ...baseState, integrations: { slack: true, notion: true } });
+    expect(ids(baseState)).not.toContain("link-granola-note");
+    const linkIds = ids({
+      ...baseState,
+      integrations: { slack: true, notion: true, granola: true },
+    });
     const linearIndex = linkIds.indexOf("link-linear-issue");
-    expect(linkIds.slice(linearIndex, linearIndex + 3)).toEqual([
+    expect(linkIds.slice(linearIndex, linearIndex + 4)).toEqual([
       "link-linear-issue",
       "link-slack-thread",
       "link-notion-page",
+      "link-granola-note",
     ]);
   });
 
@@ -199,7 +204,7 @@ describe("buildThreadActionMenuItems", () => {
       ...baseState,
       canOperate: false,
       canLinkGitHubIssue: true,
-      integrations: { slack: true, notion: true },
+      integrations: { slack: true, notion: true, granola: true },
     });
     const links = items.filter((item) => item.id.startsWith("link-"));
     expect(links.map((item) => item.id)).toEqual([
@@ -207,6 +212,7 @@ describe("buildThreadActionMenuItems", () => {
       "link-github-issue",
       "link-slack-thread",
       "link-notion-page",
+      "link-granola-note",
     ]);
     expect(links.every((item) => item.disabled)).toBe(true);
   });

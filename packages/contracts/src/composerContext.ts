@@ -11,6 +11,7 @@ import {
 import { ContextRepositoryDirectoryName, ContextRepositoryOutcome } from "./contextRepositories.ts";
 import { GITHUB_ISSUE_MARKDOWN_MAX_CHARS } from "./githubIssues.ts";
 import { LINEAR_ISSUE_MARKDOWN_MAX_CHARS } from "./linear.ts";
+import { GRANOLA_NOTE_MARKDOWN_MAX_CHARS } from "./granola.ts";
 import { NOTION_PAGE_MARKDOWN_MAX_CHARS } from "./notion.ts";
 import { SLACK_THREAD_MARKDOWN_MAX_CHARS } from "./slack.ts";
 
@@ -38,6 +39,7 @@ export const COMPOSER_CONTEXT_KINDS = [
   "repository",
   "slack-thread",
   "notion-page",
+  "granola-note",
   "thread",
   "subagent",
 ] as const;
@@ -408,6 +410,18 @@ export const NotionPageContextRecord = Schema.Struct({
 });
 export type NotionPageContextRecord = typeof NotionPageContextRecord.Type;
 
+export const GranolaNoteContextRecord = Schema.Struct({
+  ...recordBase,
+  kind: Schema.Literal("granola-note"),
+  noteId: TrimmedNonEmptyString.check(Schema.isMaxLength(128)),
+  title: ShortString,
+  url: ShortString,
+  meetingAt: Schema.NullOr(ShortString),
+  participants: ShortString,
+  markdown: BoundedString(GRANOLA_NOTE_MARKDOWN_MAX_CHARS),
+});
+export type GranolaNoteContextRecord = typeof GranolaNoteContextRecord.Type;
+
 export const KnownComposerContextRecord = Schema.Union([
   ImageContextRecord,
   FileContextRecord,
@@ -423,6 +437,7 @@ export const KnownComposerContextRecord = Schema.Union([
   RepositoryContextRecord,
   SlackThreadContextRecord,
   NotionPageContextRecord,
+  GranolaNoteContextRecord,
   ThreadContextRecord,
   SubagentContextRecord,
 ]);

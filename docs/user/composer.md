@@ -52,7 +52,8 @@ See [images and videos](#images-and-videos-in-messages) for previewing and savin
 The paperclip also attaches a GitHub issue (see
 [Attach a GitHub issue](./source-control.md#attach-a-github-issue)), a Linear issue once you
 connect Linear (see [Linear](./linear.md)), and a Slack message or thread once you connect Slack
-(see [Slack](./slack.md)), and a Notion page once you connect Notion (see [Notion](./notion.md)).
+(see [Slack](./slack.md)), a Notion page once you connect Notion (see [Notion](./notion.md)),
+and a Granola meeting note once you connect Granola (see [Granola](./granola.md)).
 
 ## Send while the agent is working
 
@@ -296,7 +297,7 @@ Linear issues, `#owner/repo` opens repositories, and an empty `#` opens the tab 
 Items you inserted recently are listed first and match as you type, without waiting for a search.
 
 On web and desktop, pasting or typing a link to a Linear issue, a GitHub issue, a pull request, a
-GitHub repository, a Notion page, or a Slack message turns the link into the same chip attaching it would make. A typed link
+GitHub repository, a Notion page, a Granola note, or a Slack message turns the link into the same chip attaching it would make. A typed link
 converts when you type a space or new line after it. The chip replaces the link once the item
 loads. A link to one comment on a pull request attaches that comment, with the replies before it
 when it is part of a review thread. In the attach menu's pull request picker, right-click a pull

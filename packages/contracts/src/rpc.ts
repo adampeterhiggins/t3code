@@ -20,6 +20,20 @@ import {
   NotionUnlinkThreadInput,
 } from "./notion.ts";
 import {
+  GranolaCancelLoginInput,
+  GranolaConnectionState,
+  GranolaError,
+  GranolaGetNoteInput,
+  GranolaLinkThreadInput,
+  GranolaNoteContext,
+  GranolaNoteSummary,
+  GranolaThreadLink,
+  GranolaThreadLinks,
+  GranolaUnlinkThreadInput,
+  GranolaSearchNotesInput,
+  GranolaSearchNotesResult,
+} from "./granola.ts";
+import {
   McpAppCallToolInput,
   McpAppCallToolResult,
   McpAppReadResourceInput,
@@ -693,6 +707,16 @@ export const WS_METHODS = {
   notionSubscribeThreadLinks: "notion.subscribeThreadLinks",
   notionLinkThread: "notion.linkThread",
   notionUnlinkThread: "notion.unlinkThread",
+  granolaSubscribeState: "granola.subscribeState",
+  granolaStartLogin: "granola.startLogin",
+  granolaCancelLogin: "granola.cancelLogin",
+  granolaDisconnect: "granola.disconnect",
+  granolaSearchNotes: "granola.searchNotes",
+  granolaGetNote: "granola.getNote",
+  granolaGetNoteSummary: "granola.getNoteSummary",
+  granolaSubscribeThreadLinks: "granola.subscribeThreadLinks",
+  granolaLinkThread: "granola.linkThread",
+  granolaUnlinkThread: "granola.unlinkThread",
   slackSubscribeState: "slack.subscribeState",
   slackStartLogin: "slack.startLogin",
   slackCompleteLogin: "slack.completeLogin",
@@ -1070,6 +1094,61 @@ const WsNotionUnlinkThreadRpc = Rpc.make(WS_METHODS.notionUnlinkThread, {
   payload: NotionUnlinkThreadInput,
   success: Schema.Struct({}),
   error: NotionRpcError,
+});
+
+const GranolaRpcError = Schema.Union([GranolaError, EnvironmentAuthorizationError]);
+const WsGranolaSubscribeStateRpc = Rpc.make(WS_METHODS.granolaSubscribeState, {
+  payload: Schema.Struct({}),
+  success: GranolaConnectionState,
+  error: GranolaRpcError,
+  stream: true,
+});
+const WsGranolaStartLoginRpc = Rpc.make(WS_METHODS.granolaStartLogin, {
+  payload: Schema.Struct({}),
+  success: GranolaConnectionState,
+  error: GranolaRpcError,
+});
+const WsGranolaCancelLoginRpc = Rpc.make(WS_METHODS.granolaCancelLogin, {
+  payload: GranolaCancelLoginInput,
+  success: GranolaConnectionState,
+  error: GranolaRpcError,
+});
+const WsGranolaDisconnectRpc = Rpc.make(WS_METHODS.granolaDisconnect, {
+  payload: Schema.Struct({}),
+  success: GranolaConnectionState,
+  error: GranolaRpcError,
+});
+const WsGranolaSearchNotesRpc = Rpc.make(WS_METHODS.granolaSearchNotes, {
+  payload: GranolaSearchNotesInput,
+  success: GranolaSearchNotesResult,
+  error: GranolaRpcError,
+});
+const WsGranolaGetNoteRpc = Rpc.make(WS_METHODS.granolaGetNote, {
+  payload: GranolaGetNoteInput,
+  success: GranolaNoteContext,
+  error: GranolaRpcError,
+});
+/** A note's title and meeting, for naming a bare note link; the server keeps each one it reads. */
+const WsGranolaGetNoteSummaryRpc = Rpc.make(WS_METHODS.granolaGetNoteSummary, {
+  payload: GranolaGetNoteInput,
+  success: GranolaNoteSummary,
+  error: GranolaRpcError,
+});
+const WsGranolaSubscribeThreadLinksRpc = Rpc.make(WS_METHODS.granolaSubscribeThreadLinks, {
+  payload: Schema.Struct({}),
+  success: GranolaThreadLinks,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+const WsGranolaLinkThreadRpc = Rpc.make(WS_METHODS.granolaLinkThread, {
+  payload: GranolaLinkThreadInput,
+  success: GranolaThreadLink,
+  error: GranolaRpcError,
+});
+const WsGranolaUnlinkThreadRpc = Rpc.make(WS_METHODS.granolaUnlinkThread, {
+  payload: GranolaUnlinkThreadInput,
+  success: Schema.Struct({}),
+  error: GranolaRpcError,
 });
 
 const SlackRpcError = Schema.Union([SlackError, EnvironmentAuthorizationError]);
@@ -2474,6 +2553,16 @@ export const WsRpcGroup = RpcGroup.make(
   WsNotionSubscribeThreadLinksRpc,
   WsNotionLinkThreadRpc,
   WsNotionUnlinkThreadRpc,
+  WsGranolaSubscribeStateRpc,
+  WsGranolaStartLoginRpc,
+  WsGranolaCancelLoginRpc,
+  WsGranolaDisconnectRpc,
+  WsGranolaSearchNotesRpc,
+  WsGranolaGetNoteRpc,
+  WsGranolaGetNoteSummaryRpc,
+  WsGranolaSubscribeThreadLinksRpc,
+  WsGranolaLinkThreadRpc,
+  WsGranolaUnlinkThreadRpc,
   WsSlackSubscribeStateRpc,
   WsSlackStartLoginRpc,
   WsSlackCompleteLoginRpc,

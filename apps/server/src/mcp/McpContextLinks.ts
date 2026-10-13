@@ -1,6 +1,7 @@
 import {
   type ComposerContextRecord,
   GitHubGetIssueInput,
+  GranolaGetNoteInput,
   LinearGetIssueInput,
   NotionGetPageInput,
   type OrchestrationMessageContext,
@@ -15,6 +16,7 @@ import {
 } from "@t3tools/shared/composerObjectLinks";
 import {
   gitHubIssueContextRecord,
+  granolaNoteContextRecord,
   linearIssueContextRecord,
   notionPageContextRecord,
   repositoryContextRecord,
@@ -26,6 +28,7 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 
 import * as GitHubIssues from "../githubIssues/GitHubIssues.ts";
+import * as GranolaApi from "../granola/GranolaApi.ts";
 import * as LinearApi from "../linear/LinearApi.ts";
 import * as NotionApi from "../notion/NotionApi.ts";
 import * as ServerSettings from "../serverSettings.ts";
@@ -54,6 +57,7 @@ export class McpContextLinks extends Context.Service<
 const decodeLinearGetIssueInput = Schema.decodeUnknownEffect(LinearGetIssueInput);
 const decodeGitHubGetIssueInput = Schema.decodeUnknownEffect(GitHubGetIssueInput);
 const decodeNotionGetPageInput = Schema.decodeUnknownEffect(NotionGetPageInput);
+const decodeGranolaGetNoteInput = Schema.decodeUnknownEffect(GranolaGetNoteInput);
 const decodeSlackGetThreadInput = Schema.decodeUnknownEffect(SlackGetThreadInput);
 
 const invalid = (message: string) =>
@@ -65,11 +69,14 @@ const unreadable = (url: string) => (error: { readonly message: string }) =>
 export const make = Effect.gen(function* () {
   const linear = yield* LinearApi.LinearApi;
   const notion = yield* NotionApi.NotionApi;
+  const granola = yield* GranolaApi.GranolaApi;
   const slack = yield* SlackApi.SlackApi;
   const gitHubIssues = yield* GitHubIssues.GitHubIssues;
   const settings = yield* ServerSettings.ServerSettingsService;
 
-  const integrationEnabled = (key: "enableSlackIntegration" | "enableNotionIntegration") =>
+  const integrationEnabled = (
+    key: "enableSlackIntegration" | "enableNotionIntegration" | "enableGranolaIntegration",
+  ) =>
     settings.getSettings.pipe(
       Effect.map((current) => current[key]),
       Effect.orElseSucceed(() => true),
@@ -119,6 +126,18 @@ export const make = Effect.gen(function* () {
             );
           return notionPageContextRecord(page);
         });
+      case "granola-note":
+        return Effect.gen(function* () {
+          if (!(yield* integrationEnabled("enableGranolaIntegration")))
+            return yield* invalid(
+              `Could not attach ${url}: the Granola integration is turned off in Settings → Integrations.`,
+            );
+          const input = yield* decodeGranolaGetNoteInput({ id: link.noteId }).pipe(
+            Effect.mapError(malformed(url)),
+          );
+          const note = yield* granola.getNote(input).pipe(Effect.mapError(unreadable(url)));
+          return granolaNoteContextRecord(note);
+        });
       case "slack-message":
         return Effect.gen(function* () {
           if (!(yield* integrationEnabled("enableSlackIntegration")))
@@ -155,7 +174,7 @@ export const make = Effect.gen(function* () {
         return link === null
           ? Effect.fail(
               invalid(
-                `${url} is not a link T3 Code can attach. Use a Slack message, Notion page, Linear issue, GitHub issue, or GitHub repository link.`,
+                `${url} is not a link T3 Code can attach. Use a Slack message, Notion page, Granola note, Linear issue, GitHub issue, or GitHub repository link.`,
               ),
             )
           : Effect.succeed(link);
@@ -186,6 +205,7 @@ export const layer: Layer.Layer<
   never,
   | LinearApi.LinearApi
   | NotionApi.NotionApi
+  | GranolaApi.GranolaApi
   | SlackApi.SlackApi
   | GitHubIssues.GitHubIssues
   | ServerSettings.ServerSettingsService

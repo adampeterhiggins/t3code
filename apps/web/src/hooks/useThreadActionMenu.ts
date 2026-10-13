@@ -29,6 +29,7 @@ import { isGitHubProject } from "@t3tools/client-runtime/state/github-issues";
 import { openGitHubIssuePicker } from "../components/chat/GitHubIssuePicker";
 import { openLinearIssuePicker } from "../components/chat/LinearIssuePicker";
 import { openNotionPagePicker } from "../components/chat/NotionPagePicker";
+import { openGranolaNotePicker } from "../components/chat/GranolaNotePicker";
 import { openSlackMessagePicker } from "../components/chat/SlackMessagePicker";
 import { openTranscriptExportDialog } from "../components/TranscriptExportDialog";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
@@ -360,6 +361,9 @@ export function useThreadActionMenu(input: {
             return;
           case "link-notion-page":
             openNotionPagePicker(threadRef, "link");
+            return;
+          case "link-granola-note":
+            openGranolaNotePicker(threadRef, "link");
             return;
           case "link-github-issue":
             openGitHubIssuePicker(threadRef, "link");
