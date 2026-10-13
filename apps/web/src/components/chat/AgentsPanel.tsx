@@ -23,6 +23,7 @@ import {
   type AgentFleetEntry,
 } from "@t3tools/client-runtime/state/agent-fleet";
 import {
+  agentListStatusCounts,
   isAgentListViewFiltered,
   type AgentStatusFilter,
 } from "@t3tools/client-runtime/state/agent-list-view";
@@ -228,6 +229,14 @@ function AgentFleetList(props: AgentsPanelProps) {
     [fleet, threadRef.threadId, view],
   );
   const summary = useMemo(() => summarizeAgentFleet(fleet), [fleet]);
+  const statusCounts = useMemo(
+    () =>
+      agentListStatusCounts(
+        fleet.map((entry) => entry.subject),
+        view,
+      ),
+    [fleet, view],
+  );
   const filtered = isAgentListViewFiltered(view);
   const visibleRows = rows.slice(0, visibleCount);
   const hiddenCount = rows.length - visibleRows.length;
@@ -277,7 +286,7 @@ function AgentFleetList(props: AgentsPanelProps) {
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center gap-1 px-2 pt-2">
         <div className="min-w-0 flex-1">
-          <AgentListToolbar view={view} onChange={setView} />
+          <AgentListToolbar view={view} statusCounts={statusCounts} onChange={setView} />
         </div>
         <div className="flex items-center pb-1">
           <RowDetailsToggle />

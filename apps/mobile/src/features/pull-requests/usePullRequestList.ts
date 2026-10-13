@@ -45,6 +45,29 @@ const sourcesFamily = Atom.family((key: string) => {
   );
 });
 
+const headsFamily = Atom.family((key: string) => {
+  const targets: readonly ListTarget[] = JSON.parse(key);
+  return Atom.make((get) =>
+    targets.flatMap((target) => {
+      const head = Option.getOrNull(AsyncResult.value(get(composerPullRequests.list(target))));
+      return (head?.entries ?? []).map((entry) => ({
+        ...entry,
+        environmentId: target.environmentId,
+      }));
+    }),
+  );
+});
+
+/**
+ * The first page of each target and nothing more: no paging and no line counts. For rows the
+ * filter menus count from, beside the list the screen shows.
+ */
+export function usePullRequestListHeads(
+  targets: readonly ListTarget[],
+): readonly EnvironmentPullRequestListEntry[] {
+  return useAtomValue(headsFamily(JSON.stringify(targets)));
+}
+
 export function usePullRequestList(targets: readonly ListTarget[]) {
   const registry = use(RegistryContext);
   const scopeKey = JSON.stringify(targets);

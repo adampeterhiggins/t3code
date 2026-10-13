@@ -652,3 +652,29 @@ export function createPullRequestEnvironmentAtoms<R, E>(
     }),
   };
 }
+
+/** Fan out exact composer lookups, keeping successful repositories when another fails. */
+export function createComposerPullRequestLookupAtomFamily<A, E>(
+  detail: (target: {
+    readonly environmentId: EnvironmentId;
+    readonly input: PullRequestRef;
+  }) => Atom.Atom<AsyncResult.AsyncResult<A, E>>,
+) {
+  return Atom.family((key: string) =>
+    Atom.make((get) => {
+      const targets = JSON.parse(key) as ReadonlyArray<{
+        environmentId: EnvironmentId;
+        input: PullRequestRef;
+      }>;
+      const entries: A[] = [];
+      let isPending = false;
+      for (const target of targets) {
+        const result = get(detail(target));
+        isPending ||= result.waiting;
+        const value = Option.getOrNull(AsyncResult.value(result));
+        if (value !== null) entries.push(value);
+      }
+      return { entries, isPending };
+    }).pipe(Atom.setIdleTTL(60_000)),
+  );
+}

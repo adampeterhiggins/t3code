@@ -6,6 +6,7 @@ import type {
 import { turnItemIsWorkspacePreparation } from "@t3tools/client-runtime/state/turn-item-presentation";
 import { formatSubagentDisplayTitle } from "@t3tools/client-runtime/state/subagent-display";
 import { isLiveSubagentTurnItem } from "@t3tools/client-runtime/state/subagentRuntime";
+import { describeModelSelection } from "@t3tools/shared/modelChangeMarker";
 import { extractToolActivityPresentation } from "@t3tools/client-runtime/work-log/tool-presentation";
 import {
   fileChangeDiffWithheld,
@@ -722,7 +723,7 @@ function itemPreview(item: OrchestrationV2TurnItem): string | null {
     case "handoff":
       return item.summary ?? null;
     case "model_change":
-      return `${item.from.model} → ${item.to.model}`;
+      return `${describeModelSelection(item.from)} → ${describeModelSelection(item.to)}`;
     case "fork":
     case "thread_created":
       return item.targetThreadId;

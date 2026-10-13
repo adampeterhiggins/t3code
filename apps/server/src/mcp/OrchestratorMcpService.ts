@@ -63,6 +63,7 @@ import {
   ThreadId,
 } from "@t3tools/contracts";
 import { runRanAfter } from "@t3tools/shared/orchestrationV2ThreadError";
+import { describeModelSelection } from "@t3tools/shared/modelChangeMarker";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
@@ -891,7 +892,7 @@ function turnItemText(item: OrchestrationV2TurnItem): string | null {
     case "handoff":
       return item.summary ?? `${item.strategy} handoff to ${item.toProviderInstanceId}`;
     case "model_change":
-      return `Model changed from ${item.from.model} to ${item.to.model}.`;
+      return `Model changed from ${describeModelSelection(item.from)} to ${describeModelSelection(item.to)}.`;
     case "fork":
       return `Forked to thread ${item.targetThreadId}.`;
     case "thread_created":

@@ -2,6 +2,7 @@
  * Fork: presentation over orchestration-v2 subagents, shared by every client.
  *
  * - The user's view of a thread's agents list: status filter, search, sort.
+ *   Filter menus count each choice under the search and the other filters (`filterFacets`).
  *   Spawn order is the default, and no sort moves a row while it works.
  * - A subagent's tool calls, read from its child thread's turn items, for the
  *   compact rows' latest call and the agent tab's searchable log.
@@ -11,6 +12,12 @@ import type { OrchestrationV2TurnItem, TurnItemId } from "@t3tools/contracts";
 import { isWindowsAbsolutePath } from "@t3tools/shared/path";
 import * as DateTime from "effect/DateTime";
 import { copySorted } from "@t3tools/shared/Array";
+import {
+  applyFilterDimensions,
+  type FacetChoice,
+  type FilterDimension,
+  filterFacets,
+} from "@t3tools/shared/filterFacets";
 import {
   classifyToolActivity,
   collectToolFilePaths,
@@ -110,6 +117,32 @@ export function matchesAgentListView(subject: AgentListSubject, view: AgentListV
       (value) => value !== null && value.toLocaleLowerCase().includes(query),
     )
   );
+}
+
+function facetCounts<Value extends string>(
+  choices: ReadonlyArray<FacetChoice>,
+): ReadonlyMap<Value, number> {
+  return new Map(choices.map((choice) => [choice.value as Value, choice.count]));
+}
+
+/**
+ * How many agents each status filter would show under the search. A picked status no agent
+ * matches stays at 0, so it can be unpicked; other statuses without agents are absent.
+ */
+export function agentListStatusCounts(
+  subjects: ReadonlyArray<AgentListSubject>,
+  view: AgentListView,
+): ReadonlyMap<AgentStatusFilter, number> {
+  const searched = subjects.filter((subject) =>
+    matchesAgentListView(subject, { ...view, statuses: [] }),
+  );
+  const facets = filterFacets(searched, {
+    statuses: {
+      values: (subject: AgentListSubject) => [agentStatusFilterFor(subject.status)],
+      selected: view.statuses,
+    },
+  });
+  return facetCounts<AgentStatusFilter>(facets.statuses);
 }
 
 /**
@@ -584,17 +617,55 @@ function durationMs(call: SubagentToolCall): number {
   return started === null ? 0 : completed - started;
 }
 
+function searchSubagentToolCalls(
+  calls: ReadonlyArray<SubagentToolCall>,
+  query: string,
+): ReadonlyArray<SubagentToolCall> {
+  const needle = query.trim().toLocaleLowerCase();
+  return needle.length === 0
+    ? calls
+    : calls.filter((call) => subagentToolCallText(call).toLocaleLowerCase().includes(needle));
+}
+
+function toolCallDimensions(view: SubagentToolCallView) {
+  return {
+    statuses: {
+      values: (call: SubagentToolCall) => [call.status],
+      selected: view.statuses,
+    },
+    kinds: {
+      values: (call: SubagentToolCall) => [call.kind],
+      selected: view.kinds,
+    },
+  } satisfies Record<string, FilterDimension<SubagentToolCall>>;
+}
+
+/**
+ * How many calls each status and kind would show under the search and the other filter. A picked
+ * value nothing matches stays at 0, so it can be unpicked; other values without calls are absent.
+ */
+export function subagentToolCallFacets(
+  calls: ReadonlyArray<SubagentToolCall>,
+  view: SubagentToolCallView,
+): {
+  readonly statuses: ReadonlyMap<SubagentToolCall["status"], number>;
+  readonly kinds: ReadonlyMap<SubagentToolKind, number>;
+} {
+  const facets = filterFacets(searchSubagentToolCalls(calls, view.query), toolCallDimensions(view));
+  return {
+    statuses: facetCounts<SubagentToolCall["status"]>(facets.statuses),
+    kinds: facetCounts<SubagentToolKind>(facets.kinds),
+  };
+}
+
 /** Filters, searches and sorts the log. Input is oldest first, as derived. */
 export function applySubagentToolCallView(
   calls: ReadonlyArray<SubagentToolCall>,
   view: SubagentToolCallView,
 ): ReadonlyArray<SubagentToolCall> {
-  const query = view.query.trim().toLocaleLowerCase();
-  const visible = calls.filter(
-    (call) =>
-      (view.statuses.length === 0 || view.statuses.includes(call.status)) &&
-      (view.kinds.length === 0 || view.kinds.includes(call.kind)) &&
-      (query.length === 0 || subagentToolCallText(call).toLocaleLowerCase().includes(query)),
+  const visible = applyFilterDimensions(
+    searchSubagentToolCalls(calls, view.query),
+    toolCallDimensions(view),
   );
   switch (view.sort) {
     case "oldest":

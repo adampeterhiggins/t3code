@@ -32,6 +32,7 @@ export interface SidebarThreadHeaderProps {
   searchInputRef: RefObject<HTMLInputElement | null>;
   searchQuery: string;
   onSearchQueryChange: (value: string) => void;
+  onSearchFocus: () => void;
   onSearchKeyDown: (event: ReactKeyboardEvent<HTMLInputElement>) => void;
   isSearching: boolean;
   searchResultCount: number;
@@ -55,6 +56,7 @@ export function SidebarThreadHeader({
   searchInputRef,
   searchQuery,
   onSearchQueryChange,
+  onSearchFocus,
   onSearchKeyDown,
   isSearching,
   searchResultCount,
@@ -82,6 +84,7 @@ export function SidebarThreadHeader({
           type="search"
           value={searchQuery}
           onChange={(event) => onSearchQueryChange(event.currentTarget.value)}
+          onFocus={onSearchFocus}
           onKeyDown={onSearchKeyDown}
           placeholder="Search"
           aria-label="Search threads"

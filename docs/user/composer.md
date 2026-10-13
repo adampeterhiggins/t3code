@@ -303,7 +303,9 @@ merged, or closed when it was attached. Select it to inspect the captured title 
 then choose **Open pull request** to visit the pull request. On web and desktop, type `#` to browse the newest
 pull requests in the current project's repository. Continue typing digits to filter the recent list
 by any part of its pull request numbers. A complete number is also resolved directly, even when that
-pull request is older than the recent list. Type a single word after `#` to search pull requests in
+pull request is older than the recent list. On web, desktop, and mobile, numeric lookup also
+checks repositories attached to the thread and repositories with a linked pull request. The
+suggestions name the repository so matching numbers remain easy to tell apart. Type a single word after `#` to search pull requests in
 the repository by text. Choose a result to insert it as a chip. To attach several at once, `Cmd`-click
 (`Ctrl`-click on Windows and Linux) each one, across any of the `#` menu's tabs, then press `Enter`.
 

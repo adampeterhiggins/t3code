@@ -346,7 +346,7 @@ describe("mobile PR scan and filters", () => {
     expect(pick(new Set(["laptop", "server"]))).toEqual(["laptop"]);
     expect(pick(new Set())).toEqual(["laptop"]);
   });
-  it("sorts loaded rows and builds unique author and label options", () => {
+  it("sorts loaded rows", () => {
     const rows = [
       entry(1, { labels: [{ name: "bug", color: null }] }),
       entry(2, {
@@ -365,11 +365,61 @@ describe("mobile PR scan and filters", () => {
         new Set(),
       ).map((row) => row.number),
     ).toEqual([1, 2]);
-    expect(pullRequestListFacets(rows)).toEqual({
-      authors: ["octocat"],
-      labels: ["bug", "feature"],
-    });
     expect(pullRequestLabelColor("ffab00")).toBe("#ffab00");
     expect(pullRequestLabelColor("not-a-color")).toBeNull();
+  });
+});
+
+describe("pull request list facets", () => {
+  const bug = { name: "bug", color: null };
+  const docs = { name: "docs", color: null };
+  const ada = { login: "ada", name: null, avatarUrl: null };
+  const rows = [
+    entry(1, { author: ada, labels: [bug] }),
+    entry(2, { author: ada, labels: [docs], isDraft: true }),
+    entry(3, { labels: [bug, docs], state: "merged" }),
+    entry(4, { labels: [bug], viewerReviewRequested: true }),
+  ];
+  const facets = (controls: Partial<typeof DEFAULT_PR_LIST_CONTROLS>, entries = rows) =>
+    pullRequestListFacets(
+      entries,
+      { ...DEFAULT_PR_LIST_CONTROLS, ...controls },
+      { "github.com": "octocat" },
+      "",
+      new Set(),
+    );
+  const byValue = (choices: readonly { value: string; count: number }[]) =>
+    Object.fromEntries(choices.map((choice) => [choice.value, choice.count]));
+
+  it("counts each menu under the other filters but never its own", () => {
+    const result = facets({ filters: { labels: [["bug"]], author: "ada" } });
+    expect(byValue(result.labels)).toEqual({ bug: 1, docs: 1 });
+    expect(byValue(result.authors)).toEqual({ ada: 1, octocat: 1 });
+    expect(facets({ filters: { labels: [["bug"]] } }).state).toMatchObject({
+      all: 3,
+      open: 2,
+      merged: 1,
+    });
+  });
+
+  it("keeps a picked value the other filters exclude, at zero", () => {
+    const result = facets({ filters: { labels: [["docs"]], draft: "hide" } });
+    expect(byValue(result.labels)).toMatchObject({ docs: 0 });
+    expect(byValue(facets({ filters: { author: "grace" } }).authors)).toMatchObject({ grace: 0 });
+  });
+
+  it("counts the fixed menus and the involvement the viewer has", () => {
+    const result = facets({});
+    expect(result.loaded).toBe(4);
+    expect(result.draft).toMatchObject({ all: 3, only: 1, hide: 2 });
+    expect(result.involvement).toMatchObject({ all: 3, reviewing: 1, authored: 1 });
+    // `me` narrows the other menus but is no login of its own to list.
+    const mine = facets({ filters: { author: "me" } });
+    expect(byValue(mine.authors)).toEqual({ ada: 2, octocat: 1 });
+    expect(byValue(mine.labels)).toEqual({ bug: 1 });
+  });
+
+  it("counts a row read by both the list and the broad page once", () => {
+    expect(facets({}, [...rows, ...rows]).loaded).toBe(4);
   });
 });

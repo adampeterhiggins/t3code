@@ -8,11 +8,20 @@ import type { ThreadListOrganisation } from "./thread-list-organisations";
 export interface HomeListFilterMenuEnvironment {
   readonly environmentId: EnvironmentId;
   readonly label: string;
+  /** Threads picking it would show under the other filters; see buildThreadListFilterFacets. */
+  readonly count?: number;
 }
 
 export interface HomeListFilterMenuProject {
   readonly key: string;
   readonly label: string;
+  readonly count?: number;
+}
+
+/** A filter choice's menu title, with how many threads picking it would show. Native menus
+    have no trailing column on every platform, so the count follows the label. */
+export function filterChoiceTitle(label: string, count: number | undefined): string {
+  return count === undefined ? label : `${label} (${count})`;
 }
 
 type HomeListFilterMenuAction = {
@@ -45,6 +54,8 @@ export function buildHomeListFilterMenu(props: {
   /** Pages offered in the Show submenu, from availableThreadListPages. */
   readonly availablePages: ReadonlyArray<ThreadListPage>;
   readonly onTogglePage: (page: ThreadListPage) => void;
+  /** Threads each page would show under the other filters. */
+  readonly pageCounts?: ReadonlyMap<ThreadListPage, number>;
   /** Registered groups, for the emoji prefix on group pages. */
   readonly groups?: ThreadGroups;
   /** Adds "New group…" to Show; omitted when no environment supports groups. */
@@ -70,7 +81,7 @@ export function buildHomeListFilterMenu(props: {
       },
       ...props.environments.map((environment) => ({
         type: "action" as const,
-        title: environment.label,
+        title: filterChoiceTitle(environment.label, environment.count),
         state:
           props.selectedEnvironmentId === environment.environmentId
             ? ("on" as const)
@@ -94,7 +105,7 @@ export function buildHomeListFilterMenu(props: {
         },
         ...props.organisations.map((organisation) => ({
           type: "action" as const,
-          title: organisation.label,
+          title: filterChoiceTitle(organisation.label, organisation.count),
           state: props.organisationKeys.includes(organisation.key)
             ? ("on" as const)
             : ("off" as const),
@@ -118,7 +129,7 @@ export function buildHomeListFilterMenu(props: {
         },
         ...props.projects.map((project) => ({
           type: "action" as const,
-          title: project.label,
+          title: filterChoiceTitle(project.label, project.count),
           state: props.selectedProjectKey === project.key ? ("on" as const) : ("off" as const),
           onPress: () => props.onProjectChange(project.key),
         })),
@@ -133,7 +144,10 @@ export function buildHomeListFilterMenu(props: {
     items: [
       ...props.availablePages.map((page) => ({
         type: "action" as const,
-        title: threadListPageLabel(page, props.groups),
+        title: filterChoiceTitle(
+          threadListPageLabel(page, props.groups),
+          props.pageCounts?.get(page),
+        ),
         state: props.pages.includes(page) ? ("on" as const) : ("off" as const),
         onPress: () => props.onTogglePage(page),
       })),

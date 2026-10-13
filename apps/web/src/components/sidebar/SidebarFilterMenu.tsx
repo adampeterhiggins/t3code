@@ -7,7 +7,9 @@
  * - Organisations: which repository owners the list is scoped to, by each checkout's remote.
  * - Projects: which projects the list is scoped to. None picked means every project.
  *
- * The trigger carries a count of the narrowings off their default, so a narrowed list is never
+ * Each choice shows how many threads picking it would leave under the other two narrowings
+ * (see buildSidebarFilterFacets), and "Only" on a row narrows to just that choice and closes the
+ * menu. The trigger carries a count of the narrowings off their default, so a narrowed list is never
  * a mystery. Hovering it opens a preview of those selections, and SidebarFilterPills lists each
  * one under the header with a way to drop it.
  */
@@ -22,6 +24,7 @@ import {
   ListIcon,
   PlusIcon,
   SettingsIcon,
+  SearchIcon,
   XIcon,
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
@@ -76,6 +79,10 @@ function SidebarPageIcon(props: { page: SidebarPage; groupStyles: ThreadGroups }
   return <Icon aria-hidden className="size-3.5 shrink-0" />;
 }
 
+function ChoiceCount(props: { count: number }) {
+  return <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{props.count}</span>;
+}
+
 /** Rows kept in the hover preview before the rest collapse to a count. */
 const FILTER_PREVIEW_ROW_LIMIT = 8;
 
@@ -85,6 +92,7 @@ function SidebarShowFilter(props: {
   counts: ReadonlyMap<SidebarPage, number>;
   groupStyles: ThreadGroups;
   onPagesChange: (pages: readonly SidebarPage[]) => void;
+  onOnly: (page: SidebarPage) => void;
   onNewGroup: () => void;
 }) {
   const single = props.pages.length === 1 ? props.pages[0]! : null;
@@ -118,13 +126,8 @@ function SidebarShowFilter(props: {
             >
               <span className="flex w-full min-w-0 items-center gap-2">
                 <SidebarPageIcon page={page} groupStyles={props.groupStyles} />
-                <MenuChoiceLabel
-                  label={sidebarPageLabel(page)}
-                  onOnly={() => props.onPagesChange([page])}
-                />
-                <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                  {props.counts.get(page) ?? 0}
-                </span>
+                <MenuChoiceLabel label={sidebarPageLabel(page)} onOnly={() => props.onOnly(page)} />
+                <ChoiceCount count={props.counts.get(page) ?? 0} />
               </span>
             </MenuCheckboxItem>
           );
@@ -143,8 +146,10 @@ function SidebarShowFilter(props: {
 
 function SidebarProjectFilter(props: {
   projects: readonly SidebarProjectSnapshot[];
+  counts: ReadonlyMap<string, number>;
   scopedProjectKeys: readonly string[];
   onScopedProjectKeysChange: (keys: readonly string[]) => void;
+  onOnly: (key: string) => void;
   onProjectSettings: (event: ReactMouseEvent<HTMLElement>, project: SidebarProjectSnapshot) => void;
   projectBadge: (project: SidebarProjectSnapshot) => ReactNode;
 }) {
@@ -205,9 +210,10 @@ function SidebarProjectFilter(props: {
                     <MenuChoiceLabel
                       label={project.displayName}
                       query={query}
-                      onOnly={() => props.onScopedProjectKeysChange([project.projectKey])}
+                      onOnly={() => props.onOnly(project.projectKey)}
                     />
                     {props.projectBadge(project)}
+                    <ChoiceCount count={props.counts.get(project.projectKey) ?? 0} />
                     <Button
                       size="icon-xs"
                       variant="ghost-muted"
@@ -232,8 +238,10 @@ function SidebarProjectFilter(props: {
 
 function SidebarOrganisationFilter(props: {
   organisations: readonly OrganisationOption[];
+  counts: ReadonlyMap<string, number>;
   scopedKeys: readonly string[];
   onScopedKeysChange: (keys: readonly string[]) => void;
+  onOnly: (key: string) => void;
 }) {
   const scoped = new Set(props.scopedKeys);
   const picked = props.organisations.filter((option) => scoped.has(option.key));
@@ -287,8 +295,9 @@ function SidebarOrganisationFilter(props: {
                     <MenuChoiceLabel
                       label={option.label}
                       query={query}
-                      onOnly={() => props.onScopedKeysChange([option.key])}
+                      onOnly={() => props.onOnly(option.key)}
                     />
+                    <ChoiceCount count={props.counts.get(option.key) ?? 0} />
                   </span>
                 </MenuCheckboxItem>
               ))}
@@ -406,9 +415,11 @@ export function SidebarFilterMenu(props: {
   onPagesChange: (pages: readonly SidebarPage[]) => void;
   onNewGroup: () => void;
   organisations: readonly OrganisationOption[];
+  organisationCounts: ReadonlyMap<string, number>;
   scopedOrganisationKeys: readonly string[];
   onScopedOrganisationKeysChange: (keys: readonly string[]) => void;
   projects: readonly SidebarProjectSnapshot[];
+  projectCounts: ReadonlyMap<string, number>;
   scopedProjectKeys: readonly string[];
   onScopedProjectKeysChange: (keys: readonly string[]) => void;
   onProjectSettings: (event: ReactMouseEvent<HTMLElement>, project: SidebarProjectSnapshot) => void;
@@ -433,6 +444,11 @@ export function SidebarFilterMenu(props: {
   const label = activeCount > 0 ? `Filter threads (${summary})` : "Filter threads";
   const menuOpenRef = useRef(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  // "Only" settles the filter, so it also closes the menu.
+  const closeMenu = () => {
+    menuOpenRef.current = false;
+    setMenuOpen(false);
+  };
   const [previewOpen, setPreviewOpen] = useState(false);
   const icon = (
     <span className="relative flex shrink-0">
@@ -496,19 +512,33 @@ export function SidebarFilterMenu(props: {
           groupStyles={props.groupStyles}
           onNewGroup={props.onNewGroup}
           onPagesChange={props.onPagesChange}
+          onOnly={(page) => {
+            props.onPagesChange([page]);
+            closeMenu();
+          }}
         />
         {props.organisations.length > 0 ? (
           <SidebarOrganisationFilter
             organisations={props.organisations}
+            counts={props.organisationCounts}
             scopedKeys={props.scopedOrganisationKeys}
             onScopedKeysChange={props.onScopedOrganisationKeysChange}
+            onOnly={(key) => {
+              props.onScopedOrganisationKeysChange([key]);
+              closeMenu();
+            }}
           />
         ) : null}
         {props.projects.length > 0 ? (
           <SidebarProjectFilter
             projects={props.projects}
+            counts={props.projectCounts}
             scopedProjectKeys={props.scopedProjectKeys}
             onScopedProjectKeysChange={props.onScopedProjectKeysChange}
+            onOnly={(key) => {
+              props.onScopedProjectKeysChange([key]);
+              closeMenu();
+            }}
             onProjectSettings={props.onProjectSettings}
             projectBadge={props.projectBadge}
           />
@@ -540,6 +570,8 @@ function SidebarFilterPill(props: { icon: ReactNode; label: string; onRemove: ()
  * while the list is unfiltered.
  */
 export function SidebarFilterPills(props: {
+  searchQuery: string;
+  onClearSearch: () => void;
   pages: readonly SidebarPage[];
   groupStyles: ThreadGroups;
   onPagesChange: (pages: readonly SidebarPage[]) => void;
@@ -562,11 +594,19 @@ export function SidebarFilterPills(props: {
     const project = projectByKey.get(key);
     return project ? [project] : [];
   });
-  const pillCount = pages.length + organisations.length + projects.length;
+  const searchQuery = props.searchQuery.trim();
+  const pillCount = pages.length + organisations.length + projects.length + (searchQuery ? 1 : 0);
   if (pillCount === 0) return null;
 
   return (
     <div className="flex flex-wrap items-center gap-1 pt-1.5">
+      {searchQuery ? (
+        <SidebarFilterPill
+          icon={<SearchIcon className="size-3.5" />}
+          label={`Search: ${searchQuery}`}
+          onRemove={props.onClearSearch}
+        />
+      ) : null}
       {pages.map((page) => (
         <SidebarFilterPill
           key={page}
@@ -608,6 +648,7 @@ export function SidebarFilterPills(props: {
           type="button"
           className="cursor-pointer px-1.5 text-xs text-sidebar-muted-foreground hover:text-sidebar-foreground"
           onClick={() => {
+            props.onClearSearch();
             props.onPagesChange(["threads"]);
             props.onScopedOrganisationKeysChange([]);
             props.onScopedProjectKeysChange([]);

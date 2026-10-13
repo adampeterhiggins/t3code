@@ -18,6 +18,7 @@ import {
 import { subagentWorkspaceRoot } from "@t3tools/client-runtime/state/agent-list-view";
 
 import {
+  agentTranscriptKindCounts,
   agentTranscriptToolRowIndex,
   applyAgentTranscriptView,
   deriveAgentTranscriptRows,
@@ -209,5 +210,19 @@ describe("applyAgentTranscriptView", () => {
     expect(
       applyAgentTranscriptView(rows, { query: "SESSION", kinds: [] }).map((row) => row.id),
     ).toEqual([thinking.id, edit.id, helper.id, "answer"]);
+  });
+
+  it("counts kinds under the search, keeping a picked kind nothing matches at 0", () => {
+    expect([...agentTranscriptKindCounts(rows, { query: "", kinds: ["tool"] })]).toEqual([
+      ["message", 2],
+      ["tool", 2],
+      ["reasoning", 1],
+    ]);
+    expect([
+      ...agentTranscriptKindCounts(rows, { query: "expires", kinds: ["reasoning"] }),
+    ]).toEqual([
+      ["tool", 1],
+      ["reasoning", 0],
+    ]);
   });
 });

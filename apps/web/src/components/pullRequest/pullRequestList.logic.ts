@@ -1,3 +1,4 @@
+import { type FacetChoice, filterFacets } from "@t3tools/shared/filterFacets";
 import * as Schema from "effect/Schema";
 
 import {
@@ -51,7 +52,6 @@ export interface PullRequestGroup<Entry extends PullRequestListEntry = PullReque
 export interface PullRequestAuthorFacet {
   readonly actor: PullRequestActor;
   readonly count: number;
-  readonly mergedCount: number;
 }
 
 export interface PullRequestLabelFacet extends PullRequestLabel {
@@ -88,51 +88,111 @@ export function pullRequestLabelColor(color: string | null): string | null {
   return /^[0-9a-fA-F]{6}$/.test(hex) ? `#${hex}` : null;
 }
 
+/**
+ * What each pull request filter menu offers and how many loaded rows each choice would show
+ * under every *other* applied filter (see `filterFacets`), so a menu never narrows itself and a
+ * picked value the other filters now exclude stays listed at 0.
+ *
+ * The counts cover the rows already loaded, not the whole host: callers pass every row they have
+ * read for this scope, and `loaded` says how many that was. The radio groups are keyed by option
+ * value, with `all` counting every row the other filters leave.
+ */
+export interface PullRequestListFacets {
+  readonly loaded: number;
+  readonly state: Readonly<Record<string, number>>;
+  readonly involvement: Readonly<Record<string, number>>;
+  readonly draft: Readonly<Record<string, number>>;
+  readonly review: Readonly<Record<string, number>>;
+  readonly authors: ReadonlyArray<PullRequestAuthorFacet>;
+  readonly labels: ReadonlyArray<PullRequestLabelFacet>;
+}
+
+/** The radio groups count `all` as one more value every row holds; no filter ever picks it. */
+const ALL_CHOICE = "all";
+
 export function collectPullRequestListFacets(
-  entries: ReadonlyArray<PullRequestListEntry>,
-  state: PullRequestListState,
-) {
-  const authors = new Map<string, PullRequestAuthorFacet>();
-  const labels = new Map<string, PullRequestLabelFacet>();
-  const uniqueEntries = new Map(entries.map((entry) => [pullRequestEntryKey(entry), entry]));
-  for (const entry of uniqueEntries.values()) {
-    const inState = state === "all" || entry.state === state;
-    if (entry.author !== null) {
-      const key = normalize(entry.author.login);
-      if (key !== null) {
-        const held = authors.get(key);
-        authors.set(key, {
-          actor: held?.actor ?? entry.author,
-          count: (held?.count ?? 0) + Number(inState),
-          mergedCount: (held?.mergedCount ?? 0) + Number(entry.state === "merged"),
-        });
-      }
-    }
-    if (!inState) continue;
+  entries: ReadonlyArray<ScopedEntry>,
+  view: {
+    readonly state: PullRequestListState;
+    readonly involvement: PullRequestInvolvement;
+    readonly filters: PullRequestListFilters;
+  },
+  viewers: PullRequestViewers,
+): PullRequestListFacets {
+  const rows = [...new Map(entries.map((entry) => [pullRequestEntryKey(entry), entry])).values()];
+  const { filters } = view;
+  const passes = (narrowing: PullRequestListFilters) => (entry: ScopedEntry) =>
+    matchesPullRequestFilters(entry, narrowing, pullRequestEntryViewer(entry, viewers));
+  const selectedLabels = (filters.labels ?? []).flat();
+  const facets = filterFacets(rows, {
+    state: {
+      values: (entry) => [ALL_CHOICE, entry.state],
+      selected: view.state === "all" ? [] : [view.state],
+    },
+    involvement: {
+      values: (entry) => [
+        ALL_CHOICE,
+        ...(entry.viewerReviewRequested ? ["reviewing"] : []),
+        ...(isAuthoredByViewer(entry, viewers) ? ["authored"] : []),
+      ],
+      selected: view.involvement === "all" ? [] : [view.involvement],
+    },
+    draft: {
+      values: (entry) => [ALL_CHOICE, entry.isDraft ? "only" : "hide"],
+      selected: filters.draft ? [filters.draft] : [],
+    },
+    review: {
+      values: (entry) => [ALL_CHOICE, entry.reviewDecision ?? "none"],
+      selected: filters.review ? [filters.review] : [],
+    },
+    author: {
+      values: (entry) => {
+        const login = normalize(entry.author?.login);
+        return login === null ? [] : [login];
+      },
+      // `me` is a different login on every host, so it is matched per row and never listed.
+      selected:
+        filters.author && !/^@?me$/i.test(filters.author.trim())
+          ? [filters.author.trim().toLowerCase()]
+          : [],
+      ...(filters.author ? { matches: passes({ author: filters.author }) } : {}),
+    },
+    labels: {
+      values: (entry) => entry.labels.flatMap((label) => normalize(label.name) ?? []),
+      selected: selectedLabels.map((name) => name.toLowerCase()),
+      // Every picked label must be on the row, as the hosts read them.
+      ...(filters.labels ? { matches: passes({ labels: filters.labels }) } : {}),
+    },
+  });
+  const counts = (choices: ReadonlyArray<FacetChoice>) =>
+    Object.fromEntries(choices.map((choice) => [choice.value, choice.count]));
+  const actors = new Map<string, PullRequestActor>();
+  const labelLooks = new Map<string, PullRequestLabel>();
+  for (const entry of rows) {
+    const login = normalize(entry.author?.login);
+    if (login !== null && entry.author && !actors.has(login)) actors.set(login, entry.author);
     for (const label of entry.labels) {
-      const key = normalize(label.name);
-      if (key === null) continue;
-      const held = labels.get(key);
-      labels.set(key, {
-        ...label,
-        name: held?.name ?? label.name,
-        color: held?.color ?? label.color,
-        count: (held?.count ?? 0) + 1,
-      });
+      const name = normalize(label.name);
+      if (name !== null && !labelLooks.has(name)) labelLooks.set(name, label);
     }
   }
   return {
-    authors: [...authors.values()]
-      .filter((author) => author.count > 0)
-      .toSorted(
-        (left, right) =>
-          right.mergedCount - left.mergedCount ||
-          right.count - left.count ||
-          left.actor.login.localeCompare(right.actor.login),
-      ),
-    labels: [...labels.values()].toSorted(
-      (left, right) => right.count - left.count || left.name.localeCompare(right.name),
-    ),
+    loaded: rows.length,
+    state: counts(facets.state),
+    involvement: counts(facets.involvement),
+    draft: counts(facets.draft),
+    review: counts(facets.review),
+    authors: facets.author.map(({ value, count }) => ({
+      actor: actors.get(value.toLowerCase()) ?? { login: value, name: null, avatarUrl: null },
+      count,
+    })),
+    labels: facets.labels.map(({ value, count }) => ({
+      ...(labelLooks.get(value) ?? {
+        name: selectedLabels.find((name) => name.toLowerCase() === value) ?? value,
+        color: null,
+      }),
+      count,
+    })),
   };
 }
 

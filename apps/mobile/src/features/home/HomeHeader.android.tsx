@@ -4,6 +4,7 @@ import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { MaterialThreadListToolbar } from "./MaterialThreadListToolbar";
 import type { HomeHeaderProps } from "./HomeHeader.types";
 import { isDefaultThreadListPages, threadListPageLabel } from "../threads/threadListV2";
+import { filterChoiceTitle } from "./home-list-filter-menu";
 
 export type { HomeHeaderEnvironment } from "./HomeHeader.types";
 
@@ -33,7 +34,7 @@ export function HomeHeader(props: HomeHeaderProps) {
           },
           ...props.environments.map((environment) => ({
             id: `environment:${environment.environmentId}`,
-            title: environment.label,
+            title: filterChoiceTitle(environment.label, environment.count),
             state: checkedMenuState(props.selectedEnvironmentId === environment.environmentId),
           })),
         ],
@@ -52,7 +53,7 @@ export function HomeHeader(props: HomeHeaderProps) {
                 },
                 ...props.organisations.map((organisation) => ({
                   id: `organisation:${organisation.key}`,
-                  title: organisation.label,
+                  title: filterChoiceTitle(organisation.label, organisation.count),
                   state: checkedMenuState(props.organisationKeys.includes(organisation.key)),
                 })),
               ],
@@ -72,7 +73,7 @@ export function HomeHeader(props: HomeHeaderProps) {
                 },
                 ...props.projects.map((project) => ({
                   id: `project:${project.key}`,
-                  title: project.label,
+                  title: filterChoiceTitle(project.label, project.count),
                   state: checkedMenuState(props.selectedProjectKey === project.key),
                 })),
               ],
@@ -84,7 +85,10 @@ export function HomeHeader(props: HomeHeaderProps) {
         subactions: [
           ...props.availablePages.map((page) => ({
             id: `page:${page}`,
-            title: threadListPageLabel(page, props.groups),
+            title: filterChoiceTitle(
+              threadListPageLabel(page, props.groups),
+              props.pageCounts?.get(page),
+            ),
             state: checkedMenuState(props.pages.includes(page)),
           })),
           ...(props.onCreateGroup ? [{ id: "new-group", title: "New group…" }] : []),
@@ -98,6 +102,7 @@ export function HomeHeader(props: HomeHeaderProps) {
       props.onCreateGroup,
       props.organisationKeys,
       props.organisations,
+      props.pageCounts,
       props.pages,
       props.projects,
       props.selectedEnvironmentId,

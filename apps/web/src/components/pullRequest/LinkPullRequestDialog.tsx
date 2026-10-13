@@ -421,10 +421,12 @@ function LinkPullRequestPicker({
             },
           }}
           inputAccessory={
-            targets.length > 0 ? (
+            targets.length > 0 && projectId !== null ? (
               <PullRequestPickerFilterBar
-                entries={loaded}
-                optionsPending={pullRequests.isPending}
+                environmentId={threadRef.environmentId}
+                projectId={projectId}
+                query={debouncedQuery}
+                list={pullRequests}
                 view={view}
                 onChange={setView}
               />

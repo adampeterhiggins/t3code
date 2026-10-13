@@ -33,7 +33,7 @@ SKIP_BUILD ?= 0
 
 .DEFAULT_GOAL := help
 
-.PHONY: help update-cert update-next update-serve update-serve-stop update-status
+.PHONY: help deps update-cert update-next update-serve update-serve-stop update-status
 
 ##@ Local update loop
 
@@ -82,7 +82,18 @@ update-cert: ## Create the self-signed code-signing cert (once)
 	security find-identity -v -p codesigning | grep -F "$(IDENTITY)" && \
 	echo "--> Installed + trusted for code signing"
 
-update-build-%: ## Build version % into release-mock (signed, mock feed, zip)
+# pnpm copies the lockfile it installed into node_modules/.pnpm/lock.yaml, so a
+# byte comparison tells us whether `vp i` has anything to do. Comparing content
+# rather than mtimes means switching branches back and forth stays a no-op.
+deps: ## Run 'vp i' only if pnpm-lock.yaml changed since the last install
+	@if cmp -s pnpm-lock.yaml node_modules/.pnpm/lock.yaml; then \
+		printf "  ok    dependencies up to date\n"; \
+	else \
+		echo "--> pnpm-lock.yaml changed, running vp i"; \
+		vp i; \
+	fi
+
+update-build-%: deps ## Build version % into release-mock (signed, mock feed, zip)
 	@if ! security find-identity -v -p codesigning | grep -qF "$(IDENTITY)"; then \
 		echo "No identity \"$(IDENTITY)\" — run 'make update-cert' first."; \
 		echo "An adhoc build can check and download, but Squirrel refuses the install."; \

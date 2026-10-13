@@ -3,6 +3,7 @@ import { ThreadId, TurnItemId, type OrchestrationV2TurnItem } from "@t3tools/con
 import * as DateTime from "effect/DateTime";
 
 import {
+  agentListStatusCounts,
   applyAgentListView,
   applySubagentToolCallView,
   DEFAULT_AGENT_LIST_VIEW,
@@ -11,6 +12,7 @@ import {
   latestSubagentToolCall,
   subagentContinuationContext,
   subagentEmptyToolCallsText,
+  subagentToolCallFacets,
   subagentWorkspaceRoot,
   type AgentListSubject,
   type SubagentToolCall,
@@ -150,6 +152,90 @@ function item(
     id: TurnItemId.make(fields.id),
   } as OrchestrationV2TurnItem;
 }
+
+describe("agentListStatusCounts", () => {
+  const agents = [
+    agent({ title: "Scout", status: "running" }),
+    agent({ title: "Scout two", status: "completed" }),
+    agent({ title: "Builder", status: "completed" }),
+  ];
+
+  it("counts statuses under the search, not under the status filter itself", () => {
+    const counts = agentListStatusCounts(agents, {
+      ...DEFAULT_AGENT_LIST_VIEW,
+      statuses: ["working"],
+      query: "scout",
+    });
+    expect([...counts]).toEqual([
+      ["done", 1],
+      ["working", 1],
+    ]);
+  });
+
+  it("keeps a picked status at 0 when the search leaves none", () => {
+    const counts = agentListStatusCounts(agents, {
+      ...DEFAULT_AGENT_LIST_VIEW,
+      statuses: ["working"],
+      query: "builder",
+    });
+    expect([...counts]).toEqual([
+      ["done", 1],
+      ["working", 0],
+    ]);
+  });
+});
+
+describe("subagentToolCallFacets", () => {
+  const call = (
+    id: string,
+    kind: SubagentToolCall["kind"],
+    status: SubagentToolCall["status"],
+    detail: string,
+  ): SubagentToolCall => ({
+    id: TurnItemId.make(id),
+    title: "Tool",
+    detail,
+    kind,
+    status,
+    startedAt: null,
+    completedAt: null,
+    exitCode: null,
+    preview: null,
+    detailRevision: null,
+  });
+  const calls = [
+    call("a", "command", "completed", "vp test"),
+    call("b", "command", "failed", "vp lint"),
+    call("c", "read", "completed", "src/a.ts"),
+    call("d", "read", "completed", "src/b.ts"),
+  ];
+
+  it("counts statuses under the kind filter and kinds under the status filter", () => {
+    const facets = subagentToolCallFacets(calls, {
+      ...DEFAULT_SUBAGENT_TOOL_CALL_VIEW,
+      statuses: ["failed"],
+      kinds: ["command"],
+    });
+    expect([...facets.statuses]).toEqual([
+      ["completed", 1],
+      ["failed", 1],
+    ]);
+    expect([...facets.kinds]).toEqual([["command", 1]]);
+  });
+
+  it("applies the search first and keeps a picked value nothing matches at 0", () => {
+    const facets = subagentToolCallFacets(calls, {
+      ...DEFAULT_SUBAGENT_TOOL_CALL_VIEW,
+      query: "src/",
+      kinds: ["command"],
+    });
+    expect([...facets.kinds]).toEqual([
+      ["read", 2],
+      ["command", 0],
+    ]);
+    expect([...facets.statuses]).toEqual([]);
+  });
+});
 
 describe("deriveSubagentToolCalls", () => {
   const root = "/repo/app";

@@ -188,11 +188,13 @@ User guide: [composer.md](./user/composer.md).
 
 ## Model change marker
 
-Changing the model in an existing thread leaves a divider in the transcript, the same kind of
-marker a fork leaves in the new thread. It names the model the conversation was on and the model
-the next message uses, and it appears as soon as the composer selection differs, before that
-message is sent. A provider switch that already shows a context handoff keeps that handoff instead
-of a second divider. Effort and other options on the same model do not add one.
+Changing the model or its parameters (effort, fast mode, context window, and so on) in an
+existing thread leaves a divider in the transcript, the same kind of marker a fork leaves in the
+new thread. It names the model and parameters the conversation was on and the ones the next message
+uses, labelled as in the composer, and it appears as soon as the composer selection differs,
+before that message is sent. A provider switch that already shows a context handoff keeps that
+handoff instead of a second divider. Explicitly picking a parameter's default does not count as a
+change.
 
 Code: [`modelChangeMarker.ts`](../packages/shared/src/modelChangeMarker.ts),
 [`V2LifecycleRow.tsx`](../apps/web/src/components/chat/V2LifecycleRow.tsx), and
@@ -513,8 +515,9 @@ editable. Names are stored by the [ThreadTabs service](../apps/server/src/thread
   too. On web and desktop, **Attach → Thread** and **Attach thread** in the command palette open
   a searchable picker of those threads. A thread's tabs sit together behind a side rule, and
   searching a thread title finds its tabs too. Rows show the project, provider, status, and
-  last activity as the sidebar does. It has project and provider filters
-  and sorting by updated time, creation time, or title. Hovering a row previews how the chat
+  last activity as the sidebar does. It has project and provider filters, each choice counting
+  the threads it would show under the search and the other filter, with **Only** and a removable
+  pill per pick, and sorting by updated time, creation time, or title. Hovering a row previews how the chat
   started, the latest exchange, and changed files; attaching reuses that snapshot
   ([`ThreadAttachPicker.tsx`](../apps/web/src/components/chat/ThreadAttachPicker.tsx)). These paths insert a `thread-tab`
   context chip at the caret, which can be moved like any other chip. The kind lives in
@@ -685,7 +688,12 @@ On web and desktop, one filter button in the sidebar header replaces upstream's 
 Each row opens a multi-select submenu, like the pull request filters: **Show** picks which of
 Threads, your thread groups, Snoozed, Hidden, and Settled the list holds; **Organisations** scopes
 it to repository owners, read per checkout from `repositoryIdentity` (a fork counts under its own
-remote); and **Projects** scopes it to some projects. **Only**, on the highlighted row, picks just that one. Threads alone is the
+remote); and **Projects** scopes it to some projects. Each choice shows how many threads picking it
+would leave under the other two rows, and Organisations and Projects offer only the choices the
+other one leaves (an organisation that owns a picked project, a project in a picked organisation);
+a pick the others exclude stays listed at 0 so it can be unticked, and a picked organisation with
+no checkout left keeps narrowing the list until it is dropped. **Only**, on the highlighted row,
+picks just that one and closes the menu. Threads alone is the
 default; other picks list as titled sections below live threads, so snoozed and settled threads no longer sit in shelves under
 live work, and the drag targets for settling and waking are gone. On web and desktop, clicking a
 section's title collapses it to a count, remembered per client; the open thread stays listed under a
@@ -693,16 +701,23 @@ collapsed title. Dragging to pin or reorder
 works while only Threads is shown. The button shows a count of narrowings off their default,
 and hovering it lists the selected pages, organisations, and projects. Under the header, each
 of those selections shows as a pill with an × that drops it, plus **Clear all** once there are
-several. **Settings → Organisations** gives an organisation a display name and icon, saved as the
+several. Selecting a sidebar search result keeps the search applied as a removable pill;
+clicking the search field edits it, and **Clear all** removes it with the other filters.
+**Settings → Organisations** gives an organisation a display name and icon, saved as the
 shared `organisations` server setting so every environment and mobile's filter use them. A thread's **Filter by
 project** menu item still narrows the list to that one project. Mobile's
-thread list filter menu has the same **Show** submenu.
+thread list filter menus have the same **Show** submenu, and each of their Environment, Project,
+Organisations, and Show choices carries the same kind of count after its name, also following
+the search; mobile has no **Only**.
 
 Code: [`SidebarFilterMenu.tsx`](../apps/web/src/components/sidebar/SidebarFilterMenu.tsx),
 [`OrganisationsSettings.tsx`](../apps/web/src/components/settings/OrganisationsSettings.tsx),
 `sidebarPages` in [`Sidebar.tsx`](../apps/web/src/components/Sidebar.tsx),
 `sidebarProjectScopeKeys` in [`uiStateStore.ts`](../apps/web/src/uiStateStore.ts), and mobile's
-[`home-list-filter-menu.ts`](../apps/mobile/src/features/home/home-list-filter-menu.ts). User
+[`home-list-filter-menu.ts`](../apps/mobile/src/features/home/home-list-filter-menu.ts) and
+[`thread-list-filter-facets.ts`](../apps/mobile/src/features/home/thread-list-filter-facets.ts);
+the web counts come from `buildSidebarFilterFacets` in
+[`Sidebar.logic.ts`](../apps/web/src/components/Sidebar.logic.ts). User
 guide: [thread-sidebar.md](./user/thread-sidebar.md#pin-and-reorder-threads).
 
 ## Projects settings sidebar entry
@@ -787,7 +802,11 @@ When the browser is on another device, the user pastes the redirect URL back ins
 Issues attach to messages as a `linear-issue` context chip: from the composer's attach menu (which
 now asks between files, a Linear issue, and a pull request), the `#` menu beside pull requests, the command palette,
 and the mobile attach menu. The web picker filters by assignee, team, project, milestone, status,
-priority, and label, and sorts by the fields Linear's API offers. The server renders the issue to
+priority, and label, and sorts by the fields Linear's API offers. Team, project, and milestone
+choices narrow to what the other picks allow, using each project's teams
+([`linearIssueFilters.logic.ts`](../apps/web/src/components/chat/linearIssueFilters.logic.ts));
+rows offer **Only**, and applied picks show as removable pills below the controls. Menus show no
+counts, since issues are filtered by Linear and capped. The server renders the issue to
 capped markdown when it is attached, and that snapshot is inlined into the prompt for every
 provider. An **Open Linear links in** setting can send issue links to the Linear desktop app
 (`linear://`), which the desktop shell's external-URL allowlist permits.
@@ -968,6 +987,26 @@ Code: `apps/web/src/components/chat/StartFromPicker.tsx`, `StartFromPicker.logic
 `GitHubIssuePickerSheet.tsx`, the button
 in `ChatComposer.tsx`, and `chat.startFrom` in `packages/contracts/src/keybindings.ts`. User guide:
 [source-control.md](./user/source-control.md#start-a-thread-from-a-pull-request-branch-or-issue).
+
+## Pull request filters count by the other filters
+
+Upstream's pull request filters list the authors and labels of whatever is loaded, already narrowed
+by every filter, so picking a label shrinks the label list itself. In the fork, every pull request
+filter menu (the pull requests page, the start-from picker's PRs tab, the link and attach pickers,
+and the mobile list) lists each choice with how many loaded pull requests it would show under the
+_other_ applied filters and the search. A menu never narrows itself, and a picked value the other
+filters exclude stays listed at 0 so it can be unpicked. State, involvement, draft, and review are
+counted too; project, host, server, and checks are not, because the host narrows those itself.
+
+The counts come from one broad page per server, read with the same project and search but none of
+the menu's filters (on web, only while the menu is open), plus the rows the list has already read.
+They cover those loaded rows, not the whole host, and the web menu says how many that is. On web
+and desktop, label rows offer **Only**, and the applied filters show as removable pills below the
+controls. Code: `collectPullRequestListFacets` in
+[`pullRequestList.logic.ts`](../apps/web/src/components/pullRequest/pullRequestList.logic.ts),
+`pullRequestListFacets` in
+[mobile `pullRequestList.ts`](../apps/mobile/src/features/pull-requests/pullRequestList.ts), both
+on [`filterFacets`](../packages/shared/src/filterFacets.ts).
 
 ## Link pull requests from a picker
 
@@ -1184,6 +1223,17 @@ Code: `packages/shared/src/composerObjectLinks.ts`,
 `apps/web/src/components/chat/useResolveComposerObjectLink.ts`, and `convertObjectLinks` in
 `apps/web/src/components/chat/ChatComposer.tsx`. User guide:
 [composer.md](./user/composer.md#context-in-your-message).
+
+## Numeric pull request references include linked repositories
+
+Typing `#` followed by a pull request number searches the project's repository and repositories
+attached to the thread as context or through a linked pull request. Web, desktop, and mobile
+fetch the exact number even when it is outside the recent PR list. Suggestions include the
+repository name, and identical numbers in different repositories remain separate choices.
+
+Code: [repository scoping and matching](../packages/shared/src/composerPullRequestMatches.ts),
+[web composer](../apps/web/src/components/chat/useComposerPullRequestItems.ts), and
+[mobile composer](../apps/mobile/src/state/queries.ts).
 
 ## The `#` menu predicts its tab and remembers inserts
 

@@ -4,6 +4,7 @@ import type {
   PullRequestListInput,
   PullRequestListResult,
 } from "@t3tools/contracts";
+import { type FacetChoice, filterFacets } from "@t3tools/shared/filterFacets";
 import type { PullRequestListControls } from "../../persistence/mobile-preferences";
 
 export const PR_LIST_PAGE_SIZE = 30;
@@ -152,31 +153,19 @@ export function appendPullRequestListPage(
   };
 }
 
-export function pullRequestListFacets(entries: readonly PullRequestListEntry[]) {
-  return {
-    authors: [
-      ...new Set(entries.flatMap((entry) => (entry.author ? [entry.author.login] : []))),
-    ].sort((a, b) => a.localeCompare(b)),
-    labels: [...new Set(entries.flatMap((entry) => entry.labels.map((label) => label.name)))].sort(
-      (a, b) => a.localeCompare(b),
-    ),
-  };
-}
+type ScopedPullRequestListEntry = PullRequestListEntry & { environmentId?: string };
 
-export function filterPullRequestList<
-  Entry extends PullRequestListEntry & { environmentId?: string },
->(
-  entries: readonly Entry[],
+/** Whether a row passes the controls, the search, and the hosts that searched it themselves. */
+function pullRequestListPredicate(
   controls: PullRequestListControls,
   viewers: PullRequestListResult["viewers"],
   query: string,
   localSearchHosts: ReadonlySet<string>,
-  connectedEnvironmentIds?: ReadonlySet<string>,
 ) {
   const normalize = (value: string) => value.toLowerCase();
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   const { filters } = controls;
-  const filtered = entries.filter((entry) => {
+  return (entry: ScopedPullRequestListEntry) => {
     if (controls.state !== "all" && entry.state !== controls.state) return false;
     if (controls.projectId && entry.projectId !== controls.projectId) return false;
     if (controls.projectEnvironmentId && entry.environmentId !== controls.projectEnvironmentId)
@@ -210,7 +199,20 @@ export function filterPullRequestList<
       if (!words.every((word) => text.includes(word))) return false;
     }
     return true;
-  });
+  };
+}
+
+export function filterPullRequestList<Entry extends ScopedPullRequestListEntry>(
+  entries: readonly Entry[],
+  controls: PullRequestListControls,
+  viewers: PullRequestListResult["viewers"],
+  query: string,
+  localSearchHosts: ReadonlySet<string>,
+  connectedEnvironmentIds?: ReadonlySet<string>,
+) {
+  const filtered = entries.filter(
+    pullRequestListPredicate(controls, viewers, query, localSearchHosts),
+  );
   // The same repository can be available on multiple machines. Pick its first matching source,
   // unless that machine is unreachable and another one can answer: its rows may only be cached.
   const reachable = (entry: Entry) =>
@@ -230,6 +232,99 @@ export function filterPullRequestList<
         : b.updatedAt.localeCompare(a.updatedAt),
   );
 }
+
+/** The fixed menus count `all` as one more value every row holds; no filter ever picks it. */
+const ALL_CHOICE = "all";
+
+/**
+ * What each filter menu offers and how many loaded rows each choice would show under every
+ * *other* applied filter (see `filterFacets`), so no menu narrows itself and a picked value the
+ * other filters now exclude stays listed at 0. The fixed menus are keyed by value, with `all`
+ * counting every row the other filters leave. Counts cover the rows passed in, not the host.
+ */
+export function pullRequestListFacets<Entry extends ScopedPullRequestListEntry>(
+  entries: readonly Entry[],
+  controls: PullRequestListControls,
+  viewers: PullRequestListResult["viewers"],
+  query: string,
+  localSearchHosts: ReadonlySet<string>,
+) {
+  const open: PullRequestListControls = {
+    state: "all",
+    involvement: "all",
+    filters: {},
+    sort: controls.sort,
+  };
+  /** One menu's own narrowing, alone. */
+  const only = (patch: Partial<PullRequestListControls>) =>
+    pullRequestListPredicate({ ...open, ...patch }, viewers, "", new Set());
+  const { filters } = controls;
+  // The project, the search, and the narrowings no menu counts apply to every menu alike.
+  const rows = filterPullRequestList(
+    entries,
+    {
+      ...controls,
+      state: "all",
+      involvement: "all",
+      filters: {
+        ...(filters.checks ? { checks: filters.checks } : {}),
+        ...(filters.excludedLabels ? { excludedLabels: filters.excludedLabels } : {}),
+      },
+    },
+    viewers,
+    query,
+    localSearchHosts,
+  );
+  const authored = only({ involvement: "authored" });
+  const selectedLabels = filters.labels?.flat() ?? [];
+  const facets = filterFacets(rows, {
+    state: {
+      values: (entry) => [ALL_CHOICE, entry.state],
+      selected: controls.state === "all" ? [] : [controls.state],
+    },
+    involvement: {
+      values: (entry) => [
+        ALL_CHOICE,
+        ...(entry.viewerReviewRequested ? ["reviewing"] : []),
+        ...(authored(entry) ? ["authored"] : []),
+      ],
+      selected: controls.involvement === "all" ? [] : [controls.involvement],
+    },
+    draft: {
+      values: (entry) => [ALL_CHOICE, entry.isDraft ? "only" : "hide"],
+      selected: filters.draft ? [filters.draft] : [],
+    },
+    review: {
+      values: (entry) => [ALL_CHOICE, entry.reviewDecision ?? "none"],
+      selected: filters.review ? [filters.review] : [],
+      ...(filters.review ? { matches: only({ filters: { review: filters.review } }) } : {}),
+    },
+    author: {
+      values: (entry) => (entry.author ? [entry.author.login] : []),
+      // `me` is a different login on every host, so it is matched per row and never listed.
+      selected: filters.author && filters.author !== "me" ? [filters.author] : [],
+      ...(filters.author ? { matches: only({ filters: { author: filters.author } }) } : {}),
+    },
+    labels: {
+      values: (entry) => entry.labels.map((label) => label.name),
+      selected: selectedLabels,
+      ...(filters.labels ? { matches: only({ filters: { labels: filters.labels } }) } : {}),
+    },
+  });
+  const counts = (choices: readonly FacetChoice[]): Readonly<Record<string, number>> =>
+    Object.fromEntries(choices.map((choice) => [choice.value, choice.count]));
+  return {
+    loaded: rows.length,
+    state: counts(facets.state),
+    involvement: counts(facets.involvement),
+    draft: counts(facets.draft),
+    review: counts(facets.review),
+    authors: facets.author,
+    labels: facets.labels,
+  };
+}
+
+export type PullRequestListFacets = ReturnType<typeof pullRequestListFacets>;
 
 export function pullRequestListReviewStatus(
   entry: Pick<PullRequestListEntry, "reviewDecision" | "viewerReviewRequested">,

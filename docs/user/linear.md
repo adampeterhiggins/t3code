@@ -43,7 +43,10 @@ The picker's filter menus narrow the list by assignee, team, project, milestone,
 and label, and **Sort** orders it by last update, creation, priority, due date, status, or title. It
 starts on your open assigned issues and remembers your filters on each device. Search text applies
 on top of the filters and ranks results by relevance unless you sort by created or updated time.
-Statuses and labels match by name across teams. **Reset** returns to the defaults.
+Statuses and labels match by name across teams. Picking teams limits the project and milestone
+menus to those teams' projects, and picking projects limits the team menu to their teams. Hover a
+choice and click **Only** to filter by just that one. Each applied filter shows as a pill below the
+filter controls; click its × to remove it, or **Reset** to return to the defaults.
 
 The issue appears as a chip in your message. Hover or tap it to see what the agent receives: the
 title, state, priority, assignee, labels, description, sub-issues, links, and recent comments.
