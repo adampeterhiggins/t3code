@@ -24,7 +24,7 @@ import { useProjects } from "../../state/entities";
 import { environmentServerConfigsAtom } from "../../state/server";
 import { PullRequestListRow } from "./PullRequestListRow";
 import { PullRequestListFilters } from "./PullRequestListFilters";
-import { usePullRequestList } from "./usePullRequestList";
+import { usePullRequestList, usePullRequestListHeads } from "./usePullRequestList";
 import { usePullRequestListControls } from "./usePullRequestListControls";
 import { usePullRequestListActions } from "./usePullRequestListActions";
 import {
@@ -153,26 +153,28 @@ export function PullRequestsScreen(
       ),
     [result.entries, controls, query, result.data],
   );
-  const facets = useMemo(() => pullRequestListFacets(result.entries), [result.entries]);
-  const [knownFacets, setKnownFacets] = useState({ environmentId, source: facets, ...facets });
-  if (knownFacets.environmentId !== environmentId || knownFacets.source !== facets) {
-    setKnownFacets((previous) => ({
-      source: facets,
-      environmentId,
-      authors: [
-        ...new Set([
-          ...(previous.environmentId === environmentId ? previous.authors : []),
-          ...facets.authors,
-        ]),
-      ].sort(),
-      labels: [
-        ...new Set([
-          ...(previous.environmentId === environmentId ? previous.labels : []),
-          ...facets.labels,
-        ]),
-      ].sort(),
-    }));
-  }
+  // The menus count one broad page, every state and involvement with no menu filters, beside
+  // the list's own rows, so no menu narrows itself. Unfiltered, the two are the same read.
+  const facetTargets = useMemo(
+    () =>
+      targets.map((target) => ({
+        ...target,
+        input: { ...target.input, state: "all" as const, involvement: "all" as const, filters: {} },
+      })),
+    [targets],
+  );
+  const facetRows = usePullRequestListHeads(facetTargets);
+  const facets = useMemo(
+    () =>
+      pullRequestListFacets(
+        [...result.entries, ...facetRows],
+        controls,
+        result.data?.viewers ?? {},
+        query,
+        result.data.localSearchHosts,
+      ),
+    [result.entries, facetRows, controls, query, result.data],
+  );
   const projects = useProjects().filter(
     (project) => environmentId === null || project.environmentId === environmentId,
   );
@@ -285,12 +287,7 @@ export function PullRequestsScreen(
                   animated: false,
                 });
               }}
-              authors={
-                knownFacets.environmentId === environmentId ? knownFacets.authors : facets.authors
-              }
-              labels={
-                knownFacets.environmentId === environmentId ? knownFacets.labels : facets.labels
-              }
+              facets={facets}
               projects={projects}
             />
             {result.data?.errors.length ? (

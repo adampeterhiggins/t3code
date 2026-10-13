@@ -173,8 +173,10 @@ function PullRequestList(props: {
         }}
         inputAccessory={
           <PullRequestPickerFilterBar
-            entries={loaded}
-            optionsPending={pullRequests.isPending}
+            environmentId={environmentId}
+            projectId={projectId}
+            query={debouncedQuery}
+            list={pullRequests}
             view={view}
             onChange={setView}
           />

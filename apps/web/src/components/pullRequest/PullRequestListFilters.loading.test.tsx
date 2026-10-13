@@ -46,12 +46,17 @@ async function render(optionsPending: boolean, loaded = false) {
         filters={{}}
         onFilters={onFilters}
         optionsPending={optionsPending}
-        authorOptions={
-          loaded
-            ? [{ actor: { login: "ada", name: "Ada", avatarUrl: null }, count: 1, mergedCount: 0 }]
-            : []
-        }
-        labelOptions={loaded ? [{ name: "bug", color: null, count: 1 }] : []}
+        facets={{
+          loaded: loaded ? 1 : 0,
+          state: {},
+          involvement: {},
+          draft: {},
+          review: {},
+          authors: loaded
+            ? [{ actor: { login: "ada", name: "Ada", avatarUrl: null }, count: 1 }]
+            : [],
+          labels: loaded ? [{ name: "bug", color: null, count: 1 }] : [],
+        }}
         host={undefined}
         hostOptions={[]}
         onHost={() => {}}
@@ -90,12 +95,12 @@ it.each([
   expect(document.body.textContent).toContain(empty);
 });
 
-it("keeps labels selectable during refresh and removes loading when it finishes", async () => {
+it("keeps loaded labels selectable during a refresh, without a loading row", async () => {
   await render(true, true);
   await click("Filters");
   await click("LabelsAny");
-  expect(document.querySelector('[role="status"]')?.textContent).toBe("Loading labels…");
-  await click("bug1");
+  expect(document.querySelector('[role="status"]')).toBeNull();
+  await click("bugOnly1");
   expect(onFilters.mock.calls[0]?.[0].labels).toEqual([["bug"]]);
   await render(false, true);
   expect(document.querySelector('[role="status"]')).toBeNull();

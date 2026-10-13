@@ -25,6 +25,7 @@ import {
 import { type ElementType, useState } from "react";
 
 import { getSourceControlPresentationForKind } from "~/sourceControlPresentation";
+import { FilterPill } from "../FilterPill";
 import { ProjectFavicon, type ProjectFaviconProject } from "../ProjectFavicon";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
 import { Button } from "../ui/button";
@@ -54,7 +55,9 @@ import {
   pullRequestLabelColor,
   type PullRequestAuthorFacet,
   type PullRequestLabelFacet,
+  type PullRequestListFacets,
 } from "./pullRequestList.logic";
+import { MenuChoiceLabel } from "../MenuChoiceLabel";
 import { PullRequestActorAvatar } from "./pullRequestPresentation";
 import { PullRequestGlyph } from "./pullRequestIcons";
 
@@ -187,15 +190,24 @@ const CHECKS_OPTIONS = [
   { value: "failing", label: "Failing", Icon: CircleXIcon },
 ] as const satisfies ReadonlyArray<PullRequestFilterOption<string>>;
 
+/** A choice's count, right-aligned beside it. */
+function MenuChoiceCount({ count }: { count: number | undefined }) {
+  return count === undefined ? null : (
+    <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{count}</span>
+  );
+}
+
 function PullRequestFilterRadioGroup<Value extends string>({
   label,
   value,
   options,
+  counts,
   onChange,
 }: {
   label: string;
   value: Value;
   options: ReadonlyArray<PullRequestFilterOption<Value>>;
+  counts: Readonly<Record<string, number>> | undefined;
   onChange: (value: Value) => void;
 }) {
   return (
@@ -220,6 +232,7 @@ function PullRequestFilterRadioGroup<Value extends string>({
               <PullRequestFilterOptionIcon option={option} />
               <span className="min-w-0 flex-1 truncate">{option.label}</span>
               {option.unavailable ? <span className="shrink-0">· Unavailable</span> : null}
+              <MenuChoiceCount count={counts && (counts[option.value] ?? 0)} />
               <MenuRadioItemIndicator />
             </span>
           </MenuRadioItem>
@@ -236,11 +249,15 @@ function PullRequestFilterRadioGroup<Value extends string>({
   );
 }
 
-/** A filter row showing its current value, opening a radio list of the options. */
+/**
+ * A filter row showing its current value, opening a radio list of the options. `counts`, keyed
+ * by option value, puts how many rows each choice would show beside it.
+ */
 export function PullRequestFilterRadioSubmenu<Value extends string>({
   label,
   value,
   options,
+  counts,
   onChange,
   optionsPending = false,
 }: {
@@ -248,6 +265,7 @@ export function PullRequestFilterRadioSubmenu<Value extends string>({
   value: Value;
   optionsPending?: boolean;
   options: ReadonlyArray<PullRequestFilterOption<Value>>;
+  counts?: Readonly<Record<string, number>> | undefined;
   onChange: (value: Value) => void;
 }) {
   const current = options.find((option) => option.value === value) ?? options[0];
@@ -262,13 +280,17 @@ export function PullRequestFilterRadioSubmenu<Value extends string>({
         </span>
       </MenuSubTrigger>
       <MenuSubPopup>
-        {optionsPending ? <MenuLoadingItem>Loading filters…</MenuLoadingItem> : null}
-        <PullRequestFilterRadioGroup
-          label={label}
-          value={value}
-          options={options}
-          onChange={onChange}
-        />
+        {optionsPending && options.length === 0 ? (
+          <MenuLoadingItem>Loading filters…</MenuLoadingItem>
+        ) : (
+          <PullRequestFilterRadioGroup
+            label={label}
+            value={value}
+            options={options}
+            counts={counts}
+            onChange={onChange}
+          />
+        )}
       </MenuSubPopup>
     </MenuSub>
   );
@@ -322,16 +344,19 @@ function PullRequestAuthorFilter({
             <MenuRadioItem key={option.actor.login.toLowerCase()} value={option.actor.login}>
               <span className="flex min-w-0 items-center gap-2">
                 <PullRequestActorAvatar actor={option.actor} />
-                <span className="min-w-0 flex-1 truncate">{option.actor.login}</span>
-                <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                  {option.mergedCount} merges loaded
+                <span className="min-w-0 flex-1 truncate">
+                  <HighlightedSearchText text={option.actor.login} query={query} />
                 </span>
+                <MenuChoiceCount count={option.count} />
               </span>
             </MenuRadioItem>
           ))}
-          {optionsPending ? <MenuLoadingItem>Loading authors…</MenuLoadingItem> : null}
-          {visible.length === 0 && !optionsPending ? (
-            <MenuItem disabled>No authors found</MenuItem>
+          {visible.length === 0 ? (
+            optionsPending ? (
+              <MenuLoadingItem>Loading authors…</MenuLoadingItem>
+            ) : (
+              <MenuItem disabled>No authors found</MenuItem>
+            )
           ) : null}
         </MenuRadioGroup>
       </MenuSubPopup>
@@ -344,19 +369,18 @@ function PullRequestLabelFilter({
   options,
   optionsPending,
   onChange,
+  onOnly,
 }: {
   value: ReadonlyArray<string>;
+  /** Already holds every picked label, at 0 where the other filters leave none. */
   options: ReadonlyArray<PullRequestLabelFacet>;
   optionsPending: boolean;
   onChange: (labels: ReadonlyArray<string>) => void;
+  /** "Only" settles the filter, so it also closes the menu. */
+  onOnly: (label: string) => void;
 }) {
   const selected = new Set(value.map((name) => name.toLowerCase()));
-  const visible = [
-    ...value
-      .filter((name) => !options.some((option) => option.name.toLowerCase() === name.toLowerCase()))
-      .map((name) => ({ name, color: null, count: 0 })),
-    ...options,
-  ];
+  const visible = options;
   return (
     <MenuSub>
       <MenuSubTrigger>
@@ -367,9 +391,12 @@ function PullRequestLabelFilter({
         </span>
       </MenuSubTrigger>
       <MenuSubPopup>
-        {optionsPending ? <MenuLoadingItem>Loading labels…</MenuLoadingItem> : null}
-        {visible.length === 0 && !optionsPending ? (
-          <MenuItem disabled>No labels in this view</MenuItem>
+        {visible.length === 0 ? (
+          optionsPending ? (
+            <MenuLoadingItem>Loading labels…</MenuLoadingItem>
+          ) : (
+            <MenuItem disabled>No labels in this view</MenuItem>
+          )
         ) : (
           <MenuSearch items={visible} getText={(option) => option.name} placeholder="Search labels">
             {(matches, query) =>
@@ -391,18 +418,18 @@ function PullRequestLabelFilter({
                       )
                     }
                   >
-                    <span className="flex min-w-0 items-center gap-2">
+                    <span className="flex w-full min-w-0 items-center gap-2">
                       <span
                         aria-hidden
                         className="size-2.5 shrink-0 rounded-full bg-muted-foreground"
                         {...(dot ? { style: { backgroundColor: dot } } : {})}
                       />
-                      <span className="min-w-0 flex-1 truncate">
-                        <HighlightedSearchText text={option.name} query={query} />
-                      </span>
-                      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                        {option.count}
-                      </span>
+                      <MenuChoiceLabel
+                        label={option.name}
+                        query={query}
+                        onOnly={() => onOnly(option.name)}
+                      />
+                      <MenuChoiceCount count={option.count} />
                     </span>
                   </MenuCheckboxItem>
                 );
@@ -417,6 +444,7 @@ function PullRequestLabelFilter({
 
 export function PullRequestFiltersMenu({
   size = "default",
+  open,
   onOpenChange,
   state,
   stateOptions,
@@ -427,8 +455,7 @@ export function PullRequestFiltersMenu({
   filters,
   onFilters,
   optionsPending = false,
-  authorOptions = [],
-  labelOptions = [],
+  facets,
   host,
   hostOptions,
   onHost,
@@ -443,6 +470,8 @@ export function PullRequestFiltersMenu({
 }: {
   /** `xs` for a picker's filter row, beside its other small controls. */
   size?: "default" | "xs";
+  /** Controlled by the caller so "Only" can close it; left out, the menu keeps its own. */
+  open?: boolean;
   onOpenChange?: (open: boolean) => void;
   state: PullRequestListState;
   stateOptions: ReadonlyArray<PullRequestFilterOption<PullRequestListState>>;
@@ -455,8 +484,11 @@ export function PullRequestFiltersMenu({
   onFilters: (filters: PullRequestListFilters) => void;
   /** Authors and labels come from asynchronous listings; fixed choices stay available. */
   optionsPending?: boolean;
-  authorOptions?: ReadonlyArray<PullRequestAuthorFacet>;
-  labelOptions?: ReadonlyArray<PullRequestLabelFacet>;
+  /**
+   * The choices and counts drawn from the loaded rows (`collectPullRequestListFacets`). Absent
+   * until there is anything to count, which leaves the fixed choices uncounted.
+   */
+  facets?: PullRequestListFacets | undefined;
   host: string | undefined;
   /**
    * Includes the "all hosts" entry, whose value is the empty string. With fewer than two real
@@ -536,8 +568,11 @@ export function PullRequestFiltersMenu({
           : {}),
       })),
   ];
+  const changeOpen = (next: boolean) => onOpenChange?.(next);
+  // Nothing counted yet reads as "still loading", not as a menu of zeroes.
+  const counts = facets && !(optionsPending && facets.loaded === 0) ? facets : undefined;
   return (
-    <Menu onOpenChange={onOpenChange}>
+    <Menu {...(open === undefined ? {} : { open })} onOpenChange={changeOpen}>
       <MenuTrigger render={<Button variant="outline" size={size} />}>
         <ListFilterIcon className={size === "xs" ? undefined : "size-4"} />
         <span>Filters</span>
@@ -552,41 +587,49 @@ export function PullRequestFiltersMenu({
           label="State"
           value={state}
           options={stateOptions}
+          counts={counts?.state}
           onChange={onState}
         />
         <PullRequestFilterRadioSubmenu
           label="Involvement"
           value={involvement}
           options={involvementOptions}
+          counts={counts?.involvement}
           onChange={onInvolvement}
         />
         <MenuSeparator />
         <PullRequestAuthorFilter
           value={filters.author}
-          options={authorOptions}
+          options={facets?.authors ?? []}
           optionsPending={optionsPending}
           onChange={(author) => updateFilters({ author })}
         />
         <PullRequestLabelFilter
           value={selectedLabels}
-          options={labelOptions}
+          options={facets?.labels ?? []}
           optionsPending={optionsPending}
           onChange={(labels) =>
             updateFilters({
               labels: labels.length === 0 ? undefined : labels.slice(0, 10).map((label) => [label]),
             })
           }
+          onOnly={(label) => {
+            updateFilters({ labels: [[label]] });
+            changeOpen(false);
+          }}
         />
         <PullRequestFilterRadioSubmenu
           label="Draft"
           value={filters.draft ?? UNFILTERED_VALUE}
           options={DRAFT_OPTIONS}
+          counts={counts?.draft}
           onChange={(draft) => updateFilter("draft", draft)}
         />
         <PullRequestFilterRadioSubmenu
           label="Review"
           value={filters.review ?? UNFILTERED_VALUE}
           options={REVIEW_OPTIONS}
+          counts={counts?.review}
           onChange={(review) => updateFilter("review", review)}
         />
         <PullRequestFilterRadioSubmenu
@@ -636,7 +679,115 @@ export function PullRequestFiltersMenu({
             />
           </>
         ) : null}
+        {counts ? (
+          <>
+            <MenuSeparator />
+            <p className="px-2 py-1 text-xs text-muted-foreground">
+              Counts cover the {counts.loaded} loaded pull{" "}
+              {counts.loaded === 1 ? "request" : "requests"}
+            </p>
+          </>
+        ) : null}
       </MenuPopup>
     </Menu>
   );
+}
+
+type PullRequestFiltersProps = Parameters<typeof PullRequestFiltersMenu>[0];
+
+/**
+ * The filters the menu has applied, one pill each on a row of their own below the controls,
+ * every one removable with its ×. Takes the menu's own props, so the two always agree.
+ */
+export function PullRequestAppliedFilters(props: PullRequestFiltersProps) {
+  const { filters } = props;
+  const updateFilters = (next: Partial<PullRequestListFilters>) =>
+    props.onFilters(
+      Object.fromEntries(
+        Object.entries({ ...filters, ...next }).filter(([, value]) => value !== undefined),
+      ) as PullRequestListFilters,
+    );
+  const pill = <Value extends string>(
+    key: string,
+    option: PullRequestFilterOption<Value> | undefined,
+    label: string | undefined,
+    onRemove: () => void,
+  ) =>
+    option === undefined ? null : (
+      <FilterPill
+        key={key}
+        icon={<PullRequestFilterOptionIcon option={option} />}
+        label={label ?? option.label}
+        onRemove={onRemove}
+      />
+    );
+  const optionOf = <Value extends string>(
+    options: ReadonlyArray<PullRequestFilterOption<Value>>,
+    value: string | undefined,
+  ) => (value === undefined ? undefined : options.find((option) => option.value === value));
+  const labels = (filters.labels ?? []).flat();
+  const project = props.projects.find(
+    (candidate) =>
+      candidate.id === props.projectId && candidate.environmentId === props.projectEnvironmentId,
+  );
+  const pills = [
+    props.state === "open"
+      ? null
+      : pill(
+          "state",
+          optionOf(props.stateOptions, props.state),
+          props.state === "all" ? "All states" : undefined,
+          () => props.onState("open"),
+        ),
+    props.involvement === "all"
+      ? null
+      : pill("involvement", optionOf(props.involvementOptions, props.involvement), undefined, () =>
+          props.onInvolvement("all"),
+        ),
+    filters.author === undefined ? null : (
+      <FilterPill
+        key="author"
+        icon={<UserRoundIcon />}
+        label={`by ${filters.author}`}
+        onRemove={() => updateFilters({ author: undefined })}
+      />
+    ),
+    ...labels.map((label) => (
+      <FilterPill
+        key={`label:${label}`}
+        icon={<TagIcon />}
+        label={label}
+        onRemove={() => {
+          const rest = labels.filter((name) => name !== label);
+          updateFilters({ labels: rest.length === 0 ? undefined : rest.map((name) => [name]) });
+        }}
+      />
+    )),
+    pill("draft", optionOf(DRAFT_OPTIONS, filters.draft), undefined, () =>
+      updateFilters({ draft: undefined }),
+    ),
+    pill("review", optionOf(REVIEW_OPTIONS, filters.review), undefined, () =>
+      updateFilters({ review: undefined }),
+    ),
+    pill(
+      "checks",
+      optionOf(CHECKS_OPTIONS, filters.checks),
+      filters.checks === undefined ? undefined : `Checks ${filters.checks}`,
+      () => updateFilters({ checks: undefined }),
+    ),
+    pill("host", optionOf(props.hostOptions, props.host), undefined, () => props.onHost(undefined)),
+    pill("server", optionOf(props.serverOptions, props.server), undefined, () =>
+      props.onServer(undefined),
+    ),
+    project === undefined ? null : (
+      <FilterPill
+        key="project"
+        icon={<ProjectFavicon project={project} className="size-3.5" />}
+        label={project.title}
+        onRemove={() => props.onProject(undefined, undefined)}
+      />
+    ),
+  ].filter((entry) => entry !== null);
+  if (pills.length === 0) return null;
+  return <div className="flex flex-wrap items-center gap-1">{pills}</div>;
 }

@@ -104,6 +104,7 @@ import { PullRequestDetailPanel } from "../components/pullRequest/PullRequestDet
 import {
   PULL_REQUEST_INVOLVEMENT_OPTIONS,
   PULL_REQUEST_STATE_OPTIONS,
+  PullRequestAppliedFilters,
   PullRequestFiltersMenu,
   PullRequestFilterOptionIcon,
   PullRequestSearchInput,
@@ -792,20 +793,27 @@ function PullRequestsRouteView() {
     baselineQuery.data.errors.length === 0 &&
     !baselineQuery.isPending &&
     baselineQuery.error === null;
+  // The rows the filter menu counts: one broad page with none of the menu's own filters, read
+  // only while the menu is open. Each menu's choices are counted from it under the *other*
+  // applied filters, so no menu narrows itself, rather than asking the host once per menu.
+  // Project and host stay narrowed by the host, so those two groups are not counted; the search
+  // is kept, since it narrows every menu alike.
   const facetTargets = useMemo(() => {
     if (!filtersOpen) return NO_LIST_TARGETS;
     return environmentQueries.map(({ environmentId, projectIds }) => ({
       environmentId,
       input: {
         state: "all",
-        involvement: search.involvement,
+        involvement: "all",
         limit: PAGE_SIZE,
         ...(scopedProjectId ? { projectId: scopedProjectId } : {}),
         ...(projectIds ? { projectIds } : {}),
         ...(search.host ? { host: search.host } : {}),
+        ...(Object.keys(sentParsed.filters).length > 0 ? { filters: sentParsed.filters } : {}),
+        ...(sentParsed.text ? { query: sentParsed.text } : {}),
       } satisfies PullRequestListInput,
     }));
-  }, [environmentQueries, filtersOpen, scopedProjectId, search.host, search.involvement]);
+  }, [environmentQueries, filtersOpen, scopedProjectId, search.host, sentParsed]);
   const facetQuery = usePullRequestList(facetTargets);
   // The priority groups' own reads. The feed below is paginated by recency, so an older authored
   // or review-requested row can be missing from its first page; partitioned from these
@@ -1255,16 +1263,29 @@ function PullRequestsRouteView() {
 
   const viewers = baselineQuery.data?.viewers ?? listData?.viewers ?? EMPTY_VIEWERS;
   const listErrors = baselineQuery.data?.errors ?? listData?.errors ?? [];
+  // The broad page plus every row the list itself has read, which reach further into whatever
+  // the filters already narrow to. The unsearched baseline only counts while nothing is typed.
   const facets = useMemo(
     () =>
       collectPullRequestListFacets(
         [
           ...(facetQuery.data?.entries ?? []),
-          ...(baselineQuery.data?.entries ?? listData?.entries ?? []),
+          ...(listData?.entries ?? []),
+          ...(typedQuery.length === 0 ? (baselineQuery.data?.entries ?? []) : []),
         ],
-        search.state,
+        { state: search.state, involvement: search.involvement, filters: menuFilters },
+        viewers,
       ),
-    [baselineQuery.data?.entries, facetQuery.data?.entries, listData?.entries, search.state],
+    [
+      baselineQuery.data?.entries,
+      facetQuery.data?.entries,
+      listData?.entries,
+      menuFilters,
+      search.involvement,
+      search.state,
+      typedQuery,
+      viewers,
+    ],
   );
 
   /** The hosts that narrowed the listing themselves, so their answer is not narrowed again. */
@@ -2042,48 +2063,47 @@ function PullRequestsRouteView() {
       onChange={(next) => updateListScope({ sort: next })}
     />
   );
-  const filtersMenu = (
-    <PullRequestFiltersMenu
-      onOpenChange={setFiltersOpen}
-      state={search.state}
-      stateOptions={PULL_REQUEST_STATE_OPTIONS}
-      onState={(state) => updateListScope({ state })}
-      involvement={search.involvement}
-      involvementOptions={PULL_REQUEST_INVOLVEMENT_OPTIONS}
-      onInvolvement={(involvement) => updateListScope({ involvement })}
-      filters={menuFilters}
-      onFilters={(next) =>
-        updateListScope({
-          draft: next.draft,
-          review: next.review,
-          checks: next.checks,
-          author: next.author,
-          labels: next.labels?.flatMap((group) => group),
-        })
-      }
-      optionsPending={baselineQuery.isPending || facetQuery.isPending || listQuery.isPending}
-      authorOptions={facets.authors}
-      labelOptions={facets.labels}
-      host={search.host}
-      hostOptions={hostMenuOptions}
-      onHost={(host) => updateListScope({ host })}
-      server={scopedEnvironmentId ?? undefined}
-      serverOptions={serverMenuOptions}
-      // Narrowing to one server drops a project scope belonging to another, which would
-      // otherwise narrow the list to nothing with no visible filter to explain it.
-      onServer={(server) => updateListScope({ environmentId: server, projectId: undefined })}
-      projects={scopedProjects}
-      projectId={scopedProjectId}
-      projectEnvironmentId={scopedProject?.environmentId}
-      unavailable={unavailableProjects}
-      // The environment comes along with the project it belongs to, so a duplicate id on
-      // another server never gets narrowed to by mistake; picking "All projects" leaves the
-      // server scope as it was rather than clearing it.
-      onProject={(projectId, environmentId) =>
-        updateListScope(environmentId === undefined ? { projectId } : { projectId, environmentId })
-      }
-    />
-  );
+  const filtersMenuProps = {
+    open: filtersOpen,
+    onOpenChange: setFiltersOpen,
+    state: search.state,
+    stateOptions: PULL_REQUEST_STATE_OPTIONS,
+    onState: (state: PullRequestListState) => updateListScope({ state }),
+    involvement: search.involvement,
+    involvementOptions: PULL_REQUEST_INVOLVEMENT_OPTIONS,
+    onInvolvement: (involvement: PullRequestInvolvement) => updateListScope({ involvement }),
+    filters: menuFilters,
+    onFilters: (next: PullRequestListFilters) =>
+      updateListScope({
+        draft: next.draft,
+        review: next.review,
+        checks: next.checks,
+        author: next.author,
+        labels: next.labels?.flatMap((group) => group),
+      }),
+    optionsPending: baselineQuery.isPending || facetQuery.isPending || listQuery.isPending,
+    facets,
+    host: search.host,
+    hostOptions: hostMenuOptions,
+    onHost: (host: string | undefined) => updateListScope({ host }),
+    server: scopedEnvironmentId ?? undefined,
+    serverOptions: serverMenuOptions,
+    // Narrowing to one server drops a project scope belonging to another, which would
+    // otherwise narrow the list to nothing with no visible filter to explain it.
+    onServer: (server: EnvironmentId | undefined) =>
+      updateListScope({ environmentId: server, projectId: undefined }),
+    projects: scopedProjects,
+    projectId: scopedProjectId,
+    projectEnvironmentId: scopedProject?.environmentId,
+    unavailable: unavailableProjects,
+    // The environment comes along with the project it belongs to, so a duplicate id on
+    // another server never gets narrowed to by mistake; picking "All projects" leaves the
+    // server scope as it was rather than clearing it.
+    onProject: (projectId: ProjectId | undefined, environmentId: EnvironmentId | undefined) =>
+      updateListScope(environmentId === undefined ? { projectId } : { projectId, environmentId }),
+  };
+  const filtersMenu = <PullRequestFiltersMenu {...filtersMenuProps} />;
+  const appliedFilters = <PullRequestAppliedFilters {...filtersMenuProps} />;
   const columnProps = {
     refreshing,
     onRefresh: () => void refreshFromHost(),
@@ -2098,6 +2118,7 @@ function PullRequestsRouteView() {
     searchInput,
     sortMenu,
     filtersMenu,
+    appliedFilters,
     rightPanelControl:
       // Footprint reserve while the panel is closed: the toggle itself stays
       // mounted at the fixed titlebar inset in both states so it cannot move
@@ -2545,6 +2566,7 @@ function PullRequestsColumn({
   searchInput,
   sortMenu,
   filtersMenu,
+  appliedFilters,
   rightPanelControl,
   titlebarControls,
   rightPanelOpen,
@@ -2565,6 +2587,8 @@ function PullRequestsColumn({
   searchInput: ReactNode;
   sortMenu: ReactNode;
   filtersMenu: ReactNode;
+  /** The applied filters as removable pills, on their own row below the controls. */
+  appliedFilters: ReactNode;
   rightPanelControl: ReactNode;
   titlebarControls: ReactNode;
   rightPanelOpen: boolean;
@@ -2737,6 +2761,7 @@ function PullRequestsColumn({
                 <PullRequestRefreshControl refreshing={refreshing} onRefresh={onRefresh} />
               ) : null}
             </div>
+            {appliedFilters}
             {/* Scrolled past this marker, the controls are gone and the title takes over. */}
             <div ref={markerRef} aria-hidden className="-mt-3 h-px w-full" />
           </div>
