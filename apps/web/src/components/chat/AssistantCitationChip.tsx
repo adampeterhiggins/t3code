@@ -26,6 +26,7 @@ import { ContextChip, ContextChipAction, ContextChipLabel } from "../ContextChip
 import { ContextChipPopover } from "../contextChipParts";
 import { Button } from "../ui/button";
 import { Popover, PopoverClose, PopoverPopup, PopoverTrigger } from "../ui/popover";
+import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
 import { getVirtualizedScrollFadeClassName } from "../ui/scroll-area";
 import { AssistantCitationCommentEditor } from "./AssistantCitationCommentEditor";
 import { resolveAssistantCitationCommentDismissal } from "./assistantCitationCommentDismissal";
@@ -55,6 +56,7 @@ export function AssistantCitationChip({
   const commentInputRef = useRef<HTMLTextAreaElement>(null);
   const commentPopupRef = useRef<HTMLDivElement>(null);
   const draftCommentRef = useRef<string | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [unavailableSourceAnchor, setUnavailableSourceAnchor] =
     useState<AssistantCitationSourceAnchor | null>(null);
   const commentOpen = commentEditor?.open ?? false;
@@ -117,15 +119,30 @@ export function AssistantCitationChip({
       void navigate(assistantCitationNavigation(citation));
     },
   };
+  // Hovering the label previews the quote, as a sent message's chip does; the preview stays
+  // closed while the comment editor is open so the two never stack.
   const composerSourceLink = (
-    <Link
-      {...sourceLinkProps}
-      className="inline-flex h-full min-w-0 items-center gap-[0.33em] rounded-sm text-inherit no-underline focus-visible:outline-2 focus-visible:outline-foreground"
-      aria-label={`View cited assistant text: ${label}`}
-    >
-      <QuoteIcon aria-hidden="true" />
-      <ContextChipLabel className="max-w-[16em]">{label}</ContextChipLabel>
-    </Link>
+    <PreviewCard open={previewOpen && !commentOpen} onOpenChange={setPreviewOpen}>
+      <PreviewCardTrigger
+        delay={350}
+        closeDelay={120}
+        render={
+          <Link
+            {...sourceLinkProps}
+            className="inline-flex h-full min-w-0 items-center gap-[0.33em] rounded-sm text-inherit no-underline focus-visible:outline-2 focus-visible:outline-foreground"
+            aria-label={`View cited assistant text: ${label}`}
+          />
+        }
+      >
+        <QuoteIcon aria-hidden="true" />
+        <ContextChipLabel className="max-w-[16em]">{label}</ContextChipLabel>
+      </PreviewCardTrigger>
+      <PreviewCardPopup {...composerFloatingLayerProps} className="w-96 max-w-[calc(100vw-2rem)]">
+        <div className="flex max-h-[calc(var(--available-height)_-_1rem_-_2px)] flex-col p-3 text-sm">
+          <AssistantCitationQuote citation={citation} />
+        </div>
+      </PreviewCardPopup>
+    </PreviewCard>
   );
   if (!composer) {
     return (
