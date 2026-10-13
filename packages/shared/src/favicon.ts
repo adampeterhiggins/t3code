@@ -82,27 +82,39 @@ export function toolActivityFaviconUrl(
   );
 }
 
+export type ToolActivityBrandMark = "linear" | "granola";
+
+const TOOL_ACTIVITY_BRAND_DOMAINS: ReadonlyArray<readonly [ToolActivityBrandMark, string]> = [
+  ["linear", "linear.app"],
+  ["granola", "granola.ai"],
+];
+
 /**
- * Whether a provider-supplied tool icon is Linear's, either hosted on linear.app or a
- * favicon-service URL for it (Claude connectors send `…/s2/favicons?domain=linear.app`).
- * Clients draw their monochrome Linear mark instead, so it matches the other integration icons.
+ * Which brand a provider-supplied tool icon belongs to, when clients draw that brand's
+ * monochrome mark instead of its colored favicon, so it matches the other integration icons.
+ * Matches the brand's own host or a favicon-service URL for it (Claude connectors send
+ * `…/s2/favicons?domain=linear.app`).
  */
-export function toolActivityIconIsLinear(
+export function toolActivityBrandMark(
   icon:
     | { readonly _tag: "website"; readonly pageUrl: string }
     | { readonly _tag: "themed-logo"; readonly logoUrl: string }
     | { readonly _tag: "native-app" },
-): boolean {
+): ToolActivityBrandMark | null {
   const rawUrl =
     icon._tag === "website" ? icon.pageUrl : icon._tag === "themed-logo" ? icon.logoUrl : null;
-  if (!rawUrl) return false;
+  if (!rawUrl) return null;
+  let host: string;
   try {
     const url = new URL(rawUrl);
-    const host = (url.searchParams.get("domain") ?? url.hostname).toLowerCase();
-    return host === "linear.app" || host.endsWith(".linear.app");
+    host = (url.searchParams.get("domain") ?? url.hostname).toLowerCase();
   } catch {
-    return false;
+    return null;
   }
+  for (const [brand, domain] of TOOL_ACTIVITY_BRAND_DOMAINS) {
+    if (host === domain || host.endsWith(`.${domain}`)) return brand;
+  }
+  return null;
 }
 
 /**
