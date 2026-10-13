@@ -8,6 +8,7 @@ import type * as React from "react";
 import { cn } from "~/lib/utils";
 import { buttonVariants } from "./button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "./input-group";
+import { Spinner } from "./spinner";
 
 const Menu = MenuPrimitive.Root;
 
@@ -107,9 +108,11 @@ function MenuItem({
 }
 
 /** An asynchronous menu keeps its known choices while more options arrive. */
+/** A menu's options are still loading: a spinner and what is loading, in place of the list. */
 function MenuLoadingItem({ children = "Loading…" }: { children?: React.ReactNode }) {
   return (
     <MenuItem disabled>
+      <Spinner size="sm" tone="muted" aria-hidden role={undefined} aria-label={undefined} />
       <span role="status">{children}</span>
     </MenuItem>
   );

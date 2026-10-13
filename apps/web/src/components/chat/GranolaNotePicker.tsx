@@ -218,7 +218,12 @@ function GranolaNotePickerDialog({
                   : "Attach note"
             }
             inputAccessory={
-              <GranolaNotePickerFilterBar {...facets} view={view} onChange={setView} />
+              <GranolaNotePickerFilterBar
+                {...facets}
+                loading={loaded === undefined && result.error === null}
+                view={view}
+                onChange={setView}
+              />
             }
             mode="none"
             value={query}

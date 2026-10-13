@@ -13,6 +13,8 @@ import { MenuChoiceLabel } from "../MenuChoiceLabel";
 import {
   Menu,
   MenuCheckboxItem,
+  MenuItem,
+  MenuLoadingItem,
   MenuPopup,
   MenuRadioGroup,
   MenuRadioItem,
@@ -53,7 +55,16 @@ function PeopleChecklist(props: {
   onChange: (selected: ReadonlyArray<string>) => void;
   /** "Only" settles the filter, so it also closes the menu. */
   onOnly: (value: string) => void;
+  /** The meetings are still loading, so there is nobody to list yet. */
+  loading: boolean;
 }) {
+  if (props.people.length === 0) {
+    return props.loading ? (
+      <MenuLoadingItem>Loading people…</MenuLoadingItem>
+    ) : (
+      <MenuItem disabled>No people in these meetings</MenuItem>
+    );
+  }
   return (
     <MenuSearch items={props.people} getText={(person) => person.label} placeholder="Search people">
       {(matches, query) =>
@@ -91,6 +102,8 @@ export function GranolaNotePickerFilterBar(props: {
   creators: ReadonlyArray<Person>;
   /** How many notes each date range shows under the other filters. */
   ranges: Record<GranolaNotePickerView["range"], number>;
+  /** The meetings the menus are built from are still loading. */
+  loading: boolean;
   view: GranolaNotePickerView;
   onChange: (view: GranolaNotePickerView) => void;
 }) {
@@ -120,6 +133,7 @@ export function GranolaNotePickerFilterBar(props: {
                   selected={view.participants}
                   onChange={(participants) => props.onChange({ ...view, participants })}
                   onOnly={(name) => pickOnly({ ...view, participants: [name] })}
+                  loading={props.loading}
                 />
               </MenuSubPopup>
             </MenuSub>
@@ -131,6 +145,7 @@ export function GranolaNotePickerFilterBar(props: {
                   selected={view.creators}
                   onChange={(creators) => props.onChange({ ...view, creators })}
                   onOnly={(name) => pickOnly({ ...view, creators: [name] })}
+                  loading={props.loading}
                 />
               </MenuSubPopup>
             </MenuSub>
@@ -148,9 +163,11 @@ export function GranolaNotePickerFilterBar(props: {
                       <MenuRadioItem key={range} value={range}>
                         <span className="flex w-full min-w-0 items-center gap-2">
                           <span className="min-w-0 flex-1 truncate">{RANGE_LABELS[range]}</span>
-                          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                            {props.ranges[range]}
-                          </span>
+                          {props.loading ? null : (
+                            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                              {props.ranges[range]}
+                            </span>
+                          )}
                         </span>
                       </MenuRadioItem>
                     ),
