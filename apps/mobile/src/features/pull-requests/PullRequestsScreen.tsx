@@ -142,6 +142,7 @@ export function PullRequestsScreen(
   );
   const sidebar = props.sidebar === true || primaryColumn !== null;
   const selectedKey = props.selectedPullRequestKey ?? primaryColumn?.selectedPullRequestKey;
+  const connectedKey = connectedTargets.map((target) => target.environmentId).join("\n");
   const entries = useMemo(
     () =>
       filterPullRequestList(
@@ -150,8 +151,9 @@ export function PullRequestsScreen(
         result.data?.viewers ?? {},
         query,
         result.data.localSearchHosts,
+        new Set(connectedKey.split("\n")),
       ),
-    [result.entries, controls, query, result.data],
+    [result.entries, controls, query, result.data, connectedKey],
   );
   // The menus count one broad page, every state and involvement with no menu filters, beside
   // the list's own rows, so no menu narrows itself. Unfiltered, the two are the same read.

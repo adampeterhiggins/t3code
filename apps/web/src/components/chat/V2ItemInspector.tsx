@@ -18,6 +18,7 @@ import {
 } from "@t3tools/client-runtime/work-log/item-detail";
 import { resolveToolPreview } from "@t3tools/client-runtime/work-log/tool-preview";
 import { formatDiffCount } from "@t3tools/client-runtime/diff-count";
+import { isJavaScriptReplTool } from "@t3tools/shared/toolActivity";
 import { ExternalLinkIcon, GitBranchIcon, RotateCcwIcon } from "lucide-react";
 import { memo, useMemo } from "react";
 
@@ -61,9 +62,11 @@ const monoClassName =
 function StructuredValue({
   value,
   highlightJson = false,
+  language,
 }: {
   readonly value: unknown;
   readonly highlightJson?: boolean;
+  readonly language?: "typescript";
 }) {
   const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
   const isJson = useMemo(() => {
@@ -78,7 +81,7 @@ function StructuredValue({
   if (!text) return null;
   return (
     <pre className={cn("max-h-80 overflow-auto text-muted-foreground", monoClassName)}>
-      {isJson ? <HighlightedSnippet text={text} lang="json" /> : text}
+      {language || isJson ? <HighlightedSnippet text={text} lang={language ?? "json"} /> : text}
     </pre>
   );
 }
@@ -219,6 +222,7 @@ function ToolCallBody(
   props: ToolOutputState & {
     readonly command?: string;
     readonly args?: unknown;
+    readonly toolName?: string | null;
     readonly exitCode?: number | undefined;
     readonly highlightSyntax?: boolean | undefined;
   },
@@ -234,7 +238,11 @@ function ToolCallBody(
           {call.args.map(([key, value]) => (
             <div key={key}>
               <span className="text-muted-foreground">{key} </span>
-              {value}
+              {key === "code" && isJavaScriptReplTool(props.toolName) ? (
+                <StructuredValue value={value} language="typescript" />
+              ) : (
+                value
+              )}
             </div>
           ))}
         </div>
@@ -436,6 +444,7 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
             images={<ToolOutputImages {...outputState} onImageExpand={props.onImageExpand} />}
             raw={
               <ToolCallBody
+                toolName={item.toolName}
                 args={item.input}
                 highlightSyntax={props.highlightSyntax}
                 {...outputState}
@@ -446,6 +455,7 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
           />
         ) : (
           <ToolCallBody
+            toolName={item.toolName}
             args={item.input}
             highlightSyntax={props.highlightSyntax}
             {...outputState}
