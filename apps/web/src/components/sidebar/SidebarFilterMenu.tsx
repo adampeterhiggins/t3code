@@ -22,6 +22,7 @@ import {
   ListIcon,
   PlusIcon,
   SettingsIcon,
+  SearchIcon,
   XIcon,
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
@@ -540,6 +541,8 @@ function SidebarFilterPill(props: { icon: ReactNode; label: string; onRemove: ()
  * while the list is unfiltered.
  */
 export function SidebarFilterPills(props: {
+  searchQuery: string;
+  onClearSearch: () => void;
   pages: readonly SidebarPage[];
   groupStyles: ThreadGroups;
   onPagesChange: (pages: readonly SidebarPage[]) => void;
@@ -562,11 +565,19 @@ export function SidebarFilterPills(props: {
     const project = projectByKey.get(key);
     return project ? [project] : [];
   });
-  const pillCount = pages.length + organisations.length + projects.length;
+  const searchQuery = props.searchQuery.trim();
+  const pillCount = pages.length + organisations.length + projects.length + (searchQuery ? 1 : 0);
   if (pillCount === 0) return null;
 
   return (
     <div className="flex flex-wrap items-center gap-1 pt-1.5">
+      {searchQuery ? (
+        <SidebarFilterPill
+          icon={<SearchIcon className="size-3.5" />}
+          label={`Search: ${searchQuery}`}
+          onRemove={props.onClearSearch}
+        />
+      ) : null}
       {pages.map((page) => (
         <SidebarFilterPill
           key={page}
@@ -608,6 +619,7 @@ export function SidebarFilterPills(props: {
           type="button"
           className="cursor-pointer px-1.5 text-xs text-sidebar-muted-foreground hover:text-sidebar-foreground"
           onClick={() => {
+            props.onClearSearch();
             props.onPagesChange(["threads"]);
             props.onScopedOrganisationKeysChange([]);
             props.onScopedProjectKeysChange([]);

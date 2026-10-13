@@ -4360,6 +4360,7 @@ export default function Sidebar() {
 
   const threadSearchInputRef = useRef<HTMLInputElement>(null);
   const [threadSearchQuery, setThreadSearchQuery] = useState("");
+  const [isThreadSearchApplied, setIsThreadSearchApplied] = useState(false);
   const [activeSearchResultIndex, setActiveSearchResultIndex] = useState(0);
   const isSearchingThreads = threadSearchQuery.trim().length > 0;
   const searchableThreads = useMemo(
@@ -4895,14 +4896,16 @@ export default function Sidebar() {
 
   const clearThreadSearch = useCallback(() => {
     setThreadSearchQuery("");
+    setIsThreadSearchApplied(false);
     setActiveSearchResultIndex(0);
   }, []);
   const selectThreadSearchResult = useCallback(
     (thread: EnvironmentThreadShell) => {
-      clearThreadSearch();
+      setIsThreadSearchApplied(true);
+      threadSearchInputRef.current?.blur();
       navigateToThread(scopeThreadRef(thread.environmentId, thread.id));
     },
-    [clearThreadSearch, navigateToThread],
+    [navigateToThread],
   );
   const handleThreadSearchKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLInputElement>) => {
@@ -7072,13 +7075,14 @@ export default function Sidebar() {
               newThreadInProjectShortcutLabel={newThreadInProjectShortcutLabel}
               showNewThreadInProjectHint={projectGroups.length > 1}
               searchInputRef={threadSearchInputRef}
-              searchQuery={threadSearchQuery}
+              searchQuery={isThreadSearchApplied ? "" : threadSearchQuery}
+              onSearchFocus={() => setIsThreadSearchApplied(false)}
               onSearchQueryChange={(value) => {
                 setThreadSearchQuery(value);
                 setActiveSearchResultIndex(0);
               }}
               onSearchKeyDown={handleThreadSearchKeyDown}
-              isSearching={isSearchingThreads}
+              isSearching={isSearchingThreads && !isThreadSearchApplied}
               searchResultCount={threadSearchResults.length}
               activeSearchResultIndex={activeSearchResultIndex}
               onClearSearch={clearThreadSearch}
@@ -7125,6 +7129,8 @@ export default function Sidebar() {
               }
             />
             <SidebarFilterPills
+              searchQuery={isThreadSearchApplied ? threadSearchQuery : ""}
+              onClearSearch={clearThreadSearch}
               pages={sidebarPages}
               groupStyles={threadGroups}
               onPagesChange={setSidebarPages}
