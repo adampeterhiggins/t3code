@@ -9,6 +9,7 @@ import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview
 import { useCursorAnchor } from "./CursorPreviewCard";
 import {
   toolCallPreviewHeading,
+  toolCallPreviewReadContent,
   toolCallPreviewRepeatsFilePath,
   toolCallPreviewStatus,
   workEntryHasToolCallPreview,
@@ -251,6 +252,7 @@ import {
   toolGroupAction,
   workEntryDisplayLabel,
   workEntryReadOutput,
+  workEntryReadRawPaths,
   workEntryIsVisibleInGroup,
   worktreeSetupAgentStarted,
   type StableMessagesTimelineRowsState,
@@ -5710,10 +5712,7 @@ function ToolCallPreviewContent(
   const heading = toolCallPreviewHeading(workEntry, workspaceRoot, props.previewText);
   const fileChange = workEntry.structuredPayload;
   const fileName = fileChange?.type === "file_change" ? fileChange.fileName : null;
-  const headingText = toolCallPreviewRepeatsFilePath(heading.text, fileName, workspaceRoot)
-    ? null
-    : heading.text;
-  const textBody =
+  const rawTextBody =
     plainOutput !== undefined
       ? plainOutput
       : workEntry.projectedItem
@@ -5724,6 +5723,23 @@ function ToolCallPreviewContent(
             heading.command ?? props.previewText,
             null,
           );
+  // A read's title, row label, and body are three spellings of one path.
+  const readPreview =
+    toolGroupAction(workEntry) === "read"
+      ? toolCallPreviewReadContent({
+          title: heading.title,
+          text: heading.text,
+          body: rawTextBody,
+          paths: workEntryReadRawPaths(workEntry),
+          workspaceRoot,
+        })
+      : null;
+  const headingText = readPreview
+    ? readPreview.text
+    : toolCallPreviewRepeatsFilePath(heading.text, fileName, workspaceRoot)
+      ? null
+      : heading.text;
+  const textBody = readPreview ? readPreview.body : rawTextBody;
   if (heading.command) {
     const item = workEntry.projectedItem?.item;
     return (
