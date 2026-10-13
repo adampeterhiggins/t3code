@@ -395,6 +395,56 @@ function isThreadListV2Grouped(
   return thread.groupName != null && (groupEnvironmentIds?.has(thread.environmentId) ?? true);
 }
 
+/** Whether a thread matches the list's search: by title, tab group, linked pull request, or a
+    server message match (`matchedThreadKeys`). `query` is trimmed and lowercased; empty matches
+    everything. */
+export function threadListV2MatchesSearch(
+  thread: EnvironmentThreadShell,
+  query: string,
+  matchedThreadKeys: ReadonlySet<string> | undefined,
+): boolean {
+  return (
+    query.length === 0 ||
+    thread.title.toLocaleLowerCase().includes(query) ||
+    thread.tabGroupName?.toLocaleLowerCase().includes(query) === true ||
+    threadPullRequestSearchTerms(thread).some((term) => term.toLocaleLowerCase().includes(query)) ||
+    matchedThreadKeys?.has(
+      threadSearchMatchKey({ environmentId: thread.environmentId, threadId: thread.id }),
+    ) === true
+  );
+}
+
+/** The Show page a thread is listed under, by the same rules buildThreadListV2Items sorts it
+    into sections: hidden, then its group, then snoozed, then settled, else live threads. */
+export function threadListV2Page(
+  thread: EnvironmentThreadShell,
+  input: Pick<
+    Parameters<typeof buildThreadListV2Items>[0],
+    | "now"
+    | "settlementEnvironmentIds"
+    | "snoozeEnvironmentIds"
+    | "hidingEnvironmentIds"
+    | "groupEnvironmentIds"
+    | "queuedThreadKeys"
+  >,
+): ThreadListPage {
+  if (isThreadListV2Hidden(thread, input.hidingEnvironmentIds)) return "hidden";
+  if (isThreadListV2Grouped(thread, input.groupEnvironmentIds)) {
+    return threadListGroupPage(thread.groupName!);
+  }
+  if (
+    (input.snoozeEnvironmentIds?.has(thread.environmentId) ?? true) &&
+    effectiveSnoozed(thread, { now: input.now })
+  ) {
+    return "snoozed";
+  }
+  return (input.settlementEnvironmentIds?.has(thread.environmentId) ?? true) &&
+    thread.settledOverride === "settled" &&
+    input.queuedThreadKeys?.has(`${thread.environmentId}:${thread.id}`) !== true
+    ? "settled"
+    : "threads";
+}
+
 export interface ThreadListV2Item {
   readonly thread: EnvironmentThreadShell;
   readonly variant: "card" | "slim";
@@ -917,22 +967,7 @@ export function buildThreadListV2Items(input: {
     if (projectKeys !== null && !projectKeys.has(`${thread.environmentId}:${thread.projectId}`)) {
       continue;
     }
-    if (
-      query.length > 0 &&
-      !thread.title.toLocaleLowerCase().includes(query) &&
-      !thread.tabGroupName?.toLocaleLowerCase().includes(query) &&
-      !threadPullRequestSearchTerms(thread).some((term) =>
-        term.toLocaleLowerCase().includes(query),
-      ) &&
-      input.matchedThreadKeys?.has(
-        threadSearchMatchKey({
-          environmentId: thread.environmentId,
-          threadId: thread.id,
-        }),
-      ) !== true
-    ) {
-      continue;
-    }
+    if (!threadListV2MatchesSearch(thread, query, input.matchedThreadKeys)) continue;
     const supportsSettlement = input.settlementEnvironmentIds?.has(thread.environmentId) ?? true;
     const supportsSnooze = input.snoozeEnvironmentIds?.has(thread.environmentId) ?? true;
     if (isThreadListV2Hidden(thread, input.hidingEnvironmentIds)) {

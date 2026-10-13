@@ -40,6 +40,8 @@ import {
   resolveSidebarThreadSection,
   resolveSidebarPages,
   buildOrganisationOptions,
+  buildSidebarFilterFacets,
+  type SidebarPage,
   repositoryOrganisationOf,
   resolveSidebarRowAccessibility,
   resolveSidebarThreadStatus,
@@ -2709,5 +2711,86 @@ describe("buildOrganisationOptions", () => {
         organisation: { name: "Zed Industries", icon },
       },
     ]);
+  });
+
+  it("keeps offering a picked organisation that has no checkout left", () => {
+    expect(
+      buildOrganisationOptions([identity("github.com/zed/one")], {}, ["github.com/gone"]).map(
+        (option) => option.label,
+      ),
+    ).toEqual(["gone", "zed"]);
+  });
+});
+
+describe("buildSidebarFilterFacets", () => {
+  const identity = (canonicalKey: string) =>
+    ({ canonicalKey }) as Parameters<typeof repositoryOrganisationOf>[0];
+  const project = (projectKey: string, ...members: Array<[id: string, repository: string]>) => ({
+    projectKey,
+    memberProjects: members.map(([id, repository]) => ({
+      environmentId: "env",
+      id,
+      repositoryIdentity: identity(repository),
+    })),
+  });
+  // t3code holds a fork and its upstream, which belong to different organisations.
+  const projects = [
+    project("t3code", ["t3-fork", "github.com/me/t3code"], ["t3-up", "github.com/ping/t3code"]),
+    project("site", ["site", "github.com/me/site"]),
+    project("lib", ["lib", "github.com/ping/lib"]),
+  ];
+  const thread = (projectId: string, page: SidebarPage = "threads") => ({
+    environmentId: "env",
+    projectId,
+    page,
+  });
+  const threads = [
+    thread("t3-fork"),
+    thread("t3-fork", "settled"),
+    thread("t3-up"),
+    thread("site"),
+    thread("site", "snoozed"),
+    thread("lib", "group:Ops"),
+  ];
+  const facets = (input: {
+    pages?: SidebarPage[];
+    projects?: string[];
+    organisations?: string[];
+  }) =>
+    buildSidebarFilterFacets({
+      threads,
+      projects,
+      pages: input.pages ?? ["threads"],
+      scopedProjectKeys: input.projects ?? [],
+      scopedOrganisationKeys: input.organisations ?? [],
+    });
+
+  it("counts each dimension under the others but not itself", () => {
+    const result = facets({ pages: ["threads"], organisations: ["github.com/me"] });
+    // Show follows the organisation, and every page stays countable.
+    expect(Object.fromEntries(result.pageCounts)).toEqual({ threads: 2, settled: 1, snoozed: 1 });
+    // Projects follow Show and the organisation.
+    expect(Object.fromEntries(result.projectCounts)).toEqual({ t3code: 1, site: 1 });
+    // Organisations follow Show only, so another one can be added.
+    expect(Object.fromEntries(result.organisationCounts)).toEqual({
+      "github.com/me": 2,
+      "github.com/ping": 1,
+    });
+  });
+
+  it("offers projects in a picked organisation and organisations of picked projects", () => {
+    expect(
+      facets({ organisations: ["github.com/ping"] }).projects.map((p) => p.projectKey),
+    ).toEqual(["t3code", "lib"]);
+    expect([...facets({ projects: ["site"] }).organisationKeys]).toEqual(["github.com/me"]);
+    expect(facets({}).projects).toHaveLength(3);
+  });
+
+  it("keeps a pick the other filters exclude, with a count of 0", () => {
+    const result = facets({ projects: ["site"], organisations: ["github.com/ping"] });
+    expect(result.projects.map((p) => p.projectKey)).toEqual(["t3code", "site", "lib"]);
+    expect(result.projectCounts.get("site")).toBe(0);
+    expect(result.organisationKeys.has("github.com/ping")).toBe(true);
+    expect(result.organisationCounts.get("github.com/ping")).toBe(0);
   });
 });

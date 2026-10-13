@@ -76,7 +76,10 @@ import {
   type ThreadListOrganisation,
 } from "./thread-list-organisations";
 import { useThreadListV2ShelfPreferences } from "../threads/use-thread-list-v2-shelf-preferences";
-import type { HomeListFilterMenuEnvironment } from "./home-list-filter-menu";
+import type {
+  HomeListFilterMenuEnvironment,
+  HomeListFilterMenuProject,
+} from "./home-list-filter-menu";
 import {
   buildHomeProjectScopes,
   findHomeProjectScope,
@@ -105,6 +108,9 @@ interface HomeScreenProps {
   /** Picked Organisations filter keys; empty means every organisation. */
   readonly organisationKeys: ReadonlyArray<string>;
   readonly organisations: ReadonlyArray<ThreadListOrganisation>;
+  /** The Project filter's choices, with counts; see buildThreadListFilterFacets. */
+  readonly filterProjects: ReadonlyArray<HomeListFilterMenuProject>;
+  readonly pageCounts: ReadonlyMap<ThreadListPage, number>;
   readonly onToggleOrganisation: (key: string) => void;
   readonly onClearOrganisations: () => void;
   /** Filter-menu pages: which groups the list shows. */
@@ -1080,7 +1086,7 @@ export function HomeScreen(props: HomeScreenProps) {
       {Platform.OS === "ios" && workspace ? (
         <ThreadListFilters
           environments={props.environments}
-          projects={projectScopes.map((scope) => ({ key: scope.key, label: scope.title }))}
+          projects={props.filterProjects}
           selectedEnvironmentId={props.selectedEnvironmentId}
           selectedProjectKey={props.selectedProjectKey}
           onEnvironmentChange={props.onEnvironmentChange}
@@ -1088,6 +1094,7 @@ export function HomeScreen(props: HomeScreenProps) {
           pages={props.pages}
           availablePages={props.availablePages}
           onTogglePage={props.onTogglePage}
+          pageCounts={props.pageCounts}
           groups={props.groups}
           onCreateGroup={props.onCreateGroup}
           organisations={props.organisations}

@@ -9,6 +9,8 @@ import type { Organisations } from "@t3tools/contracts/settings";
 export interface ThreadListOrganisation {
   readonly key: string;
   readonly label: string;
+  /** Threads picking it would show under the other filters; see buildThreadListFilterFacets. */
+  readonly count?: number;
 }
 
 interface OrganisationProject {
