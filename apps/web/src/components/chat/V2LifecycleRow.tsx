@@ -21,7 +21,6 @@ import {
   forkSourceInstanceId,
   formatModelSelectionTraits,
   handoffInstancesDiffer,
-  modelChangeDividerLabel,
   modelOptionDescriptors,
   modelSelectionChanged,
   providerAccountLabel,
@@ -197,7 +196,7 @@ export function V2LifecycleRow(props: {
     const showAccount = item.from.instanceId !== item.to.instanceId;
     return (
       <TimelineSystemDivider
-        label={modelChangeDividerLabel(item.from, item.to, descriptors)}
+        label="Model changed"
         icon={ArrowRightLeftIcon}
         showDetailSeparator={false}
         detail={

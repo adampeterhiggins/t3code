@@ -7,7 +7,6 @@ import {
   forkSourceInstanceId,
   formatModelSelectionTraits,
   handoffInstancesDiffer,
-  modelChangeDividerLabel,
   modelOptionDescriptors,
   modelSelectionChanged,
   providerAccountLabel,
@@ -115,7 +114,7 @@ export function ThreadModelChangeRow(props: {
   const showAccount = item.from.instanceId !== item.to.instanceId;
   return (
     <ThreadContextDivider
-      label={modelChangeDividerLabel(item.from, item.to, descriptors)}
+      label="Model changed"
       icon="arrow.left.arrow.right"
       iconColor={props.iconColor}
     >

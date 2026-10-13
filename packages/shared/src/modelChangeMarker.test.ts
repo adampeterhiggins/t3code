@@ -16,7 +16,6 @@ import {
   forkSourceInstanceId,
   formatModelSelectionTraits,
   handoffInstancesDiffer,
-  modelChangeDividerLabel,
   modelChangeSourceSelection,
   modelChangeTurnItem,
   modelSelectionChanged,
@@ -273,25 +272,23 @@ describe("account change labels", () => {
   const to = { instanceId: personal, model: "grok-4.7" };
   const providers = [cursorProvider(work, "Work"), cursorProvider(personal, "Personal")];
 
-  it("names an account-only switch and keeps model switches labelled as the model", () => {
-    expect(modelChangeDividerLabel(from, to)).toBe("Account changed");
-    expect(modelChangeDividerLabel(from, { ...to, model: "composer-2" })).toBe("Model changed");
-    expect(
-      modelChangeDividerLabel(from, {
-        ...to,
-        options: [{ id: "fastMode", value: true }],
-      }),
-    ).toBe("Model changed");
-    expect(modelChangeDividerLabel(from, { ...from, model: "composer-2" })).toBe("Model changed");
-    expect(describeModelChange(from, to, providers)).toBe("Account changed from Work to Personal.");
+  it("names an account switch inside the model change", () => {
+    expect(describeModelChange(from, to, providers)).toBe(
+      "Model changed from Work, grok-4.7 to Personal, grok-4.7.",
+    );
     expect(describeModelChange(from, { ...to, model: "composer-2" }, providers)).toBe(
       "Model changed from Work, grok-4.7 to Personal, composer-2.",
+    );
+    expect(describeModelChange(from, { ...from, model: "composer-2" }, providers)).toBe(
+      "Model changed from grok-4.7 to composer-2.",
     );
   });
 
   it("falls back to the instance id when the account is gone", () => {
     expect(providerAccountLabel([], personal)).toBe(personal);
-    expect(describeModelChange(from, to)).toBe(`Account changed from ${work} to ${personal}.`);
+    expect(describeModelChange(from, to)).toBe(
+      `Model changed from ${work}, grok-4.7 to ${personal}, grok-4.7.`,
+    );
   });
 
   it("humanizes a secondary account that still carries the brand name", () => {

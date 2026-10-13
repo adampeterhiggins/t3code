@@ -70,22 +70,6 @@ function selectionParametersChanged(
   });
 }
 
-/**
- * Account-only switches name the accounts. A model or parameter switch keeps
- * the model label, and names the account on each side when that moved too.
- */
-export function modelChangeDividerLabel(
-  from: ModelSelection,
-  to: ModelSelection,
-  descriptors?: ReadonlyArray<ProviderOptionDescriptor>,
-): "Account changed" | "Model changed" {
-  const accountOnly =
-    from.instanceId !== to.instanceId &&
-    from.model === to.model &&
-    !selectionParametersChanged(from, to, descriptors);
-  return accountOnly ? "Account changed" : "Model changed";
-}
-
 type AccountProvider = Pick<ServerProvider, "instanceId" | "driver" | "displayName">;
 
 /**
@@ -117,22 +101,19 @@ function humanizeInstanceSlug(slug: string): string {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-/** Transcript text for a model, parameter, or account switch. */
+/** Transcript text for a model, parameter, or account switch. An account move stays a model change and names the account beside the model. */
 export function describeModelChange(
   from: ModelSelection,
   to: ModelSelection,
   providers: ReadonlyArray<ServerProvider> = [],
 ): string {
-  const descriptors = modelOptionDescriptors(providers, from);
-  const label = modelChangeDividerLabel(from, to, descriptors);
   const accountChanged = from.instanceId !== to.instanceId;
   const side = (selection: ModelSelection) => {
     const detail = describeModelSelection(selection);
     if (!accountChanged) return detail;
-    const account = providerAccountLabel(providers, selection.instanceId);
-    return label === "Account changed" ? account : `${account}, ${detail}`;
+    return `${providerAccountLabel(providers, selection.instanceId)}, ${detail}`;
   };
-  return `${label} from ${side(from)} to ${side(to)}.`;
+  return `Model changed from ${side(from)} to ${side(to)}.`;
 }
 
 /** True when a handoff's endpoints are not all the same account. */
