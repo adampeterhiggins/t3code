@@ -1164,6 +1164,10 @@ On web and desktop the composer's `#` menu also has a **Repositories** tab over 
 `#name` searches the configured owners and `#owner/name` another one. `#owner/name`, and a
 hyphenated name once an owner is configured, open that tab by default instead of pull requests.
 
+Repository and integration chips, along with captured chat-tab summaries, keep their snapshots
+when a web or desktop draft is reopened, copied to another composer, or restored from the prompt
+stash.
+
 A picked repository becomes a `repository` context chip. When the message sends, the server
 clones what is missing before the turn starts. It leaves an existing clone of the same remote
 alone (fetching only, so ahead/behind are current) and never overwrites a folder that belongs to
