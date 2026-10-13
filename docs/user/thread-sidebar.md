@@ -184,6 +184,9 @@ would leave with your other filters, so you can see where work is before you nar
 many filters are on, hovering it lists the ones that are selected, and each one appears as a pill
 under the search bar: click its × to remove it, or **Clear all** to go back to the default list.
 
+On web and desktop, selecting a sidebar search result keeps the search applied as a filter.
+Click the search field to edit it, or remove its pill to show the full list again.
+
 To give an organisation a friendlier name or an icon, open **Settings → Organisations** (also
 reachable from **Organisation settings…** at the bottom of the **Organisations** filter). Names and
 icons are shared with every connected server, so they show the same on your other devices; mobile
