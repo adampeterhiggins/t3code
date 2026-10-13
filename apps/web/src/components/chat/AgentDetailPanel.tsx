@@ -25,6 +25,7 @@ import {
   DEFAULT_SUBAGENT_TOOL_CALL_VIEW,
   deriveSubagentToolCalls,
   subagentEmptyToolCallsText,
+  subagentToolCallFacets,
   subagentWorkspaceRoot,
   type SubagentToolCall,
   type SubagentToolCallSort,
@@ -48,6 +49,7 @@ import { useNavigate } from "@tanstack/react-router";
 import {
   ArrowDownUpIcon,
   BotIcon,
+  CircleDotIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -92,6 +94,8 @@ import { useAtomCommand } from "~/state/use-atom-command";
 import { buildThreadRouteParams } from "~/threadRoutes";
 
 import { AgentElapsed, STATUS_VISUALS, StatusDot } from "../AgentStatus";
+import { FilterPill } from "../FilterPill";
+import { MenuChoiceLabel } from "../MenuChoiceLabel";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import {
@@ -113,7 +117,7 @@ import { agentReferenceTargetOf, attachAgentToChat, useAgentHandle } from "./age
 import { AgentRow, useEnvironmentShells, useProviderEntries } from "./AgentFleetRow";
 import { AgentTranscriptList } from "./AgentTranscriptList";
 import {
-  agentTranscriptKindOf,
+  agentTranscriptKindCounts,
   applyAgentTranscriptView,
   DEFAULT_AGENT_TRANSCRIPT_VIEW,
   deriveAgentTranscriptRows,
@@ -121,7 +125,7 @@ import {
   type AgentTranscriptRowCache,
   type AgentTranscriptView,
 } from "./agentTranscript";
-import { TOOL_KIND_LABELS } from "./agentToolKinds";
+import { TOOL_KIND_ICONS, TOOL_KIND_LABELS } from "./agentToolKinds";
 import {
   agentMenuTargetOf,
   showAgentInPanel,
@@ -292,18 +296,17 @@ function ShowingCount(props: { shown: number; total: number }) {
   );
 }
 
-function countBy<T, K>(items: ReadonlyArray<T>, key: (item: T) => K): Map<K, number> {
-  const counts = new Map<K, number>();
-  for (const item of items) counts.set(key(item), (counts.get(key(item)) ?? 0) + 1);
-  return counts;
-}
-
+/**
+ * One filter's choices with how many rows each would show under the search and the other
+ * filters, and "Only". Choices without rows are left out unless picked.
+ */
 function CheckboxGroup<K extends string>(props: {
   label: string;
   labels: Record<K, string>;
   selected: ReadonlyArray<K>;
-  counts: Map<K, number>;
+  counts: ReadonlyMap<K, number>;
   onChange: (next: ReadonlyArray<K>) => void;
+  onOnly: (key: K) => void;
 }) {
   const keys = (Object.keys(props.labels) as K[]).filter((key) => props.counts.has(key));
   if (keys.length === 0) return null;
@@ -320,9 +323,11 @@ function CheckboxGroup<K extends string>(props: {
             )
           }
         >
-          {props.labels[key]}
-          <span className="ms-auto ps-4 font-mono text-2xs tabular-nums text-muted-foreground">
-            {props.counts.get(key)}
+          <span className="flex w-full min-w-0 items-center gap-2">
+            <MenuChoiceLabel label={props.labels[key]} onOnly={() => props.onOnly(key)} />
+            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+              {props.counts.get(key)}
+            </span>
           </span>
         </MenuCheckboxItem>
       ))}
@@ -330,21 +335,26 @@ function CheckboxGroup<K extends string>(props: {
   );
 }
 
-function FilterMenu(props: { activeCount: number; children: ReactNode }) {
+/** The applied filters show as pills below the toolbar, so the trigger carries no count. */
+function FilterMenu(props: {
+  active: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  children: ReactNode;
+}) {
   return (
-    <Menu>
+    <Menu open={props.open} onOpenChange={props.onOpenChange}>
       <MenuTrigger
         render={
           <Button
             type="button"
-            size={props.activeCount > 0 ? "micro" : "icon-micro"}
-            variant={props.activeCount > 0 ? "ghost" : "ghost-muted"}
+            size="icon-micro"
+            variant={props.active ? "ghost" : "ghost-muted"}
             aria-label="Filter activity"
           />
         }
       >
         <ListFilterIcon />
-        {props.activeCount > 0 ? props.activeCount : null}
       </MenuTrigger>
       <MenuPopup align="end">{props.children}</MenuPopup>
     </Menu>
@@ -481,6 +491,8 @@ export function AgentDetailPanel(props: {
     [ownItems, props.workspaceRoot],
   );
   const visibleCalls = useMemo(() => applySubagentToolCallView(calls, toolView), [calls, toolView]);
+  const toolFacets = useMemo(() => subagentToolCallFacets(calls, toolView), [calls, toolView]);
+  const [filterMenuOpen, setFilterMenuOpen] = useState(false);
 
   // A tool call this view was opened on (from an agent preview), expanded and scrolled to.
   const pendingToolCall = useAgentDrillStore((state) =>
@@ -543,6 +555,10 @@ export function AgentDetailPanel(props: {
   }, [child, mode, ownVisibleItems, transcriptSetup]);
   const visibleTranscript = useMemo(
     () => applyAgentTranscriptView(transcriptRows, transcriptView),
+    [transcriptRows, transcriptView],
+  );
+  const transcriptKindCounts = useMemo(
+    () => agentTranscriptKindCounts(transcriptRows, transcriptView),
     [transcriptRows, transcriptView],
   );
 
@@ -673,6 +689,15 @@ export function AgentDetailPanel(props: {
     query.length > 0 ||
     activeFilters > 0 ||
     (tools && toolView.sort !== DEFAULT_SUBAGENT_TOOL_CALL_VIEW.sort);
+  // "Only" settles the filter, so it also closes the menu.
+  const pickOnlyTools = (next: SubagentToolCallView) => {
+    setToolView(next);
+    setFilterMenuOpen(false);
+  };
+  const pickOnlyTranscript = (next: AgentTranscriptView) => {
+    setTranscriptView(next);
+    setFilterMenuOpen(false);
+  };
   const setQuery = (value: string) =>
     tools
       ? setToolView({ ...toolView, query: value })
@@ -917,118 +942,180 @@ export function AgentDetailPanel(props: {
         </div>
       </header>
       {childThreadId === null ? null : (
-        <div className="flex items-center gap-1 border-b border-border/60 px-2 py-1.5">
-          <Menu>
-            <MenuTrigger
-              render={
-                <button
-                  type="button"
-                  aria-label="Switch between tool calls and transcript"
-                  className="flex h-5 shrink-0 items-center gap-1 rounded-sm px-0.5 text-3xs font-medium uppercase tracking-wider text-muted-foreground hover:bg-accent hover:text-foreground"
-                />
-              }
-            >
-              {tools ? "Tool calls" : "Transcript"}
-              {(tools ? calls.length : transcriptRows.length) > 0 ? (
-                <span className="font-mono tracking-normal">
-                  · {tools ? calls.length : transcriptRows.length}
-                </span>
-              ) : null}
-              <ChevronDownIcon aria-hidden className="size-3" />
-            </MenuTrigger>
-            <MenuPopup align="start">
-              <MenuRadioGroup
-                value={mode}
-                onValueChange={(value) => {
-                  if (value === "transcript" || value === "tools") setMode(value);
-                }}
-              >
-                <MenuRadioItem value="tools">Tool calls</MenuRadioItem>
-                <MenuRadioItem value="transcript">Transcript</MenuRadioItem>
-              </MenuRadioGroup>
-            </MenuPopup>
-          </Menu>
-          <div className="min-w-0 flex-1">
-            <Input
-              size="compact"
-              type="search"
-              value={query}
-              placeholder={tools ? "Search tool calls" : "Search transcript"}
-              aria-label={tools ? "Search tool calls" : "Search transcript"}
-              onChange={(event) => setQuery(event.target.value)}
-            />
-          </div>
-          <FilterMenu activeCount={activeFilters}>
-            {tools ? (
-              <>
-                <CheckboxGroup
-                  label="Status"
-                  labels={TOOL_STATUS_LABELS}
-                  selected={toolView.statuses}
-                  counts={countBy(calls, (call) => call.status)}
-                  onChange={(statuses) => setToolView({ ...toolView, statuses })}
-                />
-                <MenuSeparator />
-                <CheckboxGroup<SubagentToolKind>
-                  label="Kind"
-                  labels={TOOL_KIND_LABELS}
-                  selected={toolView.kinds}
-                  counts={countBy(calls, (call) => call.kind)}
-                  onChange={(kinds) => setToolView({ ...toolView, kinds })}
-                />
-              </>
-            ) : (
-              <CheckboxGroup
-                label="Show"
-                labels={TRANSCRIPT_KIND_LABELS}
-                selected={transcriptView.kinds}
-                counts={countBy(transcriptRows, agentTranscriptKindOf)}
-                onChange={(kinds) => setTranscriptView({ ...transcriptView, kinds })}
-              />
-            )}
-          </FilterMenu>
-          {tools ? (
+        <div className="flex flex-col gap-1.5 border-b border-border/60 px-2 py-1.5">
+          <div className="flex items-center gap-1">
             <Menu>
               <MenuTrigger
                 render={
-                  <Button
+                  <button
                     type="button"
-                    size="icon-micro"
-                    variant={
-                      toolView.sort === DEFAULT_SUBAGENT_TOOL_CALL_VIEW.sort
-                        ? "ghost-muted"
-                        : "ghost"
-                    }
-                    aria-label={`Sort tool calls: ${TOOL_SORT_LABELS[toolView.sort]}`}
+                    aria-label="Switch between tool calls and transcript"
+                    className="flex h-5 shrink-0 items-center gap-1 rounded-sm px-0.5 text-3xs font-medium uppercase tracking-wider text-muted-foreground hover:bg-accent hover:text-foreground"
                   />
                 }
               >
-                <ArrowDownUpIcon />
+                {tools ? "Tool calls" : "Transcript"}
+                {(tools ? calls.length : transcriptRows.length) > 0 ? (
+                  <span className="font-mono tracking-normal">
+                    · {tools ? calls.length : transcriptRows.length}
+                  </span>
+                ) : null}
+                <ChevronDownIcon aria-hidden className="size-3" />
               </MenuTrigger>
-              <MenuPopup align="end">
+              <MenuPopup align="start">
                 <MenuRadioGroup
-                  value={toolView.sort}
-                  onValueChange={(sort: SubagentToolCallSort) => setToolView({ ...toolView, sort })}
+                  value={mode}
+                  onValueChange={(value) => {
+                    if (value === "transcript" || value === "tools") setMode(value);
+                  }}
                 >
-                  {(Object.keys(TOOL_SORT_LABELS) as SubagentToolCallSort[]).map((sort) => (
-                    <MenuRadioItem key={sort} value={sort}>
-                      {TOOL_SORT_LABELS[sort]}
-                    </MenuRadioItem>
-                  ))}
+                  <MenuRadioItem value="tools">Tool calls</MenuRadioItem>
+                  <MenuRadioItem value="transcript">Transcript</MenuRadioItem>
                 </MenuRadioGroup>
               </MenuPopup>
             </Menu>
-          ) : null}
-          {customised ? (
-            <Button
-              type="button"
-              size="icon-micro"
-              variant="ghost-muted"
-              aria-label="Reset activity filters"
-              onClick={resetView}
+            <div className="min-w-0 flex-1">
+              <Input
+                size="compact"
+                type="search"
+                value={query}
+                placeholder={tools ? "Search tool calls" : "Search transcript"}
+                aria-label={tools ? "Search tool calls" : "Search transcript"}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+            </div>
+            <FilterMenu
+              active={activeFilters > 0}
+              open={filterMenuOpen}
+              onOpenChange={setFilterMenuOpen}
             >
-              <XIcon />
-            </Button>
+              {tools ? (
+                <>
+                  <CheckboxGroup
+                    label="Status"
+                    labels={TOOL_STATUS_LABELS}
+                    selected={toolView.statuses}
+                    counts={toolFacets.statuses}
+                    onChange={(statuses) => setToolView({ ...toolView, statuses })}
+                    onOnly={(status) => pickOnlyTools({ ...toolView, statuses: [status] })}
+                  />
+                  <MenuSeparator />
+                  <CheckboxGroup<SubagentToolKind>
+                    label="Kind"
+                    labels={TOOL_KIND_LABELS}
+                    selected={toolView.kinds}
+                    counts={toolFacets.kinds}
+                    onChange={(kinds) => setToolView({ ...toolView, kinds })}
+                    onOnly={(kind) => pickOnlyTools({ ...toolView, kinds: [kind] })}
+                  />
+                </>
+              ) : (
+                <CheckboxGroup
+                  label="Show"
+                  labels={TRANSCRIPT_KIND_LABELS}
+                  selected={transcriptView.kinds}
+                  counts={transcriptKindCounts}
+                  onChange={(kinds) => setTranscriptView({ ...transcriptView, kinds })}
+                  onOnly={(kind) => pickOnlyTranscript({ ...transcriptView, kinds: [kind] })}
+                />
+              )}
+            </FilterMenu>
+            {tools ? (
+              <Menu>
+                <MenuTrigger
+                  render={
+                    <Button
+                      type="button"
+                      size="icon-micro"
+                      variant={
+                        toolView.sort === DEFAULT_SUBAGENT_TOOL_CALL_VIEW.sort
+                          ? "ghost-muted"
+                          : "ghost"
+                      }
+                      aria-label={`Sort tool calls: ${TOOL_SORT_LABELS[toolView.sort]}`}
+                    />
+                  }
+                >
+                  <ArrowDownUpIcon />
+                </MenuTrigger>
+                <MenuPopup align="end">
+                  <MenuRadioGroup
+                    value={toolView.sort}
+                    onValueChange={(sort: SubagentToolCallSort) =>
+                      setToolView({ ...toolView, sort })
+                    }
+                  >
+                    {(Object.keys(TOOL_SORT_LABELS) as SubagentToolCallSort[]).map((sort) => (
+                      <MenuRadioItem key={sort} value={sort}>
+                        {TOOL_SORT_LABELS[sort]}
+                      </MenuRadioItem>
+                    ))}
+                  </MenuRadioGroup>
+                </MenuPopup>
+              </Menu>
+            ) : null}
+            {customised ? (
+              <Button
+                type="button"
+                size="icon-micro"
+                variant="ghost-muted"
+                aria-label="Reset activity filters"
+                onClick={resetView}
+              >
+                <XIcon />
+              </Button>
+            ) : null}
+          </div>
+          {activeFilters > 0 ? (
+            <div className="flex flex-wrap items-center gap-1">
+              {tools ? (
+                <>
+                  {toolView.statuses.map((status) => (
+                    <FilterPill
+                      key={`status:${status}`}
+                      icon={<CircleDotIcon />}
+                      label={TOOL_STATUS_LABELS[status]}
+                      onRemove={() =>
+                        setToolView({
+                          ...toolView,
+                          statuses: toolView.statuses.filter((entry) => entry !== status),
+                        })
+                      }
+                    />
+                  ))}
+                  {toolView.kinds.map((kind) => {
+                    const KindIcon = TOOL_KIND_ICONS[kind];
+                    return (
+                      <FilterPill
+                        key={`kind:${kind}`}
+                        icon={<KindIcon />}
+                        label={TOOL_KIND_LABELS[kind]}
+                        onRemove={() =>
+                          setToolView({
+                            ...toolView,
+                            kinds: toolView.kinds.filter((entry) => entry !== kind),
+                          })
+                        }
+                      />
+                    );
+                  })}
+                </>
+              ) : (
+                transcriptView.kinds.map((kind) => (
+                  <FilterPill
+                    key={`show:${kind}`}
+                    icon={<ListFilterIcon />}
+                    label={TRANSCRIPT_KIND_LABELS[kind]}
+                    onRemove={() =>
+                      setTranscriptView({
+                        ...transcriptView,
+                        kinds: transcriptView.kinds.filter((entry) => entry !== kind),
+                      })
+                    }
+                  />
+                ))
+              )}
+            </div>
           ) : null}
         </div>
       )}
