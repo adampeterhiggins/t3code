@@ -59,7 +59,7 @@ export function filterFacets<Item, Key extends string>(
     }
     for (const value of dimension.selected) if (!counts.has(value)) counts.set(value, 0);
     result[key] = [...counts]
-      .toSorted((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
       .map(([value, count]) => ({ value, count }));
   }
   return result;
