@@ -3,11 +3,14 @@ import { EnvironmentId, MessageId, NonNegativeInt, ThreadId } from "./baseSchema
 
 export const ASSISTANT_CITATION_MAX_TEXT_LENGTH = 8_000;
 export const ASSISTANT_CITATION_MAX_COMMENT_LENGTH = 8_000;
+export const ASSISTANT_CITATION_MAX_MARKDOWN_LENGTH = 16_000;
 export const ASSISTANT_CITATION_CONTEXT_LENGTH = 32;
 
 /**
  * A quote of rendered assistant text with an optional user comment.
- * Positions are UTF-16 offsets, not Markdown offsets.
+ * Positions are UTF-16 offsets, not Markdown offsets. `markdown` is the same
+ * selection as Markdown, kept only when it differs from `text`, so previews and
+ * agents see its formatting; `text` stays the source of truth for locating it.
  */
 export const AssistantCitation = Schema.Struct({
   version: Schema.Literal(1),
@@ -17,6 +20,12 @@ export const AssistantCitation = Schema.Struct({
   text: Schema.String.check(
     Schema.isNonEmpty(),
     Schema.isMaxLength(ASSISTANT_CITATION_MAX_TEXT_LENGTH),
+  ),
+  markdown: Schema.optional(
+    Schema.String.check(
+      Schema.isNonEmpty(),
+      Schema.isMaxLength(ASSISTANT_CITATION_MAX_MARKDOWN_LENGTH),
+    ),
   ),
   comment: Schema.optional(
     Schema.String.check(Schema.isMaxLength(ASSISTANT_CITATION_MAX_COMMENT_LENGTH)),

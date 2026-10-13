@@ -1216,6 +1216,20 @@ paths.
 Code: `pastedFilePathsAsComposerFileLinks` in `packages/shared/src/composerTrigger.ts`, called from
 `apps/web/src/components/composerInlineTokenPaste.ts`.
 
+## Citations keep their formatting
+
+Citing assistant text saves the selection as Markdown alongside its plain text, so lists, code
+blocks, headings and emphasis survive. Hovering a citation chip, in the composer as well as in a
+sent message, previews the formatted quote and any comment. The mobile app shows the formatted
+quote too, and the shared provider formatter gives agents the Markdown in place of the plain text.
+The plain text still locates the quote in its source, and citations made before this change keep
+showing plain text.
+
+Code: `markdown` on `AssistantCitation` in
+[assistantCitations.ts](../packages/contracts/src/assistantCitations.ts), captured by
+[AssistantSelectionToolbar.tsx](../apps/web/src/components/chat/AssistantSelectionToolbar.tsx) and
+shown by [AssistantCitationChip.tsx](../apps/web/src/components/chat/AssistantCitationChip.tsx).
+
 ## Desktop mock-update loop
 
 A `Makefile` at the repository root drives a local auto-update test loop for the desktop app:

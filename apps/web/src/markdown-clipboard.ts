@@ -342,6 +342,21 @@ export function serializeRenderedMarkdownFragment(container: Node): string {
   return tidyMarkdown(serializeChildren(container));
 }
 
+/**
+ * Markdown for a quoted selection that has to read correctly on its own. Unlike a copy, code stays
+ * fenced, including a selection inside one block, whose fragment carries no `pre` of its own.
+ */
+export function serializeRenderedMarkdownQuote(
+  fragment: Node,
+  enclosingCodeBlock: Element | null,
+): string {
+  const codeBlock = enclosingCodeBlock ?? soleCodeBlock(fragment);
+  if (codeBlock === null) return tidyMarkdown(serializeChildren(fragment));
+  const code = ((enclosingCodeBlock ? fragment : codeBlock).textContent ?? "").replace(/\n$/, "");
+  const fence = codeFenceFor(code);
+  return `${fence}${resolveCodeBlockLanguage(codeBlock) ?? ""}\n${code}\n${fence}`;
+}
+
 export function serializeTableElementToMarkdown(table: Element): string {
   return serializeTable(table).trim();
 }
