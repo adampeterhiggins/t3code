@@ -188,6 +188,7 @@ import { useRightPanelStore } from "../rightPanelStore";
 import { readThreadShell, useProjects } from "../state/entities";
 import { serverEnvironment } from "../state/server";
 import { slackEnvironment } from "../state/slack";
+import { granolaEnvironment } from "../state/granola";
 import { useEnvironmentQuery } from "../state/query";
 import { shellEnvironment } from "../state/shell";
 import { assetEnvironment } from "../state/assets";
@@ -1918,6 +1919,57 @@ function SlackLinkText({
   );
 }
 
+/**
+ * A bare Granola note link, named by its meeting's title once the connected account can read it.
+ * Until then, and whenever Granola is off or disconnected, it reads "Granola note".
+ */
+function GranolaLinkText({
+  environmentId,
+  host,
+  url,
+}: {
+  environmentId: EnvironmentId;
+  host: string;
+  url: string;
+}) {
+  const link = parseComposerObjectLink(url);
+  const enabled = useEnvironmentSettings(environmentId, (s) => s.enableGranolaIntegration);
+  const connection = useEnvironmentQuery(
+    enabled ? granolaEnvironment.connection({ environmentId, input: {} }) : null,
+  );
+  const note = useEnvironmentQuery(
+    link?.kind === "granola-note" && enabled && connection.data?.phase === "connected"
+      ? granolaEnvironment.noteSummary({ environmentId, input: { id: link.noteId } })
+      : null,
+  ).data;
+  if (!note) {
+    return (
+      <MarkdownExternalLinkContent host={host} plainText="Granola note">
+        {url}
+      </MarkdownExternalLinkContent>
+    );
+  }
+  const date = note.meetingAt === null ? null : new Date(note.meetingAt);
+  const when =
+    date === null || Number.isNaN(date.getTime())
+      ? null
+      : date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  const detail = [when, note.participants.join(", ") || null].filter(Boolean).join(" · ");
+  const label = (
+    <MarkdownExternalLinkContent host={host} plainText={note.title}>
+      {url}
+    </MarkdownExternalLinkContent>
+  );
+  return detail ? (
+    <Tooltip>
+      <TooltipTrigger render={<span />}>{label}</TooltipTrigger>
+      <TooltipPopup side="top">{detail}</TooltipPopup>
+    </Tooltip>
+  ) : (
+    label
+  );
+}
+
 type HeadingHastNode = {
   type?: string;
   tagName?: string;
@@ -3170,10 +3222,10 @@ const CHAT_MARKDOWN_COMPONENTS = {
       // Only a bare link is renamed: link text the writer chose stays as written.
       const objectLabel =
         href && !isPullRequestAutolink && linkText === href ? objectLinkLabel(href) : null;
-      const isBareSlackLink =
-        href !== undefined &&
-        linkText === href &&
-        parseComposerObjectLink(href)?.kind === "slack-message";
+      const bareObjectKind =
+        href !== undefined && linkText === href ? parseComposerObjectLink(href)?.kind : undefined;
+      const isBareSlackLink = bareObjectKind === "slack-message";
+      const isBareGranolaLink = bareObjectKind === "granola-note";
       const confirmBeforeOpen = pullRequestAutolink === "reference";
       const pullRequestCandidateUrl =
         confirmBeforeOpen && href ? pullRequestCandidateUrlFromReferenceAutolink(href) : href;
@@ -3334,6 +3386,8 @@ const CHAT_MARKDOWN_COMPONENTS = {
         >
           {faviconHost && href && isBareSlackLink && environmentId !== null ? (
             <SlackLinkText environmentId={environmentId} host={faviconHost} url={href} />
+          ) : faviconHost && href && isBareGranolaLink && environmentId !== null ? (
+            <GranolaLinkText environmentId={environmentId} host={faviconHost} url={href} />
           ) : faviconHost && hasText && !isPullRequestAutolink ? (
             <MarkdownExternalLinkContent host={faviconHost} plainText={objectLabel ?? linkText}>
               {linkChildren}

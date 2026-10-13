@@ -20,6 +20,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import { GitHubIssueThreadLinks } from "../githubIssues/GitHubIssueThreadLinks.ts";
 import { LinearThreadLinks } from "../linear/LinearThreadLinks.ts";
 import { NotionThreadLinks } from "../notion/NotionThreadLinks.ts";
+import { GranolaThreadLinks } from "../granola/GranolaThreadLinks.ts";
 import { SlackThreadLinks } from "../slack/SlackThreadLinks.ts";
 import { OrchestratorDispatchError } from "../orchestration-v2/Orchestrator.ts";
 import {
@@ -145,6 +146,7 @@ const makeHarness = (input: {
         Layer.mock(GitHubIssueThreadLinks)({ refresh: Effect.void }),
         Layer.mock(SlackThreadLinks)({ refresh: Effect.void }),
         Layer.mock(NotionThreadLinks)({ refresh: Effect.void }),
+        Layer.mock(GranolaThreadLinks)({ refresh: Effect.void }),
         NodeCrypto.layer,
       ),
     ),

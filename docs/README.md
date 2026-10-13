@@ -12,6 +12,7 @@ This is a fork of upstream T3 Code. See [Fork differences](./fork-differences.md
 - [Source control](./user/source-control.md)
 - [Linear](./user/linear.md)
 - [Slack](./user/slack.md)
+- [Granola](./user/granola.md)
 - [Project settings](./user/project-settings.md)
 - [Appearance and themes](./user/appearance.md)
 - [Keyboard shortcuts](./user/keybindings.md)

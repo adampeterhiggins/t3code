@@ -23,7 +23,7 @@ import {
   UserRoundIcon,
   type LucideIcon,
 } from "lucide-react";
-import { GitHubIcon, LinearIcon, NotionIcon, SlackIcon } from "../Icons";
+import { GitHubIcon, GranolaIcon, LinearIcon, NotionIcon, SlackIcon } from "../Icons";
 import { memo, useCallback, useLayoutEffect, useRef } from "react";
 
 import type { AgentFleetEntry } from "@t3tools/client-runtime/state/agent-fleet";
@@ -49,6 +49,7 @@ import { formatRelativeTimeLabel } from "~/timestampFormat";
 
 export type ComposerCommandItem =
   | { id: string; type: "notion-page"; pageId: string; label: string; description: string }
+  | { id: string; type: "granola-note"; noteId: string; label: string; description: string }
   | {
       id: string;
       type: "path";
@@ -410,6 +411,9 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
       ) : null}
       {props.item.type === "notion-page" ? (
         <NotionIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
+      ) : null}
+      {props.item.type === "granola-note" ? (
+        <GranolaIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
       ) : null}
       {props.item.type === "slack-message" ? (
         <SlackIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />

@@ -1460,6 +1460,8 @@ export const ServerSettings = Schema.Struct({
   ),
   /** Enable Notion attachment entry points and automatic link resolution for this environment. */
   enableNotionIntegration: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  /** Enable Granola attachment entry points and automatic link resolution for this environment. */
+  enableGranolaIntegration: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   /** Fork: Linear issues assigned to the connected account start threads. Empty is off. */
   linearAssignmentTriggers: LinearAssignmentTriggers.pipe(
     Schema.withDecodingDefault(Effect.succeed([])),
@@ -1920,6 +1922,7 @@ export const ServerSettingsPatch = Schema.Struct({
   /** Replaces the whole trigger, so a cleared channel list sticks. */
   slackMentionTrigger: Schema.optionalKey(SlackMentionTriggerSettings),
   enableNotionIntegration: Schema.optionalKey(Schema.Boolean),
+  enableGranolaIntegration: Schema.optionalKey(Schema.Boolean),
   linearAssignmentTriggers: Schema.optionalKey(LinearAssignmentTriggers),
   continueThreadsAfterServerUpdate: Schema.optionalKey(Schema.Boolean),
   enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),

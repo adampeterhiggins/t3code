@@ -33,9 +33,9 @@ import type { ThreadGroups } from "@t3tools/contracts/settings";
 import type { OrganisationOption, SidebarPage } from "../Sidebar.logic";
 import { OrganisationIcon } from "./OrganisationIcon";
 import { ThreadGroupIcon } from "./ThreadGroupIcon";
+import { MenuChoiceLabel } from "../MenuChoiceLabel";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { Button } from "../ui/button";
-import { HighlightedSearchText } from "../ui/highlighted-search-text";
 import {
   Menu,
   MenuCheckboxItem,
@@ -79,37 +79,6 @@ function SidebarPageIcon(props: { page: SidebarPage; groupStyles: ThreadGroups }
 /** Rows kept in the hover preview before the rest collapse to a count. */
 const FILTER_PREVIEW_ROW_LIMIT = 8;
 
-/** "Only" on the highlighted row: narrow to just that choice. It follows the
- *  label on the same baseline and keeps its width while hidden, so the
- *  trailing count stays in one column on every row. */
-function OnlyButton(props: { onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      tabIndex={-1}
-      className="invisible shrink-0 cursor-pointer text-xs font-medium text-primary in-data-highlighted:visible hover:text-primary/80"
-      onPointerDown={(event) => event.stopPropagation()}
-      onClick={(event) => {
-        event.stopPropagation();
-        props.onClick();
-      }}
-    >
-      Only
-    </button>
-  );
-}
-
-function ChoiceLabel(props: { label: string; query?: string; onOnly: () => void }) {
-  return (
-    <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
-      <span className="min-w-0 truncate">
-        <HighlightedSearchText text={props.label} query={props.query ?? ""} />
-      </span>
-      <OnlyButton onClick={props.onOnly} />
-    </span>
-  );
-}
-
 function SidebarShowFilter(props: {
   pages: readonly SidebarPage[];
   available: readonly SidebarPage[];
@@ -149,7 +118,7 @@ function SidebarShowFilter(props: {
             >
               <span className="flex w-full min-w-0 items-center gap-2">
                 <SidebarPageIcon page={page} groupStyles={props.groupStyles} />
-                <ChoiceLabel
+                <MenuChoiceLabel
                   label={sidebarPageLabel(page)}
                   onOnly={() => props.onPagesChange([page])}
                 />
@@ -233,7 +202,7 @@ function SidebarProjectFilter(props: {
                 >
                   <span className="flex w-full min-w-0 items-center gap-2">
                     <ProjectFavicon project={project} className="size-3.5 shrink-0" />
-                    <ChoiceLabel
+                    <MenuChoiceLabel
                       label={project.displayName}
                       query={query}
                       onOnly={() => props.onScopedProjectKeysChange([project.projectKey])}
@@ -315,7 +284,7 @@ function SidebarOrganisationFilter(props: {
                 >
                   <span className="flex w-full min-w-0 items-center gap-2">
                     <OrganisationIcon organisation={option.organisation} />
-                    <ChoiceLabel
+                    <MenuChoiceLabel
                       label={option.label}
                       query={query}
                       onOnly={() => props.onScopedKeysChange([option.key])}

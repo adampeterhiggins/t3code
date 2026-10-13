@@ -23,6 +23,7 @@ import { ThreadTabGroupNameDialogHost } from "../components/ThreadTabGroupNameDi
 import { ThreadGroupDialogHost } from "../components/ThreadGroupDialog";
 import { TranscriptExportDialogHost } from "../components/TranscriptExportDialog";
 import { NotionPagePickerHost } from "../components/chat/NotionPagePicker";
+import { GranolaNotePickerHost } from "../components/chat/GranolaNotePicker";
 import { SlackMessagePickerHost } from "../components/chat/SlackMessagePicker";
 import { GitHubIssuePickerHost } from "../components/chat/GitHubIssuePicker";
 import { ImportConversationDialogHost } from "../components/ImportConversationDialog";
@@ -272,6 +273,7 @@ function RootRouteView() {
           {/* Thread menus and the palette open these from any route, Settings included. */}
           <SlackMessagePickerHost />
           <NotionPagePickerHost />
+          <GranolaNotePickerHost />
           <SlowRpcRequestToastCoordinator />
           <PermissionUpdateNotice />
           {primaryEnvironmentAuthenticated ? <LegacyThreadMigrationToast /> : null}

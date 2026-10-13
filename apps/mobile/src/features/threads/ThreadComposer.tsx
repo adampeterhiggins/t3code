@@ -75,6 +75,7 @@ import { AppText as Text } from "../../components/AppText";
 import { ComposerAttachmentButton } from "../../components/ComposerAttachmentButton";
 import { useLinearIssuePicker } from "../../components/LinearIssuePickerSheet";
 import { useGitHubIssuePicker } from "../../components/GitHubIssuePickerSheet";
+import { useGranolaNotePicker } from "../../components/GranolaNotePickerSheet";
 import { useNotionPagePicker } from "../../components/NotionPagePickerSheet";
 import { useSlackMessagePicker } from "../../components/SlackMessagePickerSheet";
 import { useRepositoryPicker } from "../../components/RepositoryPickerSheet";
@@ -472,6 +473,10 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     draftKey: composerDraftKey,
   });
   const notionPagePicker = useNotionPagePicker({
+    environmentId: props.environmentId,
+    draftKey: composerDraftKey,
+  });
+  const granolaNotePicker = useGranolaNotePicker({
     environmentId: props.environmentId,
     draftKey: composerDraftKey,
   });
@@ -921,6 +926,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                 onPickLinearIssue={linearIssuePicker.open}
                 onPickGitHubIssue={workspaceCwd ? gitHubIssuePicker.open : undefined}
                 onPickNotionPage={notionPagePicker.open}
+                onPickGranolaNote={granolaNotePicker.open}
                 onPickSlackMessage={slackMessagePicker.open}
                 onPickRepository={repositoryPicker.open}
               />
@@ -1204,6 +1210,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                       onPickLinearIssue={linearIssuePicker.open}
                       onPickGitHubIssue={workspaceCwd ? gitHubIssuePicker.open : undefined}
                       onPickNotionPage={notionPagePicker.open}
+                      onPickGranolaNote={granolaNotePicker.open}
                       onPickSlackMessage={slackMessagePicker.open}
                       onPickRepository={repositoryPicker.open}
                     />
@@ -1269,6 +1276,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       {gitHubIssuePicker.sheet}
       {slackMessagePicker.sheet}
       {notionPagePicker.sheet}
+      {granolaNotePicker.sheet}
       {repositoryPicker.sheet}
     </Animated.View>
   );

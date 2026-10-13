@@ -8,8 +8,11 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import { notionPageContextRecord } from "@t3tools/client-runtime/state/notion";
 import { notionEnvironment } from "~/state/notion";
+import { granolaNoteContextRecord } from "@t3tools/client-runtime/state/granola";
+import { granolaEnvironment } from "~/state/granola";
 import { slackThreadContextRecord } from "@t3tools/shared/integrationContextRecords";
 import type {
+  GranolaError,
   NotionError,
   PullRequestDetail,
   ScopedThreadRef,
@@ -65,6 +68,32 @@ function reportUnreadableSlackLink(failure: unknown) {
       : failure instanceof Error
         ? failure.message
         : undefined,
+  });
+}
+
+// Like Slack, an unconnected Granola says so once per session; later links stay links quietly.
+let toldGranolaIsUnavailable = false;
+
+function reportUnreadableGranolaLink(failure: unknown) {
+  const reason =
+    typeof failure === "object" && failure !== null && "reason" in failure
+      ? (failure.reason as GranolaError["reason"])
+      : null;
+  const unavailable = reason === "not-connected";
+  if (unavailable) {
+    if (toldGranolaIsUnavailable) return;
+    toldGranolaIsUnavailable = true;
+  }
+  toastManager.add({
+    type: "info",
+    title: unavailable
+      ? "Connect Granola to attach meeting notes"
+      : "Could not attach that Granola note",
+    description: unavailable
+      ? "The link was kept as a link. Connect Granola in Settings → Integrations."
+      : failure instanceof Error
+        ? `The link was kept. ${failure.message}`
+        : "The link was kept.",
   });
 }
 
@@ -128,7 +157,7 @@ export interface ResolvedComposerObjectLink {
 
 /**
  * Turns a link into the chip its attach picker would have made: the issue or pull request is
- * fetched and snapshotted the same way. Null when it cannot be read (Linear, Slack, or Notion
+ * fetched and snapshotted the same way. Null when it cannot be read (Linear, Slack, Notion, or Granola
  * not connected or turned off, `gh` signed out, a repository no project here is checked out from), so the caller
  * keeps the link.
  */
@@ -140,10 +169,12 @@ export function useResolveComposerObjectLink(input: {
   const environmentId = threadRef.environmentId;
   const slackEnabled = useEnvironmentSettings(environmentId, (s) => s.enableSlackIntegration);
   const notionEnabled = useEnvironmentSettings(environmentId, (s) => s.enableNotionIntegration);
+  const granolaEnabled = useEnvironmentSettings(environmentId, (s) => s.enableGranolaIntegration);
   const getLinearIssue = useAtomCommand(linearEnvironment.getIssue, { reportFailure: false });
   const getGitHubIssue = useAtomCommand(githubIssueEnvironment.getIssue, { reportFailure: false });
   const getNotionPage = useAtomCommand(notionEnvironment.getPage, { reportFailure: false });
   const getSlackThread = useAtomCommand(slackEnvironment.getThread, { reportFailure: false });
+  const getGranolaNote = useAtomCommand(granolaEnvironment.getNote, { reportFailure: false });
   const getPullRequest = useAtomQueryRunner(pullRequestEnvironment.detail, {
     reportFailure: false,
   });
@@ -179,6 +210,20 @@ export function useResolveComposerObjectLink(input: {
             return null;
           }
           const record = notionPageContextRecord(result.value);
+          return {
+            reference: { kind: record.kind, contextId: record.contextId, label: record.label },
+            commit: () => useIssueContextStore.getState().upsert(threadRef.threadId, record),
+          };
+        }
+        case "granola-note": {
+          if (!granolaEnabled) return null;
+          const result = await getGranolaNote({ environmentId, input: { id: link.noteId } });
+          if (result._tag === "Failure") {
+            if (!isAtomCommandInterrupted(result))
+              reportUnreadableGranolaLink(squashAtomCommandFailure(result));
+            return null;
+          }
+          const record = granolaNoteContextRecord(result.value);
           return {
             reference: { kind: record.kind, contextId: record.contextId, label: record.label },
             commit: () => useIssueContextStore.getState().upsert(threadRef.threadId, record),
@@ -298,8 +343,10 @@ export function useResolveComposerObjectLink(input: {
       getPullRequest,
       getPullRequestActivity,
       getPullRequestDiff,
+      getGranolaNote,
       getNotionPage,
       getSlackThread,
+      granolaEnabled,
       notionEnabled,
       projects,
       pullRequestsEnabled,

@@ -2,6 +2,8 @@ import type {
   ComposerContextId,
   GitHubIssueContext,
   GitHubIssueContextRecord,
+  GranolaNoteContext,
+  GranolaNoteContextRecord,
   LinearIssueContext,
   LinearIssueContextRecord,
   NotionPageContext,
@@ -90,6 +92,22 @@ export function notionPageContextRecord(page: NotionPageContext): NotionPageCont
     title: page.title.slice(0, 2048),
     url: page.url.slice(0, 2048),
     markdown: page.markdown,
+  };
+}
+
+export function granolaNoteContextRecord(note: GranolaNoteContext): GranolaNoteContextRecord {
+  return {
+    version: 1,
+    kind: "granola-note",
+    // Meeting UUIDs and `not_` ids both fit the context id pattern.
+    contextId: `granola-note_${note.id}` as ComposerContextId,
+    label: sanitizeComposerContextLabel(note.title, "granola-note"),
+    noteId: note.id,
+    title: note.title.slice(0, 2048),
+    url: note.url.slice(0, 2048),
+    meetingAt: note.meetingAt?.slice(0, 2048) ?? null,
+    participants: note.participants.join(", ").slice(0, 2048),
+    markdown: note.markdown,
   };
 }
 

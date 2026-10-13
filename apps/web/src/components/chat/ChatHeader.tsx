@@ -29,6 +29,7 @@ import { Button } from "../ui/button";
 import { GitHubIssueThreadLinkChip } from "./GitHubIssueThreadLink";
 import { LinearThreadLinkChip } from "./LinearThreadLink";
 import { NotionThreadLinkChip } from "./NotionThreadLink";
+import { GranolaThreadLinkChip } from "./GranolaThreadLink";
 import { SlackThreadLinkChip } from "./SlackThreadLink";
 import { StartedByChip } from "./StartedByChip";
 import { ThreadTabMenu } from "./ThreadTabs";
@@ -483,6 +484,7 @@ export const ChatHeader = memo(function ChatHeader({
       <GitHubIssueThreadLinkChip threadRef={currentThreadRef} />
       <SlackThreadLinkChip threadRef={currentThreadRef} />
       <NotionThreadLinkChip threadRef={currentThreadRef} />
+      <GranolaThreadLinkChip threadRef={currentThreadRef} />
       {splitPaneFocus !== null ? (
         <Tooltip>
           <TooltipTrigger

@@ -231,6 +231,7 @@ import { isGitHubProject } from "@t3tools/client-runtime/state/github-issues";
 import { openGitHubIssuePicker } from "./chat/GitHubIssuePicker";
 import { openLinearIssuePicker } from "./chat/LinearIssuePicker";
 import { openNotionPagePicker } from "./chat/NotionPagePicker";
+import { openGranolaNotePicker } from "./chat/GranolaNotePicker";
 import { openSlackMessagePicker } from "./chat/SlackMessagePicker";
 import { openTranscriptExportDialog } from "./TranscriptExportDialog";
 import { StartedByHoverLine } from "./chat/StartedByChip";
@@ -6696,6 +6697,9 @@ export default function Sidebar() {
             return;
           case "link-notion-page":
             openNotionPagePicker(threadRef, "link");
+            return;
+          case "link-granola-note":
+            openGranolaNotePicker(threadRef, "link");
             return;
           case "link-github-issue":
             openGitHubIssuePicker(threadRef, "link");

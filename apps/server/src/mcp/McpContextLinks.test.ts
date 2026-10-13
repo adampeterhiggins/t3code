@@ -11,6 +11,7 @@ import * as Layer from "effect/Layer";
 
 import * as GitHubIssues from "../githubIssues/GitHubIssues.ts";
 import * as LinearApi from "../linear/LinearApi.ts";
+import * as GranolaApi from "../granola/GranolaApi.ts";
 import * as NotionApi from "../notion/NotionApi.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as SlackApi from "../slack/SlackApi.ts";
@@ -43,6 +44,9 @@ const slackThread = (input: SlackGetThreadInput): SlackThreadContext => ({
   markdown: "Deploy is stuck\n\n> on it",
 });
 
+const GRANOLA_ID = "abd3f11c-e46a-4467-bfff-9a06519ef066";
+const GRANOLA_URL = `https://notes.granola.ai/d/${GRANOLA_ID}`;
+
 let slackRequests: Array<SlackGetThreadInput> = [];
 
 const layer = (settings: Parameters<typeof ServerSettings.layerTest>[0] = {}) =>
@@ -61,6 +65,18 @@ const layer = (settings: Parameters<typeof ServerSettings.layerTest>[0] = {}) =>
         Layer.mock(NotionApi.NotionApi, {
           getPage: () =>
             Effect.fail(new NotionError({ reason: "not-found", detail: "Page not found." })),
+        }),
+        Layer.mock(GranolaApi.GranolaApi, {
+          getNote: (input) =>
+            Effect.succeed({
+              id: input.id,
+              title: "Weekly sync",
+              url: GRANOLA_URL,
+              meetingAt: "2026-10-12T09:30:00.000+01:00",
+              participants: ["Ada", "Grace"],
+              creator: "Ada",
+              markdown: "# Weekly sync\n\n## Summary\n\nShipped it.",
+            }),
         }),
         Layer.mock(GitHubIssues.GitHubIssues, {}),
         ServerSettings.layerTest(settings),
@@ -122,6 +138,27 @@ it.effect("says how to share a Notion page the connection cannot read", () =>
   }).pipe(Effect.provide(layer())),
 );
 
+it.effect("attaches a Granola note as its chip", () =>
+  Effect.gen(function* () {
+    const result = yield* attach(`Notes: ${GRANOLA_URL}`, [GRANOLA_URL]);
+    assert.strictEqual(
+      result.text,
+      `Notes: [Weekly sync](t3-context://v1/granola-note/granola-note_${GRANOLA_ID})`,
+    );
+    assert.deepStrictEqual(
+      result.context?.records.map((record) => record.kind),
+      ["granola-note"],
+    );
+  }).pipe(Effect.provide(layer())),
+);
+
+it.effect("refuses a Granola note while the integration is off", () =>
+  Effect.gen(function* () {
+    const error = yield* Effect.flip(attach("", [GRANOLA_URL]));
+    assert.include(error.message, "Granola integration is turned off");
+  }).pipe(Effect.provide(layer({ enableGranolaIntegration: false }))),
+);
+
 it.effect("passes on why an integration could not read a link", () =>
   Effect.gen(function* () {
     const error = yield* Effect.flip(attach("", [SLACK_URL]));
@@ -139,6 +176,7 @@ it.effect("passes on why an integration could not read a link", () =>
                 ),
             }),
             Layer.mock(NotionApi.NotionApi, {}),
+            Layer.mock(GranolaApi.GranolaApi, {}),
             Layer.mock(GitHubIssues.GitHubIssues, {}),
             ServerSettings.layerTest(),
           ),

@@ -1153,8 +1153,8 @@ in `packages/contracts/src/orchestrationV2.ts` and its message restatement in
 
 ## Pasted and typed links become chips
 
-Pasting a Linear issue, GitHub issue, pull request, GitHub repository root, or Slack message link
-into the web or desktop composer, or typing one followed by whitespace, turns it into the chip its attach picker
+Pasting a Linear issue, GitHub issue, pull request, GitHub repository root, Slack message, Notion
+page, or Granola note link into the web or desktop composer, or typing one followed by whitespace, turns it into the chip its attach picker
 makes. A pull request link to one comment (`#issuecomment-…`, `#discussion_r…`, `#r…`) becomes a
 chip for that comment instead, anchored to its line with the earlier replies when it is in a review
 thread; a comment the read did not return falls back to the pull request chip. A link to lines of
@@ -1337,7 +1337,7 @@ guide: [agent-access.md](./user/agent-access.md#let-agents-start-threads).
 ## Agents attach integration context to messages
 
 `t3_thread_send` and `t3_thread_launch` take `contextLinks`: Slack message permalinks, Notion
-pages, Linear issues, GitHub issues, and GitHub repository roots. The server reads each one through
+pages, Granola notes, Linear issues, GitHub issues, and GitHub repository roots. The server reads each one through
 the same integration the composer uses and attaches the same chip record, so the message reads as
 if a user had pasted the links: a link already in the message text becomes its chip there, the rest
 are appended. Repositories are cloned before the message lands. An unrecognized link, a pull
@@ -1546,6 +1546,50 @@ Web and desktop support Notion OAuth sign-in in Integrations settings, where the
 A thread's chat-tab group can also be linked to one Notion page, from the thread menu, the web command palette, or the mobile tab menu, which open the page picker in link mode. The link lives in the fork-owned `fork_notion_thread_links` table, keyed by tab group, and streams over `notion.subscribeThreadLinks`; the page's title and URL are copied when linked. The web chat header chip shows the title and offers open, change, and unlink; mobile shows the same chip beside the tab switcher. Linking and unlinking are client-guarded RPCs that need the orchestration-operate grant. Unlinking stays available with the integration turned off.
 
 Code: [NotionAuth](../apps/server/src/notion/NotionAuth.ts), [NotionApi](../apps/server/src/notion/NotionApi.ts), [NotionPagePicker](../apps/web/src/components/chat/NotionPagePicker.tsx), [NotionThreadLinks](../apps/server/src/notion/NotionThreadLinks.ts), [NotionThreadLink](../apps/web/src/components/chat/NotionThreadLink.tsx), and [NotionPagePickerSheet](../apps/mobile/src/components/NotionPagePickerSheet.tsx). User guide: [Notion](./user/notion.md).
+
+## Granola meeting notes
+
+**Settings > Integrations > Granola** on web and desktop connects a Granola account to the
+environment. Granola has no public API on every plan, so the server reads notes through Granola's
+MCP server (`mcp.granola.ai`) as an MCP client, over plain JSON-RPC. Sign-in is the OAuth device
+flow: the environment registers its own public client with Granola once (dynamic client
+registration) and shows a code to confirm on any device, so no redirect has to reach the
+environment and remote setups need no extra configuration.
+
+Notes attach as a `granola-note` context chip from a pasted `notes.granola.ai` link, the
+paperclip picker, a `#` menu tab shown once connected, the web command palette, and the mobile
+attach menu. The picker and `#` tab filter the last 30 days of meetings by title and participants
+from one listing the server caches for a minute; a pasted link reads any note directly. The web
+picker lays meetings out in title, attendee, and date columns, filters by attendee, note taker, and
+the last 7 or 30 days, sorts by date or title, and previews a row's summary on hover. The server
+snapshots the title, date, participants, summary, and the user's notes to capped markdown when
+attached (no transcript), and the chip's hover popover shows it. **Enable Granola integration**
+turns the entry points and link conversion off without disconnecting. Agents attach notes with
+`contextLinks`.
+
+A thread's chat-tab group can also be linked to one note, from the thread menu, the web command
+palette, or the mobile tab menu, which open the picker in link mode. The link lives in the
+fork-owned `fork_granola_thread_links` table, keyed by tab group, and streams over
+`granola.subscribeThreadLinks`; the note's title and URL are copied when linked. The web chat
+header and mobile tab switcher show a chip with open, change, and unlink. Linking is a
+client-guarded RPC that needs the orchestration-operate grant, and unlinking stays available with
+the integration turned off.
+
+A bare note link in a rendered message on web or desktop reads as the meeting's title, with its
+date and participants on hover, once `granola.getNoteSummary` reads it. The server keeps each
+summary it reads in memory, so a link is read from Granola once per server run. It reads
+"Granola note" while Granola is off, disconnected, or the read fails.
+
+Code: [GranolaAuth](../apps/server/src/granola/GranolaAuth.ts),
+[GranolaApi](../apps/server/src/granola/GranolaApi.ts),
+[granolaMcp](../apps/server/src/granola/granolaMcp.ts),
+[GranolaThreadLinks](../apps/server/src/granola/GranolaThreadLinks.ts),
+`packages/contracts/src/granola.ts`,
+[GranolaThreadLink](../apps/web/src/components/chat/GranolaThreadLink.tsx),
+[GranolaNotePicker](../apps/web/src/components/chat/GranolaNotePicker.tsx),
+[GranolaSettings](../apps/web/src/components/settings/GranolaSettings.tsx), and
+[GranolaNotePickerSheet](../apps/mobile/src/components/GranolaNotePickerSheet.tsx). User guide:
+[Granola](./user/granola.md).
 
 ## Terminal colors, cursor, and line height
 

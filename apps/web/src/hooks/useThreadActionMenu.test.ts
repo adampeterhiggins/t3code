@@ -43,6 +43,7 @@ vi.mock("../components/chat/GitHubIssuePicker", () => ({ openGitHubIssuePicker: 
 vi.mock("../components/chat/LinearIssuePicker", () => ({ openLinearIssuePicker: vi.fn() }));
 vi.mock("../components/chat/SlackMessagePicker", () => ({ openSlackMessagePicker: vi.fn() }));
 vi.mock("../components/chat/NotionPagePicker", () => ({ openNotionPagePicker: vi.fn() }));
+vi.mock("../components/chat/GranolaNotePicker", () => ({ openGranolaNotePicker: vi.fn() }));
 vi.mock("../components/chat/ThreadTabs", () => ({
   useThreadTabActions: () => ({ createTab: vi.fn() }),
 }));
@@ -60,7 +61,7 @@ vi.mock("../state/session", () => ({
     scope === AuthOrchestrationOperateScope && state.granted.has(environmentId),
 }));
 vi.mock("../state/entities", () => ({
-  readEnvironmentLinkIntegrations: () => ({ slack: false, notion: false }),
+  readEnvironmentLinkIntegrations: () => ({ slack: false, notion: false, granola: false }),
   readEnvironmentSupportsHiding: () => true,
   readEnvironmentSupportsGroups: () => true,
   readEnvironmentSupportsAutoSettleOptOut: () => true,

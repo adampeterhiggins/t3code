@@ -817,6 +817,16 @@ export const SETTINGS_SEARCH_ITEMS = [
     scope: "environment-defaults",
   },
   {
+    id: "granola",
+    title: "Granola",
+    to: "/settings/integrations",
+    searchTerms: [
+      "granola meeting notes transcripts calls connect account sign in device code attach context enable disable integration pasted links",
+    ],
+    environmentOnly: true,
+    scope: "environment-defaults",
+  },
+  {
     id: "slack",
     title: "Slack",
     to: "/settings/integrations",

@@ -4,6 +4,7 @@ export type ComposerReferenceTab =
   | "pull-requests"
   | "linear-issues"
   | "notion-pages"
+  | "granola-notes"
   | "slack-messages"
   | "github-issues"
   | "repositories";
@@ -18,6 +19,7 @@ export type ComposerReferenceItem = Extract<
       | "linear-issue"
       | "slack-message"
       | "notion-page"
+      | "granola-note"
       | "repository";
   }
 >;
@@ -28,6 +30,7 @@ const TAB_FOR_ITEM_TYPE: Record<ComposerReferenceItem["type"], ComposerReference
   "linear-issue": "linear-issues",
   "slack-message": "slack-messages",
   "notion-page": "notion-pages",
+  "granola-note": "granola-notes",
   repository: "repositories",
 };
 

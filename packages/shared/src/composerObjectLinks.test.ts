@@ -163,3 +163,22 @@ it("recognizes Notion page links in pasted prose", () => {
   expect(objectLinkLabel(url)).toBe("Notion page");
   expect(findComposerObjectLinks(`Read ${url}.`)).toHaveLength(1);
 });
+
+it("recognizes Granola note links in pasted prose", () => {
+  const url = "https://notes.granola.ai/d/ABD3F11C-1FF0-4E2C-AD7D-078D1FFCF27F";
+  expect(parseComposerObjectLink(url)).toMatchObject({
+    kind: "granola-note",
+    noteId: "abd3f11c-1ff0-4e2c-ad7d-078d1ffcf27f",
+  });
+  expect(objectLinkLabel(url)).toBe("Granola note");
+  expect(findComposerObjectLinks(`Notes: ${url}.`)).toHaveLength(1);
+  expect(
+    parseComposerObjectLink(
+      "https://notes.granola.ai/t/8a5ddce1-1ff0-4e2c-ad7d-078d1ffcf27f-008umkv4",
+    ),
+  ).toMatchObject({ kind: "granola-note", noteId: "8a5ddce1-1ff0-4e2c-ad7d-078d1ffcf27f" });
+  expect(parseComposerObjectLink("https://www.granola.ai/pricing")).toBeNull();
+  expect(
+    parseComposerObjectLink("http://notes.granola.ai/d/abd3f11c-1ff0-4e2c-ad7d-078d1ffcf27f"),
+  ).toBeNull();
+});

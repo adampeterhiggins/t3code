@@ -57,6 +57,8 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.slackUnlinkThread]: AuthOrchestrationOperateScope,
   [WS_METHODS.notionLinkThread]: AuthOrchestrationOperateScope,
   [WS_METHODS.notionUnlinkThread]: AuthOrchestrationOperateScope,
+  [WS_METHODS.granolaLinkThread]: AuthOrchestrationOperateScope,
+  [WS_METHODS.granolaUnlinkThread]: AuthOrchestrationOperateScope,
   [ORCHESTRATION_V2_WS_METHODS.stopWorkflow]: AuthOrchestrationOperateScope,
 } as const;
 export type ClientGuardedRpcTag = keyof typeof CLIENT_GUARDED_RPC_SCOPES;

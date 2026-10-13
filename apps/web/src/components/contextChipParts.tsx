@@ -1,4 +1,4 @@
-import type { NotionPageContextRecord } from "@t3tools/contracts";
+import type { GranolaNoteContextRecord, NotionPageContextRecord } from "@t3tools/contracts";
 import {
   contextRepositoryOutcomeLabel,
   describeContextRepositoryGitStatus,
@@ -500,6 +500,35 @@ export function UnresolvedChip(props: { label: string; tooltip: string; copyMark
       data-markdown-copy={props.copyMarkdown}
       tooltip={props.tooltip}
     />
+  );
+}
+
+/** When the meeting happened, as the note's hover summary shows it. */
+function granolaMeetingDate(meetingAt: string | null): string {
+  const date = meetingAt === null ? null : new Date(meetingAt);
+  return date === null || Number.isNaN(date.getTime())
+    ? "Meeting note"
+    : date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
+/** An attached Granola note: the summary the agent received, with a link back to Granola. */
+export function GranolaNoteDetails({
+  record,
+  onOpenLink,
+}: {
+  record: Pick<GranolaNoteContextRecord, "meetingAt" | "url" | "markdown">;
+  onOpenLink: (event: MouseEvent<HTMLElement>, url: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <IssueDetailsHeader
+        summary={granolaMeetingDate(record.meetingAt)}
+        url={record.url}
+        linkLabel="Open in Granola"
+        onOpenLink={onOpenLink}
+      />
+      <IssueMarkdownBody text={record.markdown} />
+    </div>
   );
 }
 

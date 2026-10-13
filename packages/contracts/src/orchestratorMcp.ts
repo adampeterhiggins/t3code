@@ -467,7 +467,7 @@ export const OrchestratorMcpContextLinks = Schema.Array(
   .check(Schema.isMaxLength(10))
   .annotate({
     description:
-      "Links to attach as context, read now and sent with the message: Slack message permalinks (the whole thread), Notion pages, Linear issues, GitHub issues, and GitHub repository roots (cloned into the thread's context folder). A link that also appears in the message text is replaced there by its chip; the rest are appended. Pull request links are not attachable; leave them in the text. Fails if an integration is not connected or the link cannot be read.",
+      "Links to attach as context, read now and sent with the message: Slack message permalinks (the whole thread), Notion pages, Granola meeting notes, Linear issues, GitHub issues, and GitHub repository roots (cloned into the thread's context folder). A link that also appears in the message text is replaced there by its chip; the rest are appended. Pull request links are not attachable; leave them in the text. Fails if an integration is not connected or the link cannot be read.",
   });
 
 export const OrchestratorMcpThreadSendInput = Schema.Struct({

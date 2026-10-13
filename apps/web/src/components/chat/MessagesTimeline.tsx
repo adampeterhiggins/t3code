@@ -2,7 +2,7 @@ import {
   toolEntryShowsPathBreadcrumbs,
   toolPathTargets,
 } from "@t3tools/client-runtime/work-log/tool-paths";
-import type { NotionPageContextRecord } from "@t3tools/contracts";
+import type { GranolaNoteContextRecord, NotionPageContextRecord } from "@t3tools/contracts";
 import { ToolCallBody } from "../ToolCallBody";
 import { ToolPathText } from "./ToolPathText";
 import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
@@ -280,6 +280,7 @@ import {
   RepositoryDetails,
   SlackThreadDetails,
   NotionPageDetails,
+  GranolaNoteDetails,
   UnresolvedChip,
 } from "../contextChipParts";
 import {
@@ -5001,6 +5002,24 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
         ),
     },
     {
+      kind: "granola-note",
+      canRender: (record) => record.kind === "granola-note",
+      render: (record, context) =>
+        record.kind === "granola-note" ? (
+          <UserMessageContextPopover
+            copyMarkdown={context.copyMarkdown}
+            accessibleLabel={`Granola note, ${record.label}`}
+            kind="granola-note"
+            icon={<GranolaIcon />}
+            label={record.label}
+          >
+            <UserMessageGranolaNoteDetails record={record} />
+          </UserMessageContextPopover>
+        ) : (
+          <UnavailableUserMessageContextChip {...context} />
+        ),
+    },
+    {
       kind: "slack-thread",
       canRender: (record) => record.kind === "slack-thread",
       render: (record, context) =>
@@ -6391,6 +6410,11 @@ function QuestionAnswerHistory({
       ))}
     </div>
   );
+}
+
+function UserMessageGranolaNoteDetails({ record }: { record: GranolaNoteContextRecord }) {
+  const { threadRef } = use(TimelineRowCtx);
+  return <GranolaNoteDetails record={record} onOpenLink={useLinkClickHandler(threadRef)} />;
 }
 
 function UserMessageNotionPageDetails({ record }: { record: NotionPageContextRecord }) {
