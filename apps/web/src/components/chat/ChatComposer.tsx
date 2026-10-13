@@ -228,6 +228,10 @@ import { useOpenPrLink } from "~/lib/openPullRequestLink";
 import { useThreadTabContextRecords } from "~/threadTabContextStore";
 import { useIssueContextRecords } from "~/issueContextStore";
 import { useRepositoryContextRecords } from "~/repositoryContextStore";
+import {
+  clearComposerSnapshotRecords,
+  importComposerSnapshotRecord,
+} from "~/lib/composerSnapshotImport";
 import { useLinkClickHandler } from "~/browser/useOpenLink";
 import {
   collectInlineContextIds,
@@ -3464,6 +3468,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           .filter((c) => wanted.has(terminalContextReference(c).contextId))
           .map(terminalContextRecord),
         ...composerThreadContexts.filter((record) => wanted.has(record.contextId)),
+        ...composerThreadTabContexts.filter((record) => wanted.has(record.contextId)),
+        ...composerIssueContexts.filter((record) => wanted.has(record.contextId)),
+        ...composerRepositoryContexts.filter((record) => wanted.has(record.contextId)),
         ...composerReviewComments
           .filter((c) => wanted.has(reviewCommentContextId(c.id)))
           .map(reviewCommentContextRecord),
@@ -3503,6 +3510,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       composerReviewComments,
       composerTerminalContexts,
       composerThreadContexts,
+      composerThreadTabContexts,
+      composerIssueContexts,
+      composerRepositoryContexts,
       environmentId,
       uploadsByImageId,
     ],
@@ -3644,7 +3654,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               ? reviewCommentContextRecord(existing.record)
               : existing?.kind === "preview-annotation"
                 ? previewAnnotationContextRecord(existing.record)
-                : existing?.kind === "thread"
+                : existing && existing.kind !== "image" && existing.kind !== "file"
                   ? existing.record
                   : existing
                     ? (uploadedContextRecordFromDraft(existing) ?? undefined)
@@ -3702,6 +3712,22 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             rewritten.set(record.contextId, record.contextId);
             break;
           }
+          case "repository":
+          case "thread-tab":
+          case "linear-issue":
+          case "github-issue":
+          case "slack-thread":
+          case "notion-page":
+          case "granola-note":
+          case "subagent": {
+            const threadId = routeThreadRef?.threadId;
+            if (!threadId) break;
+            rewritten.set(
+              record.contextId,
+              importComposerSnapshotRecord(threadId, record, conflicts),
+            );
+            break;
+          }
           case "image":
           case "file": {
             if (skippedDependentAttachmentIds.has(record.contextId)) break;
@@ -3733,6 +3759,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       composerDraftTarget,
       environmentId,
       importAttachmentRecord,
+      routeThreadRef,
     ],
   );
   const importContextFragment = useCallback(
@@ -5366,7 +5393,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     const files = [...composerFilesRef.current];
     // Context chips keep their links in the prompt; the payloads behind them travel as
     // records so the restore can resolve every chip.
+    const referencedIds = new Set(collectInlineContextIds(prompt));
     const stashedRecords: ComposerContextRecord[] = [
+      ...composerThreadContexts.filter((record) => referencedIds.has(record.contextId)),
+      ...composerThreadTabContexts.filter((record) => referencedIds.has(record.contextId)),
+      ...composerIssueContexts.filter((record) => referencedIds.has(record.contextId)),
+      ...composerRepositoryContexts.filter((record) => referencedIds.has(record.contextId)),
       ...composerTerminalContextsRef.current.map(terminalContextRecord),
       ...composerReviewComments.map(reviewCommentContextRecord),
       ...composerPreviewAnnotations.map((annotation) =>
@@ -5478,6 +5510,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       promptRef.current = "";
       clearComposerDraftPromptAndImages(stashTarget);
       clearComposerDraftTerminalContexts(stashTarget);
+      setComposerDraftThreadContexts(stashTarget, []);
+      clearComposerSnapshotRecords(routeThreadRef.threadId);
       for (const comment of composerReviewComments) {
         removeComposerDraftReviewComment(stashTarget, comment.id);
       }
@@ -5579,12 +5613,18 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   }, [
     clearComposerDraftPromptAndImages,
     clearComposerDraftTerminalContexts,
+    setComposerDraftThreadContexts,
+    routeThreadRef,
     setComposerDraftPrompt,
     setComposerTrigger,
     composerDraftTarget,
     composerFilesRef,
     composerImagesRef,
     composerTerminalContextsRef,
+    composerThreadContexts,
+    composerThreadTabContexts,
+    composerIssueContexts,
+    composerRepositoryContexts,
     composerReviewComments,
     composerPreviewAnnotations,
     removeComposerDraftReviewComment,

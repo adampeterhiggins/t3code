@@ -178,7 +178,8 @@ links through `data-markdown-copy`; the whole-message button writes both through
 and falls back to plain text.
 
 On paste the composer decodes the fragment before the plain text. Records the draft does not
-already hold are imported: terminal excerpts and review comments as they are, preview
+already hold are imported: terminal excerpts, review comments, repository and integration
+snapshots, and chat-tab summaries as they are, preview
 annotations rebuilt from their record, and images or files re-fetched through the source
 environment's asset URL and attached under a fresh local id, with the pasted link rewritten to
 that id. A pasted binary reads as an unresolved chip until its bytes arrive; a fragment from
@@ -200,7 +201,8 @@ screenshot image, whose attachment id is the annotation id; the record links the
 
 `projection_thread_messages.context_json` persists records, so a restart or projection reload
 keeps chips resolvable. Prompt stash entries carry `records` for terminal excerpts, review
-comments, and preview annotations; stashing moves them out of the draft and restoring imports
+comments, preview annotations, thread references, repository and integration snapshots, and
+chat-tab summaries; stashing moves them out of the draft and restoring imports
 them back through the same importer the paste path uses.
 
 Context produced by other panels reaches the caret through `setContextInsertionHandler`: a
