@@ -579,8 +579,10 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
                 />
                 {tab === "pull-requests" ? (
                   <PullRequestPickerFilterBar
-                    entries={loadedPullRequests}
-                    optionsPending={pullRequests.isPending}
+                    environmentId={environmentId}
+                    projectId={projectId}
+                    query={debouncedQuery}
+                    list={pullRequests}
                     view={pullRequestView}
                     onChange={setPullRequestView}
                   />

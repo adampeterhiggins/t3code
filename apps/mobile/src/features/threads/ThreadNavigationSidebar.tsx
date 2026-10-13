@@ -45,7 +45,8 @@ import { useSavedRemoteConnections } from "../../state/use-remote-environment-re
 import { useHardwareKeyboardCommand } from "../keyboard/hardwareKeyboardCommands";
 import { useThreadJumpShortcuts } from "../keyboard/threadKeyboardShortcuts";
 import { useHomeListOptions } from "../home/home-list-options";
-import { buildHomeListFilterMenu } from "../home/home-list-filter-menu";
+import { buildHomeListFilterMenu, filterChoiceTitle } from "../home/home-list-filter-menu";
+import { useThreadListFilterFacets } from "../home/use-thread-list-filter-facets";
 import { buildHomeProjectScopes } from "../home/homeThreadList";
 import { SwipeableScrollGateProvider, useSwipeableScrollGate } from "../home/thread-swipe-actions";
 import { usePendingTaskListActions } from "../home/usePendingTaskListActions";
@@ -380,6 +381,25 @@ function ThreadNavigationSidebarPane(
     togglePage,
     renameGroupPage,
   } = useThreadListPages(threads);
+  const filterFacets = useThreadListFilterFacets({
+    threads,
+    projects,
+    projectGroupingMode: options.projectGroupingMode,
+    organisations,
+    environmentId: options.selectedEnvironmentId,
+    projectKey: selectedProjectKey,
+    organisationKeys,
+    pages,
+    searchQuery: props.searchQuery,
+  });
+  const filterEnvironments = useMemo(
+    () =>
+      environments.map((environment) => ({
+        ...environment,
+        count: filterFacets.environmentCounts.get(environment.environmentId) ?? 0,
+      })),
+    [environments, filterFacets.environmentCounts],
+  );
   const handleEditGroup = useCallback(
     async (name: string) => {
       const result = await editThreadGroup(name);
@@ -567,9 +587,9 @@ function ThreadNavigationSidebarPane(
             subtitle: "Show threads from every environment",
             state: options.selectedEnvironmentId === null ? "on" : "off",
           },
-          ...environments.map((environment) => ({
+          ...filterEnvironments.map((environment) => ({
             id: `environment:${environment.environmentId}`,
-            title: environment.label,
+            title: filterChoiceTitle(environment.label, environment.count),
             state:
               options.selectedEnvironmentId === environment.environmentId
                 ? ("on" as const)
@@ -577,7 +597,7 @@ function ThreadNavigationSidebarPane(
           })),
         ],
       },
-      ...(organisations.length === 0
+      ...(filterFacets.organisations.length === 0
         ? []
         : ([
             {
@@ -589,9 +609,9 @@ function ThreadNavigationSidebarPane(
                   title: "All organisations",
                   state: organisationKeys.length === 0 ? "on" : "off",
                 },
-                ...organisations.map((organisation) => ({
+                ...filterFacets.organisations.map((organisation) => ({
                   id: `organisation:${organisation.key}`,
-                  title: organisation.label,
+                  title: filterChoiceTitle(organisation.label, organisation.count),
                   state: organisationKeys.includes(organisation.key)
                     ? ("on" as const)
                     : ("off" as const),
@@ -599,7 +619,7 @@ function ThreadNavigationSidebarPane(
               ],
             },
           ] satisfies MenuAction[])),
-      ...(projectFilterOptions.length === 0
+      ...(filterFacets.projects.length === 0
         ? []
         : ([
             {
@@ -612,9 +632,9 @@ function ThreadNavigationSidebarPane(
                   subtitle: "Show threads from every project",
                   state: selectedProjectKey === null ? "on" : "off",
                 },
-                ...projectFilterOptions.map((project) => ({
+                ...filterFacets.projects.map((project) => ({
                   id: `project:${project.key}`,
-                  title: project.label,
+                  title: filterChoiceTitle(project.label, project.count),
                   state: selectedProjectKey === project.key ? ("on" as const) : ("off" as const),
                 })),
               ],
@@ -626,7 +646,10 @@ function ThreadNavigationSidebarPane(
         subactions: [
           ...availablePages.map((page) => ({
             id: `page:${page}`,
-            title: threadListPageLabel(page, groups),
+            title: filterChoiceTitle(
+              threadListPageLabel(page, groups),
+              filterFacets.pageCounts.get(page),
+            ),
             state: pages.includes(page) ? ("on" as const) : ("off" as const),
           })),
           ...(groupsSupported ? [{ id: "new-group", title: "New group…" }] : []),
@@ -635,14 +658,13 @@ function ThreadNavigationSidebarPane(
     ],
     [
       availablePages,
-      environments,
+      filterEnvironments,
+      filterFacets,
       groups,
       groupsSupported,
       options,
       organisationKeys,
-      organisations,
       pages,
-      projectFilterOptions,
       selectedProjectKey,
     ],
   );
@@ -1029,8 +1051,8 @@ function ThreadNavigationSidebarPane(
   const filterMenu = useMemo(
     () =>
       buildHomeListFilterMenu({
-        environments,
-        projects: projectFilterOptions,
+        environments: filterEnvironments,
+        projects: filterFacets.projects,
         selectedEnvironmentId: options.selectedEnvironmentId,
         selectedProjectKey,
         onEnvironmentChange: setSelectedEnvironmentId,
@@ -1038,9 +1060,10 @@ function ThreadNavigationSidebarPane(
         pages,
         availablePages,
         onTogglePage: togglePage,
+        pageCounts: filterFacets.pageCounts,
         groups,
         onCreateGroup: groupsSupported ? createThreadGroup : undefined,
-        organisations,
+        organisations: filterFacets.organisations,
         organisationKeys,
         onToggleOrganisation: toggleOrganisation,
         onClearOrganisations: clearOrganisations,
@@ -1048,13 +1071,12 @@ function ThreadNavigationSidebarPane(
     [
       availablePages,
       createThreadGroup,
-      environments,
+      filterEnvironments,
+      filterFacets,
       groups,
       groupsSupported,
       options,
       organisationKeys,
-      organisations,
-      projectFilterOptions,
       pages,
       selectedProjectKey,
       setSelectedEnvironmentId,

@@ -282,7 +282,11 @@ import {
   resolveWorkingStartedAt,
   availableSidebarPages,
   buildOrganisationOptions,
+  buildSidebarFilterFacets,
   repositoryOrganisationOf,
+  type SidebarFacetThread,
+  sidebarShelfPage,
+  type SidebarThreadShelf,
   resolveSidebarPages,
   sidebarGroupPage,
   sidebarListItemId,
@@ -4045,6 +4049,12 @@ export default function Sidebar() {
     Schema.Array(Schema.String),
   );
   const { organisations } = useOrganisations();
+  // A picked organisation with no checkout left still narrows the list, so it stays offered
+  // (and pilled) until it is dropped rather than silently coming back with a new checkout.
+  // Until projects load nothing has an organisation yet, so the saved picks wait rather than
+  // emptying the list for a moment.
+  const scopedOrganisationKeys =
+    projectGroups.length === 0 ? NO_ORGANISATION_KEYS : storedOrganisationKeys;
   const organisationOptions = useMemo(
     () =>
       buildOrganisationOptions(
@@ -4052,16 +4062,9 @@ export default function Sidebar() {
           project.memberProjects.map((member) => member.repositoryIdentity),
         ),
         organisations,
+        scopedOrganisationKeys,
       ),
-    [organisations, projectGroups],
-  );
-  // Organisations that no longer have a checkout stop narrowing the list.
-  const scopedOrganisationKeys = useMemo(
-    () =>
-      storedOrganisationKeys.filter((key) =>
-        organisationOptions.some((option) => option.key === key),
-      ),
-    [organisationOptions, storedOrganisationKeys],
+    [organisations, projectGroups, scopedOrganisationKeys],
   );
   const scopedProjectKeys = useMemo(() => {
     if (scopedProjectGroups.length === 0 && scopedOrganisationKeys.length === 0) return null;
@@ -4199,6 +4202,7 @@ export default function Sidebar() {
     hiddenThreads,
     groupedThreads,
     settledThreads,
+    facetThreads,
     snoozeNow,
   } = useMemo(() => {
     // Snooze classification uses a REAL clock, not the quantized minute:
@@ -4210,7 +4214,9 @@ export default function Sidebar() {
     // Subagent child threads live in the parent's Agents surface, not the
     // sidebar roster (v2 models them as real threads with lineage). Chat tabs
     // list under their group's row instead of as rows of their own.
-    const visible = filterSidebarV2VisibleThreads(threads, scopedProjectKeys).filter(
+    // Every project's threads are classified, so the filter menu can count the ones outside
+    // the current scope; only scoped threads reach the shelves.
+    const visible = filterSidebarV2VisibleThreads(threads, null).filter(
       (thread) => !tabThreadGroups.has(`${thread.environmentId}:${thread.id}`),
     );
     inboxReturns.observe(workingShelfEnabled ? threads : null);
@@ -4220,11 +4226,12 @@ export default function Sidebar() {
     // Working beta: only inbox threads fold away. Pins stay where the user
     // put them, and snoozed or settled threads keep their shelves.
     const inbox = (thread: EnvironmentThreadShell) =>
-      workingShelfEnabled && isSidebarThreadWorking(thread) ? working : active;
+      workingShelfEnabled && isSidebarThreadWorking(thread) ? "working" : "active";
     const snoozed: EnvironmentThreadShell[] = [];
     const hidden: EnvironmentThreadShell[] = [];
     const grouped: EnvironmentThreadShell[] = [];
     const settled: EnvironmentThreadShell[] = [];
+    const facetThreads: SidebarFacetThread[] = [];
     const draggable = new Set<string>();
     const activeReorderable = new Set<string>();
     for (const thread of visible) {
@@ -4236,12 +4243,8 @@ export default function Sidebar() {
       const supportsSettlement = capabilities?.threadSettlement === true;
       const supportsSnooze = capabilities?.threadSnooze === true;
       const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
-      if (capabilities?.threadActiveReorder === true) activeReorderable.add(threadKey);
-      // Older servers retain their existing drag actions. Active placement
-      // additionally requires its own ordering capability at the drop target.
-      if (capabilities?.threadPinning === true && capabilities.threadPinReorder === true) {
-        draggable.add(threadKey);
-      }
+      let row = thread;
+      let shelf: SidebarThreadShelf;
       if (optimisticDrop?.key === threadKey) {
         const projected = applySidebarThreadDrop(
           thread,
@@ -4249,25 +4252,41 @@ export default function Sidebar() {
           optimisticDrop.occurredAt,
           optimisticDrop.assignedKeys.get(threadKey),
         );
-        (optimisticDrop.section === "pinned"
-          ? pinned
-          : optimisticDrop.section === "settled"
-            ? settled
-            : inbox(projected)
-        ).push(
-          optimisticDrop.clearsSnooze
-            ? projected
-            : { ...projected, snoozedAt: thread.snoozedAt, snoozedUntil: thread.snoozedUntil },
-        );
+        shelf =
+          optimisticDrop.section === "pinned"
+            ? "pinned"
+            : optimisticDrop.section === "settled"
+              ? "settled"
+              : inbox(projected);
+        row = optimisticDrop.clearsSnooze
+          ? projected
+          : { ...projected, snoozedAt: thread.snoozedAt, snoozedUntil: thread.snoozedUntil };
       } else {
-        const shelf = sidebarThreadShelf(thread, {
+        shelf = sidebarThreadShelf(thread, {
           supportsSnooze,
           supportsSettlement,
           workingShelfEnabled,
           now: preciseNow,
         });
-        ({ hidden, grouped, snoozed, settled, pinned, working, active })[shelf].push(thread);
       }
+      facetThreads.push({
+        environmentId: thread.environmentId,
+        projectId: thread.projectId,
+        page: sidebarShelfPage(shelf, row.groupName),
+      });
+      if (
+        scopedProjectKeys !== null &&
+        !scopedProjectKeys.has(`${thread.environmentId}:${thread.projectId}`)
+      ) {
+        continue;
+      }
+      if (capabilities?.threadActiveReorder === true) activeReorderable.add(threadKey);
+      // Older servers retain their existing drag actions. Active placement
+      // additionally requires its own ordering capability at the drop target.
+      if (capabilities?.threadPinning === true && capabilities.threadPinReorder === true) {
+        draggable.add(threadKey);
+      }
+      ({ hidden, grouped, snoozed, settled, pinned, working, active })[shelf].push(row);
     }
     // One shared rule on every platform (see sortPinnedThreadsByOrderKey):
     // user-arranged keys first, keyless threads in creation order below.
@@ -4314,6 +4333,7 @@ export default function Sidebar() {
       // Each group keeps the same order the active list uses.
       groupedThreads: sortThreadsForSidebar(grouped),
       settledThreads: sortSettledThreads(settled),
+      facetThreads,
       snoozeNow: preciseNow,
     };
   }, [
@@ -4501,26 +4521,22 @@ export default function Sidebar() {
     }
     return byName;
   }, [groupedThreads]);
-  const pageCounts = useMemo(
+  // Show, Organisations and Projects each count the threads the other two let through.
+  const filterFacets = useMemo(
     () =>
-      new Map<SidebarPage, number>([
-        ...[...groupedThreadsByName].map(
-          ([name, list]) => [sidebarGroupPage(name), list.length] as const,
-        ),
-        ["threads", pinnedThreads.length + activeThreads.length + workingThreads.length],
-        ["snoozed", snoozedThreads.length],
-        ["hidden", hiddenThreads.length],
-        ["settled", settledThreads.length],
-      ]),
-    [
-      activeThreads.length,
-      groupedThreadsByName,
-      hiddenThreads.length,
-      pinnedThreads.length,
-      settledThreads.length,
-      snoozedThreads.length,
-      workingThreads.length,
-    ],
+      buildSidebarFilterFacets({
+        threads: facetThreads,
+        projects: projectGroups,
+        pages: sidebarPages,
+        scopedProjectKeys: projectScopeKeys,
+        scopedOrganisationKeys,
+      }),
+    [facetThreads, projectGroups, projectScopeKeys, scopedOrganisationKeys, sidebarPages],
+  );
+  const pageCounts = filterFacets.pageCounts;
+  const filterOrganisationOptions = useMemo(
+    () => organisationOptions.filter((option) => filterFacets.organisationKeys.has(option.key)),
+    [filterFacets.organisationKeys, organisationOptions],
   );
   const [storedCollapsedPages, setCollapsedPages] = useLocalStorage(
     SIDEBAR_COLLAPSED_PAGES_KEY,
@@ -7089,11 +7105,13 @@ export default function Sidebar() {
                   pageCounts={pageCounts}
                   groupStyles={threadGroups}
                   onNewGroup={createThreadGroup}
-                  organisations={organisationOptions}
+                  organisations={filterOrganisationOptions}
+                  organisationCounts={filterFacets.organisationCounts}
                   scopedOrganisationKeys={scopedOrganisationKeys}
                   onScopedOrganisationKeysChange={setOrganisationKeys}
                   onPagesChange={setSidebarPages}
-                  projects={projectGroups}
+                  projects={filterFacets.projects}
+                  projectCounts={filterFacets.projectCounts}
                   scopedProjectKeys={projectScopeKeys}
                   onScopedProjectKeysChange={setProjectScopeKeys}
                   onProjectSettings={handleProjectSettings}

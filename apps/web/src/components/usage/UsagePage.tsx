@@ -81,6 +81,7 @@ import {
   WorkspaceBreadcrumbSeparator,
   WorkspaceBreadcrumbText,
 } from "../WorkspaceBreadcrumb";
+import { MenuChoiceLabel } from "../MenuChoiceLabel";
 import { WorkspacePageContainer } from "../WorkspacePageContainer";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { UsageLimitsSection } from "./UsageLimits";
@@ -263,6 +264,16 @@ export function UsagePage() {
         ),
       ),
     [activeProviders, loading.everyProvider, loading.providers],
+  );
+  // The breakdown offers what the header shows with usage, and keeps a pick that has since gone.
+  const breakdownProviders = useMemo(
+    () =>
+      PROVIDER_ORDER.filter(
+        (provider) =>
+          PROVIDER_PRESENTATION[provider] !== undefined &&
+          (activeProviders.includes(provider) || provider === providerFilter),
+      ),
+    [activeProviders, providerFilter],
   );
   const visibleProviders = useMemo(
     () =>
@@ -900,9 +911,7 @@ export function UsagePage() {
                         </SelectTrigger>
                         <SelectPopup align="end" alignItemWithTrigger={false}>
                           <SelectItem value="all">All providers</SelectItem>
-                          {PROVIDER_ORDER.filter(
-                            (provider) => PROVIDER_PRESENTATION[provider] !== undefined,
-                          ).map((provider) => (
+                          {breakdownProviders.map((provider) => (
                             <SelectItem key={provider} value={provider}>
                               {PROVIDER_PRESENTATION[provider].label}
                             </SelectItem>
@@ -1459,6 +1468,7 @@ function UsageEnvironmentFilter({
   readonly onOpenModelPrices: () => void;
 }) {
   const allSelected = selectedEnvironmentIds === null;
+  const [open, setOpen] = useState(false);
   const label = allSelected
     ? "All environments"
     : selectedEnvironments.length === 1
@@ -1469,7 +1479,7 @@ function UsageEnvironmentFilter({
     contractMismatches.length > 0;
 
   return (
-    <Menu>
+    <Menu open={open} onOpenChange={setOpen}>
       <MenuTrigger render={<InlineButton />} className="group/usage-environment min-w-0 max-w-full">
         <WorkspaceBreadcrumbText>{label}</WorkspaceBreadcrumbText>
         <span className="flex size-3.5 shrink-0 items-center justify-center text-muted-foreground">
@@ -1530,8 +1540,17 @@ function UsageEnvironmentFilter({
                 onSelectionChange(next.size === environments.length ? null : next);
               }}
             >
-              <span className="flex min-w-0 items-center gap-3">
-                <span className="min-w-0 flex-1 truncate">{environment.label}</span>
+              <span className="flex w-full min-w-0 items-center gap-3">
+                <MenuChoiceLabel
+                  label={environment.label}
+                  onOnly={() => {
+                    // "Only" settles the filter, so it also closes the menu.
+                    onSelectionChange(
+                      environments.length === 1 ? null : new Set([environment.environmentId]),
+                    );
+                    setOpen(false);
+                  }}
+                />
                 {showUsageStatus ? (
                   <span
                     className={cn(
@@ -1581,6 +1600,7 @@ function UsageProviderFilter({
   readonly onChange: (hiddenProviders: readonly UsageProviderKind[]) => void;
 }) {
   const visible = PROVIDER_ORDER.filter((provider) => !hiddenProviders.has(provider));
+  const [open, setOpen] = useState(false);
   const label =
     visible.length === PROVIDER_ORDER.length
       ? "All providers"
@@ -1591,7 +1611,7 @@ function UsageProviderFilter({
           : `${visible.length} providers`;
 
   return (
-    <Menu>
+    <Menu open={open} onOpenChange={setOpen}>
       <MenuTrigger render={<InlineButton />} className="group/usage-provider min-w-0 max-w-full">
         <span className="min-w-0 truncate">{label}</span>
         <ChevronDownIcon
@@ -1621,9 +1641,16 @@ function UsageProviderFilter({
               )
             }
           >
-            <span className="flex min-w-0 items-center gap-2">
+            <span className="flex w-full min-w-0 items-center gap-2">
               <ProviderMark provider={provider} className="size-3.5" />
-              <span className="truncate">{PROVIDER_PRESENTATION[provider].label}</span>
+              <MenuChoiceLabel
+                label={PROVIDER_PRESENTATION[provider].label}
+                onOnly={() => {
+                  // "Only" settles the filter, so it also closes the menu.
+                  onChange(PROVIDER_ORDER.filter((entry) => entry !== provider));
+                  setOpen(false);
+                }}
+              />
             </span>
           </MenuCheckboxItem>
         ))}

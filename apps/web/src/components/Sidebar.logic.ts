@@ -25,6 +25,7 @@ import type {
   SidebarTabSortOrder,
   SidebarThreadSortOrder,
 } from "@t3tools/contracts/settings";
+import { filterFacets } from "@t3tools/shared/filterFacets";
 import * as Schema from "effect/Schema";
 import type { AsyncResult } from "effect/reactivity";
 import { planPinnedReorder } from "@t3tools/client-runtime/state/thread-sort";
@@ -1476,6 +1477,16 @@ export function sidebarThreadShelf(
   return input.workingShelfEnabled && isThreadWorking(thread) ? "working" : "active";
 }
 
+/** The Show page a shelf belongs to: pinned, working and active rows are all live threads. */
+export function sidebarShelfPage(
+  shelf: SidebarThreadShelf,
+  groupName: string | null | undefined,
+): SidebarPage {
+  if (shelf === "grouped") return sidebarGroupPage(groupName ?? "");
+  if (shelf === "pinned" || shelf === "working" || shelf === "active") return "threads";
+  return shelf;
+}
+
 /** First VALID timestamp wins: `a ?? b` falls through on null, but a present-
     yet-malformed string must also fall through to the next candidate rather
     than sink the row to the epoch. */
@@ -1905,15 +1916,23 @@ export interface OrganisationOption {
   readonly organisation: Organisation | undefined;
 }
 
-/** The organisations of these checkouts, with their chosen names and icons, sorted by label. */
+/**
+ * The organisations of these checkouts, with their chosen names and icons, sorted by label.
+ * `picked` keys with no checkout left are offered too, by owner, so a filter on them stays
+ * visible and can be dropped.
+ */
 export function buildOrganisationOptions(
   identities: Iterable<RepositoryIdentity | null | undefined>,
   organisations: Organisations,
+  picked: readonly string[] = [],
 ): OrganisationOption[] {
   const byKey = new Map<string, { key: string; label: string }>();
   for (const identity of identities) {
     const organisation = repositoryOrganisationOf(identity);
     if (organisation) byKey.set(organisation.key, organisation);
+  }
+  for (const key of picked) {
+    if (!byKey.has(key)) byKey.set(key, { key, label: key.split("/").at(-1) ?? key });
   }
   const options = [...byKey.values()];
   const labelCounts = new Map<string, number>();
@@ -1932,4 +1951,98 @@ export function buildOrganisationOptions(
       };
     })
     .toSorted((left, right) => left.label.localeCompare(right.label));
+}
+
+/** A thread as the sidebar filter menu counts it: where it lives and which Show page holds it. */
+export interface SidebarFacetThread {
+  readonly environmentId: string;
+  readonly projectId: string;
+  readonly page: SidebarPage;
+}
+
+/**
+ * The sidebar filter menu's counts and choices. Each of Show, Organisations and Projects counts
+ * the threads the other two let through, so a menu says what picking a choice would leave.
+ * Projects are offered when they have a checkout in a picked organisation, and organisations
+ * when they own a checkout of a picked project. A pick the others exclude stays offered with a
+ * count of 0, so it can be unpicked.
+ */
+export function buildSidebarFilterFacets<
+  Project extends {
+    readonly projectKey: string;
+    readonly memberProjects: ReadonlyArray<{
+      readonly environmentId: string;
+      readonly id: string;
+      readonly repositoryIdentity?: RepositoryIdentity | null | undefined;
+    }>;
+  },
+>(input: {
+  readonly threads: readonly SidebarFacetThread[];
+  readonly projects: readonly Project[];
+  readonly pages: readonly SidebarPage[];
+  readonly scopedProjectKeys: readonly string[];
+  readonly scopedOrganisationKeys: readonly string[];
+}): {
+  pageCounts: ReadonlyMap<SidebarPage, number>;
+  projectCounts: ReadonlyMap<string, number>;
+  organisationCounts: ReadonlyMap<string, number>;
+  projects: Project[];
+  organisationKeys: ReadonlySet<string>;
+} {
+  const projectKeyByMember = new Map<string, string>();
+  const organisationByMember = new Map<string, string>();
+  for (const project of input.projects) {
+    for (const member of project.memberProjects) {
+      const memberKey = `${member.environmentId}:${member.id}`;
+      projectKeyByMember.set(memberKey, project.projectKey);
+      const organisation = repositoryOrganisationOf(member.repositoryIdentity);
+      if (organisation) organisationByMember.set(memberKey, organisation.key);
+    }
+  }
+  const memberKey = (thread: SidebarFacetThread) => `${thread.environmentId}:${thread.projectId}`;
+  const facets = filterFacets(input.threads, {
+    page: { values: (thread) => [thread.page], selected: input.pages },
+    project: {
+      values: (thread) => {
+        const key = projectKeyByMember.get(memberKey(thread));
+        return key === undefined ? [] : [key];
+      },
+      selected: input.scopedProjectKeys,
+    },
+    organisation: {
+      values: (thread) => {
+        const key = organisationByMember.get(memberKey(thread));
+        return key === undefined ? [] : [key];
+      },
+      selected: input.scopedOrganisationKeys,
+    },
+  });
+  const counts = <Key extends string>(choices: ReadonlyArray<{ value: string; count: number }>) =>
+    new Map(choices.map((choice) => [choice.value as Key, choice.count]));
+
+  const pickedOrganisations = new Set(input.scopedOrganisationKeys);
+  const pickedProjects = new Set(input.scopedProjectKeys);
+  const memberOrganisations = (project: Project) =>
+    project.memberProjects.flatMap((member) => {
+      const key = repositoryOrganisationOf(member.repositoryIdentity)?.key;
+      return key === undefined ? [] : [key];
+    });
+  const projects = input.projects.filter(
+    (project) =>
+      pickedOrganisations.size === 0 ||
+      pickedProjects.has(project.projectKey) ||
+      memberOrganisations(project).some((key) => pickedOrganisations.has(key)),
+  );
+  const organisationKeys = new Set(input.scopedOrganisationKeys);
+  for (const project of input.projects) {
+    if (pickedProjects.size > 0 && !pickedProjects.has(project.projectKey)) continue;
+    for (const key of memberOrganisations(project)) organisationKeys.add(key);
+  }
+  return {
+    pageCounts: counts<SidebarPage>(facets.page),
+    projectCounts: counts(facets.project),
+    organisationCounts: counts(facets.organisation),
+    projects,
+    organisationKeys,
+  };
 }

@@ -15,6 +15,8 @@ export interface FilterDimension<Item> {
    * value; pass one for "all of", ranges, or anything else.
    */
   readonly matches?: (item: Item) => boolean;
+  /** The name a value is shown as, so equal counts list alphabetically when values are ids. */
+  readonly label?: (value: string) => string;
 }
 
 export interface FacetChoice {
@@ -39,7 +41,7 @@ export function applyFilterDimensions<Item, Key extends string>(
 
 /**
  * Each dimension's choices with how many items picking each would show under the other applied
- * dimensions, most frequent first, then by value. Callers that list choices in a fixed order
+ * dimensions, most frequent first, then by label. Callers that list choices in a fixed order
  * (date ranges, states) can look counts up by value instead.
  */
 export function filterFacets<Item, Key extends string>(
@@ -58,8 +60,9 @@ export function filterFacets<Item, Key extends string>(
       }
     }
     for (const value of dimension.selected) if (!counts.has(value)) counts.set(value, 0);
+    const label = dimension.label ?? ((value: string) => value);
     result[key] = [...counts]
-      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .sort((a, b) => b[1] - a[1] || label(a[0]).localeCompare(label(b[0])))
       .map(([value, count]) => ({ value, count }));
   }
   return result;

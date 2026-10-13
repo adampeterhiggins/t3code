@@ -8,6 +8,7 @@ import {
   type SubagentToolKind,
 } from "@t3tools/client-runtime/state/agent-list-view";
 import type { OrchestrationV2ProjectedTurnItem, ThreadId, TurnItemId } from "@t3tools/contracts";
+import { filterFacets } from "@t3tools/shared/filterFacets";
 
 import type { TimelineEntry, WorkLogEntry } from "../../session-logic";
 import { workEntryDisplayLabel, workEntryIsVisibleInGroup } from "./MessagesTimeline.logic";
@@ -261,6 +262,24 @@ export function applyAgentTranscriptView(
       (view.kinds.length === 0 || view.kinds.includes(agentTranscriptKindOf(row))) &&
       (query.length === 0 || rowText(row).toLocaleLowerCase().includes(query)),
   );
+}
+
+/**
+ * How many rows each kind would show under the search. A picked kind nothing matches stays at 0,
+ * so it can be unpicked; other kinds without rows are absent.
+ */
+export function agentTranscriptKindCounts(
+  rows: ReadonlyArray<AgentTranscriptRow>,
+  view: AgentTranscriptView,
+): ReadonlyMap<AgentTranscriptKind, number> {
+  const searched = applyAgentTranscriptView(rows, { ...view, kinds: [] });
+  const facets = filterFacets(searched, {
+    kinds: {
+      values: (row: AgentTranscriptRow) => [agentTranscriptKindOf(row)],
+      selected: view.kinds,
+    },
+  });
+  return new Map(facets.kinds.map((choice) => [choice.value as AgentTranscriptKind, choice.count]));
 }
 
 /** The position of a tool call's row, to open the transcript on it; -1 when it is not listed. */

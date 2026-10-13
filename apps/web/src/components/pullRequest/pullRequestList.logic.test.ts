@@ -8,6 +8,7 @@ import type {
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  collectPullRequestListFacets,
   pullRequestHostActions,
   pullRequestQuickActions,
   filterPullRequestsByInvolvement,
@@ -306,6 +307,73 @@ describe("visible pull request line-count targets", () => {
         statsByRow: cachedStats,
       }),
     ).toEqual([]);
+  });
+});
+
+describe("pull request filter facets", () => {
+  const ada = { login: "ada", name: "Ada", avatarUrl: null };
+  const bug = { name: "bug", color: "d73a4a" };
+  const docs = { name: "docs", color: null };
+  const rows = [
+    entry({ number: 1, author: ada, labels: [bug] }),
+    entry({ number: 2, author: ada, labels: [docs], isDraft: true }),
+    entry({ number: 3, labels: [bug, docs], state: "merged", reviewDecision: "approved" }),
+    entry({ number: 4, author: { login: "Bilal", name: null, avatarUrl: null }, labels: [bug] }),
+  ];
+  const facets = (
+    view: Partial<Parameters<typeof collectPullRequestListFacets>[1]>,
+    entries: ReadonlyArray<EnvironmentPullRequestEntry> = rows,
+  ) =>
+    collectPullRequestListFacets(
+      entries,
+      { state: "open", involvement: "all", filters: {}, ...view },
+      VIEWERS,
+    );
+  const labelCounts = (result: ReturnType<typeof facets>) =>
+    Object.fromEntries(result.labels.map((label) => [label.name, label.count]));
+  const authorCounts = (result: ReturnType<typeof facets>) =>
+    Object.fromEntries(result.authors.map((author) => [author.actor.login, author.count]));
+
+  it("counts each menu under the other filters but never its own", () => {
+    const result = facets({ filters: { labels: [["bug"]], author: "ada" } });
+    // Labels ignore the label filter: ada's open rows are #1 (bug) and #2 (docs).
+    expect(labelCounts(result)).toEqual({ bug: 1, docs: 1 });
+    // Authors ignore the author filter: open rows carrying bug are ada's #1 and Bilal's #4.
+    expect(authorCounts(result)).toEqual({ ada: 1, Bilal: 1 });
+    // State ignores the state filter, so the merged row counts under Merged.
+    const all = facets({ state: "all", filters: { labels: [["bug"]] } });
+    expect(all.state).toMatchObject({ all: 3, open: 2, merged: 1 });
+  });
+
+  it("keeps a picked value the other filters exclude, at zero", () => {
+    const result = facets({ filters: { labels: [["Docs"]], draft: "hide" } });
+    expect(result.labels.find((label) => label.name === "docs")?.count).toBe(0);
+    const author = facets({ filters: { author: "grace" } });
+    expect(author.authors).toContainEqual({
+      actor: { login: "grace", name: null, avatarUrl: null },
+      count: 0,
+    });
+  });
+
+  it("does not list author:me as a login, but still narrows the other menus by it", () => {
+    const result = facets({ filters: { author: "@me" } });
+    expect(authorCounts(result)).toEqual({ ada: 2, Bilal: 1 });
+    expect(labelCounts(result)).toEqual({ bug: 1 });
+  });
+
+  it("counts the fixed choices, with all as everything the other filters leave", () => {
+    const result = facets({});
+    expect(result.loaded).toBe(4);
+    expect(result.draft).toMatchObject({ all: 3, only: 1, hide: 2 });
+    expect(result.review).toMatchObject({ all: 3, none: 3 });
+    expect(result.involvement).toMatchObject({ all: 3, authored: 1 });
+    expect(facets({ involvement: "authored" }).state).toMatchObject({ all: 1, open: 1 });
+  });
+
+  it("counts a row read by two queries once", () => {
+    const result = facets({}, [...rows, ...rows]);
+    expect(result.loaded).toBe(4);
+    expect(labelCounts(result)).toEqual({ bug: 2, docs: 1 });
   });
 });
 
