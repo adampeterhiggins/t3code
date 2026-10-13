@@ -156,6 +156,7 @@ function resetComposerDraftStore() {
     rewindingThreadKeys: new Set(),
     draftsByThreadKey: {},
     draftThreadsByThreadKey: {},
+    promotedThreadRefsByDraftId: {},
     logicalProjectDraftThreadKeyByLogicalProjectKey: {},
     stickyModelSelectionByProvider: {},
     stickyOptionsByModelByProvider: {},
@@ -1588,6 +1589,54 @@ describe("composerDraftStore project draft thread mapping", () => {
       scopeThreadRef(TEST_ENVIRONMENT_ID, threadId),
     );
     expect(draftByKey(draftId)?.prompt).toBe("promote me");
+  });
+
+  it("keeps a completed draft's route destination after background promotion cleanup", () => {
+    const store = useComposerDraftStore.getState();
+    const threadRef = scopeThreadRef(OTHER_TEST_ENVIRONMENT_ID, threadId);
+    store.setProjectDraftThreadId(projectRef, draftId, { threadId });
+    store.markDraftThreadPromoting(draftId, threadRef);
+    finalizePromotedDraftThreadByRef(threadRef);
+
+    const completed = useComposerDraftStore.getState();
+    expect(completed.getDraftSession(draftId)).toBeNull();
+    expect(completed.promotedThreadRefsByDraftId[draftId]).toEqual(threadRef);
+    const restored = useComposerDraftStore.persist.getOptions().merge!(
+      JSON.parse(JSON.stringify(partializeComposerDraftStoreState(completed))),
+      useComposerDraftStore.getInitialState(),
+    );
+    expect(restored.promotedThreadRefsByDraftId[draftId]).toEqual(threadRef);
+    expect(restored.getDraftSession(draftId)).toBeNull();
+  });
+
+  it("does not redirect history away from an unsent or failed draft", () => {
+    const store = useComposerDraftStore.getState();
+    store.setProjectDraftThreadId(projectRef, draftId, { threadId });
+    store.finalizePromotedDraftThread(draftId);
+    expect(useComposerDraftStore.getState().promotedThreadRefsByDraftId).toEqual({});
+    expect(store.getDraftSession(draftId)).not.toBeNull();
+
+    const session = store.getDraftSession(draftId)!;
+    store.markDraftThreadPromoting(draftId);
+    restoreFailedBackgroundDraftThread(draftId, session, otherThreadId);
+    store.finalizePromotedDraftThread(draftId);
+    expect(useComposerDraftStore.getState().promotedThreadRefsByDraftId).toEqual({});
+    expect(store.getDraftSession(draftId)?.threadId).toBe(otherThreadId);
+  });
+
+  it("bounds persisted route aliases and ignores malformed destinations", () => {
+    const threadRef = scopeThreadRef(TEST_ENVIRONMENT_ID, threadId);
+    const aliases = Object.fromEntries(
+      Array.from({ length: 1001 }, (_, index) => [`draft-${index}`, threadRef]),
+    );
+    const restored = useComposerDraftStore.persist.getOptions().merge!(
+      { promotedThreadRefsByDraftId: { ...aliases, invalid: { threadId }, "": threadRef } },
+      useComposerDraftStore.getInitialState(),
+    );
+    expect(Object.keys(restored.promotedThreadRefsByDraftId)).toHaveLength(1000);
+    expect(restored.promotedThreadRefsByDraftId["draft-0"]).toBeUndefined();
+    expect(restored.promotedThreadRefsByDraftId["draft-1000"]).toEqual(threadRef);
+    expect(restored.promotedThreadRefsByDraftId.invalid).toBeUndefined();
   });
 
   it("reads local draft composer state through a scoped thread ref", () => {
