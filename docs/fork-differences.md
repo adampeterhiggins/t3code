@@ -756,6 +756,17 @@ Code: `makeSubagentWorktreeSetupHooks` in
 [`SubagentWorktreeSetup.ts`](../apps/server/src/project/SubagentWorktreeSetup.ts). User guide:
 [project-settings.md](./user/project-settings.md#repositories-set-up-for-conductor).
 
+## Claude commands start in the thread's directory
+
+Every Claude Bash command starts in the thread's working directory (a worktree subagent's in its own
+worktree): a `cd` lasts for that one command only. Claude is told so, so it runs commands with
+relative paths instead of prefixing them with `cd /full/path/to/worktree`. Claude Code's own tool
+description still says the directory persists, so the prompt note is what changes the habit. Other
+providers are unchanged; Codex already runs each command in a fresh shell.
+
+Code: `CLAUDE_SHELL_ENVIRONMENT` and `CLAUDE_SHELL_INSTRUCTIONS` in
+[`ClaudeAdapterV2.ts`](../apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts).
+
 ## Linear integration
 
 **Settings > Integrations > Linear** connects a Linear account to the environment with OAuth
