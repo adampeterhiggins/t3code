@@ -6305,6 +6305,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
             plainOutput={plainOutput}
             plainOutputFetches={plainOutputFetches}
             textBody={expandedBody}
+            highlightSyntax={workEntry.itemType === "command_execution"}
           />
         </WorkLogDetails>
       ) : null}

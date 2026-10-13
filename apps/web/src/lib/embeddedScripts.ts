@@ -202,6 +202,64 @@ export function embeddedScripts(command: string): EmbeddedScript[] {
   );
 }
 
+/** One interpreter invocation, shown as its script instead of as a shell command. */
+export interface CommandScriptPreview {
+  readonly language: string;
+  readonly text: string;
+  readonly invocation: string;
+}
+
+/**
+ * The script to show for a command that is nothing but one interpreter
+ * invocation, such as `python3 -c`. Mixed commands, nested shells, and
+ * anything that does not parse return undefined so the shell can be highlighted
+ * instead; a nested `bash -lc "python3 -c …"` is two scripts, and `cd dir &&
+ * python3 -c …` is two commands.
+ */
+export function commandScriptPreview(command: string): CommandScriptPreview | undefined {
+  const script = parse(command);
+  if (script.errors?.length || script.commands.length !== 1) return undefined;
+  const statement = script.commands[0];
+  if (!statement || statement.command.type !== "Command" || !statement.command.name)
+    return undefined;
+  const words = [
+    statement.command.name,
+    ...statement.command.args.filter((arg): arg is Word => arg.type === "Word"),
+  ];
+  const program = words[programIndex(words)];
+  if (!program) return undefined;
+  const interpreter = interpreterFor(programName(program));
+  if (!interpreter) return undefined;
+  const scripts = embeddedScripts(command);
+  const embedded = scripts.length === 1 ? scripts[0] : undefined;
+  if (!embedded || embedded.language !== interpreter.language || embedded.starts.length === 0) {
+    return undefined;
+  }
+  return {
+    language: embedded.language,
+    text: embedded.text,
+    invocation: invocationCaption(command, embedded),
+  };
+}
+
+/** The command with the script body removed: `python3 -c`, plus anything after it. */
+function invocationCaption(command: string, script: EmbeddedScript): string {
+  const start = script.starts[0] ?? 0;
+  const end = script.ends.at(-1) ?? start;
+  const prefix = command.slice(0, start).replace(/['"]$/u, "").trim();
+  let suffix = command.slice(end).replace(/^['"]/u, "").trim();
+  // A heredoc's closing word repeats the delimiter already named in the prefix.
+  const closer = /^['"]?([\w.-]+)['"]?$/u.exec(suffix);
+  const word = closer?.[1];
+  if (
+    word !== undefined &&
+    (prefix.endsWith(word) || prefix.endsWith(`'${word}'`) || prefix.endsWith(`"${word}"`))
+  ) {
+    suffix = "";
+  }
+  return [prefix, suffix].filter((part) => part !== "").join(" ");
+}
+
 function scriptsIn(source: MappedText, depth: number): EmbeddedScript[] {
   const script = parse(source.text);
   if (script.errors?.length) return [];

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { embeddedScripts } from "./embeddedScripts";
+import { commandScriptPreview, embeddedScripts } from "./embeddedScripts";
 
 /** Each script's language, its text, and the part of the command that spells it. */
 function scriptsOf(command: string) {
@@ -120,5 +120,53 @@ describe("embeddedScripts", () => {
     // the -lc argument ends early and the rest no longer balances.
     const command = `/bin/zsh -lc "python3 -c 'token=[REDACTED_SECRET]"apiToken\\"]; print(token)'"`;
     expect(scriptsOf(command)).toEqual([]);
+  });
+});
+
+describe("commandScriptPreview", () => {
+  const multiline = `python3 -c "
+import json
+print(json.dumps({'ok': True}))
+"`;
+
+  it.each([
+    [`python3 -c 'print(1)'`, "python", "print(1)", "python3 -c"],
+    [`python3 -X dev -c 'print(1)'`, "python", "print(1)", "python3 -X dev -c"],
+    [`py -3 -c 'print(1)'`, "python", "print(1)", "py -3 -c"],
+    [
+      `env FOO=1 sudo -u bob python3 -c 'print(1)'`,
+      "python",
+      "print(1)",
+      "env FOO=1 sudo -u bob python3 -c",
+    ],
+    [`node --eval "process.exit(0)"`, "javascript", "process.exit(0)", "node --eval"],
+    [`node --eval="process.exit(0)"`, "javascript", "process.exit(0)", "node --eval="],
+    [`sqlite3 app.db "select * from users"`, "sql", "select * from users", "sqlite3 app.db"],
+    [`python3 <<< 'print(1)'`, "python", "print(1)", "python3 <<<"],
+    [`python3 -c 'print(1)' > out.txt`, "python", "print(1)", "python3 -c > out.txt"],
+    [multiline, "python", `\nimport json\nprint(json.dumps({'ok': True}))\n`, "python3 -c"],
+    [`python3 - <<'PY'\n${pythonScript}PY`, "python", pythonScript, "python3 - <<'PY'"],
+    [`bash <<'EOF'\necho hi\nEOF`, "shellscript", "echo hi\n", "bash <<'EOF'"],
+  ])("shows the script in %s", (command, language, text, invocation) => {
+    expect(commandScriptPreview(command)).toEqual({ language, text, invocation });
+  });
+
+  it.each([
+    ["a mixed command", `cd dir && python3 -c 'print(1)'`],
+    ["a pipeline", `python3 -c 'print(1)' | head`],
+    ["two statements", `python3 -c 'print(1)'; python3 -c 'print(2)'`],
+    ["a nested login shell", `/bin/bash -lc "python3 -c 'print(1)'"`],
+    ["repeated statements", `psql -c 'select 1' -c 'select 2'`],
+    ["a script file", `python3 build.py`],
+    ["a module", `python3 -m json.tool`],
+    ["a plain command", `rg -n foo src`],
+    ["a command substitution", `echo "$(node -e 'console.log(1)')"`],
+    ["a file written by cat", `cat > src/app.py <<'EOF'\nprint(1)\nEOF`],
+    [
+      "broken quoting",
+      `/bin/zsh -lc "python3 -c 'token=[REDACTED_SECRET]"apiToken\\"]; print(token)'"`,
+    ],
+  ])("leaves %s as a shell command", (_case, command) => {
+    expect(commandScriptPreview(command)).toBeUndefined();
   });
 });
