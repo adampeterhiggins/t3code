@@ -2,7 +2,7 @@ import type { V2ItemSupport } from "@t3tools/client-runtime/state/item-support";
 import { toolItemForDisplay } from "@t3tools/client-runtime/work-log/presentation";
 import { formatDiffCount } from "@t3tools/client-runtime/diff-count";
 import type { ThreadId } from "@t3tools/contracts";
-import { describeModelSelection } from "@t3tools/shared/modelChangeMarker";
+import { describeModelChange } from "@t3tools/shared/modelChangeMarker";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
 import * as DateTime from "effect/DateTime";
 
@@ -280,8 +280,7 @@ export function buildThreadActivityInspector(
       addBlock(blocks, "Message", item.message, false);
       break;
     case "model_change":
-      fields.push({ label: "From", value: describeModelSelection(item.from) });
-      fields.push({ label: "To", value: describeModelSelection(item.to) });
+      fields.push({ label: "Change", value: describeModelChange(item.from, item.to) });
       break;
     case "fork":
     case "thread_created":

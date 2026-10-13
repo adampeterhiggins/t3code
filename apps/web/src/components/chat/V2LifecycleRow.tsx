@@ -17,17 +17,21 @@ import { resolveHandoffEndpoints, type HandoffTimelineRun } from "@t3tools/clien
 import { Fragment } from "react";
 import { formatSubagentDisplayTitle } from "@t3tools/client-runtime/state/subagent-display";
 import {
+  forkAccountChangeLabel,
+  forkSourceInstanceId,
   formatModelSelectionTraits,
+  handoffInstancesDiffer,
   modelOptionDescriptors,
   modelSelectionChanged,
+  providerAccountLabel,
 } from "@t3tools/shared/modelChangeMarker";
 import {
   ProviderDriverKind,
+  ProviderInstanceId,
   type OrchestrationV2Notification,
   type OrchestrationV2SubagentUsage,
   type OrchestrationV2TurnItem,
   type OrchestrationV2Subagent,
-  type ProviderInstanceId,
   type ServerProvider,
   type ThreadId,
   type EnvironmentId,
@@ -134,6 +138,10 @@ export function V2LifecycleRow(props: {
   }
   if (item.type === "handoff") {
     const { from: fromEndpoints, to } = resolveHandoffEndpoints(item, props.runs);
+    const showAccount = handoffInstancesDiffer(
+      fromEndpoints.map((endpoint) => endpoint.instanceId),
+      item.toProviderInstanceId,
+    );
     return (
       <TimelineSystemDivider
         label="Context handoff"
@@ -153,6 +161,11 @@ export function V2LifecycleRow(props: {
                   providers={props.providerStatuses}
                   instanceId={endpoint.instanceId}
                   model={endpoint.model}
+                  account={
+                    showAccount
+                      ? providerAccountLabel(props.providerStatuses, endpoint.instanceId)
+                      : null
+                  }
                 />
               </Fragment>
             ))}
@@ -163,6 +176,11 @@ export function V2LifecycleRow(props: {
               providers={props.providerStatuses}
               instanceId={item.toProviderInstanceId}
               model={to.model}
+              account={
+                showAccount
+                  ? providerAccountLabel(props.providerStatuses, item.toProviderInstanceId)
+                  : null
+              }
             />
           </span>
         }
@@ -170,16 +188,12 @@ export function V2LifecycleRow(props: {
     );
   }
   if (item.type === "model_change") {
+    const descriptors = modelOptionDescriptors(props.providerStatuses, item.from);
     // Explicitly picking an option's default records a change that is not one.
-    if (
-      !modelSelectionChanged(
-        item.from,
-        item.to,
-        modelOptionDescriptors(props.providerStatuses, item.from),
-      )
-    ) {
+    if (!modelSelectionChanged(item.from, item.to, descriptors)) {
       return null;
     }
+    const showAccount = item.from.instanceId !== item.to.instanceId;
     return (
       <TimelineSystemDivider
         label="Model changed"
@@ -192,6 +206,11 @@ export function V2LifecycleRow(props: {
               instanceId={item.from.instanceId}
               model={item.from.model}
               traits={formatModelSelectionTraits(props.providerStatuses, item.from)}
+              account={
+                showAccount
+                  ? providerAccountLabel(props.providerStatuses, item.from.instanceId)
+                  : null
+              }
             />
             <ArrowRightIcon aria-hidden="true" className="size-3 shrink-0" />
             <HandoffEndpoint
@@ -199,6 +218,11 @@ export function V2LifecycleRow(props: {
               instanceId={item.to.instanceId}
               model={item.to.model}
               traits={formatModelSelectionTraits(props.providerStatuses, item.to)}
+              account={
+                showAccount
+                  ? providerAccountLabel(props.providerStatuses, item.to.instanceId)
+                  : null
+              }
             />
           </span>
         }
@@ -206,13 +230,12 @@ export function V2LifecycleRow(props: {
     );
   }
   if (item.type === "fork") {
-    const relatedThreadId = item.source.type === "run" ? item.source.threadId : item.targetThreadId;
     return (
-      <TimelineSystemDivider
-        label={item.source.type === "run" ? "Forked from conversation" : "Conversation fork"}
-        icon={GitForkIcon}
-        actionLabel={item.source.type === "run" ? "Open source conversation" : "Open fork"}
-        onAction={() => props.onOpenThread(relatedThreadId)}
+      <ForkLifecycleRow
+        item={item}
+        environmentId={props.environmentId}
+        providers={props.providerStatuses}
+        onOpenThread={props.onOpenThread}
       />
     );
   }
@@ -715,12 +738,52 @@ function SubagentTimelineTooltip(
   );
 }
 
+function ForkLifecycleRow(props: {
+  readonly item: Extract<OrchestrationV2TurnItem, { type: "fork" }>;
+  readonly environmentId: EnvironmentId;
+  readonly providers: ReadonlyArray<ServerProvider>;
+  readonly onOpenThread: (threadId: ThreadId) => void;
+}) {
+  // Instance ids only: the thread projection updates on every streamed event.
+  const endpointKey = useAtomValue(
+    environmentThreadDetails.threadAtom(scopeThreadRef(props.environmentId, props.item.threadId)),
+    (thread) => {
+      if (props.item.source.type !== "run") return null;
+      const source =
+        forkSourceInstanceId(thread?.projection.contextTransfers ?? [], props.item) ?? "";
+      const target = thread?.projection.thread.modelSelection.instanceId ?? "";
+      return `${source}\0${target}`;
+    },
+  );
+  const [sourceInstanceId, targetInstanceId] = endpointKey?.split("\0") ?? [];
+  const accountLabel = forkAccountChangeLabel({
+    sourceInstanceId: sourceInstanceId ? ProviderInstanceId.make(sourceInstanceId) : null,
+    targetInstanceId: targetInstanceId ? ProviderInstanceId.make(targetInstanceId) : null,
+    providers: props.providers,
+  });
+  const relatedThreadId =
+    props.item.source.type === "run" ? props.item.source.threadId : props.item.targetThreadId;
+  return (
+    <TimelineSystemDivider
+      label={
+        accountLabel ??
+        (props.item.source.type === "run" ? "Forked from conversation" : "Conversation fork")
+      }
+      icon={GitForkIcon}
+      actionLabel={props.item.source.type === "run" ? "Open source conversation" : "Open fork"}
+      onAction={() => props.onOpenThread(relatedThreadId)}
+    />
+  );
+}
+
 function HandoffEndpoint(props: {
   readonly providers: ReadonlyArray<ServerProvider>;
   readonly instanceId: ProviderInstanceId;
   readonly model?: string | undefined;
   /** Parameters the model ran with, such as "Max Fast". */
   readonly traits?: string | null | undefined;
+  /** Account name, shown when this handoff or switch moved between accounts. */
+  readonly account?: string | null | undefined;
 }) {
   const entry = getProviderInstanceEntry(props.providers, props.instanceId);
   const model = props.model?.trim();
@@ -734,6 +797,8 @@ function HandoffEndpoint(props: {
       : model !== undefined && model.length > 0
         ? model
         : (entry?.displayName ?? props.instanceId);
+  const account = props.account?.trim();
+  const showAccount = account !== undefined && account.length > 0 && account !== label;
   const labelColor = providerTextColor(
     entry?.driverKind ?? ProviderDriverKind.make(props.instanceId),
   );
@@ -752,6 +817,19 @@ function HandoffEndpoint(props: {
               acpRegistryIconUrl={entry?.acpRegistryIconUrl}
               iconClassName="size-3"
             />
+            {showAccount ? (
+              <span
+                className={cn("shrink-0 font-medium", labelColor.className)}
+                style={labelColor.style}
+              >
+                {account}
+              </span>
+            ) : null}
+            {showAccount ? (
+              <span aria-hidden="true" className="shrink-0">
+                ·
+              </span>
+            ) : null}
             <span
               className={cn("truncate font-medium", labelColor.className)}
               style={labelColor.style}

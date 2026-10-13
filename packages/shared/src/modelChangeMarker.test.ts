@@ -1,4 +1,5 @@
 import {
+  ProviderDriverKind,
   ProviderInstanceId,
   RunId,
   ThreadId,
@@ -9,12 +10,17 @@ import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  describeModelChange,
   describeModelSelection,
+  forkAccountChangeLabel,
+  forkSourceInstanceId,
   formatModelSelectionTraits,
+  handoffInstancesDiffer,
   modelChangeSourceSelection,
   modelChangeTurnItem,
   modelSelectionChanged,
   pendingModelChangeProjection,
+  providerAccountLabel,
 } from "./modelChangeMarker.ts";
 
 const threadId = ThreadId.make("thread:model-change");
@@ -245,5 +251,116 @@ describe("model selection labels", () => {
   it("describes a selection without a provider catalog", () => {
     expect(describeModelSelection(selection)).toBe("gpt-5.4 (effort: high, fastMode: true)");
     expect(describeModelSelection({ instanceId: codex, model: "gpt-5.4" })).toBe("gpt-5.4");
+  });
+});
+
+const cursor = ProviderDriverKind.make("cursor");
+const work = ProviderInstanceId.make("cursor");
+const personal = ProviderInstanceId.make("cursor_personal");
+
+function cursorProvider(instanceId: ProviderInstanceId, displayName: string): ServerProvider {
+  return {
+    instanceId,
+    driver: cursor,
+    displayName,
+    models: [{ slug: "grok-4.7", capabilities: { optionDescriptors: [] } }],
+  } as unknown as ServerProvider;
+}
+
+describe("account change labels", () => {
+  const from = { instanceId: work, model: "grok-4.7" };
+  const to = { instanceId: personal, model: "grok-4.7" };
+  const providers = [cursorProvider(work, "Work"), cursorProvider(personal, "Personal")];
+
+  it("names an account switch inside the model change", () => {
+    expect(describeModelChange(from, to, providers)).toBe(
+      "Model changed from Work, grok-4.7 to Personal, grok-4.7.",
+    );
+    expect(describeModelChange(from, { ...to, model: "composer-2" }, providers)).toBe(
+      "Model changed from Work, grok-4.7 to Personal, composer-2.",
+    );
+    expect(describeModelChange(from, { ...from, model: "composer-2" }, providers)).toBe(
+      "Model changed from grok-4.7 to composer-2.",
+    );
+  });
+
+  it("falls back to the instance id when the account is gone", () => {
+    expect(providerAccountLabel([], personal)).toBe(personal);
+    expect(describeModelChange(from, to)).toBe(
+      `Model changed from ${work}, grok-4.7 to ${personal}, grok-4.7.`,
+    );
+  });
+
+  it("humanizes a secondary account that still carries the brand name", () => {
+    expect(
+      providerAccountLabel(
+        [{ instanceId: personal, driver: cursor, displayName: "Cursor" }],
+        personal,
+      ),
+    ).toBe("Cursor Personal");
+  });
+
+  it("names a forked account switch from the fork transfer and skips a same-account fork", () => {
+    const item = {
+      threadId: ThreadId.make("thread:fork"),
+      source: {
+        type: "run" as const,
+        threadId: ThreadId.make("thread:source"),
+        runId: RunId.make("run:source"),
+      },
+    };
+    const sourceInstanceId = forkSourceInstanceId(
+      [
+        {
+          type: "fork",
+          sourceThreadId: item.source.threadId,
+          targetThreadId: item.threadId,
+          sourcePoint: { threadId: item.source.threadId, runId: item.source.runId },
+          sourceProviderInstanceId: work,
+        },
+      ],
+      item,
+    );
+    expect(sourceInstanceId).toBe(work);
+    expect(
+      forkAccountChangeLabel({
+        sourceInstanceId,
+        targetInstanceId: personal,
+        providers,
+      }),
+    ).toBe("Forked from Work to Personal");
+    expect(
+      forkAccountChangeLabel({
+        sourceInstanceId: work,
+        targetInstanceId: work,
+        providers,
+      }),
+    ).toBeNull();
+    expect(
+      forkAccountChangeLabel({
+        sourceInstanceId: null,
+        targetInstanceId: personal,
+        providers,
+      }),
+    ).toBeNull();
+    expect(handoffInstancesDiffer([work], personal)).toBe(true);
+    expect(handoffInstancesDiffer([work], work)).toBe(false);
+  });
+
+  it("records an in-place account switch as a model change item", () => {
+    const changed = modelChangeTurnItem({
+      id: TurnItemId.make("turn-item:account"),
+      threadId,
+      runId: RunId.make("run:account"),
+      nodeId: null,
+      providerThreadId: null,
+      ordinal: 1,
+      from,
+      to,
+      now,
+    });
+    expect(changed?.type).toBe("model_change");
+    expect(changed?.from.instanceId).toBe(work);
+    expect(changed?.to.instanceId).toBe(personal);
   });
 });

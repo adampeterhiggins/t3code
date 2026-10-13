@@ -6,7 +6,7 @@ import type {
 import { turnItemIsWorkspacePreparation } from "@t3tools/client-runtime/state/turn-item-presentation";
 import { formatSubagentDisplayTitle } from "@t3tools/client-runtime/state/subagent-display";
 import { isLiveSubagentTurnItem } from "@t3tools/client-runtime/state/subagentRuntime";
-import { describeModelSelection } from "@t3tools/shared/modelChangeMarker";
+import { describeModelChange } from "@t3tools/shared/modelChangeMarker";
 import { extractToolActivityPresentation } from "@t3tools/client-runtime/work-log/tool-presentation";
 import {
   fileChangeDiffWithheld,
@@ -372,6 +372,10 @@ export function isModelChangeActivityGroup(entry: ThreadFeedActivityGroup): bool
   );
 }
 
+export function isForkActivityGroup(entry: ThreadFeedActivityGroup): boolean {
+  return entry.activities.length === 1 && entry.activities[0]?.projectedItem.item.type === "fork";
+}
+
 export function isSecretRequestActivityGroup(entry: ThreadFeedActivityGroup): boolean {
   return (
     entry.activities.length === 1 &&
@@ -723,7 +727,7 @@ function itemPreview(item: OrchestrationV2TurnItem): string | null {
     case "handoff":
       return item.summary ?? null;
     case "model_change":
-      return `${describeModelSelection(item.from)} → ${describeModelSelection(item.to)}`;
+      return describeModelChange(item.from, item.to);
     case "fork":
     case "thread_created":
       return item.targetThreadId;
@@ -1451,6 +1455,7 @@ function isWorkLogFeedRow(row: ThreadFeedEntry | undefined): boolean {
         !isContextCompactionActivityGroup(row) &&
         !isContextHandoffActivityGroup(row) &&
         !isModelChangeActivityGroup(row) &&
+        !isForkActivityGroup(row) &&
         row.activities.every(
           (activity) =>
             !activity.prominent &&
@@ -1486,6 +1491,7 @@ function appendPresentedFeedEntry(
     isContextCompactionActivityGroup(entry) ||
     isContextHandoffActivityGroup(entry) ||
     isModelChangeActivityGroup(entry) ||
+    isForkActivityGroup(entry) ||
     isUserInputActivityGroup(entry) ||
     entry.activities[0]?.projectedItem.item.type === "subagent"
   ) {

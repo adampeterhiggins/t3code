@@ -63,7 +63,13 @@ import {
   ThreadId,
 } from "@t3tools/contracts";
 import { runRanAfter } from "@t3tools/shared/orchestrationV2ThreadError";
-import { describeModelSelection } from "@t3tools/shared/modelChangeMarker";
+import {
+  describeModelChange,
+  forkAccountChangeLabel,
+  forkSourceInstanceId,
+  handoffInstancesDiffer,
+  providerAccountLabel,
+} from "@t3tools/shared/modelChangeMarker";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
@@ -843,7 +849,14 @@ function jsonText(value: unknown): string {
   }
 }
 
-function turnItemText(item: OrchestrationV2TurnItem): string | null {
+function turnItemText(
+  item: OrchestrationV2TurnItem,
+  context?: {
+    readonly providers?: ReadonlyArray<ServerProvider>;
+    readonly thread?: Pick<OrchestrationV2ThreadProjection["thread"], "id" | "modelSelection">;
+    readonly contextTransfers?: OrchestrationV2ThreadProjection["contextTransfers"];
+  },
+): string | null {
   switch (item.type) {
     case "notification":
       return [item.summary, item.detail].filter((part) => part !== undefined).join("\n");
@@ -889,12 +902,36 @@ function turnItemText(item: OrchestrationV2TurnItem): string | null {
       return item.failure.message;
     case "compaction":
       return item.summary ?? null;
-    case "handoff":
-      return item.summary ?? `${item.strategy} handoff to ${item.toProviderInstanceId}`;
+    case "handoff": {
+      if (item.summary) return item.summary;
+      const providers = context?.providers;
+      if (
+        providers !== undefined &&
+        handoffInstancesDiffer(item.fromProviderInstanceIds, item.toProviderInstanceId)
+      ) {
+        const from = item.fromProviderInstanceIds
+          .map((instanceId) => providerAccountLabel(providers, instanceId))
+          .join(", ");
+        return `Context handoff from ${from} to ${providerAccountLabel(providers, item.toProviderInstanceId)}.`;
+      }
+      return `${item.strategy} handoff to ${item.toProviderInstanceId}`;
+    }
     case "model_change":
-      return `Model changed from ${describeModelSelection(item.from)} to ${describeModelSelection(item.to)}.`;
-    case "fork":
-      return `Forked to thread ${item.targetThreadId}.`;
+      return describeModelChange(item.from, item.to, context?.providers ?? []);
+    case "fork": {
+      const named =
+        context?.providers !== undefined &&
+        context.thread !== undefined &&
+        context.contextTransfers !== undefined &&
+        context.thread.id === item.threadId
+          ? forkAccountChangeLabel({
+              sourceInstanceId: forkSourceInstanceId(context.contextTransfers, item),
+              targetInstanceId: context.thread.modelSelection.instanceId,
+              providers: context.providers,
+            })
+          : null;
+      return named ?? `Forked to thread ${item.targetThreadId}.`;
+    }
     case "thread_created":
       return `Created thread ${item.targetThreadId} with ${item.targetProviderInstanceId} (${item.targetModel}).`;
     case "secret_request":
@@ -911,8 +948,15 @@ function timelineItem(input: {
   readonly maxChars: number;
   readonly textOffset?: number;
   readonly messagesByThreadId: ReadonlyMap<ThreadId, OrchestrationV2ThreadProjection["messages"]>;
+  readonly providers?: ReadonlyArray<ServerProvider>;
+  readonly thread?: Pick<OrchestrationV2ThreadProjection["thread"], "id" | "modelSelection">;
+  readonly contextTransfers?: OrchestrationV2ThreadProjection["contextTransfers"];
 }): OrchestratorMcpThreadTimelineItem {
-  const text = turnItemText(input.row.item);
+  const text = turnItemText(input.row.item, {
+    ...(input.providers === undefined ? {} : { providers: input.providers }),
+    ...(input.thread === undefined ? {} : { thread: input.thread }),
+    ...(input.contextTransfers === undefined ? {} : { contextTransfers: input.contextTransfers }),
+  });
   const offset = input.textOffset ?? 0;
   const end = offset + input.maxChars;
   const textTruncated = text !== null && text.length > end;
@@ -2573,6 +2617,7 @@ const make = Effect.gen(function* () {
           { concurrency: 1 },
         );
         const messagesByThreadId = new Map(sourceMessages);
+        const providers = yield* providerRegistry.getProviders;
         const returnedRunIds = new Set(
           page
             .filter((row) => row.sourceThreadId === target.thread.id)
@@ -2628,6 +2673,9 @@ const make = Effect.gen(function* () {
               row,
               maxChars,
               messagesByThreadId,
+              providers,
+              thread: target.thread,
+              contextTransfers: target.contextTransfers,
               ...(input.itemId === undefined ? {} : { textOffset: input.textOffset ?? 0 }),
             }),
           ),
