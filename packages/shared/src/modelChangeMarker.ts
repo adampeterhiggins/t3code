@@ -1,9 +1,13 @@
 import {
+  defaultInstanceIdForDriver,
+  PROVIDER_DISPLAY_NAMES,
   TurnItemId,
   type ModelSelection,
+  type OrchestrationV2ContextTransfer,
   type OrchestrationV2ProjectedTurnItem,
   type OrchestrationV2Run,
   type OrchestrationV2TurnItem,
+  type ProviderInstanceId,
   type ProviderOptionDescriptor,
   type ProviderThreadId,
   type RunId,
@@ -47,7 +51,15 @@ export function modelSelectionChanged(
   to: ModelSelection,
   descriptors?: ReadonlyArray<ProviderOptionDescriptor>,
 ): boolean {
-  if (modelIdentitiesDiffer(from, to)) return true;
+  return modelIdentitiesDiffer(from, to) || selectionParametersChanged(from, to, descriptors);
+}
+
+/** Option values such as effort or fast mode, ignoring which account or model. */
+function selectionParametersChanged(
+  from: ModelSelection,
+  to: ModelSelection,
+  descriptors?: ReadonlyArray<ProviderOptionDescriptor>,
+): boolean {
   const ids =
     descriptors !== undefined
       ? descriptors.map((descriptor) => descriptor.id)
@@ -56,6 +68,121 @@ export function modelSelectionChanged(
     const descriptor = descriptors?.find((candidate) => candidate.id === id);
     return optionValue(from, id, descriptor) !== optionValue(to, id, descriptor);
   });
+}
+
+/**
+ * Account-only switches name the accounts. A model or parameter switch keeps
+ * the model label, and names the account on each side when that moved too.
+ */
+export function modelChangeDividerLabel(
+  from: ModelSelection,
+  to: ModelSelection,
+  descriptors?: ReadonlyArray<ProviderOptionDescriptor>,
+): "Account changed" | "Model changed" {
+  const accountOnly =
+    from.instanceId !== to.instanceId &&
+    from.model === to.model &&
+    !selectionParametersChanged(from, to, descriptors);
+  return accountOnly ? "Account changed" : "Model changed";
+}
+
+type AccountProvider = Pick<ServerProvider, "instanceId" | "driver" | "displayName">;
+
+/**
+ * The name the account picker shows. A missing provider falls back to its
+ * instance id. Same rules as the composer's instance label.
+ */
+export function providerAccountLabel(
+  providers: ReadonlyArray<AccountProvider>,
+  instanceId: ProviderInstanceId,
+): string {
+  const provider = providers.find((candidate) => candidate.instanceId === instanceId);
+  if (provider === undefined) return instanceId;
+  const trimmed = provider.displayName?.trim();
+  const kindLabel =
+    PROVIDER_DISPLAY_NAMES[provider.driver] ?? humanizeInstanceSlug(provider.driver);
+  if (trimmed && trimmed !== kindLabel) return trimmed;
+  if (provider.instanceId !== defaultInstanceIdForDriver(provider.driver)) {
+    const humanized = humanizeInstanceSlug(provider.instanceId);
+    if (humanized.length > 0) return humanized;
+  }
+  return trimmed || kindLabel;
+}
+
+function humanizeInstanceSlug(slug: string): string {
+  return slug
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+/** Transcript text for a model, parameter, or account switch. */
+export function describeModelChange(
+  from: ModelSelection,
+  to: ModelSelection,
+  providers: ReadonlyArray<ServerProvider> = [],
+): string {
+  const descriptors = modelOptionDescriptors(providers, from);
+  const label = modelChangeDividerLabel(from, to, descriptors);
+  const accountChanged = from.instanceId !== to.instanceId;
+  const side = (selection: ModelSelection) => {
+    const detail = describeModelSelection(selection);
+    if (!accountChanged) return detail;
+    const account = providerAccountLabel(providers, selection.instanceId);
+    return label === "Account changed" ? account : `${account}, ${detail}`;
+  };
+  return `${label} from ${side(from)} to ${side(to)}.`;
+}
+
+/** True when a handoff's endpoints are not all the same account. */
+export function handoffInstancesDiffer(
+  fromInstanceIds: ReadonlyArray<ProviderInstanceId>,
+  toInstanceId: ProviderInstanceId,
+): boolean {
+  return fromInstanceIds.some((instanceId) => instanceId !== toInstanceId);
+}
+
+type ForkTransfer = Pick<
+  OrchestrationV2ContextTransfer,
+  "type" | "sourceThreadId" | "targetThreadId" | "sourcePoint" | "sourceProviderInstanceId"
+>;
+
+/** The account the forked conversation was on, from the target thread's fork transfer. */
+export function forkSourceInstanceId(
+  transfers: ReadonlyArray<ForkTransfer>,
+  item: Pick<Extract<OrchestrationV2TurnItem, { type: "fork" }>, "threadId" | "source">,
+): ProviderInstanceId | null {
+  if (item.source.type !== "run") return null;
+  const source = item.source;
+  const matches = transfers.filter(
+    (candidate) =>
+      candidate.type === "fork" &&
+      candidate.sourceThreadId === source.threadId &&
+      candidate.targetThreadId === item.threadId &&
+      (candidate.sourcePoint.runId === undefined || candidate.sourcePoint.runId === source.runId),
+  );
+  const exact = matches.find((candidate) => candidate.sourcePoint.runId === source.runId);
+  return (exact ?? matches[0])?.sourceProviderInstanceId ?? null;
+}
+
+/**
+ * Label for a new tab opened on another account. Null when the accounts match
+ * or either side cannot be resolved, so the row keeps its generic fork label.
+ */
+export function forkAccountChangeLabel(input: {
+  readonly sourceInstanceId: ProviderInstanceId | null;
+  readonly targetInstanceId: ProviderInstanceId | null;
+  readonly providers: ReadonlyArray<AccountProvider>;
+}): string | null {
+  if (
+    input.sourceInstanceId === null ||
+    input.targetInstanceId === null ||
+    input.sourceInstanceId === input.targetInstanceId
+  ) {
+    return null;
+  }
+  return `Forked from ${providerAccountLabel(input.providers, input.sourceInstanceId)} to ${providerAccountLabel(input.providers, input.targetInstanceId)}`;
 }
 
 function optionValue(

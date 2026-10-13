@@ -188,13 +188,17 @@ User guide: [composer.md](./user/composer.md).
 
 ## Model change marker
 
-Changing the model or its parameters (effort, fast mode, context window, and so on) in an
-existing thread leaves a divider in the transcript, the same kind of marker a fork leaves in the
-new thread. It names the model and parameters the conversation was on and the ones the next message
-uses, labelled as in the composer, and it appears as soon as the composer selection differs,
-before that message is sent. A provider switch that already shows a context handoff keeps that
-handoff instead of a second divider. Explicitly picking a parameter's default does not count as a
-change.
+Changing the model, its parameters (effort, fast mode, context window, and so on), or the provider
+account in an existing thread leaves a divider in the transcript, the same kind of marker a fork
+leaves in the new thread. It names the model and parameters the conversation was on and the ones
+the next message uses, labelled as in the composer, and it appears as soon as the composer
+selection differs, before that message is sent. An account-only switch is labelled **Account
+changed** and names both accounts. A model or parameter switch that also changes account keeps
+**Model changed** and names the account on each side. A provider switch that already shows a
+context handoff keeps that handoff, and the handoff names the accounts when they differ. Choosing
+another account that opens a new tab names both accounts on that tab's fork row (**Forked from
+Work to Personal**). A removed account falls back to its instance id. Explicitly picking a
+parameter's default does not count as a change.
 
 Code: [`modelChangeMarker.ts`](../packages/shared/src/modelChangeMarker.ts),
 [`V2LifecycleRow.tsx`](../apps/web/src/components/chat/V2LifecycleRow.tsx), and

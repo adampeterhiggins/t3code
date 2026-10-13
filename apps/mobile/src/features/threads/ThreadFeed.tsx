@@ -3,7 +3,7 @@ import { ThreadMarkdownVideo, ThreadMediaVisibleContext } from "./ThreadMarkdown
 import { useMarkdownImageSource } from "../../native/useMarkdownImageSource";
 import { enrichedContextLinkPresentation } from "../../lib/enrichedLinkPresentation";
 import { ThreadContextDivider } from "./thread-context-divider";
-import { ThreadHandoffRow, ThreadModelChangeRow } from "./thread-handoff-row";
+import { ThreadForkRow, ThreadHandoffRow, ThreadModelChangeRow } from "./thread-handoff-row";
 import { SecretRequestCard } from "./SecretRequestCard";
 import { AppActivityIndicator } from "../../components/AppActivityIndicator";
 import {
@@ -174,6 +174,7 @@ import {
   threadFeedRunIsUnsettled,
   isContextCompactionActivityGroup,
   isContextHandoffActivityGroup,
+  isForkActivityGroup,
   isModelChangeActivityGroup,
   isSecretRequestActivityGroup,
   type ThreadFeedEntry,
@@ -1124,6 +1125,16 @@ function renderFeedEntry(
   if (entry.type === "activity-group" && isModelChangeActivityGroup(entry)) {
     return (
       <ThreadModelChangeRow
+        environmentId={props.environmentId}
+        projectedItem={entry.activities[0]!.projectedItem}
+        iconColor={iconSubtleColor}
+      />
+    );
+  }
+
+  if (entry.type === "activity-group" && isForkActivityGroup(entry)) {
+    return (
+      <ThreadForkRow
         environmentId={props.environmentId}
         projectedItem={entry.activities[0]!.projectedItem}
         iconColor={iconSubtleColor}
@@ -2485,7 +2496,8 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
           if (
             isContextCompactionActivityGroup(entry) ||
             isContextHandoffActivityGroup(entry) ||
-            isModelChangeActivityGroup(entry)
+            isModelChangeActivityGroup(entry) ||
+            isForkActivityGroup(entry)
           ) {
             return undefined;
           }
