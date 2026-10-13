@@ -67,7 +67,8 @@ async function render(
 
 async function click(text: string) {
   const element = [...document.querySelectorAll<HTMLElement>("button, [role^=menuitem]")].find(
-    (item) => item.textContent?.trim() === text,
+    // Multi-select rows end with their hidden "Only" button.
+    (item) => item.textContent?.trim().replace(/Only$/, "") === text,
   );
   expect(element, text).toBeDefined();
   await act(async () => element!.click());
@@ -136,4 +137,23 @@ it("does not claim an empty cached label list is final while refreshing", async 
   await click("Label");
   expect(document.querySelector('[role="status"]')?.textContent).toBe("Loading filters…");
   expect(document.body.textContent).not.toContain("No labels");
+});
+
+it("applies just one value with Only and closes the menu", async () => {
+  await render({
+    ...options,
+    teams: [...options.teams, { id: "design", key: "DES", name: "Design" }],
+  });
+  await click("Filter");
+  await click("Team");
+  const row = [...document.querySelectorAll<HTMLElement>("[role^=menuitem]")].find((item) =>
+    item.textContent?.startsWith("Design (DES)"),
+  );
+  const only = [...(row?.querySelectorAll("button") ?? [])].find(
+    (button) => button.textContent === "Only",
+  );
+  await act(async () => only!.click());
+  expect(change.mock.calls.at(-1)?.[0].filters.teamIds).toEqual(["design"]);
+  await act(async () => {});
+  expect(document.body.textContent).not.toContain("Design (DES)");
 });
