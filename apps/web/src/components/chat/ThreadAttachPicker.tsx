@@ -187,12 +187,16 @@ function ThreadAttachPickerDialog({ threadRef }: { threadRef: ScopedThreadRef })
       providerEntries.get(value)?.displayName ??
       threads.find((thread) => thread.modelSelection.instanceId === value)?.runtime?.providerName ??
       value;
+    // Counts come back by id; equal counts read alphabetically by name instead.
+    const byCountThenLabel = (
+      a: { count: number; label: string },
+      b: { count: number; label: string },
+    ) => b.count - a.count || a.label.localeCompare(b.label);
     return {
-      projects: facets.projects,
-      providers: facets.providers.map((choice) => ({
-        ...choice,
-        label: providerName(choice.value),
-      })),
+      projects: facets.projects.toSorted(byCountThenLabel),
+      providers: facets.providers
+        .map((choice) => ({ ...choice, label: providerName(choice.value) }))
+        .toSorted(byCountThenLabel),
     };
   }, [threads, projects, threadRef, query, view, memberships, providerEntries]);
 

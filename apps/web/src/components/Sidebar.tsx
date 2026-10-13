@@ -4051,7 +4051,10 @@ export default function Sidebar() {
   const { organisations } = useOrganisations();
   // A picked organisation with no checkout left still narrows the list, so it stays offered
   // (and pilled) until it is dropped rather than silently coming back with a new checkout.
-  const scopedOrganisationKeys = storedOrganisationKeys;
+  // Until projects load nothing has an organisation yet, so the saved picks wait rather than
+  // emptying the list for a moment.
+  const scopedOrganisationKeys =
+    projectGroups.length === 0 ? NO_ORGANISATION_KEYS : storedOrganisationKeys;
   const organisationOptions = useMemo(
     () =>
       buildOrganisationOptions(
