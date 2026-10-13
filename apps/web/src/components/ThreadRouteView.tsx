@@ -46,6 +46,9 @@ export function ThreadRouteView({ target }: { target: ThreadRouteTarget }) {
   const draftSession = useComposerDraftStore((store) =>
     draftId === null ? null : store.getDraftSession(draftId),
   );
+  const promotedThreadRef = useComposerDraftStore((store) =>
+    draftId === null ? null : (store.promotedThreadRefsByDraftId[draftId] ?? null),
+  );
   const threadRefs = useThreadRefs();
   // The server thread this view is about: the route's own ref, or the draft's
   // reserved ref once the server knows it.
@@ -57,18 +60,21 @@ export function ThreadRouteView({ target }: { target: ThreadRouteTarget }) {
       ) ?? null)
     : null;
   const serverThreadRef: ScopedThreadRef | null =
-    target.kind === "server" ? target.threadRef : (draftSession?.promotedTo ?? inferredThreadRef);
+    target.kind === "server"
+      ? target.threadRef
+      : (draftSession?.promotedTo ?? inferredThreadRef ?? promotedThreadRef);
   const serverThread = useThreadShell(serverThreadRef);
   const backgroundSubmissionPending = useBackgroundDraftSubmissionPending(
     target.kind === "draft" ? serverThreadRef : null,
   );
   const canonicalThreadRef =
     target.kind === "draft"
-      ? resolveDraftPromotionNavigationTarget({
+      ? (promotedThreadRef ??
+        resolveDraftPromotionNavigationTarget({
           serverThreadRef,
           serverThread,
           backgroundSubmissionPending,
-        })
+        }))
       : null;
 
   const shell = useEnvironmentQuery(

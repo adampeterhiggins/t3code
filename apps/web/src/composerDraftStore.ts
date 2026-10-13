@@ -21,7 +21,7 @@ import {
   ThreadContextRecord,
   type ServerProvider,
   type ScopedProjectRef,
-  type ScopedThreadRef,
+  ScopedThreadRef,
   ThreadId,
   SnapShotSource,
 } from "@t3tools/contracts";
@@ -344,6 +344,7 @@ type PersistedDraftThreadState = typeof PersistedDraftThreadState.Type;
 const PersistedComposerDraftStoreState = Schema.Struct({
   draftsByThreadKey: Schema.Record(Schema.String, PersistedComposerThreadDraftState),
   draftThreadsByThreadKey: Schema.Record(Schema.String, PersistedDraftThreadState),
+  promotedThreadRefsByDraftId: Schema.optionalKey(Schema.Record(Schema.String, ScopedThreadRef)),
   logicalProjectDraftThreadKeyByLogicalProjectKey: Schema.Record(Schema.String, Schema.String),
   stickyModelSelectionByProvider: Schema.optionalKey(
     Schema.Record(ProviderInstanceId, ModelSelection),
@@ -494,6 +495,8 @@ export type ComposerThreadTarget = ScopedThreadRef | DraftId;
 interface ComposerDraftStoreState {
   draftsByThreadKey: Record<string, ComposerThreadDraftState>;
   draftThreadsByThreadKey: Record<string, DraftThreadState>;
+  /** Completed drafts still referenced by Back/Forward history, without retaining their payloads. */
+  promotedThreadRefsByDraftId: Record<string, ScopedThreadRef>;
   logicalProjectDraftThreadKeyByLogicalProjectKey: Record<string, string>;
   backgroundSubmissionThreadKeys: Record<string, true>;
   rewindingThreadKeys: ReadonlySet<string>;
@@ -2319,6 +2322,7 @@ export function partializeComposerDraftStoreState(
   return {
     draftsByThreadKey: persistedDraftsByThreadKey,
     draftThreadsByThreadKey: persistedDraftThreadsByThreadKey,
+    promotedThreadRefsByDraftId: state.promotedThreadRefsByDraftId,
     logicalProjectDraftThreadKeyByLogicalProjectKey:
       state.logicalProjectDraftThreadKeyByLogicalProjectKey,
     stickyModelSelectionByProvider: compactModelSelectionByProvider(
@@ -2329,6 +2333,22 @@ export function partializeComposerDraftStoreState(
     ),
     stickyActiveProvider: state.stickyActiveProvider,
   };
+}
+
+// Keep route aliases bounded independently of composer content and draft sessions.
+const MAX_PROMOTED_DRAFT_ROUTES = 1000;
+const isScopedThreadRef = Schema.is(ScopedThreadRef);
+
+function normalizePromotedThreadRefs(value: unknown): Record<string, ScopedThreadRef> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(
+        (entry): entry is [string, ScopedThreadRef] =>
+          entry[0].length > 0 && isScopedThreadRef(entry[1]),
+      )
+      .slice(-MAX_PROMOTED_DRAFT_ROUTES),
+  );
 }
 
 function normalizeCurrentPersistedComposerDraftStoreState(
@@ -2395,6 +2415,9 @@ function normalizeCurrentPersistedComposerDraftStoreState(
       draftThreadsByThreadKey,
     ),
     draftThreadsByThreadKey,
+    promotedThreadRefsByDraftId: normalizePromotedThreadRefs(
+      normalizedPersistedState.promotedThreadRefsByDraftId,
+    ),
     logicalProjectDraftThreadKeyByLogicalProjectKey,
     stickyModelSelectionByProvider: compactModelSelectionByProvider(stickyModelSelectionByProvider),
     stickyOptionsByModelByProvider:
@@ -2630,6 +2653,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
       return {
         draftsByThreadKey: {},
         draftThreadsByThreadKey: {},
+        promotedThreadRefsByDraftId: {},
         logicalProjectDraftThreadKeyByLogicalProjectKey: {},
         backgroundSubmissionThreadKeys: {},
         rewindingThreadKeys: new Set<string>(),
@@ -3017,7 +3041,13 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             if (!existing || !isDraftThreadPromoting(existing)) {
               return state;
             }
-            return removeDraftThreadReferences(state, threadKey, existing.promotedTo ?? undefined);
+            return {
+              ...removeDraftThreadReferences(state, threadKey, existing.promotedTo ?? undefined),
+              promotedThreadRefsByDraftId: normalizePromotedThreadRefs({
+                ...state.promotedThreadRefsByDraftId,
+                [threadKey]: existing.promotedTo,
+              }),
+            };
           });
         },
         clearDraftThread: (threadRef) => {
@@ -4423,6 +4453,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
           ...currentState,
           draftsByThreadKey,
           draftThreadsByThreadKey,
+          promotedThreadRefsByDraftId: normalizedPersisted.promotedThreadRefsByDraftId ?? {},
           logicalProjectDraftThreadKeyByLogicalProjectKey:
             normalizedPersisted.logicalProjectDraftThreadKeyByLogicalProjectKey,
           stickyModelSelectionByProvider: normalizedPersisted.stickyModelSelectionByProvider ?? {},
