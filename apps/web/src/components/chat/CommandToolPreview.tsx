@@ -40,8 +40,8 @@ export function CommandToolPreview({
           </span>
         ) : null}
       </div>
-      <div className="font-mono text-(length:--font-size-code,var(--text-2xs)) leading-relaxed whitespace-pre-wrap break-words select-text">
-        <ShellCommandBlock command={command} />
+      <div className="min-w-0 font-mono text-(length:--font-size-code,var(--text-2xs)) leading-relaxed whitespace-pre-wrap break-words select-text">
+        <ShellCommandBlock command={command} highlightSyntax />
       </div>
       <details
         className="border-t border-border/70 pt-2"

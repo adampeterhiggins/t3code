@@ -5,7 +5,9 @@ import {
 import { Suspense, use, useMemo } from "react";
 
 import { useTheme } from "../../hooks/useTheme";
+import type { CommandScriptPreview } from "../../lib/embeddedScripts";
 import { RenderErrorBoundary } from "../RenderErrorBoundary";
+import { HighlightedSnippet } from "./HighlightedSnippet";
 import { HighlightedTokens } from "./HighlightedTokens";
 
 // Shell words wrap as a unit, so `--exclude` or a quoted string is not split
@@ -36,7 +38,21 @@ function PlainWords({ code }: { code: string }) {
 }
 
 function HighlightedCommand({ code, theme }: { code: string; theme: "light" | "dark" }) {
-  const { embeddedScripts } = use(loadEmbeddedScripts());
+  const { commandScriptPreview, embeddedScripts } = use(loadEmbeddedScripts());
+  const preview = useMemo(() => commandScriptPreview(code), [code, commandScriptPreview]);
+  if (preview) return <InterpreterScript preview={preview} />;
+  return <ShellSyntax code={code} theme={theme} embeddedScripts={embeddedScripts} />;
+}
+
+function ShellSyntax({
+  code,
+  theme,
+  embeddedScripts,
+}: {
+  code: string;
+  theme: "light" | "dark";
+  embeddedScripts: typeof import("../../lib/embeddedScripts").embeddedScripts;
+}) {
   const language = commandHighlightLanguage(code);
   // Only shell syntax nests scripts; PowerShell's own grammar colors its strings.
   const embedded = useMemo(
@@ -54,9 +70,24 @@ function HighlightedCommand({ code, theme }: { code: string; theme: "light" | "d
   );
 }
 
+/** A lone `python3 -c` (or heredoc, `node -e`, …) scrolls as that language. */
+function InterpreterScript({ preview }: { preview: CommandScriptPreview }) {
+  return (
+    <div className="min-w-0 space-y-1">
+      {preview.invocation ? (
+        <div className="text-muted-foreground">{preview.invocation}</div>
+      ) : null}
+      <pre className="max-h-80 min-w-0 max-w-full overflow-auto whitespace-pre break-normal wrap-normal">
+        <HighlightedSnippet text={preview.text} lang={preview.language} />
+      </pre>
+    </div>
+  );
+}
+
 /**
- * The command a command_execution item ran. Hover previews opt into highlighting;
- * scripts inside them, such as a Python heredoc, get their own grammar.
+ * The command a command_execution item ran. Highlighted previews show a lone
+ * interpreter script as that language; other commands stay shell, with nested
+ * scripts such as a Python heredoc colored inside them.
  */
 export function ShellCommandBlock({
   command,
@@ -71,7 +102,7 @@ export function ShellCommandBlock({
   const plain = <PlainWords code={code} />;
   return (
     // The tool body sets the monospace, pre-wrapped text this sits in.
-    <div className="text-foreground/85">
+    <div className="min-w-0 text-foreground/85">
       {highlightSyntax ? (
         <RenderErrorBoundary fallback={plain} resetKeys={[code]}>
           <Suspense fallback={plain}>

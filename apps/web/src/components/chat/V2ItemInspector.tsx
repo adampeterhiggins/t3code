@@ -45,7 +45,7 @@ interface V2ItemInspectorProps {
   readonly hideCommand?: boolean | undefined;
   /** The command preview's output disclosure already shows its exit code. */
   readonly hideExitCode?: boolean | undefined;
-  /** Hover previews opt in; expanded chat rows keep commands and arguments plain. */
+  /** Hover previews and expanded command rows opt in; other expanded rows stay plain. */
   readonly highlightSyntax?: boolean | undefined;
   readonly onOpenThread: (threadId: ThreadId) => void;
   readonly onOpenTurnDiff: (runId: RunId, filePath?: string) => void;
