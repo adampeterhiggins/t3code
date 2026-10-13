@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { WorkLogEntry } from "../session-logic";
 import {
   toolCallPreviewHeading,
+  toolCallPreviewReadContent,
   toolCallPreviewRepeatsFilePath,
   toolCallPreviewStatus,
   workEntryHasToolCallPreview,
@@ -97,6 +98,86 @@ describe("toolCallPreviewRepeatsFilePath", () => {
       ),
     ).toBe(false);
     expect(toolCallPreviewRepeatsFilePath(null, fileName, "/repo")).toBe(false);
+  });
+});
+
+describe("toolCallPreviewReadContent", () => {
+  const workspace = "/repo/t3-cca18fd4";
+  const absolute = `${workspace}/packages/contracts/src/contextRepositories.ts`;
+  const display = "t3-cca18fd4/packages/contracts/src/contextRepositories.ts";
+  const other = `${workspace}/packages/contracts/src/settings.ts`;
+
+  it("keeps one spelling of a read path and the line range", () => {
+    expect(
+      toolCallPreviewReadContent({
+        title: `Read ${absolute}`,
+        text: `Read ${display}`,
+        body: `${absolute}\nLines 1–16`,
+        paths: [absolute],
+        workspaceRoot: workspace,
+      }),
+    ).toEqual({ text: null, body: "Lines 1–16" });
+  });
+
+  it("treats a relative path, the checkout spelling, and the absolute path as one file", () => {
+    const relative = "packages/contracts/src/contextRepositories.ts";
+    expect(
+      toolCallPreviewReadContent({
+        title: `Read ${relative}`,
+        text: `Read ${display}`,
+        body: `${workspace}/${relative}`,
+        paths: [relative],
+        workspaceRoot: workspace,
+      }),
+    ).toEqual({ text: null, body: null });
+  });
+
+  it("drops a body that is only the path the heading already shows", () => {
+    expect(
+      toolCallPreviewReadContent({
+        title: `Read ${absolute}`,
+        text: null,
+        body: absolute,
+        paths: [absolute],
+        workspaceRoot: workspace,
+      }),
+    ).toEqual({ text: null, body: null });
+  });
+
+  it("keeps the row label when the title does not name the file", () => {
+    expect(
+      toolCallPreviewReadContent({
+        title: "Read",
+        text: `Read ${display}`,
+        body: absolute,
+        paths: [absolute],
+        workspaceRoot: workspace,
+      }),
+    ).toEqual({ text: `Read ${display}`, body: null });
+  });
+
+  it("keeps a label that names more files than the title", () => {
+    expect(
+      toolCallPreviewReadContent({
+        title: `Read ${absolute}`,
+        text: `Read ${display} +1 more`,
+        body: `${absolute}\n${other}`,
+        paths: [absolute, other],
+        workspaceRoot: workspace,
+      }),
+    ).toEqual({ text: `Read ${display} +1 more`, body: null });
+  });
+
+  it("leaves a preview alone when the read names no path", () => {
+    expect(
+      toolCallPreviewReadContent({
+        title: "Read",
+        text: "Read file",
+        body: "Read file",
+        paths: [],
+        workspaceRoot: workspace,
+      }),
+    ).toEqual({ text: "Read file", body: "Read file" });
   });
 });
 

@@ -118,7 +118,7 @@ function workEntryToolDataRecord(entry: WorkLogEntry): Record<string, unknown> |
     : undefined;
 }
 
-function workEntryReadRawPaths(entry: WorkLogEntry): readonly string[] {
+export function workEntryReadRawPaths(entry: WorkLogEntry): readonly string[] {
   const fromChanged = entry.changedFiles ?? [];
   if (fromChanged.length > 0) return fromChanged;
   const structured = entry.structuredPayload;
