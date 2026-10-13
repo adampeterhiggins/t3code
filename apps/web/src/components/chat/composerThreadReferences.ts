@@ -9,6 +9,11 @@ import type {
   ThreadId,
   ThreadTabMembership,
 } from "@t3tools/contracts";
+import {
+  applyFilterDimensions,
+  type FilterDimension,
+  filterFacets,
+} from "@t3tools/shared/filterFacets";
 
 export interface ThreadAttachPickerView {
   readonly projectIds: ReadonlyArray<ProjectId>;
@@ -26,24 +31,22 @@ export const DEFAULT_THREAD_ATTACH_PICKER_VIEW: ThreadAttachPickerView = {
 const THREAD_REFERENCE_LIMIT = 6;
 const THREAD_REFERENCE_EMPTY_QUERY_LIMIT = 3;
 
-/**
- * References to unarchived threads in the same environment, excluding the supplied IDs.
- * The `@` menu defaults to recent title matches; the attach picker supplies filters and sort.
- */
-export function composerThreadReferenceItems(input: {
+interface ThreadReferenceInput {
   threads: ReadonlyArray<EnvironmentThreadShell>;
   projects: ReadonlyArray<EnvironmentProject>;
   environmentId: EnvironmentId;
   excludeThreadIds: ReadonlySet<ThreadId>;
   query: string;
-  /** Dedicated pickers can show more results than the inline mention menu. */
-  limit?: number;
-  view?: ThreadAttachPickerView;
   /** Memberships belong to `environmentId`; omitted by the inline mention menu. */
   tabMemberships?: ReadonlyArray<ThreadTabMembership>;
-}) {
+}
+
+/**
+ * The unarchived threads of the environment that match the query, by their own title or their
+ * tab group's, before the picker's project and provider filters.
+ */
+function threadReferenceCandidates(input: ThreadReferenceInput) {
   const query = input.query.trim().toLowerCase();
-  const view = input.view ?? DEFAULT_THREAD_ATTACH_PICKER_VIEW;
   const memberships = input.tabMemberships ?? [];
   const threadsById = new Map(
     memberships.length === 0
@@ -65,6 +68,44 @@ export function composerThreadReferenceItems(input: {
     const parent = parentsByGroupId.get(membership.groupId);
     if (parent) parentByThreadId.set(membership.threadId, parent);
   }
+  const candidates = input.threads.filter(
+    (thread) =>
+      thread.environmentId === input.environmentId &&
+      thread.archivedAt === null &&
+      !input.excludeThreadIds.has(thread.id) &&
+      (thread.title.toLowerCase().includes(query) ||
+        parentByThreadId.get(thread.id)?.title.toLowerCase().includes(query) === true),
+  );
+  return { query, memberships, parentByThreadId, candidates };
+}
+
+/** The attach picker's project and provider filters as facet dimensions. */
+function threadAttachDimensions(view: ThreadAttachPickerView) {
+  return {
+    projects: {
+      values: (thread: EnvironmentThreadShell) => [thread.projectId],
+      selected: view.projectIds,
+    },
+    providers: {
+      values: (thread: EnvironmentThreadShell) => [thread.modelSelection.instanceId],
+      selected: view.providerInstanceIds,
+    },
+  } satisfies Record<string, FilterDimension<EnvironmentThreadShell>>;
+}
+
+/**
+ * References to unarchived threads in the same environment, excluding the supplied IDs.
+ * The `@` menu defaults to recent title matches; the attach picker supplies filters and sort.
+ */
+export function composerThreadReferenceItems(
+  input: ThreadReferenceInput & {
+    /** Dedicated pickers can show more results than the inline mention menu. */
+    limit?: number;
+    view?: ThreadAttachPickerView;
+  },
+) {
+  const view = input.view ?? DEFAULT_THREAD_ATTACH_PICKER_VIEW;
+  const { query, memberships, parentByThreadId, candidates } = threadReferenceCandidates(input);
   const groupIdByThreadId = new Map(
     memberships.map((membership) => [membership.threadId, membership.groupId]),
   );
@@ -73,18 +114,7 @@ export function composerThreadReferenceItems(input: {
       .filter((project) => project.environmentId === input.environmentId)
       .map((project) => [project.id, project.title]),
   );
-  return input.threads
-    .filter(
-      (thread) =>
-        thread.environmentId === input.environmentId &&
-        thread.archivedAt === null &&
-        !input.excludeThreadIds.has(thread.id) &&
-        (view.projectIds.length === 0 || view.projectIds.includes(thread.projectId)) &&
-        (view.providerInstanceIds.length === 0 ||
-          view.providerInstanceIds.includes(thread.modelSelection.instanceId)) &&
-        (thread.title.toLowerCase().includes(query) ||
-          parentByThreadId.get(thread.id)?.title.toLowerCase().includes(query) === true),
-    )
+  return applyFilterDimensions(candidates, threadAttachDimensions(view))
     .toSorted((left, right) => {
       const order =
         view.sort === "title"
@@ -106,6 +136,37 @@ export function composerThreadReferenceItems(input: {
       parentThreadId: groupIdByThreadId.get(thread.id) ?? null,
       parentThreadTitle: parentByThreadId.get(thread.id)?.title ?? null,
     }));
+}
+
+/**
+ * The attach picker's project and provider choices, each with how many threads picking it would
+ * show under the query and the other filter (see `filterFacets`). Projects without a record are
+ * left out unless picked.
+ */
+export function threadAttachPickerFacets(
+  input: ThreadReferenceInput & { view: ThreadAttachPickerView },
+) {
+  const facets = filterFacets(
+    threadReferenceCandidates(input).candidates,
+    threadAttachDimensions(input.view),
+  );
+  const projectTitles = new Map(
+    input.projects
+      .filter((project) => project.environmentId === input.environmentId)
+      .map((project) => [project.id as string, project.title]),
+  );
+  return {
+    projects: facets.projects.flatMap((choice) => {
+      const value = choice.value as ProjectId;
+      const title = projectTitles.get(value);
+      if (title === undefined && !input.view.projectIds.includes(value)) return [];
+      return [{ value, label: title ?? "Unknown project", count: choice.count }];
+    }),
+    providers: facets.providers.map((choice) => ({
+      value: choice.value as ProviderInstanceId,
+      count: choice.count,
+    })),
+  };
 }
 
 /**

@@ -7,6 +7,7 @@ import { SubagentTooltipContent } from "./SubagentTooltipContent";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
+  agentListStatusCounts,
   applyAgentListView,
   isAgentListViewFiltered,
   type AgentListSubject,
@@ -517,7 +518,14 @@ export function ThreadRelationshipsPanel(props: {
       }
     >
       {showAgentToolbar ? (
-        <AgentListToolbar view={agentListView} onChange={setAgentListView} />
+        <AgentListToolbar
+          view={agentListView}
+          statusCounts={agentListStatusCounts(
+            [...active, ...previous].map(agentSubject),
+            agentListView,
+          )}
+          onChange={setAgentListView}
+        />
       ) : null}
       {showAgentToolbar &&
       agentListFiltered &&

@@ -9,6 +9,7 @@ import {
   composerThreadReferenceItems,
   DEFAULT_THREAD_ATTACH_PICKER_VIEW,
   groupThreadAttachPickerItems,
+  threadAttachPickerFacets,
 } from "./composerThreadReferences";
 
 const environmentId = EnvironmentId.make("env-1");
@@ -266,5 +267,65 @@ describe("composerThreadReferenceItems", () => {
       })),
     });
     expect(items.map((entry) => entry.parentThreadTitle)).toEqual(["Renamed parent"]);
+  });
+});
+
+describe("threadAttachPickerFacets", () => {
+  const otherProjectId = ProjectId.make("project-2");
+  const claude = ProviderInstanceId.make("claude");
+  const threads = [
+    thread("a", "Login fix", "2026-09-01T00:00:00.000Z"),
+    thread("b", "Login copy", "2026-09-02T00:00:00.000Z", {
+      modelSelection: { instanceId: claude, model: "opus" },
+    }),
+    thread("c", "Login docs", "2026-09-03T00:00:00.000Z", {
+      projectId: otherProjectId,
+      modelSelection: { instanceId: claude, model: "opus" },
+    }),
+    thread("d", "Billing", "2026-09-04T00:00:00.000Z", { projectId: otherProjectId }),
+    thread("e", "Login current", "2026-09-05T00:00:00.000Z"),
+  ];
+  const twoProjects = [
+    ...projects,
+    { id: otherProjectId, environmentId, title: "docs" } as EnvironmentProject,
+  ];
+  const facetsFor = (query: string, view = DEFAULT_THREAD_ATTACH_PICKER_VIEW) =>
+    threadAttachPickerFacets({
+      threads,
+      projects: twoProjects,
+      environmentId,
+      excludeThreadIds: new Set([ThreadId.make("e")]),
+      query,
+      view,
+    });
+
+  it("counts each choice under the query and the other filter, not its own", () => {
+    const facets = facetsFor("login", {
+      ...DEFAULT_THREAD_ATTACH_PICKER_VIEW,
+      projectIds: [projectId],
+      providerInstanceIds: [claude],
+    });
+    // Project counts follow the provider filter; picking a project keeps the other offered.
+    expect(facets.projects).toEqual([
+      { value: projectId, label: "t3code", count: 1 },
+      { value: otherProjectId, label: "docs", count: 1 },
+    ]);
+    // Provider counts follow the project filter; "Billing" is outside the query.
+    expect(facets.providers).toEqual([
+      { value: claude, count: 1 },
+      { value: ProviderInstanceId.make("codex"), count: 1 },
+    ]);
+  });
+
+  it("keeps a picked choice the other filters now exclude, at zero", () => {
+    const facets = facetsFor("billing", {
+      ...DEFAULT_THREAD_ATTACH_PICKER_VIEW,
+      providerInstanceIds: [claude],
+    });
+    expect(facets.providers).toEqual([
+      { value: ProviderInstanceId.make("codex"), count: 1 },
+      { value: claude, count: 0 },
+    ]);
+    expect(facets.projects).toEqual([]);
   });
 });

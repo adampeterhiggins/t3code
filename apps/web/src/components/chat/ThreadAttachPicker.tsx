@@ -3,7 +3,12 @@ import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environ
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import { listThreadTabMemberships } from "@t3tools/client-runtime/thread-tabs";
 import type { PreparedConnection } from "@t3tools/client-runtime/connection";
-import type { ScopedThreadRef, ThreadId, ThreadTabMembership } from "@t3tools/contracts";
+import type {
+  ProviderInstanceId,
+  ScopedThreadRef,
+  ThreadId,
+  ThreadTabMembership,
+} from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { Atom } from "effect/reactivity";
 import { MessageSquareIcon } from "lucide-react";
@@ -34,6 +39,7 @@ import {
   composerThreadReferenceItems,
   DEFAULT_THREAD_ATTACH_PICKER_VIEW,
   groupThreadAttachPickerItems,
+  threadAttachPickerFacets,
 } from "./composerThreadReferences";
 import { CursorPreviewCard } from "./CursorPreviewCard";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
@@ -168,34 +174,27 @@ function ThreadAttachPickerDialog({ threadRef }: { threadRef: ScopedThreadRef })
     return thread ? projectsById.get(thread.projectId) : undefined;
   };
   const filterOptions = useMemo(() => {
-    const availableThreads = threads.filter(
-      (thread) =>
-        thread.environmentId === threadRef.environmentId &&
-        thread.archivedAt === null &&
-        thread.id !== threadRef.threadId,
-    );
-    const projectIds = new Set(availableThreads.map((thread) => thread.projectId));
-    const providers = new Map(
-      availableThreads.map((thread) => [
-        thread.modelSelection.instanceId,
-        providerEntries.get(thread.modelSelection.instanceId)?.displayName ??
-          thread.runtime?.providerName ??
-          thread.modelSelection.instanceId,
-      ]),
-    );
+    const facets = threadAttachPickerFacets({
+      threads,
+      projects,
+      environmentId: threadRef.environmentId,
+      excludeThreadIds: new Set([threadRef.threadId]),
+      query,
+      view,
+      ...(memberships ? { tabMemberships: memberships } : {}),
+    });
+    const providerName = (value: ProviderInstanceId) =>
+      providerEntries.get(value)?.displayName ??
+      threads.find((thread) => thread.modelSelection.instanceId === value)?.runtime?.providerName ??
+      value;
     return {
-      projects: projects
-        .filter(
-          (project) =>
-            project.environmentId === threadRef.environmentId && projectIds.has(project.id),
-        )
-        .map((project) => ({ value: project.id, label: project.title }))
-        .toSorted((left, right) => left.label.localeCompare(right.label)),
-      providers: [...providers]
-        .map(([value, label]) => ({ value, label }))
-        .toSorted((left, right) => left.label.localeCompare(right.label)),
+      projects: facets.projects,
+      providers: facets.providers.map((choice) => ({
+        ...choice,
+        label: providerName(choice.value),
+      })),
     };
-  }, [threads, projects, threadRef, providerEntries]);
+  }, [threads, projects, threadRef, query, view, memberships, providerEntries]);
 
   async function select(entry: (typeof entries)[number]) {
     if (attachInFlight.current || captureContext === null || loadSummary === null) return;
