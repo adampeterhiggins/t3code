@@ -200,6 +200,18 @@ const knownRecords: Record<(typeof COMPOSER_CONTEXT_KINDS)[number], Record<strin
       fetched: true,
     },
   },
+  checkout: {
+    ...base,
+    kind: "checkout",
+    label: "forge",
+    environmentId: "environment-1",
+    path: "/work/forge",
+    branch: "feat/adq-rules",
+    headSha: "9c04e1d",
+    changedFiles: 12,
+    ahead: 2,
+    access: "read",
+  },
   thread: {
     ...base,
     kind: "thread",

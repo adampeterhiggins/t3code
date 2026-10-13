@@ -18,6 +18,8 @@ import {
   BlocksIcon,
   FolderGit2Icon,
   FolderIcon,
+  GitBranchIcon,
+  ServerIcon,
   PackageIcon,
   SettingsIcon,
   UserRoundIcon,
@@ -130,6 +132,19 @@ export type ComposerCommandItem =
     }
   | {
       id: string;
+      type: "checkout";
+      environmentId: EnvironmentId;
+      path: string;
+      branch: string | null;
+      headSha: string | null;
+      changedFiles: number | null;
+      ahead: number;
+      selectable: boolean;
+      label: string;
+      description: string;
+    }
+  | {
+      id: string;
       type: "thread";
       thread: ScopedThreadRef;
       label: string;
@@ -153,6 +168,8 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
   isLoading: boolean;
   triggerKind: ComposerTriggerKind | null;
   emptyStateText?: string;
+  /** One line under the list, for a tab whose keys differ from the others. */
+  hint?: string;
   /** Replaces the trigger's default loading text, e.g. for the `#` menu's Linear tab. */
   loadingText?: string;
   /** Tabs over the list, for a trigger that offers more than one kind of item. */
@@ -273,10 +290,49 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
             </Button>
           </div>
         ) : null}
+        {props.hint ? (
+          <p className="px-5 pt-1 pb-2.5 text-secondary-label text-xs">{props.hint}</p>
+        ) : null}
       </ComposerBanner.Surface>
     </Command>
   );
 });
+
+function CheckoutCommandRow(props: { item: Extract<ComposerCommandItem, { type: "checkout" }> }) {
+  const status =
+    props.item.changedFiles === null
+      ? ""
+      : props.item.changedFiles === 0
+        ? "clean"
+        : `${props.item.changedFiles} changed`;
+  return (
+    <span
+      className={cn(
+        "flex min-w-0 flex-1 items-center gap-2 text-xs",
+        props.item.selectable ? "" : "opacity-45",
+      )}
+    >
+      <span className="w-28 shrink-0 truncate font-medium">{props.item.label}</span>
+      <span className="hidden w-32 shrink-0 items-center gap-1 truncate text-muted-foreground sm:flex">
+        <GitBranchIcon className="size-3 shrink-0" />
+        <span className="truncate font-mono">
+          {props.item.branch ?? (props.item.headSha ? props.item.headSha.slice(0, 7) : "unknown")}
+        </span>
+      </span>
+      <span className="hidden min-w-0 flex-1 truncate font-mono text-muted-foreground/70 md:block">
+        {props.item.path}
+      </span>
+      <span
+        className={cn(
+          "w-20 shrink-0 truncate text-end text-muted-foreground/70",
+          props.item.changedFiles !== null && props.item.changedFiles > 0 && "text-warning",
+        )}
+      >
+        {status}
+      </span>
+    </span>
+  );
+}
 
 type LinearIssueCommandItem = Extract<ComposerCommandItem, { type: "linear-issue" }>;
 
@@ -421,6 +477,13 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
       {props.item.type === "repository" ? (
         <FolderGit2Icon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
       ) : null}
+      {props.item.type === "checkout" ? (
+        props.item.selectable ? (
+          <FolderIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
+        ) : (
+          <ServerIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
+        )
+      ) : null}
       {pullRequestPresentation ? (
         <pullRequestPresentation.Icon
           role="img"
@@ -442,6 +505,8 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
           label={props.item.label}
           isTab
         />
+      ) : props.item.type === "checkout" ? (
+        <CheckoutCommandRow item={props.item} />
       ) : props.item.type === "subagent" ? (
         <AgentCommandRow
           parentRef={props.item.parentRef}

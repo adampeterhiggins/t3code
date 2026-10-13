@@ -2,6 +2,7 @@ import type { GranolaNoteContextRecord, NotionPageContextRecord } from "@t3tools
 import ChatMarkdown from "./ChatMarkdown";
 import { ReviewCommentCard } from "./ReviewCommentCard";
 import type {
+  CheckoutContextRecord,
   GitHubIssueContextRecord,
   LinearIssueContextRecord,
   PreviewAnnotationPayload,
@@ -15,6 +16,7 @@ import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments"
 import { videoMimeType } from "@t3tools/shared/video";
 import {
   FolderGit2Icon,
+  FolderIcon,
   MessageCircleIcon,
   MessagesSquareIcon,
   MousePointerClickIcon,
@@ -62,6 +64,7 @@ import {
   ContextChipShell,
   FileChip,
   ImageChipButton,
+  CheckoutDetails,
   GitHubIssueDetails,
   LinearIssueDetails,
   RepositoryDetails,
@@ -93,6 +96,7 @@ export type ComposerDraftContextRecord =
   | { kind: "linear-issue"; record: LinearIssueContextRecord }
   | { kind: "github-issue"; record: GitHubIssueContextRecord }
   | { kind: "repository"; record: RepositoryContextRecord }
+  | { kind: "checkout"; record: CheckoutContextRecord }
   | { kind: "slack-thread"; record: SlackThreadContextRecord }
   | { kind: "image"; record: ComposerImageAttachment; upload?: AttachmentUploadState | undefined }
   | { kind: "file"; record: ComposerFileAttachment; upload?: AttachmentUploadState | undefined }
@@ -141,6 +145,7 @@ export function composerContextRecordsFromDraft(input: {
   threadTabs?: ReadonlyArray<ThreadTabContextRecord>;
   issues?: ReadonlyArray<IssueContextRecord>;
   repositories?: ReadonlyArray<RepositoryContextRecord>;
+  checkouts?: ReadonlyArray<CheckoutContextRecord>;
   threadContexts?: ReadonlyArray<ThreadContextRecord>;
   images?: ReadonlyArray<ComposerImageAttachment>;
   files?: ReadonlyArray<ComposerFileAttachment>;
@@ -183,6 +188,9 @@ export function composerContextRecordsFromDraft(input: {
   }
   for (const record of input.repositories ?? []) {
     records.set(record.contextId, { kind: "repository", record });
+  }
+  for (const record of input.checkouts ?? []) {
+    records.set(record.contextId, { kind: "checkout", record });
   }
   for (const record of input.threadContexts ?? []) {
     records.set(record.contextId, { kind: "thread", record });
@@ -555,6 +563,23 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
             details={<ComposerRepositoryDetails record={entry.record} />}
             detailsMode={definition.capabilities.details}
             kind="repository"
+          />
+        ) : (
+          <UnresolvedContextChip label={context.label} />
+        ),
+    },
+    {
+      kind: "checkout",
+      canRender: (entry) => entry.kind === "checkout",
+      render: (entry, context, definition) =>
+        entry.kind === "checkout" ? (
+          <ContextChip
+            icon={<FolderIcon />}
+            label={entry.record.label}
+            kindLabel="Checkout"
+            details={<CheckoutDetails record={entry.record} />}
+            detailsMode={definition.capabilities.details}
+            kind="checkout"
           />
         ) : (
           <UnresolvedContextChip label={context.label} />

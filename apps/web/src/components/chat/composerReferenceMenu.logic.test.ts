@@ -1,3 +1,4 @@
+import { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -28,6 +29,22 @@ function githubIssue(number: number, title = "Issue"): ComposerReferenceItem {
     description: title,
     authorLogin: null,
     state: "open",
+  };
+}
+
+function checkout(name: string): ComposerReferenceItem {
+  return {
+    id: `checkout:${name}`,
+    type: "checkout",
+    environmentId: EnvironmentId.make("env"),
+    path: `/work/${name}`,
+    branch: "main",
+    headSha: null,
+    changedFiles: 0,
+    ahead: 0,
+    selectable: true,
+    label: name,
+    description: `/work/${name}`,
   };
 }
 
@@ -66,6 +83,19 @@ function predict(
 }
 
 describe("predictComposerReferenceTab", () => {
+  it("opens checkouts when the query matches a local folder or a path", () => {
+    const available = new Set<ComposerReferenceTab>([...ALL_TABS, "checkouts"]);
+    expect(
+      predict("forge", {
+        available,
+        hasDefaultRepositoryOwner: true,
+        preloaded: { checkouts: [checkout("forge")] },
+      }),
+    ).toBe("checkouts");
+    expect(predict("/work/forge", { available })).toBe("checkouts");
+    expect(predict("acme/app", { available })).toBe("repositories");
+  });
+
   it("reads the query's shape first", () => {
     expect(predict("ENG-123")).toBe("linear-issues");
     expect(predict("acme/")).toBe("repositories");

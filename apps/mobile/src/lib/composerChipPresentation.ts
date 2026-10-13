@@ -21,6 +21,7 @@ const CONTEXT_CHIP_PRESENTATIONS = {
   "github-issue": { accent: "#009f6e", symbol: "smallcircle.filled.circle" },
   "slack-thread": { accent: "#c6589c", symbol: "number" },
   repository: { accent: "#009c9c", symbol: "folder" },
+  checkout: { accent: "#0096af", symbol: "laptopcomputer" },
 } as const;
 
 /**

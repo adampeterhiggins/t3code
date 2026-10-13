@@ -279,6 +279,10 @@
       "types": "./src/threadLinks.ts",
       "import": "./src/threadLinks.ts"
     },
+    "./checkouts": {
+      "types": "./src/checkouts.ts",
+      "import": "./src/checkouts.ts"
+    },
     "./composerContextReferences": {
       "types": "./src/composerContextReferences.ts",
       "import": "./src/composerContextReferences.ts"

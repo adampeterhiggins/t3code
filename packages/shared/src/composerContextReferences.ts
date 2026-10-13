@@ -9,6 +9,7 @@ import {
   type RepositoryContextRecord,
   type SubagentContextRecord,
 } from "@t3tools/contracts";
+import { formatCheckoutPayload } from "./checkouts.ts";
 
 /**
  * Canonical inline reference: `[label](t3-context://v1/<kind>/<contextId>)`, or the image
@@ -275,6 +276,8 @@ function formatComposerContextProviderPayload(record: KnownComposerContextRecord
       ].join("\n");
     case "repository":
       return formatRepositoryPayload(record);
+    case "checkout":
+      return formatCheckoutPayload(record);
     case "slack-thread":
       return [
         `slack ${record.scope === "thread" ? "thread" : "message"}: ${record.channelLabel}, linked message by ${record.authorName}`,

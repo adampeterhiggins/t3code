@@ -10,6 +10,7 @@ import {
   USAGE_LIMIT_CONTINUATION_TEXT,
   usageLimitBlockedRun,
 } from "@t3tools/shared/orchestrationV2ThreadError";
+import { linkedCheckoutsAfter } from "@t3tools/shared/checkouts";
 import { threadPullRequestsOf } from "@t3tools/shared/threadPullRequests";
 import {
   normalizeThreadPullRequestKey,
@@ -457,6 +458,9 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
     case "thread.mark-unread":
     case "thread.metadata.update":
     case "thread.usage-limit.resume-now":
+    case "thread.checkout.link":
+    case "thread.checkout.unlink":
+    case "thread.checkout.relocate":
     case "thread.pull-request.link":
     case "thread.pull-request.unlink":
     case "thread.pull-request-link.sync":
@@ -2477,6 +2481,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           | "thread.active.reorder"
           | "thread.mark-unread"
           | "thread.metadata.update"
+          | "thread.checkout.link"
+          | "thread.checkout.unlink"
+          | "thread.checkout.relocate"
           | "thread.pull-request.link"
           | "thread.pull-request.unlink"
           | "thread.pull-request-link.sync"
@@ -3108,6 +3115,26 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             updatedAt: now,
           };
         }
+        case "thread.checkout.link":
+        case "thread.checkout.unlink":
+        case "thread.checkout.relocate": {
+          const next = linkedCheckoutsAfter(thread.linkedCheckouts ?? [], {
+            type:
+              command.type === "thread.checkout.link"
+                ? "link"
+                : command.type === "thread.checkout.unlink"
+                  ? "unlink"
+                  : "relocate",
+            path: command.path,
+            ...(command.type === "thread.checkout.relocate" ? { fromPath: command.fromPath } : {}),
+            ...(command.type === "thread.checkout.unlink" ? {} : { name: command.name }),
+            ...(command.type === "thread.checkout.link"
+              ? { linkedAt: DateTime.formatIso(now) }
+              : {}),
+          });
+          if (!next.changed) return thread;
+          return { ...thread, linkedCheckouts: [...next.links], updatedAt: now };
+        }
         case "thread.pull-request.link":
         case "thread.pull-request.unlink":
         case "thread.pull-request-link.sync": {
@@ -3349,6 +3376,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           return "thread.marked-unread" as const;
         case "thread.metadata.update":
         case "thread.title.regeneration.complete":
+        case "thread.checkout.link":
+        case "thread.checkout.unlink":
+        case "thread.checkout.relocate":
           return "thread.metadata-updated" as const;
         case "thread.pull-request.link":
         case "thread.pull-request.unlink":
@@ -11160,6 +11190,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       case "thread.active.reorder":
       case "thread.mark-unread":
       case "thread.metadata.update":
+      case "thread.checkout.link":
+      case "thread.checkout.unlink":
+      case "thread.checkout.relocate":
       case "thread.pull-request.link":
       case "thread.pull-request.unlink":
       case "thread.pull-request-link.sync":

@@ -33,6 +33,10 @@ export function createSourceControlEnvironmentAtoms<R, E>(
       staleTimeMs: 5 * 60_000,
     }),
     // Clones already in a workspace's context folder, with their git status.
+    checkouts: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:checkouts:inspect",
+      tag: WS_METHODS.checkoutsInspect,
+    }),
     contextRepositoryClones: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:context-repositories:inspect",
       tag: WS_METHODS.contextRepositoriesInspect,

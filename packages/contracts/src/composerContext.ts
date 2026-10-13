@@ -8,6 +8,7 @@ import {
   ThreadId,
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
+import { CheckoutAccess } from "./checkouts.ts";
 import { ContextRepositoryDirectoryName, ContextRepositoryOutcome } from "./contextRepositories.ts";
 import { GITHUB_ISSUE_MARKDOWN_MAX_CHARS } from "./githubIssues.ts";
 import { LINEAR_ISSUE_MARKDOWN_MAX_CHARS } from "./linear.ts";
@@ -37,6 +38,7 @@ export const COMPOSER_CONTEXT_KINDS = [
   "linear-issue",
   "github-issue",
   "repository",
+  "checkout",
   "slack-thread",
   "notion-page",
   "granola-note",
@@ -331,6 +333,24 @@ export const RepositoryContextRecord = Schema.Struct({
 export type RepositoryContextRecord = typeof RepositoryContextRecord.Type;
 
 /**
+ * A local checkout referenced in a message. The path, branch, and HEAD are the
+ * snapshot from when it was inserted. `access` records whether that turn's
+ * provider was given the folder or only the path.
+ */
+export const CheckoutContextRecord = Schema.Struct({
+  ...recordBase,
+  kind: Schema.Literal("checkout"),
+  environmentId: EnvironmentId,
+  path: TrimmedNonEmptyString.check(Schema.isMaxLength(4_096)),
+  branch: Schema.NullOr(ShortString),
+  headSha: Schema.NullOr(ShortString),
+  changedFiles: NonNegativeInt,
+  ahead: NonNegativeInt,
+  access: CheckoutAccess,
+});
+export type CheckoutContextRecord = typeof CheckoutContextRecord.Type;
+
+/**
  * Another thread on the same server, attached so the agent can read its history through
  * `t3_thread_read`. Only identity travels; the title is a display snapshot.
  */
@@ -435,6 +455,7 @@ export const KnownComposerContextRecord = Schema.Union([
   LinearIssueContextRecord,
   GitHubIssueContextRecord,
   RepositoryContextRecord,
+  CheckoutContextRecord,
   SlackThreadContextRecord,
   NotionPageContextRecord,
   GranolaNoteContextRecord,

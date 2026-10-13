@@ -64,6 +64,7 @@ import {
 import { useGranolaNotePicker } from "../../components/GranolaNotePickerSheet";
 import { useNotionPagePicker } from "../../components/NotionPagePickerSheet";
 import { useSlackMessagePicker } from "../../components/SlackMessagePickerSheet";
+import { useCheckoutPicker } from "../../components/CheckoutPickerSheet";
 import { useRepositoryPicker } from "../../components/RepositoryPickerSheet";
 import { ControlPillMenu } from "../../components/ControlPillMenu";
 import { gitHubIssueEnvironment } from "../../state/githubIssues";
@@ -1105,6 +1106,15 @@ export function NewTaskDraftScreen(props: {
         }
       : null,
   );
+  const checkoutPicker = useCheckoutPicker(
+    flow.draftKey && selectedProject
+      ? {
+          environmentId: selectedProject.environmentId,
+          draftKey: flow.draftKey,
+          driver: flow.selectedProviderStatus?.driver ?? null,
+        }
+      : null,
+  );
   const repositoryPicker = useRepositoryPicker(
     flow.draftKey && selectedProject
       ? {
@@ -1954,6 +1964,7 @@ export function NewTaskDraftScreen(props: {
                         ? slackMessagePicker.open
                         : undefined
                     }
+                    onPickCheckout={flow.draftKey ? checkoutPicker.open : undefined}
                     onPickRepository={flow.draftKey ? repositoryPicker.open : undefined}
                   />
                   <View className="min-w-0 flex-1 flex-row items-center justify-end gap-2">
@@ -2045,6 +2056,7 @@ export function NewTaskDraftScreen(props: {
       {notionPagePicker.sheet}
       {granolaNotePicker.sheet}
       {startFromPullRequestPicker.sheet}
+      {checkoutPicker.sheet}
       {repositoryPicker.sheet}
     </View>
   );

@@ -1,6 +1,9 @@
+import { looksLikeCheckoutPath } from "@t3tools/shared/checkouts";
+
 import type { ComposerCommandItem } from "./ComposerCommandMenu";
 
 export type ComposerReferenceTab =
+  | "checkouts"
   | "pull-requests"
   | "linear-issues"
   | "notion-pages"
@@ -20,7 +23,8 @@ export type ComposerReferenceItem = Extract<
       | "slack-message"
       | "notion-page"
       | "granola-note"
-      | "repository";
+      | "repository"
+      | "checkout";
   }
 >;
 
@@ -32,6 +36,7 @@ const TAB_FOR_ITEM_TYPE: Record<ComposerReferenceItem["type"], ComposerReference
   "notion-page": "notion-pages",
   "granola-note": "granola-notes",
   repository: "repositories",
+  checkout: "checkouts",
 };
 
 export function isComposerReferenceItem(item: ComposerCommandItem): item is ComposerReferenceItem {
@@ -151,8 +156,9 @@ function habitualTab(
  * The `#` menu's starting tab, from the shape of the query and what the user has inserted before:
  *
  * - An identifier (`#ENG-123`), or a known Linear team key (`#ENG`), names a Linear issue.
- * - `#owner/name` names a repository, and so does a hyphenated name (`#cin-questionnaire`) once a
- *   default repository owner is set.
+ * - A filesystem path names a checkout. `#owner/name` names a repository, and so does a
+ *   hyphenated name (`#cin-questionnaire`) once a default repository owner is set, unless a
+ *   local checkout already matches that name.
  * - A number names a pull request, unless a recent GitHub issue has exactly that number.
  * - Otherwise the tab whose recent inserts or preloaded rows match the query, preferring the tab
  *   the user inserts from most, then pull requests.
@@ -171,6 +177,7 @@ export function predictComposerReferenceTab(input: {
   const fallback: ComposerReferenceTab = "pull-requests";
 
   if (LINEAR_IDENTIFIER_PATTERN.test(query) && has("linear-issues")) return "linear-issues";
+  if (looksLikeCheckoutPath(query) && has("checkouts")) return "checkouts";
   if (query.includes("/") && has("repositories")) return "repositories";
   if (has("linear-issues")) {
     const teamKey = LINEAR_TEAM_KEY_PATTERN.exec(query)?.[1]?.toUpperCase();
@@ -179,6 +186,15 @@ export function predictComposerReferenceTab(input: {
       ...(input.preloaded["linear-issues"] ?? []),
     ]);
     if (teamKey !== undefined && knownKeys.has(teamKey)) return "linear-issues";
+  }
+  if (
+    query.length > 0 &&
+    has("checkouts") &&
+    [...input.recents, ...(input.preloaded.checkouts ?? [])].some(
+      (item) => item.type === "checkout" && matchesComposerReferenceQuery(item, query),
+    )
+  ) {
+    return "checkouts";
   }
   if (/^\d+$/u.test(query)) {
     const exactRecent = input.recents.find(

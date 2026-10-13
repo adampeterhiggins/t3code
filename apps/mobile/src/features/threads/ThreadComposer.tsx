@@ -78,6 +78,7 @@ import { useGitHubIssuePicker } from "../../components/GitHubIssuePickerSheet";
 import { useGranolaNotePicker } from "../../components/GranolaNotePickerSheet";
 import { useNotionPagePicker } from "../../components/NotionPagePickerSheet";
 import { useSlackMessagePicker } from "../../components/SlackMessagePickerSheet";
+import { useCheckoutPicker } from "../../components/CheckoutPickerSheet";
 import { useRepositoryPicker } from "../../components/RepositoryPickerSheet";
 import {
   ComposerAttachmentStrip,
@@ -490,6 +491,11 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       ? { environmentId: props.environmentId, draftKey: composerDraftKey, cwd: workspaceCwd }
       : null,
   );
+  const checkoutPicker = useCheckoutPicker({
+    environmentId: props.environmentId,
+    draftKey: composerDraftKey,
+    driver: selectedProviderStatus?.driver ?? null,
+  });
   const repositoryPicker = useRepositoryPicker({
     environmentId: props.environmentId,
     draftKey: composerDraftKey,
@@ -929,6 +935,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                 onPickNotionPage={notionPagePicker.open}
                 onPickGranolaNote={granolaNotePicker.open}
                 onPickSlackMessage={slackMessagePicker.open}
+                onPickCheckout={checkoutPicker.open}
                 onPickRepository={repositoryPicker.open}
               />
             ) : null}
@@ -1213,6 +1220,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                       onPickNotionPage={notionPagePicker.open}
                       onPickGranolaNote={granolaNotePicker.open}
                       onPickSlackMessage={slackMessagePicker.open}
+                      onPickCheckout={checkoutPicker.open}
                       onPickRepository={repositoryPicker.open}
                     />
                     <View className="min-w-0 shrink">
@@ -1278,6 +1286,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       {slackMessagePicker.sheet}
       {notionPagePicker.sheet}
       {granolaNotePicker.sheet}
+      {checkoutPicker.sheet}
       {repositoryPicker.sheet}
     </Animated.View>
   );

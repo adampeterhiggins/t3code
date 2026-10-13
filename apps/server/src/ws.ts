@@ -227,6 +227,7 @@ import { projectMutationOperation } from "./project/ProjectMutation.ts";
 import * as ProjectCloneTracker from "./project/ProjectCloneTracker.ts";
 import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
 import * as WorktreeSetupTracker from "./project/WorktreeSetupTracker.ts";
+import * as CheckoutInspect from "./checkouts/CheckoutInspect.ts";
 import * as ContextRepositories from "./contextRepositories/ContextRepositories.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import * as DirectEndpoints from "./environment/DirectEndpoints.ts";
@@ -1381,6 +1382,7 @@ const layerWsRpc = (
       const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
       const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
       const contextRepositories = yield* ContextRepositories.ContextRepositories;
+      const checkoutInspect = yield* CheckoutInspect.CheckoutInspect;
       const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
       const backgroundPolicy = yield* BackgroundPolicy.BackgroundPolicy;
       const rpcClientIds = yield* Ref.make(new Set<RpcClientId>());
@@ -2685,6 +2687,7 @@ const layerWsRpc = (
           withPullRequestViewer(input, pullRequests.setLabels(input)),
         [WS_METHODS.sourceControlLookupRepository]: (input) =>
           sourceControlRepositories.lookupRepository(input),
+        [WS_METHODS.checkoutsInspect]: (input) => checkoutInspect.inspect(input),
         [WS_METHODS.contextRepositoriesList]: (input) => contextRepositories.list(input),
         [WS_METHODS.contextRepositoriesInspect]: (input) =>
           Effect.flatMap(contextRepositoryDirectory, (directory) =>
