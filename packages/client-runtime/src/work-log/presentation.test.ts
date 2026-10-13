@@ -253,6 +253,28 @@ describe("summarizeToolGroup", () => {
     ).toBe("Used Chrome integration and ran 1 command");
   });
 
+  it.each([
+    [["Foo", "Foo"], "Used Foo integration and ran 1 command"],
+    [["Foo", "Bar", "Foo"], "Used Foo and Bar integrations and ran 1 command"],
+  ] as const)(
+    "uses the displayed source names for integration plurality: %j",
+    (names, expected) => {
+      expect(
+        summarizeToolGroup([
+          ...names.map((name, index) =>
+            entry(`integration-${index}`, {
+              toolSource: { key: `integration-${index}`, name, kind: "integration" },
+            }),
+          ),
+          entry("command", {
+            itemType: "command_execution",
+            command: "git status",
+          }),
+        ]).summary,
+      ).toBe(expected);
+    },
+  );
+
   it("omits the integration suffix for special browser and computer sources", () => {
     expect(
       summarizeToolGroup([
@@ -266,6 +288,25 @@ describe("summarizeToolGroup", () => {
         }),
       ]).summary,
     ).toBe("Used Browser and Computer Use");
+  });
+
+  it("names Computer Use once when native-app and fallback sources share its label", () => {
+    expect(
+      summarizeToolGroup([
+        entry("inspect-app", {
+          label: "Inspect app",
+          toolSource: {
+            key: "native-app:com.t3tools.t3code",
+            name: "Computer Use",
+            kind: "computer",
+          },
+        }),
+        entry("failed-sky", {
+          label: "Restrict the breakpoint to Git actions",
+          toolSource: { key: "computer-use", name: "Computer Use", kind: "computer" },
+        }),
+      ]).summary,
+    ).toBe("Used Computer Use");
   });
 });
 
@@ -546,14 +587,14 @@ describe("resolveWorkEntryToolPresentation", () => {
 
   it("labels thread control tools, but only names other servers share when T3's server is named", () => {
     expect(
-      resolveWorkEntryToolPresentation({ label: "mcp__t3-code__create_thread" }, "completed"),
-    ).toEqual({ displayName: "Started a thread", icon: "t3-code" });
+      resolveWorkEntryToolPresentation({ label: "mcp__t3-code__t3_thread_launch" }, "completed"),
+    ).toEqual({ displayName: "Launched a project thread", icon: "t3-code" });
     expect(
       resolveWorkEntryToolPresentation({
         label: "MCP tool call",
-        toolData: { server: "t3-code", tool: "search" },
+        toolData: { server: "t3-code", tool: "t3_thread_search" },
       }),
-    ).toEqual({ displayName: "Searching threads", icon: "t3-code" });
+    ).toEqual({ displayName: "Searching thread content", icon: "t3-code" });
     expect(resolveWorkEntryToolPresentation({ label: "search" })).toBeNull();
     expect(
       resolveWorkEntryToolPresentation({

@@ -23,15 +23,14 @@ const state = vi.hoisted(() => ({
 
 vi.mock("react", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react")>()),
-  useCallback: (callback: unknown) => callback,
+  useCallback: (callback: typeof state.run) => {
+    if (callback?.constructor.name === "AsyncFunction") state.run = callback;
+    return callback;
+  },
   useMemo: (factory: () => unknown) => factory(),
   useState: (initial: unknown) => [typeof initial === "function" ? initial() : initial, () => {}],
   useRef: (current: unknown) => ({ current }),
   useEffect: () => {},
-  useEffectEvent: (callback: typeof state.run) => {
-    state.run = callback;
-    return callback;
-  },
 }));
 vi.mock("@effect/atom-react", () => ({
   useAtomValue: (atom: unknown) => (atom === "vcs-state" ? { isRunning: false } : null),
@@ -128,7 +127,7 @@ vi.mock("~/lib/sourceControlActions", () => ({
 vi.mock("~/lib/utils", () => ({ cn: () => "", randomUUID: () => "action" }));
 vi.mock("~/editorPreferences", () => ({ useOpenInPreferredEditor: () => () => {} }));
 vi.mock("~/browser/useOpenLink", () => ({ useOpenLink: () => () => {} }));
-vi.mock("~/lib/openPullRequestLink", () => ({ useOpenPrLink: () => () => {} }));
+vi.mock("~/lib/openPullRequestLink", () => ({ usePreferredOpenPrLink: () => () => {} }));
 vi.mock("~/components/ui/toast", () => ({
   stackedThreadToast: (input: unknown) => input,
   toastManager: { add: () => "toast", update: () => {}, close: () => {} },
