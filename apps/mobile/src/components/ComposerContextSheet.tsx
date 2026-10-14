@@ -407,6 +407,24 @@ export function ComposerContextSheet(props: {
                 </Text>
               </View>
             ) : null}
+            {record.kind === "prompt-link" ? (
+              <View className="gap-3">
+                <View className="gap-1">
+                  <Text selectable className="text-lg font-t3-semibold text-foreground">
+                    T3 Code prompt link
+                  </Text>
+                  {record.target ? (
+                    <Text className="text-sm text-foreground-muted">{record.target}</Text>
+                  ) : null}
+                </View>
+                {/* Plain text like the other captured context here: exactly what the agent received. */}
+                {record.prompt !== null ? (
+                  <Text selectable className="text-sm text-foreground">
+                    {record.prompt}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
             {record.kind === "slack-thread" ? (
               <View className="gap-3">
                 <View className="gap-1">

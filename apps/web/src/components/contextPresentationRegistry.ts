@@ -84,6 +84,10 @@ const DEFINITIONS = [
     kind: "subagent",
     capabilities: { details: "popover", expanded: "none", defaultDraftView: "compact" },
   },
+  {
+    kind: "prompt-link",
+    capabilities: { details: "popover", expanded: "none", defaultDraftView: "compact" },
+  },
 ] as const satisfies ReadonlyArray<ContextPresentationDefinition>;
 
 function buildDefinitionRegistry(

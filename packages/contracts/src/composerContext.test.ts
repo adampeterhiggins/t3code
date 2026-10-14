@@ -237,6 +237,14 @@ const knownRecords: Record<(typeof COMPOSER_CONTEXT_KINDS)[number], Record<strin
     prompt: "Map the auth flow.",
     result: null,
   },
+  "prompt-link": {
+    ...base,
+    kind: "prompt-link",
+    label: "what happened here?",
+    url: "https://app.t3.codes/new?prompt=what+happened+here%3F",
+    prompt: "what happened here?",
+    target: null,
+  },
 };
 
 describe("ComposerContextRecord", () => {

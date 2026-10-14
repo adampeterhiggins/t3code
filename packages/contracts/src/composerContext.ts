@@ -44,6 +44,7 @@ export const COMPOSER_CONTEXT_KINDS = [
   "granola-note",
   "thread",
   "subagent",
+  "prompt-link",
 ] as const;
 export type KnownComposerContextKind = (typeof COMPOSER_CONTEXT_KINDS)[number];
 
@@ -446,6 +447,24 @@ export const GranolaNoteContextRecord = Schema.Struct({
 });
 export type GranolaNoteContextRecord = typeof GranolaNoteContextRecord.Type;
 
+/** Must match `PROMPT_LINK_MAX_PROMPT_LENGTH` in `@t3tools/shared/promptLinks`. */
+const PROMPT_LINK_PROMPT_MAX_CHARS = 8_000;
+
+/**
+ * Fork: a T3 Code prompt link (`https://app.t3.codes/new?prompt=…`) pasted into a message. The
+ * chip shows the prompt the link would open, decoded and stripped of hidden characters, instead
+ * of the encoded URL. A link that names a pull request may carry no prompt.
+ */
+export const PromptLinkContextRecord = Schema.Struct({
+  ...recordBase,
+  kind: Schema.Literal("prompt-link"),
+  url: BoundedString(4 * PROMPT_LINK_PROMPT_MAX_CHARS),
+  prompt: Schema.NullOr(BoundedString(PROMPT_LINK_PROMPT_MAX_CHARS)),
+  /** `owner/name`, or `owner/name#123` for a pull request link. */
+  target: Schema.NullOr(ShortString),
+});
+export type PromptLinkContextRecord = typeof PromptLinkContextRecord.Type;
+
 export const KnownComposerContextRecord = Schema.Union([
   ImageContextRecord,
   FileContextRecord,
@@ -465,6 +484,7 @@ export const KnownComposerContextRecord = Schema.Union([
   GranolaNoteContextRecord,
   ThreadContextRecord,
   SubagentContextRecord,
+  PromptLinkContextRecord,
 ]);
 export type KnownComposerContextRecord = typeof KnownComposerContextRecord.Type;
 

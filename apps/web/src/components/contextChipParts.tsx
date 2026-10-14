@@ -1,4 +1,8 @@
-import type { GranolaNoteContextRecord, NotionPageContextRecord } from "@t3tools/contracts";
+import type {
+  GranolaNoteContextRecord,
+  NotionPageContextRecord,
+  PromptLinkContextRecord,
+} from "@t3tools/contracts";
 import {
   contextRepositoryOutcomeLabel,
   describeContextRepositoryGitStatus,
@@ -607,6 +611,34 @@ export function GranolaNoteDetails({
         onOpenLink={onOpenLink}
       />
       <IssueMarkdownBody text={record.markdown} />
+    </div>
+  );
+}
+
+/**
+ * A T3 Code prompt link: the prompt it opens with, as plain text so nothing in it renders away,
+ * and a link that opens it.
+ */
+export function PromptLinkDetails({
+  record,
+  onOpenLink,
+}: {
+  record: Pick<PromptLinkContextRecord, "url" | "prompt" | "target">;
+  onOpenLink: (event: MouseEvent<HTMLElement>, url: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <IssueDetailsHeader
+        summary={record.target ?? "New thread"}
+        url={record.url}
+        linkLabel="Open in T3 Code"
+        onOpenLink={onOpenLink}
+      />
+      {record.prompt === null ? null : (
+        <div className="max-h-80 overflow-y-auto whitespace-pre-wrap break-words rounded-lg border border-border/70 bg-background/70 px-3 py-2.5 text-xs text-foreground">
+          {record.prompt}
+        </div>
+      )}
     </div>
   );
 }

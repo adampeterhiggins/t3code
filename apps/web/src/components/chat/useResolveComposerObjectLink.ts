@@ -1,7 +1,10 @@
 import type { ComposerObjectLink } from "@t3tools/shared/composerObjectLinks";
 import { repositoryContextRecord } from "@t3tools/client-runtime/context-repositories";
 import { gitHubIssueContextRecord } from "@t3tools/client-runtime/state/github-issues";
-import { linearIssueContextRecord } from "@t3tools/shared/integrationContextRecords";
+import {
+  linearIssueContextRecord,
+  promptLinkContextRecord,
+} from "@t3tools/shared/integrationContextRecords";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -324,6 +327,13 @@ export function useResolveComposerObjectLink(input: {
               useComposerDraftStore
                 .getState()
                 .addReviewComment(draftTarget, comment, { appendReference: false }),
+          };
+        }
+        case "prompt-link": {
+          const record = promptLinkContextRecord(link);
+          return {
+            reference: { kind: "prompt-link", contextId: record.contextId, label: record.label },
+            commit: () => useIssueContextStore.getState().upsert(threadRef.threadId, record),
           };
         }
         case "repository": {

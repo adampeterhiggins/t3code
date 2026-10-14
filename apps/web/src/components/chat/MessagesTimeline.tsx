@@ -2,7 +2,11 @@ import {
   toolEntryShowsPathBreadcrumbs,
   toolPathTargets,
 } from "@t3tools/client-runtime/work-log/tool-paths";
-import type { GranolaNoteContextRecord, NotionPageContextRecord } from "@t3tools/contracts";
+import type {
+  GranolaNoteContextRecord,
+  NotionPageContextRecord,
+  PromptLinkContextRecord,
+} from "@t3tools/contracts";
 import { ToolCallBody } from "../ToolCallBody";
 import { ToolPathText } from "./ToolPathText";
 import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
@@ -177,6 +181,7 @@ import {
   XIcon,
   ZapIcon,
   RotateCcwIcon,
+  MessageSquareTextIcon,
 } from "lucide-react";
 import {
   isWorkspaceChangeNotice,
@@ -298,6 +303,7 @@ import {
   SlackThreadDetails,
   NotionPageDetails,
   GranolaNoteDetails,
+  PromptLinkDetails,
   UnresolvedChip,
 } from "../contextChipParts";
 import {
@@ -5097,6 +5103,24 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
         ),
     },
     {
+      kind: "prompt-link",
+      canRender: (record) => record.kind === "prompt-link",
+      render: (record, context) =>
+        record.kind === "prompt-link" ? (
+          <UserMessageContextPopover
+            copyMarkdown={context.copyMarkdown}
+            accessibleLabel={`T3 Code prompt link, ${record.label}`}
+            kind="prompt-link"
+            icon={<MessageSquareTextIcon />}
+            label={record.label}
+          >
+            <UserMessagePromptLinkDetails record={record} />
+          </UserMessageContextPopover>
+        ) : (
+          <UnavailableUserMessageContextChip {...context} />
+        ),
+    },
+    {
       kind: "slack-thread",
       canRender: (record) => record.kind === "slack-thread",
       render: (record, context) =>
@@ -6549,6 +6573,11 @@ function QuestionAnswerHistory({
       ))}
     </div>
   );
+}
+
+function UserMessagePromptLinkDetails({ record }: { record: PromptLinkContextRecord }) {
+  const { threadRef } = use(TimelineRowCtx);
+  return <PromptLinkDetails record={record} onOpenLink={useLinkClickHandler(threadRef)} />;
 }
 
 function UserMessageGranolaNoteDetails({ record }: { record: GranolaNoteContextRecord }) {
