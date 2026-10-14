@@ -17,7 +17,7 @@ import { useTheme } from "../../hooks/useTheme";
 import {
   parseTerminalStyledText,
   resolveTerminalTextColor,
-  type TerminalTextStyle,
+  type TerminalTextRun,
 } from "../../lib/terminalStyledText";
 import { terminalThemeFromApp } from "../ThreadTerminalDrawer";
 
@@ -37,34 +37,53 @@ function cssRgb({ r, g, b }: GhosttyColor): string {
   return `rgb(${r} ${g} ${b})`;
 }
 
-function terminalRunStyle(
-  style: TerminalTextStyle,
+interface TerminalBackgroundSpan {
+  readonly background: string | undefined;
+  readonly runs: ReadonlyArray<{ readonly text: string; readonly style: CSSProperties }>;
+}
+
+/**
+ * Resolve runs to CSS and group consecutive runs that share a background, so each stretch of
+ * background is painted by one box. Cells sit at fractional pixel offsets, and two adjacent boxes
+ * of the same color each antialias their shared edge, leaving a hairline seam between them.
+ */
+function terminalBackgroundSpans(
+  runs: ReadonlyArray<TerminalTextRun>,
   palette: ReadonlyArray<GhosttyColor>,
   defaults: { foreground: string; background: string },
-): CSSProperties {
-  let color = style.foreground ? resolveTerminalTextColor(style.foreground, palette) : undefined;
-  let backgroundColor = style.background
-    ? resolveTerminalTextColor(style.background, palette)
-    : undefined;
-  if (style.inverse) {
-    [color, backgroundColor] = [
-      backgroundColor ?? defaults.background,
-      color ?? defaults.foreground,
-    ];
+): TerminalBackgroundSpan[] {
+  const spans: Array<{
+    background: string | undefined;
+    runs: TerminalBackgroundSpan["runs"][number][];
+  }> = [];
+  for (const { text, style } of runs) {
+    let color = style.foreground ? resolveTerminalTextColor(style.foreground, palette) : undefined;
+    let background = style.background
+      ? resolveTerminalTextColor(style.background, palette)
+      : undefined;
+    if (style.inverse) {
+      [color, background] = [background ?? defaults.background, color ?? defaults.foreground];
+    }
+    const decorations = [
+      style.underline ? "underline" : "",
+      style.strikethrough ? "line-through" : "",
+      style.overline ? "overline" : "",
+    ].filter((decoration) => decoration.length > 0);
+    const run = {
+      text,
+      style: {
+        ...(style.invisible ? { color: "transparent" } : color ? { color } : {}),
+        ...(style.bold ? { fontWeight: 700 } : {}),
+        ...(style.italic ? { fontStyle: "italic" } : {}),
+        ...(style.faint ? { opacity: 0.6 } : {}),
+        ...(decorations.length > 0 ? { textDecorationLine: decorations.join(" ") } : {}),
+      },
+    };
+    const last = spans.at(-1);
+    if (last && last.background === background) last.runs.push(run);
+    else spans.push({ background, runs: [run] });
   }
-  const decorations = [
-    style.underline ? "underline" : "",
-    style.strikethrough ? "line-through" : "",
-    style.overline ? "overline" : "",
-  ].filter((decoration) => decoration.length > 0);
-  return {
-    ...(style.invisible ? { color: "transparent" } : color ? { color } : {}),
-    ...(backgroundColor ? { backgroundColor } : {}),
-    ...(style.bold ? { fontWeight: 700 } : {}),
-    ...(style.italic ? { fontStyle: "italic" } : {}),
-    ...(style.faint ? { opacity: 0.6 } : {}),
-    ...(decorations.length > 0 ? { textDecorationLine: decorations.join(" ") } : {}),
-  };
+  return spans;
 }
 
 /**
@@ -102,13 +121,22 @@ function TerminalExcerptText({
   const { theme, resolvedTheme } = useTheme();
   // oxlint-disable-next-line react/memo-dependencies -- The theme is read from CSS, so any theme change re-reads it; two palettes can share a light/dark resolution.
   const terminalTheme = useMemo(() => terminalThemeFromApp(), [theme, resolvedTheme]);
-  const runs = useMemo(
-    () => (styledText === undefined ? null : parseTerminalStyledText(styledText)),
-    [styledText],
-  );
   const foreground = cssRgb(terminalTheme.foreground);
   const background = cssRgb(terminalTheme.background);
-  const palette = terminalTheme.palette ?? [];
+  const spans = useMemo(
+    () =>
+      styledText === undefined
+        ? null
+        : terminalBackgroundSpans(
+            parseTerminalStyledText(styledText),
+            terminalTheme.palette ?? [],
+            {
+              foreground,
+              background,
+            },
+          ),
+    [styledText, terminalTheme, foreground, background],
+  );
 
   return (
     <pre
@@ -123,16 +151,20 @@ function TerminalExcerptText({
       aria-label="Captured terminal output"
       tabIndex={0}
     >
-      {runs === null
+      {spans === null
         ? text
-        : runs.map((run, index) => (
+        : spans.map((span, spanIndex) => (
             <span
-              // Runs never reorder; the index is their identity.
-              // oxlint-disable-next-line react/no-array-index-key
-              key={index}
-              style={terminalRunStyle(run.style, palette, { foreground, background })}
+              // oxlint-disable-next-line react/no-array-index-key -- Runs never reorder; the index is their identity.
+              key={spanIndex}
+              style={span.background ? { backgroundColor: span.background } : undefined}
             >
-              {run.text}
+              {span.runs.map((run, runIndex) => (
+                // oxlint-disable-next-line react/no-array-index-key -- Runs never reorder; the index is their identity.
+                <span key={runIndex} style={run.style}>
+                  {run.text}
+                </span>
+              ))}
             </span>
           ))}
     </pre>
