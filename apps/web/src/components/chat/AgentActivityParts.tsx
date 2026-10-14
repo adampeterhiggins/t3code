@@ -3,13 +3,16 @@
  * is shaped like the chat's tool rows (hover previews the whole call, click
  * expands it), and the usage footer shows a subagent's reported usage.
  */
+import { useNavigate } from "@tanstack/react-router";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { buildThreadRouteParams } from "~/threadRoutes";
+import { useDiffPanelStore } from "~/diffPanelStore";
+import { useRightPanelStore } from "~/rightPanelStore";
+import { projectedWorkEntry } from "../../session-logic";
+import { workEntryDisplayLabel } from "./MessagesTimeline.logic";
+import { ToolCallDetails } from "./ToolCallDetail";
 import type { SubagentToolCall } from "@t3tools/client-runtime/state/agent-list-view";
 import { formatSubagentTokenCount } from "@t3tools/client-runtime/state/subagentRuntime";
-import { formatPathsForWorkspace } from "@t3tools/client-runtime/work-log/command-display";
-import {
-  fileChangePreviewText,
-  turnItemReadFile,
-} from "@t3tools/client-runtime/work-log/item-detail";
 import type { EnvironmentId, OrchestrationV2SubagentUsage, ThreadId } from "@t3tools/contracts";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
@@ -34,15 +37,11 @@ import {
 } from "react";
 
 import { cn } from "~/lib/utils";
-import { useTurnItemDetail } from "~/state/queries";
 import { formatSecondsTimestamp } from "~/timestampFormat";
 
 import { elapsedBetween } from "../AgentStatus";
-import { ToolCallBody } from "../ToolCallBody";
 import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
 import { TOOL_KIND_ICONS } from "./agentToolKinds";
-import { ReadFileView } from "./ReadFileView";
-import { ToolPathText } from "./ToolPathText";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 const TOOL_STATUS_LABELS: Record<SubagentToolCall["status"], string> = {
@@ -58,12 +57,6 @@ function rowKeyToggle(toggle: () => void) {
       toggle();
     }
   };
-}
-
-/** The call's full text for its expansion: the target, then the bounded preview. */
-function toolCallBodyText(call: SubagentToolCall, preview = call.preview): string {
-  const detail = call.detail && preview?.split("\n").includes(call.detail) ? null : call.detail;
-  return [detail, preview].filter((value) => value !== null).join("\n\n") || call.title;
 }
 
 /** Time, status, duration, and exit code, as the chat's tool footer shows them. */
@@ -90,92 +83,46 @@ export interface ToolCallSource {
   readonly workspaceRoot: string | null;
 }
 
-/**
- * The call's body text. Timelines carry an edit without its diff and a read without its file, so
- * while the caller is mounted they fetch the stored item; until then an edit shows its line counts.
- */
-function useToolCallBodyText(call: SubagentToolCall, source: ToolCallSource) {
-  const detail = useTurnItemDetail(
-    call.detailRevision === null
-      ? null
-      : {
-          environmentId: source.environmentId,
-          threadId: source.threadId,
-          itemId: call.id,
-          revision: call.detailRevision,
-        },
-  );
-  const fetchedItem = detail.data?.item;
-  const fetchedPreview = fetchedItem ? fileChangePreviewText(fetchedItem) : null;
-  const preview = fetchedPreview
-    ? formatPathsForWorkspace(fetchedPreview, source.workspaceRoot)
-    : call.preview;
-  return {
-    text: toolCallBodyText(call, preview),
-    readFile: fetchedItem ? turnItemReadFile(fetchedItem) : null,
-    loading:
-      call.detailRevision !== null && detail.isPending
-        ? call.kind === "read"
-          ? "Loading file…"
-          : "Loading diff…"
-        : null,
-  };
-}
-
-/** An expanded call. */
-function ExpandedToolCall(props: { call: SubagentToolCall; meta: string; source: ToolCallSource }) {
-  const { call } = props;
-  const body = useToolCallBodyText(call, props.source);
-  return (
-    <div className="ms-6.5 mt-1 cursor-default rounded-md bg-muted/40 px-3 py-2">
-      <ToolCallBody
-        text={body.text}
-        className={cn(
-          "max-h-64 cursor-text",
-          call.status === "failed" ? "text-destructive-foreground" : "text-secondary-label",
-        )}
-      />
-      {body.readFile ? <ReadFileView file={body.readFile} className="mt-1.5 max-h-64" /> : null}
-      {body.loading ? (
-        <p className="mt-1 text-3xs italic text-muted-foreground">{body.loading}</p>
-      ) : null}
-      <p className="mt-1.5 font-mono text-3xs text-muted-foreground">{props.meta}</p>
-    </div>
-  );
-}
-
-/** A collapsed call's hover card, mounted only while open so its diff is fetched on demand. */
-function ToolCallHoverContent(props: {
+/** Both the Tools list and fleet hover use the chat's preview and detail renderers. */
+function AgentToolCallDetails(props: {
   call: SubagentToolCall;
-  meta: string;
   source: ToolCallSource;
+  timestampFormat: TimestampFormat;
+  preview?: boolean;
 }) {
-  const { call } = props;
+  const navigate = useNavigate();
+  const { source, call } = props;
+  const openThread = (threadId: ThreadId) =>
+    void navigate({
+      to: "/$environmentId/$threadId",
+      params: buildThreadRouteParams(scopeThreadRef(source.environmentId, threadId)),
+    });
+  const workEntry = projectedWorkEntry({
+    item: call.item,
+    sourceItemId: call.item.id,
+    sourceThreadId: source.threadId,
+    visibility: "local",
+    position: call.item.ordinal,
+  });
   const Icon = TOOL_KIND_ICONS[call.kind];
-  const body = useToolCallBodyText(call, props.source);
   return (
-    <div className="flex flex-col gap-1.5 p-3">
-      <p className="flex items-start gap-1.5 text-xs text-secondary-label">
-        <Icon aria-hidden className="mt-px size-3.5 shrink-0 text-icon-muted" />
-        <span className="min-w-0 break-all">
-          {call.kind === "command" ? (
-            call.title
-          ) : (
-            <ToolPathText
-              text={call.rawTitle ?? call.title}
-              environmentId={props.source.environmentId}
-              workspaceRoot={props.source.workspaceRoot}
-            />
-          )}
-        </span>
-      </p>
-      <ToolCallBody text={body.text} className="max-h-[50vh]" />
-      {body.readFile ? <ReadFileView file={body.readFile} className="max-h-80" /> : null}
-      {body.loading ? (
-        <p className="text-3xs italic text-muted-foreground">{body.loading}</p>
-      ) : null}
-      <p className="font-mono text-3xs text-muted-foreground">{props.meta}</p>
-    </div>
+    <ToolCallDetails
+      workEntry={workEntry}
+      previewText={workEntryDisplayLabel(workEntry, source.workspaceRoot ?? undefined)}
+      workspaceRoot={source.workspaceRoot ?? undefined}
+      markdownCwd={source.workspaceRoot ?? undefined}
+      activeThreadEnvironmentId={source.environmentId}
+      timestampFormat={props.timestampFormat}
+      onOpenThread={openThread}
+      onOpenTurnDiff={(runId, filePath) => {
+        const ref = scopeThreadRef(source.environmentId, source.threadId);
+        useDiffPanelStore.getState().selectTurn(ref, runId, filePath);
+        useRightPanelStore.getState().open(ref, "diff");
+        openThread(source.threadId);
+      }}
+      icon={<Icon aria-hidden className="mt-px size-3.5 shrink-0 text-icon-muted" />}
+      preview={props.preview}
+    />
   );
 }
 
@@ -205,7 +152,6 @@ const ToolCallRow = memo(function ToolCallRow(props: {
   }, [focusToken]);
   const Icon = TOOL_KIND_ICONS[call.kind];
   const failed = call.status === "failed";
-  const meta = toolCallMeta(call, props.timestampFormat);
   const toggle = () => (onActivate ? onActivate(call) : setExpanded(!expanded));
   const line = (
     <div
@@ -267,17 +213,32 @@ const ToolCallRow = memo(function ToolCallRow(props: {
           <PreviewCardPopup side="left" align="start" className="w-md max-w-[calc(100vw-2rem)]">
             <div
               onClick={(event) => {
-                if (!onActivate) return;
+                // Preview disclosures and links must not activate the enclosing agent row.
                 event.stopPropagation();
-                onActivate(call);
               }}
             >
-              <ToolCallHoverContent call={call} meta={meta} source={props.source} />
+              <AgentToolCallDetails
+                call={call}
+                source={props.source}
+                timestampFormat={props.timestampFormat}
+                preview
+              />
             </div>
           </PreviewCardPopup>
         </PreviewCard>
       )}
-      {expanded ? <ExpandedToolCall call={call} meta={meta} source={props.source} /> : null}
+      {expanded ? (
+        <div className="ms-6.5 mt-1 cursor-default rounded-md bg-muted/40 px-3 py-2">
+          <AgentToolCallDetails
+            call={call}
+            source={props.source}
+            timestampFormat={props.timestampFormat}
+          />
+          <p className="mt-1.5 font-mono text-3xs text-muted-foreground">
+            {toolCallMeta(call, props.timestampFormat)}
+          </p>
+        </div>
+      ) : null}
     </li>
   );
 });

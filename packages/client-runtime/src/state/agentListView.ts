@@ -199,6 +199,8 @@ export function applyAgentListView<Item>(
 export type SubagentToolKind = "command" | "read" | "edit" | "search" | "web" | "other";
 
 export interface SubagentToolCall {
+  /** The original bounded timeline item, retained by reference for the shared tool renderer. */
+  readonly item: OrchestrationV2TurnItem;
   /** The title before workspace display formatting, for inspecting and copying its paths. */
   readonly rawTitle?: string;
   /** The child thread's turn item. */
@@ -266,7 +268,7 @@ function dynamicToolKind(
 
 type RawToolCall = Omit<
   SubagentToolCall,
-  "id" | "status" | "startedAt" | "completedAt" | "detailRevision"
+  "item" | "id" | "status" | "startedAt" | "completedAt" | "detailRevision"
 >;
 
 /** A tool item's call as recorded, with paths and commands still absolute. */
@@ -488,6 +490,7 @@ function toolCallFromItem(
   siblingCheckout: string | null,
 ): SubagentToolCall {
   return {
+    item,
     ...formatToolCall(raw, workspaceRoot, siblingCheckout),
     ...(raw.kind === "command" ? {} : { rawTitle: raw.title }),
     id: item.id,

@@ -1,7 +1,7 @@
 /**
  * Fork: an agent's compact transcript in the sidebar (see `agentTranscript.ts`). Rows use the
- * chat's work-log geometry; an expanded tool call or thought shows the chat's `V2ItemInspector`,
- * which fetches withheld output and edit diffs while open. The list is virtualized and follows the
+ * chat's work-log geometry and shared tool details, including hover previews. Withheld output
+ * and edit diffs are fetched only while their details are open. The list is virtualized and follows the
  * newest activity only while it is scrolled to the end.
  */
 import {
@@ -48,6 +48,8 @@ import ChatMarkdown from "../ChatMarkdown";
 import { TOOL_KIND_ICONS } from "./agentToolKinds";
 import { agentTranscriptToolRowIndex, type AgentTranscriptRow } from "./agentTranscript";
 import { V2ItemInspector } from "./V2ItemInspector";
+import { ToolCallDetails } from "./ToolCallDetail";
+import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
 import { WorkLogDetails, WorkLogRow } from "./WorkLog";
 
 interface AgentTranscriptContextValue {
@@ -134,7 +136,18 @@ function ToolRow({ row }: { row: Extract<AgentTranscriptRow, { kind: "tool" }> }
   const projectedItem = row.entry.projectedItem;
   const toggle = () => context.toggle(row.id);
   const failed = row.status === "failed";
-  return (
+  const details = (preview: boolean) => (
+    <ToolCallDetails
+      {...context}
+      workEntry={row.entry}
+      previewText={row.label}
+      markdownCwd={context.workspaceRoot}
+      activeThreadEnvironmentId={context.environmentId}
+      icon={rowIcon(TOOL_KIND_ICONS[row.toolKind])}
+      preview={preview}
+    />
+  );
+  const line = (
     <WorkLogRow
       aria-label={failed ? `${row.label}, failed` : row.label}
       {...(projectedItem
@@ -169,8 +182,21 @@ function ToolRow({ row }: { row: Extract<AgentTranscriptRow, { kind: "tool" }> }
         </span>
       }
     >
-      {expanded && projectedItem ? <Inspector projectedItem={projectedItem} /> : null}
+      {expanded && projectedItem ? (
+        <WorkLogDetails kind="panel">{details(false)}</WorkLogDetails>
+      ) : null}
     </WorkLogRow>
+  );
+  if (!projectedItem) return line;
+  return (
+    <PreviewCard>
+      <PreviewCardTrigger render={line} delay={300} closeDelay={150} />
+      {!expanded ? (
+        <PreviewCardPopup side="left" align="start" className="w-md max-w-[calc(100vw-2rem)]">
+          {details(true)}
+        </PreviewCardPopup>
+      ) : null}
+    </PreviewCard>
   );
 }
 

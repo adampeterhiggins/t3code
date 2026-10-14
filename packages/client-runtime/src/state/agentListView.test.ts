@@ -192,6 +192,7 @@ describe("subagentToolCallFacets", () => {
     status: SubagentToolCall["status"],
     detail: string,
   ): SubagentToolCall => ({
+    item: item({ id, type: "command_execution", ordinal: 0, input: detail, status }),
     id: TurnItemId.make(id),
     title: "Tool",
     detail,
@@ -486,6 +487,7 @@ describe("chat context", () => {
 
   it("carries the task, outcome and latest tool calls into a continuation", () => {
     const call = (id: string, status: SubagentToolCall["status"]): SubagentToolCall => ({
+      item: item({ id, type: "command_execution", ordinal: 0, input: `run ${id}`, status }),
       id: TurnItemId.make(id),
       title: "Command",
       detail: `run ${id}`,

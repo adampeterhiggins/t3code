@@ -7,17 +7,10 @@ import type {
   NotionPageContextRecord,
   PromptLinkContextRecord,
 } from "@t3tools/contracts";
-import { ToolCallBody } from "../ToolCallBody";
 import { ToolPathText } from "./ToolPathText";
 import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
 import { useCursorAnchor } from "./CursorPreviewCard";
-import {
-  toolCallPreviewHeading,
-  toolCallPreviewReadContent,
-  toolCallPreviewRepeatsFilePath,
-  toolCallPreviewStatus,
-  workEntryHasToolCallPreview,
-} from "../../lib/toolCallPreview";
+import { workEntryHasToolCallPreview } from "../../lib/toolCallPreview";
 import {
   ComputerUseAppIcon,
   GitHubIcon,
@@ -75,15 +68,8 @@ import {
   resolveViewedImageAsset,
   workEntryViewedImagePath,
 } from "@t3tools/client-runtime/work-log/presentation";
-import {
-  formatCommandForWorkspace,
-  formatToolTextForWorkspace,
-} from "@t3tools/client-runtime/work-log/command-display";
 import { resolveWorkGroupScrollAnchor } from "@t3tools/client-runtime/work-log/scroll-anchor";
-import {
-  turnItemHasDetail,
-  turnItemNeedsDetailFetch,
-} from "@t3tools/client-runtime/work-log/item-detail";
+import { turnItemHasDetail } from "@t3tools/client-runtime/work-log/item-detail";
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
 import {
   subagentGroupSummary,
@@ -98,7 +84,7 @@ import { resolveChatListAnchoredEndSpace } from "@t3tools/shared/chatList";
 import { toolActivityBrandMark, toolActivityFaviconUrl } from "@t3tools/shared/favicon";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
 import { getProjectFaviconCacheKey } from "@t3tools/shared/projectFavicon";
-import { claudeSkillInvocation, isJavaScriptReplTool } from "@t3tools/shared/toolActivity";
+import { isJavaScriptReplTool } from "@t3tools/shared/toolActivity";
 import { observeVisibleAnimation } from "../../lib/visibleAnimation";
 import {
   createContext,
@@ -263,8 +249,6 @@ import {
   threadReadTargetTitle,
   toolGroupAction,
   workEntryDisplayLabel,
-  workEntryReadOutput,
-  workEntryReadRawPaths,
   workEntryIsVisibleInGroup,
   worktreeSetupAgentStarted,
   type StableMessagesTimelineRowsState,
@@ -339,11 +323,15 @@ import { type TimestampFormat } from "@t3tools/contracts/settings";
 import {
   formatChatTimestampTooltip,
   formatDayAwareTimestamp,
-  formatSecondsTimestamp,
   formatUpcomingTimestamp,
 } from "../../timestampFormat";
-import { FetchedToolOutput, V2ItemInspector } from "./V2ItemInspector";
-import { CommandToolPreview } from "./CommandToolPreview";
+import { V2ItemInspector } from "./V2ItemInspector";
+import {
+  ToolCallDetails,
+  workEntryRawCommand,
+  buildToolCallExpandedBody,
+  toolCallDetailOutput,
+} from "./ToolCallDetail";
 import { useV2ItemSupport } from "../../state/v2ItemSupport";
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "../ui/collapsible";
 import {
@@ -5704,243 +5692,6 @@ function workToneIcon(tone: TimelineWorkEntry["tone"]): {
   };
 }
 
-function workEntryRawCommand(
-  workEntry: Pick<TimelineWorkEntry, "command" | "rawCommand">,
-): string | null {
-  const rawCommand = workEntry.rawCommand?.trim();
-  if (!rawCommand || !workEntry.command) {
-    return null;
-  }
-  return rawCommand === workEntry.command.trim() ? null : rawCommand;
-}
-
-function buildToolCallExpandedBody(
-  workEntry: TimelineWorkEntry,
-  workspaceRoot: string | undefined,
-  visibleLabel: string,
-  viewedImagePath: string | null,
-): string | null {
-  const blocks: string[] = [];
-  const seen = new Set<string>([visibleLabel.trim()]);
-  const addBlock = (value: string | null | undefined) => {
-    const text = value?.trim();
-    if (!text || seen.has(text)) return;
-    seen.add(text);
-    blocks.push(text);
-  };
-  if (workEntry.itemType === "dynamic_tool" && workEntry.toolData !== undefined) {
-    const input =
-      workEntry.structuredPayload?.type === "dynamic_tool"
-        ? workEntry.structuredPayload.input
-        : workEntry.toolData !== null &&
-            typeof workEntry.toolData === "object" &&
-            "input" in workEntry.toolData
-          ? workEntry.toolData.input
-          : undefined;
-    if (input !== undefined) addBlock(`Tool input\n${JSON.stringify(input, null, 2)}`);
-  }
-  const command = workEntry.command?.trim();
-  const raw = workEntryRawCommand(workEntry);
-  if (command && formatCommandForWorkspace(command, workspaceRoot) === visibleLabel.trim()) {
-    seen.add(command);
-  } else {
-    const shownCommand = raw ?? command;
-    addBlock(shownCommand && formatCommandForWorkspace(shownCommand, workspaceRoot));
-  }
-  const detail = workEntry.detail?.trim();
-  if (detail !== viewedImagePath?.trim()) {
-    // A command's detail is its output, shown as written.
-    addBlock(
-      detail && !command ? formatToolTextForWorkspace(workEntry, detail, workspaceRoot) : detail,
-    );
-  }
-  const viewedImagePaths = new Set(
-    viewedImagePath
-      ? [viewedImagePath.trim(), formatWorkspaceRelativePath(viewedImagePath, workspaceRoot)]
-      : [],
-  );
-  const changedFiles = (workEntry.changedFiles ?? []).flatMap((filePath) => {
-    const formattedPath = formatWorkspaceRelativePath(filePath, workspaceRoot);
-    return viewedImagePaths.has(filePath) ||
-      viewedImagePaths.has(formattedPath) ||
-      filePath.trim() === detail ||
-      formattedPath === detail
-      ? []
-      : [formattedPath];
-  });
-  if (changedFiles.length > 0) {
-    addBlock([...new Set(changedFiles)].join("\n"));
-  }
-  return blocks.length > 0 ? blocks.join("\n\n") : null;
-}
-
-const toolCallExpandedBodyClassName =
-  "max-h-64 cursor-text overflow-auto whitespace-pre-wrap break-words font-mono text-secondary-label text-(length:--font-size-code,var(--text-2xs)) leading-relaxed select-text";
-
-type WorkEntryDetailProps = {
-  workEntry: TimelineWorkEntry;
-  workspaceRoot: string | undefined;
-  /** Reads and skills show this text instead of the item inspector. */
-  plainOutput: string | null | undefined;
-  /** The plain output still has output the timeline withheld. */
-  plainOutputFetches: boolean;
-};
-
-/** An open tool row's details: the item inspector for projected items, otherwise plain text. */
-function WorkEntryDetailBody(
-  props: WorkEntryDetailProps & {
-    textBody: string | null;
-    hideCommand?: boolean;
-    hideExitCode?: boolean;
-    highlightSyntax?: boolean;
-  },
-) {
-  const ctx = use(TimelineRowCtx);
-  const { workEntry } = props;
-  if (workEntry.projectedItem && props.plainOutput === undefined) {
-    return (
-      <V2ItemInspector
-        projectedItem={workEntry.projectedItem}
-        environmentId={ctx.activeThreadEnvironmentId}
-        cwd={ctx.markdownCwd}
-        workspaceRoot={props.workspaceRoot}
-        hideCommand={props.hideCommand}
-        hideExitCode={props.hideExitCode}
-        highlightSyntax={props.highlightSyntax}
-        onOpenThread={ctx.onOpenThread}
-        onOpenTurnDiff={ctx.onOpenTurnDiff}
-        onRollbackCheckpoint={ctx.onRollbackCheckpoint}
-        onImageExpand={ctx.onImageExpand}
-      />
-    );
-  }
-  return (
-    <>
-      {props.textBody ? (
-        toolGroupAction(workEntry) === "read" ? (
-          <div className={toolCallExpandedBodyClassName}>
-            <ToolPathText
-              targets={toolPathTargets(workEntry)}
-              text={props.textBody}
-              environmentId={ctx.activeThreadEnvironmentId}
-              workspaceRoot={props.workspaceRoot}
-            />
-          </div>
-        ) : (
-          <ToolCallBody className={toolCallExpandedBodyClassName} text={props.textBody} />
-        )
-      ) : null}
-      {props.plainOutputFetches && workEntry.projectedItem ? (
-        <FetchedToolOutput
-          projectedItem={workEntry.projectedItem}
-          environmentId={ctx.activeThreadEnvironmentId}
-          onImageExpand={ctx.onImageExpand}
-        />
-      ) : null}
-    </>
-  );
-}
-
-/**
- * A collapsed tool row's hover card: the tool's heading, the command or full
- * label, then the same details the row expands to. Mounts only while open, so
- * rows never build (or fetch) preview details on render.
- */
-function ToolCallPreviewContent(
-  props: WorkEntryDetailProps & { previewText: string; icon: ReactNode },
-) {
-  const { timestampFormat, activeThreadEnvironmentId } = use(TimelineRowCtx);
-  const { workEntry, workspaceRoot, plainOutput } = props;
-  const heading = toolCallPreviewHeading(workEntry, workspaceRoot, props.previewText);
-  const fileChange = workEntry.structuredPayload;
-  const fileName = fileChange?.type === "file_change" ? fileChange.fileName : null;
-  const rawTextBody =
-    plainOutput !== undefined
-      ? plainOutput
-      : workEntry.projectedItem
-        ? null
-        : buildToolCallExpandedBody(
-            workEntry,
-            workspaceRoot,
-            heading.command ?? props.previewText,
-            null,
-          );
-  // A read's title, row label, and body are three spellings of one path.
-  const readPreview =
-    toolGroupAction(workEntry) === "read"
-      ? toolCallPreviewReadContent({
-          title: heading.title,
-          text: heading.text,
-          body: rawTextBody,
-          paths: workEntryReadRawPaths(workEntry),
-          workspaceRoot,
-        })
-      : null;
-  const headingText = readPreview
-    ? readPreview.text
-    : toolCallPreviewRepeatsFilePath(heading.text, fileName, workspaceRoot)
-      ? null
-      : heading.text;
-  const textBody = readPreview ? readPreview.body : rawTextBody;
-  if (heading.command) {
-    const item = workEntry.projectedItem?.item;
-    return (
-      <CommandToolPreview
-        heading={
-          <>
-            {props.icon}
-            <span className="min-w-0 break-all">{heading.title}</span>
-          </>
-        }
-        command={heading.command}
-        status={toolCallPreviewStatus(workEntry)}
-        timestamp={formatSecondsTimestamp(workEntry.createdAt, timestampFormat)}
-        exitCode={item?.type === "command_execution" ? item.exitCode : undefined}
-      >
-        <WorkEntryDetailBody {...props} textBody={textBody} hideCommand hideExitCode />
-      </CommandToolPreview>
-    );
-  }
-  return (
-    <div className="flex max-h-[60vh] flex-col gap-1.5 overflow-auto p-3">
-      <div className="flex items-start gap-1.5 text-xs text-secondary-label">
-        {props.icon}
-        <span className="min-w-0 break-all">
-          <ToolPathText
-            targets={toolPathTargets(workEntry)}
-            text={heading.title}
-            environmentId={activeThreadEnvironmentId}
-            workspaceRoot={workspaceRoot}
-          />
-        </span>
-      </div>
-      {headingText ? (
-        <p className="text-xs break-words whitespace-pre-wrap text-foreground/85 select-text">
-          {toolEntryShowsPathBreadcrumbs(workEntry) ? (
-            <ToolPathText
-              targets={toolPathTargets(workEntry)}
-              text={headingText}
-              environmentId={activeThreadEnvironmentId}
-              workspaceRoot={workspaceRoot}
-            />
-          ) : (
-            headingText
-          )}
-        </p>
-      ) : null}
-      <WorkEntryDetailBody {...props} textBody={textBody} hideCommand highlightSyntax />
-      <p className="font-mono text-3xs text-muted-foreground select-text">
-        {[
-          formatSecondsTimestamp(workEntry.createdAt, timestampFormat),
-          toolCallPreviewStatus(workEntry),
-        ]
-          .filter(Boolean)
-          .join(" · ")}
-      </p>
-    </div>
-  );
-}
-
 function workEntryIconName(workEntry: TimelineWorkEntry): WorkEntryIconName {
   if (workEntry.structuredPayload?.type === "notification") {
     if (workEntry.structuredPayload.outcome === "failed") return "circle-alert";
@@ -6201,19 +5952,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
       ? getQuestionAnswerPreview(workEntry.questionAnswer)
       : null;
   const viewedImagePath = workEntryViewedImagePath(workEntry);
-  const payload = workEntry.structuredPayload;
-  const skill =
-    payload?.type === "dynamic_tool"
-      ? claudeSkillInvocation(payload.toolName, payload.input)
-      : undefined;
-  // Reads and skills expand to plain text instead of the item inspector. A
-  // skill's heading already names it, so only its arguments are left to show.
-  const plainOutput =
-    toolGroupAction(workEntry) === "read"
-      ? workEntryReadOutput(workEntry, workspaceRoot)
-      : skill
-        ? (skill.args ?? null)
-        : undefined;
+  const { plainOutput, plainOutputFetches } = toolCallDetailOutput(workEntry, workspaceRoot);
   const viewedImage =
     viewedImagePath && threadRef
       ? resolveViewedImageAsset(viewedImagePath, {
@@ -6245,10 +5984,6 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
   // Projected rows expand to the item inspector, so only offer a disclosure
   // when it has something to show, even if that output still has to load.
   // Reads and skills still fetch the output the timeline withheld.
-  const plainOutputFetches =
-    plainOutput !== undefined &&
-    workEntry.projectedItem !== undefined &&
-    turnItemNeedsDetailFetch(workEntry.projectedItem.item);
   const canExpandProjectedItem =
     plainOutput !== undefined
       ? Boolean(plainOutput || viewedImage || workEntry.questionAnswer || plainOutputFetches)
@@ -6457,13 +6192,13 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
         plainOutputFetches ||
         (workEntry.projectedItem && plainOutput === undefined)) ? (
         <WorkLogDetails kind="panel">
-          <WorkEntryDetailBody
+          <ToolCallDetails
+            {...ctx}
             workEntry={workEntry}
             workspaceRoot={workspaceRoot}
-            plainOutput={plainOutput}
-            plainOutputFetches={plainOutputFetches}
             textBody={expandedBody}
-            highlightSyntax={workEntry.itemType === "command_execution"}
+            previewText={previewText}
+            icon={null}
           />
         </WorkLogDetails>
       ) : null}
@@ -6487,12 +6222,12 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
         {...previewAnchor.triggerProps}
       />
       <PreviewCardPopup {...previewAnchor.popupProps} className="w-md max-w-[calc(100vw-2rem)]">
-        <ToolCallPreviewContent
+        <ToolCallDetails
+          preview
+          {...ctx}
           workEntry={workEntry}
           workspaceRoot={workspaceRoot}
           previewText={previewText}
-          plainOutput={plainOutput}
-          plainOutputFetches={plainOutputFetches}
           icon={
             <span className={cn(iconWrapperClass, "mt-px size-3.5 shrink-0")}>
               <ToolActivityIconView

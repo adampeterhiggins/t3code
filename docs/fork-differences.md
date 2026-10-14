@@ -367,8 +367,10 @@ provider reports it in (`turnItemReadFile`, [`ReadFileView.tsx`](../apps/web/src
 the agent views fetch a read's stored output when its call is hovered or expanded. In the agent views a tool's preview also
 carries what it reported back, such as an `Error:` line, when its output came with the timeline;
 v2 command items record no working directory, so none is shown. On web and desktop, collapsed tool calls in
-the main chat also preview on hover; clicking still expands them inline. The card shows the tool
-heading and the workspace-relative command or full label. Command hover cards show plain command
+the main chat, agent transcript, Tools tab, and fleet previews share the same tool detail renderer
+([`ToolCallDetail.tsx`](../apps/web/src/components/chat/ToolCallDetail.tsx)); hovering previews a call
+and clicking its row expands it or opens the agent. The card shows the tool
+heading and the workspace-relative command or full label. Command hover cards show syntax-highlighted command
 text and status, with output behind **View output**; opening that disclosure loads the output.
 The exit code and time stay visible beside the disclosure, including failed exits. Other tool
 cards show the same details the row expands to, with time and status in a compact footer.

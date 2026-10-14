@@ -428,7 +428,7 @@ export function providerErrorPresentation(
   };
 }
 
-function projectedWorkEntry(row: OrchestrationV2ProjectedTurnItem): WorkLogEntry {
+export function projectedWorkEntry(row: OrchestrationV2ProjectedTurnItem): WorkLogEntry {
   const { item } = row;
   const title = item.title?.trim() || null;
   const common = {
