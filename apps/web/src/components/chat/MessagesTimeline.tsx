@@ -4834,6 +4834,7 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
               lineStart={record.lineStart}
               lineEnd={record.lineEnd}
               text={record.text}
+              styledText={record.styledText}
               detailsMode={definition.capabilities.details}
             />
           </span>

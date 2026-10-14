@@ -13,6 +13,8 @@ const MAX_SCROLLBACK_ROWS = 10_000;
 // wasm32 C ABI layout for GhosttyTerminalSelectionFormatOptions at the
 // libghostty-vt revision pinned alongside this module.
 const SELECTION_FORMAT_OPTIONS_SIZE = 16;
+/** `GhosttyFormatterFormat` values for the selection format options' `emit` field. */
+const SELECTION_FORMAT = { plain: 0, vt: 1 } as const;
 const PALETTE_BYTES = 256 * 3;
 
 const RENDER_DATA = {
@@ -890,11 +892,20 @@ export class GhosttyTerminalCore {
   }
 
   selectionText(): string {
+    return this.formatSelection(SELECTION_FORMAT.plain);
+  }
+
+  /** The selection as text with SGR sequences, keeping its colors and styles. */
+  selectionStyledText(): string {
+    return this.formatSelection(SELECTION_FORMAT.vt);
+  }
+
+  private formatSelection(emit: number): string {
     this.ensureActive();
     const options = this.runtime.alloc(SELECTION_FORMAT_OPTIONS_SIZE);
     const optionsView = this.runtime.view(options, SELECTION_FORMAT_OPTIONS_SIZE);
     optionsView.setUint32(0, SELECTION_FORMAT_OPTIONS_SIZE, true);
-    optionsView.setUint32(4, 0, true);
+    optionsView.setUint32(4, emit, true);
     optionsView.setUint8(8, 1);
     optionsView.setUint8(9, 1);
     optionsView.setUint32(12, 0, true);

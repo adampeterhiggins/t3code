@@ -1008,6 +1008,11 @@ export class GhosttyTerminalSurface {
     return this.core.selectionText();
   }
 
+  /** The selection with its SGR colors and styles, for display. */
+  getStyledSelection(): string {
+    return this.core.selectionStyledText();
+  }
+
   /** Select the active screen's entire history, including rows outside the viewport. */
   selectAll(): void {
     this.clearPrimedCopy();

@@ -48,7 +48,10 @@ import { PanelTabCloseButton } from "~/components/ui/panel-tab-close-button";
 import { stackedThreadToast, toastManager } from "~/components/ui/toast";
 import { readTextFromClipboard, writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { cn } from "~/lib/utils";
-import { type TerminalContextSelection } from "~/lib/terminalContext";
+import {
+  keepTerminalContextStyledText,
+  type TerminalContextSelection,
+} from "~/lib/terminalContext";
 import {
   observeSelectionActions,
   resolveSelectionActionPosition,
@@ -759,7 +762,11 @@ export function TerminalViewport({
       };
 
       const addSelectionToChat = (selection: TerminalContextSelection) => {
-        handleAddTerminalContext(selection);
+        // Read here rather than with the selection: only an added excerpt needs its colors.
+        const styledText = keepTerminalContextStyledText(terminalRef.current?.getStyledSelection());
+        handleAddTerminalContext(
+          styledText === undefined ? selection : { ...selection, styledText },
+        );
         terminalRef.current?.clearSelection();
         terminalRef.current?.focus();
       };

@@ -1310,6 +1310,20 @@ Code: `AttachmentPreviewCard` in `apps/web/src/components/contextChipParts.tsx` 
 `apps/web/src/components/composerContextPresentation.tsx` and
 `apps/web/src/components/chat/MessagesTimeline.tsx`.
 
+## Terminal excerpts keep their colors
+
+Adding a terminal selection to chat saves its colors and styles alongside the plain text. Hovering
+the chip, in the composer or a sent message, shows the excerpt the way the terminal drew it: the
+terminal font settings, the terminal theme's background and palette, wrapped lines, and Nerd Font
+prompt glyphs such as powerline separators. Agents still receive only the plain text, and excerpts
+added before this change show plain text. Mobile has no hover preview.
+
+Code: `styledText` on `TerminalContextRecord` in
+[composerContext.ts](../packages/contracts/src/composerContext.ts), captured in
+[ThreadTerminalDrawer.tsx](../apps/web/src/components/ThreadTerminalDrawer.tsx), parsed by
+[terminalStyledText.ts](../apps/web/src/lib/terminalStyledText.ts) and shown by
+[TerminalContextInlineChip.tsx](../apps/web/src/components/chat/TerminalContextInlineChip.tsx).
+
 ## Citations keep their formatting
 
 Citing assistant text saves the selection as Markdown alongside its plain text, so lists, code
