@@ -13,7 +13,11 @@ import { environmentThreadDetails } from "../../state/threads";
 import { MiddleTruncate } from "../ui/middle-truncate";
 import * as DateTime from "effect/DateTime";
 import { WorkLogRow } from "./WorkLog";
-import { resolveHandoffEndpoints, type HandoffTimelineRun } from "@t3tools/client-runtime/handoff";
+import {
+  resolveHandoffEndpoints,
+  type HandoffEndpoints,
+  type HandoffTimelineRun,
+} from "@t3tools/client-runtime/handoff";
 import { Fragment } from "react";
 import { formatSubagentDisplayTitle } from "@t3tools/client-runtime/state/subagent-display";
 import {
@@ -772,6 +776,49 @@ function ForkLifecycleRow(props: {
       icon={GitForkIcon}
       actionLabel={props.item.source.type === "run" ? "Open source conversation" : "Open fork"}
       onAction={() => props.onOpenThread(relatedThreadId)}
+    />
+  );
+}
+
+export function HandoffRow(props: {
+  readonly endpoints: HandoffEndpoints;
+  readonly providers: ReadonlyArray<ServerProvider>;
+  readonly pending?: boolean;
+  readonly failed?: boolean;
+}) {
+  const { from: fromEndpoints, to } = props.endpoints;
+  return (
+    <TimelineSystemDivider
+      label={props.pending ? "Context handoff pending" : "Context handoff"}
+      icon={ArrowRightLeftIcon}
+      showDetailSeparator={false}
+      tone={props.failed ? "danger" : "neutral"}
+      detail={
+        <span className="inline-flex min-w-0 flex-wrap items-center justify-center gap-1.5">
+          {fromEndpoints.map((endpoint, index) => (
+            <Fragment key={`${endpoint.instanceId}:${endpoint.model ?? ""}`}>
+              {index > 0 ? (
+                <span aria-hidden="true" className="-ml-1">
+                  ,
+                </span>
+              ) : null}
+              <HandoffEndpoint
+                providers={props.providers}
+                instanceId={endpoint.instanceId}
+                model={endpoint.model}
+              />
+            </Fragment>
+          ))}
+          {fromEndpoints.length > 0 ? (
+            <ArrowRightIcon aria-hidden="true" className="size-3 shrink-0" />
+          ) : null}
+          <HandoffEndpoint
+            providers={props.providers}
+            instanceId={to.instanceId}
+            model={to.model}
+          />
+        </span>
+      }
     />
   );
 }

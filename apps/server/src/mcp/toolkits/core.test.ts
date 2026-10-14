@@ -35,6 +35,8 @@ import {
 import * as ServerSecretStore from "../../auth/ServerSecretStore.ts";
 import * as ServerConfig from "../../config.ts";
 import * as ProviderAdapterRegistry from "../../orchestration-v2/ProviderAdapterRegistry.ts";
+import * as ThreadLaunchService from "../../orchestration-v2/ThreadLaunchService.ts";
+import * as GitVcsDriver from "../../vcs/GitVcsDriver.ts";
 import * as ThreadManagement from "../../orchestration-v2/ThreadManagementService.ts";
 import * as ThreadSearch from "../../orchestration-v2/ThreadSearch.ts";
 import * as PreviewBrowser from "../../preview/PreviewBrowser.ts";
@@ -42,7 +44,6 @@ import * as ProjectService from "../../project/ProjectService.ts";
 import * as ProviderRegistry from "../../provider/ProviderRegistry.ts";
 import * as SecretRequests from "../../secrets/SecretRequests.ts";
 import * as ScheduledTaskService from "../../scheduledTasks/ScheduledTaskService.ts";
-import * as ThreadLaunchService from "../../orchestration-v2/ThreadLaunchService.ts";
 import * as ThreadTabs from "../../threadTabs/ThreadTabs.ts";
 import * as McpContextLinks from "../McpContextLinks.ts";
 import * as ServerSettings from "../../serverSettings.ts";
@@ -61,6 +62,11 @@ import * as AttachmentHandlers from "./attachment/handlers.ts";
 import { ThreadToolkit } from "./thread/tools.ts";
 import { WorktreeToolkit } from "./worktree/tools.ts";
 import { DeviceToolkit } from "./device/tools.ts";
+
+const layerOrchestratorToolkit = McpHttpServer.layerOrchestratorToolkit.pipe(
+  Layer.provide(Layer.mock(ThreadLaunchService.ThreadLaunchService)({})),
+  Layer.provide(Layer.mock(GitVcsDriver.GitVcsDriver)({})),
+);
 
 // Effect returns a declared tool failure as `isError` with its encoded payload
 // as JSON text, never as `structuredContent`.
@@ -583,13 +589,15 @@ it.effect("refuses act-as-caller tools to a client caller", () =>
     expect(declaredFailure(result)).toMatchObject({ code: "thread_credential_required" });
   }).pipe(
     Effect.provide(
-      McpHttpServer.layerOrchestratorToolkit.pipe(
+      layerOrchestratorToolkit.pipe(
         Layer.provideMerge(McpServer.McpServer.layer),
         Layer.provide(Layer.mock(McpContextLinks.McpContextLinks)({})),
         Layer.provide(NodeCrypto.layer),
         Layer.provide(Layer.mock(ThreadManagement.ThreadManagementService)({})),
         Layer.provide(ServerSettings.layerTest()),
-        Layer.provide(Layer.mock(ProviderRegistry.ProviderRegistry)({})),
+        Layer.provide(
+          Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
+        ),
         Layer.provide(Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({})),
         Layer.provide(Layer.mock(ScheduledTaskService.ScheduledTaskService)({})),
         Layer.provide(Layer.mock(ThreadLaunchService.ThreadLaunchService)({})),
@@ -624,13 +632,15 @@ it.effect("a caller cannot rewrite a scheduled task that runs above its own mode
     expect(allowed.isError).toBe(false);
   }).pipe(
     Effect.provide(
-      McpHttpServer.layerOrchestratorToolkit.pipe(
+      layerOrchestratorToolkit.pipe(
         Layer.provideMerge(McpServer.McpServer.layer),
         Layer.provide(Layer.mock(McpContextLinks.McpContextLinks)({})),
         Layer.provide(NodeCrypto.layer),
         Layer.provide(Layer.mock(ThreadManagement.ThreadManagementService)({})),
         Layer.provide(ServerSettings.layerTest()),
-        Layer.provide(Layer.mock(ProviderRegistry.ProviderRegistry)({})),
+        Layer.provide(
+          Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
+        ),
         Layer.provide(Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({})),
         Layer.provide(
           Layer.mock(ScheduledTaskService.ScheduledTaskService)({
@@ -701,7 +711,7 @@ it.effect.each(["t3_thread_interrupt", "t3_workflow_stop"])(
       expect(declaredFailure(result)).toMatchObject({ code: "runtime_mode_escalation_denied" });
     }).pipe(
       Effect.provide(
-        McpHttpServer.layerOrchestratorToolkit.pipe(
+        layerOrchestratorToolkit.pipe(
           Layer.provideMerge(McpServer.McpServer.layer),
           Layer.provide(Layer.mock(McpContextLinks.McpContextLinks)({})),
           Layer.provide(Layer.mock(ThreadLaunchService.ThreadLaunchService)({})),
@@ -731,7 +741,9 @@ it.effect.each(["t3_thread_interrupt", "t3_workflow_stop"])(
             }),
           ),
           Layer.provide(ServerSettings.layerTest()),
-          Layer.provide(Layer.mock(ProviderRegistry.ProviderRegistry)({})),
+          Layer.provide(
+            Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
+          ),
           Layer.provide(Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({})),
           Layer.provide(Layer.mock(ScheduledTaskService.ScheduledTaskService)({})),
           Layer.provide(Layer.mock(ProjectService.ProjectService)({})),
@@ -807,7 +819,7 @@ it.effect("discovers workflow stop targets and requires orchestration capability
     expect(stopped).toEqual([{ threadId: "workflow-parent", subagentId: "workflow-coordinator" }]);
   }).pipe(
     Effect.provide(
-      McpHttpServer.layerOrchestratorToolkit.pipe(
+      layerOrchestratorToolkit.pipe(
         Layer.provideMerge(McpServer.McpServer.layer),
         Layer.provide(Layer.mock(McpContextLinks.McpContextLinks)({})),
         Layer.provide(NodeCrypto.layer),
@@ -824,7 +836,9 @@ it.effect("discovers workflow stop targets and requires orchestration capability
           }),
         ),
         Layer.provide(ServerSettings.layerTest()),
-        Layer.provide(Layer.mock(ProviderRegistry.ProviderRegistry)({})),
+        Layer.provide(
+          Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
+        ),
         Layer.provide(Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({})),
         Layer.provide(Layer.mock(ScheduledTaskService.ScheduledTaskService)({})),
         Layer.provide(Layer.mock(ThreadLaunchService.ThreadLaunchService)({})),

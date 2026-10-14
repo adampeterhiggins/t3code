@@ -82,9 +82,9 @@ export const make = Effect.gen(function* () {
   });
 
   const commandId = (threadId: ThreadId) =>
-    crypto.randomUUIDv4.pipe(
-      Effect.map((uuid) => CommandId.make(`${MIRRORED_COMMAND_PREFIX}${threadId}:${uuid}`)),
-    );
+    crypto
+      .randomUUIDv4()
+      .pipe(Effect.map((uuid) => CommandId.make(`${MIRRORED_COMMAND_PREFIX}${threadId}:${uuid}`)));
 
   const run = Effect.fn("ThreadTabSidebarRowReactor.run")(
     function* (job: MirrorJob) {

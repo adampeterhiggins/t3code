@@ -1,3 +1,4 @@
+import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import {
@@ -164,7 +165,14 @@ const run = <A, E>(
     return yield* Effect.gen(function* () {
       const service = yield* OrchestratorMcpService.OrchestratorMcpService;
       return yield* body(service, dispatched);
-    }).pipe(Effect.provide(OrchestratorMcpService.layer.pipe(Layer.provide(dependencies))));
+    }).pipe(
+      Effect.provide(
+        OrchestratorMcpService.layer.pipe(
+          Layer.provide(Layer.mock(GitVcsDriver.GitVcsDriver)({})),
+          Layer.provide(dependencies),
+        ),
+      ),
+    );
   });
 
 it.effect("records the calling thread on the threads create_threads starts", () =>

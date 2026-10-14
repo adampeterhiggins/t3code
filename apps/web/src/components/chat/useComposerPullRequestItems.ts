@@ -1,5 +1,6 @@
 import {
   composerPullRequestRepositories,
+  composerPullRequestsFromLinks,
   filterComposerPullRequestMatches,
 } from "@t3tools/shared/composerPullRequestMatches";
 import type {
@@ -170,6 +171,7 @@ export function useComposerPullRequestItems(input: {
       const exactEntries = exact.entries.filter((entry) => entry.number === number);
       return filterComposerPullRequestMatches({
         entries: [...exactEntries, ...baseEntries],
+        linked: composerPullRequestsFromLinks(input.pullRequests, projectId),
         projectId,
         repository,
         repositories,
@@ -205,6 +207,7 @@ export function useComposerPullRequestItems(input: {
     repositories,
     freshSearch,
     input.active,
+    input.pullRequests,
     isNumberQuery,
     number,
     projectId,

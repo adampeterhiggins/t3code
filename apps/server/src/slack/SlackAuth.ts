@@ -455,7 +455,7 @@ export const make = Effect.gen(function* () {
     return {
       verifier,
       challenge,
-      flowId: yield* crypto.randomUUIDv4,
+      flowId: yield* crypto.randomUUIDv4(),
       state: Base64Url.encode(yield* crypto.randomBytes(16)),
     };
   }).pipe(Effect.mapError((cause) => loginError("Could not start Slack sign-in.", cause)));

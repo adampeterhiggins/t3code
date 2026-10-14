@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vite-plus/test";
 
+import { ProjectId, type ThreadPullRequestLink } from "@t3tools/contracts";
 import {
   composerPullRequestRepositories,
+  composerPullRequestsFromLinks,
   filterComposerPullRequestMatches,
 } from "./composerPullRequestMatches.ts";
 
 const entry = (number: number, updatedAt: string) => ({
   number,
   projectId: "p1",
+  host: "github.com",
   repository: "owner/repo",
   updatedAt,
 });
@@ -65,8 +68,8 @@ describe("thread repository numeric references", () => {
       }),
     ).toEqual([
       { projectId: "p1", repository: "owner/repo" },
-      { projectId: "p1", host: "github.com", repository: "other/repo" },
-      { projectId: "p1", host: "gitlab.com", repository: "group/nested/repo" },
+      { projectId: ProjectId.make("p1"), host: "github.com", repository: "other/repo" },
+      { projectId: ProjectId.make("p1"), host: "gitlab.com", repository: "group/nested/repo" },
     ]);
   });
 
@@ -88,8 +91,8 @@ describe("thread repository numeric references", () => {
       query: "6310",
       limit: 12,
       repositories: [
-        { projectId: "p1", host: "github.com", repository: "other/repo" },
-        { projectId: "p1", host: "github.example.com", repository: "other/repo" },
+        { projectId: ProjectId.make("p1"), host: "github.com", repository: "other/repo" },
+        { projectId: ProjectId.make("p1"), host: "github.example.com", repository: "other/repo" },
       ],
     });
     expect(matches).toEqual([linked, enterprise, primary]);
@@ -98,7 +101,8 @@ describe("thread repository numeric references", () => {
 
 it("matches detail responses whose host is carried only by their URL", () => {
   const detail = {
-    ...entry(6310, "2026-01-01"),
+    number: 6310,
+    updatedAt: "2026-01-01",
     projectId: "credential-checkout",
     repository: "linked/repo",
     url: "https://github.com/linked/repo/pull/6310",
@@ -108,9 +112,75 @@ it("matches detail responses whose host is carried only by their URL", () => {
       entries: [detail, { ...detail, host: "github.com" }],
       projectId: "p1",
       repository: "owner/repo",
-      repositories: [{ projectId: "p1", repository: "linked/repo", host: "github.com" }],
+      repositories: [
+        { projectId: ProjectId.make("p1"), repository: "linked/repo", host: "github.com" },
+      ],
       query: "6310",
       limit: 12,
     }),
   ).toEqual([detail]);
+});
+describe("linked pull requests", () => {
+  const link = (
+    repository: string,
+    number: number,
+    overrides: Partial<ThreadPullRequestLink> = {},
+  ): ThreadPullRequestLink => ({
+    host: "github.com",
+    repository,
+    number,
+    url: `https://github.com/${repository}/pull/${number}`,
+    source: "agent",
+    linkedAt: "2026-01-01T00:00:00.000Z",
+    snapshot: {
+      state: "open",
+      title: `${repository} ${number}`,
+      headBranch: "feature",
+      baseBranch: "main",
+      isDraft: false,
+      updatedAt: "2026-01-02T00:00:00.000Z",
+      syncedAt: "2026-01-02T00:00:00.000Z",
+    },
+    stack: null,
+    ...overrides,
+  });
+
+  it("offers a linked pull request from another repository above the project's own", () => {
+    const result = filterComposerPullRequestMatches({
+      entries: [entry(4, "2026-01-03"), { ...entry(4, "2026-01-04"), repository: "owner/other" }],
+      linked: composerPullRequestsFromLinks([link("owner/repo-b", 4)], ProjectId.make("p1")),
+      projectId: "p1",
+      repository: "owner/repo",
+      query: "4",
+      limit: 10,
+    });
+    expect(result.map((match) => `${match.repository}#${match.number}`)).toEqual([
+      "owner/repo-b#4",
+      "owner/repo#4",
+    ]);
+  });
+
+  it("keeps one row for a linked pull request the project listing already has", () => {
+    const result = filterComposerPullRequestMatches({
+      entries: [entry(4, "2026-01-03")],
+      linked: composerPullRequestsFromLinks([link("Owner/Repo", 4)], ProjectId.make("p1")),
+      projectId: "p1",
+      repository: "owner/repo",
+      query: "",
+      limit: 10,
+    });
+    expect(result).toEqual([entry(4, "2026-01-03")]);
+  });
+
+  it("skips links that are not synced yet or were dismissed", () => {
+    expect(
+      composerPullRequestsFromLinks(
+        [
+          link("owner/repo-b", 4, { snapshot: null }),
+          link("owner/repo-b", 5, { source: "stack-dismissed" }),
+        ],
+        ProjectId.make("p1"),
+      ),
+    ).toEqual([]);
+  });
 });

@@ -290,9 +290,9 @@ export const make = Effect.gen(function* () {
     if (device._tag === "Rejected")
       return yield* loginError(`Granola refused to start sign-in (${device.error}).`);
     const flow: ActiveFlow = {
-      flowId: yield* crypto.randomUUIDv4.pipe(
-        Effect.mapError(() => loginError("Could not start Granola sign-in.")),
-      ),
+      flowId: yield* crypto
+        .randomUUIDv4()
+        .pipe(Effect.mapError(() => loginError("Could not start Granola sign-in."))),
       previous,
     };
     yield* Ref.set(activeFlow, flow);

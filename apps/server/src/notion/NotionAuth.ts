@@ -426,7 +426,7 @@ export const make = Effect.gen(function* () {
 
   const makeFlowIdentity = Effect.gen(function* () {
     return {
-      flowId: yield* crypto.randomUUIDv4,
+      flowId: yield* crypto.randomUUIDv4(),
       state: Base64Url.encode(yield* crypto.randomBytes(16)),
     };
   }).pipe(Effect.mapError((cause) => loginError("Could not start Notion sign-in.", cause)));

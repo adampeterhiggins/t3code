@@ -1447,9 +1447,9 @@ Code: [`McpContextLinks.ts`](../apps/server/src/mcp/McpContextLinks.ts), the lin
 
 ## Delegated subagents in their own worktree
 
-Upstream's `delegate_task` always runs the child in the calling thread's checkout; only
-`t3_thread_launch` can choose a worktree, and it makes an ordinary top-level thread. The fork adds
-an optional `workspaceStrategy` to `delegate_task` with `t3_thread_launch`'s `worktree` (from
+Upstream's `delegate_task` supports `isolation: "worktree"` to give a child a checkout based on the
+parent's local commit. The fork also supports an optional `workspaceStrategy` to choose
+`t3_thread_launch`'s `worktree` (from
 `baseRef`, optional `branch` and `startFromOrigin`) and `existing_worktree` shapes; there is no
 `root` option, and omitting it still shares the caller's checkout. The child stays the caller's
 subagent (Lineage, the Agents panel, completion delivery, spawn limits, and usage are unchanged),
@@ -1462,7 +1462,7 @@ summary carries the reason, and a worktree the child never recorded is removed. 
 
 Code: `delegateTask` in [`OrchestratorMcpService.ts`](../apps/server/src/mcp/OrchestratorMcpService.ts),
 `dispatchDelegatedTaskRequest` in [`Orchestrator.ts`](../apps/server/src/orchestration-v2/Orchestrator.ts),
-`prepareDeferredRun` in [`ThreadLaunchService.ts`](../apps/server/src/orchestration-v2/ThreadLaunchService.ts),
+`prepareRun` in [`ThreadLaunchService.ts`](../apps/server/src/orchestration-v2/ThreadLaunchService.ts),
 and `OrchestrationV2DelegatedTaskWorkspaceStrategy` in
 [`orchestrationV2.ts`](../packages/contracts/src/orchestrationV2.ts). User guide:
 [agent-access.md](./user/agent-access.md#let-agents-start-threads).
