@@ -6822,11 +6822,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         insertComposerText(plainText, "cursor");
         return;
       }
-      convertPastedObjectLinks(
-        plainText,
-        bypassAutoAttachment,
-        readComposerSnapshot().expandedCursor,
-      );
+      // This capture handler runs before the editor inserts the paste, and a link that resolves
+      // without a fetch (a repository) would look for itself in the prompt too early. Wait a task.
+      const pasteStart = readComposerSnapshot().expandedCursor;
+      setTimeout(() => convertPastedObjectLinks(plainText, bypassAutoAttachment, pasteStart), 0);
       return;
     }
 
