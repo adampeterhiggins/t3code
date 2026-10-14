@@ -1495,12 +1495,15 @@ so T3 neither started commands there nor tracked that checkout's diffs. In the f
 also moves a thread that is already in a worktree, and moves it into an existing worktree when
 `branch` is checked out there and `path` names that checkout. Nothing is created or set up for an
 existing worktree unless `runSetupScript` asks, a failed move never removes it, and the worktree
-the thread leaves stays on disk. The agent instructions point at the handoff instead of
-`git worktree add` or `cd`.
+the thread leaves stays on disk. A run the move interrupts leaves a **Workspace changed** divider
+in the timeline naming the checkout it continues in. The agent instructions point at the handoff
+instead of `git worktree add` or `cd`.
 
 Code: `performHandoff` in [`WorktreeMcpService.ts`](../apps/server/src/mcp/WorktreeMcpService.ts),
 the tool in [`toolkits/worktree/tools.ts`](../apps/server/src/mcp/toolkits/worktree/tools.ts), and
 [`orchestrationInstructions.ts`](../packages/provider-core/src/server/orchestrationInstructions.ts).
+The divider is matched by
+[`workspaceChangeNotice.ts`](../packages/shared/src/workspaceChangeNotice.ts).
 
 ## Hide a thread
 
