@@ -8,6 +8,7 @@ import {
   ThreadHandoffRow,
   ThreadHandoffDivider,
   ThreadModelChangeRow,
+  ThreadWorkspaceChangeRow,
 } from "./thread-handoff-row";
 import { SecretRequestCard } from "./SecretRequestCard";
 import { AppActivityIndicator } from "../../components/AppActivityIndicator";
@@ -181,6 +182,7 @@ import {
   isContextCompactionActivityGroup,
   isContextHandoffActivityGroup,
   isForkActivityGroup,
+  isWorkspaceChangeActivityGroup,
   isModelChangeActivityGroup,
   isSecretRequestActivityGroup,
   type ThreadFeedEntry,
@@ -1133,6 +1135,15 @@ function renderFeedEntry(
     return (
       <ThreadModelChangeRow
         environmentId={props.environmentId}
+        projectedItem={entry.activities[0]!.projectedItem}
+        iconColor={iconSubtleColor}
+      />
+    );
+  }
+
+  if (entry.type === "activity-group" && isWorkspaceChangeActivityGroup(entry)) {
+    return (
+      <ThreadWorkspaceChangeRow
         projectedItem={entry.activities[0]!.projectedItem}
         iconColor={iconSubtleColor}
       />
@@ -2504,7 +2515,8 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
             isContextCompactionActivityGroup(entry) ||
             isContextHandoffActivityGroup(entry) ||
             isModelChangeActivityGroup(entry) ||
-            isForkActivityGroup(entry)
+            isForkActivityGroup(entry) ||
+            isWorkspaceChangeActivityGroup(entry)
           ) {
             return undefined;
           }

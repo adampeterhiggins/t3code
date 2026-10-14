@@ -178,6 +178,12 @@ import {
   ZapIcon,
   RotateCcwIcon,
 } from "lucide-react";
+import {
+  isWorkspaceChangeNotice,
+  WORKSPACE_CHANGED_NOTICE_TITLE,
+} from "@t3tools/shared/workspaceChangeNotice";
+import { MiddleTruncate } from "../ui/middle-truncate";
+import { isAbsolutePath } from "@t3tools/shared/path";
 import { ChevronDown, ChevronRight, Link as LinkIconNode } from "lucide";
 import type {
   ComposerContextId,
@@ -2164,6 +2170,21 @@ type TimelineWorkEntry = Extract<MessagesTimelineRow, { kind: "work" }>["grouped
 type TimelineRow = MessagesTimelineRow;
 
 const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: TimelineRow }) {
+  const workspaceChangeNotice =
+    row.kind === "work" && row.groupedEntries.length === 1
+      ? row.groupedEntries[0]!.structuredPayload
+      : undefined;
+  if (workspaceChangeNotice && isWorkspaceChangeNotice(workspaceChangeNotice)) {
+    return (
+      <div data-timeline-row-id={row.id} data-timeline-row-kind={row.kind}>
+        <TimelineSystemDivider
+          label={WORKSPACE_CHANGED_NOTICE_TITLE}
+          icon={FolderGit2Icon}
+          detail={<WorkspaceChangeNoticeDetail notice={workspaceChangeNotice} />}
+        />
+      </div>
+    );
+  }
   const isExpandedToolGroup = row.kind === "work" && row.isExpandedToolGroup;
   const isSubagentGroup = row.kind === "event" && row.projectedItem.item.type === "subagent";
   const isWorkLogRow =
@@ -2247,6 +2268,29 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
     </div>
   );
 });
+
+const CONTINUING_IN_PREFIX = "Continuing in ";
+
+/** The worktree a moved thread continues in, as the same file chip agent messages use. */
+function WorkspaceChangeNoticeDetail(props: {
+  notice: Extract<OrchestrationV2TurnItem, { type: "system_notice" }>;
+}) {
+  const ctx = use(TimelineRowCtx);
+  const { message } = props.notice;
+  const path = message.startsWith(CONTINUING_IN_PREFIX)
+    ? message.slice(CONTINUING_IN_PREFIX.length)
+    : "";
+  // Moving back to the project checkout names no path.
+  if (!isAbsolutePath(path)) return <MiddleTruncate value={message} />;
+  return (
+    <ChatMarkdown
+      text={`${CONTINUING_IN_PREFIX}[${path}](<${path}>)`}
+      cwd={ctx.markdownCwd}
+      threadRef={ctx.threadRef ?? undefined}
+      className="w-auto text-2xs text-current"
+    />
+  );
+}
 
 function WorktreeSetupTimelineRow({
   row,
