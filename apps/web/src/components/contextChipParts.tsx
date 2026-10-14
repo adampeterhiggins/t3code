@@ -354,7 +354,7 @@ export function TextAttachmentExcerpt(props: { file: Blob }) {
   const text = excerpt?.file === props.file ? excerpt.text : null;
   if (text === null) return null;
   return (
-    <pre className="max-h-48 overflow-hidden rounded-t-lg border-b border-border/70 bg-muted/40 px-3 py-2 font-mono text-3xs leading-relaxed whitespace-pre-wrap break-all text-muted-foreground">
+    <pre className="max-h-48 overflow-hidden rounded-t-lg border-b border-border/70 bg-muted/40 px-3 py-2 font-mono text-3xs leading-relaxed whitespace-pre text-muted-foreground">
       {text}
     </pre>
   );
