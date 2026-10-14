@@ -33,6 +33,35 @@ describe("parseComposerObjectLink", () => {
     });
   });
 
+  it("reads a T3 Code prompt link as the prompt it opens with", () => {
+    const url =
+      "https://app.t3.codes/new?prompt=what+happened+here%3F+%0A%0Ahttps%3A%2F%2Fgithub.com%2Facme%2Fapi%2Factions%2Fruns%2F1&repo=acme/api";
+    expect(parseComposerObjectLink(url)).toEqual({
+      kind: "prompt-link",
+      url,
+      prompt: "what happened here? \n\nhttps://github.com/acme/api/actions/runs/1",
+      target: "acme/api",
+    });
+    expect(
+      parseComposerObjectLink("https://app.t3.codes/new?pr=acme/api/7&prompt=review"),
+    ).toMatchObject({ kind: "prompt-link", prompt: "review", target: "acme/api#7" });
+    expect(
+      parseComposerObjectLink("https://app.t3.codes/env-1/thread-1?prompt=continue"),
+    ).toMatchObject({ kind: "prompt-link", prompt: "continue", target: null });
+    // Links that would not open stay links: no prompt, or only hidden characters.
+    expect(parseComposerObjectLink("https://app.t3.codes/new")).toBeNull();
+    expect(parseComposerObjectLink("https://app.t3.codes/new?prompt=%E2%80%8B")).toBeNull();
+    expect(parseComposerObjectLink("https://app.t3.codes/env-1/thread-1")).toBeNull();
+  });
+
+  it("finds a pasted prompt link without swallowing the sentence around it", () => {
+    const url = "https://app.t3.codes/new?prompt=fix+it";
+    expect(findComposerObjectLinks(`see ${url}.`)).toEqual([
+      { link: { kind: "prompt-link", url, prompt: "fix it", target: null }, index: 4 },
+    ]);
+    expect(objectLinkLabel(url)).toBeNull();
+  });
+
   it("reads a Slack message permalink, with its thread when it is a reply", () => {
     expect(
       parseComposerObjectLink("https://acme.slack.com/archives/C04ABCD12/p1727779620000100"),

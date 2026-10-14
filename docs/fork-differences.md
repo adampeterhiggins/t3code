@@ -1226,7 +1226,10 @@ makes. A pull request link to one comment (`#issuecomment-…`, `#discussion_r�
 chip for that comment instead, anchored to its line with the earlier replies when it is in a review
 thread; a comment the read did not return falls back to the pull request chip. A link to lines of
 one file (`#diff-<hash>L4-L14`) becomes a chip for those lines of the diff, and stays a link when
-the diff does not show them. The text goes in as
+the diff does not show them. A T3 Code prompt link (`https://app.t3.codes/new?prompt=…`, or a
+thread link carrying `?prompt=`) becomes a chip labelled with the start of its prompt; hovering it
+shows the decoded prompt, and the agent receives the link with the prompt and any repository or pull
+request it names. The text goes in as
 usual, then each link becomes a chip once its object loads. A link that
 cannot be read, or that was edited away meanwhile, stays as text. Paste-as-text (`Cmd+Shift+V`)
 skips it, and typing never retries a link the draft already converted or tried, so undo and a

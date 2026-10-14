@@ -293,6 +293,12 @@ function formatComposerContextProviderPayload(record: KnownComposerContextRecord
       ].join("\n");
     case "subagent":
       return formatSubagentPayload(record);
+    case "prompt-link": {
+      const lines = [`t3 code prompt link: ${record.url}`];
+      if (record.target !== null) lines.push(`opens: ${record.target}`);
+      if (record.prompt !== null) lines.push("prompt:", indent(record.prompt));
+      return lines.join("\n");
+    }
   }
 }
 

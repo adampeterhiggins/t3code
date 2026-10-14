@@ -6,6 +6,7 @@ import { resolveStorage } from "./lib/storage";
 import type {
   NotionPageContextRecord,
   GranolaNoteContextRecord,
+  PromptLinkContextRecord,
   GitHubIssueContextRecord,
   LinearIssueContextRecord,
   SlackThreadContextRecord,
@@ -15,7 +16,7 @@ import type {
 
 /**
  * An attached snapshot fetched from another service (a Linear or GitHub issue, a Slack thread, a
- * Notion page, a Granola note) or, in the fork, a referenced subagent.
+ * Notion page, a Granola note) or, in the fork, a referenced subagent or a T3 Code prompt link.
  */
 export type IssueContextRecord =
   | LinearIssueContextRecord
@@ -23,7 +24,8 @@ export type IssueContextRecord =
   | SlackThreadContextRecord
   | NotionPageContextRecord
   | GranolaNoteContextRecord
-  | SubagentContextRecord;
+  | SubagentContextRecord
+  | PromptLinkContextRecord;
 
 const EMPTY: ReadonlyArray<IssueContextRecord> = [];
 

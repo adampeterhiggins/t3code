@@ -8,6 +8,7 @@ import type {
   LinearIssueContextRecord,
   NotionPageContext,
   NotionPageContextRecord,
+  PromptLinkContextRecord,
   RepositoryContextRecord,
   SlackThreadContext,
   SlackThreadContextRecord,
@@ -132,5 +133,42 @@ export function repositoryContextRecord(input: {
     nameWithOwner,
     remoteUrl: input.remoteUrl,
     directoryName: directoryName || "repo",
+  };
+}
+
+// FNV-1a, so the same link pasted twice in one message shares one payload.
+function urlDigest(url: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < url.length; index++) {
+    hash ^= url.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
+
+/** The chip record for a T3 Code prompt link, labelled with the start of its prompt. */
+export function promptLinkContextRecord(link: {
+  readonly url: string;
+  readonly prompt: string | null;
+  readonly target: string | null;
+}): PromptLinkContextRecord {
+  const firstLine = link.prompt
+    ?.split("\n")
+    .find((line) => line.trim().length > 0)
+    ?.trim();
+  const label =
+    firstLine === undefined
+      ? `T3 Code prompt${link.target === null ? "" : ` for ${link.target}`}`
+      : firstLine.length > 60
+        ? `${firstLine.slice(0, 59).trimEnd()}…`
+        : firstLine;
+  return {
+    version: 1,
+    kind: "prompt-link",
+    contextId: `prompt-link_${urlDigest(link.url)}` as ComposerContextId,
+    label: sanitizeComposerContextLabel(label, "prompt-link"),
+    url: link.url,
+    prompt: link.prompt,
+    target: link.target?.slice(0, 2048) ?? null,
   };
 }

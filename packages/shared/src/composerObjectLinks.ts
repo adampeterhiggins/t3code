@@ -1,9 +1,11 @@
 import { parseGranolaNoteId, parseNotionPageId, parseGitHubIssueUrl } from "@t3tools/contracts";
 import { parseChangeRequestUrl } from "./changeRequestUrl.ts";
+import { parseNewThreadLink, parseThreadLinkPrompt, promptLinkAppPath } from "./promptLinks.ts";
 
 /**
  * A link in composer text to something the composer can attach as a chip instead: a Linear
- * issue, a GitHub issue, a pull request, a GitHub repository root, a Slack message, a Notion page, or a Granola note.
+ * issue, a GitHub issue, a pull request, a GitHub repository root, a Slack message, a Notion page,
+ * a Granola note, or a T3 Code prompt link.
  */
 export type ComposerObjectLink =
   | { readonly kind: "notion-page"; readonly url: string; readonly pageId: string }
@@ -21,6 +23,14 @@ export type ComposerObjectLink =
     }
   | { readonly kind: "github-issue"; readonly url: string }
   | { readonly kind: "pull-request"; readonly url: string }
+  | {
+      readonly kind: "prompt-link";
+      readonly url: string;
+      /** The prompt the link opens with, hidden characters removed. */
+      readonly prompt: string | null;
+      /** `owner/name`, or `owner/name#123` when the link opens a pull request. */
+      readonly target: string | null;
+    }
   | {
       readonly kind: "repository";
       readonly url: string;
@@ -60,6 +70,45 @@ function parseSlackMessageLink(url: string, parsed: URL, segments: ReadonlyArray
   } as const;
 }
 
+// Matches the record's bound; a longer link stays a link.
+const PROMPT_LINK_MAX_URL_LENGTH = 32_000;
+
+/**
+ * A T3 Code prompt link on the hosted app: `/new?prompt=…` (optionally with a repository or pull
+ * request) or a thread link carrying `?prompt=`. Null when the link would not open, such as one
+ * whose prompt is only hidden characters.
+ */
+function parsePromptLink(url: string) {
+  if (url.length > PROMPT_LINK_MAX_URL_LENGTH) return null;
+  const appPath = promptLinkAppPath(url);
+  if (appPath === null) return null;
+  const search = new URL(url).search;
+  if (appPath.startsWith("/new")) {
+    const parsed = parseNewThreadLink(search);
+    if (!parsed.ok) return null;
+    const link = parsed.value;
+    if (link.kind === "pull-request") {
+      const { owner, name, number } = link.pullRequest;
+      return {
+        kind: "prompt-link",
+        url,
+        prompt: link.prompt?.text ?? null,
+        target: `${owner}/${name}#${number}`,
+      } as const;
+    }
+    return {
+      kind: "prompt-link",
+      url,
+      prompt: link.prompt.text,
+      target: link.repository ? `${link.repository.owner}/${link.repository.name}` : null,
+    } as const;
+  }
+  const prompt = parseThreadLinkPrompt(search);
+  return prompt.ok && prompt.value !== null
+    ? ({ kind: "prompt-link", url, prompt: prompt.value.text, target: null } as const)
+    : null;
+}
+
 function isGitHubHost(hostname: string): boolean {
   const host = hostname.toLowerCase();
   return (
@@ -76,6 +125,8 @@ export function parseComposerObjectLink(url: string): ComposerObjectLink | null 
     return null;
   }
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+  const promptLink = parsePromptLink(url);
+  if (promptLink !== null) return promptLink;
   const notionPageId = parseNotionPageId(url);
   if (notionPageId !== null) return { kind: "notion-page", url, pageId: notionPageId };
   const granolaNoteId = parseGranolaNoteId(url);
@@ -119,8 +170,9 @@ function commentAnchor(hash: string): string {
  * The short name a bare link reads as once it is recognised: `owner/repo#7` for a pull request
  * or issue (`owner/repo#7 L4-L14` for lines of one of its files, `owner/repo#7issuecomment-1` for
  * one remark on it), `ENG-123` for a Linear issue,
- * `owner/repo` for a repository. Null for ordinary links, and for Slack messages: an attached one
- * is already a chip, so a bare one was not attached and should not read as if it were.
+ * `owner/repo` for a repository. Null for ordinary links, and for Slack messages and prompt links:
+ * an attached one is already a chip, so a bare one was not attached and should not read as if it
+ * were.
  */
 export function objectLinkLabel(url: string): string | null {
   const link = parseComposerObjectLink(url);
@@ -134,6 +186,7 @@ export function objectLinkLabel(url: string): string | null {
     case "linear-issue":
       return link.identifier;
     case "slack-message":
+    case "prompt-link":
       return null;
     case "repository":
       return link.nameWithOwner;

@@ -19,6 +19,7 @@ import {
   granolaNoteContextRecord,
   linearIssueContextRecord,
   notionPageContextRecord,
+  promptLinkContextRecord,
   repositoryContextRecord,
   slackThreadContextRecord,
 } from "@t3tools/shared/integrationContextRecords";
@@ -156,6 +157,8 @@ export const make = Effect.gen(function* () {
         });
       case "repository":
         return Effect.succeed(repositoryContextRecord(link));
+      case "prompt-link":
+        return Effect.succeed(promptLinkContextRecord(link));
       case "pull-request":
         return Effect.fail(
           invalid(
@@ -174,7 +177,7 @@ export const make = Effect.gen(function* () {
         return link === null
           ? Effect.fail(
               invalid(
-                `${url} is not a link T3 Code can attach. Use a Slack message, Notion page, Granola note, Linear issue, GitHub issue, or GitHub repository link.`,
+                `${url} is not a link T3 Code can attach. Use a Slack message, Notion page, Granola note, Linear issue, GitHub issue, GitHub repository, or T3 Code prompt link.`,
               ),
             )
           : Effect.succeed(link);

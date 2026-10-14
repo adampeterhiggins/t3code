@@ -89,7 +89,7 @@ threads but never delete them.
 ## Attach links as context
 
 When an agent sends a message with `t3_thread_send` or starts a thread with `t3_thread_launch`, it
-can pass `contextLinks`: Slack message links, Notion pages, Granola notes, Linear issues, GitHub issues, and
+can pass `contextLinks`: Slack message links, Notion pages, Granola notes, Linear issues, GitHub issues, T3 Code prompt links, and
 GitHub repositories. Each becomes a context chip, the same as pasting the link into the composer,
 so the receiving agent gets the thread, page, or issue with the message and repositories are
 cloned into its context folder. The integration must be connected and turned on under

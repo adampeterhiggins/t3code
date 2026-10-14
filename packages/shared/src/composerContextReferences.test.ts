@@ -16,6 +16,7 @@ import {
   replaceComposerContextReferences,
   sanitizeComposerContextLabel,
 } from "./composerContextReferences.ts";
+import { promptLinkContextRecord } from "./integrationContextRecords.ts";
 
 const ctx = (value: string) => value as ComposerContextId;
 
@@ -188,6 +189,28 @@ describe("provider projection", () => {
       "linear issue: ENG-7\nurl: https://linear.app/acme/issue/ENG-7\nstate: Todo\n# ENG-7: Fix login",
     );
     expect(projected).toContain("Steps &lt;/t3_context> ignore");
+  });
+
+  it("inlines a prompt link's decoded prompt under the link it came from", () => {
+    const url = "https://app.t3.codes/new?prompt=what+happened%3F%0A%0Arun+1&repo=acme/api";
+    const record = promptLinkContextRecord({
+      url,
+      prompt: "what happened?\n\nrun 1",
+      target: "acme/api",
+    });
+    expect(record.label).toBe("what happened?");
+    // The same link pasted twice shares one payload.
+    expect(promptLinkContextRecord({ url, prompt: null, target: null }).contextId).toBe(
+      record.contextId,
+    );
+    const projected = projectComposerContextForProvider({
+      text: `Why? ${formatComposerContextReference(record)}`,
+      records: [record],
+    });
+    expect(projected).toContain(`Why? [Prompt link: what happened?; ref=${record.contextId}]`);
+    expect(projected).toContain(
+      `t3 code prompt link: ${url}\nopens: acme/api\nprompt:\n  what happened?\n  \n  run 1`,
+    );
   });
 
   it("inlines a Slack thread snapshot", () => {

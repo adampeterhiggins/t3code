@@ -331,7 +331,7 @@ tab you insert from most. A folder name that matches a local checkout opens Chec
 Items you inserted recently are listed first and match as you type, without waiting for a search.
 
 On web and desktop, pasting or typing a link to a Linear issue, a GitHub issue, a pull request, a
-GitHub repository, a Notion page, a Granola note, or a Slack message turns the link into the same chip attaching it would make. A typed link
+GitHub repository, a Notion page, a Granola note, or a Slack message turns the link into the same chip attaching it would make. A T3 Code prompt link becomes a chip named after its prompt; hover it to read the prompt without decoding the URL. A typed link
 converts when you type a space or new line after it. The chip replaces the link once the item
 loads. A link to one comment on a pull request attaches that comment, with the replies before it
 when it is part of a review thread. In the attach menu's pull request picker, right-click a pull

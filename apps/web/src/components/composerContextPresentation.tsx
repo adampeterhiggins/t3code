@@ -1,4 +1,8 @@
-import type { GranolaNoteContextRecord, NotionPageContextRecord } from "@t3tools/contracts";
+import type {
+  GranolaNoteContextRecord,
+  NotionPageContextRecord,
+  PromptLinkContextRecord,
+} from "@t3tools/contracts";
 import ChatMarkdown from "./ChatMarkdown";
 import { ReviewCommentCard } from "./ReviewCommentCard";
 import type {
@@ -20,6 +24,7 @@ import {
   FolderGit2Icon,
   FolderIcon,
   MessageCircleIcon,
+  MessageSquareTextIcon,
   MessagesSquareIcon,
   MousePointerClickIcon,
 } from "lucide-react";
@@ -75,6 +80,7 @@ import {
   SlackThreadDetails,
   NotionPageDetails,
   GranolaNoteDetails,
+  PromptLinkDetails,
   PULL_REQUEST_CHIP_KINDS,
   PullRequestChip,
   ThreadTabSummaryDetails,
@@ -105,7 +111,8 @@ export type ComposerDraftContextRecord =
   | { kind: "image"; record: ComposerImageAttachment; upload?: AttachmentUploadState | undefined }
   | { kind: "file"; record: ComposerFileAttachment; upload?: AttachmentUploadState | undefined }
   | { kind: "thread"; record: ThreadContextRecord }
-  | { kind: "subagent"; record: SubagentContextRecord };
+  | { kind: "subagent"; record: SubagentContextRecord }
+  | { kind: "prompt-link"; record: PromptLinkContextRecord };
 
 /** What a chip can do beyond showing itself; the composer supplies the handlers. */
 export interface ComposerContextActions {
@@ -216,6 +223,8 @@ function issueDraftContextRecord(record: IssueContextRecord): ComposerDraftConte
       return { kind: "slack-thread", record };
     case "subagent":
       return { kind: "subagent", record };
+    case "prompt-link":
+      return { kind: "prompt-link", record };
   }
 }
 
@@ -686,9 +695,31 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
           <UnresolvedContextChip label={context.label} />
         ),
     },
+    {
+      kind: "prompt-link",
+      canRender: (entry) => entry.kind === "prompt-link",
+      render: (entry, context, definition) =>
+        entry.kind === "prompt-link" ? (
+          <ContextChip
+            icon={<MessageSquareTextIcon />}
+            label={entry.record.label}
+            kindLabel="T3 Code prompt link"
+            details={<ComposerPromptLinkDetails record={entry.record} />}
+            detailsMode={definition.capabilities.details}
+            kind="prompt-link"
+          />
+        ) : (
+          <UnresolvedContextChip label={context.label} />
+        ),
+    },
   ],
   fallback: (_kind, _entry, context) => <UnresolvedContextChip label={context.label} />,
 });
+
+function ComposerPromptLinkDetails({ record }: { record: PromptLinkContextRecord }) {
+  const actions = use(ComposerContextActionsContext);
+  return <PromptLinkDetails record={record} onOpenLink={actions.openLink} />;
+}
 
 function ComposerRepositoryDetails({ record }: { record: RepositoryContextRecord }) {
   const actions = use(ComposerContextActionsContext);
