@@ -1,7 +1,16 @@
+import * as Schema from "effect/Schema";
 import { TerminalIcon } from "lucide-react";
 
+import {
+  resolveTerminalFontPreference,
+  resolveTerminalFontSizePreference,
+  TYPOGRAPHY_ADVANCED_STORAGE_KEY,
+} from "../../appearanceFonts";
 import type { ContextPresentationCapability } from "../contextPresentationRegistry";
 import { ContextChipPopover, ContextChipShell } from "../contextChipParts";
+import { useClientSettings } from "../../hooks/useSettings";
+import { useLocalStorage } from "../../hooks/useLocalStorage";
+import { terminalFontFamily } from "~/terminal/ghostty/surface";
 
 interface TerminalContextInlineChipProps {
   label: string;
@@ -11,6 +20,42 @@ interface TerminalContextInlineChipProps {
   text: string;
   detailsMode: ContextPresentationCapability["details"];
   expired?: boolean;
+}
+
+/** Captured output, set in the user's terminal font so prompt glyphs render as they did there. */
+function TerminalExcerptText({ text }: { text: string }) {
+  const [advancedTypography] = useLocalStorage(
+    TYPOGRAPHY_ADVANCED_STORAGE_KEY,
+    false,
+    Schema.Boolean,
+  );
+  const family = useClientSettings((settings) =>
+    resolveTerminalFontPreference({
+      advanced: advancedTypography,
+      code: settings.fontFamilyCode,
+      terminal: settings.fontFamilyTerminal,
+    }),
+  );
+  const fontSize = useClientSettings((settings) =>
+    resolveTerminalFontSizePreference({
+      advanced: advancedTypography,
+      code: settings.fontSizeCode,
+      terminal: settings.fontSizeTerminal,
+    }),
+  );
+  // Stored as a percentage of the font size.
+  const lineHeight = useClientSettings((settings) => settings.terminalLineHeight / 100);
+
+  return (
+    <pre
+      className="max-h-80 overflow-y-auto whitespace-pre-wrap wrap-break-word bg-muted p-3 text-foreground outline-none [tab-size:4] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      style={{ fontFamily: terminalFontFamily(family), fontSize, lineHeight }}
+      aria-label="Captured terminal output"
+      tabIndex={0}
+    >
+      {text}
+    </pre>
+  );
 }
 
 export function TerminalContextInlineChip(props: TerminalContextInlineChipProps) {
@@ -34,13 +79,7 @@ export function TerminalContextInlineChip(props: TerminalContextInlineChipProps)
               {lineStart === lineEnd ? `Line ${lineStart}` : `Lines ${lineStart}–${lineEnd}`}
             </span>
           </div>
-          <pre
-            className="max-h-80 overflow-y-auto whitespace-pre-wrap wrap-break-word bg-muted p-3 font-mono text-foreground text-xs leading-relaxed outline-none [tab-size:4] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-            aria-label="Captured terminal output"
-            tabIndex={0}
-          >
-            {text}
-          </pre>
+          <TerminalExcerptText text={text} />
         </div>
       </ContextChipPopover>
     );

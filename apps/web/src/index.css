@@ -169,6 +169,18 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
 }
 
+/* The terminal's bundled prompt symbols (powerline separators, devicons). The
+   terminal surface registers this face itself for its canvas; this rule lets
+   DOM text set in the terminal font stack, such as captured terminal excerpts,
+   use it too. unicode-range keeps it to the private-use symbols, so it only
+   downloads when one is on screen. */
+@font-face {
+  font-family: "Symbols Nerd Font Mono";
+  src: url("./terminal/ghostty/fonts/SymbolsNerdFontMono-Regular.woff2") format("woff2");
+  unicode-range: U+E000-F8FF, U+F0000-FFFFD;
+  font-display: swap;
+}
+
 @theme inline {
   /* Two steps below Tailwind's text-xs (12px) for dense UI: metadata rows,
      badges, counters, keyboard hints and diagnostics tables. 2xs is 11px,
