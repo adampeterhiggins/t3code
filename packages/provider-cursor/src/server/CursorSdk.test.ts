@@ -37,7 +37,7 @@ writeFileSync(
 );
 registerHooks({
   resolve(specifier, context, next) {
-    if (specifier === "@cursor/sdk" && mode !== "sdk-model-requests") {
+    if ((specifier === "@cursor/sdk" && mode !== "sdk-model-requests") || specifier === "@cursor/sdk/sqlite") {
       return { url: pathToFileURL(stub).href, shortCircuit: true };
     }
     if (specifier === "@bufbuild/protobuf") {

@@ -524,9 +524,11 @@ export const makeCliProviderAuth = Effect.fn("makeCliProviderAuth")(function* (
                 `${options.providerLabel} has no sign-in method '${startOptions?.methodId}'.`,
               );
             }
-            const flowId = yield* crypto.randomUUIDv4.pipe(
-              Effect.mapError(() => setupError("start", "Could not start sign-in. Try again.")),
-            );
+            const flowId = yield* crypto
+              .randomUUIDv4()
+              .pipe(
+                Effect.mapError(() => setupError("start", "Could not start sign-in. Try again.")),
+              );
             const expiresAtMillis =
               (yield* Clock.currentTimeMillis) + Duration.toMillis(AUTH_TIMEOUT);
             const state: ProviderAuthState = {

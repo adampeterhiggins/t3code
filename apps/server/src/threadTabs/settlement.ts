@@ -147,7 +147,7 @@ export const make = Effect.gen(function* () {
   const unsettle = Effect.fn("ThreadTabSettlementReactor.unsettle")(function* (threadId: ThreadId) {
     yield* orchestrator.dispatch({
       type: "thread.unsettle",
-      commandId: CommandId.make(`server:tab-unsettle:${threadId}:${yield* crypto.randomUUIDv4}`),
+      commandId: CommandId.make(`server:tab-unsettle:${threadId}:${yield* crypto.randomUUIDv4()}`),
       threadId,
       reason: "user",
     });
@@ -156,7 +156,7 @@ export const make = Effect.gen(function* () {
   const settle = Effect.fn("ThreadTabSettlementReactor.settle")(function* (threadId: ThreadId) {
     yield* orchestrator.dispatch({
       type: "thread.settle",
-      commandId: CommandId.make(`server:tab-settle:${threadId}:${yield* crypto.randomUUIDv4}`),
+      commandId: CommandId.make(`server:tab-settle:${threadId}:${yield* crypto.randomUUIDv4()}`),
       threadId,
     });
   });
@@ -165,7 +165,7 @@ export const make = Effect.gen(function* () {
     yield* orchestrator.dispatch({
       type: "thread.unsnooze",
       commandId: CommandId.make(
-        `${MIRRORED_SNOOZE_COMMAND_PREFIX}${threadId}:${yield* crypto.randomUUIDv4}`,
+        `${MIRRORED_SNOOZE_COMMAND_PREFIX}${threadId}:${yield* crypto.randomUUIDv4()}`,
       ),
       threadId,
       reason: "user",
@@ -179,7 +179,7 @@ export const make = Effect.gen(function* () {
     yield* orchestrator.dispatch({
       type: "thread.snooze",
       commandId: CommandId.make(
-        `${MIRRORED_SNOOZE_COMMAND_PREFIX}${threadId}:${yield* crypto.randomUUIDv4}`,
+        `${MIRRORED_SNOOZE_COMMAND_PREFIX}${threadId}:${yield* crypto.randomUUIDv4()}`,
       ),
       threadId,
       snoozedUntil: DateTime.formatIso(until),

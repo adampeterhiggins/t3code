@@ -298,7 +298,7 @@ export const make = Effect.gen(function* () {
   );
 
   const newCommandId = (tag: string) =>
-    crypto.randomUUIDv4.pipe(
+    crypto.randomUUIDv4().pipe(
       Effect.map((uuid) => CommandId.make(`server:${tag}:${uuid}`)),
       Effect.mapError(internal("Could not allocate a command id.")),
     );

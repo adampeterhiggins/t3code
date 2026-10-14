@@ -1,7 +1,7 @@
 import { createComposerPullRequestLookupAtomFamily } from "@t3tools/client-runtime/state/pull-requests";
-import type { ThreadPullRequestLink } from "@t3tools/contracts";
 import {
   composerPullRequestRepositories,
+  composerPullRequestsFromLinks,
   filterComposerPullRequestMatches,
 } from "@t3tools/shared/composerPullRequestMatches";
 import { resolveFilesystemReadAccess } from "@t3tools/client-runtime/state/filesystem";
@@ -13,6 +13,7 @@ import type {
   OrchestrationV2ProjectedTurnItem,
   ProjectId,
   ThreadId,
+  ThreadPullRequestLink,
   VcsListRefsResult,
   VcsRef,
 } from "@t3tools/contracts";
@@ -93,6 +94,8 @@ export function useComposerPullRequestSearch(input: {
   environmentId: EnvironmentId | null;
   projectId: ProjectId | null;
   repository: string | null;
+  /** The thread's linked pull requests, offered in numeric searches from any repository. */
+  threadPullRequests?: ReadonlyArray<ThreadPullRequestLink> | undefined;
   query: string | null;
   pullRequests?: ReadonlyArray<ThreadPullRequestLink>;
   remoteUrls?: ReadonlyArray<string>;
@@ -158,6 +161,10 @@ export function useComposerPullRequestSearch(input: {
     if (numeric) {
       return filterComposerPullRequestMatches({
         entries: [...exactEntries, ...(base.data?.entries ?? [])],
+        linked: composerPullRequestsFromLinks(
+          input.threadPullRequests ?? input.pullRequests ?? [],
+          input.projectId!,
+        ),
         projectId: input.projectId!,
         repository: input.repository!,
         repositories,
@@ -190,6 +197,8 @@ export function useComposerPullRequestSearch(input: {
     input.projectId,
     input.query,
     input.repository,
+    input.threadPullRequests,
+    input.pullRequests,
     numeric,
     open,
     rawNumber,

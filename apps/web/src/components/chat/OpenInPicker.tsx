@@ -249,14 +249,19 @@ export const OpenInPicker = memo(function OpenInPicker({
             density={presentation === "menu" ? "touch" : "default"}
             disabled={!openInCwd || !canOpenEditor}
             key={value}
-            onClick={() => openInEditor(value)}
+            onClick={() => {
+              if (presentation === "menu" || pinnedEditor !== null) {
+                void openInEditor(value);
+              } else {
+                setPreferredEditor(value);
+              }
+            }}
           >
             <Icon aria-hidden="true" className={getOpenInIconClass(kind)} />
             <MenuItemLabel>
-              {label}
               {remote.mode !== "local-exec" && value.startsWith("custom:")
-                ? ` (on ${environmentLabel})`
-                : ""}
+                ? `${label} (on ${environmentLabel})`
+                : label}
             </MenuItemLabel>
             {value === preferredEditor && openFavoriteEditorShortcutLabel && (
               <MenuShortcut>{openFavoriteEditorShortcutLabel}</MenuShortcut>

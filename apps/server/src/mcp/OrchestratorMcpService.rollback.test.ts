@@ -1,3 +1,4 @@
+import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import {
@@ -105,6 +106,7 @@ const harness = (input: {
     const target = input.target ?? projection(targetId, { runs: [run(1, "completed")] });
     const byId = (threadId: ThreadId) => (threadId === callerId ? caller : target);
     const layer = OrchestratorMcpService.layer.pipe(
+      Layer.provide(Layer.mock(GitVcsDriver.GitVcsDriver)({})),
       Layer.provide(
         Layer.mergeAll(
           NodeServices.layer,
