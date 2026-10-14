@@ -1294,6 +1294,18 @@ paths.
 Code: `pastedFilePathsAsComposerFileLinks` in `packages/shared/src/composerTrigger.ts`, called from
 `apps/web/src/components/composerInlineTokenPaste.ts`.
 
+## Attachment chips preview on hover
+
+On web and desktop, hovering an image attachment chip in the composer or a sent message shows the
+image above its name and size. Hovering a text file's chip in the composer shows its first lines,
+read from the bytes the draft still holds. A file whose bytes the draft no longer holds, such as
+after a reload, and any file in a sent message keep the plain name-and-size tooltip, so hovering
+never fetches anything. Clicking a chip still opens the full preview. Mobile has no hover.
+
+Code: `AttachmentPreviewCard` in `apps/web/src/components/contextChipParts.tsx`, used by
+`apps/web/src/components/composerContextPresentation.tsx` and
+`apps/web/src/components/chat/MessagesTimeline.tsx`.
+
 ## Citations keep their formatting
 
 Citing assistant text saves the selection as Markdown alongside its plain text, so lists, code

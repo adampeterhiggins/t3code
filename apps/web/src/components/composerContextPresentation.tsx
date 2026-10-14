@@ -13,6 +13,7 @@ import type {
   ThreadTabContextRecord,
 } from "@t3tools/contracts";
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
+import { filePreviewKind } from "@t3tools/shared/filePreview";
 import { videoMimeType } from "@t3tools/shared/video";
 import {
   FolderGit2Icon,
@@ -62,8 +63,11 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import {
   ContextChipPopover,
   ContextChipShell,
+  AttachmentPreviewCard,
   FileChip,
+  ImageAttachmentPreview,
   ImageChipButton,
+  TextAttachmentExcerpt,
   CheckoutDetails,
   GitHubIssueDetails,
   LinearIssueDetails,
@@ -268,23 +272,32 @@ function ImageContextChip(props: {
   upload: AttachmentUploadState | undefined;
 }) {
   const actions = use(ComposerContextActionsContext);
+  const chip = (
+    <ImageChipButton
+      name={props.record.name}
+      previewUrl={props.record.previewUrl}
+      size={formatAttachmentSize(props.record.sizeBytes)}
+      suffix={uploadStatusSuffix(props.upload)}
+      onClick={() => actions.expandImage(props.record.id)}
+    />
+  );
+  const details = attachmentTooltip(props.record, props.upload);
+  if (!props.record.previewUrl) {
+    return (
+      <Tooltip>
+        <TooltipTrigger render={chip} />
+        <TooltipPopup side="top" className="whitespace-pre-wrap">
+          {details}
+        </TooltipPopup>
+      </Tooltip>
+    );
+  }
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <ImageChipButton
-            name={props.record.name}
-            previewUrl={props.record.previewUrl}
-            size={formatAttachmentSize(props.record.sizeBytes)}
-            suffix={uploadStatusSuffix(props.upload)}
-            onClick={() => actions.expandImage(props.record.id)}
-          />
-        }
-      />
-      <TooltipPopup side="top" className="whitespace-pre-wrap">
-        {attachmentTooltip(props.record, props.upload)}
-      </TooltipPopup>
-    </Tooltip>
+    <AttachmentPreviewCard
+      trigger={chip}
+      preview={<ImageAttachmentPreview url={props.record.previewUrl} />}
+      details={details}
+    />
   );
 }
 
@@ -298,6 +311,11 @@ function FileContextChip(props: {
   const suffix = needsReattach ? "attach again" : uploadStatusSuffix(props.upload);
   const size = formatAttachmentSize(props.record.sizeBytes);
   const isVideo = videoMimeType(props.record) !== null;
+  // Only bytes already in this client are excerpted; hovering never fetches an upload.
+  const excerptFile =
+    !needsReattach && props.record.file && filePreviewKind(props.record) === "text"
+      ? props.record.file
+      : null;
   return (
     <FileChip
       name={props.record.name}
@@ -314,6 +332,7 @@ function FileContextChip(props: {
               isVideo ? actions.expandVideo(props.record.id) : actions.openFile(props.record.id)
           : undefined
       }
+      preview={excerptFile ? <TextAttachmentExcerpt file={excerptFile} /> : undefined}
       tooltip={
         needsReattach
           ? `${props.record.name} was not saved with this draft. Attach it again to send it.`

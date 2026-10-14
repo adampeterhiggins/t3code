@@ -12,3 +12,18 @@ export function middleTruncateAttachmentName(name: string, maxCharacters = 36): 
   const suffix = suffixLength === 0 ? "" : characters.slice(-suffixLength).join("");
   return `${characters.slice(0, prefixLength).join("")}…${suffix}`;
 }
+
+/** Bytes read from a local text attachment for its chip's hover excerpt. */
+export const ATTACHMENT_EXCERPT_BYTES = 4096;
+const ATTACHMENT_EXCERPT_LINES = 12;
+
+/**
+ * The opening lines of a text attachment, for a chip's hover card. Null when the bytes look
+ * binary or hold nothing to show, so the card falls back to the name and size.
+ */
+export function attachmentTextExcerpt(text: string): string | null {
+  if (text.includes("\u0000")) return null;
+  const lines = text.replace(/\r\n?/g, "\n").split("\n").slice(0, ATTACHMENT_EXCERPT_LINES);
+  const excerpt = lines.join("\n").trimEnd();
+  return excerpt.trim() === "" ? null : excerpt;
+}
