@@ -4644,7 +4644,9 @@ export default function Sidebar() {
         ...(threadViews.pinned === "card" ? pinnedThreads : []),
         ...(threadViews.active === "card" ? activeThreads : []),
         ...(threadViews.working === "card" ? workingThreads : []),
-        ...(threadViews.grouped === "card" ? visibleGroups.flatMap((group) => group.threads) : []),
+        ...visibleGroups.flatMap((group) =>
+          (threadGroups[group.name]?.view ?? threadViews.grouped) === "card" ? group.threads : [],
+        ),
         ...(threadViews.hidden === "card" ? visibleHiddenThreads : []),
         ...(threadViews.snoozed === "card" ? visibleSnoozedThreads : []),
         ...(threadViews.settled === "card" ? renderedSettledThreads : []),
@@ -4674,6 +4676,7 @@ export default function Sidebar() {
     visibleHiddenThreads,
     visibleSnoozedThreads,
     renderedSettledThreads,
+    threadGroups,
     threadViews,
     expandedTabRowKey,
     heldTabOrder,
@@ -7303,7 +7306,10 @@ export default function Sidebar() {
                         const threadKey = scopedThreadKey(
                           scopeThreadRef(thread.environmentId, thread.id),
                         );
-                        const rowVariant = threadViews[section];
+                        const rowVariant =
+                          section === "grouped" && thread.groupName != null
+                            ? (threadGroups[thread.groupName]?.view ?? threadViews.grouped)
+                            : threadViews[section];
                         const isCard = rowVariant === "card";
                         const rowTabs = tabsByRowKey.get(threadKey);
                         const rowTabsOpen = listedTabsByRowKey.has(threadKey);

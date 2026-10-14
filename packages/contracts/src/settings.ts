@@ -1366,6 +1366,8 @@ export const ThreadGroup = Schema.Struct({
    * own page. Absent, the group takes its threads out of those lists.
    */
   showInThreads: Schema.optionalKey(Schema.Boolean),
+  /** Row style on the group's own page. Absent, the client's Grouped threads view applies. */
+  view: Schema.optionalKey(SidebarThreadView),
 });
 export type ThreadGroup = typeof ThreadGroup.Type;
 export const ThreadGroups = Schema.Record(Schema.String, ThreadGroup);
