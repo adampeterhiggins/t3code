@@ -20,35 +20,40 @@ import { OrchestrationEventStore } from "../persistence/OrchestrationEventStore.
 import { forkParked } from "../serverActivation.ts";
 
 /**
- * A tab group shows as one sidebar row, so the group hides as a unit. Upstream hides each
- * thread on its own; this reactor mirrors every hide and unhide across the group's live tabs.
- * Hiding the open tab otherwise leaves the row, which belongs to a different tab, in the list.
+ * A tab group shows as one sidebar row, so the group hides and moves between sidebar groups as
+ * a unit. Upstream keeps both per thread; this reactor mirrors every hide, unhide, and group move
+ * across the group's live tabs. The row belongs to one tab and the menu may be opened on another,
+ * so without the mirror the row stays put, or jumps back once its tab closes.
  */
-export class ThreadTabHidingReactor extends Context.Service<
-  ThreadTabHidingReactor,
+export class ThreadTabSidebarRowReactor extends Context.Service<
+  ThreadTabSidebarRowReactor,
   {
     readonly start: () => Effect.Effect<void, never, Scope.Scope>;
     readonly drain: Effect.Effect<void>;
   }
->()("t3/threadTabs/hiding/ThreadTabHidingReactor") {}
+>()("t3/threadTabs/sidebarRow/ThreadTabSidebarRowReactor") {}
 
-interface HideJob {
-  readonly threadId: ThreadId;
-  readonly hidden: boolean;
-}
+type MirrorJob =
+  | { readonly kind: "hidden"; readonly threadId: ThreadId; readonly hidden: boolean }
+  | { readonly kind: "group"; readonly threadId: ThreadId; readonly groupName: string | null };
 
-const MIRRORED_COMMAND_PREFIX = "server:tab-hidden:";
+const MIRRORED_COMMAND_PREFIX = "server:tab-row:";
 
 /**
  * The job an event asks for, if any. The payload is the thread after the command.
- * Mirrored commands are skipped: `thread.hidden.set` emits even when nothing changed, so
- * following our own events would hide the siblings again forever.
+ * Mirrored commands are skipped: both commands emit even when nothing changed, so following
+ * our own events would mirror back and forth forever.
  */
-function jobFor(stored: OrchestrationV2StoredEvent): HideJob | null {
+function jobFor(stored: OrchestrationV2StoredEvent): MirrorJob | null {
   if (stored.commandId?.startsWith(MIRRORED_COMMAND_PREFIX)) return null;
   const { event } = stored;
-  if (event.type !== "thread.hidden-set") return null;
-  return { threadId: event.threadId, hidden: event.payload.hiddenAt != null };
+  if (event.type === "thread.hidden-set") {
+    return { kind: "hidden", threadId: event.threadId, hidden: event.payload.hiddenAt != null };
+  }
+  if (event.type === "thread.group-set") {
+    return { kind: "group", threadId: event.threadId, groupName: event.payload.groupName ?? null };
+  }
+  return null;
 }
 
 /** @public Service construction is part of the canonical Effect module API. */
@@ -58,7 +63,7 @@ export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const crypto = yield* Crypto.Crypto;
 
-  const readSiblings = Effect.fn("ThreadTabHidingReactor.readSiblings")(function* (
+  const readSiblings = Effect.fn("ThreadTabSidebarRowReactor.readSiblings")(function* (
     threadId: ThreadId,
   ) {
     const rows = yield* sql<{ readonly threadId: string }>`
@@ -76,26 +81,36 @@ export const make = Effect.gen(function* () {
     );
   });
 
-  const setHidden = Effect.fn("ThreadTabHidingReactor.setHidden")(function* (
-    threadId: ThreadId,
-    hidden: boolean,
-  ) {
-    yield* orchestrator.dispatch({
-      type: "thread.hidden.set",
-      commandId: CommandId.make(
-        `${MIRRORED_COMMAND_PREFIX}${threadId}:${yield* crypto.randomUUIDv4}`,
-      ),
-      threadId,
-      hidden,
-    });
-  });
+  const commandId = (threadId: ThreadId) =>
+    crypto.randomUUIDv4.pipe(
+      Effect.map((uuid) => CommandId.make(`${MIRRORED_COMMAND_PREFIX}${threadId}:${uuid}`)),
+    );
 
-  const run = Effect.fn("ThreadTabHidingReactor.run")(
-    function* (job: HideJob) {
+  const run = Effect.fn("ThreadTabSidebarRowReactor.run")(
+    function* (job: MirrorJob) {
       const siblings = yield* readSiblings(job.threadId);
       yield* Effect.forEach(
-        siblings.filter((sibling) => (sibling.hiddenAt != null) !== job.hidden),
-        (sibling) => setHidden(sibling.id, job.hidden),
+        siblings,
+        (sibling) =>
+          Effect.gen(function* () {
+            if (job.kind === "hidden") {
+              if ((sibling.hiddenAt != null) === job.hidden) return;
+              yield* orchestrator.dispatch({
+                type: "thread.hidden.set",
+                commandId: yield* commandId(sibling.id),
+                threadId: sibling.id,
+                hidden: job.hidden,
+              });
+            } else {
+              if ((sibling.groupName ?? null) === job.groupName) return;
+              yield* orchestrator.dispatch({
+                type: "thread.group.set",
+                commandId: yield* commandId(sibling.id),
+                threadId: sibling.id,
+                groupName: job.groupName,
+              });
+            }
+          }),
         { discard: true },
       );
     },
@@ -104,9 +119,8 @@ export const make = Effect.gen(function* () {
         Effect.catchCauseIf(
           (cause) => !Cause.hasInterruptsOnly(cause),
           (cause) =>
-            Effect.logWarning("mirroring thread tab hiding failed", {
-              threadId: job.threadId,
-              hidden: job.hidden,
+            Effect.logWarning("mirroring thread tab sidebar row failed", {
+              ...job,
               cause: Cause.pretty(cause),
             }),
         ),
@@ -115,8 +129,8 @@ export const make = Effect.gen(function* () {
 
   const worker = yield* makeDrainableWorker(run);
 
-  const start: ThreadTabHidingReactor["Service"]["start"] = Effect.fn(
-    "ThreadTabHidingReactor.start",
+  const start: ThreadTabSidebarRowReactor["Service"]["start"] = Effect.fn(
+    "ThreadTabSidebarRowReactor.start",
   )(function* () {
     // Follows from the current end of the log. After a failure (such as falling too far
     // behind its bounded buffer) it resumes from the last event it saw.
@@ -131,14 +145,14 @@ export const make = Effect.gen(function* () {
       ),
     ).pipe(
       Effect.tapError((error) =>
-        Effect.logWarning("thread tab hiding event stream failed", { error }),
+        Effect.logWarning("thread tab sidebar row event stream failed", { error }),
       ),
       Effect.retry(Schedule.spaced("1 second")),
     );
     yield* forkParked(follow);
   });
 
-  return { start, drain: worker.drain } satisfies ThreadTabHidingReactor["Service"];
+  return { start, drain: worker.drain } satisfies ThreadTabSidebarRowReactor["Service"];
 });
 
-export const layer = Layer.effect(ThreadTabHidingReactor, make);
+export const layer = Layer.effect(ThreadTabSidebarRowReactor, make);

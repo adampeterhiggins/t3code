@@ -474,8 +474,9 @@ editable. Names are stored by the [ThreadTabs service](../apps/server/src/thread
   orchestration events and mirrors them: a new run or unsettle in any tab wakes the group, and a
   settle in any tab settles the rest. A settle is undone while another tab is working, waiting on
   you, or holding background work, or, for an automatic settle, while another tab has an open pull
-  request. Hiding works the same way: `hiding.ts` mirrors a hide or unhide across the group's
-  live tabs, so the row leaves the list whichever tab the menu was opened on.
+  request. Hiding and sidebar groups work the same way: `sidebarRow.ts` mirrors a hide, unhide,
+  or **Move to group** across the group's live tabs, so the row moves whichever tab the menu was
+  opened on, and a new tab starts in the row's sidebar group.
   Snoozing any tab parks all live tabs until the same wake time; waking a tab (including Undo
   or sending a message), pinning it, or a fresh completion, failure, or pending request returns
   the group. A sibling waiting on you or holding a queued turn prevents group snooze
@@ -1496,7 +1497,7 @@ tab mirrors across the group's other live tabs. Agents reach it through `t3_thre
 `hide` and `unhide` actions.
 
 Code: `thread.hidden.set` in [`Orchestrator.ts`](../apps/server/src/orchestration-v2/Orchestrator.ts),
-[`hiding.ts`](../apps/server/src/threadTabs/hiding.ts),
+[`sidebarRow.ts`](../apps/server/src/threadTabs/sidebarRow.ts),
 the `hidden` section in [`Sidebar.logic.ts`](../apps/web/src/components/Sidebar.logic.ts) and
 mobile's [`threadListV2.ts`](../apps/mobile/src/features/threads/threadListV2.ts). User guide:
 [thread-sidebar.md](./user/thread-sidebar.md#hide-a-thread).
@@ -1513,7 +1514,9 @@ Membership is the server-owned `groupName` field, set by `thread.group.set` and 
 still lists. Renaming moves each thread and the setting's key. The project-scoped setting
 `defaultThreadGroup` files a project's new threads: `ThreadManagementService.dispatch` fills
 `groupName` on every `thread.create` that does not choose one, and a fork inherits its source's
-group. Hiding outranks a group. Agents
+group. A chat-tab group moves as one sidebar row: moving any tab mirrors across its other live
+tabs, and a new tab starts in its source's group rather than the project default
+([`sidebarRow.ts`](../apps/server/src/threadTabs/sidebarRow.ts)). Hiding outranks a group. Agents
 reach membership through `t3_thread_organize`'s `move_to_group` and `remove_from_group`.
 
 Code: `thread.group.set` in [`Orchestrator.ts`](../apps/server/src/orchestration-v2/Orchestrator.ts),
