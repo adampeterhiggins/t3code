@@ -495,6 +495,9 @@ To use a group as a label instead, turn on **Also show its threads in Threads, S
 Settled** when creating or editing it. Its threads then stay in your live list (or Snoozed or
 Settled), and picking the group under **Show** still lists all of them.
 
+On web and desktop, **Rows** in the same dialog picks Detailed or Compact rows for that group's
+page. **Default** follows **Grouped threads** under the sidebar's thread view settings.
+
 To file a project's new threads automatically, open the project's settings and pick a group under
 **New threads → Thread group**. Every new thread in that project starts in the group, however it
 was started, including by agents and scheduled tasks. A fork starts in the same group as the thread

@@ -1,5 +1,5 @@
 import type { ProjectIconColor } from "@t3tools/contracts";
-import type { ThreadGroup } from "@t3tools/contracts/settings";
+import { SidebarThreadView, type ThreadGroup } from "@t3tools/contracts/settings";
 import { lazy, Suspense, useEffect, useId, useState } from "react";
 import { create } from "zustand";
 
@@ -18,6 +18,7 @@ import {
 } from "./ui/dialog";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "./ui/select";
 import { Switch } from "./ui/switch";
 
 const ProjectIconPickerDialog = lazy(() =>
@@ -25,6 +26,13 @@ const ProjectIconPickerDialog = lazy(() =>
     default: module.ProjectIconPickerDialog,
   })),
 );
+
+// "default" follows the Grouped threads setting in Settings.
+const THREAD_GROUP_VIEW_LABELS = {
+  default: "Default",
+  card: "Detailed",
+  slim: "Compact",
+} as const;
 
 export interface ThreadGroupDraft {
   readonly name: string;
@@ -41,7 +49,7 @@ type Request = {
 };
 const useRequest = create<{ request: Request | null }>(() => ({ request: null }));
 
-/** Asks for a group's name, icon, accent and listing; editing an existing group can also delete it. */
+/** Asks for a group's name, icon, accent, row style and listing; editing an existing group can also delete it. */
 export function requestThreadGroup(
   initial: ThreadGroupDraft | null = null,
 ): Promise<ThreadGroupDialogResult> {
@@ -160,6 +168,31 @@ function ThreadGroupDialog(props: { initial: ThreadGroupDraft | null }) {
                       <span className={cn("size-4 rounded-full", option.swatchClassName)} />
                     </button>
                   ))}
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <Label htmlFor={`${id}-view`}>Rows</Label>
+                <div className="w-36">
+                  <Select
+                    value={style.view ?? "default"}
+                    onValueChange={(value) => {
+                      const { view: _view, ...rest } = style;
+                      setStyle(
+                        value === "card" || value === "slim" ? { ...rest, view: value } : rest,
+                      );
+                    }}
+                  >
+                    <SelectTrigger id={`${id}-view`} size="sm">
+                      <SelectValue>{THREAD_GROUP_VIEW_LABELS[style.view ?? "default"]}</SelectValue>
+                    </SelectTrigger>
+                    <SelectPopup>
+                      {(["default", ...SidebarThreadView.literals] as const).map((view) => (
+                        <SelectItem key={view} value={view}>
+                          {THREAD_GROUP_VIEW_LABELS[view]}
+                        </SelectItem>
+                      ))}
+                    </SelectPopup>
+                  </Select>
                 </div>
               </div>
               <label className="flex items-center justify-between gap-3 text-sm">
