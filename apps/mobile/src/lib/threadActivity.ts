@@ -7,6 +7,7 @@ import { turnItemIsWorkspacePreparation } from "@t3tools/client-runtime/state/tu
 import { formatSubagentDisplayTitle } from "@t3tools/client-runtime/state/subagent-display";
 import { isLiveSubagentTurnItem } from "@t3tools/client-runtime/state/subagentRuntime";
 import { describeModelChange } from "@t3tools/shared/modelChangeMarker";
+import { isWorkspaceChangeNotice } from "@t3tools/shared/workspaceChangeNotice";
 import { extractToolActivityPresentation } from "@t3tools/client-runtime/work-log/tool-presentation";
 import {
   fileChangeDiffWithheld,
@@ -370,6 +371,11 @@ export function isModelChangeActivityGroup(entry: ThreadFeedActivityGroup): bool
   return (
     entry.activities.length === 1 && entry.activities[0]?.projectedItem.item.type === "model_change"
   );
+}
+
+export function isWorkspaceChangeActivityGroup(entry: ThreadFeedActivityGroup): boolean {
+  const item = entry.activities.length === 1 ? entry.activities[0]?.projectedItem.item : undefined;
+  return item !== undefined && isWorkspaceChangeNotice(item);
 }
 
 export function isForkActivityGroup(entry: ThreadFeedActivityGroup): boolean {
@@ -1481,6 +1487,7 @@ function isWorkLogFeedRow(row: ThreadFeedEntry | undefined): boolean {
         !isContextHandoffActivityGroup(row) &&
         !isModelChangeActivityGroup(row) &&
         !isForkActivityGroup(row) &&
+        !isWorkspaceChangeActivityGroup(row) &&
         row.activities.every(
           (activity) =>
             !activity.prominent &&
@@ -1517,6 +1524,7 @@ function appendPresentedFeedEntry(
     isContextHandoffActivityGroup(entry) ||
     isModelChangeActivityGroup(entry) ||
     isForkActivityGroup(entry) ||
+    isWorkspaceChangeActivityGroup(entry) ||
     isUserInputActivityGroup(entry) ||
     entry.activities[0]?.projectedItem.item.type === "subagent"
   ) {

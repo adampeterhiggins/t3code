@@ -51,6 +51,10 @@
       "types": "./src/modelChangeMarker.ts",
       "import": "./src/modelChangeMarker.ts"
     },
+    "./workspaceChangeNotice": {
+      "types": "./src/workspaceChangeNotice.ts",
+      "import": "./src/workspaceChangeNotice.ts"
+    },
     "./advertisedEndpoint": {
       "types": "./src/advertisedEndpoint.ts",
       "import": "./src/advertisedEndpoint.ts"

@@ -12,6 +12,10 @@ import {
   providerAccountLabel,
 } from "@t3tools/shared/modelChangeMarker";
 import {
+  isWorkspaceChangeNotice,
+  WORKSPACE_CHANGED_NOTICE_TITLE,
+} from "@t3tools/shared/workspaceChangeNotice";
+import {
   ProviderInstanceId,
   type EnvironmentId,
   type OrchestrationV2ProjectedTurnItem,
@@ -155,6 +159,29 @@ export function ThreadModelChangeRow(props: {
           account={showAccount ? providerAccountLabel(providers, item.to.instanceId) : null}
         />
       </View>
+    </ThreadContextDivider>
+  );
+}
+
+export function ThreadWorkspaceChangeRow(props: {
+  projectedItem: OrchestrationV2ProjectedTurnItem;
+  iconColor: ColorValue;
+}) {
+  const { item } = props.projectedItem;
+  if (!isWorkspaceChangeNotice(item)) return null;
+  return (
+    <ThreadContextDivider
+      label={WORKSPACE_CHANGED_NOTICE_TITLE}
+      icon="folder.fill"
+      iconColor={props.iconColor}
+    >
+      <Text
+        className="shrink text-xs text-foreground-muted"
+        numberOfLines={1}
+        ellipsizeMode="middle"
+      >
+        {item.message}
+      </Text>
     </ThreadContextDivider>
   );
 }

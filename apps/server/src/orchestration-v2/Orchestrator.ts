@@ -66,6 +66,7 @@ import {
 } from "@t3tools/contracts";
 import { modelSelectionsEqual } from "@t3tools/shared/model";
 import { modelChangeSourceSelection, modelChangeTurnItem } from "@t3tools/shared/modelChangeMarker";
+import { WORKSPACE_CHANGED_NOTICE_TITLE } from "@t3tools/shared/workspaceChangeNotice";
 import {
   derivePendingBackgroundWork,
   pendingBackgroundTurnItems,
@@ -3652,7 +3653,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           effects,
           now,
           notice: {
-            title: "Workspace changed",
+            title: WORKSPACE_CHANGED_NOTICE_TITLE,
             message: `Continuing in ${command.worktreePath ?? "the project checkout"}`,
           },
         });

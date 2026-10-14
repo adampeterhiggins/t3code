@@ -178,6 +178,11 @@ import {
   ZapIcon,
   RotateCcwIcon,
 } from "lucide-react";
+import {
+  isWorkspaceChangeNotice,
+  WORKSPACE_CHANGED_NOTICE_TITLE,
+} from "@t3tools/shared/workspaceChangeNotice";
+import { MiddleTruncate } from "../ui/middle-truncate";
 import { ChevronDown, ChevronRight, Link as LinkIconNode } from "lucide";
 import type {
   ComposerContextId,
@@ -2164,6 +2169,21 @@ type TimelineWorkEntry = Extract<MessagesTimelineRow, { kind: "work" }>["grouped
 type TimelineRow = MessagesTimelineRow;
 
 const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: TimelineRow }) {
+  const workspaceChangeNotice =
+    row.kind === "work" && row.groupedEntries.length === 1
+      ? row.groupedEntries[0]!.structuredPayload
+      : undefined;
+  if (workspaceChangeNotice && isWorkspaceChangeNotice(workspaceChangeNotice)) {
+    return (
+      <div data-timeline-row-id={row.id} data-timeline-row-kind={row.kind}>
+        <TimelineSystemDivider
+          label={WORKSPACE_CHANGED_NOTICE_TITLE}
+          icon={FolderGit2Icon}
+          detail={<MiddleTruncate value={workspaceChangeNotice.message} />}
+        />
+      </div>
+    );
+  }
   const isExpandedToolGroup = row.kind === "work" && row.isExpandedToolGroup;
   const isSubagentGroup = row.kind === "event" && row.projectedItem.item.type === "subagent";
   const isWorkLogRow =
