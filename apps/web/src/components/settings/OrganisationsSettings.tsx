@@ -3,7 +3,7 @@ import { lazy, Suspense, useMemo, useState } from "react";
 
 import { useOrganisations } from "../../hooks/useOrganisations";
 import { buildOrganisationOptions, type OrganisationOption } from "../Sidebar.logic";
-import { OrganisationIcon } from "../sidebar/OrganisationIcon";
+import { githubAvatarUrlOf, OrganisationIcon } from "../sidebar/OrganisationIcon";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import {
@@ -62,11 +62,18 @@ function OrganisationRow(props: {
   const { option } = props;
   const current = option.organisation ?? {};
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
-  const save = (patch: { name?: string | undefined; icon?: Organisation["icon"] }) => {
-    const { name, icon } = { ...current, ...patch };
+  const hasGithubAvatar = githubAvatarUrlOf(option.key) !== null;
+  // An icon and the GitHub avatar replace each other.
+  const save = (patch: {
+    name?: string | undefined;
+    icon?: Organisation["icon"] | undefined;
+    githubAvatar?: true | undefined;
+  }) => {
+    const { name, icon, githubAvatar } = { ...current, ...patch };
     props.onSave({
       ...(name !== undefined ? { name } : {}),
       ...(icon != null ? { icon } : {}),
+      ...(githubAvatar ? { githubAvatar } : {}),
     });
   };
   const saveName = (value: string) => {
@@ -80,7 +87,7 @@ function OrganisationRow(props: {
     <SettingsRow
       title={
         <span className="flex min-w-0 items-center gap-2">
-          <OrganisationIcon organisation={option.organisation} />
+          <OrganisationIcon option={option} />
           <span className="truncate">{option.label}</span>
         </span>
       }
@@ -107,6 +114,17 @@ function OrganisationRow(props: {
               if (event.key === "Enter") event.currentTarget.blur();
             }}
           />
+          {hasGithubAvatar && !current.githubAvatar ? (
+            <Button
+              size="sm"
+              variant="outline"
+              type="button"
+              aria-label={`Use the GitHub avatar for ${option.label}`}
+              onClick={() => save({ githubAvatar: true, icon: undefined })}
+            >
+              Use GitHub avatar
+            </Button>
+          ) : null}
           <Button
             size="sm"
             variant="outline"
@@ -124,7 +142,7 @@ function OrganisationRow(props: {
                 title="Choose organisation icon"
                 open
                 onOpenChange={setIconPickerOpen}
-                onSelect={(icon) => save({ icon })}
+                onSelect={(icon) => save({ icon, githubAvatar: undefined })}
               />
             </Suspense>
           ) : null}

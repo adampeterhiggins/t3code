@@ -28,7 +28,9 @@ export function useOrganisations() {
       const { [key]: _previous, ...rest } = organisations;
       updateSettings({
         organisations:
-          organisation.name === undefined && organisation.icon == null
+          organisation.name === undefined &&
+          organisation.icon == null &&
+          organisation.githubAvatar === undefined
             ? rest
             : { ...rest, [key]: organisation },
       });
