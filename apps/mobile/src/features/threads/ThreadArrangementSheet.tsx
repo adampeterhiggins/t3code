@@ -13,7 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppText as Text } from "../../components/AppText";
 import { SymbolView } from "../../components/AppSymbol";
 import { scopedThreadKey } from "../../lib/scopedEntities";
-import { environmentServerConfigsAtom } from "../../state/server";
+import { environmentServerConfigsAtom, threadListEnvironmentsAtom } from "../../state/server";
 import { environmentThreadShells } from "../../state/threads";
 import {
   pendingThreadOrderAtom,
@@ -152,6 +152,7 @@ export function ThreadArrangementSheet(props: { onClose: () => void }) {
   const insets = useSafeAreaInsets();
   const threads = useAtomValue(environmentThreadShells.navigationThreadShellsAtom);
   const configs = useAtomValue(environmentServerConfigsAtom);
+  const { groupsShownInThreads } = useAtomValue(threadListEnvironmentsAtom);
   const queuedThreadKeys = useAtomValue(queuedThreadKeysAtom);
   const pendingOrder = useAtomValue(pendingThreadOrderAtom);
   const dropBusy = useAtomValue(threadDropBusyAtom);
@@ -179,6 +180,7 @@ export function ThreadArrangementSheet(props: { onClose: () => void }) {
       now,
       queuedThreadKeys,
       pendingOrder,
+      groupsShownInThreads,
       settlementEnvironmentIds: new Set(
         [...configs].flatMap(([id, config]) =>
           config.environment.capabilities.threadSettlement ? [id] : [],
@@ -199,7 +201,7 @@ export function ThreadArrangementSheet(props: { onClose: () => void }) {
       (thread) =>
         thread.archivedAt === null &&
         thread.hiddenAt == null &&
-        thread.groupName == null &&
+        (thread.groupName == null || groupsShownInThreads.has(thread.groupName)) &&
         !visible.has(keyOf(thread)),
     );
     return {
@@ -211,7 +213,15 @@ export function ThreadArrangementSheet(props: { onClose: () => void }) {
       snoozed: parked.filter((thread) => effectiveSnoozed(thread, { now })),
       settled: parked.filter((thread) => !effectiveSnoozed(thread, { now })),
     };
-  }, [threads, configs, now, queuedThreadKeys, pendingOrder, workingShelfEnabled]);
+  }, [
+    threads,
+    configs,
+    groupsShownInThreads,
+    now,
+    queuedThreadKeys,
+    pendingOrder,
+    workingShelfEnabled,
+  ]);
   const planners = useMemo(() => {
     const planner = (section: "pinned" | "active") =>
       createThreadMovePlanner({

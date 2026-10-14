@@ -490,6 +490,10 @@ name, an optional icon, and an accent colour. A grouped thread leaves your live 
 keeps working. Pick a group under **Show** to list it, alone or alongside other groups and your
 live threads. Groups stay until you delete them, even when empty.
 
+To use a group as a label instead, turn on **Also show its threads in Threads, Snoozed and
+Settled** when creating or editing it. Its threads then stay in your live list (or Snoozed or
+Settled), and picking the group under **Show** still lists all of them.
+
 To file a project's new threads automatically, open the project's settings and pick a group under
 **New threads → Thread group**. Every new thread in that project starts in the group, however it
 was started, including by agents and scheduled tasks. A fork starts in the same group as the thread

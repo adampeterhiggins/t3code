@@ -5,7 +5,10 @@ import {
   type ServerConfig,
   type ServerProvider,
 } from "@t3tools/contracts";
+import { threadGroupsShownInThreads, type ThreadGroups } from "@t3tools/contracts/settings";
 import { Atom } from "effect/reactivity";
+
+import { mergeThreadGroups } from "../features/threads/thread-groups";
 
 export type ThreadListProvider = Pick<
   ServerProvider,
@@ -37,6 +40,7 @@ function selectEnvironment(config: ServerConfig) {
     ),
     machineKind: resolveEnvironmentMachineKind(config),
     capabilities: config.environment.capabilities,
+    threadGroups: config.settings.threadGroups,
   };
 }
 
@@ -59,6 +63,11 @@ function sameProviders(
       );
     })
   );
+}
+
+function sameShownGroups(left: ThreadGroups, right: ThreadGroups) {
+  const shown = (groups: ThreadGroups) => [...threadGroupsShownInThreads(groups)].join("\0");
+  return left === right || shown(left) === shown(right);
 }
 
 function collectEnvironments(environments: ReadonlyMap<EnvironmentId, ListEnvironment>) {
@@ -86,6 +95,10 @@ function collectEnvironments(environments: ReadonlyMap<EnvironmentId, ListEnviro
     if (capabilities.threadActiveReorder === true) activeReorderEnvironmentIds.add(id);
     if (capabilities.threadTitleRegeneration === true) titleRegenerationEnvironmentIds.add(id);
   }
+  // Groups whose threads stay on the Threads, Snoozed and Settled pages as well as their own.
+  const groupsShownInThreads = threadGroupsShownInThreads(
+    mergeThreadGroups([...environments.values()].map((environment) => environment.threadGroups)),
+  );
   return {
     providersByEnvironmentId,
     machineByEnvironmentId,
@@ -95,6 +108,7 @@ function collectEnvironments(environments: ReadonlyMap<EnvironmentId, ListEnviro
     autoSettleOptOutEnvironmentIds,
     hidingEnvironmentIds,
     groupEnvironmentIds,
+    groupsShownInThreads,
     pinReorderEnvironmentIds,
     activeReorderEnvironmentIds,
     titleRegenerationEnvironmentIds,
@@ -121,6 +135,7 @@ export function createThreadListEnvironmentsAtom(
         prior &&
         prior.providers === selected.providers &&
         prior.machineKind === selected.machineKind &&
+        sameShownGroups(prior.threadGroups, selected.threadGroups) &&
         capabilityKeys.every(
           (key) => (prior.capabilities[key] === true) === (selected.capabilities[key] === true),
         );

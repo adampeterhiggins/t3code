@@ -9,7 +9,7 @@ import { filterFacets } from "@t3tools/shared/filterFacets";
 import { scopedProjectKey } from "../../lib/scopedEntities";
 import {
   threadListV2MatchesSearch,
-  threadListV2Page,
+  threadListV2Pages,
   type ThreadListPage,
 } from "../threads/threadListV2";
 import type { HomeListFilterMenuProject } from "./home-list-filter-menu";
@@ -42,8 +42,8 @@ export function buildThreadListFilterFacets(input: {
   readonly pages: ReadonlyArray<ThreadListPage>;
   readonly searchQuery: string;
   readonly matchedThreadKeys?: ReadonlySet<string>;
-  /** How threads sort into Show pages; see threadListV2Page. */
-  readonly classification: Parameters<typeof threadListV2Page>[1];
+  /** How threads sort into Show pages; see threadListV2Pages. */
+  readonly classification: Parameters<typeof threadListV2Pages>[1];
 }): ThreadListFilterFacets {
   // Every environment's scopes, so a thread counts under its project whichever environment
   // is picked; the Project menu still offers only the picked environment's.
@@ -95,7 +95,7 @@ export function buildThreadListFilterFacets(input: {
       selected: input.organisationKeys,
     },
     page: {
-      values: (thread) => [threadListV2Page(thread, input.classification)],
+      values: (thread) => threadListV2Pages(thread, input.classification),
       selected: input.pages,
     },
   });

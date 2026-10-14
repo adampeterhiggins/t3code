@@ -1354,17 +1354,27 @@ export const StorageCleanupSettings = Schema.Struct({
 export type StorageCleanupSettings = typeof StorageCleanupSettings.Type;
 
 /**
- * How a user-made thread group looks, keyed by the group's name. A group is the name threads
- * share (`groupName` on the thread); this only styles it, so a style can outlive its threads.
+ * How a user-made thread group looks and lists, keyed by the group's name. A group is the name
+ * threads share (`groupName` on the thread); this only configures it, so it can outlive its threads.
  */
 export const ThreadGroup = Schema.Struct({
   /** A kind from a newer client decodes as no icon. */
   icon: Schema.optionalKey(ReceivedProjectIcon),
   accent: Schema.optionalKey(ProjectIconColor),
+  /**
+   * Keeps the group's threads in the Threads, Snoozed and Settled lists as well as the group's
+   * own page. Absent, the group takes its threads out of those lists.
+   */
+  showInThreads: Schema.optionalKey(Schema.Boolean),
 });
 export type ThreadGroup = typeof ThreadGroup.Type;
 export const ThreadGroups = Schema.Record(Schema.String, ThreadGroup);
 export type ThreadGroups = typeof ThreadGroups.Type;
+
+/** The names of the groups whose threads also stay in the Threads, Snoozed and Settled lists. */
+export function threadGroupsShownInThreads(groups: ThreadGroups): ReadonlySet<string> {
+  return new Set(Object.keys(groups).filter((name) => groups[name]?.showInThreads === true));
+}
 
 /**
  * How a repository organisation looks, keyed by its host and owner (`github.com/acme`).

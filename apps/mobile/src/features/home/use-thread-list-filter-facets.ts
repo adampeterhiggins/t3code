@@ -67,6 +67,7 @@ export function useThreadListFilterFacets(input: FacetInput) {
           snoozeEnvironmentIds: listEnvironments.snoozeEnvironmentIds,
           hidingEnvironmentIds: listEnvironments.hidingEnvironmentIds,
           groupEnvironmentIds: listEnvironments.groupEnvironmentIds,
+          groupsShownInThreads: listEnvironments.groupsShownInThreads,
           queuedThreadKeys,
         },
       }),

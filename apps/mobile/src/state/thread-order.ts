@@ -8,7 +8,7 @@ import {
 } from "../features/threads/threadOrder";
 import { getThreadListV2OrderedSection } from "../features/threads/threadListV2";
 import { appAtomRegistry } from "./atom-registry";
-import { environmentServerConfigsAtom } from "./server";
+import { environmentServerConfigsAtom, threadListEnvironmentsAtom } from "./server";
 import { environmentThreadShells } from "./threads";
 import { queuedThreadKeysAtom } from "./use-thread-outbox";
 
@@ -57,6 +57,7 @@ export function beginPendingThreadOrder(pending: PendingThreadOrder) {
       section: current.section,
       now: new Date().toISOString(),
       queuedThreadKeys: appAtomRegistry.get(queuedThreadKeysAtom),
+      groupsShownInThreads: appAtomRegistry.get(threadListEnvironmentsAtom).groupsShownInThreads,
       settlementEnvironmentIds: new Set(
         [...configs].flatMap(([id, config]) =>
           config.environment.capabilities.threadSettlement === true ? [id] : [],

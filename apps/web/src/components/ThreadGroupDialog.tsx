@@ -18,6 +18,7 @@ import {
 } from "./ui/dialog";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import { Switch } from "./ui/switch";
 
 const ProjectIconPickerDialog = lazy(() =>
   import("./settings/ProjectIconPickerDialog").then((module) => ({
@@ -40,7 +41,7 @@ type Request = {
 };
 const useRequest = create<{ request: Request | null }>(() => ({ request: null }));
 
-/** Asks for a group's name, icon and accent; editing an existing group can also delete it. */
+/** Asks for a group's name, icon, accent and listing; editing an existing group can also delete it. */
 export function requestThreadGroup(
   initial: ThreadGroupDraft | null = null,
 ): Promise<ThreadGroupDialogResult> {
@@ -161,6 +162,16 @@ function ThreadGroupDialog(props: { initial: ThreadGroupDraft | null }) {
                   ))}
                 </div>
               </div>
+              <label className="flex items-center justify-between gap-3 text-sm">
+                <span>Also show its threads in Threads, Snoozed and Settled</span>
+                <Switch
+                  checked={style.showInThreads === true}
+                  onCheckedChange={(checked) => {
+                    const { showInThreads: _showInThreads, ...rest } = style;
+                    setStyle(checked ? { ...rest, showInThreads: true } : rest);
+                  }}
+                />
+              </label>
             </div>
           </DialogPanel>
           <DialogFooter>

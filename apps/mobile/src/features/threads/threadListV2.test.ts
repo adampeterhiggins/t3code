@@ -34,6 +34,7 @@ import {
   collectThreadGroupNames,
   DEFAULT_THREAD_LIST_PAGES,
   getThreadListV2OrderedSection,
+  threadListV2Pages,
   resolveThreadListPages,
   isThreadListV2ListItem,
   resolveThreadListV2SnoozeMenuSelection,
@@ -565,6 +566,49 @@ describe("buildThreadListV2Items", () => {
         (thread) => thread.id,
       ),
     ).toEqual([]);
+  });
+
+  it("keeps a group shown in Threads on its usual page and lists the rest under the group", () => {
+    const threads = [
+      makeThread({ id: ThreadId.make("docs-active"), title: "Docs active", groupName: "Docs" }),
+      makeThread({
+        id: ThreadId.make("docs-settled"),
+        title: "Docs settled",
+        settledOverride: "settled",
+        settledAt: NOW,
+        groupName: "Docs",
+      }),
+      makeThread({ id: ThreadId.make("ops"), title: "Ops", groupName: "Ops" }),
+    ];
+    const groupsShownInThreads = new Set(["Docs"]);
+    const build = (pages: ReadonlyArray<ThreadListPage>) =>
+      buildThreadListV2Items({
+        threads,
+        environmentId: null,
+        searchQuery: "",
+        now: NOW,
+        pages,
+        groupsShownInThreads,
+      }).items.map((item) => item.thread.id);
+
+    expect(build(["threads"])).toEqual(["docs-active"]);
+    expect(build(["group:Docs"])).toEqual(["docs-active", "docs-settled"]);
+    // A member already listed on a picked page is not listed twice.
+    expect(build(["threads", "group:Docs"])).toEqual(["docs-active", "docs-settled"]);
+    expect(build(["threads", "group:Docs", "settled"])).toEqual(["docs-active", "docs-settled"]);
+    expect(build(["threads", "group:Ops"])).toEqual(["docs-active", "ops"]);
+    expect(
+      getThreadListV2OrderedSection({
+        threads,
+        section: "active",
+        now: NOW,
+        groupsShownInThreads,
+      }).map((thread) => thread.id),
+    ).toEqual(["docs-active"]);
+    expect(threadListV2Pages(threads[1]!, { now: NOW, groupsShownInThreads })).toEqual([
+      "settled",
+      "group:Docs",
+    ]);
   });
 
   it("toggles pages but never deselects the last one", () => {

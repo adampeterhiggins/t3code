@@ -28,6 +28,7 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
+import { threadGroupsShownInThreads } from "@t3tools/contracts/settings";
 import { sanitizeComposerContextLabel } from "@t3tools/shared/composerContextReferences";
 import { useAtomValue } from "@effect/atom-react";
 import * as Option from "effect/Option";
@@ -55,6 +56,7 @@ import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useRestartAgentSessionWithToast } from "../../hooks/useRestartAgentSession";
 import { useClientSettings } from "../../hooks/useSettings";
 import { useThreadActions } from "../../hooks/useThreadActions";
+import { useThreadGroups } from "../../hooks/useThreadGroups";
 import { useComposerDraftStore } from "../../composerDraftStore";
 import {
   type ComposerContextReference,
@@ -760,6 +762,8 @@ function useSidebarSiblingTabs(
   const openedAtByThreadKey = useThreadTabRecencyStore((s) => s.openedAtByThreadKey);
   const serverConfig = useAtomValue(environmentServerConfigsAtom).get(environmentId);
   const capabilities = serverConfig?.environment.capabilities;
+  const { groups } = useThreadGroups();
+  const groupsShownInThreads = useMemo(() => threadGroupsShownInThreads(groups), [groups]);
   const providerEntries = useMemo(
     () =>
       serverConfig
@@ -782,6 +786,7 @@ function useSidebarSiblingTabs(
           supportsSettlement: capabilities?.threadSettlement === true,
           workingShelfEnabled,
           now: new Date().toISOString(),
+          groupsShownInThreads,
         })
       : "active";
     const { shown, hidden } = sidebarSiblingTabs(group.tabs, {
@@ -804,6 +809,7 @@ function useSidebarSiblingTabs(
     capabilities,
     environmentId,
     group,
+    groupsShownInThreads,
     manualRanks,
     openedAtByThreadKey,
     projectShells,

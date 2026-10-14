@@ -1461,13 +1461,15 @@ export function sidebarThreadShelf(
     supportsSettlement: boolean;
     workingShelfEnabled: boolean;
     now: string;
+    /** Groups whose threads keep their usual shelf instead of the group's. */
+    groupsShownInThreads?: ReadonlySet<string>;
   },
 ): SidebarThreadShelf {
   // Snooze outranks settlement and pinning until the thread wakes. Only servers
   // that understand hiding ever set hiddenAt, so it needs no capability check.
   const section = resolveSidebarThreadSection({
     hidden: thread.hiddenAt != null,
-    grouped: thread.groupName != null,
+    grouped: isSidebarThreadGroupedAway(thread.groupName, input.groupsShownInThreads),
     snoozed: input.supportsSnooze && effectiveSnoozed(thread, { now: input.now }),
     settled: input.supportsSettlement && thread.settledOverride === "settled",
     pinned: thread.pinnedAt != null,
@@ -1475,6 +1477,14 @@ export function sidebarThreadShelf(
   if (section !== "active") return section;
   // Working beta: only inbox threads fold away.
   return input.workingShelfEnabled && isThreadWorking(thread) ? "working" : "active";
+}
+
+/** Whether a thread's group takes it off the Threads, Snoozed and Settled pages. */
+export function isSidebarThreadGroupedAway(
+  groupName: string | null | undefined,
+  groupsShownInThreads: ReadonlySet<string> | undefined,
+): boolean {
+  return groupName != null && groupsShownInThreads?.has(groupName) !== true;
 }
 
 /** The Show page a shelf belongs to: pinned, working and active rows are all live threads. */
@@ -1953,11 +1963,14 @@ export function buildOrganisationOptions(
     .toSorted((left, right) => left.label.localeCompare(right.label));
 }
 
-/** A thread as the sidebar filter menu counts it: where it lives and which Show page holds it. */
+/**
+ * A thread as the sidebar filter menu counts it: where it lives and which Show pages hold it. A
+ * thread in a group shown in Threads is on its shelf's page and its group's.
+ */
 export interface SidebarFacetThread {
   readonly environmentId: string;
   readonly projectId: string;
-  readonly page: SidebarPage;
+  readonly pages: readonly SidebarPage[];
 }
 
 /**
@@ -2001,7 +2014,7 @@ export function buildSidebarFilterFacets<
   }
   const memberKey = (thread: SidebarFacetThread) => `${thread.environmentId}:${thread.projectId}`;
   const facets = filterFacets(input.threads, {
-    page: { values: (thread) => [thread.page], selected: input.pages },
+    page: { values: (thread) => thread.pages, selected: input.pages },
     project: {
       values: (thread) => {
         const key = projectKeyByMember.get(memberKey(thread));
