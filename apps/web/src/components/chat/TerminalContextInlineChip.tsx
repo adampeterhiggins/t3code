@@ -35,7 +35,7 @@ export function TerminalContextInlineChip(props: TerminalContextInlineChipProps)
             </span>
           </div>
           <pre
-            className="max-h-80 overflow-auto whitespace-pre bg-muted p-3 font-mono text-foreground text-xs leading-relaxed outline-none [tab-size:4] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+            className="max-h-80 overflow-y-auto whitespace-pre-wrap wrap-break-word bg-muted p-3 font-mono text-foreground text-xs leading-relaxed outline-none [tab-size:4] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
             aria-label="Captured terminal output"
             tabIndex={0}
           >
