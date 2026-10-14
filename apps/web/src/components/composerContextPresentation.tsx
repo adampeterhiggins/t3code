@@ -14,6 +14,7 @@ import type {
 } from "@t3tools/contracts";
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
 import { filePreviewKind } from "@t3tools/shared/filePreview";
+import { AttachmentQuickLookPreview } from "./files/AttachmentQuickLook";
 import { videoMimeType } from "@t3tools/shared/video";
 import {
   FolderGit2Icon,
@@ -67,7 +68,6 @@ import {
   FileChip,
   ImageAttachmentPreview,
   ImageChipButton,
-  TextAttachmentExcerpt,
   CheckoutDetails,
   GitHubIssueDetails,
   LinearIssueDetails,
@@ -301,6 +301,9 @@ function ImageContextChip(props: {
   );
 }
 
+/** File kinds whose hover card can show their opening contents. */
+const QUICK_LOOK_KINDS = new Set(["text", "markdown", "html"]);
+
 function FileContextChip(props: {
   record: ComposerFileAttachment;
   upload: AttachmentUploadState | undefined;
@@ -311,9 +314,9 @@ function FileContextChip(props: {
   const suffix = needsReattach ? "attach again" : uploadStatusSuffix(props.upload);
   const size = formatAttachmentSize(props.record.sizeBytes);
   const isVideo = videoMimeType(props.record) !== null;
-  // Only bytes already in this client are excerpted; hovering never fetches an upload.
-  const excerptFile =
-    !needsReattach && props.record.file && filePreviewKind(props.record) === "text"
+  // Only bytes already in this client are previewed; hovering never fetches an upload.
+  const quickLookFile =
+    !needsReattach && props.record.file && QUICK_LOOK_KINDS.has(filePreviewKind(props.record))
       ? props.record.file
       : null;
   return (
@@ -332,7 +335,15 @@ function FileContextChip(props: {
               isVideo ? actions.expandVideo(props.record.id) : actions.openFile(props.record.id)
           : undefined
       }
-      preview={excerptFile ? <TextAttachmentExcerpt file={excerptFile} /> : undefined}
+      preview={
+        quickLookFile ? (
+          <AttachmentQuickLookPreview
+            file={quickLookFile}
+            name={props.record.name}
+            mimeType={props.record.mimeType}
+          />
+        ) : undefined
+      }
       tooltip={
         needsReattach
           ? `${props.record.name} was not saved with this draft. Attach it again to send it.`

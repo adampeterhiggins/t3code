@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { attachmentTextExcerpt, middleTruncateAttachmentName } from "./composerInlineChip";
+import { middleTruncateAttachmentName } from "./composerInlineChip";
 
 describe("middleTruncateAttachmentName", () => {
   it("leaves short names unchanged", () => {
@@ -34,20 +34,5 @@ describe("middleTruncateAttachmentName", () => {
     expect(middleTruncateAttachmentName("a-very-long-filename-without-an-extension", 20)).toMatch(
       /^a-ver.*extension$/,
     );
-  });
-});
-
-describe("attachmentTextExcerpt", () => {
-  it("keeps the opening lines and normalizes line endings", () => {
-    const text = Array.from({ length: 20 }, (_, index) => `line ${index + 1}`).join("\r\n");
-    const excerpt = attachmentTextExcerpt(text);
-    expect(excerpt?.split("\n")).toHaveLength(12);
-    expect(excerpt).toMatch(/^line 1\nline 2\n/);
-    expect(excerpt).toMatch(/line 12$/);
-  });
-
-  it("has nothing to show for binary or blank content", () => {
-    expect(attachmentTextExcerpt("PK\u0003\u0004\u0000\u0000")).toBeNull();
-    expect(attachmentTextExcerpt(" \n\n\t")).toBeNull();
   });
 });

@@ -13,7 +13,6 @@ import type {
 } from "@t3tools/contracts";
 import { CircleDashedIcon, FilmIcon, ImageIcon } from "lucide-react";
 import {
-  useEffect,
   useMemo,
   useState,
   type ComponentProps,
@@ -28,11 +27,7 @@ import type { PullRequestContextDisplayState } from "~/lib/composerContextRecord
 import { formatLinearMarkdownForPreview } from "~/lib/linearMarkdown";
 import ChatMarkdown from "./ChatMarkdown";
 import { PierreEntryIcon } from "./chat/PierreEntryIcon";
-import {
-  ATTACHMENT_EXCERPT_BYTES,
-  attachmentTextExcerpt,
-  middleTruncateAttachmentName,
-} from "./composerInlineChip";
+import { middleTruncateAttachmentName } from "./composerInlineChip";
 import { PullRequestContextDetails } from "./PullRequestContextDetails";
 import { Button } from "./ui/button";
 import { ContextChip, ContextChipLabel, type ContextChipKind } from "./ContextChip";
@@ -314,7 +309,7 @@ export function AttachmentPreviewCard(props: {
   return (
     <PreviewCard>
       <PreviewCardTrigger delay={350} closeDelay={120} render={props.trigger} />
-      <PreviewCardPopup side="top" align="start" className="w-80 max-w-[calc(100vw-2rem)]">
+      <PreviewCardPopup side="top" align="start" className="w-96 max-w-[calc(100vw-2rem)]">
         {props.preview}
         <p className="whitespace-pre-wrap wrap-break-word px-3 py-2 text-xs">{props.details}</p>
       </PreviewCardPopup>
@@ -328,35 +323,6 @@ export function ImageAttachmentPreview(props: { url: string }) {
     <div className="overflow-hidden rounded-t-lg border-b border-border/70 bg-muted/40">
       <img src={props.url} alt="" className="mx-auto block max-h-64 max-w-full object-contain" />
     </div>
-  );
-}
-
-/** The opening lines of a local text attachment, read from a small slice of its bytes. */
-export function TextAttachmentExcerpt(props: { file: Blob }) {
-  const [excerpt, setExcerpt] = useState<{ file: Blob; text: string | null }>();
-  useEffect(() => {
-    let cancelled = false;
-    void props.file
-      .slice(0, ATTACHMENT_EXCERPT_BYTES)
-      .text()
-      .then(
-        (text) => {
-          if (!cancelled) setExcerpt({ file: props.file, text: attachmentTextExcerpt(text) });
-        },
-        () => {
-          if (!cancelled) setExcerpt({ file: props.file, text: null });
-        },
-      );
-    return () => {
-      cancelled = true;
-    };
-  }, [props.file]);
-  const text = excerpt?.file === props.file ? excerpt.text : null;
-  if (text === null) return null;
-  return (
-    <pre className="max-h-48 overflow-hidden rounded-t-lg border-b border-border/70 bg-muted/40 px-3 py-2 font-mono text-3xs leading-relaxed whitespace-pre text-muted-foreground">
-      {text}
-    </pre>
   );
 }
 

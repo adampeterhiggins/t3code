@@ -1297,12 +1297,16 @@ Code: `pastedFilePathsAsComposerFileLinks` in `packages/shared/src/composerTrigg
 ## Attachment chips preview on hover
 
 On web and desktop, hovering an image attachment chip in the composer or a sent message shows the
-image above its name and size. Hovering a text file's chip in the composer shows its first lines,
-read from the bytes the draft still holds. A file whose bytes the draft no longer holds, such as
-after a reload, and any file in a sent message keep the plain name-and-size tooltip, so hovering
-never fetches anything. Clicking a chip still opens the full preview. Mobile has no hover.
+image above its name and size. Hovering a text file's chip in the composer previews its opening
+contents by type, in the spirit of macOS Quick Look: Markdown renders, CSV and TSV show as a small
+table, and other text shows as source highlighted for its language, with a whole minified JSON file
+indented. Only the opening bytes the draft still holds are read. A file whose bytes the draft no
+longer holds, such as after a reload, and any file in a sent message keep the plain name-and-size
+tooltip, so hovering never fetches anything. Clicking a chip still opens the full preview. Mobile
+has no hover.
 
-Code: `AttachmentPreviewCard` in `apps/web/src/components/contextChipParts.tsx`, used by
+Code: `AttachmentPreviewCard` in `apps/web/src/components/contextChipParts.tsx` and
+`AttachmentQuickLookPreview` in `apps/web/src/components/files/AttachmentQuickLook.tsx`, used by
 `apps/web/src/components/composerContextPresentation.tsx` and
 `apps/web/src/components/chat/MessagesTimeline.tsx`.
 
