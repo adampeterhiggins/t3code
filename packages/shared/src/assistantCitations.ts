@@ -135,6 +135,14 @@ export function collectAssistantCitations(text: string) {
   return citations;
 }
 
+/** One-line previews show each citation as its chip label, the way the composer draws it. */
+export function assistantCitationsToLabels(prompt: string): string {
+  return prompt.replace(CITATION_LINK, (source: string, href: string) => {
+    const citation = parseAssistantCitationHref(href);
+    return citation ? assistantCitationLabel(citation) : source;
+  });
+}
+
 /** Titles and previews include the selected text and user comment without Markdown escaping. */
 export function assistantCitationsToPlainText(prompt: string): string {
   return prompt.replace(CITATION_LINK, (source: string, href: string) => {
