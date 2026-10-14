@@ -278,7 +278,9 @@ import { WorktreeSetupCard } from "./WorktreeSetupCard";
 import {
   ContextChipPopover as UserMessageContextPopover,
   ContextChipShell,
+  AttachmentPreviewCard,
   FileChip,
+  ImageAttachmentPreview,
   ImageChipButton,
   PULL_REQUEST_CHIP_KINDS,
   PullRequestChip,
@@ -4764,13 +4766,22 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
           return <UnavailableUserMessageContextChip {...context} />;
         }
         const attachment = context.attachment;
-        return (
+        const size = formatAttachmentSize(record.sizeBytes);
+        const chip = (
           <ImageChipButton
             name={record.name}
             previewUrl={attachment.previewUrl}
-            size={formatAttachmentSize(record.sizeBytes)}
+            size={size}
             data-markdown-copy={context.copyMarkdown}
             onClick={() => context.onExpandImage(attachment)}
+          />
+        );
+        if (!attachment.previewUrl) return chip;
+        return (
+          <AttachmentPreviewCard
+            trigger={chip}
+            preview={<ImageAttachmentPreview url={attachment.previewUrl} />}
+            details={`${record.name}\n${size}`}
           />
         );
       },
