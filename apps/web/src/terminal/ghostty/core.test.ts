@@ -12,6 +12,8 @@ import {
 import { writeTerminalOutputUpdate } from "../../components/ThreadTerminalDrawer";
 import { GHOSTTY_CELL_WIDE, GhosttyTerminalCore, ghosttyCellText } from "./core";
 import { loadGhosttyRuntime } from "./runtime";
+import { keepTerminalContextStyledText } from "../../lib/terminalContext";
+import { parseTerminalStyledText } from "../../lib/terminalStyledText";
 import {
   DEFAULT_TERMINAL_ANSI_COLORS,
   TERMINAL_ANSI_ROLES,
@@ -157,6 +159,22 @@ describe("GhosttyTerminalCore snapshots", () => {
       underline: false,
       selected: false,
     });
+  });
+
+  it("formats the selection as plain text or with its SGR styles", async () => {
+    const core = await createCore();
+    core.write("\x1b[1;31merror:\x1b[0m done\r\nnext");
+    core.selectAll();
+    expect(core.selectionText()).toBe("error: done\nnext");
+    const styled = keepTerminalContextStyledText(core.selectionStyledText());
+    expect(styled).toBeDefined();
+    expect(parseTerminalStyledText(styled!)).toEqual([
+      {
+        text: "error:",
+        style: expect.objectContaining({ bold: true, foreground: { kind: "palette", index: 1 } }),
+      },
+      { text: " done\nnext", style: expect.objectContaining({ bold: false, foreground: null }) },
+    ]);
   });
 
   it("resolves foreground and background independently without retaining prior cell colors", async () => {

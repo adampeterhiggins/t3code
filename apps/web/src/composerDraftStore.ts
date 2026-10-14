@@ -226,6 +226,7 @@ const PersistedTerminalContextDraft = Schema.Struct({
   lineStart: Schema.Number,
   lineEnd: Schema.Number,
   text: Schema.optionalKey(Schema.String),
+  styledText: Schema.optionalKey(Schema.String),
 });
 type PersistedTerminalContextDraft = typeof PersistedTerminalContextDraft.Type;
 
@@ -1438,6 +1439,7 @@ function normalizePersistedTerminalContextDraft(
     lineStart: normalizedLineStart,
     lineEnd: normalizedLineEnd,
     ...(typeof candidate.text === "string" ? { text: candidate.text } : {}),
+    ...(typeof candidate.styledText === "string" ? { styledText: candidate.styledText } : {}),
   };
 }
 
@@ -2273,6 +2275,7 @@ export function partializeComposerDraftStoreState(
               lineStart: context.lineStart,
               lineEnd: context.lineEnd,
               text: context.text,
+              ...(context.styledText === undefined ? {} : { styledText: context.styledText }),
             })),
           }
         : {}),

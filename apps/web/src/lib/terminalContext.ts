@@ -1,5 +1,7 @@
 import type { ThreadId } from "@t3tools/contracts";
+import { COMPOSER_CONTEXT_TERMINAL_STYLED_TEXT_MAX_CHARS } from "@t3tools/contracts";
 import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
+import { stripNonSgrSequences } from "./terminalStyledText";
 import { toKindScopedComposerContextId } from "./composerContextReferences";
 
 export interface TerminalContextSelection {
@@ -8,6 +10,8 @@ export interface TerminalContextSelection {
   lineStart: number;
   lineEnd: number;
   text: string;
+  /** `text` with its SGR colors and styles, for display only. */
+  styledText?: string;
 }
 
 export interface TerminalContextDraft extends TerminalContextSelection {
@@ -37,6 +41,19 @@ export function formatTerminalContextReference(context: TerminalContextReference
 
 export function normalizeTerminalContextText(text: string): string {
   return text.replace(/\r\n/g, "\n").replace(/^\n+|\n+$/g, "");
+}
+
+/**
+ * The styled copy worth keeping: only when it carries escape sequences (otherwise it repeats
+ * `text`) and fits the record bound, past which the preview falls back to plain text.
+ */
+export function keepTerminalContextStyledText(styledText: string | undefined): string | undefined {
+  if (styledText === undefined) return undefined;
+  const normalized = normalizeTerminalContextText(stripNonSgrSequences(styledText));
+  if (!normalized.includes("\x1b")) return undefined;
+  return normalized.length <= COMPOSER_CONTEXT_TERMINAL_STYLED_TEXT_MAX_CHARS
+    ? normalized
+    : undefined;
 }
 
 export function hasTerminalContextText(context: { text: string }): boolean {

@@ -54,6 +54,8 @@ const KNOWN_KIND_PATTERN = new RegExp(`^(?!(?:${COMPOSER_CONTEXT_KINDS.join("|")
 
 export const COMPOSER_CONTEXT_LABEL_MAX_CHARS = 200;
 export const COMPOSER_CONTEXT_TERMINAL_TEXT_MAX_CHARS = 64_000;
+/** Escape sequences make the styled copy longer than the text; producers drop it past this. */
+export const COMPOSER_CONTEXT_TERMINAL_STYLED_TEXT_MAX_CHARS = 128_000;
 const COMPOSER_CONTEXT_ELEMENT_HTML_MAX_CHARS = 8_000;
 const COMPOSER_CONTEXT_ELEMENT_STYLES_MAX_CHARS = 8_000;
 /** Exported so producers can clamp to the same boundary the schema enforces, rather than
@@ -140,6 +142,8 @@ export const TerminalContextRecord = Schema.Struct({
   lineStart: NonNegativeInt,
   lineEnd: NonNegativeInt,
   text: BoundedString(COMPOSER_CONTEXT_TERMINAL_TEXT_MAX_CHARS),
+  /** The same lines with their SGR colors and styles, for display only; agents get `text`. */
+  styledText: Schema.optionalKey(BoundedString(COMPOSER_CONTEXT_TERMINAL_STYLED_TEXT_MAX_CHARS)),
 }).check(Schema.makeFilter((record) => record.lineEnd >= record.lineStart));
 export type TerminalContextRecord = typeof TerminalContextRecord.Type;
 

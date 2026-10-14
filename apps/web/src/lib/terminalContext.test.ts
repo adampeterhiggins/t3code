@@ -10,6 +10,7 @@ import {
   hasTerminalContextText,
   INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
   isTerminalContextExpired,
+  keepTerminalContextStyledText,
   migrateLegacyTerminalContextPlaceholders,
   type TerminalContextDraft,
 } from "./terminalContext";
@@ -75,5 +76,18 @@ describe("terminalContext", () => {
     expect(hasTerminalContextText(expiredContext)).toBe(false);
     expect(isTerminalContextExpired(expiredContext)).toBe(true);
     expect(filterTerminalContextsWithText([expiredContext, liveContext])).toEqual([liveContext]);
+  });
+});
+
+describe("keepTerminalContextStyledText", () => {
+  it("keeps only text and SGR, dropping terminal state like the OSC 4 palette", () => {
+    expect(
+      keepTerminalContextStyledText("\x1b]4;0;rgb:1d/1f/21\x1b\\\n\x1b[31merror\x1b[0m\n"),
+    ).toBe("\x1b[31merror\x1b[0m");
+  });
+
+  it("drops a styled copy with no styles or one past the record bound", () => {
+    expect(keepTerminalContextStyledText("\x1b]4;0;rgb:1d/1f/21\x07plain")).toBeUndefined();
+    expect(keepTerminalContextStyledText(`\x1b[31m${"x".repeat(200_000)}`)).toBeUndefined();
   });
 });

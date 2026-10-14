@@ -41,6 +41,7 @@ import type { AttachmentUploadState } from "./attachmentUploadState";
 import { normalizeElementContextSelection } from "./elementContext";
 import {
   formatTerminalContextLabel,
+  keepTerminalContextStyledText,
   normalizeTerminalContextText,
   type TerminalContextDraft,
 } from "./terminalContext";
@@ -188,6 +189,7 @@ export function threadContextRecord(ref: ScopedThreadRef, title: string): Thread
 }
 
 export function terminalContextRecord(context: TerminalContextDraft): TerminalContextRecord {
+  const styledText = keepTerminalContextStyledText(context.styledText);
   return {
     version: 1,
     contextId: toKindScopedComposerContextId("terminal", context.id),
@@ -198,6 +200,7 @@ export function terminalContextRecord(context: TerminalContextDraft): TerminalCo
     lineStart: context.lineStart,
     lineEnd: context.lineEnd,
     text: normalizeTerminalContextText(context.text),
+    ...(styledText === undefined ? {} : { styledText }),
   };
 }
 

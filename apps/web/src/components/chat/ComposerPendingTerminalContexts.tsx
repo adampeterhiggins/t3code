@@ -25,6 +25,7 @@ export function ComposerPendingTerminalContextChip({
       lineStart={context.lineStart}
       lineEnd={context.lineEnd}
       text={context.text}
+      styledText={context.styledText}
       expired={expired}
       detailsMode={detailsMode}
     />
