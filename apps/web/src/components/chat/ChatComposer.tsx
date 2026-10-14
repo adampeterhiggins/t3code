@@ -2218,7 +2218,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     const uploadableAttachments = [...composerImages, ...uploadableFiles];
     for (const attachment of uploadableAttachments) {
       // A needs-reattach file has no bytes to upload and no upload to verify.
-      if (attachment.type === "file" && composerFileNeedsReattach(attachment)) {
+      if (
+        attachment.type === "file" &&
+        (attachment.restoringBytes || composerFileNeedsReattach(attachment))
+      ) {
         continue;
       }
       startAttachmentUpload({
@@ -8222,13 +8225,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                             {file.name}
                           </button>
                           <span className="shrink-0 text-xs text-secondary-label">
-                            {needsReattach
-                              ? canReattachFile
-                                ? "Attach again"
-                                : "Remove to send"
-                              : upload?.status === "uploading"
-                                ? formatAttachmentUploadProgress(upload.progress)
-                                : formatAttachmentSize(file.sizeBytes)}
+                            {file.restoringBytes
+                              ? "Restoring…"
+                              : needsReattach
+                                ? canReattachFile
+                                  ? "Attach again"
+                                  : "Remove to send"
+                                : upload?.status === "uploading"
+                                  ? formatAttachmentUploadProgress(upload.progress)
+                                  : formatAttachmentSize(file.sizeBytes)}
                           </span>
                           {!needsReattach && upload?.status === "failed" ? (
                             <Tooltip>

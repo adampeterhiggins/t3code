@@ -1,4 +1,5 @@
 import { stripInlineContextReferences } from "./lib/composerContextReferences";
+import { persistComposerDraftFiles } from "./composerDraftFilePersistence";
 import { elementContextToPreviewAnnotation } from "./lib/elementContext";
 import {
   ElementContextDetails,
@@ -154,18 +155,14 @@ export interface ComposerImageAttachment extends Omit<ChatImageAttachment, "prev
 
 export interface ComposerFileAttachment extends Omit<ChatFileAttachment, "previewUrl"> {
   file: File | null;
+  restoringBytes?: boolean;
   uploadedAttachmentId?: string;
   uploadEnvironmentId?: EnvironmentId;
 }
 
-/**
- * A hydrated draft file whose upload never finished before the reload has
- * neither bytes (`file` is only ever null after hydration) nor a server-side
- * upload. The composer renders it as a needs-reattach row: the user must
- * attach the file again or remove it before sending.
- */
+/** Reattach only after local restoration finishes without bytes or a server copy. */
 export function composerFileNeedsReattach(file: ComposerFileAttachment): boolean {
-  return file.file === null && file.uploadedAttachmentId === undefined;
+  return !file.restoringBytes && file.file === null && file.uploadedAttachmentId === undefined;
 }
 
 function clearStaleFileUploadMetadata(
@@ -205,8 +202,8 @@ export type PersistedComposerFileAttachment = typeof PersistedComposerFileAttach
 /**
  * Draft-persisted file. Unlike a stash entry (which requires a finished
  * upload), a draft may hold a file whose upload never completed. Its `File`
- * handle cannot serialize, so it persists as a metadata-only marker (no
- * `attachmentId`) and hydrates as a needs-reattach row instead of vanishing.
+ * handle lives in IndexedDB; localStorage keeps the metadata needed to restore
+ * it, or to offer reattachment when the local contents are unavailable.
  */
 export const PersistedComposerDraftFileAttachment = Schema.Struct({
   id: Schema.String,
@@ -2567,10 +2564,9 @@ function toHydratedThreadDraft(
       mimeType: file.mimeType,
       sizeBytes: file.sizeBytes,
       file: null,
+      ...(typeof indexedDB !== "undefined" ? { restoringBytes: true } : {}),
       ...(file.source ? { source: file.source } : {}),
-      // A marker without an attachment id hydrates as needs-reattach: no
-      // bytes, no server-side upload, only the metadata to tell the user
-      // what to attach again.
+      // Preserve the server copy while restoring the local contents.
       ...(file.attachmentId !== undefined && file.environmentId !== undefined
         ? { uploadedAttachmentId: file.attachmentId, uploadEnvironmentId: file.environmentId }
         : {}),
@@ -4466,6 +4462,8 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
 );
 
 export const useComposerDraftStore = composerDraftStore;
+
+persistComposerDraftFiles(composerDraftStore);
 
 export function beginBackgroundDraftSubmissionByRef(threadRef: ScopedThreadRef): void {
   const threadKey = scopedThreadKey(threadRef);

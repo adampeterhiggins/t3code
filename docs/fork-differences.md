@@ -1300,15 +1300,20 @@ On web and desktop, hovering an image attachment chip in the composer or a sent 
 image above its name and size. Hovering a text file's chip in the composer previews its opening
 contents by type, in the spirit of macOS Quick Look: Markdown renders, CSV and TSV show as a small
 table, and other text shows as source highlighted for its language, with a whole minified JSON file
-indented. Only the opening bytes the draft still holds are read. A file whose bytes the draft no
-longer holds, such as after a reload, and any file in a sent message keep the plain name-and-size
-tooltip, so hovering never fetches anything. Clicking a chip still opens the full preview. Mobile
+indented. Draft file contents are saved locally in IndexedDB and restored after a reload, including
+files whose uploads were interrupted. Restored files can upload again when a server copy expires or
+the draft moves to another environment. If local storage is unavailable or full, the draft keeps
+its metadata and asks for reattachment when there is no server copy. Only the opening bytes the
+draft holds are read. A file whose local contents are unavailable and any file in a sent message
+keep the plain name-and-size tooltip, so hovering never fetches anything. Clicking a chip still opens the full preview. Mobile
 has no hover.
 
 Code: `AttachmentPreviewCard` in `apps/web/src/components/contextChipParts.tsx` and
 `AttachmentQuickLookPreview` in `apps/web/src/components/files/AttachmentQuickLook.tsx`, used by
 `apps/web/src/components/composerContextPresentation.tsx` and
 `apps/web/src/components/chat/MessagesTimeline.tsx`.
+Draft file persistence: `apps/web/src/composerDraftFilePersistence.ts` and
+`apps/web/src/composerAttachmentBytes.ts`.
 
 ## Citations keep their formatting
 
