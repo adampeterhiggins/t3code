@@ -332,6 +332,8 @@ export const make = Effect.gen(function* () {
       interactionMode: source.interactionMode,
       branch: source.branch,
       worktreePath: source.worktreePath,
+      // The group is one sidebar row, so a new tab joins its sidebar group, not the project's default.
+      groupName: source.groupName ?? null,
     });
   });
 

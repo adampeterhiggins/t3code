@@ -206,7 +206,7 @@ import * as ProjectHttp from "./project/http.ts";
 import * as ThreadTabsHttp from "./threadTabs/http.ts";
 import * as ThreadTabs from "./threadTabs/ThreadTabs.ts";
 import * as ConductorImporter from "./conductor/ConductorImporter.ts";
-import * as ThreadTabHidingReactor from "./threadTabs/hiding.ts";
+import * as ThreadTabSidebarRowReactor from "./threadTabs/sidebarRow.ts";
 import * as ThreadTabSettlementReactor from "./threadTabs/settlement.ts";
 import * as NetService from "@t3tools/shared/Net";
 import * as RelayClient from "@t3tools/shared/relayClient";
@@ -644,13 +644,13 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
       yield* service.start();
     }),
   ).pipe(Layer.provide(ThreadTabSettlementReactor.layer)),
-  // Fork: a chat tab group hides and unhides as one sidebar row.
+  // Fork: a chat tab group hides and moves between sidebar groups as one sidebar row.
   Layer.effectDiscard(
     Effect.gen(function* () {
-      const service = yield* ThreadTabHidingReactor.ThreadTabHidingReactor;
+      const service = yield* ThreadTabSidebarRowReactor.ThreadTabSidebarRowReactor;
       yield* service.start();
     }),
-  ).pipe(Layer.provide(ThreadTabHidingReactor.layer)),
+  ).pipe(Layer.provide(ThreadTabSidebarRowReactor.layer)),
   // Fork: starts a thread when the user is @mentioned in Slack (opt-in).
   SlackMentionTrigger.layerStarted,
   // Subscribes to `account.rate-limits.updated` so usage bars track live

@@ -211,6 +211,23 @@ it.effect("a fork point reads the full history and must be one of the chat's mes
   );
 });
 
+it.effect("a new tab starts in its source's sidebar group", () => {
+  const harness = makeHarness({ shells: [makeShell("source", { groupName: "Review" })] });
+  return withTabs(harness, (tabs) =>
+    Effect.gen(function* () {
+      yield* tabs.create(ThreadId.make("source"), {
+        threadId: ThreadId.make("tab"),
+        modelSelection: { instanceId: codex, model: "gpt-5.5" },
+      });
+      const command = harness.dispatched[0];
+      assert.strictEqual(
+        command?.type === "thread.create" ? command.groupName : undefined,
+        "Review",
+      );
+    }),
+  );
+});
+
 it.effect("a new tab joins the source's group on the same branch and worktree", () => {
   const harness = makeHarness({ shells: [makeShell("source")] });
   return withTabs(harness, (tabs) =>
@@ -233,6 +250,8 @@ it.effect("a new tab joins the source's group on the same branch and worktree", 
         assert.strictEqual(command.modelSelection.model, "gpt-5.5");
         assert.strictEqual(command.createdBy, "user");
         assert.strictEqual(command.creationSource, "mobile");
+        // Explicitly ungrouped, so the project's default group does not split the row.
+        assert.strictEqual(command.groupName, null);
       }
       assert.deepStrictEqual(yield* tabs.memberships, [
         { threadId: ThreadId.make("source"), groupId: ThreadId.make("source"), groupName: null },

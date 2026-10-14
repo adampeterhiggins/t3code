@@ -21,7 +21,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import { OrchestrationEventStore } from "../persistence/OrchestrationEventStore.ts";
 import { ensureThreadTabsSchema } from "./schema.ts";
-import * as ThreadTabHidingReactor from "./hiding.ts";
+import * as ThreadTabSidebarRowReactor from "./sidebarRow.ts";
 
 const NOW = DateTime.makeUnsafe("2026-10-05T12:00:00.000Z");
 const NOW_ISO = DateTime.formatIso(NOW);
@@ -71,35 +71,44 @@ function makeThread(
 }
 
 /**
- * The reactor reads only an event's type, thread, and hidden timestamp, so the fixtures leave
- * the rest of each domain event out.
+ * The reactor reads only an event's type, thread, and the field it mirrors, so the fixtures
+ * leave the rest of each domain event out.
  */
 function stored(
   threadId: string,
-  hiddenAt: DateTime.Utc | null,
+  change: { readonly hiddenAt: DateTime.Utc | null } | { readonly groupName: string | null },
   commandId = `client:${threadId}`,
 ): OrchestrationV2StoredEvent {
+  const type = "hiddenAt" in change ? "thread.hidden-set" : "thread.group-set";
   return {
     sequence: 1,
     commandId: CommandId.make(commandId),
     event: {
-      id: EventId.make(`event-hidden-${threadId}-${hiddenAt === null ? "shown" : "hidden"}`),
-      type: "thread.hidden-set",
+      id: EventId.make(`event-${type}-${threadId}`),
+      type,
       threadId: ThreadId.make(threadId),
       occurredAt: NOW,
-      payload: { hiddenAt },
+      payload: change,
     } as unknown as OrchestrationV2StoredEvent["event"],
   };
 }
 
+/** A dispatched command as `[type, threadId, value]`, the value being what it sets. */
+const summarize = (command: OrchestrationV2ServerCommand) =>
+  command.type === "thread.hidden.set"
+    ? ["hidden", command.threadId, command.hidden]
+    : command.type === "thread.group.set"
+      ? ["group", command.threadId, command.groupName]
+      : [command.type];
+
 /**
  * Streams events for a group of every thread except `standalone`, then asserts the reactor
- * dispatches exactly the expected `[hidden, threadId]` commands, in any order.
+ * dispatches exactly the expected commands, in any order.
  */
 const expectDispatches = (
   threads: ReadonlyArray<OrchestrationV2ThreadShell>,
   events: ReadonlyArray<OrchestrationV2StoredEvent>,
-  expected: ReadonlyArray<readonly [boolean, string]>,
+  expected: ReadonlyArray<readonly [string, string, boolean | string | null]>,
 ) =>
   Effect.scoped(
     Effect.gen(function* () {
@@ -133,23 +142,19 @@ const expectDispatches = (
           { discard: true },
         );
 
-        const reactor = yield* ThreadTabHidingReactor.ThreadTabHidingReactor;
+        const reactor = yield* ThreadTabSidebarRowReactor.ThreadTabSidebarRowReactor;
         yield* reactor.start();
         yield* Queue.offerAll(storedEvents, events);
         const commands = yield* Effect.forEach(expected, () => Queue.take(dispatched));
         yield* reactor.drain;
         assert.deepStrictEqual(
-          commands
-            .map((command) =>
-              command.type === "thread.hidden.set"
-                ? [command.hidden, command.threadId]
-                : [command.type],
-            )
-            .sort(),
-          [...expected].map((pair) => [...pair]).sort(),
+          commands.map(summarize).sort(),
+          [...expected].map((entry) => [...entry]).sort(),
         );
         assert.strictEqual(yield* Queue.size(dispatched), 0);
-      }).pipe(Effect.provide(ThreadTabHidingReactor.layer.pipe(Layer.provideMerge(dependencies))));
+      }).pipe(
+        Effect.provide(ThreadTabSidebarRowReactor.layer.pipe(Layer.provideMerge(dependencies))),
+      );
     }),
   ).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" })));
 
@@ -163,11 +168,11 @@ it.effect("hiding any tab hides the other live tabs in its group", () =>
       makeThread("standalone"),
     ],
     [
-      stored("primary", HIDDEN_AT, "server:tab-hidden:primary:1"),
-      stored("standalone", HIDDEN_AT),
-      stored("open-tab", HIDDEN_AT),
+      stored("primary", { hiddenAt: HIDDEN_AT }, "server:tab-row:primary:1"),
+      stored("standalone", { hiddenAt: HIDDEN_AT }),
+      stored("open-tab", { hiddenAt: HIDDEN_AT }),
     ],
-    [[true, "primary"]],
+    [["hidden", "primary", true]],
   ),
 );
 
@@ -180,7 +185,42 @@ it.effect("unhiding any tab unhides the other hidden tabs in its group", () =>
       makeThread("archived-tab", { archivedAt: NOW, hiddenAt: HIDDEN_AT }),
       makeThread("standalone", { hiddenAt: HIDDEN_AT }),
     ],
-    [stored("standalone", null), stored("open-tab", null)],
-    [[false, "primary"]],
+    [stored("standalone", { hiddenAt: null }), stored("open-tab", { hiddenAt: null })],
+    [["hidden", "primary", false]],
+  ),
+);
+
+it.effect("moving any tab to a sidebar group moves the other live tabs with it", () =>
+  expectDispatches(
+    [
+      makeThread("primary"),
+      makeThread("open-tab"),
+      makeThread("other-group", { groupName: "Later" }),
+      makeThread("already-moved", { groupName: "Review" }),
+      makeThread("archived-tab", { archivedAt: NOW }),
+      makeThread("standalone"),
+    ],
+    [
+      stored("primary", { groupName: "Review" }, "server:tab-row:primary:1"),
+      stored("standalone", { groupName: "Review" }),
+      stored("open-tab", { groupName: "Review" }),
+    ],
+    [
+      ["group", "primary", "Review"],
+      ["group", "other-group", "Review"],
+    ],
+  ),
+);
+
+it.effect("removing any tab from its sidebar group removes the other tabs too", () =>
+  expectDispatches(
+    [
+      makeThread("primary", { groupName: "Review" }),
+      makeThread("open-tab"),
+      makeThread("already-removed"),
+      makeThread("standalone", { groupName: "Review" }),
+    ],
+    [stored("standalone", { groupName: null }), stored("open-tab", { groupName: null })],
+    [["group", "primary", null]],
   ),
 );

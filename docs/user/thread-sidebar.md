@@ -488,7 +488,8 @@ Choose **Move to group → New group…** from a thread's menu to create one and
 it, or **New group…** under **Show** in the filter menu to create an empty one. Each group has a
 name, an optional icon, and an accent colour. A grouped thread leaves your live thread list and
 keeps working. Pick a group under **Show** to list it, alone or alongside other groups and your
-live threads. Groups stay until you delete them, even when empty.
+live threads. Groups stay until you delete them, even when empty. A thread with tabs moves as a
+whole: moving it takes all its tabs along, and a new tab joins the same group.
 
 To file a project's new threads automatically, open the project's settings and pick a group under
 **New threads → Thread group**. Every new thread in that project starts in the group, however it
