@@ -533,6 +533,28 @@ describe("composerDraftStore file attachments", () => {
     expect(hydratedFiles?.every(composerFileNeedsReattach)).toBe(true);
   });
 
+  it("defers reattachment warnings while local draft contents are restoring", () => {
+    const store = useComposerDraftStore.getState();
+    store.addFiles(threadRef, [makeFile("restoring")]);
+    const persisted = partializeComposerDraftStoreState(useComposerDraftStore.getState());
+    vi.stubGlobal("indexedDB", {});
+    try {
+      const merge = useComposerDraftStore.persist.getOptions().merge!;
+      const hydrated = merge(persisted, useComposerDraftStore.getState());
+      const file =
+        hydrated.draftsByThreadKey[threadKeyFor(threadId, TEST_ENVIRONMENT_ID)]?.files[0];
+      expect(file?.restoringBytes).toBe(true);
+      expect(file && composerFileNeedsReattach(file)).toBe(false);
+      expect(
+        persisted.draftsByThreadKey[threadKeyFor(threadId, TEST_ENVIRONMENT_ID)]?.files,
+      ).toEqual([
+        { id: "restoring", name: "report.pdf", mimeType: "application/pdf", sizeBytes: 6 },
+      ]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("marks only the matching byte-less upload as missing", () => {
     const store = useComposerDraftStore.getState();
     const hydrated: ComposerFileAttachment = {
