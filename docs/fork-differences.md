@@ -719,7 +719,7 @@ and hovering it lists the selected pages, organisations, and projects. Under the
 of those selections shows as a pill with an × that drops it, plus **Clear all** once there are
 several. Selecting a sidebar search result keeps the search applied as a removable pill;
 clicking the search field edits it, and **Clear all** removes it with the other filters.
-**Settings → Organisations** gives an organisation a display name and icon, saved as the
+**Settings → Organisations** gives an organisation a display name and an icon or, on github.com, its GitHub avatar, saved as the
 shared `organisations` server setting so every environment and mobile's filter use them. A thread's **Filter by
 project** menu item still narrows the list to that one project. Mobile's
 thread list filter menus have the same **Show** submenu, and each of their Environment, Project,

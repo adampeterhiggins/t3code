@@ -291,7 +291,7 @@ function SidebarOrganisationFilter(props: {
                   }
                 >
                   <span className="flex w-full min-w-0 items-center gap-2">
-                    <OrganisationIcon organisation={option.organisation} />
+                    <OrganisationIcon option={option} />
                     <MenuChoiceLabel
                       label={option.label}
                       query={query}
@@ -384,7 +384,7 @@ function SidebarFilterPreview(props: {
           {visibleOrganisations.map((option) => (
             <FilterPreviewName
               key={option.key}
-              icon={<OrganisationIcon organisation={option.organisation} />}
+              icon={<OrganisationIcon option={option} />}
               label={option.label}
             />
           ))}
@@ -622,7 +622,7 @@ export function SidebarFilterPills(props: {
       {organisations.map((option) => (
         <SidebarFilterPill
           key={option.key}
-          icon={<OrganisationIcon organisation={option.organisation} />}
+          icon={<OrganisationIcon option={option} />}
           label={option.label}
           onRemove={() =>
             props.onScopedOrganisationKeysChange(
