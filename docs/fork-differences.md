@@ -1507,8 +1507,10 @@ mobile's [`threadListV2.ts`](../apps/mobile/src/features/threads/threadListV2.ts
 **Move to group** in the thread menu (web, desktop, mobile) files a thread under a user-made
 group, which takes it out of the live thread list; each group is an entry in the filter menu's
 **Show** submenu, which can also create an empty group. Groups are the shared server setting
-`threadGroups` (name to icon and accent), written to every environment, so they persist when empty
-and are removed only by **Delete group**, which returns their threads to the live list.
+`threadGroups` (name to icon, accent and `showInThreads`), written to every environment, so they
+persist when empty and are removed only by **Delete group**, which returns their threads to the
+live list. A group with `showInThreads` leaves its threads on their usual Threads, Snoozed or
+Settled page and lists them on its own page too, skipping any already listed by another picked page.
 Membership is the server-owned `groupName` field, set by `thread.group.set` and gated on the
 `threadGroups` capability; a name a thread holds but the setting lacks (an agent can create one)
 still lists. Renaming moves each thread and the setting's key. The project-scoped setting

@@ -248,6 +248,7 @@ export function getThreadListV2OrderedSection(input: {
   readonly snoozeEnvironmentIds?: ReadonlySet<EnvironmentId>;
   readonly hidingEnvironmentIds?: ReadonlySet<EnvironmentId>;
   readonly groupEnvironmentIds?: ReadonlySet<EnvironmentId>;
+  readonly groupsShownInThreads?: ReadonlySet<string>;
   readonly queuedThreadKeys?: ReadonlySet<string>;
 }): EnvironmentThreadShell[] {
   // An empty set is treated as absent so `?.` skips building the key.
@@ -256,7 +257,9 @@ export function getThreadListV2OrderedSection(input: {
     if (thread.archivedAt !== null || thread.lineage.relationshipToParent === "subagent")
       return false;
     if (isThreadListV2Hidden(thread, input.hidingEnvironmentIds)) return false;
-    if (isThreadListV2Grouped(thread, input.groupEnvironmentIds)) return false;
+    if (isThreadListV2Grouped(thread, input.groupEnvironmentIds, input.groupsShownInThreads)) {
+      return false;
+    }
     if (
       (input.settlementEnvironmentIds?.has(thread.environmentId) ?? true) &&
       thread.settledOverride === "settled" &&
@@ -369,9 +372,8 @@ export function collectThreadGroupNames(
 ): ReadonlyArray<string> {
   const names = new Set<string>(registeredNames);
   for (const thread of threads) {
-    if (thread.archivedAt === null && isThreadListV2Grouped(thread, groupEnvironmentIds)) {
-      names.add(thread.groupName!);
-    }
+    const groupName = threadListV2GroupName(thread, groupEnvironmentIds);
+    if (thread.archivedAt === null && groupName !== null) names.add(groupName);
   }
   return [...names].sort((left, right) => left.localeCompare(right));
 }
@@ -386,13 +388,25 @@ function isThreadListV2Hidden(
   return thread.hiddenAt != null && (hidingEnvironmentIds?.has(thread.environmentId) ?? true);
 }
 
+/** The group a thread is in. Same gating contract as hiding. */
+function threadListV2GroupName(
+  thread: Pick<EnvironmentThreadShell, "environmentId" | "groupName">,
+  groupEnvironmentIds: ReadonlySet<EnvironmentId> | undefined,
+): string | null {
+  return thread.groupName != null && (groupEnvironmentIds?.has(thread.environmentId) ?? true)
+    ? thread.groupName
+    : null;
+}
+
 /** Grouped threads leave the Threads, Snoozed and Settled pages for their
-    group's page (hidden still wins). Same gating contract as hiding. */
+    group's page (hidden still wins), unless the group is shown in Threads. */
 function isThreadListV2Grouped(
   thread: Pick<EnvironmentThreadShell, "environmentId" | "groupName">,
   groupEnvironmentIds: ReadonlySet<EnvironmentId> | undefined,
+  groupsShownInThreads: ReadonlySet<string> | undefined,
 ): boolean {
-  return thread.groupName != null && (groupEnvironmentIds?.has(thread.environmentId) ?? true);
+  const groupName = threadListV2GroupName(thread, groupEnvironmentIds);
+  return groupName !== null && groupsShownInThreads?.has(groupName) !== true;
 }
 
 /** Whether a thread matches the list's search: by title, tab group, linked pull request, or a
@@ -414,22 +428,38 @@ export function threadListV2MatchesSearch(
   );
 }
 
-/** The Show page a thread is listed under, by the same rules buildThreadListV2Items sorts it
-    into sections: hidden, then its group, then snoozed, then settled, else live threads. */
-export function threadListV2Page(
+type ThreadListV2Classification = Pick<
+  Parameters<typeof buildThreadListV2Items>[0],
+  | "now"
+  | "settlementEnvironmentIds"
+  | "snoozeEnvironmentIds"
+  | "hidingEnvironmentIds"
+  | "groupEnvironmentIds"
+  | "groupsShownInThreads"
+  | "queuedThreadKeys"
+>;
+
+/** The Show pages a thread is listed under: its own page, plus its group's when the group is
+    shown in Threads (a hidden thread stays on Hidden alone). */
+export function threadListV2Pages(
   thread: EnvironmentThreadShell,
-  input: Pick<
-    Parameters<typeof buildThreadListV2Items>[0],
-    | "now"
-    | "settlementEnvironmentIds"
-    | "snoozeEnvironmentIds"
-    | "hidingEnvironmentIds"
-    | "groupEnvironmentIds"
-    | "queuedThreadKeys"
-  >,
+  input: ThreadListV2Classification,
+): ReadonlyArray<ThreadListPage> {
+  const page = threadListV2Page(thread, input);
+  const groupName = threadListV2GroupName(thread, input.groupEnvironmentIds);
+  return groupName === null || page === "hidden" || page.startsWith("group:")
+    ? [page]
+    : [page, threadListGroupPage(groupName)];
+}
+
+/** The page a thread is sorted into by the same rules as buildThreadListV2Items: hidden, then
+    its group unless that is shown in Threads, then snoozed, then settled, else live threads. */
+function threadListV2Page(
+  thread: EnvironmentThreadShell,
+  input: ThreadListV2Classification,
 ): ThreadListPage {
   if (isThreadListV2Hidden(thread, input.hidingEnvironmentIds)) return "hidden";
-  if (isThreadListV2Grouped(thread, input.groupEnvironmentIds)) {
+  if (isThreadListV2Grouped(thread, input.groupEnvironmentIds, input.groupsShownInThreads)) {
     return threadListGroupPage(thread.groupName!);
   }
   if (
@@ -904,6 +934,9 @@ export function buildThreadListV2Items(input: {
   /** Environments whose server supports thread.group.set. Same contract as
       settlementEnvironmentIds. */
   readonly groupEnvironmentIds?: ReadonlySet<EnvironmentId>;
+  /** Groups whose threads keep their Threads, Snoozed or Settled place and also list under
+      the group's page when that place isn't picked. */
+  readonly groupsShownInThreads?: ReadonlySet<string>;
   /** Pages picked in the filter menu. Absent = Threads, Snoozed and Settled
       (tests). */
   readonly pages?: ReadonlyArray<ThreadListPage>;
@@ -957,6 +990,11 @@ export function buildThreadListV2Items(input: {
   const snoozed: EnvironmentThreadShell[] = [];
   const hidden: EnvironmentThreadShell[] = [];
   const grouped = new Map<string, EnvironmentThreadShell[]>();
+  const shownGrouped: Array<{
+    readonly groupName: string;
+    readonly page: ThreadListPage;
+    readonly thread: EnvironmentThreadShell;
+  }> = [];
   let nextSnoozeWakeAt: string | null = null;
   // An empty set is treated as absent so `?.` skips building the key.
   const queuedThreadKeys = input.queuedThreadKeys?.size ? input.queuedThreadKeys : undefined;
@@ -974,11 +1012,19 @@ export function buildThreadListV2Items(input: {
       hidden.push(thread);
       continue;
     }
-    // A group outranks snooze, settlement and pinning.
-    if (isThreadListV2Grouped(thread, input.groupEnvironmentIds)) {
+    // A group outranks snooze, settlement and pinning, unless it is shown in Threads.
+    if (isThreadListV2Grouped(thread, input.groupEnvironmentIds, input.groupsShownInThreads)) {
       const groupName = thread.groupName!;
       grouped.set(groupName, [...(grouped.get(groupName) ?? []), thread]);
       continue;
+    }
+    const shownGroupName = threadListV2GroupName(thread, input.groupEnvironmentIds);
+    if (shownGroupName !== null) {
+      shownGrouped.push({
+        groupName: shownGroupName,
+        page: threadListV2Page(thread, input),
+        thread,
+      });
     }
     // Snooze outranks settlement and pinning until the thread wakes.
     if (supportsSnooze && effectiveSnoozed(thread, { now })) {
@@ -1017,6 +1063,10 @@ export function buildThreadListV2Items(input: {
   if (!showPage("snoozed")) snoozed.length = 0;
   if (!showPage("hidden")) hidden.length = 0;
   if (!showPage("settled")) settled.length = 0;
+  // A group shown in Threads lists only the members no other picked page already lists.
+  for (const { groupName, page, thread } of shownGrouped) {
+    if (!showPage(page)) grouped.set(groupName, [...(grouped.get(groupName) ?? []), thread]);
+  }
 
   // The beta inbox is time-ordered, so the saved arrangement (and any move in
   // flight) is kept but not applied until the beta is off again.

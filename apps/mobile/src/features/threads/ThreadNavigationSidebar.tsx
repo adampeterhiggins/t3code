@@ -368,6 +368,7 @@ function ThreadNavigationSidebarPane(
     autoSettleOptOutEnvironmentIds,
     hidingEnvironmentIds,
     groupEnvironmentIds,
+    groupsShownInThreads,
     pinReorderEnvironmentIds,
     activeReorderEnvironmentIds,
     titleRegenerationEnvironmentIds,
@@ -430,6 +431,7 @@ function ThreadNavigationSidebarPane(
           snoozeEnvironmentIds,
           hidingEnvironmentIds,
           groupEnvironmentIds,
+          groupsShownInThreads,
           queuedThreadKeys,
         }),
       });
@@ -449,6 +451,7 @@ function ThreadNavigationSidebarPane(
     snoozeEnvironmentIds,
     hidingEnvironmentIds,
     groupEnvironmentIds,
+    groupsShownInThreads,
     nowMinute,
     snoozeWakeTick,
   ]);
@@ -465,6 +468,7 @@ function ThreadNavigationSidebarPane(
       snoozeEnvironmentIds,
       hidingEnvironmentIds,
       groupEnvironmentIds,
+      groupsShownInThreads,
       pages,
       queuedThreadKeys,
       settledLimit: settledVisibleCount,
@@ -479,6 +483,7 @@ function ThreadNavigationSidebarPane(
   }, [
     hidingEnvironmentIds,
     groupEnvironmentIds,
+    groupsShownInThreads,
     pages,
     workingShelfEnabled,
     workingShelfExpanded,

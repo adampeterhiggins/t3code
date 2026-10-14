@@ -76,10 +76,11 @@ import {
   type ScopedThreadRef,
   type ThreadId,
 } from "@t3tools/contracts";
-import type {
-  SidebarTabSortDirection,
-  SidebarTabSortOrder,
-  TimestampFormat,
+import {
+  threadGroupsShownInThreads,
+  type SidebarTabSortDirection,
+  type SidebarTabSortOrder,
+  type TimestampFormat,
 } from "@t3tools/contracts/settings";
 import {
   AlarmClockIcon,
@@ -286,6 +287,7 @@ import {
   repositoryOrganisationOf,
   type SidebarFacetThread,
   sidebarShelfPage,
+  isSidebarThreadGroupedAway,
   type SidebarThreadShelf,
   resolveSidebarPages,
   sidebarGroupPage,
@@ -4175,6 +4177,12 @@ export default function Sidebar() {
     [openProjectSettings],
   );
 
+  // Groups are names threads share, so they are read off every thread, not just the scoped ones.
+  const { groups: threadGroups, saveGroup, deleteGroup } = useThreadGroups();
+  const groupsShownInThreads = useMemo(
+    () => threadGroupsShownInThreads(threadGroups),
+    [threadGroups],
+  );
   // Keep a dropped row at its destination while its server applies the
   // lifecycle command and any order-key writes. The next pickup waits for
   // this hold so a second drop cannot replace an unconfirmed placement.
@@ -4201,6 +4209,7 @@ export default function Sidebar() {
     snoozedThreads,
     hiddenThreads,
     groupedThreads,
+    shownGroupThreads,
     settledThreads,
     facetThreads,
     snoozeNow,
@@ -4230,6 +4239,8 @@ export default function Sidebar() {
     const snoozed: EnvironmentThreadShell[] = [];
     const hidden: EnvironmentThreadShell[] = [];
     const grouped: EnvironmentThreadShell[] = [];
+    // Members of groups shown in Threads, which keep their own shelf too.
+    const shownGrouped: Array<{ thread: EnvironmentThreadShell; page: SidebarPage }> = [];
     const settled: EnvironmentThreadShell[] = [];
     const facetThreads: SidebarFacetThread[] = [];
     const draggable = new Set<string>();
@@ -4267,12 +4278,16 @@ export default function Sidebar() {
           supportsSettlement,
           workingShelfEnabled,
           now: preciseNow,
+          groupsShownInThreads,
         });
       }
+      const page = sidebarShelfPage(shelf, row.groupName);
+      const alsoGroupedIn =
+        shelf !== "grouped" && shelf !== "hidden" && row.groupName != null ? row.groupName : null;
       facetThreads.push({
         environmentId: thread.environmentId,
         projectId: thread.projectId,
-        page: sidebarShelfPage(shelf, row.groupName),
+        pages: alsoGroupedIn === null ? [page] : [page, sidebarGroupPage(alsoGroupedIn)],
       });
       if (
         scopedProjectKeys !== null &&
@@ -4287,6 +4302,7 @@ export default function Sidebar() {
         draggable.add(threadKey);
       }
       ({ hidden, grouped, snoozed, settled, pinned, working, active })[shelf].push(row);
+      if (alsoGroupedIn !== null) shownGrouped.push({ thread: row, page });
     }
     // One shared rule on every platform (see sortPinnedThreadsByOrderKey):
     // user-arranged keys first, keyless threads in creation order below.
@@ -4332,12 +4348,14 @@ export default function Sidebar() {
       ),
       // Each group keeps the same order the active list uses.
       groupedThreads: sortThreadsForSidebar(grouped),
+      shownGroupThreads: shownGrouped,
       settledThreads: sortSettledThreads(settled),
       facetThreads,
       snoozeNow: preciseNow,
     };
   }, [
     tabThreadGroups,
+    groupsShownInThreads,
     nowMinute,
     optimisticDrop,
     scopedProjectKeys,
@@ -4503,8 +4521,6 @@ export default function Sidebar() {
     DEFAULT_SIDEBAR_PAGES,
     SidebarPagesSchema,
   );
-  // Groups are names threads share, so they are read off every thread, not just the scoped ones.
-  const { groups: threadGroups, saveGroup, deleteGroup } = useThreadGroups();
   const threadGroupNames = useMemo(
     () => collectThreadGroupNames(threads, Object.keys(threadGroups)),
     [threadGroups, threads],
@@ -4514,14 +4530,23 @@ export default function Sidebar() {
     () => resolveSidebarPages(storedSidebarPages, threadGroupNames),
     [storedSidebarPages, threadGroupNames],
   );
+  // A group shown in Threads lists only the members no other picked page already lists.
   const groupedThreadsByName = useMemo(() => {
     const byName = new Map<string, EnvironmentThreadShell[]>();
-    for (const thread of groupedThreads) {
+    const add = (thread: EnvironmentThreadShell) => {
       const name = thread.groupName!;
       byName.set(name, [...(byName.get(name) ?? []), thread]);
+    };
+    for (const thread of groupedThreads) add(thread);
+    let mixed = false;
+    for (const { thread, page } of shownGroupThreads) {
+      if (sidebarPages.includes(page)) continue;
+      add(thread);
+      mixed = true;
     }
-    return byName;
-  }, [groupedThreads]);
+    if (!mixed) return byName;
+    return new Map([...byName].map(([name, list]) => [name, sortThreadsForSidebar(list)]));
+  }, [groupedThreads, sidebarPages, shownGroupThreads]);
   // Show, Organisations and Projects each count the threads the other two let through.
   const filterFacets = useMemo(
     () =>
@@ -5491,7 +5516,7 @@ export default function Sidebar() {
     const canonicalSection =
       thread.hiddenAt != null
         ? "hidden"
-        : thread.groupName != null
+        : isSidebarThreadGroupedAway(thread.groupName, groupsShownInThreads)
           ? "grouped"
           : effectiveSnoozed(thread, { now: new Date().toISOString() })
             ? "snoozed"
@@ -5548,7 +5573,7 @@ export default function Sidebar() {
     if (membershipChanged || foreignKeyLanded || allAssignmentsLanded) {
       setOptimisticDrop(null);
     }
-  }, [activeKeys, optimisticDrop, pinnedKeys, threads]);
+  }, [activeKeys, groupsShownInThreads, optimisticDrop, pinnedKeys, threads]);
   const attemptPin = useCallback(
     (threadRef: ScopedThreadRef) => {
       void (async () => {

@@ -41,6 +41,7 @@ import {
   resolveSidebarPages,
   buildOrganisationOptions,
   buildSidebarFilterFacets,
+  sidebarThreadShelf,
   type SidebarPage,
   repositoryOrganisationOf,
   resolveSidebarRowAccessibility,
@@ -2739,10 +2740,10 @@ describe("buildSidebarFilterFacets", () => {
     project("site", ["site", "github.com/me/site"]),
     project("lib", ["lib", "github.com/ping/lib"]),
   ];
-  const thread = (projectId: string, page: SidebarPage = "threads") => ({
+  const thread = (projectId: string, ...pages: SidebarPage[]) => ({
     environmentId: "env",
     projectId,
-    page,
+    pages: pages.length > 0 ? pages : (["threads"] as SidebarPage[]),
   });
   const threads = [
     thread("t3-fork"),
@@ -2792,5 +2793,53 @@ describe("buildSidebarFilterFacets", () => {
     expect(result.projectCounts.get("site")).toBe(0);
     expect(result.organisationKeys.has("github.com/ping")).toBe(true);
     expect(result.organisationCounts.get("github.com/ping")).toBe(0);
+  });
+
+  it("counts a thread in a group shown in Threads on both pages", () => {
+    const result = buildSidebarFilterFacets({
+      threads: [thread("site", "threads", "group:Docs"), thread("site", "group:Ops")],
+      projects,
+      pages: ["group:Docs"],
+      scopedProjectKeys: [],
+      scopedOrganisationKeys: [],
+    });
+    expect(Object.fromEntries(result.pageCounts)).toEqual({
+      threads: 1,
+      "group:Docs": 1,
+      "group:Ops": 1,
+    });
+    expect(result.projectCounts.get("site")).toBe(1);
+  });
+});
+
+describe("sidebarThreadShelf groups", () => {
+  const base = {
+    supportsSnooze: true,
+    supportsSettlement: true,
+    workingShelfEnabled: false,
+    now: "2026-06-01T12:00:00.000Z",
+  };
+  const thread = (overrides: Partial<Parameters<typeof sidebarThreadShelf>[0]>) =>
+    ({
+      settledOverride: null,
+      pinnedAt: null,
+      hiddenAt: null,
+      groupName: "Docs",
+      ...overrides,
+    }) as Parameters<typeof sidebarThreadShelf>[0];
+
+  it("keeps a group shown in Threads on its usual shelf, and hidden still wins", () => {
+    const shown = new Set(["Docs"]);
+    expect(sidebarThreadShelf(thread({}), base)).toBe("grouped");
+    expect(sidebarThreadShelf(thread({}), { ...base, groupsShownInThreads: shown })).toBe("active");
+    expect(
+      sidebarThreadShelf(thread({ settledOverride: "settled" }), {
+        ...base,
+        groupsShownInThreads: shown,
+      }),
+    ).toBe("settled");
+    expect(
+      sidebarThreadShelf(thread({ hiddenAt: base.now }), { ...base, groupsShownInThreads: shown }),
+    ).toBe("hidden");
   });
 });

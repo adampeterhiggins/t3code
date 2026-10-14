@@ -615,6 +615,7 @@ export function HomeScreen(props: HomeScreenProps) {
     autoSettleOptOutEnvironmentIds,
     hidingEnvironmentIds,
     groupEnvironmentIds,
+    groupsShownInThreads,
     pinReorderEnvironmentIds,
     activeReorderEnvironmentIds,
     titleRegenerationEnvironmentIds,
@@ -642,6 +643,7 @@ export function HomeScreen(props: HomeScreenProps) {
           snoozeEnvironmentIds,
           hidingEnvironmentIds,
           groupEnvironmentIds,
+          groupsShownInThreads,
           queuedThreadKeys,
         }),
       });
@@ -661,6 +663,7 @@ export function HomeScreen(props: HomeScreenProps) {
     snoozeEnvironmentIds,
     hidingEnvironmentIds,
     groupEnvironmentIds,
+    groupsShownInThreads,
     nowMinute,
     snoozeWakeTick,
   ]);
@@ -679,6 +682,7 @@ export function HomeScreen(props: HomeScreenProps) {
       snoozeEnvironmentIds,
       hidingEnvironmentIds,
       groupEnvironmentIds,
+      groupsShownInThreads,
       pages: props.pages,
       queuedThreadKeys,
       settledLimit: settledVisibleCount,
@@ -693,6 +697,7 @@ export function HomeScreen(props: HomeScreenProps) {
   }, [
     hidingEnvironmentIds,
     groupEnvironmentIds,
+    groupsShownInThreads,
     props.pages,
     workingShelfEnabled,
     workingShelfExpanded,

@@ -12,6 +12,7 @@ import {
 } from "react-native";
 
 import { AppText } from "../../components/AppText";
+import { ThemedSwitch } from "../../components/ThemedSwitch";
 import { cn } from "../../lib/cn";
 import { PROJECT_ICON_COLORS, projectIconColorClassNames } from "../../lib/projectIcon";
 import { ThreadGroupIcon } from "./ThreadGroupIcon";
@@ -53,7 +54,7 @@ const GROUP_EMOJIS = [
 ] as const;
 
 /**
- * Asks for a group's name, icon and accent. Editing also offers Delete group.
+ * Asks for a group's name, icon, accent and listing. Editing also offers Delete group.
  * Requires ThreadGroupEditorHost to be mounted at the app root.
  */
 export function requestThreadGroup(
@@ -218,6 +219,19 @@ function ThreadGroupEditor(props: {
                 />
               ))}
             </View>
+          </View>
+          <View className="flex-row items-center justify-between gap-3">
+            <AppText className="flex-1 text-sm text-foreground-secondary">
+              Also show its threads in Threads, Snoozed and Settled
+            </AppText>
+            <ThemedSwitch
+              accessibilityLabel="Also show its threads in Threads, Snoozed and Settled"
+              value={style.showInThreads === true}
+              onValueChange={(checked) => {
+                const { showInThreads: _showInThreads, ...rest } = style;
+                setStyle(checked ? { ...rest, showInThreads: true } : rest);
+              }}
+            />
           </View>
           {error ? (
             <AppText accessibilityRole="alert" className="text-danger-foreground">
