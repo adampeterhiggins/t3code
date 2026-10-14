@@ -1,5 +1,6 @@
 import { formatProviderSkillDisplayName } from "@t3tools/shared/inlineSkills";
 import { useComposerTypingGuard } from "./useComposerTypingGuard";
+import { resolveComposerSnapshot, type ComposerSnapshot } from "./composerPendingSnapshot";
 import { DESKTOP_PASTE_AS_TEXT_EVENT } from "../../lib/desktopPasteAsText";
 import { runtimeModeConfig, runtimeModeOptions as runtimeModes } from "./runtimeModeConfig";
 import { isLocalEnvironmentDisabled } from "../../localEnvironment";
@@ -4248,6 +4249,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // ------------------------------------------------------------------
   // Callbacks: prompt replacement / menu
   // ------------------------------------------------------------------
+  const pendingComposerSnapshotRef = useRef<ComposerSnapshot | null>(null);
   const applyPromptReplacement = useCallback(
     (
       rangeStart: number,
@@ -4299,6 +4301,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           insertedSpaces: options.citationComment.insertedSpaces,
         });
       }
+      pendingComposerSnapshotRef.current = {
+        value: next.text,
+        cursor: nextCursor,
+        expandedCursor: nextExpandedCursor,
+        contextIds: isLiteralPendingAnswer ? [] : collectInlineContextIds(next.text),
+      };
       promptRef.current = next.text;
       const activePendingQuestion = activePendingProgress?.activeQuestion;
       if (activePendingQuestion && activePendingUserInput) {
@@ -4348,9 +4356,19 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     contextIds: string[];
   } => {
     const editorSnapshot = composerEditorRef.current?.readSnapshot();
-    if (editorSnapshot) {
-      return editorSnapshot;
+    const pendingSnapshot = pendingComposerSnapshotRef.current;
+    if (
+      editorSnapshot?.value === promptRef.current ||
+      pendingSnapshot?.value !== promptRef.current
+    ) {
+      pendingComposerSnapshotRef.current = null;
     }
+    const snapshot = resolveComposerSnapshot(
+      promptRef.current,
+      editorSnapshot,
+      pendingComposerSnapshotRef.current,
+    );
+    if (snapshot) return snapshot;
     return {
       value: promptRef.current,
       cursor: composerCursor,
