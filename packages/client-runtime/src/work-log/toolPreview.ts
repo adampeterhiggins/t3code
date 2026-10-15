@@ -11,6 +11,7 @@ import {
 } from "./integrationToolPreview.ts";
 import { t3UtilityToolPreview } from "./t3UtilityToolPreview.ts";
 import { toolCallArgs, toolResultData, toolResultText } from "./itemDetail.ts";
+import { commandDisplayText } from "./commandLabel.ts";
 import { resolveWorkEntryToolPresentation } from "./presentation.ts";
 
 /**
@@ -317,7 +318,9 @@ function threadActivityText(type: string, item: Record_): string | null {
     );
   }
   const [first, second] = text?.split("\n") ?? [];
-  if (type === "command_execution") return first?.replace(/^\$ /, "") ?? str(item.title);
+  if (type === "command_execution") {
+    return first ? commandDisplayText(first.replace(/^\$ /, "")) : str(item.title);
+  }
   if (type === "file_change" && first) {
     return second && /^\+\d+ -\d+$/.test(second) ? `${first} ${second}` : first;
   }
