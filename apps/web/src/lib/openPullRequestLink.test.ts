@@ -8,9 +8,10 @@ import {
   matchesLinkedPullRequestUrl,
   parseChangeRequestUrl,
   pullRequestCandidateUrlFromReferenceAutolink,
+  resolvePullRequestPreviewTarget,
   shouldOpenPullRequestExternally,
 } from "./openPullRequestLink";
-import { ProjectId, type RepositoryIdentity } from "@t3tools/contracts";
+import { type EnvironmentId, ProjectId, type RepositoryIdentity } from "@t3tools/contracts";
 import { normalizeGitRemoteUrl } from "@t3tools/shared/git";
 
 function repositoryIdentity(
@@ -439,5 +440,45 @@ describe("findProjectForChangeRequest", () => {
         number: 1,
       }),
     ).toBeUndefined();
+  });
+});
+
+describe("resolvePullRequestPreviewTarget", () => {
+  const environmentId = "env-1" as EnvironmentId;
+  const frontend = {
+    id: ProjectId.make("frontend"),
+    environmentId,
+    repositoryIdentity: {
+      canonicalKey: "github.com/acme/frontend",
+      provider: "github",
+      owner: "acme",
+      name: "frontend",
+    },
+  } as never;
+  const url = "https://github.com/acme/backend/pull/105";
+
+  it("reads a pull request from another repository through a project on its host", () => {
+    expect(
+      resolvePullRequestPreviewTarget({
+        environmentId,
+        projects: [frontend],
+        capabilities: { pullRequests: true, threadPullRequests: true } as never,
+        url,
+      }),
+    ).toEqual({
+      environmentId,
+      input: { projectId: "frontend", host: "github.com", repository: "acme/backend", number: 105 },
+    });
+  });
+
+  it("keeps the link on a server that cannot route by host", () => {
+    expect(
+      resolvePullRequestPreviewTarget({
+        environmentId,
+        projects: [frontend],
+        capabilities: { pullRequests: true } as never,
+        url,
+      }),
+    ).toBeNull();
   });
 });

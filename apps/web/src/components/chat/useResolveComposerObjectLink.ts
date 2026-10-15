@@ -161,7 +161,7 @@ export interface ResolvedComposerObjectLink {
 /**
  * Turns a link into the chip its attach picker would have made: the issue or pull request is
  * fetched and snapshotted the same way. Null when it cannot be read (Linear, Slack, Notion, or Granola
- * not connected or turned off, `gh` signed out, a repository no project here is checked out from), so the caller
+ * not connected or turned off, `gh` signed out, a host no project here is checked out from), so the caller
  * keeps the link.
  */
 export function useResolveComposerObjectLink(input: {
@@ -189,7 +189,7 @@ export function useResolveComposerObjectLink(input: {
   });
   const projects = useProjects();
   const serverConfig = useAtomValue(serverEnvironment.configValueAtom(environmentId));
-  const pullRequestsEnabled = serverConfig?.environment.capabilities.pullRequests === true;
+  const capabilities = serverConfig?.environment.capabilities;
 
   return useCallback(
     async (
@@ -278,7 +278,7 @@ export function useResolveComposerObjectLink(input: {
           const target = resolvePullRequestPreviewTarget({
             environmentId,
             projects,
-            pullRequestsEnabled,
+            capabilities,
             url: link.url,
           });
           if (target === null) return null;
@@ -359,7 +359,7 @@ export function useResolveComposerObjectLink(input: {
       granolaEnabled,
       notionEnabled,
       projects,
-      pullRequestsEnabled,
+      capabilities,
       slackEnabled,
       threadRef.threadId,
     ],

@@ -1,4 +1,9 @@
-import type { EnvironmentId, PullRequestRef, ScopedThreadRef } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  ExecutionEnvironmentCapabilities,
+  PullRequestRef,
+  ScopedThreadRef,
+} from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigate } from "@tanstack/react-router";
 import { type MouseEvent, useCallback, useMemo } from "react";
@@ -45,31 +50,41 @@ export function findProjectForChangeRequest(
   });
 }
 
+/**
+ * The reference that reads a change request link on one environment. The project only lends
+ * its checkout and credentials, so any project on the link's host will do, its own first.
+ * Servers without `threadPullRequests` cannot route by host and read only a project's own
+ * repository.
+ */
 export function resolvePullRequestPreviewTarget({
   environmentId,
   projects,
-  pullRequestsEnabled,
+  capabilities,
   url,
 }: {
   environmentId: EnvironmentId | null;
   projects: ReadonlyArray<EnvironmentProject>;
-  pullRequestsEnabled: boolean;
+  capabilities: ExecutionEnvironmentCapabilities | undefined;
   url: string;
 }): { environmentId: EnvironmentId; input: PullRequestRef } | null {
-  if (!pullRequestsEnabled || environmentId === null) return null;
+  if (capabilities?.pullRequests !== true || environmentId === null) return null;
   const parsed = parseChangeRequestUrl(url);
   if (parsed === null) return null;
-  const project = findProjectForChangeRequest(
-    projects.filter((candidate) => candidate.environmentId === environmentId),
-    parsed,
-  );
+  const candidates = projects.filter((candidate) => candidate.environmentId === environmentId);
+  const own = findProjectForChangeRequest(candidates, parsed);
+  const project =
+    own ??
+    (capabilities.threadPullRequests === true
+      ? findProjectOnChangeRequestHost(candidates, parsed)
+      : undefined);
   if (project === undefined) return null;
   return {
     environmentId,
     input: {
       projectId: project.id,
       host: parsed.authority ?? parsed.host,
-      repository: sourceControlRepositorySelector(project.repositoryIdentity) ?? parsed.repository,
+      repository:
+        (own && sourceControlRepositorySelector(own.repositoryIdentity)) ?? parsed.repository,
       number: parsed.number,
     },
   };
@@ -83,7 +98,7 @@ export function usePullRequestPreviewTarget(environmentId: EnvironmentId | null,
       resolvePullRequestPreviewTarget({
         environmentId,
         projects,
-        pullRequestsEnabled: serverConfig?.environment.capabilities.pullRequests === true,
+        capabilities: serverConfig?.environment.capabilities,
         url,
       }),
     [environmentId, projects, serverConfig, url],

@@ -336,7 +336,7 @@ converts when you type a space or new line after it. The chip replaces the link 
 loads. A link to one comment on a pull request attaches that comment, with the replies before it
 when it is part of a review thread. In the attach menu's pull request picker, right-click a pull
 request and choose **Attach a comment…** to pick one of its comments instead. A link T3 Code cannot read stays as text: a Linear issue or Slack message before you connect that service, or a
-pull request from a repository none of your projects is checked out from. Paste with
+pull request from a host none of your projects is checked out from. Paste with
 `Cmd+Shift+V` (`Ctrl+Shift+V` elsewhere) to keep a link as text. A link you turn back into text
 with undo, or whose chip you delete, is not converted again as you keep typing.
 
