@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useOpenPullRequest } from "../native/useOpenPullRequest";
 import { SourceFileSurface } from "../features/files/SourceFileSurface";
 import { filePreviewKind } from "@t3tools/shared/filePreview";
@@ -25,6 +26,11 @@ import {
   contextRepositoryOutcomeLabel,
   describeContextRepositoryGitStatus,
 } from "@t3tools/client-runtime/context-repositories";
+import {
+  parseThreadTabSummary,
+  threadTabSummaryTools,
+  type ThreadTabSummaryRole,
+} from "@t3tools/client-runtime/thread-tab-summary";
 import { FilePreviewModal } from "./FilePreviewModal";
 import { VideoPreviewModal } from "./VideoPreviewModal";
 import { granolaNoteDetail } from "./GranolaNotePickerSheet";
@@ -33,6 +39,98 @@ import { AppText as Text } from "./AppText";
 import { AppSheet } from "./AppSheet";
 import { useAppearancePreferences } from "../features/settings/appearance/AppearancePreferencesProvider";
 import { getMobileTerminalTheme } from "../features/terminal/terminalTheme";
+
+const THREAD_TAB_SUMMARY_ROLE_LABELS = {
+  user: "User",
+  assistant: "Agent",
+  reasoning: "Thinking",
+  tools: "Tools",
+  error: "Error",
+} as const satisfies Record<ThreadTabSummaryRole, string>;
+
+function ThreadTabSummaryFields(props: { summary: string }) {
+  const chats = useMemo(() => parseThreadTabSummary(props.summary), [props.summary]);
+  if (chats === null) return <ContextField label="Summary" value={props.summary} />;
+  return chats.map((chat, chatIndex) => {
+    const fileCount = chat.files.length + chat.moreFiles;
+    const facts = [
+      chats.length > 1 ? chat.title : null,
+      chat.latestTurn ? `Latest turn ${chat.latestTurn}` : null,
+      fileCount > 0 ? `${fileCount} ${fileCount === 1 ? "file" : "files"} changed` : null,
+    ].filter((fact) => fact !== null);
+    return (
+      <View key={chatIndex} className="gap-3">
+        {facts.length > 0 ? (
+          <Text className="text-sm text-foreground-muted">{facts.join(" · ")}</Text>
+        ) : null}
+        <ContextField
+          label="Files changed"
+          code
+          value={
+            chat.files.length > 0
+              ? [
+                  ...chat.files,
+                  ...(chat.moreFiles > 0 ? [`…and ${chat.moreFiles} more`] : []),
+                ].join("\n")
+              : null
+          }
+        />
+        <ContextField label="Latest plan" value={chat.plan} />
+        {chat.blocks.length === 0 ? (
+          <Text className="text-sm text-foreground-muted">No messages yet.</Text>
+        ) : null}
+        {chat.blocks.map((block, index) =>
+          block.kind === "omitted" ? (
+            <Text key={index} className="text-center text-sm text-foreground-muted">
+              {block.turns} earlier {block.turns === 1 ? "turn" : "turns"} not included
+            </Text>
+          ) : (
+            <View
+              key={index}
+              className={
+                block.role === "user" && index > 0 ? "gap-1 border-t border-border pt-3" : "gap-1"
+              }
+            >
+              <Text className="text-xs text-foreground-muted">
+                {THREAD_TAB_SUMMARY_ROLE_LABELS[block.role]}
+              </Text>
+              {block.role === "tools" ? (
+                threadTabSummaryTools(block.text).map((tool, toolIndex) => (
+                  <Text
+                    key={toolIndex}
+                    selectable
+                    numberOfLines={2}
+                    className={
+                      tool.failed
+                        ? "text-sm text-danger-foreground"
+                        : "text-sm text-foreground-muted"
+                    }
+                    style={{ fontFamily: REVIEW_MONO_FONT_FAMILY }}
+                  >
+                    {tool.failed ? `${tool.label} (failed)` : tool.label}
+                  </Text>
+                ))
+              ) : (
+                <Text
+                  selectable
+                  className={
+                    block.role === "error"
+                      ? "text-base text-danger-foreground"
+                      : block.role === "reasoning"
+                        ? "text-base italic text-foreground-muted"
+                        : "text-base text-foreground"
+                  }
+                >
+                  {block.text}
+                </Text>
+              )}
+            </View>
+          ),
+        )}
+      </View>
+    );
+  });
+}
 
 function ContextField(props: { label: string; value: string | null | undefined; code?: boolean }) {
   if (!props.value) return null;
@@ -460,8 +558,8 @@ export function ComposerContextSheet(props: {
             {record.kind === "thread-tab" ? (
               <View className="gap-3">
                 <ContextField label="Chat" value={record.title} />
-                {/* Exactly what the agent receives in place of the other chat. */}
-                <ContextField label="Summary" value={record.summary} />
+                {/* What the agent receives in place of the other chat, laid out by turn. */}
+                <ThreadTabSummaryFields summary={record.summary} />
               </View>
             ) : null}
             {record.kind === "repository" ? (
