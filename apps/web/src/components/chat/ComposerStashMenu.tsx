@@ -1,6 +1,7 @@
 import { BookmarkIcon, FileIcon, FileTextIcon } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
 import { assistantCitationsToLabels } from "@t3tools/shared/assistantCitations";
+import { composerFileMentionsToLabels } from "@t3tools/shared/composerInlineTokens";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 
 import { formatRelativeTimeLabel } from "../../timestampFormat";
@@ -16,8 +17,10 @@ function missingImageCount(entry: PromptStashEntry): number {
 }
 
 function stashEntrySnippet(entry: PromptStashEntry): string {
-  const trimmed = assistantCitationsToLabels(
-    replaceComposerContextReferences(entry.prompt, (reference) => reference.label),
+  const trimmed = composerFileMentionsToLabels(
+    assistantCitationsToLabels(
+      replaceComposerContextReferences(entry.prompt, (reference) => reference.label),
+    ),
   )
     .trim()
     .replace(/\s+/g, " ");

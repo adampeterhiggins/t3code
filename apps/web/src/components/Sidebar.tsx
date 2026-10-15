@@ -17,6 +17,7 @@ import { useSupportsMultiplePullRequests } from "~/hooks/useSupportsMultiplePull
 import { resolveThreadCurrentPullRequestLink } from "@t3tools/shared/threadPullRequests";
 import { useAtomValue } from "@effect/atom-react";
 import { assistantCitationsToLabels } from "@t3tools/shared/assistantCitations";
+import { composerFileMentionsToLabels } from "@t3tools/shared/composerInlineTokens";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 import * as Schema from "effect/Schema";
 import {
@@ -1023,8 +1024,10 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
 }) {
   const { composer, draftId, onContextMenu, onDiscard, onNavigate } = props;
   const promptPreview =
-    assistantCitationsToLabels(
-      replaceComposerContextReferences(composer.prompt, (occurrence) => occurrence.label),
+    composerFileMentionsToLabels(
+      assistantCitationsToLabels(
+        replaceComposerContextReferences(composer.prompt, (occurrence) => occurrence.label),
+      ),
     )
       .trim()
       .split("\n", 1)[0] ?? "";

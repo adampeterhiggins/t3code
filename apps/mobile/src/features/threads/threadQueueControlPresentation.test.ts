@@ -31,7 +31,7 @@ describe("threadQueueControlPresentation", () => {
     expect(controls.dismissAccessibilityLabel).toBe(REMOVE_QUEUED_MESSAGE_ACCESSIBILITY_LABEL);
   });
 
-  it("shows context and quote chips as their labels", () => {
+  it("shows context, mention and quote chips as their labels", () => {
     const file = formatComposerContextReference({
       kind: "mention",
       contextId: "context-1" as ComposerContextId,
@@ -54,10 +54,10 @@ describe("threadQueueControlPresentation", () => {
       canReorder: false,
       index: 0,
       queuedCount: 1,
-      text: `${quote} in ${file}`,
+      text: `${quote} in ${file} and [api.ts](src/api.ts)`,
     });
 
-    expect(controls.displayText).toBe("Use the cache in README.md");
+    expect(controls.displayText).toBe("Use the cache in README.md and api.ts");
   });
 
   it("disables edge reorder controls and busy dismissal", () => {

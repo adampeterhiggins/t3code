@@ -3,6 +3,7 @@ import {
   collectAssistantCitations,
 } from "@t3tools/shared/assistantCitations";
 import { collectComposerContextReferences } from "@t3tools/shared/composerContextReferences";
+import { collectComposerInlineTokens } from "@t3tools/shared/composerInlineTokens";
 import {
   BotIcon,
   FileIcon,
@@ -18,8 +19,11 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { useTheme } from "../../hooks/useTheme";
+import { basenameOfPath } from "../../pierre-icons";
 import { ContextChip, ContextChipLabel, type ContextChipKind } from "../ContextChip";
 import { GitHubIcon, GranolaIcon, LinearIcon, NotionIcon, SlackIcon } from "../Icons";
+import { FileTagChipContent } from "./FileTagChip";
 import { SkillChipIcon } from "./SkillInlineText";
 
 const CHIP_ICONS: Partial<Record<ContextChipKind, ReactNode>> = {
@@ -45,19 +49,32 @@ const CHIP_ICONS: Partial<Record<ContextChipKind, ReactNode>> = {
   citation: <QuoteIcon />,
 };
 
-// The chip's align-middle centers it on the x-height, which reads low beside one-line text;
-// lift it to the cap-height center.
-const CHIP_ALIGN = "-translate-y-[0.1em]";
-
-type Segment = { start: number; end: number; kind: ContextChipKind; label: string };
+type Segment = {
+  start: number;
+  end: number;
+  kind: ContextChipKind;
+  label: string;
+  path?: string;
+};
 
 /**
- * One-line message text with its context references and assistant quotes drawn as static
+ * One-line message text with its context references, file mentions and assistant quotes drawn as static
  * chips, for previews that have no records to open (queued messages). `hideImages` drops
  * image references a surface already shows as thumbnails.
  */
 export function InlineChipText({ text, hideImages }: { text: string; hideImages?: boolean }) {
+  const { resolvedTheme } = useTheme();
   const segments: Segment[] = [
+    // Mentions only match before whitespace; the pad lets one end the text.
+    ...collectComposerInlineTokens(`${text} `)
+      .filter((token) => token.type === "mention")
+      .map((token) => ({
+        start: token.start,
+        end: token.end,
+        kind: "mention" as const,
+        label: basenameOfPath(token.value),
+        path: token.value,
+      })),
     ...collectComposerContextReferences(text).map((reference) => ({
       start: reference.start,
       end: reference.end,
@@ -79,9 +96,15 @@ export function InlineChipText({ text, hideImages }: { text: string; hideImages?
     parts.push(text.slice(cursor, segment.start));
     if (segment.label) {
       parts.push(
-        <ContextChip key={segment.start} kind={segment.kind} className={CHIP_ALIGN}>
-          {CHIP_ICONS[segment.kind]}
-          <ContextChipLabel>{segment.label}</ContextChipLabel>
+        <ContextChip key={segment.start} kind={segment.kind}>
+          {segment.path === undefined ? (
+            <>
+              {CHIP_ICONS[segment.kind]}
+              <ContextChipLabel>{segment.label}</ContextChipLabel>
+            </>
+          ) : (
+            <FileTagChipContent path={segment.path} label={segment.label} theme={resolvedTheme} />
+          )}
         </ContextChip>,
       );
     }
