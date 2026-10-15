@@ -5,6 +5,7 @@ import {
   useRef,
   type ComponentProps,
   type ReactNode,
+  type UIEvent,
 } from "react";
 import { cn } from "../../lib/utils";
 
@@ -132,6 +133,30 @@ export function WorkLogRow({
 /** Distance from the end, in px, that still counts as reading the newest text. */
 const LIVE_EDGE_PX = 4;
 
+/**
+ * Keeps streamed text in a scroller in view. Scrolling up pauses this until the reader returns
+ * to the end. Spread the result on the scrolling element.
+ */
+export function useFollowLive(followLive: boolean) {
+  const ref = useRef<HTMLDivElement>(null);
+  const atLiveEdgeRef = useRef(true);
+  // No deps: each streamed chunk re-renders the owner, and pinning before paint
+  // shows the new text without a visible jump.
+  useLayoutEffect(() => {
+    const scroller = ref.current;
+    if (followLive && atLiveEdgeRef.current && scroller) {
+      scroller.scrollTop = scroller.scrollHeight;
+    }
+  });
+  return {
+    ref,
+    onScroll: (event: UIEvent<HTMLDivElement>) => {
+      const { scrollHeight, scrollTop, clientHeight } = event.currentTarget;
+      atLiveEdgeRef.current = scrollHeight - scrollTop - clientHeight <= LIVE_EDGE_PX;
+    },
+  };
+}
+
 export function WorkLogDetails({
   children,
   kind = "text",
@@ -142,23 +167,10 @@ export function WorkLogDetails({
   /** Keep streamed text in view. Scrolling up pauses this until the reader returns to the end. */
   followLive?: boolean;
 }) {
-  const scrollerRef = useRef<HTMLDivElement>(null);
-  const atLiveEdgeRef = useRef(true);
-  // No deps: each streamed chunk re-renders this, and pinning before paint
-  // shows the new text without a visible jump.
-  useLayoutEffect(() => {
-    const scroller = scrollerRef.current;
-    if (followLive && atLiveEdgeRef.current && scroller) {
-      scroller.scrollTop = scroller.scrollHeight;
-    }
-  });
+  const follow = useFollowLive(followLive);
   return (
     <div
-      ref={scrollerRef}
-      onScroll={(event) => {
-        const { scrollHeight, scrollTop, clientHeight } = event.currentTarget;
-        atLiveEdgeRef.current = scrollHeight - scrollTop - clientHeight <= LIVE_EDGE_PX;
-      }}
+      {...follow}
       className={cn(
         "cursor-auto",
         kind === "text"

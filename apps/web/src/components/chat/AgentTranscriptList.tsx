@@ -50,6 +50,7 @@ import { agentTranscriptToolRowIndex, type AgentTranscriptRow } from "./agentTra
 import { V2ItemInspector } from "./V2ItemInspector";
 import { ToolCallDetails } from "./ToolCallDetail";
 import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
+import { ThoughtPreviewContent } from "./ThoughtPreviewContent";
 import { WorkLogDetails, WorkLogRow } from "./WorkLog";
 
 interface AgentTranscriptContextValue {
@@ -204,7 +205,7 @@ function ReasoningRow({ row }: { row: Extract<AgentTranscriptRow, { kind: "reaso
   const context = useTranscriptContext();
   const expanded = context.expanded.has(row.id);
   const toggle = () => context.toggle(row.id);
-  return (
+  const line = (
     <WorkLogRow
       role="button"
       tabIndex={0}
@@ -230,6 +231,28 @@ function ReasoningRow({ row }: { row: Extract<AgentTranscriptRow, { kind: "reaso
         )
       ) : null}
     </WorkLogRow>
+  );
+  return (
+    <PreviewCard>
+      <PreviewCardTrigger render={line} delay={300} closeDelay={150} />
+      {!expanded ? (
+        <PreviewCardPopup side="left" align="start" className="w-md max-w-[calc(100vw-2rem)]">
+          <ThoughtPreviewContent
+            streaming={row.streaming}
+            timestamp={formatSecondsTimestamp(row.createdAt, context.timestampFormat)}
+          >
+            <ChatMarkdown
+              text={row.text}
+              cwd={context.workspaceRoot}
+              threadRef={context.childRef}
+              isStreaming={row.streaming}
+              lineBreaks
+              className="text-xs"
+            />
+          </ThoughtPreviewContent>
+        </PreviewCardPopup>
+      ) : null}
+    </PreviewCard>
   );
 }
 

@@ -30,6 +30,7 @@ export type AgentTranscriptRow = (
       readonly kind: "reasoning";
       readonly id: string;
       readonly text: string;
+      readonly streaming: boolean;
       readonly projectedItem: OrchestrationV2ProjectedTurnItem | null;
     }
   | {
@@ -91,6 +92,7 @@ function workRow(
           id: entry.id,
           createdAt,
           text,
+          streaming: entry.toolLifecycleStatus === "inProgress",
           projectedItem: entry.projectedItem ?? null,
         }
       : null;

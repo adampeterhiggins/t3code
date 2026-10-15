@@ -375,7 +375,10 @@ text and status, with output behind **View output**; opening that disclosure loa
 The exit code and time stay visible beside the disclosure, including failed exits. Other tool
 cards show the same details the row expands to, with time and status in a compact footer.
 Syntax highlighting for tool arguments is limited to hover previews; expanded chat rows show
-plain text. Thoughts and answered questions do not preview
+plain text. Thoughts in the main chat and agent transcript preview the same way: the card renders
+the whole thought as markdown and follows it while it streams
+([`ThoughtPreviewContent.tsx`](../apps/web/src/components/chat/ThoughtPreviewContent.tsx)).
+Answered questions do not preview
 ([`MessagesTimeline.tsx`](../apps/web/src/components/chat/MessagesTimeline.tsx),
 [`toolCallPreview.ts`](../apps/web/src/lib/toolCallPreview.ts)).
 A tool call's expanded row, and its hover card on web and desktop, show common tools as what

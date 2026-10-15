@@ -323,8 +323,10 @@ import { type TimestampFormat } from "@t3tools/contracts/settings";
 import {
   formatChatTimestampTooltip,
   formatDayAwareTimestamp,
+  formatSecondsTimestamp,
   formatUpcomingTimestamp,
 } from "../../timestampFormat";
+import { ThoughtPreviewContent } from "./ThoughtPreviewContent";
 import { V2ItemInspector } from "./V2ItemInspector";
 import {
   ToolCallDetails,
@@ -5761,29 +5763,65 @@ function remarkThoughtPreview(fallback: string) {
   };
 }
 
-function ReasoningTraceContent({ entries }: { entries: ReadonlyArray<TimelineWorkEntry> }) {
-  const ctx = use(TimelineRowCtx);
+function useReasoningIsStreaming() {
   const { isWorking, latestRunId } = use(TimelineRowActivityCtx);
-  const isStreaming = (entry: TimelineWorkEntry) =>
+  return (entry: TimelineWorkEntry) =>
     isWorking && entry.runId === latestRunId && entry.toolLifecycleStatus === "inProgress";
+}
+
+function ThoughtMarkdown({
+  entry,
+  streaming,
+  className,
+}: {
+  entry: TimelineWorkEntry;
+  streaming: boolean;
+  className: string;
+}) {
+  const ctx = use(TimelineRowCtx);
+  return (
+    <ChatMarkdown
+      className={className}
+      text={entry.detail ?? ""}
+      cwd={ctx.markdownCwd}
+      threadRef={ctx.threadRef ?? undefined}
+      skills={ctx.skills}
+      isStreaming={streaming}
+      headingLevelOffset={MESSAGE_HEADING_LEVEL}
+      onUseArtifactTemplate={ctx.onUseArtifactTemplate}
+      onImageExpand={ctx.onImageExpand}
+      lineBreaks
+    />
+  );
+}
+
+function ReasoningTraceContent({ entries }: { entries: ReadonlyArray<TimelineWorkEntry> }) {
+  const isStreaming = useReasoningIsStreaming();
   return (
     <WorkLogDetails followLive={entries.some(isStreaming)}>
       {entries.map((entry) => (
-        <ChatMarkdown
+        <ThoughtMarkdown
           key={entry.id}
+          entry={entry}
+          streaming={isStreaming(entry)}
           className="text-foreground"
-          text={entry.detail ?? ""}
-          cwd={ctx.markdownCwd}
-          threadRef={ctx.threadRef ?? undefined}
-          skills={ctx.skills}
-          isStreaming={isStreaming(entry)}
-          headingLevelOffset={MESSAGE_HEADING_LEVEL}
-          onUseArtifactTemplate={ctx.onUseArtifactTemplate}
-          onImageExpand={ctx.onImageExpand}
-          lineBreaks
         />
       ))}
     </WorkLogDetails>
+  );
+}
+
+/** Mounted only while the row's hover card is open. */
+function ThoughtPreview({ entry }: { entry: TimelineWorkEntry }) {
+  const { timestampFormat } = use(TimelineRowCtx);
+  const streaming = useReasoningIsStreaming()(entry);
+  return (
+    <ThoughtPreviewContent
+      streaming={streaming}
+      timestamp={formatSecondsTimestamp(entry.createdAt, timestampFormat)}
+    >
+      <ThoughtMarkdown entry={entry} streaming={streaming} className="text-xs" />
+    </ThoughtPreviewContent>
   );
 }
 
@@ -6205,8 +6243,10 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
     </WorkLogRow>
   );
 
+  const hasThoughtPreview = isReasoning && Boolean(workEntry.detail?.trim());
   // The card stays mounted while expanded so toggling never remounts the row.
-  if (!workEntryHasToolCallPreview(workEntry, canExpandProjectedItem)) return row;
+  if (!hasThoughtPreview && !workEntryHasToolCallPreview(workEntry, canExpandProjectedItem))
+    return row;
   return (
     <PreviewCard
       open={!expanded && previewOpen}
@@ -6222,23 +6262,27 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
         {...previewAnchor.triggerProps}
       />
       <PreviewCardPopup {...previewAnchor.popupProps} className="w-md max-w-[calc(100vw-2rem)]">
-        <ToolCallDetails
-          preview
-          {...ctx}
-          workEntry={workEntry}
-          workspaceRoot={workspaceRoot}
-          previewText={previewText}
-          icon={
-            <span className={cn(iconWrapperClass, "mt-px size-3.5 shrink-0")}>
-              <ToolActivityIconView
-                icon={entryToolIcon}
-                fallbackName={entryIconName}
-                className="block size-3.5 shrink-0 stroke-2"
-                muted
-              />
-            </span>
-          }
-        />
+        {hasThoughtPreview ? (
+          <ThoughtPreview entry={workEntry} />
+        ) : (
+          <ToolCallDetails
+            preview
+            {...ctx}
+            workEntry={workEntry}
+            workspaceRoot={workspaceRoot}
+            previewText={previewText}
+            icon={
+              <span className={cn(iconWrapperClass, "mt-px size-3.5 shrink-0")}>
+                <ToolActivityIconView
+                  icon={entryToolIcon}
+                  fallbackName={entryIconName}
+                  className="block size-3.5 shrink-0 stroke-2"
+                  muted
+                />
+              </span>
+            }
+          />
+        )}
       </PreviewCardPopup>
     </PreviewCard>
   );
