@@ -245,10 +245,13 @@ function PreviewBody(props: {
           {preview.model || preview.branch ? (
             <Muted>{[preview.model, preview.branch].filter(Boolean).join(" · ")}</Muted>
           ) : null}
-          {preview.items.map((item) => (
-            <Body key={item.key} lines={3}>{`${item.label}: ${item.text}`}</Body>
-          ))}
           {preview.moreItems > 0 ? <Muted>{`+${preview.moreItems} earlier`}</Muted> : null}
+          {preview.items.map((item) => (
+            <Body
+              key={item.key}
+              lines={item.activity ? 1 : 3}
+            >{`${item.label}: ${item.text}`}</Body>
+          ))}
           <OpenThread threadId={preview.threadId} onOpenThread={props.onOpenThread} />
         </>
       );

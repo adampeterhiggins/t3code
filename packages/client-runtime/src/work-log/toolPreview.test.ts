@@ -69,16 +69,48 @@ describe("resolveToolPreview", () => {
       model: "claude-haiku-5-5",
       branch: "task/K01-g10",
       items: [
-        { key: "b", label: "Thinking", text: "Reading seams.py" },
-        { key: "c", label: "Tool", text: "Read seams.py" },
-        { key: "d", label: "Agent", text: "Reachable." },
-        { key: "e", label: "Agent", text: "Done." },
+        { key: "b", label: "Thinking", text: "Reading seams.py", activity: false },
+        { key: "c", label: "Tool", text: "Read seams.py", activity: true },
+        { key: "d", label: "Agent", text: "Reachable.", activity: false },
+        { key: "e", label: "Agent", text: "Done.", activity: false },
       ],
       moreItems: 1,
     };
     expect(resolveToolPreview(codex)).toEqual(expected);
     expect(resolveToolPreview(claude)).toEqual(expected);
     expect(resolveToolPreview(cursor)).toEqual(expected);
+  });
+
+  it("summarizes a read thread's tool calls, commands and edits to one line", () => {
+    const read = {
+      thread: { threadId: "child-thread", title: "Hover previews" },
+      items: [
+        {
+          itemId: "t3",
+          type: "dynamic_tool",
+          // Truncated mid-value, as `maxCharsPerItem` leaves it.
+          text: '{\n  "toolName": "mcp__t3-code__t3_thread_read",\n  "input": { "threadId": "1f4b',
+          title: null,
+        },
+        {
+          itemId: "other",
+          type: "dynamic_tool",
+          text: '{ "toolName": "mcp__slack__slack_read_thread", "input": {} }',
+          title: null,
+        },
+        { itemId: "cmd", type: "command_execution", text: "$ vp test run\nok", title: null },
+        { itemId: "edit", type: "file_change", text: "src/a.ts\n+3 -1\n@@ diff", title: null },
+      ],
+    };
+    const preview = resolveToolPreview(
+      tool("mcp__t3-code__t3_thread_read", { threadId: "child-thread" }, read),
+    );
+    expect(preview?.kind === "thread" ? preview.items : null).toEqual([
+      { key: "t3", label: "Tool", text: "Read a T3 thread", activity: true },
+      { key: "other", label: "Tool", text: "slack_read_thread", activity: true },
+      { key: "cmd", label: "Command", text: "vp test run", activity: true },
+      { key: "edit", label: "Edit", text: "src/a.ts +3 -1", activity: true },
+    ]);
   });
 
   it("shows a delegated task's state and the brief's title", () => {
@@ -453,7 +485,7 @@ describe("resolveToolPreview", () => {
       status: null,
       model: "claude-opus-5-5",
       branch: "release/v3.188.6",
-      items: [{ key: "message", label: "Message", text: "Cut the release." }],
+      items: [{ key: "message", label: "Message", text: "Cut the release.", activity: false }],
       moreItems: 0,
     });
   });

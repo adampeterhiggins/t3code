@@ -11,6 +11,8 @@ import {
 } from "./integrationToolPreview.ts";
 import { t3UtilityToolPreview } from "./t3UtilityToolPreview.ts";
 import { toolCallArgs, toolResultData, toolResultText } from "./itemDetail.ts";
+import { commandDisplayText } from "./commandLabel.ts";
+import { resolveWorkEntryToolPresentation } from "./presentation.ts";
 
 /**
  * A tool call's preview as data, for tools whose arguments and result read better
@@ -107,6 +109,8 @@ export interface ThreadToolPreview {
     readonly key: string;
     readonly label: string;
     readonly text: string;
+    /** A tool call, command or edit, summarized to one line, rather than a message. */
+    readonly activity: boolean;
   }>;
   /** Items the call returned beyond `items`. */
   readonly moreItems: number;
@@ -297,6 +301,32 @@ const THREAD_ITEM_LABELS: Readonly<Record<string, string>> = {
   file_change: "Edit",
 };
 
+const THREAD_MESSAGE_TYPES = new Set(["user_message", "assistant_message", "reasoning"]);
+
+/**
+ * One line naming what a non-message item did. The server serializes tool calls as JSON,
+ * possibly truncated mid-value, so the tool name is read off the front of the text.
+ */
+function threadActivityText(type: string, item: Record_): string | null {
+  const text = str(item.text)?.trim() ?? null;
+  if (type === "dynamic_tool") {
+    const toolName = text ? /"toolName":\s*"([^"]+)"/.exec(text)?.[1] : undefined;
+    if (!toolName) return str(item.title);
+    return (
+      resolveWorkEntryToolPresentation({ label: toolName, toolLifecycleStatus: "completed" })
+        ?.displayName ?? toolName.replace(/^mcp__.+?__/, "")
+    );
+  }
+  const [first, second] = text?.split("\n") ?? [];
+  if (type === "command_execution") {
+    return first ? commandDisplayText(first.replace(/^\$ /, "")) : str(item.title);
+  }
+  if (type === "file_change" && first) {
+    return second && /^\+\d+ -\d+$/.test(second) ? `${first} ${second}` : first;
+  }
+  return str(item.title) ?? first ?? null;
+}
+
 function threadPreview(result: Record_): ThreadToolPreview | null {
   const thread = isRecord(result.thread) ? result.thread : null;
   const threadId = str(thread?.threadId);
@@ -304,10 +334,11 @@ function threadPreview(result: Record_): ThreadToolPreview | null {
   const items = (Array.isArray(result.items) ? result.items : []).filter(isRecord);
   const shown = items.slice(-MAX_THREAD_ITEMS).flatMap((item, index) => {
     const type = str(item.type) ?? "item";
-    const text = str(item.text) ?? str(item.title);
+    const activity = !THREAD_MESSAGE_TYPES.has(type);
+    const text = activity ? threadActivityText(type, item) : str(item.text);
     if (!text) return [];
     const label = THREAD_ITEM_LABELS[type] ?? "Tool";
-    return [{ key: str(item.itemId) ?? String(index), label, text: text.trim() }];
+    return [{ key: str(item.itemId) ?? String(index), label, text: text.trim(), activity }];
   });
   return {
     kind: "thread",
@@ -638,7 +669,9 @@ function launchedThreadPreview(input: Record_, result: Record_): ThreadToolPrevi
     status: str(result.status),
     model: str(selection?.model),
     branch: str(workspace?.branch),
-    items: message ? [{ key: "message", label: "Message", text: message.trim() }] : [],
+    items: message
+      ? [{ key: "message", label: "Message", text: message.trim(), activity: false }]
+      : [],
     moreItems: 0,
   };
 }

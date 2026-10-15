@@ -377,17 +377,27 @@ function PreviewBody(props: {
             </p>
           ) : null}
           {preview.items.length > 0 ? (
-            <ul className="space-y-1 border-l border-border/60 pl-2">
-              {preview.items.map((item) => (
-                <li key={item.key} className="line-clamp-3 break-words">
-                  <span className="text-muted-foreground">{item.label} </span>
-                  {item.text}
-                </li>
-              ))}
+            <div className="space-y-1 border-l border-border/60 pl-2">
               {preview.moreItems > 0 ? (
-                <li className="text-muted-foreground">+{preview.moreItems} earlier</li>
+                <p className="text-muted-foreground">+{preview.moreItems} earlier</p>
               ) : null}
-            </ul>
+              <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1">
+                {preview.items.map((item) => (
+                  <div key={item.key} className="contents">
+                    <dt className="text-muted-foreground">{item.label}</dt>
+                    <dd
+                      className={
+                        item.activity
+                          ? "truncate text-foreground/70"
+                          : "line-clamp-3 break-words text-foreground"
+                      }
+                    >
+                      {item.text}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
           ) : null}
           <OpenThreadButton threadId={preview.threadId} onOpenThread={props.onOpenThread} />
         </>
