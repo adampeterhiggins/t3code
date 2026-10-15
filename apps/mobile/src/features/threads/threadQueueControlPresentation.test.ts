@@ -1,3 +1,6 @@
+import { EnvironmentId, MessageId, ThreadId, type ComposerContextId } from "@t3tools/contracts";
+import { serializeAssistantCitation } from "@t3tools/shared/assistantCitations";
+import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -26,6 +29,35 @@ describe("threadQueueControlPresentation", () => {
     expect(controls.canSteer).toBe(true);
     expect(controls.canDismiss).toBe(true);
     expect(controls.dismissAccessibilityLabel).toBe(REMOVE_QUEUED_MESSAGE_ACCESSIBILITY_LABEL);
+  });
+
+  it("shows context, mention and quote chips as their labels", () => {
+    const file = formatComposerContextReference({
+      kind: "mention",
+      contextId: "context-1" as ComposerContextId,
+      label: "README.md",
+    });
+    const quote = serializeAssistantCitation({
+      version: 1,
+      environmentId: EnvironmentId.make("environment"),
+      threadId: ThreadId.make("thread"),
+      messageId: MessageId.make("message"),
+      text: "Use the cache",
+      start: 0,
+      end: 13,
+      prefix: "",
+      suffix: "",
+    });
+    const controls = resolveThreadQueueRowControls({
+      busy: false,
+      canPromoteToSteer: false,
+      canReorder: false,
+      index: 0,
+      queuedCount: 1,
+      text: `${quote} in ${file} and [api.ts](src/api.ts)`,
+    });
+
+    expect(controls.displayText).toBe("Use the cache in README.md and api.ts");
   });
 
   it("disables edge reorder controls and busy dismissal", () => {

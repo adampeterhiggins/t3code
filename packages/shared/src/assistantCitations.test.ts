@@ -9,6 +9,7 @@ import {
   type AssistantCitation,
 } from "@t3tools/contracts";
 import {
+  assistantCitationsToLabels,
   assistantCitationsToPlainText,
   collectAssistantCitations,
   expandAssistantCitationsForProvider,
@@ -110,8 +111,18 @@ describe("assistant citation references", () => {
     const prompt = `[Assistant quote](${href})`;
     expect(collectAssistantCitations(prompt)).toEqual([]);
     expect(assistantCitationsToPlainText(prompt)).toBe(prompt);
+    expect(assistantCitationsToLabels(prompt)).toBe(prompt);
     expect(expandAssistantCitationsForProvider(prompt)).toBe(prompt);
     expect(renderAssistantCitationsAsText(prompt)).toBe(prompt);
+  });
+
+  it("previews each citation as its chip label", () => {
+    const commented = serializeAssistantCitation({ ...citation, comment: "  Why\nthis?" });
+    expect(
+      assistantCitationsToLabels(
+        `About ${serializeAssistantCitation(legacyCitation)} and ${commented}`,
+      ),
+    ).toBe("About A quote & a newline.  and Why this?");
   });
 
   it("bounds selected text and surrounding context", () => {

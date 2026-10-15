@@ -1,4 +1,7 @@
 import type { EnvironmentId, RunId, ThreadId } from "@t3tools/contracts";
+import { assistantCitationsToLabels } from "@t3tools/shared/assistantCitations";
+import { composerFileMentionsToLabels } from "@t3tools/shared/composerInlineTokens";
+import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 
 export const REMOVE_QUEUED_MESSAGE_ACCESSIBILITY_LABEL = "Remove queued message";
 
@@ -35,7 +38,12 @@ export function resolveThreadQueueRowControls(input: {
     canMoveUp: mutationEnabled && input.canReorder && input.index > 0,
     canSteer: mutationEnabled && input.canPromoteToSteer && !isEditing,
     dismissAccessibilityLabel: REMOVE_QUEUED_MESSAGE_ACCESSIBILITY_LABEL,
-    displayText: input.text,
+    // Chips read as their labels, matching the composer.
+    displayText: composerFileMentionsToLabels(
+      assistantCitationsToLabels(
+        replaceComposerContextReferences(input.text, (reference) => reference.label),
+      ),
+    ).trim(),
     isEditing,
   };
 }

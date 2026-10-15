@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { collectComposerInlineTokens } from "./composerInlineTokens.ts";
+import {
+  collectComposerInlineTokens,
+  composerFileMentionsToLabels,
+} from "./composerInlineTokens.ts";
 
 describe("collectComposerInlineTokens", () => {
   it("collects file links, mentions, and skills with source ranges", () => {
@@ -189,5 +192,15 @@ describe("collectComposerInlineTokens", () => {
     const started = performance.now();
     expect(collectComposerInlineTokens(" [[".repeat(40_000))).toEqual([]);
     expect(performance.now() - started).toBeLessThan(1_000);
+  });
+});
+
+describe("composerFileMentionsToLabels", () => {
+  it("previews file-link mentions as their file names", () => {
+    expect(
+      composerFileMentionsToLabels(
+        "Check [README.md](README.md) and [a b.ts](src/a%20b.ts)\nthen @src/c.ts [docs](https://example.com) [x.ts](src/x.ts)",
+      ),
+    ).toBe("Check README.md and a b.ts\nthen @src/c.ts [docs](https://example.com) x.ts");
   });
 });

@@ -151,3 +151,21 @@ export function collectComposerInlineTokens(
 
   return [...matches].sort((left, right) => left.start - right.start);
 }
+
+/** One-line previews show each file-link mention as its file name, the way the composer chip reads. */
+export function composerFileMentionsToLabels(text: string): string {
+  // Mentions only match before whitespace; the pad lets one end the text.
+  const mentions = collectMentionTokens(`${text} `).filter((token) => token.source.startsWith("["));
+  let result = "";
+  let cursor = 0;
+  // File-link matches come back in text order and never overlap.
+  for (const mention of mentions) {
+    const separatorIndex = Math.max(
+      mention.value.lastIndexOf("/"),
+      mention.value.lastIndexOf("\\"),
+    );
+    result += text.slice(cursor, mention.start) + mention.value.slice(separatorIndex + 1);
+    cursor = mention.end;
+  }
+  return result + text.slice(cursor);
+}

@@ -18,12 +18,16 @@ import { cn } from "~/lib/utils";
  * A consumer may override `--context-chip-accent` through `style` for a color that comes
  * from content, such as an image's average color.
  *
+ * align-middle centers the pill on the x-height, which reads low beside capitals; the 0.1em lift
+ * centers it on the cap height instead. Wrappers around the chip should be inline or align-middle
+ * too, so the chip keeps that alignment.
+ *
  * Renders a span by default. Render it as a button, link or popover/tooltip trigger to make it
  * interactive; the hover tint follows from that, not from a prop. Anything focusable (including a
  * span with tabIndex for a tooltip) gets the focus outline.
  */
 const contextChipVariants = cva(
-  "inline-flex h-[1.41em] max-w-full items-center gap-[0.33em] rounded-[0.5em] border px-[0.5em] align-middle font-medium text-[0.86em] leading-none [&_svg]:block [&_svg]:size-[1.17em] [&_svg]:shrink-0 [&_svg]:self-center [button&,a&,[data-popup-open]&]:cursor-pointer [button&,a&]:transition-colors [button&,a&]:motion-reduce:transition-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-foreground disabled:cursor-default",
+  "inline-flex h-[1.41em] max-w-full items-center gap-[0.33em] -translate-y-[0.1em] rounded-[0.5em] border px-[0.5em] align-middle font-medium text-[0.86em] leading-none [&_svg]:block [&_svg]:size-[1.17em] [&_svg]:shrink-0 [&_svg]:self-center [button&,a&,[data-popup-open]&]:cursor-pointer [button&,a&]:transition-colors [button&,a&]:motion-reduce:transition-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-foreground disabled:cursor-default",
   {
     defaultVariants: { kind: "neutral" },
     variants: {
