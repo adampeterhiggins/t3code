@@ -346,9 +346,14 @@ without a prompt remain idle.
 
 Launches one ordinary top-level thread through the app's launch service. Use an
 explicit `workspaceStrategy` to create a new worktree (`worktree` with `baseRef`),
-attach an existing checkout (`existing_worktree` with `worktreePath`), or use the
-project root (`root`, also the default). The thread is bound to that workspace
-before the agent starts. Creating a worktree in the task prompt does not update
+attach an existing checkout (`existing_worktree` with `worktreePath`), start from
+a pull request (`pull_request` with `reference`), or use the project root (`root`,
+also the default). The thread is bound to that workspace before the agent starts.
+A `pull_request` launch runs the composer's PR checkout before the thread exists
+and then binds the result like `existing_worktree`, so a PR that cannot be
+checked out creates no thread. A `worktree` launch whose `branch` already exists
+is refused up front: `git worktree add -b` would fail only after the thread was
+created. Creating a worktree in the task prompt does not update
 this binding.
 
 Pass the task in `message`. Project, model, and modes inherit when omitted;

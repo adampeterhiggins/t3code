@@ -1472,6 +1472,23 @@ Code: [`McpContextLinks.ts`](../apps/server/src/mcp/McpContextLinks.ts), the lin
 [`integrationContextRecords.ts`](../packages/shared/src/integrationContextRecords.ts). User guide:
 [agent-access.md](./user/agent-access.md#attach-links-as-context).
 
+## Agents start threads from pull requests
+
+`t3_thread_launch` takes `workspaceStrategy: {type:"pull_request", reference, mode?}`, where
+`reference` is a PR URL or number. The server checks the pull request out the way the composer's
+"start from PR" does, fork PRs included: a worktree that already has the PR branch is reused,
+otherwise one is created, and `mode:"local"` checks it out in the project checkout instead. The
+thread is created on that checkout and runs the project's setup script there. A PR that cannot be
+checked out fails the call and creates no thread. A `worktree` launch whose `branch` already exists
+is refused before any thread is created, and the error points to `existing_worktree` or
+`pull_request`.
+
+Code: `checkOutPullRequest` and `checkNewWorktree` in
+[`ThreadLaunchService.ts`](../apps/server/src/orchestration-v2/ThreadLaunchService.ts),
+`OrchestrationV2ThreadLaunchPullRequestWorkspaceStrategy` in
+[`orchestrationV2.ts`](../packages/contracts/src/orchestrationV2.ts), and
+[`toolkits/project/handlers.ts`](../apps/server/src/mcp/toolkits/project/handlers.ts).
+
 ## Delegated subagents in their own worktree
 
 Upstream's `delegate_task` supports `isolation: "worktree"` to give a child a checkout based on the

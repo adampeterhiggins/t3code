@@ -49,6 +49,22 @@ const assertProjectWorktree = Effect.fn("mcp.assertProjectWorktree")(function* (
     });
 });
 
+/** What an agent can do instead of a new worktree that cannot be created. */
+function newWorktreeRemedy(
+  error: ThreadLaunch.ThreadLaunchBaseRefError | ThreadLaunch.ThreadLaunchBranchExistsError,
+  strategy: { readonly startFromOrigin?: boolean | undefined },
+) {
+  if (error._tag === "ThreadLaunchBranchExistsError")
+    return error.worktreePath === null
+      ? 'A worktree strategy creates its branch: omit branch or pass a new name. To start from a pull request\'s branch, use {type:"pull_request",reference:"<PR URL or number>"}.'
+      : `To run there, use {type:"existing_worktree",worktreePath:"${error.worktreePath}"}; to start from a pull request, use {type:"pull_request",reference:"<PR URL or number>"}.`;
+  return `Pass a branch, tag, or commit that exists there${
+    strategy.startFromOrigin === true
+      ? "; the project has no origin remote to fetch it from."
+      : ", or set startFromOrigin:true if it exists only on origin."
+  }`;
+}
+
 const access = Effect.gen(function* () {
   yield* readCaller();
   return yield* Project.ProjectService;
@@ -105,23 +121,20 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
             });
           yield* assertProjectWorktree(project.workspaceRoot, input.workspaceStrategy.worktreePath);
         }
-        // A launch is accepted before its worktree is provisioned, so a base
-        // ref that cannot resolve is refused while the agent can still act on it.
+        // A launch is accepted before its worktree is provisioned, so a
+        // worktree that cannot be created is refused while the agent can
+        // still act on it.
         const strategy = input.workspaceStrategy;
         if (strategy?.type === "worktree")
           yield* ThreadLaunch.ThreadLaunchService.pipe(
             Effect.flatMap((launches) =>
-              launches.checkWorktreeBase({ projectId, workspaceStrategy: strategy }),
+              launches.checkNewWorktree({ projectId, workspaceStrategy: strategy }),
             ),
             Effect.mapError(
               (error) =>
                 new OrchestratorMcpFailure({
                   code: "invalid_request",
-                  message: `${error.message} No thread was created. Pass a branch, tag, or commit that exists there${
-                    strategy.startFromOrigin === true
-                      ? "; the project has no origin remote to fetch it from."
-                      : ", or set startFromOrigin:true if it exists only on origin."
-                  }`,
+                  message: `${error.message} No thread was created. ${newWorktreeRemedy(error, strategy)}`,
                 }),
             ),
           );
@@ -181,6 +194,12 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
               return new OrchestratorMcpFailure({
                 code: "invalid_request",
                 message: error.message,
+              });
+            }
+            if (error._tag === "ThreadLaunchPullRequestError") {
+              return new OrchestratorMcpFailure({
+                code: "invalid_request",
+                message: `${error.message} No thread was created.`,
               });
             }
             return unavailable();

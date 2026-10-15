@@ -565,16 +565,40 @@ const NewWorktreeWorkspaceStrategy = Schema.Struct({
   startFromOrigin: Schema.optional(Schema.Boolean),
 });
 
+const RootWorkspaceStrategy = Schema.Struct({
+  type: Schema.Literal("root"),
+  branch: Schema.optional(TrimmedNonEmptyString),
+});
+
 export const OrchestrationV2ThreadLaunchWorkspaceStrategy = Schema.Union([
-  Schema.Struct({
-    type: Schema.Literal("root"),
-    branch: Schema.optional(TrimmedNonEmptyString),
-  }),
+  RootWorkspaceStrategy,
   ExistingWorktreeWorkspaceStrategy,
   NewWorktreeWorkspaceStrategy,
 ]);
 export type OrchestrationV2ThreadLaunchWorkspaceStrategy =
   typeof OrchestrationV2ThreadLaunchWorkspaceStrategy.Type;
+
+/**
+ * Starts a thread from a pull request the way the composer does: the PR head is
+ * fetched (fork PRs included) and checked out in a worktree, reusing one that
+ * already has the branch, or in the project checkout for `local`. A launch
+ * resolves it to the checkout it lands on, so runs never record it.
+ */
+export const OrchestrationV2ThreadLaunchPullRequestWorkspaceStrategy = Schema.Struct({
+  type: Schema.Literal("pull_request"),
+  reference: TrimmedNonEmptyString,
+  mode: Schema.optional(Schema.Literals(["worktree", "local"])),
+});
+export type OrchestrationV2ThreadLaunchPullRequestWorkspaceStrategy =
+  typeof OrchestrationV2ThreadLaunchPullRequestWorkspaceStrategy.Type;
+
+/** What a thread launch request may ask for: a launch strategy, or a pull request to start from. */
+export const OrchestrationV2ThreadLaunchRequestWorkspaceStrategy = Schema.Union([
+  RootWorkspaceStrategy,
+  ExistingWorktreeWorkspaceStrategy,
+  NewWorktreeWorkspaceStrategy,
+  OrchestrationV2ThreadLaunchPullRequestWorkspaceStrategy,
+]);
 
 /**
  * Where a delegated child runs when it should not share its parent's checkout:
