@@ -84,11 +84,14 @@ export function reviewCommentContextLabel(comment: ReviewCommentPresentation): s
   const rangeLabel = diffRange
     ? `L${diffRange[2]}${diffRange[3] ? ` to L${diffRange[3]}` : ""}${diffRange[1] === "-" ? " (before)" : ""}`
     : comment.rangeLabel;
-  return `${basename(comment.filePath)} ${rangeLabel}`;
+  // Lines from a pull request say which one, as the chip is all the reader sees of it.
+  const pullRequest = comment.pullRequest ? `#${comment.pullRequest.number} · ` : "";
+  return `${pullRequest}${basename(comment.filePath)} ${rangeLabel}`;
 }
 
+/** The whole pull request, as opposed to lines in it that carry its metadata along. */
 export function isPullRequestSummaryContext(comment: ReviewCommentPresentation): boolean {
-  if (comment.pullRequest !== undefined) return true;
+  if (comment.pullRequest !== undefined) return comment.diff.trim().length === 0;
   return (
     comment.sectionId.startsWith("pull-request:") &&
     comment.diff.trim().length === 0 &&

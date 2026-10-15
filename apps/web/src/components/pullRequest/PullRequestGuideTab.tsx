@@ -48,7 +48,7 @@ export function PullRequestGuideTab({
   /** Whether this reader may queue line comments for a review on this host. */
   canComment: boolean;
   /** Opens an agent thread about lines of the change. Null where no thread can be opened. */
-  onAskAboutLines: ((comment: ReviewCommentContext, request: string) => void) | null;
+  onAskAboutLines: ((comment: ReviewCommentContext, request: string, send: boolean) => void) | null;
   onAskAboutStop:
     | ((stop: PullRequestReviewGuideStop, index: number, question: string) => void)
     | null;
