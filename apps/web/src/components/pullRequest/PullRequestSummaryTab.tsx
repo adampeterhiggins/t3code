@@ -68,6 +68,7 @@ import {
   canResolvePullRequestThread,
 } from "./pullRequestEditing.logic";
 import { PullRequestMarkdown } from "./PullRequestMarkdown";
+import { PullRequestQuoteSource } from "./PullRequestQuoteToolbar";
 import { PullRequestCommentBody } from "./PullRequestCommentBody";
 import { PullRequestMarkdownEditor } from "./PullRequestMarkdownEditor";
 import { PullRequestReactionBar } from "./PullRequestReactions";
@@ -208,14 +209,20 @@ function CommentBody({
   }
   return (
     <div className={cn("flex items-start gap-1", className)}>
-      <PullRequestCommentBody
-        key={comment.id}
+      <PullRequestQuoteSource
         className="min-w-0 flex-1"
-        text={comment.body}
-        cwd={editing.cwd}
-        environmentId={editing.environmentId}
-        threadRef={editing.threadRef}
-      />
+        source="comment"
+        author={comment.author}
+        url={comment.url}
+      >
+        <PullRequestCommentBody
+          key={comment.id}
+          text={comment.body}
+          cwd={editing.cwd}
+          environmentId={editing.environmentId}
+          threadRef={editing.threadRef}
+        />
+      </PullRequestQuoteSource>
       {editing.canEdit(comment) ? (
         <PullRequestEditButton aria-label="Edit comment" onClick={() => editing.onEdit(comment)} />
       ) : null}
@@ -1049,13 +1056,29 @@ export function PullRequestSummaryTab({
             />
           ) : (
             <div className="flex items-start gap-1">
-              <PullRequestMarkdown
-                className="min-w-0 flex-1"
-                text={detail.body.trim().length > 0 ? detail.body : "_No description provided._"}
-                cwd={detail.workspaceRoot}
-                environmentId={environmentId}
-                threadRef={threadRef}
-              />
+              {detail.body.trim().length > 0 ? (
+                <PullRequestQuoteSource
+                  className="min-w-0 flex-1"
+                  source="description"
+                  author={detail.author}
+                  url={detail.url}
+                >
+                  <PullRequestMarkdown
+                    text={detail.body}
+                    cwd={detail.workspaceRoot}
+                    environmentId={environmentId}
+                    threadRef={threadRef}
+                  />
+                </PullRequestQuoteSource>
+              ) : (
+                <PullRequestMarkdown
+                  className="min-w-0 flex-1"
+                  text="_No description provided._"
+                  cwd={detail.workspaceRoot}
+                  environmentId={environmentId}
+                  threadRef={threadRef}
+                />
+              )}
               {canEditPullRequestChangeRequest(detail) ? (
                 <PullRequestEditButton
                   aria-label="Edit description"

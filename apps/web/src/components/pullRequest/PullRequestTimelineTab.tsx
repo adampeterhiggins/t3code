@@ -37,6 +37,7 @@ import {
 } from "./pullRequestDetail.logic";
 import { canEditPullRequestComment } from "./pullRequestEditing.logic";
 import { PullRequestMarkdown } from "./PullRequestMarkdown";
+import { PullRequestQuoteSource } from "./PullRequestQuoteToolbar";
 import { PullRequestMarkdownEditor } from "./PullRequestMarkdownEditor";
 import { PullRequestReactionBar } from "./PullRequestReactions";
 import {
@@ -61,21 +62,21 @@ interface ReactionSurface {
 }
 
 function TimelineBody({
+  event,
   body,
-  markdown,
   cwd,
   environmentId,
   threadRef,
 }: {
+  event: PullRequestTimelineEvent;
   body: string;
-  markdown: boolean;
   cwd: string;
   environmentId: EnvironmentId;
   threadRef: ScopedThreadRef | null;
 }) {
   return (
-    <div className="mt-3">
-      {markdown ? (
+    <PullRequestQuoteSource className="mt-3" source="comment" author={event.actor} url={event.url}>
+      {event.markdown ? (
         <PullRequestMarkdown
           text={body}
           cwd={cwd}
@@ -85,7 +86,7 @@ function TimelineBody({
       ) : (
         <p className="whitespace-pre-wrap text-xs text-muted-foreground">{body}</p>
       )}
-    </div>
+    </PullRequestQuoteSource>
   );
 }
 
@@ -269,8 +270,8 @@ function ConversationCard({
       ) : event.body ? (
         <div className="px-2 pb-2">
           <TimelineBody
+            event={event}
             body={event.body}
-            markdown={event.markdown}
             cwd={cwd}
             environmentId={reactions.environmentId}
             threadRef={reactions.threadRef}
@@ -526,8 +527,8 @@ function ReviewVerdictEvent({
           visible rather than being folded away with the ordinary conversation. */}
       {event.body ? (
         <TimelineBody
+          event={event}
           body={event.body}
-          markdown={event.markdown}
           cwd={cwd}
           environmentId={reactions.environmentId}
           threadRef={reactions.threadRef}

@@ -17,17 +17,12 @@ import {
   resolveSelectionActionPosition,
   type SelectionActionPoint,
 } from "~/lib/selectionActions";
-import { serializeRenderedMarkdownQuote } from "~/markdown-clipboard";
+import { serializeSelectedMarkdownQuote } from "~/markdown-clipboard";
 import { Button } from "../ui/button";
 
 /** Adds the selection's Markdown when it says more than the plain text and fits. */
 function withSelectedMarkdown(citation: AssistantCitation, range: Range): AssistantCitation {
-  const fragment = document.createElement("div");
-  fragment.append(range.cloneContents());
-  const ancestor = range.commonAncestorContainer;
-  const enclosingCodeBlock =
-    (ancestor instanceof Element ? ancestor : ancestor.parentElement)?.closest("pre") ?? null;
-  const markdown = serializeRenderedMarkdownQuote(fragment, enclosingCodeBlock);
+  const markdown = serializeSelectedMarkdownQuote(range);
   return markdown.trim().length === 0 ||
     markdown === citation.text ||
     markdown.length > ASSISTANT_CITATION_MAX_MARKDOWN_LENGTH

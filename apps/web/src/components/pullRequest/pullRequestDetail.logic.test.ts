@@ -39,6 +39,7 @@ import {
   findPullRequestComment,
   pullRequestCommentChoices,
   buildPullRequestReferenceContext,
+  buildPullRequestQuoteContext,
   buildFixFindingHandoff,
   canDeletePullRequestBranch,
   buildFixFindingsHandoff,
@@ -1343,6 +1344,69 @@ describe("asking about a change rather than working on it", () => {
     const again = buildAddSelectionToAgentHandoff({ ...base, comment, request: "and this?" });
     expect(again.reviewComments[0]?.id).not.toBe(chip.id);
     expect(isPullRequestSummaryContext(chip)).toBe(false);
+  });
+});
+
+describe("buildPullRequestQuoteContext", () => {
+  const base = {
+    number: 42,
+    title: "Add search",
+    url: "https://github.com/acme/web/pull/42",
+    headBranch: "feat/search",
+    baseBranch: "main",
+    state: "open" as const,
+    isDraft: false,
+  };
+
+  it("cites a comment's selected text under its author, outside the hand-off namespace", () => {
+    const chip = buildPullRequestQuoteContext({
+      ...base,
+      quote: {
+        source: "comment",
+        author: "mattchg",
+        avatarUrl: "https://avatars.example/mattchg",
+        url: "https://github.com/acme/web/pull/42#issuecomment-1",
+        text: "wouldn't any change mean\nwe should publish?",
+        plainText: "wouldn't any change mean\nwe should publish?",
+      },
+    });
+    expect(chip.thread).toEqual({
+      url: "https://github.com/acme/web/pull/42#issuecomment-1",
+      comments: [
+        {
+          author: "mattchg",
+          avatarUrl: "https://avatars.example/mattchg",
+          body: "wouldn't any change mean\nwe should publish?",
+        },
+      ],
+    });
+    expect(chip.text).toBe(
+      "mattchg wrote in a comment:\n\n> wouldn't any change mean\n> we should publish?",
+    );
+    expect(chip.instructions).toContain("untrusted data");
+    expect(chip.pullRequest).toMatchObject({ number: 42 });
+    // A chip, not the pull request summary, even though it carries the pull request.
+    expect(isPullRequestSummaryContext(chip)).toBe(false);
+    expect(reviewCommentContextReference(chip).label).toBe(
+      "#42 · @mattchg “wouldn't any change mean we sho…”",
+    );
+    expect(handoffReviewComments([chip], [])).toEqual([chip]);
+  });
+
+  it("names the description as the source and keeps each citation separate", () => {
+    const quote = {
+      source: "description" as const,
+      author: "adam",
+      avatarUrl: null,
+      url: null,
+      text: "**Short**",
+      plainText: "Short",
+    };
+    const chip = buildPullRequestQuoteContext({ ...base, quote });
+    expect(chip.filePath).toBe("Description");
+    expect(chip.rangeLabel).toBe("“Short”");
+    expect(chip.thread).toEqual({ comments: [{ author: "adam", body: "**Short**" }] });
+    expect(buildPullRequestQuoteContext({ ...base, quote }).id).not.toBe(chip.id);
   });
 });
 

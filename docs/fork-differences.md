@@ -656,6 +656,17 @@ Code: `AgentActionButton` in
 [`pullRequestDetail.logic.ts`](../apps/web/src/components/pullRequest/pullRequestDetail.logic.ts),
 and [`composerSubmitRequestStore.ts`](../apps/web/src/composerSubmitRequestStore.ts).
 
+## Cite pull request descriptions and comments
+
+Selecting text in a pull request's description or comments, on the Summary or Timeline tab, shows
+the same **Cite** button as an assistant response. It puts one chip at the composer's caret that
+holds the quote under its author, with the pull request it came from. Nothing is sent. With no
+thread beside the panel, it opens one holding the chip.
+
+Code: [`PullRequestQuoteToolbar.tsx`](../apps/web/src/components/pullRequest/PullRequestQuoteToolbar.tsx)
+and `buildPullRequestQuoteContext` in
+[`pullRequestDetail.logic.ts`](../apps/web/src/components/pullRequest/pullRequestDetail.logic.ts).
+
 ## Worktree cleanup ignored names
 
 With **Keep worktrees with local changes** set to **Any local files**, upstream keeps a worktree

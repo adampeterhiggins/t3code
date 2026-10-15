@@ -424,3 +424,13 @@ export function chatMarkdownClipboardPayload(
   if (texts.length === 0) return null;
   return { text: texts.join("\n\n"), html: htmls.join("") };
 }
+
+/** {@link serializeRenderedMarkdownQuote} for a live selection range. */
+export function serializeSelectedMarkdownQuote(range: Range): string {
+  const fragment = document.createElement("div");
+  fragment.append(range.cloneContents());
+  const ancestor = range.commonAncestorContainer;
+  const enclosingCodeBlock =
+    (ancestor instanceof Element ? ancestor : ancestor.parentElement)?.closest("pre") ?? null;
+  return serializeRenderedMarkdownQuote(fragment, enclosingCodeBlock);
+}
