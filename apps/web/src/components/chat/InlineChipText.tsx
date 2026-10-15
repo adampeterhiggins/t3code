@@ -45,6 +45,10 @@ const CHIP_ICONS: Partial<Record<ContextChipKind, ReactNode>> = {
   citation: <QuoteIcon />,
 };
 
+// The chip's align-middle centers it on the x-height, which reads low beside one-line text;
+// lift it to the cap-height center.
+const CHIP_ALIGN = "-translate-y-[0.1em]";
+
 type Segment = { start: number; end: number; kind: ContextChipKind; label: string };
 
 /**
@@ -75,7 +79,7 @@ export function InlineChipText({ text, hideImages }: { text: string; hideImages?
     parts.push(text.slice(cursor, segment.start));
     if (segment.label) {
       parts.push(
-        <ContextChip key={segment.start} kind={segment.kind}>
+        <ContextChip key={segment.start} kind={segment.kind} className={CHIP_ALIGN}>
           {CHIP_ICONS[segment.kind]}
           <ContextChipLabel>{segment.label}</ContextChipLabel>
         </ContextChip>,
