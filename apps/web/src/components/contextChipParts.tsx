@@ -7,6 +7,13 @@ import {
   contextRepositoryOutcomeLabel,
   describeContextRepositoryGitStatus,
 } from "@t3tools/client-runtime/context-repositories";
+import {
+  parseThreadTabSummary,
+  threadTabSummaryTools,
+  type ThreadTabSummaryBlock,
+  type ThreadTabSummaryChat,
+  type ThreadTabSummaryRole,
+} from "@t3tools/client-runtime/thread-tab-summary";
 import type {
   EnvironmentId,
   GitHubIssueContextRecord,
@@ -17,6 +24,7 @@ import type {
 } from "@t3tools/contracts";
 import { CircleDashedIcon, FilmIcon, ImageIcon } from "lucide-react";
 import {
+  Fragment,
   useMemo,
   useState,
   type ComponentProps,
@@ -29,6 +37,7 @@ import {
 import { PULL_REQUEST_STATE_PRESENTATION } from "~/components/pullRequest/pullRequestIcons";
 import type { PullRequestContextDisplayState } from "~/lib/composerContextRecords";
 import { formatLinearMarkdownForPreview } from "~/lib/linearMarkdown";
+import { cn } from "~/lib/utils";
 import ChatMarkdown from "./ChatMarkdown";
 import { PierreEntryIcon } from "./chat/PierreEntryIcon";
 import { middleTruncateAttachmentName } from "./composerInlineChip";
@@ -353,13 +362,134 @@ function FileChipContent(props: {
   );
 }
 
-/** Popover body for a chat-tab summary chip, shared by the composer and sent messages. */
+/**
+ * Popover body for a chat-tab summary chip, shared by the composer and sent messages: the
+ * summary the agent receives, laid out by turn. Text in another shape shows as written.
+ */
 export function ThreadTabSummaryDetails({ summary }: { summary: string }) {
+  const chats = useMemo(() => parseThreadTabSummary(summary), [summary]);
   return (
-    <div className="max-h-80 overflow-y-auto whitespace-pre-wrap wrap-break-word rounded-lg border border-border/70 bg-background/70 px-3 py-2.5 text-xs text-foreground">
-      {summary}
+    <div className="max-h-96 overflow-y-auto rounded-lg border border-border/70 bg-background/70 px-3 py-2.5 text-xs text-foreground">
+      {chats === null ? (
+        <p className="whitespace-pre-wrap wrap-break-word">{summary}</p>
+      ) : (
+        <div className="flex flex-col gap-5">
+          {chats.map((chat, index) => (
+            <ThreadTabSummaryChatDetails key={index} chat={chat} />
+          ))}
+        </div>
+      )}
     </div>
   );
+}
+
+const THREAD_TAB_SUMMARY_ROLE_LABELS = {
+  user: "User",
+  assistant: "Agent",
+  reasoning: "Thinking",
+  tools: "Tools",
+  error: "Error",
+} as const satisfies Record<ThreadTabSummaryRole, string>;
+
+function ThreadTabSummaryChatDetails({ chat }: { chat: ThreadTabSummaryChat }) {
+  const fileCount = chat.files.length + chat.moreFiles;
+  const facts = [
+    chat.latestTurn ? `Latest turn ${chat.latestTurn}` : null,
+    fileCount > 0 ? `${fileCount} ${fileCount === 1 ? "file" : "files"} changed` : null,
+  ].filter((fact) => fact !== null);
+  // Each user message opens a turn, as in the summary.
+  const turns: ThreadTabSummaryBlock[][] = [];
+  for (const block of chat.blocks) {
+    if (turns.length === 0 || block.kind === "omitted" || block.role === "user") turns.push([]);
+    turns.at(-1)!.push(block);
+  }
+  return (
+    <section className="flex flex-col gap-3">
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <p className="wrap-break-word font-medium text-sm">{chat.title}</p>
+        {facts.length > 0 ? <p className="text-muted-foreground">{facts.join(" · ")}</p> : null}
+      </div>
+      {chat.files.length > 0 ? (
+        <div className="flex flex-col gap-1">
+          <p className="font-medium text-muted-foreground">Files changed</p>
+          <ul className="flex flex-col gap-0.5 font-mono text-muted-foreground">
+            {chat.files.map((file) => {
+              const stats = / \(\+\d+ −\d+\)$/.exec(file);
+              return (
+                <li key={file} className="flex gap-2">
+                  {/* Truncates from the left, keeping the file name in view. */}
+                  <span className="min-w-0 truncate text-left [direction:rtl]">
+                    <span dir="ltr">{stats ? file.slice(0, stats.index) : file}</span>
+                  </span>
+                  {stats ? <span className="shrink-0">{stats[0].trim()}</span> : null}
+                </li>
+              );
+            })}
+            {chat.moreFiles > 0 ? <li>…and {chat.moreFiles} more</li> : null}
+          </ul>
+        </div>
+      ) : null}
+      {chat.plan ? (
+        <div className="flex flex-col gap-1">
+          <p className="font-medium text-muted-foreground">Latest plan</p>
+          <ChatMarkdown text={chat.plan} cwd={undefined} className="text-xs" />
+        </div>
+      ) : null}
+      {turns.length === 0 ? (
+        <p className="text-muted-foreground">No messages yet.</p>
+      ) : (
+        <div className="flex flex-col divide-y divide-border/70 border-t border-border/70">
+          {turns.map((turn, turnIndex) => (
+            <div
+              key={turnIndex}
+              className="grid grid-cols-[4rem_minmax(0,1fr)] gap-x-3 gap-y-2 py-2.5"
+            >
+              {turn.map((block, index) =>
+                block.kind === "omitted" ? (
+                  <p key={index} className="col-span-2 text-center text-muted-foreground">
+                    {block.turns} earlier {block.turns === 1 ? "turn" : "turns"} not included
+                  </p>
+                ) : (
+                  <Fragment key={index}>
+                    <p className="font-medium text-muted-foreground">
+                      {THREAD_TAB_SUMMARY_ROLE_LABELS[block.role]}
+                    </p>
+                    <ThreadTabSummaryEntry role={block.role} text={block.text} />
+                  </Fragment>
+                ),
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ThreadTabSummaryEntry({ role, text }: { role: ThreadTabSummaryRole; text: string }) {
+  switch (role) {
+    case "reasoning":
+      return (
+        <p className="whitespace-pre-wrap wrap-break-word text-muted-foreground italic">{text}</p>
+      );
+    case "tools":
+      return (
+        <ul className="flex min-w-0 flex-col gap-0.5 font-mono text-muted-foreground">
+          {threadTabSummaryTools(text).map((tool, index) => (
+            <li key={index} className={cn("wrap-break-word", tool.failed && "text-destructive")}>
+              {tool.label}
+              {tool.failed ? " (failed)" : null}
+            </li>
+          ))}
+        </ul>
+      );
+    case "error":
+      return <p className="whitespace-pre-wrap wrap-break-word text-destructive">{text}</p>;
+    case "assistant":
+      return <ChatMarkdown text={text} cwd={undefined} className="text-xs" />;
+    case "user":
+      return <p className="whitespace-pre-wrap wrap-break-word">{text}</p>;
+  }
 }
 
 /**

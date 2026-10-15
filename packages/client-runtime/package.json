@@ -490,6 +490,10 @@
     "./pull-request-markdown": {
       "types": "./src/pullRequestMarkdown.ts",
       "default": "./src/pullRequestMarkdown.ts"
+    },
+    "./thread-tab-summary": {
+      "types": "./src/threadTabSummary.ts",
+      "default": "./src/threadTabSummary.ts"
     }
   },
   "scripts": {
