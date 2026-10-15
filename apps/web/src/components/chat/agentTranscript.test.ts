@@ -114,10 +114,21 @@ const answer = item("assistant_message", {
 });
 
 describe("deriveAgentTranscriptRows", () => {
+  it("marks a thought that is still arriving as streaming", () => {
+    const live = item(
+      "reasoning",
+      { text: "Checking the session store", streaming: true },
+      { status: "running", completedAt: null },
+    );
+    expect(transcript([userPrompt, live])).toMatchObject([
+      { kind: "reasoning", text: "Checking the session store", streaming: true },
+    ]);
+  });
+
   it("lists the child thread's work in order, without the repeated launch prompt", () => {
     const rows = transcript([userPrompt, thinking, emptyThinking, grep, edit, helper, answer]);
     expect(rows.map((row) => row.kind)).toEqual(["reasoning", "tool", "tool", "notice", "message"]);
-    expect(rows[0]).toMatchObject({ text: "Sessions are probably in auth." });
+    expect(rows[0]).toMatchObject({ text: "Sessions are probably in auth.", streaming: false });
     expect(rows[1]).toMatchObject({ toolKind: "command", status: "running" });
     // Commands and paths read relative to the agent's workspace.
     expect(rows[1]?.kind === "tool" && rows[1].label).toBe("rg -n expires src/auth");
