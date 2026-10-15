@@ -217,16 +217,18 @@ function selectedTextBoundary(range: Range, node: Node, last: boolean): Text | n
 }
 
 /** Captures the ordered native range, including selections dragged backwards. */
+/** `sourceSelector` names the element a selection must stay inside to be quotable. */
 export function captureAssistantTextSelection(
   viewport: HTMLElement,
   selection: Selection | null,
+  sourceSelector = "[data-assistant-citation-source]",
 ): { source: HTMLElement; selector: AssistantTextSelector; range: Range } | null {
   if (selection === null || selection.isCollapsed || selection.rangeCount !== 1) return null;
   const range = selection.getRangeAt(0).cloneRange();
   const first = selectedTextBoundary(range, range.commonAncestorContainer, false);
   const last = selectedTextBoundary(range, range.commonAncestorContainer, true);
   if (first === null || last === null) return null;
-  const source = first.parentElement?.closest<HTMLElement>("[data-assistant-citation-source]");
+  const source = first.parentElement?.closest<HTMLElement>(sourceSelector);
   if (!source || !viewport.contains(source)) return null;
 
   // Paragraph selection can end at the next block's offset 0 or a parent

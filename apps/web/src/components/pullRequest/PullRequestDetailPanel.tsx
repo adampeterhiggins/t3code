@@ -140,12 +140,14 @@ import type { PullRequestAgentSelectionInput } from "./PullRequestCodeTab";
 import { openOnHostLabel, showPullRequestLinkContextMenu } from "./pullRequestLinkContextMenu";
 import { PullRequestMarkdownContext } from "./PullRequestMarkdownContext";
 import { PullRequestComposer } from "./PullRequestComposer";
+import { PullRequestQuoteToolbar, type PullRequestQuote } from "./PullRequestQuoteToolbar";
 import { PullRequestSummaryTab } from "./PullRequestSummaryTab";
 import { PullRequestTimelineTab } from "./PullRequestTimelineTab";
 import {
   buildAddSelectionToAgentHandoff,
   buildAskAboutGuideStopHandoff,
   buildAskAboutPullRequestHandoff,
+  buildPullRequestQuoteContext,
   buildExplainPullRequestHandoff,
   buildFixFindingHandoff,
   buildFixFindingsHandoff,
@@ -532,6 +534,7 @@ export function PullRequestDetailPanel({
   // Counted up by the guide's last stop to open the composer on the review.
   const [openReviewRequest, setOpenReviewRequest] = useState(0);
   const [tab, setTab] = useState<DetailTab>("summary");
+  const [contentViewport, setContentViewport] = useState<HTMLDivElement | null>(null);
   const [timelineOrder, setTimelineOrder] = useState<"newest" | "oldest">("newest");
   const [codeCommitScope, setCodeCommitScope] = useState<{
     readonly pullRequestKey: string;
@@ -1518,6 +1521,29 @@ export function PullRequestDetailPanel({
       }),
       { ...options, send: selection.send, questionInChip: true },
     );
+  };
+
+  /**
+   * A citation lands at the caret of the composer beside the panel, as one from a response does.
+   * With no composer there, it opens a thread holding it.
+   */
+  const citeQuote = (quote: PullRequestQuote) => {
+    if (!detail) return;
+    const chip = buildPullRequestQuoteContext({
+      number: detail.number,
+      title: detail.title,
+      url: detail.url,
+      headBranch: detail.headBranch,
+      baseBranch: detail.baseBranch,
+      state: detail.state,
+      isDraft: detail.isDraft,
+      quote,
+    });
+    if (attachTarget !== null) {
+      useComposerDraftStore.getState().addReviewComment(attachTarget, chip);
+      return;
+    }
+    void startAsk(`quote:${chip.id}`, { prompt: "", reviewComments: [chip] });
   };
 
   const startCheckout = (mode: "worktree" | "local") => {
@@ -2979,6 +3005,7 @@ export function PullRequestDetailPanel({
       </div>
 
       <div
+        ref={setContentViewport}
         className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
         onScrollCapture={(event) => {
           const scroller = scrollerByTab.current[tab];
@@ -3021,6 +3048,7 @@ export function PullRequestDetailPanel({
           />
         ) : detail ? (
           <PullRequestMarkdownContext value={markdownContext}>
+            <PullRequestQuoteToolbar viewport={contentViewport} onCite={citeQuote} />
             {mountedTabs.has("summary") ? (
               <div className={cn("absolute inset-0", tab !== "summary" && "invisible")}>
                 <PullRequestSummaryTab

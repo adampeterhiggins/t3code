@@ -91,7 +91,10 @@ export function reviewCommentContextLabel(comment: ReviewCommentPresentation): s
 
 /** The whole pull request, as opposed to lines in it that carry its metadata along. */
 export function isPullRequestSummaryContext(comment: ReviewCommentPresentation): boolean {
-  if (comment.pullRequest !== undefined) return comment.diff.trim().length === 0;
+  // A quote carries the pull request too, but what it shows is the remark it was taken from.
+  if (comment.pullRequest !== undefined) {
+    return comment.diff.trim().length === 0 && comment.thread === undefined;
+  }
   return (
     comment.sectionId.startsWith("pull-request:") &&
     comment.diff.trim().length === 0 &&
