@@ -22,7 +22,7 @@ import {
   type ServerProvider,
 } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
-import { Fragment, useMemo } from "react";
+import { useMemo } from "react";
 import { Alert, Pressable, View, type ColorValue } from "react-native";
 import { AppText as Text } from "../../components/AppText";
 import { SymbolView } from "../../components/AppSymbol";
@@ -95,18 +95,21 @@ export function ThreadHandoffDivider(props: {
     >
       <View className="flex-row flex-wrap items-center justify-center gap-1.5">
         {endpoints.from.map((endpoint, index) => (
-          <Fragment key={`${endpoint.instanceId}:${endpoint.model ?? ""}`}>
-            {index > 0 ? (
-              <Text accessible={false} className="text-xs text-foreground-muted">
-                ,
-              </Text>
-            ) : null}
+          <View
+            key={`${endpoint.instanceId}:${endpoint.model ?? ""}`}
+            className="max-w-full flex-row items-center"
+          >
             <HandoffEndpoint
               {...endpoint}
               providers={providers}
               account={showAccount ? providerAccountLabel(providers, endpoint.instanceId) : null}
             />
-          </Fragment>
+            {index < endpoints.from.length - 1 ? (
+              <Text accessible={false} className="text-xs text-foreground-muted">
+                ,
+              </Text>
+            ) : null}
+          </View>
         ))}
         {endpoints.from.length > 0 ? (
           <SymbolView name="arrow.right" size={12} tintColor={props.iconColor} />

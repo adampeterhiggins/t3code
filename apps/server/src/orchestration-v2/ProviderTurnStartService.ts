@@ -529,7 +529,8 @@ export const layer: Layer.Layer<
       // The run is already active, so workspace removals (context repository
       // clones) that check for running work refuse from here on. One already
       // under way holds the lease; wait for it before the provider sees the cwd.
-      if (resolvedRuntimePolicy.cwd != null) {
+      // Worktree startup already holds that lease around the whole start operation.
+      if (projection.thread.worktreePath === null && resolvedRuntimePolicy.cwd != null) {
         yield* withWorkspaceLease(path.resolve(resolvedRuntimePolicy.cwd), Effect.void);
       }
       const existingSessionProjection = projection.providerSessions.find(
@@ -1252,7 +1253,7 @@ export const layer: Layer.Layer<
         !noteContinuation
           ? session
           : makeDeliverySession(session, startWithHandoffs);
-      yield* runExecution.startRootRun({
+      return runExecution.startRootRun({
         commandId: CommandId.make(`command:effect:provider-turn.start:${run.id}`),
         appThread: projection.thread,
         providerSessionId,
@@ -1312,7 +1313,15 @@ export const layer: Layer.Layer<
 
     return ProviderTurnStartServiceV2.of({
       start: (input) =>
-        start(input).pipe(
+        Effect.gen(function* () {
+          // Storage cleanup removes worktrees under the same lease. Only startup
+          // holds it; the provider turn runs after it is released.
+          const { thread } = yield* projectionStore.getThreadRecords(input.threadId, []);
+          const providerTurn = yield* thread.worktreePath === null
+            ? start(input)
+            : withWorkspaceLease(path.resolve(thread.worktreePath), start(input));
+          if (providerTurn !== undefined) yield* providerTurn;
+        }).pipe(
           Effect.mapError((cause) =>
             isProviderTurnStartError(cause)
               ? cause
