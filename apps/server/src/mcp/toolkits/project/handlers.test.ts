@@ -344,7 +344,8 @@ const clientLaunchHarness = (input: {
   readonly runtimeModeCeiling: "approval-required" | "auto-accept-edits" | "auto" | "full-access";
   readonly launched: Array<ThreadLaunch.ThreadLaunchInput>;
   readonly workspaceRoot?: string;
-  readonly checkWorktreeBase?: ThreadLaunch.ThreadLaunchService["Service"]["checkWorktreeBase"];
+  readonly checkNewWorktree?: ThreadLaunch.ThreadLaunchService["Service"]["checkNewWorktree"];
+  readonly launchError?: ThreadLaunch.ThreadLaunchPullRequestError;
 }) => {
   const projectId = ProjectId.make("project:client-target");
   // "claudeAgent" is the real default instance id for the Claude driver
@@ -372,9 +373,10 @@ const clientLaunchHarness = (input: {
     }),
     Layer.mock(ThreadManagement.ThreadManagementService)({}),
     Layer.mock(ThreadLaunch.ThreadLaunchService)({
-      checkWorktreeBase: input.checkWorktreeBase ?? (() => Effect.void),
+      checkNewWorktree: input.checkNewWorktree ?? (() => Effect.void),
       launch: (launch) => {
         input.launched.push(launch);
+        if (input.launchError !== undefined) return Effect.fail(input.launchError);
         return Effect.succeed({
           threadId: launch.threadId,
           projection: {
@@ -515,7 +517,7 @@ it.effect("a launch into a new worktree creates nothing when its base ref has no
     const { projectId, dependencies } = clientLaunchHarness({
       runtimeModeCeiling: "auto",
       launched,
-      checkWorktreeBase: ({ projectId, workspaceStrategy }) =>
+      checkNewWorktree: ({ projectId, workspaceStrategy }) =>
         workspaceStrategy.type === "worktree" && workspaceStrategy.baseRef === "t3/renamed"
           ? Effect.fail(
               new ThreadLaunch.ThreadLaunchBaseRefError({
@@ -550,5 +552,88 @@ it.effect("a launch into a new worktree creates nothing when its base ref has no
 
     expect((yield* launchFrom("main")).at(-1)?.result).toMatchObject({ projectId });
     expect(launched).toHaveLength(1);
+  }),
+);
+
+it.effect("a launch into a new worktree on an existing branch points at the checkout to use", () =>
+  Effect.gen(function* () {
+    const launched: Array<ThreadLaunch.ThreadLaunchInput> = [];
+    const { projectId, dependencies } = clientLaunchHarness({
+      runtimeModeCeiling: "auto",
+      launched,
+      checkNewWorktree: ({ projectId, workspaceStrategy }) =>
+        workspaceStrategy.type === "worktree" && workspaceStrategy.branch !== undefined
+          ? Effect.fail(
+              new ThreadLaunch.ThreadLaunchBranchExistsError({
+                projectId,
+                projectTitle: "Client target",
+                branch: workspaceStrategy.branch,
+                worktreePath:
+                  workspaceStrategy.branch === "checked-out" ? "/worktrees/checked-out" : null,
+              }),
+            )
+          : Effect.void,
+    });
+    const toolkit = yield* ProjectToolkit.pipe(
+      Effect.provide(
+        McpToolAccess.HandlersLayer.layer(ProjectHandlers.layer).pipe(Layer.provide(dependencies)),
+      ),
+    );
+    const launchOn = (branch: string) =>
+      toolkit
+        .handle("t3_thread_launch", {
+          title: "Fix",
+          projectId,
+          workspaceStrategy: { type: "worktree", baseRef: branch, branch },
+        })
+        .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
+
+    const checkedOut = (yield* launchOn("checked-out")).at(-1)?.result as {
+      code: string;
+      message: string;
+    };
+    expect(checkedOut.code).toBe("invalid_request");
+    expect(checkedOut.message).toContain("No thread was created.");
+    expect(checkedOut.message).toContain(
+      '{type:"existing_worktree",worktreePath:"/worktrees/checked-out"}',
+    );
+    const elsewhere = (yield* launchOn("idle")).at(-1)?.result as { message: string };
+    expect(elsewhere.message).toContain('{type:"pull_request"');
+    expect(launched).toHaveLength(0);
+  }),
+);
+
+it.effect("a launch from a pull request reports a failed checkout without a thread", () =>
+  Effect.gen(function* () {
+    const launched: Array<ThreadLaunch.ThreadLaunchInput> = [];
+    const { projectId, dependencies } = clientLaunchHarness({
+      runtimeModeCeiling: "auto",
+      launched,
+      launchError: new ThreadLaunch.ThreadLaunchPullRequestError({
+        projectId: ProjectId.make("project:client-target"),
+        reference: "42",
+        detail: "Pull request not found.",
+      }),
+    });
+    const toolkit = yield* ProjectToolkit.pipe(
+      Effect.provide(
+        McpToolAccess.HandlersLayer.layer(ProjectHandlers.layer).pipe(Layer.provide(dependencies)),
+      ),
+    );
+    const result = (yield* toolkit
+      .handle("t3_thread_launch", {
+        title: "Review",
+        projectId,
+        workspaceStrategy: { type: "pull_request", reference: "42" },
+      })
+      .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies))).at(-1)?.result;
+    expect(result).toMatchObject({
+      code: "invalid_request",
+      message:
+        'Could not start from pull request "42": Pull request not found. No thread was created.',
+    });
+    expect(launched.map((launch) => launch.workspaceStrategy)).toEqual([
+      { type: "pull_request", reference: "42" },
+    ]);
   }),
 );

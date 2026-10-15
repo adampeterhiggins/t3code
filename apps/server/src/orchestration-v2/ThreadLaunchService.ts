@@ -11,6 +11,7 @@ import {
   type OrchestrationV2Actor,
   type OrchestrationV2CreationSource,
   type OrchestrationV2ThreadStartedBy,
+  type OrchestrationV2ThreadLaunchPullRequestWorkspaceStrategy,
   type OrchestrationV2ProviderThreadNativeMetadata,
   type OrchestrationV2ThreadProjection,
   type ProviderDriverKind,
@@ -74,6 +75,10 @@ export type ThreadLaunchWorkspaceStrategy =
       readonly startFromOrigin?: boolean | undefined;
     };
 
+/** Resolved by `launch` into the checkout the pull request lands on. */
+export type ThreadLaunchPullRequestWorkspaceStrategy =
+  OrchestrationV2ThreadLaunchPullRequestWorkspaceStrategy;
+
 export interface ThreadLaunchInitialMessage {
   readonly messageId?: MessageId;
   readonly scheduledTaskId?: ScheduledTaskId;
@@ -93,7 +98,9 @@ export interface ThreadLaunchInput {
   readonly modelSelection: ModelSelection;
   readonly runtimeMode: RuntimeMode;
   readonly interactionMode: ProviderInteractionMode;
-  readonly workspaceStrategy: ThreadLaunchWorkspaceStrategy;
+  readonly workspaceStrategy:
+    | ThreadLaunchWorkspaceStrategy
+    | ThreadLaunchPullRequestWorkspaceStrategy;
   readonly initialMessage?: ThreadLaunchInitialMessage;
   readonly importedNativeThread?: {
     readonly ref: {
@@ -110,10 +117,8 @@ export interface ThreadLaunchInput {
 }
 
 /** What workspace preparation reads from a launch; a retry rebuilds it from the run. */
-type PreparationInput = Pick<
-  ThreadLaunchInput,
-  "commandId" | "projectId" | "workspaceStrategy" | "initialMessage"
-> & {
+type PreparationInput = Pick<ThreadLaunchInput, "commandId" | "projectId" | "initialMessage"> & {
+  readonly workspaceStrategy: ThreadLaunchWorkspaceStrategy;
   /**
    * Set when a retry reuses the worktree its failed attempt created and
    * recorded. Its setup is tracked like a new one, but the thread already
@@ -175,6 +180,38 @@ export class ThreadLaunchBaseRefError extends Schema.TaggedError<ThreadLaunchBas
   }
 }
 
+/** A new worktree was asked to create a branch the repository already has. */
+export class ThreadLaunchBranchExistsError extends Schema.TaggedError<ThreadLaunchBranchExistsError>()(
+  "ThreadLaunchBranchExistsError",
+  {
+    projectId: ProjectId,
+    projectTitle: Schema.String,
+    branch: Schema.String,
+    /** The worktree the branch is checked out in, when it is. */
+    worktreePath: Schema.NullOr(Schema.String),
+  },
+) {
+  override get message(): string {
+    return this.worktreePath === null
+      ? `Branch "${this.branch}" already exists in project "${this.projectTitle}".`
+      : `Branch "${this.branch}" already exists in project "${this.projectTitle}" and is checked out at ${this.worktreePath}.`;
+  }
+}
+
+/** A pull request launch could not check the pull request out; no thread was created. */
+export class ThreadLaunchPullRequestError extends Schema.TaggedError<ThreadLaunchPullRequestError>()(
+  "ThreadLaunchPullRequestError",
+  {
+    projectId: ProjectId,
+    reference: Schema.String,
+    detail: Schema.String,
+  },
+) {
+  override get message(): string {
+    return `Could not start from pull request "${this.reference}": ${this.detail}`;
+  }
+}
+
 export class ThreadLaunchService extends Context.Service<
   ThreadLaunchService,
   {
@@ -182,16 +219,19 @@ export class ThreadLaunchService extends Context.Service<
       input: ThreadLaunchInput,
     ) => Effect.Effect<
       ThreadLaunchResult,
-      ThreadLaunchError | ThreadManagement.ThreadManagementProviderInstanceDisabledError
+      | ThreadLaunchError
+      | ThreadLaunchPullRequestError
+      | ThreadManagement.ThreadManagementProviderInstanceDisabledError
     >;
     /**
-     * Fails when a new worktree's base ref cannot give provisioning a commit.
-     * `launch` accepts such a launch and reports the failure inside the
-     * thread; a caller that needs it before a thread exists checks first.
+     * Fails when a new worktree cannot be provisioned as asked: its base ref
+     * gives no commit, or its branch already exists. `launch` accepts such a
+     * launch and reports the failure inside the thread; a caller that needs
+     * it before a thread exists checks first.
      */
-    readonly checkWorktreeBase: (
+    readonly checkNewWorktree: (
       input: Pick<ThreadLaunchInput, "projectId" | "workspaceStrategy">,
-    ) => Effect.Effect<void, ThreadLaunchBaseRefError>;
+    ) => Effect.Effect<void, ThreadLaunchBaseRefError | ThreadLaunchBranchExistsError>;
     /** Dispatches prepared-run.retry and prepares the run's workspace again. */
     readonly retryPreparation: (input: ThreadLaunchPreparationInput) => Effect.Effect<
       Orchestrator.OrchestratorV2DispatchResult,
@@ -273,7 +313,11 @@ const make = Effect.gen(function* () {
   yield* Effect.addFinalizer(() => Scope.close(preparationScope, Exit.void));
 
   const mapError =
-    (input: PreparationInput, operation: ThreadLaunchError["operation"], threadId?: ThreadId) =>
+    (
+      input: Pick<ThreadLaunchInput, "commandId" | "projectId">,
+      operation: ThreadLaunchError["operation"],
+      threadId?: ThreadId,
+    ) =>
     (cause: unknown) =>
       new ThreadLaunchError({
         operation,
@@ -387,42 +431,103 @@ const make = Effect.gen(function* () {
       ),
     );
 
-  const checkWorktreeBase: ThreadLaunchService["Service"]["checkWorktreeBase"] = Effect.fn(
-    "ThreadLaunchService.checkWorktreeBase",
+  const checkNewWorktree: ThreadLaunchService["Service"]["checkNewWorktree"] = Effect.fn(
+    "ThreadLaunchService.checkNewWorktree",
   )(function* (input) {
     const strategy = input.workspaceStrategy;
-    // `:/text` is a commit search, which cannot be asked for a commit type.
-    if (strategy.type !== "worktree" || strategy.baseRef.startsWith(":")) return;
-    const { baseRef } = strategy;
+    if (strategy.type !== "worktree") return;
     // Anything this cannot establish is left for the launch to report: a
     // missing project, a folder that is not a repository, a failing Git.
+    const project = yield* projects.getById(input.projectId).pipe(
+      Effect.map(Option.getOrUndefined),
+      Effect.orElseSucceed(() => undefined),
+    );
+    if (project === undefined) return;
+    const cwd = project.workspaceRoot;
+    const { baseRef, branch } = strategy;
+    // `git worktree add -b` refuses a branch that exists. Checking it out
+    // instead would quietly ignore baseRef and startFromOrigin, so the caller
+    // picks another name or a strategy that binds the existing branch.
+    if (branch !== undefined) {
+      const existing = yield* Effect.gen(function* () {
+        if (!(yield* git.hasCommit({ cwd, refName: `refs/heads/${branch}` }))) return undefined;
+        const refs = yield* git.listRefs({ cwd, query: branch, refKind: "local" }).pipe(
+          Effect.map((result) => result.refs),
+          Effect.orElseSucceed(() => []),
+        );
+        return {
+          worktreePath:
+            refs.find((ref) => ref.isRemote !== true && ref.name === branch)?.worktreePath ?? null,
+        };
+      }).pipe(Effect.orElseSucceed(() => undefined));
+      if (existing !== undefined)
+        return yield* new ThreadLaunchBranchExistsError({
+          projectId: project.id,
+          projectTitle: project.title,
+          branch,
+          worktreePath: existing.worktreePath,
+        });
+    }
+    // `:/text` is a commit search, which cannot be asked for a commit type.
+    if (baseRef.startsWith(":")) return;
     const unresolved = yield* Effect.gen(function* () {
-      const project = Option.getOrUndefined(yield* projects.getById(input.projectId));
-      if (project === undefined) return undefined;
-      const cwd = project.workspaceRoot;
       // `git worktree add` reads `-` as the previous checkout.
-      if (yield* git.hasCommit({ cwd, refName: baseRef === "-" ? "@{-1}" : baseRef }))
-        return undefined;
+      if (yield* git.hasCommit({ cwd, refName: baseRef === "-" ? "@{-1}" : baseRef })) return false;
       // Provisioning fetches the base from origin when it can, and runs a
       // repository with no commits yet without a worktree.
       if (
         strategy.startFromOrigin === true &&
         (yield* git.remoteExists({ cwd, remoteName: "origin" }))
       )
-        return undefined;
+        return false;
       // `git worktree add` also starts from a remote-tracking branch of that
       // name; any ref carrying it is reason enough to let Git decide.
-      if (yield* git.hasRefNamed({ cwd, refName: baseRef })) return undefined;
-      return (yield* git.hasCommit({ cwd, refName: "HEAD" })) ? project : undefined;
-    }).pipe(Effect.orElseSucceed(() => undefined));
-    if (unresolved !== undefined)
+      if (yield* git.hasRefNamed({ cwd, refName: baseRef })) return false;
+      return yield* git.hasCommit({ cwd, refName: "HEAD" });
+    }).pipe(Effect.orElseSucceed(() => false));
+    if (unresolved)
       return yield* new ThreadLaunchBaseRefError({
-        projectId: unresolved.id,
-        projectTitle: unresolved.title,
-        workspaceRoot: unresolved.workspaceRoot,
+        projectId: project.id,
+        projectTitle: project.title,
+        workspaceRoot: project.workspaceRoot,
         baseRef,
       });
   });
+
+  /**
+   * Checks a pull request out as the composer does and returns the checkout
+   * it landed on, so the launch binds it like any existing one.
+   */
+  const checkOutPullRequest = (
+    projectId: ProjectId,
+    cwd: string,
+    strategy: ThreadLaunchPullRequestWorkspaceStrategy,
+  ) =>
+    git
+      .preparePullRequestThread({
+        cwd,
+        reference: strategy.reference,
+        mode: strategy.mode ?? "worktree",
+      })
+      .pipe(
+        Effect.mapError(
+          (cause) =>
+            new ThreadLaunchPullRequestError({
+              projectId,
+              reference: strategy.reference,
+              detail: cause.message,
+            }),
+        ),
+        Effect.map((prepared): ThreadLaunchWorkspaceStrategy =>
+          prepared.worktreePath === null
+            ? { type: "root", branch: prepared.branch }
+            : {
+                type: "existing_worktree",
+                worktreePath: prepared.worktreePath,
+                branch: prepared.branch,
+              },
+        ),
+      );
 
   const prepareInBackground = Effect.fn("ThreadLaunchService.prepareInBackground")(function* (
     input: PreparationInput,
@@ -996,6 +1101,16 @@ const make = Effect.gen(function* () {
         commandId: input.commandId,
         instanceId: input.modelSelection.instanceId,
       });
+      // A pull request is checked out before the thread exists, so a launch
+      // that cannot reach it creates nothing. Repeating it reuses the checkout.
+      const requestedStrategy: ThreadLaunchWorkspaceStrategy =
+        input.workspaceStrategy.type === "pull_request"
+          ? yield* checkOutPullRequest(
+              input.projectId,
+              project.workspaceRoot,
+              input.workspaceStrategy,
+            )
+          : input.workspaceStrategy;
       return yield* Effect.gen(function* () {
         // A retried launch has no client-supplied id to replay against, so
         // recover the thread id its accepted create was recorded under before
@@ -1038,7 +1153,7 @@ const make = Effect.gen(function* () {
         // A Scratch thread launched at the project root runs in a folder of its
         // own. Only the first attempt claims one; a retry replays its create.
         const workspaceStrategy: ThreadLaunchWorkspaceStrategy =
-          input.workspaceStrategy.type === "root" && Option.isNone(launchReceipt)
+          requestedStrategy.type === "root" && Option.isNone(launchReceipt)
             ? Option.match(
                 yield* managedFolders
                   .folderForThread({
@@ -1048,11 +1163,11 @@ const make = Effect.gen(function* () {
                   })
                   .pipe(Effect.mapError(mapError(input, "provision-worktree", candidateThreadId))),
                 {
-                  onNone: () => input.workspaceStrategy,
+                  onNone: () => requestedStrategy,
                   onSome: (worktreePath) => ({ type: "existing_worktree", worktreePath }),
                 },
               )
-            : input.workspaceStrategy;
+            : requestedStrategy;
         const initialBranch = workspaceStrategy.branch ?? null;
         const initialWorktreePath =
           workspaceStrategy.type === "existing_worktree" ? workspaceStrategy.worktreePath : null;
@@ -1347,7 +1462,7 @@ const make = Effect.gen(function* () {
 
   return ThreadLaunchService.of({
     launch,
-    checkWorktreeBase,
+    checkNewWorktree,
     retryPreparation,
     prepareRun,
     prepareMessageWorkspace,

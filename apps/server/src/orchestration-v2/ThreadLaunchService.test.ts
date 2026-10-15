@@ -19,6 +19,7 @@ import {
   EnvironmentId,
   DEFAULT_SERVER_SETTINGS,
   GitCommandError,
+  GitManagerError,
   MessageId,
   ProjectId,
   ProviderDriverKind,
@@ -277,7 +278,7 @@ function launchInput(input: {
   readonly command: string;
   readonly thread: string;
   readonly message?: string;
-  readonly workspace?: ThreadLaunch.ThreadLaunchWorkspaceStrategy;
+  readonly workspace?: ThreadLaunch.ThreadLaunchInput["workspaceStrategy"];
 }) {
   return {
     commandId: CommandId.make(input.command),
@@ -2334,7 +2335,7 @@ it.effect("shared intake preserves durable attachment bytes after a lost launch 
               }),
             ),
           ),
-        checkWorktreeBase: launches.checkWorktreeBase,
+        checkNewWorktree: launches.checkNewWorktree,
         retryPreparation: launches.retryPreparation,
         prepareMessageWorkspace: launches.prepareMessageWorkspace,
         nameTemporaryBranch: launches.nameTemporaryBranch,
@@ -3040,7 +3041,7 @@ it.effect.each([
     yield* Effect.gen(function* () {
       const launches = yield* ThreadLaunch.ThreadLaunchService;
       const error = yield* launches
-        .checkWorktreeBase({
+        .checkNewWorktree({
           projectId,
           workspaceStrategy: {
             type: "worktree",
@@ -3102,7 +3103,7 @@ it.effect.each([
     });
     yield* Effect.gen(function* () {
       const launches = yield* ThreadLaunch.ThreadLaunchService;
-      yield* launches.checkWorktreeBase({
+      yield* launches.checkNewWorktree({
         projectId,
         workspaceStrategy: {
           type: "worktree",
@@ -3115,6 +3116,169 @@ it.effect.each([
     }).pipe(Effect.provide(harness.layer));
   }),
 );
+
+it.effect.each([
+  { name: "checked out in another worktree", worktreePath: "/repo-worktrees/feature" },
+  { name: "not checked out anywhere", worktreePath: null },
+])("refuses a new worktree whose branch already exists, $name", (testCase) =>
+  Effect.gen(function* () {
+    const harness = makeHarness({
+      hasCommit: ({ refName }) =>
+        Effect.succeed(["feature", "refs/heads/feature"].includes(refName)),
+      git: {
+        listRefs: () =>
+          Effect.succeed({
+            refs: [
+              {
+                name: "feature",
+                current: false,
+                isDefault: false,
+                worktreePath: testCase.worktreePath,
+              },
+            ],
+            isRepo: true,
+            hasPrimaryRemote: true,
+            nextCursor: null,
+            totalCount: 1,
+          }),
+      },
+    });
+    yield* Effect.gen(function* () {
+      const launches = yield* ThreadLaunch.ThreadLaunchService;
+      const error = yield* launches
+        .checkNewWorktree({
+          projectId,
+          workspaceStrategy: { type: "worktree", baseRef: "feature", branch: "feature" },
+        })
+        .pipe(Effect.flip);
+      assert.deepInclude(error, {
+        _tag: "ThreadLaunchBranchExistsError",
+        branch: "feature",
+        worktreePath: testCase.worktreePath,
+      });
+      // A fresh branch name from the same base is fine.
+      yield* launches.checkNewWorktree({
+        projectId,
+        workspaceStrategy: { type: "worktree", baseRef: "feature", branch: "feature-review" },
+      });
+    }).pipe(Effect.provide(harness.layer));
+  }),
+);
+
+it.effect("starts a thread from a pull request in the worktree the composer would use", () => {
+  const preparePullRequestThread = vi.fn(
+    (
+      _input: Parameters<GitWorkflow.GitWorkflowService["Service"]["preparePullRequestThread"]>[0],
+    ) =>
+      Effect.succeed({
+        pullRequest: {
+          number: 42,
+          title: "Fix it",
+          url: "https://github.com/owner/repo/pull/42",
+          baseBranch: "main",
+          headBranch: "ben/fix",
+          state: "open" as const,
+        },
+        branch: "ben/fix",
+        worktreePath: "/repo-worktrees/ben-fix",
+        isOnPullRequestHead: true,
+      }),
+  );
+  const harness = makeHarness({ git: { preparePullRequestThread } });
+  return Effect.gen(function* () {
+    const launches = yield* ThreadLaunch.ThreadLaunchService;
+    const threads = yield* ThreadManagement.ThreadManagementService;
+    const result = yield* launches.launch(
+      launchInput({
+        command: "command:launch:pull-request",
+        thread: "thread:launch:pull-request",
+        message: "Review the PR",
+        workspace: { type: "pull_request", reference: "https://github.com/owner/repo/pull/42" },
+      }),
+    );
+    // The thread is created on the checkout, not on a placeholder later swapped in.
+    assert.equal(result.projection.thread.worktreePath, "/repo-worktrees/ben-fix");
+    assert.equal(result.projection.thread.branch, "ben/fix");
+    assert.deepEqual(preparePullRequestThread.mock.calls[0]?.[0], {
+      cwd: "/repo",
+      reference: "https://github.com/owner/repo/pull/42",
+      mode: "worktree",
+    });
+    yield* waitUntil(() => Effect.sync(() => harness.runSetup.mock.calls.length === 1));
+    assert.equal(harness.runSetup.mock.calls[0]?.[0]?.worktreePath, "/repo-worktrees/ben-fix");
+    assert.equal(harness.createWorktree.mock.calls.length, 0);
+    assert.equal(harness.generateBranchName.mock.calls.length, 0);
+    const projection = yield* threads.getThreadProjection(result.threadId);
+    assert.equal(projection.thread.worktreePath, "/repo-worktrees/ben-fix");
+    assert.equal(projection.thread.branch, "ben/fix");
+  }).pipe(Effect.provide(harness.layer));
+});
+
+it.effect("starts a local pull request thread in the project checkout", () => {
+  const harness = makeHarness({
+    git: {
+      preparePullRequestThread: () =>
+        Effect.succeed({
+          pullRequest: {
+            number: 42,
+            title: "Fix it",
+            url: "https://github.com/owner/repo/pull/42",
+            baseBranch: "main",
+            headBranch: "ben/fix",
+            state: "open" as const,
+          },
+          branch: "ben/fix",
+          worktreePath: null,
+          isOnPullRequestHead: true,
+        }),
+    },
+  });
+  return Effect.gen(function* () {
+    const launches = yield* ThreadLaunch.ThreadLaunchService;
+    const result = yield* launches.launch(
+      launchInput({
+        command: "command:launch:pull-request-local",
+        thread: "thread:launch:pull-request-local",
+        workspace: { type: "pull_request", reference: "42", mode: "local" },
+      }),
+    );
+    assert.equal(result.projection.thread.worktreePath, null);
+    assert.equal(result.projection.thread.branch, "ben/fix");
+  }).pipe(Effect.provide(harness.layer));
+});
+
+it.effect("creates no thread when the pull request cannot be checked out", () => {
+  const harness = makeHarness({
+    git: {
+      preparePullRequestThread: () =>
+        Effect.fail(
+          new GitManagerError({
+            operation: "preparePullRequestThread",
+            cwd: "/repo",
+            detail: "This PR branch is already checked out in the main repo.",
+          }),
+        ),
+    },
+  });
+  return Effect.gen(function* () {
+    const launches = yield* ThreadLaunch.ThreadLaunchService;
+    const threads = yield* ThreadManagement.ThreadManagementService;
+    const error = yield* launches
+      .launch(
+        launchInput({
+          command: "command:launch:pull-request-failed",
+          thread: "thread:launch:pull-request-failed",
+          message: "Review the PR",
+          workspace: { type: "pull_request", reference: "42" },
+        }),
+      )
+      .pipe(Effect.flip);
+    assert.equal(error._tag, "ThreadLaunchPullRequestError");
+    assert.include(error.message, "already checked out in the main repo");
+    const shells = yield* threads.listProjectThreads({ projectId, includeSubagents: true });
+    assert.equal(shells.length, 0);
+  }).pipe(Effect.provide(harness.layer));
+});
 
 it.effect("replays an accepted send after the project disables the instance", () => {
   const harness = makeHarness();
