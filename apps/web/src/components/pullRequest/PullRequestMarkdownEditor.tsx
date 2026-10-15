@@ -28,6 +28,7 @@ export function PullRequestMarkdownEditor({
   threadRef = null,
   placeholder,
   label,
+  submitLabel = "Save",
   saving,
   allowEmpty = false,
   className,
@@ -41,6 +42,8 @@ export function PullRequestMarkdownEditor({
   readonly threadRef?: ScopedThreadRef | null;
   readonly placeholder?: string | undefined;
   readonly label: string;
+  /** What the button that sends the draft says: a reply is sent, not saved. */
+  readonly submitLabel?: string | undefined;
   readonly saving: boolean;
   /** A description may be cleared, which is how one is removed; a remark may not be emptied. */
   readonly allowEmpty?: boolean;
@@ -144,7 +147,7 @@ export function PullRequestMarkdownEditor({
             onSave(draft);
           }}
         >
-          {saving ? "Saving..." : "Save"}
+          {saving ? "Saving..." : submitLabel}
         </Button>
       </div>
     </div>

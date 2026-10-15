@@ -55,6 +55,7 @@ import {
   newestPullRequestCommitAt,
   mergePullRequestThreadComments,
   orderPullRequestComments,
+  groupPullRequestConversation,
   pullRequestActionMenuHasGroup,
   pullRequestActionNeedsHostRefresh,
   pullRequestCheckoutCommand,
@@ -390,6 +391,63 @@ describe("ordering comments", () => {
     expect(orderPullRequestComments(comments, "oldest")).toEqual(comments);
     // The source array is chronological input, not a mutation target.
     expect(comments).toEqual([{ createdAt: "a" }, { createdAt: "b" }, { createdAt: "c" }]);
+  });
+});
+
+describe("grouping the conversation", () => {
+  const remark = (id: string, createdAt: string) =>
+    ({
+      id,
+      kind: "review-comment",
+      author: null,
+      body: id,
+      createdAt,
+      url: null,
+      path: "a.ts",
+      reviewState: null,
+    }) as const;
+  const thread = (id: string, commentIds: ReadonlyArray<string>) => ({
+    id,
+    path: "a.ts",
+    line: 3,
+    side: "right" as const,
+    isResolved: false,
+    isOutdated: false,
+    comments: commentIds.map((commentId) => ({
+      id: commentId,
+      author: null,
+      body: commentId,
+      createdAt: "2026-01-01T00:00:00Z",
+      url: null,
+    })),
+  });
+
+  it("folds each thread's remarks into one entry placed at its latest reply", () => {
+    const comments = [
+      remark("root", "2026-01-01T00:00:00Z"),
+      { ...remark("talk", "2026-01-02T00:00:00Z"), kind: "issue-comment", path: null },
+      remark("reply", "2026-01-03T00:00:00Z"),
+    ] as const;
+    const entries = groupPullRequestConversation(comments, [thread("t1", ["root", "reply"])]);
+
+    expect(entries.map((entry) => entry.kind)).toEqual(["comment", "thread"]);
+    const grouped = entries[1];
+    expect(grouped?.kind === "thread" && grouped.comments.map((comment) => comment.id)).toEqual([
+      "root",
+      "reply",
+    ]);
+    expect(grouped?.createdAt).toBe("2026-01-03T00:00:00Z");
+  });
+
+  it("leaves a remark the threads don't claim standing on its own", () => {
+    const entries = groupPullRequestConversation([remark("loose", "2026-01-01T00:00:00Z")], []);
+    expect(entries).toEqual([
+      {
+        kind: "comment",
+        createdAt: "2026-01-01T00:00:00Z",
+        comment: remark("loose", "2026-01-01T00:00:00Z"),
+      },
+    ]);
   });
 });
 
