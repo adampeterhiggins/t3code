@@ -240,9 +240,11 @@ export function historyToolPreview(
         model: str(thread.model),
         branch: str(thread.branch),
         items: [
-          ...(firstPrompt ? [{ key: "prompt", label: "First prompt", text: firstPrompt }] : []),
+          ...(firstPrompt
+            ? [{ key: "prompt", label: "First prompt", text: firstPrompt, activity: false }]
+            : []),
           ...(latestResponse
-            ? [{ key: "response", label: "Latest reply", text: latestResponse }]
+            ? [{ key: "response", label: "Latest reply", text: latestResponse, activity: false }]
             : []),
         ],
         moreItems: 0,
@@ -395,7 +397,7 @@ export function historyToolPreview(
               : kind === "assistant"
                 ? "Agent"
                 : kind.charAt(0).toUpperCase() + kind.slice(1);
-          return [{ key: String(index), label, text }];
+          return [{ key: String(index), label, text, activity: kind === "tool" }];
         }),
         moreItems: Math.max(0, entries.length - shown.length),
       };
