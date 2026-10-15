@@ -101,10 +101,12 @@ describe("shared tool details", () => {
     expect(host.querySelector("details")).toBeNull();
   });
   it("renders rich tool results with a working raw-call disclosure", () => {
+    const item = entry.projectedItem?.item;
+    if (item?.type !== "command_execution") throw new Error("Expected command fixture");
     const toolEntry = projectedWorkEntry({
       ...entry.projectedItem!,
       item: {
-        ...entry.projectedItem!.item,
+        ...item,
         type: "dynamic_tool",
         status: "completed",
         toolName: "ToolSearch",

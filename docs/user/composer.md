@@ -360,6 +360,11 @@ Agents panel, or use **Attach to parent chat** from the agent's own thread. The 
 agent's task and result, and the agent you are talking to learns how to reach it. It can send follow-ups to agents T3 Code delegated
 and to Claude subagents it started itself. Other providers' subagents cannot take messages, so they
 come along as their task and result.
+Dropping a thread from another environment attaches a saved transcript file. The source
+environment must be connected and up to date. The transcript includes the visible history and
+saved text context at the time of the drop; later messages and the contents of attached files
+are not copied. The agent can read the saved transcript after the source disconnects. Normal
+file attachment limits apply.
 
 Images keep their thumbnail shelf above the text and also get a chip at your cursor, so you can
 say exactly which image you mean. Deleting an image chip leaves the image on the shelf; removing

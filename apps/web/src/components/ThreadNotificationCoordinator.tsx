@@ -1,10 +1,14 @@
-import { presentThreadShell } from "@t3tools/client-runtime/state/models";
+import {
+  type PendingSubagentRequest,
+  presentThreadShell,
+} from "@t3tools/client-runtime/state/models";
 import {
   hasNewPullRequestNews,
   pickThreadNotification,
   pullRequestWatchNews,
   type ThreadNotificationEvent,
 } from "@t3tools/client-runtime/state/notification-rules";
+import { pendingSubagentRequestsByThread } from "@t3tools/client-runtime/state/threads";
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import type { EnvironmentId, OrchestrationV2ThreadShell, ThreadId } from "@t3tools/contracts";
@@ -97,6 +101,7 @@ export function ThreadNotificationCoordinator() {
 
 interface NotificationState {
   readonly raw: OrchestrationV2ThreadShell;
+  readonly subagentRequest: PendingSubagentRequest | null;
   readonly attention: string | null;
   readonly completion: number | null;
   readonly pullRequestNews: ReadonlyArray<string>;
@@ -143,15 +148,18 @@ function EnvironmentNotifications({
       return;
     }
     const next = new Map<ThreadId, NotificationState>();
+    // Subagents are skipped below, so their requests notify through the thread above them.
+    const subagentRequests = pendingSubagentRequestsByThread(threads);
     for (const rawThread of threads) {
       if (rawThread.lineage.relationshipToParent === "subagent") continue;
       const prior = previous.current.get(rawThread.id);
+      const subagentRequest = subagentRequests.get(rawThread.id) ?? null;
       // The same object cannot produce a new notification.
-      if (prior?.raw === rawThread) {
+      if (prior?.raw === rawThread && prior.subagentRequest === subagentRequest) {
         next.set(rawThread.id, prior);
         continue;
       }
-      const thread = presentThreadShell(environmentId, rawThread);
+      const thread = presentThreadShell(environmentId, rawThread, subagentRequest);
       let status = resolveSidebarThreadStatus(thread);
       if (status === "ready" && thread.latestRun?.status === "failed") status = "failed";
       const attention =
@@ -167,7 +175,13 @@ function EnvironmentNotifications({
           ? completedAt
           : (prior?.completion ?? null);
       const pullRequestNews = pullRequestWatchNews(thread.pullRequests);
-      next.set(thread.id, { raw: rawThread, attention, completion, pullRequestNews });
+      next.set(thread.id, {
+        raw: rawThread,
+        subagentRequest,
+        attention,
+        completion,
+        pullRequestNews,
+      });
       if (!prior || thread.archivedAt !== null) continue;
       // Candidates in urgency order; the user's rules pick the first one they allow.
       const candidates: ThreadNotificationEvent[] = [];

@@ -139,8 +139,11 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   contextRepositoryRemoval: Schema.optionalKey(Schema.Boolean),
   /** Server lists and removes managed worktrees (`worktrees.*` RPCs). */
   worktreeInventory: Schema.optionalKey(Schema.Boolean),
+  settledWorktreeCleanup: Schema.optionalKey(Schema.Boolean),
   /** Server honors the `worktreesDirectory` setting. */
   worktreesDirectory: Schema.optionalKey(Schema.Boolean),
+  /** Server can exclude PR-linked threads from inactivity settlement. */
+  threadAutoSettlementScope: Schema.optionalKey(Schema.Boolean),
   /** Server persists the opt-in for continuing interrupted threads after restarts. */
   threadRestartContinuation: Schema.optionalKey(Schema.Boolean),
   /** Server resolves `projectSettingsOverrides`; older servers ignore the key. */
