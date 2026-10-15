@@ -3514,6 +3514,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         ...composerThreadTabContexts.filter((record) => wanted.has(record.contextId)),
         ...composerIssueContexts.filter((record) => wanted.has(record.contextId)),
         ...composerRepositoryContexts.filter((record) => wanted.has(record.contextId)),
+        ...composerCheckoutContexts.filter((record) => wanted.has(record.contextId)),
         ...composerReviewComments
           .filter((c) => wanted.has(reviewCommentContextId(c.id)))
           .map(reviewCommentContextRecord),
@@ -3556,6 +3557,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       composerThreadTabContexts,
       composerIssueContexts,
       composerRepositoryContexts,
+      composerCheckoutContexts,
       environmentId,
       uploadsByImageId,
     ],
@@ -3815,6 +3817,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             rewritten.set(record.contextId, record.contextId);
             break;
           }
+          case "checkout": {
+            // A checkout is a path on its own machine; it means nothing to another server.
+            const threadId = routeThreadRef?.threadId;
+            if (!threadId || record.environmentId !== environmentId) break;
+            rewritten.set(
+              record.contextId,
+              importComposerSnapshotRecord(threadId, record, conflicts),
+            );
+            break;
+          }
           case "repository":
           case "thread-tab":
           case "linear-issue":
@@ -3822,7 +3834,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           case "slack-thread":
           case "notion-page":
           case "granola-note":
-          case "subagent": {
+          case "subagent":
+          case "prompt-link": {
             const threadId = routeThreadRef?.threadId;
             if (!threadId) break;
             rewritten.set(

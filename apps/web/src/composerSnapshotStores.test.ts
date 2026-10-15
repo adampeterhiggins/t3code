@@ -10,6 +10,7 @@ import { createJSONStorage } from "zustand/middleware";
 
 import { createMemoryStorage } from "./lib/storage";
 import { toComposerContextId } from "./lib/composerContextReferences";
+import { useCheckoutContextStore } from "./checkoutContextStore";
 import { useRepositoryContextStore } from "./repositoryContextStore";
 import { useIssueContextStore } from "./issueContextStore";
 import { useThreadTabContextStore } from "./threadTabContextStore";
@@ -109,5 +110,33 @@ describe.each(cases)("$name draft snapshots", ({ store, reset, attach, record, c
     store.getState().clear(threadId);
     await store.persist.rehydrate();
     expect(store.getState().recordsByThreadId[threadId]).toBeUndefined();
+  });
+});
+
+describe("checkout draft snapshots", () => {
+  it("imports a copied checkout into another composer without overwriting a conflicting chip", () => {
+    useCheckoutContextStore.setState({ recordsByThreadId: {} });
+    const checkout = {
+      version: 1 as const,
+      kind: "checkout" as const,
+      contextId: toComposerContextId("checkout_main"),
+      label: "t3code",
+      environmentId: EnvironmentId.make("source"),
+      path: "/Users/me/t3code",
+      branch: "main",
+      headSha: "abc123",
+      changedFiles: 0,
+      ahead: 0,
+      access: "read" as const,
+    };
+    const destination = ThreadId.make("destination");
+    const contextId = importComposerSnapshotRecord(destination, checkout, false);
+    const conflicting = { ...checkout, branch: "feature" };
+    const freshId = importComposerSnapshotRecord(destination, conflicting, true);
+    expect(contextId).toBe(checkout.contextId);
+    expect(useCheckoutContextStore.getState().recordsByThreadId[destination]).toEqual([
+      checkout,
+      { ...conflicting, contextId: freshId },
+    ]);
   });
 });
