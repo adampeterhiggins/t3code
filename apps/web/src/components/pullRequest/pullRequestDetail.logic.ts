@@ -432,6 +432,47 @@ export function orderPullRequestComments<T extends { readonly createdAt: string 
   return order === "newest" ? comments.toReversed() : comments;
 }
 
+/** One entry in the conversation: a lone comment, or a review thread with every remark on it. */
+export type PullRequestConversationEntry =
+  | { readonly kind: "comment"; readonly createdAt: string; readonly comment: PullRequestComment }
+  | {
+      readonly kind: "thread";
+      readonly createdAt: string;
+      readonly thread: PullRequestReviewThread;
+      readonly comments: ReadonlyArray<PullRequestComment>;
+    };
+
+/**
+ * Folds the remarks on each review thread into one entry, the way the host draws a conversation
+ * on a line. The entry sits where the thread's latest remark does, so a fresh reply brings its
+ * thread back to the front of the conversation rather than leaving it where the first remark was.
+ * Expects `comments` in chronological order and keeps it.
+ */
+export function groupPullRequestConversation(
+  comments: ReadonlyArray<PullRequestComment>,
+  threads: ReadonlyArray<PullRequestReviewThread>,
+): ReadonlyArray<PullRequestConversationEntry> {
+  const threadByCommentId = new Map(
+    threads.flatMap((thread) => thread.comments.map((comment) => [comment.id, thread] as const)),
+  );
+  const remarksByThreadId = new Map<string, PullRequestComment[]>();
+  for (const comment of comments) {
+    const thread = threadByCommentId.get(comment.id);
+    if (!thread) continue;
+    const remarks = remarksByThreadId.get(thread.id);
+    if (remarks) remarks.push(comment);
+    else remarksByThreadId.set(thread.id, [comment]);
+  }
+  return comments.flatMap((comment): PullRequestConversationEntry[] => {
+    const thread = threadByCommentId.get(comment.id);
+    if (!thread) return [{ kind: "comment", createdAt: comment.createdAt, comment }];
+    const remarks = remarksByThreadId.get(thread.id) ?? [comment];
+    return remarks.at(-1) === comment
+      ? [{ kind: "thread", createdAt: comment.createdAt, thread, comments: remarks }]
+      : [];
+  });
+}
+
 /** A review that says something about the change itself, rather than only carrying remarks. */
 export type PullRequestReviewOutcome = "approved" | "changes-requested" | "dismissed";
 
