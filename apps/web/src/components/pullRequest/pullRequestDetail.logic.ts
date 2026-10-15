@@ -1424,6 +1424,15 @@ export function buildExplainPullRequestHandoff(input: {
   };
 }
 
+let selectionChipSequence = 0;
+
+/**
+ * A remark on selected lines, handed to the agent as one chip: which pull request, which lines,
+ * and what the reader said about them. The remark is the question, so the composer prompt stays
+ * the reader's own. The chip is theirs too: it is named outside the `pull-request-` namespace, so
+ * a later hand-off does not sweep it away, and each one is new, so remarks on the same lines
+ * stack instead of replacing each other.
+ */
 export function buildAddSelectionToAgentHandoff(input: {
   readonly number: number;
   readonly title: string;
@@ -1435,9 +1444,19 @@ export function buildAddSelectionToAgentHandoff(input: {
   readonly comment: ReviewCommentContext;
   readonly request: string;
 }): FixFindingsHandoff {
+  const context = pullRequestContextComment(input, []);
   return {
-    prompt: bounded(input.request),
-    reviewComments: [pullRequestContextComment(input, []), { ...input.comment, text: "" }],
+    prompt: "",
+    reviewComments: [
+      {
+        ...input.comment,
+        id: `pr-selection:${input.number}:${input.comment.id}:${Date.now().toString(36)}-${++selectionChipSequence}`,
+        sectionId: `pull-request-selection:${input.number}`,
+        text: bounded(input.request),
+        ...(context.instructions === undefined ? {} : { instructions: context.instructions }),
+        ...(context.pullRequest === undefined ? {} : { pullRequest: context.pullRequest }),
+      },
+    ],
   };
 }
 

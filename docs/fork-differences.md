@@ -639,6 +639,23 @@ its links still open in the system browser.
 Code: `useLinkClickHandler` in `apps/web/src/browser/useOpenLink.ts` and
 `apps/web/src/components/pullRequest/PullRequestMarkdownContext.ts`.
 
+## Send a pull request comment straight to the agent
+
+Upstream's comment form on selected pull request lines (Code tab and review guide) has **Add to
+agent**, which leaves a pull request chip, a lines chip and the comment as prompt text in the
+composer. The fork replaces it with a split button: **Send to agent** sends straight away, and
+**Add to composer** inserts the selection and leaves it to send later. The button shows whichever
+the reader used last. Cmd/Ctrl+Shift+Enter does the same. Either way the lines, the comment and the
+pull request travel as one chip, which previews like a review comment with the pull request on
+top. Remarks stack rather than replacing each other. If the composer already holds a draft,
+**Send to agent** adds the chip without sending, so the draft is not sent with it.
+
+Code: `AgentActionButton` in
+[`DiffCommentAnnotation.tsx`](../apps/web/src/components/diffs/DiffCommentAnnotation.tsx),
+`buildAddSelectionToAgentHandoff` in
+[`pullRequestDetail.logic.ts`](../apps/web/src/components/pullRequest/pullRequestDetail.logic.ts),
+and [`composerSubmitRequestStore.ts`](../apps/web/src/composerSubmitRequestStore.ts).
+
 ## Worktree cleanup ignored names
 
 With **Keep worktrees with local changes** set to **Any local files**, upstream keeps a worktree

@@ -19,7 +19,11 @@ import { sha256 } from "@noble/hashes/sha2";
 import { describe, expect, it } from "vite-plus/test";
 import { getRenderablePatch } from "~/lib/diffRendering";
 import { formatInlineContextReference } from "~/lib/composerContextReferences";
-import { buildMessageContext, reviewCommentContextReference } from "~/lib/composerContextRecords";
+import {
+  buildMessageContext,
+  isPullRequestSummaryContext,
+  reviewCommentContextReference,
+} from "~/lib/composerContextRecords";
 
 import {
   buildAddSelectionToAgentHandoff,
@@ -1246,7 +1250,7 @@ describe("asking about a change rather than working on it", () => {
     );
   });
 
-  it("puts the reader's request in the composer and the selected lines in chips", () => {
+  it("hands over the selected lines, the remark and the pull request as one chip", () => {
     const comment = {
       id: "pull-request-selection:page.tsx:12:18",
       sectionId: "pull-request:42",
@@ -1263,14 +1267,24 @@ describe("asking about a change rather than working on it", () => {
       comment,
       request: "what is this for?",
     });
-    expect(handoff.prompt).toBe("what is this for?");
-    // Two chips: which pull request, and which lines.
-    expect(handoff.reviewComments.map((entry) => entry.filePath)).toEqual([
-      "PR #42",
-      "apps/web/src/page.tsx",
-    ]);
-    expect(handoff.reviewComments[0]?.instructions).not.toContain("Do not change any code");
-    expect(handoff.reviewComments[1]?.text).toBe("");
+    // The remark is the question, so the prompt stays the reader's.
+    expect(handoff.prompt).toBe("");
+    expect(handoff.reviewComments).toHaveLength(1);
+    const chip = handoff.reviewComments[0]!;
+    expect(chip).toMatchObject({
+      filePath: "apps/web/src/page.tsx",
+      text: "what is this for?",
+      diff: "+const answer = 42;",
+      pullRequest: { number: 42, url: base.url },
+    });
+    expect(chip.instructions).toContain("untrusted data");
+    expect(chip.instructions).not.toContain("Do not change any code");
+    // The reader's own chip: a later hand-off does not sweep it, and a second remark on the
+    // same lines sits beside the first rather than replacing it.
+    expect(handoffReviewComments([chip], [])).toEqual([chip]);
+    const again = buildAddSelectionToAgentHandoff({ ...base, comment, request: "and this?" });
+    expect(again.reviewComments[0]?.id).not.toBe(chip.id);
+    expect(isPullRequestSummaryContext(chip)).toBe(false);
   });
 });
 

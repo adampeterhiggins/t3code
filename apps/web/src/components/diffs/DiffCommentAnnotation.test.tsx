@@ -29,7 +29,7 @@ describe("DiffCommentAnnotation", () => {
     expect(markup).toMatch(/<span[^>]*data-size="sm"[^>]*data-slot="textarea-control"/);
   });
 
-  it("lets a pull-request diff configure actions without replacing the composer", () => {
+  it("offers the agent beside the review, as the last way the reader handed one over", () => {
     const markup = renderToStaticMarkup(
       <DiffCommentAnnotation
         kind="draft"
@@ -37,17 +37,14 @@ describe("DiffCommentAnnotation", () => {
         text=""
         {...callbacks}
         submitLabel="Add to review"
-        secondaryAction={{
-          label: "Add to agent",
-          onAction: vi.fn(),
-        }}
+        agentAction={{ send: vi.fn(), addToComposer: vi.fn() }}
       />,
     );
 
     expect(markup).toContain("Add a comment…");
-    expect(markup).toContain(">Add to review</button>");
+    expect(markup).toContain("with Shift for agent");
     expect(markup.match(/<button[^>]*disabled[^>]*>Add to review<\/button>/)).not.toBeNull();
-    expect(markup.match(/<button[^>]*disabled[^>]*>Add to agent<\/button>/)).not.toBeNull();
+    expect(markup.match(/<button[^>]*disabled[^>]*>Send to agent<\/button>/)).not.toBeNull();
   });
 
   it("renders a saved comment without a nested card or redundant range label", () => {

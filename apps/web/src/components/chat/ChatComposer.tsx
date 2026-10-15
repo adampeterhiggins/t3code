@@ -130,6 +130,7 @@ import {
   useComposerThreadDraft,
   useEffectiveComposerModelState,
 } from "../../composerDraftStore";
+import { useComposerSubmitRequestStore } from "../../composerSubmitRequestStore";
 import {
   MAX_STASH_ENTRIES,
   partitionStashAttachments,
@@ -4900,6 +4901,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       shouldBlurMobileComposerOnSubmit,
     ],
   );
+  // A surface beside the composer asked to send what it just wrote here. Wait out a connect, then
+  // send as Enter would; anything that stops it leaves the draft in place to send by hand.
+  const submitRequested = useComposerSubmitRequestStore((state) =>
+    state.pending.has(composerDraftTargetKey),
+  );
+  useEffect(() => {
+    if (!submitRequested || isConnecting) return;
+    if (!useComposerSubmitRequestStore.getState().take(composerDraftTargetKey)) return;
+    submitComposer();
+  }, [composerDraftTargetKey, isConnecting, submitComposer, submitRequested]);
   const handleSubmitMessage = useCallback(
     (event: React.MouseEvent<HTMLButtonElement>) => {
       event.preventDefault();

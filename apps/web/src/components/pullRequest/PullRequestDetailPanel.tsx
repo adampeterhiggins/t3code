@@ -63,7 +63,12 @@ import {
   type ReactNode,
 } from "react";
 
-import { type DraftId, useComposerDraftStore } from "~/composerDraftStore";
+import {
+  composerDraftHasUserContent,
+  type DraftId,
+  useComposerDraftStore,
+} from "~/composerDraftStore";
+import { useComposerSubmitRequestStore } from "~/composerSubmitRequestStore";
 import { useRightPanelStore } from "~/rightPanelStore";
 import { useEnvironmentSettings } from "~/hooks/useSettings";
 import { useNewThreadHandler } from "~/hooks/useHandleNewThread";
@@ -264,6 +269,20 @@ const PullRequestCodeTab = lazy(loadCodeTab);
  * apart from the one they were handed: only the sentence still exactly as written may be replaced.
  */
 const lastHandoffPromptByDraft = new Map<string, string>();
+
+/**
+ * What an ask left in the composer. "Ask" leaves the prompt empty on purpose, so saying the
+ * question is in it would send the reader looking for something that is not there, unless a chip
+ * carries their remark. A send that found a draft already there stops short of sending that too.
+ */
+function askLandedDescription(asked: boolean, sendRequested: boolean): string {
+  if (sendRequested) {
+    return "The composer already held a draft, so nothing was sent. Read it over, then send.";
+  }
+  return asked
+    ? "The question is in the composer — read it over, then send."
+    : "The pull request is in the composer — type your question, then send.";
+}
 
 const composerTargetKey = (target: ScopedThreadRef | DraftId): string =>
   typeof target === "string" ? target : scopedThreadKey(target);
@@ -1182,7 +1201,7 @@ export function PullRequestDetailPanel({
     projectRef: ReturnType<typeof scopeProjectRef>,
     task: ThreadTask | null,
     opened?: { draftId: DraftId },
-  ): Promise<{ draftId: DraftId } | null> => {
+  ): Promise<{ draftId: DraftId; heldDraft: boolean } | null> => {
     const session =
       opened ??
       (await newThread(projectRef).then(
@@ -1190,13 +1209,16 @@ export function PullRequestDetailPanel({
         () => null,
       ));
     if (session === null) return null;
-    if (task === null) return session;
+    const heldDraft = composerDraftHasUserContent(
+      useComposerDraftStore.getState().getComposerDraft(session.draftId),
+    );
+    if (task === null) return { draftId: session.draftId, heldDraft };
     // The latest press is the ask: it takes over what an earlier hand-off left, prompt and chips
     // both, rather than stacking a second one under the first. What the reader typed themselves
     // survives — the composer they are handed is not always a fresh one, and a prompt they have
     // since edited is theirs rather than the hand-off's.
     writeTaskToComposer(session.draftId, task);
-    return session;
+    return { draftId: session.draftId, heldDraft };
   };
 
   /**
@@ -1207,18 +1229,30 @@ export function PullRequestDetailPanel({
   const startAsk = async (
     kind: string,
     task: ThreadTask,
-    options?: { readonly keepGuide?: boolean },
+    options?: {
+      readonly keepGuide?: boolean;
+      /** Send it as well, unless the composer holds a draft that would go out with it. */
+      readonly send?: boolean;
+      /** A chip carries the reader's own question, so the empty prompt is not theirs to fill. */
+      readonly questionInChip?: boolean;
+    },
   ) => {
     if (!detail || handoff !== null) return;
+    const asked = task.prompt.length > 0 || options?.questionInChip === true;
     if (attachTarget !== null) {
+      const heldDraft = composerDraftHasUserContent(
+        useComposerDraftStore.getState().getComposerDraft(attachTarget),
+      );
       writeTaskToComposer(attachTarget, task);
+      // The message lands in the thread beside the panel, which says it was sent.
+      if (options?.send === true && !heldDraft) {
+        useComposerSubmitRequestStore.getState().request(attachTarget);
+        return;
+      }
       toastManager.add({
         type: "success",
         title: "Added to the composer",
-        description:
-          task.prompt.length > 0
-            ? "The question is in the composer — read it over, then send."
-            : "The pull request is in the composer — type your question, then send.",
+        description: askLandedDescription(asked, options?.send === true),
       });
       return;
     }
@@ -1250,15 +1284,14 @@ export function PullRequestDetailPanel({
       });
       return;
     }
+    if (options?.send === true && !opened.heldDraft) {
+      useComposerSubmitRequestStore.getState().request(opened.draftId);
+      return;
+    }
     toastManager.add({
       type: "success",
       title: "Asked in a thread",
-      // "Ask" leaves the composer empty on purpose, so saying the question is in it would send
-      // the reader looking for something that is not there. The chips are what landed.
-      description:
-        task.prompt.length > 0
-          ? "The question is in the composer — read it over, then send."
-          : "The pull request is in the composer — type your question, then send.",
+      description: askLandedDescription(asked, options?.send === true),
     });
   };
 
@@ -1483,7 +1516,7 @@ export function PullRequestDetailPanel({
         comment: selection.comment,
         request: selection.request,
       }),
-      options,
+      { ...options, send: selection.send, questionInChip: true },
     );
   };
 
@@ -3019,8 +3052,8 @@ export function PullRequestDetailPanel({
                   canComment={
                     detail.capabilities.review.inlineComment && detail.viewerPermissions.comment
                   }
-                  onAskAboutLines={(comment, request) =>
-                    addSelectionToAgent({ comment, request }, { keepGuide: true })
+                  onAskAboutLines={(comment, request, send) =>
+                    addSelectionToAgent({ comment, request, send }, { keepGuide: true })
                   }
                   onAskAboutStop={askAboutGuideStop}
                   onFinishReview={

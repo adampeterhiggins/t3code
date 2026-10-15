@@ -165,6 +165,8 @@ export interface PullRequestAgentSelectionInput {
   /** The marked lines, already in the shape the composer draws and the agent reads. */
   readonly comment: ReviewCommentContext;
   readonly request: string;
+  /** Send it straight away rather than leave it in the composer to send. */
+  readonly send: boolean;
 }
 
 /**
@@ -1030,11 +1032,14 @@ function PullRequestCodeTab({
             submitLabel="Add to review"
             {...(onAddToAgentSelection
               ? {
-                  secondaryAction: {
-                    label: "Add to agent",
-                    onAction: (text: string) =>
+                  agentAction: {
+                    send: (text: string) =>
                       finishSelection(draft, text, (comment) =>
-                        onAddToAgentSelection({ comment, request: text }),
+                        onAddToAgentSelection({ comment, request: text, send: true }),
+                      ),
+                    addToComposer: (text: string) =>
+                      finishSelection(draft, text, (comment) =>
+                        onAddToAgentSelection({ comment, request: text, send: false }),
                       ),
                   },
                 }

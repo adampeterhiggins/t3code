@@ -11,7 +11,8 @@ import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts/settings";
 import { act, type ReactNode, type ReactElement, type ComponentProps } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { DraftId, useComposerDraftStore } from "~/composerDraftStore";
+import { composerTargetKey, DraftId, useComposerDraftStore } from "~/composerDraftStore";
+import { useComposerSubmitRequestStore } from "~/composerSubmitRequestStore";
 
 const { newThread, prepareThread, refresh, Wrapper, Trigger } = vi.hoisted(() => ({
   newThread: vi.fn(),
@@ -142,26 +143,30 @@ vi.mock("./PullRequestCodeTab", () => ({
     scrollerRef,
   }: ComponentProps<typeof import("./PullRequestCodeTab").default>) => (
     <div ref={scrollerRef} data-test-scroll="code">
-      <button
-        onClick={() =>
-          onAddToAgentSelection?.({
-            request: "Fix this line",
-            comment: {
-              id: "note-1",
-              sectionId: "file:a.ts",
-              sectionTitle: "a.ts",
-              filePath: "a.ts",
-              startIndex: 0,
-              endIndex: 0,
-              rangeLabel: "L1",
-              text: "Please fix",
-              diff: "+broken()",
-            },
-          })
-        }
-      >
-        Add to agent
-      </button>
+      {[false, true].map((send) => (
+        <button
+          key={String(send)}
+          onClick={() =>
+            onAddToAgentSelection?.({
+              request: "Fix this line",
+              send,
+              comment: {
+                id: "note-1",
+                sectionId: "file:a.ts",
+                sectionTitle: "a.ts",
+                filePath: "a.ts",
+                startIndex: 0,
+                endIndex: 0,
+                rangeLabel: "L1",
+                text: "Please fix",
+                diff: "+broken()",
+              },
+            })
+          }
+        >
+          {send ? "Send to agent" : "Add to agent"}
+        </button>
+      ))}
     </div>
   ),
 }));
@@ -233,6 +238,7 @@ beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("window", { addEventListener: vi.fn(), removeEventListener: vi.fn() });
   useComposerDraftStore.setState({ draftsByThreadKey: {} });
+  useComposerSubmitRequestStore.setState({ pending: new Set() });
   newThread
     .mockReset()
     .mockResolvedValue({ draftId: newDraftId, threadId: ThreadId.make("new-thread") });
@@ -271,6 +277,7 @@ const actions = [
   "Fix findings in this thread",
   "Fix check",
   "Add to agent",
+  "Send to agent",
 ];
 
 // The surface ChatView opens for `detail`, and the thread states it can be opened beside. The
@@ -338,7 +345,8 @@ describe.each([
   it.each(actions)("%s writes to the correct composer", async (action) => {
     if (target) useComposerDraftStore.getState().setPrompt(target, "Keep my draft");
     await act(async () => render());
-    if (action === "Add to agent") await click("Code");
+    const selection = action.endsWith("to agent");
+    if (selection) await click("Code");
     await click(target ? action : action.replace("in this thread", "in a thread"));
     const draft = useComposerDraftStore.getState().getComposerDraft(target ?? newDraftId);
     if (action === "Resolve conflicts") expect(draft?.prompt).toContain("resolve every conflict");
@@ -346,12 +354,22 @@ describe.each([
     else if (action.startsWith("Fix findings"))
       expect(draft?.prompt).toContain("Fix the actionable findings");
     else expect(draft?.reviewComments?.length).toBeGreaterThan(0);
-    if (action === "Add to agent") {
-      expect(draft?.prompt).toContain("Fix this line");
-      expect(draft?.reviewComments).toEqual(
-        expect.arrayContaining([expect.objectContaining({ id: "note-1", diff: "+broken()" })]),
-      );
+    if (selection) {
+      // One chip carries the lines, the remark and the pull request; the prompt stays the reader's.
+      expect(draft?.prompt).not.toContain("Fix this line");
+      expect(draft?.reviewComments).toEqual([
+        expect.objectContaining({
+          text: "Fix this line",
+          diff: "+broken()",
+          pullRequest: expect.objectContaining({ number: detail.number }),
+        }),
+      ]);
     }
+    // Sending would take the reader's own draft along, so it only sends into an empty composer.
+    const submitRequested = useComposerSubmitRequestStore
+      .getState()
+      .pending.has(composerTargetKey(target ?? newDraftId));
+    expect(submitRequested).toBe(action === "Send to agent" && !target);
     if (target) {
       expect(draft?.prompt).toContain("Keep my draft");
       expect(newThread).not.toHaveBeenCalled();

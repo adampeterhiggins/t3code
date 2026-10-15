@@ -5,6 +5,8 @@ import type { ReactNode } from "react";
 import { useLinkClickHandler } from "~/browser/useOpenLink";
 import { cn } from "~/lib/utils";
 import { reviewCommentCodeLines, type ReviewCommentContext } from "~/reviewCommentContext";
+import { parseChangeRequestUrl } from "@t3tools/shared/changeRequestUrl";
+import { PULL_REQUEST_STATE_PRESENTATION } from "./pullRequest/pullRequestIcons";
 import { PullRequestActorAvatar } from "./pullRequest/pullRequestPresentation";
 
 /** The host's own name for a link, where it is one we know. */
@@ -28,6 +30,26 @@ function splitPath(path: string): { directory: string; name: string } {
     : { directory: path.slice(0, index + 1), name: path.slice(index + 1) };
 }
 
+/** Which pull request the lines are from, for a comment that carries one. */
+function PullRequestHeader({
+  pullRequest,
+}: {
+  pullRequest: NonNullable<ReviewCommentContext["pullRequest"]>;
+}) {
+  const state = pullRequest.state === "open" && pullRequest.isDraft ? "draft" : pullRequest.state;
+  const { Icon, toneClassName } = PULL_REQUEST_STATE_PRESENTATION[state];
+  const repository = parseChangeRequestUrl(pullRequest.url)?.repository ?? "";
+  return (
+    <div className="flex min-w-0 items-center gap-1.5 border-b border-border px-2.5 py-1.5 text-xs">
+      <Icon aria-hidden className={cn("size-3.5 shrink-0", toneClassName)} />
+      <span className="min-w-0 truncate font-medium text-foreground">{pullRequest.title}</span>
+      <span className="shrink-0 text-muted-foreground">
+        {repository}#{pullRequest.number}
+      </span>
+    </div>
+  );
+}
+
 /**
  * A review comment laid out the way a code host lays out one in its diff: the file bar, the lines
  * it was written against, each remark under its author, and a footer naming where it came from.
@@ -49,9 +71,11 @@ export function ReviewCommentCard(props: {
   const url = comment.thread?.url ?? comment.pullRequest?.url;
   const { directory, name } = splitPath(props.displayPath);
   const showRange = codeLines.length === 0 && comment.rangeLabel !== "file";
+  const pullRequest = comment.pullRequest;
 
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-background">
+      {pullRequest ? <PullRequestHeader pullRequest={pullRequest} /> : null}
       <div className="flex min-w-0 items-center gap-1.5 border-b border-border bg-muted/60 px-2.5 py-1.5 font-mono text-xs">
         <ChevronDownIcon aria-hidden className="size-3 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1 truncate">

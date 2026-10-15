@@ -70,7 +70,9 @@ export interface ExcerptCommenting {
   }) => void;
   readonly onRemove: (commentId: string) => void;
   /** Opens an agent thread about the lines; null where no thread can be opened. */
-  readonly onAskAgent: ((comment: ReviewCommentContext, request: string) => void) | null;
+  readonly onAskAgent:
+    | ((comment: ReviewCommentContext, request: string, send: boolean) => void)
+    | null;
 }
 
 interface ExcerptAnnotation {
@@ -213,7 +215,7 @@ export function GuideExcerpt({
   );
   const interactive = commenting !== null && draft === null;
   const onAskAgent = commenting?.onAskAgent ?? null;
-  const askAgent = (request: string) => {
+  const askAgent = (request: string, send: boolean) => {
     if (draft === null || file === null || onAskAgent === null) return;
     const comment = buildDiffReviewComment({
       id: `pull-request-guide:${excerpt.path}:${draft.range.start}:${draft.range.end}`,
@@ -225,7 +227,7 @@ export function GuideExcerpt({
       text: request,
     });
     setDraft(null);
-    if (comment !== null) onAskAgent(comment, request);
+    if (comment !== null) onAskAgent(comment, request, send);
   };
 
   const options = useMemo(
@@ -291,29 +293,29 @@ export function GuideExcerpt({
                     placeholder={
                       commenting.canComment ? "Add a comment…" : "Ask the agent about these lines…"
                     }
-                    submitLabel={commenting.canComment ? "Add to review" : "Ask agent"}
-                    {...(commenting.canComment && onAskAgent !== null
+                    submitLabel="Add to review"
+                    {...(onAskAgent !== null
                       ? {
-                          secondaryAction: {
-                            label: "Ask agent",
-                            onAction: (text: string) => askAgent(text),
+                          agentAction: {
+                            send: (text: string) => askAgent(text, true),
+                            addToComposer: (text: string) => askAgent(text, false),
                           },
                         }
                       : {})}
                     onCancel={() => setDraft(null)}
-                    onComment={(body) => {
-                      if (!commenting.canComment) {
-                        askAgent(body);
-                        return;
-                      }
-                      commenting.onComment({
-                        path: excerpt.path,
-                        oldPath: file === null ? null : previousPathOf(file, excerpt.path),
-                        position: draft.position,
-                        body,
-                      });
-                      setDraft(null);
-                    }}
+                    {...(commenting.canComment
+                      ? {
+                          onComment: (body: string) => {
+                            commenting.onComment({
+                              path: excerpt.path,
+                              oldPath: file === null ? null : previousPathOf(file, excerpt.path),
+                              position: draft.position,
+                              body,
+                            });
+                            setDraft(null);
+                          },
+                        }
+                      : {})}
                   />
                 ) : null}
               </div>

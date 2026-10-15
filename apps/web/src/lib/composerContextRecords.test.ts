@@ -358,6 +358,15 @@ describe("composerContextRecords", () => {
         diff: "+const answer = 42;",
       }),
     ).toBe(false);
+    // Lines that carry their pull request along are still a comment on the diff, named by it.
+    const lines = {
+      ...summary,
+      filePath: "src/a.ts",
+      rangeLabel: "+12 to +14",
+      diff: "+const answer = 42;",
+    };
+    expect(isPullRequestSummaryContext(lines)).toBe(false);
+    expect(reviewCommentContextLabel(lines)).toBe("#42 · a.ts L12 to L14");
   });
 
   it("builds a preview annotation record with element details and readable style changes", () => {
