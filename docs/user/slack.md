@@ -3,9 +3,14 @@
 Connect Slack, then attach Slack messages and threads to messages as context for the agent.
 T3 Code reads Slack as you, with read-only access, and never posts.
 
-## Set up the Slack app
+## Choose a Slack app
 
-Slack signs in through an app in your own workspace. You make it once, and it takes a minute:
+If an app is already configured for your environment, click **Connect Slack** and sign in with
+your account. You don't need to create an app. Use **Change app** to connect through another app.
+Your workspace may require an owner to approve the app before you can authorize it.
+
+If no app is configured, enter the client ID of a shared app supplied by your server operator,
+or create an app in your workspace:
 
 1. Open **Settings > Integrations** and find **Slack**. Click **Copy manifest**.
 2. At [api.slack.com/apps](https://api.slack.com/apps), choose **Create New App > From a
@@ -14,15 +19,29 @@ Slack signs in through an app in your own workspace. You make it once, and it ta
    Integrations > Slack**.
 
 The manifest asks only for read scopes and turns on PKCE, so T3 Code never needs the app's client
-secret. If your workspace requires admin approval for new apps, approve the app first.
+secret. If your workspace requires approval for new apps, ask a workspace owner to approve it.
 
-Use an app made in your own workspace, not one shared across workspaces. Slack limits apps
-installed in other workspaces to reading 15 thread messages a minute, which is too few to attach
-threads.
+A shared app must be configured by its operator to accept installations in other workspaces.
+For commercially distributed apps without Slack Marketplace approval, Slack limits thread reads
+to one request per minute with up to 15 messages per request. Internal customer-built apps and
+Marketplace-approved apps have higher limits. See [Slack's thread-reading limits](https://docs.slack.dev/reference/methods/conversations.replies/).
+
+### Configure an app for an environment
+
+Server operators can set `T3CODE_SLACK_CLIENT_ID` to the app's client ID before starting the
+server. This supplies the app for users who have not connected one before. A client ID previously
+saved through Settings takes precedence; use **Change app** to switch it.
+
+For a shared app, enable public distribution in Slack's app settings. Register
+`http://localhost:47832/callback` as a redirect URL, enable PKCE, and configure the read-only
+user scopes from T3 Code's copied manifest. T3 Code does not need a client secret. App registration,
+distribution, and Marketplace approval are managed separately in Slack; setting a client ID does
+not enable them automatically.
 
 ## Connect an account
 
-1. Click **Connect Slack**. Slack's approval page opens in your browser.
+1. Click **Connect Slack**, then **Open Slack** to open the approval page. On desktop, it opens
+   automatically.
 2. Click **Allow**.
 
 The account belongs to the T3 Code server you're connected to, not to one device. Every client

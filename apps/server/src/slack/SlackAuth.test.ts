@@ -160,6 +160,58 @@ it.effect("falls back to T3CODE_SLACK_CLIENT_ID and reports it in the state", ()
   }).pipe(Effect.provide(harness.layer));
 });
 
+it.effect("connects with the configured app without requiring a user-supplied client ID", () => {
+  const harness = makeHarness({ env: { T3CODE_SLACK_CLIENT_ID: "shared-client" } });
+  return Effect.gen(function* () {
+    const auth = yield* SlackAuth.SlackAuth;
+    const waiting = yield* auth.startLogin({});
+    const state = new URL(waiting.authorizationUrl ?? "").searchParams.get("state");
+    yield* auth.completeLogin({
+      flowId: waiting.flowId ?? "",
+      callbackUrl: `http://localhost:47832/callback?code=shared-code&state=${state}`,
+    });
+    const connected = Option.getOrNull(yield* firstStateWhere(auth, "connected"));
+    assert.deepEqual(connected?.account, account);
+    assert.strictEqual(connected?.clientId, "shared-client");
+    assert.strictEqual(harness.storedToken()?.clientId, "shared-client");
+    const exchange = harness.requests.find((request) => request.url.endsWith("/oauth.v2.access"));
+    assert.strictEqual(exchange?.params?.get("client_id"), "shared-client");
+    assert.isTrue(exchange?.params?.has("code_verifier"));
+    assert.isFalse(exchange?.params?.has("client_secret"));
+    const disconnected = yield* auth.disconnect;
+    assert.strictEqual(disconnected.clientId, "shared-client");
+    assert.isNull(harness.storedToken());
+    const reconnect = yield* auth.startLogin({});
+    assert.strictEqual(
+      new URL(reconnect.authorizationUrl ?? "").searchParams.get("client_id"),
+      "shared-client",
+    );
+    yield* auth.cancelLogin({ flowId: reconnect.flowId ?? "" });
+  }).pipe(Effect.provide(harness.layer));
+});
+
+it.effect("preserves a saved workspace app and allows overriding the configured app", () => {
+  const harness = makeHarness({
+    env: { T3CODE_SLACK_CLIENT_ID: "shared-client" },
+    clientId: "workspace-client",
+  });
+  return Effect.gen(function* () {
+    const auth = yield* SlackAuth.SlackAuth;
+    const waiting = yield* auth.startLogin({});
+    assert.strictEqual(waiting.clientId, "workspace-client");
+    yield* auth.cancelLogin({ flowId: waiting.flowId ?? "" });
+    const overridden = yield* auth.startLogin({ clientId: "another-client" });
+    assert.strictEqual(
+      new URL(overridden.authorizationUrl ?? "").searchParams.get("client_id"),
+      "another-client",
+    );
+    yield* auth.cancelLogin({ flowId: overridden.flowId ?? "" });
+    const restored = Option.getOrNull(yield* firstStateWhere(auth, "disconnected"));
+    assert.strictEqual(restored?.clientId, "workspace-client");
+    assert.strictEqual(harness.readSecret(CLIENT_ID_SECRET), "workspace-client");
+  }).pipe(Effect.provide(harness.layer));
+});
+
 it.effect("finishes a login from a pasted redirect URL and remembers the client ID", () => {
   const harness = makeHarness({});
   return Effect.gen(function* () {
