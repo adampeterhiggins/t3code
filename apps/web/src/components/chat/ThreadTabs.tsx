@@ -298,9 +298,9 @@ function TabMenuLabel(props: {
 }
 
 /**
- * Breadcrumb segment naming the open tab; its menu switches, opens, or closes tabs, and restarts
- * the open tab's agent session.
- * A "new tab" button always follows it; with a single tab it is only that button.
+ * Breadcrumb segment naming the open tab, then a "new tab" button; with a single tab it is only
+ * that button. Right-clicking the button opens the tab menu, which switches, opens, or closes
+ * tabs, and restarts the open tab's agent session.
  */
 export function ThreadTabMenu({
   environmentId,
@@ -318,6 +318,8 @@ export function ThreadTabMenu({
   const { createTab, closeTab } = useThreadTabActions();
   const restartAgentSession = useRestartAgentSessionWithToast();
   const [busy, setBusy] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [newTabButtonElement, setNewTabButton] = useState<HTMLButtonElement | null>(null);
   const canNameGroup = useEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
   const currentLabel = useTabLabel(environmentId, group, threadId);
   const splitPaneFocus = useSplitPaneFocus();
@@ -373,69 +375,59 @@ export function ThreadTabMenu({
       <TooltipTrigger
         render={
           <button
+            ref={setNewTabButton}
             type="button"
             aria-label="New tab"
+            aria-haspopup="menu"
             disabled={busy || Option.isNone(prepared)}
             onClick={create}
-            className="inline-flex shrink-0 cursor-pointer items-center rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-50"
+            onContextMenu={(event) => {
+              event.preventDefault();
+              setMenuOpen(true);
+            }}
+            className="inline-flex shrink-0 cursor-pointer items-center rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-default disabled:opacity-50"
           />
         }
       >
         <PlusIcon className="size-3.5" />
       </TooltipTrigger>
-      <TooltipPopup side="top">New tab</TooltipPopup>
+      <TooltipPopup side="top">New tab · right-click for tab menu</TooltipPopup>
     </Tooltip>
   );
 
-  // A lone tab repeats the thread title, so the segment is just the "new tab" action.
-  if (group.tabs.length <= 1 && !group.name) return newTabButton;
-
-  return (
-    <span className="flex min-w-0 items-center gap-2">
-      <Menu>
-        {/* Themed headers fill every menu-trigger slot as a toolbar control; this is a breadcrumb. */}
-        <MenuTrigger
-          data-slot="thread-tab-crumb"
-          render={
-            <button
-              type="button"
-              aria-label={`Chat tab: ${group.name ?? currentLabel}`}
-              className="group/tab-crumb inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-            />
-          }
-        >
-          <WorkspaceBreadcrumbText>{group.name ?? currentLabel}</WorkspaceBreadcrumbText>
-        </MenuTrigger>
-        <MenuPopup align="start" side="bottom">
-          <MenuRadioGroup value={threadId} onValueChange={(value) => open(value as ThreadId)}>
-            {group.tabs.map((tab) => (
-              <MenuRadioItem key={tab.threadId} value={tab.threadId}>
-                <span className="flex items-center gap-2">
-                  <span className="min-w-0 flex-1 truncate">
-                    <TabMenuLabel
-                      environmentId={environmentId}
-                      group={group}
-                      threadId={tab.threadId}
-                    />
-                  </span>
-                  {/* Shown on the highlighted row; handlers stop the item from switching tabs. */}
-                  {tab.threadId !== threadId &&
-                  splitPartner !== scopedThreadKey(scopeThreadRef(environmentId, tab.threadId)) ? (
-                    <button
-                      type="button"
-                      tabIndex={-1}
-                      aria-label="Open in split view"
-                      onMouseUp={(event) => event.stopPropagation()}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        event.preventDefault();
-                        openBeside(tab.threadId);
-                      }}
-                      className="inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted-foreground opacity-0 transition-opacity hover:bg-foreground/10 hover:text-foreground in-data-highlighted:opacity-100"
-                    >
-                      <Columns2Icon className="size-3.5" />
-                    </button>
-                  ) : null}
+  const menu = (
+    <Menu open={menuOpen} onOpenChange={setMenuOpen}>
+      <MenuPopup anchor={newTabButtonElement} align="start" side="bottom">
+        <MenuRadioGroup value={threadId} onValueChange={(value) => open(value as ThreadId)}>
+          {group.tabs.map((tab) => (
+            <MenuRadioItem key={tab.threadId} value={tab.threadId}>
+              <span className="flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate">
+                  <TabMenuLabel
+                    environmentId={environmentId}
+                    group={group}
+                    threadId={tab.threadId}
+                  />
+                </span>
+                {/* Shown on the highlighted row; handlers stop the item from switching tabs. */}
+                {tab.threadId !== threadId &&
+                splitPartner !== scopedThreadKey(scopeThreadRef(environmentId, tab.threadId)) ? (
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    aria-label="Open in split view"
+                    onMouseUp={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      event.preventDefault();
+                      openBeside(tab.threadId);
+                    }}
+                    className="inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted-foreground opacity-0 transition-opacity hover:bg-foreground/10 hover:text-foreground in-data-highlighted:opacity-100"
+                  >
+                    <Columns2Icon className="size-3.5" />
+                  </button>
+                ) : null}
+                {group.tabs.length > 1 ? (
                   <button
                     type="button"
                     tabIndex={-1}
@@ -451,39 +443,59 @@ export function ThreadTabMenu({
                   >
                     <XIcon className="size-3.5" />
                   </button>
-                </span>
-              </MenuRadioItem>
-            ))}
-          </MenuRadioGroup>
-          <MenuSeparator />
-          <MenuItem disabled={busy || Option.isNone(prepared)} onClick={create}>
-            <PlusIcon />
-            New tab
-          </MenuItem>
-          <MenuItem
-            disabled={busy || !canNameGroup || Option.isNone(prepared)}
-            onClick={() =>
-              void run(async () => {
-                if (!canNameGroup) return;
-                const name = await requestThreadTabGroupName(group.name ?? null);
-                if (name === undefined || Option.isNone(prepared)) return;
-                try {
-                  await runtime.runPromise(setThreadTabGroupName(prepared.value, threadId, name));
-                } catch {
-                  toastManager.add({ type: "error", title: "Could not name thread group" });
-                }
-              })
-            }
-          >
-            Name thread group…
-          </MenuItem>
-          <MenuItem disabled={busy || Option.isNone(prepared)} onClick={restart}>
-            <RotateCcwIcon />
-            Restart agent session
-          </MenuItem>
-        </MenuPopup>
-      </Menu>
+                ) : null}
+              </span>
+            </MenuRadioItem>
+          ))}
+        </MenuRadioGroup>
+        <MenuSeparator />
+        <MenuItem disabled={busy || Option.isNone(prepared)} onClick={create}>
+          <PlusIcon />
+          New tab
+        </MenuItem>
+        <MenuItem
+          disabled={busy || !canNameGroup || Option.isNone(prepared)}
+          onClick={() =>
+            void run(async () => {
+              if (!canNameGroup) return;
+              const name = await requestThreadTabGroupName(group.name ?? null);
+              if (name === undefined || Option.isNone(prepared)) return;
+              try {
+                await runtime.runPromise(setThreadTabGroupName(prepared.value, threadId, name));
+              } catch {
+                toastManager.add({ type: "error", title: "Could not name thread group" });
+              }
+            })
+          }
+        >
+          Name thread group…
+        </MenuItem>
+        <MenuItem disabled={busy || Option.isNone(prepared)} onClick={restart}>
+          <RotateCcwIcon />
+          Restart agent session
+        </MenuItem>
+      </MenuPopup>
+    </Menu>
+  );
+
+  // A lone tab repeats the thread title, so the segment is just the "new tab" action.
+  if (group.tabs.length <= 1 && !group.name) {
+    return (
+      <>
+        {newTabButton}
+        {menu}
+      </>
+    );
+  }
+
+  return (
+    <span className="flex min-w-0 items-center gap-2 sm:gap-3">
+      <WorkspaceBreadcrumbText>{group.name ?? currentLabel}</WorkspaceBreadcrumbText>
+      <span aria-hidden="true" className="flex shrink-0 items-center text-icon-muted">
+        <WorkspaceBreadcrumbText>/</WorkspaceBreadcrumbText>
+      </span>
       {newTabButton}
+      {menu}
     </span>
   );
 }

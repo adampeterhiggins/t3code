@@ -512,10 +512,11 @@ editable. Names are stored by the [ThreadTabs service](../apps/server/src/thread
   menus add **Restart agent session** for a tab (a row standing for a tab group restarts the tab
   it opens). The header's thread menu leaves it out because it acts on the group's original
   thread (`apps/web/src/hooks/useRestartAgentSession.ts`).
-- **Web header.** The breadcrumb reads `project / thread / tab`. The thread crumb keeps the thread
-  action menu and acts on the original thread. The tab crumb switches, creates, and closes tabs. A
-  chat with one tab shows a **New tab** button instead of repeating the title. A tab can also be
-  closed from the hover control on its menu row (`apps/web/src/components/chat/ThreadTabs.tsx`,
+- **Web header.** The breadcrumb reads `project / thread / tab / +`. The thread crumb keeps the
+  thread action menu and acts on the original thread. **+** opens a new tab, and right-clicking it
+  opens the tab menu, which switches, creates, and closes tabs. A chat with one tab shows only
+  **+** instead of repeating the title. A tab can also be closed from the hover control on its
+  menu row (`apps/web/src/components/chat/ThreadTabs.tsx`,
   `ChatHeader.tsx`).
 - **Right panel.** Each tab keeps its own right-panel surfaces, but the panel stays open or closed
   as you move between tabs, including new, forked, and closed-into tabs
