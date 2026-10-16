@@ -9,7 +9,7 @@ import { useState, type ReactNode } from "react";
 import { ActivityIndicator, Alert, FlatList, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { AppText as Text, AppTextInput } from "../../components/AppText";
+import { AppText as Text, AppTextInput } from "../../components/ui/AppText";
 import { confirmOpenExistingThread } from "../../components/confirmOpenExistingThread";
 import { PickerSheet } from "../../components/PickerSheet";
 import { useThreadShells } from "../../state/entities";

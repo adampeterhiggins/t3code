@@ -27,7 +27,6 @@ export interface ProviderAuthStartOptions {
 }
 
 export interface ProviderAuthController {
-  /** Equal keys mean these instances share credentials on this environment. */
   readonly credentialBinding?: { readonly owner: "provider" | "t3"; readonly key: string };
   readonly reconnectProfile?: (
     methodId: string,
@@ -62,7 +61,6 @@ export interface ProviderAuthController {
     ownerSessionId: string,
     input: ProviderAuthRespondInput,
   ) => Effect.Effect<ProviderAuthState, ProviderSetupError>;
-  /** The controller closes process admission before it stops routed sessions. */
   readonly logout: (
     stopSessions: Effect.Effect<void, ProviderSetupError>,
   ) => Effect.Effect<ProviderAuthState, ProviderSetupError>;

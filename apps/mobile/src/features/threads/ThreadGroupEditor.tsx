@@ -11,8 +11,8 @@ import {
   View,
 } from "react-native";
 
-import { AppText } from "../../components/AppText";
-import { ThemedSwitch } from "../../components/ThemedSwitch";
+import { AppText } from "../../components/ui/AppText";
+import { ThemedSwitch } from "../../components/ui/ThemedSwitch";
 import { cn } from "../../lib/cn";
 import { PROJECT_ICON_COLORS, projectIconColorClassNames } from "../../lib/projectIcon";
 import { ThreadGroupIcon } from "./ThreadGroupIcon";
@@ -155,7 +155,7 @@ function ThreadGroupEditor(props: {
               >
                 <ThreadGroupIcon
                   name={name}
-                  style={{ ...(style.accent ? { accent: style.accent } : {}) }}
+                  style={style.accent ? { accent: style.accent } : {}}
                   size={18}
                   fallbackTintClassName="accent-icon-muted"
                 />

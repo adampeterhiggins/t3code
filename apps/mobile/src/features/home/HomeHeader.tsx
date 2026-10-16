@@ -1,4 +1,5 @@
-import { NativeHeaderToolbar, NativeStackScreenOptions } from "../../native/StackHeader";
+import { Toolbar } from "../../components/ui/Toolbar";
+import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { use, useCallback, useEffect, useRef } from "react";
 import { useNavigation, type ParamListBase } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -41,9 +42,6 @@ export function HomeHeader(props: HomeHeaderProps) {
     [navigation],
   );
   const iconColor = useUniwindTheme()["--color-icon"];
-  // The list uses a fixed creation order and ignores sort/group options, so
-  // the filter menu only carries the filters and the "customized" icon state
-  // keys off those alone.
   const hasCustomListOptions =
     props.selectedEnvironmentId !== null ||
     props.selectedProjectKey !== null ||
@@ -70,8 +68,6 @@ export function HomeHeader(props: HomeHeaderProps) {
       <NativeStackScreenOptions
         optionsVersion={[filterMenu.items, showsCompactCompose]}
         options={{
-          // Static header config (glass, title, fonts) lives in Stack.tsx
-          // (GLASS_HEADER_OPTIONS). Only dynamic values are set here.
           headerTintColor: iconColor,
           unstable_headerRightItems: () =>
             sidebarHeader
@@ -108,7 +104,7 @@ export function HomeHeader(props: HomeHeaderProps) {
                   }),
                 ],
           // The keys below are set per-branch (not `undefined`) so a later
-          // reapply cannot clobber options owned by NativeHeaderToolbar.
+          // reapply cannot clobber options owned by Toolbar.
           ...(sidebarHeader
             ? {
                 headerSearchBarOptions: {
@@ -150,8 +146,6 @@ export function HomeHeader(props: HomeHeaderProps) {
                   ],
                 }
               : {
-                  // Pre-Liquid-Glass iOS: standard pull-down search in the nav
-                  // bar; create + sort live in the plain bottom toolbar below.
                   headerSearchBarOptions: {
                     ref: searchBarRef,
                     autoCapitalize: "none" as const,
@@ -169,8 +163,8 @@ export function HomeHeader(props: HomeHeaderProps) {
       />
 
       {sidebarHeader || usesNativeMailSearchToolbar ? null : (
-        <NativeHeaderToolbar placement="bottom">
-          <NativeHeaderToolbar.Menu
+        <Toolbar placement="bottom">
+          <Toolbar.Menu
             accessibilityLabel="Filter threads"
             icon={
               hasCustomListOptions
@@ -180,106 +174,104 @@ export function HomeHeader(props: HomeHeaderProps) {
             title="Thread list options"
             separateBackground
           >
-            <NativeHeaderToolbar.Menu title="Environment">
-              <NativeHeaderToolbar.Label>Environment</NativeHeaderToolbar.Label>
-              <NativeHeaderToolbar.MenuAction
+            <Toolbar.Menu title="Environment">
+              <Toolbar.Label>Environment</Toolbar.Label>
+              <Toolbar.MenuAction
                 isOn={props.selectedEnvironmentId === null}
                 onPress={() => props.onEnvironmentChange(null)}
                 subtitle="Show threads from every environment"
               >
-                <NativeHeaderToolbar.Label>All environments</NativeHeaderToolbar.Label>
-              </NativeHeaderToolbar.MenuAction>
+                <Toolbar.Label>All environments</Toolbar.Label>
+              </Toolbar.MenuAction>
               {props.environments.map((environment) => (
-                <NativeHeaderToolbar.MenuAction
+                <Toolbar.MenuAction
                   key={environment.environmentId}
                   isOn={props.selectedEnvironmentId === environment.environmentId}
                   onPress={() => props.onEnvironmentChange(environment.environmentId)}
                 >
-                  <NativeHeaderToolbar.Label>
+                  <Toolbar.Label>
                     {filterChoiceTitle(environment.label, environment.count)}
-                  </NativeHeaderToolbar.Label>
-                </NativeHeaderToolbar.MenuAction>
+                  </Toolbar.Label>
+                </Toolbar.MenuAction>
               ))}
-            </NativeHeaderToolbar.Menu>
+            </Toolbar.Menu>
 
             {props.organisations.length > 0 ? (
-              <NativeHeaderToolbar.Menu title="Organisations">
-                <NativeHeaderToolbar.Label>Organisations</NativeHeaderToolbar.Label>
-                <NativeHeaderToolbar.MenuAction
+              <Toolbar.Menu title="Organisations">
+                <Toolbar.Label>Organisations</Toolbar.Label>
+                <Toolbar.MenuAction
                   isOn={props.organisationKeys.length === 0}
                   onPress={props.onClearOrganisations}
                   subtitle="Show threads from every organisation"
                 >
-                  <NativeHeaderToolbar.Label>All organisations</NativeHeaderToolbar.Label>
-                </NativeHeaderToolbar.MenuAction>
+                  <Toolbar.Label>All organisations</Toolbar.Label>
+                </Toolbar.MenuAction>
                 {props.organisations.map((organisation) => (
-                  <NativeHeaderToolbar.MenuAction
+                  <Toolbar.MenuAction
                     key={organisation.key}
                     isOn={props.organisationKeys.includes(organisation.key)}
                     onPress={() => props.onToggleOrganisation(organisation.key)}
                   >
-                    <NativeHeaderToolbar.Label>
+                    <Toolbar.Label>
                       {filterChoiceTitle(organisation.label, organisation.count)}
-                    </NativeHeaderToolbar.Label>
-                  </NativeHeaderToolbar.MenuAction>
+                    </Toolbar.Label>
+                  </Toolbar.MenuAction>
                 ))}
-              </NativeHeaderToolbar.Menu>
+              </Toolbar.Menu>
             ) : null}
 
             {props.projects.length > 0 ? (
-              <NativeHeaderToolbar.Menu title="Project">
-                <NativeHeaderToolbar.Label>Project</NativeHeaderToolbar.Label>
-                <NativeHeaderToolbar.MenuAction
+              <Toolbar.Menu title="Project">
+                <Toolbar.Label>Project</Toolbar.Label>
+                <Toolbar.MenuAction
                   isOn={props.selectedProjectKey === null}
                   onPress={() => props.onProjectChange(null)}
                   subtitle="Show threads from every project"
                 >
-                  <NativeHeaderToolbar.Label>All projects</NativeHeaderToolbar.Label>
-                </NativeHeaderToolbar.MenuAction>
+                  <Toolbar.Label>All projects</Toolbar.Label>
+                </Toolbar.MenuAction>
                 {props.projects.map((project) => (
-                  <NativeHeaderToolbar.MenuAction
+                  <Toolbar.MenuAction
                     key={project.key}
                     isOn={props.selectedProjectKey === project.key}
                     onPress={() => props.onProjectChange(project.key)}
                   >
-                    <NativeHeaderToolbar.Label>
-                      {filterChoiceTitle(project.label, project.count)}
-                    </NativeHeaderToolbar.Label>
-                  </NativeHeaderToolbar.MenuAction>
+                    <Toolbar.Label>{filterChoiceTitle(project.label, project.count)}</Toolbar.Label>
+                  </Toolbar.MenuAction>
                 ))}
-              </NativeHeaderToolbar.Menu>
+              </Toolbar.Menu>
             ) : null}
-            <NativeHeaderToolbar.Menu title="Show">
-              <NativeHeaderToolbar.Label>Show</NativeHeaderToolbar.Label>
+            <Toolbar.Menu title="Show">
+              <Toolbar.Label>Show</Toolbar.Label>
               {props.availablePages.map((page) => (
-                <NativeHeaderToolbar.MenuAction
+                <Toolbar.MenuAction
                   key={page}
                   isOn={props.pages.includes(page)}
                   onPress={() => props.onTogglePage(page)}
                 >
-                  <NativeHeaderToolbar.Label>
+                  <Toolbar.Label>
                     {filterChoiceTitle(
                       threadListPageLabel(page, props.groups),
                       props.pageCounts?.get(page),
                     )}
-                  </NativeHeaderToolbar.Label>
-                </NativeHeaderToolbar.MenuAction>
+                  </Toolbar.Label>
+                </Toolbar.MenuAction>
               ))}
               {props.onCreateGroup ? (
-                <NativeHeaderToolbar.MenuAction onPress={props.onCreateGroup}>
-                  <NativeHeaderToolbar.Label>New group…</NativeHeaderToolbar.Label>
-                </NativeHeaderToolbar.MenuAction>
+                <Toolbar.MenuAction onPress={props.onCreateGroup}>
+                  <Toolbar.Label>New group…</Toolbar.Label>
+                </Toolbar.MenuAction>
               ) : null}
-            </NativeHeaderToolbar.Menu>
-          </NativeHeaderToolbar.Menu>
-          <NativeHeaderToolbar.Spacer flexible />
-          <NativeHeaderToolbar.Button
+            </Toolbar.Menu>
+          </Toolbar.Menu>
+          <Toolbar.Spacer flexible />
+          <Toolbar.Button
             accessibilityLabel="New task"
             icon="square.and.pencil"
             onPress={props.onStartNewTask}
             separateBackground
           />
-        </NativeHeaderToolbar>
+        </Toolbar>
       )}
     </>
   );

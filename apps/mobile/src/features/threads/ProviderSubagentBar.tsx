@@ -5,7 +5,7 @@ import {
 import { isOrchestrationV2WorkActive, type EnvironmentId, type ThreadId } from "@t3tools/contracts";
 import { View } from "react-native";
 
-import { AppText as Text } from "../../components/AppText";
+import { AppText as Text } from "../../components/ui/AppText";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import { useAgentReferences } from "./agent-references";
 import { RequestActionButton } from "./RequestActionButton";
@@ -26,9 +26,7 @@ export function ProviderSubagentBar(props: {
   /** Driver and catalog icon of the provider running the subagent. */
   readonly provider: { readonly driver: string; readonly iconUrl?: string | undefined } | null;
   readonly modelLabel: string;
-  /** Reasoning effort as the composer names it, when the subagent has one. */
   readonly effortLabel: string | null;
-  /** Null until the subagent's root turn arrives. */
   readonly status: ProviderSubagentStatus | null;
   readonly onOpenParent: (() => void) | null;
 }) {
@@ -43,7 +41,7 @@ export function ProviderSubagentBar(props: {
 
   return (
     <View className="flex-row items-center gap-3 rounded-[20px] border border-border-subtle bg-card-alt py-2 pe-2 ps-4">
-      {/* Only the text is one element, so "Open parent" stays reachable. */}
+      {}
       <View
         accessible
         accessibilityLabel={`${modelDescription} subagent${handle ? ` @${handle}` : ""}, ${statusLabel}. It runs on its own and cannot take messages.`}

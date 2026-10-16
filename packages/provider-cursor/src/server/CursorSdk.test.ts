@@ -200,7 +200,7 @@ function runProbe(mode: string): Promise<{ code: number | null; stdout: string; 
         probeProgram,
         mode,
       ],
-      { stdio: ["ignore", "pipe", "pipe"] },
+      { stdio: ["ignore", "pipe", "pipe"], cwd: new URL("../..", import.meta.url) },
     );
     let stdout = "";
     let stderr = "";

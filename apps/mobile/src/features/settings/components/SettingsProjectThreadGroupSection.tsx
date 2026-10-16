@@ -3,7 +3,7 @@ import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { useMemo, useState } from "react";
 import { View } from "react-native";
 
-import { AppText as Text } from "../../../components/AppText";
+import { AppText as Text } from "../../../components/ui/AppText";
 import { useNavigationThreadShells } from "../../../state/entities";
 import { serverEnvironment, threadListEnvironmentsAtom } from "../../../state/server";
 import { useAtomCommand } from "../../../state/use-atom-command";

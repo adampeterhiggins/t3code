@@ -3,7 +3,7 @@ import type { ToolPreview } from "@t3tools/client-runtime/work-log/tool-preview"
 import { useState, type ReactNode } from "react";
 import { Pressable, View } from "react-native";
 
-import { AppText as Text } from "../../components/AppText";
+import { AppText as Text } from "../../components/ui/AppText";
 import { cn } from "../../lib/cn";
 import { tryOpenExternalUrl, type ExternalUrlTarget } from "../../lib/openExternalUrl";
 import { formatScheduledTaskInterval } from "../settings/scheduledTaskPresentation";

@@ -70,7 +70,6 @@ const make = Effect.gen(function* () {
   // one untracked on disk.
   const handoffThreadsInFlight = new Set<string>();
 
-  // Worktree tools act on the calling thread's own checkout binding.
   const requireThreadScope = (scope: McpInvocationScope) =>
     scope.thread === undefined
       ? Effect.fail(
@@ -179,8 +178,6 @@ const make = Effect.gen(function* () {
     // The binding the handoff replaces: null for the project checkout, or the
     // worktree the thread is in now, which stays on disk after the move.
     const previousWorktreePath = projection.thread.worktreePath;
-    // An archived thread would accept the binding but refuse the continuation
-    // message (and any other follow-up), so reject the handoff outright.
     if (projection.thread.archivedAt !== null) {
       return yield* failure(
         "invalid_request",
@@ -198,9 +195,6 @@ const make = Effect.gen(function* () {
       );
     }
 
-    // The repo check runs regardless of whether baseRef was supplied, so a
-    // non-repository workspace fails with an actionable error instead of an
-    // opaque git failure further down.
     const localStatus = yield* gitWorkflow
       .localStatus({ cwd: projectCwd })
       .pipe(asOperationFailed("Unable to read git status"));
@@ -297,8 +291,6 @@ const make = Effect.gen(function* () {
           : { path: target.path, refName: input.branch };
         const worktreePath = worktree.path;
 
-        // Shared shape for "the handoff already succeeded, so report the failure
-        // in the result instead of failing the call" (continuation, setup script).
         const reportFailed = (logMessage: string) =>
           Effect.catchCause((cause: Cause.Cause<unknown>) => {
             const detail = errorMessage(Cause.squash(cause));
@@ -309,9 +301,6 @@ const make = Effect.gen(function* () {
             }).pipe(Effect.as({ status: "failed", detail } as const));
           });
 
-        // suspend: build the rollback only if cleanup actually runs. Removing
-        // the worktree must succeed before deleting its freshly created branch;
-        // otherwise the branch may still be checked out there.
         const removeCreatedWorktree = Effect.suspend(() =>
           gitWorkflow.removeWorktree({ cwd: projectCwd, path: worktreePath, force: true }).pipe(
             Effect.andThen(
@@ -338,9 +327,6 @@ const make = Effect.gen(function* () {
               `Thread '${scope.thread.threadId}' moved to '${recheck.thread.worktreePath ?? projectCwd}' during the handoff; the handoff was rolled back.`,
             );
           }
-          // Mirror the up-front archived check: the thread may have been
-          // archived during the slow git work, and an archived thread must
-          // not be bound to a fresh worktree it can never use.
           if (recheck.thread.archivedAt !== null) {
             return yield* failure(
               "invalid_request",
@@ -358,10 +344,6 @@ const make = Effect.gen(function* () {
             })
             .pipe(
               Effect.catchCause((cause) =>
-                // Interrupt-only causes propagate unchanged: whether the
-                // dispatch committed is unknown, so neither a typed failure
-                // nor a rollback would be correct. Failures and defects
-                // (including mixed causes) map to a typed operation_failed.
                 Cause.hasInterruptsOnly(cause)
                   ? Effect.failCause(cause as Cause.Cause<never>)
                   : Effect.fail(
@@ -388,11 +370,7 @@ const make = Effect.gen(function* () {
         // Queue the continuation right after the binding commits: the detach
         // that the metadata update schedules will terminate the calling
         // session, and a durably queued message is what guarantees the thread
-        // re-launches inside the worktree. When the dying run reaches a
-        // terminal state the orchestrator promotes the queued run, which
-        // derives its cwd from the updated projection.
-        // suspend: build the send effect only when the binding has succeeded,
-        // so a failed dispatch never even constructs the continuation call.
+        // re-launches inside the worktree.
         const queueContinuation: Effect.Effect<WorktreeMcpContinuationStatus, WorktreeMcpFailure> =
           Effect.suspend(() =>
             input.continuationPrompt === undefined
@@ -414,8 +392,6 @@ const make = Effect.gen(function* () {
                       status: "scheduled",
                       delivery: sendResult.delivery,
                     })),
-                    // catchCause via reportFailed: the binding is already recorded,
-                    // so a failed continuation must be reported, not fail the handoff.
                     reportFailed("worktree handoff continuation failed to queue"),
                   ),
           );
@@ -450,8 +426,6 @@ const make = Effect.gen(function* () {
                     }
                   : { status: "no-script" },
               ),
-              // catchCause via reportFailed: the thread is already re-pointed at the
-              // worktree, so even a defect in the setup runner must not fail the handoff.
               reportFailed("worktree handoff setup script failed"),
             );
         }

@@ -4,7 +4,7 @@ import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime"
 import type { EnvironmentId, GitHubIssueThreadLink, ThreadId } from "@t3tools/contracts";
 import { Alert, Pressable, Text, View } from "react-native";
 
-import { ControlPillMenu } from "../../components/ControlPillMenu";
+import { Menu } from "../../components/ui/Menu";
 import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
 import { gitHubIssueEnvironment } from "../../state/githubIssues";
 import { useEnvironmentQuery } from "../../state/query";
@@ -70,7 +70,7 @@ export function ThreadGitHubIssueLinkChip(props: {
   };
 
   return (
-    <ControlPillMenu
+    <Menu
       accessible
       accessibilityRole="button"
       accessibilityLabel={`Linked GitHub issue ${label}: ${title}`}
@@ -111,6 +111,6 @@ export function ThreadGitHubIssueLinkChip(props: {
           </>
         ) : null}
       </Pressable>
-    </ControlPillMenu>
+    </Menu>
   );
 }

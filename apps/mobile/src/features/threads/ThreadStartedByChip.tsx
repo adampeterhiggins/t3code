@@ -4,7 +4,7 @@ import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { useNavigation } from "@react-navigation/native";
 import { Pressable, Text } from "react-native";
 
-import { SymbolView } from "../../components/AppSymbol";
+import { SymbolView } from "../../components/ui/AppSymbol";
 import { useThreadShell } from "../../state/entities";
 
 /**

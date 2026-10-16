@@ -51,7 +51,6 @@ import { Truncatable } from "./ui/truncatable";
 import { PullRequestLinkPreview } from "./pullRequest/PullRequestLinkPreview";
 import { usePullRequestPreviewTarget } from "~/lib/openPullRequestLink";
 
-/** ContextChip kind for a pull request context in each display state. */
 export const PULL_REQUEST_CHIP_KINDS = {
   open: "pr-open",
   draft: "pr-draft",
@@ -60,7 +59,6 @@ export const PULL_REQUEST_CHIP_KINDS = {
   unknown: "pull-request",
 } as const satisfies Record<PullRequestContextDisplayState | "unknown", ContextChipKind>;
 
-/** A static chip with an optional tooltip; each surface keeps ownership of payload lookup. */
 export function ContextChipShell({
   icon,
   label,
@@ -69,7 +67,6 @@ export function ContextChipShell({
 }: Omit<ComponentProps<typeof ContextChip>, "className" | "render"> & {
   icon: ReactNode;
   label: string;
-  /** Newlines in the tooltip are kept. */
   tooltip?: ReactNode;
 }) {
   const chip = (
@@ -153,6 +150,7 @@ export function PullRequestChip(props: {
       aria-label={`Open ${props.kindLabel} ${props.label}: ${props.metadata.title}`}
       data-markdown-copy={props.copyMarkdown}
       onClick={(event) => props.onOpen(event, props.metadata.url)}
+      onAuxClick={(event) => props.onOpen(event, props.metadata.url)}
     >
       <StateIcon />
       <ContextChipLabel>{props.label}</ContextChipLabel>
@@ -179,7 +177,6 @@ export function PullRequestChip(props: {
   );
 }
 
-/** Sample the loaded thumbnail once; transparent pixels should not darken its accent. */
 function averageImageColor(image: HTMLImageElement): string | undefined {
   try {
     const canvas = document.createElement("canvas");
@@ -202,7 +199,6 @@ function averageImageColor(image: HTMLImageElement): string | undefined {
     if (alpha === 0) return;
     return `rgb(${Math.round(red / alpha)} ${Math.round(green / alpha)} ${Math.round(blue / alpha)})`;
   } catch {
-    // Cross-origin or unavailable pixels keep the default image tone and preview action.
     return;
   }
 }
@@ -217,7 +213,6 @@ export function ImageChipButton({
 }: Omit<ComponentProps<typeof ContextChip>, "kind" | "render"> & {
   name: string;
   previewUrl: string | undefined;
-  /** Every attachment chip reports its size; images are no exception. */
   size: string;
   suffix?: string | null;
 }) {

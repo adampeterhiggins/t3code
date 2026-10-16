@@ -4,7 +4,7 @@ import { WS_METHODS, type EnvironmentId, type ManagedWorktree } from "@t3tools/c
 import { useState } from "react";
 import { Alert, Linking, View } from "react-native";
 
-import { AppText as Text } from "../../../components/AppText";
+import { AppText as Text } from "../../../components/ui/AppText";
 import { connectionAtomRuntime } from "../../../connection/runtime";
 import { useAtomCommand } from "../../../state/use-atom-command";
 import { SettingsActionRow } from "./SettingsActionRow";

@@ -14,13 +14,14 @@ import {
   WorkLogPressable,
 } from "./work-log-layout";
 import { QuestionAnswerHistory } from "./QuestionAnswerHistory";
+import { ThreadCommandOutput, useCommandOutputStreaming } from "./thread-command-output";
 import {
   getQuestionAnswerPreview,
   hasQuestionAnswer,
 } from "@t3tools/client-runtime/work-log/user-input";
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
-import { type AppSymbolName, SymbolView } from "../../components/AppSymbol";
+import { type AppSymbolName, SymbolView } from "../../components/ui/AppSymbol";
 import { MaskedView } from "@expo/ui/community/masked-view";
 import type { LegendListRef } from "@legendapp/list/react-native";
 import { AnimatedLegendList } from "@legendapp/list/reanimated";
@@ -62,9 +63,9 @@ import { toolActivityBrandMark, toolActivityFaviconUrl } from "@t3tools/shared/f
 import { isJavaScriptReplTool } from "@t3tools/shared/toolActivity";
 import { useMarkdownCodeHighlight } from "./markdownCodeHighlightState";
 
-import { AppText as Text } from "../../components/AppText";
+import { AppText as Text } from "../../components/ui/AppText";
 import { T3Wordmark } from "../../components/T3Wordmark";
-import { BrowserAppIcon } from "../../components/BrowserAppIcon";
+import { BrowserAppIcon } from "./BrowserAppIcon";
 import { cn } from "../../lib/cn";
 import { THREAD_WORK_ROW_MIN_HEIGHT, type deriveThreadWorkLogSizing } from "../../lib/layout";
 import {
@@ -260,7 +261,6 @@ function ShimmerWorkContent(props: {
 export function ShimmeringWorkContent(props: {
   readonly className?: string;
   readonly textClassName?: string;
-  /** Secondary line: no icon slot, caption size. */
   readonly compact?: boolean;
   readonly environmentId?: EnvironmentId;
   readonly icon: WorkContentIcon;
@@ -447,8 +447,8 @@ function isFreshRow(createdAt: string): boolean {
 // The minimum matches min-h-8 below. Exact sizing is disabled when native
 // accessibility scaling can make the single-line text taller than that minimum.
 const WORK_ROW_HEIGHT = THREAD_WORK_ROW_MIN_HEIGHT;
-const WORK_ROW_GAP = 1; // gap-px
-const WORK_LOG_BOTTOM_MARGIN = 3.5; // mb-1 with the mobile 14px rem
+const WORK_ROW_GAP = 1;
+const WORK_LOG_BOTTOM_MARGIN = 3.5;
 const WORK_GROUP_MAX_HEIGHT = 256;
 const WORK_GROUP_EDGE_FADE_HEIGHT = 12;
 
@@ -491,7 +491,6 @@ interface ThreadWorkLogProps {
   readonly rowSizing: ReturnType<typeof deriveThreadWorkLogSizing>;
   readonly scrollPositions: Map<string, ThreadWorkGroupScrollPosition>;
   readonly iconSubtleColor: ColorValue;
-  /** Feed background, painted as the scroll-edge fade over a long group. */
   readonly edgeFadeColor: string;
   readonly themeAppearance: "light" | "dark";
   readonly onCopyRow: (rowId: string, value: string) => void;
@@ -621,8 +620,6 @@ function ThreadWorkGroupList(props: {
   const scrollOffset = useSharedValue(initialPosition?.scrollOffset ?? 0);
   const sharedValues = useMemo(() => ({ scrollOffset }), [scrollOffset]);
 
-  // Each edge fades only while content continues past it. Scroll offset stays
-  // on the UI thread; only content-size changes update React state.
   const topFadeStyle = useAnimatedStyle(() => ({
     opacity: Math.min(1, Math.max(0, scrollOffset.value) / WORK_GROUP_EDGE_FADE_HEIGHT),
   }));
@@ -681,7 +678,6 @@ function ThreadWorkGroupList(props: {
           ? current
           : { height: nextHeight, rowCount: props.activities.length },
       );
-      // Follow new calls only, never a detail toggle or a growing tool result.
       if (followAppend) {
         pendingAppendHeightRef.current = Math.min(nextHeight, WORK_GROUP_MAX_HEIGHT);
       } else if (detailsChanged || userScrollingRef.current || previous.rows !== props.activities) {
@@ -689,8 +685,6 @@ function ThreadWorkGroupList(props: {
       } else if (pendingAppendHeightRef.current !== null) {
         pendingAppendHeightRef.current = Math.min(nextHeight, WORK_GROUP_MAX_HEIGHT);
       }
-      // A short group can grow its viewport on this append. Wait for that
-      // layout before calculating the end offset, rather than jumping twice.
       finishPendingAppend();
       rememberPosition();
     },
@@ -797,7 +791,6 @@ function ThreadWorkGroupList(props: {
   );
 }
 
-/** A screen-colored gradient painted over the list edge that still has content past it. */
 function EdgeFade(props: { readonly color: string; readonly direction: "up" | "down" }) {
   const gradientId = `work-group-fade-${useId().replaceAll(":", "")}`;
   return (
@@ -825,7 +818,6 @@ function workLogRowKey(row: ThreadFeedActivity): string {
   return row.id;
 }
 
-/** Shown while the thread's run still ends in this failed preparation. */
 function WorkspacePreparationRetryButton(props: {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
@@ -913,8 +905,12 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
 ) {
   const { row, expanded } = props;
   const navigation = useNavigation();
+  // Command rows stream their output, including the final output, from the server.
+  const streamsOutput =
+    useCommandOutputStreaming(props.environmentId) &&
+    row.projectedItem.item.type === "command_execution";
   const fetchedDetail = useTurnItemDetail(
-    expanded && row.fetchesDetail
+    expanded && row.fetchesDetail && !streamsOutput
       ? { environmentId: props.environmentId, row: row.projectedItem }
       : null,
   );
@@ -992,7 +988,6 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
       </WorkLogPressable>
     );
   }
-  // A subagent's notification opens its thread, like the subagent's own row.
   const notifiedSubagentThreadId =
     row.projectedItem.item.type === "notification"
       ? notificationChildThreadId(row.projectedItem.item.source)
@@ -1000,10 +995,8 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
   const canExpand = row.canExpand && notifiedSubagentThreadId === undefined;
   const reasoning = row.projectedItem.item.type === "reasoning" ? row.projectedItem.item : null;
   const fetchedItem = fetchedDetail.data?.item ?? null;
-  // Reads keep their path list; the fetched file contents show as output.
   const isRead = toolGroupAction(row.workEntry) === "read";
   const showsPaths = toolEntryShowsPathBreadcrumbs(row.workEntry);
-  // Tool calls show the call in the foreground and the result muted below it.
   const shownItem = fetchedItem ?? row.projectedItem.item;
   const call =
     expanded && !isRead && shownItem.type === "command_execution"
@@ -1033,31 +1026,43 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
   // Thread, PR, browser and other common tools show what they did instead of their JSON.
   const toolPreview = expanded && fetchedItem ? resolveToolPreview(fetchedItem) : null;
   const viewedImagePath = workEntryViewedImagePath(row.workEntry);
-  const fetchedOutput = !expanded
-    ? null
-    : shownItem.type === "file_change"
-      ? fetchedItem
-        ? null
-        : fetchedDetail.error
-          ? `Couldn't load the diff: ${fetchedDetail.error}`
-          : row.fetchesDetail && !fetchedDetail.data
-            ? "Loading diff…"
-            : null
-      : shownItem.type === "file_search" || shownItem.type === "web_search"
-        ? turnItemOutputText(shownItem)
-        : fetchedItem
-          ? (turnItemOutputText(fetchedItem) ??
-            (outputImages.length > 0 || viewedImagePath ? null : "No output."))
+  const fetchedOutput =
+    !expanded || streamsOutput
+      ? null
+      : shownItem.type === "file_change"
+        ? fetchedItem
+          ? null
           : fetchedDetail.error
-            ? `Couldn't load output: ${fetchedDetail.error}`
-            : row.fetchesDetail
-              ? fetchedDetail.data
-                ? "Output is no longer available."
-                : "Loading output…"
-              : null;
+            ? `Couldn't load the diff: ${fetchedDetail.error}`
+            : row.fetchesDetail && !fetchedDetail.data
+              ? "Loading diff…"
+              : null
+        : shownItem.type === "file_search" || shownItem.type === "web_search"
+          ? turnItemOutputText(shownItem)
+          : fetchedItem
+            ? (turnItemOutputText(fetchedItem) ??
+              (outputImages.length > 0 || viewedImagePath ? null : "No output."))
+            : fetchedDetail.error
+              ? `Couldn't load output: ${fetchedDetail.error}`
+              : row.fetchesDetail
+                ? fetchedDetail.data
+                  ? "Output is no longer available."
+                  : "Loading output…"
+                : null;
   // A browser snapshot card already shows its screenshot.
   const shownOutputImages =
     toolPreview?.kind === "browser" && toolPreview.snapshot?.screenshotPath ? [] : outputImages;
+  const exitLine =
+    exitCode === null ? null : (
+      <Text
+        className={cn(
+          "mt-1.5 font-mono text-2xs leading-normal",
+          exitCode === 0 ? "text-foreground-muted" : "text-danger-foreground",
+        )}
+      >
+        exit {exitCode}
+      </Text>
+    );
   const toolPresentation = resolveWorkEntryToolPresentation(row.workEntry);
   const previewText = workEntryRowLabel(row.workEntry, false, props.workspaceRoot);
   const answerPreview = row.workEntry.questionAnswer
@@ -1340,17 +1345,19 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
                 {fetchedOutput}
               </Text>
             ) : null}
-            {exitCode !== null ? (
-              <Text
-                className={cn(
-                  "mt-1.5 font-mono text-2xs leading-normal",
-                  exitCode === 0 ? "text-foreground-muted" : "text-danger-foreground",
-                )}
-              >
-                exit {exitCode}
-              </Text>
-            ) : null}
+            {streamsOutput ? null : exitLine}
           </ScrollView>
+          {streamsOutput ? (
+            <>
+              <ThreadCommandOutput
+                environmentId={props.environmentId}
+                threadId={row.projectedItem.sourceThreadId}
+                itemId={row.projectedItem.sourceItemId}
+                themeAppearance={props.themeAppearance}
+              />
+              {exitLine}
+            </>
+          ) : null}
         </Animated.View>
       ) : null}
     </Animated.View>
@@ -1385,8 +1392,6 @@ export function ThreadWorkGroupToggle(props: {
   return (
     <WorkLogBlock layout="group-header">
       {props.thought ? (
-        // The latest thought sits above the status line as an ordinary work-log
-        // row, wrapped up to four lines.
         <Pressable
           accessible={false}
           onPress={props.onToggle}
@@ -1453,12 +1458,6 @@ export function ThreadWorkGroupToggle(props: {
   );
 }
 
-/**
- * A batch of spawned subagents. The status line updates in place as members
- * report progress; expanding lists each member. Text nodes carry keys tied to
- * the row identity only, so a progress tick re-renders the labels without
- * remounting the card (see the batch key in appendActivityGroupRows).
- */
 export const ThreadAgentSpawnCard = memo(function ThreadAgentSpawnCard(props: {
   readonly summary: AgentSpawnSummary;
   readonly expanded: boolean;

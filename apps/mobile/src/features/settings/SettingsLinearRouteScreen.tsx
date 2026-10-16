@@ -13,9 +13,9 @@ import { useRef, useState } from "react";
 import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { AppText as Text, AppTextInput } from "../../components/AppText";
-import { showConfirmDialog } from "../../components/ConfirmDialogHost";
-import { ScreenScrollView as ScrollView } from "../../components/ScreenScrollView";
+import { AppText as Text, AppTextInput } from "../../components/ui/AppText";
+import * as Dialog from "../../components/ui/Dialog";
+import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
 import { useProjects } from "../../state/entities";
 import { linearEnvironment } from "../../state/linear";
@@ -151,7 +151,7 @@ function LinearEnvironmentSection(props: {
   }
 
   function confirmDisconnect() {
-    showConfirmDialog({
+    Dialog.confirm({
       title: "Disconnect Linear?",
       message: `Disconnect Linear from ${props.environmentLabel}? Issues already attached to messages stay as they are.`,
       confirmText: "Disconnect",
@@ -270,7 +270,7 @@ function AssignmentTriggerRows(props: {
   if (rules.length === 0) return null;
 
   function remove(rule: LinearAssignmentTrigger) {
-    showConfirmDialog({
+    Dialog.confirm({
       title: "Remove rule?",
       message: "Newly assigned issues stop starting threads for this rule.",
       confirmText: "Remove",

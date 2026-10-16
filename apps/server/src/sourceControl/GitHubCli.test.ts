@@ -5,7 +5,7 @@ import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
 import { ChildProcessSpawner } from "effect/process";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
-import * as GitHubApi from "@t3tools/source-control-github/server/GitHubApi";
+import * as GitHubRest from "@t3tools/source-control-github/server/GitHubRest";
 import * as GitHubCli from "./GitHubCli.ts";
 
 const processOutput = (stdout: string): VcsProcess.VcsProcessOutput => ({
@@ -16,14 +16,14 @@ const processOutput = (stdout: string): VcsProcess.VcsProcessOutput => ({
   stderrTruncated: false,
 });
 function harness(input: {
-  readonly api: Partial<GitHubApi.GitHubApi["Service"]>;
+  readonly api: Partial<GitHubRest.GitHubRest["Service"]>;
   readonly run: VcsProcess.VcsProcess["Service"]["run"];
 }) {
   const layer = Layer.effect(GitHubCli.GitHubCli, GitHubCli.make).pipe(
     Layer.provide(
       Layer.mergeAll(
         Layer.mock(VcsProcess.VcsProcess)({ run: input.run }),
-        Layer.mock(GitHubApi.GitHubApi)(input.api),
+        Layer.mock(GitHubRest.GitHubRest)(input.api),
         NodeServices.layer,
       ),
     ),
