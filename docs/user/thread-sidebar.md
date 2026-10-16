@@ -21,8 +21,8 @@ if that project exists there. Otherwise it selects an environment that has it.
 
 ### Continue in another tab
 
-Click the tab name at the end of the header breadcrumb (`project / thread / tab`) and choose
-**New tab** to open a separate chat in the same workspace. The same menu switches between tabs.
+Click **+** at the end of the header breadcrumb (`project / thread / tab / +`) to open a separate
+chat in the same workspace. Right-click **+** for the tab menu, which switches between tabs.
 You can also hover a chat's sidebar row and click **+**, or right-click it and choose **New tab**.
 Each tab has its own provider and conversation. Closing a tab archives it, so undo or
 **Settings → Archived threads** brings it back. By default the sidebar shows one row per chat,
