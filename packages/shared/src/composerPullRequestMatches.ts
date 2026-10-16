@@ -12,10 +12,6 @@ export interface ComposerPullRequestMatch {
   readonly url?: string;
 }
 
-/**
- * Suggestion rows for the pull requests a thread links, from any repository. Built from the
- * synced snapshot, so a link the server has not read yet is left out until it has one.
- */
 export function composerPullRequestsFromLinks(
   links: ReadonlyArray<ThreadPullRequestLink>,
   projectId: ProjectId,
@@ -41,12 +37,6 @@ export function composerPullRequestsFromLinks(
   );
 }
 
-/**
- * Pull requests matching the numeric fragment typed after `#`, de-duplicated. `entries` are kept
- * to the project's repository; `linked` rows (the thread's own pull requests) may come from any
- * repository. An exact number match always outranks a substring match so the result limit can
- * never drop the pull request the user typed in full; then linked rows lead, newest first.
- */
 export function filterComposerPullRequestMatches<
   Entry extends ComposerPullRequestMatch,
   Linked extends ComposerPullRequestMatch = never,
@@ -82,7 +72,6 @@ export function filterComposerPullRequestMatches<
         )) &&
       String(entry.number).includes(input.query),
   );
-  // Project rows go first so a linked pull request the listing also has keeps the fresher row.
   const uniqueEntries = new Map<string, Entry | Linked>();
   for (const entry of [...matchingEntries, ...linked]) {
     if (!uniqueEntries.has(keyOf(entry))) {

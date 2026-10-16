@@ -248,8 +248,7 @@ export const make = Effect.gen(function* () {
           /*
             Not the reload, DevTools or zoom roles: those act on the focused
             webContents, so with a browser page focused they reload or zoom
-            the guest page and the app UI appears stuck. These always target
-            the main window (see DesktopWindow.zoomMain).
+            the guest page and the app UI appears stuck.
           */
           { label: "Reload", accelerator: "CmdOrCtrl+R", click: mainContentsClick("reload") },
           {

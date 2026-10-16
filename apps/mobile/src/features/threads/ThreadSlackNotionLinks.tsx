@@ -6,7 +6,7 @@ import { slackLinkForThread } from "@t3tools/client-runtime/state/slack";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { Alert, Pressable, Text } from "react-native";
 
-import { ControlPillMenu } from "../../components/ControlPillMenu";
+import { Menu } from "../../components/ui/Menu";
 import { useGranolaNotePicker } from "../../components/GranolaNotePickerSheet";
 import { useNotionPagePicker } from "../../components/NotionPagePickerSheet";
 import { useSlackMessagePicker } from "../../components/SlackMessagePickerSheet";
@@ -205,7 +205,7 @@ function LinkChip(props: {
   };
 
   return (
-    <ControlPillMenu
+    <Menu
       accessible
       accessibilityRole="button"
       accessibilityLabel={props.description}
@@ -237,6 +237,6 @@ function LinkChip(props: {
           {props.label}
         </Text>
       </Pressable>
-    </ControlPillMenu>
+    </Menu>
   );
 }

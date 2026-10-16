@@ -29,7 +29,7 @@ import {
   type ComposerDraftInsertion,
 } from "../state/use-composer-drafts";
 import { confirmOpenExistingThread } from "./confirmOpenExistingThread";
-import { AppText as Text, AppTextInput } from "./AppText";
+import { AppText as Text, AppTextInput } from "./ui/AppText";
 import { PickerSheet } from "./PickerSheet";
 
 /** Linear allows 30 searches a minute, so typing settles before it queries. */

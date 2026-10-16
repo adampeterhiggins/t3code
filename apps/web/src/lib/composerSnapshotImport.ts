@@ -9,7 +9,7 @@ import { randomUUID } from "~/lib/utils";
 import { useIssueContextStore, type IssueContextRecord } from "~/issueContextStore";
 import { useRepositoryContextStore } from "~/repositoryContextStore";
 import { useThreadTabContextStore } from "~/threadTabContextStore";
-import { toKindScopedComposerContextId } from "./composerContextReferences";
+import { toKindScopedComposerContextId } from "@t3tools/shared/composerContextReferences";
 
 /** Imports a captured snapshot for paste or stash restore, preserving conflicting payloads. */
 export function importComposerSnapshotRecord(

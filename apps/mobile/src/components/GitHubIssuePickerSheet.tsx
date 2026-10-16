@@ -33,9 +33,9 @@ import {
   type ComposerDraftInsertion,
 } from "../state/use-composer-drafts";
 import { confirmOpenExistingThread } from "./confirmOpenExistingThread";
-import { AppText as Text, AppTextInput } from "./AppText";
+import { AppText as Text, AppTextInput } from "./ui/AppText";
 import { PickerSheet } from "./PickerSheet";
-import { SegmentedControl } from "./SegmentedControl";
+import { SegmentedControl } from "./ui/SegmentedControl";
 
 /** Each search runs `gh` on the host, so typing settles before it queries. */
 const SEARCH_DEBOUNCE_MS = 300;

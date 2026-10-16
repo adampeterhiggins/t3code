@@ -87,10 +87,6 @@ import {
   UnresolvedChip,
 } from "./contextChipParts";
 
-/**
- * Draft-side payload behind a context reference chip. Each kind keeps its existing draft
- * shape; the editor only needs a way to look one up by id.
- */
 export type ComposerDraftContextRecord =
   | { kind: "notion-page"; record: NotionPageContextRecord }
   | { kind: "granola-note"; record: GranolaNoteContextRecord }
@@ -99,7 +95,6 @@ export type ComposerDraftContextRecord =
   | {
       kind: "preview-annotation";
       record: PreviewAnnotationPayload;
-      /** The crop, which the draft stores as an image sharing the annotation's id. */
       screenshot?: ComposerImageAttachment | undefined;
     }
   | { kind: "thread-tab"; record: ThreadTabContextRecord }
@@ -114,7 +109,6 @@ export type ComposerDraftContextRecord =
   | { kind: "subagent"; record: SubagentContextRecord }
   | { kind: "prompt-link"; record: PromptLinkContextRecord };
 
-/** What a chip can do beyond showing itself; the composer supplies the handlers. */
 export interface ComposerContextActions {
   environmentId: EnvironmentId | null;
   cwd?: string | undefined;
@@ -413,7 +407,6 @@ function ComposerPreviewAnnotationDetails({
   screenshot: ComposerImageAttachment | undefined;
 }) {
   const summary = previewAnnotationTooltip(annotation);
-  // The draft drops the annotation's own data URL and keeps the crop as an image.
   const screenshotUrl = annotation.screenshot?.dataUrl || screenshot?.previewUrl;
   return (
     <div className="overflow-hidden rounded-lg border border-border/70 bg-background/70">

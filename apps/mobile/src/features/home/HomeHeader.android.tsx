@@ -1,7 +1,7 @@
 import type { MenuAction } from "@react-native-menu/menu";
 import { useCallback, useMemo } from "react";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
-import { MaterialThreadListToolbar } from "./MaterialThreadListToolbar";
+import { ThreadListToolbar } from "./ThreadListToolbar";
 import type { HomeHeaderProps } from "./HomeHeader.types";
 import { isDefaultThreadListPages, threadListPageLabel } from "../threads/threadListV2";
 import { filterChoiceTitle } from "./home-list-filter-menu";
@@ -13,9 +13,6 @@ function checkedMenuState(checked: boolean) {
 }
 
 export function HomeHeader(props: HomeHeaderProps) {
-  // The list uses a fixed creation order and ignores sort/group options, so
-  // the filter menu only carries the filters and the "customized" icon state
-  // keys off those alone.
   const hasCustomListOptions =
     props.selectedEnvironmentId !== null ||
     props.selectedProjectKey !== null ||
@@ -168,7 +165,7 @@ export function HomeHeader(props: HomeHeaderProps) {
   return (
     <>
       <NativeStackScreenOptions options={{ headerShown: false }} />
-      <MaterialThreadListToolbar
+      <ThreadListToolbar
         searchQuery={props.searchQuery}
         onSearchQueryChange={props.onSearchQueryChange}
         filterActions={menuActions}

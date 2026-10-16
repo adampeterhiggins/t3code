@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Modal, Platform, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { AppText as Text } from "./AppText";
+import { AppText as Text } from "./ui/AppText";
 
 /** A page sheet with a title and Cancel, for the composer's search-and-pick sheets. */
 export function PickerSheet(props: {

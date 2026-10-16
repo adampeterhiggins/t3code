@@ -20,7 +20,7 @@ import { resolveToolPreview } from "@t3tools/client-runtime/work-log/tool-previe
 import { formatDiffCount } from "@t3tools/client-runtime/diff-count";
 import { isJavaScriptReplTool } from "@t3tools/shared/toolActivity";
 import { ExternalLinkIcon, GitBranchIcon, RotateCcwIcon } from "lucide-react";
-import { memo, useMemo } from "react";
+import { memo, type ReactNode, useMemo } from "react";
 
 import { cn } from "../../lib/utils";
 import { useTurnItemDetail } from "../../state/queries";
@@ -28,6 +28,7 @@ import { useV2ItemSupport } from "../../state/v2ItemSupport";
 import { Button } from "../ui/button";
 import ChatMarkdown, { ChatMarkdownAssetImage } from "../ChatMarkdown";
 import { ToolCallBody as ToolPreviewBody } from "../ToolCallBody";
+import { CommandOutputPanel, useCommandOutputStreaming } from "./CommandOutputPanel";
 import { resolveExternalWebLinkHref } from "./externalLinkContextMenu";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import { ReadFileView } from "./ReadFileView";
@@ -86,17 +87,13 @@ function StructuredValue({
   );
 }
 
-/**
- * The item behind a projected row, with the output the timeline withheld
- * fetched while the row is open.
- */
 function useFetchedTurnItem(
   projectedItem: OrchestrationV2ProjectedTurnItem,
   environmentId: EnvironmentId,
+  skip = false,
 ) {
   const wireItem = projectedItem.item;
-  // Fork: an open edit also fetches the diff the timeline left out, for its preview.
-  const fetches = turnItemNeedsDetailFetch(wireItem) || fileChangeDiffWithheld(wireItem);
+  const fetches = !skip && (turnItemNeedsDetailFetch(wireItem) || fileChangeDiffWithheld(wireItem));
   const detail = useTurnItemDetail(
     fetches
       ? {
@@ -203,7 +200,6 @@ function ToolOutput(props: ToolOutputState & { readonly structured?: boolean }) 
   );
 }
 
-/** Fetched output for rows that show their own plain text instead of the inspector. */
 export function FetchedToolOutput(props: {
   readonly projectedItem: OrchestrationV2ProjectedTurnItem;
   readonly environmentId: EnvironmentId;
@@ -217,7 +213,6 @@ export function FetchedToolOutput(props: {
   );
 }
 
-/** A tool call's body: the call itself in the foreground, its result muted below. */
 function ToolCallBody(
   props: ToolOutputState & {
     readonly command?: string;
@@ -225,6 +220,8 @@ function ToolCallBody(
     readonly toolName?: string | null;
     readonly exitCode?: number | undefined;
     readonly highlightSyntax?: boolean | undefined;
+    /** Replaces the fetched output, e.g. with a command's live output. */
+    readonly outputSlot?: ReactNode;
   },
 ) {
   const call = toolCallLines({ command: props.command, args: props.args });
@@ -250,7 +247,7 @@ function ToolCallBody(
       {call.argsText ? (
         <StructuredValue value={call.argsText} highlightJson={props.highlightSyntax ?? false} />
       ) : null}
-      <ToolOutput {...props} structured={props.command === undefined} />
+      {props.outputSlot ?? <ToolOutput {...props} structured={props.command === undefined} />}
       {props.exitCode !== undefined ? (
         <div className={props.exitCode === 0 ? "text-muted-foreground" : "text-destructive"}>
           exit {props.exitCode}
@@ -283,7 +280,11 @@ function FileChangePreview(props: {
 }
 
 export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspectorProps) {
-  const fetched = useFetchedTurnItem(props.projectedItem, props.environmentId);
+  // Command rows stream their output, including the final output, from the server.
+  const streamsOutput =
+    useCommandOutputStreaming(props.environmentId) &&
+    props.projectedItem.item.type === "command_execution";
+  const fetched = useFetchedTurnItem(props.projectedItem, props.environmentId, streamsOutput);
   const item = fetched.item;
   const outputState = fetched.output;
   const preview = useMemo(() => resolveToolPreview(item), [item]);
@@ -315,6 +316,15 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
           exitCode={props.hideExitCode ? undefined : item.exitCode}
           {...outputState}
           onImageExpand={props.onImageExpand}
+          outputSlot={
+            streamsOutput ? (
+              <CommandOutputPanel
+                environmentId={props.environmentId}
+                threadId={props.projectedItem.sourceThreadId}
+                itemId={props.projectedItem.sourceItemId}
+              />
+            ) : undefined
+          }
         />
       ) : null}
 

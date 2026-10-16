@@ -8,7 +8,7 @@ import {
   isContextWindowNearlyFull,
   shouldRearmContextWindowNudge,
 } from "@t3tools/client-runtime/thread-usage";
-import { AppText as Text } from "../../components/AppText";
+import { AppText as Text } from "../../components/ui/AppText";
 import { useThreadProjection } from "../../state/use-thread-detail";
 
 /** Provider reports only: processed tokens are separate from context occupancy. */

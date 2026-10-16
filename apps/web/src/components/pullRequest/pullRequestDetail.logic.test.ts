@@ -390,7 +390,6 @@ describe("ordering comments", () => {
       { createdAt: "a" },
     ]);
     expect(orderPullRequestComments(comments, "oldest")).toEqual(comments);
-    // The source array is chronological input, not a mutation target.
     expect(comments).toEqual([{ createdAt: "a" }, { createdAt: "b" }, { createdAt: "c" }]);
   });
 });
@@ -489,7 +488,6 @@ describe("review verdicts", () => {
         review("r3", "bilal", "APPROVED", "2026-07-03T00:00:00Z"),
         review("r1", "bilal", "CHANGES_REQUESTED", "2026-07-01T00:00:00Z"),
         review("r2", "octocat", "CHANGES_REQUESTED", "2026-07-02T00:00:00Z"),
-        // Not a verdict, so it neither adds a reviewer nor overwrites one.
         review("r4", "octocat", "COMMENTED", "2026-07-04T00:00:00Z"),
       ]).map((entry) => [entry.actor?.login, entry.outcome]),
     ).toEqual([
@@ -540,7 +538,6 @@ describe("review verdicts", () => {
         createdAt: "2026-07-01T00:00:00Z",
       },
     ]);
-    // Same author (none) and the same instant, so only the review's own id tells them apart.
     expect(new Set(entries.map((entry) => entry.key)).size).toBe(2);
   });
 
@@ -561,7 +558,6 @@ describe("review verdicts", () => {
     expect(
       latestPullRequestReviewOutcomes([review("2026-07-06T00:00:00Z")], commits)[0]?.stale,
     ).toBe(false);
-    // Nothing to be overtaken by, so nothing is stale.
     expect(latestPullRequestReviewOutcomes([review("2026-07-01T00:00:00Z")], [])[0]?.stale).toBe(
       false,
     );
@@ -578,8 +574,6 @@ describe("review verdicts", () => {
   });
 
   it("orders instants rather than their text, so a UTC offset cannot invert them", () => {
-    // 01:00+02:00 is 23:00 the previous day, so as text it sorts after the Z stamp and in time
-    // it falls well before it.
     expect(
       newestPullRequestCommitAt([
         { oid: "a", messageHeadline: "", committedDate: "2026-07-05T00:30:00Z" },
@@ -589,7 +583,6 @@ describe("review verdicts", () => {
     expect(isPullRequestVerdictStale("2026-07-05T00:30:00Z", "2026-07-05T01:00:00+02:00")).toBe(
       false,
     );
-    // A timestamp nothing can parse is not a position, so it settles nothing either way.
     expect(isPullRequestVerdictStale("2026-07-01T00:00:00Z", "not a date")).toBe(false);
     expect(
       newestPullRequestCommitAt([{ oid: "a", messageHeadline: "", committedDate: "not a date" }]),
@@ -619,7 +612,6 @@ describe("review verdicts", () => {
 
 describe("pull request timeline", () => {
   it("orders creation, commits and comments newest first", () => {
-    // What happened last is what the reader opening the tab is asking about.
     expect(buildPullRequestTimeline(TIMELINE_SOURCE).map((event) => event.id)).toEqual([
       "c1",
       "1baf7bdcafe",
@@ -691,8 +683,6 @@ describe("pull request timeline", () => {
       ],
     });
     expect(events.find((event) => event.id === "c1")?.body).toBeNull();
-    // Kept whole: the renderer drops the marker itself, and stripping it here would also
-    // strip an HTML comment a reviewer quoted inside a code fence.
     expect(events.find((event) => event.id === "c2")?.body).toBe(
       "<!-- summarize by coderabbit.ai -->\nNeeds a test.",
     );
@@ -700,7 +690,6 @@ describe("pull request timeline", () => {
 
   it("calls a comment markdown and a commit headline plain text", () => {
     const events = buildPullRequestTimeline(TIMELINE_SOURCE);
-    // A headline reading `fix: drop *legacy* path` is not asking for emphasis.
     expect(events.map((event) => [event.title.startsWith("Commit"), event.markdown])).toEqual(
       expect.arrayContaining([[true, false]]),
     );
@@ -713,7 +702,6 @@ describe("pull request timeline", () => {
       mergedAt: "2026-07-04T00:00:00Z",
       closedAt: "2026-07-04T00:00:00Z",
     });
-    // Newest first, so the terminal event opens the list rather than ending it.
     expect(events[0]?.id).toBe("merged");
     expect(events.some((event) => event.id === "closed")).toBe(false);
   });
@@ -776,7 +764,6 @@ describe("pull request timeline", () => {
           createdAt: "2026-07-04T00:00:00Z",
         },
         { ...TIMELINE_SOURCE.comments[0]!, id: "chatter-2", createdAt: "2026-07-03T00:00:00Z" },
-        // A review without a verdict is ordinary conversation and still groups.
         {
           ...TIMELINE_SOURCE.comments[0]!,
           id: "remark",
@@ -927,7 +914,6 @@ describe("fix findings handoff", () => {
       ),
       checks: [failingCheck],
     });
-    // Oldest threads are dropped rather than the current failure and the recent feedback.
     const texts = handoff.reviewComments.map((comment) => comment.text);
     expect(texts).toHaveLength(19);
     expect(texts.at(-1)).toBe("reviewer: finding 24");
@@ -963,15 +949,12 @@ describe("findings that cannot be attached", () => {
   it("carries a review submitted with words but no line, which has nothing to attach to", () => {
     const handoff = buildFixFindingsHandoff({ ...base, comments: [review] });
 
-    // It has no file and no line, so it travels the way a failing check does rather than
-    // being dropped for lacking somewhere to point.
     expect(handoff.reviewComments).toEqual([]);
     expect(handoff.prompt).toContain("revert the middleware change");
     expect(handoff.prompt).not.toContain("No unresolved review findings");
   });
 
   it("carries a host's line comments when it reports no threads at all", () => {
-    // Azure DevOps has no diff to pin a conversation to, so every remark arrives this way.
     const handoff = buildFixFindingsHandoff({
       ...base,
       comments: [{ ...review, id: "a1", kind: "review-comment", path: "src/app.ts" }],
@@ -1040,8 +1023,6 @@ describe("one finding handed over on its own", () => {
   };
 
   it("attaches a thread as its own annotation, resolved or not", () => {
-    // The bulk handoff skips resolved threads as finished work. Pressing the button on one is
-    // an explicit request for that thread, so it is not second-guessed.
     const handoff = buildFixFindingHandoff({
       ...base,
       finding: { kind: "thread", thread: reviewThread },
@@ -1142,7 +1123,6 @@ describe("one finding handed over on its own", () => {
     expect(pullRequestFindingKey({ kind: "thread", thread: reviewThread })).toBe(
       "finding:thread:t1",
     );
-    // Checks carry no id, so the name and its run stand in for one.
     expect(
       pullRequestFindingKey({
         kind: "check",
@@ -1210,7 +1190,6 @@ describe("findings that are already on a line", () => {
       headBranch: "feat/page",
       baseBranch: "main",
       reviewThreads: [resolved],
-      // The conversation carries every thread's comments now, resolved ones included.
       comments: [
         {
           id: "settled",
@@ -1273,12 +1252,18 @@ describe("asking about a change rather than working on it", () => {
     expect(context.instructions).not.toContain("Walk through this pull request");
   });
 
+  it("gives the same number in another repository its own chip", () => {
+    const fork = { ...base, url: "https://github.com/someone/t3code/pull/42" };
+    expect(buildPullRequestReferenceContext(fork).id).not.toBe(
+      buildPullRequestReferenceContext(base).id,
+    );
+  });
+
   it("leaves the composer empty, and everything the agent needs in the chip", () => {
     const handoff = buildAskAboutPullRequestHandoff(base);
     expect(handoff.prompt).toBe("");
     expect(handoff.reviewComments).toEqual([
       expect.objectContaining({
-        // What the chip reads as: which pull request, and what it is called.
         filePath: "PR #42",
         rangeLabel: "Add the pull requests page",
         pullRequest: {
@@ -1438,7 +1423,7 @@ describe("buildAskAboutGuideStopHandoff", () => {
       "PR #42",
       "Guide stop 2",
     ]);
-    expect(handoff.reviewComments[0]?.text).toContain("Do not change any code");
+    expect(handoff.reviewComments[0]?.instructions).toContain("Do not change any code");
     const chip = handoff.reviewComments[1]?.text ?? "";
     expect(chip).toContain("Writes now update the index.");
     expect(chip).toContain("A tradeoff: writes get slower.");
@@ -1534,7 +1519,6 @@ describe("a second ask into the same composer", () => {
   });
 
   it("keeps what the reader wrote next to the chip an earlier ask left", () => {
-    // The chip is still there, but these words are not the ones the hand-off wrote.
     expect(
       handoffPrompt({ prompt: "why is the cache keyed on the branch?", lastHandoffPrompt: "" }, ""),
     ).toBe("why is the cache keyed on the branch?");
@@ -1643,8 +1627,6 @@ describe("how the branch stands against its base", () => {
   });
 
   it("still reports the news where the reader may take none of it", () => {
-    // Somebody reading another account's pull request is told why it is blocked without being
-    // offered a button the host would refuse.
     expect(resolveBaseFreshness(detail({ viewerPermissions: {} }))).toEqual({
       behindBy: 12,
       methods: [],
@@ -1657,9 +1639,6 @@ describe("how the branch stands against its base", () => {
 });
 
 describe("pull request panel context beside a thread", () => {
-  // Shapes copied from real threads: a thread that opened a stack holds the top layer as a
-  // manual link and every lower layer as a "stack" link, with the legacy field pointing at
-  // whichever one the server chose. Snapshots are null until the sync reactor's first pass.
   const link = (
     number: number,
     overrides: Partial<ThreadPullRequestLink> = {},
@@ -1708,8 +1687,6 @@ describe("pull request panel context beside a thread", () => {
   });
 
   it("does not let the legacy field decide when the thread holds a link list", () => {
-    // Every prior regression flipped here: a server-side change to which link the legacy field
-    // resolves to must not turn the thread's own second link into a checkout-able stranger.
     const thread = {
       projectId: "proj-a",
       pullRequests: [link(11101, { source: "created" }), link(11105, { source: "stack" })],
@@ -1818,8 +1795,6 @@ describe("pull request panel context beside a thread", () => {
 
 describe("which actions need the host read again after they run", () => {
   it("classifies every action the contract knows about", () => {
-    // Imported from the contract rather than hand-listed, so a new PullRequestAction fails this
-    // test until somebody decides which side of the diff it belongs on.
     expect(PullRequestAction.literals.map(pullRequestActionNeedsHostRefresh)).toEqual(
       PullRequestAction.literals.map(
         (action) => action === "update-branch" || action === "approve-workflows",

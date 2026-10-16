@@ -4,7 +4,7 @@ import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime"
 import type { EnvironmentId, LinearThreadLink, ThreadId } from "@t3tools/contracts";
 import { Alert, Pressable, Text, View } from "react-native";
 
-import { ControlPillMenu } from "../../components/ControlPillMenu";
+import { Menu } from "../../components/ui/Menu";
 import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
 import { linearEnvironment } from "../../state/linear";
 import { useEnvironmentQuery } from "../../state/query";
@@ -78,7 +78,7 @@ export function ThreadLinearLinkChip(props: {
   };
 
   return (
-    <ControlPillMenu
+    <Menu
       accessible
       accessibilityRole="button"
       accessibilityLabel={`Linked Linear issue ${identifier}: ${title}`}
@@ -116,6 +116,6 @@ export function ThreadLinearLinkChip(props: {
           </>
         ) : null}
       </Pressable>
-    </ControlPillMenu>
+    </Menu>
   );
 }

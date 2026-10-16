@@ -1,7 +1,7 @@
 import { sortProjectsByGroupOrder } from "@t3tools/client-runtime/state/project-grouping";
 import { useMemo } from "react";
 import { ScrollView } from "react-native";
-import type { ControlPillMenuProps } from "../../components/ControlPillMenu.types";
+import type { MenuProps } from "../../components/ui/Menu.types";
 import { ListFilterMenu } from "../workspace/ListFilterMenu";
 import {
   DEFAULT_PR_LIST_CONTROLS,
@@ -45,7 +45,6 @@ function choices(
   }));
 }
 
-/** The project list's own order, which is the order its sidebar and new-task picker show. */
 function useProjectsInSidebarOrder<Project extends { id: string; environmentId: string }>(
   projects: readonly Project[],
 ) {
@@ -188,7 +187,7 @@ export function PullRequestListFilters(props: {
     Number(Boolean(value.filters.review)) +
     Number(Boolean(value.filters.checks)) +
     Number(Boolean(value.projectId));
-  const more: ControlPillMenuProps["actions"] = [
+  const more: MenuProps["actions"] = [
     {
       id: "drafts",
       title: value.filters.draft ? DRAFTS[value.filters.draft] : "Drafts",

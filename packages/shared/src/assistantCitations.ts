@@ -29,7 +29,6 @@ function encodePathPart(value: string): string {
   );
 }
 
-/** Edits only the user comment, leaving the quote and its source selector unchanged. */
 export function withAssistantCitationComment(
   citation: AssistantCitation,
   comment: string,
@@ -39,7 +38,6 @@ export function withAssistantCitationComment(
   return trimmedComment ? { ...source, comment: trimmedComment } : source;
 }
 
-/** Self-contained and origin-independent, so draft, clipboard, and sent-message copies agree. */
 export function formatAssistantCitationHref(citation: AssistantCitation): string {
   const path = [citation.environmentId, citation.threadId, citation.messageId]
     .map(encodePathPart)
@@ -109,7 +107,6 @@ export function parseAssistantCitationHref(href: string): AssistantCitation | nu
   }
 }
 
-/** Visible chip text: the comment, else the quoted text, collapsed and capped. */
 export function assistantCitationLabel(citation: AssistantCitation): string {
   const preview = (citation.comment?.trim() || citation.text).replace(/\s+/g, " ");
   return preview.length > 64 ? `${preview.slice(0, 64)}…` : preview;
@@ -196,7 +193,6 @@ function escapeMarkdownText(text: string): string {
     .replace(/[\\`*_[\]{}()#+.!|~-]/g, "\\$&");
 }
 
-/** Native clients display the complete quote and keep the user's comment outside the quote block. */
 export function renderAssistantCitationsAsText(prompt: string): string {
   const matches = collectAssistantCitations(prompt);
   let text = "";

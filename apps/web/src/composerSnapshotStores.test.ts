@@ -9,7 +9,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { createJSONStorage } from "zustand/middleware";
 
 import { createMemoryStorage } from "./lib/storage";
-import { toComposerContextId } from "./lib/composerContextReferences";
+import { toComposerContextId } from "@t3tools/shared/composerContextReferences";
 import { useCheckoutContextStore } from "./checkoutContextStore";
 import { useRepositoryContextStore } from "./repositoryContextStore";
 import { useIssueContextStore } from "./issueContextStore";
