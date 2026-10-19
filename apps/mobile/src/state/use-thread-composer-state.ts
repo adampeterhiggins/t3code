@@ -5,7 +5,10 @@ import { readEnvironmentScope } from "./session";
 import type { ComposerTextPaste } from "../native/T3ComposerEditor.types";
 import { useAtomValue } from "@effect/atom-react";
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/shell";
-import { resolvePendingHandoff } from "@t3tools/client-runtime/handoff";
+import {
+  pendingHandoffCoveredByModelChange,
+  resolvePendingHandoff,
+} from "@t3tools/client-runtime/handoff";
 import {
   deriveProviderSubagentStatus,
   deriveRunlessWorkStartedAt,
@@ -322,11 +325,31 @@ export function useThreadComposerState() {
   const selectedThreadQueueCount = selectedThreadQueuedMessages.length;
   const selectedThread = selectedThreadShell;
   const modelSelection = selectedDraft.modelSelection ?? selectedThread?.modelSelection ?? null;
-  const pendingHandoff = resolvePendingHandoff(
+  const handoffProviders = selectedEnvironmentRuntime?.serverConfig?.providers ?? [];
+  const resolvedPendingHandoff = resolvePendingHandoff(
     selectedThreadProjection?.projection,
     modelSelection,
-    selectedEnvironmentRuntime?.serverConfig?.providers ?? [],
+    handoffProviders,
   );
+  const handoffModelChange =
+    resolvedPendingHandoff === null || selectedThreadShell === null
+      ? null
+      : pendingModelChangeProjection({
+          threadId: selectedThreadShell.id,
+          draft: selectedThreadKey
+            ? (composerDrafts[selectedThreadKey]?.modelSelection ?? null)
+            : null,
+          runs: selectedThreadProjection?.projection.runs ?? [],
+          providers: handoffProviders,
+          now: DateTime.makeUnsafe(new Date()),
+        });
+  // The model-change divider already says this handoff is pending.
+  const pendingHandoff =
+    resolvedPendingHandoff !== null &&
+    handoffModelChange?.item.type === "model_change" &&
+    pendingHandoffCoveredByModelChange(resolvedPendingHandoff, handoffModelChange.item)
+      ? null
+      : resolvedPendingHandoff;
   const runtimeMode = selectedDraft.runtimeMode ?? selectedThread?.runtimeMode ?? null;
   const selectedProvider = selectedEnvironmentRuntime?.serverConfig?.providers.find(
     (provider) => provider.instanceId === modelSelection?.instanceId,

@@ -2620,7 +2620,9 @@ export const resolveGitHubPublishConfig = Effect.fn("resolveGitHubPublishConfig"
     owner,
     repo,
     releaseType: updateChannel === "nightly" ? "prerelease" : "release",
-    ...(updateChannel === "nightly" ? { channel: "nightly" as const } : {}),
+    // Left unset, electron-builder names the feed after the prerelease identifier, so a `-fork.`
+    // build would write `fork-mac.yml` while the app reads `latest-mac.yml`.
+    channel: updateChannel,
   };
 });
 
@@ -2740,6 +2742,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
         {
           provider: "generic",
           url: resolveMockUpdateServerUrl(mockUpdateServerPort),
+          channel: updateChannel,
         },
       ];
     }

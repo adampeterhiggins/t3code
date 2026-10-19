@@ -159,8 +159,11 @@ export function parseComposerObjectLink(url: string): ComposerObjectLink | null 
   return null;
 }
 
-/** The fragment of a link to one remark (`#issuecomment-1`, `#discussion_r1`), without its `#`. */
-function commentAnchor(hash: string): string {
+/**
+ * The fragment of a link to one remark (`#issuecomment-1`, `#discussion_r1`), without its `#`, or
+ * an empty string for any other fragment.
+ */
+export function commentAnchor(hash: string): string {
   return /^#(?:issuecomment-|discussion_r|r|pullrequestreview-)\d+$/u.test(hash)
     ? hash.slice(1)
     : "";

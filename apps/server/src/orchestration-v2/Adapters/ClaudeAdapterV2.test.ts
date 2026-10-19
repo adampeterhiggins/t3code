@@ -12846,8 +12846,16 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     readonly model?: string;
     readonly attempt?: number;
     readonly omitResult?: boolean;
-  }) =>
-    claudeSdkFrame({
+    readonly tokens?: number;
+    readonly toolCalls?: number;
+    readonly durationMs?: number;
+  }) => {
+    const usage = {
+      ...(input.tokens === undefined ? {} : { tokens: input.tokens }),
+      ...(input.toolCalls === undefined ? {} : { toolCalls: input.toolCalls }),
+      ...(input.durationMs === undefined ? {} : { durationMs: input.durationMs }),
+    };
+    return claudeSdkFrame({
       type: "system",
       subtype: "task_progress",
       task_id: WORKFLOW_TASK_ID,
@@ -12867,6 +12875,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           promptPreview: input.prompt ?? "Reply with exactly: A1",
           ...(input.startedAt === undefined ? {} : { startedAt: input.startedAt }),
           ...(input.attempt === undefined ? {} : { attempt: input.attempt }),
+          ...usage,
           ...(input.state === "done" && input.omitResult !== true
             ? { resultPreview: "A1 excerpt" }
             : {}),
@@ -12880,12 +12889,14 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           phaseIndex: 1,
           phaseTitle: "Alpha",
           promptPreview: "Reply with exactly: A2",
+          ...usage,
           ...(input.state === "done" ? { resultPreview: "A2 excerpt" } : {}),
         },
       ],
       uuid: input.uuid,
       session_id: WAKE_NATIVE_SESSION,
     });
+  };
   const workflowNotification = (input: {
     readonly uuid: string;
     readonly status: "completed" | "failed" | "stopped";
@@ -15266,6 +15277,65 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         : item.type === "assistant_message" || item.type === "user_message"
           ? `${item.type}`
           : `${item.type} ${item.status}`;
+
+  it.effect("copies a workflow member's progress usage onto its subagent row", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const harness = yield* makeWorkflowHarness;
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("attempt-claude-workflow-member-usage"),
+            text: "Run the alpha workflow.",
+            attachments: [],
+          }),
+        );
+        yield* launchWorkflow({ harness, snapshotUuid: "00000000-0000-4000-8000-000000001050" });
+        assert.isUndefined(workflowMemberEvents(harness.events, 1).at(-1)?.subagent.usage);
+
+        const usageSnapshot = (uuid: string, tokens: number, toolCalls: number) =>
+          workflowSnapshot({ uuid, state: "start", tokens, toolCalls, durationMs: 1277 });
+        yield* harness.offerAndWait(
+          usageSnapshot("00000000-0000-4000-8000-000000001051", 71_141, 1),
+        );
+        assert.deepEqual(workflowMemberEvents(harness.events, 1).at(-1)?.subagent.usage, {
+          totalTokens: 71_141,
+          toolUses: 1,
+          durationMs: 1277,
+        });
+
+        const memberEvents = workflowMemberEvents(harness.events, 1).length;
+        yield* harness.offerAndWait(
+          usageSnapshot("00000000-0000-4000-8000-000000001052", 71_141, 1),
+        );
+        assert.lengthOf(
+          workflowMemberEvents(harness.events, 1),
+          memberEvents,
+          "unchanged usage emits no member update",
+        );
+
+        yield* harness.offerAndWait(
+          usageSnapshot("00000000-0000-4000-8000-000000001053", 80_000, 2),
+        );
+        assert.deepEqual(workflowMemberEvents(harness.events, 1).at(-1)?.subagent.usage, {
+          totalTokens: 80_000,
+          toolUses: 2,
+          durationMs: 1277,
+        });
+        yield* Queue.offer(
+          harness.sdkMessages,
+          makeResultFrame({ uuid: "00000000-0000-4000-8000-000000001054", result: "Done." }),
+        );
+        yield* Queue.take(harness.terminalReceipts);
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+    ),
+  );
 
   it.effect("streams a running workflow member's conversation from its transcript", () =>
     Effect.scoped(

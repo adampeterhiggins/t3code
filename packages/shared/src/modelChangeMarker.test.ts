@@ -21,6 +21,7 @@ import {
   modelSelectionChanged,
   pendingModelChangeProjection,
   providerAccountLabel,
+  selectionNeedsContextHandoff,
 } from "./modelChangeMarker.ts";
 
 const threadId = ThreadId.make("thread:model-change");
@@ -188,6 +189,52 @@ describe("modelChangeTurnItem", () => {
         draft: { ...explicitDefault, options: [{ id: "fastMode", value: true }] },
         runs: [run(1, "gpt-5.4")],
         providers,
+        now,
+      })?.item.title,
+    ).toBe("Model changed");
+  });
+
+  it("labels a provider switch as the pending context handoff", () => {
+    const pending = pendingModelChangeProjection({
+      threadId,
+      draft: { instanceId: claude, model: "claude-opus" },
+      runs: [run(1, "gpt-5.4")],
+      providers: [],
+      now,
+    });
+    expect(pending?.item.type === "model_change" ? pending.item.title : null).toBe(
+      "Context handoff pending",
+    );
+    expect(pending?.item.type === "model_change" ? pending.item.from.model : null).toBe("gpt-5.4");
+    expect(pending?.item.type === "model_change" ? pending.item.to.model : null).toBe(
+      "claude-opus",
+    );
+  });
+
+  it("keeps an in-group account switch as a model change", () => {
+    const personal = ProviderInstanceId.make("codex_personal");
+    const shared = {
+      driver: "codex",
+      continuation: { groupKey: "shared" },
+      models: [],
+    } as unknown as ServerProvider;
+    const from = { instanceId: codex, model: "gpt-5.4" };
+    const to = { instanceId: personal, model: "gpt-5.4" };
+    expect(
+      selectionNeedsContextHandoff(from, to, [
+        { ...shared, instanceId: codex },
+        { ...shared, instanceId: personal },
+      ]),
+    ).toBe(false);
+    expect(
+      pendingModelChangeProjection({
+        threadId,
+        draft: to,
+        runs: [run(1, "gpt-5.4")],
+        providers: [
+          { ...shared, instanceId: codex },
+          { ...shared, instanceId: personal },
+        ],
         now,
       })?.item.title,
     ).toBe("Model changed");

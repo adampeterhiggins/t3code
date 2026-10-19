@@ -6,6 +6,7 @@ import type {
   ProviderInstanceId,
   ServerProvider,
 } from "@t3tools/contracts";
+import { selectionNeedsContextHandoff } from "@t3tools/shared/modelChangeMarker";
 
 export type HandoffTimelineRun = Pick<
   OrchestrationV2Run,
@@ -26,15 +27,28 @@ export function resolvePendingHandoff(
     (run) => run.startedAt !== null && run.status !== "rolled_back",
   )?.modelSelection;
   if (from === undefined || selection == null) return null;
-  const source = providers.find((provider) => provider.instanceId === from.instanceId);
-  const target = providers.find((provider) => provider.instanceId === selection.instanceId);
-  const needsHandoff =
-    from.instanceId === selection.instanceId
-      ? from.model !== selection.model && target?.requiresNewThreadForModelChange === true
-      : source?.continuation?.groupKey === undefined ||
-        source.driver !== target?.driver ||
-        source.continuation.groupKey !== target.continuation?.groupKey;
-  return needsHandoff ? { from: [from], to: selection } : null;
+  return selectionNeedsContextHandoff(from, selection, providers)
+    ? { from: [from], to: selection }
+    : null;
+}
+
+/**
+ * The pending model-change divider already names this switch, including a
+ * handoff. The separate handoff preview would repeat it.
+ */
+export function pendingHandoffCoveredByModelChange(
+  handoff: HandoffEndpoints,
+  change: { readonly from: ModelSelection; readonly to: ModelSelection } | null,
+): boolean {
+  if (change === null || handoff.from.length !== 1) return false;
+  const source = handoff.from[0];
+  return (
+    source !== undefined &&
+    source.instanceId === change.from.instanceId &&
+    source.model === change.from.model &&
+    handoff.to.instanceId === change.to.instanceId &&
+    handoff.to.model === change.to.model
+  );
 }
 
 export function resolveHandoffEndpoints(
@@ -50,29 +64,59 @@ export function resolveHandoffEndpoints(
     (handoffRun !== undefined && handoffRun.providerInstanceId === item.toProviderInstanceId
       ? handoffRun.modelSelection.model
       : undefined);
-  const fromEndpoints: ReadonlyArray<{
-    readonly instanceId: ProviderInstanceId;
-    readonly model?: string | undefined;
-  }> =
+  const fromEndpoints: ReadonlyArray<HandoffEndpointRef> =
     item.fromModelSelections !== undefined && item.fromModelSelections.length > 0
       ? item.fromModelSelections
-      : item.fromProviderInstanceIds.map((instanceId) => ({
-          instanceId,
-          model: latestRunModelBefore(runs, instanceId, handoffRun?.ordinal),
-        }));
-  return { from: fromEndpoints, to: { instanceId: item.toProviderInstanceId, model: toModel } };
+      : item.fromProviderInstanceIds.map((instanceId) =>
+          endpointFromSelection(
+            instanceId,
+            latestRunSelectionBefore(runs, instanceId, handoffRun?.ordinal),
+          ),
+        );
+  const toSelection =
+    handoffRun !== undefined &&
+    handoffRun.providerInstanceId === item.toProviderInstanceId &&
+    handoffRun.modelSelection.model === toModel
+      ? handoffRun.modelSelection
+      : undefined;
+  return {
+    from: fromEndpoints,
+    to: {
+      instanceId: item.toProviderInstanceId,
+      model: toModel,
+      ...(toSelection?.options === undefined ? {} : { options: toSelection.options }),
+    },
+  };
 }
 
-function latestRunModelBefore(
+export type HandoffEndpointRef = {
+  readonly instanceId: ProviderInstanceId;
+  readonly model?: string | undefined;
+  readonly options?: ModelSelection["options"];
+};
+
+function endpointFromSelection(
+  instanceId: ProviderInstanceId,
+  selection: ModelSelection | undefined,
+): HandoffEndpointRef {
+  if (selection === undefined) return { instanceId };
+  return {
+    instanceId,
+    model: selection.model,
+    ...(selection.options === undefined ? {} : { options: selection.options }),
+  };
+}
+
+function latestRunSelectionBefore(
   runs: ReadonlyArray<HandoffTimelineRun>,
   instanceId: ProviderInstanceId,
   beforeOrdinal: number | undefined,
-): string | undefined {
+): ModelSelection | undefined {
   let latest: HandoffTimelineRun | undefined;
   for (const run of runs) {
     if (run.providerInstanceId !== instanceId) continue;
     if (beforeOrdinal !== undefined && run.ordinal >= beforeOrdinal) continue;
     if (latest === undefined || run.ordinal > latest.ordinal) latest = run;
   }
-  return latest?.modelSelection.model;
+  return latest?.modelSelection;
 }

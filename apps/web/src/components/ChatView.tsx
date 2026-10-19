@@ -122,7 +122,10 @@ import {
   workflowOpeningParentThreadId,
 } from "@t3tools/client-runtime/state/subagentRuntime";
 import { threadSupportsProviderHandoff } from "@t3tools/client-runtime/state/thread-workflows";
-import { resolvePendingHandoff } from "@t3tools/client-runtime/handoff";
+import {
+  pendingHandoffCoveredByModelChange,
+  resolvePendingHandoff,
+} from "@t3tools/client-runtime/handoff";
 import { HandoffRow } from "./chat/V2LifecycleRow";
 import {
   codexFeedbackMessage,
@@ -5571,11 +5574,18 @@ export default function ChatView(props: ChatViewProps) {
       item.type === "user_message" &&
       (item.text.trim().toLowerCase() !== "/compact" || item.attachments.length > 0),
   );
-  const pendingHandoff = resolvePendingHandoff(
+  const resolvedPendingHandoff = resolvePendingHandoff(
     serverProjection,
     composerDraftModelSelection ?? activeThread?.modelSelection,
     providerStatuses,
   );
+  // The model-change divider already says this handoff is pending.
+  const pendingHandoff =
+    resolvedPendingHandoff !== null &&
+    pendingModelChange?.item.type === "model_change" &&
+    pendingHandoffCoveredByModelChange(resolvedPendingHandoff, pendingModelChange.item)
+      ? null
+      : resolvedPendingHandoff;
   const compactThreadUnavailable =
     !canOperateThread ||
     !activeThread ||

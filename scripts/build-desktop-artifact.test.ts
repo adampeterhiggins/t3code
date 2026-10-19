@@ -321,6 +321,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         owner: "pingdotgg",
         repo: "t3code",
         releaseType: "release",
+        channel: "latest",
       });
       assert.deepStrictEqual(nightlyConfig, {
         provider: "github",
@@ -371,6 +372,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
           owner: "pingdotgg",
           repo: "t3code",
           releaseType: "release",
+          channel: "latest",
         },
       ]);
     }).pipe(
@@ -395,6 +397,24 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       );
 
       assert.isNull(local.publish);
+    }).pipe(Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })))),
+  );
+
+  it.effect("publishes fork builds to the latest feed", () =>
+    Effect.gen(function* () {
+      const config = yield* createBuildConfig(
+        "mac",
+        "zip",
+        "0.1.0-fork.20261019.1",
+        false,
+        true,
+        3000,
+        undefined,
+      );
+
+      assert.deepStrictEqual(config.publish, [
+        { provider: "generic", url: "http://localhost:3000", channel: "latest" },
+      ]);
     }).pipe(Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })))),
   );
 

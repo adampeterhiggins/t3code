@@ -17,6 +17,10 @@ const mocks = vi.hoisted(() => ({
   getSlackThread: vi.fn(),
   getNotionPage: vi.fn(),
   getGranolaNote: vi.fn(),
+  getPullRequest: vi.fn(),
+  getPullRequestActivity: vi.fn(),
+  getFreshPullRequestActivity: vi.fn(),
+  pullRequestTarget: null as unknown,
   upsert: vi.fn(),
   toast: vi.fn(),
 }));
@@ -57,7 +61,16 @@ vi.mock("~/state/use-atom-command", () => ({
           ? mocks.getGranolaNote
           : vi.fn(),
 }));
-vi.mock("~/state/use-atom-query-runner", () => ({ useAtomQueryRunner: () => vi.fn() }));
+vi.mock("~/state/use-atom-query-runner", () => ({
+  useAtomQueryRunner: (family: string, options?: { readonly refresh?: boolean }) =>
+    family === "detail"
+      ? mocks.getPullRequest
+      : family !== "activity"
+        ? vi.fn()
+        : options?.refresh === true
+          ? mocks.getFreshPullRequestActivity
+          : mocks.getPullRequestActivity,
+}));
 vi.mock("~/issueContextStore", () => ({
   useIssueContextStore: { getState: () => ({ upsert: mocks.upsert }) },
 }));
@@ -65,7 +78,9 @@ vi.mock("~/repositoryContextStore", () => ({
   useRepositoryContextStore: { getState: () => ({ upsert: mocks.upsert }) },
 }));
 vi.mock("~/composerDraftStore", () => ({ useComposerDraftStore: {} }));
-vi.mock("~/lib/openPullRequestLink", () => ({ resolvePullRequestPreviewTarget: () => null }));
+vi.mock("~/lib/openPullRequestLink", () => ({
+  resolvePullRequestPreviewTarget: () => mocks.pullRequestTarget,
+}));
 vi.mock("../ui/toast", () => ({ toastManager: { add: mocks.toast } }));
 
 import { useResolveComposerObjectLink } from "./useResolveComposerObjectLink";
@@ -130,6 +145,7 @@ beforeEach(async () => {
   mocks.slackEnabled = true;
   mocks.notionEnabled = true;
   mocks.granolaEnabled = true;
+  mocks.pullRequestTarget = null;
   mocks.getGranolaNote.mockResolvedValue({ _tag: "Success", value: granolaNote });
   mocks.getNotionPage.mockResolvedValue({ _tag: "Success", value: notionPage });
   mocks.getSlackThread.mockResolvedValue({ _tag: "Success", value: thread });
@@ -230,5 +246,74 @@ describe("Granola link attachments", () => {
     expect(await resolveLink(granolaLink)).toBeNull();
     expect(mocks.getGranolaNote).not.toHaveBeenCalled();
     expect(mocks.toast).not.toHaveBeenCalled();
+  });
+});
+
+describe("pull request comment links", () => {
+  const pullRequest = {
+    number: 42,
+    title: "Add the pull requests page",
+    url: "https://github.com/pingdotgg/t3code/pull/42",
+    headBranch: "feat/page",
+    baseBranch: "main",
+    state: "open",
+    isDraft: false,
+  };
+  const commentUrl = `${pullRequest.url}/changes#r201`;
+  const target = {
+    environmentId: threadRef.environmentId,
+    input: { projectId: "p1", repository: "pingdotgg/t3code", number: 42 },
+  };
+  const activity = (withComment: boolean) => ({
+    _tag: "Success",
+    value: {
+      comments: [],
+      reviewThreads: [
+        {
+          id: "t1",
+          path: "apps/web/src/page.tsx",
+          line: 12,
+          side: "right",
+          isResolved: false,
+          isOutdated: false,
+          comments: withComment
+            ? [
+                {
+                  id: "RC_1",
+                  author: { login: "theo", name: null, avatarUrl: null },
+                  body: "rename the helper",
+                  createdAt: "2026-07-02T00:00:00Z",
+                  url: `${pullRequest.url}#discussion_r201`,
+                },
+              ]
+            : [],
+        },
+      ],
+    },
+  });
+
+  beforeEach(() => {
+    mocks.pullRequestTarget = target;
+    mocks.getPullRequest.mockResolvedValue({ _tag: "Success", value: pullRequest });
+  });
+
+  it("asks the host again for a comment newer than the shared read", async () => {
+    mocks.getPullRequestActivity.mockResolvedValue(activity(false));
+    mocks.getFreshPullRequestActivity.mockResolvedValue(activity(true));
+
+    const attached = await resolveLink(parseComposerObjectLink(commentUrl)!);
+
+    expect(mocks.getFreshPullRequestActivity).toHaveBeenCalledWith({
+      ...target,
+      input: { ...target.input, allowStale: false },
+    });
+    expect(attached?.reference.label).toBe("page.tsx L12");
+  });
+
+  it("keeps a link to a comment the host does not have as text", async () => {
+    mocks.getPullRequestActivity.mockResolvedValue(activity(false));
+    mocks.getFreshPullRequestActivity.mockResolvedValue(activity(false));
+
+    expect(await resolveLink(parseComposerObjectLink(commentUrl)!)).toBe(null);
   });
 });

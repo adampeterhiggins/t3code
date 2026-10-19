@@ -27,6 +27,7 @@ import { formatSubagentDisplayTitle } from "@t3tools/client-runtime/state/subage
 import {
   forkAccountChangeLabel,
   forkSourceInstanceId,
+  formatEndpointTraits,
   formatModelSelectionTraits,
   handoffInstancesDiffer,
   modelOptionDescriptors,
@@ -697,7 +698,7 @@ function ModelChangeRow(props: {
   const showAccount = item.from.instanceId !== item.to.instanceId;
   return (
     <TimelineSystemDivider
-      label="Model changed"
+      label={item.title ?? "Model changed"}
       icon={ArrowRightLeftIcon}
       showDetailSeparator={false}
       detail={
@@ -802,6 +803,7 @@ export function HandoffRow(props: {
                 providers={props.providers}
                 instanceId={endpoint.instanceId}
                 model={endpoint.model}
+                traits={formatEndpointTraits(props.providers, endpoint)}
                 account={
                   showAccount ? providerAccountLabel(props.providers, endpoint.instanceId) : null
                 }
@@ -820,6 +822,7 @@ export function HandoffRow(props: {
             providers={props.providers}
             instanceId={to.instanceId}
             model={to.model}
+            traits={formatEndpointTraits(props.providers, to)}
             account={showAccount ? providerAccountLabel(props.providers, to.instanceId) : null}
           />
         </span>

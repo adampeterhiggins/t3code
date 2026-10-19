@@ -2460,6 +2460,20 @@ function recordClaudeSubagentCall(
   });
 }
 
+/** A workflow member's usage, as the progress snapshot reports it. Absent until tokens arrive. */
+function claudeWorkflowMemberUsage(member: {
+  readonly totalTokens?: number | undefined;
+  readonly toolCalls?: number | undefined;
+  readonly durationMs?: number | undefined;
+}): OrchestrationV2SubagentUsage | undefined {
+  if (member.totalTokens === undefined) return undefined;
+  return {
+    totalTokens: member.totalTokens,
+    ...(member.toolCalls === undefined ? {} : { toolUses: member.toolCalls }),
+    ...(member.durationMs === undefined ? {} : { durationMs: member.durationMs }),
+  };
+}
+
 /**
  * Joins the SDK's task_progress/task_notification usage to the subagent's
  * tally. Total follows the subagent convention: input (cache included) plus
@@ -3780,6 +3794,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             {
               readonly status: OrchestrationV2Subagent["status"];
               readonly attempt: number;
+              readonly usage: OrchestrationV2SubagentUsage | undefined;
               readonly transcriptReadAttempts: number;
               readonly finalTranscriptRead: boolean;
               // Where the next read of the member's transcript starts; every
@@ -4931,6 +4946,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             const completedAt = settled
               ? ((restarted ? null : previous?.completedAt) ?? now)
               : null;
+            const usage = claudeWorkflowMemberUsage(member);
             const changed =
               restarted ||
               previous?.status !== status ||
@@ -4938,7 +4954,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               previous?.result !== member.result ||
               previous?.label !== member.label ||
               previous?.prompt !== prompt ||
-              previous?.model !== model;
+              previous?.model !== model ||
+              previous?.usage?.totalTokens !== usage?.totalTokens ||
+              previous?.usage?.toolUses !== usage?.toolUses ||
+              previous?.usage?.durationMs !== usage?.durationMs;
             const agentId = member.agentId;
             const readTranscript =
               settled &&
@@ -5018,6 +5037,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               title: member.label,
               model,
               status,
+              ...(usage === undefined ? {} : { usage }),
               result: member.result ?? null,
               startedAt,
               completedAt,
@@ -5190,6 +5210,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               new Map(current).set(memberKey, {
                 status,
                 attempt,
+                usage,
                 agentId,
                 result: member.result,
                 label: member.label,
