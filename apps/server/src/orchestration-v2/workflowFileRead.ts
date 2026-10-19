@@ -17,6 +17,8 @@ export const readContainedWorkflowFile = Effect.fn("orchestration.readContainedW
     readonly extension: string;
     readonly byteCap: number;
     readonly tail?: boolean;
+    /** Read forward from this byte, at most `byteCap` bytes. A mid-file read that is not at EOF stops on a newline. */
+    readonly start?: number;
     readonly configDir?: string;
   }) {
     if (!NodePath.isAbsolute(input.path) || NodePath.extname(input.path) !== input.extension) {
@@ -72,13 +74,33 @@ export const readContainedWorkflowFile = Effect.fn("orchestration.readContainedW
           if (stat.ino !== pathStat.ino || stat.dev !== pathStat.dev) {
             return { failure: "changed-during-read" as const };
           }
-          const buffer = Buffer.alloc(Math.min(stat.size, input.byteCap + (input.tail ? 1 : 0)));
-          const truncated = stat.size > buffer.length;
-          const offset = input.tail ? stat.size - buffer.length : 0;
-          const { bytesRead } = await handle.read(buffer, 0, buffer.length, offset);
+          const from =
+            input.start !== undefined
+              ? Math.min(Math.max(0, input.start), stat.size)
+              : input.tail
+                ? Math.max(0, stat.size - Math.min(stat.size, input.byteCap + 1))
+                : 0;
+          const length =
+            input.start !== undefined
+              ? Math.min(input.byteCap, stat.size - from)
+              : Math.min(stat.size, input.byteCap + (input.tail ? 1 : 0));
+          const buffer = Buffer.alloc(length);
+          const { bytesRead } = await handle.read(buffer, 0, buffer.length, from);
+          let consumed = bytesRead;
+          let contentsBuffer = buffer.subarray(0, bytesRead);
+          // A forward read stops on a newline so the next read starts on a character boundary.
+          if (input.start !== undefined && from + bytesRead < stat.size) {
+            const newline = contentsBuffer.lastIndexOf(0x0a);
+            if (newline >= 0) {
+              consumed = newline + 1;
+              contentsBuffer = contentsBuffer.subarray(0, consumed);
+            }
+          }
           return {
-            contents: buffer.subarray(0, bytesRead).toString("utf8"),
-            truncated,
+            contents: contentsBuffer.toString("utf8"),
+            truncated: from + consumed < stat.size,
+            size: stat.size,
+            bytesRead: consumed,
           };
         } finally {
           await handle.close();
@@ -91,6 +113,12 @@ export const readContainedWorkflowFile = Effect.fn("orchestration.readContainedW
       return yield* new OrchestrationWorkflowFileError({ reason: read.failure, path: resolved });
     }
 
-    return { path: resolved, contents: read.contents, truncated: read.truncated };
+    return {
+      path: resolved,
+      contents: read.contents,
+      truncated: read.truncated,
+      size: read.size,
+      bytesRead: read.bytesRead,
+    };
   },
 );

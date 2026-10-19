@@ -294,7 +294,10 @@ thread details panel, one row each, newest first, and removed the right-panel Ag
   the child thread's creation, so a resumed agent never moves (`subagentSpawnedAt`). The footer
   counts agents by status and sums the usage they reported (input, cached share, output,
   reasoning, tool calls; `summarizeAgentFleet`). Agents spawned by agents add no usage there:
-  their records live on their owners' projections, which the list does not subscribe to. Open the
+  their records live on their owners' projections, which the list does not subscribe to. A
+  workflow member is the exception. Its tokens, tool calls and duration are already on the
+  coordinator's workflow snapshot, so its row shows them (`workflowMembersByChildThread` in
+  `agentFleet.ts`). The footer still counts the coordinator's total once. Open the
   panel from the right panel's launcher or **+** menu (badged with working agents, nested agents
   and live follow-up runs included), the command palette (**Show agents**), the Lineage header, an
   agent tab, **Details** or the bot button on an agent row in the conversation, or **Show in Agents
@@ -321,6 +324,9 @@ thread details panel, one row each, newest first, and removed the right-panel Ag
   Claude Workflow tool result names for its task). Every agent view (detail footer, rows, hover
   cards, fleet footer) reads this one field. A running delegated task shows usage once it finishes,
   and tasks that finished before this existed show none. Other native subagents leave these empty.
+  A Claude workflow member's usage is the tokens, tool calls and duration from its progress entry.
+  Its tool calls are read from the member transcript, because those agents never appear on the
+  event stream (`readWorkflowAgentTranscript`).
 - **Agent detail.** Clicking an agent in the Agents panel inspects it in place, with **Back** to
   the fleet. The header has the agent's status, compact model with effort (from its child thread's
   model selection), `run N` past its first run, elapsed time, the prompt clamped to four lines

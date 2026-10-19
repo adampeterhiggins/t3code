@@ -169,6 +169,26 @@ export interface AgentFleetEntry {
   readonly subject: AgentListSubject;
 }
 
+/**
+ * Workflow member metrics already live on the coordinator record in this thread's projection.
+ * Nested shells otherwise have no usage, because a member's own subagent record is on the
+ * coordinator thread, which this list does not subscribe to.
+ */
+function workflowMembersByChildThread(
+  subagents: ReadonlyArray<OrchestrationV2Subagent>,
+): ReadonlyMap<string, RuntimeSubagent> {
+  const members = new Map<string, RuntimeSubagent>();
+  for (const record of subagents) {
+    if (record.workflow === undefined) continue;
+    for (const agent of projectedSubagentsToRuntime([record])) {
+      if (agent.kind === "workflow_agent" && agent.childThreadId !== null) {
+        members.set(agent.childThreadId, agent);
+      }
+    }
+  }
+  return members;
+}
+
 function subjectOf(
   agent: RuntimeSubagent,
   title: string,
@@ -210,8 +230,9 @@ export function deriveThreadAgentFleet(input: {
 
   const entries: Array<Omit<AgentFleetEntry, "handle">> = [];
   const seen = new Set<ThreadId>([input.threadId]);
+  const workflowMembers = workflowMembersByChildThread(input.subagents);
   const fromShell = (shell: OrchestrationV2ThreadShell, ownerThreadId: ThreadId) => {
-    const agent = shellSubagent(shell);
+    const agent = workflowMembers.get(shell.id) ?? shellSubagent(shell);
     const title = formatSubagentDisplayTitle(shell.title);
     entries.push({
       key: shell.id,
@@ -356,6 +377,8 @@ export function summarizeAgentFleet(entries: ReadonlyArray<AgentFleetEntry>): Ag
   let hasUsage = false;
   for (const entry of entries) {
     counts[agentStatusFilterFor(entry.agent.status)] += 1;
+    // A member's tokens are already inside the coordinator's workflow total.
+    if (entry.agent.kind === "workflow_agent") continue;
     const reported = entry.agent.usage;
     if (!reported) continue;
     hasUsage = true;
