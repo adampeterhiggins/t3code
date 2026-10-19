@@ -21,7 +21,7 @@ import {
   insertComposerDraftContext,
   type ComposerDraftInsertion,
 } from "../state/use-composer-drafts";
-import { AppText as Text, AppTextInput } from "./AppText";
+import { AppText as Text, AppTextInput } from "./ui/AppText";
 import { PickerSheet } from "./PickerSheet";
 
 /** Slack allows about 20 searches a minute, so typing settles longer before it queries. */

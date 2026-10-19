@@ -18,8 +18,8 @@ import { resolveProjectScripts, setupProjectScript } from "@t3tools/shared/proje
 import { useEffect, useRef, useState } from "react";
 import { Alert, Pressable, View } from "react-native";
 
-import { AppText as Text, AppTextInput } from "../../../components/AppText";
-import { SegmentedControl } from "../../../components/SegmentedControl";
+import { AppText as Text, AppTextInput } from "../../../components/ui/AppText";
+import { SegmentedControl } from "../../../components/ui/SegmentedControl";
 import { projectEnvironment } from "../../../state/projects";
 import { useAtomCommand } from "../../../state/use-atom-command";
 import { useConductorSettings } from "../../projects/useConductorSettings";

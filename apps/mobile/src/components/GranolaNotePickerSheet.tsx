@@ -20,7 +20,7 @@ import {
   insertComposerDraftContext,
   type ComposerDraftInsertion,
 } from "../state/use-composer-drafts";
-import { AppText as Text, AppTextInput } from "./AppText";
+import { AppText as Text, AppTextInput } from "./ui/AppText";
 import { PickerSheet } from "./PickerSheet";
 
 /** The server filters a cached list of recent meetings, so typing can settle quickly. */

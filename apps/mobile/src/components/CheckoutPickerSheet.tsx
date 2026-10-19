@@ -22,7 +22,7 @@ import {
   insertComposerDraftContext,
   type ComposerDraftInsertion,
 } from "../state/use-composer-drafts";
-import { AppText as Text, AppTextInput } from "./AppText";
+import { AppText as Text, AppTextInput } from "./ui/AppText";
 import { PickerSheet } from "./PickerSheet";
 
 export interface CheckoutPickerTarget {

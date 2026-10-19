@@ -117,7 +117,6 @@ export interface GhosttyRow {
   readonly cells: readonly GhosttyCell[];
   readonly text: string;
   readonly isWrapContinuation: boolean;
-  /** Whether this row soft-wraps onto the next row. */
   readonly wrapsToNext: boolean;
 }
 
@@ -153,7 +152,6 @@ export interface GhosttyScrollbar {
   readonly len: number;
 }
 
-/** Grid position tagged with its Ghostty coordinate space: 1 viewport, 2 screen. */
 export interface GhosttyPointInput {
   readonly x: number;
   readonly y: number;
@@ -406,11 +404,9 @@ export class GhosttyTerminalCore {
   }
 
   /**
-   * Ghostty's built-in default cursor is steady, while the xterm.js renderer
-   * this replaced ran with `cursorBlink: true`. Option 23 is the embedder's
-   * default blink, which is the state a session starts in and returns to on
-   * DECSCUSR reset (CSI 0 q), so programs that ask for a specific cursor
-   * through DECSCUSR or DEC mode 12 still win.
+   * Option 23 is the embedder's default blink, which is the state a session
+   * starts in and returns to on DECSCUSR reset (CSI 0 q), so programs that ask
+   * for a specific cursor through DECSCUSR or DEC mode 12 still win.
    */
   private applyDefaultCursorBlink(): void {
     const blink = this.runtime.alloc(1);

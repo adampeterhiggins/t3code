@@ -60,7 +60,6 @@ const contextChipVariants = cva(
         subagent: "[--context-chip-accent:oklch(0.62_0.12_150)]",
         "prompt-link": "[--context-chip-accent:oklch(0.62_0.12_190)]",
       },
-      // Colors live in compoundVariants below so they come after the kind colors.
       state: {
         unresolved: "border-dashed",
         invalid: "",
@@ -117,7 +116,6 @@ const contextChipVariants = cva(
         className:
           "[--context-chip-border:color-mix(in_oklab,var(--context-chip-accent)_34%,var(--contrast-border))] [--context-chip-border-hover:color-mix(in_oklab,var(--context-chip-accent)_48%,var(--contrast-border))] [--context-chip-foreground:color-mix(in_oklab,var(--context-chip-accent)_22%,var(--contrast-foreground))] border-(--context-chip-border) bg-(--context-chip-accent)/11 text-(--context-chip-foreground) [button:enabled&,a&]:hover:border-(--context-chip-border-hover) [button:enabled&,a&]:hover:bg-(--context-chip-accent)/17",
       },
-      // State colors win over any kind.
       { state: "unresolved", className: "text-foreground" },
       { state: "invalid", className: "border-destructive/35 bg-destructive/8 text-destructive" },
     ],
@@ -144,7 +142,6 @@ function ContextChip({ className, kind, state, render, ...props }: ContextChipPr
   });
 }
 
-/** The chip's text. Truncates to the chip's width. */
 function ContextChipLabel({ className, ...props }: React.ComponentProps<"span">) {
   return (
     <span
@@ -155,7 +152,6 @@ function ContextChipLabel({ className, ...props }: React.ComponentProps<"span">)
   );
 }
 
-/** An icon action inside a chip, such as editing a citation's comment. Tints with the chip's kind. */
 function ContextChipAction({ className, render, ...props }: useRender.ComponentProps<"button">) {
   const defaultProps = {
     className: cn(

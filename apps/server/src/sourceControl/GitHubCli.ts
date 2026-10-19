@@ -11,7 +11,8 @@ import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 import * as VcsProjectConfig from "../vcs/VcsProjectConfig.ts";
 import * as ServerSourceControlHost from "./ServerSourceControlHost.ts";
-import * as GitHubApi from "@t3tools/source-control-github/server/GitHubApi";
+import * as GitHubRest from "@t3tools/source-control-github/server/GitHubRest";
+import type * as GitHubRequestPolicy from "@t3tools/source-control-github/server/GitHubRequestPolicy";
 import * as GitHubCredentials from "@t3tools/source-control-github/server/GitHubCredentials";
 
 const gitHubCliFailureFields = {
@@ -122,7 +123,10 @@ export function fromVcsError(
 }
 
 /** Maps a GitHub API failure onto the errors callers of this service already handle. */
-function fromGitHubApiError(cwd: string, error: GitHubApi.GitHubApiError): GitHubCliError {
+function fromGitHubApiError(
+  cwd: string,
+  error: GitHubRequestPolicy.GitHubApiError,
+): GitHubCliError {
   const context = { command: "gh" as const, cwd, cause: error };
   switch (error._tag) {
     case "GitHubCliMissingError":
@@ -164,7 +168,7 @@ export class GitHubCli extends Context.Service<
 export const make = Effect.gen(function* () {
   const process = yield* VcsProcess.VcsProcess;
   const environment = yield* HostProcess.Environment;
-  const api = yield* GitHubApi.GitHubApi;
+  const api = yield* GitHubRest.GitHubRest;
   const execute: GitHubCli["Service"]["execute"] = Effect.fn("GitHubCli.execute")(
     function* (input) {
       // Resolve the credential through the same per-host settings as upstream's API reads.
@@ -202,7 +206,7 @@ export const make = Effect.gen(function* () {
 export const layer = Layer.effect(GitHubCli, make).pipe(
   // GitHub API reads run against the server's source control host port.
   Layer.provide(
-    GitHubApi.layerWithDependencies.pipe(
+    GitHubRest.layerWithDependencies.pipe(
       Layer.provide(
         ServerSourceControlHost.layer.pipe(
           Layer.provide(GitVcsDriver.layer),

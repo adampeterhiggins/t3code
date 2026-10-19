@@ -32,7 +32,6 @@ const BADGE_BASE_CLASS =
   "pointer-events-none absolute -right-0.5 top-0.5 z-10 flex size-3.5 items-center justify-center rounded-full bg-transparent shadow-sm ";
 const NEW_BADGE_CLASS = `${BADGE_BASE_CLASS} text-update-foreground `;
 
-/** Opens toward the rail so the list stays readable (not over the model names). */
 const PICKER_TOOLTIP_SIDE = "left" as const;
 const PICKER_TOOLTIP_SIDE_OFFSET = 8;
 
@@ -45,7 +44,6 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
    * switching is a separate composer control.
    */
   instanceEntries: ReadonlyArray<ProviderInstanceEntry>;
-  /** Render the favorites rail entry. Hidden for locked-provider instance switching. */
   showFavorites?: boolean;
   /** Drivers shown in the rail but unavailable for the current picker context. */
   disabledDriverKinds?: ReadonlySet<ProviderDriverKind>;
@@ -106,7 +104,6 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
               style={{ top: selectedIndicatorTop }}
             />
           ) : null}
-          {/* Favorites section */}
           {showFavorites ? (
             <>
               <div className="relative w-full" data-model-picker-provider="favorites">
@@ -139,7 +136,6 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
             </>
           ) : null}
 
-          {/* One rail button per provider driver */}
           {props.instanceEntries.map((entry) => {
             const brandLabel = providerBrandLabel(entry.driverKind);
             const isUnavailable = !isProviderInstancePickerReady(entry);

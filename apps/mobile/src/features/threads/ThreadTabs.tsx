@@ -28,9 +28,9 @@ import * as Option from "effect/Option";
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, ScrollView, Text, View } from "react-native";
 
-import { showTextInputDialog } from "../../components/ConfirmDialogHost";
-import { SymbolView } from "../../components/AppSymbol";
-import { ControlPillMenu } from "../../components/ControlPillMenu";
+import * as Dialog from "../../components/ui/Dialog";
+import { SymbolView } from "../../components/ui/AppSymbol";
+import { Menu } from "../../components/ui/Menu";
 import { useGitHubIssuePicker } from "../../components/GitHubIssuePickerSheet";
 import { useLinearIssuePicker } from "../../components/LinearIssuePickerSheet";
 import { buildModelOptions, groupByProvider, type ModelOption } from "../../lib/modelOptions";
@@ -184,7 +184,7 @@ export function ThreadTabs({
       );
       navigateTo(next);
     } catch (cause) {
-      Alert.alert("Could not create tab", cause instanceof Error ? cause.message : undefined);
+      Dialog.alert("Could not create tab", cause instanceof Error ? cause.message : undefined);
     } finally {
       setBusy(false);
     }
@@ -243,7 +243,7 @@ export function ThreadTabs({
       }
       navigateTo(next);
     } catch (cause) {
-      Alert.alert("Could not hand off", cause instanceof Error ? cause.message : undefined);
+      Dialog.alert("Could not hand off", cause instanceof Error ? cause.message : undefined);
     } finally {
       setBusy(false);
     }
@@ -275,7 +275,7 @@ export function ThreadTabs({
       if (archived._tag === "Success") refreshArchivedThreadsForEnvironment(environmentId);
       navigateTo(next);
     } catch (cause) {
-      Alert.alert(
+      Dialog.alert(
         "Could not continue that chat",
         cause instanceof Error ? cause.message : undefined,
       );
@@ -289,7 +289,7 @@ export function ThreadTabs({
     const next = group.tabs[index + 1] ?? group.tabs[index - 1];
     if (!next) return;
     if (working) {
-      Alert.alert(
+      Dialog.alert(
         "Could not close tab",
         "This tab is working. Interrupt it first, then try again.",
       );
@@ -300,7 +300,7 @@ export function ThreadTabs({
       const result = await archive({ environmentId, input: { threadId } });
       if (result._tag === "Failure") {
         const error = Cause.squash(result.cause);
-        Alert.alert("Could not close tab", error instanceof Error ? error.message : undefined);
+        Dialog.alert("Could not close tab", error instanceof Error ? error.message : undefined);
         return;
       }
       refreshArchivedThreadsForEnvironment(environmentId);
@@ -317,13 +317,13 @@ export function ThreadTabs({
       const result = await stopSession({ environmentId, input: { threadId } });
       if (result._tag === "Failure") {
         const error = Cause.squash(result.cause);
-        Alert.alert(
+        Dialog.alert(
           "Could not restart agent session",
           error instanceof Error ? error.message : undefined,
         );
         return;
       }
-      Alert.alert("Agent session will restart", "Your next message starts a fresh session.");
+      Dialog.alert("Agent session will restart", "Your next message starts a fresh session.");
     } finally {
       setBusy(false);
     }
@@ -331,7 +331,7 @@ export function ThreadTabs({
   const onMenuAction = (id: string) => {
     if (id === NEW_TAB_ACTION) void create();
     else if (id === "tab:name-group" && canNameGroup)
-      showTextInputDialog({
+      Dialog.prompt({
         title: "Name thread group (blank uses tab title)",
         initialValue: group.name ?? "",
         confirmText: "Save",
@@ -345,7 +345,7 @@ export function ThreadTabs({
                 ),
               );
             } catch (cause) {
-              Alert.alert(
+              Dialog.alert(
                 "Could not name thread group",
                 cause instanceof Error ? cause.message : undefined,
               );
@@ -375,7 +375,7 @@ export function ThreadTabs({
   };
   const toggle = (sourceId: ThreadId) => {
     if (!selected.includes(sourceId) && selected.length >= 8) {
-      Alert.alert("Select up to eight chats for context.");
+      Dialog.alert("Select up to eight chats for context.");
       return;
     }
     const next = selected.includes(sourceId)
@@ -401,7 +401,7 @@ export function ThreadTabs({
             <Text className="text-sm font-medium text-foreground">New tab</Text>
           </Pressable>
         ) : (
-          <ControlPillMenu
+          <Menu
             accessible
             accessibilityRole="button"
             accessibilityLabel={`Chat tab: ${group.name ?? title}`}
@@ -440,10 +440,10 @@ export function ThreadTabs({
               <Text className="text-sm text-muted-foreground">{group.tabs.length}</Text>
               <SymbolView name="chevron.down" size={11} tintColorClassName="accent-foreground" />
             </Pressable>
-          </ControlPillMenu>
+          </Menu>
         )}
         {!empty && handOffModels.length > 0 ? (
-          <ControlPillMenu
+          <Menu
             accessible
             accessibilityRole="button"
             accessibilityLabel="Hand off to another model"
@@ -476,7 +476,7 @@ export function ThreadTabs({
               />
               <Text className="text-sm font-medium text-foreground">Hand off</Text>
             </Pressable>
-          </ControlPillMenu>
+          </Menu>
         ) : null}
         {linear.link ? (
           <ThreadLinearLinkChip
@@ -487,7 +487,7 @@ export function ThreadTabs({
           />
         ) : null}
         {linkActions.length > 0 && group.tabs.length <= 1 && !group.name ? (
-          <ControlPillMenu
+          <Menu
             accessible
             accessibilityRole="button"
             accessibilityLabel="Link"
@@ -504,7 +504,7 @@ export function ThreadTabs({
               <SymbolView name="link" size={13} tintColorClassName="accent-foreground" />
               <Text className="text-sm font-medium text-foreground">Link</Text>
             </Pressable>
-          </ControlPillMenu>
+          </Menu>
         ) : null}
         <ThreadStartedByChip environmentId={environmentId} threadId={threadId} />
         {gitHubIssueLink ? (
@@ -532,7 +532,7 @@ export function ThreadTabs({
           {group.tabs
             .filter((tab) => tab.threadId !== threadId)
             .map((tab) => (
-              <ControlPillMenu
+              <Menu
                 key={tab.threadId}
                 accessible
                 accessibilityRole="button"
@@ -568,7 +568,7 @@ export function ThreadTabs({
                     {tab.title}
                   </Text>
                 </Pressable>
-              </ControlPillMenu>
+              </Menu>
             ))}
         </ScrollView>
       ) : null}

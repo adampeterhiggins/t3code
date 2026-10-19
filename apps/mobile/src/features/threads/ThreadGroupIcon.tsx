@@ -1,7 +1,7 @@
 import type { ThreadGroup } from "@t3tools/contracts/settings";
 import { memo } from "react";
 
-import { SymbolView } from "../../components/AppSymbol";
+import { SymbolView } from "../../components/ui/AppSymbol";
 import { ProjectIconGlyphView } from "../../components/ProjectFavicon";
 import { projectIconColorClassNames, resolveProjectIconGlyph } from "../../lib/projectIcon";
 

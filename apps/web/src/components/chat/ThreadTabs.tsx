@@ -1,3 +1,4 @@
+import { toKindScopedComposerContextId } from "@t3tools/shared/composerContextReferences";
 import {
   createThreadTab,
   forkThreadTabFromRun,
@@ -61,7 +62,6 @@ import { useComposerDraftStore } from "../../composerDraftStore";
 import {
   type ComposerContextReference,
   formatInlineContextReference,
-  toKindScopedComposerContextId,
 } from "../../lib/composerContextReferences";
 import { runtime } from "../../lib/runtime";
 import { newThreadId } from "../../lib/utils";

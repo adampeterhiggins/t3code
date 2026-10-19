@@ -11,20 +11,11 @@ import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 
-/**
- * Stands in for the composer on a provider-native subagent thread. The
- * provider runs that conversation, so there is nothing to send; the bar says
- * which model is working, for how long, and leads back to the parent.
- */
 export function ProviderSubagentBar(props: {
-  /** The provider running the subagent; no icon while its catalog loads. */
   readonly provider: ProviderInstanceEntry | null;
-  /** Several accounts on this provider: badge the glyph, as the composer does. */
   readonly showInstanceBadge: boolean;
   readonly modelLabel: string;
-  /** Reasoning effort as the composer names it, when the subagent has one. */
   readonly effortLabel: string | null;
-  /** Null until the subagent's root turn arrives. */
   readonly status: ProviderSubagentStatus | null;
   /** Fork: attaches the subagent to the parent's chat, the way to steer it. The thread's
       "Subagent of" divider shows its `@handle`. */
@@ -36,7 +27,6 @@ export function ProviderSubagentBar(props: {
   const live = status !== null && isOrchestrationV2WorkActive(status.status);
   const modelDescription =
     props.effortLabel === null ? props.modelLabel : `${props.modelLabel}, ${props.effortLabel}`;
-  // Announced once per transition; the ticking label below is not.
   const announcement = formatProviderSubagentStatus(
     status === null ? null : { ...status, startedAt: null },
     0,
