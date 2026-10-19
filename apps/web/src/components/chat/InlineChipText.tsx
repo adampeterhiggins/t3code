@@ -1,3 +1,4 @@
+import type { AssistantCitation } from "@t3tools/contracts";
 import {
   assistantCitationLabel,
   collectAssistantCitations,
@@ -55,14 +56,24 @@ type Segment = {
   kind: ContextChipKind;
   label: string;
   path?: string;
+  citation?: AssistantCitation;
 };
 
 /**
  * One-line message text with its context references, file mentions and assistant quotes drawn as static
  * chips, for previews that have no records to open (queued messages). `hideImages` drops
- * image references a surface already shows as thumbnails.
+ * image references a surface already shows as thumbnails. `expandCitations` spells out each
+ * quote and its comment, since a commented quote's chip label is only the comment.
  */
-export function InlineChipText({ text, hideImages }: { text: string; hideImages?: boolean }) {
+export function InlineChipText({
+  text,
+  hideImages,
+  expandCitations,
+}: {
+  text: string;
+  hideImages?: boolean;
+  expandCitations?: boolean;
+}) {
   const { resolvedTheme } = useTheme();
   const segments: Segment[] = [
     // Mentions only match before whitespace; the pad lets one end the text.
@@ -86,6 +97,7 @@ export function InlineChipText({ text, hideImages }: { text: string; hideImages?
       end: match.end,
       kind: "citation" as const,
       label: assistantCitationLabel(match.citation),
+      citation: match.citation,
     })),
   ].toSorted((a, b) => a.start - b.start);
 
@@ -94,7 +106,18 @@ export function InlineChipText({ text, hideImages }: { text: string; hideImages?
   for (const segment of segments) {
     if (segment.start < cursor) continue;
     parts.push(text.slice(cursor, segment.start));
-    if (segment.label) {
+    if (expandCitations && segment.citation) {
+      parts.push(
+        <span key={segment.start} className="my-1 block">
+          <span className="line-clamp-6 block border-l-2 border-border pl-2 whitespace-pre-wrap text-muted-foreground">
+            {segment.citation.text}
+          </span>
+          {segment.citation.comment ? (
+            <span className="mt-1 block whitespace-pre-wrap">{segment.citation.comment}</span>
+          ) : null}
+        </span>,
+      );
+    } else if (segment.label) {
       parts.push(
         <ContextChip key={segment.start} kind={segment.kind}>
           {segment.path === undefined ? (

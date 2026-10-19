@@ -246,9 +246,8 @@ export function QueuedRunsControl({
         <ComposerBanner.Scroll className={cn("max-h-32", !expanded && "hidden")}>
           <ComposerBanner.Children render={<ol />} id={queueListId}>
             {items.map((item) => {
-              const chipText = (
-                <InlineChipText text={item.text.trim()} hideImages={item.thumbnails.length > 0} />
-              );
+              const text = item.text.trim();
+              const hideImages = item.thumbnails.length > 0;
               const rowRunId = item.runId;
               const rowServerIndex = item.serverIndex;
               const isEditing = rowRunId !== null && rowRunId === props.editingRunId;
@@ -370,10 +369,10 @@ export function QueuedRunsControl({
                     ) : null}
                     <Tooltip>
                       <TooltipTrigger render={<span className="min-w-0 flex-1 truncate" />}>
-                        {chipText}
+                        <InlineChipText text={text} hideImages={hideImages} />
                       </TooltipTrigger>
                       <TooltipPopup side="top" className="max-w-96 break-words">
-                        {chipText}
+                        <InlineChipText text={text} hideImages={hideImages} expandCitations />
                       </TooltipPopup>
                     </Tooltip>
                   </ComposerBanner.Content>
