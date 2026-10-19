@@ -217,7 +217,7 @@ export function RevertConfirmHost(props: {
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
-          <Button variant="destructive" onClick={() => confirm(true)}>
+          <Button variant="destructive-outline" onClick={() => confirm(true)}>
             Revert files too
           </Button>
           <Button onClick={() => confirm(false)}>Revert and keep changes</Button>

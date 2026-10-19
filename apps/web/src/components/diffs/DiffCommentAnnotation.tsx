@@ -150,7 +150,7 @@ export function DiffCommentAnnotation({
           </TooltipTrigger>
           <TooltipPopup side="top">{shortcutHint}</TooltipPopup>
         </Tooltip>
-        <Button variant="ghost-muted" size="xs" onClick={onCancel}>
+        <Button variant="ghost" size="xs" onClick={onCancel}>
           Cancel
         </Button>
         {onComment ? (

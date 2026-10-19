@@ -70,7 +70,10 @@ function RecoveryActions({
   onResumeNow,
   continueElsewhere,
 }: RecoveryProps) {
-  const [pending, setPending] = useState(false);
+  const [pendingAction, setPendingAction] = useState<"resume-now" | "resume" | "snooze" | null>(
+    null,
+  );
+  const pending = pendingAction !== null;
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
     const delay = Date.parse(resetAt ?? "") - Math.max(nowMs, Date.now());
@@ -89,8 +92,12 @@ function RecoveryActions({
     resetAt !== null &&
     snoozedUntil !== null &&
     Date.parse(snoozedUntil) === Date.parse(resetAt);
-  async function run(action: () => Promise<void>, failureTitle: string) {
-    setPending(true);
+  async function run(
+    key: NonNullable<typeof pendingAction>,
+    action: () => Promise<void>,
+    failureTitle: string,
+  ) {
+    setPendingAction(key);
     try {
       await action();
     } catch (cause) {
@@ -100,7 +107,7 @@ function RecoveryActions({
         description: cause instanceof Error ? cause.message : "An error occurred.",
       });
     }
-    setPending(false);
+    setPendingAction(null);
   }
   function toggle(action: "resume" | "snooze") {
     if (resetAt === null) return;
@@ -114,6 +121,7 @@ function RecoveryActions({
       return;
     }
     void run(
+      action,
       () =>
         onChange({
           runId,
@@ -132,14 +140,18 @@ function RecoveryActions({
           size="xs"
           variant="ghost"
           disabled={pending}
-          onClick={() => void run(onResumeNow, "Could not resume thread")}
+          onClick={() => void run("resume-now", onResumeNow, "Could not resume thread")}
         >
           Resume now
         </Button>
       ) : null}
       {canSchedule ? (
         <Button size="xs" variant="ghost" disabled={pending} onClick={() => toggle("resume")}>
-          {pending ? "Saving..." : scheduled ? "Cancel auto-resume" : "Resume at reset"}
+          {pendingAction === "resume"
+            ? "Saving..."
+            : scheduled
+              ? "Cancel auto-resume"
+              : "Resume at reset"}
         </Button>
       ) : null}
       {canSchedule && !snoozed ? (
@@ -149,7 +161,7 @@ function RecoveryActions({
           disabled={pending || Date.parse(resetAt!) <= nowMs}
           onClick={() => toggle("snooze")}
         >
-          {pending ? "Saving..." : "Snooze until reset"}
+          {pendingAction === "snooze" ? "Saving..." : "Snooze until reset"}
         </Button>
       ) : null}
       {continueElsewhere ? (

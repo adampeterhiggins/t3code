@@ -365,7 +365,9 @@ export function WorktreeSetupCard({
 
       {detailsOpen ? <SetupDetails snapshot={snapshot} /> : null}
 
-      <div className="mt-0.5 ml-[calc(--spacing(6)+2px-(--spacing(2)-1px))] flex flex-wrap items-center gap-0.5">
+      {/* Ghost xs buttons inset their leading icon by 6px, so ml-6.5 lines it up
+          with the ml-8 error, output and details above. */}
+      <div className="mt-0.5 ml-6.5 flex flex-wrap items-center gap-0.5">
         <Button
           type="button"
           size="xs"

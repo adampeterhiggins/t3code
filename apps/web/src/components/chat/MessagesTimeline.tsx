@@ -162,7 +162,6 @@ import {
   Code2Icon,
   XIcon,
   ZapIcon,
-  RotateCcwIcon,
   MessageSquareTextIcon,
 } from "lucide-react";
 import {
@@ -2645,7 +2644,7 @@ function RevertUserMessageButton({
         render={
           <Button
             type="button"
-            size="xs"
+            size="icon-xs"
             variant="ghost"
             disabled={activity.isRevertingCheckpoint || activity.isWorking}
             onClick={() => ctx.onRevertToTurnCount(turnCount, messageId)}
@@ -2673,7 +2672,7 @@ function ForkMessageButton({
         render={
           <Button
             type="button"
-            size="xs"
+            size="icon-xs"
             variant="ghost"
             onClick={() => onFork(messageId)}
             aria-label="Fork into new tab"
@@ -2848,7 +2847,7 @@ function AssistantForkButton({
         render={
           <Button
             type="button"
-            size="xs"
+            size="icon-xs"
             variant="ghost"
             disabled={busy}
             onClick={() => {
@@ -5667,43 +5666,36 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
           </span>
         }
         trailing={
-          <TimelineRowTimestamp
-            createdAt={workEntry.createdAt}
-            timestampFormat={timestampFormat}
-            alwaysVisible
-          />
+          <>
+            {retryRunId !== null && onRetryWorkspacePreparation ? (
+              <InlineButton onClick={() => onRetryWorkspacePreparation(retryRunId)}>
+                Retry
+              </InlineButton>
+            ) : null}
+            <InlineButton
+              tone="muted"
+              render={
+                <Link
+                  to="/settings/diagnostics"
+                  search={{ machine: ctx.activeThreadEnvironmentId }}
+                />
+              }
+            >
+              View diagnostics
+            </InlineButton>
+            <TimelineRowTimestamp
+              createdAt={workEntry.createdAt}
+              timestampFormat={timestampFormat}
+              alwaysVisible
+            />
+          </>
         }
       >
         {!warning ? (
-          <p className="ms-7 whitespace-pre-wrap break-words py-1 text-sm leading-relaxed text-foreground/80">
+          <p className="ms-7 whitespace-pre-wrap break-words px-0.5 py-1 text-sm leading-relaxed text-foreground/80">
             {failureItem.failure.message}
           </p>
         ) : null}
-        <div className="ms-7 flex flex-wrap gap-2 pb-1">
-          <Button
-            size="xs"
-            variant="outline"
-            render={
-              <Link
-                to="/settings/diagnostics"
-                search={{ machine: ctx.activeThreadEnvironmentId }}
-              />
-            }
-          >
-            View diagnostics
-          </Button>
-          {retryRunId !== null && onRetryWorkspacePreparation ? (
-            <Button
-              type="button"
-              size="xs"
-              variant="outline"
-              onClick={() => onRetryWorkspacePreparation(retryRunId)}
-            >
-              <RotateCcwIcon aria-hidden />
-              Retry
-            </Button>
-          ) : null}
-        </div>
       </WorkLogRow>
     );
   }
@@ -5900,9 +5892,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
       trailing={
         <>
           {createdThread ? (
-            <button
-              type="button"
-              className="shrink-0 rounded-sm text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+            <InlineButton
               aria-label={`Open ${createdThread.title ?? "created thread"}`}
               onClick={(event) => {
                 event.stopPropagation();
@@ -5911,7 +5901,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
               onKeyDown={stopRowToggle}
             >
               Open chat
-            </button>
+            </InlineButton>
           ) : null}
           {notifiedSubagentThreadId ? (
             <InlineButton

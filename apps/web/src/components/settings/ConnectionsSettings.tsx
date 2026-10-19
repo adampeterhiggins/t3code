@@ -808,14 +808,12 @@ const PairingLinkListRow = memo(function PairingLinkListRow({
                 ) : null}
               </DialogPanel>
               <DialogFooter variant="bare">
-                <Button variant="outline" onClick={() => setIsRevealDialogOpen(false)}>
-                  Done
-                </Button>
                 {canCopyToClipboard ? (
                   <Button variant="outline" onClick={handleCopyCode}>
                     Copy code
                   </Button>
                 ) : null}
+                <Button onClick={() => setIsRevealDialogOpen(false)}>Done</Button>
               </DialogFooter>
             </DialogPopup>
           </Dialog>
@@ -1091,7 +1089,7 @@ const AuthorizedClientsHeaderAction = memo(function AuthorizedClientsHeaderActio
       >
         <DialogTrigger
           render={
-            <Button size="xs" variant="default">
+            <Button size="xs" variant="ghost-muted">
               <PlusIcon className="size-3" />
               Create link
             </Button>
@@ -2854,15 +2852,6 @@ export function ConnectionsSettings() {
       ) : null}
       {renderRemoteFields()}
       {savedBackendError ? <p className="text-xs text-destructive">{savedBackendError}</p> : null}
-      <Button
-        variant="outline"
-        className="w-full"
-        disabled={isAddingSavedBackend}
-        onClick={() => void handleAddSavedBackend()}
-      >
-        <PlusIcon className="size-3.5" />
-        {isAddingSavedBackend ? "Adding…" : routeTarget ? "Add route" : "Add environment"}
-      </Button>
     </div>
   );
   const renderSshFields = () => (
@@ -2975,15 +2964,6 @@ export function ConnectionsSettings() {
             <AlertDescription>{savedBackendError ?? discoveredSshHostsError}</AlertDescription>
           </Alert>
         ) : null}
-        <Button
-          variant="outline"
-          className="w-full"
-          disabled={isAddingSavedBackend}
-          onClick={() => void handleAddSavedBackend()}
-        >
-          <PlusIcon className="size-3.5" />
-          {isAddingSavedBackend ? "Adding…" : routeTarget ? "Add route" : "Add environment"}
-        </Button>
       </div>
     </div>
   );
@@ -3915,6 +3895,24 @@ export function ConnectionsSettings() {
                     </AnimatedHeight>
                   </div>
                 </DialogPanel>
+                <DialogFooter>
+                  <DialogClose
+                    disabled={isAddingSavedBackend}
+                    render={<Button variant="outline" disabled={isAddingSavedBackend} />}
+                  >
+                    Cancel
+                  </DialogClose>
+                  <Button
+                    disabled={isAddingSavedBackend}
+                    onClick={() => void handleAddSavedBackend()}
+                  >
+                    {isAddingSavedBackend
+                      ? "Adding…"
+                      : routeTarget
+                        ? "Add route"
+                        : "Add environment"}
+                  </Button>
+                </DialogFooter>
               </DialogPopup>
             </Dialog>
           </div>

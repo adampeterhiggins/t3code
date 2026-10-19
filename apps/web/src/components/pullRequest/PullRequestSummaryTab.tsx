@@ -450,7 +450,7 @@ function ReviewThreadEntry({
                       ) : null}
                       {canResolve ? (
                         <Button
-                          size="xs"
+                          size="compact"
                           variant="outline"
                           className="ml-auto shrink-0"
                           disabled={pending}

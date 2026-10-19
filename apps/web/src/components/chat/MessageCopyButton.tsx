@@ -16,7 +16,6 @@ export const MessageCopyButton = memo(function MessageCopyButton({
   label = "Copy message",
   icon = Copy,
   extraFlavors,
-  size = "xs",
   variant = "outline",
   className,
 }: {
@@ -24,7 +23,6 @@ export const MessageCopyButton = memo(function MessageCopyButton({
   label?: string;
   icon?: typeof Copy;
   extraFlavors?: Readonly<Record<string, string>>;
-  size?: "xs" | "icon-xs";
   variant?: "outline" | "ghost";
   className?: string;
 }) {
@@ -46,7 +44,7 @@ export const MessageCopyButton = memo(function MessageCopyButton({
             onClick={() => copyToClipboard(text)}
             ref={ref}
             type="button"
-            size={size}
+            size="icon-xs"
             variant={variant === "ghost" ? "ghost-muted" : variant}
             className={className}
           />

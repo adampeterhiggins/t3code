@@ -462,11 +462,8 @@ export function ThreadDetailsPrRow({
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogClose render={<Button variant="outline" size="sm" />}>
-                Cancel
-              </AlertDialogClose>
+              <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
               <Button
-                size="sm"
                 disabled={actionPending}
                 onClick={() => {
                   setConfirmingMerge(false);

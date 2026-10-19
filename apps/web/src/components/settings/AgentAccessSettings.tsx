@@ -190,7 +190,7 @@ function CreateAgentTokenDialog() {
     >
       <DialogTrigger
         render={
-          <Button size="xs" variant="default">
+          <Button size="xs" variant="ghost-muted">
             <PlusIcon className="size-3" />
             Create token
           </Button>

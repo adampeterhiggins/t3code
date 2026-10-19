@@ -124,7 +124,6 @@ export function PullRequestMarkdownEditor({
         </Button>
         <Button
           size="xs"
-          variant="outline"
           disabled={!canWriteSourceControl || saving || (empty && !allowEmpty)}
           onClick={() => {
             if (

@@ -964,13 +964,13 @@ export function ResourceTelemetryDiagnostics({
               <TooltipTrigger
                 render={
                   <Button
-                    size="icon-micro"
-                    variant="ghost"
+                    size="icon-xs"
+                    variant="ghost-muted"
                     disabled={telemetry.isPending}
                     onClick={telemetry.refresh}
                     aria-label="Refresh resource telemetry"
                   >
-                    <RefreshIcon size="xs" refreshing={telemetry.isPending} />
+                    <RefreshIcon refreshing={telemetry.isPending} />
                   </Button>
                 }
               />
@@ -1213,13 +1213,13 @@ export function ResourceTelemetryDiagnostics({
           <div className="flex items-center gap-2">
             <HistoryWindowSelector selectedWindowMs={windowMs} onSelect={setWindowMs} />
             <Button
-              size="icon-micro"
-              variant="ghost"
+              size="icon-xs"
+              variant="ghost-muted"
               disabled={history.isPending}
               onClick={history.refresh}
               aria-label="Refresh resource history"
             >
-              <RefreshIcon size="xs" refreshing={history.isPending} />
+              <RefreshIcon refreshing={history.isPending} />
             </Button>
           </div>
         }

@@ -429,7 +429,8 @@ function ProjectScriptEditorForm({
                       <Button
                         type="button"
                         variant="outline"
-                        className="size-9 shrink-0"
+                        size="icon"
+                        className="shrink-0"
                         aria-label="Choose icon"
                       />
                     }
@@ -554,7 +555,7 @@ function ProjectScriptEditorForm({
           <Button
             type="button"
             variant="destructive-outline"
-            className="mr-auto"
+            className="sm:mr-auto"
             disabled={isSaving || !canEditActions}
             onClick={() => onRequestDelete(name)}
           >
