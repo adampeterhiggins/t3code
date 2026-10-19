@@ -1,4 +1,4 @@
-import type { ComposerObjectLink } from "@t3tools/shared/composerObjectLinks";
+import { commentAnchor, type ComposerObjectLink } from "@t3tools/shared/composerObjectLinks";
 import { repositoryContextRecord } from "@t3tools/client-runtime/context-repositories";
 import { gitHubIssueContextRecord } from "@t3tools/client-runtime/state/github-issues";
 import {
@@ -184,6 +184,10 @@ export function useResolveComposerObjectLink(input: {
   const getPullRequestActivity = useAtomQueryRunner(pullRequestEnvironment.activity, {
     reportFailure: false,
   });
+  const getFreshPullRequestActivity = useAtomQueryRunner(pullRequestEnvironment.activity, {
+    reportFailure: false,
+    refresh: true,
+  });
   const getPullRequestDiff = useAtomQueryRunner(pullRequestEnvironment.diff, {
     reportFailure: false,
   });
@@ -305,15 +309,28 @@ export function useResolveComposerObjectLink(input: {
             return null;
           };
           // A link to one remark (`#issuecomment-1`) attaches that remark, not the whole change.
-          const [result, activity] = await Promise.all([
+          // The shared read can predate a remark posted moments ago, which is exactly when one
+          // gets pasted, so a miss asks the host again before giving up.
+          const findComment = async () => {
+            const shared = await getPullRequestActivity(target);
+            const found =
+              shared._tag === "Success" ? findPullRequestComment(shared.value, link.url) : null;
+            if (found !== null) return found;
+            const fresh = await getFreshPullRequestActivity({
+              ...target,
+              input: { ...target.input, allowStale: false },
+            });
+            return fresh._tag === "Success" ? findPullRequestComment(fresh.value, link.url) : null;
+          };
+          const commentLink = linesAnchor === null && commentAnchor(new URL(link.url).hash) !== "";
+          const [result, linked] = await Promise.all([
             getPullRequest(target),
-            linesAnchor === null && new URL(link.url).hash.length > 1
-              ? getPullRequestActivity(target)
-              : null,
+            commentLink ? findComment() : null,
           ]);
           if (result._tag === "Failure") return null;
-          const linked =
-            activity?._tag === "Success" ? findPullRequestComment(activity.value, link.url) : null;
+          // A remark that cannot be found stays a link, like lines the diff cannot show: the whole
+          // change would drop exactly what the link pointed at.
+          if (commentLink && linked === null) return null;
           const comment =
             linesAnchor !== null
               ? await findLines(result.value)
@@ -352,6 +369,7 @@ export function useResolveComposerObjectLink(input: {
       getLinearIssue,
       getPullRequest,
       getPullRequestActivity,
+      getFreshPullRequestActivity,
       getPullRequestDiff,
       getGranolaNote,
       getNotionPage,
