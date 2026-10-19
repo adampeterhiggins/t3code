@@ -77,6 +77,8 @@ import {
   type EnvironmentId,
   type MessageId,
   type ModelSelection,
+  type OrchestrationV2ProjectedTurnItem,
+  type OrchestrationV2ThreadProjection,
   type ProjectScript,
   type PreviewAnnotationPayload,
   ProviderInstanceId,
@@ -366,6 +368,7 @@ import {
   composerDraftHasUserContent,
   type ComposerFileAttachment,
   type ComposerImageAttachment,
+  type ComposerThreadTarget,
   type DraftThreadEnvMode,
   useComposerDraftStore,
   DraftId,
@@ -968,6 +971,43 @@ interface TerminalLaunchContext {
   worktreePath: string | null;
 }
 
+/**
+ * The thread's turn items plus the divider for a model the composer has picked but not sent.
+ * Derived in a hook of its own so the compiler memoizes the list: useIncrementalTimelineEntries
+ * sets state whenever an input changes identity, and inside ChatView the compiler leaves the
+ * divider uncached, so a list rebuilt there every render loops it.
+ */
+function usePendingModelChangeTimeline(input: {
+  readonly draftTarget: ComposerThreadTarget;
+  readonly projection: OrchestrationV2ThreadProjection | null;
+  readonly visibleTurnItems: ReadonlyArray<OrchestrationV2ProjectedTurnItem>;
+  readonly providers: ReadonlyArray<ServerProvider>;
+}) {
+  const { draftTarget, projection, visibleTurnItems, providers } = input;
+  const draft = useComposerDraftStore((store) => {
+    const composerDraft = store.getComposerDraft(draftTarget);
+    const instanceId = composerDraft?.activeProvider ?? null;
+    if (!composerDraft || instanceId === null) return null;
+    return composerDraft.modelSelectionByProvider[instanceId] ?? null;
+  });
+  const pendingModelChange =
+    projection === null
+      ? null
+      : pendingModelChangeProjection({
+          threadId: projection.thread.id,
+          draft,
+          runs: projection.runs,
+          providers,
+          now: projection.updatedAt,
+        });
+  return {
+    draft,
+    pendingModelChange,
+    visibleTurnItems:
+      pendingModelChange === null ? visibleTurnItems : [...visibleTurnItems, pendingModelChange],
+  };
+}
+
 function useLocalDispatchState(input: {
   activeThread: Thread | undefined;
   activeLatestRun: Thread["latestRun"] | null;
@@ -1340,12 +1380,6 @@ export default function ChatView(props: ChatViewProps) {
   const composerActiveProvider = useComposerDraftStore(
     (store) => store.getComposerDraft(composerDraftTarget)?.activeProvider ?? null,
   );
-  const composerDraftModelSelection = useComposerDraftStore((store) => {
-    const draft = store.getComposerDraft(composerDraftTarget);
-    const instanceId = draft?.activeProvider ?? null;
-    if (draft === undefined || draft === null || instanceId === null) return null;
-    return draft.modelSelectionByProvider[instanceId] ?? null;
-  });
   const composerHasAttachments = useComposerDraftStore((store) => {
     const draft = store.getComposerDraft(composerDraftTarget);
     return (draft?.images.length ?? 0) > 0 || (draft?.files.length ?? 0) > 0;
@@ -2978,21 +3012,18 @@ export default function ChatView(props: ChatViewProps) {
           { ...codexFeedbackMessage(submission, "assistant"), runId: null },
         ],
   );
-  const pendingModelChange =
-    serverProjection === null
-      ? null
-      : pendingModelChangeProjection({
-          threadId: serverProjection.thread.id,
-          draft: composerDraftModelSelection,
-          runs: serverProjection.runs,
-          providers: providerStatuses,
-          now: DateTime.makeUnsafe(new Date()),
-        });
+  const {
+    draft: composerDraftModelSelection,
+    pendingModelChange,
+    visibleTurnItems: timelineVisibleTurnItems,
+  } = usePendingModelChangeTimeline({
+    draftTarget: composerDraftTarget,
+    projection: serverProjection,
+    visibleTurnItems: serverVisibleTurnItems,
+    providers: providerStatuses,
+  });
   const serverTimelineEntries = useIncrementalTimelineEntries(activeThreadKey, {
-    visibleTurnItems:
-      pendingModelChange === null
-        ? serverVisibleTurnItems
-        : [...serverVisibleTurnItems, pendingModelChange],
+    visibleTurnItems: timelineVisibleTurnItems,
     optimisticMessages: optimisticUserMessages,
     anchoredMessages: anchoredTimelineMessages,
     attachmentUrlById: timelineAttachmentUrlById,
