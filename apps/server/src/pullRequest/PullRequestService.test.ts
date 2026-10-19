@@ -3285,6 +3285,38 @@ it.effect("passes a reaction through with its subject id on a host that has them
   }),
 );
 
+it.effect("rereads shared activity for a strict read", () =>
+  Effect.gen(function* () {
+    let activityCalls = 0;
+    const reference = { projectId: "p1" as ProjectId, repository: "acme/web", number: 1 };
+    const service = yield* makeService({
+      projects: [project({ id: "p1", title: "web", workspaceRoot: "/a", repository: "acme/web" })],
+      providers: [
+        fakeProvider(SourceControlProviderKind.make("github"), {
+          getChangeRequestActivity: () => {
+            activityCalls += 1;
+            return Effect.succeed({
+              comments: [],
+              commentCount: activityCalls,
+              commentsTruncated: false,
+              reviewThreads: [],
+              commits: [],
+            });
+          },
+        }),
+      ],
+    });
+
+    yield* service.activity(reference);
+    assert.strictEqual((yield* service.activity(reference)).commentCount, 1);
+    assert.strictEqual(
+      (yield* service.activity({ ...reference, allowStale: false })).commentCount,
+      2,
+    );
+    assert.strictEqual((yield* service.activity(reference)).commentCount, 2);
+  }),
+);
+
 it.effect("invalidates the cached activity after reacting, like the other mutations", () =>
   Effect.gen(function* () {
     let activityCalls = 0;

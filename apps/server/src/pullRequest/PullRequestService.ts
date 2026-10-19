@@ -2981,7 +2981,11 @@ export const make = Effect.gen(function* () {
   };
   const activity: PullRequestService["Service"]["activity"] = (input) => {
     const key = refCacheKey(input);
-    return Cache.get(activityCache, key);
+    // A strict read replaces the shared answer, so a remark posted inside the cache window can be
+    // found by the reader asking for it.
+    return input.allowStale === false
+      ? Cache.invalidate(activityCache, key).pipe(Effect.andThen(Cache.get(activityCache, key)))
+      : Cache.get(activityCache, key);
   };
 
   const diffCache = yield* Cache.makeWith(
