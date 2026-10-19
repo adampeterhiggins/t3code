@@ -14,8 +14,8 @@ import { cn } from "../../lib/utils";
 import { formatShortTimestamp } from "../../timestampFormat";
 import { PullRequestStateGlyph } from "../pullRequest/pullRequestPresentation";
 import { Badge } from "../ui/badge";
-import { Button } from "../ui/button";
 import { scheduleLabel } from "../settings/ScheduledTasksSettings";
+import { PreviewCornerAction } from "./PreviewCornerAction";
 import ChatMarkdown, { ChatMarkdownAssetImage } from "../ChatMarkdown";
 import { resolveExternalWebLinkHref } from "./externalLinkContextMenu";
 import { HighlightedSnippet } from "./HighlightedSnippet";
@@ -72,18 +72,17 @@ function ExternalLink({ href, children }: { readonly href: string; readonly chil
   );
 }
 
-function OpenThreadButton(props: {
+function OpenThreadLink(props: {
   readonly threadId: string | null;
   readonly onOpenThread: (threadId: ThreadId) => void;
+  readonly hidden?: boolean | undefined;
 }) {
   const { threadId, onOpenThread } = props;
-  if (!threadId) return null;
+  if (props.hidden || !threadId) return null;
   return (
-    <div>
-      <Button size="xs" variant="outline" onClick={() => onOpenThread(ThreadId.make(threadId))}>
-        Open thread
-      </Button>
-    </div>
+    <PreviewCornerAction onClick={() => onOpenThread(ThreadId.make(threadId))}>
+      Open thread
+    </PreviewCornerAction>
   );
 }
 
@@ -353,6 +352,7 @@ function PreviewBody(props: {
   readonly threadId: ThreadId;
   readonly cwd: string | undefined;
   readonly onOpenThread: (threadId: ThreadId) => void;
+  readonly hideOpenThread?: boolean | undefined;
   readonly onImageExpand?: ((preview: ExpandedImagePreview) => void) | undefined;
 }) {
   const { preview } = props;
@@ -363,6 +363,11 @@ function PreviewBody(props: {
           <div className="flex items-start gap-2">
             <span className="min-w-0 flex-1 font-medium text-foreground">{preview.title}</span>
             <StatusBadge status={preview.status} />
+            <OpenThreadLink
+              threadId={preview.threadId}
+              onOpenThread={props.onOpenThread}
+              hidden={props.hideOpenThread}
+            />
           </div>
           {preview.model || preview.branch ? (
             <p className="text-muted-foreground">
@@ -392,7 +397,6 @@ function PreviewBody(props: {
               </dl>
             </div>
           ) : null}
-          <OpenThreadButton threadId={preview.threadId} onOpenThread={props.onOpenThread} />
         </>
       );
     case "task":
@@ -403,12 +407,16 @@ function PreviewBody(props: {
               {preview.title ?? "Delegated task"}
             </span>
             <StatusBadge status={preview.status} />
+            <OpenThreadLink
+              threadId={preview.threadId}
+              onOpenThread={props.onOpenThread}
+              hidden={props.hideOpenThread}
+            />
           </div>
           {preview.model ? <p className="text-muted-foreground">{preview.model}</p> : null}
           {preview.summary ? (
             <p className="line-clamp-4 break-words text-foreground/85">{preview.summary}</p>
           ) : null}
-          <OpenThreadButton threadId={preview.threadId} onOpenThread={props.onOpenThread} />
         </>
       );
     case "pull-requests":
@@ -560,20 +568,28 @@ function PreviewBody(props: {
     case "agent-message":
       return (
         <>
-          {preview.recipient ? (
-            <div className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
-              To <Chip>{preview.recipient}</Chip>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              {preview.recipient ? (
+                <div className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+                  To <Chip>{preview.recipient}</Chip>
+                </div>
+              ) : null}
+              {preview.summary ? (
+                <p className="font-medium text-foreground">{preview.summary}</p>
+              ) : null}
             </div>
-          ) : null}
-          {preview.summary ? (
-            <p className="font-medium text-foreground">{preview.summary}</p>
-          ) : null}
+            <OpenThreadLink
+              threadId={preview.threadId}
+              onOpenThread={props.onOpenThread}
+              hidden={props.hideOpenThread}
+            />
+          </div>
           {preview.message ? (
             <div className="max-h-60 overflow-auto">
               <ChatMarkdown text={preview.message} cwd={props.cwd} lineBreaks />
             </div>
           ) : null}
-          <OpenThreadButton threadId={preview.threadId} onOpenThread={props.onOpenThread} />
         </>
       );
     case "skill":
@@ -767,6 +783,7 @@ export function ToolPreviewCard(props: {
   readonly threadId: ThreadId;
   readonly cwd: string | undefined;
   readonly onOpenThread: (threadId: ThreadId) => void;
+  readonly hideOpenThread?: boolean | undefined;
   readonly onImageExpand?: ((preview: ExpandedImagePreview) => void) | undefined;
   readonly images: ReactNode;
   /** The generic body, mounted only once asked for. */

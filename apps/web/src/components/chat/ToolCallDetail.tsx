@@ -1,5 +1,7 @@
+import { ThreadId } from "@t3tools/contracts";
 import { claudeSkillInvocation } from "@t3tools/shared/toolActivity";
 import { turnItemNeedsDetailFetch } from "@t3tools/client-runtime/work-log/item-detail";
+import { resolveToolPreview } from "@t3tools/client-runtime/work-log/tool-preview";
 import { workEntryReadOutput } from "./MessagesTimeline.logic";
 import type { ReactNode, ComponentProps } from "react";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
@@ -23,6 +25,7 @@ import { formatSecondsTimestamp } from "../../timestampFormat";
 import { ToolCallBody } from "../ToolCallBody";
 import { ToolPathText } from "./ToolPathText";
 import { CommandToolPreview } from "./CommandToolPreview";
+import { PreviewCornerAction } from "./PreviewCornerAction";
 import { V2ItemInspector, FetchedToolOutput } from "./V2ItemInspector";
 import { toolGroupAction, workEntryReadRawPaths } from "./MessagesTimeline.logic";
 
@@ -116,6 +119,10 @@ type WorkEntryDetailProps = ToolCallContext & {
   plainOutput: string | null | undefined;
   /** The plain output still has output the timeline withheld. */
   plainOutputFetches: boolean;
+  /** The hover card header already shows the inspector's corner action. */
+  hidePreviewActions?: boolean;
+  /** The hover card header already shows Open thread. */
+  hideOpenThread?: boolean | undefined;
 };
 
 /** An open tool row's details: the item inspector for projected items, otherwise plain text. */
@@ -143,6 +150,8 @@ function WorkEntryDetailBody(
         onOpenTurnDiff={ctx.onOpenTurnDiff}
         {...(ctx.onRollbackCheckpoint ? { onRollbackCheckpoint: ctx.onRollbackCheckpoint } : {})}
         onImageExpand={ctx.onImageExpand}
+        hidePreviewActions={ctx.hidePreviewActions}
+        hideOpenThread={ctx.hideOpenThread}
       />
     );
   }
@@ -214,6 +223,37 @@ function ToolCallPreviewContent(
       ? null
       : heading.text;
   const textBody = readPreview ? readPreview.body : rawTextBody;
+  const item = workEntry.projectedItem?.item;
+  const toolPreview = item ? resolveToolPreview(item) : null;
+  const openThreadId =
+    toolPreview?.kind === "thread" ||
+    toolPreview?.kind === "task" ||
+    toolPreview?.kind === "agent-message"
+      ? toolPreview.threadId
+      : null;
+  const headerAction = heading.command
+    ? null
+    : item?.type === "file_change" && item.runId !== null
+      ? {
+          label: "Open diff",
+          onClick: () => props.onOpenTurnDiff(item.runId!, item.fileName),
+        }
+      : item?.type === "fork"
+        ? {
+            label: "Open fork",
+            onClick: () => props.onOpenThread(item.targetThreadId),
+          }
+        : item?.type === "subagent" && item.childThreadId !== null
+          ? {
+              label: "Open subagent thread",
+              onClick: () => props.onOpenThread(item.childThreadId!),
+            }
+          : openThreadId
+            ? {
+                label: "Open thread",
+                onClick: () => props.onOpenThread(ThreadId.make(openThreadId)),
+              }
+            : null;
   if (heading.command) {
     const item = workEntry.projectedItem?.item;
     return (
@@ -235,16 +275,23 @@ function ToolCallPreviewContent(
   }
   return (
     <div className="flex max-h-[60vh] flex-col gap-1.5 overflow-auto p-3">
-      <div className="flex items-start gap-1.5 text-xs text-secondary-label">
-        {props.icon}
-        <span className="min-w-0 break-all">
-          <ToolPathText
-            targets={toolPathTargets(workEntry)}
-            text={heading.title}
-            environmentId={activeThreadEnvironmentId}
-            workspaceRoot={workspaceRoot}
-          />
-        </span>
+      <div className="flex items-start justify-between gap-3 text-xs">
+        <div className="flex min-w-0 items-start gap-1.5 text-secondary-label">
+          {props.icon}
+          <span className="min-w-0 break-all">
+            <ToolPathText
+              targets={toolPathTargets(workEntry)}
+              text={heading.title}
+              environmentId={activeThreadEnvironmentId}
+              workspaceRoot={workspaceRoot}
+            />
+          </span>
+        </div>
+        {headerAction ? (
+          <PreviewCornerAction onClick={headerAction.onClick}>
+            {headerAction.label}
+          </PreviewCornerAction>
+        ) : null}
       </div>
       {headingText ? (
         <p className="text-xs break-words whitespace-pre-wrap text-foreground/85 select-text">
@@ -260,7 +307,14 @@ function ToolCallPreviewContent(
           )}
         </p>
       ) : null}
-      <WorkEntryDetailBody {...props} textBody={textBody} hideCommand highlightSyntax />
+      <WorkEntryDetailBody
+        {...props}
+        textBody={textBody}
+        hideCommand
+        highlightSyntax
+        hidePreviewActions={headerAction !== null}
+        hideOpenThread={headerAction?.label === "Open thread"}
+      />
       <p className="font-mono text-3xs text-muted-foreground select-text">
         {[
           formatSecondsTimestamp(workEntry.createdAt, timestampFormat),

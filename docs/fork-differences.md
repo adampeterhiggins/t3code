@@ -381,6 +381,11 @@ heading and the workspace-relative command or full label. Command hover cards sh
 text and status, with output behind **View output**; opening that disclosure loads the output.
 The exit code and time stay visible beside the disclosure, including failed exits. Other tool
 cards show the same details the row expands to, with time and status in a compact footer.
+On web and desktop, preview actions such as **Open thread**, **Open diff**, and **Go to source**
+use muted text in the card’s corner, matching external links. Hover cards show each action once
+in the header; expanded tool details keep their own action.
+See [PreviewCornerAction.tsx](../apps/web/src/components/chat/PreviewCornerAction.tsx) and
+[AssistantCitationChip.tsx](../apps/web/src/components/chat/AssistantCitationChip.tsx).
 Syntax highlighting for tool arguments is limited to hover previews; expanded chat rows show
 plain text. Thoughts in the main chat and agent transcript preview the same way: the card renders
 the whole thought as markdown and follows it while it streams

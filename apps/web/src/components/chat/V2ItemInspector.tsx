@@ -19,14 +19,14 @@ import {
 import { resolveToolPreview } from "@t3tools/client-runtime/work-log/tool-preview";
 import { formatDiffCount } from "@t3tools/client-runtime/diff-count";
 import { isJavaScriptReplTool } from "@t3tools/shared/toolActivity";
-import { ExternalLinkIcon, GitBranchIcon, RotateCcwIcon } from "lucide-react";
+import { ExternalLinkIcon } from "lucide-react";
 import { memo, type ReactNode } from "react";
 
 import { cn } from "../../lib/utils";
 import { useTurnItemDetail } from "../../state/queries";
 import { useV2ItemSupport } from "../../state/v2ItemSupport";
-import { Button } from "../ui/button";
 import ChatMarkdown, { ChatMarkdownAssetImage } from "../ChatMarkdown";
+import { PreviewCornerAction } from "./PreviewCornerAction";
 import { ToolCallBody as ToolPreviewBody } from "../ToolCallBody";
 import { CommandOutputPanel, useCommandOutputStreaming } from "./CommandOutputPanel";
 import { resolveExternalWebLinkHref } from "./externalLinkContextMenu";
@@ -55,6 +55,13 @@ interface V2ItemInspectorProps {
     readonly scopeId: string;
   }) => void;
   readonly onImageExpand?: ((preview: ExpandedImagePreview) => void) | undefined;
+  /**
+   * The hover card already shows Open diff, Open fork, or Open subagent thread
+   * in its header corner.
+   */
+  readonly hidePreviewActions?: boolean | undefined;
+  /** The hover card header already shows Open thread. */
+  readonly hideOpenThread?: boolean | undefined;
 }
 
 const monoClassName =
@@ -332,29 +339,31 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
 
       {item.type === "file_change" ? (
         <div className="space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-muted-foreground">
-              <ToolPathText
-                text={item.fileName}
-                environmentId={props.environmentId}
-                workspaceRoot={props.workspaceRoot}
-                pathOnly
-              />
-            </span>
-            {item.additions !== undefined || item.deletions !== undefined ? (
-              <span>
-                <span className="text-diff-addition">+{formatDiffCount(item.additions ?? 0)}</span>{" "}
-                <span className="text-diff-deletion">-{formatDiffCount(item.deletions ?? 0)}</span>
+          <div className="flex items-baseline justify-between gap-3">
+            <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+              <span className="font-mono text-muted-foreground">
+                <ToolPathText
+                  text={item.fileName}
+                  environmentId={props.environmentId}
+                  workspaceRoot={props.workspaceRoot}
+                  pathOnly
+                />
               </span>
-            ) : null}
-            {item.runId !== null ? (
-              <Button
-                size="xs"
-                variant="outline"
-                onClick={() => props.onOpenTurnDiff(item.runId!, item.fileName)}
-              >
+              {item.additions !== undefined || item.deletions !== undefined ? (
+                <span>
+                  <span className="text-diff-addition">
+                    +{formatDiffCount(item.additions ?? 0)}
+                  </span>{" "}
+                  <span className="text-diff-deletion">
+                    -{formatDiffCount(item.deletions ?? 0)}
+                  </span>
+                </span>
+              ) : null}
+            </div>
+            {!props.hidePreviewActions && item.runId !== null ? (
+              <PreviewCornerAction onClick={() => props.onOpenTurnDiff(item.runId!, item.fileName)}>
                 Open diff
-              </Button>
+              </PreviewCornerAction>
             ) : null}
           </div>
           {item.status === "failed" && item.diffStr?.trim() ? (
@@ -453,6 +462,7 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
             threadId={props.projectedItem.sourceThreadId}
             cwd={props.cwd}
             onOpenThread={props.onOpenThread}
+            hideOpenThread={props.hideOpenThread}
             images={<ToolOutputImages {...outputState} onImageExpand={props.onImageExpand} />}
             raw={
               <ToolCallBody
@@ -494,14 +504,12 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
       ) : null}
 
       {item.type === "checkpoint" ? (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-baseline justify-between gap-3">
           <span className="text-muted-foreground">
             {support.checkpoint?.status ?? item.status} · {item.files.length} files
           </span>
           {props.onRollbackCheckpoint && support.checkpoint?.status === "ready" ? (
-            <Button
-              size="xs"
-              variant="outline"
+            <PreviewCornerAction
               onClick={() =>
                 props.onRollbackCheckpoint?.({
                   checkpointId: item.checkpointId,
@@ -509,24 +517,26 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
                 })
               }
             >
-              <RotateCcwIcon className="size-3" />
               Roll back
-            </Button>
+            </PreviewCornerAction>
           ) : null}
         </div>
       ) : null}
 
-      {item.type === "fork" ? (
-        <Button size="xs" variant="outline" onClick={() => props.onOpenThread(item.targetThreadId)}>
-          <GitBranchIcon className="size-3" />
-          Open fork
-        </Button>
+      {item.type === "fork" && !props.hidePreviewActions ? (
+        <div className="flex justify-end">
+          <PreviewCornerAction onClick={() => props.onOpenThread(item.targetThreadId)}>
+            Open fork
+          </PreviewCornerAction>
+        </div>
       ) : null}
 
-      {item.type === "subagent" && item.childThreadId !== null ? (
-        <Button size="xs" variant="outline" onClick={() => props.onOpenThread(item.childThreadId!)}>
-          Open subagent thread
-        </Button>
+      {item.type === "subagent" && item.childThreadId !== null && !props.hidePreviewActions ? (
+        <div className="flex justify-end">
+          <PreviewCornerAction onClick={() => props.onOpenThread(item.childThreadId!)}>
+            Open subagent thread
+          </PreviewCornerAction>
+        </div>
       ) : null}
 
       {item.type === "handoff" ? (
