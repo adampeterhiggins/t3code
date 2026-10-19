@@ -41,7 +41,7 @@ import ChatMarkdown from "./ChatMarkdown";
 import { PierreEntryIcon } from "./chat/PierreEntryIcon";
 import { middleTruncateAttachmentName } from "./composerInlineChip";
 import { PullRequestContextDetails } from "./PullRequestContextDetails";
-import { Button } from "./ui/button";
+import { PreviewCornerAction } from "./chat/PreviewCornerAction";
 import { ContextChip, ContextChipLabel, type ContextChipKind } from "./ContextChip";
 import { Popover, PopoverPopup, PopoverTitle, PopoverTrigger } from "./ui/popover";
 import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "./ui/preview-card";
@@ -611,6 +611,16 @@ export function CheckoutDetails(props: {
   const { record } = props;
   return (
     <div className="flex w-72 flex-col gap-2 text-xs">
+      {props.onOpen || props.onLink ? (
+        <div className="flex justify-end gap-3">
+          {props.onOpen ? (
+            <PreviewCornerAction onClick={props.onOpen}>Open in editor</PreviewCornerAction>
+          ) : null}
+          {props.onLink ? (
+            <PreviewCornerAction onClick={props.onLink}>Link to thread</PreviewCornerAction>
+          ) : null}
+        </div>
+      ) : null}
       <dl className="grid grid-cols-[4.5rem_1fr] gap-x-2 gap-y-1">
         <dt className="text-muted-foreground">Path</dt>
         <dd className="truncate font-mono">{record.path}</dd>
@@ -627,20 +637,6 @@ export function CheckoutDetails(props: {
         <dt className="text-muted-foreground">Agent</dt>
         <dd>{record.access === "read" ? "Read access for this turn" : "Path shared only"}</dd>
       </dl>
-      {props.onOpen || props.onLink ? (
-        <div className="flex gap-2">
-          {props.onOpen ? (
-            <Button type="button" size="xs" variant="outline" onClick={props.onOpen}>
-              Open in editor
-            </Button>
-          ) : null}
-          {props.onLink ? (
-            <Button type="button" size="xs" variant="outline" onClick={props.onLink}>
-              Link to thread
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
     </div>
   );
 }
