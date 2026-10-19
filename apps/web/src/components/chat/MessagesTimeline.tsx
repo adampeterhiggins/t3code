@@ -5666,7 +5666,8 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
           </span>
         }
         trailing={
-          <>
+          // Matches the timestamp's size and centres on the first label line, since wrapLabel top-aligns the row.
+          <span className="flex min-h-6 shrink-0 items-center gap-2 text-xs">
             {retryRunId !== null && onRetryWorkspacePreparation ? (
               <InlineButton onClick={() => onRetryWorkspacePreparation(retryRunId)}>
                 Retry
@@ -5688,7 +5689,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
               timestampFormat={timestampFormat}
               alwaysVisible
             />
-          </>
+          </span>
         }
       >
         {!warning ? (
