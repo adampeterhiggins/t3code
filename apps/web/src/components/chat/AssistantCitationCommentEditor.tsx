@@ -1,7 +1,23 @@
 import { ASSISTANT_CITATION_MAX_COMMENT_LENGTH, type AssistantCitation } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
+import { ChevronDownIcon } from "lucide-react";
 import { useState, type Ref } from "react";
 
+import { useLocalStorage } from "~/hooks/useLocalStorage";
+
 import { Button } from "../ui/button";
+import { Group, GroupSeparator } from "../ui/group";
+import { Menu, MenuItem, MenuItemLabel, MenuPopup, MenuTrigger } from "../ui/menu";
+import { composerFloatingLayerProps } from "./composerEventScope";
+
+const SubmitChoiceSchema = Schema.Literals(["send", "save"]);
+type SubmitChoice = typeof SubmitChoiceSchema.Type;
+const SUBMIT_CHOICE_STORAGE_KEY = "t3code:citation-comment-submit:v1";
+
+const SUBMIT_CHOICES = {
+  send: { label: "Send", description: "Save and send the message now" },
+  save: { label: "Save", description: "Keep writing in the composer" },
+} as const satisfies Record<SubmitChoice, { label: string; description: string }>;
 
 export function AssistantCitationCommentEditor({
   citation,
@@ -88,15 +104,71 @@ export function AssistantCitationCommentEditor({
         >
           Cancel
         </Button>
-        <Button
-          size="xs"
-          disabled={commentTooLong}
-          onPointerDown={(event) => event.preventDefault()}
-          onClick={submit}
-        >
-          {commentTooLong ? "Shorten comment" : "Save"}
-        </Button>
+        {onSubmitAndSend ? (
+          <SubmitChoiceButton
+            disabled={commentTooLong}
+            onRun={(choice) => (choice === "send" ? submitAndSend() : submit())}
+          />
+        ) : (
+          <Button
+            size="xs"
+            disabled={commentTooLong}
+            onPointerDown={(event) => event.preventDefault()}
+            onClick={submit}
+          >
+            {commentTooLong ? "Shorten comment" : "Save"}
+          </Button>
+        )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Mirrors the pull request comment form: the last way the reader finished a comment, with the
+ * other a click away. Picking from the menu does it and makes it the default next time.
+ */
+function SubmitChoiceButton(props: { disabled: boolean; onRun: (choice: SubmitChoice) => void }) {
+  const [choice, setChoice] = useLocalStorage(
+    SUBMIT_CHOICE_STORAGE_KEY,
+    "send",
+    SubmitChoiceSchema,
+  );
+  const run = (next: SubmitChoice) => {
+    setChoice(next);
+    props.onRun(next);
+  };
+  return (
+    <Group>
+      <Button
+        size="xs"
+        disabled={props.disabled}
+        onPointerDown={(event) => event.preventDefault()}
+        onClick={() => run(choice)}
+      >
+        {props.disabled ? "Shorten comment" : SUBMIT_CHOICES[choice].label}
+      </Button>
+      <GroupSeparator />
+      <Menu>
+        <MenuTrigger
+          disabled={props.disabled}
+          render={<Button size="icon-xs" aria-label="More ways to finish the comment" />}
+        >
+          <ChevronDownIcon aria-hidden="true" />
+        </MenuTrigger>
+        <MenuPopup {...composerFloatingLayerProps} align="end">
+          {(["send", "save"] as const).map((option) => (
+            <MenuItem key={option} onClick={() => run(option)}>
+              <span className="flex min-w-0 flex-col py-0.5">
+                <MenuItemLabel>{SUBMIT_CHOICES[option].label}</MenuItemLabel>
+                <span className="truncate text-xs text-muted-foreground">
+                  {SUBMIT_CHOICES[option].description}
+                </span>
+              </span>
+            </MenuItem>
+          ))}
+        </MenuPopup>
+      </Menu>
+    </Group>
   );
 }
