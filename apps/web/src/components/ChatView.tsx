@@ -117,7 +117,10 @@ import {
   presentStopChoice,
 } from "@t3tools/client-runtime/state/thread-execution";
 import { threadSupportsProviderHandoff } from "@t3tools/client-runtime/state/thread-workflows";
-import { resolvePendingHandoff } from "@t3tools/client-runtime/handoff";
+import {
+  pendingHandoffCoveredByModelChange,
+  resolvePendingHandoff,
+} from "@t3tools/client-runtime/handoff";
 import { HandoffRow } from "./chat/V2LifecycleRow";
 import {
   codexFeedbackMessage,
@@ -7571,15 +7574,31 @@ export default function ChatView(props: ChatViewProps) {
       item.type === "user_message" &&
       (item.text.trim().toLowerCase() !== "/compact" || item.attachments.length > 0),
   );
-  const pendingHandoff = useMemo(
-    () =>
-      resolvePendingHandoff(
-        serverProjection,
-        composerDraftModelSelection ?? activeThread?.modelSelection,
-        providerStatuses,
-      ),
-    [serverProjection, composerDraftModelSelection, activeThread?.modelSelection, providerStatuses],
-  );
+  const pendingHandoff = useMemo(() => {
+    const selection = composerDraftModelSelection ?? activeThread?.modelSelection;
+    const handoff = resolvePendingHandoff(serverProjection, selection, providerStatuses);
+    if (handoff === null || serverProjection === null) return handoff;
+    const modelChange = pendingModelChangeProjection({
+      threadId: serverProjection.thread.id,
+      draft: composerDraftModelSelection,
+      runs: serverProjection.runs,
+      providers: providerStatuses,
+      now: DateTime.makeUnsafe(new Date()),
+    });
+    // The model-change divider already says this handoff is pending.
+    if (
+      modelChange?.item.type === "model_change" &&
+      pendingHandoffCoveredByModelChange(handoff, modelChange.item)
+    ) {
+      return null;
+    }
+    return handoff;
+  }, [
+    serverProjection,
+    composerDraftModelSelection,
+    activeThread?.modelSelection,
+    providerStatuses,
+  ]);
   const compactThreadUnavailable =
     !canOperateThread ||
     !activeThread ||

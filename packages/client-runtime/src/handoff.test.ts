@@ -6,6 +6,7 @@ import {
 } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 import {
+  pendingHandoffCoveredByModelChange,
   resolveHandoffEndpoints,
   resolvePendingHandoff,
   type HandoffTimelineRun,
@@ -110,6 +111,22 @@ describe("pending context handoff", () => {
       resolvePendingHandoff(projection, { instanceId: from, model: "other" }, providers)?.to.model,
     ).toBe("other");
   });
+  it("treats the pending model-change divider as the handoff preview", () => {
+    const handoff = resolvePendingHandoff(projection, { instanceId: to, model: "first" }, []);
+    expect(
+      pendingHandoffCoveredByModelChange(handoff!, {
+        from: { instanceId: from, model: "source" },
+        to: { instanceId: to, model: "first" },
+      }),
+    ).toBe(true);
+    expect(
+      pendingHandoffCoveredByModelChange(handoff!, {
+        from: { instanceId: from, model: "source" },
+        to: { instanceId: to, model: "other" },
+      }),
+    ).toBe(false);
+  });
+
   it("resumes compatible account overlays without showing a handoff", () => {
     const providers = [from, to].map((instanceId) => ({
       instanceId,

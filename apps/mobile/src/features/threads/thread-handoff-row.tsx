@@ -6,6 +6,7 @@ import { resolveProviderInstanceDisplayName } from "@t3tools/client-runtime/stat
 import {
   forkAccountChangeLabel,
   forkSourceInstanceId,
+  formatEndpointTraits,
   formatModelSelectionTraits,
   handoffInstancesDiffer,
   modelOptionDescriptors,
@@ -101,8 +102,10 @@ export function ThreadHandoffDivider(props: {
             className="max-w-full flex-row items-center"
           >
             <HandoffEndpoint
-              {...endpoint}
+              instanceId={endpoint.instanceId}
+              model={endpoint.model}
               providers={providers}
+              traits={formatEndpointTraits(providers, endpoint)}
               account={showAccount ? providerAccountLabel(providers, endpoint.instanceId) : null}
             />
             {index < endpoints.from.length - 1 ? (
@@ -116,8 +119,10 @@ export function ThreadHandoffDivider(props: {
           <SymbolView name="arrow.right" size={12} tintColor={props.iconColor} />
         ) : null}
         <HandoffEndpoint
-          {...endpoints.to}
+          instanceId={endpoints.to.instanceId}
+          model={endpoints.to.model}
           providers={config?.providers ?? []}
+          traits={formatEndpointTraits(providers, endpoints.to)}
           account={showAccount ? providerAccountLabel(providers, endpoints.to.instanceId) : null}
         />
       </View>
@@ -142,7 +147,7 @@ export function ThreadModelChangeRow(props: {
   const showAccount = item.from.instanceId !== item.to.instanceId;
   return (
     <ThreadContextDivider
-      label="Model changed"
+      label={item.title ?? "Model changed"}
       icon="arrow.left.arrow.right"
       iconColor={props.iconColor}
     >
