@@ -1387,7 +1387,14 @@ create a trusted self-signed certificate once, build signed mock-feed payloads, 
 install the first build into `/Applications`. `T3CODE_DESKTOP_IDENTITY` makes
 `scripts/build-desktop-artifact.ts` sign with any keychain identity, because the updater refuses to
 install ad hoc–signed builds. Run `make` targets from the repository root, starting with
-`make update-cert`.
+`make update-cert`. `make update-next` takes the upstream version from
+[`apps/server/package.json`](../apps/server/package.json) and builds
+`<version>-fork.<YYYYMMDD>.<n>`, using the local date. It increments `n` from the current feed
+for another build of the same base and date, and starts at 1 when either changes. An older
+`0.0.x` feed migrates to the new upstream base; a version that would downgrade the feed is refused.
+The install and status targets follow the desktop package's product name, with `APP_NAME` and
+`APP_PATH` overrides for another installation. These targets build and serve locally; publishing a
+GitHub release remains a separate step.
 
 ## Commands and file paths shown relative to the workspace
 
