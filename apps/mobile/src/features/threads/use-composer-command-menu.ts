@@ -61,7 +61,7 @@ import {
   resolveProviderSkillsForCwd,
   resolveProviderSlashCommandsForCwd,
 } from "@t3tools/client-runtime/providerSkills";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { ComposerEditorSelection } from "../../components/ComposerEditor";
 import { serverEnvironment } from "../../state/server";
@@ -234,9 +234,9 @@ export function useComposerCommandMenu({
 }) {
   const [selection, setSelection] = useState(() => composerSelectionAtEnd(draftMessage));
   const previousOwnerKeyRef = useRef(ownerKey);
-  const onSelectionChange = useCallback((nextSelection: ComposerEditorSelection) => {
+  const onSelectionChange = (nextSelection: ComposerEditorSelection) => {
     setSelection(nextSelection);
-  }, []);
+  };
   useEffect(() => {
     const inserted = ownerKey ? readComposerDraftSelection(ownerKey, draftMessage) : null;
     if (inserted) {
@@ -261,11 +261,9 @@ export function useComposerCommandMenu({
     setSelection(composerSelectionAtEnd(draftMessage));
   }, [draftMessage, ownerKey]);
 
-  const skills = useMemo(
-    () =>
-      selectedProviderStatus ? resolveProviderSkillsForCwd(selectedProviderStatus, projectCwd) : [],
-    [projectCwd, selectedProviderStatus],
-  );
+  const skills = selectedProviderStatus
+    ? resolveProviderSkillsForCwd(selectedProviderStatus, projectCwd)
+    : [];
   const refreshProviders = useAtomCommand(serverEnvironment.refreshProviders, {
     reportFailure: false,
   });
@@ -362,12 +360,12 @@ export function useComposerCommandMenu({
     workspaceRefreshRetry,
   ]);
 
-  const trigger = useMemo(() => {
+  const trigger = (() => {
     if (!enabled || selection.start !== selection.end) {
       return null;
     }
     return detectComposerTrigger(draftMessage, selection.end);
-  }, [draftMessage, enabled, selection]);
+  })();
   const pathSearch = useComposerPathSearch({
     environmentId,
     cwd: trigger?.kind === "path" ? projectCwd : null,
@@ -376,7 +374,7 @@ export function useComposerCommandMenu({
   // Agents the current thread started, with handles deduped against its whole fleet. Nested
   // agents have no record in this projection to build a chip from, so they are left out.
   const pathTriggerOpen = trigger?.kind === "path";
-  const agentFleet = useMemo(() => {
+  const agentFleet = (() => {
     if (!pathTriggerOpen || environmentId === null || currentThreadId === null) return [];
     return deriveThreadAgentFleet({
       threadId: currentThreadId,
@@ -385,31 +383,28 @@ export function useComposerCommandMenu({
         .filter((shell) => shell.environmentId === environmentId)
         .map((shell) => shell.source),
     }).filter((entry) => entry.subagent !== null);
-  }, [currentThreadId, environmentId, pathTriggerOpen, threadShells, threadSubagents]);
-  const chatItems = useMemo(
-    () =>
-      trigger?.kind === "path" && environmentId
-        ? matchComposerThreadItems({
-            shells: threadShells,
-            environmentId,
-            excludeThreadId: currentThreadId,
-            query: trigger.query,
-            projectTitles: new Map(
-              projects
-                .filter((project) => project.environmentId === environmentId)
-                .map((project) => [project.id, project.title]),
-            ),
-          })
-        : [],
-    [currentThreadId, environmentId, projects, threadShells, trigger],
-  );
+  })();
+  const chatItems = (() =>
+    trigger?.kind === "path" && environmentId
+      ? matchComposerThreadItems({
+          shells: threadShells,
+          environmentId,
+          excludeThreadId: currentThreadId,
+          query: trigger.query,
+          projectTitles: new Map(
+            projects
+              .filter((project) => project.environmentId === environmentId)
+              .map((project) => [project.id, project.title]),
+          ),
+        })
+      : [])();
   // The tab the user picked for this `@`; otherwise Agents when the query starts a handle,
   // Chats when only chats match, else Files.
   const [pathTabChoice, setPathTabChoice] = useState<{
     readonly rangeStart: number;
     readonly tab: ComposerPathTab;
   } | null>(null);
-  const pathTab = useMemo(() => {
+  const pathTab = (() => {
     if (trigger?.kind !== "path") return null;
     const needle = trigger.query.trim().toLowerCase();
     const showAgents = agentFleet.length > 0;
@@ -433,23 +428,20 @@ export function useComposerCommandMenu({
       showAgents,
       onChange: (tab: ComposerPathTab) => setPathTabChoice({ rangeStart, tab }),
     };
-  }, [agentFleet, chatItems, pathSearch.entries, pathSearch.isPending, pathTabChoice, trigger]);
+  })();
   const referenceDraft = useComposerDraft(draftKey ?? ownerKey);
   const referenceThread = useEnvironmentThread(
     trigger?.kind === "pull-request" ? environmentId : null,
     currentThreadId,
   );
   const referenceMessages = Option.getOrNull(referenceThread.data)?.messages ?? [];
-  const pullRequestRemoteUrls = useMemo(
-    () =>
-      [
-        ...(referenceDraft.context?.records ?? []),
-        ...referenceMessages.flatMap((message) => message.context?.records ?? []),
-      ].flatMap((record) =>
-        record.kind === "repository" && "remoteUrl" in record ? [record.remoteUrl] : [],
-      ),
-    [referenceDraft.context, referenceMessages],
-  );
+  const pullRequestRemoteUrls = (() =>
+    [
+      ...(referenceDraft.context?.records ?? []),
+      ...referenceMessages.flatMap((message) => message.context?.records ?? []),
+    ].flatMap((record) =>
+      record.kind === "repository" && "remoteUrl" in record ? [record.remoteUrl] : [],
+    ))();
   const pullRequestSearch = useComposerPullRequestSearch({
     environmentId,
     projectId: pullRequestProjectId,
@@ -462,7 +454,7 @@ export function useComposerCommandMenu({
     query: trigger?.kind === "pull-request" ? trigger.query : null,
   });
 
-  const items = useMemo<ComposerCommandItem[]>(() => {
+  const items = ((): ComposerCommandItem[] => {
     if (!trigger) return [];
 
     if (trigger.kind === "pull-request") {
@@ -634,153 +626,118 @@ export function useComposerCommandMenu({
     }
 
     return [];
-  }, [
-    agentFleet,
-    chatItems,
-    pathTab?.active,
-    providers,
-    hasThread,
-    hasCompactableConversation,
-    onUpdateInteractionMode,
-    pathSearch.entries,
-    pullRequestSearch.entries,
-    projectCwd,
-    selectedProviderStatus,
-    skills,
-    trigger,
-    offersUsageLimits,
-  ]);
+  })();
 
-  const onSelect = useCallback(
-    (item: ComposerCommandItem) => {
-      if (!trigger) return;
-      // Threads and agents are one chip each, however often they are referenced.
-      const insertReference = (record: ComposerContextRecord) => {
-        if (!ownerKey) return;
-        const existing = getComposerDraftSnapshot(ownerKey).context?.records ?? [];
-        const alreadyAttached = existing.some((entry) => entry.contextId === record.contextId);
-        if (!alreadyAttached && existing.length >= COMPOSER_CONTEXT_MAX_RECORDS) {
-          Dialog.alert(
-            "Too many context items",
-            "Remove some context from the draft and try again.",
-          );
-          return;
-        }
-        const result = replaceTextRange(
-          draftMessage,
-          trigger.rangeStart,
-          trigger.rangeEnd,
-          `${formatComposerContextReference(record)} `,
-        );
-        onChangeDraftMessage(result.text);
-        if (!alreadyAttached) {
-          const draft = getComposerDraftSnapshot(ownerKey);
-          setComposerDraftContext(ownerKey, {
-            version: 1,
-            records: [...(draft.context?.records ?? []), record],
-          });
-        }
-        setSelection({ start: result.cursor, end: result.cursor });
-      };
-      if (item.type === "thread") {
-        if (!ownerKey || trigger.kind !== "path") return;
-        const shell = threadShells.find(
-          (candidate) =>
-            candidate.environmentId === item.thread.environmentId &&
-            candidate.id === item.thread.threadId,
-        );
-        if (!shell) return;
-        insertReference(threadComposerContext(item.thread, shell.title));
+  const onSelect = (item: ComposerCommandItem) => {
+    if (!trigger) return;
+    // Threads and agents are one chip each, however often they are referenced.
+    const insertReference = (record: ComposerContextRecord) => {
+      if (!ownerKey) return;
+      const existing = getComposerDraftSnapshot(ownerKey).context?.records ?? [];
+      const alreadyAttached = existing.some((entry) => entry.contextId === record.contextId);
+      if (!alreadyAttached && existing.length >= COMPOSER_CONTEXT_MAX_RECORDS) {
+        Dialog.alert("Too many context items", "Remove some context from the draft and try again.");
         return;
       }
-      if (item.type === "subagent") {
-        const subagent = item.entry.subagent;
-        if (!ownerKey || trigger.kind !== "path" || environmentId === null || subagent === null)
-          return;
-        insertReference(
-          subagentContextRecord({
-            environmentId,
-            subagent,
-            handle: item.entry.handle,
-            title: item.entry.title,
-            status: item.entry.agent.status,
-          }),
-        );
-        return;
-      }
-      if (item.type === "pull-request") {
-        if (
-          !ownerKey ||
-          trigger.kind !== "pull-request" ||
-          !items.some((candidate) => candidate.id === item.id)
-        )
-          return;
-        const record = pullRequestComposerContext(item.pullRequest, uuidv4());
-        if (
-          (getComposerDraftSnapshot(ownerKey).context?.records.length ?? 0) >=
-          COMPOSER_CONTEXT_MAX_RECORDS
-        ) {
-          Dialog.alert(
-            "Too many context items",
-            "Remove some context from the draft and try again.",
-          );
-          return;
-        }
-        const result = replaceTextRange(
-          draftMessage,
-          trigger.rangeStart,
-          trigger.rangeEnd,
-          `${formatComposerContextReference(record)} `,
-        );
-        onChangeDraftMessage(result.text);
+      const result = replaceTextRange(
+        draftMessage,
+        trigger.rangeStart,
+        trigger.rangeEnd,
+        `${formatComposerContextReference(record)} `,
+      );
+      onChangeDraftMessage(result.text);
+      if (!alreadyAttached) {
         const draft = getComposerDraftSnapshot(ownerKey);
         setComposerDraftContext(ownerKey, {
           version: 1,
           records: [...(draft.context?.records ?? []), record],
         });
-        setSelection({ start: result.cursor, end: result.cursor });
-        return;
       }
-
+      setSelection({ start: result.cursor, end: result.cursor });
+    };
+    if (item.type === "thread") {
+      if (!ownerKey || trigger.kind !== "path") return;
+      const shell = threadShells.find(
+        (candidate) =>
+          candidate.environmentId === item.thread.environmentId &&
+          candidate.id === item.thread.threadId,
+      );
+      if (!shell) return;
+      insertReference(threadComposerContext(item.thread, shell.title));
+      return;
+    }
+    if (item.type === "subagent") {
+      const subagent = item.entry.subagent;
+      if (!ownerKey || trigger.kind !== "path" || environmentId === null || subagent === null)
+        return;
+      insertReference(
+        subagentContextRecord({
+          environmentId,
+          subagent,
+          handle: item.entry.handle,
+          title: item.entry.title,
+          status: item.entry.agent.status,
+        }),
+      );
+      return;
+    }
+    if (item.type === "pull-request") {
       if (
-        item.type === "provider-slash-command" &&
-        item.command.name === USAGE_LIMITS_COMMAND.name &&
-        onUsageLimits
+        !ownerKey ||
+        trigger.kind !== "pull-request" ||
+        !items.some((candidate) => candidate.id === item.id)
+      )
+        return;
+      const record = pullRequestComposerContext(item.pullRequest, uuidv4());
+      if (
+        (getComposerDraftSnapshot(ownerKey).context?.records.length ?? 0) >=
+        COMPOSER_CONTEXT_MAX_RECORDS
       ) {
-        const cleared = replaceTextRange(draftMessage, trigger.rangeStart, trigger.rangeEnd, "");
-        setSelection({ start: cleared.cursor, end: cleared.cursor });
-        onChangeDraftMessage(cleared.text);
-        onUsageLimits();
+        Dialog.alert("Too many context items", "Remove some context from the draft and try again.");
         return;
       }
-
-      const result = resolveComposerCommandSelection({
+      const result = replaceTextRange(
         draftMessage,
-        trigger,
-        item,
-        allowInteractionMode:
-          onUpdateInteractionMode !== undefined &&
-          selectedProviderStatus?.showInteractionModeToggle !== false,
+        trigger.rangeStart,
+        trigger.rangeEnd,
+        `${formatComposerContextReference(record)} `,
+      );
+      onChangeDraftMessage(result.text);
+      const draft = getComposerDraftSnapshot(ownerKey);
+      setComposerDraftContext(ownerKey, {
+        version: 1,
+        records: [...(draft.context?.records ?? []), record],
       });
       setSelection({ start: result.cursor, end: result.cursor });
-      onChangeDraftMessage(result.text);
-      if (result.interactionMode !== null) {
-        onUpdateInteractionMode?.(result.interactionMode);
-      }
-    },
-    [
+      return;
+    }
+
+    if (
+      item.type === "provider-slash-command" &&
+      item.command.name === USAGE_LIMITS_COMMAND.name &&
+      onUsageLimits
+    ) {
+      const cleared = replaceTextRange(draftMessage, trigger.rangeStart, trigger.rangeEnd, "");
+      setSelection({ start: cleared.cursor, end: cleared.cursor });
+      onChangeDraftMessage(cleared.text);
+      onUsageLimits();
+      return;
+    }
+
+    const result = resolveComposerCommandSelection({
       draftMessage,
-      environmentId,
-      ownerKey,
-      items,
-      onChangeDraftMessage,
-      onUpdateInteractionMode,
-      onUsageLimits,
-      selectedProviderStatus?.showInteractionModeToggle,
-      threadShells,
       trigger,
-    ],
-  );
+      item,
+      allowInteractionMode:
+        onUpdateInteractionMode !== undefined &&
+        selectedProviderStatus?.showInteractionModeToggle !== false,
+    });
+    setSelection({ start: result.cursor, end: result.cursor });
+    onChangeDraftMessage(result.text);
+    if (result.interactionMode !== null) {
+      onUpdateInteractionMode?.(result.interactionMode);
+    }
+  };
 
   return {
     selection,

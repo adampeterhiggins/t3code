@@ -2,7 +2,6 @@ import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environ
 import { deriveThreadAgentFleet, edgeAgentStatus } from "@t3tools/client-runtime/state/agent-fleet";
 import type { SubagentContextRecord } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
-import { useMemo } from "react";
 
 import { useProject, useThreadProjection, useThreadShell } from "~/state/entities";
 import { environmentThreadDetails } from "~/state/threads";
@@ -85,15 +84,12 @@ function SubagentChipPreview(props: { record: SubagentChipRecord }) {
     owner ? scopeProjectRef(record.environmentId, owner.thread.projectId) : null,
   );
   const key = record.childThreadId ?? `subagent:${record.subagentId}`;
-  const entry = useMemo(
-    () =>
-      deriveThreadAgentFleet({
-        threadId: record.ownerThreadId,
-        subagents: owner?.subagents ?? [],
-        shells,
-      }).find((candidate) => candidate.key === key) ?? null,
-    [key, owner?.subagents, record.ownerThreadId, shells],
-  );
+  const entry =
+    deriveThreadAgentFleet({
+      threadId: record.ownerThreadId,
+      subagents: owner?.subagents ?? [],
+      shells,
+    }).find((candidate) => candidate.key === key) ?? null;
   if (entry === null) {
     return (
       <p className="px-3 py-2.5 text-xs text-muted-foreground">

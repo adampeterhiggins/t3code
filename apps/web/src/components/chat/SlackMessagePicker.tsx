@@ -8,7 +8,7 @@ import { slackThreadContextRecord } from "@t3tools/shared/integrationContextReco
 import type { ScopedThreadRef, SlackGetThreadInput, SlackMessageSummary } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { useIssueContextStore } from "~/issueContextStore";
@@ -81,63 +81,57 @@ export function slackGetThreadInput(
  */
 export function useAttachSlackMessage() {
   const getThread = useAtomCommand(slackEnvironment.getThread, { reportFailure: false });
-  return useCallback(
-    async (threadRef: ScopedThreadRef, input: SlackGetThreadInput): Promise<boolean> => {
-      const result = await getThread({ environmentId: threadRef.environmentId, input });
-      if (result._tag === "Failure") {
-        if (!isAtomCommandInterrupted(result)) {
-          const failure = squashAtomCommandFailure(result);
-          toastManager.add({
-            type: "error",
-            title: "Could not attach the Slack message",
-            description: failure instanceof Error ? failure.message : undefined,
-          });
-        }
-        return false;
+  return async (threadRef: ScopedThreadRef, input: SlackGetThreadInput): Promise<boolean> => {
+    const result = await getThread({ environmentId: threadRef.environmentId, input });
+    if (result._tag === "Failure") {
+      if (!isAtomCommandInterrupted(result)) {
+        const failure = squashAtomCommandFailure(result);
+        toastManager.add({
+          type: "error",
+          title: "Could not attach the Slack message",
+          description: failure instanceof Error ? failure.message : undefined,
+        });
       }
-      const record = slackThreadContextRecord(result.value);
-      useIssueContextStore.getState().upsert(threadRef.threadId, record);
-      useComposerDraftStore.getState().insertContextReference(threadRef, {
-        kind: "slack-thread",
-        contextId: record.contextId,
-        label: record.label,
-      });
-      return true;
-    },
-    [getThread],
-  );
+      return false;
+    }
+    const record = slackThreadContextRecord(result.value);
+    useIssueContextStore.getState().upsert(threadRef.threadId, record);
+    useComposerDraftStore.getState().insertContextReference(threadRef, {
+      kind: "slack-thread",
+      contextId: record.contextId,
+      label: record.label,
+    });
+    return true;
+  };
 }
 
 /** Links the Slack thread a message belongs to (or starts) to the thread's tab group. */
 export function useLinkSlackThread() {
   const linkThread = useAtomCommand(slackEnvironment.linkThread, { reportFailure: false });
-  return useCallback(
-    async (threadRef: ScopedThreadRef, message: SlackMessageSummary): Promise<boolean> => {
-      const result = await linkThread({
-        environmentId: threadRef.environmentId,
-        input: {
-          threadId: threadRef.threadId,
-          channelId: message.channelId,
-          ts: message.ts,
-          ...(message.threadTs === null ? {} : { threadTs: message.threadTs }),
-          url: message.url,
-        },
-      });
-      if (result._tag === "Failure") {
-        if (!isAtomCommandInterrupted(result)) {
-          const failure = squashAtomCommandFailure(result);
-          toastManager.add({
-            type: "error",
-            title: "Could not link the Slack thread",
-            description: failure instanceof Error ? failure.message : undefined,
-          });
-        }
-        return false;
+  return async (threadRef: ScopedThreadRef, message: SlackMessageSummary): Promise<boolean> => {
+    const result = await linkThread({
+      environmentId: threadRef.environmentId,
+      input: {
+        threadId: threadRef.threadId,
+        channelId: message.channelId,
+        ts: message.ts,
+        ...(message.threadTs === null ? {} : { threadTs: message.threadTs }),
+        url: message.url,
+      },
+    });
+    if (result._tag === "Failure") {
+      if (!isAtomCommandInterrupted(result)) {
+        const failure = squashAtomCommandFailure(result);
+        toastManager.add({
+          type: "error",
+          title: "Could not link the Slack thread",
+          description: failure instanceof Error ? failure.message : undefined,
+        });
       }
-      return true;
-    },
-    [linkThread],
-  );
+      return false;
+    }
+    return true;
+  };
 }
 
 /** A search result row. Fixed widths so channels and times line up down the list. */

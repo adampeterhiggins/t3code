@@ -130,30 +130,27 @@ export default function ProjectScriptsControl({
   }
   const [editorRequest, setEditorRequest] = useState<ProjectScriptEditorRequest | null>(null);
 
-  const primaryScript = useMemo(() => {
+  const primaryScript = (() => {
     if (preferredScriptId) {
       const preferred = scripts.find((script) => script.id === preferredScriptId);
       if (preferred) return preferred;
     }
     return primaryProjectScript(scripts);
-  }, [preferredScriptId, scripts]);
+  })();
   // Like Conductor's Run button: a project with no actions of its own leads
   // with the repository's default run script.
   const primaryConductorScript = primaryScript ? null : (conductorScripts[0] ?? null);
   const toggleConductorScript = (script: ConductorScriptItem) =>
     script.running ? onStopConductorScript?.(script.id) : onRunConductorScript?.(script.id);
-  const importableScripts = useMemo(
-    () =>
-      fileScripts.filter(
-        (fileScript) =>
-          !scripts.some(
-            (script) =>
-              script.command === fileScript.command ||
-              script.name.toLowerCase() === fileScript.name.toLowerCase(),
-          ),
-      ),
-    [fileScripts, scripts],
-  );
+  const importableScripts = (() =>
+    fileScripts.filter(
+      (fileScript) =>
+        !scripts.some(
+          (script) =>
+            script.command === fileScript.command ||
+            script.name.toLowerCase() === fileScript.name.toLowerCase(),
+        ),
+    ))();
 
   const openAddDialog = () => {
     setEditorRequest({ scriptId: null, initial: EMPTY_PROJECT_SCRIPT_INPUT });
@@ -165,11 +162,8 @@ export default function ProjectScriptsControl({
     setEditorRequest(editorRequestForScript(script, keybindings));
   };
 
-  const submitScript = useCallback(
-    (scriptId: string | null, input: NewProjectScriptInput) =>
-      scriptId === null ? onAddScript(input) : onUpdateScript(scriptId, input),
-    [onAddScript, onUpdateScript],
-  );
+  const submitScript = (scriptId: string | null, input: NewProjectScriptInput) =>
+    scriptId === null ? onAddScript(input) : onUpdateScript(scriptId, input);
 
   const importFileScript = async (fileScript: T3ProjectFileScript) => {
     const payload: NewProjectScriptInput = {

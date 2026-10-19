@@ -2,7 +2,7 @@ import { Toolbar } from "../../components/ui/Toolbar";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { use, useCallback, useEffect, useRef } from "react";
 import { Platform } from "react-native";
-import { useNativeLayoutMetrics } from "../../native/native-layout-metrics";
+import { useDeviceType, useNativeLayoutMetrics } from "../../native/native-layout-metrics";
 import type { SearchBarCommands } from "react-native-screens";
 
 import { NATIVE_LIQUID_GLASS_SUPPORTED } from "../../native/native-glass";
@@ -25,19 +25,22 @@ export function WorkspaceToolbar(props: {
   const workspace = useWorkspaceTabs()!;
   const navigation = useNavigation();
   const metrics = useNativeLayoutMetrics();
+  const deviceType = useDeviceType();
   const sidebarTabs = useSidebarWorkspaceTabs();
   const selectTab = useSelectWorkspaceTab();
   const selectedTint = useMobileNavigationTheme().colors.primary;
   const nativeToolbarCompose =
     Platform.OS === "ios" &&
-    (Platform.isPad || sidebarTabs !== null || (metrics?.verticalBarEdge ?? "none") !== "none");
+    (deviceType === "pad" ||
+      sidebarTabs !== null ||
+      (metrics?.verticalBarEdge ?? "none") !== "none");
   const { isTabActive } = workspace;
   const tabActive = use(NativeWorkspaceTabActivityContext)?.active ?? true;
   const { panes, togglePrimarySidebar } = useAdaptiveWorkspaceLayout();
   const searchRef = useRef<SearchBarCommands>(null);
   const tab = workspace.state.tabs[workspace.state.selectedTab];
   const selectedTab = workspace.state.selectedTab;
-  const enterSearch = useCallback(() => {
+  const enterSearch = () => {
     workspace.dispatch({
       type: "scroll",
       tab: selectedTab,
@@ -45,24 +48,22 @@ export function WorkspaceToolbar(props: {
     });
     workspace.dispatch({ type: "search", tab: selectedTab });
     if (props.sidebar && !panes.primarySidebarVisible) togglePrimarySidebar();
-  }, [workspace, selectedTab, props.sidebar, panes.primarySidebarVisible, togglePrimarySidebar]);
-  const focusSearch = useCallback(() => {
+  };
+  const focusSearch = () => {
     if (!workspace.isTabActive(selectedTab)) return false;
     if (!NATIVE_LIQUID_GLASS_SUPPORTED) enterSearch();
     searchRef.current?.focus();
     return true;
-  }, [workspace, selectedTab, enterSearch]);
+  };
   useHardwareKeyboardCommand("focusSearch", focusSearch);
-  const restoreSearch = useCallback(() => {
+  const restoreSearch = () => {
     if (isTabActive(selectedTab) && tab.searchMode !== "resting")
       searchRef.current?.setText(tab.query);
-  }, [isTabActive, selectedTab, tab.searchMode, tab.query]);
-  useFocusEffect(
-    useCallback(() => {
-      const frame = requestAnimationFrame(restoreSearch);
-      return () => cancelAnimationFrame(frame);
-    }, [restoreSearch]),
-  );
+  };
+  useFocusEffect(() => {
+    const frame = requestAnimationFrame(restoreSearch);
+    return () => cancelAnimationFrame(frame);
+  });
   useEffect(() => {
     if (!tabActive) return;
     const frame = requestAnimationFrame(restoreSearch);

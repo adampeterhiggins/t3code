@@ -7,6 +7,11 @@ import { OrchestrationWorkflowFileError } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 
+export interface WorkflowFileIdentity {
+  readonly dev: number;
+  readonly ino: number;
+}
+
 function workflowFilesRoot(home: string, configDir?: string): string {
   return NodePath.join(configDir?.trim() || NodePath.join(home, ".claude"), "projects");
 }
@@ -17,9 +22,15 @@ export const readContainedWorkflowFile = Effect.fn("orchestration.readContainedW
     readonly extension: string;
     readonly byteCap: number;
     readonly tail?: boolean;
-    /** Read forward from this byte, at most `byteCap` bytes. A mid-file read that is not at EOF stops on a newline. */
-    readonly start?: number;
     readonly configDir?: string;
+    /**
+     * Read only complete lines from this byte offset of the file `identity`
+     * names. A different file (shrunk or another inode) is read from 0.
+     */
+    readonly fromOffset?: {
+      readonly offset: number;
+      readonly identity: WorkflowFileIdentity | null;
+    };
   }) {
     if (!NodePath.isAbsolute(input.path) || NodePath.extname(input.path) !== input.extension) {
       return yield* new OrchestrationWorkflowFileError({
@@ -74,33 +85,43 @@ export const readContainedWorkflowFile = Effect.fn("orchestration.readContainedW
           if (stat.ino !== pathStat.ino || stat.dev !== pathStat.dev) {
             return { failure: "changed-during-read" as const };
           }
-          const from =
-            input.start !== undefined
-              ? Math.min(Math.max(0, input.start), stat.size)
-              : input.tail
-                ? Math.max(0, stat.size - Math.min(stat.size, input.byteCap + 1))
+          const identity = { dev: stat.dev, ino: stat.ino };
+          if (input.fromOffset !== undefined) {
+            const previous = input.fromOffset.identity;
+            const start =
+              previous !== null &&
+              previous.dev === identity.dev &&
+              previous.ino === identity.ino &&
+              input.fromOffset.offset <= stat.size
+                ? input.fromOffset.offset
                 : 0;
-          const length =
-            input.start !== undefined
-              ? Math.min(input.byteCap, stat.size - from)
-              : Math.min(stat.size, input.byteCap + (input.tail ? 1 : 0));
-          const buffer = Buffer.alloc(length);
-          const { bytesRead } = await handle.read(buffer, 0, buffer.length, from);
-          let consumed = bytesRead;
-          let contentsBuffer = buffer.subarray(0, bytesRead);
-          // A forward read stops on a newline so the next read starts on a character boundary.
-          if (input.start !== undefined && from + bytesRead < stat.size) {
-            const newline = contentsBuffer.lastIndexOf(0x0a);
-            if (newline >= 0) {
-              consumed = newline + 1;
-              contentsBuffer = contentsBuffer.subarray(0, consumed);
-            }
+            const buffer = Buffer.alloc(Math.min(stat.size - start, input.byteCap));
+            const { bytesRead } = await handle.read(buffer, 0, buffer.length, start);
+            const read = buffer.subarray(0, bytesRead);
+            // A writer may be mid-line; leave it for the next read. A single
+            // line over the cap is skipped so the cursor can't stall on it.
+            const lineEnd = read.lastIndexOf(0x0a) + 1;
+            const consumed = lineEnd === 0 && bytesRead === input.byteCap ? bytesRead : lineEnd;
+            return {
+              contents: read.subarray(0, lineEnd).toString("utf8"),
+              // Only the cap can leave complete lines unread; a half-written
+              // last line is not truncation.
+              truncated: stat.size - start > input.byteCap,
+              startOffset: start,
+              endOffset: start + consumed,
+              identity,
+            };
           }
+          const buffer = Buffer.alloc(Math.min(stat.size, input.byteCap + (input.tail ? 1 : 0)));
+          const truncated = stat.size > buffer.length;
+          const offset = input.tail ? stat.size - buffer.length : 0;
+          const { bytesRead } = await handle.read(buffer, 0, buffer.length, offset);
           return {
-            contents: contentsBuffer.toString("utf8"),
-            truncated: from + consumed < stat.size,
-            size: stat.size,
-            bytesRead: consumed,
+            contents: buffer.subarray(0, bytesRead).toString("utf8"),
+            truncated,
+            startOffset: offset,
+            endOffset: offset + bytesRead,
+            identity,
           };
         } finally {
           await handle.close();
@@ -117,8 +138,9 @@ export const readContainedWorkflowFile = Effect.fn("orchestration.readContainedW
       path: resolved,
       contents: read.contents,
       truncated: read.truncated,
-      size: read.size,
-      bytesRead: read.bytesRead,
+      startOffset: read.startOffset,
+      endOffset: read.endOffset,
+      identity: read.identity,
     };
   },
 );

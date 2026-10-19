@@ -1,6 +1,6 @@
 import { getFiletypeFromFileName } from "@pierre/diffs";
 import type { ReadFileOutput } from "@t3tools/client-runtime/work-log/item-detail";
-import { Suspense, use, useMemo } from "react";
+import { Suspense, use } from "react";
 
 import { useTheme } from "~/hooks/useTheme";
 import { resolveDiffThemeName } from "~/lib/diffRendering";
@@ -15,14 +15,10 @@ const MAX_HIGHLIGHTED_CHARS = 60_000;
 function HighlightedSource(props: { text: string; language: string }) {
   const { resolvedTheme } = useTheme();
   const highlighter = use(getSyntaxHighlighterPromise(props.language));
-  const { tokens } = useMemo(
-    () =>
-      highlighter.codeToTokens(props.text, {
-        lang: props.language,
-        theme: resolveDiffThemeName(resolvedTheme),
-      }),
-    [highlighter, props.language, props.text, resolvedTheme],
-  );
+  const { tokens } = highlighter.codeToTokens(props.text, {
+    lang: props.language,
+    theme: resolveDiffThemeName(resolvedTheme),
+  });
   return tokens.flatMap((line, lineIndex) => [
     lineIndex > 0 ? "\n" : "",
     ...line.map((token) => (
@@ -39,10 +35,10 @@ function HighlightedSource(props: { text: string; language: string }) {
  */
 export function ReadFileView(props: { file: ReadFileOutput; className?: string }) {
   const { file } = props;
-  const lineNumbers = useMemo(() => {
-    const count = file.text.split("\n").length;
-    return Array.from({ length: count }, (_, index) => file.startLine + index).join("\n");
-  }, [file.startLine, file.text]);
+  const lineCount = file.text.split("\n").length;
+  const lineNumbers = Array.from({ length: lineCount }, (_, index) => file.startLine + index).join(
+    "\n",
+  );
   const language = file.path ? getFiletypeFromFileName(file.path) : "text";
   return (
     <div

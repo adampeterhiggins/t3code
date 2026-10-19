@@ -62,10 +62,8 @@ import {
   AtSignIcon,
 } from "lucide-react";
 import {
-  useCallback,
   useEffect,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
   type MouseEvent,
@@ -78,11 +76,9 @@ import { useDiffPanelStore } from "~/diffPanelStore";
 import { useClientSettings } from "~/hooks/useSettings";
 import { cn } from "~/lib/utils";
 import { useRightPanelStore } from "~/rightPanelStore";
-import {
-  deriveCanInterruptRunningThread,
-  deriveTimelineEntriesFromVisibleTurnItemsWithState,
-  type TimelineEntriesProjection,
-} from "~/session-logic";
+import { useIncrementalTimelineEntries } from "~/hooks/useIncrementalTimelineEntries";
+import { observeResize } from "~/lib/observeResize";
+import { deriveCanInterruptRunningThread } from "~/session-logic";
 import {
   useThreadHistory,
   useThreadProjection,
@@ -153,6 +149,7 @@ const TRANSCRIPT_KIND_LABELS: Record<AgentTranscriptKind, string> = {
 };
 
 const NO_OPTIMISTIC_MESSAGES: [] = [];
+const NO_VISIBLE_TURN_ITEMS: ReadonlyArray<OrchestrationV2ProjectedTurnItem> = [];
 
 /** An agent as the detail view opens it: its child thread and its title for the tab label. */
 export interface AgentDetailTarget {
@@ -227,9 +224,7 @@ function ClampedText(props: { text: string }) {
     if (!node || open) return;
     const measure = () => setOverflows(node.scrollHeight > node.clientHeight + 1);
     measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(node);
-    return () => observer.disconnect();
+    return observeResize(node, measure);
   }, [open]);
   return (
     <div className="flex flex-col items-start gap-0.5">
@@ -425,10 +420,8 @@ export function AgentDetailPanel(props: {
       : (parent?.subagents.find((candidate) => candidate.id === props.subagentId) ?? null);
   // A recorded agent whose child thread has since arrived shows it.
   const childThreadId = props.childThreadId ?? recordById?.childThreadId ?? null;
-  const childRef = useMemo(
-    () => (childThreadId === null ? null : scopeThreadRef(parentRef.environmentId, childThreadId)),
-    [childThreadId, parentRef.environmentId],
-  );
+  const childRef =
+    childThreadId === null ? null : scopeThreadRef(parentRef.environmentId, childThreadId);
   const childShell = useThreadShell(childRef);
   const child = useThreadProjection(childRef)?.projection ?? null;
   const visibleTurnItems = useThreadVisibleTurnItems(childRef);
@@ -456,42 +449,25 @@ export function AgentDetailPanel(props: {
     childThreadId === null
       ? recordById
       : (owner?.subagents.find((candidate) => candidate.childThreadId === childThreadId) ?? null);
-  const runtime = useMemo(
-    () => (subagent ? subagentFromRecord(subagent, childShell?.source) : null),
-    [childShell?.source, subagent],
-  );
+  const runtime = subagent ? subagentFromRecord(subagent, childShell?.source) : null;
   const providerInstanceId =
     childShell?.source.providerInstanceId ?? subagent?.providerInstanceId ?? null;
   const providerName =
     providerInstanceId === null ? null : (providers.get(providerInstanceId)?.displayName ?? null);
-  const runStats = useMemo(
-    () =>
-      child === null || childThreadId === null
-        ? { runs: 0, attempt: null }
-        : subagentRunStats(child, childThreadId),
-    [child, childThreadId],
-  );
+  const runStats =
+    child === null || childThreadId === null
+      ? { runs: 0, attempt: null }
+      : subagentRunStats(child, childThreadId);
   // Stop is offered exactly when the agent's own thread would offer it in chat.
-  const canStop = useMemo(
-    () => child !== null && deriveCanInterruptRunningThread(true, deriveThreadRuntime(child)),
-    [child],
-  );
+  const canStop =
+    child !== null && deriveCanInterruptRunningThread(true, deriveThreadRuntime(child));
 
-  const ownItems = useMemo(
-    () => (child ? child.turnItems.filter((item) => item.threadId === childThreadId) : []),
-    [child, childThreadId],
-  );
-  const calls = useMemo(
-    () => deriveSubagentToolCalls(ownItems, props.workspaceRoot),
-    [ownItems, props.workspaceRoot],
-  );
+  const ownItems = child ? child.turnItems.filter((item) => item.threadId === childThreadId) : [];
+  const calls = deriveSubagentToolCalls(ownItems, props.workspaceRoot);
   // The checkout the agent works in, for the transcript and fetched diffs.
-  const agentRoot = useMemo(
-    () => subagentWorkspaceRoot(ownItems, props.workspaceRoot),
-    [ownItems, props.workspaceRoot],
-  );
-  const visibleCalls = useMemo(() => applySubagentToolCallView(calls, toolView), [calls, toolView]);
-  const toolFacets = useMemo(() => subagentToolCallFacets(calls, toolView), [calls, toolView]);
+  const agentRoot = subagentWorkspaceRoot(ownItems, props.workspaceRoot);
+  const visibleCalls = applySubagentToolCallView(calls, toolView);
+  const toolFacets = subagentToolCallFacets(calls, toolView);
   const [filterMenuOpen, setFilterMenuOpen] = useState(false);
 
   // A tool call this view was opened on (from an agent preview), expanded and scrolled to.
@@ -515,70 +491,45 @@ export function AgentDetailPanel(props: {
     }
   }, [childThreadId, pendingToolCall]);
 
-  // The transcript reuses the chat's timeline derivation, which keeps unchanged entries while text
-  // streams; the row cache then keeps their rows, so only the streaming row re-renders.
-  const timelineRef = useRef<TimelineEntriesProjection | null>(null);
   const prompt = subagent?.prompt ?? null;
   // Rows depend on these options, so the cache goes with them.
-  const transcriptSetup = useMemo(
-    () => ({
-      options: { prompt, workspaceRoot: agentRoot ?? undefined },
-      cache: new WeakMap() as AgentTranscriptRowCache,
-    }),
-    [agentRoot, prompt],
-  );
-  const ownVisibleItems = useMemo(
-    (): ReadonlyArray<OrchestrationV2ProjectedTurnItem> =>
-      visibleTurnItems.every((row) => row.item.threadId === childThreadId)
+  const transcriptSetup = {
+    options: { prompt, workspaceRoot: agentRoot ?? undefined },
+    cache: new WeakMap() as AgentTranscriptRowCache,
+  };
+  const ownVisibleItems: ReadonlyArray<OrchestrationV2ProjectedTurnItem> =
+    mode !== "transcript"
+      ? NO_VISIBLE_TURN_ITEMS
+      : visibleTurnItems.every((row) => row.item.threadId === childThreadId)
         ? visibleTurnItems
-        : visibleTurnItems.filter((row) => row.item.threadId === childThreadId),
-    [childThreadId, visibleTurnItems],
-  );
-  const transcriptRows = useMemo(() => {
-    if (mode !== "transcript") return [];
-    const projection = deriveTimelineEntriesFromVisibleTurnItemsWithState(
-      {
-        visibleTurnItems: ownVisibleItems,
-        optimisticMessages: NO_OPTIMISTIC_MESSAGES,
-        ...(child === null
-          ? {}
-          : { attempts: child.attempts, nodes: child.nodes, plans: child.plans }),
-      },
-      timelineRef.current,
-    );
-    timelineRef.current = projection;
-    return deriveAgentTranscriptRows(
-      projection.entries,
-      transcriptSetup.options,
-      transcriptSetup.cache,
-    );
-  }, [child, mode, ownVisibleItems, transcriptSetup]);
-  const visibleTranscript = useMemo(
-    () => applyAgentTranscriptView(transcriptRows, transcriptView),
-    [transcriptRows, transcriptView],
-  );
-  const transcriptKindCounts = useMemo(
-    () => agentTranscriptKindCounts(transcriptRows, transcriptView),
-    [transcriptRows, transcriptView],
-  );
+        : visibleTurnItems.filter((row) => row.item.threadId === childThreadId);
+  // The transcript reuses the chat's timeline derivation, which keeps unchanged entries while text
+  // streams; the row cache then keeps their rows, so only the streaming row re-renders.
+  const timelineEntries = useIncrementalTimelineEntries(childThreadId, {
+    visibleTurnItems: ownVisibleItems,
+    optimisticMessages: NO_OPTIMISTIC_MESSAGES,
+    ...(child === null || mode !== "transcript"
+      ? {}
+      : { attempts: child.attempts, nodes: child.nodes, plans: child.plans }),
+  });
+  const transcriptRows =
+    mode !== "transcript"
+      ? []
+      : deriveAgentTranscriptRows(timelineEntries, transcriptSetup.options, transcriptSetup.cache);
+  const visibleTranscript = applyAgentTranscriptView(transcriptRows, transcriptView);
+  const transcriptKindCounts = agentTranscriptKindCounts(transcriptRows, transcriptView);
 
   // The agents this agent started, from its own projection's records.
-  const children = useMemo(
-    () =>
-      child === null || childThreadId === null
-        ? []
-        : deriveThreadAgentFleet({ threadId: childThreadId, subagents: child.subagents, shells })
-            .filter((entry) => entry.ownerThreadId === childThreadId)
-            .map((entry) => ({ entry, depth: 0, context: false })),
-    [child, childThreadId, shells],
-  );
+  const children =
+    child === null || childThreadId === null
+      ? []
+      : deriveThreadAgentFleet({ threadId: childThreadId, subagents: child.subagents, shells })
+          .filter((entry) => entry.ownerThreadId === childThreadId)
+          .map((entry) => ({ entry, depth: 0, context: false }));
 
   const { onOpenAgent, onOpenRecord } = props;
-  const openAgent = useCallback(
-    (agent: AgentDetailTarget) =>
-      onOpenAgent ? onOpenAgent(agent) : useRightPanelStore.getState().openAgent(parentRef, agent),
-    [onOpenAgent, parentRef],
-  );
+  const openAgent = (agent: AgentDetailTarget) =>
+    onOpenAgent ? onOpenAgent(agent) : useRightPanelStore.getState().openAgent(parentRef, agent);
   const openChildEntry = (entry: AgentFleetEntry, toolCallId?: TurnItemId) => {
     if (entry.childThreadId === null) {
       if (onOpenRecord) onOpenRecord(entry.key);
@@ -592,31 +543,22 @@ export function AgentDetailPanel(props: {
     }
     openAgent({ childThreadId: entry.childThreadId, title: entry.title });
   };
-  const openThread = useCallback(
-    (threadId: ThreadId) =>
-      void navigate({
-        to: "/$environmentId/$threadId",
-        params: buildThreadRouteParams(scopeThreadRef(parentRef.environmentId, threadId)),
-      }),
-    [navigate, parentRef.environmentId],
-  );
+  const openThread = (threadId: ThreadId) =>
+    void navigate({
+      to: "/$environmentId/$threadId",
+      params: buildThreadRouteParams(scopeThreadRef(parentRef.environmentId, threadId)),
+    });
   // An edit's full diff lives with the agent's own thread.
-  const openTurnDiff = useCallback(
-    (runId: RunId, filePath?: string) => {
-      if (childRef === null) return;
-      useDiffPanelStore.getState().selectTurn(childRef, runId, filePath);
-      useRightPanelStore.getState().open(childRef, "diff");
-      openThread(childRef.threadId);
-    },
-    [childRef, openThread],
-  );
-  const openStartedAgent = useCallback(
-    (startedThreadId: ThreadId) => {
-      const entry = children.find((candidate) => candidate.entry.childThreadId === startedThreadId);
-      openAgent({ childThreadId: startedThreadId, title: entry?.entry.title ?? "Agent" });
-    },
-    [children, openAgent],
-  );
+  const openTurnDiff = (runId: RunId, filePath?: string) => {
+    if (childRef === null) return;
+    useDiffPanelStore.getState().selectTurn(childRef, runId, filePath);
+    useRightPanelStore.getState().open(childRef, "diff");
+    openThread(childRef.threadId);
+  };
+  const openStartedAgent = (startedThreadId: ThreadId) => {
+    const entry = children.find((candidate) => candidate.entry.childThreadId === startedThreadId);
+    openAgent({ childThreadId: startedThreadId, title: entry?.entry.title ?? "Agent" });
+  };
 
   const handle = useAgentHandle(parentRef.environmentId, subagent?.threadId ?? null, childThreadId);
   const backButton = props.onBack ? (

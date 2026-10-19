@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppText as Text } from "../../components/ui/AppText";
 import { SymbolView } from "../../components/ui/AppSymbol";
+import { IconButton } from "../../components/ui/IconButton";
 import { scopedThreadKey } from "../../lib/scopedEntities";
 import { environmentServerConfigsAtom, threadListEnvironmentsAtom } from "../../state/server";
 import { environmentThreadShells } from "../../state/threads";
@@ -93,19 +94,16 @@ function DragHandle(props: {
 }) {
   const latest = useRef(props);
   latest.current = props;
-  const gesture = useMemo(
-    () =>
-      Gesture.Pan()
-        .enabled(!props.disabled)
-        .minDistance(0)
-        .shouldCancelWhenOutside(false)
-        .runOnJS(true)
-        .onStart(() => latest.current.onStart())
-        .onUpdate((event) => latest.current.onMove(event.translationY))
-        .onEnd((event) => latest.current.onMove(event.translationY))
-        .onFinalize((_, success) => latest.current.onEnd(!success)),
-    [props.disabled],
-  );
+  const gesture = (() =>
+    Gesture.Pan()
+      .enabled(!props.disabled)
+      .minDistance(0)
+      .shouldCancelWhenOutside(false)
+      .runOnJS(true)
+      .onStart(() => latest.current.onStart())
+      .onUpdate((event) => latest.current.onMove(event.translationY))
+      .onEnd((event) => latest.current.onMove(event.translationY))
+      .onFinalize((_, success) => latest.current.onEnd(!success)))();
   return (
     <GestureDetector gesture={gesture}>
       <View
@@ -173,7 +171,7 @@ export function ThreadArrangementSheet(props: { onClose: () => void }) {
     );
     return () => clearTimeout(timer);
   }, [threads, now]);
-  const sections = useMemo(() => {
+  const sections = (() => {
     const shared = {
       threads,
       now,
@@ -211,16 +209,8 @@ export function ThreadArrangementSheet(props: { onClose: () => void }) {
       snoozed: parked.filter((thread) => effectiveSnoozed(thread, { now })),
       settled: parked.filter((thread) => !effectiveSnoozed(thread, { now })),
     };
-  }, [
-    threads,
-    configs,
-    groupsShownInThreads,
-    now,
-    queuedThreadKeys,
-    pendingOrder,
-    workingShelfEnabled,
-  ]);
-  const planners = useMemo(() => {
+  })();
+  const planners = (() => {
     const planner = (section: "pinned" | "active") =>
       createThreadMovePlanner({
         ordered: sections[section],
@@ -239,8 +229,8 @@ export function ThreadArrangementSheet(props: { onClose: () => void }) {
         ),
       });
     return { pinned: planner("pinned"), active: planner("active") };
-  }, [sections, threads, configs, workingShelfEnabled]);
-  const rows = useMemo(() => {
+  })();
+  const rows = (() => {
     const result: Row[] = [];
     let offset = 0;
     for (const section of ["pinned", "active", "snoozed", "settled"] as const) {
@@ -254,7 +244,7 @@ export function ThreadArrangementSheet(props: { onClose: () => void }) {
       }
     }
     return result;
-  }, [sections, expanded]);
+  })();
   const list = useRef<FlatList<Row>>(null);
   const geometry = useRef({ height: 0, offset: 0 });
   const drag = useRef<Drag | null>(null);
@@ -394,13 +384,11 @@ export function ThreadArrangementSheet(props: { onClose: () => void }) {
         >
           <View className="flex-row items-center justify-between gap-3 px-5 py-3">
             <Text className="flex-1 text-xl font-t3-semibold">Arrange threads</Text>
-            <Pressable
-              accessibilityRole="button"
+            <IconButton
+              accessibilityLabel="Close arrange threads"
+              icon="xmark"
               onPress={props.onClose}
-              className="min-h-11 justify-center px-3"
-            >
-              <Text className="text-base text-primary-text">Done</Text>
-            </Pressable>
+            />
           </View>
           <Text className="px-5 pb-3 text-sm text-foreground-muted">
             Drag to reorder, pin, or settle. Changes save when you drop.

@@ -1,10 +1,10 @@
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { MessagesSquareIcon } from "lucide-react";
-import { useMemo } from "react";
 
 import { deriveProviderInstanceEntries, shouldShowInstanceBadge } from "~/providerInstances";
-import { useProject, useServerConfigs, useThreadShell } from "~/state/entities";
+import { useProject, useThreadShell } from "~/state/entities";
+import { useEnvironmentProviders } from "~/state/environments";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { useUiStateStore } from "~/uiStateStore";
 import { ProjectFavicon } from "../ProjectFavicon";
@@ -28,11 +28,8 @@ export function ComposerChatRow(props: {
   const project = useProject(
     thread ? { environmentId: thread.environmentId, projectId: thread.projectId } : null,
   );
-  const serverConfig = useServerConfigs().get(props.threadRef.environmentId);
-  const providerEntries = useMemo(
-    () => deriveProviderInstanceEntries(serverConfig?.providers ?? []),
-    [serverConfig],
-  );
+  const providers = useEnvironmentProviders().get(props.threadRef.environmentId);
+  const providerEntries = deriveProviderInstanceEntries(providers ?? []);
   const instanceId = thread
     ? (thread.runtime?.providerInstanceId ?? thread.modelSelection.instanceId)
     : null;

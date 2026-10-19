@@ -7,8 +7,6 @@ import { use, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { NativeWorkspaceTabActivityContext } from "./v5-workspace-context";
 import type { ColorValue } from "react-native";
 
-export { NativeHeaderToolbar } from "./NativeHeaderToolbar";
-
 export {
   nativeHeaderScrollEdgeEffects,
   nativeTopScrollEdgeEffect,
@@ -150,7 +148,7 @@ export function NativeStackScreenOptions(props: {
   const lastAppliedOptionsSignatureRef = useRef<string | undefined>(undefined);
   const latestOptionFunctionsRef = useRef(new Map<string, (...args: unknown[]) => unknown>());
   const optionFunctionWrappersRef = useRef(new Map<string, (...args: unknown[]) => unknown>());
-  const normalizedOptions = useMemo(() => normalizeScreenOptions(props.options), [props.options]);
+  const normalizedOptions = (() => normalizeScreenOptions(props.options))();
   const stableOptions = normalizedOptions
     ? (stabilizeOptionFunctions(
         normalizedOptions,

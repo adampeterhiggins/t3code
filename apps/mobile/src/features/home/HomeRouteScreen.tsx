@@ -20,7 +20,7 @@ import { usePendingNewTasks } from "../../state/use-pending-new-tasks";
 import { useWorkspaceState } from "../../state/workspace";
 import { useSavedRemoteConnections } from "../../state/use-remote-environment-registry";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
-import { useNativeColumnLayoutMetrics } from "../../native/native-layout-metrics";
+import { useDeviceType, useNativeColumnLayoutMetrics } from "../../native/native-layout-metrics";
 import { WorkspaceEmptyDetail } from "../layout/WorkspaceEmptyDetail";
 import { AndroidScreenHeader } from "../../components/ui/AndroidScreenHeader";
 import { checkForAppUpdateOnLaunch, startAppUpdateForegroundRecheck } from "../updates/app-updates";
@@ -41,6 +41,7 @@ export function HomeRouteScreen() {
   const { width: windowWidth } = useWindowDimensions();
   const nativePrimaryColumn = use(NativePrimaryColumnContext);
   const columnMetrics = useNativeColumnLayoutMetrics();
+  const deviceType = useDeviceType();
   const headerWidth = nativePrimaryColumn ? (columnMetrics?.width ?? windowWidth) : windowWidth;
   const { layout, panes, primarySidebarSearchQuery, setPrimarySidebarSearchQuery } =
     useAdaptiveWorkspaceLayout();
@@ -53,16 +54,13 @@ export function HomeRouteScreen() {
     visible,
   );
   const { hiddenTabThreads, groupNames: tabGroupNames } = useHiddenTabThreads(threads);
-  const visibleThreads = useMemo(
-    () =>
-      threads
-        .filter((thread) => !hiddenTabThreads.has(`${thread.environmentId}:${thread.id}`))
-        .map((thread) => ({
-          ...thread,
-          tabGroupName: tabGroupNames.get(`${thread.environmentId}:${thread.id}`),
-        })),
-    [hiddenTabThreads, threads, tabGroupNames],
-  );
+  const visibleThreads = (() =>
+    threads
+      .filter((thread) => !hiddenTabThreads.has(`${thread.environmentId}:${thread.id}`))
+      .map((thread) => ({
+        ...thread,
+        tabGroupName: tabGroupNames.get(`${thread.environmentId}:${thread.id}`),
+      })))();
   const { environments: workspaceEnvironments, state: catalogState } = useWorkspaceState();
   const { savedConnectionsById } = useSavedRemoteConnections();
   const navigation = useNavigation();
@@ -78,20 +76,17 @@ export function HomeRouteScreen() {
     else setLocalSearchQuery(query);
   };
   const handleSelectThread = useHomeThreadSelection();
-  const handleNewThreadOnBranch = useCallback(
-    (thread: EnvironmentThreadShell) => {
-      navigation.navigate("NewTaskSheet", {
-        screen: "NewTaskDraft",
-        params: {
-          environmentId: String(thread.environmentId),
-          projectId: String(thread.projectId),
-          branch: thread.branch,
-          worktreePath: thread.worktreePath,
-        },
-      });
-    },
-    [navigation],
-  );
+  const handleNewThreadOnBranch = (thread: EnvironmentThreadShell) => {
+    navigation.navigate("NewTaskSheet", {
+      screen: "NewTaskDraft",
+      params: {
+        environmentId: String(thread.environmentId),
+        projectId: String(thread.projectId),
+        branch: thread.branch,
+        worktreePath: thread.worktreePath,
+      },
+    });
+  };
 
   useEffect(() => {
     void checkForAppUpdateOnLaunch();
@@ -119,7 +114,7 @@ export function HomeRouteScreen() {
   } = useThreadListActions();
   const pendingTasks = usePendingNewTasks();
   const { openPendingTask, confirmDeletePendingTask } = usePendingTaskListActions();
-  const environments = useMemo(() => {
+  const environments = (() => {
     const connectionStateByEnvironmentId = new Map(
       workspaceEnvironments.map(
         (environment) => [environment.environmentId, environment.connectionState] as const,
@@ -134,11 +129,9 @@ export function HomeRouteScreen() {
       })),
       Order.mapInput(Order.String, (environment: { readonly label: string }) => environment.label),
     );
-  }, [savedConnectionsById, workspaceEnvironments]);
-  const availableEnvironmentIds = useMemo(
-    () => new Set(environments.map((environment) => environment.environmentId)),
-    [environments],
-  );
+  })();
+  const availableEnvironmentIds = (() =>
+    new Set(environments.map((environment) => environment.environmentId)))();
   const {
     options: listOptions,
     setSelectedEnvironmentId,
@@ -166,25 +159,19 @@ export function HomeRouteScreen() {
   } = useThreadListPages(visibleThreads);
   const { organisations, organisationKeys, toggleOrganisation, clearOrganisations } =
     useThreadListOrganisations(projects);
-  const handleEditGroup = useCallback(
-    async (name: string) => {
-      const result = await editThreadGroup(name);
-      if (result !== null) renameGroupPage(result.from, result.to);
-    },
-    [editThreadGroup, renameGroupPage],
-  );
-  const projectFilterOptions = useMemo(
-    () =>
-      buildHomeProjectScopes({
-        projects,
-        environmentId: selectedEnvironmentId,
-        projectGroupingMode: listOptions.projectGroupingMode,
-      }).map((scope) => ({
-        key: scope.key,
-        label: scope.title,
-      })),
-    [listOptions.projectGroupingMode, projects, selectedEnvironmentId],
-  );
+  const handleEditGroup = async (name: string) => {
+    const result = await editThreadGroup(name);
+    if (result !== null) renameGroupPage(result.from, result.to);
+  };
+  const projectFilterOptions = (() =>
+    buildHomeProjectScopes({
+      projects,
+      environmentId: selectedEnvironmentId,
+      projectGroupingMode: listOptions.projectGroupingMode,
+    }).map((scope) => ({
+      key: scope.key,
+      label: scope.title,
+    })))();
   const selectedProjectKey = projectFilterOptions.some(
     (project) => project.key === resolvedProjectKey,
   )
@@ -201,14 +188,11 @@ export function HomeRouteScreen() {
     pages,
     searchQuery,
   });
-  const filterEnvironments = useMemo(
-    () =>
-      environments.map((environment) => ({
-        ...environment,
-        count: filterFacets.environmentCounts.get(environment.environmentId) ?? 0,
-      })),
-    [environments, filterFacets.environmentCounts],
-  );
+  const filterEnvironments = (() =>
+    environments.map((environment) => ({
+      ...environment,
+      count: filterFacets.environmentCounts.get(environment.environmentId) ?? 0,
+    })))();
 
   if (layout.usesSplitView && !nativePrimaryColumn) {
     return (
@@ -271,8 +255,7 @@ export function HomeRouteScreen() {
             options={{
               ...getConnectionAwareBrandHeaderOptions({
                 headerWidth,
-                trailingItemCount:
-                  nativePrimaryColumn && Platform.OS === "ios" && Platform.isPad ? 2 : 1,
+                trailingItemCount: nativePrimaryColumn && deviceType === "pad" ? 2 : 1,
                 onOpenEnvironments: () =>
                   navigation.navigate("SettingsSheet", {
                     screen: "SettingsContent",

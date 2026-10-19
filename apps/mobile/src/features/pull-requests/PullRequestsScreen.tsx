@@ -1,8 +1,11 @@
+import {
+  applyPullRequestDraftFilterChange,
+  parsePullRequestQuery,
+} from "@t3tools/client-runtime/pull-request-query";
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import { LegendList, type LegendListRef } from "@legendapp/list/react-native";
 import { useNavigation } from "@react-navigation/native";
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ProjectId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import {
   Keyboard,
@@ -30,10 +33,10 @@ import { usePullRequestListActions } from "./usePullRequestListActions";
 import {
   filterPullRequestList,
   pullRequestListFacets,
+  pullRequestListInput,
   pullRequestListRowsAreEqual,
   scopedPullRequestListKey as pullRequestKey,
   type EnvironmentPullRequestListEntry,
-  PR_LIST_PAGE_SIZE,
   withoutScratchProjectScope,
 } from "./pullRequestList";
 import { useDebouncedValue } from "../../state/queries";
@@ -70,68 +73,50 @@ export function PullRequestsScreen(
   const [initialAnchor] = useState(() => workspace.getScrollAnchor("pullRequests"));
   const listRef = useRef<LegendListRef>(null);
   const tab = workspace.state.tabs.pullRequests;
-  const maintainVisiblePosition = useMemo(
-    () => ({
-      data: tab.searchMode === "resting",
-      shouldRestorePosition: () => workspace.getScrollOffset("pullRequests") > 0,
-    }),
-    [tab.searchMode, workspace],
-  );
+  const maintainVisiblePosition = (() => ({
+    data: tab.searchMode === "resting",
+    shouldRestorePosition: () => workspace.getScrollOffset("pullRequests") > 0,
+  }))();
   const debouncedQuery = useDebouncedValue(tab.query.trim(), 180);
   const query = tab.searchMode === "resting" ? "" : debouncedQuery;
+  const typedQuery = tab.searchMode === "resting" ? "" : tab.query;
+  const typedDraft = parsePullRequestQuery(typedQuery).filters.draft;
   const listControls = usePullRequestListControls();
   const selectedEnvironmentId = listControls.environmentId;
   const environmentId = environments.some((item) => item.environmentId === selectedEnvironmentId)
     ? selectedEnvironmentId
     : null;
   const selectAndroidWorkspace = useAndroidWorkspaceSelection();
-  const selectPullRequest = useCallback(
-    (item: EnvironmentPullRequestListEntry) => {
-      Keyboard.dismiss();
-      const params = {
-        environmentId: String(item.environmentId),
-        projectId: String(item.projectId),
-        repository: item.repository,
-        number: item.number,
-        host: item.host,
-        initialSummary: item,
-      };
-      if (Platform.OS === "android") selectAndroidWorkspace({ name: "PullRequest", params });
-      else navigation.navigate("PullRequest", params);
-    },
-    [navigation, selectAndroidWorkspace],
-  );
+  const selectPullRequest = (item: EnvironmentPullRequestListEntry) => {
+    Keyboard.dismiss();
+    const params = {
+      environmentId: String(item.environmentId),
+      projectId: String(item.projectId),
+      repository: item.repository,
+      number: item.number,
+      host: item.host,
+      initialSummary: item,
+    };
+    if (Platform.OS === "android") selectAndroidWorkspace({ name: "PullRequest", params });
+    else navigation.navigate("PullRequest", params);
+  };
   const allProjects = useProjects();
   const savedControls = listControls.controlsFor(environmentId);
-  const controls = useMemo(
-    () => withoutScratchProjectScope(savedControls, allProjects),
-    [allProjects, savedControls],
-  );
-  const targets = useMemo(
-    () =>
-      environments
-        .filter(
-          (environment) =>
-            configs.get(environment.environmentId)?.environment.capabilities.pullRequests ===
-              true &&
-            (environmentId === null || environment.environmentId === environmentId) &&
-            (!controls.projectEnvironmentId ||
-              environment.environmentId === controls.projectEnvironmentId),
-        )
-        .sort((left, right) => left.environmentId.localeCompare(right.environmentId))
-        .map((environment) => ({
-          environmentId: environment.environmentId,
-          input: {
-            state: controls.state,
-            involvement: controls.involvement,
-            filters: controls.filters,
-            limit: PR_LIST_PAGE_SIZE,
-            ...(controls.projectId ? { projectId: ProjectId.make(controls.projectId) } : {}),
-            ...(query ? { query } : {}),
-          },
-        })),
-    [environments, environmentId, configs, controls, query],
-  );
+  const controls = (() => withoutScratchProjectScope(savedControls, allProjects))();
+  const targets = (() =>
+    environments
+      .filter(
+        (environment) =>
+          configs.get(environment.environmentId)?.environment.capabilities.pullRequests === true &&
+          (environmentId === null || environment.environmentId === environmentId) &&
+          (!controls.projectEnvironmentId ||
+            environment.environmentId === controls.projectEnvironmentId),
+      )
+      .sort((left, right) => left.environmentId.localeCompare(right.environmentId))
+      .map((environment) => ({
+        environmentId: environment.environmentId,
+        input: pullRequestListInput(controls, query),
+      })))();
   const result = usePullRequestList(targets);
   const connectedTargets = targets.filter((target) =>
     environments.some(
@@ -147,57 +132,45 @@ export function PullRequestsScreen(
   const sidebar = props.sidebar === true || primaryColumn !== null;
   const selectedKey = props.selectedPullRequestKey ?? primaryColumn?.selectedPullRequestKey;
   const connectedKey = connectedTargets.map((target) => target.environmentId).join("\n");
-  const entries = useMemo(
-    () =>
-      filterPullRequestList(
-        result.entries,
-        controls,
-        result.data?.viewers ?? {},
-        query,
-        result.data.localSearchHosts,
-        new Set(connectedKey.split("\n")),
-      ),
-    [result.entries, controls, query, result.data, connectedKey],
-  );
+  const entries = (() =>
+    filterPullRequestList(
+      result.entries,
+      controls,
+      result.data?.viewers ?? {},
+      query,
+      result.data.localSearchHosts,
+      new Set(connectedKey.split("\n")),
+    ))();
   // The menus count one broad page, every state and involvement with no menu filters, beside
   // the list's own rows, so no menu narrows itself. Unfiltered, the two are the same read.
-  const facetTargets = useMemo(
-    () =>
-      targets.map((target) => ({
-        ...target,
-        input: { ...target.input, state: "all" as const, involvement: "all" as const, filters: {} },
-      })),
-    [targets],
-  );
+  const facetTargets = (() =>
+    targets.map((target) => ({
+      ...target,
+      input: { ...target.input, state: "all" as const, involvement: "all" as const, filters: {} },
+    })))();
   const facetRows = usePullRequestListHeads(facetTargets);
-  const facets = useMemo(
-    () =>
-      pullRequestListFacets(
-        [...result.entries, ...facetRows],
-        controls,
-        result.data?.viewers ?? {},
-        query,
-        result.data.localSearchHosts,
-      ),
-    [result.entries, facetRows, controls, query, result.data],
-  );
+  const facets = (() =>
+    pullRequestListFacets(
+      [...result.entries, ...facetRows],
+      controls,
+      result.data?.viewers ?? {},
+      query,
+      result.data.localSearchHosts,
+    ))();
   const projects = allProjects.filter(
     (project) =>
       !project.isScratch && (environmentId === null || project.environmentId === environmentId),
   );
-  const renderPullRequest = useCallback(
-    ({ item }: { readonly item: EnvironmentPullRequestListEntry }) => (
-      <PullRequestListRow
-        item={item}
-        onSelect={selectPullRequest}
-        getActions={actions}
-        onAction={select}
-        busy={busyKey === pullRequestKey(item)}
-        selected={selectedKey === pullRequestKey(item)}
-        sidebar={sidebar}
-      />
-    ),
-    [selectPullRequest, selectedKey, actions, select, busyKey, sidebar],
+  const renderPullRequest = ({ item }: { readonly item: EnvironmentPullRequestListEntry }) => (
+    <PullRequestListRow
+      item={item}
+      onSelect={selectPullRequest}
+      getActions={actions}
+      onAction={select}
+      busy={busyKey === pullRequestKey(item)}
+      selected={selectedKey === pullRequestKey(item)}
+      sidebar={sidebar}
+    />
   );
   const previousSearchMode = useRef(tab.searchMode);
   useEffect(() => {
@@ -283,9 +256,20 @@ export function PullRequestsScreen(
               }))}
               environmentId={environmentId}
               onEnvironmentChange={listControls.setEnvironmentId}
-              value={controls}
+              value={
+                typedDraft
+                  ? { ...controls, filters: { ...controls.filters, draft: typedDraft } }
+                  : controls
+              }
               onChange={(next) => {
-                listControls.setControls(environmentId, next);
+                const update = applyPullRequestDraftFilterChange(
+                  typedQuery,
+                  controls.filters,
+                  next.filters,
+                );
+                listControls.setControls(environmentId, { ...next, filters: update.filters });
+                if (update.query !== typedQuery)
+                  workspace.dispatch({ type: "query", tab: "pullRequests", query: update.query });
                 void listRef.current?.scrollToOffset({
                   offset: Platform.OS === "ios" ? -insets.top : 0,
                   animated: false,

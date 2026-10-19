@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import type { ProviderInstanceEntry } from "../../providerInstances";
 import { Button } from "../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
+import { toastManager } from "../ui/toast";
 import type { ComposerBannerStackItem } from "./ComposerBannerStack";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 
@@ -70,7 +71,6 @@ function RecoveryActions({
   continueElsewhere,
 }: RecoveryProps) {
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
     const delay = Date.parse(resetAt ?? "") - Math.max(nowMs, Date.now());
@@ -89,20 +89,27 @@ function RecoveryActions({
     resetAt !== null &&
     snoozedUntil !== null &&
     Date.parse(snoozedUntil) === Date.parse(resetAt);
-  async function run(action: () => Promise<void>, fallback: string) {
+  async function run(action: () => Promise<void>, failureTitle: string) {
     setPending(true);
-    setError(null);
     try {
       await action();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : fallback);
+      toastManager.add({
+        type: "error",
+        title: failureTitle,
+        description: cause instanceof Error ? cause.message : "An error occurred.",
+      });
     }
     setPending(false);
   }
   function toggle(action: "resume" | "snooze") {
     if (resetAt === null) return;
     if (action === "snooze" && !snoozed && Date.parse(resetAt) <= Date.now()) {
-      setError("The reset time has passed. Retry the thread manually.");
+      toastManager.add({
+        type: "error",
+        title: "Could not snooze thread",
+        description: "The reset time has passed. Retry the thread manually.",
+      });
       setNowMs(Date.now());
       return;
     }
@@ -113,17 +120,19 @@ function RecoveryActions({
           resetAt,
           ...(action === "resume" ? { autoResume: !scheduled } : { snooze: !snoozed }),
         }),
-      "Could not change limit recovery.",
+      action === "resume" ? "Could not change auto-resume" : "Could not snooze thread",
     );
   }
+  // Failures go to a toast: the actions column is auto-sized, so inline error
+  // text would widen it and crush the title.
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <>
       {onResumeNow ? (
         <Button
           size="xs"
           variant="ghost"
           disabled={pending}
-          onClick={() => void run(onResumeNow, "Could not resume.")}
+          onClick={() => void run(onResumeNow, "Could not resume thread")}
         >
           Resume now
         </Button>
@@ -173,11 +182,6 @@ function RecoveryActions({
           </MenuPopup>
         </Menu>
       ) : null}
-      {error ? (
-        <p role="alert" className="basis-full text-xs text-destructive">
-          {error}
-        </p>
-      ) : null}
-    </div>
+    </>
   );
 }

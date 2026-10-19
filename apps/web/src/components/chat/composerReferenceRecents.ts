@@ -1,5 +1,5 @@
 import type { EnvironmentId } from "@t3tools/contracts";
-import { useMemo, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 
 import {
   type ComposerReferenceItem,
@@ -83,15 +83,10 @@ export function useComposerReferenceRecents(
   projectId: string | null,
 ): ReadonlyArray<ComposerReferenceItem> {
   const recents = useSyncExternalStore(subscribe, readSnapshot);
-  return useMemo(
-    () =>
-      recents
-        .filter(
-          (entry) =>
-            entry.environmentId === environmentId &&
-            (entry.scope === "" || entry.scope === projectId),
-        )
-        .map((entry) => entry.item),
-    [environmentId, projectId, recents],
-  );
+  return recents
+    .filter(
+      (entry) =>
+        entry.environmentId === environmentId && (entry.scope === "" || entry.scope === projectId),
+    )
+    .map((entry) => entry.item);
 }

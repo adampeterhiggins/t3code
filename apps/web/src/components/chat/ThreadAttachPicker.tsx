@@ -12,11 +12,12 @@ import type {
 import * as Option from "effect/Option";
 import { Atom } from "effect/reactivity";
 import { MessageSquareIcon } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
-import { useProjects, useServerConfigs, useThreadShells } from "~/state/entities";
+import { useProjects, useThreadShells } from "~/state/entities";
+import { useEnvironmentProviders } from "~/state/environments";
 import { deriveProviderInstanceEntries, shouldShowInstanceBadge } from "~/providerInstances";
 import { runtime } from "~/lib/runtime";
 import { usePreparedConnection } from "~/state/session";
@@ -79,7 +80,7 @@ export function ThreadAttachPickerHost() {
 function ThreadAttachPickerDialog({ threadRef }: { threadRef: ScopedThreadRef }) {
   const threads = useThreadShells();
   const projects = useProjects();
-  const serverConfigs = useServerConfigs();
+  const providersByEnvironment = useEnvironmentProviders();
   const prepared = usePreparedConnection(threadRef.environmentId);
   // Renames and activity updates do not change membership. A new or closed tab does.
   const membershipThreadIds = threads
@@ -118,87 +119,66 @@ function ThreadAttachPickerDialog({ threadRef }: { threadRef: ScopedThreadRef })
       ? tabMemberships.rows
       : undefined;
   const captureContext = useCaptureThreadTabContext(threadRef.environmentId, threadRef.threadId);
-  const loadSummary = useMemo(
-    () =>
-      captureContext === null ? null : createThreadAttachSummaryLoader(captureContext.fetchSummary),
-    [captureContext],
-  );
+  const loadSummary =
+    captureContext === null ? null : createThreadAttachSummaryLoader(captureContext.fetchSummary);
   const [query, setQuery] = useState("");
   const [view, setView] = useState(DEFAULT_THREAD_ATTACH_PICKER_VIEW);
   const [attaching, setAttaching] = useState(false);
   const attachInFlight = useRef(false);
-  const entries = useMemo(
-    () =>
-      composerThreadReferenceItems({
-        threads,
-        projects,
-        environmentId: threadRef.environmentId,
-        excludeThreadIds: new Set([threadRef.threadId]),
-        query,
-        limit: THREAD_PICKER_LIMIT,
-        view,
-        ...(memberships ? { tabMemberships: memberships } : {}),
-      }),
-    [threads, projects, threadRef, query, view, memberships],
+  const entries = composerThreadReferenceItems({
+    threads,
+    projects,
+    environmentId: threadRef.environmentId,
+    excludeThreadIds: new Set([threadRef.threadId]),
+    query,
+    limit: THREAD_PICKER_LIMIT,
+    view,
+    ...(memberships ? { tabMemberships: memberships } : {}),
+  });
+  const groups = groupThreadAttachPickerItems(entries);
+  const threadsById = new Map(
+    threads
+      .filter((thread) => thread.environmentId === threadRef.environmentId)
+      .map((thread) => [thread.id, thread]),
   );
-  const groups = useMemo(() => groupThreadAttachPickerItems(entries), [entries]);
-  const threadsById = useMemo(
-    () =>
-      new Map(
-        threads
-          .filter((thread) => thread.environmentId === threadRef.environmentId)
-          .map((thread) => [thread.id, thread]),
-      ),
-    [threads, threadRef.environmentId],
+  const projectsById = new Map(
+    projects
+      .filter((project) => project.environmentId === threadRef.environmentId)
+      .map((project) => [project.id, project]),
   );
-  const projectsById = useMemo(
-    () =>
-      new Map(
-        projects
-          .filter((project) => project.environmentId === threadRef.environmentId)
-          .map((project) => [project.id, project]),
-      ),
-    [projects, threadRef.environmentId],
-  );
-  const providerEntries = useMemo(
-    () =>
-      new Map(
-        deriveProviderInstanceEntries(
-          serverConfigs.get(threadRef.environmentId)?.providers ?? [],
-        ).map((provider) => [provider.instanceId, provider]),
-      ),
-    [serverConfigs, threadRef.environmentId],
+  const providerEntries = new Map(
+    deriveProviderInstanceEntries(providersByEnvironment.get(threadRef.environmentId) ?? []).map(
+      (provider) => [provider.instanceId, provider],
+    ),
   );
   const projectOf = (threadId: ThreadId) => {
     const thread = threadsById.get(threadId);
     return thread ? projectsById.get(thread.projectId) : undefined;
   };
-  const filterOptions = useMemo(() => {
-    const facets = threadAttachPickerFacets({
-      threads,
-      projects,
-      environmentId: threadRef.environmentId,
-      excludeThreadIds: new Set([threadRef.threadId]),
-      query,
-      view,
-      ...(memberships ? { tabMemberships: memberships } : {}),
-    });
-    const providerName = (value: ProviderInstanceId) =>
-      providerEntries.get(value)?.displayName ??
-      threads.find((thread) => thread.modelSelection.instanceId === value)?.runtime?.providerName ??
-      value;
-    // Counts come back by id; equal counts read alphabetically by name instead.
-    const byCountThenLabel = (
-      a: { count: number; label: string },
-      b: { count: number; label: string },
-    ) => b.count - a.count || a.label.localeCompare(b.label);
-    return {
-      projects: facets.projects.toSorted(byCountThenLabel),
-      providers: facets.providers
-        .map((choice) => ({ ...choice, label: providerName(choice.value) }))
-        .toSorted(byCountThenLabel),
-    };
-  }, [threads, projects, threadRef, query, view, memberships, providerEntries]);
+  const facets = threadAttachPickerFacets({
+    threads,
+    projects,
+    environmentId: threadRef.environmentId,
+    excludeThreadIds: new Set([threadRef.threadId]),
+    query,
+    view,
+    ...(memberships ? { tabMemberships: memberships } : {}),
+  });
+  const providerName = (value: ProviderInstanceId) =>
+    providerEntries.get(value)?.displayName ??
+    threads.find((thread) => thread.modelSelection.instanceId === value)?.runtime?.providerName ??
+    value;
+  // Counts come back by id; equal counts read alphabetically by name instead.
+  const byCountThenLabel = (
+    a: { count: number; label: string },
+    b: { count: number; label: string },
+  ) => b.count - a.count || a.label.localeCompare(b.label);
+  const filterOptions = {
+    projects: facets.projects.toSorted(byCountThenLabel),
+    providers: facets.providers
+      .map((choice) => ({ ...choice, label: providerName(choice.value) }))
+      .toSorted(byCountThenLabel),
+  };
 
   async function select(entry: (typeof entries)[number]) {
     if (attachInFlight.current || captureContext === null || loadSummary === null) return;
@@ -218,10 +198,9 @@ function ThreadAttachPickerDialog({ threadRef }: { threadRef: ScopedThreadRef })
         title: "Could not attach that thread",
         description: cause instanceof Error ? cause.message : undefined,
       });
-    } finally {
-      attachInFlight.current = false;
-      setAttaching(false);
     }
+    attachInFlight.current = false;
+    setAttaching(false);
   }
 
   return (

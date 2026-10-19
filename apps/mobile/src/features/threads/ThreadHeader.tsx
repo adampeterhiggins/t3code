@@ -6,6 +6,7 @@ import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import type { ThreadInspectorMode } from "./thread-inspector-content-stack";
 import { useThreadHeaderOptions } from "./useThreadHeaderOptions";
 import { useWorkspaceListNavigation } from "../workspace/useAndroidWorkspaceNavigation";
+import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
 
 export function ThreadHeader(
   props: Parameters<typeof useThreadHeaderOptions>[0] & {
@@ -22,7 +23,7 @@ export function ThreadHeader(
   const { layout, panes, toggleAuxiliaryPane } = useAdaptiveWorkspaceLayout();
   const { onOpenTerminal, onMergeBack } = props.gitControls;
   const native = useThreadHeaderOptions(props);
-  const androidHeaderActions = useMemo<ReadonlyArray<AppBarAction>>(() => {
+  const androidHeaderActions = (() => {
     const actions: AppBarAction[] = [];
     if (props.onReturnToThread) {
       actions.push({
@@ -55,24 +56,12 @@ export function ThreadHeader(
     if (onMergeBack) {
       actions.push({
         accessibilityLabel: "Merge back to source",
-        icon: "arrow.triangle.merge",
+        icon: PullRequestGlyph.merged,
         onPress: onMergeBack,
       });
     }
     return actions;
-  }, [
-    props.inspectorMode,
-    panes.auxiliaryPaneVisible,
-    props.onOpenFilesInspector,
-    onOpenTerminal,
-    onMergeBack,
-    props.onOpenGitInspector,
-    toggleAuxiliaryPane,
-    props.onReturnToThread,
-    props.hasThreadCwd,
-    props.hasWorkspaceRoot,
-    props.gitControls.canOpenTerminal,
-  ]);
+  })() as ReadonlyArray<AppBarAction>;
 
   return (
     <>

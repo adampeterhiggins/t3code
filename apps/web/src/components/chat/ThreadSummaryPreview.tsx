@@ -1,9 +1,11 @@
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { useAtomValue } from "@effect/atom-react";
+import { type ReactNode, useEffect, useState } from "react";
 
 import { deriveProviderInstanceEntries } from "~/providerInstances";
-import { useProject, useServerConfigs, useThreadShell } from "~/state/entities";
+import { useProject, useThreadShell } from "~/state/entities";
+import { providersIgnoringCheckedAtAtom } from "~/state/server";
 import { getTriggerDisplayModelLabel } from "./providerIconUtils";
 import {
   type createThreadAttachSummaryLoader,
@@ -13,18 +15,16 @@ import {
 /** The thread's provider and model, named the way the model picker shows them. */
 function useThreadProviderLabel(environmentId: EnvironmentId, threadId: ThreadId) {
   const thread = useThreadShell(scopeThreadRef(environmentId, threadId));
-  const serverConfigs = useServerConfigs();
-  return useMemo(() => {
-    if (!thread) return null;
-    const { instanceId, model } = thread.modelSelection;
-    const provider = deriveProviderInstanceEntries(
-      serverConfigs.get(environmentId)?.providers ?? [],
-    ).find((entry) => entry.instanceId === instanceId);
-    const selected = provider?.models.find((entry) => entry.slug === model);
-    return `${provider?.displayName ?? thread.runtime?.providerName ?? instanceId} · ${
-      selected ? getTriggerDisplayModelLabel(selected) : model
-    }`;
-  }, [thread, serverConfigs, environmentId]);
+  const providers = useAtomValue(providersIgnoringCheckedAtAtom(environmentId));
+  if (!thread) return null;
+  const { instanceId, model } = thread.modelSelection;
+  const provider = deriveProviderInstanceEntries(providers).find(
+    (entry) => entry.instanceId === instanceId,
+  );
+  const selected = provider?.models.find((entry) => entry.slug === model);
+  return `${provider?.displayName ?? thread.runtime?.providerName ?? instanceId} · ${
+    selected ? getTriggerDisplayModelLabel(selected) : model
+  }`;
 }
 
 /**
@@ -61,10 +61,8 @@ export function ThreadSummaryPreview(props: {
       active = false;
     };
   }, [threadId, loadSummary]);
-  const content = useMemo(
-    () => (preview && "summary" in preview ? parseThreadSummaryPreview(preview.summary) : null),
-    [preview],
-  );
+  const content =
+    preview && "summary" in preview ? parseThreadSummaryPreview(preview.summary) : null;
   const facts = [
     project?.title ?? null,
     providerLabel,

@@ -152,20 +152,18 @@ function LinearConnectionRows({
     pendingRef.current = true;
     setPending(true);
     setError(null);
-    try {
-      const result = await request();
-      if (result._tag === "Failure") {
-        if (!isAtomCommandInterrupted(result)) {
-          const failure = squashAtomCommandFailure(result);
-          setError(failure instanceof Error ? failure.message : "Linear request failed.");
-        }
-        return null;
+    // Atom commands settle to a result instead of rejecting.
+    const result = await request();
+    pendingRef.current = false;
+    setPending(false);
+    if (result._tag === "Failure") {
+      if (!isAtomCommandInterrupted(result)) {
+        const failure = squashAtomCommandFailure(result);
+        setError(failure instanceof Error ? failure.message : "Linear request failed.");
       }
-      return result.value;
-    } finally {
-      pendingRef.current = false;
-      setPending(false);
+      return null;
     }
+    return result.value;
   }
 
   async function openAuthorization(url: string) {

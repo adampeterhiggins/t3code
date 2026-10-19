@@ -9,6 +9,7 @@ import { AndroidScreenHeader } from "../../components/ui/AndroidScreenHeader";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { NativePrimaryColumnContext } from "../../native/v5-workspace-context";
 import {
+  useDeviceType,
   useNativeColumnLayoutMetrics,
   useNativeLayoutMetrics,
 } from "../../native/native-layout-metrics";
@@ -57,32 +58,30 @@ function WorkspaceRootContent() {
   const primaryColumn = use(NativePrimaryColumnContext);
   const columnMetrics = useNativeColumnLayoutMetrics();
   const nativeMetrics = useNativeLayoutMetrics();
+  const deviceType = useDeviceType();
   const systemTabBar = useSystemWorkspaceTabBar();
   const sidebarTabs = useSidebarWorkspaceTabs();
   const sidebarPicker = sidebarTabs === "picker";
   const sidebarNavigation =
     primaryColumn !== null &&
     (layout.usesSplitView ||
-      (Platform.OS === "ios" && Platform.isPad) ||
+      deviceType === "pad" ||
       (nativeMetrics !== null && nativeMetrics.verticalBarEdge !== "none"));
   const width = columnMetrics?.width ?? windowWidth;
   const insets = useSafeAreaInsets();
   const keyboardHeight = useKeyboardState((keyboard) => keyboard.height);
   const workspace = useWorkspaceTabs()!;
   const { state } = workspace;
-  const renderHeaderTitle = useCallback(
-    () => (
-      <WorkspaceRootTitle
-        maxWidth={Math.max(0, width - 160)}
-        onOpenEnvironments={() =>
-          navigation.navigate("SettingsSheet", {
-            screen: "SettingsContent",
-            params: { screen: "SettingsEnvironments" },
-          })
-        }
-      />
-    ),
-    [width, navigation],
+  const renderHeaderTitle = () => (
+    <WorkspaceRootTitle
+      maxWidth={Math.max(0, width - 160)}
+      onOpenEnvironments={() =>
+        navigation.navigate("SettingsSheet", {
+          screen: "SettingsContent",
+          params: { screen: "SettingsEnvironments" },
+        })
+      }
+    />
   );
   const tab = state.tabs[state.selectedTab];
   const bottomClearance =
@@ -94,7 +93,7 @@ function WorkspaceRootContent() {
       : keyboardHeight > 0 && tab.searchMode !== "resting"
         ? keyboardHeight + 64
         : Math.max(insets.bottom, 12) + workspaceToolbarHeight(tab.searchMode) + 16;
-  const context = useMemo(() => ({ ...workspace, bottomClearance }), [workspace, bottomClearance]);
+  const context = (() => ({ ...workspace, bottomClearance }))();
 
   return (
     <WorkspaceTabsContext value={context}>

@@ -6,7 +6,7 @@ import type {
   ToolPreview,
 } from "@t3tools/client-runtime/work-log/tool-preview";
 import { ExternalLinkIcon } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { useClientSettings } from "../../hooks/useSettings";
 import { useThreadShell } from "../../state/entities";
@@ -98,12 +98,7 @@ function PullRequestRowView(props: {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
 }) {
-  const shell = useThreadShell(
-    useMemo(
-      () => scopeThreadRef(props.environmentId, props.threadId),
-      [props.environmentId, props.threadId],
-    ),
-  );
+  const shell = useThreadShell(scopeThreadRef(props.environmentId, props.threadId));
   const { pr } = props;
   const snapshot =
     pr.title === null
@@ -148,9 +143,7 @@ function ThreadName(props: {
   readonly className?: string;
 }) {
   const threadId = ThreadId.make(props.threadId);
-  const shell = useThreadShell(
-    useMemo(() => scopeThreadRef(props.environmentId, threadId), [props.environmentId, threadId]),
-  );
+  const shell = useThreadShell(scopeThreadRef(props.environmentId, threadId));
   return (
     <button
       type="button"

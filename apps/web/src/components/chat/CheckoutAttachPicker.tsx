@@ -3,10 +3,11 @@ import type { ScopedThreadRef } from "@t3tools/contracts";
 import { checkoutPathsEqual, sameCheckoutRepository } from "@t3tools/shared/checkouts";
 import { Atom } from "effect/reactivity";
 import { FolderIcon, GitBranchIcon, LaptopIcon, ServerIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 import { appAtomRegistry } from "~/rpc/atomRegistry";
-import { useServerConfigs, useThreadShell } from "~/state/entities";
+import { useThreadShell } from "~/state/entities";
+import { useEnvironmentProviders } from "~/state/environments";
 import { sourceControlEnvironment } from "~/state/sourceControl";
 import { threadEnvironment } from "~/state/threads";
 import { useAtomCommand } from "~/state/use-atom-command";
@@ -69,12 +70,12 @@ function CheckoutAttachPickerDialog(props: {
   const [linkToThread, setLinkToThread] = useState(true);
   const [locateError, setLocateError] = useState<string | null>(null);
   const shell = useThreadShell(threadRef);
-  const configs = useServerConfigs();
+  const providersByEnvironment = useEnvironmentProviders();
   const driver =
-    configs
+    providersByEnvironment
       .get(threadRef.environmentId)
-      ?.providers.find((provider) => provider.instanceId === shell?.modelSelection.instanceId)
-      ?.driver ?? null;
+      ?.find((provider) => provider.instanceId === shell?.modelSelection.instanceId)?.driver ??
+    null;
   const choices = useComposerCheckoutItems(threadRef.environmentId, {
     enabled: true,
     query,
@@ -89,16 +90,14 @@ function CheckoutAttachPickerDialog(props: {
           input: { paths: [relocateFrom] },
         }),
   );
-  const rows = useMemo(() => {
-    const items = choices.items.flatMap((item) => (item.type === "checkout" ? [item] : []));
-    const filtered = dirtyOnly
-      ? items.filter((item) => item.changedFiles !== null && item.changedFiles > 0)
-      : items;
-    if (sort === "name") {
-      return filtered.toSorted((left, right) => left.label.localeCompare(right.label));
-    }
-    return filtered;
-  }, [choices.items, dirtyOnly, sort]);
+  const checkoutItems = choices.items.flatMap((item) => (item.type === "checkout" ? [item] : []));
+  const filtered = dirtyOnly
+    ? checkoutItems.filter((item) => item.changedFiles !== null && item.changedFiles > 0)
+    : checkoutItems;
+  const rows =
+    sort === "name"
+      ? filtered.toSorted((left, right) => left.label.localeCompare(right.label))
+      : filtered;
 
   const select = (item: Extract<ComposerReferenceItem, { type: "checkout" }>) => {
     if (!item.selectable) return;
@@ -151,7 +150,7 @@ function CheckoutAttachPickerDialog(props: {
               >
                 <span
                   className={cn(
-                    "size-3.5 rounded-[4px] border",
+                    "size-3.5 rounded-xs border",
                     linkToThread
                       ? "border-primary bg-primary text-primary-foreground"
                       : "border-input",

@@ -17,7 +17,7 @@ import {
   ShieldQuestionIcon,
   type LucideIcon,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 import { useAttentionInbox, type WebAttentionInboxEntry } from "../../hooks/useAttentionInbox";
 import { useProjects } from "../../state/entities";
@@ -55,10 +55,8 @@ export const ATTENTION_REASON_PRESENTATION: Record<
 /** Project titles keyed like thread shells, for the entries' second line. */
 export function useProjectTitleByKey(): ReadonlyMap<string, string> {
   const projects = useProjects();
-  return useMemo(
-    () =>
-      new Map(projects.map((project) => [`${project.environmentId}:${project.id}`, project.title])),
-    [projects],
+  return new Map(
+    projects.map((project) => [`${project.environmentId}:${project.id}`, project.title]),
   );
 }
 
@@ -119,7 +117,7 @@ function AttentionInboxList(props: {
               >
                 <button
                   type="button"
-                  className="flex min-w-0 flex-1 cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex min-w-0 flex-1 cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                   onClick={() => {
                     props.onOpenEntry();
                     if (isMobile) setOpenMobile(false);

@@ -39,6 +39,10 @@ vi.mock("react-native", () => ({
       state.alerts.push({ title, buttons }),
   },
 }));
+vi.mock("../threads/ThreadGroupEditor", () => ({ requestThreadGroup: vi.fn() }));
+vi.mock("../threads/use-thread-groups", () => ({
+  useThreadGroups: () => ({ groups: [], setGroup: vi.fn() }),
+}));
 vi.mock("expo-haptics", () => ({
   impactAsync: async () => {},
   ImpactFeedbackStyle: { Light: "light" },

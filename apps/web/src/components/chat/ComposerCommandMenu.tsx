@@ -26,7 +26,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { GitHubIcon, GranolaIcon, LinearIcon, NotionIcon, SlackIcon } from "../Icons";
-import { memo, useCallback, useLayoutEffect, useRef } from "react";
+import { memo, useLayoutEffect, useRef } from "react";
 
 import type { AgentFleetEntry } from "@t3tools/client-runtime/state/agent-fleet";
 import { type ComposerSlashCommand, type ComposerTriggerKind } from "../../composer-logic";
@@ -196,13 +196,10 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
   // row into view, put a new row under the cursor, and creep the list along.
   const pointerHighlightedIdRef = useRef<string | null>(null);
   const { onHighlightedItemChange } = props;
-  const highlightFromPointer = useCallback(
-    (itemId: string | null) => {
-      pointerHighlightedIdRef.current = itemId;
-      onHighlightedItemChange(itemId);
-    },
-    [onHighlightedItemChange],
-  );
+  const highlightFromPointer = (itemId: string | null) => {
+    pointerHighlightedIdRef.current = itemId;
+    onHighlightedItemChange(itemId);
+  };
 
   useLayoutEffect(() => {
     if (!props.activeItemId || !listRef.current) return;

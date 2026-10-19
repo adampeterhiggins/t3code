@@ -25,7 +25,6 @@ import type {
 import { CircleDashedIcon, FilmIcon, ImageIcon } from "lucide-react";
 import {
   Fragment,
-  useMemo,
   useState,
   type ComponentProps,
   type CSSProperties,
@@ -362,7 +361,7 @@ function FileChipContent(props: {
  * summary the agent receives, laid out by turn. Text in another shape shows as written.
  */
 export function ThreadTabSummaryDetails({ summary }: { summary: string }) {
-  const chats = useMemo(() => parseThreadTabSummary(summary), [summary]);
+  const chats = parseThreadTabSummary(summary);
   return (
     <div className="max-h-96 overflow-y-auto rounded-lg border border-border/70 bg-background/70 px-3 py-2.5 text-xs text-foreground">
       {chats === null ? (
@@ -501,7 +500,7 @@ function IssueMarkdownBody({ text }: { text: string }) {
 
 /** A Linear issue snapshot, with bare Linear links given readable names. */
 export function LinearIssueMarkdown({ markdown, url }: { markdown: string; url: string }) {
-  const text = useMemo(() => formatLinearMarkdownForPreview(markdown, url), [markdown, url]);
+  const text = formatLinearMarkdownForPreview(markdown, url);
   return <IssueMarkdownBody text={text} />;
 }
 

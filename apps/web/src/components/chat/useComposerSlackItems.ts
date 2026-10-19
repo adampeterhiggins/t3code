@@ -1,5 +1,4 @@
 import type { EnvironmentId, SlackMessageSummary } from "@t3tools/contracts";
-import { useCallback } from "react";
 
 import { slackEnvironment } from "~/state/slack";
 import type { ComposerReferenceItem } from "./composerReferenceMenu.logic";
@@ -24,10 +23,7 @@ export function useComposerSlackItems(
   environmentId: EnvironmentId,
   input: { readonly enabled: boolean; readonly active: boolean; readonly query: string },
 ) {
-  const atomFor = useCallback(
-    (query: string) => slackEnvironment.messages({ environmentId, input: { query } }),
-    [environmentId],
-  );
+  const atomFor = (query: string) => slackEnvironment.messages({ environmentId, input: { query } });
   return useComposerReferenceSearch({
     ...input,
     debounceMs: SLACK_SEARCH_DEBOUNCE_MS,

@@ -122,20 +122,18 @@ function GranolaConnectionRow({
     pendingRef.current = true;
     setPending(true);
     setError(null);
-    try {
-      const result = await request();
-      if (result._tag === "Failure") {
-        if (!isAtomCommandInterrupted(result)) {
-          const failure = squashAtomCommandFailure(result);
-          setError(failure instanceof Error ? failure.message : "Granola request failed.");
-        }
-        return null;
-      }
-      return result.value;
-    } finally {
+    const result = await request().finally(() => {
       pendingRef.current = false;
       setPending(false);
+    });
+    if (result._tag === "Failure") {
+      if (!isAtomCommandInterrupted(result)) {
+        const failure = squashAtomCommandFailure(result);
+        setError(failure instanceof Error ? failure.message : "Granola request failed.");
+      }
+      return null;
     }
+    return result.value;
   }
 
   async function openVerification(url: string) {

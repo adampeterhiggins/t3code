@@ -1,7 +1,6 @@
 import { latestSubagentToolCall } from "@t3tools/client-runtime/state/agent-list-view";
 import type { RuntimeSubagentStatus } from "@t3tools/client-runtime/state/subagentRuntime";
 import type { ScopedThreadRef } from "@t3tools/contracts";
-import { useMemo } from "react";
 
 import { useThreadProjection } from "../../state/entities";
 import { TOOL_KIND_ICONS } from "./agentToolKinds";
@@ -30,16 +29,13 @@ export function SubagentActivityLine(props: {
 }) {
   const child = useThreadProjection(props.childRef)?.projection ?? null;
   const childThreadId = props.childRef?.threadId ?? null;
-  const latest = useMemo(
-    () =>
-      child === null
-        ? null
-        : latestSubagentToolCall(
-            child.turnItems.filter((item) => item.threadId === childThreadId),
-            props.workspaceRoot,
-          ),
-    [child, childThreadId, props.workspaceRoot],
-  );
+  const latest =
+    child === null
+      ? null
+      : latestSubagentToolCall(
+          child.turnItems.filter((item) => item.threadId === childThreadId),
+          props.workspaceRoot,
+        );
   const waiting = props.status === "waiting";
   if (latest === null) {
     return (

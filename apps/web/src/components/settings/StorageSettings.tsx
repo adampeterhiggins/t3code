@@ -17,10 +17,11 @@ import {
 import { createModelSelection } from "@t3tools/shared/model";
 import { resolveWorktreeCleanup } from "@t3tools/shared/projectSettings";
 import { resolveWorktreeCleanupModelSelection } from "@t3tools/shared/serverSettings";
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useAtomValue } from "@effect/atom-react";
-import { Atom } from "effect/reactivity";
 import { formatBytes } from "../../lib/formatBytes";
+import { useEnvironmentProviders } from "../../state/environments";
+import { environmentAtomList, environmentIdsKey } from "../../state/environmentAtomList";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 
 import { ProviderModelPicker } from "../chat/ProviderModelPicker";
@@ -304,7 +305,11 @@ function IgnoredNamesModelControl() {
   const navigate = useNavigate();
   const { environment, connectedEnvironments } = useSettingsScope();
   const environmentId = environment?.environmentId ?? null;
-  const serverProviders = environment?.serverConfig?.providers ?? EMPTY_SERVER_PROVIDERS;
+  const providersByEnvironment = useEnvironmentProviders();
+  const serverProviders =
+    (environment?.serverConfig
+      ? providersByEnvironment.get(environment.environmentId)
+      : undefined) ?? EMPTY_SERVER_PROVIDERS;
   const textGenerationProviders = serverProviders.filter(
     (provider) => provider.supportsTextGeneration !== false,
   );
@@ -486,6 +491,15 @@ function CleanupResults({
   );
 }
 
+const storageCleanupReportsAtom = environmentAtomList(
+  "web-storage-cleanup-reports",
+  (environmentId) => serverEnvironment.storageCleanupReport({ environmentId, input: {} }),
+);
+const storageCleanupPermissionsAtom = environmentAtomList(
+  "web-storage-cleanup-permissions",
+  serverEnvironment.runStorageCleanup.permissionAtom,
+);
+
 function CleanupSection() {
   useRelativeTimeTick(60_000);
   const { connectedEnvironments } = useSettingsScope();
@@ -494,35 +508,19 @@ function CleanupSection() {
   const supported = connectedEnvironments.filter(
     (environment) => environment.serverConfig?.environment.capabilities.storageCleanupRun === true,
   );
-  const state = useAtomValue(
-    useMemo(
-      () =>
-        Atom.make((get) =>
-          connectedEnvironments.flatMap((environment) => {
-            if (environment.serverConfig?.environment.capabilities.storageCleanupRun !== true)
-              return [];
-            const query = get(
-              serverEnvironment.storageCleanupReport({
-                environmentId: environment.environmentId,
-                input: {},
-              }),
-            );
-            return [
-              {
-                environmentId: environment.environmentId,
-                allowed: get(
-                  serverEnvironment.runStorageCleanup.permissionAtom(environment.environmentId),
-                ),
-                report: query._tag === "Success" ? query.value : null,
-                loading: query.waiting,
-                failed: query._tag === "Failure",
-              },
-            ];
-          }),
-        ),
-      [connectedEnvironments],
-    ),
-  );
+  const supportedIds = supported.map(({ environmentId }) => environmentId);
+  const reports = useAtomValue(storageCleanupReportsAtom(environmentIdsKey(supportedIds)));
+  const permissions = useAtomValue(storageCleanupPermissionsAtom(environmentIdsKey(supportedIds)));
+  const state = supportedIds.map((environmentId, index) => {
+    const query = reports[index]!;
+    return {
+      environmentId,
+      allowed: permissions[index]!,
+      report: query._tag === "Success" ? query.value : null,
+      loading: query.waiting,
+      failed: query._tag === "Failure",
+    };
+  });
   const hasRules = supported.some((environment) => {
     const settings = environment.serverConfig?.settings;
     if (!settings) return false;
@@ -565,36 +563,30 @@ function CleanupSection() {
   const deleteNow = async () => {
     if (pending) return;
     setPending(true);
-    try {
-      await Promise.all(
-        supported
-          .filter((environment) =>
-            state.some(
-              (entry) => entry.environmentId === environment.environmentId && entry.allowed,
-            ),
-          )
-          .map(async (environment) => {
-            const result = await run({ environmentId: environment.environmentId, input: {} });
-            if (result._tag === "Success") {
-              const failures = result.value.entries.filter((entry) => entry.outcome === "failed");
-              if (failures.length > 0)
-                toastManager.add({
-                  type: "error",
-                  title: `Cleanup failed on ${environment.label}`,
-                  description: failures[0]!.reason,
-                });
-            } else if (!isAtomCommandInterrupted(result)) {
+    await Promise.all(
+      supported
+        .filter((environment) =>
+          state.some((entry) => entry.environmentId === environment.environmentId && entry.allowed),
+        )
+        .map(async (environment) => {
+          const result = await run({ environmentId: environment.environmentId, input: {} });
+          if (result._tag === "Success") {
+            const failures = result.value.entries.filter((entry) => entry.outcome === "failed");
+            if (failures.length > 0)
               toastManager.add({
                 type: "error",
-                title: `Could not run cleanup on ${environment.label}`,
-                description: String(squashAtomCommandFailure(result)),
+                title: `Cleanup failed on ${environment.label}`,
+                description: failures[0]!.reason,
               });
-            }
-          }),
-      );
-    } finally {
-      setPending(false);
-    }
+          } else if (!isAtomCommandInterrupted(result)) {
+            toastManager.add({
+              type: "error",
+              title: `Could not run cleanup on ${environment.label}`,
+              description: String(squashAtomCommandFailure(result)),
+            });
+          }
+        }),
+    ).finally(() => setPending(false));
   };
   return (
     <SettingsSection id="storage-cleanup" title="Cleanup" variant="plain">

@@ -1,5 +1,5 @@
 import { linearAppUrl } from "@t3tools/client-runtime/state/linear";
-import { type MouseEvent, useCallback } from "react";
+import type { MouseEvent } from "react";
 
 import { useClientSettings } from "~/hooks/useSettings";
 import { readLocalApi } from "~/localApi";
@@ -13,19 +13,16 @@ type LinkClickHandler = (event: MouseEvent<HTMLElement>, url: string) => void;
  */
 export function useLinearLinkClickHandler(fallback: LinkClickHandler): LinkClickHandler {
   const target = useClientSettings((settings) => settings.linearLinkTarget);
-  return useCallback(
-    (event, url) => {
-      const appUrl = target === "app" ? linearAppUrl(url) : null;
-      const api = readLocalApi();
-      if (appUrl === null || !api) {
-        fallback(event, url);
-        return;
-      }
-      event.preventDefault();
-      event.stopPropagation();
-      // No Linear app to handle the scheme: open the web page instead of dropping the click.
-      void api.shell.openExternal(appUrl).catch(() => api.shell.openExternal(url));
-    },
-    [fallback, target],
-  );
+  return (event, url) => {
+    const appUrl = target === "app" ? linearAppUrl(url) : null;
+    const api = readLocalApi();
+    if (appUrl === null || !api) {
+      fallback(event, url);
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    // No Linear app to handle the scheme: open the web page instead of dropping the click.
+    void api.shell.openExternal(appUrl).catch(() => api.shell.openExternal(url));
+  };
 }

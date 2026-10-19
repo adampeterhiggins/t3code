@@ -14,7 +14,8 @@ const state = vi.hoisted(() => ({
   setPreference: vi.fn(),
 }));
 
-vi.mock("react", () => ({ useCallback: (callback: unknown) => callback }));
+vi.mock("@effect/atom-react", () => ({ useAtomValue: () => undefined }));
+vi.mock("./state/server", () => ({ serverEnvironment: { configValueAtom: () => null } }));
 vi.mock("./state/shell", () => ({ shellEnvironment: { openInEditor: "openInEditor" } }));
 vi.mock("./state/use-atom-command", () => ({ useAtomCommand: () => state.run }));
 vi.mock("./state/session", () => ({

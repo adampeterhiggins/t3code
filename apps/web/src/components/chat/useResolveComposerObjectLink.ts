@@ -22,7 +22,6 @@ import type {
   SlackErrorReason,
 } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
-import { useCallback } from "react";
 
 import { type ComposerThreadTarget, useComposerDraftStore } from "~/composerDraftStore";
 import { useIssueContextStore } from "~/issueContextStore";
@@ -195,191 +194,166 @@ export function useResolveComposerObjectLink(input: {
   const serverConfig = useAtomValue(serverEnvironment.configValueAtom(environmentId));
   const capabilities = serverConfig?.environment.capabilities;
 
-  return useCallback(
-    async (
-      link: ComposerObjectLink,
-      options?: {
-        /** Tries the same link again, offered where the user can fix what stopped it. */
-        readonly retry?: () => void;
-      },
-    ): Promise<ResolvedComposerObjectLink | null> => {
-      switch (link.kind) {
-        case "notion-page": {
-          if (!notionEnabled) return null;
-          const result = await getNotionPage({ environmentId, input: { id: link.pageId } });
-          if (result._tag === "Failure") {
-            if (!isAtomCommandInterrupted(result))
-              reportUnreadableNotionLink(
-                squashAtomCommandFailure(result),
-                link.url,
-                options?.retry,
-              );
-            return null;
-          }
-          const record = notionPageContextRecord(result.value);
-          return {
-            reference: { kind: record.kind, contextId: record.contextId, label: record.label },
-            commit: () => useIssueContextStore.getState().upsert(threadRef.threadId, record),
-          };
-        }
-        case "granola-note": {
-          if (!granolaEnabled) return null;
-          const result = await getGranolaNote({ environmentId, input: { id: link.noteId } });
-          if (result._tag === "Failure") {
-            if (!isAtomCommandInterrupted(result))
-              reportUnreadableGranolaLink(squashAtomCommandFailure(result));
-            return null;
-          }
-          const record = granolaNoteContextRecord(result.value);
-          return {
-            reference: { kind: record.kind, contextId: record.contextId, label: record.label },
-            commit: () => useIssueContextStore.getState().upsert(threadRef.threadId, record),
-          };
-        }
-        case "linear-issue": {
-          const result = await getLinearIssue({ environmentId, input: { id: link.identifier } });
-          if (result._tag === "Failure") return null;
-          const record = linearIssueContextRecord(result.value);
-          return {
-            reference: { kind: "linear-issue", contextId: record.contextId, label: record.label },
-            commit: () => useIssueContextStore.getState().upsert(threadRef.threadId, record),
-          };
-        }
-        case "slack-message": {
-          if (!slackEnabled) return null;
-          const result = await getSlackThread({
-            environmentId,
-            input: {
-              channelId: link.channelId,
-              ts: link.ts,
-              ...(link.threadTs === null ? {} : { threadTs: link.threadTs }),
-              url: link.url,
-              scope: "thread",
-            },
-          });
-          if (result._tag === "Failure") {
-            if (!isAtomCommandInterrupted(result)) {
-              reportUnreadableSlackLink(squashAtomCommandFailure(result));
-            }
-            return null;
-          }
-          const record = slackThreadContextRecord(result.value);
-          return {
-            reference: { kind: "slack-thread", contextId: record.contextId, label: record.label },
-            commit: () => useIssueContextStore.getState().upsert(threadRef.threadId, record),
-          };
-        }
-        case "github-issue": {
-          const result = await getGitHubIssue({ environmentId, input: { url: link.url } });
-          if (result._tag === "Failure") return null;
-          const record = gitHubIssueContextRecord(result.value);
-          return {
-            reference: { kind: "github-issue", contextId: record.contextId, label: record.label },
-            commit: () => useIssueContextStore.getState().upsert(threadRef.threadId, record),
-          };
-        }
-        case "pull-request": {
-          const target = resolvePullRequestPreviewTarget({
-            environmentId,
-            projects,
-            capabilities,
-            url: link.url,
-          });
-          if (target === null) return null;
-          const linesAnchor = pullRequestDiffLinesAnchor(link.url);
-          // A link to lines of a file (`#diff-…L4-L14`) attaches those lines, read from the diff
-          // a slice at a time until the file turns up. One the diff cannot show stays a link,
-          // since the whole change would drop exactly what the link pointed at.
-          const findLines = async (detail: PullRequestDetail) => {
-            let cursor: string | null = null;
-            do {
-              const page = await getPullRequestDiff({
-                environmentId: target.environmentId,
-                input: { ...target.input, ...(cursor === null ? {} : { cursor }) },
-              });
-              if (page._tag === "Failure") return null;
-              const parsed = getRenderablePatch(page.value.patch, "pull-request-link");
-              const files = parsed?.kind === "files" ? parsed.sourceFiles : [];
-              if (files.length > 0) {
-                const lines = buildPullRequestLinesReferenceContext(detail, files, link.url);
-                if (lines !== null) return lines;
-              }
-              cursor = page.value.nextCursor;
-            } while (cursor !== null);
-            return null;
-          };
-          // A link to one remark (`#issuecomment-1`) attaches that remark, not the whole change.
-          // The shared read can predate a remark posted moments ago, which is exactly when one
-          // gets pasted, so a miss asks the host again before giving up.
-          const findComment = async () => {
-            const shared = await getPullRequestActivity(target);
-            const found =
-              shared._tag === "Success" ? findPullRequestComment(shared.value, link.url) : null;
-            if (found !== null) return found;
-            const fresh = await getFreshPullRequestActivity({
-              ...target,
-              input: { ...target.input, allowStale: false },
-            });
-            return fresh._tag === "Success" ? findPullRequestComment(fresh.value, link.url) : null;
-          };
-          const commentLink = linesAnchor === null && commentAnchor(new URL(link.url).hash) !== "";
-          const [result, linked] = await Promise.all([
-            getPullRequest(target),
-            commentLink ? findComment() : null,
-          ]);
-          if (result._tag === "Failure") return null;
-          // A remark that cannot be found stays a link, like lines the diff cannot show: the whole
-          // change would drop exactly what the link pointed at.
-          if (commentLink && linked === null) return null;
-          const comment =
-            linesAnchor !== null
-              ? await findLines(result.value)
-              : linked === null
-                ? buildPullRequestReferenceContext(result.value)
-                : buildPullRequestCommentReferenceContext(result.value, linked);
-          if (comment === null) return null;
-          return {
-            reference: reviewCommentContextReference(comment),
-            commit: () =>
-              useComposerDraftStore
-                .getState()
-                .addReviewComment(draftTarget, comment, { appendReference: false }),
-          };
-        }
-        case "prompt-link": {
-          const record = promptLinkContextRecord(link);
-          return {
-            reference: { kind: "prompt-link", contextId: record.contextId, label: record.label },
-            commit: () => useIssueContextStore.getState().upsert(threadRef.threadId, record),
-          };
-        }
-        case "repository": {
-          const record = repositoryContextRecord(link);
-          return {
-            reference: { kind: "repository", contextId: record.contextId, label: record.label },
-            commit: () => useRepositoryContextStore.getState().upsert(threadRef.threadId, record),
-          };
-        }
-      }
+  return async (
+    link: ComposerObjectLink,
+    options?: {
+      /** Tries the same link again, offered where the user can fix what stopped it. */
+      readonly retry?: () => void;
     },
-    [
-      draftTarget,
-      environmentId,
-      getGitHubIssue,
-      getLinearIssue,
-      getPullRequest,
-      getPullRequestActivity,
-      getFreshPullRequestActivity,
-      getPullRequestDiff,
-      getGranolaNote,
-      getNotionPage,
-      getSlackThread,
-      granolaEnabled,
-      notionEnabled,
-      projects,
-      capabilities,
-      slackEnabled,
-      threadRef.threadId,
-    ],
-  );
+  ): Promise<ResolvedComposerObjectLink | null> => {
+    switch (link.kind) {
+      case "notion-page": {
+        if (!notionEnabled) return null;
+        const result = await getNotionPage({ environmentId, input: { id: link.pageId } });
+        if (result._tag === "Failure") {
+          if (!isAtomCommandInterrupted(result))
+            reportUnreadableNotionLink(squashAtomCommandFailure(result), link.url, options?.retry);
+          return null;
+        }
+        const record = notionPageContextRecord(result.value);
+        return {
+          reference: { kind: record.kind, contextId: record.contextId, label: record.label },
+          commit: () => useIssueContextStore.getState().upsert(threadRef.threadId, record),
+        };
+      }
+      case "granola-note": {
+        if (!granolaEnabled) return null;
+        const result = await getGranolaNote({ environmentId, input: { id: link.noteId } });
+        if (result._tag === "Failure") {
+          if (!isAtomCommandInterrupted(result))
+            reportUnreadableGranolaLink(squashAtomCommandFailure(result));
+          return null;
+        }
+        const record = granolaNoteContextRecord(result.value);
+        return {
+          reference: { kind: record.kind, contextId: record.contextId, label: record.label },
+          commit: () => useIssueContextStore.getState().upsert(threadRef.threadId, record),
+        };
+      }
+      case "linear-issue": {
+        const result = await getLinearIssue({ environmentId, input: { id: link.identifier } });
+        if (result._tag === "Failure") return null;
+        const record = linearIssueContextRecord(result.value);
+        return {
+          reference: { kind: "linear-issue", contextId: record.contextId, label: record.label },
+          commit: () => useIssueContextStore.getState().upsert(threadRef.threadId, record),
+        };
+      }
+      case "slack-message": {
+        if (!slackEnabled) return null;
+        const result = await getSlackThread({
+          environmentId,
+          input: {
+            channelId: link.channelId,
+            ts: link.ts,
+            ...(link.threadTs === null ? {} : { threadTs: link.threadTs }),
+            url: link.url,
+            scope: "thread",
+          },
+        });
+        if (result._tag === "Failure") {
+          if (!isAtomCommandInterrupted(result)) {
+            reportUnreadableSlackLink(squashAtomCommandFailure(result));
+          }
+          return null;
+        }
+        const record = slackThreadContextRecord(result.value);
+        return {
+          reference: { kind: "slack-thread", contextId: record.contextId, label: record.label },
+          commit: () => useIssueContextStore.getState().upsert(threadRef.threadId, record),
+        };
+      }
+      case "github-issue": {
+        const result = await getGitHubIssue({ environmentId, input: { url: link.url } });
+        if (result._tag === "Failure") return null;
+        const record = gitHubIssueContextRecord(result.value);
+        return {
+          reference: { kind: "github-issue", contextId: record.contextId, label: record.label },
+          commit: () => useIssueContextStore.getState().upsert(threadRef.threadId, record),
+        };
+      }
+      case "pull-request": {
+        const target = resolvePullRequestPreviewTarget({
+          environmentId,
+          projects,
+          capabilities,
+          url: link.url,
+        });
+        if (target === null) return null;
+        const linesAnchor = pullRequestDiffLinesAnchor(link.url);
+        // A link to lines of a file (`#diff-…L4-L14`) attaches those lines, read from the diff
+        // a slice at a time until the file turns up. One the diff cannot show stays a link,
+        // since the whole change would drop exactly what the link pointed at.
+        const findLines = async (detail: PullRequestDetail) => {
+          let cursor: string | null = null;
+          do {
+            const page = await getPullRequestDiff({
+              environmentId: target.environmentId,
+              input: { ...target.input, ...(cursor === null ? {} : { cursor }) },
+            });
+            if (page._tag === "Failure") return null;
+            const parsed = getRenderablePatch(page.value.patch, "pull-request-link");
+            const files = parsed?.kind === "files" ? parsed.sourceFiles : [];
+            if (files.length > 0) {
+              const lines = buildPullRequestLinesReferenceContext(detail, files, link.url);
+              if (lines !== null) return lines;
+            }
+            cursor = page.value.nextCursor;
+          } while (cursor !== null);
+          return null;
+        };
+        // A link to one remark (`#issuecomment-1`) attaches that remark, not the whole change.
+        // The shared read can predate a remark posted moments ago, which is exactly when one
+        // gets pasted, so a miss asks the host again before giving up.
+        const findComment = async () => {
+          const shared = await getPullRequestActivity(target);
+          const found =
+            shared._tag === "Success" ? findPullRequestComment(shared.value, link.url) : null;
+          if (found !== null) return found;
+          const fresh = await getFreshPullRequestActivity({
+            ...target,
+            input: { ...target.input, allowStale: false },
+          });
+          return fresh._tag === "Success" ? findPullRequestComment(fresh.value, link.url) : null;
+        };
+        const commentLink = linesAnchor === null && commentAnchor(new URL(link.url).hash) !== "";
+        const [result, linked] = await Promise.all([
+          getPullRequest(target),
+          commentLink ? findComment() : null,
+        ]);
+        if (result._tag === "Failure") return null;
+        // A remark that cannot be found stays a link, like lines the diff cannot show: the whole
+        // change would drop exactly what the link pointed at.
+        if (commentLink && linked === null) return null;
+        const comment =
+          linesAnchor !== null
+            ? await findLines(result.value)
+            : linked === null
+              ? buildPullRequestReferenceContext(result.value)
+              : buildPullRequestCommentReferenceContext(result.value, linked);
+        if (comment === null) return null;
+        return {
+          reference: reviewCommentContextReference(comment),
+          commit: () =>
+            useComposerDraftStore
+              .getState()
+              .addReviewComment(draftTarget, comment, { appendReference: false }),
+        };
+      }
+      case "prompt-link": {
+        const record = promptLinkContextRecord(link);
+        return {
+          reference: { kind: "prompt-link", contextId: record.contextId, label: record.label },
+          commit: () => useIssueContextStore.getState().upsert(threadRef.threadId, record),
+        };
+      }
+      case "repository": {
+        const record = repositoryContextRecord(link);
+        return {
+          reference: { kind: "repository", contextId: record.contextId, label: record.label },
+          commit: () => useRepositoryContextStore.getState().upsert(threadRef.threadId, record),
+        };
+      }
+    }
+  };
 }

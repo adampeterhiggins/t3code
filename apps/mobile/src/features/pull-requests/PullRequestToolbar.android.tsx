@@ -10,19 +10,24 @@ import { SearchField } from "../../components/ui/SearchField";
 import { WorkspaceConnectionTitle } from "../home/WorkspaceConnectionTitle";
 import { useHardwareKeyboardCommand } from "../keyboard/hardwareKeyboardCommands";
 import { useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
+import { useWorkspaceListNavigation } from "../workspace/useAndroidWorkspaceNavigation";
 
 /** PR search shares the thread list's native Android header placement. */
-export function PullRequestToolbar(props: { readonly onRequestVisibility?: () => void }) {
+export function PullRequestToolbar(props: {
+  readonly sidebar?: boolean;
+  readonly onRequestVisibility?: () => void;
+}) {
   const navigation = useNavigation();
   const workspace = useWorkspaceTabs()!;
   const { dispatch, getScrollOffset, recordScrollOffset, isTabActive } = workspace;
   const homeFocused = useNavigationState((state) => state.routes[state.index]?.name === "Home");
   const listFocused = homeFocused && workspace.state.selectedTab === "pullRequests";
   const { onRequestVisibility } = props;
+  const showThreads = useWorkspaceListNavigation("threads");
   const tab = workspace.state.tabs.pullRequests;
   const input = useRef<TextInputInstance>(null);
   const searching = tab.searchMode !== "resting";
-  const openSearch = useCallback(() => {
+  const openSearch = () => {
     onRequestVisibility?.();
     dispatch({
       type: "scroll",
@@ -32,13 +37,13 @@ export function PullRequestToolbar(props: { readonly onRequestVisibility?: () =>
     dispatch({ type: "search", tab: "pullRequests" });
     input.current?.focus();
     return true;
-  }, [dispatch, getScrollOffset, onRequestVisibility]);
+  };
   useHardwareKeyboardCommand("focusSearch", openSearch);
-  const closeSearch = useCallback(() => {
+  const closeSearch = () => {
     Keyboard.dismiss();
     recordScrollOffset("pullRequests", tab.searchEntryOffset);
     dispatch({ type: "cancel", tab: "pullRequests" });
-  }, [dispatch, recordScrollOffset, tab.searchEntryOffset]);
+  };
   useEffect(() => {
     if (!searching || !listFocused) return;
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
@@ -73,6 +78,7 @@ export function PullRequestToolbar(props: { readonly onRequestVisibility?: () =>
                 <CompactBrandTitle
                   allowFontScaling={false}
                   accessibilityLabel="T3 Code, Pull requests"
+                  fit
                 />
               }
               onPress={() =>
@@ -98,6 +104,15 @@ export function PullRequestToolbar(props: { readonly onRequestVisibility?: () =>
         searching
           ? []
           : [
+              ...(props.sidebar
+                ? [
+                    {
+                      accessibilityLabel: "Show threads",
+                      icon: "text.bubble",
+                      onPress: showThreads,
+                    } as const,
+                  ]
+                : []),
               {
                 accessibilityLabel: "Search pull requests",
                 icon: "magnifyingglass",

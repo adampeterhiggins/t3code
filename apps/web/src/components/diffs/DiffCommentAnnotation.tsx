@@ -6,6 +6,7 @@ import { Button } from "~/components/ui/button";
 import { Group, GroupSeparator } from "~/components/ui/group";
 import { Menu, MenuItem, MenuItemLabel, MenuPopup, MenuTrigger } from "~/components/ui/menu";
 import { Textarea } from "~/components/ui/textarea";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
 
 import { isCommentSubmitShortcut } from "./commentSubmitShortcut";
@@ -81,7 +82,7 @@ export function DiffCommentAnnotation({
     return (
       <div
         data-diff-comment-annotation
-        className="group/comment flex min-w-0 items-start gap-2.5 border-s-2 border-primary/55 bg-primary/[0.045] px-3 py-2.5 font-sans text-foreground"
+        className="group/comment flex min-w-0 items-start gap-2.5 border-s-2 border-primary/55 bg-primary/[0.045] px-3 py-2.5 font-sans text-foreground selection:bg-primary selection:text-primary-foreground"
         contentEditable={false}
         onPointerDown={(event) => event.stopPropagation()}
       >
@@ -103,10 +104,12 @@ export function DiffCommentAnnotation({
     );
   }
 
+  // Editable file annotations inherit Pierre's transparent native caret and selection.
+  // Comments use a native textarea, so they need their own visible text feedback.
   return (
     <div
       data-diff-comment-annotation
-      className="px-3 py-2 font-sans text-foreground"
+      className="px-3 py-2 font-sans text-foreground caret-foreground selection:bg-primary selection:text-primary-foreground"
       contentEditable={false}
       onPointerDown={(event) => event.stopPropagation()}
     >
@@ -139,12 +142,14 @@ export function DiffCommentAnnotation({
         }}
       />
       <div className="mt-1.5 flex items-center gap-1">
-        <span
-          className="mr-auto min-w-0 truncate text-3xs text-muted-foreground/70"
-          title={shortcutHint}
-        >
-          {shortcutHint}
-        </span>
+        <Tooltip>
+          <TooltipTrigger
+            render={<span className="mr-auto min-w-0 truncate text-3xs text-muted-foreground/70" />}
+          >
+            {shortcutHint}
+          </TooltipTrigger>
+          <TooltipPopup side="top">{shortcutHint}</TooltipPopup>
+        </Tooltip>
         <Button variant="ghost-muted" size="xs" onClick={onCancel}>
           Cancel
         </Button>

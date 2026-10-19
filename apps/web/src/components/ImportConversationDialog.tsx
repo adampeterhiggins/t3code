@@ -32,7 +32,7 @@ import {
   LayersIcon,
   ListFilterIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ElementType } from "react";
+import { useEffect, useRef, useState, type ElementType } from "react";
 
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
@@ -99,18 +99,13 @@ function useImportableProjects() {
   const projects = useProjects();
   const serverConfigs = useServerConfigs();
   const { scratchWorkspaceRootFor } = useScratchProject();
-  return useMemo(
-    () =>
-      projects
-        .filter(
-          (project) =>
-            serverConfigs.get(project.environmentId)?.environment.capabilities
-              .agentSessionPicker === true &&
-            !isScratchProject(project, scratchWorkspaceRootFor(project.environmentId)),
-        )
-        .toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
-    [projects, serverConfigs, scratchWorkspaceRootFor],
-  );
+  return projects
+    .filter(
+      (project) =>
+        serverConfigs.get(project.environmentId)?.environment.capabilities.agentSessionPicker ===
+          true && !isScratchProject(project, scratchWorkspaceRootFor(project.environmentId)),
+    )
+    .toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 }
 
 function ImportConversationDialog({

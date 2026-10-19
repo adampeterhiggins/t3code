@@ -36,13 +36,33 @@ const makeBrowser = () => {
         return Promise.reject(new Error(`Unexpected CDP method: ${method}`));
     }
   });
+  const mainFrame = {};
+  const passwordCdp = {
+    send: vi.fn(async (method: string) => {
+      if (method === "Page.getFrameTree") return { frameTree: { frame: { id: "main" } } };
+      if (method === "Page.createIsolatedWorld") return { executionContextId: 1 };
+      return { result: { value: [] } };
+    }),
+  };
   const page = {
+    frames: () => [mainFrame],
+    mainFrame: () => mainFrame,
     viewportSize: () => ({ width: 2560, height: 1600 }),
     on: vi.fn(),
     evaluate: pageEvaluate,
     ariaSnapshot,
   } as unknown as Page;
-  const cdp = { send } as unknown as CDPSession;
+  const cdp = {
+    send: (method: string, params?: unknown) =>
+      method === "Page.getFrameTree" ||
+      method === "Page.createIsolatedWorld" ||
+      (method === "Runtime.evaluate" &&
+        typeof params === "object" &&
+        params !== null &&
+        "contextId" in params)
+        ? passwordCdp.send(method)
+        : send(method, params),
+  } as unknown as CDPSession;
   const snapshot = (
     options: { timeoutMs?: number; includeImage?: boolean; signal?: AbortSignal } = {},
   ) =>
@@ -225,6 +245,7 @@ describe("bounded server browser reads", () => {
     const failed = expect(
       browser.snapshot({ signal: abort.controller.signal }),
     ).rejects.toMatchObject({ tag: "PreviewAutomationControlInterruptedError" });
+    await vi.advanceTimersByTimeAsync(0);
     abort.controller.abort();
     await failed;
     abort.expectClean();

@@ -27,7 +27,7 @@ const provider: ServerProvider = {
 const config = {
   providers: [provider],
   environment: { capabilities: {}, platform: { machine: "laptop" } },
-  settings: {},
+  settings: { threadGroups: {} },
 } as unknown as ServerConfig;
 
 function harness() {

@@ -1,5 +1,4 @@
 import type { EnvironmentId, LinearIssueSummary } from "@t3tools/contracts";
-import { useCallback } from "react";
 
 import { linearEnvironment } from "~/state/linear";
 import type { ComposerReferenceItem } from "./composerReferenceMenu.logic";
@@ -26,10 +25,7 @@ export function useComposerLinearIssueItems(
   environmentId: EnvironmentId,
   input: { readonly enabled: boolean; readonly active: boolean; readonly query: string },
 ) {
-  const atomFor = useCallback(
-    (query: string) => linearEnvironment.issues({ environmentId, input: { query } }),
-    [environmentId],
-  );
+  const atomFor = (query: string) => linearEnvironment.issues({ environmentId, input: { query } });
   return useComposerReferenceSearch({
     ...input,
     debounceMs: LINEAR_SEARCH_DEBOUNCE_MS,

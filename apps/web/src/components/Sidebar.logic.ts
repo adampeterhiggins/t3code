@@ -97,17 +97,12 @@ export function useSidebarRowSubscriptionLease(isActive: boolean): {
 } {
   const [row, setRow] = React.useState<HTMLElement | null>(null);
   const [isNearViewport, setIsNearViewport] = React.useState(isActive);
+  // The active row stays leased after it deactivates until the observer reports.
+  if (isActive && !isNearViewport) setIsNearViewport(true);
+  const canObserve = typeof IntersectionObserver !== "undefined";
 
   React.useEffect(() => {
-    if (isActive) {
-      setIsNearViewport(true);
-      return;
-    }
-    if (row === null) return;
-    if (typeof IntersectionObserver === "undefined") {
-      setIsNearViewport(true);
-      return;
-    }
+    if (isActive || row === null || !canObserve) return;
 
     const scrollRoot = row.closest<HTMLElement>('[data-slot="scroll-area-viewport"]');
     const observer = new IntersectionObserver(
@@ -119,21 +114,24 @@ export function useSidebarRowSubscriptionLease(isActive: boolean): {
     );
     observer.observe(row);
     return () => observer.disconnect();
-  }, [isActive, row]);
+  }, [canObserve, isActive, row]);
 
   return {
-    leaseLiveStatus: isActive || isNearViewport,
+    leaseLiveStatus: isActive || isNearViewport || !canObserve,
     rowRef: setRow,
   };
 }
 
 export function useRetainedValue<T>(key: string | null, value: T | null): T | null {
-  const retained = React.useRef<{ readonly key: string; readonly value: T } | null>(null);
-  if (key !== null && value !== null) {
-    retained.current = { key, value };
+  const [retained, setRetained] = React.useState<{
+    readonly key: string;
+    readonly value: T;
+  } | null>(null);
+  if (key !== null && value !== null && (retained?.key !== key || retained.value !== value)) {
+    setRetained({ key, value });
   }
   if (value !== null) return value;
-  return key !== null && retained.current?.key === key ? retained.current.value : null;
+  return key !== null && retained?.key === key ? retained.value : null;
 }
 
 // Sidebar.motion handles ordinary section changes. Sortable transforms own
@@ -141,8 +139,11 @@ export function useRetainedValue<T>(key: string | null, value: T | null): T | nu
 export const animateSidebarLayoutChanges: AnimateLayoutChanges = (args) =>
   args.isSorting ? defaultAnimateLayoutChanges(args) : false;
 
-// follows live status, and hidden rows leave through Unhide, so neither is a
-// drag source or destination.
+// Snoozed rows can leave the shelf, but dropping into it is not supported
+// because snoozing requires a wake time. The Working shelf (beta) follows live
+// status, so its rows only drag out as chat context, never between sidebar
+// sections.
+// Hidden rows leave through Unhide, so they cannot be dragged between sections.
 
 export type SidebarSection =
   | "pinned"
@@ -346,6 +347,7 @@ export function planSidebarThreadDrop(input: {
     activeKeysById,
     activeReorderableKeys,
   } = input;
+  if (activeSection === "working") return { kind: "none" };
   if (input.supportsSettlement === false && (target.section === "settled" || activeSettled)) {
     return { kind: "none" };
   }
@@ -627,6 +629,7 @@ export interface ThreadStatusPill {
     | "Working"
     | "Connecting"
     | "Completed"
+    | "Failed"
     | "Pending Approval"
     | "Awaiting Input"
     | "Waiting"
@@ -639,6 +642,7 @@ export interface ThreadStatusPill {
 const THREAD_STATUS_PRIORITY: Record<ThreadStatusPill["label"], number> = {
   "Pending Approval": 5,
   "Awaiting Input": 4,
+  Failed: 3.5,
   Working: 3,
   Connecting: 3,
   Waiting: 2.5,
@@ -742,9 +746,9 @@ export function useThreadJumpHintVisibility(): {
     };
   }, []);
 
-  const updateThreadJumpHintsVisibility = React.useCallback((shouldShow: boolean) => {
+  const updateThreadJumpHintsVisibility = (shouldShow: boolean) => {
     controllerRef.current?.sync(shouldShow);
-  }, []);
+  };
 
   return {
     showThreadJumpHints,
@@ -765,6 +769,20 @@ export function resolveThreadLastVisitedAt(
 
 export function hasUnseenCompletion(thread: ThreadStatusInput): boolean {
   return hasUnseenTurnCompletion(thread.latestRun, thread.lastVisitedAt ?? undefined);
+}
+
+/**
+ * A failed latest run the person hasn't looked at since it ended. Unlike a
+ * completion, a thread nobody has opened yet (an automation's, say) counts:
+ * its failure still needs someone.
+ */
+function hasUnseenFailure(thread: ThreadStatusInput): boolean {
+  if (thread.latestRun?.status !== "failed") return false;
+  if (!thread.lastVisitedAt) return true;
+  const completedAt = Date.parse(thread.latestRun.completedAt ?? "");
+  const lastVisitedAt = Date.parse(thread.lastVisitedAt);
+  if (Number.isNaN(completedAt) || Number.isNaN(lastVisitedAt)) return true;
+  return completedAt > lastVisitedAt;
 }
 
 export function shouldClearThreadSelectionOnMouseDown(target: HTMLElement | null): boolean {
@@ -1559,6 +1577,15 @@ export function resolveThreadStatusPill(input: {
       label: "Waiting",
       colorClass: "text-sidebar-muted-foreground",
       dotClass: "bg-sidebar-muted-foreground",
+      pulse: false,
+    };
+  }
+
+  if (hasUnseenFailure(thread)) {
+    return {
+      label: "Failed",
+      colorClass: "text-red-600 dark:text-red-300/90",
+      dotClass: "bg-red-500 dark:bg-red-300/90",
       pulse: false,
     };
   }

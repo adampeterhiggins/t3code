@@ -1,15 +1,19 @@
-import { pullRequestHostOf, type ScopedThreadRef } from "@t3tools/contracts";
-import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
+import {
+  type LinkCandidate,
+  planLinkSelection,
+  pullRequestLinkProject,
+  resolveLinkPullRequestInput,
+} from "@t3tools/client-runtime/pull-request-link-input";
+import type { ScopedThreadRef } from "@t3tools/contracts";
 import {
   threadPullRequestKeyOf,
   visibleThreadPullRequests,
 } from "@t3tools/shared/threadPullRequests";
 import { useAtomValue } from "@effect/atom-react";
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useState } from "react";
 
 import { cn, isMacPlatform } from "~/lib/utils";
 import { parseChangeRequestUrl } from "~/lib/openPullRequestLink";
-import { parsePullRequestReference } from "~/pullRequestReference";
 import { useProjects, useServerConfigs, useThreadShell } from "~/state/entities";
 import { usePullRequestLinking } from "~/hooks/usePullRequestLinking";
 import { usePullRequestList } from "~/state/pullRequests";
@@ -64,76 +68,6 @@ export function LinkPullRequestDialogHost() {
   );
 }
 
-interface ResolvedLink {
-  readonly host: string;
-  readonly repository: string;
-  readonly number: number;
-  readonly url: string;
-}
-
-export function resolveLinkPullRequestInput(input: {
-  readonly reference: string;
-  readonly project: {
-    readonly host: string;
-    readonly repository: string;
-    readonly webUrl: (number: number) => string | null;
-  } | null;
-  readonly hasProject: (reference: ResolvedLink) => boolean;
-}): { link: ResolvedLink } | { error: string } | null {
-  const parsed =
-    parseChangeRequestUrl(input.reference.trim()) !== null
-      ? input.reference.trim()
-      : parsePullRequestReference(input.reference);
-  if (parsed === null) return null;
-  const url = parseChangeRequestUrl(parsed);
-  if (url !== null) {
-    if (!input.hasProject({ ...url, url: parsed })) {
-      return { error: `No project in this environment can read ${url.host}/${url.repository}.` };
-    }
-    return {
-      link: { host: url.host, repository: url.repository, number: url.number, url: parsed },
-    };
-  }
-  const number = Number(parsed);
-  if (!Number.isSafeInteger(number) || number < 1) return null;
-  if (input.project === null) {
-    return { error: "Paste a full URL to link a pull request from another repository." };
-  }
-  const webUrl = input.project.webUrl(number);
-  const webReference = webUrl === null ? null : parseChangeRequestUrl(webUrl);
-  if (webUrl === null || webReference === null) {
-    return { error: "Paste a full URL; this project's host has no known pull request URL." };
-  }
-  return {
-    link: { ...webReference, url: webUrl },
-  };
-}
-
-/** A pull request the picker can check: linked already, listed, or pasted. */
-export interface LinkCandidate {
-  readonly key: string;
-  readonly url: string;
-  readonly repository: string;
-  readonly number: number;
-  readonly title: string | null;
-}
-
-/**
- * What applying a selection does: link what is checked but not linked, unlink what is linked but
- * no longer checked. Unlinks go first, so a single-link environment frees its slot before the
- * replacement lands.
- */
-export function planLinkSelection(
-  linked: ReadonlyArray<LinkCandidate>,
-  selected: ReadonlyMap<string, LinkCandidate>,
-): { readonly link: ReadonlyArray<LinkCandidate>; readonly unlink: ReadonlyArray<LinkCandidate> } {
-  const linkedKeys = new Set(linked.map((candidate) => candidate.key));
-  return {
-    unlink: linked.filter((candidate) => !selected.has(candidate.key)),
-    link: [...selected.values()].filter((candidate) => !linkedKeys.has(candidate.key)),
-  };
-}
-
 function applyLabel(plan: ReturnType<typeof planLinkSelection>): string {
   const parts = [
     plan.link.length > 0 ? `Link ${plan.link.length}` : null,
@@ -175,34 +109,14 @@ function LinkPullRequestPicker({
   const canListPullRequests =
     useServerConfigs().get(threadRef.environmentId)?.environment.capabilities.pullRequests === true;
   const projects = useProjects();
-  const ownProject = useMemo(() => {
-    const project = projects.find(
+  const ownProject = pullRequestLinkProject(
+    projects.find(
       (candidate) =>
         candidate.environmentId === threadRef.environmentId && candidate.id === projectId,
-    );
-    const identity = project?.repositoryIdentity;
-    if (!project || !identity) return null;
-    const repository =
-      identity.displayName ??
-      (identity.owner && identity.name ? `${identity.owner}/${identity.name}` : null);
-    if (repository === null) return null;
-    const definition = sourceControlClients.get(identity.provider ?? "unknown");
-    const host = pullRequestHostOf(identity, definition.kind);
-    return {
-      host,
-      repository,
-      webUrl: (number: number) =>
-        definition.changeRequestUrl({
-          host,
-          repository,
-          number,
-          remoteUrl: identity.locator.remoteUrl,
-          webUrl: identity.webUrl,
-        }),
-    };
-  }, [projectId, projects, threadRef.environmentId]);
+    )?.repositoryIdentity,
+  );
 
-  const linked = useMemo((): ReadonlyArray<LinkCandidate> => {
+  const linked = ((): ReadonlyArray<LinkCandidate> => {
     if (thread === null) return [];
     if (multiple) {
       return visibleThreadPullRequests(thread.pullRequests).map((link) => ({
@@ -225,7 +139,7 @@ function LinkPullRequestPicker({
         title: null,
       },
     ];
-  }, [multiple, thread]);
+  })();
 
   // Seeded once from the links the thread had when the picker opened.
   const [selected, setSelected] = useState<ReadonlyMap<string, LinkCandidate>>(
@@ -238,27 +152,24 @@ function LinkPullRequestPicker({
   const debouncedQuery = useDebouncedValue(trimmedQuery, SEARCH_DEBOUNCE_MS);
   const [view, setView] = useState(DEFAULT_PULL_REQUEST_PICKER_VIEW);
 
-  const targets = useMemo(
-    () =>
-      canListPullRequests && projectId !== null
-        ? [
-            {
-              environmentId: threadRef.environmentId,
-              input: {
-                state: view.state,
-                projectId,
-                limit: PULL_REQUEST_LIMIT,
-                ...(Object.keys(view.filters).length > 0 ? { filters: view.filters } : {}),
-                ...(debouncedQuery.length > 0 ? { query: debouncedQuery } : {}),
-              },
+  const targets = (() =>
+    canListPullRequests && projectId !== null
+      ? [
+          {
+            environmentId: threadRef.environmentId,
+            input: {
+              state: view.state,
+              projectId,
+              limit: PULL_REQUEST_LIMIT,
+              ...(Object.keys(view.filters).length > 0 ? { filters: view.filters } : {}),
+              ...(debouncedQuery.length > 0 ? { query: debouncedQuery } : {}),
             },
-          ]
-        : [],
-    [canListPullRequests, debouncedQuery, projectId, threadRef.environmentId, view],
-  );
+          },
+        ]
+      : [])();
   const pullRequests = usePullRequestList(targets);
   const loaded = pullRequests.data?.entries ?? EMPTY_PULL_REQUESTS;
-  const listed = useMemo(() => {
+  const listed = (() => {
     const narrowed = narrowPickerPullRequests(
       loaded,
       pullRequests.data?.viewers ?? {},
@@ -273,21 +184,18 @@ function LinkPullRequestPicker({
           ...narrowed.filter((entry) => entry.headBranch === branch),
           ...narrowed.filter((entry) => entry.headBranch !== branch),
         ];
-  }, [debouncedQuery, loaded, pullRequests.data?.viewers, thread?.branch, view]);
+  })();
 
-  const pasted = useMemo(
-    () =>
-      resolveLinkPullRequestInput({
-        reference: query,
-        project: ownProject,
-        hasProject: (reference) => linking.canLink(reference.url),
-      }),
-    [linking, ownProject, query],
-  );
+  const pasted = (() =>
+    resolveLinkPullRequestInput({
+      reference: query,
+      project: ownProject,
+      hasProject: (reference) => linking.canLink(reference.url),
+    }))();
 
   // With no query, the thread's links and anything checked from a paste lead the list, so every
   // checked row can be unchecked without searching for it. Rows checked from the list stay put.
-  const pinned = useMemo(() => {
+  const pinned = (() => {
     if (trimmedQuery.length > 0) return [];
     const listedKeys = new Set(listed.map((entry) => threadPullRequestKeyOf(entry)));
     const rows = new Map(linked.map((candidate) => [candidate.key, candidate]));
@@ -297,7 +205,7 @@ function LinkPullRequestPicker({
       }
     }
     return [...rows.values()];
-  }, [linked, listed, selected, trimmedQuery]);
+  })();
   const pinnedKeys = new Set(pinned.map((candidate) => candidate.key));
   const listedRows = listed.filter((entry) => !pinnedKeys.has(threadPullRequestKeyOf(entry)));
   const pastedCandidate: LinkCandidate | null =
@@ -345,11 +253,11 @@ function LinkPullRequestPicker({
         await linking.changeLink(threadRef, candidate.url, true);
       }
     } catch (error) {
+      setPending(false);
       setApplyError(error instanceof Error ? error.message : "Could not update the links.");
       return;
-    } finally {
-      setPending(false);
     }
+    setPending(false);
     onClose();
   };
 

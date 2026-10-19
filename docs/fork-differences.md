@@ -325,9 +325,9 @@ thread details panel, one row each, newest first, and removed the right-panel Ag
   Claude Workflow tool result names for its task). Every agent view (detail footer, rows, hover
   cards, fleet footer) reads this one field. A running delegated task shows usage once it finishes,
   and tasks that finished before this existed show none. Other native subagents leave these empty.
-  A Claude workflow member's usage is the tokens, tool calls and duration from its progress entry.
-  Its tool calls are read from the member transcript, because those agents never appear on the
-  event stream (`readWorkflowAgentTranscript`).
+  A Claude workflow member's usage is the tokens, tool calls and duration from its progress entry,
+  because those agents never appear on the event stream (`claudeWorkflowMemberUsage` in
+  [`ClaudeAdapterV2.ts`](../apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts)).
 - **Agent detail.** Clicking an agent in the Agents panel inspects it in place, with **Back** to
   the fleet. The header has the agent's status, compact model with effort (from its child thread's
   model selection), `run N` past its first run, elapsed time, the prompt clamped to four lines
@@ -1014,7 +1014,7 @@ Code: `apps/server/src/githubIssues/`, `packages/contracts/src/githubIssues.ts`,
 
 On web and desktop, a new thread's composer has a **⋯** button in its top-right corner. It opens a
 picker with PRs, Branches, Issues, and Linear tabs. The same picker opens from the command palette and from
-`chat.startFrom` (`mod+shift+b`); both of those start a new thread first. The PRs tab filters and
+`chat.startFrom` (`mod+alt+o`); both of those start a new thread first. The PRs tab filters and
 sorts with the pull requests page's filter menu, the Issues tab lists the project's GitHub issues
 by state, and the Linear tab uses the Linear attach picker's filter bar, whose view it shares.
 

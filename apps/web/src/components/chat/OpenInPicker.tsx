@@ -98,6 +98,7 @@ export const OpenInPicker = memo(function OpenInPicker({
   compact = false,
   enableShortcut = true,
   displayMode = "toolbar",
+  revealFileManager = false,
 }: {
   environmentId: EnvironmentId;
   keybindings: ResolvedKeybindingsConfig;
@@ -107,6 +108,7 @@ export const OpenInPicker = memo(function OpenInPicker({
   compact?: boolean;
   enableShortcut?: boolean;
   displayMode?: "toolbar" | "panel";
+  revealFileManager?: boolean;
 }) {
   const isPanel = displayMode === "panel";
   const ActionGroup = isPanel ? "div" : Group;
@@ -127,10 +129,8 @@ export const OpenInPicker = memo(function OpenInPicker({
   const environmentLabel = environment?.label ?? "this machine";
   // Remote mode ignores the server's PATH probe: what matters is what runs on
   // the viewing machine, which only the desktop app can probe.
-  const effectiveEditors = useMemo(
-    () => resolveOpenInEditorIds(remote.mode, localEditors, remoteCapableEditors, customEditors),
-    [remote.mode, localEditors, remoteCapableEditors, customEditors],
-  );
+  const effectiveEditors = (() =>
+    resolveOpenInEditorIds(remote.mode, localEditors, remoteCapableEditors, customEditors))();
   const [lastUsedEditor, setLastUsedEditor] = usePreferredEditor(effectiveEditors);
   const pinnedEditor =
     workspaceOpenDefault !== null && effectiveEditors.includes(workspaceOpenDefault)
@@ -138,69 +138,52 @@ export const OpenInPicker = memo(function OpenInPicker({
       : null;
   const preferredEditor = pinnedEditor ?? lastUsedEditor;
   // File opens elsewhere follow last-used, so opening the pinned app must not overwrite it.
-  const setPreferredEditor = useCallback(
-    (editor: EditorId) => {
-      if (editor !== pinnedEditor) setLastUsedEditor(editor);
-    },
-    [pinnedEditor, setLastUsedEditor],
-  );
-  const options = useMemo(
-    () => resolveOpenInOptions(navigator.platform, effectiveEditors, customEditors),
-    [effectiveEditors, customEditors],
-  );
+  const setPreferredEditor = (editor: EditorId) => {
+    if (editor !== pinnedEditor) setLastUsedEditor(editor);
+  };
+  const options = (() =>
+    resolveOpenInOptions(navigator.platform, effectiveEditors, customEditors))();
   const primaryOption = options.find(({ value }) => value === preferredEditor) ?? null;
   const preferredUnavailable =
     remote.mode === "remote-unavailable" && !preferredEditor?.startsWith("custom:");
 
-  const openInEditor = useCallback(
-    (editorId: EditorId | null) => {
-      if (!openInCwd) return;
-      const editor = editorId ?? preferredEditor;
-      if (!editor) return;
-      const custom = editor.startsWith("custom:");
-      if (remote.mode === "remote-unavailable" && !custom) return;
-      if (remote.mode === "remote-links" && !custom) {
-        const url = buildRemoteOpenUrl({
-          editor,
-          host: remote.host.host,
-          absolutePath: openInCwd,
-        });
-        if (url === undefined) return;
-        // Only record hint-seen/preferred when the shell actually accepted
-        // the URL (an older desktop build can refuse the editor scheme).
-        void openRemoteEditorUrl(url).then((opened) => {
-          if (!opened) return;
-          markRemoteHintSeen();
-          setPreferredEditor(editor);
-        });
-        return;
-      }
-      if (!readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)) return;
-      const result = openInEditorMutation({
-        environmentId,
-        input: {
-          cwd: openInCwd,
-          editor,
-        },
+  const openInEditor = (editorId: EditorId | null) => {
+    if (!openInCwd) return;
+    const editor = editorId ?? preferredEditor;
+    if (!editor) return;
+    const custom = editor.startsWith("custom:");
+    if (remote.mode === "remote-unavailable" && !custom) return;
+    if (remote.mode === "remote-links" && !custom) {
+      const url = buildRemoteOpenUrl({
+        editor,
+        host: remote.host.host,
+        absolutePath: openInCwd,
       });
-      setPreferredEditor(editor);
-      return result;
-    },
-    [
+      if (url === undefined) return;
+      // Only record hint-seen/preferred when the shell actually accepted
+      // the URL (an older desktop build can refuse the editor scheme).
+      void openRemoteEditorUrl(url).then((opened) => {
+        if (!opened) return;
+        markRemoteHintSeen();
+        setPreferredEditor(editor);
+      });
+      return;
+    }
+    if (!readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)) return;
+    const result = openInEditorMutation({
       environmentId,
-      markRemoteHintSeen,
-      openInCwd,
-      openInEditorMutation,
-      preferredEditor,
-      remote,
-      setPreferredEditor,
-    ],
-  );
+      input: {
+        cwd: openInCwd,
+        editor,
+        ...(revealFileManager && editor === "file-manager" ? { reveal: true } : {}),
+      },
+    });
+    setPreferredEditor(editor);
+    return result;
+  };
 
-  const openFavoriteEditorShortcutLabel = useMemo(
-    () => shortcutLabelForCommand(keybindings, "editor.openFavorite"),
-    [keybindings],
-  );
+  const openFavoriteEditorShortcutLabel = (() =>
+    shortcutLabelForCommand(keybindings, "editor.openFavorite"))();
 
   useEffect(() => {
     if (!enableShortcut || !canOpenEditor) return;

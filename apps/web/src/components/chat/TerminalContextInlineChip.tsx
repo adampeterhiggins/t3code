@@ -1,6 +1,6 @@
 import * as Schema from "effect/Schema";
 import { TerminalIcon } from "lucide-react";
-import { type CSSProperties, useMemo } from "react";
+import type { CSSProperties } from "react";
 
 import {
   resolveTerminalFontPreference,
@@ -31,6 +31,14 @@ interface TerminalContextInlineChipProps {
   styledText?: string | undefined;
   detailsMode: ContextPresentationCapability["details"];
   expired?: boolean;
+}
+
+/**
+ * The terminal theme lives in CSS, so the compiler can't see it change. Taking the theme as
+ * arguments re-reads it on every theme change; two palettes can share a light/dark resolution.
+ */
+function readTerminalTheme(_theme: string, _resolvedTheme: string) {
+  return terminalThemeFromApp();
 }
 
 function cssRgb({ r, g, b }: GhosttyColor): string {
@@ -119,24 +127,16 @@ function TerminalExcerptText({
   // Stored as a percentage of the font size.
   const lineHeight = useClientSettings((settings) => settings.terminalLineHeight / 100);
   const { theme, resolvedTheme } = useTheme();
-  // oxlint-disable-next-line react/memo-dependencies -- The theme is read from CSS, so any theme change re-reads it; two palettes can share a light/dark resolution.
-  const terminalTheme = useMemo(() => terminalThemeFromApp(), [theme, resolvedTheme]);
+  const terminalTheme = readTerminalTheme(theme, resolvedTheme);
   const foreground = cssRgb(terminalTheme.foreground);
   const background = cssRgb(terminalTheme.background);
-  const spans = useMemo(
-    () =>
-      styledText === undefined
-        ? null
-        : terminalBackgroundSpans(
-            parseTerminalStyledText(styledText),
-            terminalTheme.palette ?? [],
-            {
-              foreground,
-              background,
-            },
-          ),
-    [styledText, terminalTheme, foreground, background],
-  );
+  const spans =
+    styledText === undefined
+      ? null
+      : terminalBackgroundSpans(parseTerminalStyledText(styledText), terminalTheme.palette ?? [], {
+          foreground,
+          background,
+        });
 
   return (
     <pre

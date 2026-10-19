@@ -31,7 +31,7 @@ export const WorktreeMcpHandoffInput = Schema.Struct({
   path: Schema.optional(
     TrimmedNonEmptyString.check(Schema.isPattern(/^(?:[A-Za-z]:[\\/]|[\\/])/)).annotate({
       description:
-        "Absolute filesystem path for the new worktree. Relative paths are rejected. Defaults to the server-managed worktrees directory. When branch already exists and is checked out in a worktree at this path, the thread moves into that worktree instead of creating one; t3_worktree_list shows checkout paths.",
+        "Absolute path of an existing worktree that has branch checked out; the thread moves into it instead of creating one. t3_worktree_list shows checkout paths. New worktrees are always created in the server-managed worktrees directory.",
     }),
   ),
   runSetupScript: Schema.optional(

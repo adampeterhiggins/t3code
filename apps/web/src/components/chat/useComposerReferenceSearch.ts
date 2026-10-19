@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type { AsyncResult, Atom } from "effect/reactivity";
 
 import { useDebouncedValue } from "~/state/queries";
@@ -49,28 +49,23 @@ export function useComposerReferenceSearch<A, E>(input: {
   );
   const result = settledQuery === "" ? preloadedResult : searchResult;
 
-  const preloaded = useMemo(
-    () => (preloadedResult.data === null ? EMPTY_ITEMS : toItems(preloadedResult.data)),
-    [preloadedResult.data, toItems],
-  );
-  const fresh = useMemo(
-    () =>
-      settledQuery === null || result.data === null
-        ? null
-        : { query: settledQuery, items: toItems(result.data).slice(0, limit) },
-    [limit, result.data, settledQuery, toItems],
-  );
+  const preloaded = preloadedResult.data === null ? EMPTY_ITEMS : toItems(preloadedResult.data);
+  const fresh =
+    settledQuery === null || result.data === null
+      ? null
+      : { query: settledQuery, items: toItems(result.data).slice(0, limit) };
   // The last settled results, adjusted during render so the next keystroke can narrow them.
   const [retained, setRetained] = useState(fresh);
   if (fresh !== null && fresh !== retained) setRetained(fresh);
 
-  const items = useMemo(() => {
-    if (query === null) return EMPTY_ITEMS;
-    if (fresh !== null) return fresh.items;
-    return dedupeComposerReferenceItems([...(retained?.items ?? []), ...preloaded])
-      .filter((item) => matchesComposerReferenceQuery(item, query))
-      .slice(0, limit);
-  }, [fresh, limit, preloaded, query, retained]);
+  const items =
+    query === null
+      ? EMPTY_ITEMS
+      : fresh !== null
+        ? fresh.items
+        : dedupeComposerReferenceItems([...(retained?.items ?? []), ...preloaded])
+            .filter((item) => matchesComposerReferenceQuery(item, query))
+            .slice(0, limit);
 
   return {
     items,

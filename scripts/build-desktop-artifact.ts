@@ -2729,6 +2729,10 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   // Squirrel's seal/requirement validation without the full --signed Apple
   // stack. Ignored when --signed is set.
   const macSignIdentity = yield* Config.String("T3CODE_DESKTOP_IDENTITY").pipe(Config.option);
+  // A missing `publish` makes electron-builder infer a GitHub feed from
+  // GH_TOKEN/GITHUB_TOKEN. The staged app has no repository to resolve it
+  // against, so writing update manifests then crashes on a null config.
+  buildConfig.publish = null;
   if (!isDesktopPreviewVersion(version)) {
     const publishConfig = yield* resolveGitHubPublishConfig(updateChannel);
     if (publishConfig) {

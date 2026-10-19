@@ -1,6 +1,6 @@
 import type { FileDiffMetadata, FileDiffOptions } from "@pierre/diffs";
 import { FileDiff } from "@pierre/diffs/react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 import { useTheme } from "~/hooks/useTheme";
 import { resolveDiffThemeName } from "~/lib/diffRendering";
@@ -12,7 +12,7 @@ import { DiffWorkerPoolProvider } from "./DiffWorkerPoolProvider";
 
 /** Render tool patches with the same unified diff view as the rest of the app. */
 export function ToolCallBody({ text, className }: { text: string; className?: string }) {
-  const blocks = useMemo(() => parseToolCallBody(text), [text]);
+  const blocks = parseToolCallBody(text);
   return (
     <div
       className={cn(
@@ -37,22 +37,19 @@ export function ToolCallBody({ text, className }: { text: string; className?: st
 function ToolDiff(props: { patch: string; files: ReadonlyArray<FileDiffMetadata> }) {
   const { resolvedTheme } = useTheme();
   const [failed, setFailed] = useState(false);
-  const options = useMemo<FileDiffOptions<undefined, false>>(
-    () => ({
-      diffStyle: "unified",
-      diffIndicators: "classic",
-      theme: resolveDiffThemeName(resolvedTheme),
-      preferredHighlighter: PREFERRED_HIGHLIGHTER,
-      disableFileHeader: true,
-      disableLineNumbers: true,
-      overflow: "wrap",
-      // The renderer reports failures by drawing its own error and stack trace.
-      onPostRender: (node) => {
-        if (node.shadowRoot?.querySelector("[data-error-wrapper]")) setFailed(true);
-      },
-    }),
-    [resolvedTheme],
-  );
+  const options: FileDiffOptions<undefined, false> = {
+    diffStyle: "unified",
+    diffIndicators: "classic",
+    theme: resolveDiffThemeName(resolvedTheme),
+    preferredHighlighter: PREFERRED_HIGHLIGHTER,
+    disableFileHeader: true,
+    disableLineNumbers: true,
+    overflow: "wrap",
+    // The renderer reports failures by drawing its own error and stack trace.
+    onPostRender: (node) => {
+      if (node.shadowRoot?.querySelector("[data-error-wrapper]")) setFailed(true);
+    },
+  };
   if (failed) {
     // Show the hunks without the patch's file headers.
     const hunks = props.patch.slice(Math.max(props.patch.indexOf("\n@@"), 0)).trim();

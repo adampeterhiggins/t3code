@@ -56,32 +56,26 @@ export function ThreadFileNavigatorPane(props: {
     cwd: canReadFiles ? props.cwd : null,
     searchQuery,
   });
-  const handlePreviewFile = useCallback(
-    (relativePath: string) => {
-      preloadWorkspaceFileContents({
-        cwd: props.cwd,
-        environmentId: props.environmentId,
-        relativePath,
-        theme: highlightTheme,
-      });
-    },
-    [highlightTheme, props.cwd, props.environmentId],
-  );
-  const nativeHeaderRightBarButtonItems = useMemo(
-    () =>
-      [
-        {
-          accessibilityLabel: "Close files",
-          icon: { name: "xmark", type: "sfSymbol" as const },
-          identifier: "thread-file-navigator-close",
-          onPress: toggleAuxiliaryPane,
-          sharesBackground: false,
-          tintColor: foregroundColor,
-          type: "button" as const,
-        },
-      ] as ComponentProps<typeof ScreenStackHeaderConfig>["headerRightBarButtonItems"],
-    [foregroundColor, toggleAuxiliaryPane],
-  );
+  const handlePreviewFile = (relativePath: string) => {
+    preloadWorkspaceFileContents({
+      cwd: props.cwd,
+      environmentId: props.environmentId,
+      relativePath,
+      theme: highlightTheme,
+    });
+  };
+  const nativeHeaderRightBarButtonItems = (() =>
+    [
+      {
+        accessibilityLabel: "Close files",
+        icon: { name: "xmark", type: "sfSymbol" as const },
+        identifier: "thread-file-navigator-close",
+        onPress: toggleAuxiliaryPane,
+        sharesBackground: false,
+        tintColor: foregroundColor,
+        type: "button" as const,
+      },
+    ] as ComponentProps<typeof ScreenStackHeaderConfig>["headerRightBarButtonItems"])();
 
   const fileTree = (
     <FileTreeBrowser
@@ -99,6 +93,7 @@ export function ThreadFileNavigatorPane(props: {
       isPending={fileAccess.isPending || entriesQuery.isPending}
       isRefreshing={entriesQuery.isRefreshing}
       searchQuery={searchQuery}
+      searchResultPaths={entriesQuery.searchResultPaths}
       searchTruncated={entriesQuery.searchTruncated}
       selectedPath={props.selectedPath}
       onPreviewFile={handlePreviewFile}

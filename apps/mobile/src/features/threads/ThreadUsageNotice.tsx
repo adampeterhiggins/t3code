@@ -1,3 +1,4 @@
+import { useComposerDraft } from "../../state/use-composer-drafts";
 import { useMemo, useState } from "react";
 import { Pressable, View } from "react-native";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
@@ -16,10 +17,12 @@ export function ThreadUsageNotice(props: {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
   readonly canCompact: boolean;
+  readonly draftKey: string | null;
   readonly canOperate: boolean;
   readonly compacting: boolean;
   readonly onInsertCompact: () => void;
 }) {
+  const draft = useComposerDraft(props.draftKey);
   const detail = useThreadProjection(props);
   const threads = detail?.projection.providerThreads;
   const turns = detail?.projection.providerTurns;
@@ -75,7 +78,7 @@ export function ThreadUsageNotice(props: {
           <Text className="min-w-0 flex-1 text-xs text-foreground" accessibilityLiveRegion="polite">
             Context {Math.round(percent ?? 0)}% full
           </Text>
-          {props.canCompact ? (
+          {props.canCompact && !draft.text.trim() && draft.attachments.length === 0 ? (
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Insert compact command"

@@ -81,6 +81,7 @@ vi.mock("./use-thread-detail", () => ({
   useSelectedThreadProjection: () => null,
   useSelectedThreadVisibleTurnItems: () => [],
   useSelectedThreadPendingRequests: () => state.pendingRequests,
+  useSelectedThreadWorktreePath: () => null,
 }));
 vi.mock("./use-atom-command", () => ({ useAtomCommand: <A>(command: A) => command }));
 vi.mock("./threads", async () => {
@@ -126,6 +127,8 @@ vi.mock("./use-composer-drafts", async () => {
     mergeComposerDraftContent: vi.fn(),
     removeComposerDraftAttachment: vi.fn(),
     useComposerDraft: () => state.draft,
+    useComposerDraftSettings: () => ({}),
+    questionAttachmentDraftsAtom: () => Atom.make({}),
   };
 });
 vi.mock("../lib/composerImages", () => ({

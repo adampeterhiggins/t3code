@@ -1,5 +1,4 @@
 import type { EnvironmentId, NotionPageSummary } from "@t3tools/contracts";
-import { useCallback } from "react";
 
 import { notionEnvironment } from "~/state/notion";
 import type { ComposerReferenceItem } from "./composerReferenceMenu.logic";
@@ -24,10 +23,7 @@ export function useComposerNotionItems(
   environmentId: EnvironmentId,
   input: { readonly enabled: boolean; readonly active: boolean; readonly query: string },
 ) {
-  const atomFor = useCallback(
-    (query: string) => notionEnvironment.pages({ environmentId, input: { query } }),
-    [environmentId],
-  );
+  const atomFor = (query: string) => notionEnvironment.pages({ environmentId, input: { query } });
   return useComposerReferenceSearch({
     ...input,
     debounceMs: NOTION_SEARCH_DEBOUNCE_MS,

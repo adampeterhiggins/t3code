@@ -46,7 +46,15 @@ export function tabSortTimeLabel(
  */
 export function SidebarTabSummary(props: {
   thread: SidebarThreadSummary;
-  providerEntries: ReadonlyMap<string, ProviderInstanceEntry> | undefined;
+  providerEntries:
+    | ReadonlyMap<
+        string,
+        Pick<
+          ProviderInstanceEntry,
+          "driverKind" | "displayName" | "accentColor" | "acpRegistryAgentId"
+        >
+      >
+    | undefined;
   tabSortOrder: SidebarTabSortOrder;
   openedAt: number | undefined;
   compact?: boolean;

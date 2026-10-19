@@ -38,7 +38,7 @@ import type {
   TurnItemId,
 } from "@t3tools/contracts";
 import { BotIcon, ListCollapseIcon, ListIcon, PanelTopIcon } from "lucide-react";
-import { useCallback, useMemo, useState, type MouseEvent } from "react";
+import { useState, type MouseEvent } from "react";
 
 import { selectAgentDrillStack, useAgentDrillStore } from "~/agentDrillStore";
 import { useAgentListViewStore } from "~/agentListViewStore";
@@ -131,27 +131,24 @@ export function useWorkingAgentCount(
 ): number {
   const environmentId = threadRef?.environmentId ?? null;
   const threadId = threadRef?.threadId ?? null;
-  const count = useCallback(
-    (shells: ReadonlyArray<EnvironmentThreadShell>) => {
-      if (environmentId === null || threadId === null) return 0;
-      // Most threads have no agents; skip building the fleet for them.
-      if (
-        (subagents?.length ?? 0) === 0 &&
-        !shells.some((shell) => shell.source.lineage.parentThreadId === threadId)
-      ) {
-        return 0;
-      }
-      const fleet = deriveThreadAgentFleet({
-        threadId,
-        subagents: subagents ?? [],
-        shells: shells
-          .filter((shell) => shell.environmentId === environmentId)
-          .map((shell) => shell.source),
-      });
-      return summarizeAgentFleet(fleet).counts.working;
-    },
-    [environmentId, subagents, threadId],
-  );
+  const count = (shells: ReadonlyArray<EnvironmentThreadShell>) => {
+    if (environmentId === null || threadId === null) return 0;
+    // Most threads have no agents; skip building the fleet for them.
+    if (
+      (subagents?.length ?? 0) === 0 &&
+      !shells.some((shell) => shell.source.lineage.parentThreadId === threadId)
+    ) {
+      return 0;
+    }
+    const fleet = deriveThreadAgentFleet({
+      threadId,
+      subagents: subagents ?? [],
+      shells: shells
+        .filter((shell) => shell.environmentId === environmentId)
+        .map((shell) => shell.source),
+    });
+    return summarizeAgentFleet(fleet).counts.working;
+  };
   return useThreadShellsValue(count);
 }
 
@@ -215,27 +212,16 @@ function AgentFleetList(props: AgentsPanelProps) {
   const setView = useAgentListViewStore((state) => state.setView);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const openAgentMenu = useAgentContextMenu(threadRef, { showInAgentsPanel: false });
-  const fleet = useMemo(
-    () =>
-      deriveThreadAgentFleet({
-        threadId: threadRef.threadId,
-        subagents: projection?.subagents ?? [],
-        shells,
-      }),
-    [projection?.subagents, shells, threadRef.threadId],
-  );
-  const rows = useMemo(
-    () => arrangeAgentFleet(fleet, view, threadRef.threadId),
-    [fleet, threadRef.threadId, view],
-  );
-  const summary = useMemo(() => summarizeAgentFleet(fleet), [fleet]);
-  const statusCounts = useMemo(
-    () =>
-      agentListStatusCounts(
-        fleet.map((entry) => entry.subject),
-        view,
-      ),
-    [fleet, view],
+  const fleet = deriveThreadAgentFleet({
+    threadId: threadRef.threadId,
+    subagents: projection?.subagents ?? [],
+    shells,
+  });
+  const rows = arrangeAgentFleet(fleet, view, threadRef.threadId);
+  const summary = summarizeAgentFleet(fleet);
+  const statusCounts = agentListStatusCounts(
+    fleet.map((entry) => entry.subject),
+    view,
   );
   const filtered = isAgentListViewFiltered(view);
   const visibleRows = rows.slice(0, visibleCount);

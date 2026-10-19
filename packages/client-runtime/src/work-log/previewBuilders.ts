@@ -125,8 +125,6 @@ export function action(
   };
 }
 
-// --- Inference for JSON results no tool-specific card describes ---
-
 const TITLE_KEYS = [
   "title",
   "name",

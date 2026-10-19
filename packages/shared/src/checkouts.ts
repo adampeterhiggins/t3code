@@ -180,7 +180,7 @@ export function rankCheckoutCandidates<T extends { readonly path: string; readon
     const text = `${candidate.name} ${candidate.path}`.toLowerCase();
     return words.every((word) => text.includes(word));
   });
-  return matched.toSorted((left, right) => {
+  return matched.sort((left, right) => {
     const leftRecent = recentRank.get(checkoutPathKey(left.path)) ?? Number.POSITIVE_INFINITY;
     const rightRecent = recentRank.get(checkoutPathKey(right.path)) ?? Number.POSITIVE_INFINITY;
     if (leftRecent !== rightRecent) return leftRecent - rightRecent;

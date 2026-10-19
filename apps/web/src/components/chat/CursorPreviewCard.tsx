@@ -2,7 +2,6 @@ import {
   type PointerEvent,
   type ReactElement,
   type ReactNode,
-  useCallback,
   useEffect,
   useRef,
   useState,
@@ -33,7 +32,7 @@ const CURSOR_OFFSET_PX = 14;
 export function useCursorAnchor() {
   const pointerRef = useRef<PointerSample | null>(null);
   const [anchor, setAnchor] = useState<CursorAnchor | undefined>(undefined);
-  const pin = useCallback(() => {
+  const pin = () => {
     const pointer = pointerRef.current;
     if (pointer === null) {
       setAnchor(undefined);
@@ -49,10 +48,10 @@ export function useCursorAnchor() {
         return DOMRect.fromRect({ x: rect.left + dx, y: rect.top + dy, width: 0, height: 0 });
       },
     });
-  }, []);
-  const onPointerMove = useCallback((event: PointerEvent<Element>) => {
+  };
+  const onPointerMove = (event: PointerEvent<Element>) => {
     pointerRef.current = { target: event.currentTarget, x: event.clientX, y: event.clientY };
-  }, []);
+  };
   return {
     pin,
     triggerProps: { onPointerMove },
