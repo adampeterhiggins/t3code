@@ -6,7 +6,7 @@ import type {
   PullRequestListState,
 } from "@t3tools/contracts";
 import { ArrowDownUpIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 import { type MergedPullRequestListView, usePullRequestList } from "~/state/pullRequests";
 
@@ -106,34 +106,26 @@ export function PullRequestPickerFilterBar(props: {
 }) {
   const { environmentId, projectId, query, view } = props;
   const [menuOpen, setMenuOpen] = useState(false);
-  const broadTargets = useMemo(
-    () =>
-      menuOpen
-        ? [
-            {
-              environmentId,
-              input: {
-                state: "all" as const,
-                projectId,
-                limit: FACET_LIMIT,
-                ...(query.length > 0 ? { query } : {}),
-              },
-            },
-          ]
-        : NO_TARGETS,
-    [environmentId, menuOpen, projectId, query],
-  );
+  const broadTargets = menuOpen
+    ? [
+        {
+          environmentId,
+          input: {
+            state: "all" as const,
+            projectId,
+            limit: FACET_LIMIT,
+            ...(query.length > 0 ? { query } : {}),
+          },
+        },
+      ]
+    : NO_TARGETS;
   const broad = usePullRequestList(broadTargets);
   const listEntries = props.list.data?.entries;
   const viewers = props.list.data?.viewers ?? broad.data?.viewers ?? NO_VIEWERS;
-  const facets = useMemo(
-    () =>
-      collectPullRequestListFacets(
-        [...(broad.data?.entries ?? []), ...(listEntries ?? [])],
-        view,
-        viewers,
-      ),
-    [broad.data?.entries, listEntries, view, viewers],
+  const facets = collectPullRequestListFacets(
+    [...(broad.data?.entries ?? []), ...(listEntries ?? [])],
+    view,
+    viewers,
   );
   const isDefault = JSON.stringify(view) === JSON.stringify(DEFAULT_PULL_REQUEST_PICKER_VIEW);
   const menuProps = {

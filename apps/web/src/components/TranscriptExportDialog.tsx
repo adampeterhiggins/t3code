@@ -8,7 +8,7 @@ import type {
 } from "@t3tools/contracts";
 import { CopyIcon, DownloadIcon } from "lucide-react";
 import { Atom } from "effect/reactivity";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { runtime } from "~/lib/runtime";
@@ -123,10 +123,7 @@ function TranscriptExportDialog({ threadRef: openedRef }: { threadRef: ScopedThr
   const tabGroup = useThreadTabGroup(environmentId, openedRef.threadId);
   const tabs = tabGroup && tabGroup.tabs.length > 1 ? tabGroup.tabs : null;
   const [selectedThreadId, setSelectedThreadId] = useState(openedRef.threadId);
-  const threadRef = useMemo(
-    () => scopeThreadRef(environmentId, selectedThreadId),
-    [environmentId, selectedThreadId],
-  );
+  const threadRef = scopeThreadRef(environmentId, selectedThreadId);
   const load = useFullThread(threadRef);
   const projection = load.status === "ready" ? load.projection : null;
   const thread = projection?.thread ?? null;
@@ -140,19 +137,15 @@ function TranscriptExportDialog({ threadRef: openedRef }: { threadRef: ScopedThr
     lastOptions = { detail, includeHeader };
   }, [detail, includeHeader]);
 
-  const transcript = useMemo(
-    () =>
-      projection
-        ? buildThreadTranscript({
-            projection,
-            projectTitle: project?.title ?? null,
-            detail,
-            includeHeader,
-            exportedAt: new Date(),
-          })
-        : null,
-    [projection, project?.title, detail, includeHeader],
-  );
+  const transcript = projection
+    ? buildThreadTranscript({
+        projection,
+        projectTitle: project?.title ?? null,
+        detail,
+        includeHeader,
+        exportedAt: new Date(),
+      })
+    : null;
   const title =
     thread?.title ?? tabs?.find((tab) => tab.threadId === selectedThreadId)?.title ?? null;
   const fileName = thread ? transcriptFileName(thread.title) : null;
@@ -177,30 +170,30 @@ function TranscriptExportDialog({ threadRef: openedRef }: { threadRef: ScopedThr
     setSaving(true);
     try {
       const saved = await saveMarkdownFile(fileName, transcript.markdown);
-      if (saved === null) return;
-      closeTranscriptExportDialog();
-      toastManager.add(
-        saved.kind === "path"
-          ? {
-              type: "success",
-              title: "Transcript saved",
-              description: saved.path,
-              actionProps: {
-                children: revealLabel(),
-                onClick: () => showSavedFileInFolder(saved.path),
-              },
-            }
-          : { type: "success", title: "Transcript saved", description: saved.fileName },
-      );
+      if (saved !== null) {
+        closeTranscriptExportDialog();
+        toastManager.add(
+          saved.kind === "path"
+            ? {
+                type: "success",
+                title: "Transcript saved",
+                description: saved.path,
+                actionProps: {
+                  children: revealLabel(),
+                  onClick: () => showSavedFileInFolder(saved.path),
+                },
+              }
+            : { type: "success", title: "Transcript saved", description: saved.fileName },
+        );
+      }
     } catch (error) {
       toastManager.add({
         type: "error",
         title: "Could not save transcript",
         description: error instanceof Error ? error.message : "An error occurred.",
       });
-    } finally {
-      setSaving(false);
     }
+    setSaving(false);
   };
 
   const stats = transcript

@@ -7,7 +7,6 @@ import {
   looksLikeCheckoutPath,
   rankCheckoutCandidates,
 } from "@t3tools/shared/checkouts";
-import { useMemo } from "react";
 
 import { useCheckoutContextStore } from "~/checkoutContextStore";
 import { useComposerDraftStore } from "~/composerDraftStore";
@@ -57,37 +56,29 @@ export function useComposerCheckoutItems(
   const projects = useProjects();
   const threads = useThreadShells(input.enabled);
   const configs = useServerConfigs();
-  const candidates = useMemo(
-    () =>
-      checkoutCandidates({
-        currentEnvironmentId: environmentId,
-        projects,
-        worktrees: threads.map((thread) => ({
-          environmentId: thread.environmentId,
-          worktreePath: thread.worktreePath,
-        })),
-        environmentLabel: (id) =>
-          configs.get(id as EnvironmentId)?.environment.label ?? "Another environment",
-      }),
-    [configs, environmentId, projects, threads],
+  const candidates = checkoutCandidates({
+    currentEnvironmentId: environmentId,
+    projects,
+    worktrees: threads.map((thread) => ({
+      environmentId: thread.environmentId,
+      worktreePath: thread.worktreePath,
+    })),
+    environmentLabel: (id) =>
+      configs.get(id as EnvironmentId)?.environment.label ?? "Another environment",
+  });
+  const recentRank = new Map(readCheckoutRecents().map((path, index) => [path, index] as const));
+  const ranked = rankCheckoutCandidates(
+    candidates,
+    looksLikeCheckoutPath(input.query) ? "" : input.query,
+    recentRank,
   );
-  const ranked = useMemo(() => {
-    const recentRank = new Map(readCheckoutRecents().map((path, index) => [path, index] as const));
-    return rankCheckoutCandidates(
-      candidates,
-      looksLikeCheckoutPath(input.query) ? "" : input.query,
-      recentRank,
-    );
-  }, [candidates, input.query]);
   const pasted = looksLikeCheckoutPath(input.query) ? checkoutPathKey(input.query.trim()) : null;
-  const inspectPaths = useMemo(() => {
-    const paths = ranked
-      .filter((candidate) => candidate.selectable)
-      .slice(0, RESULT_LIMIT)
-      .map((candidate) => candidate.path);
-    if (pasted !== null && !paths.includes(pasted)) paths.unshift(pasted);
-    return paths.slice(0, 32);
-  }, [pasted, ranked]);
+  const selectablePaths = ranked
+    .filter((candidate) => candidate.selectable)
+    .slice(0, RESULT_LIMIT)
+    .map((candidate) => candidate.path);
+  if (pasted !== null && !selectablePaths.includes(pasted)) selectablePaths.unshift(pasted);
+  const inspectPaths = selectablePaths.slice(0, 32);
   const pathsKey = input.enabled && inspectPaths.length > 0 ? inspectPaths.join("\n") : null;
   const settledKey = useDebouncedValue(pathsKey, INSPECT_DEBOUNCE_MS);
   const inspection = useEnvironmentQuery(
@@ -98,39 +89,36 @@ export function useComposerCheckoutItems(
           input: { paths: settledKey.split("\n") },
         }),
   );
-  const byPath = useMemo(() => {
-    const map = new Map<string, CheckoutInspectEntry>();
-    for (const entry of inspection.data?.entries ?? []) map.set(checkoutPathKey(entry.path), entry);
-    return map;
-  }, [inspection.data?.entries]);
-  const items = useMemo<ReadonlyArray<ComposerReferenceItem>>(() => {
-    if (!input.enabled) return [];
-    const rows = ranked
-      .slice(0, RESULT_LIMIT)
-      .map((candidate) =>
-        toCheckoutItem(candidate, byPath.get(checkoutPathKey(candidate.path)) ?? null),
-      );
-    if (pasted === null) return rows;
-    const known = rows.some(
-      (item) => item.type === "checkout" && checkoutPathKey(item.path) === pasted,
-    );
-    if (known) return rows;
-    const entry = byPath.get(pasted) ?? null;
-    return [
-      toCheckoutItem(
-        {
-          environmentId,
-          environmentLabel: configs.get(environmentId)?.environment.label ?? "This environment",
-          selectable: entry?.exists === true,
-          path: entry?.path ?? pasted,
-          name: entry?.name ?? pasted,
-          kind: "project",
-        },
-        entry,
-      ),
-      ...rows,
-    ];
-  }, [byPath, configs, environmentId, input.enabled, pasted, ranked]);
+  const byPath = new Map<string, CheckoutInspectEntry>();
+  for (const entry of inspection.data?.entries ?? [])
+    byPath.set(checkoutPathKey(entry.path), entry);
+  const rows = input.enabled
+    ? ranked
+        .slice(0, RESULT_LIMIT)
+        .map((candidate) =>
+          toCheckoutItem(candidate, byPath.get(checkoutPathKey(candidate.path)) ?? null),
+        )
+    : [];
+  const pastedEntry = pasted === null ? null : (byPath.get(pasted) ?? null);
+  const items: ReadonlyArray<ComposerReferenceItem> =
+    !input.enabled ||
+    pasted === null ||
+    rows.some((item) => item.type === "checkout" && checkoutPathKey(item.path) === pasted)
+      ? rows
+      : [
+          toCheckoutItem(
+            {
+              environmentId,
+              environmentLabel: configs.get(environmentId)?.environment.label ?? "This environment",
+              selectable: pastedEntry?.exists === true,
+              path: pastedEntry?.path ?? pasted,
+              name: pastedEntry?.name ?? pasted,
+              kind: "project",
+            },
+            pastedEntry,
+          ),
+          ...rows,
+        ];
   return {
     items,
     entries: inspection.data?.entries ?? [],

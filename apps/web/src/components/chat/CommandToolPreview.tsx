@@ -47,7 +47,7 @@ export function CommandToolPreview({
         className="border-t border-border/70 pt-2"
         onToggle={(event) => setOutputOpen(event.currentTarget.open)}
       >
-        <summary className="cursor-pointer text-xs text-secondary-label focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <summary className="cursor-pointer text-xs text-secondary-label focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
           View output
           <span
             className={cn(

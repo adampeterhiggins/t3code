@@ -43,6 +43,7 @@ proto3.util.initPartial = function (source, target) {
 export const {
   Agent,
   AuthenticationError,
+  ConfigurationError,
   createAgentPlatform,
   Cursor,
   CursorSdkError,

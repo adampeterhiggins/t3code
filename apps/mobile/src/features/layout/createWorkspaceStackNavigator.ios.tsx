@@ -20,7 +20,7 @@ import {
   type NativeStackTypeBag,
 } from "@react-navigation/native-stack";
 import { use, useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
-import { Platform, View } from "react-native";
+import { View } from "react-native";
 import { Split, type SplitHostCommands } from "react-native-screens";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { scopedThreadKey } from "../../lib/scopedEntities";
@@ -42,7 +42,6 @@ import {
 } from "../../native/NativeWorkspaceColumns";
 import { V5StackHeader } from "../../native/V5StackHeader.ios";
 import type { AppNativeStackNavigationOptions } from "../../native/StackHeader";
-import { dispatchHardwareKeyboardCommand } from "../keyboard/hardwareKeyboardCommands";
 import {
   nativeWorkspacePopAction,
   projectWorkspaceStack,
@@ -67,16 +66,13 @@ function ColumnScreen(props: {
   readonly navigation: ViewProps["navigation"];
 }) {
   const { descriptor } = props;
-  const primaryColumn = useMemo(
-    () =>
-      props.primary
-        ? {
-            selectedThreadKey: props.selectedThreadKey ?? null,
-            selectedPullRequestKey: props.selectedPullRequestKey ?? null,
-          }
-        : null,
-    [props.primary, props.selectedThreadKey, props.selectedPullRequestKey],
-  );
+  const primaryColumn = (() =>
+    props.primary
+      ? {
+          selectedThreadKey: props.selectedThreadKey ?? null,
+          selectedPullRequestKey: props.selectedPullRequestKey ?? null,
+        }
+      : null)();
   const key = descriptor.route.key;
   return (
     <Split.Screen
@@ -159,14 +155,11 @@ function WorkspaceColumns(
           ThreadId.make(threadParams.threadId),
         )
       : null;
-  const handleNativeDismiss = useCallback(
-    (key: string) => {
-      const state = props.navigation.getState();
-      const action = nativeWorkspacePopAction(state, key);
-      if (action) props.navigation.dispatch(action);
-    },
-    [props.navigation],
-  );
+  const handleNativeDismiss = (key: string) => {
+    const state = props.navigation.getState();
+    const action = nativeWorkspacePopAction(state, key);
+    if (action) props.navigation.dispatch(action);
+  };
 
   useEffect(() => {
     if (layout.usesSplitView || shownCompactColumn.current === compactColumn) return;
@@ -183,7 +176,9 @@ function WorkspaceColumns(
       preferredSplitBehavior="tile"
       topColumnForCollapsing={compactColumn}
       preferredDisplayMode={
-        panes.primarySidebarVisible || !activeDetailKey ? "oneBesideSecondary" : "secondaryOnly"
+        panes.primarySidebarVisible || (!layout.usesSplitView && !activeDetailKey)
+          ? "oneBesideSecondary"
+          : "secondaryOnly"
       }
       displayModeButtonVisibility="never"
       presentsWithGesture
@@ -220,24 +215,6 @@ function WorkspaceColumns(
               options={{
                 headerShown: true,
                 title: "",
-                unstable_headerRightItems: () =>
-                  Platform.OS === "ios" &&
-                  !Platform.isPad &&
-                  layout.usesSplitView &&
-                  !panes.primarySidebarVisible
-                    ? [
-                        {
-                          type: "button",
-                          axisBehavior: "verticalPreferred",
-                          accessibilityLabel: "Search threads",
-                          label: "Search threads",
-                          icon: { type: "sfSymbol", name: "magnifyingglass" },
-                          onPress: () => {
-                            dispatchHardwareKeyboardCommand("focusSearch");
-                          },
-                        },
-                      ]
-                    : [],
                 unstable_headerLeftItems: () => [
                   {
                     type: "button",

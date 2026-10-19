@@ -1,4 +1,4 @@
-import { useNativeLayoutMetrics } from "../../native/native-layout-metrics";
+import { useDeviceType, useNativeLayoutMetrics } from "../../native/native-layout-metrics";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { Keyboard, Platform, View, type NativeSyntheticEvent } from "react-native";
 import {
@@ -24,14 +24,11 @@ function RetainedWorkspaceTab(props: {
 }) {
   const workspace = useWorkspaceTabs()!;
   const { isTabActive } = workspace;
-  const isActive = useCallback(() => isTabActive(props.tab), [isTabActive, props.tab]);
-  const activity = useMemo(
-    () => ({
-      active: props.active,
-      isActive,
-    }),
-    [props.active, isActive],
-  );
+  const isActive = () => isTabActive(props.tab);
+  const activity = (() => ({
+    active: props.active,
+    isActive,
+  }))();
   const [content, setContent] = useState(
     props.active ? { workspace, children: props.children } : null,
   );
@@ -52,15 +49,15 @@ export function WorkspaceNativeTabs(props: {
 }) {
   const workspace = useWorkspaceTabs()!;
   const metrics = useNativeLayoutMetrics();
+  const deviceType = useDeviceType();
   const phoneBar =
-    Platform.OS === "ios" && !Platform.isPad && (metrics?.verticalBarEdge ?? "none") === "none";
+    Platform.OS === "ios" &&
+    deviceType !== "pad" &&
+    (metrics?.verticalBarEdge ?? "none") === "none";
   const [provenance, setProvenance] = useState(0);
   const systemTabBar = useSystemWorkspaceTabBar();
   const selectedTab = workspace.state.selectedTab;
-  const request = useMemo(
-    () => ({ selectedScreenKey: selectedTab, baseProvenance: provenance }),
-    [selectedTab, provenance],
-  );
+  const request = (() => ({ selectedScreenKey: selectedTab, baseProvenance: provenance }))();
   return (
     <View style={{ flex: 1 }}>
       <Tabs.Host

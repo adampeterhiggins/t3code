@@ -6,7 +6,7 @@ import {
 } from "@t3tools/client-runtime/thread-tabs";
 import type { EnvironmentId, ThreadTabMembership } from "@t3tools/contracts";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { runtime } from "../../lib/runtime";
 import { useEnvironments } from "../../state/environments";
@@ -31,14 +31,10 @@ export function useHiddenTabThreads(threads: ReadonlyArray<EnvironmentThreadShel
   >(() => new Map());
 
   const [checkedThreadKeys, setCheckedThreadKeys] = useState<ReadonlySet<string>>(() => new Set());
-  const loadingEnvironmentIds = useMemo(
-    () =>
-      new Set(
-        environments
-          .filter((environment) => readPreparedConnection(environment.environmentId) !== null)
-          .map((environment) => environment.environmentId),
-      ),
-    [environments],
+  const loadingEnvironmentIds = new Set(
+    environments
+      .filter((environment) => readPreparedConnection(environment.environmentId) !== null)
+      .map((environment) => environment.environmentId),
   );
 
   useEffect(() => {
@@ -77,21 +73,17 @@ export function useHiddenTabThreads(threads: ReadonlyArray<EnvironmentThreadShel
     return () => {
       active = false;
     };
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- A renamed group or a refocused window refetches memberships another client may have changed.
   }, [environments, threadIds, nameRevision]);
 
-  const hiddenTabThreads = useMemo(
-    () =>
-      hiddenSidebarTabThreadKeys(threads, memberships, checkedThreadKeys, loadingEnvironmentIds),
-    [threads, memberships, checkedThreadKeys, loadingEnvironmentIds],
+  const hiddenTabThreads = hiddenSidebarTabThreadKeys(
+    threads,
+    memberships,
+    checkedThreadKeys,
+    loadingEnvironmentIds,
   );
-  // Keyed on memberships alone so thread updates do not hand the sidebar a new set.
-  const tabEnvironmentIds = useMemo(
-    (): ReadonlySet<EnvironmentId> => new Set(memberships.keys()),
-    [memberships],
-  );
-  const groupNames = useMemo(() => threadTabGroupNames(memberships), [memberships]);
-  return useMemo(
-    () => ({ hiddenTabThreads, tabEnvironmentIds, groupNames }),
-    [hiddenTabThreads, tabEnvironmentIds, groupNames],
-  );
+  // Derived from memberships alone so thread updates do not hand the sidebar a new set.
+  const tabEnvironmentIds: ReadonlySet<EnvironmentId> = new Set(memberships.keys());
+  const groupNames = threadTabGroupNames(memberships);
+  return { hiddenTabThreads, tabEnvironmentIds, groupNames };
 }

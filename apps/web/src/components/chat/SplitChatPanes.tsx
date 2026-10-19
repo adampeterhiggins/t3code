@@ -1,13 +1,6 @@
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef } from "@t3tools/contracts";
-import {
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-  type HTMLAttributes,
-  type RefObject,
-} from "react";
+import { useRef, useState, type CSSProperties, type HTMLAttributes, type RefObject } from "react";
 
 import { useResizeDrag } from "../../hooks/useResizeDrag";
 import { useSplitViewStore } from "../../splitViewStore";
@@ -47,7 +40,7 @@ function SplitPane({
   handleProps: HTMLAttributes<HTMLButtonElement>;
   onFocus: () => void;
 }) {
-  const context = useMemo(() => ({ focused }), [focused]);
+  const context = { focused };
   const paneKey = scopedThreadKey(threadRef);
   const dropTarget = drag !== null && drag.fromKey !== paneKey && drag.overKey === paneKey;
   return (
@@ -87,7 +80,7 @@ function SplitPane({
                 type="button"
                 aria-label="Swap panes"
                 className={cn(
-                  "group/split-handle absolute top-0 left-1/2 z-50 flex h-3 w-14 -translate-x-1/2 touch-none items-center justify-center rounded-b-md [-webkit-app-region:no-drag] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
+                  "group/split-handle absolute top-0 left-1/2 z-50 flex h-3 w-14 -translate-x-1/2 touch-none items-center justify-center rounded-b-md [-webkit-app-region:no-drag] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                   drag?.fromKey === paneKey ? "cursor-grabbing" : "cursor-grab",
                 )}
                 {...handleProps}

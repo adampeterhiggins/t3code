@@ -1,6 +1,5 @@
 import type { ThreadGroup, ThreadGroups } from "@t3tools/contracts/settings";
 import { useAtomValue } from "@effect/atom-react";
-import { useCallback, useMemo } from "react";
 
 import { environmentServerConfigsAtom } from "../state/server";
 import { useUpdatePrimarySettings } from "./useSettings";
@@ -15,32 +14,25 @@ const NO_GROUPS: ThreadGroups = {};
 export function useThreadGroups() {
   const serverConfigs = useAtomValue(environmentServerConfigsAtom);
   const updateSettings = useUpdatePrimarySettings();
-  const groups = useMemo(() => {
-    let merged: ThreadGroups = NO_GROUPS;
-    for (const config of serverConfigs.values()) {
-      const own = config.settings.threadGroups;
-      // The first environment to hold a group wins, so drift never flips a group's look.
-      if (Object.keys(own).length > 0) merged = { ...own, ...merged };
-    }
-    return merged;
-  }, [serverConfigs]);
+  let groups: ThreadGroups = NO_GROUPS;
+  for (const config of serverConfigs.values()) {
+    const own = config.settings.threadGroups;
+    // The first environment to hold a group wins, so drift never flips a group's look.
+    if (Object.keys(own).length > 0) groups = { ...own, ...groups };
+  }
 
   /** Saves a group, renaming its entry when `from` names another one. */
-  const saveGroup = useCallback(
-    (input: { from?: string; name: string; group: ThreadGroup }) => {
-      const { [input.from ?? input.name]: _previous, ...rest } = groups;
-      updateSettings({ threadGroups: { ...rest, [input.name]: input.group } });
-    },
-    [groups, updateSettings],
-  );
+  const saveGroup = (input: { from?: string; name: string; group: ThreadGroup }) => {
+    const rest = { ...groups };
+    delete rest[input.from ?? input.name];
+    updateSettings({ threadGroups: { ...rest, [input.name]: input.group } });
+  };
 
-  const deleteGroup = useCallback(
-    (name: string) => {
-      const { [name]: _deleted, ...rest } = groups;
-      updateSettings({ threadGroups: rest });
-    },
-    [groups, updateSettings],
-  );
+  const deleteGroup = (name: string) => {
+    const rest = { ...groups };
+    delete rest[name];
+    updateSettings({ threadGroups: rest });
+  };
 
   return { groups, saveGroup, deleteGroup };
 }

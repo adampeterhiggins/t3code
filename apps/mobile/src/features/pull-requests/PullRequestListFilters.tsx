@@ -1,6 +1,6 @@
 import { sortProjectsByGroupOrder } from "@t3tools/client-runtime/state/project-grouping";
 import { useMemo } from "react";
-import { ScrollView } from "react-native";
+import { Platform, ScrollView } from "react-native";
 import type { MenuProps } from "../../components/ui/Menu.types";
 import { ListFilterMenu } from "../workspace/ListFilterMenu";
 import {
@@ -28,6 +28,12 @@ const SORTS = {
   created: "Newest created",
   oldest: "Oldest updated",
 } as const;
+// On Android the row sits under ScreenContent's 28dp corner. A 12dp inset keeps the
+// 16dp chip radius concentric with it (28 - 12 = 16).
+const ROW_STYLE =
+  Platform.OS === "android"
+    ? { paddingHorizontal: 12, paddingTop: 12, paddingBottom: 8, gap: 8 }
+    : { paddingHorizontal: 16, paddingTop: 2, paddingBottom: 10, gap: 8 };
 const id = (field: string, value: string) => JSON.stringify([field, value]);
 /** A choice's title with how many loaded rows it would show, where those are counted. */
 const counted = (title: string, count: number | undefined) =>
@@ -51,21 +57,18 @@ function useProjectsInSidebarOrder<Project extends { id: string; environmentId: 
   const allProjects = useProjects();
   const threads = useThreadShells();
   const { sidebarProjectGroupingMode } = useMobileProjectGroupingSettings();
-  const scopes = useMemo(
-    () =>
-      sortHomeProjectScopes({
-        scopes: buildHomeProjectScopes({
-          projects: allProjects,
-          environmentId: null,
-          projectGroupingMode: sidebarProjectGroupingMode,
-        }),
-        threads,
-        pendingTasks: [],
-        projectSortOrder: "updated_at",
-      }).map((scope) => ({ memberProjectRefs: scope.projectRefs })),
-    [allProjects, sidebarProjectGroupingMode, threads],
-  );
-  return useMemo(() => sortProjectsByGroupOrder(projects, scopes), [projects, scopes]);
+  const scopes = (() =>
+    sortHomeProjectScopes({
+      scopes: buildHomeProjectScopes({
+        projects: allProjects,
+        environmentId: null,
+        projectGroupingMode: sidebarProjectGroupingMode,
+      }),
+      threads,
+      pendingTasks: [],
+      projectSortOrder: "updated_at",
+    }).map((scope) => ({ memberProjectRefs: scope.projectRefs })))();
+  return (() => sortProjectsByGroupOrder(projects, scopes))();
 }
 
 export function PullRequestListFilters(props: {
@@ -233,11 +236,7 @@ export function PullRequestListFilters(props: {
   const labels = facets.labels.slice(0, 60);
   const authors = facets.authors.slice(0, 60);
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 2, paddingBottom: 10, gap: 8 }}
-    >
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={ROW_STYLE}>
       <ListFilterMenu
         label={count ? String(count) : "Filters"}
         icon

@@ -1,5 +1,5 @@
 import type { EnvironmentId, RunId, ThreadId } from "@t3tools/contracts";
-import { assistantCitationsToLabels } from "@t3tools/shared/assistantCitations";
+import { assistantCitationsToPlainText } from "@t3tools/shared/assistantCitations";
 import { composerFileMentionsToLabels } from "@t3tools/shared/composerInlineTokens";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 
@@ -39,7 +39,7 @@ export function resolveThreadQueueRowControls(input: {
     dismissAccessibilityLabel: REMOVE_QUEUED_MESSAGE_ACCESSIBILITY_LABEL,
     // Chips read as their labels, matching the composer.
     displayText: composerFileMentionsToLabels(
-      assistantCitationsToLabels(
+      assistantCitationsToPlainText(
         replaceComposerContextReferences(input.text, (reference) => reference.label),
       ),
     ).trim(),

@@ -20,10 +20,11 @@ import { useHardwareKeyboardCommand } from "../keyboard/hardwareKeyboardCommands
 import { WorkspaceDock } from "./WorkspaceDock";
 import { useWorkspaceTabs } from "./WorkspaceTabsContext";
 import { WORKSPACE_TOOLBAR, type WorkspaceTab } from "./workspace-tabs-state";
+import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
 
 const TABS: ReadonlyArray<{ id: WorkspaceTab; label: string; icon: AppSymbolName }> = [
   { id: "threads", label: "Threads", icon: "text.bubble" },
-  { id: "pullRequests", label: "PRs", icon: "arrow.triangle.pull" },
+  { id: "pullRequests", label: "PRs", icon: PullRequestGlyph.pullRequest },
 ];
 
 function ToolbarButton(props: {
@@ -61,7 +62,7 @@ export function WorkspaceToolbar(props: {
   const keyboardVisible = useKeyboardState((state) => state.isVisible);
   const inputStyle = useResolveClassNames("text-foreground font-sans text-base");
   const placeholderStyle = useResolveClassNames("text-foreground-muted");
-  const focusSearch = useCallback(() => {
+  const focusSearch = () => {
     if (!workspace) return false;
     const tab = workspace.state.selectedTab;
     if (tab !== "threads" && tab !== "pullRequests") return false;
@@ -69,10 +70,10 @@ export function WorkspaceToolbar(props: {
     workspace.dispatch({ type: "search" });
     setFocusRequest((request) => request + 1);
     return true;
-  }, [workspace]);
+  };
   useHardwareKeyboardCommand("focusSearch", focusSearch);
-  useFocusEffect(useCallback(() => () => Keyboard.dismiss(), []));
-  const cancelSearch = useCallback(() => {
+  useFocusEffect(() => () => Keyboard.dismiss());
+  const cancelSearch = () => {
     Keyboard.dismiss();
     if (workspace)
       workspace.recordScrollOffset(
@@ -80,7 +81,7 @@ export function WorkspaceToolbar(props: {
         workspace.state.tabs[workspace.state.selectedTab].searchEntryOffset,
       );
     workspace?.dispatch({ type: "cancel" });
-  }, [workspace]);
+  };
   const handleBack = useEffectEvent(() => {
     if (!workspace || workspace.state.tabs[workspace.state.selectedTab].searchMode === "resting")
       return false;

@@ -10,7 +10,16 @@ import { useAtomValue } from "@effect/atom-react";
 import { formatProviderUpdateRequiredNotice } from "@t3tools/client-runtime/providerUpdateRequiredModels";
 import { useNavigate } from "@tanstack/react-router";
 import { LegendList, type LegendListRef } from "@legendapp/list/react";
-import { memo, useMemo, useState, useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import {
+  memo,
+  useState,
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useRef,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { ChevronRightIcon } from "lucide-react";
 import { ModelListRow } from "./ModelListRow";
 import { ModelPickerSidebar } from "./ModelPickerSidebar";
@@ -178,6 +187,92 @@ function ModelListSeparator() {
   return <div className="h-0.5" />;
 }
 
+// Owns the list's measured height and scroll fades, which change on every scroll and
+// resize without touching the picker's model lists.
+function ModelPickerList({
+  listRef,
+  itemKeys,
+  extraData,
+  renderItem,
+}: {
+  listRef: RefObject<LegendListRef | null>;
+  itemKeys: ReadonlyArray<string>;
+  extraData: unknown;
+  renderItem: (props: { item: string; index: number }) => ReactNode;
+}) {
+  const [showTopScrollFade, setShowTopScrollFade] = useState(false);
+  const [showBottomScrollFade, setShowBottomScrollFade] = useState(false);
+  const [contentSize, setContentSize] = useState(
+    () => itemKeys.length * MODEL_LIST_ESTIMATED_ITEM_SIZE,
+  );
+  useLayoutEffect(() => listRef.current?.getState().listen("totalSize", setContentSize), [listRef]);
+  const updateScrollFades = () => {
+    const scrollElement = listRef.current?.getScrollableNode();
+    if (!(scrollElement instanceof HTMLElement)) {
+      return;
+    }
+    const maxScrollOffset = Math.max(0, scrollElement.scrollHeight - scrollElement.clientHeight);
+    setShowTopScrollFade(scrollElement.scrollTop > 1);
+    setShowBottomScrollFade(maxScrollOffset - scrollElement.scrollTop > 1);
+  };
+
+  // Keyed by content: a new disabled-reason closure rebuilds an identical key array.
+  const itemListKey = JSON.stringify(itemKeys);
+  // A new list starts from the top until the measurement below lands.
+  const [fadesResetFor, setFadesResetFor] = useState(itemListKey);
+  if (fadesResetFor !== itemListKey) {
+    setFadesResetFor(itemListKey);
+    setShowTopScrollFade(false);
+    setShowBottomScrollFade(itemKeys.length > 5);
+  }
+  const measureScrollFades = useEffectEvent(updateScrollFades);
+  useLayoutEffect(() => {
+    let nestedFrame = 0;
+    const frame = window.requestAnimationFrame(() => {
+      measureScrollFades();
+      nestedFrame = window.requestAnimationFrame(() => measureScrollFades());
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.cancelAnimationFrame(nestedFrame);
+    };
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- A new list re-measures its scroll fades once it has laid out.
+  }, [itemListKey]);
+
+  return (
+    <div
+      className="relative min-h-0 overflow-hidden pr-px"
+      style={{
+        height: itemKeys.length === 0 ? 0 : `calc(${contentSize}px + var(--spacing) * 5)`,
+      }}
+    >
+      <ComboboxListVirtualized>
+        <LegendList<string>
+          ref={listRef}
+          data={itemKeys}
+          extraData={extraData}
+          keyExtractor={(modelKey) => modelKey}
+          renderItem={renderItem}
+          estimatedItemSize={MODEL_LIST_ESTIMATED_ITEM_SIZE}
+          drawDistance={480}
+          recycleItems
+          contentContainerClassName="pl-2 pr-px"
+          ItemSeparatorComponent={ModelListSeparator}
+          onLayout={updateScrollFades}
+          onScroll={updateScrollFades}
+          className={cn(
+            "scrollbar-gutter-stable h-full overflow-x-hidden overscroll-y-contain py-1.5 [&::-webkit-scrollbar-track]:my-2",
+            getVirtualizedScrollFadeClassName({
+              top: showTopScrollFade,
+              bottom: showBottomScrollFade,
+            }),
+          )}
+        />
+      </ComboboxListVirtualized>
+    </div>
+  );
+}
+
 export const ModelPickerContent = memo(function ModelPickerContent(props: {
   environmentId: EnvironmentId | null;
   activeInstanceId: ProviderInstanceId;
@@ -213,8 +308,6 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     modelRequiresFork,
   } = props;
   const [searchQuery, setSearchQuery] = useState("");
-  const [showTopScrollFade, setShowTopScrollFade] = useState(false);
-  const [showBottomScrollFade, setShowBottomScrollFade] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const modelListRef = useRef<LegendListRef | null>(null);
   const pickerContentRef = useRef<HTMLDivElement>(null);
@@ -233,45 +326,35 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   const activeModelKey = activeModelSlug
     ? modelPickerModelKey(props.activeInstanceId, activeModelSlug)
     : null;
-  const selectedModelKeys = useMemo(
-    () =>
-      props.selectedModels?.map((selection) => {
-        const entry = instanceEntries.find((entry) => entry.instanceId === selection.instanceId);
-        const model = resolveModelPickerSelectedModel({
-          driverKind: entry?.driverKind,
+  const selectedModelKeys = (() =>
+    props.selectedModels?.map((selection) => {
+      const entry = instanceEntries.find((entry) => entry.instanceId === selection.instanceId);
+      const model = resolveModelPickerSelectedModel({
+        driverKind: entry?.driverKind,
+        model: selection.model,
+        options: modelOptionsByInstance.get(selection.instanceId) ?? [],
+      });
+      return modelPickerModelKey(selection.instanceId, model?.slug ?? selection.model);
+    }))();
+  const isCollapsedModelSelected = (
+    model: Pick<ModelPickerItem, "driverKind" | "slug" | "instanceId">,
+  ) => {
+    if (props.selectedModels) {
+      return props.selectedModels.some((selection) => {
+        const entry = instanceEntries.find(
+          (candidate) => candidate.instanceId === selection.instanceId,
+        );
+        if (!entry || entry.driverKind !== model.driverKind) return false;
+        const resolved = resolveModelPickerSelectedModel({
+          driverKind: entry.driverKind,
           model: selection.model,
           options: modelOptionsByInstance.get(selection.instanceId) ?? [],
         });
-        return modelPickerModelKey(selection.instanceId, model?.slug ?? selection.model);
-      }),
-    [instanceEntries, modelOptionsByInstance, props.selectedModels],
-  );
-  const isCollapsedModelSelected = useCallback(
-    (model: Pick<ModelPickerItem, "driverKind" | "slug" | "instanceId">) => {
-      if (props.selectedModels) {
-        return props.selectedModels.some((selection) => {
-          const entry = instanceEntries.find(
-            (candidate) => candidate.instanceId === selection.instanceId,
-          );
-          if (!entry || entry.driverKind !== model.driverKind) return false;
-          const resolved = resolveModelPickerSelectedModel({
-            driverKind: entry.driverKind,
-            model: selection.model,
-            options: modelOptionsByInstance.get(selection.instanceId) ?? [],
-          });
-          return (resolved?.slug ?? selection.model) === model.slug;
-        });
-      }
-      return activeEntry?.driverKind === model.driverKind && activeModelSlug === model.slug;
-    },
-    [
-      activeEntry?.driverKind,
-      activeModelSlug,
-      instanceEntries,
-      modelOptionsByInstance,
-      props.selectedModels,
-    ],
-  );
+        return (resolved?.slug ?? selection.model) === model.slug;
+      });
+    }
+    return activeEntry?.driverKind === model.driverKind && activeModelSlug === model.slug;
+  };
   const activeInstanceHasSelectableUnavailableModel =
     activeEntry !== undefined &&
     (modelOptionsByInstance.get(props.activeInstanceId) ?? []).some((option) =>
@@ -316,21 +399,19 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   const serverKeybindings = useAtomValue(primaryServerKeybindingsAtom);
   const keybindings = providedKeybindings ?? serverKeybindings;
   const navigate = useNavigate();
+  const [searchHeight, setSearchHeight] = useState(0);
   const toggleFavorite = useToggleEnvironmentModelFavorite(props.environmentId);
 
-  const focusSearchInput = useCallback(() => {
+  const focusSearchInput = () => {
     searchInputRef.current?.focus({ preventScroll: true });
-  }, []);
+  };
 
-  const handleSelectDriver = useCallback(
-    (driverKind: ProviderDriverKind | "favorites") => {
-      setSelectedDriverKind(driverKind);
-      window.requestAnimationFrame(() => {
-        focusSearchInput();
-      });
-    },
-    [focusSearchInput],
-  );
+  const handleSelectDriver = (driverKind: ProviderDriverKind | "favorites") => {
+    setSelectedDriverKind(driverKind);
+    window.requestAnimationFrame(() => {
+      focusSearchInput();
+    });
+  };
 
   useLayoutEffect(() => {
     focusSearchInput();
@@ -346,25 +427,22 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     };
   }, [focusSearchInput]);
 
-  const favoritesSet = useMemo(() => {
+  const favoritesSet = (() => {
     return new Set(favorites.map((fav) => providerModelKey(fav.provider, fav.model)));
-  }, [favorites]);
+  })();
 
-  const entryByInstanceId = useMemo(
-    () => new Map(instanceEntries.map((entry) => [entry.instanceId, entry])),
-    [instanceEntries],
-  );
-  const matchesLockedProvider = useCallback(
-    (entry: Pick<ProviderInstanceEntry, "driverKind" | "continuationGroupKey">): boolean =>
-      matchesModelPickerLock({
-        entry,
-        lockedProvider: props.lockedProvider,
-        lockedContinuationGroupKey: props.lockedContinuationGroupKey ?? null,
-      }),
-    [props.lockedContinuationGroupKey, props.lockedProvider],
-  );
+  const entryByInstanceId = (() =>
+    new Map(instanceEntries.map((entry) => [entry.instanceId, entry])))();
+  const matchesLockedProvider = (
+    entry: Pick<ProviderInstanceEntry, "driverKind" | "continuationGroupKey">,
+  ): boolean =>
+    matchesModelPickerLock({
+      entry,
+      lockedProvider: props.lockedProvider,
+      lockedContinuationGroupKey: props.lockedContinuationGroupKey ?? null,
+    });
 
-  const selectableUnavailableDriverKinds = useMemo(() => {
+  const selectableUnavailableDriverKinds = (() => {
     const driverKinds = new Set<ProviderDriverKind>();
     if (activeInstanceHasSelectableUnavailableModel && activeEntry) {
       driverKinds.add(activeEntry.driverKind);
@@ -379,16 +457,10 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       }
     }
     return driverKinds.size > 0 ? driverKinds : undefined;
-  }, [
-    activeEntry,
-    activeInstanceHasSelectableUnavailableModel,
-    instanceEntries,
-    modelOptionsByInstance,
-    props.onOpenProviderSetup,
-  ]);
+  })();
 
   // another lookup. Account duplicates are collapsed later.
-  const flatModels = useMemo(() => {
+  const flatModels = (() => {
     const out: ModelPickerItem[] = [];
     for (const [instanceId, models] of modelOptionsByInstance) {
       const entry = entryByInstanceId.get(instanceId);
@@ -434,25 +506,17 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
         ? { lockedContinuationGroupKey: props.lockedContinuationGroupKey }
         : {}),
     });
-  }, [
-    modelOptionsByInstance,
-    entryByInstanceId,
-    instanceEntries,
-    props.activeInstanceId,
-    props.lockedContinuationGroupKey,
-    activeModelSlug,
-  ]);
+  })();
 
   // With forking available, other providers stay listed and open in a new tab instead.
   const isLocked = props.lockedProvider !== null && onForkModel === undefined;
-  const requiresFork = useCallback(
-    (model: Pick<ModelPickerItem, "driverKind" | "continuationGroupKey" | "instanceId" | "slug">) =>
-      onForkModel !== undefined &&
-      (!matchesLockedProvider(model) || modelRequiresFork?.(model.instanceId, model.slug) === true),
-    [matchesLockedProvider, modelRequiresFork, onForkModel],
-  );
+  const requiresFork = (
+    model: Pick<ModelPickerItem, "driverKind" | "continuationGroupKey" | "instanceId" | "slug">,
+  ) =>
+    onForkModel !== undefined &&
+    (!matchesLockedProvider(model) || modelRequiresFork?.(model.instanceId, model.slug) === true);
   const isSearching = searchQuery.trim().length > 0;
-  const lockedDisabledDriverKinds = useMemo(() => {
+  const lockedDisabledDriverKinds = (() => {
     if (!isLocked) {
       return undefined;
     }
@@ -463,8 +527,8 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       }
     }
     return disabled;
-  }, [instanceEntries, isLocked, matchesLockedProvider]);
-  const sidebarInstanceEntries = useMemo(() => {
+  })();
+  const sidebarInstanceEntries = (() => {
     const enabledEntries = uniqueProviderRailEntries(
       instanceEntries.filter(isProviderInstancePickerVisible),
     );
@@ -481,15 +545,12 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       }
     }
     return [...available, ...disabled];
-  }, [instanceEntries, isLocked, matchesLockedProvider]);
+  })();
   const showSidebar = !isSearching && sidebarInstanceEntries.length > 0;
-  const instanceOrder = useMemo(
-    () => instanceEntries.map((entry) => entry.instanceId),
-    [instanceEntries],
-  );
+  const instanceOrder = (() => instanceEntries.map((entry) => entry.instanceId))();
 
   // Filter models based on search query and selected provider
-  const filteredModels = useMemo(() => {
+  const filteredModels = (() => {
     let result = flatModels;
 
     if (searchQuery.trim()) {
@@ -550,18 +611,9 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       groupFavorites: selectedDriverKind !== "favorites",
       instanceOrder: selectedDriverKind === "favorites" ? instanceOrder : [],
     });
-  }, [
-    favoritesSet,
-    flatModels,
-    instanceEntries,
-    instanceOrder,
-    isLocked,
-    matchesLockedProvider,
-    searchQuery,
-    selectedDriverKind,
-  ]);
+  })();
 
-  const legacySection = useMemo(() => {
+  const legacySection = (() => {
     if (isSearching || selectedDriverKind === "favorites") {
       return null;
     }
@@ -576,15 +628,9 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       legacyModels,
       isExpanded: expandedLegacyDrivers.has(selectedDriverKind),
     };
-  }, [
-    expandedLegacyDrivers,
-    filteredModels,
-    isSearching,
-    props.activeInstanceId,
-    selectedDriverKind,
-  ]);
+  })();
 
-  const visibleModels = useMemo(() => {
+  const visibleModels = (() => {
     if (!legacySection) {
       return filteredModels;
     }
@@ -592,7 +638,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       ...legacySection.currentModels,
       ...(legacySection.isExpanded ? legacySection.legacyModels : []),
     ];
-  }, [filteredModels, legacySection]);
+  })();
 
   const selectedRailEntry =
     selectedDriverKind === "favorites"
@@ -624,87 +670,75 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     return notice ? [{ instanceId: entry.instanceId, notice }] : [];
   });
 
-  const toggleLegacySection = useCallback(
-    (instanceId: ProviderInstanceId) => {
-      const entry = entryByInstanceId.get(instanceId);
-      if (!entry) return;
-      setExpandedLegacyDrivers((expanded) => {
-        const next = new Set(expanded);
-        if (next.has(entry.driverKind)) {
-          next.delete(entry.driverKind);
-        } else {
-          next.add(entry.driverKind);
-        }
-        return next;
-      });
-    },
-    [entryByInstanceId],
-  );
+  const toggleLegacySection = (instanceId: ProviderInstanceId) => {
+    const entry = entryByInstanceId.get(instanceId);
+    if (!entry) return;
+    setExpandedLegacyDrivers((expanded) => {
+      const next = new Set(expanded);
+      if (next.has(entry.driverKind)) {
+        next.delete(entry.driverKind);
+      } else {
+        next.add(entry.driverKind);
+      }
+      return next;
+    });
+  };
 
-  const handleModelSelect = useCallback(
-    (modelSlug: string, instanceId: ProviderInstanceId, additive = false, fork = false) => {
-      if (getModelDisabledReason?.(instanceId, modelSlug)) {
+  const handleModelSelect = (
+    modelSlug: string,
+    instanceId: ProviderInstanceId,
+    additive = false,
+    fork = false,
+  ) => {
+    if (getModelDisabledReason?.(instanceId, modelSlug)) {
+      return;
+    }
+    const entry = entryByInstanceId.get(instanceId);
+    if (!entry) {
+      return;
+    }
+    const resolvedInstanceId =
+      resolveInstanceForModelSelection({
+        entries: instanceEntries,
+        modelOptionsByInstance,
+        driverKind: entry.driverKind,
+        slug: modelSlug,
+        preferredInstanceId: props.activeInstanceId,
+        ...(props.lockedContinuationGroupKey != null
+          ? { lockedContinuationGroupKey: props.lockedContinuationGroupKey }
+          : {}),
+      }) ?? instanceId;
+    if (getModelDisabledReason?.(resolvedInstanceId, modelSlug)) {
+      return;
+    }
+    const options = modelOptionsByInstance.get(resolvedInstanceId);
+    if (!options) {
+      return;
+    }
+    const resolvedEntry = entryByInstanceId.get(resolvedInstanceId) ?? entry;
+    const resolvedModel = resolveSelectableModel(resolvedEntry.driverKind, modelSlug, options);
+    if (resolvedModel) {
+      if (onForkModel && fork) {
+        onForkModel(resolvedInstanceId, resolvedModel);
+      } else if (
+        requiresFork({
+          driverKind: resolvedEntry.driverKind,
+          continuationGroupKey: resolvedEntry.continuationGroupKey,
+          instanceId: resolvedInstanceId,
+          slug: resolvedModel,
+        })
+      ) {
+        // Only the row's fork button opens these, so a stray click never forks.
         return;
+      } else if (additive && onToggleModel) {
+        onToggleModel(resolvedInstanceId, resolvedModel);
+      } else {
+        onInstanceModelChange(resolvedInstanceId, resolvedModel);
       }
-      const entry = entryByInstanceId.get(instanceId);
-      if (!entry) {
-        return;
-      }
-      const resolvedInstanceId =
-        resolveInstanceForModelSelection({
-          entries: instanceEntries,
-          modelOptionsByInstance,
-          driverKind: entry.driverKind,
-          slug: modelSlug,
-          preferredInstanceId: props.activeInstanceId,
-          ...(props.lockedContinuationGroupKey != null
-            ? { lockedContinuationGroupKey: props.lockedContinuationGroupKey }
-            : {}),
-        }) ?? instanceId;
-      if (getModelDisabledReason?.(resolvedInstanceId, modelSlug)) {
-        return;
-      }
-      const options = modelOptionsByInstance.get(resolvedInstanceId);
-      if (!options) {
-        return;
-      }
-      const resolvedEntry = entryByInstanceId.get(resolvedInstanceId) ?? entry;
-      const resolvedModel = resolveSelectableModel(resolvedEntry.driverKind, modelSlug, options);
-      if (resolvedModel) {
-        if (onForkModel && fork) {
-          onForkModel(resolvedInstanceId, resolvedModel);
-        } else if (
-          requiresFork({
-            driverKind: resolvedEntry.driverKind,
-            continuationGroupKey: resolvedEntry.continuationGroupKey,
-            instanceId: resolvedInstanceId,
-            slug: resolvedModel,
-          })
-        ) {
-          // Only the row's fork button opens these, so a stray click never forks.
-          return;
-        } else if (additive && onToggleModel) {
-          onToggleModel(resolvedInstanceId, resolvedModel);
-        } else {
-          onInstanceModelChange(resolvedInstanceId, resolvedModel);
-        }
-      }
-    },
-    [
-      entryByInstanceId,
-      getModelDisabledReason,
-      instanceEntries,
-      modelOptionsByInstance,
-      onForkModel,
-      onInstanceModelChange,
-      onToggleModel,
-      props.activeInstanceId,
-      props.lockedContinuationGroupKey,
-      requiresFork,
-    ],
-  );
+    }
+  };
 
-  const modelJumpCommandByKey = useMemo(() => {
+  const modelJumpCommandByKey = (() => {
     const mapping = new Map<
       string,
       NonNullable<ReturnType<typeof modelPickerJumpCommandForIndex>>
@@ -722,23 +756,17 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       selectableModelIndex += 1;
     }
     return mapping;
-  }, [getModelDisabledReason, visibleModels]);
-  const modelJumpModelKeys = useMemo(
-    () => [...modelJumpCommandByKey.keys()],
-    [modelJumpCommandByKey],
-  );
-  const allItemKeys = useMemo(
-    (): string[] => [
-      ...flatModels.map((model) => modelPickerModelKey(model.instanceId, model.slug)),
-      ...new Set(
-        flatModels
-          .filter((model) => model.isLegacy)
-          .map((model) => modelPickerLegacySectionKey(model.instanceId)),
-      ),
-    ],
-    [flatModels],
-  );
-  const filteredItemKeys = useMemo((): string[] => {
+  })();
+  const modelJumpModelKeys = (() => [...modelJumpCommandByKey.keys()])();
+  const allItemKeys = ((): string[] => [
+    ...flatModels.map((model) => modelPickerModelKey(model.instanceId, model.slug)),
+    ...new Set(
+      flatModels
+        .filter((model) => model.isLegacy)
+        .map((model) => modelPickerLegacySectionKey(model.instanceId)),
+    ),
+  ])();
+  const filteredItemKeys = ((): string[] => {
     const modelKeys = visibleModels.map((model) =>
       modelPickerModelKey(model.instanceId, model.slug),
     );
@@ -747,17 +775,14 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     }
     modelKeys.splice(legacySection.currentModels.length, 0, legacySection.key);
     return modelKeys;
-  }, [legacySection, visibleModels]);
-  const filteredModelByKey = useMemo(
-    (): ReadonlyMap<string, ModelPickerItem> =>
-      new Map(
-        visibleModels.map(
-          (model) => [modelPickerModelKey(model.instanceId, model.slug), model] as const,
-        ),
+  })();
+  const filteredModelByKey = ((): ReadonlyMap<string, ModelPickerItem> =>
+    new Map(
+      visibleModels.map(
+        (model) => [modelPickerModelKey(model.instanceId, model.slug), model] as const,
       ),
-    [visibleModels],
-  );
-  const comboboxValue = useMemo(() => {
+    ))();
+  const comboboxValue = (() => {
     if (onToggleModel) {
       return visibleModels
         .filter((model) => isCollapsedModelSelected(model))
@@ -765,36 +790,14 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     }
     const selected = visibleModels.find((model) => isCollapsedModelSelected(model));
     return selected ? modelPickerModelKey(selected.instanceId, selected.slug) : activeModelKey;
-  }, [activeModelKey, isCollapsedModelSelected, onToggleModel, visibleModels]);
-  const [modelListContentSize, setModelListContentSize] = useState(
-    () => filteredItemKeys.length * MODEL_LIST_ESTIMATED_ITEM_SIZE,
-  );
-  const [searchHeight, setSearchHeight] = useState(0);
-  useLayoutEffect(
-    () => modelListRef.current?.getState().listen("totalSize", setModelListContentSize),
-    [],
-  );
-  const modelListHeight =
-    filteredItemKeys.length === 0 ? 0 : `calc(${modelListContentSize}px + var(--spacing) * 5)`;
-  const updateModelListScrollFades = useCallback(() => {
-    const scrollElement = modelListRef.current?.getScrollableNode();
-    if (!(scrollElement instanceof HTMLElement)) {
-      return;
-    }
-    const maxScrollOffset = Math.max(0, scrollElement.scrollHeight - scrollElement.clientHeight);
-    setShowTopScrollFade(scrollElement.scrollTop > 1);
-    setShowBottomScrollFade(maxScrollOffset - scrollElement.scrollTop > 1);
-  }, []);
-  const modelJumpShortcutContext = useMemo(
-    () =>
-      ({
-        terminalFocus: false,
-        terminalOpen: props.terminalOpen,
-        modelPickerOpen: true,
-      }) as const,
-    [props.terminalOpen],
-  );
-  const modelJumpLabelByKey = useMemo((): ReadonlyMap<string, string> => {
+  })();
+  const modelJumpShortcutContext = (() =>
+    ({
+      terminalFocus: false,
+      terminalOpen: props.terminalOpen,
+      modelPickerOpen: true,
+    }) as const)();
+  const modelJumpLabelByKey = ((): ReadonlyMap<string, string> => {
     if (modelJumpCommandByKey.size === 0) {
       return EMPTY_MODEL_JUMP_LABELS;
     }
@@ -810,17 +813,14 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       }
     }
     return mapping.size > 0 ? mapping : EMPTY_MODEL_JUMP_LABELS;
-  }, [keybindings, modelJumpCommandByKey, modelJumpShortcutContext]);
-  const modelListExtraData = useMemo(
-    () => ({
-      favoritesSet,
-      modelJumpLabelByKey,
-      isCollapsedModelSelected,
-      isSearching,
-      selectedDriverKind,
-    }),
-    [favoritesSet, modelJumpLabelByKey, isCollapsedModelSelected, isSearching, selectedDriverKind],
-  );
+  })();
+  const modelListExtraData = (() => ({
+    favoritesSet,
+    modelJumpLabelByKey,
+    isCollapsedModelSelected,
+    isSearching,
+    selectedDriverKind,
+  }))();
 
   useEffect(() => {
     const onWindowKeyDown = (event: globalThis.KeyboardEvent) => {
@@ -880,20 +880,6 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     selectedDriverKind,
     sidebarInstanceEntries,
   ]);
-
-  useLayoutEffect(() => {
-    setShowTopScrollFade(false);
-    setShowBottomScrollFade(filteredItemKeys.length > 5);
-    let nestedFrame = 0;
-    const frame = window.requestAnimationFrame(() => {
-      updateModelListScrollFades();
-      nestedFrame = window.requestAnimationFrame(updateModelListScrollFades);
-    });
-    return () => {
-      window.cancelAnimationFrame(frame);
-      window.cancelAnimationFrame(nestedFrame);
-    };
-  }, [filteredItemKeys, updateModelListScrollFades]);
 
   return (
     <TooltipProvider delay={0}>
@@ -1034,107 +1020,86 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
               onTouchStart={(e) => e.stopPropagation()}
             />
 
-            <div
-              className="relative min-h-0 overflow-hidden pr-px"
-              style={{ height: modelListHeight }}
-            >
-              <ComboboxListVirtualized>
-                <LegendList<string>
-                  ref={modelListRef}
-                  data={filteredItemKeys}
-                  extraData={modelListExtraData}
-                  keyExtractor={(modelKey) => modelKey}
-                  renderItem={({ item: modelKey, index }) => {
-                    if (legacySection?.key === modelKey) {
-                      return (
-                        <ComboboxItem
-                          hideIndicator
-                          index={index}
-                          value={modelKey}
-                          aria-expanded={legacySection.isExpanded}
-                          className="group w-full cursor-pointer"
-                        >
-                          <div className="min-w-0 flex-1 text-left">
-                            <div className="text-xs font-medium leading-snug">Legacy models</div>
-                            <div className="mt-1 text-xs font-normal leading-snug text-muted-foreground/70">
-                              {legacySection.legacyModels.length} models
-                            </div>
-                          </div>
-                          <ChevronRightIcon
-                            className={cn(
-                              "size-4 transition-transform",
-                              legacySection.isExpanded && "rotate-90",
-                            )}
-                          />
-                        </ComboboxItem>
-                      );
-                    }
-                    const model = filteredModelByKey.get(modelKey);
-                    if (!model) {
-                      return null;
-                    }
-                    const disabledReason =
-                      getModelDisabledReason?.(model.instanceId, model.slug) ?? null;
-                    const isFavorite = isDriverModelFavorite({
-                      favoritesSet,
-                      driverKind: model.driverKind,
-                      slug: model.slug,
-                      entries: instanceEntries,
-                    });
-                    const isSelected = isCollapsedModelSelected(model);
-                    const showProvider =
-                      isSearching ||
-                      selectedDriverKind === "favorites" ||
-                      Boolean(model.subProvider);
-                    return (
-                      <ModelListRow
-                        key={modelKey}
-                        index={index}
-                        model={model}
-                        instanceId={model.instanceId}
-                        driverKind={model.driverKind}
-                        providerDisplayName={model.instanceDisplayName}
-                        providerAccentColor={model.instanceAccentColor}
-                        acpRegistryAgentId={model.acpRegistryAgentId}
-                        acpRegistryIconUrl={model.acpRegistryIconUrl}
-                        isFavorite={isFavorite}
-                        isSelected={isSelected}
-                        showSelection={selectedModelKeys !== undefined}
-                        showProvider={showProvider}
-                        preferShortName={!isLocked}
-                        useTriggerLabel={false}
-                        showNewBadge={model.badge === "new"}
-                        unavailable={model.isUnavailable === true}
-                        jumpLabel={modelJumpLabelByKey.get(modelKey) ?? null}
-                        disabledReason={disabledReason}
-                        onToggleFavorite={() => toggleFavorite(model.instanceId, model.slug)}
-                        {...(onForkModel
-                          ? {
-                              forkOnly: requiresFork(model),
-                              onFork: () =>
-                                handleModelSelect(model.slug, model.instanceId, false, true),
-                            }
-                          : {})}
+            <ModelPickerList
+              listRef={modelListRef}
+              itemKeys={filteredItemKeys}
+              extraData={modelListExtraData}
+              renderItem={({ item: modelKey, index }) => {
+                if (legacySection?.key === modelKey) {
+                  return (
+                    <ComboboxItem
+                      hideIndicator
+                      index={index}
+                      value={modelKey}
+                      aria-expanded={legacySection.isExpanded}
+                      className="group w-full cursor-pointer"
+                    >
+                      <div className="min-w-0 flex-1 text-left">
+                        <div className="text-xs font-medium leading-snug">Legacy models</div>
+                        <div className="mt-1 text-xs font-normal leading-snug text-muted-foreground/70">
+                          {legacySection.legacyModels.length} models
+                        </div>
+                      </div>
+                      <ChevronRightIcon
+                        className={cn(
+                          "size-4 transition-transform",
+                          legacySection.isExpanded && "rotate-90",
+                        )}
                       />
-                    );
-                  }}
-                  estimatedItemSize={MODEL_LIST_ESTIMATED_ITEM_SIZE}
-                  drawDistance={480}
-                  recycleItems
-                  contentContainerClassName="pl-2 pr-px"
-                  ItemSeparatorComponent={ModelListSeparator}
-                  onLayout={updateModelListScrollFades}
-                  onScroll={updateModelListScrollFades}
-                  className={cn(
-                    "scrollbar-gutter-stable h-full overflow-x-hidden overscroll-y-contain py-1.5 [&::-webkit-scrollbar-track]:my-2",
-                    getVirtualizedScrollFadeClassName({
-                      top: showTopScrollFade,
-                      bottom: showBottomScrollFade,
-                    }),
-                  )}
-                />
-              </ComboboxListVirtualized>
-            </div>
+                    </ComboboxItem>
+                  );
+                }
+                const model = filteredModelByKey.get(modelKey);
+                if (!model) {
+                  return null;
+                }
+                const disabledReason =
+                  getModelDisabledReason?.(model.instanceId, model.slug) ?? null;
+                const isFavorite = isDriverModelFavorite({
+                  favoritesSet,
+                  driverKind: model.driverKind,
+                  slug: model.slug,
+                  entries: instanceEntries,
+                });
+                const isSelected = isCollapsedModelSelected(model);
+                const showProvider =
+                  isSearching || selectedDriverKind === "favorites" || Boolean(model.subProvider);
+                return (
+                  <ModelListRow
+                    key={modelKey}
+                    index={index}
+                    slug={model.slug}
+                    name={model.name}
+                    shortName={model.shortName}
+                    subProvider={model.subProvider}
+                    instanceId={model.instanceId}
+                    driverKind={model.driverKind}
+                    providerDisplayName={model.instanceDisplayName}
+                    providerAccentColor={model.instanceAccentColor}
+                    acpRegistryAgentId={model.acpRegistryAgentId}
+                    acpRegistryIconUrl={model.acpRegistryIconUrl}
+                    isFavorite={isFavorite}
+                    isSelected={isSelected}
+                    showSelection={selectedModelKeys !== undefined}
+                    showProvider={showProvider}
+                    preferShortName={!isLocked}
+                    useTriggerLabel={false}
+                    showNewBadge={model.badge === "new"}
+                    unavailable={model.isUnavailable === true}
+                    jumpLabel={modelJumpLabelByKey.get(modelKey) ?? null}
+                    disabledReason={disabledReason}
+                    onToggleFavorite={toggleFavorite}
+                    {...(onForkModel
+                      ? {
+                          forkOnly: requiresFork(model),
+                          onFork: () =>
+                            handleModelSelect(model.slug, model.instanceId, false, true),
+                        }
+                      : {})}
+                  />
+                );
+              }}
+            />
             {providerSetupEntries.length > 0 ? (
               <div className="max-h-44 shrink-0 overflow-y-auto border-t border-border/70 p-2">
                 {providerSetupEntries.map((entry) => (

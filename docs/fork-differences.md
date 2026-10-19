@@ -1007,7 +1007,7 @@ Code: `apps/server/src/githubIssues/`, `packages/contracts/src/githubIssues.ts`,
 
 On web and desktop, a new thread's composer has a **⋯** button in its top-right corner. It opens a
 picker with PRs, Branches, Issues, and Linear tabs. The same picker opens from the command palette and from
-`chat.startFrom` (`mod+shift+b`); both of those start a new thread first. The PRs tab filters and
+`chat.startFrom` (`mod+alt+o`); both of those start a new thread first. The PRs tab filters and
 sorts with the pull requests page's filter menu, the Issues tab lists the project's GitHub issues
 by state, and the Linear tab uses the Linear attach picker's filter bar, whose view it shares.
 

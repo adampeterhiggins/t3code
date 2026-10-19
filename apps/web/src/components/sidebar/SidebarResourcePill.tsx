@@ -1,7 +1,7 @@
 import type { EnvironmentId, ResourceTelemetryProcess } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { ChevronDownIcon, ChevronRightIcon, GaugeIcon, MemoryStickIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { useResourceTelemetry } from "../../lib/resourceTelemetryState";
 import { usePrimaryEnvironmentId } from "../../state/environments";
@@ -82,18 +82,15 @@ function ResourceUsageDetails({
   const snapshot = telemetry.data;
   const processes = snapshot?.processes ?? [];
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
-  const visible = useMemo(
-    () => visibleResourceTelemetryProcesses(processes, collapsed),
-    [collapsed, processes],
-  );
-  const toggle = useCallback((process: ResourceTelemetryProcess) => {
+  const visible = visibleResourceTelemetryProcesses(processes, collapsed);
+  const toggle = (process: ResourceTelemetryProcess) => {
     const key = processIdentityKey(process);
     setCollapsed((current) => {
       const next = new Set(current);
       if (!next.delete(key)) next.add(key);
       return next;
     });
-  }, []);
+  };
   const openDiagnostics = () => {
     onNavigate();
     void navigate({ to: "/settings/diagnostics" });

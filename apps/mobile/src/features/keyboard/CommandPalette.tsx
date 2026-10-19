@@ -38,6 +38,7 @@ import {
 } from "./commandPaletteItems";
 import { parseActiveThreadPath, type HardwareKeyboardCommand } from "./hardwareKeyboardCommands";
 import { threadJumpIndex } from "./threadKeyboardShortcuts";
+import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
 
 const PALETTE_COMMANDS: ReadonlyArray<HardwareKeyboardCommand> = [
   "commandPalette",
@@ -59,7 +60,7 @@ const ACTION_ICONS: Record<string, AppSymbolName> = {
   archive: "archivebox",
   files: "doc.text",
   terminal: "terminal",
-  review: "arrow.triangle.pull",
+  review: PullRequestGlyph.pullRequest,
   copyThreadReference: "link",
 };
 
@@ -143,7 +144,7 @@ export function CommandPalette(props: {
   const runCommand = props.onCommand;
   const projects = useProjects();
   const threads = useThreadShells();
-  const activeThreadRef = useMemo(() => parseActiveThreadPath(props.pathname), [props.pathname]);
+  const activeThreadRef = (() => parseActiveThreadPath(props.pathname))();
   const activeThread = useThreadShell(activeThreadRef);
   const environments = useWorkspaceEnvironments();
   const { savedConnectionsById } = useSavedRemoteConnections();
@@ -155,34 +156,25 @@ export function CommandPalette(props: {
   const inputRef = useRef<TextInputInstance>(null);
   const listRef = useRef<FlatList<CommandPaletteItem>>(null);
   const { width, height } = useWindowDimensions();
-  const searchEnvironmentIds = useMemo(
-    () =>
-      environments
-        .filter((environment) => environment.connectionState === "connected")
-        .map((environment) => environment.environmentId),
-    [environments],
-  );
+  const searchEnvironmentIds = (() =>
+    environments
+      .filter((environment) => environment.connectionState === "connected")
+      .map((environment) => environment.environmentId))();
   const search = useThreadSearch(searchEnvironmentIds, query.startsWith(">") ? "" : query);
-  const matchedThreadKeys = useMemo(
-    () =>
-      new Set(search.matches.map((match) => scopedThreadKey(match.environmentId, match.threadId))),
-    [search.matches],
-  );
-  const contentMatchByKey = useMemo(
-    () =>
-      new Map(
-        search.matches
-          .filter(
-            (match) =>
-              match.source === "user" ||
-              match.source === "assistant" ||
-              match.source === "group_name",
-          )
-          .map((match) => [scopedThreadKey(match.environmentId, match.threadId), match]),
-      ),
-    [search.matches],
-  );
-  const items = useMemo(() => {
+  const matchedThreadKeys = (() =>
+    new Set(search.matches.map((match) => scopedThreadKey(match.environmentId, match.threadId))))();
+  const contentMatchByKey = (() =>
+    new Map(
+      search.matches
+        .filter(
+          (match) =>
+            match.source === "user" ||
+            match.source === "assistant" ||
+            match.source === "group_name",
+        )
+        .map((match) => [scopedThreadKey(match.environmentId, match.threadId), match]),
+    ))();
+  const items = (() => {
     const actions: CommandPaletteItem[] = [
       {
         key: "newTask",
@@ -347,20 +339,8 @@ export function CommandPalette(props: {
         };
       });
     return [...actions, ...projectItems, ...threadItems];
-  }, [
-    activeThread,
-    activeThreadRef,
-    navigation,
-    projects,
-    runCommand,
-    savedConnectionsById,
-    selectThread,
-    threads,
-  ]);
-  const results = useMemo(
-    () => filterCommandPaletteItems(items, query, matchedThreadKeys),
-    [items, matchedThreadKeys, query],
-  );
+  })();
+  const results = (() => filterCommandPaletteItems(items, query, matchedThreadKeys))();
   const selectedIndex = Math.max(
     0,
     results.findIndex((item) => item.key === selection),
@@ -376,13 +356,13 @@ export function CommandPalette(props: {
   }, [selectedIndex, selectedKey]);
 
   const dismissed = useRef(false);
-  const handleDismissed = useCallback(() => {
+  const handleDismissed = () => {
     if (dismissed.current) return;
     dismissed.current = true;
     // Present navigation sheets only after UIKit has dismissed this modal.
     props.onClose();
     pendingAction.current?.();
-  }, [props]);
+  };
 
   // iOS drops Modal onDismiss when the VC is dismissed mid-presentation (e.g.
   // ⌘K during the fade-in) or raced by another sheet — without a fallback the

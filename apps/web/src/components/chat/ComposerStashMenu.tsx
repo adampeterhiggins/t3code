@@ -4,7 +4,7 @@ import { assistantCitationsToLabels } from "@t3tools/shared/assistantCitations";
 import { composerFileMentionsToLabels } from "@t3tools/shared/composerInlineTokens";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 
-import { formatRelativeTimeLabel } from "../../timestampFormat";
+import { RelativeTime } from "../RelativeTime";
 import { cn } from "~/lib/utils";
 import { type PromptStashEntry } from "../../promptStashStore";
 import { ComposerBanner } from "./ComposerBanner";
@@ -213,7 +213,7 @@ export const ComposerStashMenu = memo(function ComposerStashMenu(props: {
                     dateTime={entry.createdAt}
                     className="shrink-0 text-muted-foreground tabular-nums max-sm:hidden"
                   >
-                    {formatRelativeTimeLabel(entry.createdAt)}
+                    <RelativeTime timestamp={entry.createdAt} />
                   </time>
                   <ComposerBanner.Dismiss
                     className="z-10"

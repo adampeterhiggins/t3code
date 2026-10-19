@@ -146,7 +146,7 @@ function ThreadGroupDialog(props: { initial: ThreadGroupDraft | null }) {
                     aria-label="No accent"
                     aria-pressed={style.accent === undefined}
                     className={cn(
-                      "flex size-6 items-center justify-center rounded-full border border-transparent outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      "flex size-6 items-center justify-center rounded-full border border-transparent outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                       style.accent === undefined && "border-foreground/64",
                     )}
                     onClick={() => setAccent(undefined)}
@@ -160,7 +160,7 @@ function ThreadGroupDialog(props: { initial: ThreadGroupDraft | null }) {
                       aria-label={option.label}
                       aria-pressed={style.accent === option.value}
                       className={cn(
-                        "flex size-6 items-center justify-center rounded-full border border-transparent outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        "flex size-6 items-center justify-center rounded-full border border-transparent outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                         style.accent === option.value && "border-foreground/64",
                       )}
                       onClick={() => setAccent(option.value)}

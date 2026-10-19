@@ -98,7 +98,7 @@ export function useFileContextMenu(environmentId: EnvironmentId | null) {
   const serverConfig = useAtomValue(serverEnvironment.configValueAtom(environmentId));
 
   const settings = useAtomValue(serverEnvironment.configValueAtom(environmentId))?.settings;
-  return useMemo(() => {
+  return (() => {
     const customEditors = settings?.customEditors ?? [];
     const availableEditors = [
       ...(serverConfig?.availableEditors ?? []),
@@ -176,15 +176,12 @@ export function useFileContextMenu(environmentId: EnvironmentId | null) {
       activate,
       show,
     };
-  }, [environmentId, openInEditor, serverConfig, settings]);
+  })();
 }
 
 export function useFileContextMenuHandler(environmentId: EnvironmentId | null) {
   const contextMenu = useFileContextMenu(environmentId);
-  return useCallback(
-    (target: FileContextMenuTarget, event?: { clientX: number; clientY: number }) => {
-      void contextMenu.show(target, event ? { x: event.clientX, y: event.clientY } : undefined);
-    },
-    [contextMenu],
-  );
+  return (target: FileContextMenuTarget, event?: { clientX: number; clientY: number }) => {
+    void contextMenu.show(target, event ? { x: event.clientX, y: event.clientY } : undefined);
+  };
 }

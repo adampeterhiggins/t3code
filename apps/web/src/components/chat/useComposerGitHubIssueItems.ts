@@ -1,5 +1,4 @@
 import type { EnvironmentId, GitHubIssueSummary } from "@t3tools/contracts";
-import { useCallback } from "react";
 
 import { githubIssueEnvironment } from "~/state/githubIssues";
 import type { ComposerReferenceItem } from "./composerReferenceMenu.logic";
@@ -30,14 +29,11 @@ export function useComposerGitHubIssueItems(
   cwd: string | null,
   input: { readonly enabled: boolean; readonly active: boolean; readonly query: string },
 ) {
-  const atomFor = useCallback(
-    (query: string) =>
-      githubIssueEnvironment.issues({
-        environmentId,
-        input: { cwd: cwd ?? "", ...(query.length > 0 ? { query } : {}) },
-      }),
-    [cwd, environmentId],
-  );
+  const atomFor = (query: string) =>
+    githubIssueEnvironment.issues({
+      environmentId,
+      input: { cwd: cwd ?? "", ...(query.length > 0 ? { query } : {}) },
+    });
   return useComposerReferenceSearch({
     ...input,
     enabled: input.enabled && cwd !== null,

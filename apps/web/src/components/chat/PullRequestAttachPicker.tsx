@@ -3,7 +3,7 @@ import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentId, ProjectId, ScopedThreadRef } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 import { MessageCircleIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { cn } from "~/lib/utils";
@@ -117,26 +117,25 @@ function PullRequestList(props: {
   const trimmedQuery = query.trim();
   const debouncedQuery = useDebouncedValue(trimmedQuery, SEARCH_DEBOUNCE_MS);
   const [view, setView] = useState(DEFAULT_PULL_REQUEST_PICKER_VIEW);
-  const targets = useMemo(
-    () => [
-      {
-        environmentId,
-        input: {
-          state: view.state,
-          projectId,
-          limit: PULL_REQUEST_LIMIT,
-          ...(Object.keys(view.filters).length > 0 ? { filters: view.filters } : {}),
-          ...(debouncedQuery.length > 0 ? { query: debouncedQuery } : {}),
-        },
+  const targets = [
+    {
+      environmentId,
+      input: {
+        state: view.state,
+        projectId,
+        limit: PULL_REQUEST_LIMIT,
+        ...(Object.keys(view.filters).length > 0 ? { filters: view.filters } : {}),
+        ...(debouncedQuery.length > 0 ? { query: debouncedQuery } : {}),
       },
-    ],
-    [debouncedQuery, environmentId, projectId, view],
-  );
+    },
+  ];
   const pullRequests = usePullRequestList(targets);
   const loaded = pullRequests.data?.entries ?? EMPTY_PULL_REQUESTS;
-  const entries = useMemo(
-    () => narrowPickerPullRequests(loaded, pullRequests.data?.viewers ?? {}, view, debouncedQuery),
-    [debouncedQuery, loaded, pullRequests.data?.viewers, view],
+  const entries = narrowPickerPullRequests(
+    loaded,
+    pullRequests.data?.viewers ?? {},
+    view,
+    debouncedQuery,
   );
 
   const select = (entry: EnvironmentPullRequestEntry) => {
@@ -261,10 +260,8 @@ function PullRequestCommentList(props: {
       },
     }),
   );
-  const choices = useMemo(
-    () => (activity.data === null ? [] : pullRequestCommentChoices(activity.data).toReversed()),
-    [activity.data],
-  );
+  const choices =
+    activity.data === null ? [] : pullRequestCommentChoices(activity.data).toReversed();
   const needle = query.trim().toLowerCase();
   const shown =
     needle.length === 0

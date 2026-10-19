@@ -11,13 +11,13 @@ export function AndroidWorkspaceSidebar(props: {
   readonly selectedPullRequestKey: string | null;
 }) {
   const workspace = useWorkspaceTabs()!;
-  const context = useMemo(() => ({ ...workspace, bottomClearance: 16 }), [workspace]);
+  const context = (() => ({ ...workspace, bottomClearance: 16 }))();
   return workspace.state.selectedTab === "threads" ? (
     props.children
   ) : (
     <WorkspaceTabsContext value={context}>
       <View className="flex-1 bg-header">
-        <PullRequestToolbar onRequestVisibility={props.onRequestVisibility} />
+        <PullRequestToolbar sidebar onRequestVisibility={props.onRequestVisibility} />
         <ScreenContent insetHorizontal>
           <PullRequestsScreen sidebar selectedPullRequestKey={props.selectedPullRequestKey} />
         </ScreenContent>

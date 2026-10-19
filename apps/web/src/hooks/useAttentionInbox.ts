@@ -3,7 +3,6 @@ import {
   type AttentionInboxEntry,
 } from "@t3tools/client-runtime/state/attention-inbox";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
-import { useMemo } from "react";
 
 import { useThreadShells } from "../state/entities";
 import { useUiStateStore } from "../uiStateStore";
@@ -20,8 +19,5 @@ export function useAttentionInbox(): ReadonlyArray<WebAttentionInboxEntry> {
   const threads = useThreadShells();
   const lastVisitedAtByKey = useUiStateStore((state) => state.threadLastVisitedAtById);
   const now = useNowMinute();
-  return useMemo(
-    () => buildAttentionInbox(threads, { lastVisitedAtByKey, now }),
-    [lastVisitedAtByKey, now, threads],
-  );
+  return buildAttentionInbox(threads, { lastVisitedAtByKey, now });
 }

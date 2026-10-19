@@ -170,9 +170,8 @@ function CreateAgentTokenDialog() {
         title: "Could not create the token",
         description: error instanceof Error ? error.message : undefined,
       });
-    } finally {
-      setCreating(false);
     }
+    setCreating(false);
   };
 
   const accessOption =

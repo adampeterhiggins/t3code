@@ -19,7 +19,7 @@ import type {
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
-import { useCallback, useMemo, useState } from "react";
+import { useState } from "react";
 
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { useIssueContextStore } from "~/issueContextStore";
@@ -89,57 +89,51 @@ function closeGitHubIssuePicker(): void {
  */
 export function useAttachGitHubIssue() {
   const getIssue = useAtomCommand(githubIssueEnvironment.getIssue, { reportFailure: false });
-  return useCallback(
-    async (threadRef: ScopedThreadRef, url: string): Promise<boolean> => {
-      const result = await getIssue({ environmentId: threadRef.environmentId, input: { url } });
-      if (result._tag === "Failure") {
-        if (!isAtomCommandInterrupted(result)) {
-          const failure = squashAtomCommandFailure(result);
-          toastManager.add({
-            type: "error",
-            title: "Could not attach the GitHub issue",
-            description: failure instanceof Error ? failure.message : undefined,
-          });
-        }
-        return false;
+  return async (threadRef: ScopedThreadRef, url: string): Promise<boolean> => {
+    const result = await getIssue({ environmentId: threadRef.environmentId, input: { url } });
+    if (result._tag === "Failure") {
+      if (!isAtomCommandInterrupted(result)) {
+        const failure = squashAtomCommandFailure(result);
+        toastManager.add({
+          type: "error",
+          title: "Could not attach the GitHub issue",
+          description: failure instanceof Error ? failure.message : undefined,
+        });
       }
-      const record = gitHubIssueContextRecord(result.value);
-      useIssueContextStore.getState().upsert(threadRef.threadId, record);
-      useComposerDraftStore.getState().insertContextReference(threadRef, {
-        kind: "github-issue",
-        contextId: record.contextId,
-        label: record.label,
-      });
-      return true;
-    },
-    [getIssue],
-  );
+      return false;
+    }
+    const record = gitHubIssueContextRecord(result.value);
+    useIssueContextStore.getState().upsert(threadRef.threadId, record);
+    useComposerDraftStore.getState().insertContextReference(threadRef, {
+      kind: "github-issue",
+      contextId: record.contextId,
+      label: record.label,
+    });
+    return true;
+  };
 }
 
 /** Links an issue to the thread's tab group, replacing the GitHub issue it had. */
 export function useLinkGitHubIssue() {
   const linkThread = useAtomCommand(githubIssueEnvironment.linkThread, { reportFailure: false });
-  return useCallback(
-    async (threadRef: ScopedThreadRef, url: string): Promise<boolean> => {
-      const result = await linkThread({
-        environmentId: threadRef.environmentId,
-        input: { threadId: threadRef.threadId, url },
-      });
-      if (result._tag === "Failure") {
-        if (!isAtomCommandInterrupted(result)) {
-          const failure = squashAtomCommandFailure(result);
-          toastManager.add({
-            type: "error",
-            title: "Could not link the GitHub issue",
-            description: failure instanceof Error ? failure.message : undefined,
-          });
-        }
-        return false;
+  return async (threadRef: ScopedThreadRef, url: string): Promise<boolean> => {
+    const result = await linkThread({
+      environmentId: threadRef.environmentId,
+      input: { threadId: threadRef.threadId, url },
+    });
+    if (result._tag === "Failure") {
+      if (!isAtomCommandInterrupted(result)) {
+        const failure = squashAtomCommandFailure(result);
+        toastManager.add({
+          type: "error",
+          title: "Could not link the GitHub issue",
+          description: failure instanceof Error ? failure.message : undefined,
+        });
       }
-      return true;
-    },
-    [linkThread],
-  );
+      return false;
+    }
+    return true;
+  };
 }
 
 /**
@@ -268,10 +262,7 @@ function GitHubIssuePickerDialog(props: {
   const { issues, status } = useGitHubIssueList({ environmentId, cwd, query, state });
   // The host builds a fresh ref each render; key the list on its ids.
   const { projectId } = projectRef;
-  const projectRefs = useMemo(
-    () => [scopeProjectRef(environmentId, projectId)],
-    [environmentId, projectId],
-  );
+  const projectRefs = [scopeProjectRef(environmentId, projectId)];
   const threads = useThreadShellsForProjectRefs(projectRefs);
   const links = useEnvironmentQuery(
     githubIssueEnvironment.threadLinks({ environmentId, input: {} }),

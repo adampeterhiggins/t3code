@@ -50,7 +50,7 @@ const THREAD_TAB_SUMMARY_ROLE_LABELS = {
 } as const satisfies Record<ThreadTabSummaryRole, string>;
 
 function ThreadTabSummaryFields(props: { summary: string }) {
-  const chats = useMemo(() => parseThreadTabSummary(props.summary), [props.summary]);
+  const chats = (() => parseThreadTabSummary(props.summary))();
   if (chats === null) return <ContextField label="Summary" value={props.summary} />;
   return chats.map((chat, chatIndex) => {
     const fileCount = chat.files.length + chat.moreFiles;
@@ -289,6 +289,7 @@ export function ComposerContextSheet(props: {
   return (
     <Sheet title={terminal?.terminalLabel ?? props.label} onClose={props.onClose}>
       <ScrollView
+        nestedScrollEnabled
         className="flex-1"
         contentInsetAdjustmentBehavior={Platform.OS === "ios" ? "automatic" : "never"}
         contentContainerStyle={{

@@ -10,7 +10,7 @@ import type {
   PullRequestListInput,
   ThreadPullRequestLink,
 } from "@t3tools/contracts";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 import { pullRequestEnvironment, usePullRequestList } from "~/state/pullRequests";
 import { useDebouncedValue } from "~/state/queries";
@@ -86,39 +86,33 @@ export function useComposerPullRequestItems(input: {
   const debouncedTextQuery = useDebouncedValue(textQuery, PULL_REQUEST_SEARCH_DEBOUNCE_MS);
   const settledTextQuery = textQuery === debouncedTextQuery ? textQuery : null;
 
-  const baseTargets = useMemo(
-    () =>
-      enabled && projectId !== null
-        ? [
-            {
-              environmentId,
-              input: {
-                state: "all",
-                projectId,
-                limit: PULL_REQUEST_LIST_LIMIT,
-              } satisfies PullRequestListInput,
-            },
-          ]
-        : [],
-    [enabled, environmentId, projectId],
-  );
-  const searchTargets = useMemo(
-    () =>
-      settledTextQuery !== null && projectId !== null
-        ? [
-            {
-              environmentId,
-              input: {
-                state: "all",
-                projectId,
-                limit: PULL_REQUEST_LIST_LIMIT,
-                query: settledTextQuery,
-              } satisfies PullRequestListInput,
-            },
-          ]
-        : [],
-    [environmentId, projectId, settledTextQuery],
-  );
+  const baseTargets =
+    enabled && projectId !== null
+      ? [
+          {
+            environmentId,
+            input: {
+              state: "all",
+              projectId,
+              limit: PULL_REQUEST_LIST_LIMIT,
+            } satisfies PullRequestListInput,
+          },
+        ]
+      : [];
+  const searchTargets =
+    settledTextQuery !== null && projectId !== null
+      ? [
+          {
+            environmentId,
+            input: {
+              state: "all",
+              projectId,
+              limit: PULL_REQUEST_LIST_LIMIT,
+              query: settledTextQuery,
+            } satisfies PullRequestListInput,
+          },
+        ]
+      : [];
   const base = usePullRequestList(baseTargets);
   const search = usePullRequestList(searchTargets);
 
@@ -129,18 +123,15 @@ export function useComposerPullRequestItems(input: {
     number !== null && number === debouncedNumber && Number.isSafeInteger(number) && number > 0
       ? number
       : null;
-  const repositories = useMemo(
-    () =>
-      projectId !== null && repository !== null
-        ? composerPullRequestRepositories({
-            projectId,
-            repository,
-            remoteUrls: input.remoteUrls,
-            pullRequests: input.pullRequests,
-          })
-        : [],
-    [projectId, repository, input.remoteUrls, input.pullRequests],
-  );
+  const repositories =
+    projectId !== null && repository !== null
+      ? composerPullRequestRepositories({
+          projectId,
+          repository,
+          remoteUrls: input.remoteUrls,
+          pullRequests: input.pullRequests,
+        })
+      : [];
   const exactTargets =
     settledNumber === null
       ? []
@@ -164,12 +155,12 @@ export function useComposerPullRequestItems(input: {
   const [retainedSearch, setRetainedSearch] = useState(freshSearch);
   if (freshSearch !== null && freshSearch !== retainedSearch) setRetainedSearch(freshSearch);
 
-  const items = useMemo<ReadonlyArray<ComposerReferenceItem>>(() => {
-    if (!enabled || !input.active || projectId === null || repository === null) return [];
+  let items: ReadonlyArray<ComposerReferenceItem> = [];
+  if (enabled && input.active && projectId !== null && repository !== null) {
     const baseEntries = base.data?.entries ?? [];
     if (isNumberQuery) {
       const exactEntries = exact.entries.filter((entry) => entry.number === number);
-      return filterComposerPullRequestMatches({
+      items = filterComposerPullRequestMatches({
         entries: [...exactEntries, ...baseEntries],
         linked: composerPullRequestsFromLinks(input.pullRequests, projectId),
         projectId,
@@ -178,43 +169,30 @@ export function useComposerPullRequestItems(input: {
         query,
         limit: PULL_REQUEST_RESULT_LIMIT,
       }).map(toItem);
+    } else {
+      const normalizedRepository = repository.trim().toLowerCase();
+      const inScope = (entry: PullRequestListEntry) =>
+        entry.projectId === projectId &&
+        entry.repository.trim().toLowerCase() === normalizedRepository;
+      const searchData = freshSearch ?? retainedSearch;
+      // A host that searches on its side may match on text the entry does not carry.
+      const hostSearched = (entry: PullRequestListEntry) =>
+        freshSearch !== null &&
+        freshSearch.providers.some(
+          (provider) => provider.host === entry.host && provider.searchesOnHost,
+        );
+      const seen = new Set<string>();
+      const candidates = [...(searchData?.entries ?? []), ...baseEntries].filter((entry) => {
+        const key = entryKey(entry);
+        if (seen.has(key) || !inScope(entry)) return false;
+        seen.add(key);
+        return hostSearched(entry) || matchesPullRequestQuery(entry, query);
+      });
+      items = rankPullRequestMatches(candidates, query)
+        .slice(0, PULL_REQUEST_RESULT_LIMIT)
+        .map(toItem);
     }
-    const normalizedRepository = repository.trim().toLowerCase();
-    const inScope = (entry: PullRequestListEntry) =>
-      entry.projectId === projectId &&
-      entry.repository.trim().toLowerCase() === normalizedRepository;
-    const searchData = freshSearch ?? retainedSearch;
-    // A host that searches on its side may match on text the entry does not carry.
-    const hostSearched = (entry: PullRequestListEntry) =>
-      freshSearch !== null &&
-      freshSearch.providers.some(
-        (provider) => provider.host === entry.host && provider.searchesOnHost,
-      );
-    const seen = new Set<string>();
-    const candidates = [...(searchData?.entries ?? []), ...baseEntries].filter((entry) => {
-      const key = entryKey(entry);
-      if (seen.has(key) || !inScope(entry)) return false;
-      seen.add(key);
-      return hostSearched(entry) || matchesPullRequestQuery(entry, query);
-    });
-    return rankPullRequestMatches(candidates, query)
-      .slice(0, PULL_REQUEST_RESULT_LIMIT)
-      .map(toItem);
-  }, [
-    base.data,
-    enabled,
-    exact.entries,
-    repositories,
-    freshSearch,
-    input.active,
-    input.pullRequests,
-    isNumberQuery,
-    number,
-    projectId,
-    query,
-    repository,
-    retainedSearch,
-  ]);
+  }
 
   const failed =
     base.error !== null ||
@@ -222,13 +200,9 @@ export function useComposerPullRequestItems(input: {
   return {
     items,
     /** The project's recent pull requests, for tab prediction. */
-    preloaded: useMemo(
-      () =>
-        enabled
-          ? (base.data?.entries ?? []).filter((entry) => entry.projectId === projectId).map(toItem)
-          : [],
-      [base.data, enabled, projectId],
-    ),
+    preloaded: enabled
+      ? (base.data?.entries ?? []).filter((entry) => entry.projectId === projectId).map(toItem)
+      : [],
     available: projectId !== null && repository !== null,
     failed,
     isPending:

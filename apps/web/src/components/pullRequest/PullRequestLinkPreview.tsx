@@ -13,6 +13,7 @@ import {
 
 import { useLinkClickHandler } from "~/browser/useOpenLink";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
+import { RelativeTime } from "~/components/RelativeTime";
 import { pullRequestEnvironment } from "~/state/pullRequests";
 import { useAtomQueryRunner } from "~/state/use-atom-query-runner";
 import { useEnvironmentQuery } from "~/state/query";
@@ -184,7 +185,7 @@ export function PullRequestLinkPreview({
                     <span className="min-w-0 truncate">{actorLabel(detail.author)}</span>
                     <span aria-hidden>·</span>
                     <span className="shrink-0">
-                      opened {formatRelativeTimeLabel(detail.createdAt)}
+                      opened <RelativeTime timestamp={detail.createdAt} />
                     </span>
                   </div>
                 ) : (
@@ -199,7 +200,7 @@ export function PullRequestLinkPreview({
                       </span>
                       <span aria-hidden>·</span>
                       <span className="shrink-0">
-                        {formatRelativeTimeLabel(linkedComment.comment.createdAt)}
+                        <RelativeTime timestamp={linkedComment.comment.createdAt} />
                       </span>
                       <span className="ml-auto min-w-0 truncate pl-2">
                         {pullRequestCommentChoiceLocation(linkedComment)}

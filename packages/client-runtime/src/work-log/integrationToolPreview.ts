@@ -19,8 +19,6 @@ import {
   type Record_,
 } from "./previewBuilders.ts";
 
-// --- Notion ---
-
 function notionPageUrl(pageId: string | null): string | null {
   return pageId ? `https://app.notion.com/p/${pageId.replaceAll("-", "")}` : null;
 }
@@ -142,8 +140,6 @@ function notionMarkupText(text: string): string {
     .replace(/\{\{(https?:[^}]+)\}\}/g, "$1")
     .trim();
 }
-
-// --- Datadog ---
 
 interface DatadogSections {
   readonly preamble: string;
@@ -275,8 +271,6 @@ function datadogPreview(tool: string, input: Record_, text: string | null): Tool
   }
 }
 
-// --- Google ---
-
 function eventTime(value: unknown): string | null {
   if (!isRecord(value)) return null;
   const dateTime = str(value.dateTime);
@@ -349,8 +343,6 @@ function drivePreview(tool: string, input: Record_, result: unknown): ToolPrevie
   }
   return inferredPreview(result);
 }
-
-// --- Slack ---
 
 function slackSendPreview(input: Record_, result: unknown): DocumentToolPreview | null {
   const message = str(input.message);
@@ -458,8 +450,6 @@ function slackFilePreview(text: string | null): ToolPreview | null {
   return rows.length > 0 ? properties(rows) : null;
 }
 
-// --- Granola ---
-
 function granolaPreview(text: string | null): ToolPreview | null {
   if (!text) return null;
   const meetings = [...text.matchAll(/<meeting ([^>]*)>([\s\S]*?)<\/meeting>/g)];
@@ -485,8 +475,6 @@ function granolaPreview(text: string | null): ToolPreview | null {
     }),
   );
 }
-
-// --- Linear ---
 
 function linearIssueDocument(issue: Record_): DocumentToolPreview {
   const identifier = str(issue.identifier) ?? str(issue.id);
@@ -602,8 +590,6 @@ function linearPreview(tool: string, input: Record_, result: unknown): ToolPrevi
   }
   return inferredPreview(result, str(input.query));
 }
-
-// --- Entry point ---
 
 /** `mcp__server__tool` or `server.tool`, with Claude.ai's `claude_ai_` connector prefix dropped. */
 function splitIntegrationToolName(

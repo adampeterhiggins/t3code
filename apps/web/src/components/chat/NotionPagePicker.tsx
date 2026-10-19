@@ -4,7 +4,7 @@ import { notionPageContextRecord } from "@t3tools/client-runtime/state/notion";
 import type { ScopedThreadRef, NotionPageSummary } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { useEnvironmentSettings } from "~/hooks/useSettings";
 import { useIssueContextStore } from "~/issueContextStore";
@@ -15,6 +15,7 @@ import { notionEnvironment } from "~/state/notion";
 import { useAtomCommand } from "~/state/use-atom-command";
 import {
   isAtomCommandInterrupted,
+  settlePromise,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { toastManager } from "../ui/toast";
@@ -43,46 +44,40 @@ export function openNotionPagePicker(
 const closePicker = () => appAtomRegistry.set(pickerThread, null);
 export function useAttachNotionPage() {
   const getPage = useAtomCommand(notionEnvironment.getPage);
-  return useCallback(
-    async (threadRef: ScopedThreadRef, id: string) => {
-      const result = await getPage({ environmentId: threadRef.environmentId, input: { id } });
-      if (result._tag === "Failure") return false;
-      const record = notionPageContextRecord(result.value);
-      useIssueContextStore.getState().upsert(threadRef.threadId, record);
-      useComposerDraftStore.getState().insertContextReference(threadRef, {
-        kind: record.kind,
-        contextId: record.contextId,
-        label: record.label,
-      });
-      return true;
-    },
-    [getPage],
-  );
+  return async (threadRef: ScopedThreadRef, id: string) => {
+    const result = await getPage({ environmentId: threadRef.environmentId, input: { id } });
+    if (result._tag === "Failure") return false;
+    const record = notionPageContextRecord(result.value);
+    useIssueContextStore.getState().upsert(threadRef.threadId, record);
+    useComposerDraftStore.getState().insertContextReference(threadRef, {
+      kind: record.kind,
+      contextId: record.contextId,
+      label: record.label,
+    });
+    return true;
+  };
 }
 /** Links a page to the thread's tab group, replacing the one it had. */
 export function useLinkNotionPage() {
   const linkThread = useAtomCommand(notionEnvironment.linkThread, { reportFailure: false });
-  return useCallback(
-    async (threadRef: ScopedThreadRef, pageId: string): Promise<boolean> => {
-      const result = await linkThread({
-        environmentId: threadRef.environmentId,
-        input: { threadId: threadRef.threadId, pageId },
-      });
-      if (result._tag === "Failure") {
-        if (!isAtomCommandInterrupted(result)) {
-          const failure = squashAtomCommandFailure(result);
-          toastManager.add({
-            type: "error",
-            title: "Could not link the Notion page",
-            description: failure instanceof Error ? failure.message : undefined,
-          });
-        }
-        return false;
+  return async (threadRef: ScopedThreadRef, pageId: string): Promise<boolean> => {
+    const result = await linkThread({
+      environmentId: threadRef.environmentId,
+      input: { threadId: threadRef.threadId, pageId },
+    });
+    if (result._tag === "Failure") {
+      if (!isAtomCommandInterrupted(result)) {
+        const failure = squashAtomCommandFailure(result);
+        toastManager.add({
+          type: "error",
+          title: "Could not link the Notion page",
+          description: failure instanceof Error ? failure.message : undefined,
+        });
       }
-      return true;
-    },
-    [linkThread],
-  );
+      return false;
+    }
+    return true;
+  };
 }
 export function NotionPagePickerHost() {
   const target = useAtomValue(pickerThread);
@@ -178,12 +173,10 @@ function NotionPagePickerDialog({
                         onClick={async () => {
                           if (attaching) return;
                           setAttaching(true);
-                          try {
-                            const pick = mode === "link" ? linkPage : attachPage;
-                            if (await pick(threadRef, page.id)) closePicker();
-                          } finally {
-                            setAttaching(false);
-                          }
+                          const pick = mode === "link" ? linkPage : attachPage;
+                          const picked = await settlePromise(() => pick(threadRef, page.id));
+                          setAttaching(false);
+                          if (picked._tag === "Success" && picked.value) closePicker();
                         }}
                       >
                         {page.title}

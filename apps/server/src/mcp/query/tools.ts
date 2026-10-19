@@ -95,9 +95,6 @@ const readOnly = <T extends Tool.Any>(tool: T, title: string): T =>
 const IMPORTED_NOTE =
   "Threads imported from before T3 Code's orchestration rewrite (importedFromV1) kept only their messages, so they have no turns, activities, plans or diffs.";
 
-// ---------------------------------------------------------------------------
-// Shared shapes
-
 export const FileChange = Schema.Struct({
   path: Schema.String,
   kind: Schema.String,
@@ -315,9 +312,6 @@ export const TimelineEntry = Schema.Struct({
 });
 export type TimelineEntry = typeof TimelineEntry.Type;
 
-// ---------------------------------------------------------------------------
-// Orientation
-
 export const GetEnvironmentResult = Schema.Struct({
   environmentId: Schema.String,
   label: Schema.String,
@@ -374,9 +368,6 @@ const GetActivityTimelineTool = Tool.make("get_activity_timeline", {
   success: Schema.Struct({ entries: Schema.Array(TimelineEntry), ...Page }),
   failure: QueryToolError,
 });
-
-// ---------------------------------------------------------------------------
-// Projects and threads
 
 export const ProjectSummary = Schema.Struct({
   projectId: Schema.String,
@@ -505,9 +496,6 @@ const GetThreadTool = Tool.make("get_thread", {
   }),
   failure: QueryToolError,
 });
-
-// ---------------------------------------------------------------------------
-// Conversation content
 
 export const ListTurnsInput = Schema.Struct({
   threadId: threadIdInput,
@@ -725,9 +713,6 @@ const GetSubagentTranscriptTool = Tool.make("get_subagent_transcript", {
   success: SubagentTranscript,
   failure: QueryToolError,
 });
-
-// ---------------------------------------------------------------------------
-// Plans, code and pull requests
 
 export const ListPlansInput = Schema.Struct({
   threadId: optionalThreadId,

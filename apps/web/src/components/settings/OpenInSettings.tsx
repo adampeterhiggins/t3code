@@ -88,6 +88,14 @@ export function OpenInSettings() {
     .replaceAll("\r\n", "\n")
     .split("\n")
     .filter((arg) => arg.trim().length > 0);
+  function resetForm() {
+    setEditingId(null);
+    setLabel("");
+    setCommand("");
+    setArgs("");
+    setRunInShell(false);
+    setIcon("folder");
+  }
   function removeEditor(id: EditorId) {
     update({
       customEditors: settings.customEditors.filter((editor) => editor.id !== id),
@@ -98,14 +106,6 @@ export function OpenInSettings() {
     });
     if (ruleTarget === id) setRuleTarget("t3");
     if (editingId === id) resetForm();
-  }
-  function resetForm() {
-    setEditingId(null);
-    setLabel("");
-    setCommand("");
-    setArgs("");
-    setRunInShell(false);
-    setIcon("folder");
   }
   return (
     <SettingsSection id="open-in" title="Open in">

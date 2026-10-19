@@ -8,7 +8,7 @@ import {
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
-import { useCallback, useMemo, useState } from "react";
+import { useState } from "react";
 import { useLinkClickHandler } from "~/browser/useOpenLink";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { useEnvironmentSettings } from "~/hooks/useSettings";
@@ -82,47 +82,41 @@ function meetingTimeLabel(meetingAt: string | null): string {
 
 export function useAttachGranolaNote() {
   const getNote = useAtomCommand(granolaEnvironment.getNote);
-  return useCallback(
-    async (threadRef: ScopedThreadRef, id: string) => {
-      const result = await getNote({ environmentId: threadRef.environmentId, input: { id } });
-      if (result._tag === "Failure") return false;
-      const record = granolaNoteContextRecord(result.value);
-      useIssueContextStore.getState().upsert(threadRef.threadId, record);
-      useComposerDraftStore.getState().insertContextReference(threadRef, {
-        kind: record.kind,
-        contextId: record.contextId,
-        label: record.label,
-      });
-      return true;
-    },
-    [getNote],
-  );
+  return async (threadRef: ScopedThreadRef, id: string) => {
+    const result = await getNote({ environmentId: threadRef.environmentId, input: { id } });
+    if (result._tag === "Failure") return false;
+    const record = granolaNoteContextRecord(result.value);
+    useIssueContextStore.getState().upsert(threadRef.threadId, record);
+    useComposerDraftStore.getState().insertContextReference(threadRef, {
+      kind: record.kind,
+      contextId: record.contextId,
+      label: record.label,
+    });
+    return true;
+  };
 }
 
 /** Links a note to the thread's tab group, replacing the one it had. */
 export function useLinkGranolaNote() {
   const linkThread = useAtomCommand(granolaEnvironment.linkThread, { reportFailure: false });
-  return useCallback(
-    async (threadRef: ScopedThreadRef, noteId: string): Promise<boolean> => {
-      const result = await linkThread({
-        environmentId: threadRef.environmentId,
-        input: { threadId: threadRef.threadId, noteId },
-      });
-      if (result._tag === "Failure") {
-        if (!isAtomCommandInterrupted(result)) {
-          const failure = squashAtomCommandFailure(result);
-          toastManager.add({
-            type: "error",
-            title: "Could not link the Granola note",
-            description: failure instanceof Error ? failure.message : undefined,
-          });
-        }
-        return false;
+  return async (threadRef: ScopedThreadRef, noteId: string): Promise<boolean> => {
+    const result = await linkThread({
+      environmentId: threadRef.environmentId,
+      input: { threadId: threadRef.threadId, noteId },
+    });
+    if (result._tag === "Failure") {
+      if (!isAtomCommandInterrupted(result)) {
+        const failure = squashAtomCommandFailure(result);
+        toastManager.add({
+          type: "error",
+          title: "Could not link the Granola note",
+          description: failure instanceof Error ? failure.message : undefined,
+        });
       }
-      return true;
-    },
-    [linkThread],
-  );
+      return false;
+    }
+    return true;
+  };
 }
 
 export function GranolaNotePickerHost() {
@@ -169,14 +163,8 @@ function GranolaNotePickerDialog({
   );
   const loaded = result.data?.notes;
   const pasted = parseGranolaNoteId(settled) !== null;
-  const notes = useMemo(
-    () => filterGranolaNotes(loaded ?? [], view, openedAt, pasted),
-    [loaded, view, openedAt, pasted],
-  );
-  const facets = useMemo(
-    () => granolaFilterFacets(loaded ?? [], view, openedAt, pasted),
-    [loaded, view, openedAt, pasted],
-  );
+  const notes = filterGranolaNotes(loaded ?? [], view, openedAt, pasted);
+  const facets = granolaFilterFacets(loaded ?? [], view, openedAt, pasted);
   const filtered = view !== DEFAULT_GRANOLA_NOTE_PICKER_VIEW;
   const status =
     connection.error ??
@@ -244,12 +232,12 @@ function GranolaNotePickerDialog({
                         onClick={async () => {
                           if (attaching) return;
                           setAttaching(true);
-                          try {
-                            const pick = mode === "link" ? linkNote : attachNote;
-                            if (await pick(threadRef, note.id)) closePicker();
-                          } finally {
-                            setAttaching(false);
-                          }
+                          const pick = mode === "link" ? linkNote : attachNote;
+                          await pick(threadRef, note.id)
+                            .then((picked) => {
+                              if (picked) closePicker();
+                            })
+                            .finally(() => setAttaching(false));
                         }}
                       >
                         <CursorPreviewCard

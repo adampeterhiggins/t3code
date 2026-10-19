@@ -8,7 +8,7 @@ import {
   type ProviderInstanceId,
 } from "@t3tools/contracts";
 import { PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useState } from "react";
 
 import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "../../hooks/useSettings";
 import { randomUUID } from "../../lib/utils";
@@ -167,23 +167,16 @@ function AssignmentTriggerDialog({
   const providers =
     useAtomValue(serverEnvironment.providersValueAtom(environmentId)) ?? EMPTY_SERVER_PROVIDERS;
   const allProjects = useProjects();
-  const projects = useMemo(
-    () => allProjects.filter((project) => project.environmentId === environmentId),
-    [allProjects, environmentId],
-  );
+  const projects = allProjects.filter((project) => project.environmentId === environmentId);
   const [projectId, setProjectId] = useState<string>(rule?.projectId ?? projects[0]?.id ?? "");
   const project = projects.find((entry) => entry.id === projectId);
   // The rule's project can turn providers off for itself.
-  const instanceEntries = useMemo(
-    () =>
-      sortProviderInstanceEntries(
-        applyProviderInstanceSettings(
-          deriveProviderInstanceEntries(providers),
-          settings,
-          project?.id ?? null,
-        ),
-      ),
-    [project?.id, providers, settings],
+  const instanceEntries = sortProviderInstanceEntries(
+    applyProviderInstanceSettings(
+      deriveProviderInstanceEntries(providers),
+      settings,
+      project?.id ?? null,
+    ),
   );
   const [teamId, setTeamId] = useState<string>(rule?.teamId ?? ANY_TEAM);
   const [labelName, setLabelName] = useState(rule?.labelName ?? "");
@@ -196,9 +189,11 @@ function AssignmentTriggerDialog({
   const activeInstanceId =
     activeSelection?.instanceId ?? instanceEntries[0]?.instanceId ?? ("" as ProviderInstanceId);
   const activeModel = activeSelection?.model ?? "";
-  const modelOptionsByInstance = useMemo(
-    () => getCustomModelOptionsByInstance(settings, providers, activeInstanceId, activeModel),
-    [settings, providers, activeInstanceId, activeModel],
+  const modelOptionsByInstance = getCustomModelOptionsByInstance(
+    settings,
+    providers,
+    activeInstanceId,
+    activeModel,
   );
   const canSave = project !== undefined && activeSelection !== null;
 

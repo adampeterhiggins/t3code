@@ -25,7 +25,6 @@ import type {
   SubagentContextRecord,
   ThreadId,
 } from "@t3tools/contracts";
-import { useCallback, useMemo } from "react";
 
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
@@ -98,13 +97,10 @@ export function useAgentHandle(
   ownerThreadId: ThreadId | null,
   childThreadId: ThreadId | null,
 ): string | null {
-  const select = useCallback(
-    (shells: ReadonlyArray<EnvironmentThreadShell>) => {
-      if (environmentId === null || ownerThreadId === null || childThreadId === null) return null;
-      return environmentHandles(environmentId, ownerThreadId, shells).get(childThreadId) ?? null;
-    },
-    [childThreadId, environmentId, ownerThreadId],
-  );
+  const select = (shells: ReadonlyArray<EnvironmentThreadShell>) => {
+    if (environmentId === null || ownerThreadId === null || childThreadId === null) return null;
+    return environmentHandles(environmentId, ownerThreadId, shells).get(childThreadId) ?? null;
+  };
   return useThreadShellsValue(select);
 }
 
@@ -117,18 +113,12 @@ export function useAgentHandles(
   ownerThreadId: ThreadId | null,
 ): ReadonlyMap<ThreadId, string> {
   // A string, so the shells subscription compares by value.
-  const select = useCallback(
-    (shells: ReadonlyArray<EnvironmentThreadShell>) => {
-      if (environmentId === null || ownerThreadId === null) return "";
-      return JSON.stringify([...environmentHandles(environmentId, ownerThreadId, shells)]);
-    },
-    [environmentId, ownerThreadId],
-  );
+  const select = (shells: ReadonlyArray<EnvironmentThreadShell>) => {
+    if (environmentId === null || ownerThreadId === null) return "";
+    return JSON.stringify([...environmentHandles(environmentId, ownerThreadId, shells)]);
+  };
   const serialized = useThreadShellsValue(select);
-  return useMemo(
-    () => new Map(serialized === "" ? [] : (JSON.parse(serialized) as Array<[ThreadId, string]>)),
-    [serialized],
-  );
+  return new Map(serialized === "" ? [] : (JSON.parse(serialized) as Array<[ThreadId, string]>));
 }
 
 /** The chip payload for an agent, loading its owner's record when no view has it open. */

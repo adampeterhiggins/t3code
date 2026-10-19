@@ -1,5 +1,5 @@
 import type { Organisation } from "@t3tools/contracts/settings";
-import { lazy, Suspense, useMemo, useState } from "react";
+import { lazy, Suspense, useState } from "react";
 
 import { useOrganisations } from "../../hooks/useOrganisations";
 import { buildOrganisationOptions, type OrganisationOption } from "../Sidebar.logic";
@@ -24,13 +24,9 @@ const ProjectIconPickerDialog = lazy(() =>
 export function OrganisationsSettings() {
   const groups = useSettingsProjectGroups();
   const { organisations, saveOrganisation } = useOrganisations();
-  const options = useMemo(
-    () =>
-      buildOrganisationOptions(
-        groups.flatMap((group) => group.memberProjects.map((member) => member.repositoryIdentity)),
-        organisations,
-      ),
-    [groups, organisations],
+  const options = buildOrganisationOptions(
+    groups.flatMap((group) => group.memberProjects.map((member) => member.repositoryIdentity)),
+    organisations,
   );
 
   return (

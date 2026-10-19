@@ -27,6 +27,7 @@ import {
 } from "@t3tools/client-runtime/environment";
 import {
   isAtomCommandInterrupted,
+  settlePromise,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { threadGroupsShownInThreads } from "@t3tools/contracts/settings";
@@ -43,14 +44,7 @@ import {
   RotateCcwIcon,
   XIcon,
 } from "lucide-react";
-import {
-  type ComponentProps,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useState,
-} from "react";
+import { type ComponentProps, useEffect, useLayoutEffect, useState } from "react";
 
 import { requestThreadTabGroupName } from "../ThreadTabGroupNameDialog";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
@@ -142,27 +136,26 @@ export function useThreadTabGroup(environmentId: EnvironmentId, threadId: Thread
     return () => {
       active = false;
     };
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- A renamed group refetches so its tabs show the new name.
   }, [prepared, threadId, nameRevision]);
 
-  return useMemo(() => {
-    if (!group?.tabs.some((tab) => tab.threadId === threadId)) return null;
-    // Archiving removes a thread's shell from the store, so a tab without one has been closed.
-    // Until the open thread's shell loads, the project's shells are not known yet.
-    if (!shell) return group;
-    const titles = new Map(
-      projectShells
-        .filter((thread) => thread.archivedAt === null)
-        .map((thread) => [thread.id, thread.title]),
-    );
-    if (group.tabs.every((tab) => titles.get(tab.threadId) === tab.title)) return group;
-    return {
-      ...group,
-      tabs: group.tabs.flatMap((tab) => {
-        const title = titles.get(tab.threadId);
-        return title === undefined ? [] : [{ ...tab, title }];
-      }),
-    };
-  }, [group, projectShells, shell, threadId]);
+  if (!group?.tabs.some((tab) => tab.threadId === threadId)) return null;
+  // Archiving removes a thread's shell from the store, so a tab without one has been closed.
+  // Until the open thread's shell loads, the project's shells are not known yet.
+  if (!shell) return group;
+  const titles = new Map(
+    projectShells
+      .filter((thread) => thread.archivedAt === null)
+      .map((thread) => [thread.id, thread.title]),
+  );
+  if (group.tabs.every((tab) => titles.get(tab.threadId) === tab.title)) return group;
+  return {
+    ...group,
+    tabs: group.tabs.flatMap((tab) => {
+      const title = titles.get(tab.threadId);
+      return title === undefined ? [] : [{ ...tab, title }];
+    }),
+  };
 }
 
 /** Shows or hides `to`'s right panel to match `from`'s, keeping `to`'s own surfaces. */
@@ -231,54 +224,55 @@ export function useThreadTabActions() {
   const { archiveThread } = useThreadActions();
 
   /** Adds a tab to `source`'s group (making one if needed) and opens it. */
-  const createTab = useCallback(
-    async (source: ScopedThreadRef, modelSelection: ModelSelection) => {
-      try {
-        const prepared = readPreparedConnection(source.environmentId);
-        if (!prepared) throw new Error("This environment is not connected.");
-        const threadRef = scopeThreadRef(source.environmentId, newThreadId());
-        await runtime.runPromise(
-          createThreadTab(prepared, source.threadId, {
-            threadId: threadRef.threadId,
-            modelSelection,
-          }),
-        );
-        carryRightPanelVisibility(source, threadRef);
-        // The thread route redirects away from threads the client store has not heard of yet.
-        await waitForThreadShell(threadRef);
-        await navigate({
-          to: "/$environmentId/$threadId",
-          params: { environmentId: threadRef.environmentId, threadId: threadRef.threadId },
-        });
-      } catch (cause) {
-        toastManager.add({
-          type: "error",
-          title: "Could not create tab",
-          description: cause instanceof Error ? cause.message : undefined,
-        });
-      }
-    },
-    [navigate],
-  );
+  const createTab = async (source: ScopedThreadRef, modelSelection: ModelSelection) => {
+    const prepared = readPreparedConnection(source.environmentId);
+    if (!prepared) {
+      toastManager.add({
+        type: "error",
+        title: "Could not create tab",
+        description: "This environment is not connected.",
+      });
+      return;
+    }
+    try {
+      const threadRef = scopeThreadRef(source.environmentId, newThreadId());
+      await runtime.runPromise(
+        createThreadTab(prepared, source.threadId, {
+          threadId: threadRef.threadId,
+          modelSelection,
+        }),
+      );
+      carryRightPanelVisibility(source, threadRef);
+      // The thread route redirects away from threads the client store has not heard of yet.
+      await waitForThreadShell(threadRef);
+      await navigate({
+        to: "/$environmentId/$threadId",
+        params: { environmentId: threadRef.environmentId, threadId: threadRef.threadId },
+      });
+    } catch (cause) {
+      toastManager.add({
+        type: "error",
+        title: "Could not create tab",
+        description: cause instanceof Error ? cause.message : undefined,
+      });
+    }
+  };
 
   /**
    * Closing archives the tab's thread, so undo and the archived-threads list can reopen it.
    * Closing the open tab lands on `next`.
    */
-  const closeTab = useCallback(
-    async (tab: ScopedThreadRef, next: ScopedThreadRef) => {
-      const result = await archiveThread(tab, { next });
-      if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-        const error = squashAtomCommandFailure(result);
-        toastManager.add({
-          type: "error",
-          title: "Could not close tab",
-          description: error instanceof Error ? error.message : undefined,
-        });
-      }
-    },
-    [archiveThread],
-  );
+  const closeTab = async (tab: ScopedThreadRef, next: ScopedThreadRef) => {
+    const result = await archiveThread(tab, { next });
+    if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+      const error = squashAtomCommandFailure(result);
+      toastManager.add({
+        type: "error",
+        title: "Could not close tab",
+        description: error instanceof Error ? error.message : undefined,
+      });
+    }
+  };
 
   return { createTab, closeTab };
 }
@@ -349,11 +343,9 @@ export function ThreadTabMenu({
 
   const run = async (action: () => Promise<void>) => {
     setBusy(true);
-    try {
-      await action();
-    } finally {
-      setBusy(false);
-    }
+    const result = await settlePromise(action);
+    setBusy(false);
+    if (result._tag === "Failure") throw squashAtomCommandFailure(result);
   };
 
   const close = (tabThreadId: ThreadId) => {
@@ -640,21 +632,19 @@ export function useCaptureThreadTabContext(
   threadId: ThreadId | null,
 ) {
   const prepared = usePreparedConnection(environmentId);
-  return useMemo(() => {
-    if (threadId === null || Option.isNone(prepared)) return null;
-    const connection = prepared.value;
-    return {
-      capture: (sourceThreadId: ThreadId, title: string, summary?: string) =>
-        captureThreadTabContext(connection, {
-          threadId,
-          sourceThreadId,
-          title,
-          ...(summary !== undefined ? { summary } : {}),
-        }),
-      fetchSummary: (sourceThreadId: ThreadId) =>
-        fetchThreadTabSummary(connection, { threadId, sourceThreadId }),
-    };
-  }, [prepared, threadId]);
+  if (threadId === null || Option.isNone(prepared)) return null;
+  const connection = prepared.value;
+  return {
+    capture: (sourceThreadId: ThreadId, title: string, summary?: string) =>
+      captureThreadTabContext(connection, {
+        threadId,
+        sourceThreadId,
+        title,
+        ...(summary !== undefined ? { summary } : {}),
+      }),
+    fetchSummary: (sourceThreadId: ThreadId) =>
+      fetchThreadTabSummary(connection, { threadId, sourceThreadId }),
+  };
 }
 
 /**
@@ -775,66 +765,46 @@ function useSidebarSiblingTabs(
   const serverConfig = useAtomValue(environmentServerConfigsAtom).get(environmentId);
   const capabilities = serverConfig?.environment.capabilities;
   const { groups } = useThreadGroups();
-  const groupsShownInThreads = useMemo(() => threadGroupsShownInThreads(groups), [groups]);
-  const providerEntries = useMemo(
-    () =>
-      serverConfig
-        ? deriveProviderEntriesByEnvironment([
-            [environmentId, serverConfig.providers, serverConfig.settings],
-          ]).get(environmentId)
-        : undefined,
-    [environmentId, serverConfig],
-  );
+  const groupsShownInThreads = threadGroupsShownInThreads(groups);
+  const providerEntries = serverConfig
+    ? deriveProviderEntriesByEnvironment([
+        [environmentId, serverConfig.providers, serverConfig.settings],
+      ]).get(environmentId)
+    : undefined;
 
-  const tabs = useMemo(() => {
-    const shellById = new Map(projectShells.map((thread) => [thread.id, thread]));
-    const tabKey = (tab: Pick<ThreadTab, "threadId">) =>
-      scopedThreadKey(scopeThreadRef(environmentId, tab.threadId));
-    // The group's first tab stands for it in the sidebar; its shelf decides card or slim row.
-    const row = group.tabs[0] ? shellById.get(group.tabs[0].threadId) : undefined;
-    const shelf = row
-      ? sidebarThreadShelf(row, {
-          supportsSnooze: capabilities?.threadSnooze === true,
-          supportsSettlement: capabilities?.threadSettlement === true,
-          workingShelfEnabled,
-          now: new Date().toISOString(),
-          groupsShownInThreads,
-        })
-      : "active";
-    const { shown, hidden } = sidebarSiblingTabs(group.tabs, {
-      listsRow: shelf === "pinned" || shelf === "active",
-      order: tabSortOrder,
-      direction: tabSortDirection,
-      getKey: tabKey,
-      getTimestamp: (tab, order) => {
-        const tabShell = shellById.get(tab.threadId);
-        return tabShell
-          ? sidebarTabSortTimestamp(tabShell, order, openedAtByThreadKey[tabKey(tab)])
-          : null;
-      },
-      manualRanks,
-      limit: tabLimit,
-      openKey: tabKey({ threadId }),
-    });
-    return { shown, hidden, shellById };
-  }, [
-    capabilities,
-    environmentId,
-    group,
-    groupsShownInThreads,
+  const shellById = new Map(projectShells.map((thread) => [thread.id, thread]));
+  const tabKey = (tab: Pick<ThreadTab, "threadId">) =>
+    scopedThreadKey(scopeThreadRef(environmentId, tab.threadId));
+  // The group's first tab stands for it in the sidebar; its shelf decides card or slim row.
+  const row = group.tabs[0] ? shellById.get(group.tabs[0].threadId) : undefined;
+  const shelf = row
+    ? sidebarThreadShelf(row, {
+        supportsSnooze: capabilities?.threadSnooze === true,
+        supportsSettlement: capabilities?.threadSettlement === true,
+        workingShelfEnabled,
+        now: new Date().toISOString(),
+        groupsShownInThreads,
+      })
+    : "active";
+  const { shown, hidden } = sidebarSiblingTabs(group.tabs, {
+    listsRow: shelf === "pinned" || shelf === "active",
+    order: tabSortOrder,
+    direction: tabSortDirection,
+    getKey: tabKey,
+    getTimestamp: (tab, order) => {
+      const tabShell = shellById.get(tab.threadId);
+      return tabShell
+        ? sidebarTabSortTimestamp(tabShell, order, openedAtByThreadKey[tabKey(tab)])
+        : null;
+    },
     manualRanks,
-    openedAtByThreadKey,
-    projectShells,
-    tabLimit,
-    tabSortDirection,
-    tabSortOrder,
-    threadId,
-    workingShelfEnabled,
-  ]);
+    limit: tabLimit,
+    openKey: tabKey({ threadId }),
+  });
 
   /** What the sidebar row of a sibling tab shows, once its shell has loaded. */
   const summaryOf = (tabThreadId: ThreadId): TabSummary | undefined => {
-    const thread = tabs.shellById.get(tabThreadId);
+    const thread = shellById.get(tabThreadId);
     return thread
       ? {
           thread,
@@ -845,7 +815,7 @@ function useSidebarSiblingTabs(
         }
       : undefined;
   };
-  return { shown: tabs.shown, hidden: tabs.hidden, summaryOf };
+  return { shown, hidden, summaryOf };
 }
 
 type TabSummary = Omit<ComponentProps<typeof SidebarTabSummary>, "compact">;
@@ -871,13 +841,10 @@ export function ThreadTabContextPills({
 }) {
   const threadTabContext = useCaptureThreadTabContext(environmentId, threadId);
   // Summaries fetched on hover are kept so a later click inserts what the preview showed.
-  const loadSummary = useMemo(
-    () =>
-      threadTabContext === null
-        ? null
-        : createThreadAttachSummaryLoader(threadTabContext.fetchSummary),
-    [threadTabContext],
-  );
+  const loadSummary =
+    threadTabContext === null
+      ? null
+      : createThreadAttachSummaryLoader(threadTabContext.fetchSummary);
   const [loadingId, setLoadingId] = useState<ThreadId | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -898,9 +865,8 @@ export function ThreadTabContextPills({
       await action();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : fallbackError);
-    } finally {
-      setLoadingId(null);
     }
+    setLoadingId(null);
   };
   const insert = (sourceThreadId: ThreadId, title: string) =>
     runFor(sourceThreadId, "Could not summarize that tab.", async () => {

@@ -7,7 +7,6 @@ import {
   type ConductorSettingsFilePath,
   type ResolvedConductorSettings,
 } from "@t3tools/shared/conductorSettings";
-import { useMemo } from "react";
 
 import { useProjectFileQuery } from "~/components/files/projectFilesQueryState";
 
@@ -50,18 +49,16 @@ export function useConductorSettings(
   const worktreeInclude = fileContents(
     useProjectFileQuery(environmentId, root, WORKTREE_INCLUDE_PATH, enabled),
   );
-  return useMemo(() => {
-    const files = {
-      "conductor.json": legacy,
-      ".conductor/settings.json": sharedJson,
-      [CONDUCTOR_SETTINGS_PATH]: shared,
-      ".conductor/settings.local.json": localJson,
-      [CONDUCTOR_LOCAL_SETTINGS_PATH]: local,
-    };
-    return {
-      files,
-      worktreeInclude,
-      resolved: resolveConductorSettings({ files, worktreeInclude }),
-    };
-  }, [legacy, sharedJson, shared, localJson, local, worktreeInclude]);
+  const files = {
+    "conductor.json": legacy,
+    ".conductor/settings.json": sharedJson,
+    [CONDUCTOR_SETTINGS_PATH]: shared,
+    ".conductor/settings.local.json": localJson,
+    [CONDUCTOR_LOCAL_SETTINGS_PATH]: local,
+  };
+  return {
+    files,
+    worktreeInclude,
+    resolved: resolveConductorSettings({ files, worktreeInclude }),
+  };
 }

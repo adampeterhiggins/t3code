@@ -20,7 +20,7 @@ import { resolveToolPreview } from "@t3tools/client-runtime/work-log/tool-previe
 import { formatDiffCount } from "@t3tools/client-runtime/diff-count";
 import { isJavaScriptReplTool } from "@t3tools/shared/toolActivity";
 import { ExternalLinkIcon, GitBranchIcon, RotateCcwIcon } from "lucide-react";
-import { memo, type ReactNode, useMemo } from "react";
+import { memo, type ReactNode } from "react";
 
 import { cn } from "../../lib/utils";
 import { useTurnItemDetail } from "../../state/queries";
@@ -60,6 +60,16 @@ interface V2ItemInspectorProps {
 const monoClassName =
   "font-mono text-(length:--font-size-code,var(--text-2xs)) leading-relaxed whitespace-pre-wrap break-words select-text";
 
+function isJsonText(text: string): boolean {
+  if (!text) return false;
+  try {
+    JSON.parse(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function StructuredValue({
   value,
   highlightJson = false,
@@ -70,15 +80,7 @@ function StructuredValue({
   readonly language?: "typescript";
 }) {
   const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
-  const isJson = useMemo(() => {
-    if (!highlightJson || !text) return false;
-    try {
-      JSON.parse(text);
-      return true;
-    } catch {
-      return false;
-    }
-  }, [highlightJson, text]);
+  const isJson = highlightJson && isJsonText(text);
   if (!text) return null;
   return (
     <pre className={cn("max-h-80 overflow-auto text-muted-foreground", monoClassName)}>
@@ -167,7 +169,7 @@ function ToolOutputText(props: {
   readonly structured: boolean;
 }) {
   const { text, cwd, structured } = props;
-  const json = useMemo(() => (structured ? parseJsonDocument(text) : null), [structured, text]);
+  const json = (() => (structured ? parseJsonDocument(text) : null))();
   if (json) return <ToolJsonTree value={json} />;
   if (structured && MARKDOWN_HEADING.test(text.trimStart())) {
     return (
@@ -287,7 +289,7 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
   const fetched = useFetchedTurnItem(props.projectedItem, props.environmentId, streamsOutput);
   const item = fetched.item;
   const outputState = fetched.output;
-  const preview = useMemo(() => resolveToolPreview(item), [item]);
+  const preview = (() => resolveToolPreview(item))();
   const support = useV2ItemSupport({
     environmentId: props.environmentId,
     sourceThreadId: props.projectedItem.sourceThreadId,
@@ -341,8 +343,8 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
             </span>
             {item.additions !== undefined || item.deletions !== undefined ? (
               <span>
-                <span className="text-success">+{formatDiffCount(item.additions ?? 0)}</span>{" "}
-                <span className="text-destructive">-{formatDiffCount(item.deletions ?? 0)}</span>
+                <span className="text-diff-addition">+{formatDiffCount(item.additions ?? 0)}</span>{" "}
+                <span className="text-diff-deletion">-{formatDiffCount(item.deletions ?? 0)}</span>
               </span>
             ) : null}
             {item.runId !== null ? (
@@ -365,8 +367,8 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
           />
           {item.changes !== undefined && item.changes.length > 0 ? (
             <ul className="space-y-1 font-mono text-muted-foreground">
-              {item.changes.map((change, index) => (
-                <li key={`${change.operation}:${change.path}:${index}`}>
+              {item.changes.map((change) => (
+                <li key={JSON.stringify([change.operation, change.oldPath, change.path])}>
                   {change.operation} {change.oldPath ? `${change.oldPath} → ` : ""}
                   <ToolPathText
                     text={change.path}

@@ -1,5 +1,4 @@
 import type { EnvironmentId, GranolaNoteSummary } from "@t3tools/contracts";
-import { useCallback } from "react";
 
 import { granolaEnvironment } from "~/state/granola";
 import type { ComposerReferenceItem } from "./composerReferenceMenu.logic";
@@ -25,10 +24,7 @@ export function useComposerGranolaItems(
   environmentId: EnvironmentId,
   input: { readonly enabled: boolean; readonly active: boolean; readonly query: string },
 ) {
-  const atomFor = useCallback(
-    (query: string) => granolaEnvironment.notes({ environmentId, input: { query } }),
-    [environmentId],
-  );
+  const atomFor = (query: string) => granolaEnvironment.notes({ environmentId, input: { query } });
   return useComposerReferenceSearch({
     ...input,
     debounceMs: GRANOLA_SEARCH_DEBOUNCE_MS,

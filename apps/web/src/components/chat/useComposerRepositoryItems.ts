@@ -4,8 +4,8 @@ import {
   rankContextRepositoryCandidates,
   splitContextRepositoryOwnerQuery,
 } from "@t3tools/client-runtime/context-repositories";
-import type { EnvironmentId } from "@t3tools/contracts";
-import { useMemo, useState } from "react";
+import type { ContextRepositoryCandidate, EnvironmentId } from "@t3tools/contracts";
+import { useState } from "react";
 
 import { useDebouncedValue } from "~/state/queries";
 import { useEnvironmentQuery } from "~/state/query";
@@ -16,6 +16,30 @@ import { readRepositoryRecents } from "./RepositoryAttachPicker";
 // Listing owners runs `gh` on the server, so the owners settle before they are fetched.
 const OWNER_DEBOUNCE_MS = 300;
 const REPOSITORY_RESULT_LIMIT = 20;
+
+function toRepositoryItems(
+  owners: ReadonlyArray<string>,
+  listed: ReadonlyArray<ContextRepositoryCandidate>,
+  filter: string,
+): ReadonlyArray<ComposerReferenceItem> {
+  const ownerSet = new Set(owners.map((owner) => owner.toLowerCase()));
+  // A listing for other owners is still settling; keep showing rows that fit the typed owner.
+  const candidates = listed.filter((candidate) =>
+    ownerSet.has(candidate.nameWithOwner.split("/")[0]?.toLowerCase() ?? ""),
+  );
+  const recentRank = new Map(readRepositoryRecents().map((name, index) => [name, index] as const));
+  const labels = contextRepositoryCandidateLabels(candidates);
+  return rankContextRepositoryCandidates(candidates, filter, recentRank)
+    .slice(0, REPOSITORY_RESULT_LIMIT)
+    .map((candidate) => ({
+      id: `repository:${candidate.nameWithOwner}`,
+      type: "repository",
+      nameWithOwner: candidate.nameWithOwner,
+      remoteUrl: candidate.url,
+      label: labels.get(candidate.nameWithOwner) ?? candidate.nameWithOwner,
+      description: candidate.description ?? "",
+    }));
+}
 
 /**
  * Repositories for the composer's `#` menu. A bare name filters `defaultOwners` (the repository
@@ -54,29 +78,10 @@ export function useComposerRepositoryItems(
   if (freshCandidates !== null && freshCandidates !== retainedCandidates) {
     setRetainedCandidates(freshCandidates);
   }
-  const ownersKey = owners.join("\n");
-  const items = useMemo<ReadonlyArray<ComposerReferenceItem>>(() => {
-    if (!enabled || !active || ownersKey.length === 0) return [];
-    const ownerSet = new Set(ownersKey.toLowerCase().split("\n"));
-    // A listing for other owners is still settling; keep showing rows that fit the typed owner.
-    const candidates = (freshCandidates ?? retainedCandidates ?? []).filter((candidate) =>
-      ownerSet.has(candidate.nameWithOwner.split("/")[0]?.toLowerCase() ?? ""),
-    );
-    const recentRank = new Map(
-      readRepositoryRecents().map((name, index) => [name, index] as const),
-    );
-    const labels = contextRepositoryCandidateLabels(candidates);
-    return rankContextRepositoryCandidates(candidates, filter, recentRank)
-      .slice(0, REPOSITORY_RESULT_LIMIT)
-      .map((candidate) => ({
-        id: `repository:${candidate.nameWithOwner}`,
-        type: "repository",
-        nameWithOwner: candidate.nameWithOwner,
-        remoteUrl: candidate.url,
-        label: labels.get(candidate.nameWithOwner) ?? candidate.nameWithOwner,
-        description: candidate.description ?? "",
-      }));
-  }, [active, enabled, filter, freshCandidates, ownersKey, retainedCandidates]);
+  const items =
+    !enabled || !active || owners.length === 0
+      ? []
+      : toRepositoryItems(owners, freshCandidates ?? retainedCandidates ?? [], filter);
   return {
     items,
     /** Empty when neither the query nor settings name an owner to list. */

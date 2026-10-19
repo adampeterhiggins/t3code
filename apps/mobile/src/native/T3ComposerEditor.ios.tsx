@@ -20,7 +20,7 @@ import { composerChipSizeSuffix, contextChipPresentation } from "../lib/composer
 import { resolveMarkdownFileIcon } from "../lib/markdownLinks";
 import { useUniwindTheme } from "../lib/useUniwindTheme";
 import { createNativeComposerTheme } from "../lib/nativeComposerTheme";
-import { useFontFamily } from "../lib/useFontFamily";
+import { FONT_FAMILIES } from "../lib/fontFamilies";
 import { useScaledTextRole } from "../features/settings/appearance/useScaledTextRole";
 import {
   acknowledgeComposerNativeEvent,
@@ -139,7 +139,7 @@ export function ComposerEditor({
   const confirmedTokensRef = useRef(collectComposerInlineTokens(props.value));
   const bodyText = useScaledTextRole("body");
   const theme = useUniwindTheme();
-  const fontFamily = useFontFamily("regular");
+  const fontFamily = FONT_FAMILIES.regular;
 
   useImperativeHandle(
     ref,
@@ -152,11 +152,9 @@ export function ComposerEditor({
     [],
   );
 
-  const skillLabels = useMemo(
-    () => new Map(skills.map((skill) => [skill.name, skill.displayName?.trim() || skill.name])),
-    [skills],
-  );
-  const tokensJson = useMemo(() => {
+  const skillLabels = (() =>
+    new Map(skills.map((skill) => [skill.name, skill.displayName?.trim() || skill.name])))();
+  const tokensJson = (() => {
     const tokens = collectComposerInlineTokens(props.value, {
       preserveTrailingFrom: confirmedTokensRef.current,
     });
@@ -189,7 +187,7 @@ export function ComposerEditor({
         };
       }),
     );
-  }, [props.value, props.context, skillLabels]);
+  })();
   // Every render resolves against the snapshot history, so a render whose
   // (value, selection) lags the acknowledged native state is stamped behind
   // the native revision and rejected by the editor instead of re-applying a
@@ -234,25 +232,26 @@ export function ComposerEditor({
       assumedValue,
     );
   }, [assumedValue, controlledEventCount, isNativeEcho, controlledDocumentJson]);
-  const acceptNativeEvent = useCallback(
-    (eventCount: number, value: string, nextSelection: ComposerEditorSelection) => {
-      const acknowledgedEventCount = acknowledgeComposerNativeEvent(
-        mostRecentEventCountRef.current,
-        eventCount,
-      );
-      if (acknowledgedEventCount === null) {
-        return false;
-      }
-      mostRecentEventCountRef.current = acknowledgedEventCount;
-      nativeEventSnapshotsRef.current.push({
-        eventCount: acknowledgedEventCount,
-        value,
-        selection: nextSelection,
-      });
-      return acknowledgedEventCount;
-    },
-    [],
-  );
+  const acceptNativeEvent = (
+    eventCount: number,
+    value: string,
+    nextSelection: ComposerEditorSelection,
+  ) => {
+    const acknowledgedEventCount = acknowledgeComposerNativeEvent(
+      mostRecentEventCountRef.current,
+      eventCount,
+    );
+    if (acknowledgedEventCount === null) {
+      return false;
+    }
+    mostRecentEventCountRef.current = acknowledgedEventCount;
+    nativeEventSnapshotsRef.current.push({
+      eventCount: acknowledgedEventCount,
+      value,
+      selection: nextSelection,
+    });
+    return acknowledgedEventCount;
+  };
   const themeJson = JSON.stringify(createNativeComposerTheme(theme));
   const resolvedTextStyle = StyleSheet.flatten(textStyle) ?? {};
   return (

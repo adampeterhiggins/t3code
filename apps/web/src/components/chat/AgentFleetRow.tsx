@@ -38,7 +38,7 @@ import type {
   TurnItemId,
 } from "@t3tools/contracts";
 import { CheckIcon, CornerDownRightIcon, XIcon } from "lucide-react";
-import { useMemo, useRef, type MouseEvent, type ReactNode } from "react";
+import { useRef, type MouseEvent, type ReactNode } from "react";
 
 import { useAgentListViewStore } from "~/agentListViewStore";
 import { useClientSettings } from "~/hooks/useSettings";
@@ -49,7 +49,8 @@ import {
   shouldShowInstanceBadge,
   type ProviderInstanceEntry,
 } from "~/providerInstances";
-import { useServerConfigs, useThreadProjection, useThreadShells } from "~/state/entities";
+import { useThreadProjection, useThreadShells } from "~/state/entities";
+import { useEnvironmentProviders } from "~/state/environments";
 import { formatSecondsTimestamp } from "~/timestampFormat";
 
 import { AgentElapsed, STATUS_VISUALS, StatusDot } from "../AgentStatus";
@@ -65,16 +66,13 @@ export type ProviderEntries = ReadonlyMap<ProviderInstanceId, ProviderInstanceEn
 
 /** An environment's provider instances by id, for naming the provider each agent runs on. */
 export function useProviderEntries(environmentId: ScopedThreadRef["environmentId"]) {
-  const serverConfigs = useServerConfigs();
-  return useMemo(
-    (): ProviderEntries =>
-      new Map(
-        deriveProviderInstanceEntries(serverConfigs.get(environmentId)?.providers ?? []).map(
-          (provider) => [provider.instanceId, provider],
-        ),
-      ),
-    [environmentId, serverConfigs],
+  const providersByEnvironment = useEnvironmentProviders();
+  const entries: ProviderEntries = new Map(
+    deriveProviderInstanceEntries(providersByEnvironment.get(environmentId) ?? []).map(
+      (provider) => [provider.instanceId, provider],
+    ),
   );
+  return entries;
 }
 
 /** The provider's glyph, dimmed and badged like the thread sidebar's. */
@@ -131,42 +129,27 @@ export function AgentPreviewContent(props: {
   const { entry } = props;
   const record = useAgentRecord(props.parentRef, entry);
   // A nested agent's record arrives with its owner; until then the shell's view stands in.
-  const agent: RuntimeSubagent = useMemo(
-    () =>
-      entry.subagent === null && record !== null
-        ? { ...subagentFromRecord(record, entry.shell), status: entry.agent.status }
-        : entry.agent,
-    [entry.agent, entry.shell, entry.subagent, record],
-  );
+  const agent: RuntimeSubagent =
+    entry.subagent === null && record !== null
+      ? { ...subagentFromRecord(record, entry.shell), status: entry.agent.status }
+      : entry.agent;
   const childRef =
     entry.childThreadId === null
       ? null
       : scopeThreadRef(props.parentRef.environmentId, entry.childThreadId);
   const child = useThreadProjection(childRef)?.projection ?? null;
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
-  const ownItems = useMemo(
-    () =>
-      child && entry.childThreadId !== null
-        ? child.turnItems.filter((item) => item.threadId === entry.childThreadId)
-        : [],
-    [child, entry.childThreadId],
-  );
-  const calls = useMemo(
-    () => deriveSubagentToolCalls(ownItems, props.workspaceRoot),
-    [ownItems, props.workspaceRoot],
-  );
-  const agentRoot = useMemo(
-    () => subagentWorkspaceRoot(ownItems, props.workspaceRoot),
-    [ownItems, props.workspaceRoot],
-  );
-  const runStats = useMemo(
-    () =>
-      child && entry.childThreadId !== null
-        ? subagentRunStats(child, entry.childThreadId)
-        : { runs: 0, attempt: null },
-    [child, entry.childThreadId],
-  );
-  const latest = useMemo(() => calls.slice(-PREVIEW_TOOL_CALLS).toReversed(), [calls]);
+  const ownItems =
+    child && entry.childThreadId !== null
+      ? child.turnItems.filter((item) => item.threadId === entry.childThreadId)
+      : [];
+  const calls = deriveSubagentToolCalls(ownItems, props.workspaceRoot);
+  const agentRoot = subagentWorkspaceRoot(ownItems, props.workspaceRoot);
+  const runStats =
+    child && entry.childThreadId !== null
+      ? subagentRunStats(child, entry.childThreadId)
+      : { runs: 0, attempt: null };
+  const latest = calls.slice(-PREVIEW_TOOL_CALLS).toReversed();
   const live = isActiveSubagentStatus(agent.status);
   const totalCalls = Math.max(calls.length, agent.usage?.toolUses ?? 0);
   const outcome = agent.error ?? (live ? null : agent.result);
@@ -465,13 +448,11 @@ export function useEnvironmentShells(environmentId: ScopedThreadRef["environment
   const archived = useArchivedThreadSnapshots([environmentId]);
   const archivedShells = archived.snapshots.find((entry) => entry.environmentId === environmentId)
     ?.snapshot.threads;
-  return useMemo(
-    (): ReadonlyArray<OrchestrationV2ThreadShell> => [
-      ...threadShells
-        .filter((thread) => thread.environmentId === environmentId)
-        .map((thread) => thread.source),
-      ...(archivedShells ?? []),
-    ],
-    [archivedShells, environmentId, threadShells],
-  );
+  const shells: ReadonlyArray<OrchestrationV2ThreadShell> = [
+    ...threadShells
+      .filter((thread) => thread.environmentId === environmentId)
+      .map((thread) => thread.source),
+    ...(archivedShells ?? []),
+  ];
+  return shells;
 }

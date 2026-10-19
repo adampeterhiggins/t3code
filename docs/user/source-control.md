@@ -149,7 +149,7 @@ uses the project's instructions and recent commit subjects.
 
 ## Start a thread from a pull request, branch, or issue
 
-In a new thread, click **⋯** in the top-right corner of the composer, press `mod+shift+b`, or
+In a new thread, click **⋯** in the top-right corner of the composer, press `mod+alt+o`, or
 run **New thread from PR, branch, or issue** from the command palette.
 
 - **PRs** lists the project's open pull requests. Picking one checks its branch out in a worktree,
@@ -334,7 +334,7 @@ watching inside GitHub's rate limit. Comments from your own account do not wake 
 when the pull request merges or closes, after 10 wakes in a row that bring only comments, after 8
 failed reads in a row, or when you press Stop on the thread. A rate limit only pauses watching.
 Archiving a thread also ends all its watches; a settled thread stays watched (see
-[Watch a pull request](#watch-a-pull-request)). Subagents cannot watch pull requests; the thread that
+[Watch a pull request](#watch-a-pull-request)). Watching a pull request again does not repeat check or conflict news its last watch already reported; unlinking clears that. Subagents cannot watch pull requests; the thread that
 delegated to them does. To start or stop it yourself, use the row menu in the **Linked pull
 requests** panel. In the thread details card, a watched pull request shows an eye; click it to stop
 watching.

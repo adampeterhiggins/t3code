@@ -1,4 +1,4 @@
-import { Suspense, use, useMemo } from "react";
+import { Suspense, use } from "react";
 
 import { useTheme } from "../../hooks/useTheme";
 import { resolveDiffThemeName } from "../../lib/diffRendering";
@@ -8,10 +8,10 @@ import { RenderErrorBoundary } from "../RenderErrorBoundary";
 function SnippetTokens({ text, lang }: { readonly text: string; readonly lang: string }) {
   const { resolvedTheme } = useTheme();
   const highlighter = use(getSyntaxHighlighterPromise(lang));
-  const { tokens } = useMemo(
-    () => highlighter.codeToTokens(text, { lang, theme: resolveDiffThemeName(resolvedTheme) }),
-    [highlighter, text, lang, resolvedTheme],
-  );
+  const { tokens } = highlighter.codeToTokens(text, {
+    lang,
+    theme: resolveDiffThemeName(resolvedTheme),
+  });
   return tokens.flatMap((line, lineIndex) => [
     lineIndex > 0 ? "\n" : "",
     ...line.map((token) => (

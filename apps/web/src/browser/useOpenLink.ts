@@ -38,35 +38,32 @@ export function useOpenLink(threadRef: ScopedThreadRef | null | undefined): (
   },
 ) => Promise<void> {
   const openPreview = useAtomCommand(previewEnvironment.open, { reportFailure: false });
-  return useCallback(
-    async (url, options = {}) => {
-      const targetThreadRef = options.threadRef ?? threadRef;
-      const target = resolveLinkTarget({
-        url,
-        event: options.event ?? NO_MODIFIER,
-        preference: await resolveBrowserLinkTargetPreference(),
-        canOpenInApp:
-          targetThreadRef != null &&
-          readEnvironmentScope(targetThreadRef.environmentId, AuthPreviewOperateScope) &&
-          canOpenLinksInApp(targetThreadRef),
-      });
-      if (target === "app" && targetThreadRef) {
-        const result = await openUrlInPreview({ threadRef: targetThreadRef, url, openPreview });
-        if (isAtomCommandInterrupted(result)) return;
-        if (result._tag === "Success") {
-          recordVisitForThread(targetThreadRef, url);
-          return;
-        }
-        const failure = squashAtomCommandFailure(result);
-        if (failure instanceof BrowserSettingsReadError) throw failure;
-        console.error(result.cause);
+  return async (url, options = {}) => {
+    const targetThreadRef = options.threadRef ?? threadRef;
+    const target = resolveLinkTarget({
+      url,
+      event: options.event ?? NO_MODIFIER,
+      preference: await resolveBrowserLinkTargetPreference(),
+      canOpenInApp:
+        targetThreadRef != null &&
+        readEnvironmentScope(targetThreadRef.environmentId, AuthPreviewOperateScope) &&
+        canOpenLinksInApp(targetThreadRef),
+    });
+    if (target === "app" && targetThreadRef) {
+      const result = await openUrlInPreview({ threadRef: targetThreadRef, url, openPreview });
+      if (isAtomCommandInterrupted(result)) return;
+      if (result._tag === "Success") {
+        recordVisitForThread(targetThreadRef, url);
+        return;
       }
-      const api = readLocalApi();
-      if (!api) throw new Error("Link opening is unavailable.");
-      await api.shell.openExternal(url);
-    },
-    [openPreview, threadRef],
-  );
+      const failure = squashAtomCommandFailure(result);
+      if (failure instanceof BrowserSettingsReadError) throw failure;
+      console.error(result.cause);
+    }
+    const api = readLocalApi();
+    if (!api) throw new Error("Link opening is unavailable.");
+    await api.shell.openExternal(url);
+  };
 }
 
 /**
@@ -80,25 +77,22 @@ export function useLinkClickHandler(
 ): (event: MouseEvent<HTMLElement>, url: string) => void {
   const preference = useClientSettings((settings) => settings.browserLinkTarget);
   const openLink = useOpenLink(threadRef);
-  return useCallback(
-    (event, url) => {
-      if (event.defaultPrevented) return;
-      const target = resolveLinkTarget({
-        url,
-        event,
-        preference,
-        canOpenInApp: canOpenLinksInApp(threadRef),
-      });
-      const isAnchor =
-        event.currentTarget instanceof HTMLAnchorElement && event.currentTarget.href.length > 0;
-      if (target === "system" && isAnchor) return;
-      event.preventDefault();
-      event.stopPropagation();
-      void openLink(url, { event }).catch((error: unknown) => {
-        console.error(error);
-        toastManager.add({ type: "error", title: "Unable to open link" });
-      });
-    },
-    [openLink, preference, threadRef],
-  );
+  return (event, url) => {
+    if (event.defaultPrevented) return;
+    const target = resolveLinkTarget({
+      url,
+      event,
+      preference,
+      canOpenInApp: canOpenLinksInApp(threadRef),
+    });
+    const isAnchor =
+      event.currentTarget instanceof HTMLAnchorElement && event.currentTarget.href.length > 0;
+    if (target === "system" && isAnchor) return;
+    event.preventDefault();
+    event.stopPropagation();
+    void openLink(url, { event }).catch((error: unknown) => {
+      console.error(error);
+      toastManager.add({ type: "error", title: "Unable to open link" });
+    });
+  };
 }

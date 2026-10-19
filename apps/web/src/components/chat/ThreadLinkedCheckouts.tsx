@@ -1,7 +1,6 @@
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { checkoutPathsEqual } from "@t3tools/shared/checkouts";
 import { FolderIcon, PlusIcon, SquareArrowOutUpRightIcon, XIcon } from "lucide-react";
-import { useMemo } from "react";
 
 import { useOpenInPreferredEditor } from "~/editorPreferences";
 import { useProjects, useThreadShell } from "~/state/entities";
@@ -27,7 +26,7 @@ export function ThreadLinkedCheckouts(props: { environmentId: EnvironmentId; thr
   const editors = useAtomValue(primaryServerAvailableEditorsAtom);
   const openInEditor = useOpenInPreferredEditor(props.environmentId, editors);
   const unlink = useAtomCommand(threadEnvironment.unlinkCheckout, { reportFailure: true });
-  const paths = useMemo(() => links.map((link) => link.path), [links]);
+  const paths = links.map((link) => link.path);
   const inspection = useEnvironmentQuery(
     paths.length === 0
       ? null

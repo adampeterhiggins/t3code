@@ -21,7 +21,7 @@ import { composerChipSizeSuffix, contextChipPresentation } from "../lib/composer
 import { resolveMarkdownFileIcon } from "../lib/markdownLinks";
 import { MOBILE_TYPOGRAPHY } from "../lib/typography";
 import { useNativePaste } from "../lib/useNativePaste";
-import { useFontFamily } from "../lib/useFontFamily";
+import { FONT_FAMILIES } from "../lib/fontFamilies";
 import { useAppearancePreferences } from "../features/settings/appearance/AppearancePreferencesProvider";
 import { useUniwindTheme } from "../lib/useUniwindTheme";
 import { createNativeComposerTheme } from "../lib/nativeComposerTheme";
@@ -150,11 +150,9 @@ export function ComposerEditor({
     [],
   );
 
-  const skillLabels = useMemo(
-    () => new Map(skills.map((skill) => [skill.name, skill.displayName?.trim() || skill.name])),
-    [skills],
-  );
-  const tokensJson = useMemo(() => {
+  const skillLabels = (() =>
+    new Map(skills.map((skill) => [skill.name, skill.displayName?.trim() || skill.name])))();
+  const tokensJson = (() => {
     const tokens = collectComposerInlineTokens(props.value, {
       preserveTrailingFrom: confirmedTokensRef.current,
     });
@@ -187,7 +185,7 @@ export function ComposerEditor({
         };
       }),
     );
-  }, [props.value, props.context, skillLabels]);
+  })();
   // Every render resolves against the snapshot history, so a render whose
   // (value, selection) lags the acknowledged native state is stamped behind
   // the native revision and rejected by the editor instead of re-applying a
@@ -232,32 +230,33 @@ export function ComposerEditor({
       assumedValue,
     );
   }, [assumedValue, controlledEventCount, isNativeEcho, controlledDocumentJson]);
-  const acceptNativeEvent = useCallback(
-    (eventCount: number, value: string, nextSelection: ComposerEditorSelection) => {
-      const acknowledgedEventCount = acknowledgeComposerNativeEvent(
-        mostRecentEventCountRef.current,
-        eventCount,
-      );
-      if (acknowledgedEventCount === null) {
-        return false;
-      }
-      mostRecentEventCountRef.current = acknowledgedEventCount;
-      nativeEventSnapshotsRef.current.push({
-        eventCount: acknowledgedEventCount,
-        value,
-        selection: nextSelection,
-      });
-      return acknowledgedEventCount;
-    },
-    [],
-  );
+  const acceptNativeEvent = (
+    eventCount: number,
+    value: string,
+    nextSelection: ComposerEditorSelection,
+  ) => {
+    const acknowledgedEventCount = acknowledgeComposerNativeEvent(
+      mostRecentEventCountRef.current,
+      eventCount,
+    );
+    if (acknowledgedEventCount === null) {
+      return false;
+    }
+    mostRecentEventCountRef.current = acknowledgedEventCount;
+    nativeEventSnapshotsRef.current.push({
+      eventCount: acknowledgedEventCount,
+      value,
+      selection: nextSelection,
+    });
+    return acknowledgedEventCount;
+  };
   const { systemColorsActive } = useAppearancePreferences();
   const themeJson = JSON.stringify({
     ...createNativeComposerTheme(theme),
     selection: Platform.OS === "android" || systemColorsActive ? theme["--color-focus"] : null,
   });
   const resolvedTextStyle = StyleSheet.flatten(textStyle) ?? {};
-  const regularFontFamily = useFontFamily("regular");
+  const regularFontFamily = FONT_FAMILIES.regular;
   return (
     <TextInputWrapper onPaste={handlePaste} style={[{ minHeight: 0 }, style]}>
       <NativeView

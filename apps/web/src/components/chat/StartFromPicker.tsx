@@ -21,7 +21,7 @@ import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/model
 import { useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
 import { GitBranchIcon } from "lucide-react";
-import { type KeyboardEvent, type ReactNode, useMemo, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useState } from "react";
 
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { usePreparePullRequestThreadAction } from "~/lib/sourceControlActions";
@@ -160,46 +160,36 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
   const trimmedQuery = query.trim();
   const debouncedQuery = useDebouncedValue(trimmedQuery, SEARCH_DEBOUNCE_MS);
 
-  const projectRefs = useMemo(() => [projectRef], [projectRef]);
+  const projectRefs = [projectRef];
   const threads = useThreadShellsForProjectRefs(projectRefs);
-  const checkoutScope = useMemo(
-    () => ({ environmentId, cwd: workspaceRoot }),
-    [environmentId, workspaceRoot],
-  );
+  const checkoutScope = { environmentId, cwd: workspaceRoot };
   const preparePullRequestCheckout = usePreparePullRequestThreadAction(checkoutScope);
 
   const [pullRequestView, setPullRequestView] = useState(DEFAULT_PULL_REQUEST_PICKER_VIEW);
-  const pullRequestTargets = useMemo(
-    () =>
-      tab === "pull-requests"
-        ? [
-            {
-              environmentId,
-              input: {
-                state: pullRequestView.state,
-                projectId,
-                limit: PULL_REQUEST_LIMIT,
-                ...(Object.keys(pullRequestView.filters).length > 0
-                  ? { filters: pullRequestView.filters }
-                  : {}),
-                ...(debouncedQuery.length > 0 ? { query: debouncedQuery } : {}),
-              },
+  const pullRequestTargets =
+    tab === "pull-requests"
+      ? [
+          {
+            environmentId,
+            input: {
+              state: pullRequestView.state,
+              projectId,
+              limit: PULL_REQUEST_LIMIT,
+              ...(Object.keys(pullRequestView.filters).length > 0
+                ? { filters: pullRequestView.filters }
+                : {}),
+              ...(debouncedQuery.length > 0 ? { query: debouncedQuery } : {}),
             },
-          ]
-        : [],
-    [debouncedQuery, environmentId, projectId, pullRequestView, tab],
-  );
+          },
+        ]
+      : [];
   const pullRequests = usePullRequestList(pullRequestTargets);
   const loadedPullRequests = pullRequests.data?.entries ?? EMPTY_PULL_REQUESTS;
-  const pullRequestEntries = useMemo(
-    () =>
-      narrowPickerPullRequests(
-        loadedPullRequests,
-        pullRequests.data?.viewers ?? {},
-        pullRequestView,
-        debouncedQuery,
-      ),
-    [debouncedQuery, loadedPullRequests, pullRequestView, pullRequests.data?.viewers],
+  const pullRequestEntries = narrowPickerPullRequests(
+    loadedPullRequests,
+    pullRequests.data?.viewers ?? {},
+    pullRequestView,
+    debouncedQuery,
   );
 
   const branches = usePaginatedBranches({

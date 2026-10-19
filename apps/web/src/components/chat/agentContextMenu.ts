@@ -18,7 +18,7 @@ import type {
 } from "@t3tools/contracts";
 import type { AgentFleetEntry } from "@t3tools/client-runtime/state/agent-fleet";
 import { useNavigate } from "@tanstack/react-router";
-import { useCallback, type MouseEvent } from "react";
+import type { MouseEvent } from "react";
 
 import { useAgentDrillStore } from "~/agentDrillStore";
 import { readLocalApi } from "~/localApi";
@@ -79,90 +79,85 @@ export function useAgentContextMenu(
 ) {
   const navigate = useNavigate();
   const showInAgentsPanel = options?.showInAgentsPanel ?? true;
-  return useCallback(
-    (event: MouseEvent<HTMLElement>, agent: AgentMenuTarget) => {
-      const api = readLocalApi();
-      if (!api) return;
-      const ownerThreadId = agent.childThreadId === null ? undefined : agent.ownerThreadId;
-      const ownerRef =
-        ownerThreadId === undefined || ownerThreadId === parentRef.threadId
-          ? parentRef
-          : scopeThreadRef(parentRef.environmentId, ownerThreadId);
-      const loadedOwner = readThreadProjection(ownerRef);
-      const findSubagent = (owner: OrchestrationV2ThreadProjection | null) =>
-        owner?.subagents.find((candidate) =>
-          agent.childThreadId === null
-            ? candidate.id === agent.subagentId
-            : candidate.childThreadId === agent.childThreadId,
-        ) ?? null;
-      // Without a record there is nothing to act on; leave the native menu alone.
-      if (loadedOwner !== null && findSubagent(loadedOwner) === null) return;
-      event.preventDefault();
-      event.stopPropagation();
-      const position = menuPosition(event);
-      void (async () => {
-        const subagent = findSubagent(loadedOwner ?? (await loadThreadProjection(ownerRef)));
-        if (!subagent) return;
-        const childThreadId = agent.childThreadId;
-        const referenceTarget = {
-          environmentId: parentRef.environmentId,
-          ownerThreadId: ownerRef.threadId,
-          childThreadId,
-          subagentId: subagent.id,
-        };
-        const record = await resolveAgentContextRecord(referenceTarget);
-        const items: ContextMenuItem<AgentMenuAction>[] = [
-          { id: "attach", label: "Attach to chat" },
-          ...(record === null
-            ? []
-            : [{ id: "copy-handle" as const, label: `Copy @${record.handle}` }]),
-          ...(childThreadId === null
-            ? []
-            : [{ id: "open-in-tab" as const, label: "Open in new tab" }]),
-          { id: "continue-in-chat", label: "Continue in chat" },
-          ...(showInAgentsPanel
-            ? [{ id: "show-in-agents" as const, label: "Show in Agents panel" }]
-            : []),
-        ];
-        const action = await api.contextMenu.show(items, position);
-        if (action === "attach") {
-          await attachAgentToChat(parentRef, referenceTarget);
-        } else if (action === "copy-handle") {
-          if (record !== null) copyAgentHandle(record.handle);
-        } else if (action === "open-in-tab") {
-          if (childThreadId !== null) {
-            useRightPanelStore
-              .getState()
-              .openAgent(parentRef, { childThreadId, title: agent.title });
-          }
-        } else if (action === "show-in-agents") {
-          showAgentInPanel(parentRef, agentMenuTargetKey(agent));
-        } else if (action === "continue-in-chat") {
-          // The new chat tab belongs to the chat the user is in, even for a nested agent.
-          const parent = readThreadProjection(parentRef);
-          if (!parent) return;
-          const workspaceRoot =
-            parent.thread.worktreePath ??
-            readProject(scopeProjectRef(parentRef.environmentId, parent.thread.projectId))
-              ?.workspaceRoot ??
-            null;
-          await continueAgentInChat({
-            environmentId: parentRef.environmentId,
-            parentThread: parent.thread,
-            subagent,
-            title: agent.title,
-            workspaceRoot,
-            openTab: (tabRef) =>
-              navigate({
-                to: "/$environmentId/$threadId",
-                params: buildThreadRouteParams(tabRef),
-              }),
-          });
+  return (event: MouseEvent<HTMLElement>, agent: AgentMenuTarget) => {
+    const api = readLocalApi();
+    if (!api) return;
+    const ownerThreadId = agent.childThreadId === null ? undefined : agent.ownerThreadId;
+    const ownerRef =
+      ownerThreadId === undefined || ownerThreadId === parentRef.threadId
+        ? parentRef
+        : scopeThreadRef(parentRef.environmentId, ownerThreadId);
+    const loadedOwner = readThreadProjection(ownerRef);
+    const findSubagent = (owner: OrchestrationV2ThreadProjection | null) =>
+      owner?.subagents.find((candidate) =>
+        agent.childThreadId === null
+          ? candidate.id === agent.subagentId
+          : candidate.childThreadId === agent.childThreadId,
+      ) ?? null;
+    // Without a record there is nothing to act on; leave the native menu alone.
+    if (loadedOwner !== null && findSubagent(loadedOwner) === null) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const position = menuPosition(event);
+    void (async () => {
+      const subagent = findSubagent(loadedOwner ?? (await loadThreadProjection(ownerRef)));
+      if (!subagent) return;
+      const childThreadId = agent.childThreadId;
+      const referenceTarget = {
+        environmentId: parentRef.environmentId,
+        ownerThreadId: ownerRef.threadId,
+        childThreadId,
+        subagentId: subagent.id,
+      };
+      const record = await resolveAgentContextRecord(referenceTarget);
+      const items: ContextMenuItem<AgentMenuAction>[] = [
+        { id: "attach", label: "Attach to chat" },
+        ...(record === null
+          ? []
+          : [{ id: "copy-handle" as const, label: `Copy @${record.handle}` }]),
+        ...(childThreadId === null
+          ? []
+          : [{ id: "open-in-tab" as const, label: "Open in new tab" }]),
+        { id: "continue-in-chat", label: "Continue in chat" },
+        ...(showInAgentsPanel
+          ? [{ id: "show-in-agents" as const, label: "Show in Agents panel" }]
+          : []),
+      ];
+      const action = await api.contextMenu.show(items, position);
+      if (action === "attach") {
+        await attachAgentToChat(parentRef, referenceTarget);
+      } else if (action === "copy-handle") {
+        if (record !== null) copyAgentHandle(record.handle);
+      } else if (action === "open-in-tab") {
+        if (childThreadId !== null) {
+          useRightPanelStore.getState().openAgent(parentRef, { childThreadId, title: agent.title });
         }
-      })().catch(() => undefined);
-    },
-    [navigate, parentRef, showInAgentsPanel],
-  );
+      } else if (action === "show-in-agents") {
+        showAgentInPanel(parentRef, agentMenuTargetKey(agent));
+      } else if (action === "continue-in-chat") {
+        // The new chat tab belongs to the chat the user is in, even for a nested agent.
+        const parent = readThreadProjection(parentRef);
+        if (!parent) return;
+        const workspaceRoot =
+          parent.thread.worktreePath ??
+          readProject(scopeProjectRef(parentRef.environmentId, parent.thread.projectId))
+            ?.workspaceRoot ??
+          null;
+        await continueAgentInChat({
+          environmentId: parentRef.environmentId,
+          parentThread: parent.thread,
+          subagent,
+          title: agent.title,
+          workspaceRoot,
+          openTab: (tabRef) =>
+            navigate({
+              to: "/$environmentId/$threadId",
+              params: buildThreadRouteParams(tabRef),
+            }),
+        });
+      }
+    })().catch(() => undefined);
+  };
 }
 
 /** The menu target for a fleet row; null for a nested agent row that has neither. */

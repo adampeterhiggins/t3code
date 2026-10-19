@@ -11,8 +11,6 @@ import {
   type Record_,
 } from "./previewBuilders.ts";
 
-// --- PostHog ---
-
 /** PostHog's single `exec` tool takes a CLI-style command: `call [--json] <tool> {args}`, `info <tool>`, `learn …`. */
 function parsePostHogCommand(command: string) {
   const match = /^(\w+)\s+(?:--json\s+)?(\S+)?\s*([\s\S]*)$/.exec(command.trim());
@@ -103,8 +101,6 @@ function postHogPreview(input: Record_, result: unknown, text: string | null): T
   return inferredPreview(result, tool) ?? (text ? documentPreview(text, { summary: tool }) : null);
 }
 
-// --- LangSmith ---
-
 function runRecord(run: Record_, index: number): PreviewRecord {
   const extra = isRecord(run.extra) ? run.extra : null;
   const params = isRecord(extra?.invocation_params) ? extra.invocation_params : null;
@@ -163,8 +159,6 @@ function langSmithPreview(input: Record_, result: unknown): ToolPreview | null {
   });
 }
 
-// --- Gmail ---
-
 function header(message: Record_, name: string): string | null {
   const direct = str(message[name.toLowerCase()]);
   if (direct) return direct;
@@ -196,8 +190,6 @@ function gmailPreview(input: Record_, result: unknown): ToolPreview | null {
     { summary: str(input.query) },
   );
 }
-
-// --- Codex apps ---
 
 function codexAppPreview(tool: string, result: unknown): ToolPreview | null {
   const data = isRecord(result) ? result : null;

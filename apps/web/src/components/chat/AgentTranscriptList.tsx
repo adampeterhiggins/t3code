@@ -27,17 +27,7 @@ import {
   XIcon,
   type LucideIcon,
 } from "lucide-react";
-import {
-  createContext,
-  memo,
-  use,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactElement,
-} from "react";
+import { createContext, memo, use, useEffect, useRef, useState, type ReactElement } from "react";
 
 import { cn } from "~/lib/utils";
 import { formatSecondsTimestamp } from "~/timestampFormat";
@@ -417,15 +407,12 @@ export function AgentTranscriptList(props: {
       viewPosition: 0.3,
     });
   }, [focusScroll]);
-  const toggle = useCallback(
-    (id: string) =>
-      setExpanded((current) => {
-        const next = new Set(current);
-        if (!next.delete(id)) next.add(id);
-        return next;
-      }),
-    [],
-  );
+  const toggle = (id: string) =>
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
   const {
     environmentId,
     childRef,
@@ -435,30 +422,17 @@ export function AgentTranscriptList(props: {
     onOpenThread,
     onOpenTurnDiff,
   } = props;
-  const context = useMemo(
-    () => ({
-      environmentId,
-      childRef,
-      workspaceRoot,
-      timestampFormat,
-      expanded,
-      toggle,
-      onOpenAgent,
-      onOpenThread,
-      onOpenTurnDiff,
-    }),
-    [
-      childRef,
-      environmentId,
-      expanded,
-      onOpenAgent,
-      onOpenThread,
-      onOpenTurnDiff,
-      timestampFormat,
-      toggle,
-      workspaceRoot,
-    ],
-  );
+  const context = {
+    environmentId,
+    childRef,
+    workspaceRoot,
+    timestampFormat,
+    expanded,
+    toggle,
+    onOpenAgent,
+    onOpenThread,
+    onOpenTurnDiff,
+  };
   return (
     <AgentTranscriptContext value={context}>
       <LegendList<AgentTranscriptRow>
