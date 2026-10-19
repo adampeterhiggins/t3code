@@ -89,6 +89,7 @@ export function AssistantCitationCommentEditor({
           Cancel
         </Button>
         <Button
+          variant={onSubmitAndSend ? "outline" : "default"}
           size="xs"
           disabled={commentTooLong}
           onPointerDown={(event) => event.preventDefault()}
@@ -96,6 +97,17 @@ export function AssistantCitationCommentEditor({
         >
           {commentTooLong ? "Shorten comment" : "Save"}
         </Button>
+        {onSubmitAndSend ? (
+          <Button
+            size="xs"
+            disabled={commentTooLong}
+            title="Save and send now (⌘/Ctrl Enter)"
+            onPointerDown={(event) => event.preventDefault()}
+            onClick={submitAndSend}
+          >
+            Send
+          </Button>
+        ) : null}
       </div>
     </div>
   );

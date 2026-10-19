@@ -1387,6 +1387,15 @@ Code: `markdown` on `AssistantCitation` in
 [AssistantSelectionToolbar.tsx](../apps/web/src/components/chat/AssistantSelectionToolbar.tsx) and
 shown by [AssistantCitationChip.tsx](../apps/web/src/components/chat/AssistantCitationChip.tsx).
 
+## Send a citation comment straight away
+
+Upstream's comment popover on an assistant-response citation only has **Save**, with Cmd/Ctrl+Enter
+as a hidden way to save and send. The fork adds a **Send** button beside **Save** that saves the
+comment and sends the composer in one step, following the usual follow-up behaviour when a turn is
+running.
+
+Code: [AssistantCitationCommentEditor.tsx](../apps/web/src/components/chat/AssistantCitationCommentEditor.tsx).
+
 ## Desktop mock-update loop
 
 A `Makefile` at the repository root drives a local auto-update test loop for the desktop app:
