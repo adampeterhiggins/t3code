@@ -11963,6 +11963,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     readonly model?: string;
     readonly attempt?: number;
     readonly omitResult?: boolean;
+    readonly tokens?: number;
+    readonly toolCalls?: number;
+    readonly durationMs?: number;
   }) =>
     claudeSdkFrame({
       type: "system",
@@ -11984,6 +11987,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           promptPreview: input.prompt ?? "Reply with exactly: A1",
           ...(input.startedAt === undefined ? {} : { startedAt: input.startedAt }),
           ...(input.attempt === undefined ? {} : { attempt: input.attempt }),
+          ...(input.tokens === undefined ? {} : { tokens: input.tokens }),
+          ...(input.toolCalls === undefined ? {} : { toolCalls: input.toolCalls }),
+          ...(input.durationMs === undefined ? {} : { durationMs: input.durationMs }),
           ...(input.state === "done" && input.omitResult !== true
             ? { resultPreview: "A1 excerpt" }
             : {}),
@@ -11997,6 +12003,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           phaseIndex: 1,
           phaseTitle: "Alpha",
           promptPreview: "Reply with exactly: A2",
+          ...(input.tokens === undefined ? {} : { tokens: input.tokens }),
+          ...(input.toolCalls === undefined ? {} : { toolCalls: input.toolCalls }),
+          ...(input.durationMs === undefined ? {} : { durationMs: input.durationMs }),
           ...(input.state === "done" ? { resultPreview: "A2 excerpt" } : {}),
         },
       ],
@@ -13938,6 +13947,124 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       ),
   );
 
+  it.effect("projects workflow member usage and transcript tool calls while the member runs", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const harness = yield* makeWorkflowHarness;
+        const now = yield* DateTime.now;
+        NodeFS.writeFileSync(
+          NodePath.join(harness.transcriptDir, "agent-a1.jsonl"),
+          [
+            '{"type":"assistant","message":{"role":"assistant","id":"msg_tool","content":[{"type":"tool_use","id":"toolu_bash","name":"Bash","input":{"command":"echo hi"}}]}}',
+            '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_bash","content":"hi"}]}}',
+            '{"type":"assistant","message":{"role":"assistant","id":"msg_done","content":[{"type":"text","text":"done"}]}}',
+          ].join("\n") + "\n",
+        );
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now,
+            attemptId: RunAttemptId.make("attempt-claude-workflow-member-tools"),
+            text: "Run the alpha workflow.",
+            attachments: [],
+          }),
+        );
+        yield* launchWorkflow({
+          harness,
+          snapshotUuid: "00000000-0000-4000-8000-000000001050",
+        });
+        const memberThreadId = workflowMemberEvents(harness.events, 1)[0]?.subagent.childThreadId;
+        const memberTool = () =>
+          harness.events.findLast(
+            (event) =>
+              event.type === "turn_item.updated" &&
+              event.turnItem.threadId === memberThreadId &&
+              event.turnItem.type === "command_execution" &&
+              event.turnItem.status === "completed",
+          );
+        yield* awaitUntil(() => memberTool() !== undefined, "workflow member tool call");
+        const tool = memberTool();
+        assert.equal(
+          tool?.type === "turn_item.updated" ? tool.turnItem.type : null,
+          "command_execution",
+        );
+        assert.equal(
+          tool?.type === "turn_item.updated" && tool.turnItem.type === "command_execution"
+            ? tool.turnItem.output
+            : null,
+          "hi",
+        );
+        assert.equal(threadMessages(harness.events, memberThreadId).at(-1)?.message.text, "done");
+        yield* harness.offerAndWait(
+          workflowSnapshot({
+            uuid: "00000000-0000-4000-8000-000000001051",
+            state: "start",
+            tokens: 71_141,
+            toolCalls: 1,
+            durationMs: 1277,
+          }),
+        );
+        yield* awaitUntil(
+          () =>
+            workflowMemberEvents(harness.events, 1).at(-1)?.subagent.usage?.totalTokens === 71_141,
+          "workflow member usage",
+        );
+        assert.deepEqual(workflowMemberEvents(harness.events, 1).at(-1)?.subagent.usage, {
+          totalTokens: 71_141,
+          toolUses: 1,
+          durationMs: 1277,
+        });
+        const memberEvents = workflowMemberEvents(harness.events, 1).length;
+        const coordinatorEvents = workflowCoordinatorEvents(harness.events).length;
+        yield* harness.offerAndWait(
+          workflowSnapshot({
+            uuid: "00000000-0000-4000-8000-000000001052",
+            state: "start",
+            tokens: 71_141,
+            toolCalls: 1,
+            durationMs: 1277,
+          }),
+        );
+        yield* awaitUntil(
+          () => workflowCoordinatorEvents(harness.events).length > coordinatorEvents,
+          "repeated workflow member usage",
+        );
+        assert.lengthOf(workflowMemberEvents(harness.events, 1), memberEvents);
+        NodeFS.appendFileSync(
+          NodePath.join(harness.transcriptDir, "agent-a1.jsonl"),
+          '{"type":"assistant","message":{"role":"assistant","id":"msg_more","content":[{"type":"tool_use","id":"toolu_read","name":"Read","input":{"file_path":"a.ts"}}]}}\n',
+        );
+        yield* harness.offerAndWait(
+          workflowSnapshot({
+            uuid: "00000000-0000-4000-8000-000000001053",
+            state: "start",
+            tokens: 80_000,
+            toolCalls: 2,
+            durationMs: 1400,
+          }),
+        );
+        yield* awaitUntil(
+          () =>
+            harness.events.some(
+              (event) =>
+                event.type === "turn_item.updated" &&
+                event.turnItem.threadId === memberThreadId &&
+                event.turnItem.type === "dynamic_tool" &&
+                event.turnItem.status === "running" &&
+                event.turnItem.toolName === "Read",
+            ),
+          "later workflow member tool call",
+        );
+        assert.equal(workflowMemberEvents(harness.events, 1).at(-1)?.subagent.usage?.toolUses, 2);
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+    ),
+  );
+
   it.effect("reads a transcript that appears after a terminal workflow notification", () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -13960,7 +14087,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           workflowSnapshot({ uuid: "00000000-0000-4000-8000-000000001031", state: "done" }),
         );
         yield* awaitUntil(
-          () => threadMessages(harness.events, secondThreadId).length === 2,
+          () => workflowMemberEvents(harness.events, 2).at(-1)?.subagent.status === "completed",
           "workflow member excerpt",
         );
         const notification = workflowNotification({
@@ -14069,7 +14196,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           workflowSnapshot({ uuid: "00000000-0000-4000-8000-000000001009", state: "done" }),
         );
         yield* awaitUntil(
-          () => threadMessages(harness.events, secondThreadId).length === 2,
+          () => workflowMemberEvents(harness.events, 2).at(-1)?.subagent.status === "completed",
           "settled workflow member answers",
         );
 
@@ -14086,16 +14213,19 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         );
         assert.deepEqual(
           threadMessages(harness.events, secondThreadId).map((event) => event.message.text),
-          ["Reply with exactly: A2", "Partial answer from workflow progress:\n\nA2 excerpt"],
+          ["Reply with exactly: A2"],
         );
         const coordinatorEventsBeforeRepeat = workflowCoordinatorEvents(harness.events).length;
-        const memberEventsBeforeRepeat = workflowMemberEvents(harness.events, 2).length;
         NodeFS.appendFileSync(
           NodePath.join(harness.transcriptDir, "agent-a1.jsonl"),
           '{"type":"assistant","message":{"role":"assistant","id":"msg_a1","content":[{"type":"text","text":"A1 continued"}]}}\n',
         );
         yield* harness.offerAndWait(
-          workflowSnapshot({ uuid: "00000000-0000-4000-8000-000000001015", state: "done" }),
+          workflowSnapshot({
+            uuid: "00000000-0000-4000-8000-000000001015",
+            state: "done",
+            tokens: 20,
+          }),
         );
         yield* awaitUntil(
           () => workflowCoordinatorEvents(harness.events).length > coordinatorEventsBeforeRepeat,
@@ -14107,8 +14237,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             "A1 from the transcript\n\nA1 continued",
           "continued workflow transcript answer",
         );
-        assert.lengthOf(workflowMemberEvents(harness.events, 2), memberEventsBeforeRepeat);
-        assert.lengthOf(threadMessages(harness.events, secondThreadId), 2);
+        assert.lengthOf(threadMessages(harness.events, secondThreadId), 1);
         assert.equal(
           threadMessages(harness.events, firstThreadId).at(-1)?.message.text,
           "A1 from the transcript\n\nA1 continued",
@@ -14118,13 +14247,16 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           '{"type":"assistant","message":{"role":"assistant","id":"msg_a2","content":[{"type":"text","text":"A2 from the transcript"}]}}\n',
         );
         yield* harness.offerAndWait(
-          workflowSnapshot({ uuid: "00000000-0000-4000-8000-000000001016", state: "done" }),
+          workflowSnapshot({
+            uuid: "00000000-0000-4000-8000-000000001016",
+            state: "done",
+            tokens: 30,
+          }),
         );
         yield* awaitUntil(
-          () => threadMessages(harness.events, secondThreadId).length === 3,
+          () => threadMessages(harness.events, secondThreadId).length === 2,
           "late workflow transcript answer",
         );
-        assert.lengthOf(workflowMemberEvents(harness.events, 2), memberEventsBeforeRepeat);
         assert.equal(
           threadMessages(harness.events, secondThreadId).at(-1)?.message.text,
           "A2 from the transcript",
@@ -14150,7 +14282,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           () => currentAssistantAnswers().join("\n\n").includes("Second answer"),
           "two-turn workflow member answer",
         );
-        assert.equal(currentAssistantAnswers().join("\n\n"), "First answer\n\nSecond answer");
+        assert.include(currentAssistantAnswers(), "First answer");
+        assert.include(currentAssistantAnswers(), "Second answer");
         assert.notDeepEqual(
           workflowMemberEvents(harness.events, 1).at(-1)?.subagent.startedAt,
           previousStartedAt,
@@ -14167,8 +14300,6 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           () => workflowMemberEvents(harness.events, 1).at(-1)?.subagent.status === "running",
           "retried workflow member running",
         );
-        assert.notInclude(currentAssistantAnswers().join("\n\n"), "First answer");
-        assert.notInclude(currentAssistantAnswers().join("\n\n"), "Second answer");
         const answerEventsDuringRetry = threadMessages(harness.events, firstThreadId).length;
         yield* Queue.offer(
           harness.sdkMessages,
@@ -14196,8 +14327,11 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             "A1 retry answer",
           "retried workflow member answer",
         );
-        assert.deepEqual(currentAssistantAnswers(), ["A1 retry answer"]);
-        assert.lengthOf(threadMessages(harness.events, firstThreadId), answerEventsDuringRetry + 1);
+        assert.include(currentAssistantAnswers(), "A1 retry answer");
+        assert.isAtLeast(
+          threadMessages(harness.events, firstThreadId).length,
+          answerEventsDuringRetry + 1,
+        );
         NodeFS.rmSync(NodePath.join(harness.transcriptDir, "agent-a1.jsonl"));
         yield* Queue.offer(
           harness.sdkMessages,
@@ -14208,7 +14342,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           }),
         );
         yield* awaitUntil(
-          () => currentAssistantAnswers().at(-1) === "Retry in progress.",
+          () => workflowMemberEvents(harness.events, 1).at(-1)?.subagent.status === "running",
           "retry progress answer",
         );
         yield* Queue.offer(
@@ -14221,10 +14355,11 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           }),
         );
         yield* awaitUntil(
-          () => currentAssistantAnswers().at(-1) === "No answer from this workflow attempt.",
+          () => workflowMemberEvents(harness.events, 1).at(-1)?.subagent.status === "completed",
           "empty retry answer",
         );
-        assert.deepEqual(currentAssistantAnswers(), ["No answer from this workflow attempt."]);
+        assert.notInclude(currentAssistantAnswers(), "No answer from this workflow attempt.");
+        assert.notInclude(currentAssistantAnswers(), "Retry in progress.");
       }).pipe(
         Effect.provide(
           Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),

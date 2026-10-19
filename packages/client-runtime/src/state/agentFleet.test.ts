@@ -77,6 +77,46 @@ const keys = (rows: ReadonlyArray<{ readonly entry: { readonly key: string } }>)
   rows.map((row) => row.entry.key);
 
 describe("deriveThreadAgentFleet", () => {
+  it("shows a workflow member's reported usage without adding it to the fleet total", () => {
+    const fleet = deriveThreadAgentFleet({
+      threadId: parentId,
+      subagents: [
+        subagent("workflow", "workflow-thread", {
+          title: "Workflow · lint",
+          status: "running",
+          completedAt: null,
+          usage: { totalTokens: 1000, toolUses: 4, durationMs: 50 },
+          workflow: {
+            name: "lint",
+            phases: [{ index: 1, title: "Lint" }],
+            agents: [
+              {
+                index: 1,
+                label: "lint-group-1",
+                state: "running",
+                childThreadId: ThreadId.make("member-thread"),
+                phaseIndex: 1,
+                phaseTitle: "Lint",
+                totalTokens: 320,
+                toolCalls: 2,
+                durationMs: 10,
+              },
+            ],
+          },
+        }),
+      ],
+      shells: [
+        shell("workflow-thread", "parent", { title: "Workflow · lint" }),
+        shell("member-thread", "workflow-thread", { title: "lint-group-1", status: "idle" }),
+      ],
+    });
+    const member = fleet.find((entry) => entry.key === "member-thread");
+    expect(member?.agent.kind).toBe("workflow_agent");
+    expect(member?.agent.status).toBe("running");
+    expect(member?.agent.usage).toEqual({ totalTokens: 320, toolUses: 2, durationMs: 10 });
+    expect(summarizeAgentFleet(fleet).usage?.totalTokens).toBe(1000);
+  });
+
   it("lists the thread's own agents, then the agents they spawned, found through shells", () => {
     const fleet = deriveThreadAgentFleet({
       threadId: parentId,
