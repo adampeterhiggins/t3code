@@ -17,8 +17,9 @@ SHELL := /bin/zsh
 # creates that cert once; builds pick it up via T3CODE_DESKTOP_IDENTITY (see
 # scripts/build-desktop-artifact.ts).
 
-APP_NAME := T3 Code (Alpha)
-APP_PATH := /Applications/$(APP_NAME).app
+UPSTREAM_VERSION := $(shell node -p 'require("./apps/server/package.json").version')
+APP_NAME ?= $(shell node -p 'require("./apps/desktop/package.json").productName')
+APP_PATH ?= /Applications/$(APP_NAME).app
 ARCH     ?= arm64
 PORT     ?= 3000
 # Name of the keychain identity used to sign mock-update builds.
@@ -56,11 +57,11 @@ help: ## Show the available targets
 	@printf "  \033[36mFORCE=1\033[0m                update-next even with no changes since the last build\n"
 	@printf "\n\033[1mFirst run\033[0m\n"
 	@printf "  make update-cert            one-time self-signed cert in your keychain\n"
-	@printf "  make update-build-0.0.41    build the version the app will run\n"
-	@printf "  make update-install-0.0.41  plant it in /Applications (once, by hand)\n"
+	@printf "  make update-build-$(UPSTREAM_VERSION)-fork.$$(date +%Y%m%d).1    build the first version\n"
+	@printf "  make update-install-$(UPSTREAM_VERSION)-fork.$$(date +%Y%m%d).1  install it once by hand\n"
 	@printf "  make update-serve           start the feed on :3000\n"
 	@printf "\n\033[1mEvery update after that\033[0m\n"
-	@printf "  make update-next            bump the served version and build it\n"
+	@printf "  make update-next            build the next dated fork version\n"
 	@printf "  then click the rocket in the app\n\n"
 
 # CA:true + trustRoot are both required: find-identity -p codesigning runs a
@@ -115,7 +116,7 @@ update-build-%: deps ## Build version % into release-mock (signed, mock feed, zi
 	@$(SOURCE_FINGERPRINT) > $(SOURCE_STAMP)
 	@echo "--> $(MANIFEST) now advertises $*"
 
-update-next: ## Bump the advertised patch version and build it
+update-next: ## Build the next upstream-based dated fork version
 	@set -e; \
 	CUR="$$(awk '/^version:/{print $$2; exit}' $(MANIFEST) 2>/dev/null)"; \
 	if [ -z "$$CUR" ]; then \
@@ -126,7 +127,7 @@ update-next: ## Bump the advertised patch version and build it
 		echo "No changes since $$CUR was built — nothing to release. FORCE=1 to rebuild anyway."; \
 		exit 1; \
 	fi; \
-	NEXT="$$(CUR="$$CUR" node -e 'const p=process.env.CUR.split(".").map(Number); p[2]+=1; console.log(p.join("."))')"; \
+	NEXT="$$(CUR="$$CUR" RELEASE_DATE="$$(date +%Y%m%d)" node --input-type=module -e 'import pkg from "./apps/server/package.json" with { type: "json" }; import { nextForkVersion } from "./scripts/next-fork-version.ts"; console.log(nextForkVersion(pkg.version, process.env.CUR, process.env.RELEASE_DATE))')"; \
 	echo "--> $$CUR -> $$NEXT"; \
 	$(MAKE) --no-print-directory update-build-$$NEXT SKIP_BUILD=$(SKIP_BUILD)
 
