@@ -22,6 +22,7 @@ import { formatSubagentDisplayTitle } from "@t3tools/client-runtime/state/subage
 import {
   forkAccountChangeLabel,
   forkSourceInstanceId,
+  formatEndpointTraits,
   formatModelSelectionTraits,
   handoffInstancesDiffer,
   modelOptionDescriptors,
@@ -164,6 +165,7 @@ export function V2LifecycleRow(props: {
                   providers={props.providerStatuses}
                   instanceId={endpoint.instanceId}
                   model={endpoint.model}
+                  traits={formatEndpointTraits(props.providerStatuses, endpoint)}
                   account={
                     showAccount
                       ? providerAccountLabel(props.providerStatuses, endpoint.instanceId)
@@ -179,6 +181,7 @@ export function V2LifecycleRow(props: {
               providers={props.providerStatuses}
               instanceId={item.toProviderInstanceId}
               model={to.model}
+              traits={formatEndpointTraits(props.providerStatuses, to)}
               account={
                 showAccount
                   ? providerAccountLabel(props.providerStatuses, item.toProviderInstanceId)
@@ -199,7 +202,7 @@ export function V2LifecycleRow(props: {
     const showAccount = item.from.instanceId !== item.to.instanceId;
     return (
       <TimelineSystemDivider
-        label="Model changed"
+        label={item.title ?? "Model changed"}
         icon={ArrowRightLeftIcon}
         showDetailSeparator={false}
         detail={
@@ -789,6 +792,7 @@ export function HandoffRow(props: {
                 providers={props.providers}
                 instanceId={endpoint.instanceId}
                 model={endpoint.model}
+                traits={formatEndpointTraits(props.providers, endpoint)}
               />
               {index < fromEndpoints.length - 1 ? (
                 <span aria-hidden="true" className="ml-0.5">
@@ -804,6 +808,7 @@ export function HandoffRow(props: {
             providers={props.providers}
             instanceId={to.instanceId}
             model={to.model}
+            traits={formatEndpointTraits(props.providers, to)}
           />
         </span>
       }

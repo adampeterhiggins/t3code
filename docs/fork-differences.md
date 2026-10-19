@@ -205,9 +205,10 @@ account in an existing thread leaves a divider in the transcript, the same kind 
 leaves in the new thread. It names the model and parameters the conversation was on and the ones
 the next message uses, labelled as in the composer, and it appears as soon as the composer
 selection differs, before that message is sent. An account switch uses that same **Model changed**
-divider and names the account on each side, beside the model and its parameters. A provider switch
-that already shows a context handoff keeps that handoff, and the handoff names the accounts when
-they differ. Choosing another account that opens a new tab names both accounts on that tab's fork
+divider and names the account on each side, beside the model and its parameters. A switch that
+needs a context handoff uses one divider for both: **Context handoff pending** until the message
+is sent, then **Context handoff**, with the same model, parameter, and account detail. Choosing
+another account that opens a new tab names both accounts on that tab's fork
 row (**Forked from Work to Personal**). A removed account falls back to its instance id.
 Explicitly picking a parameter's default does not count as a change.
 

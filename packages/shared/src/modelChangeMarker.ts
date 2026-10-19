@@ -101,6 +101,32 @@ function humanizeInstanceSlug(slug: string): string {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+type HandoffProvider = Pick<
+  ServerProvider,
+  "instanceId" | "driver" | "continuation" | "requiresNewThreadForModelChange"
+>;
+
+/**
+ * True when the next turn cannot continue the current provider thread and has
+ * to carry a context summary instead. Same rule as the pending handoff preview.
+ */
+export function selectionNeedsContextHandoff(
+  from: ModelSelection,
+  to: ModelSelection,
+  providers: ReadonlyArray<HandoffProvider>,
+): boolean {
+  const source = providers.find((provider) => provider.instanceId === from.instanceId);
+  const target = providers.find((provider) => provider.instanceId === to.instanceId);
+  if (from.instanceId === to.instanceId) {
+    return from.model !== to.model && target?.requiresNewThreadForModelChange === true;
+  }
+  return (
+    source?.continuation?.groupKey === undefined ||
+    source.driver !== target?.driver ||
+    source.continuation.groupKey !== target.continuation?.groupKey
+  );
+}
+
 /** Transcript text for a model, parameter, or account switch. An account move stays a model change and names the account beside the model. */
 export function describeModelChange(
   from: ModelSelection,
@@ -206,6 +232,24 @@ export function formatModelSelectionTraits(
   return label.length > 0 ? label : null;
 }
 
+/** Traits for a handoff endpoint that may only know the model slug. */
+export function formatEndpointTraits(
+  providers: ReadonlyArray<ServerProvider>,
+  endpoint: {
+    readonly instanceId: ProviderInstanceId;
+    readonly model?: string | undefined;
+    readonly options?: ModelSelection["options"];
+  },
+): string | null {
+  const model = endpoint.model?.trim();
+  if (model === undefined || model.length === 0) return null;
+  return formatModelSelectionTraits(providers, {
+    instanceId: endpoint.instanceId,
+    model,
+    ...(endpoint.options === undefined ? {} : { options: endpoint.options }),
+  });
+}
+
 /** Plain text for transcripts without a provider catalog: "gpt-5.4 (effort: high)". */
 export function describeModelSelection(selection: ModelSelection): string {
   const options = selection.options ?? [];
@@ -297,11 +341,15 @@ export function pendingModelChangeProjection(input: {
     now: input.now,
   });
   if (item === null) return null;
+  // A provider switch already previews the handoff. One divider carries both.
+  const titled = selectionNeedsContextHandoff(from, input.draft, input.providers)
+    ? { ...item, title: "Context handoff pending" }
+    : item;
   return {
     position: Number.MAX_SAFE_INTEGER,
     visibility: "synthetic",
     sourceThreadId: input.threadId,
-    sourceItemId: item.id,
-    item,
+    sourceItemId: titled.id,
+    item: titled,
   };
 }

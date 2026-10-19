@@ -4,7 +4,10 @@ import { readEnvironmentScope } from "./session";
 import type { ComposerTextPaste } from "../native/T3ComposerEditor.types";
 import { useAtomValue } from "@effect/atom-react";
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/shell";
-import { resolvePendingHandoff } from "@t3tools/client-runtime/handoff";
+import {
+  pendingHandoffCoveredByModelChange,
+  resolvePendingHandoff,
+} from "@t3tools/client-runtime/handoff";
 import {
   deriveProviderSubagentStatus,
   deriveRunlessWorkStartedAt,
@@ -349,15 +352,33 @@ export function useThreadComposerState() {
   const selectedThreadQueueCount = selectedThreadQueuedMessages.length;
   const selectedThread = selectedThreadShell;
   const modelSelection = selectedDraft?.modelSelection ?? selectedThread?.modelSelection ?? null;
-  const pendingHandoff = useMemo(
-    () =>
-      resolvePendingHandoff(
-        selectedThreadProjection?.projection,
-        modelSelection,
-        selectedEnvironmentRuntime?.serverConfig?.providers ?? [],
-      ),
-    [modelSelection, selectedThreadProjection, selectedEnvironmentRuntime?.serverConfig?.providers],
-  );
+  const pendingHandoff = useMemo(() => {
+    const providers = selectedEnvironmentRuntime?.serverConfig?.providers ?? [];
+    const projection = selectedThreadProjection?.projection;
+    const handoff = resolvePendingHandoff(projection, modelSelection, providers);
+    if (handoff === null || selectedThreadShell === null) return handoff;
+    const modelChange = pendingModelChangeProjection({
+      threadId: selectedThreadShell.id,
+      draft: selectedThreadKey ? (composerDrafts[selectedThreadKey]?.modelSelection ?? null) : null,
+      runs: projection?.runs ?? [],
+      providers,
+      now: DateTime.makeUnsafe(new Date()),
+    });
+    if (
+      modelChange?.item.type === "model_change" &&
+      pendingHandoffCoveredByModelChange(handoff, modelChange.item)
+    ) {
+      return null;
+    }
+    return handoff;
+  }, [
+    composerDrafts,
+    modelSelection,
+    selectedThreadKey,
+    selectedThreadProjection,
+    selectedThreadShell,
+    selectedEnvironmentRuntime?.serverConfig?.providers,
+  ]);
   const runtimeMode = selectedDraft?.runtimeMode ?? selectedThread?.runtimeMode ?? null;
   const selectedProvider = selectedEnvironmentRuntime?.serverConfig?.providers.find(
     (provider) => provider.instanceId === modelSelection?.instanceId,
