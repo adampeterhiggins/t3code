@@ -61,11 +61,13 @@ import { useThreadGitHubIssueLink, useUnlinkGitHubIssue } from "./chat/GitHubIss
 import { openNotionPagePicker } from "./chat/NotionPagePicker";
 import { openGranolaNotePicker } from "./chat/GranolaNotePicker";
 import { openSlackMessagePicker } from "./chat/SlackMessagePicker";
+import { openDiscordMessagePicker } from "./chat/DiscordMessagePicker";
 import { openLinearIssuePicker } from "./chat/LinearIssuePicker";
 import { useThreadLinearLink, useUnlinkLinearIssue } from "./chat/LinearThreadLink";
 import { useThreadNotionLink, useUnlinkNotionPage } from "./chat/NotionThreadLink";
 import { useThreadGranolaLink, useUnlinkGranolaNote } from "./chat/GranolaThreadLink";
 import { useThreadSlackLink, useUnlinkSlackThread } from "./chat/SlackThreadLink";
+import { useThreadDiscordLink, useUnlinkDiscordThread } from "./chat/DiscordThreadLink";
 import { openThreadAttachPicker } from "./chat/ThreadAttachPicker";
 import { openPullRequestAttachPicker } from "./chat/PullRequestAttachPicker";
 import { openRepositoryAttachPicker } from "./chat/RepositoryAttachPicker";
@@ -101,7 +103,7 @@ import {
   TextSearchIcon,
   FileTextIcon,
 } from "lucide-react";
-import { GitHubIcon, GranolaIcon, LinearIcon, NotionIcon, SlackIcon } from "./Icons";
+import { DiscordIcon, GitHubIcon, GranolaIcon, LinearIcon, NotionIcon, SlackIcon } from "./Icons";
 import { requestThreadFindOpen } from "./chat/threadFindActionBus";
 import {
   useDeferredValue,
@@ -149,6 +151,7 @@ import { notionEnvironment } from "../state/notion";
 import { granolaEnvironment } from "../state/granola";
 import { projectEnvironment } from "../state/projects";
 import { slackEnvironment } from "../state/slack";
+import { discordEnvironment } from "../state/discord";
 import { useEnvironmentQuery } from "../state/query";
 import { readEnvironmentScope, useEnvironmentScope } from "~/state/session";
 import { sourceControlEnvironment } from "../state/sourceControl";
@@ -854,6 +857,11 @@ function OpenCommandPaletteDialog(props: {
   const unlinkNotionPage = useUnlinkNotionPage();
   const canLinkSlack = useAtomValue(
     slackEnvironment.linkThread.permissionAtom(activeLinkThreadRef?.environmentId ?? null),
+  );
+  const activeDiscordLink = useThreadDiscordLink(activeLinkThreadRef);
+  const unlinkDiscordThread = useUnlinkDiscordThread();
+  const canLinkDiscord = useAtomValue(
+    discordEnvironment.linkThread.permissionAtom(activeLinkThreadRef?.environmentId ?? null),
   );
   const canLinkNotion = useAtomValue(
     notionEnvironment.linkThread.permissionAtom(activeLinkThreadRef?.environmentId ?? null),
@@ -2014,6 +2022,21 @@ function OpenCommandPaletteDialog(props: {
         },
       });
     }
+    if (
+      serverConfigs.get(composerThreadRef.environmentId)?.settings.enableDiscordIntegration !==
+      false
+    ) {
+      actionItems.push({
+        kind: "action",
+        value: "action:attach-discord-message",
+        searchTerms: ["discord", "message", "thread", "conversation", "attach", "context"],
+        title: "Attach Discord message",
+        icon: <DiscordIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          openDiscordMessagePicker(composerThreadRef);
+        },
+      });
+    }
     // Issues are listed from the project's GitHub repository, so only offer them there.
     const composerProject = projectByKey.get(
       `${composerThreadRef.environmentId}:${currentProjectId ?? ""}`,
@@ -2111,6 +2134,36 @@ function OpenCommandPaletteDialog(props: {
         icon: <SlackIcon className={ITEM_ICON_CLASS} />,
         run: async () => {
           await unlinkSlackThread(composerThreadRef);
+        },
+      });
+    }
+    if (
+      canLinkDiscord &&
+      serverConfigs.get(composerThreadRef.environmentId)?.settings.enableDiscordIntegration === true
+    ) {
+      actionItems.push({
+        kind: "action",
+        value: "action:link-discord-thread",
+        searchTerms: ["discord", "thread", "conversation", "link"],
+        title: activeDiscordLink
+          ? `Change linked Discord thread (${activeDiscordLink.channelLabel})`
+          : "Link Discord thread",
+        icon: <DiscordIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          openDiscordMessagePicker(composerThreadRef, "link");
+        },
+      });
+    }
+    // Unlinking stays reachable with the integration off: it is the way out of a link.
+    if (canLinkDiscord && activeDiscordLink) {
+      actionItems.push({
+        kind: "action",
+        value: "action:unlink-discord-thread",
+        searchTerms: ["discord", "thread", "conversation", "unlink", "remove"],
+        title: `Unlink Discord thread in ${activeDiscordLink.channelLabel}`,
+        icon: <DiscordIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          await unlinkDiscordThread(composerThreadRef);
         },
       });
     }

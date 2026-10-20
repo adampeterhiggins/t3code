@@ -9,6 +9,7 @@ export type ComposerReferenceTab =
   | "notion-pages"
   | "granola-notes"
   | "slack-messages"
+  | "discord-messages"
   | "github-issues"
   | "repositories";
 
@@ -21,6 +22,7 @@ export type ComposerReferenceItem = Extract<
       | "github-issue"
       | "linear-issue"
       | "slack-message"
+      | "discord-message"
       | "notion-page"
       | "granola-note"
       | "repository"
@@ -33,6 +35,7 @@ const TAB_FOR_ITEM_TYPE: Record<ComposerReferenceItem["type"], ComposerReference
   "github-issue": "github-issues",
   "linear-issue": "linear-issues",
   "slack-message": "slack-messages",
+  "discord-message": "discord-messages",
   "notion-page": "notion-pages",
   "granola-note": "granola-notes",
   repository: "repositories",
@@ -115,6 +118,10 @@ export function orderComposerReferenceItems(input: {
 const LINEAR_IDENTIFIER_PATTERN = /^([a-z][a-z0-9_]*)-\d+$/i;
 const LINEAR_TEAM_KEY_PATTERN = /^([a-z][a-z0-9_]*)-?$/i;
 const HABIT_WINDOW = 10;
+const SEARCH_ONLY_TABS: ReadonlySet<ComposerReferenceTab> = new Set([
+  "slack-messages",
+  "discord-messages",
+]);
 
 /** Team keys seen in issue identifiers like `ENG-123`, upper-cased. */
 export function linearTeamKeysFromItems(
@@ -131,17 +138,17 @@ export function linearTeamKeysFromItems(
 
 /**
  * The tab the user inserts from most among their recent inserts, ties going to the newest.
- * Slack needs a word to search, so it never opens an empty `#`.
+ * Slack and Discord need a word to search, so neither opens an empty `#`.
  */
 function habitualTab(
   recents: ReadonlyArray<ComposerReferenceItem>,
   available: ReadonlySet<ComposerReferenceTab>,
-  allowSlack: boolean,
+  allowSearchOnlyTabs: boolean,
 ): ComposerReferenceTab | null {
   const counts = new Map<ComposerReferenceTab, number>();
   for (const item of recents.slice(0, HABIT_WINDOW)) {
     const tab = composerReferenceTabForItem(item);
-    if (!available.has(tab) || (!allowSlack && tab === "slack-messages")) continue;
+    if (!available.has(tab) || (!allowSearchOnlyTabs && SEARCH_ONLY_TABS.has(tab))) continue;
     counts.set(tab, (counts.get(tab) ?? 0) + 1);
   }
   let best: ComposerReferenceTab | null = null;

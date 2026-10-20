@@ -206,6 +206,7 @@ import { useRightPanelStore } from "../rightPanelStore";
 import { readThreadShell, useProjects } from "../state/entities";
 import { serverEnvironment } from "../state/server";
 import { slackEnvironment } from "../state/slack";
+import { discordEnvironment } from "../state/discord";
 import { granolaEnvironment } from "../state/granola";
 import { useEnvironmentQuery } from "../state/query";
 import { shellEnvironment } from "../state/shell";
@@ -1971,6 +1972,59 @@ function SlackLinkText({
 }
 
 /**
+ * A bare Discord message link, named `#channel · Author` once the connected bot can read it.
+ * Until then, and whenever Discord is off or disconnected, it stays its URL.
+ */
+function DiscordLinkText({
+  environmentId,
+  host,
+  url,
+}: {
+  environmentId: EnvironmentId;
+  host: string;
+  url: string;
+}) {
+  const link = parseComposerObjectLink(url);
+  const enabled = useEnvironmentSettings(environmentId, (s) => s.enableDiscordIntegration);
+  const connection = useEnvironmentQuery(
+    enabled ? discordEnvironment.connection({ environmentId, input: {} }) : null,
+  );
+  const preview = useEnvironmentQuery(
+    link?.kind === "discord-message" && enabled && connection.data?.phase === "connected"
+      ? discordEnvironment.linkPreview({
+          environmentId,
+          input: {
+            guildId: link.guildId,
+            channelId: link.channelId,
+            messageId: link.messageId,
+            url,
+          },
+        })
+      : null,
+  ).data;
+  if (!preview) {
+    return (
+      <MarkdownExternalLinkContent host={host} plainText={url}>
+        {url}
+      </MarkdownExternalLinkContent>
+    );
+  }
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<span />}>
+        <MarkdownExternalLinkContent
+          host={host}
+          plainText={`${preview.channelLabel} · ${preview.authorName}`}
+        >
+          {url}
+        </MarkdownExternalLinkContent>
+      </TooltipTrigger>
+      <TooltipPopup side="top">{preview.title}</TooltipPopup>
+    </Tooltip>
+  );
+}
+
+/**
  * A bare Granola note link, named by its meeting's title once the connected account can read it.
  * Until then, and whenever Granola is off or disconnected, it reads "Granola note".
  */
@@ -3284,6 +3338,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
       const bareObjectKind =
         href !== undefined && linkText === href ? parseComposerObjectLink(href)?.kind : undefined;
       const isBareSlackLink = bareObjectKind === "slack-message";
+      const isBareDiscordLink = bareObjectKind === "discord-message";
       const isBareGranolaLink = bareObjectKind === "granola-note";
       const confirmBeforeOpen = pullRequestAutolink === "reference";
       const pullRequestCandidateUrl =
@@ -3309,7 +3364,8 @@ const CHAT_MARKDOWN_COMPONENTS = {
           {...props}
           className={cn(props.className, pullRequestAutolink === "commit" && "font-mono")}
           data-markdown-copy={
-            pullRequestCopy ?? (objectLabel === null && !isBareSlackLink ? undefined : href)
+            pullRequestCopy ??
+            (objectLabel === null && !isBareSlackLink && !isBareDiscordLink ? undefined : href)
           }
           data-markdown-image-link={!hasText || undefined}
           href={href}
@@ -3440,6 +3496,8 @@ const CHAT_MARKDOWN_COMPONENTS = {
         >
           {faviconHost && href && isBareSlackLink && environmentId !== null ? (
             <SlackLinkText environmentId={environmentId} host={faviconHost} url={href} />
+          ) : faviconHost && href && isBareDiscordLink && environmentId !== null ? (
+            <DiscordLinkText environmentId={environmentId} host={faviconHost} url={href} />
           ) : faviconHost && href && isBareGranolaLink && environmentId !== null ? (
             <GranolaLinkText environmentId={environmentId} host={faviconHost} url={href} />
           ) : faviconHost && hasText && !isPullRequestAutolink ? (

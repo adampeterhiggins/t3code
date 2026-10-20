@@ -11,7 +11,7 @@ import { parseNewThreadLink, parseThreadLinkPrompt, promptLinkAppPath } from "./
 /**
  * A link in composer text to something the composer can attach as a chip instead: a Linear
  * issue, a GitHub issue, a pull request, a GitHub repository root, a GitHub release, tag, branch,
- * or commit, a Slack message, a Notion page, a Granola note, or a T3 Code prompt link.
+ * or commit, a Slack or Discord message, a Notion page, a Granola note, or a T3 Code prompt link.
  */
 export type ComposerObjectLink =
   | { readonly kind: "notion-page"; readonly url: string; readonly pageId: string }
@@ -26,6 +26,14 @@ export type ComposerObjectLink =
       readonly ts: string;
       /** The thread the message replies in, when the link says so. */
       readonly threadTs: string | null;
+    }
+  | {
+      readonly kind: "discord-message";
+      readonly url: string;
+      readonly guildId: string;
+      /** The channel or thread the message was posted in. */
+      readonly channelId: string;
+      readonly messageId: string;
     }
   | { readonly kind: "github-issue"; readonly url: string }
   | { readonly kind: "pull-request"; readonly url: string }
@@ -75,6 +83,27 @@ function parseSlackMessageLink(url: string, parsed: URL, segments: ReadonlyArray
     ts: `${digits.slice(0, -6)}.${digits.slice(-6)}`,
     threadTs: threadTs !== null && SLACK_TS.test(threadTs) ? threadTs : null,
   } as const;
+}
+
+const DISCORD_HOSTS = new Set([
+  "discord.com",
+  "ptb.discord.com",
+  "canary.discord.com",
+  "discordapp.com",
+  "ptb.discordapp.com",
+  "canary.discordapp.com",
+]);
+const DISCORD_SNOWFLAKE = /^\d{15,25}$/u;
+
+/**
+ * A Discord message link, `https://discord.com/channels/<guild>/<channel>/<message>`. Direct
+ * messages (`@me`) and channel links (no message) are not attachable: the bot reads servers only.
+ */
+function parseDiscordMessageLink(url: string, segments: ReadonlyArray<string>) {
+  if (segments.length !== 4 || segments[0] !== "channels") return null;
+  const [, guildId, channelId, messageId] = segments as [string, string, string, string];
+  if (![guildId, channelId, messageId].every((id) => DISCORD_SNOWFLAKE.test(id))) return null;
+  return { kind: "discord-message", url, guildId, channelId, messageId } as const;
 }
 
 // Matches the record's bound; a longer link stays a link.
@@ -150,6 +179,9 @@ export function parseComposerObjectLink(url: string): ComposerObjectLink | null 
   if (parsed.hostname.toLowerCase().endsWith(".slack.com")) {
     return parseSlackMessageLink(url, parsed, segments);
   }
+  if (DISCORD_HOSTS.has(parsed.hostname.toLowerCase())) {
+    return parseDiscordMessageLink(url, segments);
+  }
   if (parseChangeRequestUrl(url) !== null) return { kind: "pull-request", url };
   if (!isGitHubHost(parsed.hostname)) return null;
   if (parseGitHubIssueUrl(url) !== null) return { kind: "github-issue", url };
@@ -182,7 +214,7 @@ export function commentAnchor(hash: string): string {
  * The short name a bare link reads as once it is recognised: `owner/repo#7` for a pull request
  * or issue (`owner/repo#7 L4-L14` for lines of one of its files, `owner/repo#7issuecomment-1` for
  * one remark on it), `ENG-123` for a Linear issue, `owner/repo` for a repository, and
- * `owner/repo@v1.2.0` for a release, tag, branch, or commit (`owner/repo@abc1234`). Null for ordinary links, and for Slack messages and prompt links:
+ * `owner/repo@v1.2.0` for a release, tag, branch, or commit (`owner/repo@abc1234`). Null for ordinary links, and for Slack or Discord messages and prompt links:
  * an attached one is already a chip, so a bare one was not attached and should not read as if it
  * were.
  */
@@ -198,6 +230,7 @@ export function objectLinkLabel(url: string): string | null {
     case "linear-issue":
       return link.identifier;
     case "slack-message":
+    case "discord-message":
     case "prompt-link":
       return null;
     case "repository":

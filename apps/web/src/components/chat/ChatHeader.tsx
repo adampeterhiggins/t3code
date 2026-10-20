@@ -29,6 +29,7 @@ import { LinearThreadLinkChip } from "./LinearThreadLink";
 import { NotionThreadLinkChip } from "./NotionThreadLink";
 import { GranolaThreadLinkChip } from "./GranolaThreadLink";
 import { SlackThreadLinkChip } from "./SlackThreadLink";
+import { DiscordThreadLinkChip } from "./DiscordThreadLink";
 import { StartedByChip } from "./StartedByChip";
 import { ThreadTabMenu } from "./ThreadTabs";
 import { useSplitPaneFocus, useSplitViewActions } from "./splitPane";
@@ -446,6 +447,7 @@ export const ChatHeader = memo(function ChatHeader({
       <StartedByChip threadRef={currentThreadRef} />
       <GitHubIssueThreadLinkChip threadRef={currentThreadRef} />
       <SlackThreadLinkChip threadRef={currentThreadRef} />
+      <DiscordThreadLinkChip threadRef={currentThreadRef} />
       <NotionThreadLinkChip threadRef={currentThreadRef} />
       <GranolaThreadLinkChip threadRef={currentThreadRef} />
       {splitPaneFocus !== null ? (

@@ -412,6 +412,7 @@ export function applyServerSettingsPatch(
     projectSettingsOverrides: projectSettingsOverridesPatch,
     // Whole replacement: deepMerge would merge the channel list by index.
     slackMentionTrigger,
+    discordMentionTrigger,
     // Whole-map replacement, so removing a group's style sticks.
     threadGroups,
     organisations,
@@ -512,6 +513,7 @@ export function applyServerSettingsPatch(
     organisations: organisations ?? current.organisations,
     linearAssignmentTriggers: linearAssignmentTriggers ?? current.linearAssignmentTriggers,
     slackMentionTrigger: slackMentionTrigger ?? current.slackMentionTrigger,
+    discordMentionTrigger: discordMentionTrigger ?? current.discordMentionTrigger,
   };
   const storageCleanupRules =
     storageCleanupPatch === undefined

@@ -203,6 +203,10 @@
       "types": "./src/state/slack.ts",
       "default": "./src/state/slack.ts"
     },
+    "./state/discord": {
+      "types": "./src/state/discord.ts",
+      "default": "./src/state/discord.ts"
+    },
     "./state/command-output": {
       "types": "./src/state/commandOutput.ts",
       "default": "./src/state/commandOutput.ts"

@@ -980,6 +980,44 @@ Code: `apps/server/src/slack/`, `packages/contracts/src/slack.ts`, `SlackThreadC
 `apps/mobile/src/components/SlackMessagePickerSheet.tsx`, and
 `apps/mobile/src/features/threads/ThreadSlackNotionLinks.tsx`. User guide: [slack.md](./user/slack.md).
 
+## Discord messages and threads
+
+**Settings > Integrations > Discord** connects the environment to a Discord bot the user creates.
+Discord's user OAuth scopes cannot read messages, so there is no sign-in flow: the user pastes the
+bot token, the server checks it against `/users/@me` and `/oauth2/applications/@me`, and keeps it
+in the server secret store. The settings section links the bot's invite URL
+(`discordBotInviteUrl` in `packages/contracts/src/discord.ts`), which asks only for View Channels
+and Read Message History. The bot needs the Message Content intent to read content and search.
+Discord sends no REST signal when a bot joins a server, so the settings list of the bot's servers
+(`discord.listServers`) re-reads on window focus; **Remove** calls `discord.leaveServer`, a
+client-guarded RPC that needs orchestration-operate.
+
+Discord mirrors the Slack integration's entry points with a `discord-thread` context chip: pasted
+or typed message links, the attach menu picker, a `#` menu tab, the command palette, the mobile
+attach menu, MCP `contextLinks`, bare-link previews in rendered messages
+(`discord.getLinkPreview`, cached under `discord-link-previews`), and a tab-group thread link in
+the fork-owned `fork_discord_thread_links` table, streamed over `discord.subscribeThreadLinks`.
+Search uses Discord's guild message search in every server the bot is in; a server still being
+indexed is skipped. A message in or starting a Discord thread snapshots the thread (up to the newest
+200 messages plus the starter message, which lives in the parent channel for threads started from
+a message); a reply in a channel snapshots the message it answers. Rendering shares
+[`chatThreadMarkdown.ts`](../apps/server/src/chatThreadMarkdown.ts) with Slack.
+
+The opt-in mention trigger (`discordMentionTrigger`) polls guild search once a minute with
+`mentions=<bot or chosen user>` and `min_id` from when it was enabled, filters by channel or
+parent channel and keyword, and launches like Slack's trigger with a command id derived from the
+message id. Changing it needs settings-write and orchestration-operate. Code:
+[`DiscordMentionTrigger.ts`](../apps/server/src/discord/DiscordMentionTrigger.ts).
+
+Code: `apps/server/src/discord/`, `packages/contracts/src/discord.ts`, `DiscordThreadContextRecord`
+in `packages/contracts/src/composerContext.ts`, `packages/client-runtime/src/state/discord.ts`,
+`apps/web/src/components/settings/DiscordSettings.tsx`,
+`apps/web/src/components/chat/DiscordMessagePicker.tsx`,
+`apps/web/src/components/chat/DiscordThreadLink.tsx`,
+`apps/mobile/src/components/DiscordMessagePickerSheet.tsx`, and
+`apps/mobile/src/features/threads/ThreadSlackNotionLinks.tsx`. User guide:
+[discord.md](./user/discord.md).
+
 ## GitHub issues
 
 GitHub issues attach to messages as a `github-issue` context chip, the same way Linear issues do:
@@ -1566,7 +1604,8 @@ guide: [agent-access.md](./user/agent-access.md#let-agents-start-threads).
 
 ## Agents attach integration context to messages
 
-`t3_thread_send` and `t3_thread_launch` take `contextLinks`: Slack message permalinks, Notion
+`t3_thread_send` and `t3_thread_launch` take `contextLinks`: Slack message permalinks, Discord
+message links, Notion
 pages, Granola notes, Linear issues, GitHub issues, and GitHub repository roots. The server reads each one through
 the same integration the composer uses and attaches the same chip record, so the message reads as
 if a user had pasted the links: a link already in the message text becomes its chip there, the rest

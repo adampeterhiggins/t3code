@@ -1,6 +1,7 @@
 import type { EnvironmentId } from "@t3tools/contracts";
 
 import { useEnvironmentSettings } from "~/hooks/useSettings";
+import { discordEnvironment } from "~/state/discord";
 import { granolaEnvironment } from "~/state/granola";
 import { linearEnvironment } from "~/state/linear";
 import { notionEnvironment } from "~/state/notion";
@@ -13,6 +14,7 @@ import { slackEnvironment } from "~/state/slack";
  */
 export function useComposerReferenceSources(environmentId: EnvironmentId, open: boolean) {
   const slackEnabled = useEnvironmentSettings(environmentId, (s) => s.enableSlackIntegration);
+  const discordEnabled = useEnvironmentSettings(environmentId, (s) => s.enableDiscordIntegration);
   const notionEnabled = useEnvironmentSettings(environmentId, (s) => s.enableNotionIntegration);
   const granolaEnabled = useEnvironmentSettings(environmentId, (s) => s.enableGranolaIntegration);
   const linear = useEnvironmentQuery(
@@ -20,6 +22,9 @@ export function useComposerReferenceSources(environmentId: EnvironmentId, open: 
   );
   const slack = useEnvironmentQuery(
     open && slackEnabled ? slackEnvironment.connection({ environmentId, input: {} }) : null,
+  );
+  const discord = useEnvironmentQuery(
+    open && discordEnabled ? discordEnvironment.connection({ environmentId, input: {} }) : null,
   );
   const notion = useEnvironmentQuery(
     open && notionEnabled ? notionEnvironment.connection({ environmentId, input: {} }) : null,
@@ -30,6 +35,7 @@ export function useComposerReferenceSources(environmentId: EnvironmentId, open: 
   return {
     linear: open && linear.data?.phase === "connected",
     slack: open && slackEnabled && slack.data?.phase === "connected",
+    discord: open && discordEnabled && discord.data?.phase === "connected",
     notion: open && notionEnabled && notion.data?.phase === "connected",
     granola: open && granolaEnabled && granola.data?.phase === "connected",
   };

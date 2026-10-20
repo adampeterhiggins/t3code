@@ -59,6 +59,26 @@ function repository(nameWithOwner: string): ComposerReferenceItem {
   };
 }
 
+function discordMessage(messageId: string): ComposerReferenceItem {
+  const url = `https://discord.com/channels/100000000000000000/200000000000000000/${messageId}`;
+  return {
+    id: `discord-message:${url}`,
+    type: "discord-message",
+    message: {
+      guildId: "100000000000000000",
+      channelId: "200000000000000000",
+      channelLabel: "#deploys",
+      messageId,
+      authorName: "Ada",
+      text: "deploy is stuck",
+      url,
+      postedAt: "2026-10-20T12:00:00.000Z",
+    },
+    label: "#deploys",
+    description: "Ada · deploy is stuck",
+  };
+}
+
 const ALL_TABS = new Set<ComposerReferenceTab>([
   "pull-requests",
   "github-issues",
@@ -121,6 +141,13 @@ describe("predictComposerReferenceTab", () => {
   it("opens an empty `#` on the tab the user inserts from most", () => {
     const recents = [githubIssue(1), linearIssue("ENG-1"), linearIssue("ENG-2")];
     expect(predict("", { recents })).toBe("linear-issues");
+  });
+
+  it("never opens an empty `#` on a tab that needs a word to search", () => {
+    const recents = [discordMessage("1"), discordMessage("2"), githubIssue(1)];
+    const available = new Set<ComposerReferenceTab>([...ALL_TABS, "discord-messages"]);
+    expect(predict("", { recents, available })).toBe("github-issues");
+    expect(predict("deploy", { recents, available })).toBe("discord-messages");
   });
 
   it("follows a recent insert that matches the query", () => {

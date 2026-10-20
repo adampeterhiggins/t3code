@@ -13,6 +13,7 @@ import {
   type ServerProviderSkill,
   type ServerProviderSlashCommand,
   type SlackMessageSummary,
+  type DiscordMessageSummary,
   type ThreadId,
 } from "@t3tools/contracts";
 import {
@@ -26,7 +27,7 @@ import {
   UserRoundIcon,
   type LucideIcon,
 } from "lucide-react";
-import { GitHubIcon, GranolaIcon, LinearIcon, NotionIcon, SlackIcon } from "../Icons";
+import { GitHubIcon, DiscordIcon, GranolaIcon, LinearIcon, NotionIcon, SlackIcon } from "../Icons";
 import { memo, useLayoutEffect, useRef } from "react";
 
 import type { AgentFleetEntry } from "@t3tools/client-runtime/state/agent-fleet";
@@ -121,6 +122,13 @@ export type ComposerCommandItem =
       id: string;
       type: "slack-message";
       message: SlackMessageSummary;
+      label: string;
+      description: string;
+    }
+  | {
+      id: string;
+      type: "discord-message";
+      message: DiscordMessageSummary;
       label: string;
       description: string;
     }
@@ -392,10 +400,13 @@ function GitHubIssueRow(props: {
   );
 }
 
-type SlackMessageCommandItem = Extract<ComposerCommandItem, { type: "slack-message" }>;
+type ChatMessageCommandItem = Extract<
+  ComposerCommandItem,
+  { type: "slack-message" | "discord-message" }
+>;
 
 /** Fixed-width columns so channels and times line up down the list. */
-function SlackMessageCommandRow(props: { item: SlackMessageCommandItem }) {
+function ChatMessageCommandRow(props: { item: ChatMessageCommandItem }) {
   const { message } = props.item;
   return (
     <span className="flex min-w-0 flex-1 items-center gap-2 text-xs">
@@ -473,6 +484,9 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
       {props.item.type === "slack-message" ? (
         <SlackIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
       ) : null}
+      {props.item.type === "discord-message" ? (
+        <DiscordIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
+      ) : null}
       {props.item.type === "repository" ? (
         <FolderGit2Icon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
       ) : null}
@@ -494,8 +508,8 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
         <LinearIssueRow item={props.item} environmentId={props.environmentId} />
       ) : props.item.type === "github-issue" ? (
         <GitHubIssueRow item={props.item} environmentId={props.environmentId} />
-      ) : props.item.type === "slack-message" ? (
-        <SlackMessageCommandRow item={props.item} />
+      ) : props.item.type === "slack-message" || props.item.type === "discord-message" ? (
+        <ChatMessageCommandRow item={props.item} />
       ) : props.item.type === "thread" ? (
         <ComposerChatRow threadRef={props.item.thread} label={props.item.label} isTab={false} />
       ) : props.item.type === "thread-tab" && props.environmentId !== null ? (

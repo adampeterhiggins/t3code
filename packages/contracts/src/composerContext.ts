@@ -16,6 +16,7 @@ import { LINEAR_ISSUE_MARKDOWN_MAX_CHARS } from "./linear.ts";
 import { GRANOLA_NOTE_MARKDOWN_MAX_CHARS } from "./granola.ts";
 import { NOTION_PAGE_MARKDOWN_MAX_CHARS } from "./notion.ts";
 import { SLACK_THREAD_MARKDOWN_MAX_CHARS } from "./slack.ts";
+import { DISCORD_THREAD_MARKDOWN_MAX_CHARS } from "./discord.ts";
 
 /**
  * Bytes never live here: image and file records bind to a `ChatAttachment` by id.
@@ -36,6 +37,7 @@ export const COMPOSER_CONTEXT_KINDS = [
   "repository",
   "checkout",
   "slack-thread",
+  "discord-thread",
   "notion-page",
   "granola-note",
   "thread",
@@ -308,6 +310,27 @@ export const SlackThreadContextRecord = Schema.Struct({
 export type SlackThreadContextRecord = typeof SlackThreadContextRecord.Type;
 
 /**
+ * A Discord thread, or one message from it, rendered as markdown when the chip was inserted.
+ * `channelId` is where the message was posted; `threadId` the Discord thread it is in or starts.
+ */
+export const DiscordThreadContextRecord = Schema.Struct({
+  ...recordBase,
+  kind: Schema.Literal("discord-thread"),
+  guildId: TrimmedNonEmptyString.check(Schema.isMaxLength(32)),
+  channelId: TrimmedNonEmptyString.check(Schema.isMaxLength(32)),
+  channelLabel: ShortString,
+  messageId: TrimmedNonEmptyString.check(Schema.isMaxLength(32)),
+  threadId: Schema.NullOr(TrimmedNonEmptyString.check(Schema.isMaxLength(32))),
+  url: ShortString,
+  authorName: ShortString,
+  title: ShortString,
+  replyCount: NonNegativeInt,
+  scope: Schema.Literals(["thread", "message"]),
+  markdown: BoundedString(DISCORD_THREAD_MARKDOWN_MAX_CHARS),
+});
+export type DiscordThreadContextRecord = typeof DiscordThreadContextRecord.Type;
+
+/**
  * A repository to clone into the workspace's context directory. The server fills `outcome`
  * before the turn starts; a draft never carries one.
  */
@@ -479,6 +502,7 @@ export const KnownComposerContextRecord = Schema.Union([
   RepositoryContextRecord,
   CheckoutContextRecord,
   SlackThreadContextRecord,
+  DiscordThreadContextRecord,
   NotionPageContextRecord,
   GranolaNoteContextRecord,
   ThreadContextRecord,

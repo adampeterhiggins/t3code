@@ -106,6 +106,28 @@ describe("parseComposerObjectLink", () => {
     expect(parseComposerObjectLink("https://app.slack.com/client/T1/C04ABCD12")).toBeNull();
   });
 
+  it("reads a Discord message link, but not a channel or a direct message", () => {
+    expect(
+      parseComposerObjectLink(
+        "https://canary.discord.com/channels/100000000000000001/100000000000000002/100000000000000003",
+      ),
+    ).toEqual({
+      kind: "discord-message",
+      url: "https://canary.discord.com/channels/100000000000000001/100000000000000002/100000000000000003",
+      guildId: "100000000000000001",
+      channelId: "100000000000000002",
+      messageId: "100000000000000003",
+    });
+    expect(
+      parseComposerObjectLink("https://discord.com/channels/100000000000000001/100000000000000002"),
+    ).toBeNull();
+    expect(
+      parseComposerObjectLink(
+        "https://discord.com/channels/@me/100000000000000002/100000000000000003",
+      ),
+    ).toBeNull();
+  });
+
   it("leaves ordinary links alone", () => {
     expect(parseComposerObjectLink("https://github.com/acme/api/blob/main/README.md")).toBeNull();
     expect(parseComposerObjectLink("https://github.com/acme")).toBeNull();

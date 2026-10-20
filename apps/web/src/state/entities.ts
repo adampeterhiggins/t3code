@@ -337,12 +337,14 @@ export function readEnvironmentSupportsAutoSettleOptOut(environmentId: Environme
 /** The link integrations the environment has turned on, for its thread menus. */
 export function readEnvironmentLinkIntegrations(environmentId: EnvironmentId): {
   readonly slack: boolean;
+  readonly discord: boolean;
   readonly notion: boolean;
   readonly granola: boolean;
 } {
   const settings = appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.settings;
   return {
     slack: settings?.enableSlackIntegration === true,
+    discord: settings?.enableDiscordIntegration === true,
     notion: settings?.enableNotionIntegration === true,
     granola: settings?.enableGranolaIntegration === true,
   };

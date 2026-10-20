@@ -68,6 +68,7 @@ import {
 import { useGranolaNotePicker } from "../../components/GranolaNotePickerSheet";
 import { useNotionPagePicker } from "../../components/NotionPagePickerSheet";
 import { useSlackMessagePicker } from "../../components/SlackMessagePickerSheet";
+import { useDiscordMessagePicker } from "../../components/DiscordMessagePickerSheet";
 import { useCheckoutPicker } from "../../components/CheckoutPickerSheet";
 import { useRepositoryPicker } from "../../components/RepositoryPickerSheet";
 import { Menu } from "../../components/ui/Menu";
@@ -1008,6 +1009,11 @@ export function NewTaskDraftScreen(props: {
       ? { environmentId: flow.selectedEnvironmentId, draftKey: flow.draftKey }
       : null,
   );
+  const discordMessagePicker = useDiscordMessagePicker(
+    flow.draftKey && flow.selectedEnvironmentId
+      ? { environmentId: flow.selectedEnvironmentId, draftKey: flow.draftKey }
+      : null,
+  );
   const startFromIssuePicker = useLinearIssuePicker(
     flow.draftKey && selectedProject
       ? {
@@ -1895,6 +1901,11 @@ export function NewTaskDraftScreen(props: {
                         ? slackMessagePicker.open
                         : undefined
                     }
+                    onPickDiscordMessage={
+                      flow.draftKey && flow.selectedEnvironmentId
+                        ? discordMessagePicker.open
+                        : undefined
+                    }
                     onPickCheckout={flow.draftKey ? checkoutPicker.open : undefined}
                     onPickRepository={flow.draftKey ? repositoryPicker.open : undefined}
                   />
@@ -1984,6 +1995,7 @@ export function NewTaskDraftScreen(props: {
       {gitHubIssuePicker.sheet}
       {startFromGitHubIssuePicker.sheet}
       {slackMessagePicker.sheet}
+      {discordMessagePicker.sheet}
       {notionPagePicker.sheet}
       {granolaNotePicker.sheet}
       {startFromPullRequestPicker.sheet}

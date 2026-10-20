@@ -124,6 +124,7 @@ import { NotionSettingsSection } from "./NotionSettings";
 import { GranolaSettingsSection } from "./GranolaSettings";
 import { LinearSettingsSection } from "./LinearSettings";
 import { SlackSettingsSection } from "./SlackSettings";
+import { DiscordSettingsSection } from "./DiscordSettings";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { BrowserImportWizard, type WizardTarget } from "./BrowserImportWizard";
 import type { ImportOutcome } from "./browserImportWizard.logic";
@@ -1654,6 +1655,7 @@ export function IntegrationsSettingsPanel() {
       <NotionSettingsSection />
       <GranolaSettingsSection />
       <SlackSettingsSection />
+      <DiscordSettingsSection />
     </SettingsPageContainer>
   );
 }

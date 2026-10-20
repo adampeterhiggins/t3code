@@ -13,7 +13,14 @@ import { GitHubRefIcon, gitHubRefKindLabel } from "../gitHubRefPresentation";
 import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
 import { useCursorAnchor } from "./CursorPreviewCard";
 import { workEntryHasToolCallPreview } from "../../lib/toolCallPreview";
-import { GitHubIcon, GranolaIcon, LinearIcon, NotionIcon, SlackIcon } from "~/components/Icons";
+import {
+  DiscordIcon,
+  GitHubIcon,
+  GranolaIcon,
+  LinearIcon,
+  NotionIcon,
+  SlackIcon,
+} from "~/components/Icons";
 import type { Root, RootContent } from "mdast";
 import { ThreadFindTimelineContext } from "./ThreadFindProvider";
 import { shallow } from "zustand/vanilla/shallow";
@@ -176,6 +183,7 @@ import type {
   KnownComposerContextRecord,
   GitHubIssueContextRecord,
   LinearIssueContextRecord,
+  DiscordThreadContextRecord,
   RepositoryContextRecord,
   SlackThreadContextRecord,
 } from "@t3tools/contracts";
@@ -283,6 +291,7 @@ import {
   GitHubRefDetails,
   LinearIssueDetails,
   RepositoryDetails,
+  DiscordThreadDetails,
   SlackThreadDetails,
   NotionPageDetails,
   GranolaNoteDetails,
@@ -4949,6 +4958,24 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
           <UnavailableUserMessageContextChip {...context} />
         ),
     },
+    {
+      kind: "discord-thread",
+      canRender: (record) => record.kind === "discord-thread",
+      render: (record, context) =>
+        record.kind === "discord-thread" ? (
+          <UserMessageContextPopover
+            copyMarkdown={context.copyMarkdown}
+            accessibleLabel={`Discord ${record.scope}, ${record.label}`}
+            kind="discord-thread"
+            icon={<DiscordIcon />}
+            label={record.label}
+          >
+            <UserMessageDiscordThreadDetails record={record} />
+          </UserMessageContextPopover>
+        ) : (
+          <UnavailableUserMessageContextChip {...context} />
+        ),
+    },
   ],
   fallback: (_kind, _record, context) => <UnavailableUserMessageContextChip {...context} />,
 });
@@ -5025,6 +5052,11 @@ function UserMessageGitHubIssueDetails({ record }: { record: GitHubIssueContextR
 function UserMessageSlackThreadDetails({ record }: { record: SlackThreadContextRecord }) {
   const { threadRef } = use(TimelineRowCtx);
   return <SlackThreadDetails record={record} onOpenLink={useLinkClickHandler(threadRef)} />;
+}
+
+function UserMessageDiscordThreadDetails({ record }: { record: DiscordThreadContextRecord }) {
+  const { threadRef } = use(TimelineRowCtx);
+  return <DiscordThreadDetails record={record} onOpenLink={useLinkClickHandler(threadRef)} />;
 }
 
 /** One inline context chip in a sent message, dispatched by the shared presentation registry. */

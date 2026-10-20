@@ -1,8 +1,7 @@
 import * as DateTime from "effect/DateTime";
 
-import { truncate } from "../issueMarkdown.ts";
+import { renderChatThreadMarkdown } from "../chatThreadMarkdown.ts";
 
-const SEPARATOR = "\n\n";
 const BROADCASTS = new Set(["here", "channel", "everyone"]);
 
 /** A Slack message timestamp (`1727779620.000100`) as an ISO date-time. */
@@ -75,64 +74,23 @@ export interface SlackThreadSnapshot {
   readonly linkedTs: string;
 }
 
-const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
-
-/**
- * Renders a thread or message as the markdown an agent receives. Within
- * `maxChars`, the header, the thread's parent and the linked message are always
- * kept (cut if they alone overflow), then the newest other messages fill what is
- * left. Gaps show as `_N messages omitted._`.
- */
+/** Renders a thread or message as the markdown an agent receives; see `renderChatThreadMarkdown`. */
 export function renderSlackThreadMarkdown(snapshot: SlackThreadSnapshot, maxChars: number): string {
-  const { messages } = snapshot;
-  const isThread = snapshot.scope === "thread";
-  const header = [
-    `# Slack ${isThread ? "thread" : "message"} in ${snapshot.channelLabel}`,
-    `url: ${snapshot.url}`,
-    ...(isThread ? [plural(Math.max(messages.length - 1, 0), "reply", "replies")] : []),
-  ].join("\n");
-
-  const markLinked = isThread && messages.length > 1;
-  const rendered = messages.map((message) => {
-    const byline = `**${message.authorName}** · ${slackTsToDisplay(message.ts)}${
-      markLinked && message.ts === snapshot.linkedTs ? " · linked message" : ""
-    }`;
-    const files =
-      message.files.length > 0 ? `Files: ${message.files.join(", ")} (not downloaded)` : null;
-    return [byline, message.text.trim(), files].filter((part) => part).join("\n");
-  });
-
-  const assemble = (kept: ReadonlySet<number>) => {
-    const parts = [header];
-    let gap = 0;
-    for (let index = 0; index < rendered.length; index++) {
-      if (!kept.has(index)) {
-        gap++;
-        continue;
-      }
-      if (gap > 0) parts.push(`_${plural(gap, "message", "messages")} omitted._`);
-      gap = 0;
-      parts.push(rendered[index]!);
-    }
-    if (gap > 0) parts.push(`_${plural(gap, "message", "messages")} omitted._`);
-    return parts.join(SEPARATOR);
-  };
-
-  const linkedIndex = messages.findIndex((message) => message.ts === snapshot.linkedTs);
-  const kept = new Set([0, linkedIndex].filter((index) => index >= 0 && index < rendered.length));
-  const required = assemble(kept);
-  if (required.length > maxChars) {
-    // Share what the header and markers leave evenly between the kept messages.
-    const keptLength = [...kept].reduce((sum, index) => sum + rendered[index]!.length, 0);
-    const share = Math.floor((maxChars - (required.length - keptLength)) / kept.size);
-    for (const index of kept) rendered[index] = truncate(rendered[index]!, Math.max(share, 0));
-    return truncate(assemble(kept), maxChars);
-  }
-  for (let index = rendered.length - 1; index > 0; index--) {
-    if (kept.has(index)) continue;
-    const candidate = new Set(kept).add(index);
-    if (assemble(candidate).length > maxChars) break;
-    kept.add(index);
-  }
-  return truncate(assemble(kept), maxChars);
+  return renderChatThreadMarkdown(
+    {
+      service: "Slack",
+      channelLabel: snapshot.channelLabel,
+      url: snapshot.url,
+      scope: snapshot.scope,
+      linkedId: snapshot.linkedTs,
+      messages: snapshot.messages.map((message) => ({
+        id: message.ts,
+        authorName: message.authorName,
+        postedAt: slackTsToDisplay(message.ts),
+        text: message.text,
+        files: message.files,
+      })),
+    },
+    maxChars,
+  );
 }

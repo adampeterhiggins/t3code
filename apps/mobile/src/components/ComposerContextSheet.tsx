@@ -594,6 +594,38 @@ export function ComposerContextSheet(props: {
                 </Text>
               </View>
             ) : null}
+            {record.kind === "discord-thread" ? (
+              <View className="gap-3">
+                <View className="gap-1">
+                  <Text selectable className="text-lg font-t3-semibold text-foreground">
+                    {record.title}
+                  </Text>
+                  <Text className="text-sm text-foreground-muted">
+                    {record.channelLabel} · {record.authorName}
+                    {record.replyCount > 0
+                      ? ` · ${record.replyCount} ${record.replyCount === 1 ? "reply" : "replies"}`
+                      : ""}
+                  </Text>
+                </View>
+                {/^https?:\/\//i.test(record.url) ? (
+                  <Pressable
+                    accessibilityRole="link"
+                    onPress={() => {
+                      void tryOpenExternalUrl(record.url, "discord").then((opened) => {
+                        if (!opened) Dialog.alert("Could not open Discord", "Try again later.");
+                      });
+                    }}
+                    className="rounded-xl bg-subtle p-4"
+                  >
+                    <Text className="text-foreground">Open in Discord</Text>
+                  </Pressable>
+                ) : null}
+                {/* Plain text like the other captured context here: exactly what the agent received. */}
+                <Text selectable className="text-sm text-foreground">
+                  {record.markdown}
+                </Text>
+              </View>
+            ) : null}
             {record.kind === "thread-tab" ? (
               <View className="gap-3">
                 <ContextField label="Chat" value={record.title} />

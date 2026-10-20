@@ -817,6 +817,16 @@ export const SETTINGS_SEARCH_ITEMS = [
     scope: "environment-defaults",
   },
   {
+    id: "discord",
+    title: "Discord",
+    to: "/settings/integrations",
+    searchTerms: [
+      "discord messages threads channels servers guilds connect bot token application invite message content intent attach context enable disable integration pasted links mentions trigger keyword automation",
+    ],
+    environmentOnly: true,
+    scope: "environment-defaults",
+  },
+  {
     id: "device-hosts",
     title: "Device hosts",
     to: "/settings/integrations",

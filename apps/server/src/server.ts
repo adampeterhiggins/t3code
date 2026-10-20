@@ -66,6 +66,10 @@ import * as SlackApi from "./slack/SlackApi.ts";
 import * as SlackAuth from "./slack/SlackAuth.ts";
 import * as SlackMentionTrigger from "./slack/SlackMentionTrigger.ts";
 import * as SlackThreadLinks from "./slack/SlackThreadLinks.ts";
+import * as DiscordApi from "./discord/DiscordApi.ts";
+import * as DiscordAuth from "./discord/DiscordAuth.ts";
+import * as DiscordMentionTrigger from "./discord/DiscordMentionTrigger.ts";
+import * as DiscordThreadLinks from "./discord/DiscordThreadLinks.ts";
 import * as GitHubIssues from "./githubIssues/GitHubIssues.ts";
 import * as GitHubIssueThreadLinks from "./githubIssues/GitHubIssueThreadLinks.ts";
 import * as MessageDrafts from "./messageDrafts/MessageDrafts.ts";
@@ -671,8 +675,9 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
       yield* service.start();
     }),
   ).pipe(Layer.provide(ThreadTabSidebarRowReactor.layer)),
-  // Fork: starts a thread when the user is @mentioned in Slack (opt-in).
-  SlackMentionTrigger.layerStarted,
+  // Fork: starts a thread when the user is @mentioned in Slack, or the bot (or a chosen user)
+  // in Discord (opt-in).
+  Layer.mergeAll(SlackMentionTrigger.layerStarted, DiscordMentionTrigger.layerStarted),
   Layer.effectDiscard(
     Effect.gen(function* () {
       const service = yield* DelegatedTaskQuestionReactor.DelegatedTaskQuestionReactor;
@@ -714,9 +719,15 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
     ),
   ),
   Layer.provideMerge(
-    SlackThreadLinks.layer.pipe(
-      Layer.provideMerge(SlackApi.layer),
-      Layer.provideMerge(SlackAuth.layer),
+    Layer.mergeAll(
+      SlackThreadLinks.layer.pipe(
+        Layer.provideMerge(SlackApi.layer),
+        Layer.provideMerge(SlackAuth.layer),
+      ),
+      DiscordThreadLinks.layer.pipe(
+        Layer.provideMerge(DiscordApi.layer),
+        Layer.provideMerge(DiscordAuth.layer),
+      ),
     ),
   ),
   Layer.provideMerge(

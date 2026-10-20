@@ -36,6 +36,7 @@ export * from "./linear.ts";
 export * from "./notion.ts";
 export * from "./granola.ts";
 export * from "./slack.ts";
+export * from "./discord.ts";
 export * from "./githubIssues.ts";
 export * from "./messageDrafts.ts";
 export * from "./githubRefs.ts";

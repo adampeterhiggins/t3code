@@ -10,20 +10,22 @@ import type {
   GitHubIssueContextRecord,
   GitHubRefContextRecord,
   LinearIssueContextRecord,
+  DiscordThreadContextRecord,
   SlackThreadContextRecord,
   SubagentContextRecord,
   ThreadId,
 } from "@t3tools/contracts";
 
 /**
- * An attached snapshot fetched from another service (a Linear or GitHub issue, a Slack thread, a
- * Notion page, a Granola note) or, in the fork, a referenced subagent, a T3 Code prompt link, or a
+ * An attached snapshot fetched from another service (a Linear or GitHub issue, a Slack or Discord
+ * thread, a Notion page, a Granola note) or, in the fork, a referenced subagent, a T3 Code prompt link, or a
  * GitHub release, tag, branch, or commit.
  */
 export type IssueContextRecord =
   | LinearIssueContextRecord
   | GitHubIssueContextRecord
   | SlackThreadContextRecord
+  | DiscordThreadContextRecord
   | NotionPageContextRecord
   | GranolaNoteContextRecord
   | SubagentContextRecord
