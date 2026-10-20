@@ -10,6 +10,8 @@ import { MessageSquareTextIcon } from "lucide-react";
 
 import { useProject, useThreadRefs, useThreadShell } from "../../state/entities";
 import { ProjectFavicon } from "../ProjectFavicon";
+import { ThreadHoverCardPopup, ThreadPreviewHoverCard } from "../ThreadHoverCard";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 export function MarkdownThreadLink(props: {
   readonly environmentId: EnvironmentId;
@@ -36,23 +38,35 @@ export function MarkdownThreadLink(props: {
   );
   const title = thread?.title.trim() || props.label;
   return (
-    <Link
-      to="/$environmentId/$threadId"
-      params={{ environmentId, threadId }}
-      title={thread === null ? "Thread no longer available" : project?.title}
-      data-markdown-copy={formatThreadLink(threadId, title)}
-    >
-      <span
-        className="ms-[0.25em] me-[0.2em] inline-flex size-[14px] [vertical-align:-0.125em]"
-        aria-hidden
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Link
+            to="/$environmentId/$threadId"
+            params={{ environmentId, threadId }}
+            data-markdown-copy={formatThreadLink(threadId, title)}
+          />
+        }
       >
-        {project === null ? (
-          <MessageSquareTextIcon className="block size-full shrink-0" />
-        ) : (
-          <ProjectFavicon project={project} className="size-full" />
-        )}
-      </span>
-      {title}
-    </Link>
+        <span
+          className="ms-[0.25em] me-[0.2em] inline-flex size-[14px] [vertical-align:-0.125em]"
+          aria-hidden
+        >
+          {project === null ? (
+            <MessageSquareTextIcon className="block size-full shrink-0" />
+          ) : (
+            <ProjectFavicon project={project} className="size-full" />
+          )}
+        </span>
+        {title}
+      </TooltipTrigger>
+      {thread === null ? (
+        <TooltipPopup side="top">Thread no longer available</TooltipPopup>
+      ) : (
+        <ThreadHoverCardPopup side="top">
+          <ThreadPreviewHoverCard shell={thread} project={project} title={title} />
+        </ThreadHoverCardPopup>
+      )}
+    </Tooltip>
   );
 }
