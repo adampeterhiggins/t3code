@@ -7,6 +7,7 @@ import {
   OrchestrationSearchThreadsResult,
   OrchestrationV2ThreadForkSourcePoint,
   OrchestrationV2ContextTransfer,
+  OrchestrationV2ThreadMoveWorkspaceStrategy,
   TrimmedNonEmptyString,
   ModelSelection,
   RuntimeMode,
@@ -22,10 +23,15 @@ import {
   ProjectId,
 } from "@t3tools/contracts";
 import * as Crypto from "effect/Crypto";
+import * as FileSystem from "effect/FileSystem";
 import * as Schema from "effect/Schema";
 import { Tool, Toolkit } from "effect/ai";
 
+import * as GitWorkflow from "../../../git/GitWorkflowService.ts";
 import * as ThreadSearch from "../../../orchestration-v2/ThreadSearch.ts";
+import * as ProjectService from "../../../project/ProjectService.ts";
+import * as ProjectSetupScriptRunner from "../../../project/ProjectSetupScriptRunner.ts";
+import * as GitVcsDriver from "../../../vcs/GitVcsDriver.ts";
 import * as ScheduledTaskService from "../../../scheduledTasks/ScheduledTaskService.ts";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -72,10 +78,16 @@ const ThreadOrganizeTool = Tool.make("t3_thread_organize", {
 
 const ThreadMoveTool = Tool.make("t3_thread_move", {
   description:
-    "Move an existing thread to a registered project in this environment, preserving its conversation and using the destination project's main checkout. Omit threadId for this thread. Requires full-access/default. Old files and checkouts stay on disk; repository-specific PR links are cleared. Archived threads, subagents, sibling chat tabs, bound scheduled tasks, pending requests, queued messages and active delegated work cannot move. Moving this thread detaches its provider session and ends the current turn, so call this last; continuationPrompt resumes work in the destination. clientRequestId makes retries idempotent.",
+    "Move an existing thread to a registered project in this environment, preserving its conversation. It lands in the destination project's main checkout unless workspaceStrategy names one of that project's worktrees or a pull request to check out. Omit threadId for this thread. Requires full-access/default. Old files and checkouts stay on disk; repository-specific PR links are cleared. Archived threads, subagents, sibling chat tabs, bound scheduled tasks, pending requests, queued messages and active delegated work cannot move. Moving this thread detaches its provider session and ends the current turn, so call this last; continuationPrompt resumes work in the destination. To continue on a new branch, call t3_worktree_handoff from there. clientRequestId makes retries idempotent.",
   parameters: Schema.Struct({
     threadId: Schema.optional(ThreadId),
     projectId: ProjectId,
+    workspaceStrategy: Schema.optional(
+      OrchestrationV2ThreadMoveWorkspaceStrategy.annotate({
+        description:
+          'Where in the destination project the thread lands. {type:"existing_worktree",worktreePath} binds one of its git worktrees (t3_worktree_list shows them). {type:"pull_request",reference:"<PR URL or number>"} checks out that pull request\'s head branch in a worktree as the composer\'s "start from PR" does, reusing one that already has it and running project setup on a new one; mode:"local" checks it out in the project checkout instead, replacing what is checked out there. Omitted means the main checkout.',
+      }),
+    ),
     continuationPrompt: Schema.optional(TrimmedNonEmptyString),
     clientRequestId: Schema.optional(TrimmedNonEmptyString),
   }),
@@ -83,6 +95,8 @@ const ThreadMoveTool = Tool.make("t3_thread_move", {
     sequence: NonNegativeInt,
     threadId: ThreadId,
     projectId: ProjectId,
+    worktreePath: Schema.NullOr(Schema.String),
+    branch: Schema.NullOr(Schema.String),
     continuationScheduled: Schema.Boolean,
   }),
   failure: OrchestratorMcpFailure,
@@ -90,6 +104,11 @@ const ThreadMoveTool = Tool.make("t3_thread_move", {
   dependencies: [
     McpInvocationContext.McpInvocationContext,
     ThreadManagementService.ThreadManagementService,
+    ProjectService.ProjectService,
+    GitWorkflow.GitWorkflowService,
+    GitVcsDriver.GitVcsDriver,
+    FileSystem.FileSystem,
+    ProjectSetupScriptRunner.ProjectSetupScriptRunner,
     Crypto.Crypto,
   ],
 }).annotate(Tool.Destructive, true);

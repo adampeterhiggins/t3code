@@ -6,6 +6,8 @@ import {
   type RunId,
   OrchestratorMcpFailure,
   type OrchestrationV2Command,
+  type OrchestrationV2ThreadMoveWorkspaceStrategy,
+  type ProjectId,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -21,6 +23,11 @@ import {
 } from "../../threadAccess.ts";
 import * as Option from "effect/Option";
 import * as ThreadTabs from "../../../threadTabs/ThreadTabs.ts";
+import * as GitWorkflow from "../../../git/GitWorkflowService.ts";
+import * as Project from "../../../project/ProjectService.ts";
+import * as ProjectSetupScriptRunner from "../../../project/ProjectSetupScriptRunner.ts";
+import * as GitVcsDriver from "../../../vcs/GitVcsDriver.ts";
+import { assertProjectWorktree } from "../project/handlers.ts";
 import * as ThreadSearch from "../../../orchestration-v2/ThreadSearch.ts";
 import * as ScheduledTasks from "../../../scheduledTasks/ScheduledTaskService.ts";
 import { queuedRunsInDeliveryOrder } from "../../../orchestration-v2/QueuedRunOrder.ts";
@@ -92,6 +99,60 @@ const threadTabs = Effect.serviceOption(ThreadTabs.ThreadTabs).pipe(
   ),
 );
 
+const invalidMove = (message: string) =>
+  new OrchestratorMcpFailure({ code: "invalid_request", message });
+
+/**
+ * The checkout a moving thread lands in. A pull request is checked out before
+ * the move, as a launch does, so a move that cannot reach it changes nothing;
+ * repeating it reuses the checkout. `created` marks a worktree this call added.
+ */
+const resolveMoveCheckout = Effect.fn("mcp.resolveMoveCheckout")(function* (
+  projectId: ProjectId,
+  strategy: OrchestrationV2ThreadMoveWorkspaceStrategy,
+) {
+  const project = yield* Project.ProjectService.pipe(
+    Effect.flatMap((projects) => projects.getById(projectId)),
+    Effect.mapError(unavailable),
+    Effect.map(Option.getOrUndefined),
+  );
+  if (project === undefined) return yield* invalidMove("The destination project was not found.");
+  const git = yield* GitWorkflow.GitWorkflowService;
+  if (strategy.type === "existing_worktree") {
+    yield* assertProjectWorktree(project.workspaceRoot, strategy.worktreePath);
+    const branch =
+      strategy.branch ??
+      (yield* git.localStatus({ cwd: strategy.worktreePath }).pipe(
+        Effect.map((status) => status.refName),
+        Effect.orElseSucceed(() => null),
+      ));
+    return { project, worktreePath: strategy.worktreePath, branch, created: false };
+  }
+  const driver = yield* GitVcsDriver.GitVcsDriver;
+  const worktreesBefore = yield* driver
+    .listWorktreePaths(project.workspaceRoot)
+    .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []));
+  const prepared = yield* git
+    .preparePullRequestThread({
+      cwd: project.workspaceRoot,
+      reference: strategy.reference,
+      mode: strategy.mode ?? "worktree",
+    })
+    .pipe(
+      Effect.mapError((cause) =>
+        invalidMove(
+          `Could not check out pull request ${strategy.reference}: ${cause.message} The thread was not moved.`,
+        ),
+      ),
+    );
+  return {
+    project,
+    worktreePath: prepared.worktreePath,
+    branch: prepared.branch,
+    created: prepared.worktreePath !== null && !worktreesBefore.includes(prepared.worktreePath),
+  };
+});
+
 /** The service's own refusals are for the agent to read; anything else stays opaque. */
 const tabsFailure = (error: ThreadTabs.ThreadTabsError) =>
   error.reason === "thread_not_found" || error.reason === "invalid_request"
@@ -103,23 +164,64 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
     Effect.gen(function* () {
       const { threads, projection, scope } = yield* readThread(input.threadId);
       const requestId = input.clientRequestId ?? (yield* newCommandId());
-      const result = yield* threads
-        .dispatch({
-          type: "thread.project.move",
-          commandId: CommandId.make(
-            `mcp:${encodeURIComponent(scope.requestNamespace)}:thread-move:${encodeURIComponent(projection.thread.id)}:${encodeURIComponent(input.projectId)}:${encodeURIComponent(requestId)}`,
-          ),
-          threadId: projection.thread.id,
-          projectId: input.projectId,
-          ...(input.continuationPrompt === undefined
-            ? {}
-            : { continuationPrompt: input.continuationPrompt }),
-        })
-        .pipe(Effect.mapError(dispatchFailure));
+      const checkout =
+        input.workspaceStrategy === undefined
+          ? undefined
+          : yield* resolveMoveCheckout(input.projectId, input.workspaceStrategy);
+      const worktreePath = checkout?.worktreePath ?? null;
+      const branch = checkout?.branch ?? null;
+      // Moving the calling thread detaches its session, which can interrupt
+      // this request; the setup script for the new worktree must still start.
+      const result = yield* Effect.uninterruptible(
+        Effect.gen(function* () {
+          const moved = yield* threads
+            .dispatch({
+              type: "thread.project.move",
+              commandId: CommandId.make(
+                `mcp:${encodeURIComponent(scope.requestNamespace)}:thread-move:${encodeURIComponent(projection.thread.id)}:${encodeURIComponent(input.projectId)}:${encodeURIComponent(requestId)}`,
+              ),
+              threadId: projection.thread.id,
+              projectId: input.projectId,
+              ...(worktreePath === null ? {} : { worktreePath }),
+              ...(branch === null ? {} : { branch }),
+              ...(input.continuationPrompt === undefined
+                ? {}
+                : { continuationPrompt: input.continuationPrompt }),
+            })
+            .pipe(Effect.mapError(dispatchFailure));
+          if (checkout?.created === true && worktreePath !== null) {
+            const setupScripts = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
+            yield* setupScripts
+              .runForThread({
+                threadId: projection.thread.id,
+                projectId: input.projectId,
+                projectCwd: checkout.project.workspaceRoot,
+                worktreePath,
+                project: {
+                  id: checkout.project.id,
+                  workspaceRoot: checkout.project.workspaceRoot,
+                  scripts: checkout.project.scripts,
+                },
+              })
+              .pipe(
+                Effect.catchCause((cause) =>
+                  Effect.logWarning("thread move setup script failed", {
+                    threadId: projection.thread.id,
+                    worktreePath,
+                    cause,
+                  }),
+                ),
+              );
+          }
+          return moved;
+        }),
+      );
       return {
         sequence: result.sequence,
         threadId: projection.thread.id,
         projectId: input.projectId,
+        worktreePath,
+        branch,
         continuationScheduled: input.continuationPrompt !== undefined,
       };
     }),

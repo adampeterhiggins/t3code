@@ -3327,8 +3327,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           return {
             ...thread,
             projectId: command.projectId,
-            branch: null,
-            worktreePath: null,
+            branch: command.branch ?? null,
+            worktreePath: command.worktreePath ?? null,
             groupName: null,
             linkedPullRequest: null,
             branchPullRequest: null,
@@ -3996,7 +3996,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           now,
           notice: {
             title: WORKSPACE_CHANGED_NOTICE_TITLE,
-            message: `Continuing in ${command.type === "thread.project.move" ? moveProject!.workspaceRoot : (command.worktreePath ?? "the project checkout")}`,
+            message: `Continuing in ${command.type === "thread.project.move" ? (command.worktreePath ?? moveProject!.workspaceRoot) : (command.worktreePath ?? "the project checkout")}`,
           },
         });
         yield* settleBackgroundWork({

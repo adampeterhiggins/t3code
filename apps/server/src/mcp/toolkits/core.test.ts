@@ -23,6 +23,8 @@ import {
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
+import * as Option from "effect/Option";
 import * as TestClock from "effect/testing/TestClock";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
@@ -41,6 +43,8 @@ import * as ServerConfig from "../../config.ts";
 import * as ProviderAdapterRegistry from "../../orchestration-v2/ProviderAdapterRegistry.ts";
 import * as ThreadLaunchService from "../../orchestration-v2/ThreadLaunchService.ts";
 import * as GitVcsDriver from "../../vcs/GitVcsDriver.ts";
+import * as GitWorkflow from "../../git/GitWorkflowService.ts";
+import * as ProjectSetupScriptRunner from "../../project/ProjectSetupScriptRunner.ts";
 import * as ThreadManagement from "../../orchestration-v2/ThreadManagementService.ts";
 import * as ThreadSearch from "../../orchestration-v2/ThreadSearch.ts";
 import * as PreviewBrowser from "../../preview/PreviewBrowser.ts";
@@ -93,10 +97,24 @@ import { htmlRenderFromToolItem } from "@t3tools/shared/toolOutput";
 const decodeMcpAttachmentInput = Schema.decodeUnknownEffect(McpAttachmentInput);
 const decodeThreadReadResult = Schema.decodeUnknownEffect(OrchestratorMcpThreadReadResult);
 
-const layerThreadToolkit = McpHttpServer.layerThreadToolkit.pipe(
-  Layer.provide(Layer.mock(ThreadSearch.ThreadSearch)({})),
-  Layer.provide(Layer.mock(ScheduledTaskService.ScheduledTaskService)({})),
+// What t3_thread_move reads to land in a worktree; tests that move replace these.
+const layerThreadMoveServices = Layer.mergeAll(
+  Layer.mock(ProjectService.ProjectService)({}),
+  Layer.mock(GitWorkflow.GitWorkflowService)({}),
+  Layer.mock(GitVcsDriver.GitVcsDriver)({}),
+  FileSystem.layerNoop({}),
+  Layer.mock(ProjectSetupScriptRunner.ProjectSetupScriptRunner)({}),
 );
+
+const layerThreadToolkitWith = (
+  moveServices: Layer.Layer<Layer.Success<typeof layerThreadMoveServices>>,
+) =>
+  McpHttpServer.layerThreadToolkit.pipe(
+    Layer.provide(Layer.mock(ThreadSearch.ThreadSearch)({})),
+    Layer.provide(Layer.mock(ScheduledTaskService.ScheduledTaskService)({})),
+    Layer.provide(moveServices),
+  );
+const layerThreadToolkit = layerThreadToolkitWith(layerThreadMoveServices);
 
 it("publishes unique tool names with reference-free object-root inputs", () => {
   const names = new Set<string>();
@@ -1061,11 +1079,9 @@ it.effect("a thread's agent opens chat tabs as itself, within its spawn limit", 
     expect(forked.structuredContent).toMatchObject({ threadId: opened[0]?.threadId, runId: "run" });
   }).pipe(
     Effect.provide(
-      McpHttpServer.layerThreadToolkit.pipe(
+      layerThreadToolkit.pipe(
         Layer.provideMerge(McpServer.McpServer.layer),
         Layer.provide(NodeCrypto.layer),
-        Layer.provide(Layer.mock(ThreadSearch.ThreadSearch)({})),
-        Layer.provide(Layer.mock(ScheduledTaskService.ScheduledTaskService)({})),
         Layer.provide(
           Layer.mock(ThreadTabs.ThreadTabs)({
             open: (_threadId, input) => {
@@ -1130,6 +1146,8 @@ it.effect.each(["full-access", "auto", "plan"] as const)(
           sequence: 7,
           threadId,
           projectId: "destination",
+          worktreePath: null,
+          branch: null,
           continuationScheduled: true,
         });
         yield* invoke();
@@ -1145,6 +1163,97 @@ it.effect.each(["full-access", "auto", "plan"] as const)(
     }).pipe(
       Effect.provide(
         layerThreadToolkit.pipe(
+          Layer.provideMerge(McpServer.McpServer.layer),
+          Layer.provide(NodeCrypto.layer),
+          Layer.provide(
+            Layer.mock(ThreadManagement.ThreadManagementService)({
+              getThreadShell: () => Effect.succeed(shell),
+              getProjectThreadRecords: () =>
+                Effect.succeed(McpToolAccessTestkit.idleThreadProjection(shell)),
+              dispatch: (command) => {
+                commands.push(command);
+                return Effect.succeed({ sequence: 7, storedEvents: [] });
+              },
+            }),
+          ),
+        ),
+      ),
+    );
+  },
+);
+
+it.effect.each(["existing-worktree", "pull-request", "foreign-worktree"] as const)(
+  "t3_thread_move lands in the destination checkout it names (%s)",
+  (strategy) => {
+    const commands: OrchestrationV2ServerCommand[] = [];
+    const setupRuns: string[] = [];
+    const shell = McpToolAccessTestkit.liveThreadShell(threadId);
+    const destination = ProjectId.make("destination");
+    const project = { id: destination, workspaceRoot: "/repo", scripts: [] } as never;
+    return Effect.gen(function* () {
+      const server = yield* McpServer.McpServer;
+      const result = yield* server
+        .callTool({
+          name: "t3_thread_move",
+          arguments: {
+            projectId: destination,
+            workspaceStrategy:
+              strategy === "pull-request"
+                ? { type: "pull_request", reference: "https://github.com/owner/repo/pull/12" }
+                : {
+                    type: "existing_worktree",
+                    worktreePath: strategy === "existing-worktree" ? "/repo-wt" : "/elsewhere",
+                  },
+          },
+        })
+        .pipe(
+          Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
+          Effect.provideService(McpSchema.McpServerClient, client),
+        );
+      if (strategy === "foreign-worktree") {
+        expect(declaredFailure(result)).toMatchObject({ code: "invalid_request" });
+        expect(commands).toHaveLength(0);
+        return;
+      }
+      const landed =
+        strategy === "pull-request"
+          ? { worktreePath: "/repo-pr-12", branch: "feature/pr-12" }
+          : { worktreePath: "/repo-wt", branch: "existing" };
+      expect(result.structuredContent).toMatchObject({ projectId: destination, ...landed });
+      expect(commands).toEqual([
+        expect.objectContaining({ type: "thread.project.move", projectId: destination, ...landed }),
+      ]);
+      // Only a worktree the move created gets the project's setup script.
+      expect(setupRuns).toEqual(strategy === "pull-request" ? ["/repo-pr-12"] : []);
+    }).pipe(
+      Effect.provide(
+        layerThreadToolkitWith(
+          Layer.mergeAll(
+            Layer.mock(ProjectService.ProjectService)({
+              getById: () => Effect.succeed(Option.some(project)),
+            }),
+            Layer.mock(GitWorkflow.GitWorkflowService)({
+              localStatus: () => Effect.succeed({ refName: "existing" } as never),
+              preparePullRequestThread: () =>
+                Effect.succeed({
+                  branch: "feature/pr-12",
+                  worktreePath: "/repo-pr-12",
+                } as never),
+            }),
+            Layer.mock(GitVcsDriver.GitVcsDriver)({
+              listWorktreePaths: () => Effect.succeed(["/repo", "/repo-wt"]),
+            }),
+            FileSystem.layerNoop({
+              realPath: (path) => Effect.succeed(path),
+            }),
+            Layer.mock(ProjectSetupScriptRunner.ProjectSetupScriptRunner)({
+              runForThread: (input) => {
+                setupRuns.push(input.worktreePath);
+                return Effect.succeed({ status: "no-script" } as never);
+              },
+            }),
+          ),
+        ).pipe(
           Layer.provideMerge(McpServer.McpServer.layer),
           Layer.provide(NodeCrypto.layer),
           Layer.provide(
