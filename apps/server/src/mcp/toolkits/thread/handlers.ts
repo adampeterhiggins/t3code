@@ -1,5 +1,5 @@
 import {
-  type CommandId,
+  CommandId,
   type RuntimeRequestId,
   ThreadId,
   type OrchestrationV2ThreadProjection,
@@ -99,6 +99,31 @@ const tabsFailure = (error: ThreadTabs.ThreadTabsError) =>
     : unavailable();
 
 export const layer = McpToolAccess.toLayer(ThreadToolkit, {
+  t3_thread_move: McpToolAccess.writesEnvironment((input) =>
+    Effect.gen(function* () {
+      const { threads, projection, scope } = yield* readThread(input.threadId);
+      const requestId = input.clientRequestId ?? (yield* newCommandId());
+      const result = yield* threads
+        .dispatch({
+          type: "thread.project.move",
+          commandId: CommandId.make(
+            `mcp:${encodeURIComponent(scope.requestNamespace)}:thread-move:${encodeURIComponent(projection.thread.id)}:${encodeURIComponent(input.projectId)}:${encodeURIComponent(requestId)}`,
+          ),
+          threadId: projection.thread.id,
+          projectId: input.projectId,
+          ...(input.continuationPrompt === undefined
+            ? {}
+            : { continuationPrompt: input.continuationPrompt }),
+        })
+        .pipe(Effect.mapError(dispatchFailure));
+      return {
+        sequence: result.sequence,
+        threadId: projection.thread.id,
+        projectId: input.projectId,
+        continuationScheduled: input.continuationPrompt !== undefined,
+      };
+    }),
+  ),
   t3_thread_group_name: writesThread((input) =>
     Effect.gen(function* () {
       const { projection } = yield* readThread(input.threadId);

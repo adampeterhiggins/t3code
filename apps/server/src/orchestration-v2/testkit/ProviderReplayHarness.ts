@@ -191,6 +191,11 @@ export function runOrchestratorV2ProviderReplayScenario<
       SqlClient.SqlClient,
       MigrationError | PlatformError.PlatformError | SqlError
     >;
+    readonly runtimePolicyLayer?: Layer.Layer<
+      RuntimePolicy.RuntimePolicyV2,
+      never,
+      ProjectStore.ProjectStoreV2
+    >;
     readonly runEffectWorker?: boolean;
     readonly runContinuationWorker?: boolean;
     readonly recoverOnStartup?: boolean;
@@ -233,6 +238,11 @@ export function layerProviderReplay<Transcript extends ProviderReplayTranscript,
       SqlClient.SqlClient,
       MigrationError | PlatformError.PlatformError | SqlError
     >;
+    readonly runtimePolicyLayer?: Layer.Layer<
+      RuntimePolicy.RuntimePolicyV2,
+      never,
+      ProjectStore.ProjectStoreV2
+    >;
     readonly runEffectWorker?: boolean;
     readonly runContinuationWorker?: boolean;
     readonly recoverOnStartup?: boolean;
@@ -266,6 +276,11 @@ export function layerWithRegistry<Error>(
       SqlClient.SqlClient,
       MigrationError | PlatformError.PlatformError | SqlError
     >;
+    readonly runtimePolicyLayer?: Layer.Layer<
+      RuntimePolicy.RuntimePolicyV2,
+      never,
+      ProjectStore.ProjectStoreV2
+    >;
     readonly runEffectWorker?: boolean;
     readonly runContinuationWorker?: boolean;
     readonly recoverOnStartup?: boolean;
@@ -283,12 +298,13 @@ export function layerWithRegistry<Error>(
     ServerConfig.ServerConfig,
     makeReplayServerConfig(scenario.name).pipe(Effect.orDie),
   ).pipe(Layer.provide(NodeServices.layer));
-  const layerRuntime =
-    scenario.runtimePolicyOverride === undefined
+  const layerRuntimeBase =
+    options.runtimePolicyLayer ??
+    (scenario.runtimePolicyOverride === undefined
       ? RuntimePolicy.layer
       : RuntimePolicy.layerWithOverride(scenario.runtimePolicyOverride).pipe(
           Layer.provide(RuntimePolicy.layer),
-        );
+        ));
   const layerDatabase = options.databaseLayer ?? SqlitePersistence.layerMemory;
   // One queue shared by the adapters, the orchestrator, and the worker, like
   // runtimeLayer.ts; layer memoization keeps it a single instance.
@@ -311,6 +327,7 @@ export function layerWithRegistry<Error>(
     EffectOutbox.layer,
     TurnItemPositionStore.layer,
   ).pipe(Layer.provide(layerDatabase));
+  const layerRuntime = layerRuntimeBase.pipe(Layer.provide(layerStores));
   const layerEventSinkProvided = EventSink.layerFromStores.pipe(
     Layer.provide(Layer.mergeAll(layerStores, layerDatabase)),
   );

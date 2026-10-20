@@ -59,6 +59,7 @@ import {
   ProviderInstanceId,
   ProviderInteractionMode,
   resolveProviderInstanceEnabled,
+  resolveProjectProviderInstanceEnabled,
   type ProviderSessionId,
   RunId,
   RuntimeMode,
@@ -465,6 +466,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
     case "thread.active.reorder":
     case "thread.visit":
     case "thread.mark-unread":
+    case "thread.project.move":
     case "thread.metadata.update":
     case "thread.usage-limit.resume-now":
     case "thread.checkout.link":
@@ -2664,6 +2666,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           | "thread.pin.reorder"
           | "thread.active.reorder"
           | "thread.mark-unread"
+          | "thread.project.move"
           | "thread.metadata.update"
           | "thread.checkout.link"
           | "thread.checkout.unlink"
@@ -2951,7 +2954,84 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       }
     }
 
+    let moveProject: ProjectStore.ProjectRow | undefined;
+    if (command.type === "thread.project.move") {
+      const project = yield* projects.get(command.projectId).pipe(mapDispatchError(command));
+      if (Option.isNone(project)) {
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          cause: "The destination project was not found.",
+        });
+      }
+      if (thread.archivedAt !== null || thread.lineage.relationshipToParent === "subagent") {
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          cause: "Archived threads and subagents cannot move between projects.",
+        });
+      }
+      if (thread.projectId === command.projectId) {
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          cause:
+            "The thread already belongs to the destination project. Use a worktree handoff to change its checkout.",
+        });
+      }
+      const blocker = yield* projectionStore
+        .getProjectMoveBlocker(thread.id)
+        .pipe(mapDispatchError(command));
+      if (blocker !== null) {
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          cause:
+            blocker === "chat_tabs"
+              ? "A thread with sibling chat tabs cannot move between projects."
+              : "Remove scheduled tasks bound to this thread before moving it; recreate them in the destination project.",
+        });
+      }
+      const projection = yield* loadProjectionForCommand(command, [
+        "runs",
+        "subagents",
+        "runtimeRequests",
+      ]);
+      if (
+        projection.runs.some((run) =>
+          ["preparing", "starting", "waiting", "queued"].includes(run.status),
+        ) ||
+        projection.subagents.some((task) =>
+          ["pending", "running", "waiting"].includes(task.status),
+        ) ||
+        projection.runtimeRequests.some((request) => request.status === "pending")
+      ) {
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          cause:
+            "Finish pending requests, queued messages and delegated work before moving this thread.",
+        });
+      }
+      const settings = yield* serverSettings.getSettings.pipe(mapDispatchError(command));
+      if (
+        !resolveProjectProviderInstanceEnabled(
+          settings,
+          command.projectId,
+          thread.providerInstanceId,
+        )
+      ) {
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          cause: "The thread's provider is disabled in the destination project.",
+        });
+      }
+      moveProject = project.value;
+    }
+
     const needsProviderState =
+      command.type === "thread.project.move" ||
       command.type === "thread.runtime-mode.set" ||
       command.type === "thread.model-selection.set" ||
       command.type === "provider.switch" ||
@@ -3228,6 +3308,19 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         }
         case "thread.mark-unread":
           return { ...thread, lastVisitedAt: markUnreadVisitedAt };
+        case "thread.project.move":
+          return {
+            ...thread,
+            projectId: command.projectId,
+            branch: null,
+            worktreePath: null,
+            groupName: null,
+            linkedPullRequest: null,
+            branchPullRequest: null,
+            pullRequests: [],
+            titleRegeneration: null,
+            updatedAt: now,
+          };
         case "thread.metadata.update": {
           const previousRecovery =
             thread.limitRecovery?.runId === command.limitRecovery?.runId &&
@@ -3610,6 +3703,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           return "thread.active-reordered" as const;
         case "thread.mark-unread":
           return "thread.marked-unread" as const;
+        case "thread.project.move":
         case "thread.metadata.update":
         case "thread.title.regeneration.complete":
         case "thread.checkout.link":
@@ -3805,9 +3899,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     const detachSessionIds = new Set(
       command.type === "thread.archive" || command.type === "thread.settle"
         ? (providerContext?.providerSessions ?? []).map((session) => session.id)
-        : command.type === "thread.metadata.update" &&
-            command.worktreePath !== undefined &&
-            command.worktreePath !== thread.worktreePath
+        : command.type === "thread.project.move" ||
+            (command.type === "thread.metadata.update" &&
+              command.worktreePath !== undefined &&
+              command.worktreePath !== thread.worktreePath)
           ? (providerContext?.providerSessions ?? []).map((session) => session.id)
           : command.type === "thread.runtime-mode.set"
             ? (providerContext?.providerSessions ?? [])
@@ -3824,7 +3919,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     // recording a provider failure (which would also hold the queued
     // continuation), and the in-flight handoff tool call stops showing as
     // background work.
-    if (command.type === "thread.metadata.update" && detachSessionIds.size > 0) {
+    if (
+      (command.type === "thread.metadata.update" || command.type === "thread.project.move") &&
+      detachSessionIds.size > 0
+    ) {
       const projection = yield* loadProjectionForCommand(
         command,
         [
@@ -3874,7 +3972,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           now,
           notice: {
             title: WORKSPACE_CHANGED_NOTICE_TITLE,
-            message: `Continuing in ${command.worktreePath ?? "the project checkout"}`,
+            message: `Continuing in ${command.type === "thread.project.move" ? moveProject!.workspaceRoot : (command.worktreePath ?? "the project checkout")}`,
           },
         });
         yield* settleBackgroundWork({
@@ -3915,7 +4013,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                     ? "Thread archived."
                     : command.type === "thread.settle"
                       ? "Thread settled."
-                      : command.type === "thread.metadata.update"
+                      : command.type === "thread.metadata.update" ||
+                          command.type === "thread.project.move"
                         ? "Workspace changed."
                         : command.type === "thread.runtime-mode.set"
                           ? "Runtime mode changed."
@@ -3934,7 +4033,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                     ? "Thread archived."
                     : command.type === "thread.settle"
                       ? "Thread settled."
-                      : command.type === "thread.metadata.update"
+                      : command.type === "thread.metadata.update" ||
+                          command.type === "thread.project.move"
                         ? "Workspace changed."
                         : command.type === "thread.runtime-mode.set"
                           ? "Runtime mode changed."
@@ -3948,6 +4048,25 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             yield* Ref.update(effects, (existing) => [...existing, pendingEffect]);
           }),
         { concurrency: 1, discard: true },
+      );
+    }
+
+    // Detaching the caller can interrupt a second request, so commit its continuation with the move.
+    if (command.type === "thread.project.move" && command.continuationPrompt !== undefined) {
+      yield* dispatchMessage(
+        {
+          type: "message.dispatch",
+          commandId: command.commandId,
+          threadId: command.threadId,
+          messageId: MessageId.make(`${command.commandId}:continuation`),
+          text: command.continuationPrompt,
+          attachments: [],
+          dispatchMode: { type: "queue_after_active" },
+          createdBy: "agent",
+          creationSource: "mcp",
+        },
+        events,
+        effects,
       );
     }
 
@@ -9032,7 +9151,11 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     readonly command: Extract<
       OrchestrationV2ServerCommand,
       {
-        readonly type: "run.interrupt" | "thread.background-work.settle" | "thread.metadata.update";
+        readonly type:
+          | "run.interrupt"
+          | "thread.background-work.settle"
+          | "thread.project.move"
+          | "thread.metadata.update";
       }
     >;
     readonly events: Ref.Ref<Array<OrchestrationV2DomainEvent>>;
@@ -9231,7 +9354,11 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     readonly command: Extract<
       OrchestrationV2ServerCommand,
       {
-        readonly type: "run.interrupt" | "thread.background-work.settle" | "thread.metadata.update";
+        readonly type:
+          | "run.interrupt"
+          | "thread.background-work.settle"
+          | "thread.project.move"
+          | "thread.metadata.update";
       }
     >;
     readonly projection: Pick<
@@ -11682,6 +11809,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       case "thread.pin.reorder":
       case "thread.active.reorder":
       case "thread.mark-unread":
+      case "thread.project.move":
       case "thread.metadata.update":
       case "thread.checkout.link":
       case "thread.checkout.unlink":
