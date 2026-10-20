@@ -264,6 +264,26 @@ export function objectLinkLabel(url: string): string | null {
   }
 }
 
+const OBJECT_LINK_NOUNS: Record<ComposerObjectLink["kind"], string> = {
+  "notion-page": "Notion page",
+  "granola-note": "Granola note",
+  "linear-issue": "Linear issue",
+  "slack-message": "Slack message",
+  "discord-message": "Discord message",
+  "github-issue": "GitHub issue",
+  "pull-request": "pull request",
+  "github-ref": "GitHub release, branch, tag, or commit",
+  "prompt-link": "T3 Code prompt link",
+  repository: "repository",
+};
+
+/** What an attachable link points at, as a sentence names it: "Linear issue". */
+export function composerObjectLinkNoun(kind: string): string {
+  return Object.hasOwn(OBJECT_LINK_NOUNS, kind)
+    ? OBJECT_LINK_NOUNS[kind as ComposerObjectLink["kind"]]
+    : "link";
+}
+
 /** Every attachable link in `text`, in order, with where it sits. */
 export function findComposerObjectLinks(
   text: string,

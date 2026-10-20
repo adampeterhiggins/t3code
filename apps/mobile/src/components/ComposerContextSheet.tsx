@@ -22,6 +22,7 @@ import {
   type DraftComposerAttachment,
 } from "../lib/composerImages";
 import { contextImageGallery } from "../lib/contextImageGallery";
+import { composerObjectLinkNoun } from "@t3tools/shared/composerObjectLinks";
 import { tryOpenExternalUrl } from "../lib/openExternalUrl";
 import {
   contextRepositoryOutcomeLabel,
@@ -560,6 +561,36 @@ export function ComposerContextSheet(props: {
                     {record.prompt}
                   </Text>
                 ) : null}
+              </View>
+            ) : null}
+            {record.kind === "unread-link" ? (
+              <View className="gap-3">
+                <View className="gap-1">
+                  <Text selectable className="text-lg font-t3-semibold text-foreground">
+                    {record.reason === "timed-out"
+                      ? `Loading this ${composerObjectLinkNoun(record.linkKind)} timed out`
+                      : `Could not read this ${composerObjectLinkNoun(record.linkKind)}`}
+                  </Text>
+                  <Text className="text-sm text-foreground-muted">
+                    The agent receives the link, not its contents.
+                  </Text>
+                </View>
+                {/^https?:\/\//i.test(record.url) ? (
+                  <Pressable
+                    accessibilityRole="link"
+                    onPress={() => {
+                      void tryOpenExternalUrl(record.url, "markdown-link").then((opened) => {
+                        if (!opened) Dialog.alert("Could not open the link", "Try again later.");
+                      });
+                    }}
+                    className="rounded-xl bg-subtle p-4"
+                  >
+                    <Text className="text-foreground">Open link</Text>
+                  </Pressable>
+                ) : null}
+                <Text selectable className="text-sm text-foreground">
+                  {record.url}
+                </Text>
               </View>
             ) : null}
             {record.kind === "slack-thread" ? (

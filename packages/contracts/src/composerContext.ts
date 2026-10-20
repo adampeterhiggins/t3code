@@ -44,6 +44,7 @@ export const COMPOSER_CONTEXT_KINDS = [
   "subagent",
   "prompt-link",
   "github-ref",
+  "unread-link",
 ] as const;
 export type KnownComposerContextKind = (typeof COMPOSER_CONTEXT_KINDS)[number];
 
@@ -487,6 +488,21 @@ export const GitHubRefContextRecord = Schema.Struct({
 });
 export type GitHubRefContextRecord = typeof GitHubRefContextRecord.Type;
 
+/**
+ * Fork: a link the composer recognised as attachable (an issue, pull request, message, page…)
+ * but could not read, kept as a chip so the user can tell a failed attempt from a link nobody
+ * tried. The agent receives the link itself.
+ */
+export const UnreadLinkContextRecord = Schema.Struct({
+  ...recordBase,
+  kind: Schema.Literal("unread-link"),
+  url: ShortString,
+  /** What the link points at, such as `linear-issue` or `pull-request`. */
+  linkKind: ShortString,
+  reason: Schema.Literals(["timed-out", "unreadable"]),
+});
+export type UnreadLinkContextRecord = typeof UnreadLinkContextRecord.Type;
+
 export const KnownComposerContextRecord = Schema.Union([
   ImageContextRecord,
   FileContextRecord,
@@ -509,6 +525,7 @@ export const KnownComposerContextRecord = Schema.Union([
   SubagentContextRecord,
   PromptLinkContextRecord,
   GitHubRefContextRecord,
+  UnreadLinkContextRecord,
 ]);
 export type KnownComposerContextRecord = typeof KnownComposerContextRecord.Type;
 

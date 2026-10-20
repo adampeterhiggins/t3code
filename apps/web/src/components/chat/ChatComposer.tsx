@@ -55,6 +55,7 @@ import type {
   ThreadId,
   ThreadTabGroup,
   SnapShotSource,
+  UnreadLinkContextRecord,
 } from "@t3tools/contracts";
 import {
   EnvironmentRequestInvalidError,
@@ -233,7 +234,9 @@ import {
   type ComposerObjectLink,
   findComposerObjectLinks,
   findTypedComposerObjectLink,
+  parseComposerObjectLink,
 } from "@t3tools/shared/composerObjectLinks";
+import { unreadLinkContextRecord } from "@t3tools/shared/integrationContextRecords";
 import {
   getRestingComposerImagePreviewCounts,
   resolveRestingComposerControlsLayout,
@@ -342,9 +345,12 @@ import {
   useResolveComposerObjectLink,
 } from "./useResolveComposerObjectLink";
 import {
+  OBJECT_LINK_TIMEOUT_MS,
   type ObjectLinkDrafts,
   objectLinkChipDestination,
   objectLinkChipEdit,
+  resolveObjectLinkWithin,
+  unreadLinkChip,
 } from "./composerObjectLinkChip";
 import { useComposerRepositoryItems } from "./useComposerRepositoryItems";
 import { useComposerAgentItems } from "./useComposerAgentItems";
@@ -2230,6 +2236,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const openLink = useLinkClickHandler(routeThreadRef);
   const [previewFileId, setPreviewFileId] = useState<string | null>(null);
   const previewFile = composerFiles.find((file) => file.id === previewFileId);
+  // Filled in below, once the prompt replacement helpers they need exist.
+  const unreadLinkActionsRef = useRef<{
+    retry: (record: UnreadLinkContextRecord) => void;
+    keepAsText: (record: UnreadLinkContextRecord) => void;
+  } | null>(null);
   const composerContextActions = {
     environmentId,
     cwd: gitCwd ?? undefined,
@@ -2263,6 +2274,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       openPrLink(event, url);
     },
     openLink,
+    retryUnreadLink: (record: UnreadLinkContextRecord) =>
+      unreadLinkActionsRef.current?.retry(record),
+    keepUnreadLinkAsText: (record: UnreadLinkContextRecord) =>
+      unreadLinkActionsRef.current?.keepAsText(record),
   };
   const composerThreadTabContexts = useThreadTabContextRecords(routeThreadRef?.threadId);
   const composerIssueContexts = useIssueContextRecords(routeThreadRef?.threadId);
@@ -3653,7 +3668,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         case "granola-note":
         case "subagent":
         case "prompt-link":
-        case "github-ref": {
+        case "github-ref":
+        case "unread-link": {
           const threadId = routeThreadRef?.threadId;
           if (!threadId) break;
           rewritten.set(
@@ -6376,8 +6392,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     });
     return true;
   };
-  // Links already converted or tried, per draft. Typing never retries them, so undoing a chip,
-  // deleting one, or a link that failed to load stays as text. Pasting is explicit and does.
+  // Links already converted or tried, per draft. Typing never retries them, so undoing a chip or
+  // deleting one stays as text. Pasting is explicit and does.
   const handledObjectLinksRef = useRef(new Map<string, Set<string>>());
   const handledObjectLinks = () => {
     const key = composerDraftTargetKeyRef.current;
@@ -6433,6 +6449,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     if (applied) resolved.commit();
   };
   const applyResolvedObjectLinkStable = useStableCallback(applyResolvedObjectLink);
+  /** Turns a broken chip back into its link; where the link now starts, or null if there is none. */
+  const unreadLinkChipToText = (record: Pick<UnreadLinkContextRecord, "contextId" | "url">) => {
+    const occurrence = collectComposerContextReferences(promptRef.current).find(
+      (candidate) => candidate.contextId === record.contextId,
+    );
+    if (occurrence === undefined) return null;
+    const applied = applyPromptReplacement(occurrence.start, occurrence.end, record.url, {
+      expandedCursorAfterReplace: occurrence.start + record.url.length,
+    });
+    return applied ? occurrence.start : null;
+  };
   /**
    * Swaps links to issues, pull requests, and repositories for the chips their attach pickers
    * make. Each link becomes a chip once its object loads, and stays a link if it cannot be read
@@ -6452,22 +6479,44 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       draftKey: composerDraftTargetKeyRef.current,
       workKey: attachmentTargetKeyRef.current,
     };
+    const threadId = routeThreadRef.threadId;
     const handled = handledObjectLinks();
     for (const { link, index } of links) {
       handled.add(link.url);
       const retry = () => {
-        if (composerDraftTargetKeyRef.current === started.draftKey) {
-          convertObjectLinks([{ link, index }]);
-        }
+        if (composerDraftTargetKeyRef.current !== started.draftKey) return;
+        unreadLinkActionsRef.current?.retry(unreadLinkContextRecord(link, "unreadable"));
       };
       pendingDraftWork.begin(started.workKey);
-      void resolveComposerObjectLink(link, { retry })
-        .then((resolved) => {
-          if (resolved !== null) applyResolvedObjectLinkStable(started, link.url, index, resolved);
+      void resolveObjectLinkWithin(
+        resolveComposerObjectLink(link, { retry }),
+        OBJECT_LINK_TIMEOUT_MS,
+      )
+        .then((result) => {
+          if (result === "skipped") return;
+          // A link that was tried and failed becomes a broken chip, so it reads differently
+          // from a link nobody tried. The agent still receives the link.
+          const resolved =
+            typeof result === "string" ? unreadLinkChip(threadId, link, result) : result;
+          applyResolvedObjectLinkStable(started, link.url, index, resolved);
         })
         .finally(() => pendingDraftWork.end(started.workKey));
     }
   };
+  useLayoutEffect(() => {
+    unreadLinkActionsRef.current = {
+      // Starts from the link its broken chip holds, or the link itself if it is still text.
+      retry: (record) => {
+        const link = parseComposerObjectLink(record.url);
+        if (link === null) return;
+        convertObjectLinks([{ link, index: unreadLinkChipToText(record) ?? 0 }]);
+      },
+      keepAsText: (record) => {
+        handledObjectLinks().add(record.url);
+        unreadLinkChipToText(record);
+      },
+    };
+  });
   /** `pasteStart` is where the paste lands, so offsets into the pasted text are offsets from it. */
   const convertPastedObjectLinks = (
     pastedText: string,

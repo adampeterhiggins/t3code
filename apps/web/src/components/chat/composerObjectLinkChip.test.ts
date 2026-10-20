@@ -1,6 +1,10 @@
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { objectLinkChipDestination, objectLinkChipEdit } from "./composerObjectLinkChip";
+import {
+  objectLinkChipDestination,
+  objectLinkChipEdit,
+  resolveObjectLinkWithin,
+} from "./composerObjectLinkChip";
 
 const reference = { kind: "linear-issue", contextId: "linear:ENG-1", label: "ENG-1" } as const;
 const url = "https://linear.app/acme/issue/ENG-1/fix-it";
@@ -46,5 +50,30 @@ describe("objectLinkChipEdit", () => {
   it("is null once the link was edited away", () => {
     expect(objectLinkChipEdit("see", url, 4, reference)).toBeNull();
     expect(objectLinkChipEdit(`see ${url}/longer`, url, 4, reference)).toBeNull();
+  });
+});
+
+describe("resolveObjectLinkWithin", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("passes on a result that arrives in time", async () => {
+    await expect(resolveObjectLinkWithin(Promise.resolve("skipped"), 1_000)).resolves.toBe(
+      "skipped",
+    );
+  });
+
+  it("times out a load that never finishes", async () => {
+    vi.useFakeTimers();
+    const result = resolveObjectLinkWithin(new Promise<never>(() => {}), 1_000);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await expect(result).resolves.toBe("timed-out");
+  });
+
+  it("treats a loader that throws as unreadable", async () => {
+    await expect(resolveObjectLinkWithin(Promise.reject(new Error("boom")), 1_000)).resolves.toBe(
+      "unreadable",
+    );
   });
 });

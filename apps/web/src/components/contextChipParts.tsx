@@ -3,6 +3,7 @@ import type {
   GranolaNoteContextRecord,
   NotionPageContextRecord,
   PromptLinkContextRecord,
+  UnreadLinkContextRecord,
 } from "@t3tools/contracts";
 import {
   contextRepositoryOutcomeLabel,
@@ -24,7 +25,8 @@ import type {
   PullRequestContextMetadata,
   RepositoryContextRecord,
 } from "@t3tools/contracts";
-import { CircleDashedIcon, FilmIcon, ImageIcon } from "lucide-react";
+import { CircleDashedIcon, FilmIcon, ImageIcon, UnlinkIcon } from "lucide-react";
+import { composerObjectLinkNoun } from "@t3tools/shared/composerObjectLinks";
 import {
   Fragment,
   useState,
@@ -46,6 +48,7 @@ import { middleTruncateAttachmentName } from "./composerInlineChip";
 import { PullRequestContextDetails } from "./PullRequestContextDetails";
 import { PreviewCornerAction } from "./chat/PreviewCornerAction";
 import { ContextChip, ContextChipLabel, type ContextChipKind } from "./ContextChip";
+import { Button } from "./ui/button";
 import { Popover, PopoverPopup, PopoverTitle, PopoverTrigger } from "./ui/popover";
 import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "./ui/preview-card";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
@@ -98,6 +101,7 @@ export function ContextChipShell({
  */
 export function ContextChipPopover(props: {
   kind: ContextChipKind;
+  state?: "unresolved" | "invalid";
   icon: ReactNode;
   label: string;
   copyMarkdown?: string;
@@ -113,6 +117,7 @@ export function ContextChipPopover(props: {
         render={
           <ContextChip
             kind={props.kind}
+            {...(props.state ? { state: props.state } : {})}
             render={<button type="button" />}
             aria-label={`${props.accessibleLabel}. Show details`}
             data-markdown-copy={props.copyMarkdown}
@@ -744,6 +749,61 @@ export function RepositoryDetails(props: {
         </p>
       )}
     </div>
+  );
+}
+
+/**
+ * A link T3 Code tried to attach and could not read. The chip is drawn as failed so it reads
+ * differently from a plain link nobody tried; the agent receives the link itself.
+ */
+export function UnreadLinkChip(props: {
+  record: Pick<UnreadLinkContextRecord, "label" | "url" | "linkKind" | "reason">;
+  onOpenLink: (event: MouseEvent<HTMLElement>, url: string) => void;
+  /** Composer only: a sent message keeps what was sent. */
+  onRetry?: () => void;
+  onKeepAsText?: () => void;
+  copyMarkdown?: string;
+}) {
+  const noun = composerObjectLinkNoun(props.record.linkKind);
+  return (
+    <ContextChipPopover
+      kind="neutral"
+      state="invalid"
+      icon={<UnlinkIcon />}
+      label={props.record.label}
+      {...(props.copyMarkdown === undefined ? {} : { copyMarkdown: props.copyMarkdown })}
+      accessibleLabel={`Could not attach ${noun}, ${props.record.label}`}
+    >
+      <div className="flex flex-col gap-2">
+        <IssueDetailsHeader
+          summary={
+            props.record.reason === "timed-out"
+              ? `Loading this ${noun} timed out`
+              : `Could not read this ${noun}`
+          }
+          url={props.record.url}
+          linkLabel="Open link"
+          onOpenLink={props.onOpenLink}
+        />
+        <p className="text-xs text-muted-foreground">
+          The agent receives the link, not its contents.
+        </p>
+        {props.onRetry || props.onKeepAsText ? (
+          <div className="flex gap-2">
+            {props.onRetry ? (
+              <Button size="xs" variant="outline" onClick={props.onRetry}>
+                Retry
+              </Button>
+            ) : null}
+            {props.onKeepAsText ? (
+              <Button size="xs" variant="ghost" onClick={props.onKeepAsText}>
+                Keep as text
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </ContextChipPopover>
   );
 }
 

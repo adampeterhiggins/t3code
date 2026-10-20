@@ -21,7 +21,7 @@ import {
   toComposerContextId,
   toKindScopedComposerContextId,
 } from "./composerContextReferences.ts";
-import { promptLinkContextRecord } from "./integrationContextRecords.ts";
+import { promptLinkContextRecord, unreadLinkContextRecord } from "./integrationContextRecords.ts";
 
 const ctx = (value: string) => value as ComposerContextId;
 
@@ -216,6 +216,29 @@ describe("provider projection", () => {
     expect(projected).toContain(
       `t3 code prompt link: ${url}\nopens: acme/api\nprompt:\n  what happened?\n  \n  run 1`,
     );
+  });
+
+  it("hands the agent the link of one that could not be read", () => {
+    const url = "https://linear.app/acme/issue/ENG-7/fix-retry";
+    const record = unreadLinkContextRecord({ kind: "linear-issue", url }, "timed-out");
+    expect(record.label).toBe("ENG-7");
+    // A retry that fails differently still lands on the same chip.
+    expect(unreadLinkContextRecord({ kind: "linear-issue", url }, "unreadable").contextId).toBe(
+      record.contextId,
+    );
+    const projected = projectComposerContextForProvider({
+      text: `Look at ${formatComposerContextReference(record)}`,
+      records: [record],
+    });
+    expect(projected).toContain(`link: ${url}`);
+  });
+
+  it("names a link without a short label by what it points at", () => {
+    const record = unreadLinkContextRecord(
+      { kind: "slack-message", url: "https://acme.slack.com/archives/C1/p1727779620000100" },
+      "unreadable",
+    );
+    expect(record.label).toBe("Slack message");
   });
 
   it("inlines a Slack thread snapshot", () => {

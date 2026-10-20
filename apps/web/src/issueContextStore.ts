@@ -9,6 +9,7 @@ import type {
   PromptLinkContextRecord,
   GitHubIssueContextRecord,
   GitHubRefContextRecord,
+  UnreadLinkContextRecord,
   LinearIssueContextRecord,
   DiscordThreadContextRecord,
   SlackThreadContextRecord,
@@ -30,7 +31,8 @@ export type IssueContextRecord =
   | GranolaNoteContextRecord
   | SubagentContextRecord
   | PromptLinkContextRecord
-  | GitHubRefContextRecord;
+  | GitHubRefContextRecord
+  | UnreadLinkContextRecord;
 
 const EMPTY: ReadonlyArray<IssueContextRecord> = [];
 

@@ -16,12 +16,18 @@ import type {
   RepositoryContextRecord,
   SlackThreadContext,
   SlackThreadContextRecord,
+  UnreadLinkContextRecord,
 } from "@t3tools/contracts";
 
 import {
   sanitizeComposerContextLabel,
   toKindScopedComposerContextId,
 } from "./composerContextReferences.ts";
+import {
+  type ComposerObjectLink,
+  composerObjectLinkNoun,
+  objectLinkLabel,
+} from "./composerObjectLinks.ts";
 
 /**
  * Chip records for integration objects, from the snapshot the server read. Shared so the
@@ -233,5 +239,25 @@ export function promptLinkContextRecord(link: {
     url: link.url,
     prompt: link.prompt,
     target: link.target?.slice(0, 2048) ?? null,
+  };
+}
+
+/** A link the composer tried to attach and could not read: its chip says so, and keeps the link. */
+export function unreadLinkContextRecord(
+  link: Pick<ComposerObjectLink, "kind" | "url">,
+  reason: UnreadLinkContextRecord["reason"],
+): UnreadLinkContextRecord {
+  const noun = composerObjectLinkNoun(link.kind);
+  return {
+    version: 1,
+    kind: "unread-link",
+    contextId: toKindScopedComposerContextId("unread-link", link.url),
+    label: sanitizeComposerContextLabel(
+      objectLinkLabel(link.url) ?? `${noun.charAt(0).toUpperCase()}${noun.slice(1)}`,
+      "unread-link",
+    ),
+    url: link.url.slice(0, 2_048),
+    linkKind: link.kind,
+    reason,
   };
 }

@@ -23,6 +23,7 @@ const CONTEXT_CHIP_PRESENTATIONS = {
   "discord-thread": { accent: "#5865F2", symbol: "bubble.left.and.bubble.right" },
   repository: { accent: "#009c9c", symbol: "folder" },
   checkout: { accent: "#0096af", symbol: "laptopcomputer" },
+  "unread-link": { accent: "#d55665", symbol: "link" },
 } as const;
 
 export function composerChipSizeSuffix(record?: {

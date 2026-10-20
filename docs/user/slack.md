@@ -67,8 +67,8 @@ A Slack link that stays a link in a message, such as one in an agent's reply, sh
 author instead of its URL on web and desktop while Slack is connected. Hover it for the message's
 first line.
 
-If T3 Code can't read a pasted link, it stays as text. The first time that happens because Slack
-isn't connected, a notice says so.
+If T3 Code can't read a pasted link, it becomes a broken-link chip you can retry. The first time
+that happens because Slack isn't connected, a notice says so.
 
 ## Link a thread to a T3 Code thread
 

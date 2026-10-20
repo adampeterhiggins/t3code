@@ -372,9 +372,12 @@ GitHub repository, a Notion page, a Granola note, or a Slack or Discord message 
 converts when you type a space or new line after it. The chip replaces the link once the item
 loads, even if you switch threads meanwhile; sending or saving a draft waits until it does. A link to one comment on a pull request attaches that comment, with the replies before it
 when it is part of a review thread. In the attach menu's pull request picker, right-click a pull
-request and choose **Attach a comment…** to pick one of its comments instead. A link T3 Code cannot read stays as text: a Linear issue or Slack message before you connect that service, or a
-pull request from a host none of your projects is checked out from, or a pull request comment
-the host does not return, rather than attaching the whole pull request in its place. Paste with
+request and choose **Attach a comment…** to pick one of its comments instead. A link T3 Code tries and cannot read, or that takes more than 20 seconds to load, becomes a red
+broken-link chip: a Linear issue or Slack message before you connect that service, or a pull request
+comment the host does not return, rather than attaching the whole pull request in its place. The
+agent receives the link itself. Hover the chip to see why, then choose **Retry** or **Keep as
+text**. A link T3 Code does not try stays as text: one whose integration is turned off, or a pull
+request from a host none of your projects is checked out from. Paste with
 `Cmd+Shift+V` (`Ctrl+Shift+V` elsewhere) to keep a link as text. A link you turn back into text
 with undo, or whose chip you delete, is not converted again as you keep typing.
 

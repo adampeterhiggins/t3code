@@ -20,6 +20,7 @@ const CONTEXT_ICONS: Readonly<Record<string, MarkdownFileIcon>> = {
   tag: "git",
   "arrow.triangle.branch": "git",
   "circle.and.line.horizontal": "git",
+  link: "default",
 };
 
 export function enrichedContextLinkPresentation(
