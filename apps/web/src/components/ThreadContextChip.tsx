@@ -1,9 +1,10 @@
 import type { ThreadContextRecord } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
-import { MessagesSquareIcon } from "lucide-react";
+import { BotIcon, FolderIcon, GitBranchIcon, MessagesSquareIcon } from "lucide-react";
 
-import { useThreadShell } from "~/state/entities";
+import { useProject, useThreadShell } from "~/state/entities";
 import { ContextChip, ContextChipLabel } from "./ContextChip";
+import { ThreadHoverCard, ThreadHoverCardPopup } from "./ThreadHoverCard";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
 export function ThreadContextChip(props: {
@@ -12,7 +13,9 @@ export function ThreadContextChip(props: {
 }) {
   const { environmentId, threadId } = props.record;
   const shell = useThreadShell({ environmentId, threadId });
+  const project = useProject(shell ? { environmentId, projectId: shell.projectId } : null);
   const title = shell?.title?.trim() || props.record.title;
+  const preview = shell?.source.latestVisibleMessage?.text.trim();
   return (
     <Tooltip>
       <TooltipTrigger
@@ -29,7 +32,41 @@ export function ThreadContextChip(props: {
           </ContextChip>
         }
       />
-      <TooltipPopup side="top">{shell ? "Open thread" : "Thread no longer available"}</TooltipPopup>
+      {shell ? (
+        <ThreadHoverCardPopup side="top">
+          <ThreadHoverCard title={title}>
+            {project ? (
+              <div className="flex min-w-0 items-center gap-2">
+                <FolderIcon aria-hidden className="size-3 shrink-0" />
+                <span className="truncate">{project.title}</span>
+              </div>
+            ) : null}
+            <div className="flex min-w-0 items-center gap-2">
+              <BotIcon aria-hidden className="size-3 shrink-0" />
+              <span className="truncate">{shell.modelSelection.model}</span>
+              <span className="ml-auto shrink-0 capitalize">
+                {shell.source.status.replaceAll("_", " ")}
+              </span>
+            </div>
+            {shell.branch ? (
+              <div className="flex min-w-0 items-center gap-2">
+                <GitBranchIcon aria-hidden className="size-3 shrink-0" />
+                <span className="truncate">{shell.branch}</span>
+              </div>
+            ) : null}
+            {preview ? (
+              <p className="line-clamp-4 border-t border-border/60 pt-2 break-words whitespace-pre-wrap text-foreground/85">
+                {preview.slice(0, 600)}
+                {preview.length > 600 ? "…" : ""}
+              </p>
+            ) : (
+              <p>No messages yet</p>
+            )}
+          </ThreadHoverCard>
+        </ThreadHoverCardPopup>
+      ) : (
+        <TooltipPopup side="top">Thread no longer available</TooltipPopup>
+      )}
     </Tooltip>
   );
 }
