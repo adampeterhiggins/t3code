@@ -46,7 +46,12 @@ import * as Metrics from "../observability/Metrics.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
-import { isMissedFixedTimeRun, isSameSchedule, nextScheduledRunAt } from "./Schedule.ts";
+import {
+  isMissedFixedTimeRun,
+  isSameSchedule,
+  missedRunCatchUpAt,
+  nextScheduledRunAt,
+} from "./Schedule.ts";
 import {
   redactHeaders,
   redactQuery,
@@ -679,9 +684,12 @@ export const layer = Layer.effect(
 
     const runTask = Effect.fn("ScheduledTaskService.runTask")(function* (
       task: ScheduledTask,
-      trigger: "scheduled" | "manual" | "webhook",
+      // catch_up is a timer run firing late for an occurrence the server slept
+      // through; it is distinct only in the dispatched command id and logs.
+      trigger: "scheduled" | "catch_up" | "manual" | "webhook",
       webhook?: { readonly deliveryId: string; readonly prompt: string },
     ) {
+      const timerRun = trigger === "scheduled" || trigger === "catch_up";
       const reserved = yield* Ref.modify(activeRuns, (active) => {
         if (active.has(task.id)) return [false, active] as const;
         const next = new Set(active);
@@ -689,7 +697,7 @@ export const layer = Layer.effect(
         return [true, next] as const;
       });
       if (!reserved) {
-        if (trigger !== "scheduled") {
+        if (!timerRun) {
           return yield* taskError("Schedule task is already running.", { taskId: task.id });
         }
         return { task, threadId: null };
@@ -709,7 +717,7 @@ export const layer = Layer.effect(
               reason: "The task was deleted before this delivery ran.",
             });
           }
-          if (trigger !== "scheduled") {
+          if (!timerRun) {
             return yield* taskError("Schedule task not found.", { taskId: task.id });
           }
           return { task, threadId: null };
@@ -717,7 +725,7 @@ export const layer = Layer.effect(
         const parsedNextRunAt =
           active.nextRunAt === null ? Option.none() : DateTime.make(active.nextRunAt);
         if (
-          trigger === "scheduled" &&
+          timerRun &&
           (!active.enabled ||
             Option.isNone(parsedNextRunAt) ||
             DateTime.toEpochMillis(parsedNextRunAt.value) > DateTime.toEpochMillis(startedAt))
@@ -862,6 +870,20 @@ export const layer = Layer.effect(
       yield* notifyChanged;
     });
 
+    const catchUpMissedRun = Effect.fn("ScheduledTaskService.catchUpMissedRun")(function* (
+      task: ScheduledTask,
+      dueAt: DateTime.DateTime,
+      now: DateTime.DateTime,
+    ) {
+      const catchUpAt = missedRunCatchUpAt(task.schedule, dueAt, now);
+      if (catchUpAt === null) return yield* rescheduleMissedRun(task, now);
+      yield* Effect.logInfo("Catching up missed schedule task run", {
+        taskId: task.id,
+        missedRunAt: iso(catchUpAt),
+      });
+      yield* runTask(task, "catch_up");
+    });
+
     const runDueTasks = Effect.fn("ScheduledTaskService.runDueTasks")(function* () {
       const now = yield* localNow;
       const tasks = yield* listDueTasks(now).pipe(
@@ -875,7 +897,7 @@ export const layer = Layer.effect(
         ({ task, dueAt }) =>
           Effect.suspend(() =>
             isMissedFixedTimeRun(task.schedule, dueAt, now)
-              ? rescheduleMissedRun(task, now)
+              ? catchUpMissedRun(task, dueAt, now)
               : runTask(task, "scheduled"),
           ).pipe(
             Effect.catch((cause) =>

@@ -56,6 +56,7 @@ export interface DraftState {
   readonly intervalMinutes: string;
   readonly timeOfDay: string;
   readonly weekdays: ReadonlySet<number>;
+  readonly catchUpMissed: boolean;
   readonly projectId: string;
   readonly threadId: string;
   readonly workspaceMode: WorkspaceMode;
@@ -112,6 +113,7 @@ export function scheduleFromDraft(draft: DraftState): ScheduledTaskUpsertSchedul
     type: "fixed_time",
     timeOfDay: draft.timeOfDay || "09:00",
     ...(selectedEveryDay ? {} : { weekdays: [...draft.weekdays].toSorted() }),
+    ...(draft.catchUpMissed ? { catchUpMissed: true } : {}),
   };
 }
 
@@ -132,6 +134,7 @@ export function taskToDraft(task: ScheduledTask): DraftState {
       schedule.type === "interval" ? String(Math.max(1, schedule.everyMs / 60_000)) : "15",
     timeOfDay: schedule.type === "fixed_time" ? schedule.timeOfDay : "09:00",
     weekdays,
+    catchUpMissed: schedule.type === "fixed_time" && schedule.catchUpMissed === true,
     projectId: task.projectId,
     threadId: task.threadId ?? "",
     workspaceMode: task.workspaceStrategy.type,

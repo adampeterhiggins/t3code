@@ -153,6 +153,24 @@ describe("scheduleFromDraft", () => {
     });
   });
 
+  it("round-trips catching up a missed run", () => {
+    const schedule = scheduleFromDraft({ ...DEFAULT_SCHEDULE, catchUpMissed: true });
+    expect(schedule).toEqual({
+      type: "fixed_time",
+      timeOfDay: "09:00",
+      weekdays: [1, 2, 3, 4, 5],
+      catchUpMissed: true,
+    });
+    expect(
+      scheduleDraftForTask({
+        schedule: { type: "fixed_time", timeOfDay: "09:00", catchUpMissed: true },
+      }).catchUpMissed,
+    ).toBe(true);
+    expect(scheduleDraftForTask({ schedule: { type: "fixed_time", timeOfDay: "09:00" } })).toEqual(
+      expect.objectContaining({ catchUpMissed: false }),
+    );
+  });
+
   it("stores every day without a weekday restriction", () => {
     expect(scheduleFromDraft({ ...DEFAULT_SCHEDULE, weekdays: [1, 2, 3, 4, 5, 6, 0] })).toEqual({
       type: "fixed_time",

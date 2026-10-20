@@ -76,6 +76,54 @@ export function isMissedFixedTimeRun(
   return DateTime.toEpochMillis(now) - DateTime.toEpochMillis(dueAt) > MISSED_FIXED_TIME_GRACE_MS;
 }
 
+function latestFixedTimeRunAt(
+  schedule: Extract<ScheduledTaskSchedule, { type: "fixed_time" }>,
+  at: DateTime.DateTime,
+): DateTime.DateTime | null {
+  const time = parseTimeOfDay(schedule.timeOfDay);
+  if (time === null) return null;
+  const weekdays =
+    schedule.weekdays && schedule.weekdays.length > 0 ? new Set(schedule.weekdays) : null;
+  for (let offset = 0; offset <= 7; offset += 1) {
+    const candidate = DateTime.setParts(DateTime.subtract(at, { days: offset }), {
+      hour: time.hour,
+      minute: time.minute,
+      second: 0,
+      millisecond: 0,
+    });
+    if (DateTime.toEpochMillis(candidate) > DateTime.toEpochMillis(at)) continue;
+    if (weekdays !== null && !weekdays.has(DateTime.toParts(candidate).weekDay)) continue;
+    return candidate;
+  }
+  return null;
+}
+
+/**
+ * The occurrence a missed fixed-time run should catch up with, or null to skip
+ * it. Only the most recent occurrence is eligible, so a long sleep never
+ * replays a backlog, and only while it is still that occurrence's local day: a
+ * missed evening brief runs later that evening, not the next morning. `now`
+ * must be zoned to the scheduler's local zone.
+ */
+export function missedRunCatchUpAt(
+  schedule: ScheduledTaskSchedule,
+  dueAt: DateTime.DateTime,
+  now: DateTime.DateTime,
+): DateTime.DateTime | null {
+  if (schedule.type !== "fixed_time" || schedule.catchUpMissed !== true) return null;
+  const latest = latestFixedTimeRunAt(schedule, now);
+  if (latest === null || DateTime.toEpochMillis(latest) < DateTime.toEpochMillis(dueAt)) {
+    return null;
+  }
+  const latestParts = DateTime.toParts(latest);
+  const nowParts = DateTime.toParts(now);
+  return latestParts.year === nowParts.year &&
+    latestParts.month === nowParts.month &&
+    latestParts.day === nowParts.day
+    ? latest
+    : null;
+}
+
 function describeSchedule(schedule: ScheduledTaskSchedule): string {
   if (schedule.type === "webhook") return "On webhook";
   if (schedule.type === "interval") {

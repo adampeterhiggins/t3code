@@ -299,6 +299,26 @@ function scheduledTaskWorkspaceStrategy(
     : { type: "worktree", baseRef: "main", startFromOrigin: true };
 }
 
+/**
+ * An agent that only retimes a fixed-time task resends the schedule without
+ * catchUpMissed; "omit a field to leave it as-is" must cover that nested flag.
+ */
+function withExistingCatchUp(
+  next: ScheduledTaskUpsertInput["schedule"] | undefined,
+  existing: ScheduledTask["schedule"],
+): ScheduledTaskUpsertInput["schedule"] {
+  if (next === undefined) return existing;
+  if (
+    next.type !== "fixed_time" ||
+    next.catchUpMissed !== undefined ||
+    existing.type !== "fixed_time" ||
+    existing.catchUpMissed === undefined
+  ) {
+    return next;
+  }
+  return { ...next, catchUpMissed: existing.catchUpMissed };
+}
+
 function scheduledTaskSummary(task: ScheduledTask, mayRun: boolean): OrchestratorMcpScheduledTask {
   return {
     scheduledTaskId: task.id,
@@ -1919,7 +1939,7 @@ const make = Effect.gen(function* () {
           title: input.title ?? existing.title,
           prompt: input.prompt ?? existing.prompt,
           enabled: input.enabled ?? existing.enabled,
-          schedule: input.schedule ?? existing.schedule,
+          schedule: withExistingCatchUp(input.schedule, existing.schedule),
           projectId: existing.projectId,
           threadId,
           workspaceStrategy,

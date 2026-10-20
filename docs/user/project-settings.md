@@ -76,6 +76,12 @@ Webhook tasks only run when their URL is called, so they can't be run
 immediately.
 Leaving an edited form asks before discarding unsaved changes.
 
+A fixed-time run is skipped if the environment is asleep or T3 Code is closed
+at that time. Turn on **Catch up missed run** to run it once when the
+environment is back, as long as it is still the same day. A task missed for
+several days runs once, not once per missed day, and a run missed late in the
+evening is not made up the next morning.
+
 ## Webhook automations
 
 In **Settings → Scheduled tasks**, choose **On webhook**
