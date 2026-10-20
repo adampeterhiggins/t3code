@@ -20,7 +20,7 @@ import { openSlackMessagePicker } from "./SlackMessagePicker";
 import { openThreadAttachPicker } from "./ThreadAttachPicker";
 
 /** Every attach source other than files, each opened as a picker against a thread's draft. */
-export type ComposerAttachPicker = Exclude<DesktopQuickMessageAction, "send" | "start-from">;
+export type ComposerAttachPicker = Exclude<DesktopQuickMessageAction, "send">;
 
 export function openComposerAttachPicker(
   picker: ComposerAttachPicker,

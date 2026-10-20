@@ -1,3 +1,4 @@
+import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { availableScratchWorkspaceRoot } from "@t3tools/client-runtime/operations/projects";
 import {
   isAtomCommandInterrupted,
@@ -6,8 +7,10 @@ import {
 import { isGitHubProject } from "@t3tools/client-runtime/state/github-issues";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import {
+  AuthSourceControlWriteScope,
   DEFAULT_SERVER_SETTINGS,
   type DesktopQuickMessageAction,
+  type DesktopQuickMessageStartFrom,
   type EnvironmentId,
   type ModelSelection,
   type ProviderInteractionMode,
@@ -19,7 +22,14 @@ import { createModelSelection } from "@t3tools/shared/model";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/reactivity";
-import { EllipsisIcon, FileIcon, FolderIcon, XIcon } from "lucide-react";
+import {
+  CircleDotIcon,
+  EllipsisIcon,
+  FileIcon,
+  FolderIcon,
+  GitBranchIcon,
+  XIcon,
+} from "lucide-react";
 import {
   type ClipboardEvent,
   type DragEvent,
@@ -62,6 +72,7 @@ import {
 import { projectEnvironment } from "~/state/projects";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { EMPTY_SERVER_PROVIDERS, serverEnvironment } from "~/state/server";
+import { useEnvironmentScope } from "~/state/session";
 import { allReachableShellsLiveAtom } from "~/state/shell";
 
 import { ComposerFooterModeControls, composerRuntimeModeOptions } from "../chat/ChatComposer";
@@ -76,6 +87,9 @@ import { ComposerPrimaryActions } from "../chat/ComposerPrimaryActions";
 import { ComposerImageThumbnail } from "../chat/ComposerImageThumbnail";
 import { ComposerSurface } from "../chat/ComposerSurface";
 import { DraftProjectName } from "../chat/DraftProjectName";
+import { StartFromPickerDialog } from "../chat/StartFromPicker";
+import { LinearIcon } from "../Icons";
+import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { ProviderModelPicker } from "../chat/ProviderModelPicker";
 import { shouldRenderTraitsControls, TraitsPicker } from "../chat/TraitsPicker";
 import { useComposerCheckoutItems } from "../chat/useComposerCheckoutItems";
@@ -109,7 +123,7 @@ function QuickMessageAttachMenu(props: {
   readonly project: EnvironmentProject;
   readonly pullRequestsAvailable: boolean;
   readonly onAttachFiles: () => void;
-  readonly onPick: (picker: Exclude<DesktopQuickMessageAction, "send" | "start-from">) => void;
+  readonly onPick: (picker: Exclude<DesktopQuickMessageAction, "send">) => void;
 }) {
   const checkouts = useComposerCheckoutItems(props.environmentId, { enabled: false, query: "" });
   return (
@@ -121,6 +135,36 @@ function QuickMessageAttachMenu(props: {
       onAttachFiles={props.onAttachFiles}
       onPick={props.onPick}
     />
+  );
+}
+
+function StartFromChip(props: {
+  readonly startFrom: DesktopQuickMessageStartFrom;
+  readonly onRemove: () => void;
+}) {
+  const { startFrom } = props;
+  const [Icon, label] =
+    startFrom.type === "pull-request"
+      ? [PullRequestGlyph.pullRequest, `#${startFrom.number} ${startFrom.title}`]
+      : startFrom.type === "branch"
+        ? [GitBranchIcon, startFrom.branch]
+        : startFrom.type === "github-issue"
+          ? [CircleDotIcon, `#${startFrom.number} ${startFrom.title}`]
+          : [LinearIcon, `${startFrom.identifier} ${startFrom.title}`];
+  return (
+    <span className="inline-flex max-w-72 items-center gap-1.5 rounded-lg bg-muted py-0.5 ps-2 pe-0.5 text-muted-foreground text-xs">
+      <Icon className="size-3.5 shrink-0" aria-hidden="true" />
+      <span className="min-w-0 truncate">{label}</span>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-xs"
+        aria-label={`Don't start from ${label}`}
+        onClick={props.onRemove}
+      >
+        <XIcon />
+      </Button>
+    </span>
   );
 }
 
@@ -183,6 +227,8 @@ export function QuickMessagePanel() {
   const [files, setFiles] = useState<ReadonlyArray<{ readonly id: string; readonly file: File }>>(
     [],
   );
+  const [startFrom, setStartFrom] = useState<DesktopQuickMessageStartFrom | null>(null);
+  const [startFromOpen, setStartFromOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerQuery, setPickerQuery] = useState("");
   const [sending, setSending] = useState(false);
@@ -240,6 +286,9 @@ export function QuickMessagePanel() {
     ) !== null;
   const environmentId = project?.environmentId ?? null;
   const environment = environments.find((entry) => entry.environmentId === environmentId);
+  // The same gate the draft's chat view puts on its own start-from picker, which applies the pick.
+  const canWriteSourceControl = useEnvironmentScope(environmentId, AuthSourceControlWriteScope);
+  const canStartFrom = canWriteSourceControl && chosenProjectKey !== NO_PROJECT_VALUE;
   const serverSettings = useAtomValue(
     environmentId ? serverEnvironment.settingsValueAtom(environmentId) : noEnvironmentSettingsAtom,
   );
@@ -328,6 +377,7 @@ export function QuickMessagePanel() {
     setError(null);
     try {
       await bridge.submit({
+        type: "draft",
         environmentId: project.environmentId,
         projectId: project.id,
         text: prompt.trim(),
@@ -341,10 +391,12 @@ export function QuickMessagePanel() {
         modelSelection,
         runtimeMode,
         interactionMode: planModeEnabled ? interactionMode : "default",
+        ...(startFrom !== null ? { startFrom } : {}),
         action,
       });
       setPrompt("");
       setFiles([]);
+      setStartFrom(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not start the thread.");
     } finally {
@@ -436,7 +488,7 @@ export function QuickMessagePanel() {
             <ComposerSurface.Main>
               <div data-chat-composer-surface="true" className="rounded-3xl">
                 <div className="relative px-4 pt-4 pb-2">
-                  {project ? (
+                  {project && canStartFrom ? (
                     <Tooltip>
                       <TooltipTrigger
                         render={
@@ -446,13 +498,13 @@ export function QuickMessagePanel() {
                             size="icon-sm"
                             className="absolute end-2 top-2 z-10 sm:end-2.5 sm:top-2.5"
                             aria-label="Start from a pull request, branch, or issue"
-                            onClick={() => void submit("start-from")}
+                            onClick={() => setStartFromOpen(true)}
                           />
                         }
                       >
                         <EllipsisIcon />
                       </TooltipTrigger>
-                      <TooltipPopup>Start from a PR, branch, or issue in T3 Code</TooltipPopup>
+                      <TooltipPopup>Start from a PR, branch, or issue</TooltipPopup>
                     </Tooltip>
                   ) : null}
                   {projectItems.length > 0 ? (
@@ -496,6 +548,7 @@ export function QuickMessagePanel() {
                           }
                           setChosenProjectKey(item.value);
                           setChosenModel(null);
+                          setStartFrom(null);
                           inputRef.current?.focus();
                         }}
                       >
@@ -553,8 +606,17 @@ export function QuickMessagePanel() {
                       </Combobox>
                     </div>
                   ) : null}
-                  {files.length > 0 ? (
+                  {files.length > 0 || startFrom !== null ? (
                     <div className="flex flex-wrap items-center gap-1.5 pe-7 pb-2">
+                      {startFrom !== null ? (
+                        <StartFromChip
+                          startFrom={startFrom}
+                          onRemove={() => {
+                            setStartFrom(null);
+                            inputRef.current?.focus();
+                          }}
+                        />
+                      ) : null}
                       {files.map(({ id, file }) =>
                         file.type.startsWith("image/") ? (
                           <div
@@ -718,6 +780,25 @@ export function QuickMessagePanel() {
           </ComposerSurface.Host>
         </ComposerSurface.Shell>
       </form>
+      {startFromOpen && project ? (
+        <StartFromPickerDialog
+          environmentId={project.environmentId}
+          projectRef={scopeProjectRef(project.environmentId, project.id)}
+          projectId={project.id}
+          workspaceRoot={project.workspaceRoot}
+          githubIssuesAvailable={isGitHubProject(project)}
+          linkThreadRef={null}
+          onPick={async (pick) => {
+            setStartFrom(pick);
+            return true;
+          }}
+          onOpen={(href) => void bridge?.submit({ type: "open", href }).catch(noop)}
+          onClose={() => {
+            setStartFromOpen(false);
+            inputRef.current?.focus();
+          }}
+        />
+      ) : null}
     </QuickMessageFrame>
   );
 }

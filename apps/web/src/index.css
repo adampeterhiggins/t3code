@@ -1754,6 +1754,14 @@ html[data-quick-message] body {
   background: transparent !important;
 }
 
+/* A dialog's dimmed backdrop would fill the panel's transparent margin, showing as a tinted
+   rectangle over the apps behind the window. */
+html[data-quick-message] .dialog-backdrop {
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
 pre,
 code {
   font-family: var(--font-mono);

@@ -11,7 +11,7 @@ import type {
 } from "./browserImport.ts";
 import { AuthAccessTokenResult, AuthSessionState, AuthWebSocketTicketResult } from "./auth.ts";
 import { AdvertisedEndpoint } from "./remoteAccess.ts";
-import { ExecutionEnvironmentDescriptor } from "./environment.ts";
+import { ExecutionEnvironmentDescriptor, ThreadEnvMode } from "./environment.ts";
 import {
   type ClientSettings,
   ClientSettingsSchema,
@@ -227,11 +227,10 @@ export type DesktopQuickMessageFile = typeof DesktopQuickMessageFile.Type;
 
 /**
  * What the composer does once the main window holds the draft: send it, or open one of the
- * composer's pickers there. The pickers attach to a draft, which only the main window owns.
+ * composer's attach pickers there. Those pickers attach to a draft, which only the main window owns.
  */
 export const DesktopQuickMessageAction = Schema.Literals([
   "send",
-  "start-from",
   "thread",
   "linear-issue",
   "notion-page",
@@ -245,17 +244,60 @@ export const DesktopQuickMessageAction = Schema.Literals([
 ]);
 export type DesktopQuickMessageAction = typeof DesktopQuickMessageAction.Type;
 
-/** What the quick message panel hands the main window to start as a new thread. */
-export const DesktopQuickMessageSubmission = Schema.Struct({
-  environmentId: EnvironmentId,
-  projectId: ProjectId,
-  text: Schema.String,
-  files: Schema.Array(DesktopQuickMessageFile),
-  modelSelection: ModelSelection,
-  runtimeMode: RuntimeMode,
-  interactionMode: ProviderInteractionMode,
-  action: DesktopQuickMessageAction,
-});
+/**
+ * Where a new thread starts, picked in a start-from picker. The labels are only for showing the
+ * pick; the main window checks out or attaches from the reference.
+ */
+export const DesktopQuickMessageStartFrom = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal("pull-request"),
+    url: Schema.String,
+    number: Schema.Number,
+    title: Schema.String,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("branch"),
+    branch: Schema.String,
+    worktreePath: Schema.NullOr(Schema.String),
+    envMode: ThreadEnvMode,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("github-issue"),
+    url: Schema.String,
+    number: Schema.Number,
+    title: Schema.String,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("linear-issue"),
+    issueId: Schema.String,
+    identifier: Schema.String,
+    title: Schema.String,
+  }),
+]);
+export type DesktopQuickMessageStartFrom = typeof DesktopQuickMessageStartFrom.Type;
+
+/**
+ * What the quick message panel hands the main window: a new thread to start, or an app path to
+ * open there, such as an existing thread picked instead of starting a second one.
+ */
+export const DesktopQuickMessageSubmission = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal("draft"),
+    environmentId: EnvironmentId,
+    projectId: ProjectId,
+    text: Schema.String,
+    files: Schema.Array(DesktopQuickMessageFile),
+    modelSelection: ModelSelection,
+    runtimeMode: RuntimeMode,
+    interactionMode: ProviderInteractionMode,
+    startFrom: Schema.optional(DesktopQuickMessageStartFrom),
+    action: DesktopQuickMessageAction,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("open"),
+    href: Schema.String,
+  }),
+]);
 export type DesktopQuickMessageSubmission = typeof DesktopQuickMessageSubmission.Type;
 
 /** Sent each time the panel opens; the panel never persists settings, so it adopts these. */

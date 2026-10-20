@@ -12,6 +12,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import type {
+  DesktopQuickMessageStartFrom,
   EnvironmentId,
   GitHubIssueStateFilter,
   GitHubIssueSummary,
@@ -23,10 +24,10 @@ import type {
   VcsRef,
 } from "@t3tools/contracts";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useRouter } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
 import { CalendarClockIcon, CalendarPlusIcon, GitBranchIcon } from "lucide-react";
-import { type KeyboardEvent, type ReactNode, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useEffect, useEffectEvent, useState } from "react";
 
 import { useRunScheduledTask } from "~/hooks/useRunThreadScheduledTask";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
@@ -142,7 +143,24 @@ function closeStartFromPicker(): void {
   appAtomRegistry.set(startFromPickerOpenAtom, false);
 }
 
-interface StartFromPickerProps {
+interface PendingStartFrom {
+  readonly threadRef: ScopedThreadRef;
+  readonly pick: DesktopQuickMessageStartFrom;
+  readonly onApplied: (applied: boolean) => void;
+}
+
+/** A pick made outside the draft's chat view, such as in the quick message panel. */
+const pendingStartFromAtom = Atom.make<PendingStartFrom | null>(null).pipe(
+  Atom.keepAlive,
+  Atom.withLabel("chat:pending-start-from"),
+);
+
+/** Applies a pick to a new draft once its chat view mounts, as if picked there. */
+export function applyStartFromToDraft(pending: PendingStartFrom): void {
+  appAtomRegistry.set(pendingStartFromAtom, pending);
+}
+
+interface StartFromPickerHostProps {
   readonly environmentId: EnvironmentId;
   readonly projectRef: ScopedProjectRef;
   readonly projectId: ProjectId;
@@ -158,10 +176,140 @@ interface StartFromPickerProps {
 }
 
 /** Mounted by a local draft's chat view; shows the picker while it is open. */
-export function StartFromPickerHost(props: StartFromPickerProps) {
+export function StartFromPickerHost(props: StartFromPickerHostProps) {
+  const { environmentId, threadRef } = props;
   const open = useAtomValue(startFromPickerOpenAtom);
+  const pending = useAtomValue(pendingStartFromAtom);
+  const navigate = useNavigate();
+  const applyPick = useApplyStartFrom(props);
+
+  const applyPending = useEffectEvent((next: PendingStartFrom) => {
+    appAtomRegistry.set(pendingStartFromAtom, null);
+    void applyPick(next.pick).then(next.onApplied);
+  });
+  useEffect(() => {
+    if (
+      pending !== null &&
+      pending.threadRef.environmentId === threadRef.environmentId &&
+      pending.threadRef.threadId === threadRef.threadId
+    ) {
+      applyPending(pending);
+    }
+  }, [pending, threadRef.environmentId, threadRef.threadId]);
+
   if (!open) return null;
-  return <StartFromPickerDialog {...props} />;
+  return (
+    <StartFromPickerDialog
+      environmentId={environmentId}
+      projectRef={props.projectRef}
+      projectId={props.projectId}
+      workspaceRoot={props.workspaceRoot}
+      githubIssuesAvailable={props.githubIssuesAvailable}
+      linkThreadRef={threadRef}
+      onPick={applyPick}
+      onOpen={(href) => void navigate({ href })}
+      onNewAutomation={() => {
+        const source = props.readAutomationSource();
+        if (source === null) return false;
+        setPendingScheduledTaskDraft({
+          environmentId,
+          seed: scheduledTaskSeedFromComposer(source),
+        });
+        void navigate({ to: "/settings/scheduled-tasks", search: { environmentId } });
+        return true;
+      }}
+      onClose={closeStartFromPicker}
+    />
+  );
+}
+
+/**
+ * Points a draft at a pick: checks a pull request out in its own worktree, or reuses the one it
+ * is already checked out in; works on a branch where `resolveBranchStart` says; attaches and
+ * links an issue. Resolves whether the pick took.
+ */
+function useApplyStartFrom(props: StartFromPickerHostProps) {
+  const { environmentId, workspaceRoot, threadRef, onCheckout } = props;
+  const preparePullRequestCheckout = usePreparePullRequestThreadAction({
+    environmentId,
+    cwd: workspaceRoot,
+  });
+  const attachIssue = useAttachLinearIssue();
+  const linkIssue = useLinkLinearIssue();
+  const attachGitHubIssue = useAttachGitHubIssue();
+  const linkGitHubIssue = useLinkGitHubIssue();
+
+  return async (pick: DesktopQuickMessageStartFrom): Promise<boolean> => {
+    switch (pick.type) {
+      case "branch":
+        onCheckout({ branch: pick.branch, worktreePath: pick.worktreePath, envMode: pick.envMode });
+        return true;
+      case "linear-issue": {
+        const attached = await attachIssue(threadRef, pick.issueId);
+        if (attached) await linkIssue(threadRef, pick.issueId);
+        return attached;
+      }
+      case "github-issue": {
+        const attached = await attachGitHubIssue(threadRef, pick.url);
+        if (attached) await linkGitHubIssue(threadRef, pick.url);
+        return attached;
+      }
+      case "pull-request": {
+        const result = await preparePullRequestCheckout.run({
+          reference: pick.url,
+          mode: "worktree",
+          // The project's setup script runs in a new worktree for the thread it is made for.
+          threadId: threadRef.threadId,
+        });
+        if (result._tag === "Failure") {
+          if (!isAtomCommandInterrupted(result)) {
+            const failure = squashAtomCommandFailure(result);
+            toastManager.add({
+              type: "error",
+              title: `Could not check out #${pick.number}`,
+              description: failure instanceof Error ? failure.message : undefined,
+            });
+          }
+          preparePullRequestCheckout.resetError();
+          return false;
+        }
+        onCheckout({
+          branch: result.value.branch,
+          worktreePath: result.value.worktreePath,
+          envMode: "worktree",
+        });
+        if (!result.value.isOnPullRequestHead) {
+          toastManager.add({
+            type: "warning",
+            title: "Checked out, but not on the latest commits",
+            description:
+              "The worktree holds uncommitted work or local commits, so it stays behind the pull request.",
+          });
+        }
+        return true;
+      }
+    }
+  };
+}
+
+interface StartFromPickerDialogProps {
+  readonly environmentId: EnvironmentId;
+  readonly projectRef: ScopedProjectRef;
+  readonly projectId: ProjectId;
+  readonly workspaceRoot: string;
+  readonly githubIssuesAvailable: boolean;
+  /** Where links in previews can open in-app; without one they open outside the app. */
+  readonly linkThreadRef: ScopedThreadRef | null;
+  /**
+   * Resolves whether the pick took. The picker stays open until then, so nothing is sent from
+   * the old checkout in the meantime.
+   */
+  readonly onPick: (pick: DesktopQuickMessageStartFrom) => Promise<boolean>;
+  /** Opens an app path, such as a thread already working on the pick. */
+  readonly onOpen: (href: string) => void;
+  /** Starts a new automation from the composer; returns whether it did. */
+  readonly onNewAutomation?: () => boolean;
+  readonly onClose: () => void;
 }
 
 interface ExistingThreadsPrompt {
@@ -170,13 +318,9 @@ interface ExistingThreadsPrompt {
   readonly startNew: () => void;
 }
 
-function StartFromPickerDialog(props: StartFromPickerProps) {
-  const { environmentId, projectRef, projectId, workspaceRoot, threadRef } = props;
-  const navigate = useNavigate();
-  const attachIssue = useAttachLinearIssue();
-  const linkIssue = useLinkLinearIssue();
-  const attachGitHubIssue = useAttachGitHubIssue();
-  const linkGitHubIssue = useLinkGitHubIssue();
+export function StartFromPickerDialog(props: StartFromPickerDialogProps) {
+  const { environmentId, projectRef, projectId, workspaceRoot, linkThreadRef, onClose } = props;
+  const router = useRouter();
   const tabs = props.githubIssuesAvailable ? ALL_TABS : TABS_WITHOUT_GITHUB_ISSUES;
   const [tab, setTab] = useState<StartFromTab>("pull-requests");
   const [query, setQuery] = useState("");
@@ -187,8 +331,6 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
 
   const projectRefs = [projectRef];
   const threads = useThreadShellsForProjectRefs(projectRefs);
-  const checkoutScope = { environmentId, cwd: workspaceRoot };
-  const preparePullRequestCheckout = usePreparePullRequestThreadAction(checkoutScope);
 
   const [pullRequestView, setPullRequestView] = useState(DEFAULT_PULL_REQUEST_PICKER_VIEW);
   const pullRequestTargets =
@@ -276,7 +418,19 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
   const [highlighted, setHighlighted] = useState<string | null>(null);
 
   const close = () => {
-    if (!busy) closeStartFromPicker();
+    if (!busy) onClose();
+  };
+
+  const pick = async (next: DesktopQuickMessageStartFrom) => {
+    setBusy(true);
+    const applied = await props.onPick(next);
+    setBusy(false);
+    if (applied) onClose();
+  };
+
+  const open = (href: string) => {
+    onClose();
+    props.onOpen(href);
   };
 
   /** Starts right away, or first asks whether to open a thread already working on it. */
@@ -289,89 +443,41 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
     else setPrompt({ subject, threads: existing, startNew: start });
   };
 
-  /**
-   * Checks the pull request's head branch out in its own worktree, or reuses the worktree it is
-   * already checked out in, then points the draft there. The picker stays open until then, so
-   * nothing is sent from the old checkout in the meantime.
-   */
-  const checkOutPullRequest = async (entry: EnvironmentPullRequestEntry) => {
-    setBusy(true);
-    const result = await preparePullRequestCheckout.run({
-      reference: entry.url,
-      mode: "worktree",
-      // The project's setup script runs in a new worktree for the thread it is made for.
-      threadId: threadRef.threadId,
-    });
-    setBusy(false);
-    if (result._tag === "Failure") {
-      if (!isAtomCommandInterrupted(result)) {
-        const failure = squashAtomCommandFailure(result);
-        toastManager.add({
-          type: "error",
-          title: `Could not check out #${entry.number}`,
-          description: failure instanceof Error ? failure.message : undefined,
-        });
-      }
-      preparePullRequestCheckout.resetError();
-      return;
-    }
-    closeStartFromPicker();
-    props.onCheckout({
-      branch: result.value.branch,
-      worktreePath: result.value.worktreePath,
-      envMode: "worktree",
-    });
-    if (!result.value.isOnPullRequestHead) {
-      toastManager.add({
-        type: "warning",
-        title: "Checked out, but not on the latest commits",
-        description:
-          "The worktree holds uncommitted work or local commits, so it stays behind the pull request.",
-      });
-    }
-  };
-
   const selectPullRequest = (entry: EnvironmentPullRequestEntry) =>
     startOrAsk(`#${entry.number}`, threadsForPullRequest(threads, entry), () => {
-      void checkOutPullRequest(entry);
+      void pick({ type: "pull-request", url: entry.url, number: entry.number, title: entry.title });
     });
 
   const selectBranch = (ref: VcsRef) =>
     startOrAsk(localBranchName(ref), threadsForBranch(threads, ref), () => {
-      closeStartFromPicker();
-      props.onCheckout(resolveBranchStart(ref, workspaceRoot));
+      void pick({ type: "branch", ...resolveBranchStart(ref, workspaceRoot) });
     });
 
   // The draft is linked as well as given the chip, so picking the issue again offers this thread.
   const selectIssue = (issue: LinearIssueSummary) =>
     startOrAsk(issue.identifier, threadsForLinearIssue(threads, linearLinks, issue.id), () => {
-      void (async () => {
-        setBusy(true);
-        const attached = await attachIssue(threadRef, issue.id);
-        if (attached) await linkIssue(threadRef, issue.id);
-        setBusy(false);
-        if (attached) closeStartFromPicker();
-      })();
+      void pick({
+        type: "linear-issue",
+        issueId: issue.id,
+        identifier: issue.identifier,
+        title: issue.title,
+      });
     });
 
   const selectGitHubIssue = (issue: GitHubIssueSummary) =>
     startOrAsk(`#${issue.number}`, threadsForGitHubIssue(threads, githubLinks, issue.url), () => {
-      void (async () => {
-        setBusy(true);
-        const attached = await attachGitHubIssue(threadRef, issue.url);
-        if (attached) await linkGitHubIssue(threadRef, issue.url);
-        setBusy(false);
-        if (attached) closeStartFromPicker();
-      })();
+      void pick({ type: "github-issue", url: issue.url, number: issue.number, title: issue.title });
     });
+
+  const threadHref = (threadRef: ScopedThreadRef) =>
+    router.buildLocation({
+      to: "/$environmentId/$threadId",
+      params: buildThreadRouteParams(threadRef),
+    }).href;
 
   const openExistingThread = (thread: EnvironmentThreadShell) => {
     setPrompt(null);
-    closeStartFromPicker();
-    void navigate({
-      to: "/$environmentId/$threadId",
-      params: buildThreadRouteParams(scopeThreadRef(thread.environmentId, thread.id)),
-    });
+    open(threadHref(scopeThreadRef(thread.environmentId, thread.id)));
   };
 
   /** Runs the task as Run now does, then opens the thread the run went to. */
@@ -380,29 +486,21 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
     const started = await runScheduledTask(environmentId, task);
     setBusy(false);
     if (started === null) return;
-    closeStartFromPicker();
-    if (started.threadId !== null) {
-      void navigate({
-        to: "/$environmentId/$threadId",
-        params: buildThreadRouteParams(scopeThreadRef(environmentId, started.threadId)),
-      });
-    }
+    if (started.threadId === null) onClose();
+    else open(threadHref(scopeThreadRef(environmentId, started.threadId)));
   };
 
-  const editAutomation = (task: ScheduledTask) => {
-    closeStartFromPicker();
-    void navigate({
-      to: "/settings/scheduled-tasks",
-      search: { environmentId, taskId: task.id },
-    });
-  };
+  const editAutomation = (task: ScheduledTask) =>
+    open(
+      router.buildLocation({
+        to: "/settings/scheduled-tasks",
+        search: { environmentId, taskId: task.id },
+      }).href,
+    );
 
+  const { onNewAutomation } = props;
   const newAutomationFromDraft = () => {
-    const source = props.readAutomationSource();
-    if (source === null) return;
-    setPendingScheduledTaskDraft({ environmentId, seed: scheduledTaskSeedFromComposer(source) });
-    closeStartFromPicker();
-    void navigate({ to: "/settings/scheduled-tasks", search: { environmentId } });
+    if (onNewAutomation?.()) onClose();
   };
 
   const modKey = isMacPlatform(navigator.platform) ? "⌘" : "Ctrl";
@@ -462,7 +560,7 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
               >
                 <PullRequestHoverPreview
                   entry={entry}
-                  threadRef={threadRef}
+                  threadRef={linkThreadRef}
                   threads={inUse}
                   trigger={
                     <span className="flex min-w-0 flex-1 items-center gap-2">
@@ -559,7 +657,7 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
                 <GitHubIssueHoverPreview
                   environmentId={environmentId}
                   url={issue.url}
-                  threadRef={threadRef}
+                  threadRef={linkThreadRef}
                   threads={inUse}
                   trigger={<GitHubIssueRow issue={issue} inUse={inUse.length > 0} />}
                 />
@@ -583,22 +681,24 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
               : "No automations in this project yet.";
     content = (
       <CommandList>
-        <CommandGroup items={NEW_AUTOMATION_ITEMS}>
-          <CommandCollection>
-            {(value: string) => (
-              <CommandItem
-                key={value}
-                value={value}
-                disabled={busy || !canCreateTasks}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={newAutomationFromDraft}
-              >
-                <CalendarPlusIcon className="size-4 shrink-0 text-muted-foreground" />
-                <span className="min-w-0 flex-1 truncate text-sm">New automation from draft</span>
-              </CommandItem>
-            )}
-          </CommandCollection>
-        </CommandGroup>
+        {onNewAutomation ? (
+          <CommandGroup items={NEW_AUTOMATION_ITEMS}>
+            <CommandCollection>
+              {(value: string) => (
+                <CommandItem
+                  key={value}
+                  value={value}
+                  disabled={busy || !canCreateTasks}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={newAutomationFromDraft}
+                >
+                  <CalendarPlusIcon className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 flex-1 truncate text-sm">New automation from draft</span>
+                </CommandItem>
+              )}
+            </CommandCollection>
+          </CommandGroup>
+        ) : null}
         {status !== null ? (
           <div className="py-6 text-center text-muted-foreground text-sm">{status}</div>
         ) : (
@@ -656,8 +756,7 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
         <Button
           size="sm"
           onClick={() => {
-            closeStartFromPicker();
-            void navigate({ to: "/settings/integrations" });
+            open(router.buildLocation({ to: "/settings/integrations" }).href);
           }}
         >
           Connect Linear
