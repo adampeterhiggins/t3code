@@ -21,6 +21,13 @@ const metadata = {
   interactiveElements: [],
 };
 const layout = { cssVisualViewport: { pageX: 10, pageY: 20 } };
+// Snapshots read the reported size from the PNG header: width at byte 16, height at 20.
+const png = (() => {
+  const header = Buffer.alloc(24);
+  header.writeUInt32BE(1280, 16);
+  header.writeUInt32BE(800, 20);
+  return header.toString("base64");
+})();
 const makeBrowser = () => {
   const pageEvaluate = vi.fn().mockResolvedValue(metadata);
   const ariaSnapshot = vi.fn().mockResolvedValue('- button "continue" [ref=e1]');
@@ -29,7 +36,7 @@ const makeBrowser = () => {
       case "Page.getLayoutMetrics":
         return Promise.resolve(layout);
       case "Page.captureScreenshot":
-        return Promise.resolve({ data: "image" });
+        return Promise.resolve({ data: png });
       case "Runtime.evaluate":
         return Promise.resolve({ result: { value: 42 } });
       default:
@@ -126,7 +133,7 @@ describe("bounded server browser reads", () => {
     if (stage === "Page.getLayoutMetrics")
       expect(browser.send).not.toHaveBeenCalledWith("Page.captureScreenshot", expect.anything());
     const fresh = await browser.snapshot({ signal: abort.controller.signal });
-    expect(fresh).toMatchObject({ title: "Test page", screenshot: { data: "image" } });
+    expect(fresh).toMatchObject({ title: "Test page", screenshot: { data: png } });
     expect(String(fresh.accessibilityTree)).toContain("[ref=t3-");
     abort.expectClean();
     // The timed-out protocol response can reject after the replacement read finishes.
@@ -159,9 +166,7 @@ describe("bounded server browser reads", () => {
       await vi.advanceTimersByTimeAsync(100);
       await failed;
       abort.expectClean();
-      expect(await ServerBrowserPage.captureViewport(browser.page, browser.cdp, options)).toBe(
-        "image",
-      );
+      expect(await ServerBrowserPage.captureViewport(browser.page, browser.cdp, options)).toBe(png);
       abort.expectClean();
       stalled.reject(new Error("Late capture failure"));
       await vi.advanceTimersByTimeAsync(0);
@@ -251,7 +256,7 @@ describe("bounded server browser reads", () => {
     abort.expectClean();
     metrics.resolve(layout);
     await vi.advanceTimersByTimeAsync(0);
-    expect(browser.send.mock.calls).toEqual([["Page.getLayoutMetrics"]]);
+    expect(browser.send.mock.calls.map(([method]) => method)).toEqual(["Page.getLayoutMetrics"]);
     await expect(browser.snapshot()).resolves.toMatchObject({ title: "Test page" });
     abort.expectClean();
   });

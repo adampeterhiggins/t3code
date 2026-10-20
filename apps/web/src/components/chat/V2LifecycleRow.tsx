@@ -62,7 +62,12 @@ import {
 } from "lucide-react";
 
 import { Tooltip, TooltipTrigger, TooltipPopup } from "../ui/tooltip";
-import { getProviderInstanceEntry } from "../../providerInstances";
+import {
+  applyProviderInstanceSettings,
+  deriveProviderInstanceEntries,
+  shouldShowInstanceBadge,
+  type ProviderInstanceEntry,
+} from "../../providerInstances";
 import { formatShortTimestamp } from "../../timestampFormat";
 import { getTriggerDisplayModelName } from "./providerIconUtils";
 import { ProviderInstanceIcon, providerTextColor } from "./ProviderInstanceIcon";
@@ -690,6 +695,9 @@ function ModelChangeRow(props: {
 }) {
   const { item } = props;
   const providers = useAtomValue(providersIgnoringCheckedAtAtom(props.environmentId));
+  const settings = useAtomValue(serverEnvironment.settingsValueAtom(props.environmentId));
+  const derived = deriveProviderInstanceEntries(providers);
+  const entries = settings ? applyProviderInstanceSettings(derived, settings, null) : derived;
   const descriptors = modelOptionDescriptors(providers, item.from);
   // Explicitly picking an option's default records a change that is not one.
   if (!modelSelectionChanged(item.from, item.to, descriptors)) {
@@ -704,7 +712,7 @@ function ModelChangeRow(props: {
       detail={
         <span className="inline-flex min-w-0 flex-wrap items-center justify-center gap-1.5">
           <HandoffEndpoint
-            providers={providers}
+            entries={entries}
             instanceId={item.from.instanceId}
             model={item.from.model}
             traits={formatModelSelectionTraits(providers, item.from)}
@@ -712,7 +720,7 @@ function ModelChangeRow(props: {
           />
           <ArrowRightIcon aria-hidden="true" className="size-3 shrink-0" />
           <HandoffEndpoint
-            providers={providers}
+            entries={entries}
             instanceId={item.to.instanceId}
             model={item.to.model}
             traits={formatModelSelectionTraits(providers, item.to)}
@@ -772,10 +780,11 @@ function EnvironmentHandoffRow({
 }) {
   const providers =
     useAtomValue(serverEnvironment.providersValueAtom(environmentId)) ?? EMPTY_SERVER_PROVIDERS;
-  return <HandoffRow {...props} providers={providers} />;
+  return <HandoffRow {...props} environmentId={environmentId} providers={providers} />;
 }
 
 export function HandoffRow(props: {
+  readonly environmentId: EnvironmentId;
   readonly endpoints: HandoffEndpoints;
   readonly providers: ReadonlyArray<ServerProvider>;
   readonly pending?: boolean;
@@ -786,6 +795,9 @@ export function HandoffRow(props: {
     fromEndpoints.map((endpoint) => endpoint.instanceId),
     to.instanceId,
   );
+  const settings = useAtomValue(serverEnvironment.settingsValueAtom(props.environmentId));
+  const derived = deriveProviderInstanceEntries(props.providers);
+  const entries = settings ? applyProviderInstanceSettings(derived, settings, null) : derived;
   return (
     <TimelineSystemDivider
       label={props.pending ? "Context handoff pending" : "Context handoff"}
@@ -800,7 +812,7 @@ export function HandoffRow(props: {
               className="inline-flex min-w-0 items-center"
             >
               <HandoffEndpoint
-                providers={props.providers}
+                entries={entries}
                 instanceId={endpoint.instanceId}
                 model={endpoint.model}
                 traits={formatEndpointTraits(props.providers, endpoint)}
@@ -819,7 +831,7 @@ export function HandoffRow(props: {
             <ArrowRightIcon aria-hidden="true" className="size-3 shrink-0" />
           ) : null}
           <HandoffEndpoint
-            providers={props.providers}
+            entries={entries}
             instanceId={to.instanceId}
             model={to.model}
             traits={formatEndpointTraits(props.providers, to)}
@@ -832,7 +844,7 @@ export function HandoffRow(props: {
 }
 
 function HandoffEndpoint(props: {
-  readonly providers: ReadonlyArray<ServerProvider>;
+  readonly entries: ReadonlyArray<ProviderInstanceEntry>;
   readonly instanceId: ProviderInstanceId;
   readonly model?: string | undefined;
   /** Parameters the model ran with, such as "Max Fast". */
@@ -840,7 +852,8 @@ function HandoffEndpoint(props: {
   /** Account name, shown when this handoff or switch moved between accounts. */
   readonly account?: string | null | undefined;
 }) {
-  const entry = getProviderInstanceEntry(props.providers, props.instanceId);
+  const entry = props.entries.find((candidate) => candidate.instanceId === props.instanceId);
+  const showBadge = entry !== undefined && shouldShowInstanceBadge(entry, props.entries);
   const model = props.model?.trim();
   const providerModel =
     model === undefined || model.length === 0
@@ -863,14 +876,18 @@ function HandoffEndpoint(props: {
         render={
           <span
             tabIndex={0}
-            className="inline-flex min-w-0 items-center gap-1 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+            className="inline-flex min-w-0 items-center gap-1.5 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
           >
             <ProviderInstanceIcon
               driverKind={entry?.driverKind ?? ProviderDriverKind.make(props.instanceId)}
               displayName={entry?.displayName ?? props.instanceId}
+              accentColor={entry?.accentColor}
               acpRegistryAgentId={entry?.acpRegistryAgentId}
               acpRegistryIconUrl={entry?.acpRegistryIconUrl}
-              iconClassName="size-3"
+              showBadge={showBadge}
+              size="compact"
+              iconClassName={cn(showBadge && "opacity-60")}
+              indicatorBackground="var(--background)"
             />
             {showAccount ? (
               <span

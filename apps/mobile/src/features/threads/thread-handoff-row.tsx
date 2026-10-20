@@ -2,7 +2,11 @@ import * as Dialog from "../../components/ui/Dialog";
 import { useAtomValue } from "@effect/atom-react";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { resolveHandoffEndpoints, type HandoffEndpoints } from "@t3tools/client-runtime/handoff";
-import { resolveProviderInstanceDisplayName } from "@t3tools/client-runtime/state/provider-instance-display";
+import {
+  normalizeProviderAccentColor,
+  shouldShowInstanceBadge,
+  resolveProviderInstanceDisplayName,
+} from "@t3tools/client-runtime/state/provider-instance-display";
 import {
   forkAccountChangeLabel,
   forkSourceInstanceId,
@@ -28,10 +32,15 @@ import { useMemo } from "react";
 import { Pressable, View, type ColorValue } from "react-native";
 import { AppText as Text } from "../../components/ui/AppText";
 import { SymbolView } from "../../components/ui/AppSymbol";
-import { ProviderIcon } from "../../components/ProviderIcon";
+import { ProviderIcon, ProviderInstanceIcon } from "../../components/ProviderIcon";
 import { environmentThreadDetails } from "../../state/threads";
 import { serverEnvironment } from "../../state/server";
 import { ThreadContextDivider } from "./thread-context-divider";
+
+type HandoffProvider = ServerProvider & {
+  readonly driverKind: ServerProvider["driver"];
+  readonly acpRegistryAgentId: string | undefined;
+};
 
 function handoffEndpointsAtom(
   environmentId: EnvironmentId,
@@ -53,6 +62,7 @@ export function ThreadHandoffRow(props: {
   environmentId: EnvironmentId;
   projectedItem: OrchestrationV2ProjectedTurnItem;
   iconColor: ColorValue;
+  surfaceColor: string;
 }) {
   const { item } = props.projectedItem;
   const endpointsAtom = useMemo(
@@ -67,6 +77,7 @@ export function ThreadHandoffRow(props: {
       environmentId={props.environmentId}
       endpoints={endpoints}
       iconColor={color}
+      surfaceColor={props.surfaceColor}
       label="Context handoff"
       failed={item.status === "failed"}
     />
@@ -77,6 +88,7 @@ export function ThreadHandoffDivider(props: {
   environmentId: EnvironmentId;
   endpoints: HandoffEndpoints;
   iconColor: ColorValue;
+  surfaceColor: string;
   label: string;
   failed?: boolean;
 }) {
@@ -88,6 +100,23 @@ export function ThreadHandoffDivider(props: {
     endpoints.to.instanceId,
   );
 
+  const endpointProps = {
+    providers: (config?.providers ?? []).map((provider) => {
+      const rawConfig = config?.settings.providerInstances[provider.instanceId]?.config;
+      const instanceConfig =
+        rawConfig !== null && typeof rawConfig === "object"
+          ? (rawConfig as Readonly<Record<string, unknown>>)
+          : null;
+      const agentId = instanceConfig?.source === "local" ? undefined : instanceConfig?.agentId;
+      return {
+        ...provider,
+        driverKind: provider.driver,
+        accentColor: normalizeProviderAccentColor(provider.accentColor),
+        acpRegistryAgentId: typeof agentId === "string" ? agentId.trim() || undefined : undefined,
+      };
+    }),
+    surfaceColor: props.surfaceColor,
+  };
   return (
     <ThreadContextDivider
       label={props.label}
@@ -104,7 +133,7 @@ export function ThreadHandoffDivider(props: {
             <HandoffEndpoint
               instanceId={endpoint.instanceId}
               model={endpoint.model}
-              providers={providers}
+              {...endpointProps}
               traits={formatEndpointTraits(providers, endpoint)}
               account={showAccount ? providerAccountLabel(providers, endpoint.instanceId) : null}
             />
@@ -121,7 +150,7 @@ export function ThreadHandoffDivider(props: {
         <HandoffEndpoint
           instanceId={endpoints.to.instanceId}
           model={endpoints.to.model}
-          providers={config?.providers ?? []}
+          {...endpointProps}
           traits={formatEndpointTraits(providers, endpoints.to)}
           account={showAccount ? providerAccountLabel(providers, endpoints.to.instanceId) : null}
         />
@@ -134,11 +163,29 @@ export function ThreadModelChangeRow(props: {
   environmentId: EnvironmentId;
   projectedItem: OrchestrationV2ProjectedTurnItem;
   iconColor: ColorValue;
+  surfaceColor: string;
 }) {
   const { item } = props.projectedItem;
   const config = useAtomValue(serverEnvironment.configValueAtom(props.environmentId));
   if (item.type !== "model_change") return null;
   const providers = config?.providers ?? [];
+  const endpointProps = {
+    providers: (config?.providers ?? []).map((provider) => {
+      const rawConfig = config?.settings.providerInstances[provider.instanceId]?.config;
+      const instanceConfig =
+        rawConfig !== null && typeof rawConfig === "object"
+          ? (rawConfig as Readonly<Record<string, unknown>>)
+          : null;
+      const agentId = instanceConfig?.source === "local" ? undefined : instanceConfig?.agentId;
+      return {
+        ...provider,
+        driverKind: provider.driver,
+        accentColor: normalizeProviderAccentColor(provider.accentColor),
+        acpRegistryAgentId: typeof agentId === "string" ? agentId.trim() || undefined : undefined,
+      };
+    }),
+    surfaceColor: props.surfaceColor,
+  };
   const descriptors = modelOptionDescriptors(providers, item.from);
   // Explicitly picking an option's default records a change that is not one.
   if (!modelSelectionChanged(item.from, item.to, descriptors)) {
@@ -156,7 +203,7 @@ export function ThreadModelChangeRow(props: {
           instanceId={item.from.instanceId}
           model={item.from.model}
           traits={formatModelSelectionTraits(providers, item.from)}
-          providers={providers}
+          {...endpointProps}
           account={showAccount ? providerAccountLabel(providers, item.from.instanceId) : null}
         />
         <SymbolView name="arrow.right" size={12} tintColor={props.iconColor} />
@@ -164,7 +211,7 @@ export function ThreadModelChangeRow(props: {
           instanceId={item.to.instanceId}
           model={item.to.model}
           traits={formatModelSelectionTraits(providers, item.to)}
-          providers={providers}
+          {...endpointProps}
           account={showAccount ? providerAccountLabel(providers, item.to.instanceId) : null}
         />
       </View>
@@ -240,7 +287,8 @@ function HandoffEndpoint(props: {
   traits?: string | null;
   /** Account name, shown when this handoff or switch moved between accounts. */
   account?: string | null;
-  providers: ReadonlyArray<ServerProvider>;
+  providers: ReadonlyArray<HandoffProvider>;
+  surfaceColor: string;
 }) {
   const provider = props.providers.find((candidate) => candidate.instanceId === props.instanceId);
   const model = provider?.models.find((candidate) => candidate.slug === props.model);
@@ -252,12 +300,13 @@ function HandoffEndpoint(props: {
   const account = props.account?.trim();
   const showAccount = account !== undefined && account.length > 0 && account !== label;
   const visible = `${showAccount ? `${account} · ` : ""}${label}${props.traits ? ` ${props.traits}` : ""}`;
+  const showBadge = provider !== undefined && shouldShowInstanceBadge(provider, props.providers);
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={visible}
       accessibilityHint="Show provider account"
-      className="min-h-6 max-w-full flex-row items-center justify-center gap-1"
+      className="min-h-6 max-w-full flex-row items-center justify-center gap-1.5"
       hitSlop={{ top: 8, bottom: 8 }}
       onPress={() =>
         Dialog.alert(
@@ -266,11 +315,23 @@ function HandoffEndpoint(props: {
         )
       }
     >
-      <ProviderIcon
-        provider={provider?.driver ?? props.instanceId}
-        iconUrl={provider?.iconUrl}
-        size={12}
-      />
+      {showBadge && provider !== undefined ? (
+        <ProviderInstanceIcon
+          provider={provider.driver}
+          iconUrl={provider.iconUrl}
+          size={14}
+          displayName={resolveProviderInstanceDisplayName(provider)}
+          accentColor={provider.accentColor}
+          showBadge
+          surfaceColor={props.surfaceColor}
+        />
+      ) : (
+        <ProviderIcon
+          provider={provider?.driver ?? props.instanceId}
+          iconUrl={provider?.iconUrl}
+          size={12}
+        />
+      )}
       <Text numberOfLines={1} className="shrink text-xs text-foreground-muted">
         {visible}
       </Text>

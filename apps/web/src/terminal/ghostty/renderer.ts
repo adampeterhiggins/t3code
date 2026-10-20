@@ -48,7 +48,7 @@ export function ghosttyTextRunEnd(
       end += 1;
       continue;
     }
-    if (next.text.length === 0 || !sameStyle(next)) break;
+    if (next.text.length === 0 || POWERLINE_SEPARATORS.has(next.text) || !sameStyle(next)) break;
     end += 1;
   }
   return end;
@@ -340,9 +340,14 @@ export function renderGhosttySnapshot(options: {
       context.fillRect(left, top, metrics.width, metrics.height);
       const cell = snapshot.rowData[snapshot.cursorY]?.cells[snapshot.cursorX];
       if (cell?.text) {
-        context.font = fontForCell(cell, fontSize, fontFamily);
         context.fillStyle = cssColor(snapshot.background);
-        context.fillText(cell.text, left, top + metrics.baseline, metrics.width);
+        const separator = POWERLINE_SEPARATORS.get(cell.text);
+        if (separator) {
+          drawPowerlineSeparator(context, separator, left, top, metrics.width, metrics.height);
+        } else {
+          context.font = fontForCell(cell, fontSize, fontFamily);
+          context.fillText(cell.text, left, top + metrics.baseline, metrics.width);
+        }
       }
     }
   }

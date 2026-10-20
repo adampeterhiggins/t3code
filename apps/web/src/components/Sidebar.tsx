@@ -151,6 +151,7 @@ import { readLocalApi } from "../localApi";
 import { useSidebarPendingFileDropStore } from "../sidebarPendingFileDropStore";
 import { selectProjectGroupingSettings } from "../logicalProject";
 import {
+  countSidebarProjectChoices,
   projectGroupsSpanEnvironments,
   resolveSidebarProjectScopeKey,
   getSidebarProjectSettingsKey,
@@ -311,7 +312,7 @@ import {
   type SidebarListMarker,
   type SidebarSection,
 } from "./Sidebar.logic";
-import { resolveLocalCheckoutBranchMismatch } from "./BranchToolbar.logic";
+import { resolveCheckoutBranchMismatch } from "./BranchToolbar.logic";
 import {
   createSidebarCollisionDetection,
   createSidebarSortingStrategy,
@@ -395,6 +396,7 @@ type SidebarProviderEntry = Pick<
   ProviderInstanceEntry,
   | "instanceId"
   | "driverKind"
+  | "enabled"
   | "displayName"
   | "accentColor"
   | "acpRegistryAgentId"
@@ -412,6 +414,7 @@ function sameSidebarProviderEntries(
     if (
       other === undefined ||
       other.driverKind !== entry.driverKind ||
+      other.enabled !== entry.enabled ||
       other.displayName !== entry.displayName ||
       other.accentColor !== entry.accentColor ||
       other.acpRegistryAgentId !== entry.acpRegistryAgentId ||
@@ -584,8 +587,8 @@ function SidebarProviderStack(props: {
       acpRegistryAgentId={currentEntry.acpRegistryAgentId}
       acpRegistryIconUrl={currentEntry.acpRegistryIconUrl}
       showBadge={showInstanceBadge}
-      iconClassName="size-3.5 opacity-60"
-      badgeClassName="right-[-0.1875rem] bottom-[-0.1875rem] h-3 min-w-3 px-0.5 text-5xs"
+      size="compact"
+      iconClassName="opacity-60"
     />
   );
   if (stack.length === 1) {
@@ -684,7 +687,7 @@ function SidebarThreadTooltip({
         {branchMismatch ? (
           <div className="flex min-w-0 items-start gap-2 text-warning">
             <CircleAlertIcon aria-hidden className="mt-0.5 size-3 shrink-0 stroke-current" />
-            <div className="min-w-0 flex-1 wrap-break-word leading-5">
+            <div className="min-w-0 flex-1 wrap-break-word">
               You're currently checked out on another branch.
             </div>
           </div>
@@ -1334,6 +1337,7 @@ type SidebarThreadRowProps = {
   isActive: boolean;
   // One side of the split view on screen: the routed chat or the one beside it.
   inSplit: boolean;
+  isRouteThread: boolean;
   // A sibling tab is the open route. The header stays present, but the active
   // pill belongs to that tab row.
   groupFocused?: boolean;
@@ -1452,7 +1456,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   });
   const terminalStatus = terminalStatusFromRunningIds(runningTerminalIds);
   const terminalProcessCount = runningTerminalIds.length;
-  const hasUnsentDraft = useThreadHasUnsentDraft(threadRef) && !props.isActive;
+  const hasUnsentDraft = useThreadHasUnsentDraft(threadRef) && !props.isRouteThread;
   const handleDiscardDraftClick = (event: ReactMouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
@@ -1506,7 +1510,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       ? { ...resolvedTopStatus, label: "Goal" }
       : resolvedTopStatus;
   const isWokeStatus = topStatus?.icon === "woke";
-  const branchMismatch = resolveLocalCheckoutBranchMismatch({
+  const branchMismatch = resolveCheckoutBranchMismatch({
     effectiveEnvMode: thread.worktreePath === null ? "local" : "worktree",
     activeWorktreePath: thread.worktreePath,
     activeThreadBranch: thread.branch,
@@ -1715,7 +1719,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     if (!url) return;
     const showInRightPanel = targetUrl !== undefined || openPullRequestsInRightPanel;
     const openedInRightPanel = openPrLink(event, url, showInRightPanel ? threadRef : undefined);
-    if (openedInRightPanel && showInRightPanel && !props.isActive) {
+    if (openedInRightPanel && showInRightPanel && !props.isRouteThread) {
       onThreadActivate(threadRef);
     }
   };
@@ -1846,7 +1850,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     : null;
   const handlePrListClick = () => {
     useRightPanelStore.getState().open(threadRef, "pull-requests");
-    if (!props.isActive) onThreadActivate(threadRef);
+    if (!props.isRouteThread) onThreadActivate(threadRef);
   };
   const prBadge =
     prBadgeShape?.kind === "stack" || pr || currentLinkedPr ? (
@@ -2091,7 +2095,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                       onPointerDown={handleActionPointerDown}
                       className={cn(
                         "pointer-events-none absolute inset-y-0 right-0 -mr-1 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:opacity-100",
-                        isWoke && "group-any-hover/sidebar-row:static",
+                        isWoke && "static",
                       )}
                     >
                       <AlarmClockOffIcon className="mb-px size-3" />
@@ -2109,7 +2113,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                           onPointerDown={handleActionPointerDown}
                           className={cn(
                             "pointer-events-none absolute inset-y-0 right-0 -mr-1 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:opacity-100",
-                            isWoke && "group-any-hover/sidebar-row:static",
+                            isWoke && "static",
                           )}
                         />
                       }
@@ -2126,7 +2130,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                     onPointerDown={handleActionPointerDown}
                     className={cn(
                       "pointer-events-none absolute inset-y-0 right-0 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-2 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:opacity-100",
-                      isWoke && "group-any-hover/sidebar-row:static",
+                      isWoke && "static",
                     )}
                   >
                     <CheckIcon className="size-3" />
@@ -3420,7 +3424,7 @@ const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props: {
     JSON.stringify([thread.environmentId, gitCwd]),
     gitStatus.data,
   );
-  const branchMismatch = resolveLocalCheckoutBranchMismatch({
+  const branchMismatch = resolveCheckoutBranchMismatch({
     effectiveEnvMode: thread.worktreePath === null ? "local" : "worktree",
     activeWorktreePath: thread.worktreePath,
     activeThreadBranch: thread.branch,
@@ -4354,6 +4358,7 @@ export default function Sidebar() {
     false,
     Schema.Boolean,
   );
+  const projectChoiceCount = countSidebarProjectChoices(projectGroups);
   const toggleWorkingShelf = () => setWorkingShelfExpanded((value) => !value);
   const visibleWorkingThreads = (() => {
     if (workingShelfExpanded) return workingThreads;
@@ -6321,7 +6326,7 @@ export default function Sidebar() {
         navigateToThreadKey(
           resolveAdjacentThreadId({
             threadIds: orderedThreadKeys,
-            currentThreadId: routeThreadKey,
+            currentThreadId: sidebarRouteThreadKey,
             direction: traversalDirection,
           }),
         );
@@ -6337,8 +6342,8 @@ export default function Sidebar() {
     keybindings,
     navigateToThread,
     orderedThreadKeys,
+    sidebarRouteThreadKey,
     routeTerminalOpen,
-    routeThreadKey,
     threadByKey,
     toggleShowTabs,
   ]);
@@ -6362,7 +6367,7 @@ export default function Sidebar() {
     updateThreadJumpHintsVisibility(shouldShowJumpHintsNow);
   }, [shouldShowJumpHintsNow, updateThreadJumpHintsVisibility]);
   const handleNewThreadClick = (event?: ReactMouseEvent) => {
-    if (shouldCreateNewThreadInCurrentProject(event?.shiftKey ?? false, projectGroups.length)) {
+    if (shouldCreateNewThreadInCurrentProject(event?.shiftKey ?? false, projectChoiceCount)) {
       if (isMobile) setOpenMobile(false);
       void startNewThreadFromContext({
         activeDraftThread: newThreadContext.activeDraftThread,
@@ -6377,7 +6382,7 @@ export default function Sidebar() {
   };
   const newThreadShortcutLabel =
     shortcutLabelForCommand(keybindings, "chat.new") ??
-    (projectGroups.length <= 1 ? shortcutLabelForCommand(keybindings, "chat.newLocal") : undefined);
+    (projectChoiceCount <= 1 ? shortcutLabelForCommand(keybindings, "chat.newLocal") : undefined);
   const newThreadInProjectShortcutLabel = shortcutLabelForCommand(keybindings, "chat.newLocal");
   return (
     <>
@@ -6397,7 +6402,7 @@ export default function Sidebar() {
               newThreadDisabled={projects.length === 0}
               newThreadShortcutLabel={newThreadShortcutLabel}
               newThreadInProjectShortcutLabel={newThreadInProjectShortcutLabel}
-              showNewThreadInProjectHint={projectGroups.length > 1}
+              showNewThreadInProjectHint={projectChoiceCount > 1}
               searchInputRef={threadSearchInputRef}
               searchQuery={isThreadSearchApplied ? "" : threadSearchQuery}
               onSearchFocus={() => setIsThreadSearchApplied(false)}
@@ -6657,6 +6662,7 @@ export default function Sidebar() {
                             // rows resolve to null on their own.
                             wokeAt={threadWokeAt(thread, { now: snoozeNow })}
                             isActive={highlightedRouteThreadKey === threadKey}
+                            isRouteThread={routeThreadKey === threadKey}
                             inSplit={isSplitRowKey(threadKey)}
                             groupFocused={
                               rowTabsOpen &&

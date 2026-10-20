@@ -94,6 +94,7 @@ export const OpenInPicker = memo(function OpenInPicker({
   keybindings,
   availableEditors,
   openInCwd,
+  openInCwdIsFile = false,
   presentation = "toolbar",
   compact = false,
   enableShortcut = true,
@@ -104,6 +105,7 @@ export const OpenInPicker = memo(function OpenInPicker({
   keybindings: ResolvedKeybindingsConfig;
   availableEditors: ReadonlyArray<EditorId>;
   openInCwd: string | null;
+  openInCwdIsFile?: boolean;
   presentation?: "toolbar" | "menu";
   compact?: boolean;
   enableShortcut?: boolean;
@@ -156,8 +158,9 @@ export const OpenInPicker = memo(function OpenInPicker({
     if (remote.mode === "remote-links" && !custom) {
       const url = buildRemoteOpenUrl({
         editor,
-        host: remote.host.host,
+        ...remote.host,
         absolutePath: openInCwd,
+        isFile: openInCwdIsFile,
       });
       if (url === undefined) return;
       // Only record hint-seen/preferred when the shell actually accepted
@@ -188,7 +191,7 @@ export const OpenInPicker = memo(function OpenInPicker({
   useEffect(() => {
     if (!enableShortcut || !canOpenEditor) return;
     const handler = (e: globalThis.KeyboardEvent) => {
-      if (!isOpenFavoriteEditorShortcut(e, keybindings)) return;
+      if (e.defaultPrevented || !isOpenFavoriteEditorShortcut(e, keybindings)) return;
       if (!openInCwd) return;
       if (!preferredEditor) return;
       if (
@@ -200,8 +203,8 @@ export const OpenInPicker = memo(function OpenInPicker({
       e.preventDefault();
       void openInEditor(preferredEditor);
     };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
+    window.addEventListener("keydown", handler, true);
+    return () => window.removeEventListener("keydown", handler, true);
   }, [
     canOpenEditor,
     enableShortcut,

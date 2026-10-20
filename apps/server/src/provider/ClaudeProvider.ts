@@ -199,6 +199,8 @@ function claudeAuthStatus(
 // Amazon Bedrock initializes far slower than first-party auth: the SDK boots the Bedrock
 // backend and runs the `awsAuthRefresh` credential hook before returning account info.
 const CAPABILITIES_PROBE_TIMEOUT_MS = 25_000;
+// Native CLI startup on Windows can exceed the shared probe deadline.
+const CLAUDE_VERSION_CHECK_TIMEOUT_MS = 20_000;
 
 export const CLAUDE_CAPABILITIES_PROBE_SETTING_SOURCES = [
   "user",
@@ -274,6 +276,7 @@ export type ClaudeCapabilitiesProbe = {
    * otherwise successful response mean the account has none (API key).
    */
   readonly usage?: Pick<SDKControlGetUsageResponse, "rate_limits_available" | "rate_limits">;
+  readonly usageCheckedAt?: string;
 };
 
 function parseClaudeInitializationCommands(
@@ -353,10 +356,8 @@ const decodeClaudeAccountFile = Schema.decodeSync(CLAUDE_ACCOUNT_FILE);
  * Read the stored profile so the signed-in account still shows in provider
  * status.
  */
-const readStoredClaudeAccountEmail = (
-  claudeSettings: ClaudeSettings,
-): Effect.Effect<string | undefined, never, FileSystem.FileSystem | Path.Path> =>
-  Effect.gen(function* () {
+const readStoredClaudeAccountEmail = Effect.fn("ClaudeProvider.readStoredClaudeAccountEmail")(
+  function* (claudeSettings: ClaudeSettings) {
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const homePath = yield* resolveClaudeHomePath(claudeSettings);
@@ -364,7 +365,9 @@ const readStoredClaudeAccountEmail = (
     const parsed = yield* Effect.try(() => decodeClaudeAccountFile(contents));
     const email = parsed.oauthAccount?.emailAddress;
     return email === undefined ? undefined : nonEmptyProbeString(email);
-  }).pipe(Effect.orElseSucceed(() => undefined));
+  },
+  Effect.orElseSucceed(() => undefined),
+);
 
 function waitForAbortSignal(signal: AbortSignal): Promise<void> {
   if (signal.aborted) {
@@ -421,6 +424,7 @@ const probeClaudeCapabilities = (
         // Usage has its own deadline so a slow optional request cannot discard initialization.
         // Only the rate limits are read, so skip the local transcript scan that fills
         // `behaviors`: with a few GB of transcripts it outlasts the deadline.
+        const usageCheckedAt = DateTime.formatIso(yield* DateTime.now);
         const usageResult = includeUsage
           ? yield* Effect.tryPromise(() =>
               q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }),
@@ -453,7 +457,7 @@ const probeClaudeCapabilities = (
           apiKeySource: account?.apiKeySource,
           apiProvider: account?.apiProvider,
           slashCommands: parseClaudeInitializationCommands(init.commands),
-          ...(usage ? { usage } : {}),
+          ...(usage ? { usage, usageCheckedAt } : {}),
         } satisfies ClaudeCapabilitiesProbe;
       }),
     ),
@@ -556,7 +560,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     ["--version"],
     resolvedEnvironment,
     cwd,
-  ).pipe(Effect.timeoutOption(DEFAULT_TIMEOUT_MS), Effect.result);
+  ).pipe(Effect.timeoutOption(CLAUDE_VERSION_CHECK_TIMEOUT_MS), Effect.result);
 
   if (Result.isFailure(versionProbe)) {
     const error = versionProbe.failure;
@@ -662,7 +666,14 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     });
   }
 
-  if (claudeAuthStatus(capabilities) === "unauthenticated") {
+  // First-party account fields cannot verify custom endpoint credentials.
+  const endpoint = URL.parse(resolvedEnvironment.ANTHROPIC_BASE_URL?.trim() ?? "");
+  const customApiEndpoint =
+    endpoint !== null &&
+    (endpoint.protocol === "http:" || endpoint.protocol === "https:") &&
+    endpoint.hostname !== "" &&
+    endpoint.hostname !== "api.anthropic.com";
+  if (!customApiEndpoint && claudeAuthStatus(capabilities) === "unauthenticated") {
     return buildServerProvider({
       presentation: CLAUDE_PRESENTATION,
       enabled: claudeSettings.enabled,
@@ -708,15 +719,21 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
             capabilities.tokenSource !== "none"
               ? capabilities.tokenSource
               : capabilities.apiKeySource,
-        }) ?? apiProviderAuthMetadata(capabilities.apiProvider));
+        }) ??
+        apiProviderAuthMetadata(capabilities.apiProvider) ??
+        (customApiEndpoint ? { type: "customEndpoint", label: "Custom API endpoint" } : undefined));
+  const usageCheckedAt = capabilities.usageCheckedAt ?? checkedAt;
   const usageLimits = !capabilities.usage
     ? makeUnavailableUsageLimits({ checkedAt, reason: "probeFailed" })
     : scopedLimitNames
       ? yield* recordClaudeUsageResponse(scopedLimitNames, {
           response: capabilities.usage,
-          checkedAt,
+          checkedAt: usageCheckedAt,
         })
-      : claudeUsageResponseToLimits({ response: capabilities.usage, checkedAt }).limits;
+      : claudeUsageResponseToLimits({
+          response: capabilities.usage,
+          checkedAt: usageCheckedAt,
+        }).limits;
   const resetCredits =
     resolveResetCredits &&
     capabilities.subscriptionType &&
@@ -751,11 +768,11 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 
-export const makePendingClaudeProvider = (
-  claudeSettings: ClaudeSettings,
-  modelCatalog: ClaudeModelCatalog = BUNDLED_CLAUDE_MODEL_CATALOG,
-): Effect.Effect<ServerProviderDraft> =>
-  Effect.gen(function* () {
+export const makePendingClaudeProvider = Effect.fn("ClaudeProvider.makePendingClaudeProvider")(
+  function* (
+    claudeSettings: ClaudeSettings,
+    modelCatalog: ClaudeModelCatalog = BUNDLED_CLAUDE_MODEL_CATALOG,
+  ): Effect.fn.Return<ServerProviderDraft> {
     const checkedAt = yield* nowIso;
     const models = providerModelsFromSettings(
       modelCatalog.models.map((entry) => entry.model),
@@ -792,6 +809,7 @@ export const makePendingClaudeProvider = (
         message: "Claude provider status has not been checked in this session yet.",
       },
     });
-  });
+  },
+);
 
 export { probeClaudeCapabilities };

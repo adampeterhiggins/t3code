@@ -128,8 +128,8 @@ export const resolveProviderStatusCachePath = Effect.fn("resolveProviderStatusCa
   },
 );
 
-export const readProviderStatusCache = (filePath: string) =>
-  Effect.gen(function* () {
+export const readProviderStatusCache = Effect.fn("providerStatusCache.readProviderStatusCache")(
+  function* (filePath: string) {
     const fs = yield* FileSystem.FileSystem;
     const exists = yield* fs.exists(filePath).pipe(Effect.orElseSucceed(() => false));
     if (!exists) {
@@ -152,7 +152,8 @@ export const readProviderStatusCache = (filePath: string) =>
         onSuccess: Effect.succeed,
       }),
     );
-  });
+  },
+);
 
 export const writeProviderStatusCache = (input: {
   readonly filePath: string;

@@ -42,8 +42,9 @@ preserving other sessions and their tabs. Expired or cancelled queued actions ca
 later. Snapshot and evaluation reads have bounded deadlines, and `preview_snapshot` with
 `includeImage: false` skips capture unless `save: true` needs a screenshot file.
 
-This ports upstream [PR #16941](https://github.com/pingdotgg/t3code/pull/16941) ahead of its merge.
-External browser hosts keep upstream's disconnect-on-timeout behavior.
+Upstream bounds queued-action deadlines; the fork additionally protects the shared in-process
+browser host and cancels retired work. External browser hosts keep upstream's
+disconnect-on-timeout behavior.
 
 Code: [PreviewAutomationBroker.ts](../apps/server/src/mcp/PreviewAutomationBroker.ts),
 [ServerBrowser.ts](../apps/server/src/preview/ServerBrowser.ts), and
@@ -248,10 +249,6 @@ an omitted option as the model's standard tier, so upstream runs an untouched co
 task, a launched thread, or a scheduled task at about 300K while the picker shows 1M (500K for
 Grok 4.7). Fast is the exception: it stays off unless chosen, as in the composer. With the
 long-context change above, these defaults run in Max Mode.
-
-`delegate_task` on the parent's own provider and model keeps the parent's options and overrides
-only the ones it names, for every provider. Upstream replaces them, so an effort-only child loses
-the parent's context window.
 
 Fixes upstream [#16149](https://github.com/pingdotgg/t3code/issues/16149); remove this section when
 upstream fixes it. Code: `withCursorDefaultParameters` in

@@ -35,6 +35,7 @@ const AuthFile = Schema.Struct({
     Schema.Struct({
       chatgpt_account_id: Schema.optional(Schema.String),
       chatgpt_plan_type: Schema.optional(Schema.String),
+      plan_type: Schema.optional(Schema.String),
     }),
   ),
   project_id: Schema.optional(Schema.String),
@@ -805,14 +806,16 @@ export const makeCliproxyApi = Effect.gen(function* () {
             Effect.orElseSucceed(() => undefined),
           );
           const next = available?.[0];
+          const planType =
+            usage.plan_type ?? account.id_token?.plan_type ?? account.id_token?.chatgpt_plan_type;
           return {
             ...base,
-            plan: codexPlanLabel(usage.plan_type ?? account.id_token?.chatgpt_plan_type),
+            plan: codexPlanLabel(planType),
             usageLimits: {
               ...codexRateLimitsToLimits({
                 checkedAt,
                 snapshot: {
-                  planType: usage.plan_type ?? null,
+                  planType: planType ?? null,
                   primary: toWindow(usage.rate_limit?.primary_window),
                   secondary: toWindow(usage.rate_limit?.secondary_window),
                 },

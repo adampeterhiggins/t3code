@@ -7,6 +7,7 @@ import * as Layer from "effect/Layer";
 
 import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
 import * as ProjectSetupScriptRunner from "./ProjectSetupScriptRunner.ts";
+import * as SubagentWorktreeSetupLive from "./SubagentWorktreeSetupLive.ts";
 import * as SubagentWorktreeSetup from "./SubagentWorktreeSetup.ts";
 
 const THREAD_ID = ThreadId.make("thread-1");
@@ -17,7 +18,7 @@ function makeLayer(input: {
   readonly completion: Deferred.Deferred<void>;
   readonly runs: Array<ProjectSetupScriptRunner.ProjectSetupScriptRunnerInput>;
 }) {
-  return SubagentWorktreeSetup.layerInstall.pipe(
+  return SubagentWorktreeSetupLive.layerInstall.pipe(
     Layer.provideMerge(SubagentWorktreeSetup.layer),
     Layer.provide(
       Layer.mock(ProjectionStore.ProjectionStoreV2)({

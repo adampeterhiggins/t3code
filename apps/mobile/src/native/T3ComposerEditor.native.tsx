@@ -1,20 +1,12 @@
 import { PASTED_TEXT_ATTACHMENT_THRESHOLD_BYTES } from "@t3tools/client-runtime/text-paste";
 import { PROVIDER_SEND_TURN_MAX_INPUT_CHARS } from "@t3tools/contracts";
 import { collectComposerInlineTokens } from "@t3tools/shared/composerInlineTokens";
-import { composerContextEditorTokens } from "../lib/composerContext";
+import { composerContextEditorTokens, composerSkillLabels } from "../lib/composerContext";
 import { requireNativeView } from "expo";
 import { TextInputWrapper } from "expo-paste-input";
-import {
-  useCallback,
-  useEffect,
-  useImperativeHandle,
-  useMemo,
-  useRef,
-  useState,
-  type Ref,
-} from "react";
+import { useEffect, useImperativeHandle, useMemo, useRef, useState, type Ref } from "react";
 import type { NativeSyntheticEvent, ViewProps } from "react-native";
-import { Image, Platform, StyleSheet } from "react-native";
+import { Platform, StyleSheet } from "react-native";
 
 import { markdownFileIconSource, markdownIconAssetUri } from "../lib/markdownFileIcons";
 import { composerChipSizeSuffix, contextChipPresentation } from "../lib/composerChipPresentation";
@@ -150,15 +142,14 @@ export function ComposerEditor({
     [],
   );
 
-  const skillLabels = (() =>
-    new Map(skills.map((skill) => [skill.name, skill.displayName?.trim() || skill.name])))();
-  const tokensJson = (() => {
+  const skillLabels = useMemo(() => composerSkillLabels(skills), [skills]);
+  const tokensJson = useMemo(() => {
     const tokens = collectComposerInlineTokens(props.value, {
       preserveTrailingFrom: confirmedTokensRef.current,
     });
     confirmedTokensRef.current = tokens;
     return JSON.stringify(
-      composerContextEditorTokens(props.value, tokens).map((token) => {
+      composerContextEditorTokens(props.value, tokens, skillLabels).map((token) => {
         const record =
           token.type === "context"
             ? props.context?.records.find((record) => record.contextId === token.contextId)
@@ -185,7 +176,7 @@ export function ComposerEditor({
         };
       }),
     );
-  })();
+  }, [props.value, props.context, skillLabels]);
   // Every render resolves against the snapshot history, so a render whose
   // (value, selection) lags the acknowledged native state is stamped behind
   // the native revision and rejected by the editor instead of re-applying a

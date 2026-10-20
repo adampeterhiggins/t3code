@@ -8,7 +8,7 @@ import { View } from "react-native";
 import { AppText as Text } from "../../components/ui/AppText";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import { useAgentReferences } from "./agent-references";
-import { RequestActionButton } from "./RequestActionButton";
+import { Button } from "../../components/ui/Button";
 import { useVisibleSecondClock } from "./use-visible-second-clock";
 
 /**
@@ -82,7 +82,7 @@ export function ProviderSubagentBar(props: {
         </Text>
       </View>
       {props.onOpenParent ? (
-        <RequestActionButton label="Open parent" tone="secondary" onPress={props.onOpenParent} />
+        <Button label="Open parent" tone="secondary" onPress={props.onOpenParent} />
       ) : null}
     </View>
   );
