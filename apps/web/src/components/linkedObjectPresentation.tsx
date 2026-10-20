@@ -1,0 +1,154 @@
+import type {
+  DiscordThreadContextRecord,
+  GitHubIssueContextRecord,
+  GitHubRefContextRecord,
+  GranolaNoteContextRecord,
+  LinearIssueContextRecord,
+  NotionPageContextRecord,
+  PromptLinkContextRecord,
+  RepositoryContextRecord,
+  SlackThreadContextRecord,
+} from "@t3tools/contracts";
+import { FolderGit2Icon, MessageSquareTextIcon } from "lucide-react";
+import type { MouseEvent } from "react";
+
+import { useLinearLinkClickHandler } from "~/browser/useLinearLinkClickHandler";
+import {
+  DiscordThreadDetails,
+  GitHubIssueDetails,
+  GitHubRefDetails,
+  GranolaNoteDetails,
+  LinearIssueDetails,
+  NotionPageDetails,
+  PromptLinkDetails,
+  RepositoryDetails,
+  SlackThreadDetails,
+} from "./contextChipParts";
+import { GitHubRefIcon, gitHubRefKindLabel } from "./gitHubRefPresentation";
+import { DiscordIcon, GitHubIcon, GranolaIcon, LinearIcon, NotionIcon, SlackIcon } from "./Icons";
+
+/**
+ * Something outside the conversation that a link names, as a context record. A composer chip,
+ * a sent message's chip, and a link in message text all describe it through this module, so the
+ * same issue or Slack thread reads the same wherever it shows up.
+ */
+export type LinkedObjectContextRecord =
+  | LinearIssueContextRecord
+  | GitHubIssueContextRecord
+  | GitHubRefContextRecord
+  | RepositoryContextRecord
+  | NotionPageContextRecord
+  | GranolaNoteContextRecord
+  | PromptLinkContextRecord
+  | SlackThreadContextRecord
+  | DiscordThreadContextRecord;
+
+export type LinkedObjectContextKind = LinkedObjectContextRecord["kind"];
+
+export const LINKED_OBJECT_CONTEXT_KINDS = [
+  "linear-issue",
+  "github-issue",
+  "github-ref",
+  "repository",
+  "notion-page",
+  "granola-note",
+  "prompt-link",
+  "slack-thread",
+  "discord-thread",
+] as const satisfies ReadonlyArray<LinkedObjectContextKind>;
+
+const LINKED_OBJECT_KIND_SET: ReadonlySet<string> = new Set(LINKED_OBJECT_CONTEXT_KINDS);
+
+export function isLinkedObjectContextKind(kind: string): kind is LinkedObjectContextKind {
+  return LINKED_OBJECT_KIND_SET.has(kind);
+}
+
+export function isLinkedObjectContextRecord(record: {
+  readonly kind: string;
+}): record is LinkedObjectContextRecord {
+  return isLinkedObjectContextKind(record.kind);
+}
+
+export function linkedObjectIcon(record: LinkedObjectContextRecord) {
+  switch (record.kind) {
+    case "linear-issue":
+      return <LinearIcon />;
+    case "github-issue":
+      return <GitHubIcon />;
+    case "github-ref":
+      return <GitHubRefIcon refType={record.refType} />;
+    case "repository":
+      return <FolderGit2Icon />;
+    case "notion-page":
+      return <NotionIcon />;
+    case "granola-note":
+      return <GranolaIcon />;
+    case "prompt-link":
+      return <MessageSquareTextIcon />;
+    case "slack-thread":
+      return <SlackIcon />;
+    case "discord-thread":
+      return <DiscordIcon />;
+  }
+}
+
+/** What the record is, for screen readers: "Linear issue", "Slack message", and so on. */
+export function linkedObjectKindLabel(record: LinkedObjectContextRecord): string {
+  switch (record.kind) {
+    case "linear-issue":
+      return "Linear issue";
+    case "github-issue":
+      return "GitHub issue";
+    case "github-ref":
+      return gitHubRefKindLabel(record.refType);
+    case "repository":
+      return "Repository";
+    case "notion-page":
+      return "Notion page";
+    case "granola-note":
+      return "Granola note";
+    case "prompt-link":
+      return "T3 Code prompt link";
+    case "slack-thread":
+      return record.scope === "thread" ? "Slack thread" : "Slack message";
+    case "discord-thread":
+      return record.scope === "thread" ? "Discord thread" : "Discord message";
+  }
+}
+
+/** The body of the hover card, with a link back to where the record came from. */
+export function LinkedObjectDetails(props: {
+  record: LinkedObjectContextRecord;
+  onOpenLink: (event: MouseEvent<HTMLElement>, url: string) => void;
+}) {
+  const { record, onOpenLink } = props;
+  const openLinearLink = useLinearLinkClickHandler(onOpenLink);
+  switch (record.kind) {
+    case "linear-issue":
+      return (
+        <LinearIssueDetails
+          identifier={record.identifier}
+          stateName={record.stateName}
+          url={record.url}
+          markdown={record.markdown}
+          onOpenLink={openLinearLink}
+        />
+      );
+    case "github-issue":
+      return <GitHubIssueDetails record={record} onOpenLink={onOpenLink} />;
+    case "github-ref":
+      return <GitHubRefDetails record={record} onOpenLink={onOpenLink} />;
+    case "repository":
+      return <RepositoryDetails record={record} onOpenLink={onOpenLink} />;
+    case "notion-page":
+      return <NotionPageDetails record={record} onOpenLink={onOpenLink} />;
+    case "granola-note":
+      return <GranolaNoteDetails record={record} onOpenLink={onOpenLink} />;
+    case "prompt-link":
+      return <PromptLinkDetails record={record} onOpenLink={onOpenLink} />;
+    case "slack-thread":
+      return <SlackThreadDetails record={record} onOpenLink={onOpenLink} />;
+    case "discord-thread":
+      return <DiscordThreadDetails record={record} onOpenLink={onOpenLink} />;
+  }
+}

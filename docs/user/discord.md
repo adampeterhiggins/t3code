@@ -46,7 +46,8 @@ The thread is copied when you attach it, so later replies don't change a message
 sent. Chips in an unsent draft don't survive a reload; attach the message again.
 
 A Discord link that stays a link in a message, such as one in an agent's reply, shows the channel
-and author instead of its URL on web and desktop while Discord is connected.
+and author instead of its URL on web and desktop while Discord is connected. Hover it to read the
+thread, as you would on its chip.
 
 Discord can take a little while to index a server the bot just joined, so new servers may not
 show up in search straight away. Pasted links work immediately.

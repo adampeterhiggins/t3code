@@ -2,26 +2,12 @@ import {
   toolEntryShowsPathBreadcrumbs,
   toolPathTargets,
 } from "@t3tools/client-runtime/work-log/tool-paths";
-import type {
-  GitHubRefContextRecord,
-  GranolaNoteContextRecord,
-  NotionPageContextRecord,
-  PromptLinkContextRecord,
-  UnreadLinkContextRecord,
-} from "@t3tools/contracts";
+import type { UnreadLinkContextRecord } from "@t3tools/contracts";
 import { ToolPathText } from "./ToolPathText";
-import { GitHubRefIcon, gitHubRefKindLabel } from "../gitHubRefPresentation";
 import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
 import { useCursorAnchor } from "./CursorPreviewCard";
 import { workEntryHasToolCallPreview } from "../../lib/toolCallPreview";
-import {
-  DiscordIcon,
-  GitHubIcon,
-  GranolaIcon,
-  LinearIcon,
-  NotionIcon,
-  SlackIcon,
-} from "~/components/Icons";
+import { GranolaIcon, LinearIcon } from "~/components/Icons";
 import type { Root, RootContent } from "mdast";
 import { ThreadFindTimelineContext } from "./ThreadFindProvider";
 import { shallow } from "zustand/vanilla/shallow";
@@ -169,7 +155,6 @@ import {
   Code2Icon,
   XIcon,
   ZapIcon,
-  MessageSquareTextIcon,
 } from "lucide-react";
 import {
   isWorkspaceChangeNotice,
@@ -182,11 +167,6 @@ import type {
   ComposerContextId,
   ComposerContextRecord,
   KnownComposerContextRecord,
-  GitHubIssueContextRecord,
-  LinearIssueContextRecord,
-  DiscordThreadContextRecord,
-  RepositoryContextRecord,
-  SlackThreadContextRecord,
 } from "@t3tools/contracts";
 import { Button, InlineButton } from "../ui/button";
 import { MorphIcon } from "~/components/MorphIcon";
@@ -288,15 +268,6 @@ import {
   PullRequestChip,
   ThreadTabSummaryDetails,
   CheckoutDetails,
-  GitHubIssueDetails,
-  GitHubRefDetails,
-  LinearIssueDetails,
-  RepositoryDetails,
-  DiscordThreadDetails,
-  SlackThreadDetails,
-  NotionPageDetails,
-  GranolaNoteDetails,
-  PromptLinkDetails,
   UnreadLinkChip,
   UnresolvedChip,
 } from "../contextChipParts";
@@ -320,10 +291,20 @@ import {
 } from "@t3tools/shared/composerContextClipboard";
 import { chatMarkdownClipboardPayload } from "../../markdown-clipboard";
 import { ContextChip, ContextChipLabel, type ContextChipKind } from "../ContextChip";
-import { createContextPresentationRegistry } from "../contextPresentationRegistry";
+import {
+  createContextPresentationRegistry,
+  type ContextPresentationHandler,
+} from "../contextPresentationRegistry";
+import {
+  isLinkedObjectContextRecord,
+  LINKED_OBJECT_CONTEXT_KINDS,
+  LinkedObjectDetails,
+  linkedObjectIcon,
+  linkedObjectKindLabel,
+  type LinkedObjectContextRecord,
+} from "../linkedObjectPresentation";
 import { useOpenPrLink } from "~/lib/openPullRequestLink";
 import { useLinkClickHandler } from "~/browser/useOpenLink";
-import { useLinearLinkClickHandler } from "~/browser/useLinearLinkClickHandler";
 import { useClientSettings } from "~/hooks/useSettings";
 import type { ChatMarkdownContextReference } from "../ChatMarkdown";
 import { useMediaQuery } from "~/hooks/useMediaQuery";
@@ -4806,60 +4787,32 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
           <UnavailableUserMessageContextChip {...context} />
         ),
     },
-    {
-      kind: "linear-issue",
-      canRender: (record) => record.kind === "linear-issue",
-      render: (record, context) =>
-        record.kind === "linear-issue" ? (
-          <UserMessageContextPopover
-            copyMarkdown={context.copyMarkdown}
-            accessibleLabel={`Linear issue, ${record.label}`}
-            kind="linear-issue"
-            icon={<LinearIcon />}
-            label={record.label}
-          >
-            <UserMessageLinearIssueDetails record={record} />
-          </UserMessageContextPopover>
-        ) : (
-          <UnavailableUserMessageContextChip {...context} />
-        ),
-    },
-    {
-      kind: "github-issue",
-      canRender: (record) => record.kind === "github-issue",
-      render: (record, context) =>
-        record.kind === "github-issue" ? (
-          <UserMessageContextPopover
-            copyMarkdown={context.copyMarkdown}
-            accessibleLabel={`GitHub issue, ${record.label}`}
-            kind="github-issue"
-            icon={<GitHubIcon />}
-            label={record.label}
-          >
-            <UserMessageGitHubIssueDetails record={record} />
-          </UserMessageContextPopover>
-        ) : (
-          <UnavailableUserMessageContextChip {...context} />
-        ),
-    },
-    {
-      kind: "github-ref",
-      canRender: (record) => record.kind === "github-ref",
-      render: (record, context) =>
-        record.kind === "github-ref" ? (
-          <UserMessageContextPopover
-            copyMarkdown={context.copyMarkdown}
-            accessibleLabel={`${gitHubRefKindLabel(record.refType)}, ${record.label}`}
-            kind="github-ref"
-            icon={<GitHubRefIcon refType={record.refType} />}
-            label={record.label}
-          >
-            <UserMessageGitHubRefDetails record={record} />
-          </UserMessageContextPopover>
-        ) : (
-          <UnavailableUserMessageContextChip {...context} />
-        ),
-    },
+    ...LINKED_OBJECT_CONTEXT_KINDS.map(
+      (
+        kind,
+      ): ContextPresentationHandler<
+        KnownComposerContextRecord,
+        UserMessageContextRenderContext,
+        ReactNode
+      > => ({
+        kind,
+        canRender: (record) => record.kind === kind,
+        render: (record, context) =>
+          isLinkedObjectContextRecord(record) ? (
+            <UserMessageContextPopover
+              copyMarkdown={context.copyMarkdown}
+              accessibleLabel={`${linkedObjectKindLabel(record)}, ${record.label}`}
+              kind={kind}
+              icon={linkedObjectIcon(record)}
+              label={record.label}
+            >
+              <UserMessageLinkedObjectDetails record={record} />
+            </UserMessageContextPopover>
+          ) : (
+            <UnavailableUserMessageContextChip {...context} />
+          ),
+      }),
+    ),
     {
       kind: "unread-link",
       canRender: (record) => record.kind === "unread-link",
@@ -4876,114 +4829,6 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
       render: (record, context) =>
         record.kind === "checkout" ? (
           <UserMessageCheckoutChip record={record} copyMarkdown={context.copyMarkdown} />
-        ) : (
-          <UnavailableUserMessageContextChip {...context} />
-        ),
-    },
-    {
-      kind: "repository",
-      canRender: (record) => record.kind === "repository",
-      render: (record, context) =>
-        record.kind === "repository" ? (
-          <UserMessageContextPopover
-            copyMarkdown={context.copyMarkdown}
-            accessibleLabel={`Repository, ${record.label}`}
-            kind="repository"
-            icon={<FolderGit2Icon />}
-            label={record.label}
-          >
-            <UserMessageRepositoryDetails record={record} />
-          </UserMessageContextPopover>
-        ) : (
-          <UnavailableUserMessageContextChip {...context} />
-        ),
-    },
-    {
-      kind: "notion-page",
-      canRender: (record) => record.kind === "notion-page",
-      render: (record, context) =>
-        record.kind === "notion-page" ? (
-          <UserMessageContextPopover
-            copyMarkdown={context.copyMarkdown}
-            accessibleLabel={`Notion page, ${record.label}`}
-            kind="notion-page"
-            icon={<NotionIcon />}
-            label={record.label}
-          >
-            <UserMessageNotionPageDetails record={record} />
-          </UserMessageContextPopover>
-        ) : (
-          <UnavailableUserMessageContextChip {...context} />
-        ),
-    },
-    {
-      kind: "granola-note",
-      canRender: (record) => record.kind === "granola-note",
-      render: (record, context) =>
-        record.kind === "granola-note" ? (
-          <UserMessageContextPopover
-            copyMarkdown={context.copyMarkdown}
-            accessibleLabel={`Granola note, ${record.label}`}
-            kind="granola-note"
-            icon={<GranolaIcon />}
-            label={record.label}
-          >
-            <UserMessageGranolaNoteDetails record={record} />
-          </UserMessageContextPopover>
-        ) : (
-          <UnavailableUserMessageContextChip {...context} />
-        ),
-    },
-    {
-      kind: "prompt-link",
-      canRender: (record) => record.kind === "prompt-link",
-      render: (record, context) =>
-        record.kind === "prompt-link" ? (
-          <UserMessageContextPopover
-            copyMarkdown={context.copyMarkdown}
-            accessibleLabel={`T3 Code prompt link, ${record.label}`}
-            kind="prompt-link"
-            icon={<MessageSquareTextIcon />}
-            label={record.label}
-          >
-            <UserMessagePromptLinkDetails record={record} />
-          </UserMessageContextPopover>
-        ) : (
-          <UnavailableUserMessageContextChip {...context} />
-        ),
-    },
-    {
-      kind: "slack-thread",
-      canRender: (record) => record.kind === "slack-thread",
-      render: (record, context) =>
-        record.kind === "slack-thread" ? (
-          <UserMessageContextPopover
-            copyMarkdown={context.copyMarkdown}
-            accessibleLabel={`Slack ${record.scope}, ${record.label}`}
-            kind="slack-thread"
-            icon={<SlackIcon />}
-            label={record.label}
-          >
-            <UserMessageSlackThreadDetails record={record} />
-          </UserMessageContextPopover>
-        ) : (
-          <UnavailableUserMessageContextChip {...context} />
-        ),
-    },
-    {
-      kind: "discord-thread",
-      canRender: (record) => record.kind === "discord-thread",
-      render: (record, context) =>
-        record.kind === "discord-thread" ? (
-          <UserMessageContextPopover
-            copyMarkdown={context.copyMarkdown}
-            accessibleLabel={`Discord ${record.scope}, ${record.label}`}
-            kind="discord-thread"
-            icon={<DiscordIcon />}
-            label={record.label}
-          >
-            <UserMessageDiscordThreadDetails record={record} />
-          </UserMessageContextPopover>
         ) : (
           <UnavailableUserMessageContextChip {...context} />
         ),
@@ -5032,43 +4877,9 @@ function UserMessageCheckoutChip(props: {
   );
 }
 
-function UserMessageRepositoryDetails({ record }: { record: RepositoryContextRecord }) {
+function UserMessageLinkedObjectDetails({ record }: { record: LinkedObjectContextRecord }) {
   const { threadRef } = use(TimelineRowCtx);
-  return <RepositoryDetails record={record} onOpenLink={useLinkClickHandler(threadRef)} />;
-}
-
-function UserMessageLinearIssueDetails({ record }: { record: LinearIssueContextRecord }) {
-  const { threadRef } = use(TimelineRowCtx);
-  const openLink = useLinearLinkClickHandler(useLinkClickHandler(threadRef));
-  return (
-    <LinearIssueDetails
-      identifier={record.identifier}
-      stateName={record.stateName}
-      url={record.url}
-      markdown={record.markdown}
-      onOpenLink={openLink}
-    />
-  );
-}
-
-function UserMessageGitHubRefDetails({ record }: { record: GitHubRefContextRecord }) {
-  const { threadRef } = use(TimelineRowCtx);
-  return <GitHubRefDetails record={record} onOpenLink={useLinkClickHandler(threadRef)} />;
-}
-
-function UserMessageGitHubIssueDetails({ record }: { record: GitHubIssueContextRecord }) {
-  const { threadRef } = use(TimelineRowCtx);
-  return <GitHubIssueDetails record={record} onOpenLink={useLinkClickHandler(threadRef)} />;
-}
-
-function UserMessageSlackThreadDetails({ record }: { record: SlackThreadContextRecord }) {
-  const { threadRef } = use(TimelineRowCtx);
-  return <SlackThreadDetails record={record} onOpenLink={useLinkClickHandler(threadRef)} />;
-}
-
-function UserMessageDiscordThreadDetails({ record }: { record: DiscordThreadContextRecord }) {
-  const { threadRef } = use(TimelineRowCtx);
-  return <DiscordThreadDetails record={record} onOpenLink={useLinkClickHandler(threadRef)} />;
+  return <LinkedObjectDetails record={record} onOpenLink={useLinkClickHandler(threadRef)} />;
 }
 
 /** One inline context chip in a sent message, dispatched by the shared presentation registry. */
@@ -6263,19 +6074,4 @@ function UserMessageUnreadLinkChip(props: {
       onOpenLink={useLinkClickHandler(threadRef)}
     />
   );
-}
-
-function UserMessagePromptLinkDetails({ record }: { record: PromptLinkContextRecord }) {
-  const { threadRef } = use(TimelineRowCtx);
-  return <PromptLinkDetails record={record} onOpenLink={useLinkClickHandler(threadRef)} />;
-}
-
-function UserMessageGranolaNoteDetails({ record }: { record: GranolaNoteContextRecord }) {
-  const { threadRef } = use(TimelineRowCtx);
-  return <GranolaNoteDetails record={record} onOpenLink={useLinkClickHandler(threadRef)} />;
-}
-
-function UserMessageNotionPageDetails({ record }: { record: NotionPageContextRecord }) {
-  const { threadRef } = use(TimelineRowCtx);
-  return <NotionPageDetails record={record} onOpenLink={useLinkClickHandler(threadRef)} />;
 }
