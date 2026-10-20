@@ -424,7 +424,9 @@ export function ThreadTabs({
                 title: "Restart agent session",
                 image: "arrow.clockwise",
               },
-              ...linkActions,
+              ...(linkActions.length > 0
+                ? [{ id: "tab:link", title: "Link", image: "link", subactions: linkActions }]
+                : []),
             ]}
             onPressAction={({ nativeEvent }) => onMenuAction(nativeEvent.event)}
           >

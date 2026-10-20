@@ -2232,52 +2232,59 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
           { id: "copy-path", label: "Copy Path" },
           { id: "copy-thread-id", label: "Copy Thread ID" },
           { id: "export-transcript", label: "Export transcript…" },
-          { id: "link-linear-issue", label: "Link Linear issue…" },
-          ...(isGitHubProject(threadProject)
-            ? [
-                {
-                  id: "link-github-issue",
-                  label: "Link GitHub issue…",
-                  disabled: !canOperateThread,
-                },
-              ]
-            : []),
-          ...(linkIntegrations.slack
-            ? [
-                {
-                  id: "link-slack-thread",
-                  label: "Link Slack thread…",
-                  disabled: !canOperateThread,
-                },
-              ]
-            : []),
-          ...(linkIntegrations.discord
-            ? [
-                {
-                  id: "link-discord-thread",
-                  label: "Link Discord thread…",
-                  disabled: !canOperateThread,
-                },
-              ]
-            : []),
-          ...(linkIntegrations.notion
-            ? [
-                {
-                  id: "link-notion-page",
-                  label: "Link Notion page…",
-                  disabled: !canOperateThread,
-                },
-              ]
-            : []),
-          ...(linkIntegrations.granola
-            ? [
-                {
-                  id: "link-granola-note",
-                  label: "Link Granola note…",
-                  disabled: !canOperateThread,
-                },
-              ]
-            : []),
+          {
+            id: "link",
+            label: "Link",
+            disabled: !canOperateThread,
+            children: [
+              { id: "link-linear-issue", label: "Linear issue…" },
+              ...(isGitHubProject(threadProject)
+                ? [
+                    {
+                      id: "link-github-issue",
+                      label: "GitHub issue…",
+                      disabled: !canOperateThread,
+                    },
+                  ]
+                : []),
+              ...(linkIntegrations.slack
+                ? [
+                    {
+                      id: "link-slack-thread",
+                      label: "Slack thread…",
+                      disabled: !canOperateThread,
+                    },
+                  ]
+                : []),
+              ...(linkIntegrations.discord
+                ? [
+                    {
+                      id: "link-discord-thread",
+                      label: "Discord thread…",
+                      disabled: !canOperateThread,
+                    },
+                  ]
+                : []),
+              ...(linkIntegrations.notion
+                ? [
+                    {
+                      id: "link-notion-page",
+                      label: "Notion page…",
+                      disabled: !canOperateThread,
+                    },
+                  ]
+                : []),
+              ...(linkIntegrations.granola
+                ? [
+                    {
+                      id: "link-granola-note",
+                      label: "Granola note…",
+                      disabled: !canOperateThread,
+                    },
+                  ]
+                : []),
+            ],
+          },
           { id: "project-settings", label: "Project settings" },
           {
             id: "delete",

@@ -75,9 +75,9 @@ that happens because Slack isn't connected, a notice says so.
 A linked Slack thread stays with the thread and all of its chat tabs, so you can see which
 conversation the work is for. A thread links one Slack thread at a time.
 
-- On web and desktop, choose **Link Slack thread…** from the thread's menu (the sidebar row or the
+- On web and desktop, choose **Link > Slack thread…** from the thread's menu (the sidebar row or the
   chat header title), or run **Link Slack thread** from the command palette.
-- On mobile, choose **Link Slack thread** from the chat tab menu, or from **Link** beside **New
+- On mobile, choose **Link > Link Slack thread** from the chat tab menu, or from **Link** beside **New
   tab** when the thread has one tab.
 
 Pick any message in the thread; a reply links its whole thread. The chat header shows the linked
