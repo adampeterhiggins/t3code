@@ -1668,6 +1668,9 @@ export function threadShellFromProjection(
     autoSettleDisabledAt: projection.thread.autoSettleDisabledAt ?? null,
     hiddenAt: projection.thread.hiddenAt ?? null,
     groupName: projection.thread.groupName ?? null,
+    ...(projection.thread.scheduledTaskId == null
+      ? {}
+      : { scheduledTaskId: projection.thread.scheduledTaskId }),
     pinOrderKey: projection.thread.pinOrderKey ?? null,
     lastVisitedAt: projection.thread.lastVisitedAt,
     titleRegeneration: projection.thread.titleRegeneration ?? null,
@@ -1912,6 +1915,9 @@ function shellFromState(input: {
     autoSettleDisabledAt: input.state.thread.autoSettleDisabledAt ?? null,
     hiddenAt: input.state.thread.hiddenAt ?? null,
     groupName: input.state.thread.groupName ?? null,
+    ...(input.state.thread.scheduledTaskId == null
+      ? {}
+      : { scheduledTaskId: input.state.thread.scheduledTaskId }),
     pinOrderKey: input.state.thread.pinOrderKey ?? null,
     lastVisitedAt: input.state.thread.lastVisitedAt,
     titleRegeneration: input.state.thread.titleRegeneration ?? null,

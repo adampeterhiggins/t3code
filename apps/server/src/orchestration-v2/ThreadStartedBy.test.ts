@@ -4,6 +4,7 @@ import {
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
+  ScheduledTaskId,
   ThreadId,
   type OrchestrationV2Command,
 } from "@t3tools/contracts";
@@ -103,6 +104,18 @@ it("drops a client's claim to have been started by an agent", () => {
     kind: "agent-access",
     label: "Spoofed",
   });
+});
+
+it("drops a client's claim to file a thread under a scheduled task", () => {
+  const command = {
+    ...createCommand(ThreadId.make("thread:client-task"), undefined),
+    scheduledTaskId: ScheduledTaskId.make("scheduled-task:spoofed"),
+  };
+  assert.strictEqual(
+    "scheduledTaskId" in
+      withCreationProvenance(command, { createdBy: "user", creationSource: "web" }),
+    false,
+  );
 });
 
 it("drops a client's claim on a fork too", () => {

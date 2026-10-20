@@ -134,6 +134,8 @@ export interface EnvironmentThreadShell {
   readonly autoSettleDisabledAt?: string | null;
   readonly hiddenAt?: string | null;
   readonly groupName?: string | null;
+  /** The scheduled task that launched or runs in the thread; files it under Automations. */
+  readonly scheduledTaskId?: string | null;
   /** Slot in the user-arranged pinned order; null for keyless (legacy) pins. */
   readonly pinOrderKey: string | null;
   readonly activeOrderKey: string | null;
@@ -290,6 +292,7 @@ export function presentThreadShell(
     autoSettleDisabledAt: nullableIso(thread.autoSettleDisabledAt ?? null),
     hiddenAt: nullableIso(thread.hiddenAt ?? null),
     groupName: thread.groupName ?? null,
+    scheduledTaskId: thread.scheduledTaskId ?? null,
     pinOrderKey: thread.pinOrderKey ?? null,
     activeOrderKey: thread.activeOrderKey ?? null,
     ...(thread.lastVisitedAt === undefined

@@ -180,7 +180,8 @@ scroll position instead of following the thread to its new place in the list.
 
 Pinning does not prevent automatic settlement. Settling a thread removes its pin.
 
-The thread list shows live work. To also see snoozed, hidden, or settled threads, open the filter
+The thread list shows live work, with your scheduled tasks' threads under **Automations** below
+it. To also see snoozed, hidden, or settled threads, open the filter
 button in the sidebar header on web and desktop, or the thread list's filter menu on mobile, and
 pick them under **Show**. Pick as many as you like, or **Only** to show one; each appears as its
 own titled group below your live threads. On web and desktop, click a group's title to collapse
@@ -515,10 +516,21 @@ page. **Default** follows **Grouped threads** under the sidebar's thread view se
 
 To file a project's new threads automatically, open the project's settings and pick a group under
 **New threads → Thread group**. Every new thread in that project starts in the group, however it
-was started, including by agents and scheduled tasks. A fork starts in the same group as the thread
-it came from.
+was started, including by agents. Threads a scheduled task starts go to **Automations** instead. A
+fork starts in the same group as the thread it came from.
 
 On web and desktop, click the pencil on a group's title, or right-click it, to rename it, change
 its look, or delete it. Renaming moves every thread in it; deleting returns its threads to your
 live list. Choose **Move to group → Remove from group** to bring one thread back. Groups are saved
 on your servers, so they appear on your other devices.
+
+## Automation threads
+
+Threads that scheduled tasks start, and threads a task posts into, are listed under
+**Automations** instead of your live threads, settled or not, so a task's runs stay together. It
+appears below your live threads by default; untick **Automations** under **Show** to leave it out.
+Hiding a thread or moving it into one of your groups takes it out of Automations.
+
+When you delete a task, the thread it posted into returns to your live list. Threads its runs
+started stay under Automations as its history; archive them to clear them away. Threads from runs
+before this update are not filed under Automations.

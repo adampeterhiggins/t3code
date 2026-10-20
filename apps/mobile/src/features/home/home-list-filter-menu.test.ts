@@ -70,6 +70,7 @@ describe("buildHomeListFilterMenu", () => {
         { title: "Threads", state: "on" },
         { title: "Ops", state: "on" },
         { title: "Web", state: "off" },
+        { title: "Automations", state: "off" },
         { title: "Snoozed", state: "off" },
         { title: "Hidden", state: "off" },
         { title: "Settled", state: "on" },
@@ -77,7 +78,7 @@ describe("buildHomeListFilterMenu", () => {
     });
     if (show?.type !== "submenu") throw new Error("Expected show submenu");
     show.items[2]?.onPress();
-    show.items[4]?.onPress();
+    show.items[5]?.onPress();
     expect(onTogglePage).toHaveBeenNthCalledWith(1, "group:Web");
     expect(onTogglePage).toHaveBeenNthCalledWith(2, "hidden");
     expect(build(false)).toMatchObject({
@@ -85,6 +86,7 @@ describe("buildHomeListFilterMenu", () => {
         { title: "Threads" },
         { title: "Ops" },
         { title: "Web" },
+        { title: "Automations" },
         { title: "Snoozed" },
         { title: "Settled" },
       ],

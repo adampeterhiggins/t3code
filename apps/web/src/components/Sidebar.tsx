@@ -296,6 +296,7 @@ import {
   isSidebarThreadGroupedAway,
   type SidebarThreadShelf,
   resolveSidebarPages,
+  sidebarPagesAllowDragging,
   sidebarGroupPage,
   sidebarListItemId,
   sidebarMarkerId,
@@ -467,11 +468,12 @@ const EMPTY_THREADS: readonly EnvironmentThreadShell[] = [];
 const SIDEBAR_PAGES_KEY = "t3code:sidebar:pages";
 const SIDEBAR_ORGANISATIONS_KEY = "t3code:sidebar:organisations";
 const NO_ORGANISATION_KEYS: readonly string[] = [];
-const DEFAULT_SIDEBAR_PAGES: readonly string[] = ["threads"];
+const DEFAULT_SIDEBAR_PAGES: readonly string[] = ["threads", "automations"];
 // Page headers the user folded away. Pages start open: picking one is asking to see it.
 const SIDEBAR_COLLAPSED_PAGES_KEY = "t3code:sidebar:collapsed-pages";
 const NO_COLLAPSED_PAGES: readonly string[] = [];
 const SIDEBAR_PAGE_BY_MARKER = {
+  "automations-header": "automations",
   "snoozed-header": "snoozed",
   "hidden-header": "hidden",
   "settled-header": "settled",
@@ -3989,6 +3991,7 @@ export default function Sidebar() {
     hiddenThreads,
     groupedThreads,
     shownGroupThreads,
+    automationThreads,
     settledThreads,
     facetThreads,
     snoozeNow,
@@ -4012,6 +4015,7 @@ export default function Sidebar() {
     const snoozed: EnvironmentThreadShell[] = [];
     const hidden: EnvironmentThreadShell[] = [];
     const grouped: EnvironmentThreadShell[] = [];
+    const automations: EnvironmentThreadShell[] = [];
     // Members of groups shown in Threads, which keep their own shelf too.
     const shownGrouped: Array<{
       thread: EnvironmentThreadShell;
@@ -4077,7 +4081,9 @@ export default function Sidebar() {
       if (capabilities?.threadPinning === true && capabilities.threadPinReorder === true) {
         draggable.add(threadKey);
       }
-      ({ hidden, grouped, snoozed, settled, pinned, working, active })[shelf].push(row);
+      ({ hidden, grouped, automations, snoozed, settled, pinned, working, active })[shelf].push(
+        row,
+      );
       if (alsoGroupedIn !== null) shownGrouped.push({ thread: row, page });
     }
     // Server capability only gates DRAGGING — it must not influence the
@@ -4121,6 +4127,7 @@ export default function Sidebar() {
       // Each group keeps the same order the active list uses.
       groupedThreads: sortThreadsForSidebar(grouped),
       shownGroupThreads: shownGrouped,
+      automationThreads: sortThreadsForSidebar(automations),
       settledThreads: sortSettledThreads(settled),
       facetThreads,
       snoozeNow: preciseNow,
@@ -4164,6 +4171,7 @@ export default function Sidebar() {
       ...activeThreads,
       ...workingThreads,
       ...groupedThreads,
+      ...automationThreads,
       ...snoozedThreads,
       ...hiddenThreads,
       ...settledThreads,
@@ -4316,8 +4324,9 @@ export default function Sidebar() {
   const showsPage = (page: SidebarPage) => sidebarPages.includes(page);
   const showsThreads = showsPage("threads");
   // Dragging moves rows between pinned and active only, so it stays off while
-  // other pages share the list.
-  const threadsOnly = showsThreads && sidebarPages.length === 1;
+  // pages it cannot place share the list.
+  const threadsOnly = sidebarPagesAllowDragging(sidebarPages);
+  const visibleAutomationThreads = pageRows("automations", automationThreads);
   const renderedSettledThreads = pageRows("settled", visibleSettledThreads);
   const visibleSnoozedThreads = pageRows("snoozed", snoozedThreads);
   const visibleHiddenThreads = pageRows("hidden", hiddenThreads);
@@ -4352,6 +4361,8 @@ export default function Sidebar() {
         ...visibleGroups.flatMap((group) =>
           (threadGroups[group.name]?.view ?? threadViews.grouped) === "card" ? group.threads : [],
         ),
+        // Automations is a built-in group, so it takes the groups' view.
+        ...(threadViews.grouped === "card" ? visibleAutomationThreads : []),
         ...(threadViews.hidden === "card" ? visibleHiddenThreads : []),
         ...(threadViews.snoozed === "card" ? visibleSnoozedThreads : []),
         ...(threadViews.settled === "card" ? renderedSettledThreads : []),
@@ -4401,6 +4412,7 @@ export default function Sidebar() {
   const rowThreads = [
     ...(showsThreads ? [...pinnedThreads, ...activeThreads, ...visibleWorkingThreads] : []),
     ...visibleGroups.flatMap((group) => group.threads),
+    ...visibleAutomationThreads,
     ...visibleSnoozedThreads,
     ...visibleHiddenThreads,
     ...renderedSettledThreads,
@@ -4954,6 +4966,7 @@ export default function Sidebar() {
     add(workingThreads, "working");
     add(snoozedThreads, "snoozed");
     add(groupedThreads, "grouped");
+    add(automationThreads, "automations");
     add(hiddenThreads, "hidden");
     add(settledThreads, "settled");
     return map;
@@ -5044,13 +5057,15 @@ export default function Sidebar() {
         ? "hidden"
         : isSidebarThreadGroupedAway(thread.groupName, groupsShownInThreads)
           ? "grouped"
-          : effectiveSnoozed(thread, { now: snoozeNow })
-            ? "snoozed"
-            : thread.settledOverride === "settled"
-              ? "settled"
-              : thread.pinnedAt != null
-                ? "pinned"
-                : "active";
+          : thread.scheduledTaskId != null
+            ? "automations"
+            : effectiveSnoozed(thread, { now: snoozeNow })
+              ? "snoozed"
+              : thread.settledOverride === "settled"
+                ? "settled"
+                : thread.pinnedAt != null
+                  ? "pinned"
+                  : "active";
     if (
       canonicalSection !== optimisticDrop.sourceSection &&
       canonicalSection !== optimisticDrop.section
@@ -5188,6 +5203,7 @@ export default function Sidebar() {
       );
     }
     const pages = [
+      ["automations-header", rowsOf(visibleAutomationThreads, "automations")],
       ["snoozed-header", rowsOf(visibleSnoozedThreads, "snoozed")],
       ["hidden-header", rowsOf(visibleHiddenThreads, "hidden")],
       ["settled-header", rowsOf(renderedSettledThreads, "settled")],
@@ -6647,7 +6663,9 @@ export default function Sidebar() {
                         const rowVariant =
                           section === "grouped" && thread.groupName != null
                             ? (threadGroups[thread.groupName]?.view ?? threadViews.grouped)
-                            : threadViews[section];
+                            : section === "automations"
+                              ? threadViews.grouped
+                              : threadViews[section];
                         const isCard = rowVariant === "card";
                         const rowTabs = tabsByRowKey.get(threadKey);
                         const rowTabsOpen = listedTabsByRowKey.has(threadKey);
@@ -6664,6 +6682,7 @@ export default function Sidebar() {
                             sortableDisabled={
                               renamingThreadKey === displayThreadKey ||
                               section === "working" ||
+                              section === "automations" ||
                               !threadsOnly ||
                               !draggableThreadKeys.has(threadKey) ||
                               optimisticDrop !== null
@@ -6993,6 +7012,7 @@ export default function Sidebar() {
                               />,
                             );
                             break;
+                          case "automations-header":
                           case "snoozed-header":
                           case "hidden-header":
                           case "settled-header": {

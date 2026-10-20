@@ -144,29 +144,34 @@ export const animateSidebarLayoutChanges: AnimateLayoutChanges = (args) =>
 // status, so its rows only drag out as chat context, never between sidebar
 // sections.
 // Hidden rows leave through Unhide, so they cannot be dragged between sections.
+// Automation rows follow their scheduled task, so they cannot be dragged either.
 
 export type SidebarSection =
   | "pinned"
   | "active"
   | "working"
   | "grouped"
+  | "automations"
   | "snoozed"
   | "hidden"
   | "settled";
 
 /** Resolve the shelf a visible thread belongs to. Hiding outranks everything
  * until the user unhides, then a user-made group holds the thread until it
- * moves out; snooze is temporary and wins until its wake boundary;
- * settlement then wins over a stale pin. */
+ * moves out; a scheduled task's thread files under Automations, settled or not,
+ * so its runs stay together; snooze is temporary and wins until its wake
+ * boundary; settlement then wins over a stale pin. */
 export function resolveSidebarThreadSection(input: {
   readonly hidden?: boolean;
   readonly grouped?: boolean;
+  readonly automation?: boolean;
   readonly snoozed: boolean;
   readonly settled: boolean;
   readonly pinned: boolean;
 }): SidebarSection {
   if (input.hidden) return "hidden";
   if (input.grouped) return "grouped";
+  if (input.automation) return "automations";
   if (input.snoozed) return "snoozed";
   if (input.settled) return "settled";
   if (input.pinned) return "pinned";
@@ -181,6 +186,7 @@ export type SidebarListMarker =
   | "settled-placeholder"
   | "pinned-divider"
   | "working-header"
+  | "automations-header"
   | "snoozed-header"
   | "hidden-header"
   | "settled-header"
@@ -210,6 +216,7 @@ function sectionAtSidebarSlot(items: readonly SidebarListItem[], index: number):
     if (item.kind !== "marker") continue;
     if (item.marker === "pinned-divider") section = "active";
     else if (item.marker === "working-header") section = "working";
+    else if (item.marker === "automations-header") section = "automations";
     else if (item.marker === "snoozed-header") section = "snoozed";
     else if (item.marker === "settled-header") section = "settled";
   }
@@ -236,6 +243,7 @@ export function resolveSidebarDropTarget(
   if (
     section === "working" ||
     section === "grouped" ||
+    section === "automations" ||
     section === "snoozed" ||
     section === "hidden"
   )
@@ -248,6 +256,7 @@ export function resolveSidebarDropTarget(
       if (item.marker === "pinned-divider") currentSection = "active";
       else if (
         item.marker === "working-header" ||
+        item.marker === "automations-header" ||
         item.marker === "snoozed-header" ||
         item.marker === "settled-header"
       )
@@ -1377,6 +1386,7 @@ export function shouldShowSidebarV2Duration(status: SidebarThreadStatus): boolea
 export type SidebarThreadShelf =
   | "hidden"
   | "grouped"
+  | "automations"
   | "snoozed"
   | "settled"
   | "pinned"
@@ -1390,7 +1400,10 @@ export type SidebarThreadShelf =
 export function sidebarThreadShelf(
   thread: ThreadStatusInput &
     ThreadSnoozeShell &
-    Pick<SidebarThreadSummary, "settledOverride" | "pinnedAt" | "hiddenAt" | "groupName">,
+    Pick<
+      SidebarThreadSummary,
+      "settledOverride" | "pinnedAt" | "hiddenAt" | "groupName" | "scheduledTaskId"
+    >,
   input: {
     supportsSnooze: boolean;
     supportsSettlement: boolean;
@@ -1405,6 +1418,7 @@ export function sidebarThreadShelf(
   const section = resolveSidebarThreadSection({
     hidden: thread.hiddenAt != null,
     grouped: isSidebarThreadGroupedAway(thread.groupName, input.groupsShownInThreads),
+    automation: thread.scheduledTaskId != null,
     snoozed: input.supportsSnooze && effectiveSnoozed(thread, { now: input.now }),
     settled: input.supportsSettlement && thread.settledOverride === "settled",
     pinned: thread.pinnedAt != null,
@@ -1811,14 +1825,38 @@ export function sortScopedProjectsForSidebar<
   );
 }
 
-/** What the sidebar list can show: live threads, one user-made group, or a parked shelf. */
-export type SidebarPage = "threads" | `group:${string}` | "snoozed" | "hidden" | "settled";
+/** What the sidebar list can show: live threads, one user-made group, Automations, or a parked shelf. */
+export type SidebarPage =
+  | "threads"
+  | `group:${string}`
+  | "automations"
+  | "snoozed"
+  | "hidden"
+  | "settled";
 
 export const sidebarGroupPage = (groupName: string): SidebarPage => `group:${groupName}`;
 
 /** Every page the Show filter offers, in list order: live work, groups by name, then shelves. */
 export function availableSidebarPages(groupNames: readonly string[]): SidebarPage[] {
-  return ["threads", ...groupNames.map(sidebarGroupPage), "snoozed", "hidden", "settled"];
+  return [
+    "threads",
+    ...groupNames.map(sidebarGroupPage),
+    "automations",
+    "snoozed",
+    "hidden",
+    "settled",
+  ];
+}
+
+/**
+ * Dragging places rows between pinned and active, so it needs every other listed section to
+ * sit below them under a header the drop resolver knows. Automations does; groups and the
+ * parked shelves are not modelled there.
+ */
+export function sidebarPagesAllowDragging(pages: readonly SidebarPage[]): boolean {
+  return (
+    pages.includes("threads") && pages.every((page) => page === "threads" || page === "automations")
+  );
 }
 
 /**

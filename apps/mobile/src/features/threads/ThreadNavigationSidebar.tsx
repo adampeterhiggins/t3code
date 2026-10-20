@@ -465,6 +465,7 @@ function ThreadNavigationSidebarPane(
       settledShelfExpanded,
       settledShelfHeaderIndex: threadListV2Layout.settledShelfHeaderIndex,
       hiddenSectionHeaderIndex: threadListV2Layout.hiddenSectionHeaderIndex,
+      automationsSectionHeaderIndex: threadListV2Layout.automationsSectionHeaderIndex,
       groupSections: threadListV2Layout.groupSections,
       snoozeLabelNow: `${nowMinute}:00.000Z`,
       snoozeEnvironmentIds,
@@ -838,6 +839,8 @@ function ThreadNavigationSidebarPane(
         );
       case "v2-snoozed-shelf":
         return <ThreadListV2SectionDivider label="Snoozed" pane="sidebar" tone="snoozed" />;
+      case "v2-automations-section":
+        return <ThreadListV2SectionDivider label="Automations" pane="sidebar" />;
       case "v2-hidden-section":
         return <ThreadListV2SectionDivider label="Hidden" pane="sidebar" />;
       case "v2-settled-shelf":

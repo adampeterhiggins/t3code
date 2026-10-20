@@ -15,6 +15,7 @@ import {
   RunAttemptId,
   RunId,
   RuntimeRequestId,
+  ScheduledTaskId,
   ThreadId,
   TrimmedNonEmptyString,
   TurnItemId,
@@ -1266,6 +1267,70 @@ it.effect("moves a thread into a sidebar group and back out", () =>
       });
       assert.equal(yield* groupName, name);
     }
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("files threads under the scheduled task that launched or runs in them", () =>
+  Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const events = yield* EventSink.EventSinkV2;
+    const launched = ThreadId.make("thread:scheduled-run");
+    const bound = ThreadId.make("thread:scheduled-bound");
+    const taskA = ScheduledTaskId.make("scheduled-task:a");
+    const taskB = ScheduledTaskId.make("scheduled-task:b");
+    const create = (threadId: ThreadId, scheduledTaskId?: ScheduledTaskId) =>
+      orchestrator.dispatch({
+        type: "thread.create",
+        commandId: CommandId.make(`create-${threadId}`),
+        threadId,
+        projectId: ProjectId.make("project:scheduled"),
+        title: "Scheduled",
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+        createdBy: "user",
+        creationSource: "server",
+        ...(scheduledTaskId === undefined ? {} : { scheduledTaskId }),
+      });
+    const file = (scheduledTaskId: ScheduledTaskId, isBound: boolean, id: string) =>
+      orchestrator.dispatch({
+        type: "thread.scheduled-task.set",
+        commandId: CommandId.make(id),
+        threadId: bound,
+        scheduledTaskId,
+        bound: isBound,
+      });
+    const shellTaskId = (threadId: ThreadId) =>
+      Effect.map(projections.getThreadShell(threadId), (shell) => shell?.scheduledTaskId);
+
+    yield* create(launched, taskA);
+    assert.equal(yield* shellTaskId(launched), taskA);
+    assert.equal((yield* projections.getThreadProjection(launched)).thread.scheduledTaskId, taskA);
+
+    yield* create(bound);
+    assert.isUndefined(yield* shellTaskId(bound));
+    const before = yield* projections.getThreadShell(bound);
+    yield* TestClock.adjust("1 second");
+    yield* file(taskB, true, "bind-b");
+    const filed = yield* projections.getThreadShell(bound);
+    assert.equal(filed?.scheduledTaskId, taskB);
+    // Filing is not activity, so the thread keeps its place in recency order.
+    assert.deepEqual(filed?.updatedAt, before?.updatedAt);
+
+    // A stale release from another task changes nothing and records no event.
+    yield* file(taskA, false, "release-a");
+    assert.equal(yield* shellTaskId(bound), taskB);
+    const stale = yield* events
+      .readByCommandId({ commandId: CommandId.make("release-a") })
+      .pipe(Stream.runCollect);
+    assert.lengthOf(stale, 0);
+
+    yield* file(taskB, false, "release-b");
+    assert.isUndefined(yield* shellTaskId(bound));
+    assert.isNull((yield* projections.getThreadProjection(bound)).thread.scheduledTaskId);
   }).pipe(Effect.provide(layerTest)),
 );
 

@@ -1316,6 +1316,8 @@ describe("orchestration V2 contracts", () => {
     });
 
     expect(shell.pendingBackgroundTasks).toEqual([]);
+    // Threads from before automation filing decode as filed under no scheduled task.
+    expect(shell.scheduledTaskId).toBeUndefined();
   });
 });
 

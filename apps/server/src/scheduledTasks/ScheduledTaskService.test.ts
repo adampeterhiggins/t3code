@@ -351,6 +351,7 @@ it.effect("thread cleanup notifies subscribers and a finishing run cannot recrea
         Layer.mergeAll(
           Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
           Layer.mock(ThreadManagementService.ThreadManagementService)({
+            dispatch: () => Effect.succeed({ sequence: 0, storedEvents: [] }),
             sendToThread: () =>
               Deferred.succeed(started, undefined).pipe(
                 Effect.andThen(Deferred.await(release)),
@@ -402,6 +403,79 @@ it.effect("thread cleanup notifies subscribers and a finishing run cannot recrea
       yield* Deferred.succeed(release, undefined);
       yield* Fiber.join(run);
       assert.lengthOf((yield* service.list()).tasks, 0);
+    }).pipe(Effect.provide(layer));
+  }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
+);
+
+it.effect("files bound threads under their task, follows rebinding, and releases on delete", () =>
+  Effect.gen(function* () {
+    const filings = yield* Ref.make<ReadonlyArray<string>>([]);
+    const launches = yield* Ref.make<ReadonlyArray<ScheduledTaskId | undefined>>([]);
+    const layer = ScheduledTaskService.layer.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.mock(ThreadLaunchService.ThreadLaunchService)({
+            launch: (input) =>
+              Ref.update(launches, (all) => [...all, input.initialMessage?.scheduledTaskId]).pipe(
+                Effect.andThen(Effect.die("launch result is not under test")),
+              ),
+          }),
+          Layer.mock(ThreadManagementService.ThreadManagementService)({
+            dispatch: (command) =>
+              Ref.update(filings, (all) =>
+                command.type === "thread.scheduled-task.set"
+                  ? [
+                      ...all,
+                      `${command.bound ? "bind" : "release"} ${command.threadId} ${command.scheduledTaskId}`,
+                    ]
+                  : all,
+              ).pipe(Effect.as({ sequence: 0, storedEvents: [] })),
+            sendToThread: () =>
+              Ref.update(filings, (all) => [...all, "send"]).pipe(Effect.as({} as never)),
+          }),
+          Layer.mock(SecretRequests.SecretRequests)({}),
+          Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
+            namedProjectsRoot: "/projects",
+            isScratchProject: () => Effect.succeed(false),
+          }),
+          NodeCrypto.layer,
+          Scheduler.layer,
+        ),
+      ),
+    );
+    yield* Effect.gen(function* () {
+      const service = yield* ScheduledTaskService.ScheduledTaskService;
+      const id = ScheduledTaskId.make("task:filed");
+      const save = (threadId: ThreadId | null) =>
+        service.upsert({
+          id,
+          title: "Daily check",
+          prompt: "Check progress",
+          enabled: true,
+          schedule: { type: "interval", everyMs: 60_000 },
+          projectId: ProjectId.make("project:test"),
+          threadId,
+          workspaceStrategy: { type: "root" },
+          modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
+          runtimeMode: "full-access",
+          interactionMode: "default",
+        });
+      yield* save(null);
+      yield* service.runNow({ id }).pipe(Effect.ignore);
+      yield* save(ThreadId.make("thread:first"));
+      yield* service.runNow({ id });
+      yield* save(ThreadId.make("thread:second"));
+      yield* service.delete({ id });
+      assert.deepEqual(yield* Ref.get(launches), [id]);
+      assert.deepEqual(yield* Ref.get(filings), [
+        `bind thread:first ${id}`,
+        // A bound run files its thread again before sending, which also covers older bindings.
+        `bind thread:first ${id}`,
+        "send",
+        `release thread:first ${id}`,
+        `bind thread:second ${id}`,
+        `release thread:second ${id}`,
+      ]);
     }).pipe(Effect.provide(layer));
   }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
 );

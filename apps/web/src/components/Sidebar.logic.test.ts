@@ -40,6 +40,7 @@ import {
   resolveSidebarStageBadgeLabel,
   resolveSidebarThreadSection,
   resolveSidebarPages,
+  sidebarPagesAllowDragging,
   buildOrganisationOptions,
   buildSidebarFilterFacets,
   sidebarThreadShelf,
@@ -197,6 +198,13 @@ describe("resolveSidebarThreadSection", () => {
     expect(
       resolveSidebarThreadSection({ hidden: true, snoozed: true, settled: true, pinned: true }),
     ).toBe("hidden");
+  });
+
+  it("files an automation thread under Automations, settled or not, below hiding and groups", () => {
+    const parked = { automation: true, snoozed: true, settled: true, pinned: true };
+    expect(resolveSidebarThreadSection(parked)).toBe("automations");
+    expect(resolveSidebarThreadSection({ ...parked, grouped: true })).toBe("grouped");
+    expect(resolveSidebarThreadSection({ ...parked, hidden: true })).toBe("hidden");
   });
 });
 
@@ -2642,6 +2650,24 @@ describe("Working shelf (beta)", () => {
       expect(resolveSidebarDropVerb("active", "hidden")).toBeNull();
     });
 
+    it("never drops into Automations, and keeps its rows out of the active order", () => {
+      const withAutomations: readonly SidebarListItem[] = [
+        marker("pinned-header"),
+        row("p1", "pinned"),
+        marker("pinned-divider"),
+        row("a1", "active"),
+        marker("automations-header"),
+        row("r1", "automations"),
+        row("r2", "automations"),
+      ];
+      expect(resolveSidebarDropTarget(withAutomations, "a1", "r2")).toBeNull();
+      expect(resolveSidebarDropTarget(withAutomations, "p1", "a1")).toEqual({
+        section: "active",
+        pinnedOrder: [],
+        activeOrder: ["a1", "p1"],
+      });
+    });
+
     it.each([
       ["pinned", "p1"],
       ["active", "a2"],
@@ -2761,6 +2787,24 @@ describe("resolveSidebarPages", () => {
   it("drops groups that no longer have threads and falls back to live threads", () => {
     expect(resolveSidebarPages(["group:Gone", "hidden"], [])).toEqual(["hidden"]);
     expect(resolveSidebarPages(["group:Gone", "nonsense"], [])).toEqual(["threads"]);
+  });
+
+  it("lists Automations after groups and before the parked shelves", () => {
+    expect(resolveSidebarPages(["snoozed", "automations", "group:Docs"], ["Docs"])).toEqual([
+      "group:Docs",
+      "automations",
+      "snoozed",
+    ]);
+  });
+});
+
+describe("sidebarPagesAllowDragging", () => {
+  it("allows dragging with Automations below the threads, but not with other pages", () => {
+    expect(sidebarPagesAllowDragging(["threads"])).toBe(true);
+    expect(sidebarPagesAllowDragging(["threads", "automations"])).toBe(true);
+    expect(sidebarPagesAllowDragging(["automations"])).toBe(false);
+    expect(sidebarPagesAllowDragging(["threads", "automations", "settled"])).toBe(false);
+    expect(sidebarPagesAllowDragging(["threads", "group:Docs"])).toBe(false);
   });
 });
 
@@ -2953,5 +2997,19 @@ describe("sidebarThreadShelf groups", () => {
     expect(
       sidebarThreadShelf(thread({ hiddenAt: base.now }), { ...base, groupsShownInThreads: shown }),
     ).toBe("hidden");
+  });
+
+  it("files a scheduled task's thread under Automations unless the user grouped it", () => {
+    const automation = { scheduledTaskId: "scheduled-task:daily" };
+    expect(sidebarThreadShelf(thread({ ...automation, groupName: null }), base)).toBe(
+      "automations",
+    );
+    expect(
+      sidebarThreadShelf(thread({ ...automation, groupName: null, pinnedAt: base.now }), base),
+    ).toBe("automations");
+    expect(sidebarThreadShelf(thread(automation), base)).toBe("grouped");
+    expect(
+      sidebarThreadShelf(thread(automation), { ...base, groupsShownInThreads: new Set(["Docs"]) }),
+    ).toBe("automations");
   });
 });

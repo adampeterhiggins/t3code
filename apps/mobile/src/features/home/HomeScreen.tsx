@@ -644,6 +644,7 @@ export function HomeScreen(props: HomeScreenProps) {
       settledShelfExpanded,
       settledShelfHeaderIndex: threadListV2Layout.settledShelfHeaderIndex,
       hiddenSectionHeaderIndex: threadListV2Layout.hiddenSectionHeaderIndex,
+      automationsSectionHeaderIndex: threadListV2Layout.automationsSectionHeaderIndex,
       groupSections: threadListV2Layout.groupSections,
       snoozeLabelNow: `${nowMinute}:00.000Z`,
       snoozeEnvironmentIds,
@@ -705,6 +706,9 @@ export function HomeScreen(props: HomeScreenProps) {
     }
     if (item.type === "v2-snoozed-shelf") {
       return <ThreadListV2SectionDivider label="Snoozed" tone="snoozed" />;
+    }
+    if (item.type === "v2-automations-section") {
+      return <ThreadListV2SectionDivider label="Automations" />;
     }
     if (item.type === "v2-hidden-section") {
       return <ThreadListV2SectionDivider label="Hidden" />;

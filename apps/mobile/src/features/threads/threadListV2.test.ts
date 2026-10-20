@@ -528,6 +528,7 @@ describe("buildThreadListV2Items", () => {
       "threads",
       "group:Alpha",
       "group:Beta",
+      "automations",
       "snoozed",
       "hidden",
       "settled",
@@ -653,7 +654,81 @@ describe("buildThreadListV2Items", () => {
   it("drops picked groups that no longer exist and falls back to Threads", () => {
     const available = availableThreadListPages({ hidingSupported: true, groupNames: [] });
     expect(resolveThreadListPages(["group:Gone", "settled"], available)).toEqual(["settled"]);
-    expect(resolveThreadListPages(["group:Gone"], available)).toEqual(["threads"]);
+    expect(resolveThreadListPages(["group:Gone"], available)).toEqual(DEFAULT_THREAD_LIST_PAGES);
+  });
+
+  it("files a scheduled task's threads under Automations, below groups and above snoozed", () => {
+    const threads = [
+      makeThread({ id: ThreadId.make("active"), title: "Active" }),
+      makeThread({
+        id: ThreadId.make("run-settled"),
+        title: "Run settled",
+        scheduledTaskId: "scheduled-task:daily",
+        settledOverride: "settled",
+        settledAt: NOW,
+      }),
+      makeThread({
+        id: ThreadId.make("bound-pinned"),
+        title: "Bound pinned",
+        scheduledTaskId: "scheduled-task:watch",
+        pinnedAt: NOW,
+      }),
+      makeThread({
+        id: ThreadId.make("run-grouped"),
+        title: "Run grouped",
+        scheduledTaskId: "scheduled-task:daily",
+        groupName: "Alpha",
+      }),
+      makeThread({
+        id: ThreadId.make("snoozed"),
+        title: "Snoozed",
+        snoozedUntil: "2026-06-03T09:00:00.000Z",
+        snoozedAt: "2026-06-01T12:00:00.000Z",
+      }),
+    ];
+    const layout = buildThreadListV2Items({
+      threads,
+      environmentId: null,
+      searchQuery: "",
+      now: NOW,
+      pages: ["threads", "group:Alpha", "automations", "snoozed"],
+      snoozedShelfExpanded: true,
+    });
+    const ids = layout.items.map((item) => item.thread.id);
+    expect(ids.slice(0, 2)).toEqual(["active", "run-grouped"]);
+    expect(new Set(ids.slice(2, 4))).toEqual(new Set(["run-settled", "bound-pinned"]));
+    expect(ids[4]).toBe("snoozed");
+    expect(layout.automationsSectionHeaderIndex).toBe(2);
+    expect(layout.items.slice(2, 4).every((item) => item.grouped && !item.pinned)).toBe(true);
+    const listItems = buildThreadListV2ListItems({
+      items: layout.items,
+      pendingTasks: [],
+      groupSections: layout.groupSections,
+      automationsSectionHeaderIndex: layout.automationsSectionHeaderIndex,
+      snoozedCount: layout.snoozedCount,
+      snoozedShelfHeaderIndex: layout.snoozedShelfHeaderIndex,
+      snoozedShelfExpanded: true,
+    });
+    expect(listItems.map((item) => item.type)).toEqual([
+      "v2-thread",
+      "v2-group-section",
+      "v2-thread",
+      "v2-automations-section",
+      "v2-thread",
+      "v2-thread",
+      "v2-snoozed-shelf",
+      "v2-thread",
+    ]);
+    // Off the picked pages, automation threads leave the list rather than fall back to Threads.
+    expect(
+      buildThreadListV2Items({
+        threads,
+        environmentId: null,
+        searchQuery: "",
+        now: NOW,
+        pages: ["threads"],
+      }).items.map((item) => item.thread.id),
+    ).toEqual(["active"]);
   });
 
   it("hides snoozed threads and counts them — visibility parity with web", () => {

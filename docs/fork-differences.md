@@ -745,19 +745,19 @@ Code: [`Sidebar.tsx`](../apps/web/src/components/Sidebar.tsx),
 
 On web and desktop, one filter button in the sidebar header replaces upstream's project picker.
 Each row opens a multi-select submenu, like the pull request filters: **Show** picks which of
-Threads, your thread groups, Snoozed, Hidden, and Settled the list holds; **Organisations** scopes
+Threads, your thread groups, Automations, Snoozed, Hidden, and Settled the list holds; **Organisations** scopes
 it to repository owners, read per checkout from `repositoryIdentity` (a fork counts under its own
 remote); and **Projects** scopes it to some projects. Each choice shows how many threads picking it
 would leave under the other two rows, and Organisations and Projects offer only the choices the
 other one leaves (an organisation that owns a picked project, a project in a picked organisation);
 a pick the others exclude stays listed at 0 so it can be unticked, and a picked organisation with
 no checkout left keeps narrowing the list until it is dropped. **Only**, on the highlighted row,
-picks just that one and closes the menu. Threads alone is the
+picks just that one and closes the menu. Threads and Automations are the
 default; other picks list as titled sections below live threads, so snoozed and settled threads no longer sit in shelves under
 live work, and the drag targets for settling and waking are gone. On web and desktop, clicking a
 section's title collapses it to a count, remembered per client; the open thread stays listed under a
 collapsed title. Dragging to pin or reorder
-works while only Threads is shown. The button shows a count of narrowings off their default,
+works while only Threads, or Threads and Automations, are shown. The button shows a count of narrowings off their default,
 and hovering it lists the selected pages, organisations, and projects. Under the header, each
 of those selections shows as a pill with an × that drops it, plus **Clear all** once there are
 several. Selecting a sidebar search result keeps the search applied as a removable pill;
@@ -778,6 +778,26 @@ Code: [`SidebarFilterMenu.tsx`](../apps/web/src/components/sidebar/SidebarFilter
 the web counts come from `buildSidebarFilterFacets` in
 [`Sidebar.logic.ts`](../apps/web/src/components/Sidebar.logic.ts). User
 guide: [thread-sidebar.md](./user/thread-sidebar.md#pin-and-reorder-threads).
+
+## Automation threads
+
+A thread records the scheduled task that started it or posts into it (`scheduledTaskId` on the
+thread and its shell; servers omit it otherwise). A run that starts a new thread sets it on
+`thread.create`, which also skips the project's default group; saving a task bound to a thread
+files that thread through the internal `thread.scheduled-task.set` command, and rebinding or
+deleting the task releases it. Each bound run files its thread again, so tasks saved before this
+change catch up on their next run. Threads a task's runs started keep the id after the task is
+deleted, and a fork does not inherit it. The web sidebar and mobile thread list show these threads
+under a built-in **Automations** page, picked by default, which ranks below Hidden and user groups
+and above snooze, settlement, and pins. Automations rows use the Grouped thread view and cannot be
+dragged.
+
+Code: `thread.scheduled-task.set` in
+[`Orchestrator.ts`](../apps/server/src/orchestration-v2/Orchestrator.ts), `fileThread` in
+[`ScheduledTaskService.ts`](../apps/server/src/scheduledTasks/ScheduledTaskService.ts),
+`resolveSidebarThreadSection` in [`Sidebar.logic.ts`](../apps/web/src/components/Sidebar.logic.ts),
+and mobile's [`threadListV2.ts`](../apps/mobile/src/features/threads/threadListV2.ts). User guide:
+[thread-sidebar.md](./user/thread-sidebar.md#automation-threads).
 
 ## Projects settings sidebar entry
 
