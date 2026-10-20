@@ -19,6 +19,7 @@ Prefer a container? See [Dev container](../internals/devcontainer.md) for VS Cod
 
 Use `vp run dev` for server and web, or `vp run dev:desktop` for the Electron client.
 `dev:server` and `dev:web` start those processes separately.
+For desktop-only verification and Electron window captures, use [test-t3-desktop](../../.agents/skills/test-t3-desktop/SKILL.md).
 See the [mobile README](../../apps/mobile/README.md) for native builds and Metro.
 
 Flags go directly after the task name, for example `vp run dev --home-dir /tmp/t3code-dev`.

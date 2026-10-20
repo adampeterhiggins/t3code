@@ -1,0 +1,4 @@
+interface:
+  display_name: "T3 Desktop Testing"
+  short_description: "Test Electron shell behaviour and capture windows"
+  default_prompt: "Use $test-t3-desktop to verify desktop-only behaviour and capture the affected Electron window."
