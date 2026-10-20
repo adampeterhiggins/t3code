@@ -15,6 +15,7 @@ import { formatShortTimestamp } from "../../timestampFormat";
 import { PullRequestStateGlyph } from "../pullRequest/pullRequestPresentation";
 import { Badge } from "../ui/badge";
 import { scheduleLabel } from "../settings/ScheduledTasksSettings";
+import { ContextPreviewBody } from "../contextPresentationRegistry";
 import { PreviewCornerAction } from "./PreviewCornerAction";
 import ChatMarkdown, { ChatMarkdownAssetImage } from "../ChatMarkdown";
 import { resolveExternalWebLinkHref } from "./externalLinkContextMenu";
@@ -359,45 +360,18 @@ function PreviewBody(props: {
   switch (preview.kind) {
     case "thread":
       return (
-        <>
-          <div className="flex items-start gap-2">
-            <span className="min-w-0 flex-1 font-medium text-foreground">{preview.title}</span>
-            <StatusBadge status={preview.status} />
-            <OpenThreadLink
-              threadId={preview.threadId}
-              onOpenThread={props.onOpenThread}
-              hidden={props.hideOpenThread}
-            />
-          </div>
-          {preview.model || preview.branch ? (
-            <p className="text-muted-foreground">
-              {[preview.model, preview.branch].filter(Boolean).join(" · ")}
-            </p>
-          ) : null}
-          {preview.items.length > 0 ? (
-            <div className="space-y-1 border-l border-border/60 pl-2">
-              {preview.moreItems > 0 ? (
-                <p className="text-muted-foreground">+{preview.moreItems} earlier</p>
-              ) : null}
-              <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1">
-                {preview.items.map((item) => (
-                  <div key={item.key} className="contents">
-                    <dt className="text-muted-foreground">{item.label}</dt>
-                    <dd
-                      className={
-                        item.activity
-                          ? "truncate text-foreground/70"
-                          : "line-clamp-3 break-words text-foreground"
-                      }
-                    >
-                      {item.text}
-                    </dd>
-                  </div>
-                ))}
-              </dl>
-            </div>
-          ) : null}
-        </>
+        <ContextPreviewBody
+          kind="thread"
+          preview={{
+            record: {
+              environmentId: props.environmentId,
+              threadId: ThreadId.make(preview.threadId),
+              title: preview.title,
+            },
+            read: preview,
+            onOpenThread: props.hideOpenThread ? undefined : props.onOpenThread,
+          }}
+        />
       );
     case "task":
       return (

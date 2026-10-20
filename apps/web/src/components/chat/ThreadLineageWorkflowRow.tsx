@@ -2,13 +2,18 @@ import type {
   SubagentWorkflowGroup,
   RuntimeSubagent,
 } from "@t3tools/client-runtime/state/subagentRuntime";
-import type { ProviderDriverKind, ProviderInstanceId, ServerProvider } from "@t3tools/contracts";
+import {
+  ThreadId,
+  type EnvironmentId,
+  type ProviderDriverKind,
+  type ProviderInstanceId,
+  type ServerProvider,
+} from "@t3tools/contracts";
 import { ChevronDownIcon, LoaderCircleIcon, SquareIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { AgentElapsed } from "./AgentElapsed";
-import { SubagentTooltipContent } from "./SubagentTooltipContent";
-import { ThreadHoverCardPopup } from "../ThreadHoverCard";
+import { ContextPreviewHover } from "../contextPresentationRegistry";
 import { ThreadRelationshipIcon } from "./ThreadRelationshipIcon";
 import { cn } from "../../lib/utils";
 import { ThreadDetailsControl } from "./ThreadDetailsControl";
@@ -48,17 +53,19 @@ function phaseStatusLabel(phase: SubagentWorkflowGroup["phases"][number]) {
 
 function WorkflowMemberRow({
   member,
+  environmentId,
+  ownerThreadId,
   providerInstanceId,
   provider,
-  providers,
   driver,
   onOpen,
   isThreadAvailable,
 }: {
   member: RuntimeSubagent;
+  environmentId: EnvironmentId;
+  ownerThreadId: ThreadId;
   providerInstanceId: ProviderInstanceId;
   provider: ServerProvider | undefined;
-  providers: ReadonlyArray<ServerProvider> | undefined;
   driver: ProviderDriverKind | undefined;
   onOpen: (threadId: string) => void;
   isThreadAvailable: (threadId: string) => boolean;
@@ -67,43 +74,40 @@ function WorkflowMemberRow({
   const canOpen = threadId !== null && isThreadAvailable(threadId);
   return (
     <li>
-      <Tooltip>
-        <TooltipTrigger
-          delay={200}
-          render={
-            <ThreadDetailsControl
-              part="row"
-              aria-label={`Open ${member.title} chat`}
-              disabled={!canOpen}
-              onClick={() => canOpen && onOpen(threadId)}
-            />
-          }
-        >
-          <ThreadRelationshipIcon driver={driver} provider={provider} status={member.status} />
-          <span className="min-w-0 flex-1 truncate">{member.title}</span>
-          <span className="sr-only">{member.status}</span>
-          {member.startedAt ? (
-            <span className="shrink-0 text-2xs font-normal tabular-nums text-muted-foreground">
-              <AgentElapsed agent={member} />
-            </span>
-          ) : null}
-        </TooltipTrigger>
-        <ThreadHoverCardPopup side="left">
-          <SubagentTooltipContent
-            title={member.title}
-            model={member.model}
-            providerInstanceId={providerInstanceId}
-            origin="provider_native"
-            provider={provider}
-            providers={providers}
-            driver={driver}
-            elapsed={<AgentElapsed agent={member} />}
-            status={member.status}
-            result={member.result ?? member.error}
-            progress={member.progress}
-          />
-        </ThreadHoverCardPopup>
-      </Tooltip>
+      <ContextPreviewHover
+        kind="subagent"
+        accessibleLabel={`Agent, ${member.title}`}
+        placement={{ side: "left" }}
+        preview={{
+          record: {
+            environmentId,
+            ownerThreadId,
+            childThreadId: threadId === null ? null : ThreadId.make(threadId),
+            subagentId: member.id,
+            handle: "",
+            title: member.title,
+            status: member.status,
+          },
+          fallback: { agent: member, providerInstanceId },
+        }}
+        trigger={
+          <ThreadDetailsControl
+            part="row"
+            aria-label={`Open ${member.title} chat`}
+            disabled={!canOpen}
+            onClick={() => canOpen && onOpen(threadId)}
+          >
+            <ThreadRelationshipIcon driver={driver} provider={provider} status={member.status} />
+            <span className="min-w-0 flex-1 truncate">{member.title}</span>
+            <span className="sr-only">{member.status}</span>
+            {member.startedAt ? (
+              <span className="shrink-0 text-2xs font-normal tabular-nums text-muted-foreground">
+                <AgentElapsed agent={member} />
+              </span>
+            ) : null}
+          </ThreadDetailsControl>
+        }
+      />
     </li>
   );
 }
@@ -111,9 +115,10 @@ function WorkflowMemberRow({
 export function ThreadLineageWorkflowRow({
   group,
   header,
+  environmentId,
+  ownerThreadId,
   providerInstanceId,
   provider,
-  providers,
   driver,
   onOpenThread,
   isThreadAvailable,
@@ -123,9 +128,11 @@ export function ThreadLineageWorkflowRow({
 }: {
   readonly group: SubagentWorkflowGroup;
   readonly header: ReactNode;
+  readonly environmentId: EnvironmentId;
+  /** The thread whose workflow this is, which owns its member agents. */
+  readonly ownerThreadId: ThreadId;
   readonly providerInstanceId: ProviderInstanceId;
   readonly provider: ServerProvider | undefined;
-  readonly providers: ReadonlyArray<ServerProvider> | undefined;
   readonly driver: ProviderDriverKind | undefined;
   readonly onOpenThread: (threadId: string) => void;
   readonly isThreadAvailable: (threadId: string) => boolean;
@@ -221,9 +228,10 @@ export function ThreadLineageWorkflowRow({
                       <WorkflowMemberRow
                         key={member.id}
                         member={member}
+                        environmentId={environmentId}
+                        ownerThreadId={ownerThreadId}
                         providerInstanceId={providerInstanceId}
                         provider={provider}
-                        providers={providers}
                         driver={driver}
                         onOpen={onOpenThread}
                         isThreadAvailable={isThreadAvailable}
@@ -238,9 +246,10 @@ export function ThreadLineageWorkflowRow({
             <WorkflowMemberRow
               key={member.id}
               member={member}
+              environmentId={environmentId}
+              ownerThreadId={ownerThreadId}
               providerInstanceId={providerInstanceId}
               provider={provider}
-              providers={providers}
               driver={driver}
               onOpen={onOpenThread}
               isThreadAvailable={isThreadAvailable}

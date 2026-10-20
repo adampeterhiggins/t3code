@@ -1,8 +1,14 @@
-import { ThreadId, TurnItemId, type OrchestrationV2TurnItem } from "@t3tools/contracts";
+import {
+  MessageId,
+  ThreadId,
+  TurnItemId,
+  type OrchestrationV2ConversationMessage,
+  type OrchestrationV2TurnItem,
+} from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
-import { resolveToolPreview } from "./toolPreview.ts";
+import { latestThreadPreviewItems, resolveToolPreview } from "./toolPreview.ts";
 
 function tool(toolName: string, input: unknown, output?: unknown): OrchestrationV2TurnItem {
   const at = DateTime.makeUnsafe("2026-10-09T15:00:00.000Z");
@@ -855,5 +861,50 @@ describe("resolveToolPreview", () => {
         status: "failed",
       }),
     ).toBeNull();
+  });
+});
+
+function message(
+  id: string,
+  role: OrchestrationV2ConversationMessage["role"],
+  text: string,
+  overrides: Partial<OrchestrationV2ConversationMessage> = {},
+): OrchestrationV2ConversationMessage {
+  const at = DateTime.makeUnsafe("2026-10-20T22:00:00.000Z");
+  return {
+    id: MessageId.make(id),
+    threadId: ThreadId.make("thread-preview"),
+    runId: null,
+    nodeId: null,
+    role,
+    text,
+    attachments: [],
+    streaming: false,
+    createdAt: at,
+    updatedAt: at,
+    createdBy: role === "user" ? "user" : "agent",
+    creationSource: "web",
+    ...overrides,
+  };
+}
+
+describe("latestThreadPreviewItems", () => {
+  it("shows the newest conversation messages, oldest first, as a read of the thread would", () => {
+    const items = latestThreadPreviewItems([
+      message("m1", "user", "First ask"),
+      message("m2", "assistant", "First answer"),
+      message("m3", "system", "Context handoff"),
+      message("m4", "user", "  Second ask  "),
+      message("m5", "assistant", "   "),
+      message("m6", "assistant", "const run = workflow();", { workflowScript: true }),
+      message("m7", "assistant", "Second answer"),
+      message("m8", "user", "Third ask"),
+    ]);
+    expect(items).toEqual([
+      { key: "m2", label: "Agent", text: "First answer", activity: false },
+      { key: "m4", label: "User", text: "Second ask", activity: false },
+      { key: "m7", label: "Agent", text: "Second answer", activity: false },
+      { key: "m8", label: "User", text: "Third ask", activity: false },
+    ]);
   });
 });

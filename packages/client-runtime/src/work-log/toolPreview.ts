@@ -1,4 +1,8 @@
-import { ScheduledTaskSchedule, type OrchestrationV2TurnItem } from "@t3tools/contracts";
+import {
+  ScheduledTaskSchedule,
+  type OrchestrationV2ConversationMessage,
+  type OrchestrationV2TurnItem,
+} from "@t3tools/contracts";
 import { resolveT3McpToolId } from "@t3tools/shared/t3McpToolPresentation";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
@@ -97,6 +101,15 @@ export interface PropertiesToolPreview extends PreviewHeader {
   readonly rows: ReadonlyArray<readonly [string, string]>;
 }
 
+/** One line of a thread preview's recent history. */
+export interface ThreadPreviewItem {
+  readonly key: string;
+  readonly label: string;
+  readonly text: string;
+  /** A tool call, command or edit, summarized to one line, rather than a message. */
+  readonly activity: boolean;
+}
+
 export interface ThreadToolPreview {
   readonly kind: "thread";
   readonly threadId: string;
@@ -105,13 +118,7 @@ export interface ThreadToolPreview {
   readonly model: string | null;
   readonly branch: string | null;
   /** The newest items the call returned, oldest first. */
-  readonly items: ReadonlyArray<{
-    readonly key: string;
-    readonly label: string;
-    readonly text: string;
-    /** A tool call, command or edit, summarized to one line, rather than a message. */
-    readonly activity: boolean;
-  }>;
+  readonly items: ReadonlyArray<ThreadPreviewItem>;
   /** Items the call returned beyond `items`. */
   readonly moreItems: number;
 }
@@ -325,6 +332,29 @@ function threadActivityText(type: string, item: Record_): string | null {
     return second && /^\+\d+ -\d+$/.test(second) ? `${first} ${second}` : first;
   }
   return str(item.title) ?? first ?? null;
+}
+
+/**
+ * The thread's latest conversation, as a hover shows it: the same rows a read of the thread
+ * gives, from the messages the client already holds.
+ */
+export function latestThreadPreviewItems(
+  messages: ReadonlyArray<OrchestrationV2ConversationMessage>,
+): ReadonlyArray<ThreadPreviewItem> {
+  const items: ThreadPreviewItem[] = [];
+  for (let index = messages.length - 1; index >= 0 && items.length < MAX_THREAD_ITEMS; index--) {
+    const message = messages[index]!;
+    if (message.role === "system" || message.workflowScript) continue;
+    const text = message.text.trim();
+    if (!text) continue;
+    items.unshift({
+      key: message.id,
+      label: message.role === "user" ? "User" : "Agent",
+      text,
+      activity: false,
+    });
+  }
+  return items;
 }
 
 function threadPreview(result: Record_): ThreadToolPreview | null {

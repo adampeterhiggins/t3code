@@ -1,21 +1,25 @@
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
-import { deriveThreadAgentFleet } from "@t3tools/client-runtime/state/agent-fleet";
+import {
+  agentFleetEntryFromRuntime,
+  deriveThreadAgentFleet,
+} from "@t3tools/client-runtime/state/agent-fleet";
+import type { RuntimeSubagent } from "@t3tools/client-runtime/state/subagentRuntime";
 import type {
   ElementContextRecord,
   EnvironmentId,
   PreviewAnnotationContextRecord,
+  ProviderInstanceId,
   ScopedThreadRef,
   ServerProviderSkill,
   SubagentContextRecord,
-  ThreadContextRecord,
 } from "@t3tools/contracts";
 import { filePreviewKind } from "@t3tools/shared/filePreview";
 import { PaintbrushIcon } from "lucide-react";
 
 import { formatWorkspaceRelativePath } from "~/filePathDisplay";
 import type { ReviewCommentContext } from "~/reviewCommentContext";
-import { useProject, useThreadProjection, useThreadShell } from "~/state/entities";
+import { useProject, useThreadProjection } from "~/state/entities";
 import ChatMarkdown from "./ChatMarkdown";
 import { showAgentInPanel } from "./chat/agentContextMenu";
 import {
@@ -29,7 +33,6 @@ import { ImageAttachmentPreview } from "./contextChipParts";
 import { AttachmentQuickLookPreview } from "./files/AttachmentQuickLook";
 import { ReadOnlySourcePreview } from "./files/AttachmentFilePreview";
 import { ReviewCommentCard } from "./ReviewCommentCard";
-import { ThreadPreviewHoverCard } from "./ThreadHoverCard";
 
 /*
  * Hover bodies for context kinds that have no better home. Every surface reaches these through
@@ -321,33 +324,6 @@ export function ReviewCommentPreview(props: ReviewCommentPreviewProps) {
   );
 }
 
-export interface ThreadPreviewProps {
-  record: Pick<ThreadContextRecord, "environmentId" | "threadId" | "title">;
-  /** On another machine than the one the message is for, so its agent can't read it. */
-  unreadable?: boolean | undefined;
-}
-
-export function ThreadPreview(props: ThreadPreviewProps) {
-  const { environmentId, threadId } = props.record;
-  const shell = useThreadShell({ environmentId, threadId });
-  const project = useProject(shell ? { environmentId, projectId: shell.projectId } : null);
-  if (props.unreadable) {
-    return (
-      <p className="px-1 py-2 text-xs">
-        On another machine, so this machine's agent can't read it. Remove it or switch back to send.
-      </p>
-    );
-  }
-  if (!shell) return <p className="px-1 py-2 text-xs">Thread no longer available</p>;
-  return (
-    <ThreadPreviewHoverCard
-      shell={shell}
-      project={project}
-      title={shell.title?.trim() || props.record.title}
-    />
-  );
-}
-
 export type SubagentChipRecord = Pick<
   SubagentContextRecord,
   "environmentId" | "ownerThreadId" | "childThreadId" | "subagentId" | "handle" | "title" | "status"
@@ -355,6 +331,11 @@ export type SubagentChipRecord = Pick<
 
 export interface SubagentPreviewProps {
   record: SubagentChipRecord;
+  /**
+   * What the surface already shows of the agent, for one its owner doesn't list as its own,
+   * such as a workflow member whose thread doesn't exist yet.
+   */
+  fallback?: { agent: RuntimeSubagent; providerInstanceId: ProviderInstanceId } | undefined;
 }
 
 /** The agent's Agents panel preview, found among its owner's agents. Mounted while open. */
@@ -373,7 +354,13 @@ export function SubagentPreview(props: SubagentPreviewProps) {
       threadId: record.ownerThreadId,
       subagents: owner?.subagents ?? [],
       shells,
-    }).find((candidate) => candidate.key === key) ?? null;
+    }).find((candidate) => candidate.key === key) ??
+    (props.fallback
+      ? agentFleetEntryFromRuntime({
+          ...props.fallback,
+          ownerThreadId: record.ownerThreadId,
+        })
+      : null);
   if (entry === null) {
     return (
       <p className="w-100 max-w-full px-3 py-2.5 text-xs text-muted-foreground">

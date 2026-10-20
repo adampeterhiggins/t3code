@@ -263,6 +263,15 @@ export default defineConfig({
         rules: { "eslint/no-restricted-imports": ["error", { paths: RESTRICTED_IMPORT_PATHS }] },
       },
       {
+        files: ["apps/web/src/**"],
+        excludeFiles: [
+          "apps/web/src/components/contextPresentationRegistry.tsx",
+          "apps/web/src/components/contextPreviews.tsx",
+          "**/*.{test,spec}.{ts,tsx}",
+        ],
+        rules: { "t3code/no-unregistered-context-preview": "error" },
+      },
+      {
         files: ["apps/mobile/src/**"],
         rules: { "t3code/no-mobile-uniwind-theme-escape-hatches": "error" },
       },

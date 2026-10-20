@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { resolveThreadLineageWindow } from "./ThreadRelationshipsControl";
+import { resolveThreadLineageWindow } from "./ThreadRelationshipsControl.logic";
 
 const rows = Array.from({ length: 20 }, (_, index) => `row-${index}`);
 

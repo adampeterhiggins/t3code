@@ -22,7 +22,6 @@ import {
   ReviewCommentPreview,
   SkillPreview,
   SubagentPreview,
-  ThreadPreview,
   type ElementPreviewProps,
   type FilePreviewProps,
   type ImagePreviewProps,
@@ -31,10 +30,9 @@ import {
   type ReviewCommentPreviewProps,
   type SkillPreviewProps,
   type SubagentPreviewProps,
-  type ThreadPreviewProps,
 } from "./contextPreviews";
 import { LinkedObjectDetails } from "./linkedObjectPresentation";
-import { ThreadHoverCardPopup } from "./ThreadHoverCard";
+import { ThreadHoverCardPopup, ThreadPreview, type ThreadPreviewProps } from "./ThreadHoverCard";
 import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "./ui/preview-card";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
@@ -77,6 +75,13 @@ export interface ContextPreviewHoverProps<TPreview> {
   trigger: ReactElement<ComponentProps<"button">>;
   accessibleLabel: string;
   preview: TPreview;
+}
+
+/** Where a surface's hover opens, relative to its trigger. The registry still picks the container. */
+export interface ContextPreviewPlacement {
+  side?: "top" | "right" | "bottom" | "left" | undefined;
+  align?: "start" | "center" | "end" | undefined;
+  sideOffset?: number | undefined;
 }
 
 /**
@@ -252,12 +257,27 @@ export function buttonContextChip<K extends KnownComposerContextKind>(input: {
   };
 }
 
-/** A chip with its kind's registered hover preview around it. */
+/**
+ * A trigger with its kind's registered hover preview around it. Rows and links use this as
+ * chips do; `disabled` keeps the trigger mounted while the preview can't open, such as mid-drag.
+ */
 export function ContextPreviewHover<K extends KnownComposerContextKind>(
-  props: ContextChipSpec<K> & { kind: K },
+  props: ContextChipSpec<K> & {
+    kind: K;
+    placement?: ContextPreviewPlacement | undefined;
+    disabled?: boolean | undefined;
+  },
 ) {
   const spec: ContextPreview<ContextPreviewPropsByKind[K]> =
     CONTEXT_PRESENTATION_DEFINITIONS[props.kind].preview;
+  const side = props.placement?.side ?? "top";
+  const placement = {
+    side,
+    ...(props.placement?.align ? { align: props.placement.align } : {}),
+    ...(props.placement?.sideOffset !== undefined
+      ? { sideOffset: props.placement.sideOffset }
+      : {}),
+  };
   switch (spec.details) {
     case "none":
       return props.trigger;
@@ -265,15 +285,15 @@ export function ContextPreviewHover<K extends KnownComposerContextKind>(
       const Body = spec.Body;
       const Popup = spec.Popup;
       return (
-        <Tooltip>
+        <Tooltip disabled={props.disabled}>
           <TooltipTrigger render={props.trigger} />
           {Popup ? (
-            <Popup side="top">
+            <Popup {...placement}>
               <Body {...props.preview} />
             </Popup>
           ) : (
             <TooltipPopup
-              side="top"
+              {...placement}
               {...(spec.variant ? { variant: spec.variant } : {})}
               className="whitespace-pre-wrap"
             >
@@ -301,6 +321,8 @@ export function ContextPreviewHover<K extends KnownComposerContextKind>(
           accessibleLabel={props.accessibleLabel}
           onIntent={spec.onIntent}
           stayOpenAfterPress={spec.stayOpenAfterPress}
+          {...placement}
+          disabled={props.disabled}
         >
           <Body {...props.preview} />
         </HoverPopover>
@@ -309,9 +331,9 @@ export function ContextPreviewHover<K extends KnownComposerContextKind>(
     case "card": {
       const Body = spec.Body;
       return (
-        <PreviewCard>
+        <PreviewCard {...(props.disabled ? { open: false } : {})}>
           <PreviewCardTrigger delay={350} closeDelay={120} render={props.trigger} />
-          <PreviewCardPopup side="top" align="start" className="max-w-[calc(100vw-2rem)]">
+          <PreviewCardPopup align="start" {...placement} className="max-w-[calc(100vw-2rem)]">
             <Body {...props.preview} />
           </PreviewCardPopup>
         </PreviewCard>

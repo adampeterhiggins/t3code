@@ -282,8 +282,12 @@ thread details panel, one row each, newest first, and removed the right-panel Ag
   and start time, a second line with a working agent's latest tool call
   (a static `…` while it runs, a `waiting` badge when the agent waits on the user), a finished
   agent's first result line (`subagentResultSummaryLine`) or a failed agent's error (the toolbar's
-  details toggle hides these second lines, remembered per device), and hover previews (status, provider, compact model with reasoning effort and `run N`,
-  prompt, result or error, the latest five tool calls, usage). Clicking a tool call in a preview
+  details toggle hides these second lines, remembered per device), and hover previews (status,
+  provider, the model as the provider's catalog names it with the effort and speed it was started
+  with, `run N`, the branch or worktree when it differs from its owner's, prompt, result or error,
+  the latest five tool calls, usage). The same preview is every agent's hover: conversation agent
+  rows, Lineage rows and workflow members, and `@agent` chips all draw it through the context
+  presentation registry. Clicking a tool call in a preview
   opens the agent on that call, expanded and scrolled into view (`agentDrillStore.ts`
   `focusToolCall`). Agents spawned by an agent sit indented under it, found through child-thread
   lineage in the thread shells (`deriveThreadAgentFleet`); a filter keeps a non-matching agent as
