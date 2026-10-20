@@ -57,9 +57,9 @@ show up in search straight away. Pasted links work immediately.
 A linked Discord thread stays with the thread and all of its chat tabs. A thread links one
 Discord thread at a time.
 
-- On web and desktop, choose **Link Discord thread…** from the thread's menu (the sidebar row or
+- On web and desktop, choose **Link > Discord thread…** from the thread's menu (the sidebar row or
   the chat header title), or run **Link Discord thread** from the command palette.
-- On mobile, choose **Link Discord thread** from the chat tab menu, or from **Link** beside **New
+- On mobile, choose **Link > Link Discord thread** from the chat tab menu, or from **Link** beside **New
   tab** when the thread has one tab.
 
 The chat header shows the linked thread's channel; on mobile the chip sits beside the tab

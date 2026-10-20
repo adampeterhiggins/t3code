@@ -37,6 +37,7 @@ export type ThreadActionMenuId =
   | "copy-branch"
   | "copy-thread-id"
   | "export-transcript"
+  | "link"
   | "link-linear-issue"
   | "link-slack-thread"
   | "link-discord-thread"
@@ -321,22 +322,29 @@ export function buildThreadActionMenuItems(
       ],
     },
     { id: "export-transcript", label: "Export transcript…", icon: "download" },
-    { id: "link-linear-issue", label: "Link Linear issue…", icon: "link" },
-    ...(state.canLinkGitHubIssue
-      ? [{ id: "link-github-issue" as const, label: "Link GitHub issue…", icon: "link" }]
-      : []),
-    ...(state.integrations?.slack
-      ? [{ id: "link-slack-thread" as const, label: "Link Slack thread…", icon: "link" }]
-      : []),
-    ...(state.integrations?.discord
-      ? [{ id: "link-discord-thread" as const, label: "Link Discord thread…", icon: "link" }]
-      : []),
-    ...(state.integrations?.notion
-      ? [{ id: "link-notion-page" as const, label: "Link Notion page…", icon: "link" }]
-      : []),
-    ...(state.integrations?.granola
-      ? [{ id: "link-granola-note" as const, label: "Link Granola note…", icon: "link" }]
-      : []),
+    {
+      id: "link",
+      label: "Link",
+      icon: "link",
+      children: [
+        { id: "link-linear-issue", label: "Linear issue…", icon: "linear" },
+        ...(state.canLinkGitHubIssue
+          ? [{ id: "link-github-issue" as const, label: "GitHub issue…", icon: "github" }]
+          : []),
+        ...(state.integrations?.slack
+          ? [{ id: "link-slack-thread" as const, label: "Slack thread…", icon: "slack" }]
+          : []),
+        ...(state.integrations?.discord
+          ? [{ id: "link-discord-thread" as const, label: "Discord thread…", icon: "discord" }]
+          : []),
+        ...(state.integrations?.notion
+          ? [{ id: "link-notion-page" as const, label: "Notion page…", icon: "notion" }]
+          : []),
+        ...(state.integrations?.granola
+          ? [{ id: "link-granola-note" as const, label: "Granola note…", icon: "granola" }]
+          : []),
+      ],
+    },
     { id: "project-settings", label: "Project settings", icon: "settings" },
     ...(state.tabs?.canClose
       ? [
