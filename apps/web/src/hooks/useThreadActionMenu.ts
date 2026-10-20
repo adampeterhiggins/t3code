@@ -34,6 +34,7 @@ import { openLinearIssuePicker } from "../components/chat/LinearIssuePicker";
 import { openNotionPagePicker } from "../components/chat/NotionPagePicker";
 import { openGranolaNotePicker } from "../components/chat/GranolaNotePicker";
 import { openSlackMessagePicker } from "../components/chat/SlackMessagePicker";
+import { openDiscordMessagePicker } from "../components/chat/DiscordMessagePicker";
 import { openTranscriptExportDialog } from "../components/TranscriptExportDialog";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
 import { threadEnvironment } from "../state/threads";
@@ -355,6 +356,9 @@ export function useThreadActionMenu(input: {
           return;
         case "link-slack-thread":
           openSlackMessagePicker(threadRef, "link");
+          return;
+        case "link-discord-thread":
+          openDiscordMessagePicker(threadRef, "link");
           return;
         case "link-notion-page":
           openNotionPagePicker(threadRef, "link");

@@ -13,6 +13,7 @@ import type {
   LinearIssueContextRecord,
   PreviewAnnotationPayload,
   RepositoryContextRecord,
+  DiscordThreadContextRecord,
   SlackThreadContextRecord,
   SubagentContextRecord,
   ThreadContextRecord,
@@ -30,7 +31,7 @@ import {
   MessagesSquareIcon,
   MousePointerClickIcon,
 } from "lucide-react";
-import { GitHubIcon, GranolaIcon, LinearIcon, NotionIcon, SlackIcon } from "./Icons";
+import { DiscordIcon, GitHubIcon, GranolaIcon, LinearIcon, NotionIcon, SlackIcon } from "./Icons";
 import { createContext, type MouseEvent, type ReactElement, type ReactNode, use } from "react";
 import type { EnvironmentId } from "@t3tools/contracts";
 
@@ -80,6 +81,7 @@ import {
   GitHubRefDetails,
   LinearIssueDetails,
   RepositoryDetails,
+  DiscordThreadDetails,
   SlackThreadDetails,
   NotionPageDetails,
   GranolaNoteDetails,
@@ -106,6 +108,7 @@ export type ComposerDraftContextRecord =
   | { kind: "repository"; record: RepositoryContextRecord }
   | { kind: "checkout"; record: CheckoutContextRecord }
   | { kind: "slack-thread"; record: SlackThreadContextRecord }
+  | { kind: "discord-thread"; record: DiscordThreadContextRecord }
   | { kind: "image"; record: ComposerImageAttachment; upload?: AttachmentUploadState | undefined }
   | { kind: "file"; record: ComposerFileAttachment; upload?: AttachmentUploadState | undefined }
   | { kind: "thread"; record: ThreadContextRecord }
@@ -219,6 +222,8 @@ function issueDraftContextRecord(record: IssueContextRecord): ComposerDraftConte
       return { kind: "github-issue", record };
     case "slack-thread":
       return { kind: "slack-thread", record };
+    case "discord-thread":
+      return { kind: "discord-thread", record };
     case "subagent":
       return { kind: "subagent", record };
     case "prompt-link":
@@ -702,6 +707,23 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
         ),
     },
     {
+      kind: "discord-thread",
+      canRender: (entry) => entry.kind === "discord-thread",
+      render: (entry, context, definition) =>
+        entry.kind === "discord-thread" ? (
+          <ContextChip
+            icon={<DiscordIcon />}
+            label={entry.record.label}
+            kindLabel={entry.record.scope === "thread" ? "Discord thread" : "Discord message"}
+            details={<ComposerDiscordThreadDetails record={entry.record} />}
+            detailsMode={definition.capabilities.details}
+            kind="discord-thread"
+          />
+        ) : (
+          <UnresolvedContextChip label={context.label} />
+        ),
+    },
+    {
       kind: "thread",
       canRender: (entry) => entry.kind === "thread",
       render: (entry, context) =>
@@ -779,6 +801,11 @@ function ComposerGitHubRefDetails({ record }: { record: GitHubRefContextRecord }
 function ComposerSlackThreadDetails({ record }: { record: SlackThreadContextRecord }) {
   const actions = use(ComposerContextActionsContext);
   return <SlackThreadDetails record={record} onOpenLink={actions.openLink} />;
+}
+
+function ComposerDiscordThreadDetails({ record }: { record: DiscordThreadContextRecord }) {
+  const actions = use(ComposerContextActionsContext);
+  return <DiscordThreadDetails record={record} onOpenLink={actions.openLink} />;
 }
 
 /** Compact chip for one reference. Unknown kinds and missing records use the registry fallback. */

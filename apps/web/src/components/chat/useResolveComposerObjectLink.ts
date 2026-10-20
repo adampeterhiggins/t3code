@@ -16,8 +16,12 @@ import { notionPageContextRecord } from "@t3tools/client-runtime/state/notion";
 import { notionEnvironment } from "~/state/notion";
 import { granolaNoteContextRecord } from "@t3tools/client-runtime/state/granola";
 import { granolaEnvironment } from "~/state/granola";
-import { slackThreadContextRecord } from "@t3tools/shared/integrationContextRecords";
+import {
+  discordThreadContextRecord,
+  slackThreadContextRecord,
+} from "@t3tools/shared/integrationContextRecords";
 import type {
+  DiscordErrorReason,
   GranolaError,
   NotionError,
   PullRequestDetail,
@@ -40,6 +44,7 @@ import { githubIssueEnvironment } from "~/state/githubIssues";
 import { linearEnvironment } from "~/state/linear";
 import { pullRequestEnvironment } from "~/state/pullRequests";
 import { serverEnvironment } from "~/state/server";
+import { discordEnvironment } from "~/state/discord";
 import { slackEnvironment } from "~/state/slack";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { useAtomQueryRunner } from "~/state/use-atom-query-runner";
@@ -70,6 +75,31 @@ function reportUnreadableSlackLink(failure: unknown) {
     title: unavailable ? "Connect Slack to attach messages" : "Could not read that Slack message",
     description: unavailable
       ? "The link was kept as a link. Connect Slack in Settings → Integrations."
+      : failure instanceof Error
+        ? failure.message
+        : undefined,
+  });
+}
+
+// Like Slack, an unconnected or revoked Discord bot says so once per session.
+let toldDiscordIsUnavailable = false;
+
+function reportUnreadableDiscordLink(failure: unknown) {
+  if (typeof failure !== "object" || failure === null) return;
+  if (!("_tag" in failure) || failure._tag !== "DiscordError" || !("reason" in failure)) return;
+  const reason = failure.reason as DiscordErrorReason;
+  const unavailable = reason === "not-connected" || reason === "revoked";
+  if (unavailable) {
+    if (toldDiscordIsUnavailable) return;
+    toldDiscordIsUnavailable = true;
+  }
+  toastManager.add({
+    type: unavailable ? "info" : "error",
+    title: unavailable
+      ? "Connect Discord to attach messages"
+      : "Could not read that Discord message",
+    description: unavailable
+      ? "The link was kept as a link. Connect Discord in Settings → Integrations."
       : failure instanceof Error
         ? failure.message
         : undefined,
@@ -162,7 +192,7 @@ export interface ResolvedComposerObjectLink {
 
 /**
  * Turns a link into the chip its attach picker would have made: the issue or pull request is
- * fetched and snapshotted the same way. Null when it cannot be read (Linear, Slack, Notion, or Granola
+ * fetched and snapshotted the same way. Null when it cannot be read (Linear, Slack, Discord, Notion, or Granola
  * not connected or turned off, `gh` signed out, a host no project here is checked out from), so the caller
  * keeps the link.
  */
@@ -173,6 +203,7 @@ export function useResolveComposerObjectLink(input: {
   const { threadRef, draftTarget } = input;
   const environmentId = threadRef.environmentId;
   const slackEnabled = useEnvironmentSettings(environmentId, (s) => s.enableSlackIntegration);
+  const discordEnabled = useEnvironmentSettings(environmentId, (s) => s.enableDiscordIntegration);
   const notionEnabled = useEnvironmentSettings(environmentId, (s) => s.enableNotionIntegration);
   const granolaEnabled = useEnvironmentSettings(environmentId, (s) => s.enableGranolaIntegration);
   const getLinearIssue = useAtomCommand(linearEnvironment.getIssue, { reportFailure: false });
@@ -180,6 +211,7 @@ export function useResolveComposerObjectLink(input: {
   const getGitHubRef = useAtomCommand(githubIssueEnvironment.getRef, { reportFailure: false });
   const getNotionPage = useAtomCommand(notionEnvironment.getPage, { reportFailure: false });
   const getSlackThread = useAtomCommand(slackEnvironment.getThread, { reportFailure: false });
+  const getDiscordThread = useAtomCommand(discordEnvironment.getThread, { reportFailure: false });
   const getGranolaNote = useAtomCommand(granolaEnvironment.getNote, { reportFailure: false });
   const getPullRequest = useAtomQueryRunner(pullRequestEnvironment.detail, {
     reportFailure: false,
@@ -264,6 +296,30 @@ export function useResolveComposerObjectLink(input: {
         const record = slackThreadContextRecord(result.value);
         return {
           reference: { kind: "slack-thread", contextId: record.contextId, label: record.label },
+          commit: () => useIssueContextStore.getState().upsert(threadRef.threadId, record),
+        };
+      }
+      case "discord-message": {
+        if (!discordEnabled) return null;
+        const result = await getDiscordThread({
+          environmentId,
+          input: {
+            guildId: link.guildId,
+            channelId: link.channelId,
+            messageId: link.messageId,
+            url: link.url,
+            scope: "thread",
+          },
+        });
+        if (result._tag === "Failure") {
+          if (!isAtomCommandInterrupted(result)) {
+            reportUnreadableDiscordLink(squashAtomCommandFailure(result));
+          }
+          return null;
+        }
+        const record = discordThreadContextRecord(result.value);
+        return {
+          reference: { kind: "discord-thread", contextId: record.contextId, label: record.label },
           commit: () => useIssueContextStore.getState().upsert(threadRef.threadId, record),
         };
       }

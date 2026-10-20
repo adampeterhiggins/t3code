@@ -178,6 +178,9 @@ import { NotionAuth } from "./notion/NotionAuth.ts";
 import { SlackApi } from "./slack/SlackApi.ts";
 import { SlackAuth } from "./slack/SlackAuth.ts";
 import { SlackThreadLinks } from "./slack/SlackThreadLinks.ts";
+import { DiscordApi } from "./discord/DiscordApi.ts";
+import { DiscordAuth } from "./discord/DiscordAuth.ts";
+import { DiscordThreadLinks } from "./discord/DiscordThreadLinks.ts";
 import { NotionThreadLinks } from "./notion/NotionThreadLinks.ts";
 import { GitHubIssues } from "./githubIssues/GitHubIssues.ts";
 import { GitHubIssueThreadLinks } from "./githubIssues/GitHubIssueThreadLinks.ts";
@@ -1350,6 +1353,9 @@ export const layerWsRpc = (
       const granolaAuth = yield* GranolaAuth;
       const granolaThreadLinks = yield* GranolaThreadLinks;
       const slackThreadLinks = yield* SlackThreadLinks;
+      const discordAuth = yield* DiscordAuth;
+      const discordApi = yield* DiscordApi;
+      const discordThreadLinks = yield* DiscordThreadLinks;
       const githubIssues = yield* GitHubIssues;
       const githubIssueThreadLinks = yield* GitHubIssueThreadLinks;
       const messageDrafts = yield* MessageDrafts.MessageDrafts;
@@ -2777,6 +2783,19 @@ export const layerWsRpc = (
         [WS_METHODS.slackLinkThread]: (input) => slackThreadLinks.link(input),
         [WS_METHODS.slackUnlinkThread]: (input) =>
           slackThreadLinks.unlink(input).pipe(Effect.as({})),
+        [WS_METHODS.discordSubscribeState]: (_input) => discordAuth.state,
+        [WS_METHODS.discordConnect]: (input) => discordAuth.connect(input),
+        [WS_METHODS.discordDisconnect]: (_input) => discordAuth.disconnect,
+        [WS_METHODS.discordListServers]: (_input) => discordApi.listServers,
+        [WS_METHODS.discordLeaveServer]: (input) =>
+          discordApi.leaveServer(input).pipe(Effect.as({})),
+        [WS_METHODS.discordSearchMessages]: (input) => discordApi.searchMessages(input),
+        [WS_METHODS.discordGetThread]: (input) => discordApi.getThread(input),
+        [WS_METHODS.discordGetLinkPreview]: (input) => discordApi.getLinkPreview(input),
+        [WS_METHODS.discordSubscribeThreadLinks]: (_input) => discordThreadLinks.links,
+        [WS_METHODS.discordLinkThread]: (input) => discordThreadLinks.link(input),
+        [WS_METHODS.discordUnlinkThread]: (input) =>
+          discordThreadLinks.unlink(input).pipe(Effect.as({})),
         [WS_METHODS.githubIssuesList]: (input) => githubIssues.listIssues(input),
         [WS_METHODS.githubIssuesGet]: (input) => githubIssues.getIssue(input),
         [WS_METHODS.githubIssuesGetSummary]: (input) => githubIssues.getIssueSummary(input),

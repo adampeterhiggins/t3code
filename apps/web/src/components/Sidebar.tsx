@@ -240,6 +240,7 @@ import { openLinearIssuePicker } from "./chat/LinearIssuePicker";
 import { openNotionPagePicker } from "./chat/NotionPagePicker";
 import { openGranolaNotePicker } from "./chat/GranolaNotePicker";
 import { openSlackMessagePicker } from "./chat/SlackMessagePicker";
+import { openDiscordMessagePicker } from "./chat/DiscordMessagePicker";
 import { openTranscriptExportDialog } from "./TranscriptExportDialog";
 import { StartedByHoverLine } from "./chat/StartedByChip";
 import {
@@ -6151,6 +6152,9 @@ export default function Sidebar() {
             return;
           case "link-slack-thread":
             openSlackMessagePicker(threadRef, "link");
+            return;
+          case "link-discord-thread":
+            openDiscordMessagePicker(threadRef, "link");
             return;
           case "link-notion-page":
             openNotionPagePicker(threadRef, "link");

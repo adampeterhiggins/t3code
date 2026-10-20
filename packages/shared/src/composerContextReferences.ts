@@ -307,6 +307,12 @@ function formatComposerContextProviderPayload(record: KnownComposerContextRecord
         `url: ${record.url}`,
         record.markdown,
       ].join("\n");
+    case "discord-thread":
+      return [
+        `discord ${record.scope === "thread" ? "thread" : "message"}: ${record.channelLabel}, linked message by ${record.authorName}`,
+        `url: ${record.url}`,
+        record.markdown,
+      ].join("\n");
     case "thread":
       return [
         `title: ${record.title}`,

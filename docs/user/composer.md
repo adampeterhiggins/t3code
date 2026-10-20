@@ -52,7 +52,8 @@ See [images and videos](#images-and-videos-in-messages) for previewing and savin
 The paperclip also attaches a GitHub issue (see
 [Attach a GitHub issue](./source-control.md#attach-a-github-issue)), a Linear issue once you
 connect Linear (see [Linear](./linear.md)), and a Slack message or thread once you connect Slack
-(see [Slack](./slack.md)), a Notion page once you connect Notion (see [Notion](./notion.md)),
+(see [Slack](./slack.md)), a Discord message or thread once you connect Discord (see
+[Discord](./discord.md)), a Notion page once you connect Notion (see [Notion](./notion.md)),
 and a Granola meeting note once you connect Granola (see [Granola](./granola.md)).
 
 ## Send while the agent is working
@@ -367,7 +368,7 @@ tab you insert from most. A folder name that matches a local checkout opens Chec
 Items you inserted recently are listed first and match as you type, without waiting for a search.
 
 On web and desktop, pasting or typing a link to a Linear issue, a GitHub issue, a pull request, a
-GitHub repository, a Notion page, a Granola note, or a Slack message turns the link into the same chip attaching it would make. A T3 Code prompt link becomes a chip named after its prompt; hover it to read the prompt without decoding the URL. A GitHub release, branch, tag, or commit link becomes a chip such as `repo@v1.2.0`; the agent receives the release notes or the commit message, and hovering the chip shows them. Hovering such a link in a message shows what it points at. A typed link
+GitHub repository, a Notion page, a Granola note, or a Slack or Discord message turns the link into the same chip attaching it would make. A T3 Code prompt link becomes a chip named after its prompt; hover it to read the prompt without decoding the URL. A GitHub release, branch, tag, or commit link becomes a chip such as `repo@v1.2.0`; the agent receives the release notes or the commit message, and hovering the chip shows them. Hovering such a link in a message shows what it points at. A typed link
 converts when you type a space or new line after it. The chip replaces the link once the item
 loads. A link to one comment on a pull request attaches that comment, with the replies before it
 when it is part of a review thread. In the attach menu's pull request picker, right-click a pull

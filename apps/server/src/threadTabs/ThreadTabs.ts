@@ -29,6 +29,7 @@ import { LinearThreadLinks } from "../linear/LinearThreadLinks.ts";
 import { NotionThreadLinks } from "../notion/NotionThreadLinks.ts";
 import { GranolaThreadLinks } from "../granola/GranolaThreadLinks.ts";
 import { SlackThreadLinks } from "../slack/SlackThreadLinks.ts";
+import { DiscordThreadLinks } from "../discord/DiscordThreadLinks.ts";
 import { ThreadManagementService } from "../orchestration-v2/ThreadManagementService.ts";
 import { THREAD_HISTORY_SNAPSHOT_ROW_LIMIT } from "../orchestration-v2/threadHistoryPaging.ts";
 import {
@@ -131,6 +132,7 @@ export const make = Effect.gen(function* () {
   const linearThreadLinks = yield* LinearThreadLinks;
   const githubIssueThreadLinks = yield* GitHubIssueThreadLinks;
   const slackThreadLinks = yield* SlackThreadLinks;
+  const discordThreadLinks = yield* DiscordThreadLinks;
   const notionThreadLinks = yield* NotionThreadLinks;
   const granolaThreadLinks = yield* GranolaThreadLinks;
   // Every link kind follows tab-group membership, so each re-reads after the group changes.
@@ -139,6 +141,7 @@ export const make = Effect.gen(function* () {
       linearThreadLinks.refresh,
       githubIssueThreadLinks.refresh,
       slackThreadLinks.refresh,
+      discordThreadLinks.refresh,
       notionThreadLinks.refresh,
       granolaThreadLinks.refresh,
     ],

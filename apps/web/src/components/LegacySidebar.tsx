@@ -237,6 +237,7 @@ import { openLinearIssuePicker } from "./chat/LinearIssuePicker";
 import { openNotionPagePicker } from "./chat/NotionPagePicker";
 import { openGranolaNotePicker } from "./chat/GranolaNotePicker";
 import { openSlackMessagePicker } from "./chat/SlackMessagePicker";
+import { openDiscordMessagePicker } from "./chat/DiscordMessagePicker";
 import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
 const SIDEBAR_SORT_LABELS: Record<SidebarProjectSortOrder, string> = {
   updated_at: "Last user message",
@@ -2250,6 +2251,15 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
                 },
               ]
             : []),
+          ...(linkIntegrations.discord
+            ? [
+                {
+                  id: "link-discord-thread",
+                  label: "Link Discord thread…",
+                  disabled: !canOperateThread,
+                },
+              ]
+            : []),
           ...(linkIntegrations.notion
             ? [
                 {
@@ -2371,6 +2381,10 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       }
       if (clicked === "link-slack-thread") {
         openSlackMessagePicker(threadRef, "link");
+        return;
+      }
+      if (clicked === "link-discord-thread") {
+        openDiscordMessagePicker(threadRef, "link");
         return;
       }
       if (clicked === "link-notion-page") {

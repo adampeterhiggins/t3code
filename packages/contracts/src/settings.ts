@@ -1289,6 +1289,35 @@ export const SlackMentionTriggerSettings = Schema.Struct({
 });
 export type SlackMentionTriggerSettings = typeof SlackMentionTriggerSettings.Type;
 
+/**
+ * Starts a thread in `projectId` when someone @mentions the connected Discord bot (or
+ * `mentionUserId`, when set) in one of `channels` (names without `#`, or channel IDs; a thread
+ * under a listed channel counts). Empty `channels` watches every channel the bot can read. A
+ * non-empty `keyword` must also appear as a word in the message. Off by default; mentions from
+ * before it was turned on are ignored. Fork-only; see docs/fork-differences.md.
+ */
+export const DiscordMentionTriggerSettings = Schema.Struct({
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  projectId: Schema.NullOr(ProjectId).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
+  prompt: TrimmedString.check(Schema.isMaxLength(8_000)).pipe(
+    Schema.withDecodingDefault(Effect.succeed("Help with the request in this Discord mention.")),
+  ),
+  modelSelection: Schema.NullOr(ModelSelection).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
+  channels: Schema.Array(TrimmedString.check(Schema.isMaxLength(128)))
+    .check(Schema.isMaxLength(100))
+    .pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+  /** A Discord user ID to watch instead of the bot; empty watches the bot. */
+  mentionUserId: TrimmedString.check(Schema.isMaxLength(32)).pipe(
+    Schema.withDecodingDefault(Effect.succeed("")),
+  ),
+  keyword: TrimmedString.check(Schema.isMaxLength(64)).pipe(
+    Schema.withDecodingDefault(Effect.succeed("")),
+  ),
+});
+export type DiscordMentionTriggerSettings = typeof DiscordMentionTriggerSettings.Type;
+
 /** Reclaimable bytes from which the offline `t3 doctor` repair is worth suggesting. */
 export const DATABASE_COMPACTION_RECOMMENDED_BYTES = 1024 ** 3;
 
@@ -1471,6 +1500,13 @@ export const ServerSettings = Schema.Struct({
   enableSlackIntegration: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   slackMentionTrigger: SlackMentionTriggerSettings.pipe(
     Schema.withDecodingDefault(Effect.succeed(Schema.decodeSync(SlackMentionTriggerSettings)({}))),
+  ),
+  /** Enable Discord attachment entry points and automatic link resolution for this environment. */
+  enableDiscordIntegration: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  discordMentionTrigger: DiscordMentionTriggerSettings.pipe(
+    Schema.withDecodingDefault(
+      Effect.succeed(Schema.decodeSync(DiscordMentionTriggerSettings)({})),
+    ),
   ),
   /** Enable Notion attachment entry points and automatic link resolution for this environment. */
   enableNotionIntegration: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
@@ -1847,6 +1883,9 @@ export const ServerSettingsPatch = Schema.Struct({
   enableSlackIntegration: Schema.optionalKey(Schema.Boolean),
   /** Replaces the whole trigger, so a cleared channel list sticks. */
   slackMentionTrigger: Schema.optionalKey(SlackMentionTriggerSettings),
+  enableDiscordIntegration: Schema.optionalKey(Schema.Boolean),
+  /** Replaces the whole trigger, so a cleared channel list sticks. */
+  discordMentionTrigger: Schema.optionalKey(DiscordMentionTriggerSettings),
   enableNotionIntegration: Schema.optionalKey(Schema.Boolean),
   enableGranolaIntegration: Schema.optionalKey(Schema.Boolean),
   linearAssignmentTriggers: Schema.optionalKey(LinearAssignmentTriggers),
@@ -1994,7 +2033,9 @@ export function requiredScopesForServerSettingsPatch(
     ...(changesSettings || !changesProviders ? [AuthSettingsWriteScope] : []),
     ...(changesProviders ? [AuthProvidersManageScope] : []),
     // Assignment triggers start agent runs unattended, like scheduled tasks.
-    ...(patch.linearAssignmentTriggers !== undefined || patch.slackMentionTrigger !== undefined
+    ...(patch.linearAssignmentTriggers !== undefined ||
+    patch.slackMentionTrigger !== undefined ||
+    patch.discordMentionTrigger !== undefined
       ? [AuthOrchestrationOperateScope]
       : []),
   ];

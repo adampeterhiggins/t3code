@@ -330,11 +330,13 @@ import { useAttachGitHubIssue } from "./GitHubIssuePicker";
 import { useAttachLinearIssue } from "./LinearIssuePicker";
 import { useComposerGitHubIssueItems } from "./useComposerGitHubIssueItems";
 import { useComposerSlackItems } from "./useComposerSlackItems";
+import { useComposerDiscordItems } from "./useComposerDiscordItems";
 import { useAttachNotionPage } from "./NotionPagePicker";
 import { useComposerNotionItems } from "./useComposerNotionItems";
 import { useAttachGranolaNote } from "./GranolaNotePicker";
 import { useComposerGranolaItems } from "./useComposerGranolaItems";
 import { slackGetThreadInput, useAttachSlackMessage } from "./SlackMessagePicker";
+import { discordGetThreadInput, useAttachDiscordMessage } from "./DiscordMessagePicker";
 import { useResolveComposerObjectLink } from "./useResolveComposerObjectLink";
 import { useComposerRepositoryItems } from "./useComposerRepositoryItems";
 import { useComposerAgentItems } from "./useComposerAgentItems";
@@ -449,6 +451,7 @@ const REFERENCE_MENU_TABS: ReadonlyArray<{
   { id: "github-issues", label: "GitHub issues" },
   { id: "linear-issues", label: "Linear issues" },
   { id: "slack-messages", label: "Slack" },
+  { id: "discord-messages", label: "Discord" },
   { id: "notion-pages", label: "Notion" },
   { id: "granola-notes", label: "Granola" },
   { id: "repositories", label: "Repositories" },
@@ -2792,6 +2795,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         (tab.id === "notion-pages" && !referenceSources.notion) ||
         (tab.id === "granola-notes" && !referenceSources.granola) ||
         (tab.id === "slack-messages" && !referenceSources.slack) ||
+        (tab.id === "discord-messages" && !referenceSources.discord) ||
         (tab.id === "github-issues" && githubIssueCwd === null)
           ? []
           : [tab.id],
@@ -2858,6 +2862,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     active: referenceTab === "slack-messages",
     query: referenceQuery,
   });
+  const discordMenu = useComposerDiscordItems(environmentId, {
+    enabled: availableReferenceTabs.has("discord-messages"),
+    active: referenceTab === "discord-messages",
+    query: referenceQuery,
+  });
   const githubIssueMenu = useComposerGitHubIssueItems(environmentId, githubIssueCwd, {
     enabled: referenceMenuOpen,
     active: referenceTab === "github-issues",
@@ -2897,6 +2906,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const showNotionPages = referenceMenuOpen && referenceTab === "notion-pages";
   const showGranolaNotes = referenceMenuOpen && referenceTab === "granola-notes";
   const showSlackMessages = referenceMenuOpen && referenceTab === "slack-messages";
+  const showDiscordMessages = referenceMenuOpen && referenceTab === "discord-messages";
   const showGitHubIssues = referenceMenuOpen && referenceTab === "github-issues";
   const showRepositories = referenceMenuOpen && referenceTab === "repositories";
   const showCheckouts = referenceMenuOpen && referenceTab === "checkouts";
@@ -2910,13 +2920,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           ? granolaMenu.items
           : showSlackMessages
             ? slackMenu.items
-            : showGitHubIssues
-              ? githubIssueMenu.items
-              : showRepositories
-                ? repositoryMenu.items
-                : showCheckouts
-                  ? checkoutMenu.items
-                  : pullRequestMenu.items;
+            : showDiscordMessages
+              ? discordMenu.items
+              : showGitHubIssues
+                ? githubIssueMenu.items
+                : showRepositories
+                  ? repositoryMenu.items
+                  : showCheckouts
+                    ? checkoutMenu.items
+                    : pullRequestMenu.items;
   const referenceTabRecents = (() =>
     referenceRecents.filter((item) => composerReferenceTabForItem(item) === referenceTab))();
   const referenceMenuItems = (() =>
@@ -2932,6 +2944,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const attachNotionPage = useAttachNotionPage();
   const attachGranolaNote = useAttachGranolaNote();
   const attachSlackMessage = useAttachSlackMessage();
+  const attachDiscordMessage = useAttachDiscordMessage();
   const attachGitHubIssue = useAttachGitHubIssue();
   const resolveComposerObjectLink = useResolveComposerObjectLink({
     threadRef: routeThreadRef,
@@ -3089,6 +3102,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     (showRepositories && repositoryMenu.isPending) ||
     (showCheckouts && checkoutMenu.isPending) ||
     (showSlackMessages && slackMenu.isPending) ||
+    (showDiscordMessages && discordMenu.isPending) ||
     (showNotionPages && notionMenu.isPending) ||
     (showGranolaNotes && granolaMenu.isPending) ||
     (referenceTab === "pull-requests" && pullRequestMenu.isPending);
@@ -3124,6 +3138,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       return composerTrigger?.query
         ? `No Slack message matches ${composerTrigger.query}.`
         : "Type a word to search Slack.";
+    }
+    if (showDiscordMessages) {
+      if (discordMenu.error !== null) return discordMenu.error;
+      return composerTrigger?.query
+        ? `No Discord message matches ${composerTrigger.query}.`
+        : "Type a word to search Discord.";
     }
     if (showGitHubIssues) {
       if (githubIssueMenu.error !== null) return githubIssueMenu.error;
@@ -3620,6 +3640,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         case "linear-issue":
         case "github-issue":
         case "slack-thread":
+        case "discord-thread":
         case "notion-page":
         case "granola-note":
         case "subagent":
@@ -4193,6 +4214,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         if (item.type === "granola-note") void attachGranolaNote(routeThreadRef, item.noteId);
         if (item.type === "slack-message") {
           void attachSlackMessage(routeThreadRef, slackGetThreadInput(item.message, "thread"));
+        }
+        if (item.type === "discord-message") {
+          void attachDiscordMessage(routeThreadRef, discordGetThreadInput(item.message, "thread"));
         }
         if (item.type === "repository") {
           attachRepository(routeThreadRef, {
@@ -7587,6 +7611,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       ? { hint: "Enter references. Command-Enter also links it to the thread." }
                       : {})}
                     {...(showSlackMessages ? { loadingText: "Searching Slack..." } : {})}
+                    {...(showDiscordMessages ? { loadingText: "Searching Discord..." } : {})}
                     {...(composerTrigger?.kind === "path"
                       ? {
                           tabs: {

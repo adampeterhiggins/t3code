@@ -16,6 +16,11 @@ const GITHUB_ISSUE_ACTION: MenuAction = {
 const NOTION_ACTION: MenuAction = { id: "notion", title: "Notion page", image: "doc.text" };
 const GRANOLA_ACTION: MenuAction = { id: "granola", title: "Granola note", image: "waveform" };
 const SLACK_ACTION: MenuAction = { id: "slack", title: "Slack message", image: "number" };
+const DISCORD_ACTION: MenuAction = {
+  id: "discord",
+  title: "Discord message",
+  image: "bubble.left.and.bubble.right",
+};
 const CHECKOUT_ACTION: MenuAction = {
   id: "checkout",
   title: "Checkout",
@@ -42,6 +47,8 @@ export function ComposerAttachmentButton(props: {
   readonly onPickGranolaNote?: () => void;
   /** Omit to hide the Slack action. See `useSlackMessagePicker`. */
   readonly onPickSlackMessage?: () => void;
+  /** Omit to hide the Discord action. See `useDiscordMessagePicker`. */
+  readonly onPickDiscordMessage?: () => void;
   /** Omit to hide the checkout action. See `useCheckoutPicker`. */
   readonly onPickCheckout?: () => void;
   /** Omit to hide the repository action. See `useRepositoryPicker`. */
@@ -56,6 +63,7 @@ export function ComposerAttachmentButton(props: {
     ...(props.onPickNotionPage ? [NOTION_ACTION] : []),
     ...(props.onPickGranolaNote ? [GRANOLA_ACTION] : []),
     ...(props.onPickSlackMessage ? [SLACK_ACTION] : []),
+    ...(props.onPickDiscordMessage ? [DISCORD_ACTION] : []),
     ...(props.onPickCheckout ? [CHECKOUT_ACTION] : []),
     ...(props.onPickRepository ? [REPOSITORY_ACTION] : []),
   ];
@@ -104,6 +112,8 @@ export function ComposerAttachmentButton(props: {
           props.onPickGranolaNote?.();
         } else if (nativeEvent.event === "slack") {
           props.onPickSlackMessage?.();
+        } else if (nativeEvent.event === "discord") {
+          props.onPickDiscordMessage?.();
         } else if (nativeEvent.event === "checkout") {
           props.onPickCheckout?.();
         } else if (nativeEvent.event === "repository") {

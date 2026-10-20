@@ -79,6 +79,8 @@ export type EnvironmentSubscriptionRpcTag =
   | typeof WS_METHODS.notionSubscribeThreadLinks
   | typeof WS_METHODS.slackSubscribeState
   | typeof WS_METHODS.slackSubscribeThreadLinks
+  | typeof WS_METHODS.discordSubscribeState
+  | typeof WS_METHODS.discordSubscribeThreadLinks
   | typeof WS_METHODS.githubIssuesSubscribeThreadLinks
   | typeof WS_METHODS.messageDraftsSubscribe
   | typeof WS_METHODS.terminalAttach

@@ -25,6 +25,7 @@ import { TranscriptExportDialogHost } from "../components/TranscriptExportDialog
 import { NotionPagePickerHost } from "../components/chat/NotionPagePicker";
 import { GranolaNotePickerHost } from "../components/chat/GranolaNotePicker";
 import { SlackMessagePickerHost } from "../components/chat/SlackMessagePicker";
+import { DiscordMessagePickerHost } from "../components/chat/DiscordMessagePicker";
 import { GitHubIssuePickerHost } from "../components/chat/GitHubIssuePicker";
 import { ImportConversationDialogHost } from "../components/ImportConversationDialog";
 import { AddProjectToMachineDialogHost } from "../components/AddProjectToMachineDialog";
@@ -259,6 +260,7 @@ function RootRouteView() {
           <ImportConversationDialogHost />
           {/* Thread menus and the palette open these from any route, Settings included. */}
           <SlackMessagePickerHost />
+          <DiscordMessagePickerHost />
           <NotionPagePickerHost />
           <GranolaNotePickerHost />
           <SlowRpcRequestToastCoordinator />

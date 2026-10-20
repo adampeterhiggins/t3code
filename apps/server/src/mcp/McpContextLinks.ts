@@ -1,5 +1,6 @@
 import {
   type ComposerContextRecord,
+  DiscordGetThreadInput,
   GitHubGetIssueInput,
   GitHubGetRefInput,
   GranolaGetNoteInput,
@@ -16,6 +17,7 @@ import {
   parseComposerObjectLink,
 } from "@t3tools/shared/composerObjectLinks";
 import {
+  discordThreadContextRecord,
   gitHubIssueContextRecord,
   gitHubRefContextRecord,
   granolaNoteContextRecord,
@@ -30,6 +32,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 
+import * as DiscordApi from "../discord/DiscordApi.ts";
 import * as GitHubIssues from "../githubIssues/GitHubIssues.ts";
 import * as GranolaApi from "../granola/GranolaApi.ts";
 import * as LinearApi from "../linear/LinearApi.ts";
@@ -63,6 +66,7 @@ const decodeGitHubGetRefInput = Schema.decodeUnknownEffect(GitHubGetRefInput);
 const decodeNotionGetPageInput = Schema.decodeUnknownEffect(NotionGetPageInput);
 const decodeGranolaGetNoteInput = Schema.decodeUnknownEffect(GranolaGetNoteInput);
 const decodeSlackGetThreadInput = Schema.decodeUnknownEffect(SlackGetThreadInput);
+const decodeDiscordGetThreadInput = Schema.decodeUnknownEffect(DiscordGetThreadInput);
 
 const invalid = (message: string) =>
   new OrchestratorMcpFailure({ code: "invalid_request", message });
@@ -75,11 +79,16 @@ export const make = Effect.gen(function* () {
   const notion = yield* NotionApi.NotionApi;
   const granola = yield* GranolaApi.GranolaApi;
   const slack = yield* SlackApi.SlackApi;
+  const discord = yield* DiscordApi.DiscordApi;
   const gitHubIssues = yield* GitHubIssues.GitHubIssues;
   const settings = yield* ServerSettings.ServerSettingsService;
 
   const integrationEnabled = (
-    key: "enableSlackIntegration" | "enableNotionIntegration" | "enableGranolaIntegration",
+    key:
+      | "enableSlackIntegration"
+      | "enableDiscordIntegration"
+      | "enableNotionIntegration"
+      | "enableGranolaIntegration",
   ) =>
     settings.getSettings.pipe(
       Effect.map((current) => current[key]),
@@ -166,6 +175,22 @@ export const make = Effect.gen(function* () {
           const thread = yield* slack.getThread(input).pipe(Effect.mapError(unreadable(url)));
           return slackThreadContextRecord(thread);
         });
+      case "discord-message":
+        return Effect.gen(function* () {
+          if (!(yield* integrationEnabled("enableDiscordIntegration")))
+            return yield* invalid(
+              `Could not attach ${url}: the Discord integration is turned off in Settings → Integrations.`,
+            );
+          const input = yield* decodeDiscordGetThreadInput({
+            guildId: link.guildId,
+            channelId: link.channelId,
+            messageId: link.messageId,
+            url,
+            scope: "thread",
+          }).pipe(Effect.mapError(malformed(url)));
+          const thread = yield* discord.getThread(input).pipe(Effect.mapError(unreadable(url)));
+          return discordThreadContextRecord(thread);
+        });
       case "repository":
         return Effect.succeed(repositoryContextRecord(link));
       case "prompt-link":
@@ -188,7 +213,7 @@ export const make = Effect.gen(function* () {
         return link === null
           ? Effect.fail(
               invalid(
-                `${url} is not a link T3 Code can attach. Use a Slack message, Notion page, Granola note, Linear issue, GitHub issue, GitHub repository, GitHub release, tag, branch, or commit, or T3 Code prompt link.`,
+                `${url} is not a link T3 Code can attach. Use a Slack or Discord message, Notion page, Granola note, Linear issue, GitHub issue, GitHub repository, GitHub release, tag, branch, or commit, or T3 Code prompt link.`,
               ),
             )
           : Effect.succeed(link);
@@ -221,6 +246,7 @@ export const layer: Layer.Layer<
   | NotionApi.NotionApi
   | GranolaApi.GranolaApi
   | SlackApi.SlackApi
+  | DiscordApi.DiscordApi
   | GitHubIssues.GitHubIssues
   | ServerSettings.ServerSettingsService
 > = Layer.effect(McpContextLinks, make);

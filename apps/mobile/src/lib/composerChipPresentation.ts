@@ -20,6 +20,7 @@ const CONTEXT_CHIP_PRESENTATIONS = {
   "github-issue": { accent: "#009f6e", symbol: "smallcircle.filled.circle" },
   "github-ref": { accent: "#7f8793", symbol: "tag" },
   "slack-thread": { accent: "#c6589c", symbol: "number" },
+  "discord-thread": { accent: "#5865F2", symbol: "bubble.left.and.bubble.right" },
   repository: { accent: "#009c9c", symbol: "folder" },
   checkout: { accent: "#0096af", symbol: "laptopcomputer" },
 } as const;

@@ -39,6 +39,7 @@ export type ThreadActionMenuId =
   | "export-transcript"
   | "link-linear-issue"
   | "link-slack-thread"
+  | "link-discord-thread"
   | "link-notion-page"
   | "link-granola-note"
   | "link-github-issue"
@@ -139,6 +140,7 @@ export interface ThreadActionMenuState {
   /** Integrations the thread's environment has turned on, which add their "Link …" items. */
   readonly integrations?: {
     readonly slack: boolean;
+    readonly discord: boolean;
     readonly notion: boolean;
     readonly granola: boolean;
   };
@@ -325,6 +327,9 @@ export function buildThreadActionMenuItems(
       : []),
     ...(state.integrations?.slack
       ? [{ id: "link-slack-thread" as const, label: "Link Slack thread…", icon: "link" }]
+      : []),
+    ...(state.integrations?.discord
+      ? [{ id: "link-discord-thread" as const, label: "Link Discord thread…", icon: "link" }]
       : []),
     ...(state.integrations?.notion
       ? [{ id: "link-notion-page" as const, label: "Link Notion page…", icon: "link" }]

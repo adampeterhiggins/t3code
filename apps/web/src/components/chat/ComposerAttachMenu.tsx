@@ -1,6 +1,6 @@
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { FolderGit2Icon, LaptopIcon, MessageSquareIcon, PaperclipIcon } from "lucide-react";
-import { GitHubIcon, GranolaIcon, LinearIcon, NotionIcon, SlackIcon } from "../Icons";
+import { GitHubIcon, GranolaIcon, DiscordIcon, LinearIcon, NotionIcon, SlackIcon } from "../Icons";
 import { memo } from "react";
 import { useEnvironmentSettings } from "~/hooks/useSettings";
 
@@ -15,12 +15,13 @@ import { openPullRequestAttachPicker } from "./PullRequestAttachPicker";
 import { openCheckoutAttachPicker } from "./CheckoutAttachPicker";
 import { openRepositoryAttachPicker } from "./RepositoryAttachPicker";
 import { openNotionPagePicker } from "./NotionPagePicker";
+import { openDiscordMessagePicker } from "./DiscordMessagePicker";
 import { openSlackMessagePicker } from "./SlackMessagePicker";
 import { openThreadAttachPicker } from "./ThreadAttachPicker";
 
 /**
  * The composer's attach button: files, thread summaries, issues, Notion pages, Granola notes, Slack
- * messages, pull requests, and repositories.
+ * and Discord messages, pull requests, and repositories.
  */
 export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
   threadRef: ScopedThreadRef;
@@ -36,6 +37,10 @@ export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
   const slackEnabled = useEnvironmentSettings(
     props.threadRef.environmentId,
     (s) => s.enableSlackIntegration,
+  );
+  const discordEnabled = useEnvironmentSettings(
+    props.threadRef.environmentId,
+    (s) => s.enableDiscordIntegration,
   );
   const notionEnabled = useEnvironmentSettings(
     props.threadRef.environmentId,
@@ -81,6 +86,12 @@ export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
           <MenuItem onClick={() => openSlackMessagePicker(props.threadRef)}>
             <SlackIcon />
             Slack message
+          </MenuItem>
+        ) : null}
+        {discordEnabled ? (
+          <MenuItem onClick={() => openDiscordMessagePicker(props.threadRef)}>
+            <DiscordIcon />
+            Discord message
           </MenuItem>
         ) : null}
         {props.githubIssuesAvailable ? (

@@ -14,6 +14,9 @@ import * as NotionThreadLinks from "./notion/NotionThreadLinks.ts";
 import * as SlackApi from "./slack/SlackApi.ts";
 import * as SlackAuth from "./slack/SlackAuth.ts";
 import * as SlackThreadLinks from "./slack/SlackThreadLinks.ts";
+import * as DiscordApi from "./discord/DiscordApi.ts";
+import * as DiscordAuth from "./discord/DiscordAuth.ts";
+import * as DiscordThreadLinks from "./discord/DiscordThreadLinks.ts";
 import * as WorktreeInventory from "./git/WorktreeInventory.ts";
 import * as TextGeneration from "./textGeneration/TextGeneration.ts";
 import * as GitVcsDriver from "./vcs/GitVcsDriver.ts";
@@ -474,6 +477,9 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(SlackThreadLinks.SlackThreadLinks)({}),
   Layer.mock(SlackAuth.SlackAuth)({}),
   Layer.mock(SlackApi.SlackApi)({}),
+  Layer.mock(DiscordThreadLinks.DiscordThreadLinks)({}),
+  Layer.mock(DiscordAuth.DiscordAuth)({}),
+  Layer.mock(DiscordApi.DiscordApi)({}),
   Layer.mock(ProviderServiceStatus.ProviderServiceStatus)({
     current: Effect.succeed([]),
     streamChanges: Stream.make([]),

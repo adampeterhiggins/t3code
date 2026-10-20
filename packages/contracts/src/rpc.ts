@@ -146,6 +146,23 @@ import {
   SlackUnlinkThreadInput,
 } from "./slack.ts";
 import {
+  DiscordConnectInput,
+  DiscordConnectionState,
+  DiscordError,
+  DiscordGetThreadInput,
+  DiscordLeaveServerInput,
+  DiscordListServersResult,
+  DiscordLinkPreview,
+  DiscordLinkPreviewInput,
+  DiscordLinkThreadInput,
+  DiscordSearchMessagesInput,
+  DiscordSearchMessagesResult,
+  DiscordThreadContext,
+  DiscordThreadLink,
+  DiscordThreadLinks,
+  DiscordUnlinkThreadInput,
+} from "./discord.ts";
+import {
   GitHubGetIssueInput,
   GitHubIssueContext,
   GitHubIssueError,
@@ -737,6 +754,17 @@ export const WS_METHODS = {
   slackSubscribeThreadLinks: "slack.subscribeThreadLinks",
   slackLinkThread: "slack.linkThread",
   slackUnlinkThread: "slack.unlinkThread",
+  discordSubscribeState: "discord.subscribeState",
+  discordConnect: "discord.connect",
+  discordDisconnect: "discord.disconnect",
+  discordListServers: "discord.listServers",
+  discordLeaveServer: "discord.leaveServer",
+  discordSearchMessages: "discord.searchMessages",
+  discordGetThread: "discord.getThread",
+  discordGetLinkPreview: "discord.getLinkPreview",
+  discordSubscribeThreadLinks: "discord.subscribeThreadLinks",
+  discordLinkThread: "discord.linkThread",
+  discordUnlinkThread: "discord.unlinkThread",
 
   // GitHub issue methods
   githubIssuesList: "githubIssues.list",
@@ -1232,6 +1260,76 @@ const WsSlackUnlinkThreadRpc = Rpc.make(WS_METHODS.slackUnlinkThread, {
   payload: SlackUnlinkThreadInput,
   success: Schema.Struct({}),
   error: SlackRpcError,
+});
+
+const DiscordRpcError = Schema.Union([DiscordError, EnvironmentAuthorizationError]);
+
+const WsDiscordSubscribeStateRpc = Rpc.make(WS_METHODS.discordSubscribeState, {
+  payload: Schema.Struct({}),
+  success: DiscordConnectionState,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
+const WsDiscordConnectRpc = Rpc.make(WS_METHODS.discordConnect, {
+  payload: DiscordConnectInput,
+  success: DiscordConnectionState,
+  error: DiscordRpcError,
+});
+
+const WsDiscordDisconnectRpc = Rpc.make(WS_METHODS.discordDisconnect, {
+  payload: Schema.Struct({}),
+  success: DiscordConnectionState,
+  error: DiscordRpcError,
+});
+
+const WsDiscordListServersRpc = Rpc.make(WS_METHODS.discordListServers, {
+  payload: Schema.Struct({}),
+  success: DiscordListServersResult,
+  error: DiscordRpcError,
+});
+
+const WsDiscordLeaveServerRpc = Rpc.make(WS_METHODS.discordLeaveServer, {
+  payload: DiscordLeaveServerInput,
+  success: Schema.Struct({}),
+  error: DiscordRpcError,
+});
+
+const WsDiscordSearchMessagesRpc = Rpc.make(WS_METHODS.discordSearchMessages, {
+  payload: DiscordSearchMessagesInput,
+  success: DiscordSearchMessagesResult,
+  error: DiscordRpcError,
+});
+
+const WsDiscordGetThreadRpc = Rpc.make(WS_METHODS.discordGetThread, {
+  payload: DiscordGetThreadInput,
+  success: DiscordThreadContext,
+  error: DiscordRpcError,
+});
+
+const WsDiscordGetLinkPreviewRpc = Rpc.make(WS_METHODS.discordGetLinkPreview, {
+  payload: DiscordLinkPreviewInput,
+  success: DiscordLinkPreview,
+  error: DiscordRpcError,
+});
+
+const WsDiscordSubscribeThreadLinksRpc = Rpc.make(WS_METHODS.discordSubscribeThreadLinks, {
+  payload: Schema.Struct({}),
+  success: DiscordThreadLinks,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
+const WsDiscordLinkThreadRpc = Rpc.make(WS_METHODS.discordLinkThread, {
+  payload: DiscordLinkThreadInput,
+  success: DiscordThreadLink,
+  error: DiscordRpcError,
+});
+
+const WsDiscordUnlinkThreadRpc = Rpc.make(WS_METHODS.discordUnlinkThread, {
+  payload: DiscordUnlinkThreadInput,
+  success: Schema.Struct({}),
+  error: DiscordRpcError,
 });
 
 const GitHubIssueRpcError = Schema.Union([GitHubIssueError, EnvironmentAuthorizationError]);
@@ -2646,6 +2744,17 @@ export const WsRpcGroup = RpcGroup.make(
   WsSlackSubscribeThreadLinksRpc,
   WsSlackLinkThreadRpc,
   WsSlackUnlinkThreadRpc,
+  WsDiscordSubscribeStateRpc,
+  WsDiscordConnectRpc,
+  WsDiscordDisconnectRpc,
+  WsDiscordListServersRpc,
+  WsDiscordLeaveServerRpc,
+  WsDiscordSearchMessagesRpc,
+  WsDiscordGetThreadRpc,
+  WsDiscordGetLinkPreviewRpc,
+  WsDiscordSubscribeThreadLinksRpc,
+  WsDiscordLinkThreadRpc,
+  WsDiscordUnlinkThreadRpc,
   WsGitHubIssuesListRpc,
   WsGitHubIssuesGetRpc,
   WsGitHubIssuesGetSummaryRpc,

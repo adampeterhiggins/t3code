@@ -9,6 +9,7 @@ const ExternalUrlTarget = Schema.Literals([
   "linear",
   "github-issue",
   "slack",
+  "discord",
   "notion",
   "granola",
   "html-render",

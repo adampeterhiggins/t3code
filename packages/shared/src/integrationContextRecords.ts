@@ -1,5 +1,7 @@
 import type {
   ComposerContextId,
+  DiscordThreadContext,
+  DiscordThreadContextRecord,
   GitHubIssueContext,
   GitHubIssueContextRecord,
   GitHubRefContext,
@@ -106,6 +108,35 @@ export function slackThreadContextRecord(thread: SlackThreadContext): SlackThrea
     channelLabel: thread.channelLabel.slice(0, 2_048),
     ts: thread.ts,
     threadTs: thread.threadTs,
+    url: thread.url,
+    authorName: thread.authorName.slice(0, 2_048),
+    title: thread.title.slice(0, 2_048),
+    replyCount: thread.replyCount,
+    scope: thread.scope,
+    markdown: thread.markdown,
+  };
+}
+
+export function discordThreadContextRecord(
+  thread: DiscordThreadContext,
+): DiscordThreadContextRecord {
+  return {
+    version: 1,
+    kind: "discord-thread",
+    contextId:
+      `discord-${thread.scope}_${thread.guildId}_${thread.channelId}_${thread.messageId}`.slice(
+        0,
+        128,
+      ) as ComposerContextId,
+    label: sanitizeComposerContextLabel(
+      `${thread.channelLabel} · ${thread.authorName}`,
+      "discord-thread",
+    ),
+    guildId: thread.guildId,
+    channelId: thread.channelId,
+    channelLabel: thread.channelLabel.slice(0, 2_048),
+    messageId: thread.messageId,
+    threadId: thread.threadId,
     url: thread.url,
     authorName: thread.authorName.slice(0, 2_048),
     title: thread.title.slice(0, 2_048),

@@ -74,6 +74,7 @@ import { useGitHubIssuePicker } from "../../components/GitHubIssuePickerSheet";
 import { useGranolaNotePicker } from "../../components/GranolaNotePickerSheet";
 import { useNotionPagePicker } from "../../components/NotionPagePickerSheet";
 import { useSlackMessagePicker } from "../../components/SlackMessagePickerSheet";
+import { useDiscordMessagePicker } from "../../components/DiscordMessagePickerSheet";
 import { useCheckoutPicker } from "../../components/CheckoutPickerSheet";
 import { useRepositoryPicker } from "../../components/RepositoryPickerSheet";
 import {
@@ -455,6 +456,10 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     draftKey: composerDraftKey,
   });
   const slackMessagePicker = useSlackMessagePicker({
+    environmentId: props.environmentId,
+    draftKey: composerDraftKey,
+  });
+  const discordMessagePicker = useDiscordMessagePicker({
     environmentId: props.environmentId,
     draftKey: composerDraftKey,
   });
@@ -886,6 +891,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                 onPickNotionPage={notionPagePicker.open}
                 onPickGranolaNote={granolaNotePicker.open}
                 onPickSlackMessage={slackMessagePicker.open}
+                onPickDiscordMessage={discordMessagePicker.open}
                 onPickCheckout={checkoutPicker.open}
                 onPickRepository={repositoryPicker.open}
               />
@@ -1179,6 +1185,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                       onPickNotionPage={notionPagePicker.open}
                       onPickGranolaNote={granolaNotePicker.open}
                       onPickSlackMessage={slackMessagePicker.open}
+                      onPickDiscordMessage={discordMessagePicker.open}
                       onPickCheckout={checkoutPicker.open}
                       onPickRepository={repositoryPicker.open}
                     />
@@ -1252,6 +1259,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
       {linearIssuePicker.sheet}
       {gitHubIssuePicker.sheet}
       {slackMessagePicker.sheet}
+      {discordMessagePicker.sheet}
       {notionPagePicker.sheet}
       {granolaNotePicker.sheet}
       {checkoutPicker.sheet}

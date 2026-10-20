@@ -1,5 +1,7 @@
 import { assert, it } from "@effect/vitest";
 import {
+  type DiscordGetThreadInput,
+  type DiscordThreadContext,
   type LinearIssueContext,
   NotionError,
   type SlackGetThreadInput,
@@ -9,6 +11,7 @@ import {
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
+import * as DiscordApi from "../discord/DiscordApi.ts";
 import * as GitHubIssues from "../githubIssues/GitHubIssues.ts";
 import * as LinearApi from "../linear/LinearApi.ts";
 import * as GranolaApi from "../granola/GranolaApi.ts";
@@ -49,6 +52,25 @@ const GRANOLA_URL = `https://notes.granola.ai/d/${GRANOLA_ID}`;
 
 let slackRequests: Array<SlackGetThreadInput> = [];
 
+const DISCORD_URL =
+  "https://discord.com/channels/100000000000000001/100000000000000002/100000000000000003";
+
+const discordThread = (input: DiscordGetThreadInput): DiscordThreadContext => ({
+  guildId: input.guildId,
+  channelId: input.channelId,
+  channelLabel: "#eng",
+  messageId: input.messageId,
+  threadId: null,
+  url: input.url,
+  authorName: "Sam",
+  title: "Deploy is stuck",
+  replyCount: 0,
+  scope: input.scope,
+  markdown: "Deploy is stuck",
+});
+
+let discordRequests: Array<DiscordGetThreadInput> = [];
+
 const layer = (settings: Parameters<typeof ServerSettings.layerTest>[0] = {}) =>
   McpContextLinks.layer.pipe(
     Layer.provide(
@@ -60,6 +82,12 @@ const layer = (settings: Parameters<typeof ServerSettings.layerTest>[0] = {}) =>
           getThread: (input) => {
             slackRequests.push(input);
             return Effect.succeed(slackThread(input));
+          },
+        }),
+        Layer.mock(DiscordApi.DiscordApi, {
+          getThread: (input) => {
+            discordRequests.push(input);
+            return Effect.succeed(discordThread(input));
           },
         }),
         Layer.mock(NotionApi.NotionApi, {
@@ -131,6 +159,29 @@ it.effect("refuses an integration the user turned off", () =>
   }).pipe(Effect.provide(layer({ enableSlackIntegration: false }))),
 );
 
+it.effect("attaches a Discord message link as its whole thread", () =>
+  Effect.gen(function* () {
+    discordRequests = [];
+    const result = yield* attach(`See ${DISCORD_URL}`, [DISCORD_URL]);
+    assert.deepStrictEqual(
+      result.context?.records.map((record) => record.kind),
+      ["discord-thread"],
+    );
+    assert.notInclude(result.text, DISCORD_URL);
+    assert.deepStrictEqual(
+      discordRequests.map((request) => [request.channelId, request.messageId, request.scope]),
+      [["100000000000000002", "100000000000000003", "thread"]],
+    );
+  }).pipe(Effect.provide(layer())),
+);
+
+it.effect("refuses a Discord link while the integration is off", () =>
+  Effect.gen(function* () {
+    const error = yield* Effect.flip(attach("", [DISCORD_URL]));
+    assert.include(error.message, "Discord integration is turned off");
+  }).pipe(Effect.provide(layer({ enableDiscordIntegration: false }))),
+);
+
 it.effect("says how to share a Notion page the connection cannot read", () =>
   Effect.gen(function* () {
     const error = yield* Effect.flip(attach("", [NOTION_URL]));
@@ -175,6 +226,7 @@ it.effect("passes on why an integration could not read a link", () =>
                   new SlackError({ reason: "not-connected", detail: "Slack is not connected." }),
                 ),
             }),
+            Layer.mock(DiscordApi.DiscordApi, {}),
             Layer.mock(NotionApi.NotionApi, {}),
             Layer.mock(GranolaApi.GranolaApi, {}),
             Layer.mock(GitHubIssues.GitHubIssues, {}),
