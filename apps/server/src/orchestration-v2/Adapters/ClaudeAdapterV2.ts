@@ -3369,6 +3369,18 @@ function isClaudeResultForOtherTurn(input: {
   );
 }
 
+// Claude Code writes a session's transcript only once it takes a prompt, so a
+// session opened and closed before any prompt went out (a turn stopped at the
+// subscription limit, a crash) cannot be resumed though T3 recorded a turn on it.
+function isClaudeMissingConversationResult(message: SDKMessage): boolean {
+  return (
+    message.type === "result" &&
+    message.subtype === "error_during_execution" &&
+    message.num_turns === 0 &&
+    message.errors.some((error) => error.startsWith("No conversation found with session ID"))
+  );
+}
+
 function isClaudeTaskNotificationOriginResult(message: SDKMessage): message is SDKResultMessage & {
   readonly origin: Extract<
     NonNullable<SDKResultMessage["origin"]>,
@@ -3694,6 +3706,8 @@ interface ActiveClaudeTurnContext {
   readonly subagentsByToolUseId: Map<string, ActiveClaudeSubagent>;
   readonly subagentNodesByTaskId: Map<string, OrchestrationV2ExecutionNode["id"]>;
   readonly promptUuid: string | null;
+  // Kept so a resume that finds no transcript can offer it again to a fresh session.
+  readonly prompt: SDKUserMessage | null;
   promptEcho: "pending" | "confirmed";
   promptStarted: boolean;
   nativeWakeStarted: boolean;
@@ -3744,6 +3758,8 @@ interface ClaudeLiveQueryContext {
   receivedInit: boolean;
   permissionMode: PermissionMode;
   stopping: boolean;
+  // The resumed session had no transcript, so the CLI exited without running anything.
+  missingConversation: boolean;
   readonly subagentsFromEarlierProcesses: ReadonlySet<ActiveClaudeSubagent>;
 }
 
@@ -4379,6 +4395,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           );
         });
         const openedNativeThreads = yield* Ref.make(new Set<string>());
+        // Native ids whose resume found no transcript; the next open creates them instead.
+        const missingNativeThreads = yield* Ref.make(new Set<string>());
         const latestPlanByKind = yield* Ref.make(new Map<string, OrchestrationV2PlanArtifact>());
         // Claude 5 task tools edit one list per native session, across turns.
         const taskListsByNativeThread = yield* Ref.make(
@@ -7307,6 +7325,12 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                     failure: makeProviderFailure({
                       cause: cause === undefined ? undefined : Cause.squash(cause),
                       class: "transport_error",
+                      ...(closedQuery.missingConversation
+                        ? {
+                            message:
+                              "Claude could not find this conversation to resume. Send the message again to start it fresh.",
+                          }
+                        : {}),
                     }),
                   }),
             });
@@ -9740,8 +9764,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           // requires resume; sessionId would fail with "already in use".
           const hasPersistedProviderTurn =
             turnInput.nativeThreadHasTurns ?? turnInput.providerTurnOrdinal > 1;
+          const transcriptMissing = (yield* Ref.get(missingNativeThreads)).has(nativeThreadId);
           const shouldResume =
-            resumeSessionAt !== undefined || openedWithResume || hasPersistedProviderTurn;
+            !transcriptMissing &&
+            (resumeSessionAt !== undefined || openedWithResume || hasPersistedProviderTurn);
           const subagentHooks =
             adapterOptions.subagentWorktreeSetup !== undefined &&
             turnInput.runtimePolicy.cwd !== null
@@ -9757,7 +9783,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             modelSelection: turnInput.modelSelection,
             nativeThreadId,
             resume: shouldResume,
-            ...(resumeSessionAt === undefined ? {} : { resumeSessionAt }),
+            ...(resumeSessionAt === undefined || !shouldResume ? {} : { resumeSessionAt }),
             cwd: turnInput.runtimePolicy.cwd,
             attachmentsDir,
             ...(turnInput.additionalDirectories === undefined
@@ -9813,6 +9839,13 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             updated.add(nativeThreadId);
             return updated;
           });
+          if (transcriptMissing) {
+            yield* Ref.update(missingNativeThreads, (current) => {
+              const updated = new Set(current);
+              updated.delete(nativeThreadId);
+              return updated;
+            });
+          }
           yield* resetBackgroundTaskStateForNativeThreadProcess(nativeThreadId, {
             status: "active",
           });
@@ -9830,6 +9863,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             receivedInit: false,
             permissionMode: queryOptions.permissionMode,
             stopping: false,
+            missingConversation: false,
             subagentsFromEarlierProcesses: new Set(
               [...(yield* Ref.get(sessionSubagentsByTaskId)).values()].filter(
                 (subagent) => subagent.task.status === "running",
@@ -9857,6 +9891,24 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                   ) {
                     context.permissionMode = message.permissionMode;
                   }
+                  if (
+                    queryOptions.resume !== undefined &&
+                    isClaudeMissingConversationResult(message)
+                  ) {
+                    // Not a turn's outcome: the process exits without reading any prompt.
+                    // The query exit fails or retries the turn that offered into it.
+                    context.missingConversation = true;
+                    return Ref.update(missingNativeThreads, (current) =>
+                      new Set(current).add(nativeThreadId),
+                    ).pipe(
+                      Effect.andThen(
+                        Effect.logWarning("orchestration-v2.claude-resume-transcript-missing", {
+                          nativeThreadId,
+                        }),
+                      ),
+                      Effect.andThen(querySession.close.pipe(Effect.ignore)),
+                    );
+                  }
                   return handleSdkMessage({ query: querySession, message });
                 }),
               ),
@@ -9876,6 +9928,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                   current?.query === querySession ? [true, null] : [false, current],
                 );
                 if (ownsLiveQuery) {
+                  if (yield* reofferAfterMissingTranscript(context)) return;
                   yield* finalizeActiveTurnAfterQueryExit(
                     context,
                     exit._tag === "Failure" ? exit.cause : undefined,
@@ -9891,6 +9944,31 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             Effect.forkIn(sessionScope),
           );
           return context;
+        });
+
+        // A resume that found no transcript ran nothing, so the turn's prompt can go to
+        // a fresh session under the same id instead of failing the turn.
+        const reofferAfterMissingTranscript: (
+          closedQuery: ClaudeLiveQueryContext,
+        ) => Effect.Effect<boolean> = Effect.fnUntraced(function* (closedQuery) {
+          const turn = closedQuery.lastTurn;
+          if (
+            !closedQuery.missingConversation ||
+            turn === null ||
+            turn.prompt === null ||
+            (yield* Ref.get(activeTurn)) !== turn
+          ) {
+            return false;
+          }
+          const reopened = yield* openQuery(turn.input, closedQuery.nativeThreadId).pipe(
+            Effect.option,
+          );
+          if (Option.isNone(reopened)) return false;
+          reopened.value.lastTurn = turn;
+          return yield* reopened.value.query.offer(turn.prompt).pipe(
+            Effect.as(true),
+            Effect.orElseSucceed(() => false),
+          );
         });
 
         const startTurn = Effect.fn("ClaudeAdapterV2.startTurn")(
@@ -9954,10 +10032,19 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                     skills: yield* userInvocableSkills(turnInput.runtimePolicy.cwd),
                     uuid: promptUuid,
                   });
-            const querySession = yield* openQuery(turnInput, nativeThreadId);
+            const subscriptionLimit = (yield* subscriptionLimitGuardEnabled(
+              turnInput.modelSelection,
+              turnInput.threadId,
+            ))
+              ? yield* subscriptionLimitFailure()
+              : null;
+            // A stopped turn opens no process: Claude Code saves a session only once it
+            // takes a prompt, so an opened session here would never exist on disk.
+            const querySession =
+              subscriptionLimit === null ? yield* openQuery(turnInput, nativeThreadId) : null;
             const context: ActiveClaudeTurnContext = {
               input: turnInput,
-              queryPolicy: querySession.queryPolicy,
+              queryPolicy: querySession?.queryPolicy ?? (yield* queryPolicyForTurn(turnInput)),
               nativeThreadId,
               nativeTurnId,
               nativeMessageCursor: null,
@@ -9995,14 +10082,15 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               subagentsByToolUseId: new Map(),
               subagentNodesByTaskId: new Map(),
               promptUuid,
+              prompt: userMessage,
               promptEcho: isClaudeProviderContinuationTurn(turnInput) ? "confirmed" : "pending",
               promptStarted: false,
               nativeWakeStarted: false,
               gatedFramesBeforeEcho: 0,
               heldRootFrames: [],
             };
-            const attachTurn = Effect.gen(function* () {
-              querySession.lastTurn = context;
+            const attachTurn = Effect.fnUntraced(function* (live: ClaudeLiveQueryContext | null) {
+              if (live !== null) live.lastTurn = context;
               yield* Ref.set(activeTurn, context);
               if (
                 !isClaudeProviderContinuationTurn(turnInput) &&
@@ -10059,20 +10147,45 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 }),
               });
             });
-            if (
-              yield* subscriptionLimitGuardEnabled(turnInput.modelSelection, turnInput.threadId)
-            ) {
-              const failure = yield* subscriptionLimitFailure();
-              if (failure !== null) {
-                yield* attachTurn;
-                yield* stopAtSubscriptionLimit(context, failure);
-                return;
+            if (querySession === null) {
+              yield* attachTurn(null);
+              if (subscriptionLimit !== null) {
+                yield* stopAtSubscriptionLimit(context, subscriptionLimit);
               }
+              return;
             }
             if (userMessage !== null) {
-              yield* attachTurn;
-              yield* startUserTurnForWakeReports(nativeThreadId);
-              yield* querySession.query.offer(userMessage);
+              // A query that already exited finalized only the turn attached to it, so a
+              // turn offered into it now would stay running forever.
+              const offerPrompt = Effect.fnUntraced(function* (live: ClaudeLiveQueryContext) {
+                if (
+                  (yield* Ref.get(queryContext))?.query !== live.query ||
+                  live.stopping ||
+                  live.missingConversation
+                ) {
+                  return false;
+                }
+                yield* attachTurn(live);
+                yield* startUserTurnForWakeReports(nativeThreadId);
+                yield* live.query.offer(userMessage);
+                return true;
+              });
+              if (yield* offerPrompt(querySession)) return;
+              if (querySession.missingConversation) {
+                // The resumed session was never written; create it under the same id.
+                yield* Deferred.await(querySession.closed);
+                if (yield* offerPrompt(yield* openQuery(turnInput, nativeThreadId))) return;
+              }
+              yield* attachTurn(null);
+              yield* finalizeActiveTurn({
+                context,
+                status: "failed",
+                completedAt: yield* DateTime.now,
+                failure: makeProviderFailure({
+                  class: "transport_error",
+                  message: "Claude exited before it could take the message.",
+                }),
+              });
               return;
             }
             // Transcript reads suspend replay. Hold live SDK frames until the whole
@@ -10088,7 +10201,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                     detail: "Claude provider query ended before the continuation could start.",
                   });
                 }
-                yield* attachTurn;
+                yield* attachTurn(querySession);
                 const drained = (yield* Ref.get(wakeBuffers)).get(nativeThreadId)?.messages ?? [];
                 yield* Ref.update(requestedContinuations, (current) => {
                   const updated = new Set(current);
