@@ -1749,6 +1749,16 @@ html[data-quick-message] {
   --glass-blur: 0px;
 }
 
+/* The chat column fits this footer beside the round send button. While the draft
+   is empty the panel shows a Create worktree / Create thread pill in that slot,
+   so the floating composer is wider than the column by about that pill. 100%
+   keeps it inside the window when the interface font scales the rem past the
+   panel. */
+html[data-quick-message] [data-slot="composer-shell"] {
+  width: min(52rem, 100%);
+  max-width: min(52rem, 100%);
+}
+
 html[data-quick-message],
 html[data-quick-message] body {
   background: transparent !important;

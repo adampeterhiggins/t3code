@@ -22,7 +22,9 @@ import * as DesktopClientSettings from "../settings/DesktopClientSettings.ts";
 import { isWaylandSession, toElectronAccelerator } from "../snapShot/snapShot.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
 
-const PANEL_WIDTH = 820;
+// 52rem composer at the default 16px interface font, the frame's 3rem of
+// horizontal padding, and 36px of slack so the card is not flush with the window.
+const PANEL_WIDTH = 916;
 // Taller than the composer so its project and model menus can open below it.
 const PANEL_HEIGHT = 520;
 
