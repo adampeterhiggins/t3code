@@ -503,6 +503,8 @@ export interface ThreadListV2ThreadListItem {
    * stale icon.
    */
   readonly hasQueuedMessages: boolean;
+  /** Server-side message drafts, carried like the queue flag for the same reason. */
+  readonly draftCount: number;
   readonly canMoveUp: boolean;
   readonly canMoveDown: boolean;
 }
@@ -604,6 +606,7 @@ export function threadListV2ListItemsAreEqual(
         previous.snoozePresetMinute === item.snoozePresetMinute &&
         previous.showTrailingDivider === item.showTrailingDivider &&
         previous.hasQueuedMessages === item.hasQueuedMessages &&
+        previous.draftCount === item.draftCount &&
         previous.canMoveUp === item.canMoveUp &&
         previous.canMoveDown === item.canMoveDown
       );
@@ -688,6 +691,7 @@ export function buildThreadListV2ListItems(input: {
   readonly snoozeLabelNow?: string;
   readonly snoozeEnvironmentIds?: ReadonlySet<EnvironmentId>;
   readonly queuedThreadKeys?: ReadonlySet<string>;
+  readonly draftCounts?: ReadonlyMap<string, number>;
   readonly moveAvailability?: ReadonlyMap<string, ThreadMoveAvailability>;
   readonly shelfPreferencesLoading?: boolean;
 }): ThreadListV2ListItem[] {
@@ -721,6 +725,7 @@ export function buildThreadListV2ListItems(input: {
       showTrailingDivider: false,
       hasQueuedMessages:
         queuedThreadKeys?.has(`${item.thread.environmentId}:${item.thread.id}`) === true,
+      draftCount: input.draftCounts?.get(`${item.thread.environmentId}:${item.thread.id}`) ?? 0,
       canMoveUp: move?.canMoveUp === true,
       canMoveDown: move?.canMoveDown === true,
     };
@@ -1124,4 +1129,21 @@ export function buildThreadListV2Items(input: {
     groupSections,
     nextSnoozeWakeAt,
   };
+}
+
+/** What a screen reader hears for a thread row, including work waiting to be sent. */
+export function threadListV2RowAccessibilityLabel(input: {
+  readonly title: string;
+  readonly tabGroupName?: string | null;
+  readonly hasQueuedMessages: boolean;
+  readonly draftCount: number;
+}): string {
+  const notes = [
+    ...(input.hasQueuedMessages ? ["messages queued to send"] : []),
+    ...(input.draftCount > 0
+      ? [`${input.draftCount} draft${input.draftCount === 1 ? "" : "s"}`]
+      : []),
+  ];
+  if (notes.length === 0) return input.title;
+  return `${input.tabGroupName ?? input.title}, ${notes.join(", ")}`;
 }

@@ -1,4 +1,9 @@
-import { memo, type MouseEventHandler, type PointerEventHandler } from "react";
+import {
+  memo,
+  type MouseEvent as ReactMouseEvent,
+  type MouseEventHandler,
+  type PointerEventHandler,
+} from "react";
 import {
   CheckIcon,
   ChevronDownIcon,
@@ -24,6 +29,9 @@ import {
   alternateComposerDispatchAction,
   resolveComposerDispatchMode,
 } from "@t3tools/client-runtime/state/composer-dispatch";
+
+/** Which send button was right-clicked: a plain send, or a plan follow-up's. */
+export type ComposerSendSurface = "send" | "plan-refine" | "plan-implement";
 
 interface PendingActionState {
   questionIndex: number;
@@ -63,6 +71,8 @@ interface ComposerPrimaryActionsProps {
   compactBeforeSendTokens?: number | null;
   keepFullHistory?: boolean;
   onToggleKeepFullHistory?: () => void;
+  /** Right-click on a send button. Disabled buttons take no pointer events, so a wrapper hears it. */
+  onSendContextMenu?: (event: ReactMouseEvent<HTMLElement>, surface: ComposerSendSurface) => void;
 }
 
 const formatPendingPrimaryActionLabel = (input: {
@@ -119,6 +129,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   compactBeforeSendTokens = null,
   keepFullHistory = false,
   onToggleKeepFullHistory,
+  onSendContextMenu,
 }: ComposerPrimaryActionsProps) {
   const pointerFocusProps = preserveComposerFocusOnPointerDown
     ? { onPointerDown: preventPointerFocus }
@@ -138,6 +149,10 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   const stageBackdropVariant = useSidebarStageBackdropVariant(
     environmentIdentificationMode === "artwork",
   );
+  const sendContextMenuHandler = (surface: ComposerSendSurface) =>
+    onSendContextMenu
+      ? (event: ReactMouseEvent<HTMLElement>) => onSendContextMenu(event, surface)
+      : undefined;
 
   const renderStopGenerationButton = (insidePendingAction: boolean) => (
     <Tooltip key="interrupt">
@@ -219,19 +234,25 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   if (showPlanFollowUpPrompt && (promptHasText || !canResume)) {
     if (promptHasText) {
       return (
-        <button
-          type="submit"
-          className={cn(messageActionPillClassName, "h-9 sm:h-8", compact ? "px-3" : "px-4")}
-          {...pointerFocusProps}
-          disabled={isSendBusy || isSendDisabled || isConnecting || isEnvironmentUnavailable}
-        >
-          {isConnecting || isSendBusy ? "Sending..." : "Refine"}
-        </button>
+        <span className="inline-flex" onContextMenu={sendContextMenuHandler("plan-refine")}>
+          <button
+            type="submit"
+            className={cn(messageActionPillClassName, "h-9 sm:h-8", compact ? "px-3" : "px-4")}
+            {...pointerFocusProps}
+            disabled={isSendBusy || isSendDisabled || isConnecting || isEnvironmentUnavailable}
+          >
+            {isConnecting || isSendBusy ? "Sending..." : "Refine"}
+          </button>
+        </span>
       );
     }
 
     return (
-      <div data-chat-composer-implement-actions="true" className="flex items-center justify-end">
+      <div
+        data-chat-composer-implement-actions="true"
+        className="flex items-center justify-end"
+        onContextMenu={sendContextMenuHandler("plan-implement")}
+      >
         <button
           type="submit"
           className={cn(messageActionPillClassName, "h-9 rounded-r-none px-4 sm:h-8")}
@@ -393,7 +414,11 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
 
   const submit = (
     <Tooltip key="submit">
-      <TooltipTrigger render={<span className="inline-flex" />}>{sendButton}</TooltipTrigger>
+      <TooltipTrigger
+        render={<span className="inline-flex" onContextMenu={sendContextMenuHandler("send")} />}
+      >
+        {sendButton}
+      </TooltipTrigger>
       <TooltipPopup>{submitTooltip}</TooltipPopup>
     </Tooltip>
   );

@@ -187,6 +187,14 @@
       "types": "./src/state/githubIssues.ts",
       "default": "./src/state/githubIssues.ts"
     },
+    "./state/message-drafts": {
+      "types": "./src/state/messageDrafts.ts",
+      "default": "./src/state/messageDrafts.ts"
+    },
+    "./state/send-menu": {
+      "types": "./src/state/sendMenu.ts",
+      "default": "./src/state/sendMenu.ts"
+    },
     "./state/linear": {
       "types": "./src/state/linear.ts",
       "default": "./src/state/linear.ts"

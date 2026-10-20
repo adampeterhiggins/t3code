@@ -1,5 +1,6 @@
 import * as ProviderServiceStatus from "./provider/providerServiceStatus.ts";
 import * as GitHubIssueThreadLinks from "./githubIssues/GitHubIssueThreadLinks.ts";
+import * as MessageDrafts from "./messageDrafts/MessageDrafts.ts";
 import * as GitHubIssues from "./githubIssues/GitHubIssues.ts";
 import * as GranolaApi from "./granola/GranolaApi.ts";
 import * as GranolaAuth from "./granola/GranolaAuth.ts";
@@ -489,6 +490,7 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(GitVcsDriver.GitVcsDriver)({}),
   Layer.mock(GitHubIssues.GitHubIssues)({}),
   Layer.mock(GitHubIssueThreadLinks.GitHubIssueThreadLinks)({}),
+  Layer.mock(MessageDrafts.MessageDrafts)({}),
   Layer.mock(ContextRepositories.ContextRepositories)({}),
   Layer.mock(ConductorImporter.ConductorImporter)({}),
   Layer.mock(CheckoutInspect.CheckoutInspect)({}),

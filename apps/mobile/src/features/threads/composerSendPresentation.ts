@@ -10,7 +10,6 @@ export interface ComposerSendPresentation {
   readonly icon: "arrow.up" | "checkmark" | "list.number" | "arrow.turn.left.up";
   readonly action: ActiveTurnComposerAction | null;
   readonly alternate: ActiveTurnComposerAction | null;
-  readonly offersFollowUpChoice: boolean;
 }
 
 const ACTION_LABEL: Record<ActiveTurnComposerAction, string> = {
@@ -32,7 +31,6 @@ export function resolveComposerSendPresentation(input: {
       icon: "checkmark",
       action: null,
       alternate: null,
-      offersFollowUpChoice: false,
     };
   }
   if (!input.running) {
@@ -41,7 +39,6 @@ export function resolveComposerSendPresentation(input: {
       icon: "arrow.up",
       action: null,
       alternate: null,
-      offersFollowUpChoice: false,
     };
   }
   const action: ActiveTurnComposerAction = input.canSteer ? input.followUpBehavior : "queue";
@@ -51,6 +48,5 @@ export function resolveComposerSendPresentation(input: {
     icon: action === "steer" ? "arrow.turn.left.up" : "list.number",
     action,
     alternate: input.canSteer ? alternate : null,
-    offersFollowUpChoice: input.canSteer,
   };
 }

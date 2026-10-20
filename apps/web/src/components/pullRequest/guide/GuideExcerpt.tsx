@@ -37,6 +37,7 @@ import {
   fileDiffRows,
   rowsToPatch,
 } from "@t3tools/client-runtime/review-guide-tour";
+import type { PullRequestAgentDelivery } from "../PullRequestCodeTab";
 import { GuideNoteMarker } from "./GuideNotes";
 import { GuideProse } from "./GuideProse";
 
@@ -63,8 +64,10 @@ export interface ExcerptCommenting {
   readonly onRemove: (commentId: string) => void;
   /** Opens an agent thread about the lines; null where no thread can be opened. */
   readonly onAskAgent:
-    | ((comment: ReviewCommentContext, request: string, send: boolean) => void)
+    | ((comment: ReviewCommentContext, request: string, delivery: PullRequestAgentDelivery) => void)
     | null;
+  /** The agent's composer is an existing thread's, so a request can wait there as a draft. */
+  readonly canSaveAgentDraft: boolean;
 }
 
 interface ExcerptAnnotation {
@@ -262,7 +265,7 @@ function ExcerptDiff({
   };
   const interactive = commenting !== null && draft === null;
   const onAskAgent = commenting?.onAskAgent ?? null;
-  const askAgent = (request: string, send: boolean) => {
+  const askAgent = (request: string, delivery: PullRequestAgentDelivery) => {
     if (draft === null || file === null || onAskAgent === null) return;
     const comment = buildDiffReviewComment({
       id: `pull-request-guide:${excerpt.path}:${draft.range.start}:${draft.range.end}`,
@@ -274,7 +277,7 @@ function ExcerptDiff({
       text: request,
     });
     setDraft(null);
-    if (comment !== null) onAskAgent(comment, request, send);
+    if (comment !== null) onAskAgent(comment, request, delivery);
   };
 
   const options = {
@@ -332,8 +335,11 @@ function ExcerptDiff({
                 {...(onAskAgent !== null
                   ? {
                       agentAction: {
-                        send: (text: string) => askAgent(text, true),
-                        addToComposer: (text: string) => askAgent(text, false),
+                        send: (text: string) => askAgent(text, "send"),
+                        addToComposer: (text: string) => askAgent(text, "composer"),
+                        ...(commenting.canSaveAgentDraft
+                          ? { saveDraft: (text: string) => askAgent(text, "draft") }
+                          : {}),
                       },
                     }
                   : {})}

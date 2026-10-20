@@ -175,7 +175,7 @@ vi.mock(import("./PullRequestCodeTab"), async (original) => ({
           onClick={() =>
             onAddToAgentSelection?.({
               request: "Fix this line",
-              send,
+              delivery: send ? "send" : "composer",
               comment: {
                 id: "note-1",
                 sectionId: "file:a.ts",
@@ -315,7 +315,7 @@ beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   currentDetail = detail;
   useComposerDraftStore.setState({ draftsByThreadKey: {} });
-  useComposerSubmitRequestStore.setState({ pending: new Set() });
+  useComposerSubmitRequestStore.setState({ pending: new Map() });
   useRightPanelStore.setState({ byThreadKey: {} });
   usePullRequestReviewStore.setState({ drafts: {}, summaries: {} });
   hostCommand.mockReset();

@@ -176,6 +176,8 @@ export interface ComposerPromptEditorProps {
   onPageScrollKeyUp?: (key: string) => void;
   onPageScrollRelease?: () => void;
   onCitationSubmitAndSend?: () => void;
+  /** Saves the message, comment included, as a draft on the thread; absent where it cannot. */
+  onCitationSubmitAndSaveDraft?: (() => void) | undefined;
   /** Sending from a citation comment adds the message to the queue instead of sending it now. */
   citationSendQueues?: boolean;
   /**
@@ -209,12 +211,14 @@ const ComposerCitationCommentContext = createContext<{
   onOpenChange: (citeKey: string, open: boolean) => void;
   onDraftChange: (citeKey: string, comment: string) => void;
   onSubmitAndSend: () => void;
+  onSubmitAndSaveDraft: (() => void) | null;
   sendQueues: boolean;
 }>({
   openComment: null,
   onOpenChange: () => {},
   onDraftChange: () => {},
   onSubmitAndSend: () => {},
+  onSubmitAndSaveDraft: null,
   sendQueues: false,
 });
 
@@ -509,6 +513,15 @@ function ComposerCitationNodeView({ node, editor, getPos }: NodeViewProps) {
             return true;
           },
           saveAndSendQueues: commentContext.sendQueues,
+          ...(commentContext.onSubmitAndSaveDraft
+            ? {
+                onSaveAndSaveDraft: (comment: string) => {
+                  if (!onSaveComment(comment)) return false;
+                  commentContext.onSubmitAndSaveDraft?.();
+                  return true;
+                },
+              }
+            : {}),
           onRestoreFocus,
         }}
       />
@@ -988,6 +1001,7 @@ function ComposerPromptEditorTiptapInner(
     onPageScrollKeyUp,
     onPageScrollRelease,
     onCitationSubmitAndSend,
+    onCitationSubmitAndSaveDraft,
     citationSendQueues = false,
     onCitationDraftSave,
     onPaste,
@@ -1071,6 +1085,7 @@ function ComposerPromptEditorTiptapInner(
       citationDraftRef.current = { key: nodeKey, comment };
     },
     onSubmitAndSend: onCitationSubmitAndSend ?? (() => {}),
+    onSubmitAndSaveDraft: onCitationSubmitAndSaveDraft ?? null,
     sendQueues: citationSendQueues,
   };
 

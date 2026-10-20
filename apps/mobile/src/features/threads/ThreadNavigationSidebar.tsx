@@ -40,6 +40,7 @@ import { usePendingThreadOrder } from "../../state/thread-order";
 import { threadListEnvironmentsAtom } from "../../state/server";
 import { usePendingNewTasks, type PendingNewTask } from "../../state/use-pending-new-tasks";
 import { useQueuedThreadKeys } from "../../state/use-thread-outbox";
+import { useMessageDraftCounts } from "../../state/messageDrafts";
 import { useWorkspaceState } from "../../state/workspace";
 import { useSavedRemoteConnections } from "../../state/use-remote-environment-registry";
 import { useHardwareKeyboardCommand } from "../keyboard/hardwareKeyboardCommands";
@@ -181,6 +182,7 @@ function ThreadNavigationSidebarPane(
   } = useThreadListActions();
   const pendingTasks = usePendingNewTasks();
   const queuedThreadKeys = useQueuedThreadKeys();
+  const draftCounts = useMessageDraftCounts();
   const { confirmDeletePendingTask } = usePendingTaskListActions();
   const environments = Object.values(savedConnectionsById)
     .map((connection) => ({
@@ -466,6 +468,7 @@ function ThreadNavigationSidebarPane(
       snoozeLabelNow: `${nowMinute}:00.000Z`,
       snoozeEnvironmentIds,
       queuedThreadKeys,
+      draftCounts,
       moveAvailability: threadMoveAvailability,
       shelfPreferencesLoading: !shelfPreferencesLoaded,
     });
@@ -744,6 +747,7 @@ function ThreadNavigationSidebarPane(
             thread={thread}
             variant={item.item.variant}
             hasQueuedMessages={item.hasQueuedMessages}
+            draftCount={item.draftCount}
             snoozed={item.item.snoozed}
             pinned={item.item.pinned}
             hidden={item.item.hidden}

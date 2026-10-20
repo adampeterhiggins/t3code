@@ -14,9 +14,19 @@ import {
   ListOrderedIcon,
   PencilIcon,
 } from "lucide-react";
-import { useId, useImperativeHandle, useRef, useState, type Ref } from "react";
+import {
+  useId,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type Ref,
+} from "react";
+import { useAtomValue } from "@effect/atom-react";
 
 import { useAssetUrls } from "../../assets/assetUrls";
+import { readLocalApi } from "../../localApi";
+import { messageDraftEnvironment } from "../../state/messageDrafts";
 import { threadEnvironment } from "../../state/threads";
 import { useThreadProjection } from "../../state/entities";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -26,6 +36,7 @@ import { ComposerBanner } from "./ComposerBanner";
 import { InlineChipText } from "./InlineChipText";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { useMessageDraftActions } from "./useMessageDraftActions";
 
 export interface EditQueuedRunRequest {
   readonly runId: RunId;
@@ -82,6 +93,10 @@ export function QueuedRunsControl({
   const reorder = useAtomCommand(threadEnvironment.reorderQueuedRun);
   const promote = useAtomCommand(threadEnvironment.promoteQueuedRun);
   const cancel = useAtomCommand(threadEnvironment.cancelQueuedRun);
+  const messageDraftActions = useMessageDraftActions();
+  const canSaveDraft = useAtomValue(
+    messageDraftEnvironment.save.permissionAtom(props.environmentId),
+  );
   const [expanded, setExpanded] = useState(true);
   const queueListId = useId();
   const [busyRunId, setBusyRunId] = useState<RunId | null>(null);
@@ -217,6 +232,67 @@ export function QueuedRunsControl({
     setBusyRunId(null);
   };
 
+  // The draft keeps the queued message as sent: its text, the attachments the thread already
+  // holds, and its context. It is saved before the cancel so a failed save loses nothing.
+  const moveToDrafts = async (runId: RunId, messageId: MessageId) => {
+    const entry = queued.find(({ run }) => run.id === runId);
+    if (!entry) return;
+    setBusyRunId(runId);
+    const saved = await messageDraftActions.save(props.environmentId, {
+      threadId: props.threadId,
+      text: entry.text,
+      attachments: entry.attachments,
+      context: projection?.messages.find((message) => message.id === messageId)?.context,
+    });
+    if (saved !== null) {
+      await cancel({
+        environmentId: props.environmentId,
+        input: { threadId: props.threadId, runId },
+      });
+    }
+    setBusyRunId(null);
+  };
+
+  const openRowMenu = async (
+    event: ReactMouseEvent,
+    item: { readonly runId: RunId | null; readonly messageId: MessageId | null },
+    edit: () => void,
+  ) => {
+    event.preventDefault();
+    const api = readLocalApi();
+    const { runId, messageId } = item;
+    if (!api || runId === null || messageId === null || busyRunId !== null) return;
+    const selected = await api.contextMenu.show(
+      [
+        { id: "edit", label: "Edit", icon: "pencil", disabled: runId === props.editingRunId },
+        {
+          id: "steer",
+          label: "Steer now",
+          icon: "corner-up-right",
+          disabled: !workflow?.canPromoteToSteer,
+        },
+        {
+          id: "drafts",
+          label: "Move to drafts",
+          icon: "file-text",
+          disabled: !canSaveDraft || runId === props.editingRunId,
+        },
+        {
+          id: "remove",
+          label: "Remove from queue",
+          icon: "trash",
+          destructive: true,
+          separatorBefore: true,
+        },
+      ],
+      { x: event.clientX, y: event.clientY },
+    );
+    if (selected === "edit") edit();
+    else if (selected === "steer") await steer(runId);
+    else if (selected === "drafts") await moveToDrafts(runId, messageId);
+    else if (selected === "remove") await remove(runId);
+  };
+
   return (
     <ComposerBanner.Attachment>
       <ComposerBanner.Root
@@ -264,6 +340,18 @@ export function QueuedRunsControl({
                     dragState !== null && dragState.runId === item.runId && "opacity-50",
                   )}
                   draggable={rowDraggable}
+                  onContextMenu={(event) =>
+                    void openRowMenu(event, item, () => {
+                      if (item.runId === null || item.messageId === null) return;
+                      setExpanded(true);
+                      props.onEditQueuedRun({
+                        runId: item.runId,
+                        messageId: item.messageId,
+                        text: item.text,
+                        attachments: item.attachments,
+                      });
+                    })
+                  }
                   onDragStart={(event) => {
                     if (item.runId === null || dragArmedRunIdRef.current !== item.runId) {
                       event.preventDefault();

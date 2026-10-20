@@ -10,6 +10,17 @@ import { DESKTOP_PASTE_AS_TEXT_EVENT } from "../../lib/desktopPasteAsText";
 import { runtimeModeConfig, runtimeModeOptions as runtimeModes } from "./runtimeModeConfig";
 import { isLocalEnvironmentDisabled } from "../../localEnvironment";
 import { usePrimaryEnvironmentId } from "../../state/environments";
+import { useAtomValue } from "@effect/atom-react";
+import {
+  findComposerSendMenuAction,
+  resolveComposerSendMenu,
+  SAVE_DRAFT_MENU_ITEM,
+} from "@t3tools/client-runtime/state/send-menu";
+import { MessageDraftId, type ContextMenuItem, type MessageDraft } from "@t3tools/contracts";
+import { readLocalApi } from "../../localApi";
+import { messageDraftEnvironment, useThreadMessageDrafts } from "../../state/messageDrafts";
+import { messageDraftComposerRecords } from "./messageDraftComposer";
+import { useMessageDraftActions } from "./useMessageDraftActions";
 import { useRightPanelStore } from "~/rightPanelStore";
 import { useEnvironmentSettings } from "~/hooks/useSettings";
 import { AttachmentFilePreview } from "../files/AttachmentFilePreview";
@@ -347,7 +358,7 @@ import {
 import { ComposerPendingApprovalActions } from "./ComposerPendingApprovalActions";
 import { CompactComposerControlsMenu } from "./CompactComposerControlsMenu";
 import { ComposerImageThumbnail } from "./ComposerImageThumbnail";
-import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
+import { ComposerPrimaryActions, type ComposerSendSurface } from "./ComposerPrimaryActions";
 import { ComposerPendingApprovalPanel } from "./ComposerPendingApprovalPanel";
 import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
 import { ComposerPlanFollowUpBanner } from "./ComposerPlanFollowUpBanner";
@@ -1435,6 +1446,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
   compactBeforeSendTokens: number | null;
   keepFullHistory: boolean;
   onToggleKeepFullHistory: () => void;
+  onSendContextMenu: (event: React.MouseEvent<HTMLElement>, surface: ComposerSendSurface) => void;
 }) {
   return (
     <>
@@ -1490,6 +1502,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
         compactBeforeSendTokens={props.compactBeforeSendTokens}
         keepFullHistory={props.keepFullHistory}
         onToggleKeepFullHistory={props.onToggleKeepFullHistory}
+        onSendContextMenu={props.onSendContextMenu}
       />
     </>
   );
@@ -1542,6 +1555,10 @@ export interface ChatComposerHandle {
   addTerminalContext: (selection: TerminalContextSelection) => void;
   /** Insert a chip at the caret for a record the caller already holds the payload for. */
   insertContextReference: (reference: ComposerContextReference) => void;
+  /** Keeps the composer's content as a draft on the thread, when this composer can. */
+  saveMessageDraft: () => Promise<void>;
+  /** Moves a saved draft into the composer, first saving whatever the composer holds. */
+  openMessageDraft: (draftId: MessageDraftId) => Promise<void>;
   /** Get the current prompt/effort/model state for use in send. */
   getSendContext: () => {
     answeringPendingUserInput: boolean;
@@ -1685,6 +1702,12 @@ export interface ChatComposerProps {
     readonly url: string | null;
   }> | null;
   onRemoveEditingQueuedAttachment: (attachmentId: string) => void;
+  onCancelQueuedEdit: () => void;
+  /**
+   * Saves what the composer holds as a draft on the thread. Null where the composer is itself an
+   * unsaved new thread, which already persists locally.
+   */
+  onSaveMessageDraft: (() => Promise<boolean>) | null;
   onCompactContext: () => void;
   onSend: (
     e?: {
@@ -2078,6 +2101,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     onFileOpen,
     editingQueuedAttachments,
     onRemoveEditingQueuedAttachment,
+    onCancelQueuedEdit,
+    onSaveMessageDraft,
   } = props;
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const composerDraftTargetKey = composerTargetKey(composerDraftTarget);
@@ -4480,6 +4505,114 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     }
   };
   const submitComposerStable = useStableCallback(submitComposer);
+  const messageDraftActions = useMessageDraftActions();
+  const canWriteMessageDrafts = useAtomValue(
+    messageDraftEnvironment.save.permissionAtom(environmentId),
+  );
+  const canSaveMessageDraft = onSaveMessageDraft !== null && canWriteMessageDrafts;
+  const threadMessageDrafts = useThreadMessageDrafts(
+    onSaveMessageDraft === null ? null : routeThreadRef,
+  );
+  const saveMessageDraft = async (): Promise<boolean> => {
+    if (
+      onSaveMessageDraft === null ||
+      !canWriteMessageDrafts ||
+      isComposerApprovalState ||
+      activePendingProgress !== null ||
+      isRevertingCheckpointRef.current
+    ) {
+      return false;
+    }
+    // Same holds as sending: a draft saved now would miss an attachment still being prepared.
+    if ((pendingImageCompressionsRef.current.get(attachmentTargetKey) ?? 0) > 0) {
+      toastManager.add({
+        type: "info",
+        title: "Still compressing a pasted image.",
+        description: "Save again once its thumbnail appears.",
+      });
+      return false;
+    }
+    if (pendingDraftWork.has(attachmentTargetKey)) {
+      toastManager.add({
+        type: "info",
+        title: "Still bringing attached context into this message.",
+        description: "Save again once its chip resolves.",
+      });
+      return false;
+    }
+    return onSaveMessageDraft();
+  };
+  const saveMessageDraftStable = useStableCallback(saveMessageDraft);
+  const saveCitationAsDraftStable = useStableCallback(() => {
+    void saveMessageDraft();
+  });
+  /** Puts a taken draft's text and context into the (empty) composer, like a stash restore. */
+  const loadMessageDraft = (draft: MessageDraft) => {
+    // Attachments come back as fresh downloads, so the next send or save uploads them again.
+    const rewrittenContextIds = importContextRecords(
+      messageDraftComposerRecords(draft),
+      environmentId,
+      composerDraftTarget,
+    );
+    const restoredPrompt = replaceComposerContextReferences(draft.text, (reference) => {
+      const contextId = rewrittenContextIds.get(reference.contextId);
+      return contextId
+        ? formatInlineContextReference({
+            ...reference,
+            contextId,
+            kind: reference.kind === "element" ? "preview-annotation" : reference.kind,
+          })
+        : reference.source;
+    });
+    promptRef.current = restoredPrompt;
+    setComposerDraftPrompt(composerDraftTarget, restoredPrompt);
+    setComposerCursor(collapseExpandedComposerCursor(restoredPrompt, restoredPrompt.length));
+    setComposerTrigger(null);
+    window.requestAnimationFrame(() => {
+      composerEditorRef.current?.focusAtEnd();
+    });
+  };
+  const loadMessageDraftStable = useStableCallback(loadMessageDraft);
+  const openMessageDraft = async (draftId: MessageDraftId) => {
+    if (isEditingQueuedMessage) {
+      toastManager.add({
+        type: "info",
+        title: "Finish editing the queued message first",
+        description: "Update it, move it to drafts, or cancel the edit, then open the draft.",
+      });
+      return;
+    }
+    if (isComposerApprovalState || activePendingProgress !== null) return;
+    const targetKey = composerDraftTargetKey;
+    // Taking first claims the draft, so a second device opening it at the same time gets nothing.
+    const draft = await messageDraftActions.take(environmentId, draftId);
+    if (draft === null) return;
+    const putBack = () =>
+      messageDraftActions.save(environmentId, {
+        threadId: draft.threadId,
+        text: draft.text,
+        attachments: draft.attachments,
+        context: draft.context,
+      });
+    if (composerDraftTargetKeyRef.current !== targetKey) {
+      await putBack();
+      return;
+    }
+    const holdsContent =
+      promptRef.current.trim().length > 0 ||
+      composerDraftHasUserContent(getComposerDraft(composerDraftTarget));
+    if (holdsContent) {
+      // Swap: what the composer held becomes a draft, so opening one never loses work.
+      if (!(await saveMessageDraftStable()) || promptRef.current.trim().length > 0) {
+        await putBack();
+        return;
+      }
+      // The import compares against the composer's records; read them after the clear renders.
+      await new Promise((resolve) => window.requestAnimationFrame(resolve));
+    }
+    loadMessageDraftStable(draft);
+  };
+  const openMessageDraftStable = useStableCallback(openMessageDraft);
   // A surface beside the composer asked to send what it just wrote here. Wait out a connect, then
   // send as Enter would; anything that stops it leaves the draft in place to send by hand.
   const submitRequested = useComposerSubmitRequestStore((state) =>
@@ -4487,9 +4620,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   );
   useEffect(() => {
     if (!submitRequested || isConnecting) return;
-    if (!useComposerSubmitRequestStore.getState().take(composerDraftTargetKey)) return;
-    submitComposerStable();
-  }, [composerDraftTargetKey, isConnecting, submitComposerStable, submitRequested]);
+    const intent = useComposerSubmitRequestStore.getState().take(composerDraftTargetKey);
+    if (intent === "save-draft") void saveMessageDraftStable();
+    else if (intent === "send") submitComposerStable();
+  }, [
+    composerDraftTargetKey,
+    isConnecting,
+    saveMessageDraftStable,
+    submitComposerStable,
+    submitRequested,
+  ]);
   const handleSubmitMessage = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     submitComposer(
@@ -5829,6 +5969,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           modelPickerOpen: isComposerModelPickerOpen,
         },
       });
+      if (command === "composer.saveDraft") {
+        // Unclaimed where there is no thread to keep a draft on, so the key keeps its default.
+        if (!canSaveMessageDraft || isCommandPaletteOpen()) return;
+        event.preventDefault();
+        event.stopPropagation();
+        void saveMessageDraftStable();
+        return;
+      }
       if (command !== "composer.stash") return;
       // Always claim the shortcut so the browser save dialog never opens,
       // even when the composer is in a state that can't stash.
@@ -5859,6 +6007,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     isRevertingCheckpoint,
     terminalOpen,
     unfocusedSplitPane,
+    canSaveMessageDraft,
+    saveMessageDraftStable,
   ]);
   const addComposerAttachments = async (
     files: File[],
@@ -6611,6 +6761,98 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const handleImplementPlanInNewThreadPrimaryActionStable = useStableCallback(
     handleImplementPlanInNewThreadPrimaryAction,
   );
+  /**
+   * Right-click on a send button: every way to send what the composer holds, plus drafts.
+   * Actions run through the same paths as the button, Enter, and their shortcuts.
+   */
+  const openSendContextMenu = async (
+    event: React.MouseEvent<HTMLElement>,
+    surface: ComposerSendSurface,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const api = readLocalApi();
+    if (!api || isComposerApprovalState || activePendingProgress !== null) return;
+    const running = phase === "running";
+    const sendDisabled =
+      !canOperateThread ||
+      isSendBusy ||
+      isSendDisabled ||
+      isConnecting ||
+      noProviderAvailable ||
+      projectSelectionRequired ||
+      environmentUnavailable !== null;
+    const defaultDispatchMode = resolveComposerDispatchMode({
+      running,
+      alternateModifier: false,
+      activeTurnDefault: settings.followUpBehavior,
+      canSteer: !isCompacting,
+    });
+    const position = { x: event.clientX, y: event.clientY };
+    if (surface !== "send") {
+      // A plan follow-up sends as a refinement or an implementation, not a plain message.
+      const items: ContextMenuItem[] =
+        surface === "plan-refine"
+          ? [
+              { id: "send", label: "Refine", icon: "arrow-up", disabled: sendDisabled },
+              ...(canSaveMessageDraft ? [{ ...SAVE_DRAFT_MENU_ITEM, separatorBefore: true }] : []),
+            ]
+          : [
+              { id: "send", label: "Implement", icon: "arrow-up", disabled: sendDisabled },
+              {
+                id: "implement-in-new-thread",
+                label: "Implement in a new thread",
+                icon: "message-square-plus",
+                disabled: sendDisabled,
+              },
+            ];
+      const selected = await api.contextMenu.show(items, position);
+      if (selected === "send") submitComposer(undefined, defaultDispatchMode);
+      else if (selected === "implement-in-new-thread")
+        handleImplementPlanInNewThreadPrimaryAction();
+      else if (selected === SAVE_DRAFT_MENU_ITEM.id) void saveMessageDraft();
+      return;
+    }
+    const items = resolveComposerSendMenu({
+      hasContent: composerSendState.hasSendableContent,
+      running,
+      canSteer: !isCompacting,
+      activeTurnDefault: settings.followUpBehavior,
+      canSendInNewThread: routeKind !== "draft",
+      canSaveDraft: canSaveMessageDraft,
+      isEditingQueuedMessage,
+      sendDisabled,
+      drafts: canSaveMessageDraft ? threadMessageDrafts : [],
+    });
+    if (items.length === 0) return;
+    const action = findComposerSendMenuAction(items, await api.contextMenu.show(items, position));
+    switch (action?.type) {
+      case "send":
+      case "update-queued":
+        submitComposer(undefined, defaultDispatchMode);
+        return;
+      case "queue":
+      case "steer":
+        submitComposer(undefined, action.type);
+        return;
+      case "send-in-new-thread":
+        submitComposer(undefined, defaultDispatchMode, "background");
+        return;
+      case "save-draft":
+      case "move-to-drafts":
+        void saveMessageDraft();
+        return;
+      case "open-draft":
+        void openMessageDraft(MessageDraftId.make(action.draftId));
+        return;
+      case "cancel-edit":
+        onCancelQueuedEdit();
+        return;
+      case undefined:
+        return;
+    }
+  };
+  const openSendContextMenuStable = useStableCallback(openSendContextMenu);
   const scheduleComposerCollapseCheck = () => {
     if (!isMobileViewport || mobileComposerExpandInFlightRef.current) {
       return;
@@ -6862,6 +7104,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           composerEditorRef.current?.focusAt(nextCollapsedCursor);
         });
       },
+      saveMessageDraft: async () => {
+        await saveMessageDraftStable();
+      },
+      openMessageDraft: openMessageDraftStable,
       insertContextReference: (reference: ComposerContextReference) => {
         const snapshot = readComposerSnapshot();
         const insertion = insertInlineContextReference(
@@ -6927,6 +7173,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       activeThread,
       addComposerAttachments,
       addComposerFoldersStable,
+      saveMessageDraftStable,
+      openMessageDraftStable,
       foldPastedText,
       composerDraftTarget,
       composerModelOptions,
@@ -7215,35 +7463,47 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     (showProviderUnavailable ? "Enable a provider in Settings" : "Ask anything...")}
                 </button>
                 {collapsedComposerImagePreviews}
-                <button
-                  type="button"
-                  data-chat-composer-transition-actions="true"
-                  className="flex size-8 shrink-0 items-center justify-center rounded-full bg-message-action text-message-action-foreground hover:bg-message-action-hover disabled:opacity-64"
-                  disabled={collapsedComposerPrimaryActionDisabled}
-                  aria-label={collapsedComposerPrimaryActionLabel}
-                  onPointerDown={(event) => event.preventDefault()}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    if (showResumeAction) onResume();
-                    else if (props.resumeCompactionTokens !== null && !props.keepFullHistory)
-                      expandMobileComposer();
-                    else submitComposer();
-                  }}
+                {/* Disabled buttons take no pointer events, so the wrapper hears the right-click. */}
+                <span
+                  className="flex shrink-0"
+                  onContextMenu={(event) => void openSendContextMenuStable(event, "send")}
                 >
-                  {showResumeAction ? (
-                    <PlayIcon className="size-4 fill-current" aria-hidden="true" />
-                  ) : (
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                      <path
-                        d="M8 3L8 13M8 3L4 7M8 3L12 7"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  )}
-                </button>
+                  <button
+                    type="button"
+                    data-chat-composer-transition-actions="true"
+                    className="flex size-8 shrink-0 items-center justify-center rounded-full bg-message-action text-message-action-foreground hover:bg-message-action-hover disabled:opacity-64"
+                    disabled={collapsedComposerPrimaryActionDisabled}
+                    aria-label={collapsedComposerPrimaryActionLabel}
+                    onPointerDown={(event) => event.preventDefault()}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      if (showResumeAction) onResume();
+                      else if (props.resumeCompactionTokens !== null && !props.keepFullHistory)
+                        expandMobileComposer();
+                      else submitComposer();
+                    }}
+                  >
+                    {showResumeAction ? (
+                      <PlayIcon className="size-4 fill-current" aria-hidden="true" />
+                    ) : (
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 16 16"
+                        fill="none"
+                        aria-hidden="true"
+                      >
+                        <path
+                          d="M8 3L8 13M8 3L4 7M8 3L12 7"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    )}
+                  </button>
+                </span>
               </div>
             ) : null}
 
@@ -7840,6 +8100,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     onPageScrollKeyUp={onPageScrollKeyUp}
                     onPageScrollRelease={onPageScrollRelease}
                     onCitationSubmitAndSend={submitCitationAndSendStable}
+                    onCitationSubmitAndSaveDraft={
+                      canSaveMessageDraft ? saveCitationAsDraftStable : undefined
+                    }
                     citationSendQueues={citationSendDispatchMode === "queue"}
                     onCitationDraftSave={saveCitationDraftToPromptStable}
                     onPaste={onComposerPasteStable}
@@ -8027,6 +8290,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     compactBeforeSendTokens={props.resumeCompactionTokens}
                     keepFullHistory={props.keepFullHistory}
                     onToggleKeepFullHistory={props.onToggleKeepFullHistory}
+                    onSendContextMenu={openSendContextMenuStable}
                     compactDisabled={
                       compactDisabled || noProviderAvailable || isSendBusy || isConnecting
                     }

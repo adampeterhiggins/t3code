@@ -14,6 +14,7 @@ import { ensureGitHubIssueThreadLinksSchema } from "../githubIssues/threadLinksS
 import { ensureNotionThreadLinksSchema } from "../notion/threadLinksSchema.ts";
 import { ensureGranolaThreadLinksSchema } from "../granola/threadLinksSchema.ts";
 import { ensureSlackThreadLinksSchema } from "../slack/threadLinksSchema.ts";
+import { ensureMessageDraftsSchema } from "../messageDrafts/schema.ts";
 import * as ServerConfig from "../config.ts";
 
 export const WAL_SIZE_LIMIT_BYTES = 32 * 1024 * 1024;
@@ -52,6 +53,7 @@ const layerSetup = Layer.effectDiscard(
     yield* ensureSlackThreadLinksSchema();
     yield* ensureNotionThreadLinksSchema();
     yield* ensureGranolaThreadLinksSchema();
+    yield* ensureMessageDraftsSchema();
     // No planner statistics. Collecting them reads every page of the large
     // tables, and stats taken while a table was small make the planner scan it
     // once it grows. Without them SQLite assumes large tables and uses indexes;

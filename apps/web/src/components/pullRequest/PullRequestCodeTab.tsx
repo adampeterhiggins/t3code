@@ -234,11 +234,13 @@ interface DraftAnchor {
   readonly range: SelectedLineRange;
 }
 
+/** Send it straight away, leave it in the composer to send, or keep it as a thread draft. */
+export type PullRequestAgentDelivery = "send" | "composer" | "draft";
+
 export interface PullRequestAgentSelectionInput {
   readonly comment: ReviewCommentContext;
   readonly request: string;
-  /** Send it straight away rather than leave it in the composer to send. */
-  readonly send: boolean;
+  readonly delivery: PullRequestAgentDelivery;
 }
 
 function PullRequestCodeTab({
@@ -252,6 +254,7 @@ function PullRequestCodeTab({
   fixFindingLabel = "Fix in a thread",
   onFixFinding,
   onAddToAgentSelection,
+  canSaveAgentDraft = false,
   onRefresh,
   refreshToken = 0,
   backgroundRefreshToken = 0,
@@ -267,6 +270,8 @@ function PullRequestCodeTab({
   fixFindingLabel?: string;
   onFixFinding?: (finding: PullRequestFinding) => void;
   onAddToAgentSelection?: (input: PullRequestAgentSelectionInput) => void;
+  /** The agent's composer is an existing thread's, so a request can wait there as a draft. */
+  canSaveAgentDraft?: boolean;
   onRefresh: () => void;
   refreshToken?: number;
   backgroundRefreshToken?: number;
@@ -946,12 +951,20 @@ function PullRequestCodeTab({
                 agentAction: {
                   send: (text: string) =>
                     finishSelection(draft, text, (comment) =>
-                      onAddToAgentSelection({ comment, request: text, send: true }),
+                      onAddToAgentSelection({ comment, request: text, delivery: "send" }),
                     ),
                   addToComposer: (text: string) =>
                     finishSelection(draft, text, (comment) =>
-                      onAddToAgentSelection({ comment, request: text, send: false }),
+                      onAddToAgentSelection({ comment, request: text, delivery: "composer" }),
                     ),
+                  ...(canSaveAgentDraft
+                    ? {
+                        saveDraft: (text: string) =>
+                          finishSelection(draft, text, (comment) =>
+                            onAddToAgentSelection({ comment, request: text, delivery: "draft" }),
+                          ),
+                      }
+                    : {}),
                 },
               }
             : {})}
@@ -963,7 +976,7 @@ function PullRequestCodeTab({
             if (!canCommentOnLines) {
               if (onAddToAgentSelection) {
                 finishSelection(draft, body, (comment) =>
-                  onAddToAgentSelection({ comment, request: body, send: false }),
+                  onAddToAgentSelection({ comment, request: body, delivery: "composer" }),
                 );
               }
               return;

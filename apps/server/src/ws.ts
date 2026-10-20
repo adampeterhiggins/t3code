@@ -181,6 +181,7 @@ import { SlackThreadLinks } from "./slack/SlackThreadLinks.ts";
 import { NotionThreadLinks } from "./notion/NotionThreadLinks.ts";
 import { GitHubIssues } from "./githubIssues/GitHubIssues.ts";
 import { GitHubIssueThreadLinks } from "./githubIssues/GitHubIssueThreadLinks.ts";
+import * as MessageDrafts from "./messageDrafts/MessageDrafts.ts";
 import * as ProviderAuthService from "./provider/ProviderAuthService.ts";
 import { makeProviderInstallation } from "./provider/providerInstallation.ts";
 import * as ServerSelfUpdate from "./cloud/selfUpdate.ts";
@@ -1351,6 +1352,7 @@ export const layerWsRpc = (
       const slackThreadLinks = yield* SlackThreadLinks;
       const githubIssues = yield* GitHubIssues;
       const githubIssueThreadLinks = yield* GitHubIssueThreadLinks;
+      const messageDrafts = yield* MessageDrafts.MessageDrafts;
       const providerInstallation = yield* makeProviderInstallation();
       const serverSelfUpdate = yield* ServerSelfUpdate.ServerSelfUpdate;
       const config = yield* ServerConfig.ServerConfig;
@@ -2782,6 +2784,13 @@ export const layerWsRpc = (
         [WS_METHODS.githubIssuesLinkThread]: (input) => githubIssueThreadLinks.link(input),
         [WS_METHODS.githubIssuesUnlinkThread]: (input) =>
           githubIssueThreadLinks.unlink(input).pipe(Effect.as({})),
+        [WS_METHODS.messageDraftsSubscribe]: (_input) => messageDrafts.drafts,
+        [WS_METHODS.messageDraftsSave]: (input) => messageDrafts.save(input),
+        [WS_METHODS.messageDraftsTake]: (input) => messageDrafts.take(input.draftId),
+        [WS_METHODS.messageDraftsDelete]: (input) =>
+          messageDrafts.delete(input.draftId).pipe(Effect.as({})),
+        [WS_METHODS.messageDraftsSend]: (input) =>
+          messageDrafts.send(input, { createdBy: "user", creationSource: "web" }),
         [WS_METHODS.sourceControlPublishRepository]: (input) =>
           sourceControlRepositories.publishRepository(input).pipe(
             Effect.tap(() => repositoryIdentityResolver.resolve(input.cwd, { refresh: true })),

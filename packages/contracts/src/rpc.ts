@@ -157,6 +157,15 @@ import {
   GitHubListIssuesResult,
   GitHubUnlinkThreadInput,
 } from "./githubIssues.ts";
+import {
+  MessageDraft,
+  MessageDraftError,
+  MessageDraftRefInput,
+  MessageDrafts,
+  MessageDraftSaveInput,
+  MessageDraftSendInput,
+  MessageDraftSendResult,
+} from "./messageDrafts.ts";
 import { TextGenerationError } from "./git.ts";
 import {
   AuthAccessStreamError,
@@ -735,6 +744,11 @@ export const WS_METHODS = {
   githubIssuesSubscribeThreadLinks: "githubIssues.subscribeThreadLinks",
   githubIssuesLinkThread: "githubIssues.linkThread",
   githubIssuesUnlinkThread: "githubIssues.unlinkThread",
+  messageDraftsSubscribe: "messageDrafts.subscribe",
+  messageDraftsSave: "messageDrafts.save",
+  messageDraftsTake: "messageDrafts.take",
+  messageDraftsDelete: "messageDrafts.delete",
+  messageDraftsSend: "messageDrafts.send",
   projectCloneStart: "projectClone.start",
   projectCloneCancel: "projectClone.cancel",
   projectCloneRetry: "projectClone.retry",
@@ -1258,6 +1272,40 @@ const WsGitHubIssuesUnlinkThreadRpc = Rpc.make(WS_METHODS.githubIssuesUnlinkThre
   payload: GitHubUnlinkThreadInput,
   success: Schema.Struct({}),
   error: GitHubIssueRpcError,
+});
+
+const MessageDraftRpcError = Schema.Union([MessageDraftError, EnvironmentAuthorizationError]);
+
+const WsMessageDraftsSubscribeRpc = Rpc.make(WS_METHODS.messageDraftsSubscribe, {
+  payload: Schema.Struct({}),
+  success: MessageDrafts,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
+const WsMessageDraftsSaveRpc = Rpc.make(WS_METHODS.messageDraftsSave, {
+  payload: MessageDraftSaveInput,
+  success: MessageDraft,
+  error: MessageDraftRpcError,
+});
+
+/** Removes the draft and returns it, so two devices cannot both open it. */
+const WsMessageDraftsTakeRpc = Rpc.make(WS_METHODS.messageDraftsTake, {
+  payload: MessageDraftRefInput,
+  success: MessageDraft,
+  error: MessageDraftRpcError,
+});
+
+const WsMessageDraftsDeleteRpc = Rpc.make(WS_METHODS.messageDraftsDelete, {
+  payload: MessageDraftRefInput,
+  success: Schema.Struct({}),
+  error: MessageDraftRpcError,
+});
+
+const WsMessageDraftsSendRpc = Rpc.make(WS_METHODS.messageDraftsSend, {
+  payload: MessageDraftSendInput,
+  success: MessageDraftSendResult,
+  error: MessageDraftRpcError,
 });
 
 const WsServerSearchAcpRegistryRpc = Rpc.make(WS_METHODS.serverSearchAcpRegistry, {
@@ -2596,6 +2644,11 @@ export const WsRpcGroup = RpcGroup.make(
   WsGitHubIssuesSubscribeThreadLinksRpc,
   WsGitHubIssuesLinkThreadRpc,
   WsGitHubIssuesUnlinkThreadRpc,
+  WsMessageDraftsSubscribeRpc,
+  WsMessageDraftsSaveRpc,
+  WsMessageDraftsTakeRpc,
+  WsMessageDraftsDeleteRpc,
+  WsMessageDraftsSendRpc,
   WsProjectCloneStartRpc,
   WsProjectCloneCancelRpc,
   WsProjectCloneRetryRpc,

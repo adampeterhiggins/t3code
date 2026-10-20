@@ -3,6 +3,8 @@ import {
   COMPOSER_CONTEXT_REVIEW_TEXT_MAX_CHARS,
 } from "@t3tools/contracts";
 import type {
+  ChatFileAttachment,
+  ChatImageAttachment,
   ComposerContextId,
   ComposerContextRecord,
   EnvironmentId,
@@ -298,7 +300,12 @@ export function fileContextReference(file: ComposerFileAttachment): ComposerCont
 }
 
 export interface BoundComposerAttachment {
-  attachment: ComposerImageAttachment | ComposerFileAttachment;
+  /** A composer attachment, or one the server already stores. */
+  attachment:
+    | ComposerImageAttachment
+    | ComposerFileAttachment
+    | ChatImageAttachment
+    | ChatFileAttachment;
   attachmentId: string;
 }
 

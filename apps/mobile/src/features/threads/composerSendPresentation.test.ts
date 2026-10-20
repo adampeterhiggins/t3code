@@ -16,7 +16,6 @@ describe("resolveComposerSendPresentation", () => {
 
     expect(presentation.label).toBe("Send");
     expect(presentation.icon).toBe("arrow.up");
-    expect(presentation.offersFollowUpChoice).toBe(false);
     expect(presentation.action).toBeNull();
   });
 
@@ -48,7 +47,6 @@ describe("resolveComposerSendPresentation", () => {
     expect(steering.icon).toBe("arrow.turn.left.up");
     expect(steering.action).toBe("steer");
     expect(steering.alternate).toBe("queue");
-    expect(steering.offersFollowUpChoice).toBe(true);
   });
 
   it("never promises steering the provider cannot do", () => {
@@ -62,7 +60,6 @@ describe("resolveComposerSendPresentation", () => {
     expect(presentation.label).toBe("Queue");
     expect(presentation.action).toBe("queue");
     expect(presentation.alternate).toBeNull();
-    expect(presentation.offersFollowUpChoice).toBe(false);
   });
 
   it("keeps the save affordance while a queued message is being edited", () => {
@@ -76,6 +73,5 @@ describe("resolveComposerSendPresentation", () => {
 
     expect(presentation.label).toBe("Update queued message");
     expect(presentation.icon).toBe("checkmark");
-    expect(presentation.offersFollowUpChoice).toBe(false);
   });
 });

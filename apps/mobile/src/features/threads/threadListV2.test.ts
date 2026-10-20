@@ -45,6 +45,7 @@ import {
   resolveThreadListV2SwipeActions,
   sortThreadsForListV2,
   threadListV2ListItemsAreEqual,
+  threadListV2RowAccessibilityLabel,
   threadHasUnseenCompletion,
   toggleThreadListPage,
   type ThreadListPage,
@@ -2001,6 +2002,7 @@ function buildTickList(
   options?: {
     readonly snoozeEnvironmentIds?: ReadonlySet<EnvironmentId>;
     readonly queuedThreadKeys?: ReadonlySet<string>;
+    readonly draftCounts?: ReadonlyMap<string, number>;
     readonly moveAvailability?: ReadonlyMap<string, ThreadMoveAvailability>;
     readonly shelfPreferencesLoading?: boolean;
   },
@@ -2026,6 +2028,7 @@ function buildTickList(
       ? { snoozeEnvironmentIds: options.snoozeEnvironmentIds }
       : {}),
     ...(options?.queuedThreadKeys ? { queuedThreadKeys: options.queuedThreadKeys } : {}),
+    ...(options?.draftCounts ? { draftCounts: options.draftCounts } : {}),
     ...(options?.moveAvailability ? { moveAvailability: options.moveAvailability } : {}),
     ...(options?.shelfPreferencesLoading !== undefined
       ? { shelfPreferencesLoading: options.shelfPreferencesLoading }
@@ -2414,6 +2417,22 @@ describe("buildThreadListV2ListItems row-state stamps", () => {
     expect(threadListV2ListItemsAreEqual(settledQueued, settledPlain)).toBe(true);
   });
 
+  it("stamps draft counts onto the matching row and notices a change", () => {
+    const drafted = buildTickList([readyThread], BASE_MS, [], {
+      draftCounts: new Map([[`${environmentId}:stamp-ready`, 2]]),
+      snoozeEnvironmentIds: allEnvironments,
+    });
+    const plain = buildTickList([readyThread], BASE_MS, [], {
+      snoozeEnvironmentIds: allEnvironments,
+    });
+    const key = `v2-thread:${environmentId}:stamp-ready`;
+    const readyDrafted = itemsByThreadKey(drafted).get(key)!;
+    const readyPlain = itemsByThreadKey(plain).get(key)!;
+    expect(readyDrafted.type === "v2-thread" && readyDrafted.draftCount).toBe(2);
+    expect(readyPlain.type === "v2-thread" && readyPlain.draftCount).toBe(0);
+    expect(threadListV2ListItemsAreEqual(readyDrafted, readyPlain)).toBe(false);
+  });
+
   it("notices move-availability changes on card rows without a shell update", () => {
     const permissive = new Map([
       [`${environmentId}:stamp-ready`, { canMoveUp: true, canMoveDown: true }],
@@ -2623,5 +2642,36 @@ describe("Working section beta", () => {
       "v2-settled-shelf",
       "settled",
     ]);
+  });
+});
+
+describe("threadListV2RowAccessibilityLabel", () => {
+  it("reads the plain title when nothing is waiting", () => {
+    expect(
+      threadListV2RowAccessibilityLabel({
+        title: "Fix login",
+        tabGroupName: "Auth",
+        hasQueuedMessages: false,
+        draftCount: 0,
+      }),
+    ).toBe("Fix login");
+  });
+
+  it("announces queued messages and drafts together", () => {
+    expect(
+      threadListV2RowAccessibilityLabel({
+        title: "Fix login",
+        tabGroupName: null,
+        hasQueuedMessages: true,
+        draftCount: 2,
+      }),
+    ).toBe("Fix login, messages queued to send, 2 drafts");
+    expect(
+      threadListV2RowAccessibilityLabel({
+        title: "Fix login",
+        hasQueuedMessages: false,
+        draftCount: 1,
+      }),
+    ).toBe("Fix login, 1 draft");
   });
 });

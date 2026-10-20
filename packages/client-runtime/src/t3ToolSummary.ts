@@ -237,6 +237,26 @@ export function summarizeT3ToolCalls(
     case "thread-update":
       label = phrase("Updated", "update", quantity(countEntities(threadIds), "thread"));
       break;
+    case "draft-list":
+      label = phrase("Listed", "list", `message drafts ${times}`);
+      break;
+    case "draft-create":
+      label = phrase("Saved", "save", quantity(selected.length, "message draft"));
+      break;
+    case "draft-send":
+      label = phrase(
+        "Sent",
+        "send",
+        quantity(countEntities(entityIds("draftId")), "message draft"),
+      );
+      break;
+    case "draft-delete":
+      label = phrase(
+        "Deleted",
+        "delete",
+        quantity(countEntities(entityIds("draftId")), "message draft"),
+      );
+      break;
     case "queue-list":
       label = phrase("Listed", "list", `queued messages ${times}`);
       break;

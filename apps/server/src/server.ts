@@ -68,6 +68,7 @@ import * as SlackMentionTrigger from "./slack/SlackMentionTrigger.ts";
 import * as SlackThreadLinks from "./slack/SlackThreadLinks.ts";
 import * as GitHubIssues from "./githubIssues/GitHubIssues.ts";
 import * as GitHubIssueThreadLinks from "./githubIssues/GitHubIssueThreadLinks.ts";
+import * as MessageDrafts from "./messageDrafts/MessageDrafts.ts";
 import * as EventNdjsonLogger from "./provider/EventNdjsonLogger.ts";
 import * as ProviderLatestVersions from "@t3tools/provider-core/server/ProviderLatestVersions";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
@@ -724,6 +725,7 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
       Layer.provide(GitHubCli.layer),
     ),
   ),
+  Layer.provideMerge(MessageDrafts.layer),
   Layer.provideMerge(layerOrchestrationApplication),
   Layer.provideMerge(RuntimeLayer.layerEventInfrastructure),
   Layer.provideMerge(Layer.merge(ProjectStore.layer, ThreadSearch.layer)),

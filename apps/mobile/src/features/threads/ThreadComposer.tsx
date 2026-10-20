@@ -105,6 +105,13 @@ import { MOBILE_TYPOGRAPHY } from "../../lib/typography";
 import { resolveProviderOptionDescriptors } from "../../lib/providerOptions";
 import { Menu } from "../../components/ui/Menu";
 import type { ActiveTurnComposerAction } from "@t3tools/client-runtime/state/composer-dispatch";
+import {
+  findComposerSendMenuAction,
+  resolveComposerSendMenu,
+  type ComposerSendMenuAction,
+  type ComposerSendMenuItem,
+} from "@t3tools/client-runtime/state/send-menu";
+import { composerSendMenuActions } from "./composerSendMenu";
 import type { FollowUpBehavior } from "../../lib/followUpBehavior";
 import {
   resolveComposerSendPresentation,
@@ -178,6 +185,15 @@ export interface ThreadComposerProps {
     readonly existingAttachments: ReadonlyArray<ChatAttachment>;
     readonly saving: boolean;
     readonly onRemoveExistingAttachment: (attachmentId: string) => void;
+    readonly onCancel: () => void;
+  } | null;
+  /** Absent where the server has no drafts or this connection cannot save them. */
+  readonly messageDrafts?: {
+    readonly drafts: ReadonlyArray<{ readonly id: string; readonly text: string }>;
+    readonly busy: boolean;
+    readonly onSaveDraft: () => void;
+    readonly onMoveQueuedEditToDrafts: () => void;
+    readonly onOpenDraft: (draftId: string) => void;
   } | null;
   readonly followUpBehavior: FollowUpBehavior;
   readonly canSteerActiveTurn: boolean;
@@ -249,47 +265,36 @@ const FOLLOW_UP_ACTION_LABEL = {
   restart: "Restart turn",
 } as const;
 
-const FOLLOW_UP_ACTION_SUBTITLE = {
-  queue: "Run after the current turn",
-  steer: "Interrupt what the agent is doing",
-  restart: "Start the turn over with this message",
-} as const;
-
 function SendActionButton(props: {
   readonly accessibilityLabel: string;
   readonly presentation: ComposerSendPresentation;
   readonly disabled: boolean;
-  readonly onSend: (followUp?: ActiveTurnComposerAction) => void;
+  readonly menuItems: ReadonlyArray<ComposerSendMenuItem>;
+  readonly onSend: () => void;
+  readonly onMenuAction: (action: ComposerSendMenuAction) => void;
 }) {
-  const { presentation } = props;
+  const { presentation, menuItems } = props;
   const button = (
     <ComposerActionButton
       accessibilityLabel={props.accessibilityLabel}
       icon={presentation.icon}
       variant="primary"
       disabled={props.disabled}
-      onPress={() => props.onSend()}
+      onPress={props.onSend}
     />
   );
-  if (!presentation.offersFollowUpChoice || presentation.action === null || props.disabled) {
-    return button;
-  }
-  const actions = [presentation.action, presentation.alternate].filter(
-    (action): action is ActiveTurnComposerAction => action !== null,
-  );
+  if (menuItems.length === 0) return button;
+  const menu = composerSendMenuActions(menuItems, Platform.OS === "ios" ? "ios" : "android");
   return (
     <Menu
       accessibilityLabel="Choose how to send this message"
       shouldOpenOnLongPress
-      actions={actions.map((action) => ({
-        id: action,
-        title: FOLLOW_UP_ACTION_LABEL[action],
-        subtitle: FOLLOW_UP_ACTION_SUBTITLE[action],
-        state: action === presentation.action ? ("on" as const) : ("off" as const),
-      }))}
-      onPressAction={({ nativeEvent }) =>
-        props.onSend(nativeEvent.event as ActiveTurnComposerAction)
-      }
+      {...(menu.title ? { title: menu.title } : {})}
+      actions={menu.actions}
+      onPressAction={({ nativeEvent }) => {
+        const action = findComposerSendMenuAction(menuItems, nativeEvent.event);
+        if (action) props.onMenuAction(action);
+      }}
     >
       {button}
     </Menu>
@@ -620,6 +625,49 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
       onExpandedChange?.(false);
     }
     onEditorFocusChange?.(false);
+  };
+  const messageDrafts = props.messageDrafts ?? null;
+  const sendMenuItems =
+    hasContent && (!canSend || messageDrafts?.busy === true)
+      ? []
+      : resolveComposerSendMenu({
+          hasContent,
+          running: props.activeThreadBusy,
+          canSteer: props.canSteerActiveTurn,
+          activeTurnDefault: props.followUpBehavior,
+          // Mobile has no way to start a sibling thread from the thread composer.
+          canSendInNewThread: false,
+          canSaveDraft: messageDrafts !== null && !messageDrafts.busy,
+          isEditingQueuedMessage: queuedEdit !== null,
+          drafts: messageDrafts?.busy === false ? messageDrafts.drafts : [],
+        });
+  const handleSendMenuAction = (action: ComposerSendMenuAction) => {
+    switch (action.type) {
+      case "send":
+      case "update-queued":
+        void handleSend();
+        return;
+      case "queue":
+        void handleSend(props.activeThreadBusy && props.canSteerActiveTurn ? "queue" : undefined);
+        return;
+      case "steer":
+        void handleSend("steer");
+        return;
+      case "save-draft":
+        messageDrafts?.onSaveDraft();
+        return;
+      case "move-to-drafts":
+        messageDrafts?.onMoveQueuedEditToDrafts();
+        return;
+      case "cancel-edit":
+        queuedEdit?.onCancel();
+        return;
+      case "open-draft":
+        messageDrafts?.onOpenDraft(action.draftId);
+        return;
+      case "send-in-new-thread":
+        return;
+    }
   };
   const handleSend = async (followUp?: ActiveTurnComposerAction) => {
     if (voiceInput.blocksSubmission || pendingPastedTextAttachmentCountRef.current > 0) return;
@@ -1070,7 +1118,9 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                     accessibilityLabel={sendBlockedReason ?? sendLabel}
                     presentation={sendPresentation}
                     disabled={!canSend}
-                    onSend={handleSend}
+                    menuItems={sendMenuItems}
+                    onSend={() => void handleSend()}
+                    onMenuAction={handleSendMenuAction}
                   />
                 )}
               </View>
@@ -1179,7 +1229,9 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                       accessibilityLabel={sendBlockedReason ?? sendLabel}
                       presentation={sendPresentation}
                       disabled={!canSend}
-                      onSend={handleSend}
+                      menuItems={sendMenuItems}
+                      onSend={() => void handleSend()}
+                      onMenuAction={handleSendMenuAction}
                     />
                   ) : null}
                 </View>

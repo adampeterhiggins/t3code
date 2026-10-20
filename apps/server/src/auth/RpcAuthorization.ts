@@ -202,6 +202,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.githubIssuesSubscribeThreadLinks]: AuthOrchestrationReadScope,
   [WS_METHODS.githubIssuesLinkThread]: AuthOrchestrationOperateScope,
   [WS_METHODS.githubIssuesUnlinkThread]: AuthOrchestrationOperateScope,
+  [WS_METHODS.messageDraftsSubscribe]: AuthOrchestrationReadScope,
   [WS_METHODS.projectCloneStart]: AuthSourceControlWriteScope,
   [WS_METHODS.projectCloneCancel]: AuthSourceControlWriteScope,
   [WS_METHODS.projectCloneRetry]: AuthSourceControlWriteScope,

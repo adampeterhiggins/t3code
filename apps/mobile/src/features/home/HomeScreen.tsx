@@ -55,6 +55,7 @@ import { usePendingThreadOrder } from "../../state/thread-order";
 import { threadListEnvironmentsAtom } from "../../state/server";
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
 import { useQueuedThreadKeys } from "../../state/use-thread-outbox";
+import { useMessageDraftCounts } from "../../state/messageDrafts";
 import {
   ThreadListV2GroupSectionHeader,
   ThreadListV2PendingRow,
@@ -298,6 +299,7 @@ export function HomeScreen(props: HomeScreenProps) {
   const selectedThreadKey = primaryColumn?.selectedThreadKey ?? null;
   const fullSwipeWidth = primaryColumn && columnMetrics ? columnMetrics.width - 20 : undefined;
   const queuedThreadKeys = useQueuedThreadKeys();
+  const draftCounts = useMessageDraftCounts();
   const openSwipeableRef = useRef<SwipeableMethods | null>(null);
   const homeScrollGesture = useNativeGesture();
   const insets = useSafeAreaInsets();
@@ -641,6 +643,7 @@ export function HomeScreen(props: HomeScreenProps) {
       snoozeLabelNow: `${nowMinute}:00.000Z`,
       snoozeEnvironmentIds,
       queuedThreadKeys,
+      draftCounts,
       moveAvailability: threadMoveAvailability,
       shelfPreferencesLoading: !shelfPreferencesLoaded,
     }))();
@@ -714,6 +717,7 @@ export function HomeScreen(props: HomeScreenProps) {
         thread={thread}
         variant={item.item.variant}
         hasQueuedMessages={item.hasQueuedMessages}
+        draftCount={item.draftCount}
         snoozed={item.item.snoozed}
         pinned={item.item.pinned}
         hidden={item.item.hidden}

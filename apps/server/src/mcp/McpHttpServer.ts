@@ -61,6 +61,8 @@ import { WorktreeToolkit } from "./toolkits/worktree/tools.ts";
 import * as WorktreeMcpService from "./WorktreeMcpService.ts";
 import * as IssueLinksHandlers from "./toolkits/issueLinks/handlers.ts";
 import { IssueLinksToolkit } from "./toolkits/issueLinks/tools.ts";
+import * as MessageDraftsHandlers from "./toolkits/messageDrafts/handlers.ts";
+import { MessageDraftsToolkit } from "./toolkits/messageDrafts/tools.ts";
 import * as PullRequestsHandlers from "./toolkits/pullRequests/handlers.ts";
 import { PullRequestsToolkit } from "./toolkits/pullRequests/tools.ts";
 import * as DeviceHandlers from "./toolkits/device/handlers.ts";
@@ -743,6 +745,7 @@ const HANDOFF_TOOLS: ReadonlySet<string> = new Set([
   "t3_thread_launch",
   "t3_thread_send",
   "t3_thread_send_attachments",
+  "t3_draft_send",
   "t3_thread_fork",
   "t3_thread_merge_back",
   "t3_queue_edit",
@@ -1017,6 +1020,11 @@ export const layerIssueLinksToolkit = toolkitRegistration(
   IssueLinksHandlers.layer,
 );
 
+export const layerMessageDraftsToolkit = toolkitRegistration(
+  MessageDraftsToolkit,
+  MessageDraftsHandlers.layer,
+);
+
 const layerDeviceStandardToolkitRegistration = toolkitRegistration(
   DeviceStandardToolkit,
   DeviceHandlers.layerStandard,
@@ -1051,6 +1059,7 @@ export const layer = Layer.mergeAll(
   layerWorktreeToolkitRegistration,
   layerPullRequestsToolkit,
   layerIssueLinksToolkit,
+  layerMessageDraftsToolkit,
   layerDeviceToolkit,
   layerHtmlToolkit,
 ).pipe(Layer.provideMerge(layerMcpTransport));

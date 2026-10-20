@@ -37,6 +37,10 @@ export type T3McpToolSummaryAction =
   | "queue-cancel"
   | "queue-reorder"
   | "queue-steer"
+  | "draft-list"
+  | "draft-create"
+  | "draft-send"
+  | "draft-delete"
   | "question-list"
   | "question-read"
   | "question-respond"
@@ -285,6 +289,10 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
     ["Run", "Running", "Requested a run of", "a scheduled task"],
     "schedule-run",
   ),
+  t3_draft_list: tool(["List", "Listing", "Listed", "message drafts"], "draft-list"),
+  t3_draft_create: tool(["Save", "Saving", "Saved", "a message draft"], "draft-create"),
+  t3_draft_send: tool(["Send", "Sending", "Sent", "a message draft"], "draft-send"),
+  t3_draft_delete: tool(["Delete", "Deleting", "Deleted", "a message draft"], "draft-delete"),
   t3_queue_list: tool(["List", "Listing", "Listed", "queued messages"], "queue-list"),
   t3_queue_read: tool(["Read", "Reading", "Read", "a queued message"], "queue-read"),
   t3_queue_edit: tool(["Edit", "Editing", "Edited", "a queued message"], "queue-edit"),

@@ -99,6 +99,7 @@ import {
   SquarePenIcon,
   SunIcon,
   TextSearchIcon,
+  FileTextIcon,
 } from "lucide-react";
 import { GitHubIcon, GranolaIcon, LinearIcon, NotionIcon, SlackIcon } from "./Icons";
 import { requestThreadFindOpen } from "./chat/threadFindActionBus";
@@ -745,6 +746,13 @@ function CommandPaletteDialog(props: {
   );
 }
 
+/** Reads the composer handle when the action runs, not while the palette renders. */
+async function saveComposerMessageDraft(
+  composerHandleRef: ReturnType<typeof useComposerHandleContext>,
+) {
+  await composerHandleRef?.current?.saveMessageDraft();
+}
+
 function OpenCommandPaletteDialog(props: {
   readonly openIntent: CommandPaletteOpenIntent | null;
   readonly setOpen: (open: boolean) => void;
@@ -817,6 +825,7 @@ function OpenCommandPaletteDialog(props: {
   const { activeDraftThread, activeThread, defaultProjectRef, handleNewThread } =
     useHandleNewThread();
   const paletteRouteTarget = useThreadRouteTarget();
+  const composerHandleRef = useComposerHandleContext();
   const projects = useProjects();
   const referenceThreadRef =
     pathname === "/pull-requests"
@@ -1802,6 +1811,19 @@ function OpenCommandPaletteDialog(props: {
       run: async () => {
         requestThreadFindOpen();
       },
+    });
+  }
+
+  // Only a thread's composer keeps drafts; a new thread's draft is already kept locally.
+  if (paletteRouteTarget?.kind === "server") {
+    actionItems.push({
+      kind: "action",
+      value: "action:save-message-draft",
+      title: "Save message as draft",
+      searchTerms: ["draft", "save", "later", "message", "composer"],
+      icon: <FileTextIcon className={ITEM_ICON_CLASS} />,
+      shortcutCommand: "composer.saveDraft",
+      run: () => saveComposerMessageDraft(composerHandleRef),
     });
   }
 

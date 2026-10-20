@@ -14,7 +14,10 @@ import { Screen, ScreenStack, ScreenStackHeaderConfig } from "react-native-scree
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Reanimated, { ReduceMotion, useAnimatedStyle, withTiming } from "react-native-reanimated";
 
+import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
+
 import { Button } from "../../components/ui/Button";
+import * as Dialog from "../../components/ui/Dialog";
 import { AndroidSheetHeader } from "../../components/ui/AndroidScreenHeader";
 import { AppText as Text } from "../../components/ui/AppText";
 import { SymbolView } from "../../components/ui/AppSymbol";
@@ -25,6 +28,8 @@ import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import { NativeStackScreenOptions, nativeHeaderScrollEdgeEffects } from "../../native/StackHeader";
 import { useAssetUrl } from "../../state/assets";
 import { assetImageSource } from "../../lib/assetImageSource";
+import { messageDraftEnvironment, messageDraftFailureMessage } from "../../state/messageDrafts";
+import { useEnvironmentQuery } from "../../state/query";
 import { beginQueuedRunEdit, useQueuedRunEdit } from "../../state/queued-run-edit";
 import { environmentThreadDetails, threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -46,7 +51,7 @@ const EMPTY_QUEUED_COUNT_ATOM = Atom.make(0).pipe(
 );
 
 type QueueTarget = { readonly environmentId: EnvironmentId; readonly threadId: ThreadId };
-type QueueAction = "steer" | "edit" | "up" | "down" | "remove";
+type QueueAction = "steer" | "edit" | "up" | "down" | "remove" | "drafts";
 type QueueRowLayout = { readonly id: RunId; readonly y?: number; readonly height?: number };
 
 export function useThreadQueueWorkflow(target: QueueTarget) {
@@ -72,6 +77,18 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
   const promote = useAtomCommand(threadEnvironment.promoteQueuedRun, "promote queued message");
   const cancel = useAtomCommand(threadEnvironment.cancelQueuedRun, "remove queued message");
   const resume = useAtomCommand(threadEnvironment.resumeThreadQueue, "resume queue");
+  const saveDraft = useAtomCommand(messageDraftEnvironment.save, {
+    label: "move queued message to drafts",
+    reportFailure: false,
+  });
+  // Older servers never answer the drafts stream, so they get no Move to drafts.
+  const canSaveDraftsHere = useAtomValue(
+    messageDraftEnvironment.save.permissionAtom(target.environmentId),
+  );
+  const loadedDrafts = useEnvironmentQuery(
+    messageDraftEnvironment.drafts({ environmentId: target.environmentId, input: {} }),
+  ).data;
+  const canSaveDrafts = canSaveDraftsHere && loadedDrafts !== null;
   const [resuming, setResuming] = useState(false);
   const [busyRunId, setBusyRunId] = useState<RunId | null>(null);
   const busyRef = useRef(false);
@@ -143,11 +160,32 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
       navigation.goBack();
       return;
     }
-    if (action !== "steer" && action !== "remove") return;
+    if (action !== "steer" && action !== "remove" && action !== "drafts") return;
     busyRef.current = true;
     setBusyRunId(runId);
     void Haptics.selectionAsync();
-    if (action === "remove") {
+    if (action === "drafts") {
+      const entry = queuedRuns[index]!;
+      // Saved before the cancel, so a failed save never loses the message.
+      const saved = await saveDraft({
+        environmentId: target.environmentId,
+        input: {
+          threadId: target.threadId,
+          text: entry.text,
+          attachments: entry.attachments,
+          ...(entry.context ? { context: entry.context } : {}),
+          origin: "mobile",
+        },
+      });
+      if (saved._tag === "Success") {
+        await cancel(buildCancelQueuedRunCommand({ ...target, runId }));
+      } else {
+        Dialog.alert(
+          "Could not move to drafts",
+          messageDraftFailureMessage(squashAtomCommandFailure(saved)),
+        );
+      }
+    } else if (action === "remove") {
       await cancel(buildCancelQueuedRunCommand({ ...target, runId }));
     } else if (workflow?.activeRun && workflow.canPromoteToSteer) {
       await promote({
@@ -342,6 +380,16 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
                       attributes: { disabled: !controls.canEdit },
                       image: Platform.OS === "ios" ? "pencil" : "edit",
                     },
+                    ...(canSaveDrafts
+                      ? [
+                          {
+                            id: "drafts",
+                            title: "Move to drafts",
+                            attributes: { disabled: !controls.canDismiss || controls.isEditing },
+                            ...(Platform.OS === "ios" ? { image: "doc.text" } : {}),
+                          },
+                        ]
+                      : []),
                     { id: "up", title: "Move up", attributes: { disabled: !controls.canMoveUp } },
                     {
                       id: "down",
