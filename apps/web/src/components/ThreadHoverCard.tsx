@@ -37,7 +37,10 @@ export function ThreadHoverCard({
   );
 }
 
-/** Built from the thread shell the client already holds, so hovering never fetches history. */
+/**
+ * Built from the thread shell the client already holds, so hovering never fetches history.
+ * Orchestration v2 shells omit the latest message, so a missing preview doesn't mean an empty thread.
+ */
 export function ThreadPreviewHoverCard(props: {
   shell: EnvironmentThreadShell;
   project: EnvironmentProject | null;
@@ -71,9 +74,7 @@ export function ThreadPreviewHoverCard(props: {
           {preview.slice(0, 600)}
           {preview.length > 600 ? "…" : ""}
         </p>
-      ) : (
-        <p>No messages yet</p>
-      )}
+      ) : null}
     </ThreadHoverCard>
   );
 }
