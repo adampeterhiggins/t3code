@@ -18,6 +18,7 @@ import * as Duration from "effect/Duration";
 import * as DateTime from "effect/DateTime";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
@@ -30,6 +31,7 @@ import { ChildProcessSpawner } from "effect/process";
 import { makeClaudeTextGeneration } from "../../textGeneration/ClaudeTextGeneration.ts";
 import * as ProviderLatestVersions from "@t3tools/provider-core/server/ProviderLatestVersions";
 import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
+import * as SubscriptionLimitGuards from "@t3tools/provider-core/server/SubscriptionLimitGuards";
 import * as ServerConfig from "../../config.ts";
 import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
 import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
@@ -154,6 +156,10 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
     const latestVersions = yield* ProviderLatestVersions.ProviderLatestVersions;
     const resetCreditCoordinator = yield* ResetCreditCoordinator.ResetCreditCoordinator;
     const host = yield* ProviderHost.ProviderHost;
+    // Present in the server runtime. A driver built without it keeps the selection a turn started with.
+    const subscriptionLimitGuards = yield* Effect.serviceOption(
+      SubscriptionLimitGuards.SubscriptionLimitGuards,
+    );
     const catalogService = yield* ModelCatalog.ModelCatalog;
     const modelCatalog = catalogService
       .current(DRIVER_KIND)
@@ -212,6 +218,14 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
         subscriptionLimitGuardChanges: host.settings.changes.pipe(
           Stream.map((settings) => settings.stopAtSubscriptionLimit),
         ),
+        ...(Option.isSome(subscriptionLimitGuards)
+          ? {
+              readThreadSubscriptionLimitGuard: (threadId) =>
+                subscriptionLimitGuards.value.read(threadId),
+              threadSubscriptionLimitGuardChanges: (threadId) =>
+                subscriptionLimitGuards.value.changes(threadId),
+            }
+          : {}),
         onUsageLimits: (update) => snapshot.applyUsageLimits(update),
         // The UI cache lasts five minutes and preserves old bars on probe failure.
         // A spending guard needs a fresh read and must fail closed instead.
