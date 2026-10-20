@@ -106,6 +106,7 @@ import { WorkspaceEntryTooltip } from "./chat/WorkspaceEntryIcon";
 import { FileTagChipContent } from "./chat/FileTagChip";
 import { SkillChipIcon } from "./chat/SkillInlineText";
 import { AssistantCitationChip } from "./chat/AssistantCitationChip";
+import ChatMarkdown from "./ChatMarkdown";
 import { getTimelinePageScrollKey } from "./chat/pageScrollController";
 import { ContextChipPopover } from "./contextChipParts";
 import { Button } from "./ui/button";
@@ -371,7 +372,11 @@ function ComposerSkillNodeView({ node }: NodeViewProps) {
       >
         <div className="space-y-3 p-2 text-sm">
           <p className="font-medium">{skillLabel}</p>
-          <p>{description || "No description is available for this skill."}</p>
+          {description ? (
+            <ChatMarkdown text={description} cwd={undefined} />
+          ) : (
+            <p>No description is available for this skill.</p>
+          )}
           {skill?.path && actions.environmentId ? (
             <Button variant="outline" size="sm" onClick={() => actions.openMention(skill.path)}>
               View instructions
