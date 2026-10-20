@@ -59,17 +59,11 @@ function OrganisationRow(props: {
   const current = option.organisation ?? {};
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
   const hasGithubAvatar = githubAvatarUrlOf(option.key) !== null;
-  // An icon and the GitHub avatar replace each other.
-  const save = (patch: {
-    name?: string | undefined;
-    icon?: Organisation["icon"] | undefined;
-    githubAvatar?: true | undefined;
-  }) => {
-    const { name, icon, githubAvatar } = { ...current, ...patch };
+  const save = (patch: { name?: string | undefined; icon?: Organisation["icon"] | undefined }) => {
+    const { name, icon } = { ...current, ...patch };
     props.onSave({
       ...(name !== undefined ? { name } : {}),
       ...(icon != null ? { icon } : {}),
-      ...(githubAvatar ? { githubAvatar } : {}),
     });
   };
   const saveName = (value: string) => {
@@ -110,13 +104,13 @@ function OrganisationRow(props: {
               if (event.key === "Enter") event.currentTarget.blur();
             }}
           />
-          {hasGithubAvatar && !current.githubAvatar ? (
+          {hasGithubAvatar && current.icon != null ? (
             <Button
               size="sm"
               variant="outline"
               type="button"
               aria-label={`Use the GitHub avatar for ${option.label}`}
-              onClick={() => save({ githubAvatar: true, icon: undefined })}
+              onClick={() => save({ icon: undefined })}
             >
               Use GitHub avatar
             </Button>
@@ -138,7 +132,7 @@ function OrganisationRow(props: {
                 title="Choose organisation icon"
                 open
                 onOpenChange={setIconPickerOpen}
-                onSelect={(icon) => save({ icon, githubAvatar: undefined })}
+                onSelect={(icon) => save({ icon })}
               />
             </Suspense>
           ) : null}

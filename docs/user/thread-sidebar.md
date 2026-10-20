@@ -196,7 +196,8 @@ Click the search field to edit it, or remove its pill to show the full list agai
 
 To give an organisation a friendlier name or an icon, open **Settings → Organisations** (also
 reachable from **Organisation settings…** at the bottom of the **Organisations** filter). A
-GitHub organisation can use its GitHub avatar instead of an icon. Names and
+GitHub organisation shows its GitHub avatar until you choose an icon; **Use GitHub avatar** switches
+back. Names and
 icons are shared with every connected server, so they show the same on your other devices; mobile
 shows the names.
 
