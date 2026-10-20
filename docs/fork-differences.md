@@ -2128,7 +2128,7 @@ A system-wide shortcut in the desktop app opens a floating composer over any app
 thread from it, like the ChatGPT desktop app's companion window. Turn it on and record the shortcut
 in **Settings → General → Quick message**. The panel is a separate transparent window that follows
 the app's theme and has the in-app composer's controls. The panel collects the message, files,
-project, model and modes. Choose **No project** in its project selector to start without a checkout
+project, model, account and modes. Choose **No project** in its project selector to start without a checkout
 on the selected environment. Its **⋯** opens the start-from picker in the panel itself. The main
 window then opens a draft, applies the picked PR, branch or issue to it as its own picker would,
 and sends it through its own composer, or opens the attach picker the panel asked for.

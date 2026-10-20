@@ -90,6 +90,12 @@ import { DraftProjectName } from "../chat/DraftProjectName";
 import { StartFromPickerDialog } from "../chat/StartFromPicker";
 import { LinearIcon } from "../Icons";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
+import { ProviderAccountPicker } from "../chat/ProviderAccountPicker";
+import {
+  accountsForProvider,
+  resolveModelForAccountSwitch,
+  shouldShowProviderAccountPicker,
+} from "../chat/providerAccountSelection";
 import { ProviderModelPicker } from "../chat/ProviderModelPicker";
 import { shouldRenderTraitsControls, TraitsPicker } from "../chat/TraitsPicker";
 import { useComposerCheckoutItems } from "../chat/useComposerCheckoutItems";
@@ -335,6 +341,9 @@ export function QuickMessagePanel() {
   const providerEntry = instanceEntries.find(
     (entry) => entry.instanceId === modelSelection?.instanceId,
   );
+  const providerAccounts = providerEntry
+    ? accountsForProvider({ entries: instanceEntries, driverKind: providerEntry.driverKind })
+    : [];
   const supportedRuntimeModes = providerEntry?.snapshot.supportedRuntimeModes;
   const runtimeModeOptions =
     supportedRuntimeModes && supportedRuntimeModes.length > 0
@@ -736,6 +745,29 @@ export function QuickMessagePanel() {
                         }
                         onRuntimeModeChange={setChosenRuntimeMode}
                       />
+                    ) : null}
+                    {modelSelection !== null &&
+                    shouldShowProviderAccountPicker(providerAccounts) ? (
+                      <>
+                        <ComposerControlSeparator />
+                        <ProviderAccountPicker
+                          isComposerOwned
+                          activeInstanceId={modelSelection.instanceId}
+                          accounts={providerAccounts}
+                          onAccountChange={(instanceId) => {
+                            setChosenModel(
+                              createModelSelection(
+                                instanceId,
+                                resolveModelForAccountSwitch({
+                                  currentModel: modelSelection.model,
+                                  destinationModels: modelOptionsByInstance.get(instanceId) ?? [],
+                                }),
+                              ),
+                            );
+                            inputRef.current?.focus();
+                          }}
+                        />
+                      </>
                     ) : null}
                   </div>
                   <div className="flex shrink-0 flex-nowrap items-center justify-end gap-2">
