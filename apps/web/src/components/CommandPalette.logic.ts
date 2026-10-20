@@ -63,7 +63,14 @@ export function browseInputEndPaddingClass(input: {
 export type SearchOverlayMode = "command" | "files" | "content";
 
 export type CommandPaletteOpenIntent =
-  | { readonly kind: "add-project" | "new-thread-in" | "change-theme" | "attention-inbox" }
+  | {
+      readonly kind:
+        | "add-project"
+        | "new-thread-in"
+        | "change-theme"
+        | "attention-inbox"
+        | "run-scheduled-task";
+    }
   | {
       readonly kind: "search";
       readonly query: string;
@@ -94,6 +101,7 @@ export type CommandPaletteUiAction =
   | { readonly _tag: "OpenNewThreadIn" }
   | { readonly _tag: "OpenChangeTheme" }
   | { readonly _tag: "OpenAttentionInbox" }
+  | { readonly _tag: "OpenRunScheduledTask" }
   | { readonly _tag: "ClearOpenIntent" }
   | {
       readonly _tag: "OpenChildSearch";
@@ -151,6 +159,8 @@ export function reduceCommandPaletteUiState(
       return { open: true, mode: "command", openIntent: { kind: "change-theme" } };
     case "OpenAttentionInbox":
       return { open: true, mode: "command", openIntent: { kind: "attention-inbox" } };
+    case "OpenRunScheduledTask":
+      return { open: true, mode: "command", openIntent: { kind: "run-scheduled-task" } };
     case "ClearOpenIntent":
       return state.openIntent ? { ...state, openIntent: null } : state;
   }

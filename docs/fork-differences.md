@@ -1975,6 +1975,14 @@ otherwise the run is skipped as upstream does. Web, mobile and the `schedule_tas
 [`Schedule.ts`](../apps/server/src/scheduledTasks/Schedule.ts) and
 [`ScheduledTaskService.ts`](../apps/server/src/scheduledTasks/ScheduledTaskService.ts).
 
+## Run a thread's scheduled task from the keyboard
+
+`mod+alt+r` (command `thread.runScheduledTask`) and the command palette's **Run scheduled task
+now** run the scheduled task bound to the current thread or whose runs posted into it. Several
+tasks open a palette list to choose from; webhook tasks are left out. See
+[the user guide](user/keybindings.md#commands-with-special-behavior) and
+[`useRunThreadScheduledTask.ts`](../apps/web/src/hooks/useRunThreadScheduledTask.ts).
+
 ## Type `>` in the file picker for commands
 
 Typing `>` at the start of the file picker's (`mod+p`) search switches to the command palette's
