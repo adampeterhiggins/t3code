@@ -1,6 +1,9 @@
 import { commentAnchor, type ComposerObjectLink } from "@t3tools/shared/composerObjectLinks";
 import { repositoryContextRecord } from "@t3tools/client-runtime/context-repositories";
-import { gitHubIssueContextRecord } from "@t3tools/client-runtime/state/github-issues";
+import {
+  gitHubIssueContextRecord,
+  gitHubRefContextRecord,
+} from "@t3tools/client-runtime/state/github-issues";
 import {
   linearIssueContextRecord,
   promptLinkContextRecord,
@@ -174,6 +177,7 @@ export function useResolveComposerObjectLink(input: {
   const granolaEnabled = useEnvironmentSettings(environmentId, (s) => s.enableGranolaIntegration);
   const getLinearIssue = useAtomCommand(linearEnvironment.getIssue, { reportFailure: false });
   const getGitHubIssue = useAtomCommand(githubIssueEnvironment.getIssue, { reportFailure: false });
+  const getGitHubRef = useAtomCommand(githubIssueEnvironment.getRef, { reportFailure: false });
   const getNotionPage = useAtomCommand(notionEnvironment.getPage, { reportFailure: false });
   const getSlackThread = useAtomCommand(slackEnvironment.getThread, { reportFailure: false });
   const getGranolaNote = useAtomCommand(granolaEnvironment.getNote, { reportFailure: false });
@@ -269,6 +273,15 @@ export function useResolveComposerObjectLink(input: {
         const record = gitHubIssueContextRecord(result.value);
         return {
           reference: { kind: "github-issue", contextId: record.contextId, label: record.label },
+          commit: () => useIssueContextStore.getState().upsert(threadRef.threadId, record),
+        };
+      }
+      case "github-ref": {
+        const result = await getGitHubRef({ environmentId, input: { url: link.url } });
+        if (result._tag === "Failure") return null;
+        const record = gitHubRefContextRecord(result.value);
+        return {
+          reference: { kind: "github-ref", contextId: record.contextId, label: record.label },
           commit: () => useIssueContextStore.getState().upsert(threadRef.threadId, record),
         };
       }

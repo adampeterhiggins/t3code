@@ -1,4 +1,9 @@
-import { resolveFileOpenTarget, DEFAULT_SERVER_SETTINGS, EDITORS } from "@t3tools/contracts";
+import {
+  resolveFileOpenTarget,
+  DEFAULT_SERVER_SETTINGS,
+  EDITORS,
+  parseGitHubRefUrl,
+} from "@t3tools/contracts";
 import { formatFilePathForClipboard } from "@t3tools/client-runtime/media-actions";
 import { MarkdownFindContext, findRevealRef } from "./chat/markdownFindContext";
 import {
@@ -243,6 +248,7 @@ import {
 } from "../browser/openFileInPreview";
 import { resolveLinkTarget } from "../browser/browserLinkTarget";
 import { PullRequestLinkPreview } from "./pullRequest/PullRequestLinkPreview";
+import { GitHubRefLinkPreview } from "./GitHubRefLinkPreview";
 
 const isAssetNotFoundError = Schema.is(AssetWorkspaceAssetNotFoundError);
 
@@ -3459,6 +3465,9 @@ const CHAT_MARKDOWN_COMPONENTS = {
             onOpenFallback={openDeferredMarkdownLink}
           />
         );
+      }
+      if (environmentId !== null && parseGitHubRefUrl(href) !== null) {
+        return <GitHubRefLinkPreview link={link} url={href} environmentId={environmentId} />;
       }
       return (
         <Tooltip>

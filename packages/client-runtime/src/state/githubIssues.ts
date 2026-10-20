@@ -16,6 +16,7 @@ import type { EnvironmentRegistry } from "../connection/registry.ts";
 export {
   gitHubIssueContextRecord,
   gitHubIssueLabel,
+  gitHubRefContextRecord,
 } from "@t3tools/shared/integrationContextRecords";
 
 export function createGitHubIssueEnvironmentAtoms<R, E>(
@@ -44,6 +45,17 @@ export function createGitHubIssueEnvironmentAtoms<R, E>(
       label: "environment-data:github-issues:issue-summary",
       tag: WS_METHODS.githubIssuesGetSummary,
       staleTimeMs: 60_000,
+    }),
+    // A release, tag, branch, or commit link's snapshot, for hover cards over bare links.
+    ref: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:github-issues:ref",
+      tag: WS_METHODS.githubRefsGet,
+      staleTimeMs: 60_000,
+    }),
+    // Fetched once when a ref link becomes a chip; the result is snapshotted into the message.
+    getRef: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:github-issues:get-ref",
+      tag: WS_METHODS.githubRefsGet,
     }),
     // Every thread group's linked GitHub issue in the environment.
     threadLinks: createEnvironmentRpcSubscriptionAtomFamily(runtime, {

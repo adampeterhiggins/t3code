@@ -3,11 +3,13 @@ import {
   toolPathTargets,
 } from "@t3tools/client-runtime/work-log/tool-paths";
 import type {
+  GitHubRefContextRecord,
   GranolaNoteContextRecord,
   NotionPageContextRecord,
   PromptLinkContextRecord,
 } from "@t3tools/contracts";
 import { ToolPathText } from "./ToolPathText";
+import { GitHubRefIcon, gitHubRefKindLabel } from "../gitHubRefPresentation";
 import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
 import { useCursorAnchor } from "./CursorPreviewCard";
 import { workEntryHasToolCallPreview } from "../../lib/toolCallPreview";
@@ -278,6 +280,7 @@ import {
   ThreadTabSummaryDetails,
   CheckoutDetails,
   GitHubIssueDetails,
+  GitHubRefDetails,
   LinearIssueDetails,
   RepositoryDetails,
   SlackThreadDetails,
@@ -4829,6 +4832,24 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
         ),
     },
     {
+      kind: "github-ref",
+      canRender: (record) => record.kind === "github-ref",
+      render: (record, context) =>
+        record.kind === "github-ref" ? (
+          <UserMessageContextPopover
+            copyMarkdown={context.copyMarkdown}
+            accessibleLabel={`${gitHubRefKindLabel(record.refType)}, ${record.label}`}
+            kind="github-ref"
+            icon={<GitHubRefIcon refType={record.refType} />}
+            label={record.label}
+          >
+            <UserMessageGitHubRefDetails record={record} />
+          </UserMessageContextPopover>
+        ) : (
+          <UnavailableUserMessageContextChip {...context} />
+        ),
+    },
+    {
       kind: "checkout",
       canRender: (record) => record.kind === "checkout",
       render: (record, context) =>
@@ -4989,6 +5010,11 @@ function UserMessageLinearIssueDetails({ record }: { record: LinearIssueContextR
       onOpenLink={openLink}
     />
   );
+}
+
+function UserMessageGitHubRefDetails({ record }: { record: GitHubRefContextRecord }) {
+  const { threadRef } = use(TimelineRowCtx);
+  return <GitHubRefDetails record={record} onOpenLink={useLinkClickHandler(threadRef)} />;
 }
 
 function UserMessageGitHubIssueDetails({ record }: { record: GitHubIssueContextRecord }) {

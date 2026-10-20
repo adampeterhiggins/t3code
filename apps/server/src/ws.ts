@@ -2780,6 +2780,7 @@ export const layerWsRpc = (
         [WS_METHODS.githubIssuesList]: (input) => githubIssues.listIssues(input),
         [WS_METHODS.githubIssuesGet]: (input) => githubIssues.getIssue(input),
         [WS_METHODS.githubIssuesGetSummary]: (input) => githubIssues.getIssueSummary(input),
+        [WS_METHODS.githubRefsGet]: (input) => githubIssues.getRef(input),
         [WS_METHODS.githubIssuesSubscribeThreadLinks]: (_input) => githubIssueThreadLinks.links,
         [WS_METHODS.githubIssuesLinkThread]: (input) => githubIssueThreadLinks.link(input),
         [WS_METHODS.githubIssuesUnlinkThread]: (input) =>

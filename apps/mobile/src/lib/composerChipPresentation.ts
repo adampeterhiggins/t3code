@@ -18,6 +18,7 @@ const CONTEXT_CHIP_PRESENTATIONS = {
   skill: { accent: "#b261be", symbol: "cube" },
   "linear-issue": { accent: "#617de6", symbol: "ticket" },
   "github-issue": { accent: "#009f6e", symbol: "smallcircle.filled.circle" },
+  "github-ref": { accent: "#7f8793", symbol: "tag" },
   "slack-thread": { accent: "#c6589c", symbol: "number" },
   repository: { accent: "#009c9c", symbol: "folder" },
   checkout: { accent: "#0096af", symbol: "laptopcomputer" },

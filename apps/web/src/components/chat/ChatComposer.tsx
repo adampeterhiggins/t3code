@@ -3623,7 +3623,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         case "notion-page":
         case "granola-note":
         case "subagent":
-        case "prompt-link": {
+        case "prompt-link":
+        case "github-ref": {
           const threadId = routeThreadRef?.threadId;
           if (!threadId) break;
           rewritten.set(

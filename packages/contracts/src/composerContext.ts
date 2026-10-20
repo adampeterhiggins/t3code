@@ -11,6 +11,7 @@ import {
 import { CheckoutAccess } from "./checkouts.ts";
 import { ContextRepositoryDirectoryName, ContextRepositoryOutcome } from "./contextRepositories.ts";
 import { GITHUB_ISSUE_MARKDOWN_MAX_CHARS } from "./githubIssues.ts";
+import { GITHUB_REF_MARKDOWN_MAX_CHARS, GitHubRefType } from "./githubRefs.ts";
 import { LINEAR_ISSUE_MARKDOWN_MAX_CHARS } from "./linear.ts";
 import { GRANOLA_NOTE_MARKDOWN_MAX_CHARS } from "./granola.ts";
 import { NOTION_PAGE_MARKDOWN_MAX_CHARS } from "./notion.ts";
@@ -40,6 +41,7 @@ export const COMPOSER_CONTEXT_KINDS = [
   "thread",
   "subagent",
   "prompt-link",
+  "github-ref",
 ] as const;
 export type KnownComposerContextKind = (typeof COMPOSER_CONTEXT_KINDS)[number];
 
@@ -444,6 +446,24 @@ export const PromptLinkContextRecord = Schema.Struct({
 });
 export type PromptLinkContextRecord = typeof PromptLinkContextRecord.Type;
 
+/**
+ * Fork: a GitHub release, tag, branch, or commit, with its release notes or commit message as
+ * read when the chip was inserted.
+ */
+export const GitHubRefContextRecord = Schema.Struct({
+  ...recordBase,
+  kind: Schema.Literal("github-ref"),
+  /** `owner/repo`. */
+  repository: TrimmedNonEmptyString.check(Schema.isMaxLength(255)),
+  refType: GitHubRefType,
+  ref: TrimmedNonEmptyString.check(Schema.isMaxLength(255)),
+  title: ShortString,
+  url: ShortString,
+  sha: NullableShortString,
+  markdown: BoundedString(GITHUB_REF_MARKDOWN_MAX_CHARS),
+});
+export type GitHubRefContextRecord = typeof GitHubRefContextRecord.Type;
+
 export const KnownComposerContextRecord = Schema.Union([
   ImageContextRecord,
   FileContextRecord,
@@ -464,6 +484,7 @@ export const KnownComposerContextRecord = Schema.Union([
   ThreadContextRecord,
   SubagentContextRecord,
   PromptLinkContextRecord,
+  GitHubRefContextRecord,
 ]);
 export type KnownComposerContextRecord = typeof KnownComposerContextRecord.Type;
 

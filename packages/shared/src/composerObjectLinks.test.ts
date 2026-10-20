@@ -33,6 +33,30 @@ describe("parseComposerObjectLink", () => {
     });
   });
 
+  it("reads releases, branches or tags, and commits as GitHub refs", () => {
+    expect(
+      parseComposerObjectLink("https://github.com/focaldata/fd-common/releases/tag/v0.8.0"),
+    ).toMatchObject({
+      kind: "github-ref",
+      repository: "focaldata/fd-common",
+      linkType: "release",
+      ref: "v0.8.0",
+    });
+    expect(
+      parseComposerObjectLink("https://github.com/acme/api/tree/feature%2Fretry"),
+    ).toMatchObject({ kind: "github-ref", linkType: "tree", ref: "feature/retry" });
+    expect(parseComposerObjectLink("https://github.com/acme/api/commit/AD4EEEA")).toMatchObject({
+      kind: "github-ref",
+      linkType: "commit",
+      ref: "ad4eeea",
+    });
+    // Release lists, commit lists, and enterprise hosts stay links.
+    expect(parseComposerObjectLink("https://github.com/acme/api/releases")).toBeNull();
+    expect(parseComposerObjectLink("https://github.com/acme/api/commits/main")).toBeNull();
+    expect(parseComposerObjectLink("https://github.com/acme/api/commit/not-a-sha")).toBeNull();
+    expect(parseComposerObjectLink("https://github.acme.com/acme/api/tree/main")).toBeNull();
+  });
+
   it("reads a T3 Code prompt link as the prompt it opens with", () => {
     const url =
       "https://app.t3.codes/new?prompt=what+happened+here%3F+%0A%0Ahttps%3A%2F%2Fgithub.com%2Facme%2Fapi%2Factions%2Fruns%2F1&repo=acme/api";
@@ -114,6 +138,19 @@ describe("objectLinkLabel", () => {
     );
     expect(objectLinkLabel("https://linear.app/acme/issue/eng-123/fix-the-thing")).toBe("ENG-123");
     expect(objectLinkLabel("https://github.com/acme/api.git")).toBe("acme/api");
+  });
+
+  it("names GitHub refs owner/repo@ref, and leaves a tree link that may be a folder alone", () => {
+    expect(objectLinkLabel("https://github.com/focaldata/fd-common/releases/tag/v0.8.0")).toBe(
+      "focaldata/fd-common@v0.8.0",
+    );
+    expect(objectLinkLabel("https://github.com/acme/api/tree/main")).toBe("acme/api@main");
+    expect(
+      objectLinkLabel(
+        "https://github.com/acme/api/commit/ad4eeea9da2ad42884d1974c67e555aedd5350b3",
+      ),
+    ).toBe("acme/api@ad4eeea");
+    expect(objectLinkLabel("https://github.com/acme/api/tree/main/src")).toBeNull();
   });
 
   it("has no label for ordinary links", () => {

@@ -88,6 +88,10 @@ const DEFINITIONS = [
     kind: "prompt-link",
     capabilities: { details: "popover", expanded: "none", defaultDraftView: "compact" },
   },
+  {
+    kind: "github-ref",
+    capabilities: { details: "popover", expanded: "none", defaultDraftView: "compact" },
+  },
 ] as const satisfies ReadonlyArray<ContextPresentationDefinition>;
 
 function buildDefinitionRegistry(

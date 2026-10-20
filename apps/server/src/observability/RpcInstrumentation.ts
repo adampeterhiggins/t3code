@@ -66,6 +66,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.githubIssuesList]: "github-issues",
   [WS_METHODS.githubIssuesGet]: "github-issues",
   [WS_METHODS.githubIssuesGetSummary]: "github-issues",
+  [WS_METHODS.githubRefsGet]: "github-issues",
   [WS_METHODS.githubIssuesSubscribeThreadLinks]: "github-issues",
   [WS_METHODS.githubIssuesLinkThread]: "github-issues",
   [WS_METHODS.githubIssuesUnlinkThread]: "github-issues",

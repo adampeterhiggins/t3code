@@ -1,11 +1,17 @@
-import { parseGranolaNoteId, parseNotionPageId, parseGitHubIssueUrl } from "@t3tools/contracts";
+import {
+  type GitHubRefLink,
+  parseGranolaNoteId,
+  parseNotionPageId,
+  parseGitHubIssueUrl,
+  parseGitHubRefUrl,
+} from "@t3tools/contracts";
 import { parseChangeRequestUrl } from "./changeRequestUrl.ts";
 import { parseNewThreadLink, parseThreadLinkPrompt, promptLinkAppPath } from "./promptLinks.ts";
 
 /**
  * A link in composer text to something the composer can attach as a chip instead: a Linear
- * issue, a GitHub issue, a pull request, a GitHub repository root, a Slack message, a Notion page,
- * a Granola note, or a T3 Code prompt link.
+ * issue, a GitHub issue, a pull request, a GitHub repository root, a GitHub release, tag, branch,
+ * or commit, a Slack message, a Notion page, a Granola note, or a T3 Code prompt link.
  */
 export type ComposerObjectLink =
   | { readonly kind: "notion-page"; readonly url: string; readonly pageId: string }
@@ -23,6 +29,7 @@ export type ComposerObjectLink =
     }
   | { readonly kind: "github-issue"; readonly url: string }
   | { readonly kind: "pull-request"; readonly url: string }
+  | ({ readonly kind: "github-ref"; readonly url: string } & GitHubRefLink)
   | {
       readonly kind: "prompt-link";
       readonly url: string;
@@ -146,6 +153,8 @@ export function parseComposerObjectLink(url: string): ComposerObjectLink | null 
   if (parseChangeRequestUrl(url) !== null) return { kind: "pull-request", url };
   if (!isGitHubHost(parsed.hostname)) return null;
   if (parseGitHubIssueUrl(url) !== null) return { kind: "github-issue", url };
+  const ref = parseGitHubRefUrl(url);
+  if (ref !== null) return { kind: "github-ref", url, ...ref };
   // Only a repository root: a link to a file or a tree is about that file, not a clone.
   if (parsed.hostname.toLowerCase() === "github.com" && segments.length === 2) {
     const nameWithOwner = `${segments[0]}/${segments[1]!.replace(/\.git$/iu, "")}`;
@@ -172,8 +181,8 @@ export function commentAnchor(hash: string): string {
 /**
  * The short name a bare link reads as once it is recognised: `owner/repo#7` for a pull request
  * or issue (`owner/repo#7 L4-L14` for lines of one of its files, `owner/repo#7issuecomment-1` for
- * one remark on it), `ENG-123` for a Linear issue,
- * `owner/repo` for a repository. Null for ordinary links, and for Slack messages and prompt links:
+ * one remark on it), `ENG-123` for a Linear issue, `owner/repo` for a repository, and
+ * `owner/repo@v1.2.0` for a release, tag, branch, or commit (`owner/repo@abc1234`). Null for ordinary links, and for Slack messages and prompt links:
  * an attached one is already a chip, so a bare one was not attached and should not read as if it
  * were.
  */
@@ -193,6 +202,10 @@ export function objectLinkLabel(url: string): string | null {
       return null;
     case "repository":
       return link.nameWithOwner;
+    case "github-ref":
+      // A `tree` link with a slash may be a folder, which is not a ref; it keeps its URL.
+      if (link.linkType === "tree" && link.ref.includes("/")) return null;
+      return `${link.repository}@${link.linkType === "commit" ? link.ref.slice(0, 7) : link.ref}`;
     case "github-issue": {
       const issue = parseGitHubIssueUrl(url);
       if (issue === null) return null;

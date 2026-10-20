@@ -42,6 +42,7 @@ const CHIP_ICONS: Partial<Record<ContextChipKind, ReactNode>> = {
   "prompt-link": <MessageSquareTextIcon />,
   "linear-issue": <LinearIcon />,
   "github-issue": <GitHubIcon />,
+  "github-ref": <GitHubIcon />,
   "slack-thread": <SlackIcon />,
   "notion-page": <NotionIcon />,
   "granola-note": <GranolaIcon />,

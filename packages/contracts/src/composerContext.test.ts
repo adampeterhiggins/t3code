@@ -245,6 +245,18 @@ const knownRecords: Record<(typeof COMPOSER_CONTEXT_KINDS)[number], Record<strin
     prompt: "what happened here?",
     target: null,
   },
+  "github-ref": {
+    ...base,
+    kind: "github-ref",
+    label: "api@v1.2.0",
+    repository: "acme/api",
+    refType: "release",
+    ref: "v1.2.0",
+    title: "v1.2.0",
+    url: "https://github.com/acme/api/releases/tag/v1.2.0",
+    sha: "0123456789abcdef0123456789abcdef01234567",
+    markdown: "# acme/api release v1.2.0\n\nFixes the retry.",
+  },
 };
 
 describe("ComposerContextRecord", () => {
