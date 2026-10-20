@@ -52,16 +52,18 @@ export function WorkLogLabel({
   children,
   tone = "default",
   wrap = false,
+  ellipsizeMode = "tail",
 }: {
   children: ReactNode;
   wrap?: boolean;
+  ellipsizeMode?: "head" | "middle" | "tail" | "clip";
   tone?: "default" | "danger" | "warning";
 }) {
   return (
     <Text
       selectable={false}
       numberOfLines={wrap ? undefined : 1}
-      ellipsizeMode="tail"
+      ellipsizeMode={wrap ? undefined : ellipsizeMode}
       className={cn(
         "min-w-0 flex-1 text-sm text-foreground-muted",
         tone === "danger" && "font-t3-medium text-adaptive-rose-600-400",
