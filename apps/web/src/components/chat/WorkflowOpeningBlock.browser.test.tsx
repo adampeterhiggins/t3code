@@ -1,5 +1,5 @@
 import type { WorkflowOpening } from "@t3tools/client-runtime/state/subagentRuntime";
-import { EnvironmentId } from "@t3tools/contracts";
+import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
@@ -90,6 +90,7 @@ async function render(script: string, query = "") {
             <WorkflowOpeningBlock
               opening={opening(script)}
               environmentId={EnvironmentId.make("environment-local")}
+              ownerThreadId={ThreadId.make("thread-workflow")}
               onOpenThread={() => undefined}
             />
           </div>

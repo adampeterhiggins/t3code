@@ -2272,10 +2272,11 @@ function MessageAuthorHeading({ children }: { children: string }) {
 
 function UserMessageRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
-  return ctx.workflowOpening?.messageId === row.message.id ? (
+  return ctx.workflowOpening?.messageId === row.message.id && ctx.threadRef !== null ? (
     <WorkflowOpeningBlock
       opening={ctx.workflowOpening}
       environmentId={ctx.activeThreadEnvironmentId}
+      ownerThreadId={ctx.threadRef.threadId}
       onOpenThread={(threadId) => ctx.onOpenThread(ThreadId.make(threadId))}
     />
   ) : (

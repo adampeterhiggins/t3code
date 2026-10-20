@@ -12,7 +12,7 @@
  * - The Agents panel's details toggle hides every row's second line (`agentListViewStore.ts`).
  * - Only a working row on screen (or an open preview) subscribes to its child thread.
  */
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   subagentFromRecord,
   subagentIdentityParts,
@@ -37,7 +37,8 @@ import type {
   ScopedThreadRef,
   TurnItemId,
 } from "@t3tools/contracts";
-import { CheckIcon, CornerDownRightIcon, XIcon } from "lucide-react";
+import { resolveSubagentMetadata } from "@t3tools/client-runtime/state/subagent-display";
+import { CheckIcon, CornerDownRightIcon, FolderIcon, GitBranchIcon, XIcon } from "lucide-react";
 import { useRef, type MouseEvent, type ReactNode } from "react";
 
 import { useAgentListViewStore } from "~/agentListViewStore";
@@ -49,17 +50,19 @@ import {
   shouldShowInstanceBadge,
   type ProviderInstanceEntry,
 } from "~/providerInstances";
-import { useThreadProjection, useThreadShells } from "~/state/entities";
+import { useProject, useThreadProjection, useThreadShell, useThreadShells } from "~/state/entities";
 import { useEnvironmentProviders } from "~/state/environments";
 import { formatSecondsTimestamp } from "~/timestampFormat";
 
 import { AgentElapsed, STATUS_VISUALS, StatusDot } from "../AgentStatus";
+import { MiddleTruncate } from "../ui/middle-truncate";
 import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
 import { AgentUsageFooter, ToolCallList } from "./AgentActivityParts";
 import { AgentHandle } from "./AgentHandle";
 import { showAgentInPanel } from "./agentContextMenu";
 import { CursorPreviewCard } from "./CursorPreviewCard";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
+import { SubagentModelLabel } from "./SubagentModelLabel";
 import { SubagentActivityLine } from "./SubagentActivityLine";
 
 export type ProviderEntries = ReadonlyMap<ProviderInstanceId, ProviderInstanceEntry>;
@@ -154,11 +157,23 @@ export function AgentPreviewContent(props: {
   const totalCalls = Math.max(calls.length, agent.usage?.toolUses ?? 0);
   const outcome = agent.error ?? (live ? null : agent.result);
   const prompt = record?.prompt.trim() || null;
-  const identity = [
-    STATUS_VISUALS[agent.status].label,
-    ...(props.provider ? [props.provider.displayName] : []),
-    ...subagentIdentityParts(agent, runStats.runs),
-  ];
+  const ownerShell = useThreadShell(
+    scopeThreadRef(props.parentRef.environmentId, entry.ownerThreadId),
+  )?.source;
+  const ownerProject = useProject(
+    ownerShell ? scopeProjectRef(props.parentRef.environmentId, ownerShell.projectId) : null,
+  );
+  const agentProject = useProject(
+    entry.shell ? scopeProjectRef(props.parentRef.environmentId, entry.shell.projectId) : null,
+  );
+  // Workspace lines appear only where the agent works somewhere its owner doesn't.
+  const { workspace } = resolveSubagentMetadata({
+    model: agent.model,
+    parentThread: ownerShell,
+    childThread: entry.shell,
+    parentProject: ownerProject,
+    childProject: agentProject,
+  });
   return (
     <div className="flex cursor-pointer flex-col" onClick={() => props.onOpen()}>
       <div className="flex flex-col gap-0.5 border-b border-border/60 px-3 pt-2.5 pb-2">
@@ -169,14 +184,41 @@ export function AgentPreviewContent(props: {
           </span>
         </div>
         <div className="flex min-w-0 items-center gap-2 ps-3.5">
-          <AgentHandle handle={entry.handle} copyable />
+          {entry.handle ? <AgentHandle handle={entry.handle} copyable /> : null}
           <span className="ms-auto shrink-0 font-mono text-2xs text-muted-foreground">
             <AgentElapsed agent={agent} />
           </span>
         </div>
-        <p className="truncate ps-3.5 font-mono text-2xs text-muted-foreground">
-          {identity.join(" · ")}
+        <p className="flex min-w-0 items-center gap-1 ps-3.5 font-mono text-2xs whitespace-nowrap text-muted-foreground">
+          <span className="shrink-0">
+            {[STATUS_VISUALS[agent.status].label, props.provider?.displayName]
+              .filter(Boolean)
+              .join(" · ")}{" "}
+            ·
+          </span>
+          <SubagentModelLabel
+            model={agent.model}
+            providerInstanceId={entry.providerInstanceId}
+            origin={record?.origin ?? entry.subagent?.origin ?? null}
+            modelSelection={record?.modelSelection}
+            childThread={entry.shell}
+            provider={props.provider?.snapshot}
+          />
+          {runStats.runs > 1 ? <span className="shrink-0">· run {runStats.runs}</span> : null}
         </p>
+        {workspace.map(({ label, value }) => {
+          const Icon = label === "Branch" ? GitBranchIcon : FolderIcon;
+          return (
+            <div
+              key={label}
+              className="flex min-w-0 items-center gap-1.5 ps-3.5 font-mono text-2xs text-muted-foreground"
+            >
+              <Icon aria-hidden className="size-3 shrink-0" />
+              <span className="sr-only">{label}</span>
+              <MiddleTruncate value={value} className="flex" showTitle={false} />
+            </div>
+          );
+        })}
       </div>
       <div className="flex flex-col gap-2.5 px-2.5 py-2">
         {live && agent.progress ? (

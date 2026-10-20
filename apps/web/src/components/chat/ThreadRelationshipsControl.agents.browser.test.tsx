@@ -86,16 +86,25 @@ vi.mock(import("../../state/orchestration"), async (original) => {
 });
 // Tooltip and hover card content renders inline so the suite can read every row's agent
 // details across many states without hovering each row.
+// Hover previews render in place, so a test reads them without hovering.
 vi.mock(import("../ui/tooltip"), async () => {
   const { cloneElement } = await import("react");
   return {
+    TooltipProvider: (({ children }: { children: ReactNode }) => children) as never,
     Tooltip: (({ children }: { children: ReactNode }) => children) as never,
-    TooltipTrigger: (({ render, children }: { render: ReactElement; children: ReactNode }) =>
-      cloneElement(render, {}, children)) as never,
+    TooltipTrigger: (({ render, children }: { render: ReactElement; children?: ReactNode }) =>
+      children === undefined ? render : cloneElement(render, {}, children)) as never,
     TooltipPopup: (({ children }: { children: ReactNode }) =>
       state.showTooltips ? <div role="tooltip">{children}</div> : null) as never,
   };
 });
+vi.mock(import("../ui/preview-card"), async (original) => ({
+  ...(await original()),
+  PreviewCard: (({ children }: { children: ReactNode }) => children) as never,
+  PreviewCardTrigger: (({ render }: { render: ReactElement }) => render) as never,
+  PreviewCardPopup: (({ children }: { children: ReactNode }) =>
+    state.showTooltips ? <div role="tooltip">{children}</div> : null) as never,
+}));
 
 import { ThreadRelationshipsPanel } from "./ThreadRelationshipsControl";
 

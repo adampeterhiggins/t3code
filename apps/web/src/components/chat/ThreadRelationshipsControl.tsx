@@ -1,9 +1,8 @@
 import { useAtomValue } from "@effect/atom-react";
 import { ThreadDetailsControl } from "./ThreadDetailsControl";
-import { ThreadHoverCardPopup } from "../ThreadHoverCard";
+import { ContextPreviewHover, type ContextPreviewPlacement } from "../contextPresentationRegistry";
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
 import { CollapsibleSectionHeader, SectionHeaderStatus } from "../ui/collapsible-section-header";
-import { SubagentTooltipContent } from "./SubagentTooltipContent";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
@@ -61,7 +60,13 @@ import {
   SquareIcon,
   UnplugIcon,
 } from "lucide-react";
-import { useMemo, useState, type MouseEvent, type ReactNode } from "react";
+import {
+  useState,
+  type ComponentProps,
+  type MouseEvent,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 
 import { useAgentListViewStore } from "../../agentListViewStore";
 import { useArchivedThreadSnapshots } from "../../lib/archivedThreadsState";
@@ -94,16 +99,11 @@ import {
   THREAD_DETAILS_PANEL_SPLIT_SEPARATOR_CLASS,
 } from "./threadDetailsPanelStyles";
 
+import { resolveThreadLineageWindow } from "./ThreadRelationshipsControl.logic";
+
+const RELATIONSHIP_PREVIEW_PLACEMENT: ContextPreviewPlacement = { side: "left" };
 const THREAD_LINEAGE_INITIAL_COUNT = 6;
 const THREAD_LINEAGE_PAGE_COUNT = 12;
-
-export function resolveThreadLineageWindow<Row>(
-  rows: ReadonlyArray<Row>,
-  visibleCount: number,
-): { readonly visibleRows: ReadonlyArray<Row>; readonly hiddenCount: number } {
-  const visibleRows = rows.slice(0, visibleCount);
-  return { visibleRows, hiddenCount: rows.length - visibleRows.length };
-}
 
 function ThreadLineageRowList(props: {
   readonly hiddenCount: number;
@@ -598,35 +598,6 @@ export function ThreadRelationshipsPanel(props: {
               const trailingVisibilityClass = (workflowGroup ? canStopWorkflow : canStop)
                 ? "group-hover:opacity-0 group-focus-within:opacity-0 pointer-coarse:opacity-0 [@media(hover:none)]:opacity-0"
                 : "";
-              const project = projects.find((project) => project.id === node?.thread?.projectId);
-              const relationshipHint = node?.missing
-                ? "This related thread is unavailable"
-                : `Open ${relationship.toLowerCase()} in this chat`;
-              const RelationshipPopup = agent ? ThreadHoverCardPopup : TooltipPopup;
-              const relationshipTooltip = agent ? (
-                <SubagentTooltipContent
-                  title={threadTitle}
-                  model={agent.model}
-                  providerInstanceId={agent.providerInstanceId}
-                  origin={agent.origin}
-                  modelSelection={agent.modelSelection}
-                  provider={provider}
-                  providers={providers}
-                  driver={providerDriver}
-                  elapsed={<AgentElapsed agent={agent} />}
-                  status={agent.status}
-                  result={agent.result}
-                  progress={agent.progress}
-                  usage={agent.usage}
-                  handle={agentHandles.get(threadId)}
-                  parentThread={currentThread ?? undefined}
-                  childThread={node?.thread ?? undefined}
-                  parentProject={currentProject}
-                  childProject={project}
-                />
-              ) : (
-                relationshipHint
-              );
               // Fork: working agents add their latest tool call, failed agents their error.
               const agentLive = agent !== undefined && isActiveSubagentStatus(agent.status);
               // One truncated line; the full error stays in the hover card and the agent tab.
@@ -697,35 +668,58 @@ export function ThreadRelationshipsPanel(props: {
                   ) : null}
                 </>
               );
-              const relationshipLink = (
-                <Tooltip>
-                  <TooltipTrigger
-                    delay={200}
-                    render={
-                      <ThreadDetailsControl
-                        size="sm"
-                        variant="ghost"
-                        part={workflowGroup ? "primary" : "row"}
-                        disabled={node?.missing === true}
-                        onClick={() => openThread(threadId)}
-                        onContextMenu={onAgentContextMenu}
-                        multiline={secondLine !== null}
-                      />
-                    }
-                  >
-                    {relationshipContent}
-                  </TooltipTrigger>
-                  <RelationshipPopup side="left">{relationshipTooltip}</RelationshipPopup>
-                </Tooltip>
+              const relationshipPreview = (trigger: ReactElement<ComponentProps<"button">>) =>
+                agent ? (
+                  <ContextPreviewHover
+                    kind="subagent"
+                    accessibleLabel={`Agent, ${threadTitle}`}
+                    placement={RELATIONSHIP_PREVIEW_PLACEMENT}
+                    preview={{
+                      record: {
+                        environmentId: props.environmentId,
+                        ownerThreadId: props.threadId,
+                        childThreadId: threadId,
+                        subagentId: agent.id,
+                        handle: agentHandles.get(threadId) ?? "",
+                        title: threadTitle,
+                        status: agent.status,
+                      },
+                    }}
+                    trigger={trigger}
+                  />
+                ) : (
+                  <ContextPreviewHover
+                    kind="thread"
+                    accessibleLabel={`${relationship}, ${threadTitle}`}
+                    placement={RELATIONSHIP_PREVIEW_PLACEMENT}
+                    preview={{
+                      record: { environmentId: props.environmentId, threadId, title: threadTitle },
+                    }}
+                    trigger={trigger}
+                  />
+                );
+              const relationshipLink = relationshipPreview(
+                <ThreadDetailsControl
+                  size="sm"
+                  variant="ghost"
+                  part={workflowGroup ? "primary" : "row"}
+                  disabled={node?.missing === true}
+                  onClick={() => openThread(threadId)}
+                  onContextMenu={onAgentContextMenu}
+                  multiline={secondLine !== null}
+                >
+                  {relationshipContent}
+                </ThreadDetailsControl>,
               );
               if (workflowGroup && agent) {
                 return (
                   <ThreadLineageWorkflowRow
                     key={threadId}
                     group={workflowGroup}
+                    environmentId={props.environmentId}
+                    ownerThreadId={props.threadId}
                     providerInstanceId={agent.providerInstanceId}
                     provider={provider}
-                    providers={providers}
                     driver={providerDriver}
                     onOpenThread={(memberThreadId) => openThread(memberThreadId as ThreadId)}
                     isThreadAvailable={(memberThreadId) =>
@@ -745,24 +739,18 @@ export function ThreadRelationshipsPanel(props: {
                 >
                   {isMergeTarget ? (
                     <div className={THREAD_DETAILS_PANEL_SPLIT_GROUP_CLASS}>
-                      <Tooltip>
-                        <TooltipTrigger
-                          delay={200}
-                          render={
-                            <ThreadDetailsControl
-                              size="sm"
-                              variant="ghost"
-                              part="primary"
-                              aria-label={`${threadTitle} ${agent?.usage ? `${formatSubagentTokenCount(agent.usage.totalTokens)} · ` : ""}${threadRelationshipStatusLabel(rowStatus)}`}
-                              disabled={node?.missing === true}
-                              onClick={() => openThread(threadId)}
-                            />
-                          }
+                      {relationshipPreview(
+                        <ThreadDetailsControl
+                          size="sm"
+                          variant="ghost"
+                          part="primary"
+                          aria-label={`${threadTitle} ${agent?.usage ? `${formatSubagentTokenCount(agent.usage.totalTokens)} · ` : ""}${threadRelationshipStatusLabel(rowStatus)}`}
+                          disabled={node?.missing === true}
+                          onClick={() => openThread(threadId)}
                         >
                           {relationshipContent}
-                        </TooltipTrigger>
-                        <RelationshipPopup side="left">{relationshipTooltip}</RelationshipPopup>
-                      </Tooltip>
+                        </ThreadDetailsControl>,
+                      )}
                       <span
                         aria-hidden="true"
                         className={THREAD_DETAILS_PANEL_SPLIT_SEPARATOR_CLASS}

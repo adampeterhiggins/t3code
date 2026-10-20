@@ -164,6 +164,10 @@ export function HoverPopover(props: {
    * focus back to wherever it was before the press, such as the composer.
    */
   stayOpenAfterPress?: boolean | undefined;
+  side?: "top" | "right" | "bottom" | "left" | undefined;
+  align?: "start" | "center" | "end" | undefined;
+  sideOffset?: number | undefined;
+  disabled?: boolean | undefined;
   children: ReactNode;
 }) {
   const pressedInsideRef = useRef(false);
@@ -171,6 +175,7 @@ export function HoverPopover(props: {
   const popupRef = useRef<HTMLDivElement>(null);
   return (
     <Popover
+      {...(props.disabled ? { open: false } : {})}
       onOpenChange={(open, details) => {
         if (open) return;
         if (pressedInsideRef.current && details.reason === "trigger-hover") {
@@ -203,7 +208,9 @@ export function HoverPopover(props: {
       />
       <PopoverPopup
         ref={popupRef}
-        side="top"
+        side={props.side ?? "top"}
+        {...(props.align ? { align: props.align } : {})}
+        {...(props.sideOffset !== undefined ? { sideOffset: props.sideOffset } : {})}
         width="lg"
         padding="compact"
         onPointerDownCapture={

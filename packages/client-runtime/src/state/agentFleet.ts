@@ -7,15 +7,15 @@
  * spawned are found through thread shells' lineage alone, so listing them never
  * subscribes to another thread's projection.
  */
-import type {
-  ModelSelection,
-  OrchestrationV2Run,
-  OrchestrationV2RunAttempt,
-  OrchestrationV2Subagent,
-  OrchestrationV2SubagentUsage,
-  OrchestrationV2ThreadShell,
-  ProviderInstanceId,
+import {
   ThreadId,
+  type ModelSelection,
+  type OrchestrationV2Run,
+  type OrchestrationV2RunAttempt,
+  type OrchestrationV2Subagent,
+  type OrchestrationV2SubagentUsage,
+  type OrchestrationV2ThreadShell,
+  type ProviderInstanceId,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
@@ -202,6 +202,31 @@ function subjectOf(
     spawnedAt,
     startedAt: agent.startedAt,
     completedAt: agent.completedAt,
+  };
+}
+
+/**
+ * An agent the fleet has no row for, such as a workflow member whose thread doesn't exist yet,
+ * shaped as a row from what its surface already knows. Handles name threads, so it has none.
+ */
+export function agentFleetEntryFromRuntime(input: {
+  readonly agent: RuntimeSubagent;
+  readonly ownerThreadId: ThreadId;
+  readonly providerInstanceId: ProviderInstanceId;
+}): AgentFleetEntry {
+  const { agent } = input;
+  const title = formatSubagentDisplayTitle(agent.title);
+  return {
+    key: agent.childThreadId ?? `subagent:${agent.id}`,
+    childThreadId: agent.childThreadId === null ? null : ThreadId.make(agent.childThreadId),
+    ownerThreadId: input.ownerThreadId,
+    subagent: null,
+    shell: null,
+    agent,
+    providerInstanceId: input.providerInstanceId,
+    title,
+    handle: "",
+    subject: subjectOf(agent, title, agent.firstSeenAt),
   };
 }
 

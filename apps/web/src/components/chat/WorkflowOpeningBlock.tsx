@@ -1,29 +1,25 @@
-import { useAtomValue } from "@effect/atom-react";
 import {
   isTerminalSubagentStatus,
   workflowOpeningHeadline,
   type RuntimeSubagent,
   type WorkflowOpening,
 } from "@t3tools/client-runtime/state/subagentRuntime";
-import type {
-  EnvironmentId,
-  ProviderDriverKind,
-  ProviderInstanceId,
-  ServerProvider,
+import {
+  ThreadId,
+  type EnvironmentId,
+  type ProviderDriverKind,
+  type ProviderInstanceId,
 } from "@t3tools/contracts";
 import { ChevronRightIcon, WorkflowIcon } from "lucide-react";
 import { useState } from "react";
 
 import { cn } from "../../lib/utils";
-import { providersIgnoringCheckedAtAtom } from "../../state/server";
 import ChatMarkdown from "../ChatMarkdown";
-import { ThreadHoverCardPopup } from "../ThreadHoverCard";
+import { ContextPreviewHover } from "../contextPresentationRegistry";
 import { Button } from "../ui/button";
-import { Tooltip, TooltipTrigger } from "../ui/tooltip";
 import { AgentElapsed } from "./AgentElapsed";
 import { findRevealRef } from "./markdownFindContext";
 import { shouldCollapseUserMessage } from "./MessagesTimeline.logic";
-import { SubagentTooltipContent } from "./SubagentTooltipContent";
 import { EnvironmentSubagentAvatar } from "./V2LifecycleRow";
 
 const FOLDED_SCRIPT_MASK = "linear-gradient(to bottom, black calc(100% - 1.75rem), transparent)";
@@ -39,10 +35,11 @@ function scriptMarkdown(script: string) {
 export function WorkflowOpeningBlock(props: {
   readonly opening: WorkflowOpening;
   readonly environmentId: EnvironmentId;
+  /** The thread that runs the workflow, which owns its member agents. */
+  readonly ownerThreadId: ThreadId;
   readonly onOpenThread: (threadId: string) => void;
 }) {
   const { opening } = props;
-  const providers = useAtomValue(providersIgnoringCheckedAtAtom(props.environmentId));
   const headline = workflowOpeningHeadline(opening);
   const phases = opening.group?.phases.filter((phase) => phase.members.length > 0) ?? [];
   const memberRow = (member: RuntimeSubagent) =>
@@ -51,8 +48,8 @@ export function WorkflowOpeningBlock(props: {
         key={member.id}
         member={member}
         environmentId={props.environmentId}
+        ownerThreadId={props.ownerThreadId}
         providerInstanceId={opening.providerInstanceId}
-        providers={providers}
         driver={opening.driver ?? undefined}
         onOpenThread={props.onOpenThread}
       />
@@ -107,8 +104,8 @@ export function WorkflowOpeningBlock(props: {
 function WorkflowMemberRow(props: {
   readonly member: RuntimeSubagent;
   readonly environmentId: EnvironmentId;
+  readonly ownerThreadId: ThreadId;
   readonly providerInstanceId: ProviderInstanceId;
-  readonly providers: ReadonlyArray<ServerProvider>;
   readonly driver: ProviderDriverKind | undefined;
   readonly onOpenThread: (threadId: string) => void;
 }) {
@@ -125,79 +122,78 @@ function WorkflowMemberRow(props: {
     .trim();
   const className =
     "group/subagent flex w-full min-w-0 items-center gap-2.5 rounded-md px-2 py-1.5 text-left";
+  const content = (
+    <>
+      <EnvironmentSubagentAvatar
+        environmentId={props.environmentId}
+        providerInstanceId={props.providerInstanceId}
+        driver={props.driver}
+        status={member.status}
+      />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-xs font-medium text-foreground">{member.title}</span>
+        {detail ? (
+          <span
+            className={cn(
+              "block truncate text-2xs leading-relaxed",
+              failed ? "text-destructive" : "text-muted-foreground",
+            )}
+          >
+            {detail}
+          </span>
+        ) : null}
+      </span>
+      {member.startedAt ? (
+        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+          <AgentElapsed agent={member} />
+        </span>
+      ) : null}
+      {threadId !== null ? (
+        <ChevronRightIcon
+          aria-hidden
+          className="size-3.5 shrink-0 text-muted-foreground/60 transition-colors group-hover/subagent:text-foreground"
+        />
+      ) : null}
+    </>
+  );
   return (
     <li>
-      <Tooltip>
-        <TooltipTrigger
-          delay={200}
-          render={
-            threadId === null ? (
-              <div aria-description={member.status} className={className} />
-            ) : (
-              <button
-                type="button"
-                aria-label={`Open ${member.title}`}
-                aria-description={member.status}
-                onClick={() => props.onOpenThread(threadId)}
-                className={cn(
-                  className,
-                  "cursor-pointer transition-colors hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70",
-                )}
-              />
-            )
-          }
-        >
-          <EnvironmentSubagentAvatar
-            environmentId={props.environmentId}
-            providerInstanceId={props.providerInstanceId}
-            driver={props.driver}
-            status={member.status}
-          />
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-xs font-medium text-foreground">
-              {member.title}
-            </span>
-            {detail ? (
-              <span
-                className={cn(
-                  "block truncate text-2xs leading-relaxed",
-                  failed ? "text-destructive" : "text-muted-foreground",
-                )}
-              >
-                {detail}
-              </span>
-            ) : null}
-          </span>
-          {member.startedAt ? (
-            <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-              <AgentElapsed agent={member} />
-            </span>
-          ) : null}
-          {threadId !== null ? (
-            <ChevronRightIcon
-              aria-hidden
-              className="size-3.5 shrink-0 text-muted-foreground/60 transition-colors group-hover/subagent:text-foreground"
-            />
-          ) : null}
-        </TooltipTrigger>
-        <ThreadHoverCardPopup>
-          <SubagentTooltipContent
-            title={member.title}
-            model={member.model}
-            providerInstanceId={props.providerInstanceId}
-            origin="provider_native"
-            provider={props.providers.find(
-              (provider) => provider.instanceId === props.providerInstanceId,
-            )}
-            providers={props.providers}
-            driver={props.driver}
-            elapsed={<AgentElapsed agent={member} />}
-            status={member.status}
-            result={member.result ?? member.error}
-            progress={member.progress}
-          />
-        </ThreadHoverCardPopup>
-      </Tooltip>
+      <ContextPreviewHover
+        kind="subagent"
+        accessibleLabel={`Agent, ${member.title}`}
+        preview={{
+          record: {
+            environmentId: props.environmentId,
+            ownerThreadId: props.ownerThreadId,
+            childThreadId: threadId === null ? null : ThreadId.make(threadId),
+            subagentId: member.id,
+            handle: "",
+            title: member.title,
+            status: member.status,
+          },
+          fallback: { agent: member, providerInstanceId: props.providerInstanceId },
+        }}
+        trigger={
+          threadId === null ? (
+            <div aria-description={member.status} className={className}>
+              {content}
+            </div>
+          ) : (
+            <button
+              type="button"
+              aria-label={`Open ${member.title}`}
+              aria-description={member.status}
+              onClick={() => props.onOpenThread(threadId)}
+              className={cn(
+                className,
+                "cursor-pointer transition-colors hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70",
+              )}
+            >
+              {content}
+            </button>
+          )
+        }
+      />
     </li>
   );
 }
