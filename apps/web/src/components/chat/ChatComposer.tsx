@@ -2313,6 +2313,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     supportsAttachmentUploads,
     maxFileAttachmentBytes,
   });
+  const attachmentUploadPendingReason = supportsAttachmentUploads
+    ? attachmentUploadBlockReason({
+        imageIds: [...composerImages, ...composerFiles].map((attachment) => attachment.id),
+        uploadsByImageId,
+        environmentId,
+      })
+    : null;
   const attachmentBlockReason =
     (questionAttachmentTarget &&
     !supportsQuestionAttachments &&
@@ -2325,11 +2332,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         ? needsReattachFileCount === 1
           ? "Attach the interrupted file again or remove it"
           : "Attach the interrupted files again or remove them"
-        : attachmentUploadBlockReason({
-            imageIds: [...composerImages, ...composerFiles].map((attachment) => attachment.id),
-            uploadsByImageId,
-            environmentId,
-          })
+        : attachmentUploadPendingReason
       : null);
   const setComposerDraftPrompt = useComposerDraftStore((store) => store.setPrompt);
   const addComposerDraftImages = useComposerDraftStore((store) => store.addImages);
@@ -4667,17 +4670,20 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     loadMessageDraftStable(draft);
   };
   const openMessageDraftStable = useStableCallback(openMessageDraft);
-  // A surface beside the composer asked to send what it just wrote here. Wait out a connect, then
-  // send as Enter would; anything that stops it leaves the draft in place to send by hand.
+  // A surface beside the composer asked to send what it just wrote here. Wait out a connect and
+  // attachments it just handed over that are still uploading, then send as Enter would; anything
+  // else that stops it leaves the draft in place to send by hand.
   const submitRequested = useComposerSubmitRequestStore((state) =>
     state.pending.has(composerDraftTargetKey),
   );
+  const attachmentsUploading = attachmentUploadPendingReason !== null;
   useEffect(() => {
-    if (!submitRequested || isConnecting) return;
+    if (!submitRequested || isConnecting || attachmentsUploading) return;
     const intent = useComposerSubmitRequestStore.getState().take(composerDraftTargetKey);
     if (intent === "save-draft") void saveMessageDraftStable();
     else if (intent === "send") submitComposerStable();
   }, [
+    attachmentsUploading,
     composerDraftTargetKey,
     isConnecting,
     saveMessageDraftStable,
