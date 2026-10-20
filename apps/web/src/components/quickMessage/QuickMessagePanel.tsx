@@ -1,3 +1,8 @@
+import { availableScratchWorkspaceRoot } from "@t3tools/client-runtime/operations/projects";
+import {
+  isAtomCommandInterrupted,
+  squashAtomCommandFailure,
+} from "@t3tools/client-runtime/state/runtime";
 import { isGitHubProject } from "@t3tools/client-runtime/state/github-issues";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import {
@@ -54,6 +59,8 @@ import {
   useEnvironments,
   usePrimaryEnvironmentId,
 } from "~/state/environments";
+import { projectEnvironment } from "~/state/projects";
+import { useAtomCommand } from "~/state/use-atom-command";
 import { EMPTY_SERVER_PROVIDERS, serverEnvironment } from "~/state/server";
 import { allReachableShellsLiveAtom } from "~/state/shell";
 
@@ -91,6 +98,7 @@ interface ProjectItem {
   readonly label: string;
 }
 
+const NO_PROJECT_VALUE = "no-project";
 const noop = () => {};
 const noEnvironmentSettingsAtom = Atom.make<ServerSettings | null>(null);
 
@@ -165,6 +173,9 @@ export function QuickMessagePanel() {
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
   const [prompt, setPrompt] = useState("");
   const [chosenProjectKey, setChosenProjectKey] = useState<string | null>(null);
+  const [scratchProject, setScratchProject] = useState<EnvironmentProject | null>(null);
+  const openScratch = useAtomCommand(projectEnvironment.openScratch, { reportFailure: false });
+  const projectSelectionRequest = useRef(0);
   const [chosenModel, setChosenModel] = useState<ModelSelection | null>(null);
   const [chosenRuntimeMode, setChosenRuntimeMode] = useState<RuntimeMode | null>(null);
   const [interactionMode, setInteractionMode] = useState<ProviderInteractionMode>("default");
@@ -215,7 +226,17 @@ export function QuickMessagePanel() {
     projectEntries.find((entry) => entry.group.projectKey === chosenProjectKey) ??
     projectEntries[0] ??
     null;
-  const project = activeEntry?.targetProject ?? null;
+  const project =
+    chosenProjectKey === NO_PROJECT_VALUE ? scratchProject : (activeEntry?.targetProject ?? null);
+  const scratchTargetEnvironmentId = project?.environmentId ?? primaryEnvironmentId;
+  const scratchEnvironment = environments.find(
+    (entry) => entry.environmentId === scratchTargetEnvironmentId,
+  );
+  const canStartWithoutProject =
+    availableScratchWorkspaceRoot(
+      scratchEnvironment?.connection.phase,
+      scratchEnvironment?.serverConfig,
+    ) !== null;
   const environmentId = project?.environmentId ?? null;
   const environment = environments.find((entry) => entry.environmentId === environmentId);
   const serverSettings = useAtomValue(
@@ -364,17 +385,26 @@ export function QuickMessagePanel() {
     if (hasContent) void submit("send");
   };
 
-  const projectItems: ReadonlyArray<ProjectItem> = projectEntries.map(({ group }) => ({
-    value: group.projectKey,
-    label: group.displayName,
-  }));
+  const projectItems: ReadonlyArray<ProjectItem> = [
+    ...(canStartWithoutProject || chosenProjectKey === NO_PROJECT_VALUE
+      ? [{ value: NO_PROJECT_VALUE, label: "No project" }]
+      : []),
+    ...projectEntries.map(({ group }) => ({
+      value: group.projectKey,
+      label: group.displayName,
+    })),
+  ];
   const pickerSearch = pickerQuery.trim();
   const filteredProjectItems =
     pickerSearch.length === 0
       ? projectItems
       : projectItems.filter((item) => pickerFilter.contains(item, pickerSearch, (it) => it.label));
   const selectedProjectItem =
-    projectItems.find((item) => item.value === activeEntry?.group.projectKey) ?? null;
+    projectItems.find(
+      (item) =>
+        item.value ===
+        (chosenProjectKey === NO_PROJECT_VALUE ? NO_PROJECT_VALUE : activeEntry?.group.projectKey),
+    ) ?? null;
 
   return (
     <QuickMessageFrame>
@@ -438,10 +468,31 @@ export function QuickMessagePanel() {
                           setPickerQuery("");
                         }}
                         value={selectedProjectItem}
-                        onValueChange={(item) => {
+                        onValueChange={async (item) => {
                           if (!item) return;
                           setPickerOpen(false);
-                          if (item.value === activeEntry?.group.projectKey) return;
+                          const request = ++projectSelectionRequest.current;
+                          if (item.value === selectedProjectItem?.value) return;
+                          setError(null);
+                          if (item.value === NO_PROJECT_VALUE) {
+                            if (scratchTargetEnvironmentId === null) return;
+                            const result = await openScratch({
+                              environmentId: scratchTargetEnvironmentId,
+                              input: {},
+                            });
+                            if (request !== projectSelectionRequest.current) return;
+                            if (isAtomCommandInterrupted(result)) return;
+                            if (result._tag !== "Success") {
+                              const cause = squashAtomCommandFailure(result);
+                              setError(
+                                cause instanceof Error
+                                  ? cause.message
+                                  : "Could not start without a project.",
+                              );
+                              return;
+                            }
+                            setScratchProject(result.value);
+                          }
                           setChosenProjectKey(item.value);
                           setChosenModel(null);
                           inputRef.current?.focus();
@@ -451,7 +502,9 @@ export function QuickMessagePanel() {
                           render={<ComposerControl className="-ms-2.5 min-w-0 max-w-72" />}
                           aria-label="Project"
                         >
-                          {activeEntry ? (
+                          {chosenProjectKey === NO_PROJECT_VALUE ? (
+                            <ComposerControlIcon icon={FolderIcon} />
+                          ) : activeEntry ? (
                             <ProjectFavicon
                               project={activeEntry.group}
                               className="size-4 shrink-0"
@@ -461,7 +514,7 @@ export function QuickMessagePanel() {
                             <ComposerControlIcon icon={FolderIcon} />
                           )}
                           <span data-composer-control-label className="min-w-0 truncate">
-                            {activeEntry?.group.displayName ?? "Choose a project"}
+                            {selectedProjectItem?.label ?? "Choose a project"}
                           </span>
                           <ComposerControlChevron />
                         </ComboboxTrigger>
@@ -480,7 +533,9 @@ export function QuickMessagePanel() {
                               );
                               return (
                                 <ComboboxItem key={item.value} hideIndicator value={item}>
-                                  {entry ? (
+                                  {item.value === NO_PROJECT_VALUE ? (
+                                    <FolderIcon className="size-4 shrink-0" />
+                                  ) : entry ? (
                                     <ProjectFavicon
                                       project={entry.group}
                                       className="size-4 shrink-0"
@@ -611,7 +666,9 @@ export function QuickMessagePanel() {
                       showPlanFollowUpPrompt={false}
                       promptHasText={hasText}
                       createWithoutMessage={
-                        projectSettings?.defaultThreadEnvMode === "worktree" ? "worktree" : "thread"
+                        !project?.isScratch && projectSettings?.defaultThreadEnvMode === "worktree"
+                          ? "worktree"
+                          : "thread"
                       }
                       isSendBusy={sending}
                       sendDisabledReason={sendDisabledReason}
