@@ -52,6 +52,12 @@ const ScheduledTaskFixedTimeSchedule = Schema.Struct({
       description: "Optional weekdays; omit to run every day.",
     }),
   ),
+  catchUpMissed: Schema.optional(
+    Schema.Boolean.annotate({
+      description:
+        "Run a missed occurrence once when the server is next awake (after sleep or while the app was closed), only if it is still the same local day. Omit or false to skip missed runs.",
+    }),
+  ),
 }).annotate({
   description: "Run at a fixed local wall-clock time on selected weekdays.",
 });

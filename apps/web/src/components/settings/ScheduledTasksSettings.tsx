@@ -130,6 +130,7 @@ const EMPTY_DRAFT: DraftState = {
   intervalMinutes: "15",
   timeOfDay: "09:00",
   weekdays: new Set([1, 2, 3, 4, 5]),
+  catchUpMissed: false,
   projectId: "",
   threadId: "",
   workspaceMode: "worktree",
@@ -1499,44 +1500,66 @@ function ScheduledTaskEditorForm({
                 ) : null}
               </div>
             ) : draft.scheduleMode === "fixed" ? (
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="flex items-center gap-2">
-                  <Label htmlFor="scheduled-task-time">Run at</Label>
-                  <Input
-                    type="time"
-                    id="scheduled-task-time"
-                    nativeInput
-                    className="w-32"
-                    value={draft.timeOfDay}
-                    onChange={(event) =>
-                      setDraft((current) => ({ ...current, timeOfDay: event.target.value }))
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="scheduled-task-time">Run at</Label>
+                    <Input
+                      type="time"
+                      id="scheduled-task-time"
+                      nativeInput
+                      className="w-32"
+                      value={draft.timeOfDay}
+                      onChange={(event) =>
+                        setDraft((current) => ({ ...current, timeOfDay: event.target.value }))
+                      }
+                    />
+                    {runAtZone === undefined ? null : (
+                      <span className="text-xs text-muted-foreground">{runAtZone}</span>
+                    )}
+                    <span className="text-xs text-muted-foreground">on</span>
+                  </div>
+                  <ToggleGroup
+                    multiple
+                    variant="outline"
+                    size="sm"
+                    aria-label="Days to run"
+                    value={[...draft.weekdays].map(String)}
+                    onValueChange={(values) => {
+                      if (values.length === 0) return;
+                      setDraft((current) => ({
+                        ...current,
+                        weekdays: new Set(values.map(Number)),
+                      }));
+                    }}
+                  >
+                    {WEEKDAY_ORDER.map((day) => (
+                      <Toggle key={day} value={String(day)} aria-label={WEEKDAY_LABELS[day]}>
+                        {WEEKDAY_SHORT[day]}
+                      </Toggle>
+                    ))}
+                  </ToggleGroup>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <div className="min-w-0 space-y-1">
+                    <Label htmlFor="scheduled-task-catch-up">Catch up missed run</Label>
+                    <p
+                      id="scheduled-task-catch-up-description"
+                      className="text-sm text-muted-foreground"
+                    >
+                      If the computer was asleep or the app was closed at the scheduled time, run
+                      once when it is back, as long as it is still the same day.
+                    </p>
+                  </div>
+                  <Switch
+                    id="scheduled-task-catch-up"
+                    aria-describedby="scheduled-task-catch-up-description"
+                    checked={draft.catchUpMissed}
+                    onCheckedChange={(catchUpMissed) =>
+                      setDraft((current) => ({ ...current, catchUpMissed }))
                     }
                   />
-                  {runAtZone === undefined ? null : (
-                    <span className="text-xs text-muted-foreground">{runAtZone}</span>
-                  )}
-                  <span className="text-xs text-muted-foreground">on</span>
                 </div>
-                <ToggleGroup
-                  multiple
-                  variant="outline"
-                  size="sm"
-                  aria-label="Days to run"
-                  value={[...draft.weekdays].map(String)}
-                  onValueChange={(values) => {
-                    if (values.length === 0) return;
-                    setDraft((current) => ({
-                      ...current,
-                      weekdays: new Set(values.map(Number)),
-                    }));
-                  }}
-                >
-                  {WEEKDAY_ORDER.map((day) => (
-                    <Toggle key={day} value={String(day)} aria-label={WEEKDAY_LABELS[day]}>
-                      {WEEKDAY_SHORT[day]}
-                    </Toggle>
-                  ))}
-                </ToggleGroup>
               </div>
             ) : (
               <div className="flex items-center gap-2">

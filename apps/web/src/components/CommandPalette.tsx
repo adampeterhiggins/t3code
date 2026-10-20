@@ -81,6 +81,7 @@ import {
   ChevronRightIcon,
   CornerLeftUpIcon,
   BotIcon,
+  CalendarClockIcon,
   DownloadIcon,
   FileSearchIcon,
   FolderGit2Icon,
@@ -166,7 +167,13 @@ import {
   useEnvironments,
   usePrimaryEnvironmentId,
 } from "../state/environments";
-import { useProjects, useServerConfigs, useThreadShells, waitForProject } from "../state/entities";
+import {
+  readThreadVisibleTurnItems,
+  useProjects,
+  useServerConfigs,
+  useThreadShells,
+  waitForProject,
+} from "../state/entities";
 import { isGitHubProject } from "@t3tools/client-runtime/state/github-issues";
 import { useThreadSearch } from "../state/queries";
 import { resolveThreadActionProjectRef, startNewThreadFromContext } from "../lib/chatThreadActions";
@@ -269,7 +276,13 @@ import {
   ThreadRowTrailingStatus,
   ThreadSearchPullRequestNumber,
 } from "./ThreadStatusIndicators";
-import { primaryServerKeybindingsAtom, primaryServerProvidersAtom } from "../state/server";
+import {
+  primaryServerKeybindingsAtom,
+  primaryServerProvidersAtom,
+  serverEnvironment,
+} from "../state/server";
+import { useRunScheduledTask } from "../hooks/useRunThreadScheduledTask";
+import { resolveThreadScheduledTasks } from "../threadScheduledTasks";
 import {
   applyProviderInstanceSettings,
   deriveProviderInstanceEntries,
@@ -645,6 +658,8 @@ export function CommandPalette({ children }: { children: ReactNode }) {
           openNewThreadIn();
         } else if (detail.open === "add-project") {
           openAddProject();
+        } else if (detail.open === "run-scheduled-task") {
+          dispatch({ _tag: "OpenRunScheduledTask" });
         } else if (detail.query !== undefined) {
           dispatch({
             _tag: "OpenSearch",
@@ -846,6 +861,24 @@ function OpenCommandPaletteDialog(props: {
     : activeDraftThread
       ? scopeThreadRef(activeDraftThread.environmentId, activeDraftThread.threadId)
       : null;
+  const scheduledTaskThreadRef = activeThread
+    ? scopeThreadRef(activeThread.environmentId, activeThread.id)
+    : null;
+  const canRunScheduledTasks = useAtomValue(
+    serverEnvironment.runScheduledTaskNow.permissionAtom(
+      scheduledTaskThreadRef?.environmentId ?? null,
+    ),
+  );
+  // Subscribed only while the palette is open; the dialog unmounts on close.
+  const scheduledTasksQuery = useEnvironmentQuery(
+    scheduledTaskThreadRef !== null && canRunScheduledTasks
+      ? serverEnvironment.scheduledTasksLive({
+          environmentId: scheduledTaskThreadRef.environmentId,
+          input: {},
+        })
+      : null,
+  );
+  const runScheduledTask = useRunScheduledTask();
   const activeLinearLink = useThreadLinearLink(activeLinkThreadRef);
   const unlinkLinearIssue = useUnlinkLinearIssue();
   const canLinkLinearIssue = useAtomValue(
@@ -1898,6 +1931,45 @@ function OpenCommandPaletteDialog(props: {
     });
   }
 
+  const runScheduledTaskItems: CommandPaletteActionItem[] =
+    scheduledTaskThreadRef === null || !scheduledTasksQuery.data
+      ? []
+      : resolveThreadScheduledTasks(
+          scheduledTasksQuery.data.tasks,
+          scheduledTaskThreadRef.threadId,
+          readThreadVisibleTurnItems(scheduledTaskThreadRef),
+        ).map((task) => ({
+          kind: "action",
+          value: `scheduled-task:${task.id}`,
+          title: task.title,
+          searchTerms: [task.title, "scheduled task", "automation", "run now"],
+          icon: <CalendarClockIcon className={ITEM_ICON_CLASS} />,
+          run: () => runScheduledTask(scheduledTaskThreadRef.environmentId, task),
+        }));
+  const singleScheduledTask = runScheduledTaskItems.length === 1 ? runScheduledTaskItems[0] : null;
+  if (singleScheduledTask) {
+    actionItems.push({
+      ...singleScheduledTask,
+      value: "action:run-scheduled-task",
+      title: "Run scheduled task now",
+      description: singleScheduledTask.title,
+      shortcutCommand: "thread.runScheduledTask",
+    });
+  } else if (runScheduledTaskItems.length > 1) {
+    actionItems.push({
+      kind: "submenu",
+      value: "action:run-scheduled-task",
+      searchTerms: ["scheduled task", "automation", "run now"],
+      title: "Run scheduled task now...",
+      icon: <CalendarClockIcon className={ITEM_ICON_CLASS} />,
+      addonIcon: <CalendarClockIcon className={ADDON_ICON_CLASS} />,
+      shortcutCommand: "thread.runScheduledTask",
+      groups: [
+        { value: "run-scheduled-task", label: "Scheduled tasks", items: runScheduledTaskItems },
+      ],
+    });
+  }
+
   if (activeThread) {
     const threadRef = scopeThreadRef(activeThread.environmentId, activeThread.id);
     actionItems.push({
@@ -2463,6 +2535,12 @@ function OpenCommandPaletteDialog(props: {
           groups: [{ value: "themes", label: "Change theme", items: [] }],
         });
         return;
+      case "run-scheduled-task":
+        pushPaletteView({
+          addonIcon: <CalendarClockIcon className={ADDON_ICON_CLASS} />,
+          groups: [{ value: "run-scheduled-task", label: "Scheduled tasks", items: [] }],
+        });
+        return;
       case "attention-inbox":
         clearOpenIntent();
         browseNavigation.invalidate();
@@ -2477,13 +2555,15 @@ function OpenCommandPaletteDialog(props: {
         return;
     }
   });
+  const runScheduledTaskItemCount = runScheduledTaskItems.length;
   useLayoutEffect(() => {
     if (openIntent === null) return;
     // A new-thread-in intent waits until the project items exist.
     if (openIntent.kind === "new-thread-in" && projectThreadItemCount === 0) return;
+    if (openIntent.kind === "run-scheduled-task" && runScheduledTaskItemCount === 0) return;
     // oxlint-disable-next-line react/set-state-in-effect -- applying the intent dispatches to the parent reducer and can navigate, neither of which may run during render.
     applyOpenIntent(openIntent);
-  }, [openIntent, projectThreadItemCount]);
+  }, [openIntent, projectThreadItemCount, runScheduledTaskItemCount]);
 
   actionItems.push({
     kind: "action",
@@ -2719,7 +2799,15 @@ function OpenCommandPaletteDialog(props: {
             ? changeAppearanceItem.groups
             : currentView?.groups[0]?.value === "new-thread-in"
               ? [{ value: "new-thread-in", label: "Projects", items: projectThreadItems }]
-              : (currentView?.groups ?? rootGroups);
+              : currentView?.groups[0]?.value === "run-scheduled-task"
+                ? [
+                    {
+                      value: "run-scheduled-task",
+                      label: "Scheduled tasks",
+                      items: runScheduledTaskItems,
+                    },
+                  ]
+                : (currentView?.groups ?? rootGroups);
 
   const filteredGroups = filterCommandPaletteGroups({
     activeGroups,

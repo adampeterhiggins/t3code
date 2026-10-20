@@ -58,6 +58,7 @@ import { feedbackBannerItem } from "./chat/ComposerFeedback";
 import { useUsageLimitsPanel } from "./chat/useUsageLimitsPanel";
 import { useWorktreeSetup } from "./chat/useWorktreeSetup";
 import { useChatShortcuts, type ChatShortcutHandler } from "./chat/useChatShortcuts";
+import { useRunThreadScheduledTask } from "../hooks/useRunThreadScheduledTask";
 import {
   eventPathContainsSelector,
   pasteTextToFocusComposer,
@@ -6392,6 +6393,7 @@ export default function ChatView(props: ChatViewProps) {
   const openTerminalIfClosed = () => {
     if (!terminalUiState.terminalOpen) setTerminalOpenStable(true);
   };
+  const runThreadScheduledTask = useRunThreadScheduledTask();
   const openComposerControl = (command: Parameters<ChatComposerHandle["openControl"]>[0]) =>
     (({ event }) => {
       if (!event.repeat) composerRef.current?.openControl(command);
@@ -6426,6 +6428,11 @@ export default function ChatView(props: ChatViewProps) {
         }
         if (settleAndAdvance(activeThreadRef)) return;
         void settleThread(activeThreadRef).then(toastPinFailure("Failed to settle thread"));
+      },
+      "thread.runScheduledTask": ({ event }) => {
+        if (!readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)) return false;
+        if (!isServerThread || !activeThreadRef) return false;
+        if (!event.repeat) void runThreadScheduledTask(activeThreadRef);
       },
       "thread.pin": () => {
         if (!readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)) return false;

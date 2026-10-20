@@ -167,6 +167,31 @@ describe("editing scheduled task branch settings", () => {
   });
 });
 
+describe("catching up missed fixed-time runs", () => {
+  it.each([true, false])("keeps catch-up %s through an edit", (catchUpMissed) => {
+    const draft = taskToDraft({
+      ...legacyTask,
+      schedule: {
+        type: "fixed_time",
+        timeOfDay: "16:57",
+        weekdays: [1, 2, 3, 4, 5],
+        catchUpMissed,
+      },
+    });
+    expect(draft.catchUpMissed).toBe(catchUpMissed);
+    expect(scheduleFromDraft(draft)).toEqual({
+      type: "fixed_time",
+      timeOfDay: "16:57",
+      weekdays: [1, 2, 3, 4, 5],
+      ...(catchUpMissed ? { catchUpMissed: true } : {}),
+    });
+  });
+
+  it("starts tasks without catch-up", () => {
+    expect(taskToDraft(legacyTask).catchUpMissed).toBe(false);
+  });
+});
+
 describe("webhook scheduled tasks", () => {
   const signature = { header: "x-signature", encoding: "base64", prefix: "" } as const;
   const webhookTask: ScheduledTask = {

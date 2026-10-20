@@ -170,6 +170,10 @@ terminals so native undo keeps working there.
 `navigation.back` (`mod+[` by default) and `navigation.forward` (`mod+]`) move
 through the pages you have visited, like a browser's back and forward buttons.
 
+`thread.runScheduledTask` (`mod+alt+r` by default) runs the
+[scheduled task](./project-settings.md#scheduled-tasks-on-mobile) that posts into
+the current thread. When several do, the command palette opens to choose one.
+
 `chat.new` may ask you to choose a project when there is more than one.
 `chat.newLocal` skips that chooser. Both use your
 [new-thread defaults](./thread-sidebar.md#start-a-thread). `chat.newWithoutProject`

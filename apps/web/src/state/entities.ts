@@ -262,6 +262,12 @@ export function waitForThreadShell(ref: ScopedThreadRef, timeoutMs = 5_000): Pro
   });
 }
 
+export function readThreadVisibleTurnItems(
+  ref: ScopedThreadRef,
+): ReadonlyArray<OrchestrationV2ProjectedTurnItem> {
+  return appAtomRegistry.get(environmentThreadDetails.visibleTurnItemsAtom(ref));
+}
+
 /** The projection of a thread a view already has open; null otherwise. */
 export function readThreadProjection(ref: ScopedThreadRef): EnvironmentThread["projection"] | null {
   return appAtomRegistry.get(environmentThreadDetails.threadAtom(ref))?.projection ?? null;

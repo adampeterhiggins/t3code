@@ -1985,6 +1985,24 @@ media and rendered pages, so a file outside the workspace that never triggers a 
 mutation can still be brought up to date. See [the user guide](user/keybindings.md#refresh-a-file)
 and [`FilePreviewPanel.tsx`](../apps/web/src/components/files/FilePreviewPanel.tsx).
 
+## Scheduled tasks catch up a missed run
+
+A fixed-time scheduled task can opt in to **Catch up missed run** (`catchUpMissed` on the
+`fixed_time` schedule, off when omitted). When the environment wakes or starts after missing the
+time, it runs the most recent missed occurrence once, only if that is still the same local day;
+otherwise the run is skipped as upstream does. Web, mobile and the `schedule_task` /
+`update_scheduled_task` MCP tools expose it. See [the user guide](user/project-settings.md#scheduled-tasks-on-mobile),
+[`Schedule.ts`](../apps/server/src/scheduledTasks/Schedule.ts) and
+[`ScheduledTaskService.ts`](../apps/server/src/scheduledTasks/ScheduledTaskService.ts).
+
+## Run a thread's scheduled task from the keyboard
+
+`mod+alt+r` (command `thread.runScheduledTask`) and the command palette's **Run scheduled task
+now** run the scheduled task bound to the current thread or whose runs posted into it. Several
+tasks open a palette list to choose from; webhook tasks are left out. See
+[the user guide](user/keybindings.md#commands-with-special-behavior) and
+[`useRunThreadScheduledTask.ts`](../apps/web/src/hooks/useRunThreadScheduledTask.ts).
+
 ## Type `>` in the file picker for commands
 
 Typing `>` at the start of the file picker's (`mod+p`) search switches to the command palette's

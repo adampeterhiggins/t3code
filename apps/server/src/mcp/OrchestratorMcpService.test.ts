@@ -9,6 +9,7 @@ import {
   type OrchestrationV2ThreadShell,
   type ScheduledTask,
   ScheduledTaskId,
+  type ScheduledTaskUpsertInput,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -2589,6 +2590,59 @@ describe("OrchestratorMcpService provider resolution", () => {
         assert.equal(yield* Ref.get(upserted), 1);
         assert.equal(updated.scheduledTaskId, bound.id);
         assert.equal(updated.webhookUrl, undefined);
+      }),
+    );
+
+    it.effect("keeps a fixed-time task's catch-up setting when only its time changes", () =>
+      Effect.gen(function* () {
+        const existing = task({
+          schedule: { type: "fixed_time", timeOfDay: "16:57", catchUpMissed: true },
+          runtimeMode: "approval-required",
+        });
+        const saved = yield* Ref.make<ReadonlyArray<ScheduledTaskUpsertInput["schedule"]>>([]);
+        const mcp = yield* OrchestratorMcpService.OrchestratorMcpService.pipe(
+          Effect.provide(
+            layerOrchestratorService.pipe(
+              Layer.provide(
+                Layer.mergeAll(
+                  NodeServices.layer,
+                  Layer.mock(ThreadManagementService.ThreadManagementService)({
+                    getThreadShell: () => Effect.succeed(null),
+                  }),
+                  ServerSettings.layerTest(),
+                  Layer.mock(ProviderRegistry.ProviderRegistry)({
+                    getProviders: Effect.succeed([]),
+                  }),
+                  Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({
+                    list: () => Effect.succeed([]),
+                  }),
+                  Layer.mock(ProjectService.ProjectService)({}),
+                  Layer.mock(SecretRequests.SecretRequests)({}),
+                  Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
+                  Layer.mock(ScheduledTaskService.ScheduledTaskService)({
+                    list: () => Effect.succeed({ tasks: [existing] }),
+                    upsert: (input) =>
+                      Ref.update(saved, (schedules) => [...schedules, input.schedule]).pipe(
+                        Effect.as({ task: existing }),
+                      ),
+                  }),
+                ),
+              ),
+            ),
+          ),
+        );
+        yield* mcp.updateScheduledTask(supervisedClient, {
+          scheduledTaskId: existing.id,
+          schedule: { type: "fixed_time", timeOfDay: "17:30" },
+        });
+        yield* mcp.updateScheduledTask(supervisedClient, {
+          scheduledTaskId: existing.id,
+          schedule: { type: "fixed_time", timeOfDay: "17:30", catchUpMissed: false },
+        });
+        assert.deepEqual(yield* Ref.get(saved), [
+          { type: "fixed_time", timeOfDay: "17:30", catchUpMissed: true },
+          { type: "fixed_time", timeOfDay: "17:30", catchUpMissed: false },
+        ]);
       }),
     );
   });

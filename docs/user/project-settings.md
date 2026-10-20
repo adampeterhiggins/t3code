@@ -73,8 +73,16 @@ a new thread on each run survive deletion of their previous threads.
 
 You can edit, pause, resume, run immediately, or delete a task from the list.
 Webhook tasks only run when their URL is called, so they can't be run
-immediately.
+immediately. In a thread, `mod+alt+r` or **Run scheduled task now** in the
+command palette runs the task that posts into that thread, and asks which one
+when there are several.
 Leaving an edited form asks before discarding unsaved changes.
+
+A fixed-time run is skipped if the environment is asleep or T3 Code is closed
+at that time. Turn on **Catch up missed run** to run it once when the
+environment is back, as long as it is still the same day. A task missed for
+several days runs once, not once per missed day, and a run missed late in the
+evening is not made up the next morning.
 
 ## Webhook automations
 
