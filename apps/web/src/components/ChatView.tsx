@@ -372,6 +372,7 @@ import {
   isSameSidebarThreadRef,
   useSidebarPendingFileDropStore,
 } from "../sidebarPendingFileDropStore";
+import { useComposerSubmitRequestStore } from "../composerSubmitRequestStore";
 import {
   beginBackgroundDraftSubmissionByRef,
   clearBackgroundDraftSubmissionByRef,
@@ -8844,36 +8845,41 @@ export default function ChatView(props: ChatViewProps) {
     void onForkModel(instanceId, model);
   });
   const pendingSidebarFileDrops = useSidebarPendingFileDropStore((state) => state.pending);
-  const consumePendingFileDrop = useSidebarPendingFileDropStore(
-    (state) => state.consumePendingFileDrop,
-  );
+  const takePendingFileDrop = useSidebarPendingFileDropStore((state) => state.takePendingFileDrop);
   useEffect(() => {
-    if (pendingSidebarFileDrops.length === 0) return;
+    if (pendingSidebarFileDrops.length === 0 || !activeThread) return;
+    // A new thread's draft is keyed by its draft id; a drop names the thread it will become.
+    const dropThreadRef =
+      typeof composerDraftTarget === "string"
+        ? scopeThreadRef(activeThread.environmentId, activeThread.id)
+        : composerDraftTarget;
     if (
-      typeof composerDraftTarget === "string" ||
-      !pendingSidebarFileDrops.some((drop) =>
-        isSameSidebarThreadRef(composerDraftTarget, drop.threadRef),
-      )
+      !pendingSidebarFileDrops.some((drop) => isSameSidebarThreadRef(dropThreadRef, drop.threadRef))
     ) {
       return;
     }
-    if (!activeThread) return;
-    if (!composerRef.current) {
-      const raf = window.requestAnimationFrame(() => {
-        if (!composerRef.current || typeof composerDraftTarget === "string") return;
-        const files = consumePendingFileDrop(composerDraftTarget);
-        if (files !== null) composerRef.current?.addDroppedFiles(files);
+    const deliver = () => {
+      const composer = composerRef.current;
+      if (!composer) return;
+      const drop = takePendingFileDrop(dropThreadRef);
+      if (drop === null) return;
+      void composer.addDroppedFiles(drop.files).then(() => {
+        if (drop.sendAfter) {
+          useComposerSubmitRequestStore.getState().request(composerDraftTarget, "send");
+        }
       });
+    };
+    if (!composerRef.current) {
+      const raf = window.requestAnimationFrame(deliver);
       return () => window.cancelAnimationFrame(raf);
     }
-    const files = consumePendingFileDrop(composerDraftTarget);
-    if (files !== null) composerRef.current.addDroppedFiles(files);
+    deliver();
   }, [
     activeThread,
     composerDraftTarget,
     composerRef,
-    consumePendingFileDrop,
     pendingSidebarFileDrops,
+    takePendingFileDrop,
   ]);
 
   const addDroppedFilesToComposer = useStableCallback(

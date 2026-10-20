@@ -327,7 +327,7 @@ import {
   composerSuggestionOptionId,
 } from "./ComposerCommandMenu";
 import { useCaptureThreadTabContext } from "./ThreadTabs";
-import { ComposerAttachMenu } from "./ComposerAttachMenu";
+import { ComposerAttachMenu, openComposerAttachPicker } from "./ComposerAttachMenu";
 import { useAttachCheckout, useComposerCheckoutItems } from "./useComposerCheckoutItems";
 import { useAttachGitHubIssue } from "./GitHubIssuePicker";
 import { useAttachLinearIssue } from "./LinearIssuePicker";
@@ -1303,11 +1303,12 @@ type RuntimeModeOption = {
   mode: RuntimeMode;
 } & (typeof runtimeModeConfig)[RuntimeMode];
 const runtimeModeOptions = runtimeModes.map((mode) => ({ mode, ...runtimeModeConfig[mode] }));
+export const composerRuntimeModeOptions = runtimeModeOptions;
 const supervisedRuntimeModeOption = {
   mode: "approval-required" as const,
   ...runtimeModeConfig["approval-required"],
 };
-const ComposerFooterModeControls = memo(function ComposerFooterModeControls(props: {
+export const ComposerFooterModeControls = memo(function ComposerFooterModeControls(props: {
   showInteractionModeToggle: boolean;
   interactionMode: ProviderInteractionMode;
   runtimeMode: RuntimeMode;
@@ -1529,7 +1530,8 @@ export interface ChatComposerHandle {
   focusAt: (cursor: number) => void;
   restoreAfterTimelineReachedEnd: () => void;
   collapseForTimelineScrollKey: (key: string) => void;
-  addDroppedFiles: (files: File[]) => void;
+  /** Resolves once the files are in the draft, compressed and ready to send. */
+  addDroppedFiles: (files: File[]) => Promise<boolean>;
   addDroppedFolders: (folders: File[]) => void;
   hasPendingAttachments: () => boolean;
   insertTextAtEnd: (
@@ -7073,11 +7075,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           setIsComposerScrollCollapsed(true);
         }
       },
-      addDroppedFiles: (files: File[]) => {
-        void addComposerAttachments(files).then((inserted) => {
+      addDroppedFiles: (files: File[]) =>
+        addComposerAttachments(files).then((inserted) => {
           if (!inserted) focusComposer();
-        });
-      },
+          return inserted;
+        }),
       addDroppedFolders: addComposerFoldersStable,
       hasPendingAttachments: () =>
         (pendingImageCompressionsRef.current.get(attachmentTargetKey) ?? 0) > 0 ||
@@ -8357,7 +8359,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                         }}
                       />
                       <ComposerAttachMenu
-                        threadRef={routeThreadRef}
+                        environmentId={routeThreadRef.environmentId}
+                        onPick={(picker) => openComposerAttachPicker(picker, routeThreadRef)}
                         pullRequestsAvailable={pullRequestProjectId !== null}
                         githubIssuesAvailable={githubIssueCwd !== null}
                         checkoutsAvailable={checkoutMenu.hasLocalCandidates}

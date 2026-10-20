@@ -86,6 +86,7 @@ import {
   useEnvironmentStageLabel,
 } from "../SidebarStageBackdrop";
 import { isElectron } from "../../env";
+import { QuickMessageSettingsRow } from "./QuickMessageSettings";
 import { buildHostedChannelSelectionUrl, type HostedAppChannel } from "../../hostedPairing";
 import { useCustomThemes } from "../../hooks/useCustomThemes";
 import {
@@ -3248,6 +3249,8 @@ export function GeneralSettingsPanel() {
             </Select>
           }
         />
+
+        {isElectron ? <QuickMessageSettingsRow /> : null}
 
         <SettingsRow
           {...searchableSetting("follow-up-behavior")}

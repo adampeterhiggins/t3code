@@ -311,6 +311,37 @@ contextBridge.exposeInMainWorld("desktopBridge", {
       };
     },
   },
+  quickMessage: {
+    getState: () => ipcRenderer.invoke(IpcChannels.GET_QUICK_MESSAGE_STATE_CHANNEL),
+    setShortcutSuppressed: (suppressed) =>
+      ipcRenderer.invoke(IpcChannels.SET_QUICK_MESSAGE_SHORTCUT_SUPPRESSED_CHANNEL, suppressed),
+    setReceiverReady: (ready) =>
+      ipcRenderer.invoke(IpcChannels.SET_QUICK_MESSAGE_RECEIVER_READY_CHANNEL, ready),
+    onSubmit: (listener) => {
+      const wrappedListener = (_event: Electron.IpcRendererEvent, submission: unknown) => {
+        if (typeof submission !== "object" || submission === null) return;
+        listener(submission as Parameters<typeof listener>[0]);
+      };
+      ipcRenderer.on(IpcChannels.QUICK_MESSAGE_SUBMIT_EVENT_CHANNEL, wrappedListener);
+      return () => {
+        ipcRenderer.removeListener(IpcChannels.QUICK_MESSAGE_SUBMIT_EVENT_CHANNEL, wrappedListener);
+      };
+    },
+    setPanelReady: () => ipcRenderer.invoke(IpcChannels.SET_QUICK_MESSAGE_PANEL_READY_CHANNEL),
+    submit: (submission) =>
+      ipcRenderer.invoke(IpcChannels.SUBMIT_QUICK_MESSAGE_CHANNEL, submission),
+    dismiss: () => ipcRenderer.invoke(IpcChannels.DISMISS_QUICK_MESSAGE_CHANNEL),
+    onShow: (listener) => {
+      const wrappedListener = (_event: Electron.IpcRendererEvent, event: unknown) => {
+        if (typeof event !== "object" || event === null) return;
+        listener(event as Parameters<typeof listener>[0]);
+      };
+      ipcRenderer.on(IpcChannels.QUICK_MESSAGE_SHOW_EVENT_CHANNEL, wrappedListener);
+      return () => {
+        ipcRenderer.removeListener(IpcChannels.QUICK_MESSAGE_SHOW_EVENT_CHANNEL, wrappedListener);
+      };
+    },
+  },
   appActivation: {
     setReady: (ready) =>
       ipcRenderer.invoke(IpcChannels.DESKTOP_APP_ACTIVATION_READY_CHANNEL, ready),

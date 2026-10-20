@@ -8,6 +8,7 @@ import { environmentShell } from "./state/shell";
 import { BrowserProfileReporter } from "./browser/BrowserProfileReporter";
 import { ElectronBrowserHost } from "./browser/ElectronBrowserHost";
 import { QuitHoldOverlay } from "./components/QuitHoldOverlay";
+import { isQuickMessageWindow } from "./components/quickMessage/quickMessageWindow";
 import { appAtomRegistry, AppAtomRegistryProvider } from "./rpc/atomRegistry";
 import type { AppRouter } from "./router";
 
@@ -19,20 +20,26 @@ import type { AppRouter } from "./router";
 export function AppRoot({ router }: { readonly router: AppRouter }) {
   useEffect(
     () =>
-      subscribeComposerDraftModelReconciliation({
-        registry: appAtomRegistry,
-        threadShellAtom: environmentThreadShells.threadShellAtom,
-        threadRefsAtom: environmentThreadShells.threadRefsAtom,
-        shellStateAtom: environmentShell.stateAtom,
-      }),
+      isQuickMessageWindow
+        ? undefined
+        : subscribeComposerDraftModelReconciliation({
+            registry: appAtomRegistry,
+            threadShellAtom: environmentThreadShells.threadShellAtom,
+            threadRefsAtom: environmentThreadShells.threadRefsAtom,
+            shellStateAtom: environmentShell.stateAtom,
+          }),
     [],
   );
   return (
     <AppAtomRegistryProvider>
       <RouterProvider router={router} />
-      <ElectronBrowserHost />
-      <BrowserProfileReporter />
-      <QuitHoldOverlay />
+      {isQuickMessageWindow ? null : (
+        <>
+          <ElectronBrowserHost />
+          <BrowserProfileReporter />
+          <QuitHoldOverlay />
+        </>
+      )}
     </AppAtomRegistryProvider>
   );
 }

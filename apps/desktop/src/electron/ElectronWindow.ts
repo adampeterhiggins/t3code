@@ -41,6 +41,15 @@ async function isWindowsBrowserWindowForeground(window: Electron.BrowserWindow):
   return foreground === hwnd;
 }
 
+// Floating helper windows, such as the quick message panel. They outlive the main window on
+// macOS, so a "first window" fallback that found one would never recreate the main window, and
+// a theme sync would paint over their transparent background.
+const auxiliaryWindows = new WeakSet<Electron.BrowserWindow>();
+
+export function markAuxiliaryWindow(window: Electron.BrowserWindow): void {
+  auxiliaryWindows.add(window);
+}
+
 const ElectronWindowCreateOptions = Schema.Struct({
   title: Schema.NullOr(Schema.String),
   width: Schema.NullOr(Schema.Number),
@@ -182,7 +191,9 @@ export const make = Effect.gen(function* () {
       return main;
     }
 
-    const first = Option.fromNullishOr((yield* listWindows)[0] ?? null);
+    const first = Option.fromNullishOr(
+      (yield* listWindows).find((window) => !auxiliaryWindows.has(window)) ?? null,
+    );
     if (Option.isNone(first) || (yield* isWindowDestroyed(first.value))) {
       return Option.none<Electron.BrowserWindow>();
     }
@@ -201,7 +212,11 @@ export const make = Effect.gen(function* () {
           cause,
         }),
     }).pipe(Effect.orDie);
-    if (Option.isSome(focused) && !(yield* isWindowDestroyed(focused.value))) {
+    if (
+      Option.isSome(focused) &&
+      !auxiliaryWindows.has(focused.value) &&
+      !(yield* isWindowDestroyed(focused.value))
+    ) {
       return focused;
     }
     return yield* currentMainOrFirst;
@@ -373,7 +388,7 @@ export const make = Effect.gen(function* () {
     ) {
       const windows = yield* listWindows;
       for (const window of windows) {
-        if (yield* isWindowDestroyed(window)) {
+        if (auxiliaryWindows.has(window) || (yield* isWindowDestroyed(window))) {
           continue;
         }
         yield* sync(window);

@@ -2,7 +2,7 @@ import * as Schema from "effect/Schema";
 import type { PreviewCaptureFailureEncoded } from "./previewCapture.ts";
 
 import { SnapShotSource } from "./chatAttachment.ts";
-import { EnvironmentId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { EnvironmentId, ProjectId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { BrowserProfileId } from "./browserProfile.ts";
 import type {
   BrowserImportResult,
@@ -12,7 +12,14 @@ import type {
 import { AuthAccessTokenResult, AuthSessionState, AuthWebSocketTicketResult } from "./auth.ts";
 import { AdvertisedEndpoint } from "./remoteAccess.ts";
 import { ExecutionEnvironmentDescriptor } from "./environment.ts";
-import { type ClientSettings, type QuitConfirmationMode, SnapShotShortcut } from "./settings.ts";
+import {
+  type ClientSettings,
+  ClientSettingsSchema,
+  type QuitConfirmationMode,
+  SnapShotShortcut,
+} from "./settings.ts";
+import { ModelSelection } from "./modelSelection.ts";
+import { ProviderInteractionMode, RuntimeMode } from "./providerPolicy.ts";
 import type { EditorId } from "./editor.ts";
 import type { PreviewForwardedShortcut } from "./keybindings.ts";
 
@@ -204,6 +211,58 @@ export const DesktopSnapShotShortcutAvailability = Schema.Struct({
   message: Schema.NullOr(Schema.String),
 });
 export type DesktopSnapShotShortcutAvailability = typeof DesktopSnapShotShortcutAvailability.Type;
+
+export const DesktopQuickMessageState = Schema.Struct({
+  shortcutRegistered: Schema.Boolean,
+  message: Schema.NullOr(Schema.String),
+});
+export type DesktopQuickMessageState = typeof DesktopQuickMessageState.Type;
+
+export const DesktopQuickMessageFile = Schema.Struct({
+  name: Schema.String,
+  mimeType: Schema.String,
+  bytes: Schema.Uint8Array,
+});
+export type DesktopQuickMessageFile = typeof DesktopQuickMessageFile.Type;
+
+/**
+ * What the composer does once the main window holds the draft: send it, or open one of the
+ * composer's pickers there. The pickers attach to a draft, which only the main window owns.
+ */
+export const DesktopQuickMessageAction = Schema.Literals([
+  "send",
+  "start-from",
+  "thread",
+  "linear-issue",
+  "notion-page",
+  "granola-note",
+  "slack-message",
+  "discord-message",
+  "github-issue",
+  "pull-request",
+  "checkout",
+  "repository",
+]);
+export type DesktopQuickMessageAction = typeof DesktopQuickMessageAction.Type;
+
+/** What the quick message panel hands the main window to start as a new thread. */
+export const DesktopQuickMessageSubmission = Schema.Struct({
+  environmentId: EnvironmentId,
+  projectId: ProjectId,
+  text: Schema.String,
+  files: Schema.Array(DesktopQuickMessageFile),
+  modelSelection: ModelSelection,
+  runtimeMode: RuntimeMode,
+  interactionMode: ProviderInteractionMode,
+  action: DesktopQuickMessageAction,
+});
+export type DesktopQuickMessageSubmission = typeof DesktopQuickMessageSubmission.Type;
+
+/** Sent each time the panel opens; the panel never persists settings, so it adopts these. */
+export const DesktopQuickMessageShowEvent = Schema.Struct({
+  clientSettings: ClientSettingsSchema,
+});
+export type DesktopQuickMessageShowEvent = typeof DesktopQuickMessageShowEvent.Type;
 
 export const DesktopSnapShotId = TrimmedNonEmptyString.check(
   Schema.isMaxLength(64),
@@ -1164,6 +1223,18 @@ export interface DesktopBridge {
   webLinks?: {
     setReady: (ready: boolean) => Promise<void>;
     onOpen: (listener: (url: string) => void) => () => void;
+  };
+  quickMessage?: {
+    getState: () => Promise<DesktopQuickMessageState>;
+    setShortcutSuppressed: (suppressed: boolean) => Promise<void>;
+    /** The main window takes submissions once it can open a draft. */
+    setReceiverReady: (ready: boolean) => Promise<void>;
+    onSubmit: (listener: (submission: DesktopQuickMessageSubmission) => void) => () => void;
+    /** Panel window only. */
+    setPanelReady: () => Promise<void>;
+    submit: (submission: DesktopQuickMessageSubmission) => Promise<void>;
+    dismiss: () => Promise<void>;
+    onShow: (listener: (event: DesktopQuickMessageShowEvent) => void) => () => void;
   };
   appActivation?: {
     setReady: (ready: boolean) => Promise<void>;
