@@ -53,7 +53,7 @@ describe("webToolView", () => {
 
   it("keeps a search's hits and joins its queries", () => {
     const results = [{ title: "Dependabot OIDC", url: "https://github.blog/oidc" }];
-    const view = webToolView(item({ patterns: ["dependabot oidc", "gcp"], results }));
+    const view = webToolView(item({ patterns: ["dependabot oidc", "gcp", "gcp"], results }));
     expect(view).toMatchObject({ action: "search", query: "dependabot oidc, gcp", results });
     expect(webToolLabel(view)).toBe("Searched “dependabot oidc, gcp”");
   });

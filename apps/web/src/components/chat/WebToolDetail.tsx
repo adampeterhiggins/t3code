@@ -1,6 +1,7 @@
 import type { OrchestrationV2TurnItem } from "@t3tools/contracts";
 import {
   webToolView,
+  webUrlBreadcrumb,
   webUrlParts,
   type WebToolView,
 } from "@t3tools/client-runtime/work-log/web-tool";
@@ -155,6 +156,8 @@ function ResultList({ view }: { readonly view: WebToolView }) {
       <ol className="divide-y divide-border/60">
         {shown.map((result, index) => {
           const host = result.url ? webUrlParts(result.url)?.host : undefined;
+          // Several hits often share a host, so show where on it each one points.
+          const location = result.url ? webUrlBreadcrumb(result.url) : undefined;
           return (
             // Hits are a ranked list that never reorders, and the same url can repeat.
             // oxlint-disable-next-line react/no-array-index-key
@@ -169,8 +172,8 @@ function ResultList({ view }: { readonly view: WebToolView }) {
                 >
                   {result.title?.trim() || host || result.url || "Search result"}
                 </ExternalLink>
-                {host !== undefined ? (
-                  <div className="truncate text-muted-foreground">{host}</div>
+                {location !== undefined ? (
+                  <div className="truncate text-muted-foreground">{location}</div>
                 ) : null}
                 {result.snippet?.trim() ? (
                   <p className="line-clamp-2 select-text text-muted-foreground">

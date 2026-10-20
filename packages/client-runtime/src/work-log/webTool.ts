@@ -45,7 +45,10 @@ function legacyFetchOutput(
 
 /** One reading of a web tool call for every client, whichever provider made it. */
 export function webToolView(item: WebSearchItem): WebToolView {
-  const patterns = (item.patterns ?? []).flatMap((pattern) => nonEmpty(pattern) ?? []);
+  // Codex reports a search's query in both `query` and `queries`.
+  const patterns = [
+    ...new Set((item.patterns ?? []).flatMap((pattern) => nonEmpty(pattern) ?? [])),
+  ];
   const results = item.results ?? [];
   const onlyResult = results.length === 1 ? results[0] : undefined;
   const legacy = item.answer === undefined ? legacyFetchOutput(onlyResult?.snippet) : undefined;

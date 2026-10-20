@@ -131,7 +131,10 @@ export type ToolPathPart =
 
 /** Shell commands stay verbatim; a command line is code, not a list of file targets. */
 export function toolEntryShowsPathBreadcrumbs(entry: WorkLogPresentationEntry) {
-  return entry.tone === "tool" && toolGroupAction(entry) !== "command";
+  // Commands and web calls name no workspace path, so their labels truncate instead.
+  return (
+    entry.tone === "tool" && entry.itemType !== "web_search" && toolGroupAction(entry) !== "command"
+  );
 }
 
 /** Canonical inputs preserve spaces and Windows spelling when an adapter formats its label. */

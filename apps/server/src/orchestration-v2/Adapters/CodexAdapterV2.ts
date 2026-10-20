@@ -3785,7 +3785,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               nativeItemId: input.item.id,
             });
             const { ordinal, startedAt } = yield* resolveItemPosition(input.context, input.item.id);
-            const patterns = webSearchPatterns(input.item);
+            const patterns = [...new Set(webSearchPatterns(input.item))];
             const results = webSearchResults(input.item);
             const status = input.completed ? "completed" : "running";
             const node: OrchestrationV2ExecutionNode = {
