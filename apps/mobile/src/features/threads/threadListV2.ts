@@ -262,8 +262,14 @@ export function getThreadListV2OrderedSection(input: {
 /** Filter-menu pages. Threads covers the pinned, active and working groups;
     each custom thread group is its own `group:<name>` page. Mirrors the web
     sidebar picker. */
-export type ThreadListPage = "threads" | "snoozed" | "hidden" | "settled" | `group:${string}`;
-export const DEFAULT_THREAD_LIST_PAGES: ReadonlyArray<ThreadListPage> = ["threads"];
+export type ThreadListPage =
+  | "threads"
+  | "automations"
+  | "snoozed"
+  | "hidden"
+  | "settled"
+  | `group:${string}`;
+export const DEFAULT_THREAD_LIST_PAGES: ReadonlyArray<ThreadListPage> = ["threads", "automations"];
 
 export function threadListGroupPage(groupName: string): ThreadListPage {
   return `group:${groupName}`;
@@ -271,6 +277,7 @@ export function threadListGroupPage(groupName: string): ThreadListPage {
 
 const BUILTIN_PAGE_LABEL: Record<string, string> = {
   threads: "Threads",
+  automations: "Automations",
   snoozed: "Snoozed",
   hidden: "Hidden",
   settled: "Settled",
@@ -288,7 +295,7 @@ export function threadListPageLabel(
   return icon?.kind === "emoji" ? `${icon.emoji} ${name}` : name;
 }
 
-/** Picker and render order: Threads, groups (alphabetical), Snoozed, Hidden,
+/** Picker and render order: Threads, groups (alphabetical), Automations, Snoozed, Hidden,
     Settled. Hidden is offered only once an environment supports hiding. */
 export function availableThreadListPages(input: {
   readonly hidingSupported: boolean;
@@ -297,6 +304,7 @@ export function availableThreadListPages(input: {
   return [
     "threads",
     ...input.groupNames.map(threadListGroupPage),
+    "automations",
     "snoozed",
     ...(input.hidingSupported ? (["hidden"] as const) : []),
     "settled",
@@ -330,7 +338,10 @@ export function toggleThreadListPage(
 }
 
 export function isDefaultThreadListPages(pages: ReadonlyArray<ThreadListPage>): boolean {
-  return pages.length === 1 && pages[0] === "threads";
+  return (
+    pages.length === DEFAULT_THREAD_LIST_PAGES.length &&
+    DEFAULT_THREAD_LIST_PAGES.every((page, index) => pages[index] === page)
+  );
 }
 
 /** Every group, alphabetical: the registered ones (even empty) plus any name
@@ -426,7 +437,8 @@ export function threadListV2Pages(
 }
 
 /** The page a thread is sorted into by the same rules as buildThreadListV2Items: hidden, then
-    its group unless that is shown in Threads, then snoozed, then settled, else live threads. */
+    its group unless that is shown in Threads, then Automations for a scheduled task's thread,
+    then snoozed, then settled, else live threads. */
 function threadListV2Page(
   thread: EnvironmentThreadShell,
   input: ThreadListV2Classification,
@@ -435,6 +447,7 @@ function threadListV2Page(
   if (isThreadListV2Grouped(thread, input.groupEnvironmentIds, input.groupsShownInThreads)) {
     return threadListGroupPage(thread.groupName!);
   }
+  if (thread.scheduledTaskId != null) return "automations";
   if (
     (input.snoozeEnvironmentIds?.has(thread.environmentId) ?? true) &&
     effectiveSnoozed(thread, { now: input.now })
@@ -476,6 +489,8 @@ export interface ThreadListV2Layout {
   readonly snoozedShelfHeaderIndex: number | null;
   readonly settledCount: number;
   readonly settledShelfHeaderIndex: number | null;
+  /** Index in `items` where the Automations section title belongs, when it has rows. */
+  readonly automationsSectionHeaderIndex: number | null;
   /** Hidden threads shown (only when the Hidden page is picked). */
   readonly hiddenCount: number;
   /** Index in `items` where the Hidden section title belongs. */
@@ -558,11 +573,17 @@ export interface ThreadListV2HiddenSectionListItem {
   readonly key: "v2-hidden-section";
 }
 
+export interface ThreadListV2AutomationsSectionListItem {
+  readonly type: "v2-automations-section";
+  readonly key: "v2-automations-section";
+}
+
 export type ThreadListV2ListItem =
   | ThreadListV2ThreadListItem
   | ThreadListV2PendingListItem
   | ThreadListV2WorkingShelfListItem
   | ThreadListV2GroupSectionListItem
+  | ThreadListV2AutomationsSectionListItem
   | ThreadListV2SnoozedShelfListItem
   | ThreadListV2HiddenSectionListItem
   | ThreadListV2SettledShelfListItem;
@@ -576,6 +597,7 @@ export function isThreadListV2ListItem(value: {
     value.type === "v2-working-shelf" ||
     value.type === "v2-snoozed-shelf" ||
     value.type === "v2-group-section" ||
+    value.type === "v2-automations-section" ||
     value.type === "v2-hidden-section" ||
     value.type === "v2-settled-shelf"
   );
@@ -638,6 +660,8 @@ export function threadListV2ListItemsAreEqual(
         previous.name === item.name &&
         previous.empty === item.empty
       );
+    case "v2-automations-section":
+      return previous.type === "v2-automations-section";
     case "v2-hidden-section":
       return previous.type === "v2-hidden-section";
     case "v2-settled-shelf":
@@ -670,7 +694,7 @@ function resolveThreadListV2ItemTimeLabel(
 
 /**
  * Builds the shared mobile order: active → pending → working shelf (beta) →
- * groups → snoozed → hidden → settled. Pending tasks are waiting rather than
+ * groups → automations → snoozed → hidden → settled. Pending tasks are waiting rather than
  * asking, and busy or parked work remains reachable without competing with
  * either the inbox or settled history.
  */
@@ -687,6 +711,7 @@ export function buildThreadListV2ListItems(input: {
   readonly settledShelfExpanded?: boolean;
   readonly settledShelfHeaderIndex?: number | null;
   readonly hiddenSectionHeaderIndex?: number | null;
+  readonly automationsSectionHeaderIndex?: number | null;
   readonly groupSections?: ReadonlyArray<ThreadListV2GroupSection>;
   readonly snoozeLabelNow?: string;
   readonly snoozeEnvironmentIds?: ReadonlySet<EnvironmentId>;
@@ -746,7 +771,9 @@ export function buildThreadListV2ListItems(input: {
   const hiddenSectionHeaderIndex = input.hiddenSectionHeaderIndex ?? null;
   const hiddenEnd = settledShelfHeaderIndex ?? threadItems.length;
   const snoozedEnd = hiddenSectionHeaderIndex ?? hiddenEnd;
-  const groupsEnd = snoozedShelfHeaderIndex ?? snoozedEnd;
+  const automationsEnd = snoozedShelfHeaderIndex ?? snoozedEnd;
+  const automationsSectionHeaderIndex = input.automationsSectionHeaderIndex ?? null;
+  const groupsEnd = automationsSectionHeaderIndex ?? automationsEnd;
   const groupSections = input.groupSections ?? [];
   const workingEnd = groupSections[0]?.headerIndex ?? groupsEnd;
   const activeEnd = workingShelfHeaderIndex ?? workingEnd;
@@ -773,6 +800,10 @@ export function buildThreadListV2ListItems(input: {
       ...threadItems.slice(section.headerIndex, groupSections[index + 1]?.headerIndex ?? groupsEnd),
     );
   });
+  if (automationsSectionHeaderIndex !== null) {
+    result.push({ type: "v2-automations-section", key: "v2-automations-section" });
+    result.push(...threadItems.slice(automationsSectionHeaderIndex, automationsEnd));
+  }
   if (snoozedShelfHeaderIndex !== null && snoozedCount > 0) {
     result.push({
       type: "v2-snoozed-shelf",
@@ -890,6 +921,7 @@ export function buildThreadListV2Items(input: {
   const settled: EnvironmentThreadShell[] = [];
   const snoozed: EnvironmentThreadShell[] = [];
   const hidden: EnvironmentThreadShell[] = [];
+  const automations: EnvironmentThreadShell[] = [];
   const grouped = new Map<string, EnvironmentThreadShell[]>();
   const shownGrouped: Array<{
     readonly groupName: string;
@@ -925,6 +957,11 @@ export function buildThreadListV2Items(input: {
         thread,
       });
     }
+    // A scheduled task's thread files under Automations, settled or not, so its runs stay together.
+    if (thread.scheduledTaskId != null) {
+      automations.push(thread);
+      continue;
+    }
     if (supportsSnooze && effectiveSnoozed(thread, { now })) {
       snoozed.push(thread);
       if (
@@ -958,6 +995,7 @@ export function buildThreadListV2Items(input: {
     active.length = 0;
     working.length = 0;
   }
+  if (!showPage("automations")) automations.length = 0;
   if (!showPage("snoozed")) snoozed.length = 0;
   if (!showPage("hidden")) hidden.length = 0;
   if (!showPage("settled")) settled.length = 0;
@@ -1071,6 +1109,24 @@ export function buildThreadListV2Items(input: {
       });
     }
   }
+  const orderedAutomations = sortThreadsForListV2(automations);
+  const automationsSectionHeaderIndex = orderedAutomations.length > 0 ? items.length : null;
+  for (const thread of orderedAutomations) {
+    items.push({
+      thread,
+      variant:
+        (input.settlementEnvironmentIds?.has(thread.environmentId) ?? true) &&
+        thread.settledOverride === "settled"
+          ? "slim"
+          : "card",
+      snoozed: false,
+      pinned: false,
+      hidden: false,
+      // Like a group's rows, never part of an arrangeable section.
+      grouped: true,
+      isLast: false,
+    });
+  }
   const snoozedShelfHeaderIndex = orderedSnoozed.length > 0 ? items.length : null;
   for (const thread of visibleSnoozed) {
     items.push({
@@ -1124,6 +1180,7 @@ export function buildThreadListV2Items(input: {
     snoozedShelfHeaderIndex,
     settledCount: orderedSettled.length,
     settledShelfHeaderIndex,
+    automationsSectionHeaderIndex,
     hiddenCount: orderedHidden.length,
     hiddenSectionHeaderIndex,
     groupSections,

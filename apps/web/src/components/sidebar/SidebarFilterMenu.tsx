@@ -2,8 +2,9 @@
  * The sidebar header's one filter control. Each narrowing is a row showing its current value
  * and opening a multi-select submenu, the same shape as the pull request filters:
  *
- * - Show: which of live threads, the user's own groups, snoozed, hidden and settled the list
- *   holds. Live threads alone is the default; other picks join as titled sections below them.
+ * - Show: which of live threads, the user's own groups, Automations, snoozed, hidden and settled
+ *   the list holds. Live threads and Automations are the default; other picks join as titled
+ *   sections below them.
  * - Organisations: which repository owners the list is scoped to, by each checkout's remote.
  * - Projects: which projects the list is scoped to. None picked means every project.
  *
@@ -16,6 +17,7 @@
 import {
   AlarmClockIcon,
   BuildingIcon,
+  CalendarClockIcon,
   CircleCheckIcon,
   EyeOffIcon,
   FolderIcon,
@@ -59,6 +61,7 @@ export const SidebarPagesSchema = Schema.Array(Schema.String);
 
 const BUILT_IN_PAGES = {
   threads: { label: "Threads", Icon: ListIcon },
+  automations: { label: "Automations", Icon: CalendarClockIcon },
   snoozed: { label: "Snoozed", Icon: AlarmClockIcon },
   hidden: { label: "Hidden", Icon: EyeOffIcon },
   settled: { label: "Settled", Icon: CircleCheckIcon },
