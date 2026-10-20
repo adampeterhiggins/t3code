@@ -460,6 +460,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
     case "thread.auto-settle.set":
     case "thread.hidden.set":
     case "thread.group.set":
+    case "thread.scheduled-task.set":
     case "thread.pin":
     case "thread.unpin":
     case "thread.pin.reorder":
@@ -2506,6 +2507,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       snoozedUntil: null,
       snoozedAt: null,
       groupName: command.groupName ?? null,
+      ...(command.scheduledTaskId === undefined
+        ? {}
+        : { scheduledTaskId: command.scheduledTaskId }),
       lastVisitedAt: null,
       deletedAt: null,
     };
@@ -2661,6 +2665,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           | "thread.auto-settle.set"
           | "thread.hidden.set"
           | "thread.group.set"
+          | "thread.scheduled-task.set"
           | "thread.pin"
           | "thread.unpin"
           | "thread.pin.reorder"
@@ -3264,6 +3269,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             groupName: command.groupName,
             updatedAt: command.groupName === (thread.groupName ?? null) ? thread.updatedAt : now,
           };
+        // Filing, not activity: the thread keeps its place in recency order.
+        case "thread.scheduled-task.set":
+          return {
+            ...thread,
+            scheduledTaskId: command.bound
+              ? command.scheduledTaskId
+              : thread.scheduledTaskId === command.scheduledTaskId
+                ? null
+                : (thread.scheduledTaskId ?? null),
+          };
         case "thread.pin": {
           const alreadyPinned = thread.pinnedAt != null;
           const promotes = thread.settledOverride === "settled" || thread.snoozedUntil != null;
@@ -3653,6 +3668,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       }
     })();
     if (
+      command.type === "thread.scheduled-task.set" &&
+      (updatedThread.scheduledTaskId ?? null) === (thread.scheduledTaskId ?? null)
+    ) {
+      return;
+    }
+    if (
       command.type === "thread.pull-request-link.sync" ||
       command.type === "thread.pull-request-watch.sync"
     ) {
@@ -3693,6 +3714,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           return "thread.hidden-set" as const;
         case "thread.group.set":
           return "thread.group-set" as const;
+        // Older clients already decode this event type, and it carries the whole thread.
+        case "thread.scheduled-task.set":
+          return "thread.metadata-updated" as const;
         case "thread.pin":
           return "thread.pinned" as const;
         case "thread.unpin":
@@ -11804,6 +11828,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       case "thread.auto-settle.set":
       case "thread.hidden.set":
       case "thread.group.set":
+      case "thread.scheduled-task.set":
       case "thread.pin":
       case "thread.unpin":
       case "thread.pin.reorder":
@@ -12126,7 +12151,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         planned.events.length > 0 ||
         command.type === "thread.background-work.settle" ||
         command.type === "thread.stop" ||
-        command.type === "subagent.stop"
+        command.type === "subagent.stop" ||
+        // Each bound run re-files its thread; an unchanged filing commits nothing.
+        command.type === "thread.scheduled-task.set"
           ? Effect.succeed(planned)
           : Effect.fail(
               new OrchestratorDispatchError({

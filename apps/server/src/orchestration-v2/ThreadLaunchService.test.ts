@@ -1417,6 +1417,7 @@ it.effect("runs a Scratch scheduled task saved with a worktree in its own folder
     const [thread] = yield* threads.listProjectThreads({ projectId, includeSubagents: false });
     assert.isDefined(thread);
     const projection = yield* preparationSettled(thread!.id);
+    assert.equal(projection.thread.scheduledTaskId, task.id);
     assert.equal(projection.runs[0]?.status, "starting");
     assert.equal(projection.thread.worktreePath, "/scratch/folder-1");
     assert.deepEqual(projection.runs[0]?.workspacePreparation, {
@@ -1425,6 +1426,29 @@ it.effect("runs a Scratch scheduled task saved with a worktree in its own folder
     });
     assert.equal(harness.runSetup.mock.calls[0]?.[0]?.worktreePath, "/scratch/folder-1");
     assert.equal(harness.createWorktree.mock.calls.length, 0);
+  }).pipe(Effect.provide(harness.layer));
+});
+
+it.effect("files a thread bound to a scheduled task until the task is deleted", () => {
+  const harness = scratchHarness();
+  return Effect.gen(function* () {
+    const tasks = yield* ScheduledTasks.ScheduledTaskService;
+    const threads = yield* ThreadManagement.ThreadManagementService;
+    const launches = yield* ThreadLaunch.ThreadLaunchService;
+    const { threadId } = yield* launches.launch(
+      launchInput({ command: "command:launch:bound", thread: "thread:bound" }),
+    );
+    const filedUnder = threads
+      .getThreadProjection(threadId)
+      .pipe(Effect.map((projection) => projection.thread.scheduledTaskId ?? null));
+    assert.isNull(yield* filedUnder);
+    const { task } = yield* tasks.upsert({
+      ...scheduledTaskInput("scheduled-task:bound", projectId),
+      threadId,
+    });
+    assert.equal(yield* filedUnder, task.id);
+    yield* tasks.delete({ id: task.id });
+    assert.isNull(yield* filedUnder);
   }).pipe(Effect.provide(harness.layer));
 });
 

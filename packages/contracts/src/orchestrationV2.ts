@@ -433,6 +433,12 @@ export const OrchestrationV2AppThread = Schema.Struct({
   hiddenAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   /** The user-made sidebar group the thread was moved to, if any. */
   groupName: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  /**
+   * The scheduled task that launched this thread or runs in it. Kept after the task is
+   * deleted when the task launched the thread, so past runs still file together.
+   * Fork-only; see docs/fork-differences.md.
+   */
+  scheduledTaskId: Schema.optional(Schema.NullOr(ScheduledTaskId)),
   pinOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   activeOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   lastVisitedAt: Schema.NullOr(Schema.DateTimeUtc).pipe(
@@ -1981,6 +1987,8 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   hiddenAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   /** The user-made sidebar group the thread was moved to, if any. */
   groupName: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  /** Servers omit it unless a scheduled task launched or runs in the thread. */
+  scheduledTaskId: Schema.optional(Schema.NullOr(ScheduledTaskId)),
   /** Slot in the user-arranged pinned order; omitted by pre-reorder servers. */
   pinOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   activeOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
@@ -2710,6 +2718,8 @@ export const OrchestrationV2Command = Schema.Union([
     worktreePath: Schema.NullOr(TrimmedNonEmptyString),
     /** The sidebar group the thread starts in. Absent lets the server apply the project's default. */
     groupName: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+    /** Set by the server for threads a scheduled task launches; ignored from clients. */
+    scheduledTaskId: Schema.optional(ScheduledTaskId),
     importedNativeThread: Schema.optional(
       Schema.Struct({
         ref: Schema.Struct({
@@ -3217,6 +3227,17 @@ export type OrchestrationV2Command = typeof OrchestrationV2Command.Type;
  * send them.
  */
 const OrchestrationV2InternalCommand = Schema.Union([
+  /**
+   * Files a thread under the scheduled task that runs in it. Releasing (`bound: false`) only
+   * clears that same task, so a stale release cannot unfile a thread another task now uses.
+   */
+  Schema.Struct({
+    type: Schema.Literal("thread.scheduled-task.set"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    scheduledTaskId: ScheduledTaskId,
+    bound: Schema.Boolean,
+  }),
   /**
    * Records what a pull request watch saw, and wakes the agent in the same transaction when
    * `wake` is set. Rejected once the watch started at `startedAt` has ended, and a wake is

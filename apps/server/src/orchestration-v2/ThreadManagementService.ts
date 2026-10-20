@@ -71,9 +71,17 @@ export function withCreationProvenance(
   provenance: ThreadManagementProvenance,
 ): OrchestrationV2Command {
   switch (command.type) {
-    case "thread.create":
+    case "thread.create": {
+      // Only the server's MCP paths record who started a thread, and only the scheduler files
+      // one under a scheduled task; a client cannot claim either.
+      const { startedBy, scheduledTaskId: _scheduledTaskId, ...rest } = command;
+      return {
+        ...rest,
+        ...(provenance.createdBy === "user" || startedBy === undefined ? {} : { startedBy }),
+        ...provenance,
+      };
+    }
     case "thread.fork": {
-      // Only the server's MCP paths record who started a thread; a client cannot claim it.
       const { startedBy: _startedBy, ...rest } = command;
       return { ...(provenance.createdBy === "user" ? rest : command), ...provenance };
     }
@@ -99,6 +107,8 @@ export function existingThreadIdsForCommand(
     // while a thread is open, so keeping them off the import path matters.
     case "thread.visit":
     case "thread.mark-unread":
+    // Filing a thread under a scheduled task only rewrites its payload too.
+    case "thread.scheduled-task.set":
       return [];
     case "thread.fork":
       return [command.sourceThreadId];
@@ -654,7 +664,10 @@ const make = Effect.gen(function* () {
   const withDefaultThreadGroup = (
     command: OrchestrationV2ServerCommand,
   ): Effect.Effect<OrchestrationV2ServerCommand> =>
-    command.type !== "thread.create" || command.groupName !== undefined
+    // A scheduled task's thread files under Automations rather than the project's group.
+    command.type !== "thread.create" ||
+    command.groupName !== undefined ||
+    command.scheduledTaskId !== undefined
       ? Effect.succeed(command)
       : serverSettings.getSettings.pipe(
           Effect.map((settings) => ({

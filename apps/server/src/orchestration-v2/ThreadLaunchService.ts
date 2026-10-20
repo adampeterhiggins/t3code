@@ -1227,6 +1227,9 @@ const make = Effect.gen(function* () {
                 createdBy: input.createdBy,
                 creationSource: input.creationSource,
                 ...(input.startedBy === undefined ? {} : { startedBy: input.startedBy }),
+                ...(input.initialMessage?.scheduledTaskId === undefined
+                  ? {}
+                  : { scheduledTaskId: input.initialMessage.scheduledTaskId }),
               });
         const claimed = yield* claimDispatch.pipe(
           Effect.mapError(

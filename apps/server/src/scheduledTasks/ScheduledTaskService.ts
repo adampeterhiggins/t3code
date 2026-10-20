@@ -677,6 +677,32 @@ export const layer = Layer.effect(
         ),
     );
 
+    // Files a bound thread under its task in the sidebar, or releases it. Best-effort: the task
+    // row is already saved, and each bound run files its thread again before sending.
+    const fileThread = Effect.fn("ScheduledTaskService.fileThread")(
+      function* (threadId: ThreadId, taskId: ScheduledTaskId, bound: boolean) {
+        const uuid = yield* crypto.randomUUIDv4();
+        yield* threadManagement.dispatch({
+          type: "thread.scheduled-task.set",
+          commandId: CommandId.make(`scheduled-task-file:${uuid}`),
+          threadId,
+          scheduledTaskId: taskId,
+          bound,
+        });
+      },
+      (effect, threadId, taskId, bound) =>
+        effect.pipe(
+          Effect.catch((cause) =>
+            Effect.logWarning("Could not file thread under its scheduled task", {
+              threadId,
+              taskId,
+              bound,
+              cause,
+            }),
+          ),
+        ),
+    );
+
     const runTask = Effect.fn("ScheduledTaskService.runTask")(function* (
       task: ScheduledTask,
       trigger: "scheduled" | "manual" | "webhook",
@@ -780,20 +806,23 @@ export const layer = Layer.effect(
             : yield* Effect.exit(
                 // The stored selection only seeds fresh threads. A bound run
                 // follows the thread's current provider, so it passes none.
-                threadManagement
-                  .sendToThread({
-                    projectId: active.projectId,
-                    commandId,
-                    threadId: ThreadId.make(active.threadId),
-                    messageId,
-                    scheduledTaskId: active.id,
-                    text: prompt,
-                    attachments: [],
-                    mode: "queue",
-                    createdBy: active.createdBy,
-                    creationSource: active.creationSource,
-                  })
-                  .pipe(Effect.as(ThreadId.make(active.threadId))),
+                fileThread(ThreadId.make(active.threadId), active.id, true).pipe(
+                  Effect.andThen(
+                    threadManagement.sendToThread({
+                      projectId: active.projectId,
+                      commandId,
+                      threadId: ThreadId.make(active.threadId),
+                      messageId,
+                      scheduledTaskId: active.id,
+                      text: prompt,
+                      attachments: [],
+                      mode: "queue",
+                      createdBy: active.createdBy,
+                      creationSource: active.creationSource,
+                    }),
+                  ),
+                  Effect.as(ThreadId.make(active.threadId)),
+                ),
               );
 
         const completedAt = yield* localNow;
@@ -1068,6 +1097,11 @@ export const layer = Layer.effect(
       };
       yield* saveTask(task, input.requireExisting === true, webhook);
       yield* notifyChanged;
+      const previousThreadId = existingTask?.threadId ?? null;
+      if (previousThreadId !== null && previousThreadId !== task.threadId) {
+        yield* fileThread(ThreadId.make(previousThreadId), id, false);
+      }
+      if (task.threadId !== null) yield* fileThread(ThreadId.make(task.threadId), id, true);
       return { task: (yield* findTask(id)) ?? task };
     });
 
@@ -1118,12 +1152,24 @@ export const layer = Layer.effect(
         { discard: true },
       );
 
-    const deleteTask: ScheduledTaskService["Service"]["delete"] = (input) =>
-      deleteRow(input.id).pipe(
-        Effect.andThen(forgetWebhookTask(input.id)),
-        Effect.andThen(notifyChanged),
-        Effect.as({ id: input.id }),
+    // A deleted task's bound thread returns to the user's own lists. Threads its runs launched
+    // stay filed under it: they are its history, and nothing else would claim them.
+    const deleteTask: ScheduledTaskService["Service"]["delete"] = Effect.fn(
+      "ScheduledTaskService.delete",
+    )(function* (input) {
+      // Read the raw column: a row too corrupt to decode must still be deletable.
+      const boundThreadId = yield* getRows(input.id).pipe(
+        Effect.map((rows) => rows[0]?.thread_id ?? null),
+        Effect.orElseSucceed(() => null),
       );
+      yield* deleteRow(input.id);
+      yield* forgetWebhookTask(input.id);
+      yield* notifyChanged;
+      if (boundThreadId !== null) {
+        yield* fileThread(ThreadId.make(boundThreadId), input.id, false);
+      }
+      return { id: input.id };
+    });
 
     const deleteForThread = Effect.fn("ScheduledTaskService.deleteForThread")(function* (
       threadId: ThreadId,
