@@ -1605,6 +1605,22 @@ Code: `keepBackgroundWork` on `run.interrupt` in
 and the Stop handlers in [`ChatView.tsx`](../apps/web/src/components/ChatView.tsx) and
 [`ThreadRouteScreen.tsx`](../apps/mobile/src/features/threads/ThreadRouteScreen.tsx).
 
+## Agents move threads between projects
+
+Agents can use `t3_thread_move` to move an existing conversation into a registered project
+on the same environment. It keeps the thread and its history, switches to the destination's
+main checkout, and clears the old project's branch, sidebar group, and pull request links.
+Files stay where they are. An optional continuation resumes work after the provider session
+closes; a request ID makes retries idempotent. The same tool can move the thread back.
+
+Moving needs full-access/default permissions. Threads with sibling chat tabs, bound schedules,
+pending requests, queued messages, or active delegated work must resolve those first; archived
+threads and subagents cannot move. The destination must allow the thread's provider.
+
+Code: [thread tools](../apps/server/src/mcp/toolkits/thread/tools.ts),
+[Orchestrator.ts](../apps/server/src/orchestration-v2/Orchestrator.ts).
+User guide: [Start without a project](user/thread-sidebar.md#start-without-a-project).
+
 ## Agents move their thread between worktrees
 
 Upstream's `t3_worktree_handoff` only moves a thread out of the project checkout into a new

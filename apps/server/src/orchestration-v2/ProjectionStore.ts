@@ -441,6 +441,9 @@ export interface ProjectionStoreV2Shape {
     Effect.Effect<OrchestrationV2ThreadShellSnapshot, ProjectionStoreV2Error>,
     ProjectionStoreV2Error
   >;
+  readonly getProjectMoveBlocker: (
+    threadId: ThreadId,
+  ) => Effect.Effect<"chat_tabs" | "scheduled_tasks" | null, ProjectionStoreV2Error>;
   readonly getThreadShell: (
     threadId: ThreadId,
   ) => Effect.Effect<OrchestrationV2ThreadShell | null, ProjectionStoreV2Error>;
@@ -6510,6 +6513,20 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       apply,
       getShellSnapshot,
       readShellSnapshot,
+      getProjectMoveBlocker: (threadId) =>
+        sql<{ readonly blocker: "chat_tabs" | "scheduled_tasks" }>`
+        SELECT 'chat_tabs' AS blocker FROM fork_thread_tabs AS tab
+        JOIN fork_thread_tabs AS sibling ON sibling.group_id = tab.group_id
+        JOIN orchestration_v2_projection_threads AS thread ON thread.thread_id = sibling.thread_id
+        WHERE tab.thread_id = ${threadId} AND sibling.thread_id != ${threadId}
+          AND thread.deleted_at IS NULL
+        UNION ALL
+        SELECT 'scheduled_tasks' AS blocker FROM scheduled_tasks WHERE thread_id = ${threadId}
+        LIMIT 1
+      `.pipe(
+          Effect.map((rows) => rows[0]?.blocker ?? null),
+          Effect.mapError((cause) => new ProjectionStoreReadError({ threadId, cause })),
+        ),
       getThreadShell,
       getThread,
       getSettlementCandidates,
@@ -6619,6 +6636,7 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
       }),
       readShellSnapshot: (options) =>
         service.getShellSnapshot(options).pipe(Effect.map(Effect.succeed)),
+      getProjectMoveBlocker: () => Effect.succeed(null),
       getThreadShell: Effect.fn("ProjectionStore.getThreadShell")(function* (threadId) {
         const existing = (yield* Ref.get(replayState)).projections;
         if (!existing.has(threadId)) {

@@ -29,6 +29,7 @@ export type T3McpToolSummaryAction =
   | "thread-search"
   | "thread-transfers"
   | "thread-organize"
+  | "thread-move"
   | "thread-update"
   | "queue-list"
   | "queue-read"
@@ -326,6 +327,7 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   t3_thread_tabs: tool(["List", "Listing", "Listed", "chat tabs"], "thread-list"),
   t3_thread_tab_open: tool(["Open", "Opening", "Opened", "a chat tab"], "thread-create"),
   t3_thread_organize: tool(["Organize", "Organizing", "Organized", "a thread"], "thread-organize"),
+  t3_thread_move: tool(["Move", "Moving", "Moved", "thread to project"], "thread-move"),
   t3_thread_update: tool(["Update", "Updating", "Updated", "T3 thread metadata"], "thread-update"),
   t3_worktree_list: tool(["List", "Listing", "Listed", "workspace branches"], "worktree-list"),
   t3_preview_list: tool(["List", "Listing", "Listed", "preview tabs"], "browser", "browser"),

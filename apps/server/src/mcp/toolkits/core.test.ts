@@ -8,6 +8,8 @@ import {
   ChatImageAttachment,
   CommandId,
   EnvironmentId,
+  ProjectId,
+  type OrchestrationV2ServerCommand,
   NodeId,
   OrchestratorMcpThreadReadResult,
   ProviderDriverKind,
@@ -1093,3 +1095,69 @@ it.effect("a thread's agent opens chat tabs as itself, within its spawn limit", 
     ),
   );
 });
+
+it.effect.each(["full-access", "auto", "plan"] as const)(
+  "t3_thread_move requires a full-access/default caller (%s)",
+  (mode) => {
+    const commands: OrchestrationV2ServerCommand[] = [];
+    const shell = McpToolAccessTestkit.liveThreadShell(threadId, {
+      runtimeMode: mode === "auto" ? "auto" : "full-access",
+      interactionMode: mode === "plan" ? "plan" : "default",
+    });
+    return Effect.gen(function* () {
+      const server = yield* McpServer.McpServer;
+      const args = {
+        projectId: ProjectId.make("destination"),
+        clientRequestId: "move-once",
+        continuationPrompt: "Continue there",
+      };
+      const invoke = () =>
+        server
+          .callTool({ name: "t3_thread_move", arguments: args })
+          .pipe(
+            Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
+            Effect.provideService(McpSchema.McpServerClient, client),
+          );
+      const result = yield* invoke();
+      if (mode !== "full-access") {
+        expect(declaredFailure(result)).toMatchObject({ code: "capability_denied" });
+        expect(commands).toHaveLength(0);
+      } else {
+        expect(result.isError).toBe(false);
+        expect(result.structuredContent).toEqual({
+          sequence: 7,
+          threadId,
+          projectId: "destination",
+          continuationScheduled: true,
+        });
+        yield* invoke();
+        expect(commands).toHaveLength(2);
+        expect(commands[0]).toMatchObject({
+          type: "thread.project.move",
+          threadId,
+          projectId: "destination",
+          continuationPrompt: "Continue there",
+        });
+        expect(commands[1]?.commandId).toBe(commands[0]?.commandId);
+      }
+    }).pipe(
+      Effect.provide(
+        layerThreadToolkit.pipe(
+          Layer.provideMerge(McpServer.McpServer.layer),
+          Layer.provide(NodeCrypto.layer),
+          Layer.provide(
+            Layer.mock(ThreadManagement.ThreadManagementService)({
+              getThreadShell: () => Effect.succeed(shell),
+              getProjectThreadRecords: () =>
+                Effect.succeed(McpToolAccessTestkit.idleThreadProjection(shell)),
+              dispatch: (command) => {
+                commands.push(command);
+                return Effect.succeed({ sequence: 7, storedEvents: [] });
+              },
+            }),
+          ),
+        ),
+      ),
+    );
+  },
+);

@@ -70,6 +70,30 @@ const ThreadOrganizeTool = Tool.make("t3_thread_organize", {
   .annotate(Tool.Title, "Organize a thread")
   .annotate(Tool.Destructive, true);
 
+const ThreadMoveTool = Tool.make("t3_thread_move", {
+  description:
+    "Move an existing thread to a registered project in this environment, preserving its conversation and using the destination project's main checkout. Omit threadId for this thread. Requires full-access/default. Old files and checkouts stay on disk; repository-specific PR links are cleared. Archived threads, subagents, sibling chat tabs, bound scheduled tasks, pending requests, queued messages and active delegated work cannot move. Moving this thread detaches its provider session and ends the current turn, so call this last; continuationPrompt resumes work in the destination. clientRequestId makes retries idempotent.",
+  parameters: Schema.Struct({
+    threadId: Schema.optional(ThreadId),
+    projectId: ProjectId,
+    continuationPrompt: Schema.optional(TrimmedNonEmptyString),
+    clientRequestId: Schema.optional(TrimmedNonEmptyString),
+  }),
+  success: Schema.Struct({
+    sequence: NonNegativeInt,
+    threadId: ThreadId,
+    projectId: ProjectId,
+    continuationScheduled: Schema.Boolean,
+  }),
+  failure: OrchestratorMcpFailure,
+  failureMode: "return" as const,
+  dependencies: [
+    McpInvocationContext.McpInvocationContext,
+    ThreadManagementService.ThreadManagementService,
+    Crypto.Crypto,
+  ],
+}).annotate(Tool.Destructive, true);
+
 const queueTarget = { threadId: Schema.optional(ThreadId), queuedRunId: RunId };
 const commandTool = {
   success: OrchestrationV2DispatchCommandResult,
@@ -329,6 +353,7 @@ const ThreadTabOpenTool = Tool.make("t3_thread_tab_open", {
   .annotate(Tool.OpenWorld, true);
 
 export const ThreadToolkit = Toolkit.make(
+  ThreadMoveTool,
   ThreadTabGroupNameTool,
   ThreadTabsTool,
   ThreadTabOpenTool,
