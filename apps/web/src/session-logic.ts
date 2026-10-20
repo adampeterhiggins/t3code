@@ -25,6 +25,7 @@ import {
 } from "@t3tools/shared/toolActivity";
 import type { HtmlRenderReference } from "@t3tools/shared/htmlRender";
 import { turnItemDetailRevision } from "@t3tools/client-runtime/work-log/item-detail";
+import { webToolLabel, webToolView } from "@t3tools/client-runtime/work-log/web-tool";
 import type { McpAppReference } from "@t3tools/shared/mcpApp";
 import { htmlRenderFromToolItem, mcpAppFromToolItem } from "@t3tools/shared/toolOutput";
 import {
@@ -526,14 +527,19 @@ export function projectedWorkEntry(row: OrchestrationV2ProjectedTurnItem): WorkL
         toolTitle: title ?? "File search",
         toolData: item,
       };
-    case "web_search":
+    case "web_search": {
+      const view = webToolView(item);
+      const label = webToolLabel(view);
       return {
         ...common,
-        label: title ?? "Searched the web",
-        ...(item.patterns?.length ? { detail: item.patterns.join(", ") } : {}),
-        toolTitle: title ?? "Web search",
+        label: label ?? title ?? "Searched the web",
+        ...(label === undefined && item.patterns?.length
+          ? { detail: item.patterns.join(", ") }
+          : {}),
+        toolTitle: view.action === "fetch" ? "Web fetch" : "Web search",
         toolData: item,
       };
+    }
     case "checkpoint":
       return {
         ...common,

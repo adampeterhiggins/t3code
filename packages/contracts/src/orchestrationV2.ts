@@ -1421,6 +1421,24 @@ export const OrchestrationV2WebSearchResult = Schema.Struct({
 });
 export type OrchestrationV2WebSearchResult = typeof OrchestrationV2WebSearchResult.Type;
 
+/** A web tool call either runs a query or reads one page. */
+export const OrchestrationV2WebSearchAction = Schema.Literals(["search", "fetch"]);
+export type OrchestrationV2WebSearchAction = typeof OrchestrationV2WebSearchAction.Type;
+
+const OrchestrationV2WebSearchFields = {
+  type: Schema.Literal("web_search"),
+  action: Schema.optional(OrchestrationV2WebSearchAction),
+  patterns: Schema.optional(Schema.Array(Schema.String)),
+  /** The page a fetch read. */
+  url: Schema.optional(TrimmedNonEmptyString),
+  /** What the agent asked of the page, when the provider reports it. */
+  prompt: Schema.optional(Schema.String),
+  /** Markdown the tool returned: a fetch's answer or a search's summary. */
+  answer: Schema.optional(Schema.String),
+  statusCode: Schema.optional(Schema.Int),
+  results: Schema.optional(Schema.Array(OrchestrationV2WebSearchResult)),
+} as const;
+
 export const OrchestrationV2SecretRequestStatus = Schema.Literals([
   "pending",
   "saved",
@@ -1521,9 +1539,7 @@ export const OrchestrationV2TurnItem = Schema.Union([
   }),
   Schema.Struct({
     ...OrchestrationV2TurnItemBaseFields,
-    type: Schema.Literal("web_search"),
-    patterns: Schema.optional(Schema.Array(Schema.String)),
-    results: Schema.optional(Schema.Array(OrchestrationV2WebSearchResult)),
+    ...OrchestrationV2WebSearchFields,
   }),
   Schema.Struct({
     ...OrchestrationV2TurnItemBaseFields,
@@ -2297,9 +2313,7 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
   }),
   Schema.Struct({
     ...OrchestrationV2TurnItemJsonBaseFields,
-    type: Schema.Literal("web_search"),
-    patterns: Schema.optional(Schema.Array(Schema.String)),
-    results: Schema.optional(Schema.Array(OrchestrationV2WebSearchResult)),
+    ...OrchestrationV2WebSearchFields,
   }),
   Schema.Struct({
     ...OrchestrationV2TurnItemJsonBaseFields,

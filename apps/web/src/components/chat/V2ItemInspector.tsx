@@ -19,7 +19,6 @@ import {
 import { resolveToolPreview } from "@t3tools/client-runtime/work-log/tool-preview";
 import { formatDiffCount } from "@t3tools/client-runtime/diff-count";
 import { isJavaScriptReplTool } from "@t3tools/shared/toolActivity";
-import { ExternalLinkIcon } from "lucide-react";
 import { memo, type ReactNode } from "react";
 
 import { cn } from "../../lib/utils";
@@ -29,13 +28,13 @@ import ChatMarkdown, { ChatMarkdownAssetImage } from "../ChatMarkdown";
 import { PreviewCornerAction } from "./PreviewCornerAction";
 import { ToolCallBody as ToolPreviewBody } from "../ToolCallBody";
 import { CommandOutputPanel, useCommandOutputStreaming } from "./CommandOutputPanel";
-import { resolveExternalWebLinkHref } from "./externalLinkContextMenu";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import { ReadFileView } from "./ReadFileView";
 import { HighlightedSnippet } from "./HighlightedSnippet";
 import { ShellCommandBlock } from "./ShellCommandBlock";
 import { parseJsonDocument, ToolJsonTree } from "./ToolJsonTree";
 import { ToolPreviewCard } from "./ToolPreviewCard";
+import { WebToolDetail } from "./WebToolDetail";
 
 interface V2ItemInspectorProps {
   readonly projectedItem: OrchestrationV2ProjectedTurnItem;
@@ -399,10 +398,6 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
         <div className={cn("text-foreground/85", monoClassName)}>{item.pattern}</div>
       ) : null}
 
-      {item.type === "web_search" && item.patterns?.length ? (
-        <div className={cn("text-foreground/85", monoClassName)}>{item.patterns.join("\n")}</div>
-      ) : null}
-
       {item.type === "file_search" && item.results?.length ? (
         <ul className="space-y-1">
           {item.results.map((result) => (
@@ -425,33 +420,7 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
         </ul>
       ) : null}
 
-      {item.type === "web_search" && item.results?.length ? (
-        <ul className="space-y-1.5">
-          {item.results.map((result) => {
-            const safeHref = resolveExternalWebLinkHref(result.url);
-            return (
-              <li key={JSON.stringify(result)}>
-                {safeHref ? (
-                  <a
-                    href={safeHref}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 font-medium text-foreground hover:underline"
-                  >
-                    {result.title ?? result.url}
-                    <ExternalLinkIcon className="size-3" />
-                  </a>
-                ) : (
-                  <p className="font-medium text-foreground">
-                    {result.title ?? result.url ?? "Search result"}
-                  </p>
-                )}
-                {result.snippet ? <p className="text-muted-foreground">{result.snippet}</p> : null}
-              </li>
-            );
-          })}
-        </ul>
-      ) : null}
+      {item.type === "web_search" ? <WebToolDetail item={item} cwd={props.cwd} /> : null}
 
       {item.type === "dynamic_tool" ? (
         preview ? (

@@ -38,4 +38,11 @@ export function assertWebSearchOutput(
   assert.lengthOf(webSearchItems, 1);
   assert.equal(webSearchItems[0]?.status, "completed");
   assert.include(webSearchItems[0]?.patterns ?? [], WEB_SEARCH_QUERY);
+  assert.equal(webSearchItems[0]?.action, "search");
+  assert.isTrue(
+    webSearchItems[0]?.results?.some(
+      (entry) => entry.url?.includes("fifa.com") && Boolean(entry.title && entry.snippet),
+    ) ?? false,
+    "Codex web search should project its text results",
+  );
 }

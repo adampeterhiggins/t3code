@@ -34,6 +34,7 @@ import {
   turnItemNeedsDetailFetch,
 } from "../work-log/itemDetail.ts";
 import { isActiveSubagentStatus, type RuntimeSubagentStatus } from "./subagentRuntime.ts";
+import { webToolLabel, webToolView } from "../work-log/webTool.ts";
 
 export type AgentStatusFilter = "working" | "idle" | "done" | "failed" | "stopped";
 export type AgentListSort = "spawn" | "status" | "tokens" | "duration";
@@ -311,14 +312,16 @@ function rawToolCallFromItem(item: OrchestrationV2TurnItem): RawToolCall | null 
                 .join("\n")
             : null,
       };
-    case "web_search":
+    case "web_search": {
+      const view = webToolView(item);
       return {
-        title: title ?? "Web search",
-        detail: item.patterns?.length ? item.patterns.join(", ") : null,
+        title: webToolLabel(view) ?? title ?? "Web search",
+        detail: view.prompt ?? null,
         kind: "web",
         exitCode: null,
         preview: null,
       };
+    }
     case "dynamic_tool": {
       const kind = dynamicToolKind(item);
       const input = asRecord(item.input);

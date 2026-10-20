@@ -6,6 +6,7 @@ import {
 } from "@t3tools/shared/toolActivity";
 import { readToolOutputImage, toolOutputImages } from "@t3tools/shared/toolOutput";
 import * as DateTime from "effect/DateTime";
+import { webToolView } from "./webTool.ts";
 
 const MAX_TEXT_BLOCK_DEPTH = 4;
 
@@ -394,9 +395,10 @@ export function turnItemOutputText(item: OrchestrationV2TurnItem): string | null
             )
             .join("\n")
         : null;
-    case "web_search":
-      return item.results?.length
-        ? item.results
+    case "web_search": {
+      const view = webToolView(item);
+      const results = view.results.length
+        ? view.results
             .map((result) =>
               [
                 result.title?.trim() || result.url,
@@ -408,6 +410,8 @@ export function turnItemOutputText(item: OrchestrationV2TurnItem): string | null
             )
             .join("\n\n")
         : null;
+      return [view.answer, results].filter(Boolean).join("\n\n") || null;
+    }
     default:
       return null;
   }
@@ -444,7 +448,11 @@ export function turnItemHasDetail(item: OrchestrationV2TurnItem): boolean {
     case "file_search":
       return (item.results?.length ?? 0) > 0 || Boolean(item.pattern?.trim());
     case "web_search":
-      return (item.results?.length ?? 0) > 0 || (item.patterns?.length ?? 0) > 0;
+      return (
+        (item.results?.length ?? 0) > 0 ||
+        (item.patterns?.length ?? 0) > 0 ||
+        Boolean(item.url || item.answer)
+      );
     case "dynamic_tool":
       return item.outputOmitted === true || toolCallHasLines(toolCallLines({ args: item.input }));
     case "approval_request":

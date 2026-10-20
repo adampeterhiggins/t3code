@@ -403,6 +403,10 @@
       "types": "./src/work-log/itemDetail.ts",
       "default": "./src/work-log/itemDetail.ts"
     },
+    "./work-log/web-tool": {
+      "types": "./src/work-log/webTool.ts",
+      "default": "./src/work-log/webTool.ts"
+    },
     "./work-log/tool-preview": {
       "types": "./src/work-log/toolPreview.ts",
       "default": "./src/work-log/toolPreview.ts"

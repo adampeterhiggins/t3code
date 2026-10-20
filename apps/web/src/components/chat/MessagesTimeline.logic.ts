@@ -105,7 +105,6 @@ function singleToolCallLabel(entry: WorkLogEntry, workspaceRoot: string | undefi
   const title =
     item?.type === "dynamic_tool" ? dynamicToolTitle(item.toolName, item.input, item.title) : null;
   if (title) return title;
-  if (entry.itemType === "web_search") return entry.toolTitle ?? "Web search";
   return workEntryDisplayLabel(entry, workspaceRoot);
 }
 
@@ -145,6 +144,7 @@ export function workEntryDisplayLabel(entry: WorkLogEntry, workspaceRoot: string
   if (entry.command?.trim()) {
     return formatCommandForWorkspace(commandDisplayText(entry.command), workspaceRoot);
   }
+  if (entry.itemType === "web_search") return entry.label;
   const action = toolGroupAction(entry);
   if (action === "code-search" || action === "search") {
     const searchLabel =

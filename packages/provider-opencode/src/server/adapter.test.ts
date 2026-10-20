@@ -947,6 +947,7 @@ describe("OpenCodeAdapterV2", () => {
         ["custom_read", { filePath: "/workspace/src" }, directoryOutput],
         ["grep", { pattern: "TODO", path: "apps/web" }, "---\nfile body"],
         ["websearch", { query: "OpenCode documentation" }, "---\nfile body"],
+        ["webfetch", { url: "https://opencode.ai/docs", format: "markdown" }, "# Docs"],
         ["glob", { pattern: "missing", path: "apps/web" }, ""],
         ["codesearch", {}, " \n\t"],
       ] as const;
@@ -1013,9 +1014,12 @@ describe("OpenCodeAdapterV2", () => {
       assert.deepEqual(webSearch?.type === "web_search" ? webSearch.patterns : null, [
         "OpenCode documentation",
       ]);
-      assert.deepEqual(webSearch?.type === "web_search" ? webSearch.results : null, [
-        { snippet: "---\nfile body" },
-      ]);
+      assert.equal(webSearch?.type === "web_search" ? webSearch.action : null, "search");
+      assert.equal(webSearch?.type === "web_search" ? webSearch.answer : null, "---\nfile body");
+      const webFetch = items.find((item) => item.type === "web_search" && item.action === "fetch");
+      assert.ok(webFetch?.type === "web_search");
+      assert.equal(webFetch.url, "https://opencode.ai/docs");
+      assert.equal(webFetch.answer, "# Docs");
       const emptyFileSearch = items.find(
         (item) => item.type === "file_search" && item.pattern === "missing",
       );
@@ -1025,7 +1029,7 @@ describe("OpenCodeAdapterV2", () => {
         (item) => item.type === "web_search" && item.patterns === undefined,
       );
       assert.ok(emptyWebSearch?.type === "web_search");
-      assert.equal(emptyWebSearch.results, undefined);
+      assert.equal(emptyWebSearch.answer, undefined);
     }).pipe(
       Effect.provide(Layer.merge(IdAllocator.layer, McpProviderSessions.layer)),
       Effect.scoped,

@@ -2387,9 +2387,17 @@ describe("AcpAdapterV2", () => {
         patterns: ["t3 code"],
         results: [{ url: "https://t3.codes" }, { url: "https://github.com/pingdotgg/t3code" }],
       });
-      assert.deepEqual(webItem("grok-web-fetch", "completed")?.results, [
-        { url: "https://t3.codes", snippet: "T3 Code page" },
-      ]);
+      const fetch = items.findLast(
+        (candidate) =>
+          candidate.type === "web_search" &&
+          candidate.status === "completed" &&
+          candidate.nativeItemRef?.nativeId?.endsWith("grok-web-fetch") === true,
+      );
+      assert.deepInclude(fetch?.type === "web_search" ? fetch : {}, {
+        action: "fetch",
+        url: "https://t3.codes",
+        answer: "T3 Code page",
+      });
       const completedCompaction = items.find(
         (item) =>
           item.type === "compaction" &&

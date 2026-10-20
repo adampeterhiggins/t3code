@@ -171,7 +171,9 @@ function entryFor(item: OrchestrationV2TurnItem, shorten: (text: string) => stri
     case "file_search":
       return tool(`Search: ${item.pattern ?? item.title ?? "files"}`);
     case "web_search":
-      return tool(`Web search: ${item.patterns?.join(", ") ?? item.title ?? ""}`);
+      return item.action === "fetch" && item.url
+        ? tool(`Web fetch: ${item.url}`)
+        : tool(`Web search: ${item.patterns?.join(", ") ?? item.title ?? ""}`);
     case "dynamic_tool": {
       const input = toolInput(item.input);
       const name = item.toolName ?? item.title ?? "Tool";
