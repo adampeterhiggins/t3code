@@ -261,21 +261,23 @@ function NoticeText({
   readonly detailsLabel: string;
 }) {
   const textRef = useRef<HTMLSpanElement>(null);
-  const detailsRef = useRef<HTMLButtonElement>(null);
   const [showDetails, setShowDetails] = useState(false);
 
   useLayoutEffect(() => {
     const text = textRef.current;
     if (!text) return;
     const measure = () => {
-      // Ignore the space taken by the details button itself so it cannot
-      // sustain its own overflow after the text would otherwise fit.
-      const recoveredWidth = detailsRef.current ? detailsRef.current.offsetWidth + 4 : 0;
-      const hidden = getComputedStyle(text).position === "absolute";
+      const style = getComputedStyle(text);
+      // A narrow composer pulls the description out of the line entirely.
+      const hidden = style.position === "absolute";
+      // Padding holds the out-of-flow details button. It is inside the text, so
+      // subtract it or the button would count as overflow and never leave.
+      const reserved = Number.parseFloat(style.paddingInlineEnd) || 0;
       setShowDetails(
         hidden ||
           [text, ...text.querySelectorAll("*")].some(
-            (element) => element.scrollWidth > element.clientWidth + recoveredWidth,
+            (element) =>
+              element.scrollWidth > element.clientWidth + (element === text ? reserved : 0),
           ),
       );
     };
@@ -290,26 +292,28 @@ function NoticeText({
   }, []);
 
   return (
-    <span className="contents">
-      <span ref={textRef} className={className}>
+    // The details button has to stay out of flow. In the wrap-actions row it
+    // otherwise consumes the last few pixels, the actions drop to the next
+    // line, the text then fits, and the button removes itself — so the banner
+    // flashes between one line and two.
+    <span className={cn("relative block min-w-0", className)}>
+      <span
+        ref={textRef}
+        data-notice-text=""
+        className={cn("block max-w-full min-w-0 truncate", showDetails && "pe-7 sm:pe-6")}
+      >
         {children}
       </span>
       {showDetails ? (
         <Popover>
-          <PopoverTrigger
-            openOnHover
-            render={
-              <Button
-                ref={detailsRef}
-                size="icon-xs"
-                variant="ghost-muted"
-                aria-label={detailsLabel}
-                className="flex-none"
-              />
-            }
-          >
-            <InfoIcon />
-          </PopoverTrigger>
+          <span className="absolute end-0 top-1/2 z-10 -translate-y-1/2">
+            <PopoverTrigger
+              openOnHover
+              render={<Button size="icon-xs" variant="ghost-muted" aria-label={detailsLabel} />}
+            >
+              <InfoIcon />
+            </PopoverTrigger>
+          </span>
           <PopoverPopup
             aria-label="Notice details"
             tooltipStyle
@@ -367,7 +371,7 @@ function ComposerBannerStackAlert({
         >
           <NoticeText
             detailsLabel="Show title details"
-            className="min-w-0 truncate font-medium leading-7 sm:leading-6"
+            className="font-medium leading-7 sm:leading-6"
           >
             {item.title}
           </NoticeText>
@@ -379,7 +383,7 @@ function ComposerBannerStackAlert({
             ) : (
               <NoticeText
                 detailsLabel="Show notice details"
-                className="w-0 min-w-0 grow truncate text-muted-foreground @max-[400px]:sr-only"
+                className="w-0 grow text-muted-foreground @max-[400px]:[&>[data-notice-text]]:sr-only"
               >
                 {item.description}
               </NoticeText>
