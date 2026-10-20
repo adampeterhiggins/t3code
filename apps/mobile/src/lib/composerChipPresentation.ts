@@ -39,6 +39,17 @@ const PULL_REQUEST_CHIP_PRESENTATIONS = {
   closed: { accent: "#d55665", symbol: "git-pull-request" },
 } as const;
 
+/**
+ * GitHub's glyph per ref kind, with a release drawn as the tag it publishes. These are SF Symbol
+ * names; Android draws the same names from lucide geometry in `T3ContextChip.kt`.
+ */
+const GITHUB_REF_CHIP_SYMBOLS = {
+  release: "tag",
+  tag: "tag",
+  branch: "arrow.triangle.branch",
+  commit: "circle.and.line.horizontal",
+} as const;
+
 /** A GitHub issue chip is green while open and purple once closed, the way GitHub colours it. */
 const CLOSED_GITHUB_ISSUE_CHIP_PRESENTATION = {
   accent: "#8a70dd",
@@ -53,6 +64,7 @@ export function contextChipPresentation(
     readonly mimeType?: string;
     readonly sectionId?: string;
     readonly state?: string;
+    readonly refType?: string;
     readonly pullRequest?: {
       readonly state?: string;
       readonly isDraft?: boolean;
@@ -81,6 +93,16 @@ export function contextChipPresentation(
     if (Object.hasOwn(PULL_REQUEST_CHIP_PRESENTATIONS, state)) {
       return PULL_REQUEST_CHIP_PRESENTATIONS[state as keyof typeof PULL_REQUEST_CHIP_PRESENTATIONS];
     }
+  }
+  if (
+    presentationKind === "github-ref" &&
+    record?.refType !== undefined &&
+    Object.hasOwn(GITHUB_REF_CHIP_SYMBOLS, record.refType)
+  ) {
+    return {
+      ...CONTEXT_CHIP_PRESENTATIONS["github-ref"],
+      symbol: GITHUB_REF_CHIP_SYMBOLS[record.refType as keyof typeof GITHUB_REF_CHIP_SYMBOLS],
+    };
   }
   if (presentationKind === "github-issue" && record?.state === "closed") {
     return CLOSED_GITHUB_ISSUE_CHIP_PRESENTATION;

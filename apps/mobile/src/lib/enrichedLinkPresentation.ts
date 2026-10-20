@@ -17,6 +17,9 @@ const CONTEXT_ICONS: Readonly<Record<string, MarkdownFileIcon>> = {
   "smallcircle.filled.circle": "git",
   number: "markdown",
   folder: "git",
+  tag: "git",
+  "arrow.triangle.branch": "git",
+  "circle.and.line.horizontal": "git",
 };
 
 export function enrichedContextLinkPresentation(
