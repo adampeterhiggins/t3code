@@ -986,6 +986,51 @@ describe("GhosttyTerminalSurface visibility", () => {
     },
   );
 
+  it("leaves a read-only viewer's non-copy keys to the page and never reads the clipboard", async () => {
+    const harness = createHarness();
+    const readText = vi.fn(async () => "clipboard text");
+    vi.stubGlobal("navigator", { platform: "Linux x86_64", clipboard: { readText } });
+    const surface = await harness.create({ readOnly: true, beforeKey: () => true });
+    surface.write("hello world");
+    harness.flushFrame();
+
+    for (const [name, code, modifiers] of [
+      ["k", "KeyK", { ctrlKey: true }],
+      ["x", "KeyX", {}],
+      ["Enter", "Enter", {}],
+      ["v", "KeyV", { ctrlKey: true, shiftKey: true }],
+    ] as const) {
+      expect(key(surface, name, code, modifiers).defaultPrevented).toBe(false);
+    }
+    expect(readText).not.toHaveBeenCalled();
+    expect(harness.onData).not.toHaveBeenCalled();
+
+    expect(key(surface, "A", "KeyA", { ctrlKey: true, shiftKey: true }).defaultPrevented).toBe(
+      true,
+    );
+    expect(surface.getSelection()).toContain("hello world");
+    expect(surface.input.readOnly).toBe(true);
+  });
+
+  it("selects a word on a read-only viewer's touch long press, and scrolls on a drag", async () => {
+    const harness = createHarness();
+    const surface = await harness.create({ readOnly: true });
+    surface.write("abcdefghijklmnopqrstuvwxyz");
+    harness.flushFrame();
+
+    harness.touch("pointerdown", 5);
+    harness.touch("pointermove", 30);
+    vi.advanceTimersByTime(1_000);
+    harness.touch("pointerup", 30);
+    expect(surface.getSelection()).toBe("");
+
+    harness.touch("pointerdown", 5);
+    vi.advanceTimersByTime(1_000);
+    harness.touch("pointerup", 5);
+    expect(surface.getSelection()).toBe("abcdefghijklmnopqrstuvwxyz");
+    expect(harness.onData).not.toHaveBeenCalled();
+  });
+
   it("pastes the terminal selection, and only that, on a Linux middle click", async () => {
     const harness = createHarness();
     const readText = vi.fn(async () => "clipboard text");

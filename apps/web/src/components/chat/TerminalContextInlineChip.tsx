@@ -1,6 +1,7 @@
 import * as Schema from "effect/Schema";
+import { Check, Copy } from "lucide";
 import { TerminalIcon } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   resolveTerminalFontPreference,
@@ -9,9 +10,17 @@ import {
 } from "../../appearanceFonts";
 import type { ContextPresentationCapability } from "../contextPresentationRegistry";
 import { ContextChipPopover, ContextChipShell } from "../contextChipParts";
+import { MorphIcon } from "../MorphIcon";
+import { Button } from "../ui/button";
 import { useClientSettings } from "../../hooks/useSettings";
+import { useCopyToClipboard, writeTextToClipboard } from "../../hooks/useCopyToClipboard";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
-import { GhosttyTerminalSurface } from "~/terminal/ghostty/surface";
+import { readLocalApi } from "~/localApi";
+import {
+  GhosttyTerminalSurface,
+  preloadGhosttyTerminal,
+  terminalFontFamily,
+} from "~/terminal/ghostty/surface";
 import type { GhosttyColor } from "~/terminal/ghostty/core";
 import { useTheme } from "../../hooks/useTheme";
 import { terminalTextColumns } from "../../lib/terminalContext";
@@ -55,11 +64,18 @@ function cssRgb({ r, g, b }: GhosttyColor): string {
  * Captured output drawn by the terminal's own renderer, read-only. Selection, copy, and
  * scrolling are the terminal drawer's, so the excerpt behaves exactly as it did there. The grid
  * is as wide as the widest line, so lines never rewrap; the card scrolls sideways instead.
+ * Until the renderer loads, or if it can't, the excerpt shows as plain text.
  */
 function TerminalExcerptPreview({
+  terminalLabel,
+  lineStart,
+  lineEnd,
   text,
   styledText,
 }: {
+  terminalLabel: string;
+  lineStart: number;
+  lineEnd: number;
   text: string;
   styledText?: string | undefined;
 }) {
@@ -86,6 +102,11 @@ function TerminalExcerptPreview({
   const lineHeight = useClientSettings((settings) => settings.terminalLineHeight / 100);
   const { theme, resolvedTheme } = useTheme();
   const terminalTheme = readTerminalTheme(theme, resolvedTheme);
+  const { copyToClipboard, isCopied } = useCopyToClipboard({
+    timeout: 1500,
+    target: "terminal excerpt",
+  });
+  const [status, setStatus] = useState<"loading" | "ready" | "failed">("loading");
   const frameRef = useRef<HTMLDivElement>(null);
   const mountRef = useRef<HTMLDivElement>(null);
   const surfaceRef = useRef<GhosttyTerminalSurface | null>(null);
@@ -111,13 +132,36 @@ function TerminalExcerptPreview({
         size: fontSize,
         lineHeight,
       },
+      readOnly: true,
       onData: () => {},
       onResize: () => {},
       onSelectionChange: () => {},
-      // Escape closes the card and Tab leaves it; neither is input for a read-only excerpt.
-      beforeKey: (event) => event.key !== "Escape" && event.key !== "Tab",
+      beforeKey: () => true,
       onLinkActivate: () => {},
       canActivateLink: () => false,
+      onContextMenu: (event) => {
+        const localApi = readLocalApi();
+        const surface = surfaceRef.current;
+        if (!localApi || !surface) return;
+        // Own the gesture: the browser's menu has no Copy for a canvas.
+        event.preventDefault();
+        const selection = surface.getSelection();
+        void localApi.contextMenu
+          .show(
+            [
+              { id: "copy", label: "Copy", disabled: selection.length === 0 },
+              { id: "select-all", label: "Select all" },
+            ],
+            { x: event.clientX, y: event.clientY },
+          )
+          .then(
+            (clicked) => {
+              if (clicked === "copy") void writeTextToClipboard(selection, "terminal selection");
+              if (clicked === "select-all") surfaceRef.current?.selectAll();
+            },
+            () => {},
+          );
+      },
     }).then(
       (surface) => {
         if (cancelled) {
@@ -125,14 +169,16 @@ function TerminalExcerptPreview({
           return;
         }
         surfaceRef.current = surface;
-        surface.input.readOnly = true;
         // The mount scrolls sideways, which would carry the scrollbar out of view with it.
         frame.append(surface.scrollbar);
         surface.sizeToGrid(cols, rows);
         surface.resetAndWrite(content);
         surface.scrollToTop();
+        setStatus("ready");
       },
-      () => {},
+      () => {
+        if (!cancelled) setStatus("failed");
+      },
     );
     return () => {
       cancelled = true;
@@ -145,25 +191,62 @@ function TerminalExcerptPreview({
     surfaceRef.current?.setTheme(readTerminalTheme(theme, resolvedTheme));
   }, [theme, resolvedTheme]);
 
+  const foreground = cssRgb(terminalTheme.foreground);
+  const ready = status === "ready";
   return (
-    <div
-      ref={frameRef}
-      className="relative"
-      style={{ backgroundColor: cssRgb(terminalTheme.background) }}
-    >
-      <div className="overflow-x-auto overflow-y-hidden">
-        <div
-          ref={mountRef}
-          className="relative"
-          // Estimated until the surface measures its font and sizes the mount exactly.
-          style={{
-            width: `calc(${cols}ch + 8px)`,
-            height: `calc(${rows * lineHeight}em + 8px)`,
-            fontSize,
+    <div className="overflow-hidden rounded-md border border-border/70 bg-background/80">
+      <div className="flex items-center gap-2 border-b border-border/70 px-3 py-2">
+        <TerminalIcon className="size-4 shrink-0 text-success" aria-hidden />
+        <span className="min-w-0 truncate text-sm font-medium text-foreground">
+          {terminalLabel}
+        </span>
+        <span className="ml-auto shrink-0 text-secondary-label text-xs">
+          {lineStart === lineEnd ? `Line ${lineStart}` : `Lines ${lineStart}–${lineEnd}`}
+        </span>
+        <Button
+          size="icon-xs"
+          variant="ghost"
+          aria-label="Copy selection, or the whole excerpt"
+          onClick={() => {
+            const selection = surfaceRef.current?.getSelection() ?? "";
+            copyToClipboard(selection.length > 0 ? selection : text, undefined);
           }}
-        />
+        >
+          <MorphIcon className="size-3.5" icon={isCopied ? Check : Copy} />
+        </Button>
       </div>
-      <pre className="sr-only">{text}</pre>
+      <div
+        ref={frameRef}
+        className="relative"
+        style={{ backgroundColor: cssRgb(terminalTheme.background) }}
+      >
+        <div className="max-h-80 overflow-x-auto overflow-y-hidden">
+          <div
+            ref={mountRef}
+            className={ready ? "relative" : "invisible absolute top-0 left-0"}
+            // Estimated until the surface measures its font and sizes the mount exactly.
+            style={{
+              width: `calc(${cols}ch + 8px)`,
+              height: `calc(${rows * lineHeight}em + 8px)`,
+              fontSize,
+            }}
+          />
+          {ready ? null : (
+            <pre
+              className="p-1 whitespace-pre"
+              style={{
+                fontFamily: terminalFontFamily(family),
+                fontSize,
+                lineHeight,
+                color: foreground,
+              }}
+            >
+              {text}
+            </pre>
+          )}
+        </div>
+        {ready ? <pre className="sr-only">{text}</pre> : null}
+      </div>
     </div>
   );
 }
@@ -187,19 +270,16 @@ export function TerminalContextInlineChip(props: TerminalContextInlineChipProps)
         icon={<TerminalIcon />}
         label={label}
         accessibleLabel={`Terminal excerpt, ${label}`}
+        onIntent={preloadGhosttyTerminal}
+        stayOpenAfterPress
       >
-        <div className="overflow-hidden rounded-md border border-border/70 bg-background/80">
-          <div className="flex items-center gap-2 border-b border-border/70 px-3 py-2">
-            <TerminalIcon className="size-4 shrink-0 text-success" aria-hidden />
-            <span className="min-w-0 truncate text-sm font-medium text-foreground">
-              {terminalLabel}
-            </span>
-            <span className="ml-auto shrink-0 text-secondary-label text-xs">
-              {lineStart === lineEnd ? `Line ${lineStart}` : `Lines ${lineStart}–${lineEnd}`}
-            </span>
-          </div>
-          <TerminalExcerptPreview text={text} styledText={styledText} />
-        </div>
+        <TerminalExcerptPreview
+          terminalLabel={terminalLabel}
+          lineStart={lineStart}
+          lineEnd={lineEnd}
+          text={text}
+          styledText={styledText}
+        />
       </ContextChipPopover>
     );
   }
