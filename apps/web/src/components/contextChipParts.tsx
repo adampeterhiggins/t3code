@@ -29,6 +29,7 @@ import { CircleDashedIcon, FilmIcon, ImageIcon, UnlinkIcon } from "lucide-react"
 import { composerObjectLinkNoun } from "@t3tools/shared/composerObjectLinks";
 import {
   Fragment,
+  useRef,
   useState,
   type ComponentProps,
   type CSSProperties,
@@ -106,14 +107,49 @@ export function ContextChipPopover(props: {
   label: string;
   copyMarkdown?: string;
   accessibleLabel: string;
+  /** Hover or focus on the chip, ahead of the open delay: time to start loading the details. */
+  onIntent?: () => void;
+  /**
+   * Once pressed inside, hovering away no longer closes it, so a selection made inside it,
+   * which can end with the pointer outside, survives long enough to copy. Closing then hands
+   * focus back to wherever it was before the press, such as the composer.
+   */
+  stayOpenAfterPress?: boolean;
   children: ReactNode;
 }) {
+  const pressedInsideRef = useRef(false);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+  const popupRef = useRef<HTMLDivElement>(null);
   return (
-    <Popover>
+    <Popover
+      onOpenChange={(open, details) => {
+        if (open) return;
+        if (pressedInsideRef.current && details.reason === "trigger-hover") {
+          details.cancel();
+          return;
+        }
+        pressedInsideRef.current = false;
+        if (!popupRef.current?.contains(document.activeElement)) returnFocusRef.current = null;
+      }}
+      onOpenChangeComplete={(open) => {
+        if (open) return;
+        // Base UI leaves focus alone when a hover-opened popover closes, so focus that was
+        // inside it falls to the body as the popup unmounts. Focus elsewhere was the user's.
+        const returnFocus = returnFocusRef.current;
+        returnFocusRef.current = null;
+        const active = document.activeElement;
+        const stranded = active === document.body || popupRef.current?.contains(active);
+        if (returnFocus?.isConnected && stranded) {
+          returnFocus.focus({ preventScroll: true });
+        }
+      }}
+    >
       <PopoverTrigger
         openOnHover
         delay={350}
         closeDelay={120}
+        onPointerEnter={props.onIntent}
+        onFocus={props.onIntent}
         render={
           <ContextChip
             kind={props.kind}
@@ -129,7 +165,23 @@ export function ContextChipPopover(props: {
           <Truncatable>{props.label}</Truncatable>
         </ContextChipLabel>
       </PopoverTrigger>
-      <PopoverPopup side="top" width="lg" padding="compact">
+      <PopoverPopup
+        ref={popupRef}
+        side="top"
+        width="lg"
+        padding="compact"
+        onPointerDownCapture={
+          props.stayOpenAfterPress
+            ? (event) => {
+                pressedInsideRef.current = true;
+                const active = document.activeElement;
+                if (active instanceof HTMLElement && !event.currentTarget.contains(active)) {
+                  returnFocusRef.current = active;
+                }
+              }
+            : undefined
+        }
+      >
         <PopoverTitle className="sr-only">{props.accessibleLabel}</PopoverTitle>
         {props.children}
       </PopoverPopup>

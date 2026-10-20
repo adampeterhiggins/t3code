@@ -18,6 +18,7 @@ import {
 import symbolsFontUrl from "./fonts/SymbolsNerdFontMono-Regular.woff2?url";
 import { isMonospaceFamily } from "../../appearanceFonts";
 import { observeResize } from "../../lib/observeResize";
+import { loadGhosttyRuntime } from "./runtime";
 
 export const DEFAULT_TERMINAL_FONT_SIZE = 12;
 const MIN_TERMINAL_FONT_SIZE = 6;
@@ -62,6 +63,15 @@ function ensureTerminalSymbolsFont(): Promise<void> {
     } catch {}
   })();
   return symbolsFontLoad;
+}
+
+/**
+ * Start fetching the WASM runtime and bundled symbols font, so a surface created soon after
+ * (such as a hover preview, on hover intent) skips most of the wait.
+ */
+export function preloadGhosttyTerminal(): void {
+  void loadGhosttyRuntime().catch(() => {});
+  void ensureTerminalSymbolsFont();
 }
 
 function quoteTerminalFontFamilies(list: string): string {
@@ -476,6 +486,18 @@ export interface TerminalSelectionClickSequence {
 }
 
 const TERMINAL_LINK_DRAG_THRESHOLD_PX = 4;
+const TOUCH_LONG_PRESS_MS = 450;
+
+interface TerminalTouchGesture {
+  readonly pointerId: number;
+  readonly startX: number;
+  readonly startY: number;
+  lastY: number;
+  remainder: number;
+  moved: boolean;
+  longPressTimer: number | null;
+  selecting: boolean;
+}
 
 export function advanceTerminalSelectionClickSequence(
   previous: TerminalSelectionClickSequence | null,
@@ -517,6 +539,11 @@ export interface GhosttyTerminalSurfaceOptions {
    * whose Paste entry can never reach a canvas terminal.
    */
   readonly onContextMenu?: (event: MouseEvent) => void;
+  /**
+   * A viewer, not a terminal: only copy, select-all, and scrollback keys are handled and the
+   * rest reach the page, nothing is pasted, and a touch long press starts a selection.
+   */
+  readonly readOnly?: boolean;
 }
 
 export class GhosttyTerminalSurface {
@@ -603,14 +630,7 @@ export class GhosttyTerminalSurface {
   private clearSelectionAfterCopy = false;
   private primedCopySelection = "";
   private wheelRemainder = 0;
-  private touchScroll: {
-    pointerId: number;
-    startX: number;
-    startY: number;
-    lastY: number;
-    remainder: number;
-    moved: boolean;
-  } | null = null;
+  private touchScroll: TerminalTouchGesture | null = null;
   private lastMouseMotionData = "";
   private mouseAnyEventTracking = false;
   private dprMedia: MediaQueryList | null = null;
@@ -666,7 +686,8 @@ export class GhosttyTerminalSurface {
 
     const input = document.createElement("textarea");
     input.className = "t3-ghostty-input";
-    input.setAttribute("aria-label", "Terminal input");
+    input.setAttribute("aria-label", options.readOnly ? "Terminal output" : "Terminal input");
+    input.readOnly = options.readOnly ?? false;
     input.autocapitalize = "off";
     input.autocomplete = "off";
     input.spellcheck = false;
@@ -706,7 +727,8 @@ export class GhosttyTerminalSurface {
       metrics.width,
       metrics.height,
       options.theme,
-      options.onData,
+      // Replies the terminal generates itself (status reports, for one) are input too.
+      options.readOnly ? () => {} : options.onData,
     );
     if (options.cursorStyle) core.setDefaultCursorStyle(options.cursorStyle);
     const surface = new GhosttyTerminalSurface(
@@ -854,6 +876,15 @@ export class GhosttyTerminalSurface {
     this.applyFontMetrics();
   };
 
+  /** Size the mount to exactly `cols` by `rows` cells, for hosts that size to their content. */
+  sizeToGrid(cols: number, rows: number): void {
+    if (this.disposed) return;
+    // Half a cell of slack keeps a fractional cell width from flooring to one column short.
+    this.mount.style.width = `${CONTENT_PADDING * 2 + (cols + 0.5) * this.metrics.width}px`;
+    this.mount.style.height = `${CONTENT_PADDING * 2 + rows * this.metrics.height}px`;
+    this.fit();
+  }
+
   resendSize(): void {
     this.resizeNotified = false;
     this.fit();
@@ -961,7 +992,7 @@ export class GhosttyTerminalSurface {
     this.pasteShortcutToken += 1;
     if (text.length === 0) return;
     const encoded = this.core.encodePaste(text);
-    if (encoded.length > 0) this.options.onData(encoded);
+    if (encoded.length > 0) this.sendInput(encoded);
   }
 
   /**
@@ -1049,6 +1080,13 @@ export class GhosttyTerminalSurface {
     this.requestRender();
   }
 
+  scrollToTop(): void {
+    this.core.scrollToTop();
+    this.forceFullRender = true;
+    this.scrollbarDirty = true;
+    this.requestRender();
+  }
+
   scrollToBottom(): void {
     this.core.scrollToBottom();
     this.forceFullRender = true;
@@ -1107,12 +1145,6 @@ export class GhosttyTerminalSurface {
       primaryModifier &&
       !event.altKey &&
       (mac ? !event.shiftKey : event.shiftKey);
-    if (selectAllShortcut) {
-      event.preventDefault();
-      event.stopPropagation();
-      this.selectAll();
-      return;
-    }
     const pageHistory =
       event.shiftKey &&
       !event.altKey &&
@@ -1124,6 +1156,23 @@ export class GhosttyTerminalSurface {
       !event.altKey &&
       primaryModifier &&
       (event.key === "Home" || event.key === "End");
+    // A viewer owns only selection, copy, and scrollback keys. Checking an allowlist up front,
+    // rather than opting out further down, keeps key handling added later out of viewers.
+    if (
+      this.options.readOnly &&
+      !selectAllShortcut &&
+      !pageHistory &&
+      !jumpHistory &&
+      !(isTerminalCopyShortcut(event) && this.hasSelection())
+    ) {
+      return;
+    }
+    if (selectAllShortcut) {
+      event.preventDefault();
+      event.stopPropagation();
+      this.selectAll();
+      return;
+    }
     if ((pageHistory || jumpHistory) && !this.core.isAlternateScreen()) {
       const state = this.readScrollbarState();
       if (state !== null) {
@@ -1181,6 +1230,8 @@ export class GhosttyTerminalSurface {
       }
       return;
     }
+    // An allowed scrollback key with no scrollback to move falls through to here.
+    if (this.options.readOnly) return;
     if (isTerminalPasteShortcut(event)) {
       const gesture = { code: event.code, readText: "" };
       this.pasteShortcutGesture = gesture;
@@ -1195,7 +1246,7 @@ export class GhosttyTerminalSurface {
             this.pasteShortcutToken += 1;
             if (text.length === 0) return;
             if (this.pasteShortcutGesture === gesture) gesture.readText = text;
-            this.options.onData(this.core.encodePaste(text));
+            this.sendInput(this.core.encodePaste(text));
           },
           () => {},
         );
@@ -1208,7 +1259,7 @@ export class GhosttyTerminalSurface {
     this.encodedKeyCodes.add(event.code);
     event.preventDefault();
     event.stopPropagation();
-    this.options.onData(data);
+    this.sendInput(data);
   };
 
   private readonly onKeyUp = (event: KeyboardEvent) => {
@@ -1231,7 +1282,7 @@ export class GhosttyTerminalSurface {
     if (data.length === 0) return;
     event.preventDefault();
     event.stopPropagation();
-    this.options.onData(data);
+    this.sendInput(data);
   };
 
   // A release elsewhere must not leave a press for a later app shortcut to inherit.
@@ -1270,6 +1321,11 @@ export class GhosttyTerminalSurface {
     // so re-arm it after every change (monitor moves, browser zoom).
     this.dprMedia = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
     this.dprMedia.addEventListener("change", this.onDevicePixelRatioChange);
+  }
+
+  /** Every byte bound for the PTY passes here, so a viewer can never send any. */
+  private sendInput(data: string): void {
+    if (!this.options.readOnly) this.options.onData(data);
   }
 
   private primeCopy(selection: string): void {
@@ -1316,7 +1372,7 @@ export class GhosttyTerminalSurface {
     // The native paste won the race with actual text; a pending clipboard read
     // must not double. An empty native paste leaves the read as the only path.
     this.pasteShortcutToken += 1;
-    this.options.onData(this.core.encodePaste(data));
+    this.sendInput(this.core.encodePaste(data));
   };
 
   private readonly onCompositionStart = () => {
@@ -1328,7 +1384,7 @@ export class GhosttyTerminalSurface {
   private readonly onCompositionEnd = (event: CompositionEvent) => {
     this.composing = false;
     const data = this.input.value || event.data;
-    if (data.length > 0) this.options.onData(data);
+    if (data.length > 0) this.sendInput(data);
     this.input.value = "";
     this.compositionInputToSuppress = data;
     this.compositionSuppressionTimer = window.setTimeout(() => {
@@ -1347,7 +1403,7 @@ export class GhosttyTerminalSurface {
       return;
     }
     this.clearCompositionInputSuppression();
-    if (data.length > 0) this.options.onData(data);
+    if (data.length > 0) this.sendInput(data);
     this.input.value = "";
   };
 
@@ -1363,14 +1419,27 @@ export class GhosttyTerminalSurface {
     if (event.pointerType === "touch") {
       event.preventDefault();
       if (!event.isPrimary || this.touchScroll !== null) return;
-      this.touchScroll = {
+      const touch: TerminalTouchGesture = {
         pointerId: event.pointerId,
         startX: event.clientX,
         startY: event.clientY,
         lastY: event.clientY,
         remainder: 0,
         moved: false,
+        longPressTimer: null,
+        selecting: false,
       };
+      this.touchScroll = touch;
+      if (this.options.readOnly) {
+        // A viewer has no input for a tap to focus, so a held touch selects a word instead.
+        touch.longPressTimer = window.setTimeout(() => {
+          touch.longPressTimer = null;
+          if (this.disposed || touch.moved || this.touchScroll !== touch) return;
+          touch.selecting = true;
+          this.clearSelection();
+          this.beginSelection({ clientX: touch.startX, clientY: touch.startY }, 2);
+        }, TOUCH_LONG_PRESS_MS);
+      }
       this.clearHoveredLink();
       this.canvas.setPointerCapture(event.pointerId);
       return;
@@ -1389,6 +1458,7 @@ export class GhosttyTerminalSurface {
       return;
     }
     if (event.button === 1 && isMiddleClickPastePlatform()) {
+      if (this.options.readOnly) return;
       // Left uncancelled on purpose: cancelling pointerdown drops the
       // compatibility mousedown, which is what activates a split pane.
       this.pasteTerminalSelection();
@@ -1463,10 +1533,18 @@ export class GhosttyTerminalSurface {
       const touch = this.touchScroll;
       if (touch?.pointerId !== event.pointerId) return;
       event.preventDefault();
+      if (touch.selecting) {
+        this.extendSelectionTo(event.clientX, event.clientY);
+        return;
+      }
       touch.moved ||=
         Math.hypot(event.clientX - touch.startX, event.clientY - touch.startY) >
         TERMINAL_LINK_DRAG_THRESHOLD_PX;
       if (!touch.moved) return;
+      if (touch.longPressTimer !== null) {
+        window.clearTimeout(touch.longPressTimer);
+        touch.longPressTimer = null;
+      }
       const delta = terminalWheelDeltaRows(
         { deltaY: touch.lastY - event.clientY, deltaMode: 0 },
         this.metrics.height,
@@ -1558,6 +1636,15 @@ export class GhosttyTerminalSurface {
     this.requestRender();
   }
 
+  /**
+   * Extend a selection drag in progress to a pointer position, for hosts that scroll the canvas
+   * under a stationary pointer, such as a horizontally scrolling container.
+   */
+  extendSelectionDrag(clientX: number, clientY: number): void {
+    if (this.disposed || this.selectionAnchorScreen === null) return;
+    this.extendSelectionTo(clientX, clientY);
+  }
+
   private setSelectionAutoscroll(delta: number): void {
     this.selectionScrollDelta = delta;
     if (delta === 0) {
@@ -1619,8 +1706,13 @@ export class GhosttyTerminalSurface {
       if (touch?.pointerId !== event.pointerId) return;
       this.touchScroll = null;
       event.preventDefault();
+      if (touch.longPressTimer !== null) window.clearTimeout(touch.longPressTimer);
       if (this.canvas.hasPointerCapture(event.pointerId)) {
         this.canvas.releasePointerCapture(event.pointerId);
+      }
+      if (touch.selecting) {
+        this.options.onSelectionChange();
+        return;
       }
       if (event.type === "pointercancel" || touch.moved) return;
       this.focus();
@@ -1709,7 +1801,7 @@ export class GhosttyTerminalSurface {
     if (this.core.isAlternateScreen()) {
       // The alternate screen has no scrollback: translate wheel motion into
       // arrow keys so full-screen apps like vim and less scroll, matching xterm.
-      this.options.onData(terminalWheelArrowData(rows, this.core.isApplicationCursorKeys()));
+      this.sendInput(terminalWheelArrowData(rows, this.core.isApplicationCursorKeys()));
       return;
     }
     this.scrollViewport(rows);
@@ -2174,7 +2266,7 @@ export class GhosttyTerminalSurface {
     });
     const resolution = resolveTerminalMouseData(action, data, this.lastMouseMotionData);
     this.lastMouseMotionData = resolution.nextMotionData;
-    if (resolution.send) this.options.onData(data);
+    if (resolution.send) this.sendInput(data);
   }
 
   private synchronizeMouseTrackingState(): boolean {

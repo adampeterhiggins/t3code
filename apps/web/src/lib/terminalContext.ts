@@ -4,7 +4,6 @@ import {
   formatComposerContextReference,
   toKindScopedComposerContextId,
 } from "@t3tools/shared/composerContextReferences";
-import { stripNonSgrSequences } from "./terminalStyledText";
 
 export interface TerminalContextSelection {
   terminalId: string;
@@ -37,6 +36,20 @@ export function formatTerminalContextReference(context: TerminalContextReference
     contextId: toKindScopedComposerContextId("terminal", context.id),
     label: formatTerminalContextLabel(context),
   });
+}
+
+// CSI sequences (SGR and anything else), OSC sequences ended by BEL or ST, and lone escapes.
+// oxlint-disable-next-line no-control-regex
+const ESCAPE_PATTERN = /\x1b\[([0-9:;?<=>]*)([ -/]*[@-~])|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b./g;
+
+/**
+ * Keep only the text and its SGR sequences. Ghostty's VT selection output also carries
+ * terminal state, such as the whole 256-color palette as OSC 4, that a preview never needs.
+ */
+function stripNonSgrSequences(input: string): string {
+  return input.replace(ESCAPE_PATTERN, (sequence, _params, final) =>
+    final === "m" ? sequence : "",
+  );
 }
 
 export function normalizeTerminalContextText(text: string): string {
@@ -115,4 +128,23 @@ export function migrateLegacyTerminalContextPlaceholders(
     index += 1;
     return context ? formatTerminalContextReference(context) : "";
   });
+}
+
+/**
+ * An upper bound on the terminal columns `line` occupies, so a grid this wide never wraps it.
+ * East Asian wide characters and emoji take two cells; erring wide only leaves blank columns.
+ * Box drawing, arrows, and private-use Nerd Font glyphs (prompt segments) take one.
+ */
+export function terminalTextColumns(line: string): number {
+  let columns = 0;
+  for (const character of line) {
+    const code = character.codePointAt(0) ?? 0;
+    const narrow =
+      code < 0x1100 ||
+      (code >= 0x2000 && code <= 0x25ff) ||
+      (code >= 0xe000 && code <= 0xf8ff) ||
+      code >= 0xf0000;
+    columns += narrow ? 1 : 2;
+  }
+  return columns;
 }

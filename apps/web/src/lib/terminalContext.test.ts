@@ -13,6 +13,7 @@ import {
   keepTerminalContextStyledText,
   migrateLegacyTerminalContextPlaceholders,
   type TerminalContextDraft,
+  terminalTextColumns,
 } from "./terminalContext";
 
 function makeContext(overrides?: Partial<TerminalContextDraft>): TerminalContextDraft {
@@ -89,5 +90,18 @@ describe("keepTerminalContextStyledText", () => {
   it("drops a styled copy with no styles or one past the record bound", () => {
     expect(keepTerminalContextStyledText("\x1b]4;0;rgb:1d/1f/21\x07plain")).toBeUndefined();
     expect(keepTerminalContextStyledText(`\x1b[31m${"x".repeat(200_000)}`)).toBeUndefined();
+  });
+});
+
+describe("terminalTextColumns", () => {
+  it("counts one cell for ASCII, box drawing, and Nerd Font prompt glyphs", () => {
+    expect(terminalTextColumns("ls -la")).toBe(6);
+    expect(terminalTextColumns("\ue0b0 main \ue0b1")).toBe(8);
+    expect(terminalTextColumns("└── src")).toBe(7);
+  });
+
+  it("counts two cells for wide characters so the grid never wraps them", () => {
+    expect(terminalTextColumns("日本")).toBe(4);
+    expect(terminalTextColumns("ok 🎉")).toBe(5);
   });
 });
