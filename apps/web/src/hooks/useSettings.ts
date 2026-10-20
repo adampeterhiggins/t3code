@@ -264,6 +264,17 @@ function splitPatch(patch: UnifiedSettingsPatch): {
   };
 }
 
+/**
+ * For a window that only reads settings, such as the quick message panel: the main window owns
+ * persistence, and a persist from here would write this window's older snapshot over its edits.
+ */
+export function adoptClientSettings(settings: ClientSettings): void {
+  clientSettingsHydrationGeneration += 1;
+  clientSettingsHydrationPromise = null;
+  replaceClientSettingsSnapshot({ ...DEFAULT_CLIENT_SETTINGS, ...settings });
+  setClientSettingsHydrationStatus("ready");
+}
+
 export function getClientSettings(): ClientSettings {
   return getClientSettingsSnapshot();
 }

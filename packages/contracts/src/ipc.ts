@@ -2,7 +2,7 @@ import * as Schema from "effect/Schema";
 import type { PreviewCaptureFailureEncoded } from "./previewCapture.ts";
 
 import { SnapShotSource } from "./chatAttachment.ts";
-import { EnvironmentId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { EnvironmentId, ProjectId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { BrowserProfileId } from "./browserProfile.ts";
 import type {
   BrowserImportResult,
@@ -12,7 +12,13 @@ import type {
 import { AuthAccessTokenResult, AuthSessionState, AuthWebSocketTicketResult } from "./auth.ts";
 import { AdvertisedEndpoint } from "./remoteAccess.ts";
 import { ExecutionEnvironmentDescriptor } from "./environment.ts";
-import { type ClientSettings, type QuitConfirmationMode, SnapShotShortcut } from "./settings.ts";
+import {
+  type ClientSettings,
+  ClientSettingsSchema,
+  type QuitConfirmationMode,
+  SnapShotShortcut,
+} from "./settings.ts";
+import { ModelSelection } from "./modelSelection.ts";
 import type { EditorId } from "./editor.ts";
 import type { PreviewForwardedShortcut } from "./keybindings.ts";
 
@@ -204,6 +210,27 @@ export const DesktopSnapShotShortcutAvailability = Schema.Struct({
   message: Schema.NullOr(Schema.String),
 });
 export type DesktopSnapShotShortcutAvailability = typeof DesktopSnapShotShortcutAvailability.Type;
+
+export const DesktopQuickMessageState = Schema.Struct({
+  shortcutRegistered: Schema.Boolean,
+  message: Schema.NullOr(Schema.String),
+});
+export type DesktopQuickMessageState = typeof DesktopQuickMessageState.Type;
+
+/** What the quick message panel hands the main window to start as a new thread. */
+export const DesktopQuickMessageSubmission = Schema.Struct({
+  environmentId: EnvironmentId,
+  projectId: ProjectId,
+  text: TrimmedNonEmptyString,
+  modelSelection: ModelSelection,
+});
+export type DesktopQuickMessageSubmission = typeof DesktopQuickMessageSubmission.Type;
+
+/** Sent each time the panel opens; the panel never persists settings, so it adopts these. */
+export const DesktopQuickMessageShowEvent = Schema.Struct({
+  clientSettings: ClientSettingsSchema,
+});
+export type DesktopQuickMessageShowEvent = typeof DesktopQuickMessageShowEvent.Type;
 
 export const DesktopSnapShotId = TrimmedNonEmptyString.check(
   Schema.isMaxLength(64),
@@ -1164,6 +1191,18 @@ export interface DesktopBridge {
   webLinks?: {
     setReady: (ready: boolean) => Promise<void>;
     onOpen: (listener: (url: string) => void) => () => void;
+  };
+  quickMessage?: {
+    getState: () => Promise<DesktopQuickMessageState>;
+    setShortcutSuppressed: (suppressed: boolean) => Promise<void>;
+    /** The main window takes submissions once it can open a draft. */
+    setReceiverReady: (ready: boolean) => Promise<void>;
+    onSubmit: (listener: (submission: DesktopQuickMessageSubmission) => void) => () => void;
+    /** Panel window only. */
+    setPanelReady: () => Promise<void>;
+    submit: (submission: DesktopQuickMessageSubmission) => Promise<void>;
+    dismiss: () => Promise<void>;
+    onShow: (listener: (event: DesktopQuickMessageShowEvent) => void) => () => void;
   };
   appActivation?: {
     setReady: (ready: boolean) => Promise<void>;

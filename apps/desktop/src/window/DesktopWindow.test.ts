@@ -68,6 +68,7 @@ import * as ElectronProtocol from "../electron/ElectronProtocol.ts";
 import * as ElectronSafeStorage from "../electron/ElectronSafeStorage.ts";
 import * as DesktopIpc from "../ipc/DesktopIpc.ts";
 import * as DesktopSnapShot from "../snapShot/DesktopSnapShot.ts";
+import * as DesktopQuickMessage from "../quickMessage/DesktopQuickMessage.ts";
 import * as DesktopShellEnvironment from "../shell/DesktopShellEnvironment.ts";
 import * as DesktopTelemetryPublisher from "../telemetry/DesktopTelemetryPublisher.ts";
 import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
@@ -592,6 +593,7 @@ describe("DesktopWindow", () => {
           load: () => Effect.void,
         }),
         Layer.mock(DesktopSnapShot.DesktopSnapShot)({ initialize: Effect.void }),
+        Layer.mock(DesktopQuickMessage.DesktopQuickMessage)({ initialize: Effect.void }),
         Layer.mock(DesktopAppActivation.DesktopAppActivation)({ start: Effect.void }),
         Layer.mock(DesktopWslBackend.DesktopWslBackend)({ reconcile: Effect.void }),
         Layer.mock(DesktopBackendPool.DesktopBackendPool)({

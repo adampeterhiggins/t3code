@@ -76,6 +76,7 @@ import {
 import * as PreviewIpc from "./methods/preview.ts";
 import * as AppActivationIpc from "./methods/appActivation.ts";
 import * as WebLinksIpc from "./methods/webLinks.ts";
+import * as QuickMessageIpc from "./methods/quickMessage.ts";
 import {
   completeLegacyLocalStorage,
   takeLegacyLocalStorage,
@@ -123,6 +124,12 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
   yield* ipc.handle(setSnapShotAnimationDestination);
   yield* ipc.handle(dismissSnapShotAnimation);
   yield* ipc.handle(acknowledgeSnapShot);
+  yield* ipc.handle(QuickMessageIpc.getQuickMessageState);
+  yield* ipc.handle(QuickMessageIpc.setQuickMessageShortcutSuppressed);
+  yield* ipc.handle(QuickMessageIpc.setQuickMessageReceiverReady);
+  yield* ipc.handle(QuickMessageIpc.setQuickMessagePanelReady);
+  yield* ipc.handle(QuickMessageIpc.submitQuickMessage);
+  yield* ipc.handle(QuickMessageIpc.dismissQuickMessage);
   yield* ipc.handle(setConnectionCatalog);
   yield* ipc.handle(clearConnectionCatalog);
 

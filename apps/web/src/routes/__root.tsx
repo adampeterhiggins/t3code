@@ -36,6 +36,8 @@ import { ConnectOnboardingDialog } from "../components/cloud/ConnectOnboardingDi
 import { RelayClientInstallDialog } from "../components/cloud/RelayClientInstallDialog";
 import { SshPasswordPromptDialog } from "../components/desktop/SshPasswordPromptDialog";
 import { SnapShotCoordinator } from "../components/desktop/SnapShotCoordinator";
+import { QuickMessageCoordinator } from "../components/desktop/QuickMessageCoordinator";
+import { QuickMessageSignInNotice } from "../components/quickMessage/QuickMessagePanel";
 import { DesktopAppActivationCoordinator } from "../components/desktop/DesktopAppActivationCoordinator";
 import { DesktopWebLinkCoordinator } from "../components/desktop/DesktopWebLinkCoordinator";
 import { RunningThreadKeepAlive } from "../components/desktop/RunningThreadKeepAlive";
@@ -119,7 +121,8 @@ export const Route = createRootRoute({
       authGateState.status === "authenticated" &&
       getDesktopSnapShotBridge() &&
       shouldResumeSnapShotSetupOnStartup() &&
-      location.pathname !== "/settings/snap-shot"
+      location.pathname !== "/settings/snap-shot" &&
+      location.pathname !== "/quick-message"
     ) {
       throw redirect({ to: "/settings/snap-shot", replace: true });
     }
@@ -168,6 +171,16 @@ function RootRouteView() {
         <DocumentTitleSync />
         <BrowserChromeThemeSync key={pathname} />
         <Outlet />
+      </>
+    );
+  }
+
+  if (pathname === "/quick-message") {
+    return (
+      <>
+        <ContrastAppearanceSync />
+        <FontAppearanceSync />
+        {primaryEnvironmentAuthenticated ? <Outlet /> : <QuickMessageSignInNotice />}
       </>
     );
   }
@@ -244,6 +257,7 @@ function RootRouteView() {
           {primaryEnvironmentAuthenticated ? <AuthenticatedTracingBootstrap /> : null}
           {primaryEnvironmentAuthenticated ? <DesktopAppActivationCoordinator /> : null}
           {primaryEnvironmentAuthenticated ? <DesktopWebLinkCoordinator /> : null}
+          {primaryEnvironmentAuthenticated ? <QuickMessageCoordinator /> : null}
           {isElectron ? <RunningThreadKeepAlive /> : null}
           <RelayClientInstallDialog />
           <ConnectOnboardingDialog />

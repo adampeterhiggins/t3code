@@ -223,6 +223,29 @@ export const SnapShotKeyChord = KeybindingShortcut.check(
   ),
 );
 export type SnapShotKeyChord = typeof SnapShotKeyChord.Type;
+/**
+ * A system-wide key chord. Unlike a keybinding its key is not trimmed, so Space, the usual key
+ * for a launcher, survives.
+ */
+export const GlobalShortcutChord = Schema.Struct({
+  key: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(32)),
+  metaKey: Schema.Boolean,
+  ctrlKey: Schema.Boolean,
+  shiftKey: Schema.Boolean,
+  altKey: Schema.Boolean,
+  modKey: Schema.Boolean,
+}).check(
+  Schema.makeFilter(
+    (shortcut) =>
+      shortcut.metaKey ||
+      shortcut.ctrlKey ||
+      shortcut.shiftKey ||
+      shortcut.altKey ||
+      shortcut.modKey ||
+      "A global shortcut requires a modifier.",
+  ),
+);
+export type GlobalShortcutChord = typeof GlobalShortcutChord.Type;
 export const SNAP_SHOT_MODIFIERS = ["shift", "meta", "control", "alt"] as const;
 export const SnapShotModifier = Schema.Literals(SNAP_SHOT_MODIFIERS);
 export type SnapShotModifier = typeof SnapShotModifier.Type;
@@ -269,6 +292,14 @@ export function snapShotModifierPairLabel(modifier: SnapShotModifier, apple: boo
 }
 const DEFAULT_SNAP_SHOT_SHORTCUT: SnapShotShortcut = {
   kind: "both-shift-keys",
+};
+const DEFAULT_QUICK_MESSAGE_SHORTCUT: GlobalShortcutChord = {
+  key: "/",
+  metaKey: false,
+  ctrlKey: false,
+  shiftKey: false,
+  altKey: true,
+  modKey: false,
 };
 
 export const NotificationMode = Schema.Literals([
@@ -597,6 +628,10 @@ export const ClientSettingsSchema = Schema.Struct({
   ),
   snapShotFlash: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   snapShotAnimations: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  quickMessageEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  quickMessageShortcut: GlobalShortcutChord.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_QUICK_MESSAGE_SHORTCUT)),
+  ),
   wordWrap: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   // Opt-in TeX typesetting in rendered Markdown. Off keeps math parsing and
   // KaTeX out of the render path entirely.
@@ -2144,6 +2179,8 @@ export const ClientSettingsPatch = Schema.Struct({
   snapShotSound: Schema.optionalKey(SnapShotSound),
   snapShotFlash: Schema.optionalKey(Schema.Boolean),
   snapShotAnimations: Schema.optionalKey(Schema.Boolean),
+  quickMessageEnabled: Schema.optionalKey(Schema.Boolean),
+  quickMessageShortcut: Schema.optionalKey(GlobalShortcutChord),
   wordWrap: Schema.optionalKey(Schema.Boolean),
   mathRenderingEnabled: Schema.optionalKey(Schema.Boolean),
 });

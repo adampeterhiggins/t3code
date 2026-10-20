@@ -1741,6 +1741,18 @@ body {
   background-size: var(--surface-grain-size);
 }
 
+/* The desktop quick message panel is a transparent window around a floating composer. Its
+   backdrop blur only sees this page, not the apps behind the window, so the glass stays opaque. */
+html[data-quick-message] {
+  --glass-opacity: 100%;
+  --glass-blur: 0px;
+}
+
+html[data-quick-message],
+html[data-quick-message] body {
+  background: transparent;
+}
+
 pre,
 code {
   font-family: var(--font-mono);

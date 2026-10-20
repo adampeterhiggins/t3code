@@ -196,6 +196,18 @@ if the browser takes it first.
 Many defaults include `!terminalFocus` so they do not intercept terminal input.
 Keep that condition when remapping them if you want the same behavior.
 
+## Quick message
+
+In the desktop app, turn on **Settings → General → Quick message** to start a new thread from
+any app. Press the shortcut (`Option+/` on macOS and `Alt+/` elsewhere, until you record
+another) and a floating composer opens over whatever you are doing. Pick a project and
+model, type, and press Enter: the thread starts in T3 Code, which comes to the front with it open.
+Press Escape or click away to close the composer; what you typed is still there next time.
+
+The composer opens on the project you used most recently and that project's default model. It
+takes text only; attach files once the thread is open. On Linux the shortcut does not work in a
+Wayland session.
+
 ## Desktop quit shortcut
 
 Use `Cmd+Q` on macOS or `Ctrl+Q` on Windows and Linux. In the default **Hold** mode,

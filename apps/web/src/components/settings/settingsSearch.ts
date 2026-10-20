@@ -486,6 +486,15 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["enter return command ctrl multiline prompt new line composer"],
   },
   {
+    id: "quick-message",
+    title: "Quick message",
+    to: "/settings/general",
+    searchTerms: [
+      "global system keyboard shortcut hotkey floating composer spotlight new thread anywhere",
+    ],
+    desktopOnly: true,
+  },
+  {
     id: "follow-up-behavior",
     title: "Follow-up behavior",
     to: "/settings/general",
