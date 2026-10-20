@@ -1,6 +1,7 @@
 "use client";
 
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
+import { useRef } from "react";
 
 import { cn } from "~/lib/utils";
 
@@ -44,6 +45,7 @@ function PopoverPopup({
   keepMounted = false,
   anchor,
   touchBackdrop = false,
+  initialFocus,
   ...props
 }: PopoverPrimitive.Popup.Props & {
   padding?: keyof typeof popoverViewportPaddingClassName;
@@ -62,6 +64,23 @@ function PopoverPopup({
   // Viewport rekeys its children when the active trigger clears on close. Persistent
   // single-trigger forms need a stable container to retain drafts and submit guards.
   const Viewport = keepMounted ? "div" : PopoverPrimitive.Viewport;
+  const positionerRef = useRef<HTMLDivElement>(null);
+  // Base UI 1.5 syncs `open` into its focus manager a render late. When an outside
+  // press closes a hover-opened popover mid-transition, the focus manager wakes up
+  // still thinking it is open and pulls focus from the clicked control into the
+  // closing popup. By the time initial focus resolves, the positioner is closed.
+  const resolveInitialFocus: PopoverPrimitive.Popup.Props["initialFocus"] = (openType) => {
+    const positioner = positionerRef.current;
+    if (positioner?.hasAttribute("data-closed")) return false;
+    if (typeof initialFocus === "function") return initialFocus(openType);
+    if (initialFocus === undefined) {
+      // Base UI's default: focusing the popup on touch keeps Android's keyboard closed.
+      return openType === "touch"
+        ? positioner?.querySelector<HTMLElement>("[data-slot=popover-popup]")
+        : true;
+    }
+    return typeof initialFocus === "boolean" ? initialFocus : initialFocus.current;
+  };
   return (
     <PopoverPrimitive.Portal keepMounted={keepMounted}>
       {touchBackdrop ? (
@@ -86,6 +105,7 @@ function PopoverPopup({
             : "z-[130]",
         )}
         data-slot="popover-positioner"
+        ref={positionerRef}
         side={side}
         sideOffset={sideOffset}
       >
@@ -104,6 +124,7 @@ function PopoverPopup({
             className,
           )}
           data-slot="popover-popup"
+          initialFocus={resolveInitialFocus}
           {...props}
         >
           <Viewport
