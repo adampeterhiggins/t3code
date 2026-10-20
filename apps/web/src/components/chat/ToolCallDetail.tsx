@@ -2,6 +2,10 @@ import { ThreadId } from "@t3tools/contracts";
 import { claudeSkillInvocation } from "@t3tools/shared/toolActivity";
 import { turnItemNeedsDetailFetch } from "@t3tools/client-runtime/work-log/item-detail";
 import { resolveToolPreview } from "@t3tools/client-runtime/work-log/tool-preview";
+import {
+  resolveViewedImageAsset,
+  workEntryViewedImagePath,
+} from "@t3tools/client-runtime/work-log/presentation";
 import { workEntryReadOutput } from "./MessagesTimeline.logic";
 import type { ReactNode, ComponentProps } from "react";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
@@ -23,6 +27,7 @@ import {
 } from "../../lib/toolCallPreview";
 import { formatSecondsTimestamp } from "../../timestampFormat";
 import { ToolCallBody } from "../ToolCallBody";
+import { ChatMarkdownAssetImage } from "../ChatMarkdown";
 import { ToolPathText } from "./ToolPathText";
 import { CommandToolPreview } from "./CommandToolPreview";
 import { PreviewCornerAction } from "./PreviewCornerAction";
@@ -225,6 +230,14 @@ function ToolCallPreviewContent(
       ? null
       : heading.text;
   const textBody = readPreview ? readPreview.body : rawTextBody;
+  const viewedImagePath = workEntryViewedImagePath(workEntry);
+  const viewedImage =
+    viewedImagePath && workEntry.projectedItem
+      ? resolveViewedImageAsset(viewedImagePath, {
+          threadId: workEntry.projectedItem.sourceThreadId,
+          workspaceRoot,
+        })
+      : null;
   const item = workEntry.projectedItem?.item;
   const toolPreview = item ? resolveToolPreview(item) : null;
   const openThreadId =
@@ -309,6 +322,17 @@ function ToolCallPreviewContent(
           )}
         </p>
       ) : null}
+      {viewedImage ? (
+        <ChatMarkdownAssetImage
+          environmentId={activeThreadEnvironmentId}
+          resource={viewedImage.resource}
+          alt={viewedImage.alt}
+          srcFragment={viewedImage.srcFragment}
+          workspaceRoot={workspaceRoot}
+          maxHeightRem={16}
+          onImageExpand={props.onImageExpand}
+        />
+      ) : null}
       <WorkEntryDetailBody
         {...props}
         textBody={textBody}
@@ -380,8 +404,10 @@ export function toolCallDetailOutput(workEntry: WorkLogEntry, workspaceRoot: str
       : skill
         ? (skill.args ?? null)
         : undefined;
+  // An image read's output is the image itself, shown from `viewedImagePath` instead.
   const plainOutputFetches =
     plainOutput !== undefined &&
+    workEntryViewedImagePath(workEntry) === null &&
     workEntry.projectedItem !== undefined &&
     turnItemNeedsDetailFetch(workEntry.projectedItem.item);
   return { plainOutput, plainOutputFetches };
