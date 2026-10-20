@@ -122,8 +122,10 @@ export function ToolPathText(props: {
     (part, index) => {
       if ("text" in part) {
         if (!props.singleLine) return part.text;
+        // Activity rows force nowrap on every descendant, which drops the space
+        // between the verb and the path unless this declaration wins.
         return (
-          <span key={`text:${index}`} className="shrink-0 whitespace-pre">
+          <span key={`text:${index}`} className="shrink-0 whitespace-pre!">
             {part.text}
           </span>
         );
