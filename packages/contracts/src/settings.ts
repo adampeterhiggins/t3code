@@ -1418,7 +1418,10 @@ export const Organisation = Schema.Struct({
   name: Schema.optionalKey(TrimmedNonEmptyString.check(Schema.isMaxLength(64))),
   /** A kind from a newer client decodes as no icon. */
   icon: Schema.optionalKey(ReceivedProjectIcon),
-  /** Shows the owner's GitHub avatar instead of `icon`; only github.com organisations have one. */
+  /**
+   * Ignored, kept so stored settings decode: github.com organisations show their GitHub avatar
+   * unless they have an `icon`.
+   */
   githubAvatar: Schema.optionalKey(Schema.Literal(true)),
 });
 export type Organisation = typeof Organisation.Type;

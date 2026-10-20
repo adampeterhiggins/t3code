@@ -23,9 +23,7 @@ export function useOrganisations() {
     delete rest[key];
     updateSettings({
       organisations:
-        organisation.name === undefined &&
-        organisation.icon == null &&
-        organisation.githubAvatar === undefined
+        organisation.name === undefined && organisation.icon == null
           ? rest
           : { ...rest, [key]: organisation },
     });
