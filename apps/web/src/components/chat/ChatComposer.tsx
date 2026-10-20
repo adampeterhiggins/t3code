@@ -141,6 +141,7 @@ import {
   composerFileMatchesReattachMarker,
   composerFileNeedsReattach,
   composerDraftHasUserContent,
+  type ComposerThreadTarget,
   composerTargetKey,
   hydrateImagesFromPersisted,
   useComposerDraftStore,
@@ -232,7 +233,6 @@ import {
   type ComposerObjectLink,
   findComposerObjectLinks,
   findTypedComposerObjectLink,
-  locateComposerObjectLink,
 } from "@t3tools/shared/composerObjectLinks";
 import {
   getRestingComposerImagePreviewCounts,
@@ -337,7 +337,15 @@ import { useAttachGranolaNote } from "./GranolaNotePicker";
 import { useComposerGranolaItems } from "./useComposerGranolaItems";
 import { slackGetThreadInput, useAttachSlackMessage } from "./SlackMessagePicker";
 import { discordGetThreadInput, useAttachDiscordMessage } from "./DiscordMessagePicker";
-import { useResolveComposerObjectLink } from "./useResolveComposerObjectLink";
+import {
+  type ResolvedComposerObjectLink,
+  useResolveComposerObjectLink,
+} from "./useResolveComposerObjectLink";
+import {
+  type ObjectLinkDrafts,
+  objectLinkChipDestination,
+  objectLinkChipEdit,
+} from "./composerObjectLinkChip";
 import { useComposerRepositoryItems } from "./useComposerRepositoryItems";
 import { useComposerAgentItems } from "./useComposerAgentItems";
 import { agentReferenceTargetOf, attachAgentToChat } from "./agentReferences";
@@ -6380,10 +6388,58 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     }
     return handled;
   };
+  // Runs when the object loads, so it reads the composer as it is then, not as it was at paste.
+  const applyResolvedObjectLink = (
+    started: ObjectLinkDrafts & { draftTarget: ComposerThreadTarget },
+    url: string,
+    index: number,
+    resolved: ResolvedComposerObjectLink,
+  ) => {
+    const destination = objectLinkChipDestination(
+      started,
+      composerEditorRef.current === null
+        ? null
+        : { draftKey: composerDraftTargetKeyRef.current, workKey: attachmentTargetKeyRef.current },
+    );
+    if (destination === "drop") return;
+    if (destination === "stored-draft") {
+      const prompt =
+        useComposerDraftStore.getState().getComposerDraft(started.draftTarget)?.prompt ?? "";
+      const edit = objectLinkChipEdit(prompt, url, index, resolved.reference);
+      if (edit === null) return;
+      setComposerDraftPrompt(
+        started.draftTarget,
+        `${prompt.slice(0, edit.start)}${edit.text}${prompt.slice(edit.end)}`,
+      );
+      resolved.commit();
+      return;
+    }
+    const edit = objectLinkChipEdit(promptRef.current, url, index, resolved.reference);
+    if (edit === null) return;
+    // Keep the caret where the user left it, shifted past the chip if it was after the link.
+    const cursor = readComposerSnapshot().expandedCursor;
+    const cursorAfter =
+      cursor <= edit.start
+        ? cursor
+        : cursor >= edit.end
+          ? cursor + edit.text.length - (edit.end - edit.start)
+          : edit.start + edit.text.length;
+    const activeElement = document.activeElement;
+    const applied = applyPromptReplacement(edit.start, edit.end, edit.text, {
+      expandedCursorAfterReplace: cursorAfter,
+      focusEditorAfterReplace:
+        activeElement instanceof Node && composerFormRef.current?.contains(activeElement) === true,
+    });
+    if (applied) resolved.commit();
+  };
+  const applyResolvedObjectLinkStable = useStableCallback(applyResolvedObjectLink);
   /**
    * Swaps links to issues, pull requests, and repositories for the chips their attach pickers
    * make. Each link becomes a chip once its object loads, and stays a link if it cannot be read
    * or was edited away meanwhile. `index` says roughly where each link sits in the prompt.
+   *
+   * Loading holds the draft like an attachment import does, so a send or stash waits for the chip
+   * instead of shipping the bare link.
    */
   const convertObjectLinks = (
     links: ReadonlyArray<{
@@ -6391,36 +6447,25 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       index: number;
     }>,
   ) => {
-    const targetKey = composerDraftTargetKeyRef.current;
+    const started = {
+      draftTarget: composerDraftTarget,
+      draftKey: composerDraftTargetKeyRef.current,
+      workKey: attachmentTargetKeyRef.current,
+    };
     const handled = handledObjectLinks();
     for (const { link, index } of links) {
       handled.add(link.url);
       const retry = () => {
-        if (composerDraftTargetKeyRef.current === targetKey) convertObjectLinks([{ link, index }]);
+        if (composerDraftTargetKeyRef.current === started.draftKey) {
+          convertObjectLinks([{ link, index }]);
+        }
       };
-      void resolveComposerObjectLink(link, { retry }).then((resolved) => {
-        if (resolved === null || composerDraftTargetKeyRef.current !== targetKey) return;
-        const prompt = promptRef.current;
-        const range = locateComposerObjectLink(prompt, link.url, index);
-        if (range === null) return;
-        const edit = inlineContextReferenceReplacement(prompt, range, [resolved.reference]);
-        // Keep the caret where the user left it, shifted past the chip if it was after the link.
-        const cursor = readComposerSnapshot().expandedCursor;
-        const cursorAfter =
-          cursor <= edit.start
-            ? cursor
-            : cursor >= edit.end
-              ? cursor + edit.text.length - (edit.end - edit.start)
-              : edit.start + edit.text.length;
-        const activeElement = document.activeElement;
-        const applied = applyPromptReplacement(edit.start, edit.end, edit.text, {
-          expandedCursorAfterReplace: cursorAfter,
-          focusEditorAfterReplace:
-            activeElement instanceof Node &&
-            composerFormRef.current?.contains(activeElement) === true,
-        });
-        if (applied) resolved.commit();
-      });
+      pendingDraftWork.begin(started.workKey);
+      void resolveComposerObjectLink(link, { retry })
+        .then((resolved) => {
+          if (resolved !== null) applyResolvedObjectLinkStable(started, link.url, index, resolved);
+        })
+        .finally(() => pendingDraftWork.end(started.workKey));
     }
   };
   /** `pasteStart` is where the paste lands, so offsets into the pasted text are offsets from it. */
@@ -6481,7 +6526,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       // This capture handler runs before the editor inserts the paste, and a link that resolves
       // without a fetch (a repository) would look for itself in the prompt too early. Wait a task.
       const pasteStart = readComposerSnapshot().expandedCursor;
-      setTimeout(() => convertPastedObjectLinks(plainText, bypassAutoAttachment, pasteStart), 0);
+      setTimeout(
+        () => convertPastedObjectLinksRef.current?.(plainText, bypassAutoAttachment, pasteStart),
+        0,
+      );
       return;
     }
     event.preventDefault();
