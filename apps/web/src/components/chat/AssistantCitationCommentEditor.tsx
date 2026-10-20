@@ -19,11 +19,18 @@ const SUBMIT_CHOICES = {
   save: { label: "Save", description: "Keep writing in the composer" },
 } as const satisfies Record<SubmitChoice, { label: string; description: string }>;
 
+// While a turn runs, sending follows the composer's follow-up setting, which may queue.
+const QUEUE_SUBMIT_CHOICE = {
+  label: "Add to queue",
+  description: "Save and queue the message for after this turn",
+} as const;
+
 export function AssistantCitationCommentEditor({
   citation,
   inputRef,
   onSubmit,
   onSubmitAndSend,
+  submitAndSendQueues = false,
   onCancel,
   onDraftChange,
 }: {
@@ -31,6 +38,7 @@ export function AssistantCitationCommentEditor({
   inputRef?: Ref<HTMLTextAreaElement>;
   onSubmit: (comment: string) => boolean;
   onSubmitAndSend?: (comment: string) => boolean;
+  submitAndSendQueues?: boolean;
   onCancel: () => void;
   onDraftChange?: (comment: string) => void;
 }) {
@@ -63,7 +71,7 @@ export function AssistantCitationCommentEditor({
       <textarea
         ref={inputRef}
         aria-label="Comment on selected text"
-        aria-description="Enter to save the citation comment; Command/Ctrl+Enter to save and send; Shift+Enter for a new line."
+        aria-description={`Enter to save the citation comment; Command/Ctrl+Enter to save and ${submitAndSendQueues ? "queue" : "send"}; Shift+Enter for a new line.`}
         aria-invalid={commentTooLong || undefined}
         placeholder="Add an optional comment..."
         rows={2}
@@ -107,6 +115,7 @@ export function AssistantCitationCommentEditor({
         {onSubmitAndSend ? (
           <SubmitChoiceButton
             disabled={commentTooLong}
+            queues={submitAndSendQueues}
             onRun={(choice) => (choice === "send" ? submitAndSend() : submit())}
           />
         ) : (
@@ -128,12 +137,17 @@ export function AssistantCitationCommentEditor({
  * Mirrors the pull request comment form: the last way the reader finished a comment, with the
  * other a click away. Picking from the menu does it and makes it the default next time.
  */
-function SubmitChoiceButton(props: { disabled: boolean; onRun: (choice: SubmitChoice) => void }) {
+function SubmitChoiceButton(props: {
+  disabled: boolean;
+  queues: boolean;
+  onRun: (choice: SubmitChoice) => void;
+}) {
   const [choice, setChoice] = useLocalStorage(
     SUBMIT_CHOICE_STORAGE_KEY,
     "send",
     SubmitChoiceSchema,
   );
+  const choices = props.queues ? { ...SUBMIT_CHOICES, send: QUEUE_SUBMIT_CHOICE } : SUBMIT_CHOICES;
   const run = (next: SubmitChoice) => {
     setChoice(next);
     props.onRun(next);
@@ -146,7 +160,7 @@ function SubmitChoiceButton(props: { disabled: boolean; onRun: (choice: SubmitCh
         onPointerDown={(event) => event.preventDefault()}
         onClick={() => run(choice)}
       >
-        {props.disabled ? "Shorten comment" : SUBMIT_CHOICES[choice].label}
+        {props.disabled ? "Shorten comment" : choices[choice].label}
       </Button>
       <GroupSeparator />
       <Menu>
@@ -160,9 +174,9 @@ function SubmitChoiceButton(props: { disabled: boolean; onRun: (choice: SubmitCh
           {(["send", "save"] as const).map((option) => (
             <MenuItem key={option} onClick={() => run(option)}>
               <span className="flex min-w-0 flex-col py-0.5">
-                <MenuItemLabel>{SUBMIT_CHOICES[option].label}</MenuItemLabel>
+                <MenuItemLabel>{choices[option].label}</MenuItemLabel>
                 <span className="truncate text-xs text-muted-foreground">
-                  {SUBMIT_CHOICES[option].description}
+                  {choices[option].description}
                 </span>
               </span>
             </MenuItem>

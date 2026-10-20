@@ -47,6 +47,7 @@ export function AssistantCitationChip({
     onCancel?: () => void;
     onSave: (comment: string) => boolean;
     onSaveAndSend?: (comment: string) => boolean;
+    saveAndSendQueues?: boolean;
     onDraftChange?: (comment: string) => void;
     onRestoreFocus?: () => void;
   };
@@ -243,6 +244,7 @@ export function AssistantCitationChip({
                         commentEditor.onOpenChange(false);
                         return true;
                       },
+                      submitAndSendQueues: commentEditor.saveAndSendQueues ?? false,
                     }
                   : {})}
                 onCancel={() => {

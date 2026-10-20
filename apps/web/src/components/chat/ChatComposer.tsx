@@ -4503,16 +4503,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     );
   };
   const handleSubmitMessageStable = useStableCallback(handleSubmitMessage);
+  const citationSendDispatchMode = resolveComposerDispatchMode({
+    running: phase === "running",
+    alternateModifier: false,
+    activeTurnDefault: settings.followUpBehavior,
+    canSteer: !isCompacting,
+  });
   const submitCitationAndSend = () => {
-    submitComposer(
-      undefined,
-      resolveComposerDispatchMode({
-        running: phase === "running",
-        alternateModifier: false,
-        activeTurnDefault: settings.followUpBehavior,
-        canSteer: !isCompacting,
-      }),
-    );
+    submitComposer(undefined, citationSendDispatchMode);
   };
   const submitCitationAndSendStable = useStableCallback(submitCitationAndSend);
   // A question or approval took the editor while a citation comment was
@@ -7842,6 +7840,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     onPageScrollKeyUp={onPageScrollKeyUp}
                     onPageScrollRelease={onPageScrollRelease}
                     onCitationSubmitAndSend={submitCitationAndSendStable}
+                    citationSendQueues={citationSendDispatchMode === "queue"}
                     onCitationDraftSave={saveCitationDraftToPromptStable}
                     onPaste={onComposerPasteStable}
                     placeholder={
