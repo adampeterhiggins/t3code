@@ -727,7 +727,8 @@ export class GhosttyTerminalSurface {
       metrics.width,
       metrics.height,
       options.theme,
-      options.onData,
+      // Replies the terminal generates itself (status reports, for one) are input too.
+      options.readOnly ? () => {} : options.onData,
     );
     if (options.cursorStyle) core.setDefaultCursorStyle(options.cursorStyle);
     const surface = new GhosttyTerminalSurface(
@@ -991,7 +992,7 @@ export class GhosttyTerminalSurface {
     this.pasteShortcutToken += 1;
     if (text.length === 0) return;
     const encoded = this.core.encodePaste(text);
-    if (encoded.length > 0) this.options.onData(encoded);
+    if (encoded.length > 0) this.sendInput(encoded);
   }
 
   /**
@@ -1144,12 +1145,6 @@ export class GhosttyTerminalSurface {
       primaryModifier &&
       !event.altKey &&
       (mac ? !event.shiftKey : event.shiftKey);
-    if (selectAllShortcut) {
-      event.preventDefault();
-      event.stopPropagation();
-      this.selectAll();
-      return;
-    }
     const pageHistory =
       event.shiftKey &&
       !event.altKey &&
@@ -1161,6 +1156,23 @@ export class GhosttyTerminalSurface {
       !event.altKey &&
       primaryModifier &&
       (event.key === "Home" || event.key === "End");
+    // A viewer owns only selection, copy, and scrollback keys. Checking an allowlist up front,
+    // rather than opting out further down, keeps key handling added later out of viewers.
+    if (
+      this.options.readOnly &&
+      !selectAllShortcut &&
+      !pageHistory &&
+      !jumpHistory &&
+      !(isTerminalCopyShortcut(event) && this.hasSelection())
+    ) {
+      return;
+    }
+    if (selectAllShortcut) {
+      event.preventDefault();
+      event.stopPropagation();
+      this.selectAll();
+      return;
+    }
     if ((pageHistory || jumpHistory) && !this.core.isAlternateScreen()) {
       const state = this.readScrollbarState();
       if (state !== null) {
@@ -1218,7 +1230,7 @@ export class GhosttyTerminalSurface {
       }
       return;
     }
-    // Everything else is input, which a viewer has none of: leave it to the page's shortcuts.
+    // An allowed scrollback key with no scrollback to move falls through to here.
     if (this.options.readOnly) return;
     if (isTerminalPasteShortcut(event)) {
       const gesture = { code: event.code, readText: "" };
@@ -1234,7 +1246,7 @@ export class GhosttyTerminalSurface {
             this.pasteShortcutToken += 1;
             if (text.length === 0) return;
             if (this.pasteShortcutGesture === gesture) gesture.readText = text;
-            this.options.onData(this.core.encodePaste(text));
+            this.sendInput(this.core.encodePaste(text));
           },
           () => {},
         );
@@ -1247,7 +1259,7 @@ export class GhosttyTerminalSurface {
     this.encodedKeyCodes.add(event.code);
     event.preventDefault();
     event.stopPropagation();
-    this.options.onData(data);
+    this.sendInput(data);
   };
 
   private readonly onKeyUp = (event: KeyboardEvent) => {
@@ -1270,7 +1282,7 @@ export class GhosttyTerminalSurface {
     if (data.length === 0) return;
     event.preventDefault();
     event.stopPropagation();
-    this.options.onData(data);
+    this.sendInput(data);
   };
 
   // A release elsewhere must not leave a press for a later app shortcut to inherit.
@@ -1309,6 +1321,11 @@ export class GhosttyTerminalSurface {
     // so re-arm it after every change (monitor moves, browser zoom).
     this.dprMedia = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
     this.dprMedia.addEventListener("change", this.onDevicePixelRatioChange);
+  }
+
+  /** Every byte bound for the PTY passes here, so a viewer can never send any. */
+  private sendInput(data: string): void {
+    if (!this.options.readOnly) this.options.onData(data);
   }
 
   private primeCopy(selection: string): void {
@@ -1355,7 +1372,7 @@ export class GhosttyTerminalSurface {
     // The native paste won the race with actual text; a pending clipboard read
     // must not double. An empty native paste leaves the read as the only path.
     this.pasteShortcutToken += 1;
-    this.options.onData(this.core.encodePaste(data));
+    this.sendInput(this.core.encodePaste(data));
   };
 
   private readonly onCompositionStart = () => {
@@ -1367,7 +1384,7 @@ export class GhosttyTerminalSurface {
   private readonly onCompositionEnd = (event: CompositionEvent) => {
     this.composing = false;
     const data = this.input.value || event.data;
-    if (data.length > 0) this.options.onData(data);
+    if (data.length > 0) this.sendInput(data);
     this.input.value = "";
     this.compositionInputToSuppress = data;
     this.compositionSuppressionTimer = window.setTimeout(() => {
@@ -1386,7 +1403,7 @@ export class GhosttyTerminalSurface {
       return;
     }
     this.clearCompositionInputSuppression();
-    if (data.length > 0) this.options.onData(data);
+    if (data.length > 0) this.sendInput(data);
     this.input.value = "";
   };
 
@@ -1784,7 +1801,7 @@ export class GhosttyTerminalSurface {
     if (this.core.isAlternateScreen()) {
       // The alternate screen has no scrollback: translate wheel motion into
       // arrow keys so full-screen apps like vim and less scroll, matching xterm.
-      this.options.onData(terminalWheelArrowData(rows, this.core.isApplicationCursorKeys()));
+      this.sendInput(terminalWheelArrowData(rows, this.core.isApplicationCursorKeys()));
       return;
     }
     this.scrollViewport(rows);
@@ -2249,7 +2266,7 @@ export class GhosttyTerminalSurface {
     });
     const resolution = resolveTerminalMouseData(action, data, this.lastMouseMotionData);
     this.lastMouseMotionData = resolution.nextMotionData;
-    if (resolution.send) this.options.onData(data);
+    if (resolution.send) this.sendInput(data);
   }
 
   private synchronizeMouseTrackingState(): boolean {

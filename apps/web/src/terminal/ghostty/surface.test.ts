@@ -986,30 +986,66 @@ describe("GhosttyTerminalSurface visibility", () => {
     },
   );
 
-  it("leaves a read-only viewer's non-copy keys to the page and never reads the clipboard", async () => {
+  it("never sends input, reads the clipboard, or takes focus on creation when read-only", async () => {
     const harness = createHarness();
     const readText = vi.fn(async () => "clipboard text");
     vi.stubGlobal("navigator", { platform: "Linux x86_64", clipboard: { readText } });
+    const focus = vi.spyOn(Object.getPrototypeOf(harness.canvas), "focus");
     const surface = await harness.create({ readOnly: true, beforeKey: () => true });
-    surface.write("hello world");
+    expect(focus).not.toHaveBeenCalled();
+    expect(surface.input.readOnly).toBe(true);
+
+    // Status queries the terminal would answer, then the alternate screen, where the wheel
+    // becomes arrow keys.
+    surface.write("hello world\x1b[5n\x1b[6n\x1b[?1049h");
     harness.flushFrame();
 
+    // Keys a viewer doesn't own reach the page untouched, including ones the terminal would
+    // encode, paste shortcuts, and keys that fall through an empty scrollback.
     for (const [name, code, modifiers] of [
       ["k", "KeyK", { ctrlKey: true }],
+      ["c", "KeyC", { ctrlKey: true }],
       ["x", "KeyX", {}],
       ["Enter", "Enter", {}],
+      ["Escape", "Escape", {}],
+      ["v", "KeyV", { ctrlKey: true }],
       ["v", "KeyV", { ctrlKey: true, shiftKey: true }],
+      ["PageUp", "PageUp", { shiftKey: true }],
     ] as const) {
       expect(key(surface, name, code, modifiers).defaultPrevented).toBe(false);
     }
-    expect(readText).not.toHaveBeenCalled();
-    expect(harness.onData).not.toHaveBeenCalled();
+    surface.input.dispatchEvent(
+      Object.assign(new Event("paste", { cancelable: true }), {
+        clipboardData: { getData: () => "pasted" },
+      }),
+    );
+    surface.input.value = "typed";
+    surface.input.dispatchEvent(Object.assign(new Event("input"), { data: "typed" }));
+    surface.input.dispatchEvent(new Event("compositionstart"));
+    surface.input.value = "日本";
+    surface.input.dispatchEvent(Object.assign(new Event("compositionend"), { data: "日本" }));
+    harness.pointer("pointerdown", 20, 4, {}, 1);
+    harness.pointer("pointerup", 20, 0, {}, 1);
+    harness.canvas.dispatchEvent(
+      Object.assign(new Event("wheel", { cancelable: true }), {
+        deltaX: 0,
+        deltaY: 120,
+        deltaMode: 0,
+        clientX: 20,
+        clientY: 5,
+      }),
+    );
+    vi.advanceTimersByTime(1_000);
 
+    expect(harness.onData).not.toHaveBeenCalled();
+    expect(readText).not.toHaveBeenCalled();
+
+    // What a viewer does own still works.
+    surface.write("\x1b[?1049l");
     expect(key(surface, "A", "KeyA", { ctrlKey: true, shiftKey: true }).defaultPrevented).toBe(
       true,
     );
-    expect(surface.getSelection()).toContain("hello world");
-    expect(surface.input.readOnly).toBe(true);
+    expect(surface.getSelection()).not.toBe("");
   });
 
   it("extends a selection drag for a host that scrolls the canvas, and only during one", async () => {
