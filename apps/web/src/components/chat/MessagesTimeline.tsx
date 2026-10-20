@@ -127,6 +127,7 @@ import {
   ChevronRightIcon,
   ChevronUpIcon,
   CircleAlertIcon,
+  CornerDownRightIcon,
   DownloadIcon,
   EyeIcon,
   GitForkIcon,
@@ -4069,12 +4070,10 @@ function LiveWorkEntryTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "
               "Thought"
             )
           ) : row.entry.questionAnswer && hasQuestionAnswer(row.entry.questionAnswer) ? (
-            <span className="flex min-w-0 gap-1.5">
-              <span className="min-w-0 truncate">{label}</span>
-              <span className="min-w-0 truncate text-foreground">
-                {getQuestionAnswerPreview(row.entry.questionAnswer)}
-              </span>
-            </span>
+            <QuestionAnswerLabel
+              question={label}
+              answer={getQuestionAnswerPreview(row.entry.questionAnswer)}
+            />
           ) : row.entry.itemType === "reasoning" ? (
             <ChatMarkdown
               inline
@@ -4100,7 +4099,10 @@ function LiveWorkEntryTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "
             label
           )
         }
-        wrapLabel={showsPaths}
+        wrapLabel={
+          showsPaths ||
+          Boolean(row.entry.questionAnswer && hasQuestionAnswer(row.entry.questionAnswer))
+        }
         iconName={workEntryIconName(row.entry)}
         toolIcon={row.entry.toolIcon ?? row.entry.toolSource?.icon}
         failed={failed}
@@ -5590,7 +5592,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
     <WorkLogRow
       data-v2-item-type={workEntry.projectedItem?.item.type}
       data-v2-item-visibility={workEntry.projectedItem?.visibility}
-      wrapLabel={showsPaths}
+      wrapLabel={showsPaths || answerPreview !== null}
       {...rowToggleProps}
       icon={
         <span
@@ -5607,61 +5609,56 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
         </span>
       }
       label={
-        <div className="min-w-0 flex-1 overflow-hidden">
-          <p className="flex min-w-0 w-full items-baseline gap-1.5 text-sm leading-relaxed">
-            <span
-              className={cn(
-                answerPreview ? "min-w-0" : "min-w-0 flex-1",
-                showsPaths ? "break-words" : "truncate",
-                headingClass,
-              )}
-            >
-              {isReasoning && !expanded ? (
-                <ChatMarkdown
-                  inline
-                  text={workEntry.detail ?? previewText}
-                  cwd={ctx.markdownCwd}
-                  parseRawHtml={false}
-                  extraRemarkPlugins={[
-                    [
-                      remarkThoughtPreview,
-                      workEntry.toolLifecycleStatus === "inProgress" ? "Thinking" : "Thought",
-                    ],
-                  ]}
-                />
-              ) : threadLabel ? (
-                <ThreadReadLabel
-                  label={threadLabel}
-                  environmentId={ctx.activeThreadEnvironmentId}
-                  linked
-                />
-              ) : showsPaths ? (
-                <ToolPathText
-                  targets={toolPathTargets(workEntry)}
-                  text={previewText}
-                  environmentId={ctx.activeThreadEnvironmentId}
-                  workspaceRoot={workspaceRoot}
-                />
-              ) : (
-                previewText
-              )}
-            </span>
-            {answerPreview ? (
+        answerPreview !== null ? (
+          <QuestionAnswerLabel
+            question={previewText}
+            answer={answerPreview}
+            className={headingClass}
+            answerMuted={expanded}
+          />
+        ) : (
+          <div className="min-w-0 flex-1 overflow-hidden">
+            <p className="flex min-w-0 w-full items-baseline gap-1.5 text-sm leading-relaxed">
               <span
                 className={cn(
-                  "min-w-0 truncate",
-                  !expanded &&
-                    workEntry.questionAnswer &&
-                    hasQuestionAnswer(workEntry.questionAnswer)
-                    ? "text-foreground"
-                    : "text-muted-foreground",
+                  "min-w-0 flex-1",
+                  showsPaths ? "break-words" : "truncate",
+                  headingClass,
                 )}
               >
-                {answerPreview}
+                {isReasoning && !expanded ? (
+                  <ChatMarkdown
+                    inline
+                    text={workEntry.detail ?? previewText}
+                    cwd={ctx.markdownCwd}
+                    parseRawHtml={false}
+                    extraRemarkPlugins={[
+                      [
+                        remarkThoughtPreview,
+                        workEntry.toolLifecycleStatus === "inProgress" ? "Thinking" : "Thought",
+                      ],
+                    ]}
+                  />
+                ) : threadLabel ? (
+                  <ThreadReadLabel
+                    label={threadLabel}
+                    environmentId={ctx.activeThreadEnvironmentId}
+                    linked
+                  />
+                ) : showsPaths ? (
+                  <ToolPathText
+                    targets={toolPathTargets(workEntry)}
+                    text={previewText}
+                    environmentId={ctx.activeThreadEnvironmentId}
+                    workspaceRoot={workspaceRoot}
+                  />
+                ) : (
+                  previewText
+                )}
               </span>
-            ) : null}
-          </p>
-        </div>
+            </p>
+          </div>
+        )
       }
       trailing={
         <>
@@ -5792,6 +5789,33 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
         )}
       </PreviewCardPopup>
     </PreviewCard>
+  );
+}
+
+function QuestionAnswerLabel({
+  question,
+  answer,
+  className,
+  answerMuted = false,
+}: {
+  question: ReactNode;
+  answer: string;
+  className?: string;
+  answerMuted?: boolean;
+}) {
+  return (
+    <span className="flex min-w-0 flex-col">
+      <span className={cn("line-clamp-2 break-words", className)}>{question}</span>
+      <span
+        className={cn(
+          "flex min-w-0 items-center gap-1.5",
+          answerMuted ? "text-muted-foreground" : "text-foreground",
+        )}
+      >
+        <CornerDownRightIcon aria-hidden className="size-3.5 shrink-0 text-icon-muted" />
+        <span className="min-w-0 truncate">{answer}</span>
+      </span>
+    </span>
   );
 }
 
