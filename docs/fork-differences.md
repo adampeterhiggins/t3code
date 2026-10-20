@@ -1991,3 +1991,17 @@ entry.
 **Settings → Storage → Managed worktrees** inventories managed checkouts per selected environment with linked threads, branch, local changes, and last synced pull request state. Sizes are measured on demand. Individual and bulk removal rechecks local changes and running work under the workspace lease, refuses project checkouts and unmanaged paths, and keeps branches and thread history. Mobile offers the same inventory and safe cleanup in each environment’s Settings page.
 
 Code: [`WorktreeInventory.ts`](../apps/server/src/git/WorktreeInventory.ts) and [`WorktreeInventory.tsx`](../apps/web/src/components/settings/WorktreeInventory.tsx). User guide: [Review worktree storage](user/project-settings.md#review-worktree-storage).
+
+## Web fetch and search previews
+
+Web tool calls record whether they read a page or ran a search. A fetch row reads
+`Fetched docs.github.com › … › page`; its hover card and expanded row show the page as a linked
+breadcrumb with its HTTP status, what the agent asked of the page, and the answer as markdown. A
+search row reads `Searched “query”`, and its details list the ranked hits with their path and
+snippet, plus any summary the provider wrote. Claude, Codex, OpenCode, ACP agents (Grok and the
+registry agents) and Muse fill these in. Calls stored before this, including Claude fetches that
+saved the raw WebFetch JSON, are read through the same view. Mobile shows the same fields in its
+row details and inspector.
+
+Code: `packages/client-runtime/src/work-log/webTool.ts`, rendered on web by
+`apps/web/src/components/chat/WebToolDetail.tsx`.
