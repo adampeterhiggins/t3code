@@ -133,7 +133,8 @@ directory itself sits inside a Git checkout.
 To move an existing conversation into another project, choose **Move to project** from its
 menu in the sidebar or the chat header (on mobile, press and hold the thread), or ask its agent
 to move it. The conversation stays intact and future work uses that project's main checkout;
-linked pull requests are cleared. Files stay where they were; ask the agent to copy them into
+an agent can instead land it in one of the project's worktrees or on a pull request's branch.
+Linked pull requests are cleared. Files stay where they were; ask the agent to copy them into
 the project first if needed. Stop a running thread before moving it, and resolve any sibling
 tabs, scheduled tasks, or pending requests first. An agent needs full access to move a thread.
 

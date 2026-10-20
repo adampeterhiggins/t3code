@@ -29,6 +29,8 @@ import * as ServerSettings from "../serverSettings.ts";
 import * as SourceControlRepositoryService from "../sourceControl/SourceControlRepositoryService.ts";
 import { UsageService } from "../usage/UsageService.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
+import * as GitWorkflow from "../git/GitWorkflowService.ts";
+import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
 import * as McpContextLinks from "./McpContextLinks.ts";
 import * as AgentAccessMcpServer from "./AgentAccessMcpServer.ts";
 
@@ -107,6 +109,8 @@ const RoutesLive = Layer.mergeAll(AgentAccessMcpServer.layer, ThreadMcpLive).pip
       Layer.mock(SourceControlRepositoryService.SourceControlRepositoryService)({}),
       Layer.mock(ServerSettings.ServerSettingsService)({}),
       Layer.mock(GitVcsDriver.GitVcsDriver)({}),
+      Layer.mock(GitWorkflow.GitWorkflowService)({}),
+      Layer.mock(ProjectSetupScriptRunner.ProjectSetupScriptRunner)({}),
       Layer.mock(McpContextLinks.McpContextLinks)({}),
       Layer.succeed(
         Crypto.Crypto,

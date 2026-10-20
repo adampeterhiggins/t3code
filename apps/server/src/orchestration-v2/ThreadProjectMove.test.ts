@@ -129,6 +129,24 @@ it.effect("moves an idle thread to the destination checkout and can move it back
   }).pipe(Effect.provide(layer)),
 );
 
+it.effect("moves a thread into a checkout of the destination project", () =>
+  Effect.gen(function* () {
+    const orchestrator = yield* prepare;
+    yield* orchestrator.dispatch({
+      type: "thread.project.move",
+      commandId: CommandId.make("move-to-worktree"),
+      threadId,
+      projectId: destination,
+      worktreePath: "/tmp/project:destination-pr-12",
+      branch: "feature/pr-12",
+    });
+    const after = yield* orchestrator.getThreadProjection(threadId);
+    assert.equal(after.thread.projectId, destination);
+    assert.equal(after.thread.worktreePath, "/tmp/project:destination-pr-12");
+    assert.equal(after.thread.branch, "feature/pr-12");
+  }).pipe(Effect.provide(layer)),
+);
+
 it.effect.each(["missing-project", "same-project", "archived", "tabs", "scheduled-task"] as const)(
   "refuses %s without moving the thread",
   (refusal) =>

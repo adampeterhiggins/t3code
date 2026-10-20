@@ -80,6 +80,8 @@ import {
 } from "@t3tools/provider-testing/replayTranscript";
 import * as ProviderRegistryMock from "../provider/testUtils/providerRegistryMock.ts";
 import * as ProjectService from "../project/ProjectService.ts";
+import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
+import * as GitWorkflow from "../git/GitWorkflowService.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
@@ -737,6 +739,9 @@ describe("orchestrator MCP toolkit", () => {
             Layer.provide(Layer.mock(ThreadLaunchService.ThreadLaunchService)({})),
             Layer.provide(layerNoContextLinks),
             Layer.provide(Layer.mock(ThreadSearch.ThreadSearch)({})),
+            Layer.provide(Layer.mock(GitWorkflow.GitWorkflowService)({})),
+            Layer.provide(Layer.mock(GitVcsDriver.GitVcsDriver)({})),
+            Layer.provide(Layer.mock(ProjectSetupScriptRunner.ProjectSetupScriptRunner)({})),
             Layer.provide(
               Layer.mock(ProjectService.ProjectService)({
                 getById: (id) =>

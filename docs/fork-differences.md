@@ -1716,7 +1716,10 @@ pick **Move to project** from a thread's menu in the sidebar, the chat header, o
 row, and confirm; agents use `t3_thread_move`. The move keeps the thread and its history, switches
 to the destination's main checkout, and clears the old project's branch, sidebar group, and pull
 request links. Files stay where they are. The tool's optional continuation resumes work after the
-provider session closes, and a request ID makes retries idempotent.
+provider session closes, and a request ID makes retries idempotent. An agent can also land the
+thread in one of the destination's worktrees, or on a pull request's branch: the pull request is
+checked out first, as when starting from it, so a checkout that fails moves nothing, and a new
+worktree gets the project's setup script.
 
 Agents need full-access/default permissions to move a thread. Clients offer the menu only on
 servers with the `threadProjectMove` capability, and disable it while the thread runs, since a move

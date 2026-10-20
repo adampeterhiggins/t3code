@@ -602,6 +602,18 @@ export const OrchestrationV2ThreadLaunchRequestWorkspaceStrategy = Schema.Union(
 ]);
 
 /**
+ * Where a thread moved to another project lands, besides that project's main
+ * checkout: one of its worktrees, or a pull request's branch. A new branch is
+ * a worktree handoff after the move.
+ */
+export const OrchestrationV2ThreadMoveWorkspaceStrategy = Schema.Union([
+  ExistingWorktreeWorkspaceStrategy,
+  OrchestrationV2ThreadLaunchPullRequestWorkspaceStrategy,
+]);
+export type OrchestrationV2ThreadMoveWorkspaceStrategy =
+  typeof OrchestrationV2ThreadMoveWorkspaceStrategy.Type;
+
+/**
  * Where a delegated child runs when it should not share its parent's checkout:
  * the worktree strategies of a launch. A delegated child has no project-root
  * option; omitting the strategy shares the parent's checkout.
@@ -2854,6 +2866,9 @@ export const OrchestrationV2Command = Schema.Union([
     commandId: CommandId,
     threadId: ThreadId,
     projectId: ProjectId,
+    /** A checkout of the destination project to land in; omitted means its main checkout. */
+    worktreePath: Schema.optional(TrimmedNonEmptyString),
+    branch: Schema.optional(TrimmedNonEmptyString),
     continuationPrompt: Schema.optional(TrimmedNonEmptyString),
   }),
   Schema.Struct({
