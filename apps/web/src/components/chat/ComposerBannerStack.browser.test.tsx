@@ -1,5 +1,6 @@
 import "../../index.css";
 
+import { RunId } from "@t3tools/contracts";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
@@ -8,6 +9,7 @@ import { page, userEvent } from "vite-plus/test/browser";
 import { Button, InlineButton } from "../ui/button";
 
 import { ComposerBannerStack } from "./ComposerBannerStack";
+import { usageLimitRecoveryBannerItem } from "./UsageLimitRecoveryBanner";
 
 let root: Root;
 let container: HTMLDivElement;
@@ -60,6 +62,109 @@ it("only offers notice details when the description cannot fit", async () => {
   container.style.width = "300px";
   await nextFrame();
   expect(hasDetails()).toBe(true);
+  const details = container.querySelector<HTMLElement>('[aria-label="Show notice details"]')!;
+  const detailsBounds = details.getBoundingClientRect();
+  const bannerBounds = container
+    .querySelector('[data-slot="composer-banner"]')!
+    .getBoundingClientRect();
+  expect(detailsBounds.width).toBeGreaterThan(0);
+  expect(detailsBounds.height).toBeGreaterThan(0);
+  expect(detailsBounds.top).toBeGreaterThanOrEqual(bannerBounds.top - 1);
+  expect(detailsBounds.bottom).toBeLessThanOrEqual(bannerBounds.bottom + 1);
+});
+
+it("does not flash a wrapped action row when the details button appears", async () => {
+  const description = "Resumes automatically about a minute after 10/20/2026, 11:30:00 PM";
+  const actions = (
+    <>
+      <Button size="xs" variant="ghost">
+        Resume now
+      </Button>
+      <Button size="xs" variant="ghost">
+        Cancel auto-resume
+      </Button>
+      <Button size="xs" variant="ghost">
+        Snooze until reset
+      </Button>
+      <Button size="xs" variant="ghost">
+        Continue in new tab
+      </Button>
+    </>
+  );
+
+  for (let width = 480; width <= 1100; width += 20) {
+    container.style.width = `${width}px`;
+    await act(async () =>
+      root.render(
+        <ComposerBannerStack
+          items={[
+            {
+              id: "usage-limit",
+              variant: "warning",
+              priority: "urgent",
+              icon: null,
+              title: "Usage limit reached",
+              description,
+              actions,
+            },
+          ]}
+        />,
+      ),
+    );
+
+    const sample = () => {
+      const banner = container.querySelector<HTMLElement>('[data-slot="composer-banner"]')!;
+      return {
+        height: banner.getBoundingClientRect().height,
+        details: hasDetails(),
+      };
+    };
+    await nextFrame();
+    const first = sample();
+    for (let frame = 0; frame < 8; frame += 1) {
+      await nextFrame();
+      expect(sample(), `width ${width}px`).toEqual(first);
+    }
+  }
+});
+
+it("keeps the usage-limit reset time readable beside the actions", async () => {
+  await page.viewport(1040, 800);
+  container.style.width = "1000px";
+  const runId = RunId.make("run");
+  const resetAt = "2026-10-20T22:30:00.000Z";
+  await act(async () =>
+    root.render(
+      <ComposerBannerStack
+        items={[
+          usageLimitRecoveryBannerItem({
+            runId,
+            resetAt,
+            stoppedAt: "2026-10-20T21:00:00.000Z",
+            snoozedUntil: null,
+            recovery: { runId, resetAt, autoResume: true },
+            onChange: async () => {},
+            onResumeNow: async () => {},
+            continueElsewhere: null,
+          }),
+        ]}
+      />,
+    ),
+  );
+  await nextFrame();
+
+  const sentence = page.getByText(/Resumes automatically about a minute after/);
+  await expect.element(sentence).toBeVisible();
+  const sentenceBounds = sentence.element().getBoundingClientRect();
+  const banner = container.querySelector<HTMLElement>('[data-slot="composer-banner"]')!;
+  expect(sentence.element().scrollWidth).toBeLessThanOrEqual(sentence.element().clientWidth + 1);
+  expect(sentenceBounds.right).toBeLessThanOrEqual(banner.getBoundingClientRect().right);
+  const height = banner.getBoundingClientRect().height;
+  for (let frame = 0; frame < 6; frame += 1) {
+    await nextFrame();
+    expect(banner.getBoundingClientRect().height).toBe(height);
+    expect(sentence.element().scrollWidth).toBeLessThanOrEqual(sentence.element().clientWidth + 1);
+  }
 });
 
 it.each([320, 800])(
