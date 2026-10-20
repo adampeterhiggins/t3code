@@ -111,7 +111,8 @@ export function subagentFromRecord(
   if (!childThread) return recorded;
   const withThread: RuntimeSubagent = {
     ...recorded,
-    model: recorded.model ?? childThread.modelSelection.model,
+    // A blank reported model is no report; the thread knows what it runs.
+    model: recorded.model?.trim() || childThread.modelSelection.model,
     effort: modelSelectionEffort(childThread.modelSelection),
   };
   return liveSubagent(withThread, childThread) ?? withThread;

@@ -193,8 +193,8 @@ export function AgentPreviewContent(props: {
           <span className="shrink-0">
             {[STATUS_VISUALS[agent.status].label, props.provider?.displayName]
               .filter(Boolean)
-              .join(" · ")}{" "}
-            ·
+              .join(" · ")}
+            {" · "}
           </span>
           <SubagentModelLabel
             model={agent.model}
