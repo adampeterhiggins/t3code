@@ -17,6 +17,11 @@ import {
   ThreadId,
   sessionGrantsScope,
 } from "@t3tools/contracts";
+import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
+import {
+  resolveThreadSubscriptionLimitGuard,
+  withSubscriptionLimitOption,
+} from "@t3tools/client-runtime/state/subscription-limit-guard";
 import { resolveWorktreeCleanup } from "@t3tools/shared/projectSettings";
 import * as Cause from "effect/Cause";
 import * as Schema from "effect/Schema";
@@ -116,6 +121,32 @@ function topOfPinnedRunOrderKey(): string | undefined {
     if (firstKey === null || shell.pinOrderKey < firstKey) firstKey = shell.pinOrderKey;
   }
   return pinOrderKeyBetween(null, firstKey) ?? undefined;
+}
+
+function readThreadProvider(thread: EnvironmentThreadShell) {
+  const config = appAtomRegistry.get(environmentServerConfigsAtom).get(thread.environmentId);
+  return {
+    provider: config?.providers.find(
+      (provider) => provider.instanceId === thread.modelSelection.instanceId,
+    ),
+    appSettingEnabled: config?.settings.stopAtSubscriptionLimit === true,
+  };
+}
+
+/** The composer's unsent pick for the thread's provider, which its next message carries. */
+function draftSelectionForThreadProvider(thread: EnvironmentThreadShell) {
+  return useComposerDraftStore
+    .getState()
+    .getComposerDraft(scopeThreadRef(thread.environmentId, thread.id))?.modelSelectionByProvider[
+    thread.modelSelection.instanceId
+  ];
+}
+
+export function readThreadSubscriptionLimitGuard(thread: EnvironmentThreadShell) {
+  return resolveThreadSubscriptionLimitGuard({
+    ...readThreadProvider(thread),
+    selection: draftSelectionForThreadProvider(thread) ?? thread.modelSelection,
+  });
 }
 
 export class ThreadAutoSettleOptOutUnsupportedError extends Schema.TaggedError<ThreadAutoSettleOptOutUnsupportedError>()(
@@ -269,6 +300,9 @@ export function useThreadActions() {
     reportFailure: false,
   });
   const setThreadAutoSettleMutation = useOrchestrationCommand(threadEnvironment.setAutoSettle, {
+    reportFailure: false,
+  });
+  const updateThreadMetadataMutation = useOrchestrationCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
   });
   const setThreadHiddenMutation = useOrchestrationCommand(threadEnvironment.setHidden, {
@@ -655,6 +689,33 @@ export function useThreadActions() {
     });
   };
 
+  /**
+   * Sets the thread's Stop at subscription limit option, which the server reads per turn. The
+   * composer's unsent pick for the same provider is updated too, or the next message would send
+   * the old value back.
+   */
+  const setThreadSubscriptionLimitGuard = (thread: EnvironmentThreadShell, enabled: boolean) => {
+    const draftSelection = draftSelectionForThreadProvider(thread);
+    const driver = readThreadProvider(thread).provider?.driver;
+    if (draftSelection && driver) {
+      useComposerDraftStore
+        .getState()
+        .setProviderModelOptions(
+          scopeThreadRef(thread.environmentId, thread.id),
+          driver,
+          withSubscriptionLimitOption(draftSelection, enabled).options,
+          { instanceId: draftSelection.instanceId, model: draftSelection.model },
+        );
+    }
+    return updateThreadMetadataMutation({
+      environmentId: thread.environmentId,
+      input: {
+        threadId: thread.id,
+        modelSelection: withSubscriptionLimitOption(thread.modelSelection, enabled),
+      },
+    });
+  };
+
   /** Moves one thread into the sidebar's Hidden shelf, or back out of it. */
   const setThreadHidden = (target: ScopedThreadRef, hidden: boolean) =>
     setThreadHiddenMutation({
@@ -973,6 +1034,7 @@ export function useThreadActions() {
     reorderActiveThread,
     markThreadUnread,
     setThreadAutoSettle,
+    setThreadSubscriptionLimitGuard,
     setThreadHidden,
     setThreadGroup,
     confirmAndMoveThreadToProject,

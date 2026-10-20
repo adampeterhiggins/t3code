@@ -353,6 +353,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["usage quota rate limit reset wake recover continue"],
   },
   {
+    id: "stop-at-subscription-limit",
+    title: "Stop at subscription limit",
+    to: "/settings/general",
+    searchTerms: ["Claude extra usage overage paid spending overnight unattended quota"],
+  },
+  {
     id: "auto-resume-limited-threads",
     title: "Auto-resume limited threads",
     to: "/settings/general",

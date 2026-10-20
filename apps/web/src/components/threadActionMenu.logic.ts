@@ -1,5 +1,6 @@
 import type { ContextMenuItem } from "@t3tools/contracts";
 import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled";
+import type { ThreadSubscriptionLimitGuard } from "@t3tools/client-runtime/state/subscription-limit-guard";
 
 export type ThreadActionMenuId =
   | "name-tab-group"
@@ -17,6 +18,9 @@ export type ThreadActionMenuId =
   | "auto-settle"
   | "auto-settle:enabled"
   | "auto-settle:disabled"
+  | "subscription-limit"
+  | "subscription-limit:on"
+  | "subscription-limit:off"
   | "snooze"
   | `snooze:${string}`
   | "unsnooze"
@@ -112,6 +116,8 @@ export interface ThreadActionMenuState {
   readonly isPinned: boolean;
   readonly isSettled: boolean;
   readonly autoSettleEnabled: boolean;
+  /** Null where the thread's provider does not offer Stop at subscription limit. */
+  readonly subscriptionLimit?: ThreadSubscriptionLimitGuard | null;
   readonly isSnoozed: boolean;
   readonly isHidden: boolean;
   /** The thread's sidebar group, and every group name it could move to. */
@@ -303,6 +309,36 @@ export function buildThreadActionMenuItems(
                 id: "auto-settle:disabled" as const,
                 label: "Disabled",
                 checked: !state.autoSettleEnabled,
+              },
+            ],
+          },
+        ]
+      : []),
+    ...(state.subscriptionLimit
+      ? [
+          {
+            id: "subscription-limit" as const,
+            label: "Stop at subscription limit",
+            icon: "gauge",
+            children: [
+              ...(state.subscriptionLimit.enforcedByApp
+                ? [
+                    {
+                      id: "subscription-limit" as const,
+                      label: "On for all threads in Settings",
+                      header: true,
+                    },
+                  ]
+                : []),
+              {
+                id: "subscription-limit:on" as const,
+                label: "On",
+                checked: state.subscriptionLimit.enabled,
+              },
+              {
+                id: "subscription-limit:off" as const,
+                label: "Off",
+                checked: !state.subscriptionLimit.enabled,
               },
             ],
           },

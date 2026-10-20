@@ -102,6 +102,7 @@ export function HomeRouteScreen() {
     pinThread,
     unpinThread,
     setThreadAutoSettle,
+    setThreadSubscriptionLimitGuard,
     setThreadHidden,
     setThreadGroup,
     moveThreadToNewGroup,
@@ -320,6 +321,7 @@ export function HomeRouteScreen() {
           onPinThread={pinThread}
           onUnpinThread={unpinThread}
           onSetThreadAutoSettle={setThreadAutoSettle}
+          onSetThreadSubscriptionLimitGuard={setThreadSubscriptionLimitGuard}
           onSetThreadHidden={setThreadHidden}
           onSetThreadGroup={setThreadGroup}
           onMoveThreadToNewGroup={moveThreadToNewGroup}

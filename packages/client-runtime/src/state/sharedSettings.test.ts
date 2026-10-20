@@ -136,6 +136,7 @@ describe("pickSharedServerSettings", () => {
       "sidebarAutoSettleOnMerge",
       "snoozeLimitedThreads",
       "sourceControlWritingStyle",
+      "stopAtSubscriptionLimit",
       "textGenerationModelSelection",
       "threadGroups",
     ]);

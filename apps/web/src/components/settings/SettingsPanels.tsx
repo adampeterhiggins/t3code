@@ -623,6 +623,9 @@ export function useSettingsRestore(onRestored?: () => void) {
     ...(settings.sidebarAutoSettleOnMerge !== DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleOnMerge
       ? ["Auto-settle merged threads"]
       : []),
+    ...(settings.stopAtSubscriptionLimit !== DEFAULT_UNIFIED_SETTINGS.stopAtSubscriptionLimit
+      ? ["Stop at subscription limit"]
+      : []),
     ...(settings.autoResumeLimitedThreads !== DEFAULT_UNIFIED_SETTINGS.autoResumeLimitedThreads
       ? ["Auto-resume limited threads"]
       : []),
@@ -812,6 +815,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       sidebarAutoSettleAfterDays: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays,
       sidebarAutoSettleKeepPullRequests: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleKeepPullRequests,
       sidebarAutoSettleOnMerge: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleOnMerge,
+      stopAtSubscriptionLimit: DEFAULT_UNIFIED_SETTINGS.stopAtSubscriptionLimit,
       autoResumeLimitedThreads: DEFAULT_UNIFIED_SETTINGS.autoResumeLimitedThreads,
       snoozeLimitedThreads: DEFAULT_UNIFIED_SETTINGS.snoozeLimitedThreads,
       responseStreamingMode: DEFAULT_UNIFIED_SETTINGS.responseStreamingMode,
@@ -2426,6 +2430,22 @@ export function GeneralSettingsPanel() {
           }
         />
 
+        <SettingsRow
+          serverScoped
+          {...searchableSetting("stop-at-subscription-limit")}
+          description="Stop all Claude threads at subscription limits, even when paid extra usage is available. Overrides thread options and rechecks running sessions when enabled. Provider reports can lag; this is not a billing cap."
+          settingKeys={["stopAtSubscriptionLimit"]}
+          control={
+            <ScopedSwitch
+              settingKeys={["stopAtSubscriptionLimit"]}
+              checked={settings.stopAtSubscriptionLimit}
+              onCheckedChange={(checked) =>
+                updateSettings({ stopAtSubscriptionLimit: Boolean(checked) })
+              }
+              aria-label="Stop at subscription limit"
+            />
+          }
+        />
         <SettingsRow
           serverScoped
           {...searchableSetting("auto-resume-limited-threads")}

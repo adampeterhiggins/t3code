@@ -15,6 +15,7 @@
 import { ClaudeSettings, ProviderDriverKind, type ServerProvider } from "@t3tools/contracts";
 import * as Cache from "effect/Cache";
 import * as Duration from "effect/Duration";
+import * as DateTime from "effect/DateTime";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -22,6 +23,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
 import { HttpClient } from "effect/http";
 import { ChildProcessSpawner } from "effect/process";
 
@@ -37,7 +39,7 @@ import {
 } from "../../orchestration-v2/Adapters/ClaudeAdapterV2.ts";
 import { ProviderDriverError } from "../Errors.ts";
 import { claudeUsageReader } from "./claudeUsage.ts";
-import { makeClaudeScopedLimitNames } from "../claudeUsageLimits.ts";
+import { makeClaudeScopedLimitNames, recordClaudeUsageResponse } from "../claudeUsageLimits.ts";
 import * as ClaudeResetCredits from "../claudeResetCredits.ts";
 import * as ResetCreditCoordinator from "../resetCreditCoordinator.ts";
 import {
@@ -201,7 +203,38 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
         enabled,
         config,
       },
-      { scopedLimitNames, onUsageLimits: (update) => snapshot.applyUsageLimits(update) },
+      {
+        scopedLimitNames,
+        subscriptionLimitGuardEnabled: host.settings.get.pipe(
+          Effect.map((settings) => settings.stopAtSubscriptionLimit),
+          Effect.orElseSucceed(() => true),
+        ),
+        subscriptionLimitGuardChanges: host.settings.changes.pipe(
+          Stream.map((settings) => settings.stopAtSubscriptionLimit),
+        ),
+        onUsageLimits: (update) => snapshot.applyUsageLimits(update),
+        // The UI cache lasts five minutes and preserves old bars on probe failure.
+        // A spending guard needs a fresh read and must fail closed instead.
+        checkUsageLimits: Effect.suspend(() =>
+          probeClaudeCapabilities(effectiveConfig, processEnv, stateDir),
+        ).pipe(
+          Effect.flatMap((capabilities) =>
+            DateTime.now.pipe(
+              Effect.flatMap((now) =>
+                capabilities.usage === undefined
+                  ? Effect.succeed(undefined)
+                  : recordClaudeUsageResponse(scopedLimitNames, {
+                      response: capabilities.usage,
+                      checkedAt: capabilities.usageCheckedAt ?? DateTime.formatIso(now),
+                    }),
+              ),
+            ),
+          ),
+          Effect.orElseSucceed(() => undefined),
+          Effect.provideService(FileSystem.FileSystem, fileSystem),
+          Effect.provideService(Path.Path, path),
+        ),
+      },
     ).pipe(
       Effect.mapError(
         (cause) =>

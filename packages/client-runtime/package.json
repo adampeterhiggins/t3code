@@ -251,6 +251,10 @@
       "types": "./src/state/projects.ts",
       "default": "./src/state/projects.ts"
     },
+    "./state/subscription-limit-guard": {
+      "types": "./src/state/subscriptionLimitGuard.ts",
+      "default": "./src/state/subscriptionLimitGuard.ts"
+    },
     "./state/provider-instance-display": {
       "types": "./src/state/providerInstanceDisplay.ts",
       "default": "./src/state/providerInstanceDisplay.ts"

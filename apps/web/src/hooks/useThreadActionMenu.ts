@@ -66,7 +66,7 @@ import { threadRuntimeCanArchive } from "@t3tools/client-runtime/state/models";
 import { useCopyToClipboard } from "./useCopyToClipboard";
 import { useNewThreadHandler } from "./useHandleNewThread";
 import { useClientSettings } from "./useSettings";
-import { useThreadActions } from "./useThreadActions";
+import { readThreadSubscriptionLimitGuard, useThreadActions } from "./useThreadActions";
 import { useThreadTabActions } from "../components/chat/ThreadTabs";
 
 function failureToast(title: string, error: unknown) {
@@ -106,6 +106,7 @@ export function useThreadActionMenu(input: {
     pinThread,
     confirmAndUnpinThread,
     setThreadAutoSettle,
+    setThreadSubscriptionLimitGuard,
     setThreadHidden,
     setThreadGroup,
     confirmAndMoveThreadToProject,
@@ -175,6 +176,7 @@ export function useThreadActionMenu(input: {
         isPinned: thread.pinnedAt != null,
         isSettled: supports.settlement && thread.settledOverride === "settled",
         autoSettleEnabled: thread.autoSettleDisabledAt == null,
+        subscriptionLimit: readThreadSubscriptionLimitGuard(thread),
         isSnoozed: supports.snooze && effectiveSnoozed(thread, { now: now.toISOString() }),
         isHidden: thread.hiddenAt != null,
         groupName: thread.groupName ?? null,
@@ -301,6 +303,12 @@ export function useThreadActionMenu(input: {
         case "auto-settle:disabled":
           await reportFailure("Failed to update auto-settle", () =>
             setThreadAutoSettle(threadRef, action === "auto-settle:enabled"),
+          );
+          return;
+        case "subscription-limit:on":
+        case "subscription-limit:off":
+          await reportFailure("Failed to update subscription limit", () =>
+            setThreadSubscriptionLimitGuard(thread, action === "subscription-limit:on"),
           );
           return;
         case "hide":

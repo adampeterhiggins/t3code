@@ -1897,6 +1897,35 @@ Code: [`providerServiceStatus.ts`](../apps/server/src/provider/providerServiceSt
 `collectDegradedServices` in [`usageLimits.ts`](../packages/shared/src/usageLimits.ts). User
 guide: [usage.md](./user/usage.md#track-subscription-limits).
 
+## Stop Claude threads at subscription limits
+
+**Settings > General > Stop at subscription limit** (mobile: **Settings > Threads >
+Usage limits**) protects all Claude threads on the selected environments, including
+delegated work. It overrides a thread's Off option and immediately checks running
+sessions when enabled. With the application setting off, threads can opt in through
+the same-named Claude model option, also offered in the thread's context menu on web,
+desktop, and mobile; it applies from the thread's next turn. Both settings default
+to off. Settings remain
+on the server, so the guard also applies when clients disconnect overnight.
+
+The server checks fresh subscription usage before protected turns, refuses to send
+a prompt if usage is unavailable or the session/weekly allowance is exhausted, and
+closes the Claude process when streamed events report exhaustion or active overage.
+Closing stops its native background work too. Active turns use the existing Limited
+status and usage-limit recovery controls, including optional resume after reset;
+resuming does not bypass the guard.
+
+Agents use `stopAtSubscriptionLimit` through model options. Without the application
+setting, delegated threads follow normal same-provider-and-model option inheritance.
+Other providers do not advertise or enforce this guard yet. Provider reports may
+lag, so it is not a hard billing cap.
+
+Code: [Claude model catalog](../apps/server/src/provider/ClaudeModelCatalog.ts),
+[Claude driver](../apps/server/src/provider/Drivers/ClaudeDriver.ts), and
+[Claude adapter](../apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts),
+and [thread menu toggle](../packages/client-runtime/src/state/subscriptionLimitGuard.ts).
+User guide: [Claude usage limits](./user/providers-claude.md#usage-limits).
+
 ## Usage-limit recovery
 
 Upstream shows a recovery banner when Codex or Claude ends a turn on a usage limit, with **Resume at
