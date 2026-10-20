@@ -1353,6 +1353,14 @@ Code: `pastedFilePathsAsComposerFileLinks` in `packages/shared/src/composerTrigg
 
 ## Attachment chips preview on hover
 
+Thread mention chips in the composer and sent messages show the thread's title, project, model,
+status, branch, and a short preview of its latest message on web and desktop. The preview uses
+the connected environment's existing thread summary, so hovering does not fetch conversation
+history. Empty threads and unavailable references have explicit fallback text. Clicking still
+opens the referenced thread. Mobile has no hover.
+
+Code: [`ThreadContextChip`](../apps/web/src/components/ThreadContextChip.tsx).
+
 On web and desktop, hovering an image attachment chip in the composer or a sent message shows the
 image above its name and size. Hovering a text file's chip in the composer previews its opening
 contents by type, in the spirit of macOS Quick Look: Markdown renders, CSV and TSV show as a small
