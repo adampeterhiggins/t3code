@@ -48,6 +48,7 @@ import { ThreadAttachPickerFilterBar } from "./ThreadAttachPickerFilters";
 import { createThreadAttachSummaryLoader } from "./threadAttachPickerSummary";
 import { ThreadSummaryPreview } from "./ThreadSummaryPreview";
 import { useCaptureThreadTabContext } from "./ThreadTabs";
+import { useComposerAttachRedirect } from "./composerAttachRedirect";
 
 const THREAD_PICKER_LIMIT = 50;
 
@@ -118,6 +119,7 @@ function ThreadAttachPickerDialog({ threadRef }: { threadRef: ScopedThreadRef })
     Option.isSome(prepared) && tabMemberships?.connection === prepared.value
       ? tabMemberships.rows
       : undefined;
+  const redirect = useComposerAttachRedirect();
   const captureContext = useCaptureThreadTabContext(threadRef.environmentId, threadRef.threadId);
   const loadSummary =
     captureContext === null ? null : createThreadAttachSummaryLoader(captureContext.fetchSummary);
@@ -181,6 +183,11 @@ function ThreadAttachPickerDialog({ threadRef }: { threadRef: ScopedThreadRef })
   };
 
   async function select(entry: (typeof entries)[number]) {
+    if (redirect) {
+      redirect({ type: "thread", threadId: entry.threadId, label: entry.label });
+      closeThreadAttachPicker();
+      return;
+    }
     if (attachInFlight.current || captureContext === null || loadSummary === null) return;
     attachInFlight.current = true;
     setAttaching(true);

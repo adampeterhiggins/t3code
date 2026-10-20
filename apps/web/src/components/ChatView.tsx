@@ -306,6 +306,7 @@ import { CheckoutAttachPickerHost } from "./chat/CheckoutAttachPicker";
 import { RepositoryAttachPickerHost } from "./chat/RepositoryAttachPicker";
 import { PullRequestAttachPickerHost } from "./chat/PullRequestAttachPicker";
 import { openStartFromPicker, StartFromPickerHost } from "./chat/StartFromPicker";
+import { QuickMessageDraftApplier } from "./desktop/QuickMessageDraftApplier";
 import type { ComposerAutomationSource } from "./settings/scheduledTasksSettings.logic";
 import { useDeviceState } from "~/state/device";
 import { isGitHubProject } from "@t3tools/client-runtime/state/github-issues";
@@ -9926,6 +9927,14 @@ export default function ChatView(props: ChatViewProps) {
           threadRef={routeThreadRef}
           onCheckout={pointDraftAtCheckout}
           readAutomationSource={readAutomationSource}
+        />
+      ) : null}
+      {isLocalDraftThread && activeProject ? (
+        <QuickMessageDraftApplier
+          environmentId={activeProject.environmentId}
+          workspaceRoot={activeProject.workspaceRoot}
+          threadRef={routeThreadRef}
+          onCheckout={pointDraftAtCheckout}
         />
       ) : null}
       <ThreadVisitWatermark threadRef={routeThreadRef} />

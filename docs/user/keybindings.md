@@ -205,11 +205,10 @@ model, type, and press Enter: the thread starts in T3 Code, which comes to the f
 Press Escape or click away to close the composer; what you typed is still there next time.
 
 The composer opens on the project you used most recently, with that project's default model,
-effort and access mode. Paste, drop or attach files there. Use **⋯** to start from a PR, branch
-or issue without leaving the composer: the pick is shown above your message and applied when you
-send. The other attach options (a thread, an issue, a pull request and so on) open the new thread
-in T3 Code with that picker, keeping what you typed. On Linux the shortcut does not work in a
-Wayland session.
+effort and access mode. Paste, drop or attach files there, or attach a thread, an issue, a pull
+request and the rest of the attach menu. Use **⋯** to start from a PR, branch or issue. Picks show
+above your message and are applied to the new thread when you send. On Linux the shortcut does not
+work in a Wayland session.
 
 ## Desktop quit shortcut
 

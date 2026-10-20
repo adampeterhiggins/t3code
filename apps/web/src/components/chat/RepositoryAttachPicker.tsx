@@ -40,6 +40,7 @@ import {
   CommandList,
 } from "../ui/command";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { useComposerAttachRedirect } from "./composerAttachRedirect";
 
 const OWNER_DEBOUNCE_MS = 300;
 const RECENTS_STORAGE_KEY = "t3code:context-repository-recents";
@@ -155,6 +156,7 @@ function RepositoryAttachPickerDialog(props: {
   onClose: () => void;
 }) {
   const { threadRef, workspaceCwd, onClose } = props;
+  const redirect = useComposerAttachRedirect();
   const environmentId: EnvironmentId = threadRef.environmentId;
   const navigate = useNavigate();
   const defaultOwners = useEnvironmentSettings(environmentId, configuredContextRepositoryOwners);
@@ -191,7 +193,8 @@ function RepositoryAttachPickerDialog(props: {
   const pastedEntry = pastedContextRepositoryEntry(trimmedQuery, shown);
 
   function select(input: { nameWithOwner: string; remoteUrl: string }) {
-    attachRepository(threadRef, input);
+    if (redirect) redirect({ type: "repository", ...input, label: input.nameWithOwner });
+    else attachRepository(threadRef, input);
     onClose();
   }
 

@@ -155,7 +155,17 @@ export function useAttachCheckout(driver: string | null) {
   const link = useAtomCommand(threadEnvironment.linkCheckout, { reportFailure: true });
   return (
     threadRef: ScopedThreadRef,
-    item: Extract<ComposerReferenceItem, { type: "checkout" }>,
+    item: Pick<
+      Extract<ComposerReferenceItem, { type: "checkout" }>,
+      | "selectable"
+      | "environmentId"
+      | "path"
+      | "label"
+      | "branch"
+      | "headSha"
+      | "changedFiles"
+      | "ahead"
+    >,
     options: { readonly link: boolean },
   ) => {
     if (!item.selectable || item.environmentId !== threadRef.environmentId) return;

@@ -48,6 +48,7 @@ import {
   GitHubIssueHoverPreview,
 } from "./GitHubIssueHoverPreview";
 import { SourceTabs } from "./SourceTabs";
+import { useComposerAttachRedirect } from "./composerAttachRedirect";
 
 // Each search runs `gh` on the server, so typing settles before one goes out.
 const SEARCH_DEBOUNCE_MS = 300;
@@ -223,7 +224,10 @@ export function GitHubIssueRow(props: { issue: GitHubIssueSummary; inUse: boolea
  * for whichever thread or draft asked. Issues are listed with `gh` in that thread's own checkout,
  * or the project folder for a draft headed for a new worktree; any checkout answers the same.
  */
-export function GitHubIssuePickerHost() {
+export function GitHubIssuePickerHost(props: {
+  /** Where to list issues when no thread or draft owns the picker, as in the quick message panel. */
+  readonly checkout?: { readonly projectRef: ScopedProjectRef; readonly cwd: string };
+}) {
   const target = useAtomValue(gitHubIssuePickerAtom);
   const threadRef = target?.threadRef ?? null;
   const thread = useThreadShell(threadRef);
@@ -234,7 +238,18 @@ export function GitHubIssuePickerHost() {
   const project = useProject(
     threadRef && owner ? scopeProjectRef(threadRef.environmentId, owner.projectId) : null,
   );
-  if (target === null || owner === null || !project || !isGitHubProject(project)) return null;
+  if (target === null) return null;
+  if (props.checkout) {
+    return (
+      <GitHubIssuePickerDialog
+        projectRef={props.checkout.projectRef}
+        cwd={props.checkout.cwd}
+        threadRef={target.threadRef}
+        mode={target.mode}
+      />
+    );
+  }
+  if (owner === null || !project || !isGitHubProject(project)) return null;
   return (
     <GitHubIssuePickerDialog
       projectRef={scopeProjectRef(project.environmentId, project.id)}
@@ -256,6 +271,7 @@ function GitHubIssuePickerDialog(props: {
   const navigate = useNavigate();
   const attachIssue = useAttachGitHubIssue();
   const linkIssue = useLinkGitHubIssue();
+  const redirect = useComposerAttachRedirect();
   const [query, setQuery] = useState("");
   const [state, setState] = useState<GitHubIssueStateFilter>("open");
   const [attaching, setAttaching] = useState(false);
@@ -270,6 +286,11 @@ function GitHubIssuePickerDialog(props: {
 
   async function select(issue: GitHubIssueSummary) {
     if (attaching) return;
+    if (redirect) {
+      redirect({ type: "github-issue", url: issue.url, label: `#${issue.number} ${issue.title}` });
+      closeGitHubIssuePicker();
+      return;
+    }
     setAttaching(true);
     const done = await (mode === "link" ? linkIssue : attachIssue)(threadRef, issue.url);
     setAttaching(false);

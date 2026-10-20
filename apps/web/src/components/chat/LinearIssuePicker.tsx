@@ -34,6 +34,7 @@ import {
   CommandList,
 } from "../ui/command";
 import { toastManager } from "../ui/toast";
+import { useComposerAttachRedirect } from "./composerAttachRedirect";
 
 // Linear allows 30 searches a minute, so typing settles before a search goes out.
 const SEARCH_DEBOUNCE_MS = 300;
@@ -134,6 +135,7 @@ function LinearIssuePickerDialog(props: {
   onClose: () => void;
 }) {
   const { threadRef, mode, onClose } = props;
+  const redirect = useComposerAttachRedirect();
   const environmentId = threadRef.environmentId;
   const navigate = useNavigate();
   const attachIssue = useAttachLinearIssue();
@@ -167,6 +169,15 @@ function LinearIssuePickerDialog(props: {
 
   async function select(issue: LinearIssueSummary) {
     if (attaching) return;
+    if (redirect) {
+      redirect({
+        type: "linear-issue",
+        issueId: issue.id,
+        label: `${issue.identifier} ${issue.title}`,
+      });
+      onClose();
+      return;
+    }
     setAttaching(true);
     const done = await (mode === "link" ? linkIssue : attachIssue)(threadRef, issue.id);
     setAttaching(false);

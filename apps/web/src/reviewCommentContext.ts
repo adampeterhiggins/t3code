@@ -1,37 +1,15 @@
 import type { FileDiffMetadata, SelectedLineRange, SelectionSide } from "@pierre/diffs";
 import {
-  PullRequestContextMetadata,
-  ReviewCommentThreadContext,
+  ReviewCommentDraft,
+  type PullRequestContextMetadata,
   type PullRequestReviewPosition,
+  type ReviewCommentThreadContext,
 } from "@t3tools/contracts";
-import * as Schema from "effect/Schema";
 
 import { isLineInFileDiff } from "./components/pullRequest/pullRequestDiff.logic";
 
-const ReviewCommentSelectionSchema = Schema.Struct({
-  start: Schema.Number,
-  side: Schema.Literals(["additions", "deletions"]),
-  end: Schema.Number,
-  endSide: Schema.Literals(["additions", "deletions"]),
-});
-type ReviewCommentSelection = typeof ReviewCommentSelectionSchema.Type;
-
-export const ReviewCommentContextSchema = Schema.Struct({
-  id: Schema.String,
-  sectionId: Schema.String,
-  sectionTitle: Schema.String,
-  filePath: Schema.String,
-  startIndex: Schema.Number,
-  endIndex: Schema.Number,
-  rangeLabel: Schema.String,
-  text: Schema.String,
-  instructions: Schema.optional(Schema.String),
-  diff: Schema.String,
-  fenceLanguage: Schema.optional(Schema.String),
-  selection: Schema.optional(ReviewCommentSelectionSchema),
-  pullRequest: Schema.optional(PullRequestContextMetadata),
-  thread: Schema.optional(ReviewCommentThreadContext),
-});
+export { ReviewCommentDraft as ReviewCommentContextSchema };
+type ReviewCommentSelection = NonNullable<ReviewCommentDraft["selection"]>;
 
 export interface ReviewCommentContext {
   readonly id: string;

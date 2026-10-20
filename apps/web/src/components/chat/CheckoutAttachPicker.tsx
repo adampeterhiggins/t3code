@@ -27,6 +27,7 @@ import { cn } from "~/lib/utils";
 
 import type { ComposerReferenceItem } from "./composerReferenceMenu.logic";
 import { useAttachCheckout, useComposerCheckoutItems } from "./useComposerCheckoutItems";
+import { useComposerAttachRedirect } from "./composerAttachRedirect";
 
 type CheckoutPickerRequest = {
   readonly threadRef: ScopedThreadRef;
@@ -81,6 +82,7 @@ function CheckoutAttachPickerDialog(props: {
     query,
   });
   const attach = useAttachCheckout(driver);
+  const redirect = useComposerAttachRedirect();
   const relocate = useAtomCommand(threadEnvironment.relocateCheckout, { reportFailure: true });
   const comparison = useEnvironmentQuery(
     relocateFrom === null
@@ -102,7 +104,21 @@ function CheckoutAttachPickerDialog(props: {
   const select = (item: Extract<ComposerReferenceItem, { type: "checkout" }>) => {
     if (!item.selectable) return;
     if (relocateFrom === null) {
-      attach(threadRef, item, { link: linkToThread });
+      if (redirect) {
+        redirect({
+          type: "checkout",
+          environmentId: item.environmentId,
+          path: item.path,
+          branch: item.branch,
+          headSha: item.headSha,
+          changedFiles: item.changedFiles,
+          ahead: item.ahead,
+          link: linkToThread,
+          label: item.label,
+        });
+      } else {
+        attach(threadRef, item, { link: linkToThread });
+      }
       props.onClose();
       return;
     }
