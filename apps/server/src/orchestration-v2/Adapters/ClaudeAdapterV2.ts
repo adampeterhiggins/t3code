@@ -4139,6 +4139,15 @@ export interface ClaudeAdapterV2Options {
   readonly checkUsageLimits?: Effect.Effect<ServerProviderUsageLimits | undefined>;
   readonly subscriptionLimitGuardEnabled?: Effect.Effect<boolean>;
   readonly subscriptionLimitGuardChanges?: Stream.Stream<boolean>;
+  /**
+   * The thread's current choice, which can change while a turn is running.
+   * Once present it replaces the selection the turn started with. Absent means
+   * no live update has arrived, so the turn's own selection still decides.
+   */
+  readonly readThreadSubscriptionLimitGuard?: (
+    threadId: ThreadId,
+  ) => Effect.Effect<boolean | undefined>;
+  readonly threadSubscriptionLimitGuardChanges?: (threadId: ThreadId) => Stream.Stream<boolean>;
   readonly continuationRequests?: {
     readonly offer: (
       request: ProviderContinuationRequests.ProviderContinuationRequest,
@@ -4154,11 +4163,17 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
   const mcpSessions = yield* McpProviderSessions.McpProviderSessions;
   const { attachmentsDir, fileSystem, path, crypto, idAllocator, queryRunner } = adapterOptions;
   // This policy is also read on streamed rate-limit frames.
-  const subscriptionLimitGuardEnabled = Effect.fnUntraced(function* (selection?: ModelSelection) {
-    return (
-      (yield* adapterOptions.subscriptionLimitGuardEnabled ?? Effect.succeed(false)) ||
-      getModelSelectionBooleanOptionValue(selection, "stopAtSubscriptionLimit") === true
-    );
+  const subscriptionLimitGuardEnabled = Effect.fnUntraced(function* (
+    selection?: ModelSelection,
+    threadId?: ThreadId,
+  ) {
+    if (yield* adapterOptions.subscriptionLimitGuardEnabled ?? Effect.succeed(false)) return true;
+    if (threadId !== undefined && adapterOptions.readThreadSubscriptionLimitGuard !== undefined) {
+      const live = yield* adapterOptions.readThreadSubscriptionLimitGuard(threadId);
+      // A menu change during the turn is newer than the selection the turn captured.
+      if (live !== undefined) return live;
+    }
+    return getModelSelectionBooleanOptionValue(selection, "stopAtSubscriptionLimit") === true;
   });
   const subscriptionLimitFailure = Effect.fn("ClaudeAdapterV2.checkSubscriptionLimit")(
     function* () {
@@ -4272,6 +4287,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
     openSession: Effect.fn("ClaudeAdapterV2.openSession")(
       function* (input: ProviderAdapter.ProviderAdapterV2OpenSessionInput) {
         const sessionScope = yield* Effect.scope;
+        // SDK frame handlers take their own `input`, so keep the session thread here.
+        const sessionThreadId = input.threadId;
         const now = yield* DateTime.now;
         const session = providerSession({
           providerSessionId: input.providerSessionId,
@@ -7364,8 +7381,16 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           }
         });
 
-        if (adapterOptions.subscriptionLimitGuardChanges !== undefined) {
-          yield* adapterOptions.subscriptionLimitGuardChanges.pipe(
+        const threadGuardChanges =
+          adapterOptions.threadSubscriptionLimitGuardChanges?.(sessionThreadId);
+        if (
+          adapterOptions.subscriptionLimitGuardChanges !== undefined ||
+          threadGuardChanges !== undefined
+        ) {
+          yield* Stream.merge(
+            adapterOptions.subscriptionLimitGuardChanges ?? Stream.empty,
+            threadGuardChanges ?? Stream.empty,
+          ).pipe(
             Stream.changes,
             Stream.filter((enabled) => enabled),
             Stream.runForEach(() =>
@@ -7379,7 +7404,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                     if (
                       (yield* Ref.get(queryContext)) !== live ||
                       live.stopping ||
-                      !(yield* subscriptionLimitGuardEnabled())
+                      !(yield* subscriptionLimitGuardEnabled(undefined, sessionThreadId))
                     )
                       return;
                     const context = yield* Ref.get(activeTurn);
@@ -7834,7 +7859,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             const context = yield* Ref.get(activeTurn);
             if (context === null) {
               if (
-                (yield* subscriptionLimitGuardEnabled(liveQuery.lastTurn?.input.modelSelection)) &&
+                (yield* subscriptionLimitGuardEnabled(
+                  liveQuery.lastTurn?.input.modelSelection,
+                  sessionThreadId,
+                )) &&
                 claudeSubscriptionLimitReached(rateLimitInfo)
               ) {
                 // Native background agents can keep spending after the root turn has ended.
@@ -7851,7 +7879,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               return;
             }
             if (
-              (yield* subscriptionLimitGuardEnabled(context.input.modelSelection)) &&
+              (yield* subscriptionLimitGuardEnabled(
+                context.input.modelSelection,
+                sessionThreadId,
+              )) &&
               claudeSubscriptionLimitReached(rateLimitInfo)
             ) {
               yield* stopAtSubscriptionLimit(context, {
@@ -10028,7 +10059,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 }),
               });
             });
-            if (yield* subscriptionLimitGuardEnabled(turnInput.modelSelection)) {
+            if (
+              yield* subscriptionLimitGuardEnabled(turnInput.modelSelection, turnInput.threadId)
+            ) {
               const failure = yield* subscriptionLimitFailure();
               if (failure !== null) {
                 yield* attachTurn;
@@ -10924,6 +10957,8 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
       | "checkUsageLimits"
       | "subscriptionLimitGuardEnabled"
       | "subscriptionLimitGuardChanges"
+      | "readThreadSubscriptionLimitGuard"
+      | "threadSubscriptionLimitGuardChanges"
     > = {},
   ) {
     const { instanceId, environment, enabled, config } = input;

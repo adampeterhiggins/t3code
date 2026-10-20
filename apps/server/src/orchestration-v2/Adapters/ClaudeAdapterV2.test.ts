@@ -2720,6 +2720,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     readonly checkUsageLimits?: ClaudeAdapterV2.ClaudeAdapterV2Options["checkUsageLimits"];
     readonly subscriptionLimitGuardEnabled?: ClaudeAdapterV2.ClaudeAdapterV2Options["subscriptionLimitGuardEnabled"];
     readonly subscriptionLimitGuardChanges?: ClaudeAdapterV2.ClaudeAdapterV2Options["subscriptionLimitGuardChanges"];
+    readonly readThreadSubscriptionLimitGuard?: ClaudeAdapterV2.ClaudeAdapterV2Options["readThreadSubscriptionLimitGuard"];
+    readonly threadSubscriptionLimitGuardChanges?: ClaudeAdapterV2.ClaudeAdapterV2Options["threadSubscriptionLimitGuardChanges"];
     readonly freshQueueOnReopen?: boolean;
     readonly forkSession?: ClaudeAdapterV2.ClaudeAgentSdkQueryRunnerShape["forkSession"];
     readonly allocateSessionId?: Effect.Effect<string>;
@@ -2789,6 +2791,16 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           ? {}
           : {
               subscriptionLimitGuardChanges: options.subscriptionLimitGuardChanges,
+            }),
+        ...(options?.readThreadSubscriptionLimitGuard === undefined
+          ? {}
+          : {
+              readThreadSubscriptionLimitGuard: options.readThreadSubscriptionLimitGuard,
+            }),
+        ...(options?.threadSubscriptionLimitGuardChanges === undefined
+          ? {}
+          : {
+              threadSubscriptionLimitGuardChanges: options.threadSubscriptionLimitGuardChanges,
             }),
         ...(options?.checkUsageLimits === undefined
           ? {}
@@ -4381,6 +4393,113 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
         ),
       ),
+  );
+
+  it.effect("enabling the thread guard stops an already running unguarded turn", () =>
+    Effect.gen(function* () {
+      const now = yield* DateTime.now;
+      const enabled = yield* Ref.make(false);
+      const changes = yield* Queue.unbounded<boolean>();
+      const harness = yield* makeWakeHarnessWithOptions({
+        readThreadSubscriptionLimitGuard: () => Ref.get(enabled),
+        threadSubscriptionLimitGuardChanges: () => Stream.fromQueue(changes),
+        checkUsageLimits: Effect.succeed({
+          checkedAt: DateTime.formatIso(now),
+          windows: [
+            {
+              id: "five_hour",
+              kind: "session",
+              label: "Session",
+              usedPercent: 100,
+              resetsAt: DateTime.formatIso(DateTime.add(now, { hours: 2 })),
+            },
+          ],
+        }),
+      });
+      yield* harness.runtime.startTurn(
+        makeClaudeTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now,
+          attemptId: RunAttemptId.make("thread-guard-enable-live"),
+          text: "Continue.",
+          attachments: [],
+          modelSelection: {
+            ...guardedSelection,
+            options: [{ id: "stopAtSubscriptionLimit", value: false }],
+          },
+        }),
+      );
+      assert.lengthOf(harness.offeredMessages, 1);
+      yield* Ref.set(enabled, true);
+      yield* Queue.offer(changes, true);
+      const terminal = yield* Queue.take(harness.terminalReceipts);
+      assert.equal(terminal.status, "failed");
+      assert.equal(terminal.failure?.class, "usage_limit");
+      assert.equal(terminal.failure?.code, "subscription_limit_guard");
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
+
+  it.effect("turning the thread guard off lets the running turn use extra usage", () =>
+    Effect.gen(function* () {
+      const now = yield* DateTime.now;
+      const enabled = yield* Ref.make(true);
+      const changes = yield* Queue.unbounded<boolean>();
+      const harness = yield* makeWakeHarnessWithOptions({
+        readThreadSubscriptionLimitGuard: () => Ref.get(enabled),
+        threadSubscriptionLimitGuardChanges: () => Stream.fromQueue(changes),
+        checkUsageLimits: Effect.succeed({
+          checkedAt: DateTime.formatIso(now),
+          windows: [{ id: "five_hour", kind: "session", label: "Session", usedPercent: 0 }],
+        }),
+      });
+      yield* harness.runtime.startTurn(
+        makeClaudeTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now,
+          attemptId: RunAttemptId.make("thread-guard-disable-live"),
+          text: "Continue.",
+          attachments: [],
+          modelSelection: guardedSelection,
+        }),
+      );
+      assert.lengthOf(harness.offeredMessages, 1);
+      yield* Ref.set(enabled, false);
+      yield* Queue.offer(changes, false);
+      yield* Queue.offer(
+        harness.sdkMessages,
+        claudeSdkFrame({
+          type: "rate_limit_event",
+          rate_limit_info: {
+            status: "rejected",
+            overageStatus: "allowed",
+            rateLimitType: "five_hour",
+            resetsAt: Math.floor(DateTime.toEpochMillis(now) / 1000) + 7200,
+          },
+          session_id: WAKE_NATIVE_SESSION,
+          uuid: "00000000-0000-4000-8000-000000000607",
+        }),
+      );
+      yield* Queue.offer(
+        harness.sdkMessages,
+        makeResultFrame({
+          uuid: "00000000-0000-4000-8000-000000000608",
+          result: "Done.",
+        }),
+      );
+      const terminal = yield* Queue.take(harness.terminalReceipts);
+      assert.equal(terminal.status, "completed");
+      assert.equal(terminal.failure, undefined);
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
   );
 
   it.effect.each([
