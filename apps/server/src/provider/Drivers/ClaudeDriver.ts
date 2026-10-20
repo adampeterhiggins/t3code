@@ -134,363 +134,375 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
   configSchema: ClaudeSettings,
   defaultConfig: (): ClaudeSettings => decodeClaudeSettings({}),
   usage: claudeUsageReader,
-  create: ({ instanceId, displayName, accentColor, environment, enabled, config }) =>
-    Effect.gen(function* () {
-      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-      const fileSystem = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      // The server cwd is $HOME in packaged desktop builds, and `claude`
-      // wrappers that scope themselves to their cwd refuse to run there.
-      const { stateDir } = yield* ServerConfig.ServerConfig;
-      const httpClient = yield* HttpClient.HttpClient;
-      const latestVersions = yield* ProviderLatestVersions.ProviderLatestVersions;
-      const resetCreditCoordinator = yield* ResetCreditCoordinator.ResetCreditCoordinator;
-      const host = yield* ProviderHost.ProviderHost;
-      const catalogService = yield* ModelCatalog.ModelCatalog;
-      const modelCatalog = catalogService
-        .current(DRIVER_KIND)
-        .pipe(Effect.map(resolveClaudeModelCatalog));
-      const processEnv = yield* mergeProviderInstanceEnvironment(environment);
-      const fallbackContinuationIdentity = defaultProviderContinuationIdentity({
-        driverKind: DRIVER_KIND,
-        instanceId,
-      });
-      const effectiveConfig = {
-        ...config,
-        enabled,
-        binaryPath: expandHomePath(config.binaryPath, yield* HostProcess.HomeDirectory),
-      } satisfies ClaudeSettings;
-      const resolveMaintenance = yield* makeCachedProviderMaintenanceResolution(
-        resolveProviderMaintenanceCapabilitiesEffect(UPDATE, {
-          binaryPath: effectiveConfig.binaryPath,
-          env: processEnv,
-        }).pipe(
-          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-          Effect.provideService(FileSystem.FileSystem, fileSystem),
-          Effect.provideService(Path.Path, path),
-        ),
-      );
-      const continuationGroupKey = yield* makeClaudeContinuationGroupKey(
-        effectiveConfig,
-        processEnv,
-      );
-      const configDir = yield* resolveClaudeHomePath(effectiveConfig, processEnv);
-      const accountConfigPath = yield* ClaudeResetCredits.claudeAccountConfigPath(
-        effectiveConfig.homePath.trim() || processEnv.CLAUDE_CONFIG_DIR?.trim()
-          ? configDir
-          : undefined,
-      );
-      const stampIdentity = withInstanceIdentity({
-        instanceId,
-        driverKind: DRIVER_KIND,
-        displayName,
-        accentColor,
-        continuationGroupKey,
-      });
-
-      const scopedLimitNames = yield* makeClaudeScopedLimitNames;
-      const orchestrationAdapter = yield* createClaudeAdapterV2(
-        {
-          instanceId,
-          displayName,
-          accentColor,
-          environment,
-          enabled,
-          config,
-        },
-        { scopedLimitNames, onUsageLimits: (update) => snapshot.applyUsageLimits(update) },
-      ).pipe(
-        Effect.mapError(
-          (cause) =>
-            new ProviderDriverError({
-              driver: DRIVER_KIND,
-              instanceId,
-              detail: "Failed to build Claude orchestration adapter.",
-              cause,
-            }),
-        ),
-      );
-      const textGeneration = yield* makeClaudeTextGeneration(
-        effectiveConfig,
-        processEnv,
-        modelCatalog,
-      );
-
-      // Per-instance capabilities cache: keyed on binary + resolved HOME so
-      // account-specific probes never share auth metadata across instances.
-      // A transient miss may reuse the last account once, but its usage windows keep their age.
-      const lastGoodCapabilities = yield* Ref.make<ClaudeCapabilitiesProbe | undefined>(undefined);
-      const capabilitiesProbeCache = yield* Cache.makeWith(
-        () =>
-          probeClaudeCapabilities(effectiveConfig, processEnv, stateDir).pipe(
-            Effect.flatMap((capabilities) =>
-              ClaudeResetCredits.readClaudeOrganizationId(accountConfigPath).pipe(
-                Effect.map((workspaceId) => ({
-                  _tag: "fresh" as const,
-                  capabilities:
-                    workspaceId === undefined ? capabilities : { ...capabilities, workspaceId },
-                })),
-              ),
-            ),
-            Effect.tap(({ capabilities }) => Ref.set(lastGoodCapabilities, capabilities)),
-            Effect.catch((error) =>
-              Ref.getAndSet(lastGoodCapabilities, undefined).pipe(
-                Effect.flatMap((capabilities) =>
-                  capabilities === undefined
-                    ? Effect.fail(error)
-                    : ClaudeResetCredits.readClaudeOrganizationId(accountConfigPath).pipe(
-                        Effect.flatMap((workspaceId) =>
-                          workspaceId === capabilities.workspaceId
-                            ? Effect.succeed({
-                                _tag: "fallback" as const,
-                                capabilities: withoutUsage(capabilities),
-                              })
-                            : Effect.fail(error),
-                        ),
-                      ),
-                ),
-              ),
-            ),
-            Effect.provideService(FileSystem.FileSystem, fileSystem),
-            Effect.provideService(Path.Path, path),
-          ),
-        {
-          capacity: 1,
-          timeToLive: (exit) =>
-            // Only a fresh probe earns the TTL; a failure or its fallback retries on the next check.
-            Exit.isSuccess(exit) && exit.value._tag === "fresh"
-              ? CAPABILITIES_PROBE_TTL
-              : Duration.zero,
-        },
-      );
-      const capabilitiesCacheKey = yield* makeClaudeCapabilitiesCacheKey(
-        effectiveConfig,
-        stateDir,
-        processEnv,
-      );
-      const resolveCapabilities = Cache.get(capabilitiesProbeCache, capabilitiesCacheKey).pipe(
-        Effect.map((result) => result.capabilities),
-      );
-
-      const apiKeyCredential = providerEnvVarCredential({
-        serverSettings: host.settings,
-        instanceId,
-        driverKind: DRIVER_KIND,
-        envName: "ANTHROPIC_API_KEY",
-      });
-      const authMethods: ReadonlyArray<CliAuthMethodSpec> = [
-        {
-          kind: "cli",
-          id: "browser",
-          label: "Sign in with browser",
-          description:
-            "Runs `claude auth login` — open the shown URL, sign in, then paste the code it displays.",
-          args: ["auth", "login"],
-          // Suppresses `claude auth login`'s automatic browser open; the URL is
-          // surfaced in the UI for the user to open instead.
-          env: { BROWSER: "false" },
-          urlPattern: /https:\/\/claude\.(?:com|ai)\/\S+/,
-          inputPrompt: "Paste the code shown after signing in",
-        },
-        {
-          kind: "saved-credentials",
-          id: "saved",
-          label: "Use saved Claude login",
-          description: "Reuses the credentials `claude auth login` stored on this environment.",
-          missingMessage: "No Claude login found on this environment. Sign in or paste an API key.",
-        },
-        {
-          kind: "paste-credential",
-          id: "api-key",
-          label: "Paste an API key",
-          description: "Stored as a sensitive ANTHROPIC_API_KEY variable on this instance.",
-          credentialLabel: "Anthropic API key",
-          credentialPlaceholder: "sk-ant-…",
-          probeAfterApply: false,
-          appliedMessage: "Anthropic API key saved.",
-          apply: apiKeyCredential.apply,
-        },
-      ];
-      const providerSetup: ServerProvider["setup"] = {
-        canAuthenticate: true,
-        canInstall: false,
-        authMethods: authMethodDescriptors(authMethods),
-      };
-      const authMethodPersistence = providerAuthMethodPersistence({
-        serverSettings: host.settings,
-        instanceId,
-        methods: authMethods,
-      });
-      const stampSetup = <T extends { setup?: ServerProvider["setup"] }>(draft: T) => ({
-        ...draft,
-        setup: providerSetup,
-      });
-
-      const checkProvider = catalogService.refreshInBackground.pipe(
-        Effect.andThen(
-          modelCatalog.pipe(
-            Effect.flatMap((catalog) =>
-              checkClaudeProviderStatus(
-                effectiveConfig,
-                () => resolveCapabilities,
-                processEnv,
-                stateDir,
-                catalog,
-                scopedLimitNames,
-                (version) =>
-                  ClaudeResetCredits.readClaudeResetCredits(configDir, version).pipe(
-                    Effect.provideService(HttpClient.HttpClient, httpClient),
-                    Effect.provideService(FileSystem.FileSystem, fileSystem),
-                    Effect.provideService(Path.Path, path),
-                  ),
-              ),
-            ),
-            Effect.map(stampSetup),
-            Effect.map(stampIdentity),
-            Effect.flatMap(authMethodPersistence.stamp),
-          ),
-        ),
+  create: Effect.fn("ClaudeDriver.create")(function* ({
+    instanceId,
+    displayName,
+    accentColor,
+    environment,
+    enabled,
+    config,
+  }) {
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    // The server cwd is $HOME in packaged desktop builds, and `claude`
+    // wrappers that scope themselves to their cwd refuse to run there.
+    const { stateDir } = yield* ServerConfig.ServerConfig;
+    const httpClient = yield* HttpClient.HttpClient;
+    const latestVersions = yield* ProviderLatestVersions.ProviderLatestVersions;
+    const resetCreditCoordinator = yield* ResetCreditCoordinator.ResetCreditCoordinator;
+    const host = yield* ProviderHost.ProviderHost;
+    const catalogService = yield* ModelCatalog.ModelCatalog;
+    const modelCatalog = catalogService
+      .current(DRIVER_KIND)
+      .pipe(Effect.map(resolveClaudeModelCatalog));
+    const processEnv = yield* mergeProviderInstanceEnvironment(environment);
+    const fallbackContinuationIdentity = defaultProviderContinuationIdentity({
+      driverKind: DRIVER_KIND,
+      instanceId,
+    });
+    const effectiveConfig = {
+      ...config,
+      enabled,
+      binaryPath: expandHomePath(config.binaryPath, yield* HostProcess.HomeDirectory),
+    } satisfies ClaudeSettings;
+    const resolveMaintenance = yield* makeCachedProviderMaintenanceResolution(
+      resolveProviderMaintenanceCapabilitiesEffect(UPDATE, {
+        binaryPath: effectiveConfig.binaryPath,
+        env: processEnv,
+      }).pipe(
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
         Effect.provideService(FileSystem.FileSystem, fileSystem),
         Effect.provideService(Path.Path, path),
-      );
+      ),
+    );
+    const continuationGroupKey = yield* makeClaudeContinuationGroupKey(effectiveConfig, processEnv);
+    const configDir = yield* resolveClaudeHomePath(effectiveConfig, processEnv);
+    const accountConfigPath = yield* ClaudeResetCredits.claudeAccountConfigPath(
+      effectiveConfig.homePath.trim() || processEnv.CLAUDE_CONFIG_DIR?.trim()
+        ? configDir
+        : undefined,
+    );
+    const stampIdentity = withInstanceIdentity({
+      instanceId,
+      driverKind: DRIVER_KIND,
+      displayName,
+      accentColor,
+      continuationGroupKey,
+    });
 
-      const snapshotSettings = yield* makeProviderSnapshotSettingsSource(effectiveConfig);
-      const snapshot = yield* makeManagedServerProvider<ProviderSnapshotSettings<ClaudeSettings>>({
-        resolveMaintenance,
-        getSettings: snapshotSettings.getSettings,
-        streamSettings: snapshotSettings.streamSettings,
-        haveSettingsChanged: haveProviderSnapshotSettingsChanged,
-        initialSnapshot: (settings) =>
-          modelCatalog.pipe(
-            Effect.flatMap((catalog) => makePendingClaudeProvider(settings.provider, catalog)),
-            Effect.map(stampSetup),
-            Effect.map(stampIdentity),
-          ),
-        checkProvider,
-        enrichSnapshot: ({ settings, snapshot, publishSnapshot }) =>
-          resolveMaintenance().pipe(
-            Effect.flatMap((maintenanceCapabilities) =>
-              enrichProviderSnapshotWithVersionAdvisory(snapshot, maintenanceCapabilities, {
-                enableProviderUpdateChecks: settings.enableProviderUpdateChecks,
-              }),
-            ),
-            Effect.provideService(HttpClient.HttpClient, httpClient),
-            Effect.provideService(ProviderLatestVersions.ProviderLatestVersions, latestVersions),
-            Effect.flatMap((enrichedSnapshot) => publishSnapshot(enrichedSnapshot)),
-          ),
-      }).pipe(
-        Effect.mapError(
-          (cause) =>
-            new ProviderDriverError({
-              driver: DRIVER_KIND,
-              instanceId,
-              detail: `Failed to build Claude snapshot: ${cause.message ?? String(cause)}`,
-              cause,
-            }),
-        ),
-      );
-
-      // Same rules as Codex: serialised on the config directory that holds the
-      // login, one request id kept until Claude answers (a cooldown or rate
-      // limit is an answer), then a re-probe.
-      const consumeResetCredit: NonNullable<ProviderInstance["consumeResetCredit"]> = () =>
-        Effect.gen(function* () {
-          const current = yield* snapshot.getSnapshot;
-          const grantId = current.usageLimits?.resetCredits?.nextCreditId;
-          if (!grantId || !current.version) return "noCredit" as const;
-          const version = current.version;
-          return yield* resetCreditCoordinator.redeem(
-            configDir,
-            (requestId) =>
-              ClaudeResetCredits.consumeClaudeResetCredit({
-                configDir,
-                accountConfigPath,
-                version,
-                grantId,
-                requestId,
-              }),
-            ClaudeResetCredits.isSettledClaudeResetCreditFailure,
-          );
-        }).pipe(
-          Effect.provideService(HttpClient.HttpClient, httpClient),
-          Effect.provideService(FileSystem.FileSystem, fileSystem),
-          Effect.provideService(Path.Path, path),
-          Effect.mapError(
-            (cause) =>
-              new ProviderDriverError({
-                driver: DRIVER_KIND,
-                instanceId,
-                detail:
-                  cause._tag === "ClaudeResetCreditError"
-                    ? cause.message
-                    : "Claude could not redeem the reset.",
-                cause,
-              }),
-          ),
-          Effect.tap((outcome) =>
-            Effect.gen(function* () {
-              const before = (yield* snapshot.getSnapshot).usageLimits?.checkedAt;
-              yield* Cache.invalidateAll(capabilitiesProbeCache);
-              const refreshed = yield* snapshot.refresh;
-              const after = refreshed.usageLimits?.checkedAt;
-              if (
-                outcome === "reset" &&
-                (after === undefined ||
-                  after === before ||
-                  refreshed.usageLimits?.unavailable?.reason === "probeFailed")
-              ) {
-                return yield* new ProviderDriverError({
-                  driver: DRIVER_KIND,
-                  instanceId,
-                  detail:
-                    "The reset was applied, but Claude could not confirm the new limits. Refresh to check.",
-                });
-              }
-            }),
-          ),
-        );
-
-      return {
+    const scopedLimitNames = yield* makeClaudeScopedLimitNames;
+    const orchestrationAdapter = yield* createClaudeAdapterV2(
+      {
         instanceId,
-        driverKind: DRIVER_KIND,
-        continuationIdentity: {
-          ...fallbackContinuationIdentity,
-          continuationKey: continuationGroupKey,
-        },
         displayName,
         accentColor,
+        environment,
         enabled,
-        snapshot,
-        invalidateCaches: Cache.invalidateAll(capabilitiesProbeCache),
-        snapshotForCwd: (cwd: string) =>
-          snapshot.getSnapshot.pipe(
-            Effect.flatMap((machineSnapshot) =>
-              probeClaudeWorkspaceSnapshot(effectiveConfig, machineSnapshot, cwd, processEnv),
+        config,
+      },
+      { scopedLimitNames, onUsageLimits: (update) => snapshot.applyUsageLimits(update) },
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new ProviderDriverError({
+            driver: DRIVER_KIND,
+            instanceId,
+            detail: "Failed to build Claude orchestration adapter.",
+            cause,
+          }),
+      ),
+    );
+    const textGeneration = yield* makeClaudeTextGeneration(
+      effectiveConfig,
+      processEnv,
+      modelCatalog,
+    );
+
+    // Per-instance capabilities cache: keyed on binary + resolved HOME so
+    // account-specific probes never share auth metadata across instances.
+    // A transient miss may reuse the last account once, but its usage windows keep their age.
+    const lastGoodCapabilities = yield* Ref.make<ClaudeCapabilitiesProbe | undefined>(undefined);
+    const capabilitiesProbeCache = yield* Cache.makeWith(
+      () =>
+        probeClaudeCapabilities(effectiveConfig, processEnv, stateDir).pipe(
+          Effect.flatMap((capabilities) =>
+            ClaudeResetCredits.readClaudeOrganizationId(accountConfigPath).pipe(
+              Effect.map((workspaceId) => ({
+                _tag: "fresh" as const,
+                capabilities:
+                  workspaceId === undefined ? capabilities : { ...capabilities, workspaceId },
+              })),
             ),
-            Effect.provideService(FileSystem.FileSystem, fileSystem),
-            Effect.provideService(Path.Path, path),
           ),
-        orchestrationAdapter,
-        textGeneration,
-        auth: yield* makeCliProviderAuth({
-          instanceId,
-          providerLabel: "Claude",
-          command: effectiveConfig.binaryPath || "claude",
-          processEnv,
-          methods: authMethods,
-          // Drop the TTL'd capabilities probe first: sign-in and sign-out
-          // change the account metadata, and a cached pre-auth result would
-          // otherwise be republished for up to CAPABILITIES_PROBE_TTL.
-          probeAuth: Cache.invalidate(capabilitiesProbeCache, capabilitiesCacheKey).pipe(
-            Effect.andThen(snapshot.refresh),
-            Effect.map((provider) => provider.auth),
+          Effect.tap(({ capabilities }) => Ref.set(lastGoodCapabilities, capabilities)),
+          Effect.catch((error) =>
+            Ref.getAndSet(lastGoodCapabilities, undefined).pipe(
+              Effect.flatMap((capabilities) =>
+                capabilities === undefined
+                  ? Effect.fail(error)
+                  : ClaudeResetCredits.readClaudeOrganizationId(accountConfigPath).pipe(
+                      Effect.flatMap((workspaceId) =>
+                        workspaceId === capabilities.workspaceId
+                          ? Effect.succeed({
+                              _tag: "fallback" as const,
+                              capabilities: withoutUsage(capabilities),
+                            })
+                          : Effect.fail(error),
+                      ),
+                    ),
+              ),
+            ),
           ),
-          recordAuthMethod: authMethodPersistence.record,
-          logoutCommand: ["auth", "logout"],
-          onLogout: apiKeyCredential.remove,
+          Effect.provideService(FileSystem.FileSystem, fileSystem),
+          Effect.provideService(Path.Path, path),
+        ),
+      {
+        capacity: 1,
+        timeToLive: (exit) =>
+          // Only fresh usage earns the TTL; failures, fallbacks and usage-less probes retry.
+          Exit.isSuccess(exit) &&
+          exit.value._tag === "fresh" &&
+          exit.value.capabilities.usage !== undefined
+            ? CAPABILITIES_PROBE_TTL
+            : Duration.zero,
+      },
+    );
+    const capabilitiesCacheKey = yield* makeClaudeCapabilitiesCacheKey(
+      effectiveConfig,
+      stateDir,
+      processEnv,
+    );
+    const resolveCapabilities = Cache.get(capabilitiesProbeCache, capabilitiesCacheKey).pipe(
+      Effect.map((result) => result.capabilities),
+    );
+
+    const apiKeyCredential = providerEnvVarCredential({
+      serverSettings: host.settings,
+      instanceId,
+      driverKind: DRIVER_KIND,
+      envName: "ANTHROPIC_API_KEY",
+    });
+    const authMethods: ReadonlyArray<CliAuthMethodSpec> = [
+      {
+        kind: "cli",
+        id: "browser",
+        label: "Sign in with browser",
+        description:
+          "Runs `claude auth login` — open the shown URL, sign in, then paste the code it displays.",
+        args: ["auth", "login"],
+        // Suppresses `claude auth login`'s automatic browser open; the URL is
+        // surfaced in the UI for the user to open instead.
+        env: { BROWSER: "false" },
+        urlPattern: /https:\/\/claude\.(?:com|ai)\/\S+/,
+        inputPrompt: "Paste the code shown after signing in",
+      },
+      {
+        kind: "saved-credentials",
+        id: "saved",
+        label: "Use saved Claude login",
+        description: "Reuses the credentials `claude auth login` stored on this environment.",
+        missingMessage: "No Claude login found on this environment. Sign in or paste an API key.",
+      },
+      {
+        kind: "paste-credential",
+        id: "api-key",
+        label: "Paste an API key",
+        description: "Stored as a sensitive ANTHROPIC_API_KEY variable on this instance.",
+        credentialLabel: "Anthropic API key",
+        credentialPlaceholder: "sk-ant-…",
+        probeAfterApply: false,
+        appliedMessage: "Anthropic API key saved.",
+        apply: apiKeyCredential.apply,
+      },
+    ];
+    const providerSetup: ServerProvider["setup"] = {
+      canAuthenticate: true,
+      canInstall: false,
+      authMethods: authMethodDescriptors(authMethods),
+    };
+    const authMethodPersistence = providerAuthMethodPersistence({
+      serverSettings: host.settings,
+      instanceId,
+      methods: authMethods,
+    });
+    const stampSetup = <T extends { setup?: ServerProvider["setup"] }>(draft: T) => ({
+      ...draft,
+      setup: providerSetup,
+    });
+
+    const checkProvider = catalogService.refreshInBackground.pipe(
+      Effect.andThen(
+        modelCatalog.pipe(
+          Effect.flatMap((catalog) =>
+            checkClaudeProviderStatus(
+              effectiveConfig,
+              () => resolveCapabilities,
+              processEnv,
+              stateDir,
+              catalog,
+              scopedLimitNames,
+              (version) =>
+                ClaudeResetCredits.readClaudeResetCredits(configDir, version).pipe(
+                  Effect.provideService(HttpClient.HttpClient, httpClient),
+                  Effect.provideService(FileSystem.FileSystem, fileSystem),
+                  Effect.provideService(Path.Path, path),
+                ),
+            ),
+          ),
+          Effect.map(stampSetup),
+          Effect.tap((provider) =>
+            provider.auth.status === "unauthenticated"
+              ? Cache.invalidateAll(capabilitiesProbeCache)
+              : Effect.void,
+          ),
+          Effect.map(stampIdentity),
+          Effect.flatMap(authMethodPersistence.stamp),
+        ),
+      ),
+      Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+      Effect.provideService(FileSystem.FileSystem, fileSystem),
+      Effect.provideService(Path.Path, path),
+    );
+
+    const snapshotSettings = yield* makeProviderSnapshotSettingsSource(effectiveConfig);
+    const snapshot = yield* makeManagedServerProvider<ProviderSnapshotSettings<ClaudeSettings>>({
+      resolveMaintenance,
+      getSettings: snapshotSettings.getSettings,
+      streamSettings: snapshotSettings.streamSettings,
+      haveSettingsChanged: haveProviderSnapshotSettingsChanged,
+      initialSnapshot: (settings) =>
+        modelCatalog.pipe(
+          Effect.flatMap((catalog) => makePendingClaudeProvider(settings.provider, catalog)),
+          Effect.map(stampSetup),
+          Effect.map(stampIdentity),
+        ),
+      checkProvider,
+      enrichSnapshot: ({ settings, snapshot, publishSnapshot }) =>
+        resolveMaintenance().pipe(
+          Effect.flatMap((maintenanceCapabilities) =>
+            enrichProviderSnapshotWithVersionAdvisory(snapshot, maintenanceCapabilities, {
+              enableProviderUpdateChecks: settings.enableProviderUpdateChecks,
+            }),
+          ),
+          Effect.provideService(HttpClient.HttpClient, httpClient),
+          Effect.provideService(ProviderLatestVersions.ProviderLatestVersions, latestVersions),
+          Effect.flatMap((enrichedSnapshot) => publishSnapshot(enrichedSnapshot)),
+        ),
+    }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new ProviderDriverError({
+            driver: DRIVER_KIND,
+            instanceId,
+            detail: `Failed to build Claude snapshot: ${cause.message ?? String(cause)}`,
+            cause,
+          }),
+      ),
+    );
+
+    // Same rules as Codex: serialised on the config directory that holds the
+    // login, one request id kept until Claude answers (a cooldown or rate
+    // limit is an answer), then a re-probe.
+    const consumeResetCredit: NonNullable<ProviderInstance["consumeResetCredit"]> = Effect.fn(
+      "ClaudeDriver.consumeResetCredit",
+    )(
+      function* () {
+        const current = yield* snapshot.getSnapshot;
+        const grantId = current.usageLimits?.resetCredits?.nextCreditId;
+        if (!grantId || !current.version) return "noCredit" as const;
+        const version = current.version;
+        return yield* resetCreditCoordinator.redeem(
+          configDir,
+          (requestId) =>
+            ClaudeResetCredits.consumeClaudeResetCredit({
+              configDir,
+              accountConfigPath,
+              version,
+              grantId,
+              requestId,
+            }),
+          ClaudeResetCredits.isSettledClaudeResetCreditFailure,
+        );
+      },
+      Effect.provideService(HttpClient.HttpClient, httpClient),
+      Effect.provideService(FileSystem.FileSystem, fileSystem),
+      Effect.provideService(Path.Path, path),
+      Effect.mapError(
+        (cause) =>
+          new ProviderDriverError({
+            driver: DRIVER_KIND,
+            instanceId,
+            detail:
+              cause._tag === "ClaudeResetCreditError"
+                ? cause.message
+                : "Claude could not redeem the reset.",
+            cause,
+          }),
+      ),
+      Effect.tap((outcome) =>
+        Effect.gen(function* () {
+          const before = (yield* snapshot.getSnapshot).usageLimits?.checkedAt;
+          yield* Cache.invalidateAll(capabilitiesProbeCache);
+          const refreshed = yield* snapshot.refresh;
+          const after = refreshed.usageLimits?.checkedAt;
+          if (
+            outcome === "reset" &&
+            (after === undefined ||
+              after === before ||
+              refreshed.usageLimits?.unavailable?.reason === "probeFailed")
+          ) {
+            return yield* new ProviderDriverError({
+              driver: DRIVER_KIND,
+              instanceId,
+              detail:
+                "The reset was applied, but Claude could not confirm the new limits. Refresh to check.",
+            });
+          }
         }),
-        consumeResetCredit,
-      } satisfies ProviderInstance;
-    }),
+      ),
+    );
+
+    return {
+      instanceId,
+      driverKind: DRIVER_KIND,
+      continuationIdentity: {
+        ...fallbackContinuationIdentity,
+        continuationKey: continuationGroupKey,
+      },
+      displayName,
+      accentColor,
+      enabled,
+      snapshot,
+      invalidateCaches: Cache.invalidateAll(capabilitiesProbeCache),
+      snapshotForCwd: (cwd: string) =>
+        snapshot.getSnapshot.pipe(
+          Effect.flatMap((machineSnapshot) =>
+            probeClaudeWorkspaceSnapshot(effectiveConfig, machineSnapshot, cwd, processEnv),
+          ),
+          Effect.provideService(FileSystem.FileSystem, fileSystem),
+          Effect.provideService(Path.Path, path),
+        ),
+      orchestrationAdapter,
+      textGeneration,
+      auth: yield* makeCliProviderAuth({
+        instanceId,
+        providerLabel: "Claude",
+        command: effectiveConfig.binaryPath || "claude",
+        processEnv,
+        methods: authMethods,
+        // Drop the TTL'd capabilities probe first: sign-in and sign-out
+        // change the account metadata, and a cached pre-auth result would
+        // otherwise be republished for up to CAPABILITIES_PROBE_TTL.
+        probeAuth: Cache.invalidate(capabilitiesProbeCache, capabilitiesCacheKey).pipe(
+          Effect.andThen(snapshot.refresh),
+          Effect.map((provider) => provider.auth),
+        ),
+        recordAuthMethod: authMethodPersistence.record,
+        logoutCommand: ["auth", "logout"],
+        onLogout: apiKeyCredential.remove,
+      }),
+      consumeResetCredit,
+    } satisfies ProviderInstance;
+  }),
 };

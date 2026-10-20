@@ -51,7 +51,7 @@ export function SidebarTabSummary(props: {
         string,
         Pick<
           ProviderInstanceEntry,
-          "driverKind" | "displayName" | "accentColor" | "acpRegistryAgentId"
+          "driverKind" | "displayName" | "accentColor" | "acpRegistryAgentId" | "enabled"
         >
       >
     | undefined;

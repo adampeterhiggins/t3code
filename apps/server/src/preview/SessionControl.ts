@@ -73,15 +73,27 @@ export class SessionControl {
     this.onGenerationChange();
   }
 
-  private async action<A>(allowed: () => boolean, run: () => Promise<A>, signal?: AbortSignal) {
-    signal?.throwIfAborted();
+  private async action<A>(
+    allowed: () => boolean,
+    run: () => Promise<A>,
+    signal?: AbortSignal | number,
+    deadlineMs?: number,
+  ) {
+    const executionDeadline = typeof signal === "number" ? signal : deadlineMs;
+    if (typeof signal !== "number") signal?.throwIfAborted();
     this.assertOpen();
     if (!allowed()) throw new BrowserControlInterrupted("You do not control this browser tab.");
     const epoch = this.epoch;
     return this.enqueue(async () => {
-      signal?.throwIfAborted();
+      if (typeof signal !== "number") signal?.throwIfAborted();
       this.assertOpen();
       if (epoch !== this.epoch || !allowed()) throw new BrowserControlInterrupted();
+      if (executionDeadline !== undefined && performance.now() >= executionDeadline) {
+        throw new DOMException(
+          "This browser request expired before it could start.",
+          "TimeoutError",
+        );
+      }
       return run();
     });
   }
@@ -95,7 +107,12 @@ export class SessionControl {
    * never while a human controls the tab; taking control interrupts it.
    * An aborted signal (expired or cancelled request) keeps queued work from running later.
    */
-  agent<A>(agentId: string, run: () => Promise<A>, signal?: AbortSignal) {
+  agent<A>(
+    agentId: string,
+    run: () => Promise<A>,
+    signal?: AbortSignal | number,
+    deadlineMs?: number,
+  ) {
     if (!this.agentMayAct(agentId))
       return Promise.reject(
         new BrowserControlInterrupted("This tab belongs to another agent.", "agentMismatch"),
@@ -104,7 +121,12 @@ export class SessionControl {
       return Promise.reject(
         new BrowserControlInterrupted("A human controls this tab.", "humanControl"),
       );
-    return this.action(() => this.agentMayAct(agentId) && this.owner === null, run, signal);
+    return this.action(
+      () => this.agentMayAct(agentId) && this.owner === null,
+      run,
+      signal,
+      deadlineMs,
+    );
   }
 
   agentCanActNow(agentId: string) {

@@ -5,6 +5,7 @@ import type {
   PullRequestComment,
   PullRequestDetailView,
   PullRequestRef,
+  PullRequestReviewThread,
   ScopedThreadRef,
 } from "@t3tools/contracts";
 import {
@@ -53,13 +54,17 @@ import { PullRequestLabelPicker } from "./PullRequestLabelPicker";
 import { PullRequestReviewerPicker } from "./PullRequestReviewerPicker";
 import { PullRequestActivityUnavailableState } from "./PullRequestActivityUnavailableState";
 import {
-  groupPullRequestConversation,
+  filterPullRequestConversationItems,
+  isPullRequestCommentFinished,
   latestPullRequestReviewOutcomes,
   orderPullRequestComments,
+  pagePullRequestConversationItems,
+  pullRequestConversationItemComments,
+  pullRequestConversationItems,
   pullRequestFindingKey,
   pullRequestReviewOutcome,
   visibleBody,
-  type PullRequestConversationEntry,
+  type PullRequestConversationItem,
   type PullRequestFinding,
 } from "./pullRequestDetail.logic";
 import {
@@ -70,6 +75,7 @@ import {
 import { PullRequestMarkdown } from "./PullRequestMarkdown";
 import { PullRequestQuoteSource } from "./PullRequestQuoteToolbar";
 import { PullRequestCommentBody } from "./PullRequestCommentBody";
+import { PullRequestMoreReplies } from "./PullRequestMoreReplies";
 import { PullRequestMarkdownEditor } from "./PullRequestMarkdownEditor";
 import { PullRequestReactionBar } from "./PullRequestReactions";
 import { PullRequestConversationGhost } from "./PullRequestGhosts";
@@ -133,8 +139,8 @@ function CommentLocation({
   className,
 }: {
   path: string | null;
-  line?: number | null;
-  isOutdated?: boolean;
+  line?: number | null | undefined;
+  isOutdated?: boolean | undefined;
   className?: string;
 }) {
   if (!path) return null;
@@ -233,6 +239,9 @@ function CollapsedComment({
   body,
   reactionBar,
   detail,
+  replyCount = 0,
+  replies = null,
+  moreReplies = null,
 }: {
   comment: PullRequestComment;
   editing: CommentEditing;
@@ -240,6 +249,10 @@ function CollapsedComment({
   body: string | null;
   reactionBar: ReactNode;
   detail: PullRequestDetailView;
+  thread: PullRequestReviewThread | undefined;
+  replyCount?: number;
+  replies?: ReactNode;
+  moreReplies?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const statusTriggerRef = useRef<HTMLButtonElement>(null);
@@ -249,6 +262,11 @@ function CollapsedComment({
         <div className="p-3">
           <div className="flex flex-wrap items-baseline gap-2">
             <CommentIdentity comment={comment} detail={detail} />
+            {replyCount > 0 ? (
+              <span className="shrink-0 py-1 text-xs text-muted-foreground">
+                {replyCount} {replyCount === 1 ? "reply" : "replies"}
+              </span>
+            ) : null}
             <CollapsibleTrigger
               ref={statusTriggerRef}
               className="flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -277,9 +295,11 @@ function CollapsedComment({
               {body === null && !editing.canEdit(comment) ? null : (
                 <CommentBody className="mt-2" comment={comment} editing={editing} />
               )}
+              {replies ? <div className="mt-3">{replies}</div> : null}
             </div>
           ) : null}
         </CollapsiblePanel>
+        {moreReplies ? <div className="px-3 pb-3">{moreReplies}</div> : null}
       </article>
     </Collapsible>
   );
@@ -333,7 +353,7 @@ function ReviewThreadEntry({
   onToggleResolved,
   onRefresh,
 }: {
-  entry: Extract<PullRequestConversationEntry, { kind: "thread" }>;
+  entry: Extract<PullRequestConversationItem, { kind: "thread" }>;
   detail: PullRequestDetailView;
   editing: CommentEditing;
   environmentId: EnvironmentId;
@@ -347,14 +367,15 @@ function ReviewThreadEntry({
   onToggleResolved: () => void;
   onRefresh: () => void;
 }) {
-  const { thread, comments } = entry;
+  const { thread } = entry;
+  const comments = [entry.root, ...entry.replies];
   const [open, setOpen] = useState(!thread.isResolved);
   const [replying, setReplying] = useState(false);
   const latest = comments.at(-1);
   const latestBody = latest ? visibleBody(latest.body) : null;
   // The host's total, where it read the thread in pages: the conversation only carries the
   // remarks it had room for.
-  const missing = Math.max(0, (thread.commentCount ?? comments.length) - comments.length);
+  const missing = entry.moreReplies;
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
@@ -412,11 +433,7 @@ function ReviewThreadEntry({
                     </div>
                   );
                 })}
-                {missing > 0 ? (
-                  <p className="px-3 py-2 text-xs text-muted-foreground">
-                    {missing} more {missing === 1 ? "reply" : "replies"} on the host.
-                  </p>
-                ) : null}
+                {entry.hasMoreReplies ? <PullRequestMoreReplies {...entry} /> : null}
               </div>
               {canReply || canResolve ? (
                 <div className="border-t border-border/60 px-3 py-2">
@@ -593,51 +610,40 @@ export function PullRequestSummaryTab({
   onRefreshChecks?: () => void;
 }) {
   const [shown, setShown] = useState({ url: detail.url, count: COMMENT_PAGE });
-  const shownComments = shown.url === detail.url ? shown.count : COMMENT_PAGE;
+  const shownConversations = shown.url === detail.url ? shown.count : COMMENT_PAGE;
   const [commentFilter, setCommentFilter] = useLocalStorage(
     COMMENT_FILTER_STORAGE_KEY,
     DEFAULT_COMMENT_FILTER,
     CommentFilterSchema,
   );
-  // A comment that lives on a review thread is drawn as part of that thread: the thread carries
-  // the line and side the bare comment has lost, and its replies belong beneath it.
-  const entries = groupPullRequestConversation(detail.comments, detail.reviewThreads);
-  const entryComments = (entry: PullRequestConversationEntry) =>
-    entry.kind === "thread" ? entry.comments : [entry.comment];
-
-  // A resolved thread is finished work nobody should be invited to fix again — the same call the
-  // whole-review hand-off makes.
-  const isFinished = (entry: PullRequestConversationEntry) =>
-    entry.kind === "thread"
-      ? entry.thread.isResolved
-      : pullRequestReviewOutcome(entry.comment.reviewState) === "dismissed";
-  const isBot = (comment: PullRequestComment) =>
-    comment.author?.isBot === true || comment.author?.login.endsWith("[bot]") === true;
-  // A thread a person has answered is a person's conversation, whoever opened it.
-  const isBotEntry = (entry: PullRequestConversationEntry) => entryComments(entry).every(isBot);
-  const filteredEntries = entries.filter(
-    (entry) =>
-      (commentFilter.bots || !isBotEntry(entry)) && (commentFilter.resolved || !isFinished(entry)),
+  const items = pullRequestConversationItems(detail.comments, detail.reviewThreads);
+  const filteredItems = filterPullRequestConversationItems(items, commentFilter);
+  const commentCount = items.reduce(
+    (count, item) => count + pullRequestConversationItemComments(item).length,
+    0,
   );
-  // The one count the filter shows, in comments like the heading's. Per-kind counts would
-  // overlap, since a resolved bot comment is both kinds and needs both shown.
   const filteredOutCount =
-    detail.comments.length -
-    filteredEntries.reduce((total, entry) => total + entryComments(entry).length, 0);
-  const recentEntries = filteredEntries.slice(Math.max(0, filteredEntries.length - shownComments));
-  const hiddenCommentCount = filteredEntries.length - recentEntries.length;
+    commentCount -
+    filteredItems.reduce(
+      (count, item) => count + pullRequestConversationItemComments(item).length,
+      0,
+    );
+  const { shown: recentItems, hidden: hiddenConversationCount } = pagePullRequestConversationItems(
+    filteredItems,
+    shownConversations,
+  );
   const [commentOrder, setCommentOrder] = useState<"newest" | "oldest">("newest");
-  const visibleEntries = orderPullRequestComments(recentEntries, commentOrder);
+  const visibleItems = orderPullRequestComments(recentItems, commentOrder);
   const showOldestCommentsButton =
-    hiddenCommentCount > 0 ? (
+    hiddenConversationCount > 0 ? (
       <Button
         size="sm"
         variant="outline"
         className="w-full"
-        onClick={() => setShown({ url: detail.url, count: shownComments + COMMENT_PAGE })}
+        onClick={() => setShown({ url: detail.url, count: shownConversations + COMMENT_PAGE })}
       >
-        Show {Math.min(hiddenCommentCount, COMMENT_PAGE)} older comment
-        {hiddenCommentCount === 1 ? "" : "s"} ({hiddenCommentCount} hidden)
+        Show {Math.min(hiddenConversationCount, COMMENT_PAGE)} older conversation
+        {hiddenConversationCount === 1 ? "" : "s"} ({hiddenConversationCount} hidden)
       </Button>
     ) : null;
   // Read from the whole conversation, not the window shown below it: a verdict older than the
@@ -766,98 +772,37 @@ export function PullRequestSummaryTab({
     },
   };
 
-  const fixButton = (finding: PullRequestFinding, beside: "comment" | "thread") =>
-    onFixFinding ? (
-      <Button
-        size="xs"
-        variant="ghost"
-        className={beside === "comment" ? "-mt-1 shrink-0" : "shrink-0"}
-        disabled={pendingFinding !== null && pendingFinding !== undefined}
-        onClick={() => onFixFinding(finding)}
-      >
-        <HammerIcon className="size-3" />
-        {pendingFinding === pullRequestFindingKey(finding) ? "Preparing..." : fixFindingLabel}
-      </Button>
-    ) : null;
+  const reactionBarFor = (comment: PullRequestComment) => (
+    <PullRequestReactionBar
+      className="ml-auto justify-end"
+      reactions={comment.reactions ?? []}
+      canReact={detail.capabilities.reactions === true}
+      subjectId={comment.id}
+      environmentId={environmentId}
+      reference={reference}
+      onRefresh={onRefresh}
+    />
+  );
 
-  const renderEntry = (entry: PullRequestConversationEntry) => {
-    if (entry.kind === "comment") return renderComment(entry.comment);
-    const { thread } = entry;
-    return (
-      <ReviewThreadEntry
-        key={`${detail.url}:thread:${thread.id}`}
-        entry={entry}
-        detail={detail}
-        editing={commentEditing}
-        environmentId={environmentId}
-        reference={reference}
-        canReply={canReplyToThreads}
-        canResolve={canResolveThreads && canResolvePullRequestThread(detail, thread)}
-        pending={threadPending}
-        fixAction={thread.isResolved ? null : fixButton({ kind: "thread", thread }, "thread")}
-        onReply={(body) =>
-          runThreadCommand("Reply could not be posted", () =>
-            replyToThread({ environmentId, input: { ...reference, threadId: thread.id, body } }),
-          )
-        }
-        onToggleResolved={() =>
-          void runThreadCommand("The conversation could not be updated", () =>
-            setThreadResolution({
-              environmentId,
-              input: { ...reference, threadId: thread.id, resolved: !thread.isResolved },
-            }),
-          )
-        }
-        onRefresh={onRefresh}
-      />
-    );
-  };
-
-  const renderComment = (comment: PullRequestComment) => {
+  const renderCommentCard = (
+    comment: PullRequestComment,
+    thread: PullRequestReviewThread | undefined,
+    { reply = false }: { reply?: boolean } = {},
+  ) => {
     const body = visibleBody(comment.body);
-    if (pullRequestReviewOutcome(comment.reviewState) === "dismissed") {
-      return (
-        <CollapsedComment
-          key={`${detail.url}:${comment.id}`}
-          comment={comment}
-          editing={commentEditing}
-          detail={detail}
-          label="Review dismissed"
-          body={body}
-          reactionBar={
-            <PullRequestReactionBar
-              className="ml-auto justify-end"
-              reactions={comment.reactions ?? []}
-              canReact={detail.capabilities.reactions === true}
-              subjectId={comment.id}
-              environmentId={environmentId}
-              reference={reference}
-              onRefresh={onRefresh}
-            />
-          }
-        />
-      );
-    }
     const outcome = pullRequestReviewOutcome(comment.reviewState);
     // Nor is a remark with nothing in it: offering to hand an empty review to a thread promises
     // work it does not describe.
     const finding: PullRequestFinding | null =
+      reply ||
       (comment.kind !== "review" && comment.kind !== "review-comment") ||
-      outcome === "approved" ||
-      body === null
+      outcome === "approved"
         ? null
-        : { kind: "comment", comment };
-    const reactionBar = (
-      <PullRequestReactionBar
-        reactions={comment.reactions ?? []}
-        canReact={detail.capabilities.reactions === true}
-        subjectId={comment.id}
-        environmentId={environmentId}
-        reference={reference}
-        onRefresh={onRefresh}
-        className="ml-auto justify-end"
-      />
-    );
+        : thread === undefined
+          ? body === null
+            ? null
+            : { kind: "comment", comment }
+          : { kind: "thread", thread };
     return (
       <article
         key={`${detail.url}:${comment.id}`}
@@ -874,21 +819,107 @@ export function PullRequestSummaryTab({
               <span>{reviewStateLabel(comment.reviewState)}</span>
             ) : null}
           </div>
-          {/* Review remarks only. A plain conversation comment is talk, not a finding,
-                      and offering to fix one would promise more than it says. */}
-          {finding ? fixButton(finding, "comment") : null}
-          {reactionBar}
+          {onFixFinding && finding ? (
+            <Button
+              size="xs"
+              variant="ghost"
+              className="shrink-0"
+              disabled={pendingFinding !== null && pendingFinding !== undefined}
+              onClick={() => onFixFinding(finding)}
+            >
+              {/* Export the text baseline rather than the hammer icon's bottom edge. */}
+              <span className="inline-flex items-baseline gap-1">
+                <HammerIcon className="size-3 self-center" />
+                <span>
+                  {pendingFinding === pullRequestFindingKey(finding)
+                    ? "Preparing..."
+                    : fixFindingLabel}
+                </span>
+              </span>
+            </Button>
+          ) : null}
+          {reactionBarFor(comment)}
         </div>
-        <CommentLocation className="mt-2 px-3" path={comment.path} />
-        {/* A verdict usually carries no words, and an empty markdown block reads as
-                          a card somebody forgot to fill in — the badge above already said it.
-                          Kept where this reader may rewrite the remark: the pencil lives in here,
-                          and hiding the block would take away the only way back to it. */}
+        {reply ? null : (
+          <div className="px-3">
+            <CommentLocation
+              path={thread?.path ?? comment.path}
+              line={thread?.line}
+              isOutdated={thread?.isOutdated}
+            />
+          </div>
+        )}
         {body === null && !commentEditing.canEdit(comment) ? null : (
           <CommentBody className="px-3 py-3" comment={comment} editing={commentEditing} />
         )}
       </article>
     );
+  };
+
+  const renderItem = (item: PullRequestConversationItem) => {
+    const comment = item.kind === "comment" ? item.comment : item.root;
+    const thread = item.kind === "thread" ? item.thread : undefined;
+    if (item.kind === "thread") {
+      const thread = item.thread;
+      const finding: PullRequestFinding = { kind: "thread", thread };
+      return (
+        <ReviewThreadEntry
+          key={`${detail.url}:thread:${item.id}`}
+          entry={item}
+          detail={detail}
+          editing={commentEditing}
+          environmentId={environmentId}
+          reference={reference}
+          canReply={canReplyToThreads}
+          canResolve={canResolveThreads && canResolvePullRequestThread(detail, thread)}
+          pending={threadPending}
+          fixAction={
+            thread.isResolved || !onFixFinding ? null : (
+              <Button
+                size="xs"
+                variant="ghost"
+                disabled={pendingFinding != null}
+                onClick={() => onFixFinding(finding)}
+              >
+                <HammerIcon className="size-3" />
+                {pendingFinding === pullRequestFindingKey(finding)
+                  ? "Preparing..."
+                  : fixFindingLabel}
+              </Button>
+            )
+          }
+          onReply={(body) =>
+            runThreadCommand("Reply could not be posted", () =>
+              replyToThread({ environmentId, input: { ...reference, threadId: thread.id, body } }),
+            )
+          }
+          onToggleResolved={() =>
+            void runThreadCommand("The conversation could not be updated", () =>
+              setThreadResolution({
+                environmentId,
+                input: { ...reference, threadId: thread.id, resolved: !thread.isResolved },
+              }),
+            )
+          }
+          onRefresh={onRefresh}
+        />
+      );
+    }
+    if (isPullRequestCommentFinished(comment, thread)) {
+      return (
+        <CollapsedComment
+          key={`${detail.url}:${item.kind}:${item.id}`}
+          comment={comment}
+          editing={commentEditing}
+          detail={detail}
+          thread={thread}
+          label={thread?.isResolved ? "Resolved" : "Review dismissed"}
+          body={visibleBody(comment.body)}
+          reactionBar={reactionBarFor(comment)}
+        />
+      );
+    }
+    return renderCommentCard(comment, undefined);
   };
 
   return (
@@ -1156,13 +1187,13 @@ export function PullRequestSummaryTab({
           <>
             {detail.commentsTruncated ? (
               <p className="mb-2 rounded-md border border-warning/30 bg-warning-surface px-2 py-1.5 text-xs">
-                This conversation is longer than this page reads in one go. The most recent{" "}
-                {detail.comments.length} are here; open it on the host to read the rest.
+                This conversation is only partially loaded. {commentCount} comment
+                {commentCount === 1 ? " is" : "s are"} loaded; open it on the host to read the rest.
               </p>
             ) : null}
-            {detail.comments.length === 0 ? (
+            {items.length === 0 ? (
               <p className="py-2 text-xs text-muted-foreground">No comments yet.</p>
-            ) : filteredEntries.length === 0 ? (
+            ) : filteredItems.length === 0 ? (
               <p className="py-2 text-xs text-muted-foreground">
                 {filteredOutCount === 1
                   ? "The only comment is hidden by the filter."
@@ -1171,16 +1202,16 @@ export function PullRequestSummaryTab({
             ) : (
               <div className="space-y-3">
                 {commentOrder === "oldest" ? showOldestCommentsButton : null}
-                {visibleEntries.map(renderEntry)}
+                {visibleItems.map(renderItem)}
                 {commentOrder === "newest" ? showOldestCommentsButton : null}
-                {shownComments > COMMENT_PAGE ? (
+                {shownConversations > COMMENT_PAGE ? (
                   <Button
                     size="sm"
                     variant="ghost"
                     className="w-full"
                     onClick={() => setShown({ url: detail.url, count: COMMENT_PAGE })}
                   >
-                    Show only {COMMENT_PAGE} recent comments
+                    Show only {COMMENT_PAGE} recent conversations
                   </Button>
                 ) : null}
               </div>

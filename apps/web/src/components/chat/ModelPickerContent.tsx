@@ -386,12 +386,15 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       return favorites.length > 0 ? "favorites" : (activeEntry?.driverKind ?? "favorites");
     },
   );
+  const favoritesSet = new Set(favorites.map((fav) => providerModelKey(fav.provider, fav.model)));
   const [expandedLegacyDrivers, setExpandedLegacyDrivers] = useState(
     () =>
       new Set<ProviderDriverKind>(
         modelOptionsByInstance
           .get(props.activeInstanceId)
-          ?.some((model) => model.slug === activeModelSlug && model.isLegacy) && activeEntry
+          ?.some((model) => model.slug === activeModelSlug && model.isLegacy) &&
+          activeEntry &&
+          !favoritesSet.has(providerModelKey(props.activeInstanceId, activeModelSlug))
           ? [activeEntry.driverKind]
           : [],
       ),
@@ -426,10 +429,6 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       window.clearTimeout(timeout);
     };
   }, [focusSearchInput]);
-
-  const favoritesSet = (() => {
-    return new Set(favorites.map((fav) => providerModelKey(fav.provider, fav.model)));
-  })();
 
   const entryByInstanceId = (() =>
     new Map(instanceEntries.map((entry) => [entry.instanceId, entry])))();
@@ -617,8 +616,13 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     if (isSearching || selectedDriverKind === "favorites") {
       return null;
     }
-    const currentModels = filteredModels.filter((model) => !model.isLegacy);
-    const legacyModels = filteredModels.filter((model) => model.isLegacy);
+    const currentModels: ModelPickerItem[] = [];
+    const legacyModels: ModelPickerItem[] = [];
+    for (const model of filteredModels) {
+      const isLegacy =
+        model.isLegacy && !favoritesSet.has(providerModelKey(model.instanceId, model.slug));
+      (isLegacy ? legacyModels : currentModels).push(model);
+    }
     if (legacyModels.length === 0) {
       return null;
     }

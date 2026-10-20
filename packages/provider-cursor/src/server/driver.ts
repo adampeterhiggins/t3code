@@ -11,6 +11,7 @@ import {
   defaultInstanceIdForDriver,
   ProviderDriverKind,
   ProviderSetupError,
+  type ServerProviderModel,
 } from "@t3tools/contracts";
 import { CursorSettings } from "../settings.ts";
 import * as Effect from "effect/Effect";
@@ -23,7 +24,7 @@ import { readCursorUsageLimits } from "./usageLimits.ts";
 
 import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
 import { makeCursorTextGeneration } from "./textGeneration.ts";
-import { CursorAdapterV2Driver, type CursorAdapterV2DriverEnv } from "./adapter.ts";
+import { makeCursorAdapterV2, type CursorAdapterV2DriverEnv } from "./adapter.ts";
 import { ProviderDriverError } from "@t3tools/provider-core/server/errors";
 import { buildInitialCursorProviderSnapshot, checkCursorProviderStatus } from "./status.ts";
 import * as CursorSdkCatalog from "./CursorSdkCatalog.ts";
@@ -98,254 +99,269 @@ export const CursorDriver: ProviderDriver<
         ),
       ),
   },
-  create: ({ instanceId, displayName, accentColor, environment, enabled, config }) =>
-    Effect.gen(function* () {
-      const host = yield* ProviderHost.ProviderHost;
-      const fileSystem = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      const httpClient = yield* HttpClient.HttpClient;
-      const keychain = yield* CursorKeychain.CursorKeychain;
-      const sdkRunner = yield* CursorAgentSdk.CursorAgentSdkRunner;
-      const processEnv = yield* mergeProviderInstanceEnvironment(environment);
-      const continuationIdentity = defaultProviderContinuationIdentity({
-        driverKind: DRIVER_KIND,
-        instanceId,
-      });
-      const stampIdentity = withInstanceIdentity({
-        instanceId,
-        driverKind: DRIVER_KIND,
-        displayName: displayName ?? "Cursor",
-        accentColor,
-        continuationGroupKey: continuationIdentity.continuationKey,
-      });
-      const effectiveConfig = { ...config, enabled } satisfies CursorSettings;
-      const credentials = yield* CursorCredentialStore.makeCursorCredentialStore(
-        instanceId,
-        path.join(
-          host.paths.stateDir,
-          "provider-auth",
-          encodeURIComponent(instanceId),
-          "cursor.json",
-        ),
-      ).pipe(
-        Effect.mapError(
-          (cause) =>
-            new ProviderDriverError({
-              driver: DRIVER_KIND,
-              instanceId,
-              detail: "Could not open the Cursor credential store.",
-              cause,
-            }),
-        ),
-      );
-      const auth = yield* makeCursorAuth({
-        instanceId,
-        displayName: displayName ?? "Cursor",
-        enabled,
-        ...(processEnv.CURSOR_API_KEY ? { apiKey: processEnv.CURSOR_API_KEY } : {}),
-        store: credentials.store,
-        credentialBinding: credentials.binding,
-        onChanged: (signedIn): Effect.Effect<void, ProviderSetupError> =>
-          snapshot.refresh.pipe(
-            Effect.flatMap((provider) =>
-              !signedIn || provider.auth.status === "authenticated"
-                ? Effect.void
-                : Effect.fail(
-                    new ProviderSetupError({
-                      instanceId,
-                      operation: "start",
-                      detail: provider.message ?? "Could not verify the Cursor sign-in. Try again.",
-                    }),
-                  ),
-            ),
-          ),
-      });
-      const stampSnapshot: typeof stampIdentity = (draft) =>
-        stampIdentity({
-          ...draft,
-          setup: { canAuthenticate: !auth.usesApiKey, canInstall: false },
-          auth: {
-            ...draft.auth,
-            canLogout: !auth.usesApiKey,
-          },
-        });
-
-      // Sends the defaults the model picker shows for anything the selection leaves out.
-      const withPickerDefaults = (
-        model: CursorSdkModelSelection | undefined,
-      ): Effect.Effect<CursorSdkModelSelection | undefined> =>
-        model === undefined
-          ? Effect.succeed(undefined)
-          : snapshot.getSnapshot.pipe(
-              Effect.map((provider) =>
-                withCursorDefaultParameters(
-                  model,
-                  provider.models.find((candidate) => candidate.slug === model.id)?.capabilities
-                    ?.optionDescriptors,
+  create: Effect.fn("CursorDriver.create")(function* ({
+    instanceId,
+    displayName,
+    accentColor,
+    environment,
+    enabled,
+    config,
+  }) {
+    const host = yield* ProviderHost.ProviderHost;
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const httpClient = yield* HttpClient.HttpClient;
+    const keychain = yield* CursorKeychain.CursorKeychain;
+    const sdkRunner = yield* CursorAgentSdk.CursorAgentSdkRunner;
+    const processEnv = yield* mergeProviderInstanceEnvironment(environment);
+    const continuationIdentity = defaultProviderContinuationIdentity({
+      driverKind: DRIVER_KIND,
+      instanceId,
+    });
+    const stampIdentity = withInstanceIdentity({
+      instanceId,
+      driverKind: DRIVER_KIND,
+      displayName: displayName ?? "Cursor",
+      accentColor,
+      continuationGroupKey: continuationIdentity.continuationKey,
+    });
+    const effectiveConfig = { ...config, enabled } satisfies CursorSettings;
+    const credentials = yield* CursorCredentialStore.makeCursorCredentialStore(
+      instanceId,
+      path.join(
+        host.paths.stateDir,
+        "provider-auth",
+        encodeURIComponent(instanceId),
+        "cursor.json",
+      ),
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new ProviderDriverError({
+            driver: DRIVER_KIND,
+            instanceId,
+            detail: "Could not open the Cursor credential store.",
+            cause,
+          }),
+      ),
+    );
+    const auth = yield* makeCursorAuth({
+      instanceId,
+      displayName: displayName ?? "Cursor",
+      enabled,
+      ...(processEnv.CURSOR_API_KEY ? { apiKey: processEnv.CURSOR_API_KEY } : {}),
+      store: credentials.store,
+      credentialBinding: credentials.binding,
+      onChanged: (signedIn): Effect.Effect<void, ProviderSetupError> =>
+        snapshot.refresh.pipe(
+          Effect.flatMap((provider) =>
+            !signedIn || provider.auth.status === "authenticated"
+              ? Effect.void
+              : Effect.fail(
+                  new ProviderSetupError({
+                    instanceId,
+                    operation: "start",
+                    detail: provider.message ?? "Could not verify the Cursor sign-in. Try again.",
+                  }),
                 ),
-              ),
-            );
-
-      const withSendPickerDefaults = (
-        session: CursorAgentSdk.CursorAgentSdkSession,
-      ): CursorAgentSdk.CursorAgentSdkSession => ({
-        ...session,
-        send: (sendInput) =>
-          withPickerDefaults(sendInput.options?.model).pipe(
-            Effect.flatMap((model) =>
-              session.send(
-                model === undefined
-                  ? sendInput
-                  : { ...sendInput, options: { ...sendInput.options, model } },
-              ),
-            ),
           ),
+        ),
+    });
+    const stampSnapshot: typeof stampIdentity = (draft) =>
+      stampIdentity({
+        ...draft,
+        setup: { canAuthenticate: !auth.usesApiKey, canInstall: false },
+        auth: {
+          ...draft.auth,
+          canLogout: !auth.usesApiKey,
+        },
       });
 
-      const orchestrationAdapter = yield* CursorAdapterV2Driver.create({
-        instanceId,
-        displayName,
-        accentColor,
-        environment,
-        enabled,
-        config,
-      }).pipe(
-        Effect.provideService(CursorAgentSdk.CursorAgentSdkRunner, {
-          ...sdkRunner,
-          open: (input) =>
-            Effect.all([auth.requireApiKey, withPickerDefaults(input.options.model)]).pipe(
-              Effect.flatMap(([apiKey, model]) =>
-                Effect.acquireRelease(
-                  sdkRunner
-                    .open({
-                      ...input,
-                      options: { ...input.options, apiKey, ...(model ? { model } : {}) },
-                    })
-                    .pipe(
-                      Effect.flatMap((session) =>
-                        Effect.cached(session.close).pipe(
-                          Effect.map((close) => withSendPickerDefaults({ ...session, close })),
-                        ),
+    // Sends the defaults the model picker shows for anything the selection leaves out.
+    const withPickerDefaults = (
+      model: CursorSdkModelSelection | undefined,
+    ): Effect.Effect<CursorSdkModelSelection | undefined> =>
+      model === undefined
+        ? Effect.succeed(undefined)
+        : snapshot.getSnapshot.pipe(
+            Effect.map((provider) =>
+              withCursorDefaultParameters(
+                model,
+                (
+                  provider.models.find((candidate) => candidate.slug === model.id) ??
+                  catalogModels.find((candidate) => candidate.slug === model.id)
+                )?.capabilities?.optionDescriptors,
+              ),
+            ),
+          );
+
+    const withSendPickerDefaults = (
+      session: CursorAgentSdk.CursorAgentSdkSession,
+    ): CursorAgentSdk.CursorAgentSdkSession => ({
+      ...session,
+      send: (sendInput) =>
+        withPickerDefaults(sendInput.options?.model).pipe(
+          Effect.flatMap((model) =>
+            session.send(
+              model === undefined
+                ? sendInput
+                : { ...sendInput, options: { ...sendInput.options, model } },
+            ),
+          ),
+        ),
+    });
+
+    let catalogModels: ReadonlyArray<ServerProviderModel> = [];
+    const orchestrationAdapter = yield* makeCursorAdapterV2({
+      instanceId,
+      settings: effectiveConfig,
+      environment: processEnv,
+      getModels: () => catalogModels,
+    }).pipe(
+      Effect.provideService(CursorAgentSdk.CursorAgentSdkRunner, {
+        ...sdkRunner,
+        open: (input) =>
+          Effect.all([auth.requireApiKey, withPickerDefaults(input.options.model)]).pipe(
+            Effect.flatMap(([apiKey, model]) =>
+              Effect.acquireRelease(
+                sdkRunner
+                  .open({
+                    ...input,
+                    options: { ...input.options, apiKey, ...(model ? { model } : {}) },
+                  })
+                  .pipe(
+                    Effect.flatMap((session) =>
+                      Effect.cached(session.close).pipe(
+                        Effect.map((close) => withSendPickerDefaults({ ...session, close })),
                       ),
                     ),
-                  (session) => session.close.pipe(Effect.ignore),
-                ),
-              ),
-              auth.withAccess,
-              Effect.mapError((cause) =>
-                isSdkRunnerError(cause)
-                  ? cause
-                  : new CursorAgentSdk.CursorAgentSdkRunnerError({ method: "open", cause }),
+                  ),
+                (session) => session.close.pipe(Effect.ignore),
               ),
             ),
-        }),
-        Effect.mapError(
-          (cause) =>
-            new ProviderDriverError({
-              driver: DRIVER_KIND,
-              instanceId,
-              detail: "Failed to build Cursor orchestration adapter.",
-              cause,
-            }),
-        ),
-      );
-      const textGeneration = yield* makeCursorTextGeneration(
-        effectiveConfig,
-        processEnv,
-        auth.requireApiKey,
-        auth.withAccess,
-      );
-
-      const checkProvider = auth.readCredential.pipe(
-        Effect.orElseSucceed(() => undefined),
-        Effect.flatMap((credential) =>
-          checkCursorProviderStatus(
-            effectiveConfig,
-            {
-              ...processEnv,
-              CURSOR_API_KEY: credential?.apiKey,
-            },
-            auth.usesApiKey ? "api-key" : "browser",
-          ).pipe(
-            Effect.flatMap((snapshot) =>
-              effectiveConfig.enabled &&
-              snapshot.installed &&
-              snapshot.auth.status === "authenticated"
-                ? host.settings.get.pipe(
-                    Effect.flatMap((settings) =>
-                      // Each instance reads its own account's limits with its own key; only the
-                      // default instance may fall back to the host's shared CLI login.
-                      readCursorUsageLimits(effectiveConfig, processEnv, {
-                        allowKeychain: settings.cursorKeychainUsageEnabled,
-                        sdkCredential: credential,
-                        sharedLogin: instanceId === defaultInstanceIdForDriver(DRIVER_KIND),
-                      }),
-                    ),
-                    Effect.map((usageLimits) => ({ ...snapshot, usageLimits })),
-                  )
-                : Effect.succeed(snapshot),
+            auth.withAccess,
+            Effect.mapError((cause) =>
+              isSdkRunnerError(cause)
+                ? cause
+                : new CursorAgentSdk.CursorAgentSdkRunnerError({ method: "open", cause }),
             ),
           ),
-        ),
-        Effect.provideService(HttpClient.HttpClient, httpClient),
-        Effect.provideService(FileSystem.FileSystem, fileSystem),
-        Effect.provideService(Path.Path, path),
-        Effect.provideService(CursorKeychain.CursorKeychain, keychain),
-        Effect.map(stampSnapshot),
-        Effect.provide(CursorSdkCatalog.layer),
-      );
+      }),
+      Effect.mapError(
+        (cause) =>
+          new ProviderDriverError({
+            driver: DRIVER_KIND,
+            instanceId,
+            detail: "Failed to build Cursor orchestration adapter.",
+            cause,
+          }),
+      ),
+    );
+    const textGeneration = yield* makeCursorTextGeneration(
+      effectiveConfig,
+      processEnv,
+      auth.requireApiKey,
+      auth.withAccess,
+    );
 
-      const snapshotSettings = yield* makeProviderSnapshotSettingsSource(effectiveConfig);
-      const snapshot = yield* makeManagedServerProvider<ProviderSnapshotSettings<CursorSettings>>({
-        resolveMaintenance: () => Effect.succeed(MAINTENANCE_CAPABILITIES),
-        getSettings: snapshotSettings.getSettings,
-        streamSettings: snapshotSettings.streamSettings,
-        haveSettingsChanged: haveProviderSnapshotSettingsChanged,
-        initialSnapshot: (settings) =>
-          buildInitialCursorProviderSnapshot(settings.provider).pipe(Effect.map(stampSnapshot)),
-        checkProvider,
-      }).pipe(
-        Effect.mapError(
-          (cause) =>
-            new ProviderDriverError({
-              driver: DRIVER_KIND,
-              instanceId,
-              detail: "Failed to build Cursor snapshot.",
-              cause,
-            }),
-        ),
-      );
-
-      return {
-        instanceId,
-        driverKind: DRIVER_KIND,
-        continuationIdentity,
-        displayName,
-        accentColor,
-        enabled,
-        auth: auth.controller,
-        snapshot,
-        snapshotForCwd: (cwd) =>
-          !effectiveConfig.enabled
-            ? snapshot.getSnapshot
-            : Effect.all([
-                snapshot.getSnapshot,
-                probeCursorSkills(cwd, processEnv).pipe(
-                  Effect.provideService(FileSystem.FileSystem, fileSystem),
-                  Effect.provideService(Path.Path, path),
-                  Effect.mapError(
-                    (cause) =>
-                      new ProviderDriverError({
-                        driver: DRIVER_KIND,
-                        instanceId,
-                        detail: `Failed to discover Cursor skills for '${cwd}'`,
-                        cause,
-                      }),
+    const checkProvider = auth.readCredential.pipe(
+      Effect.orElseSucceed(() => undefined),
+      Effect.flatMap((credential) =>
+        checkCursorProviderStatus(
+          effectiveConfig,
+          {
+            ...processEnv,
+            CURSOR_API_KEY: credential?.apiKey,
+          },
+          auth.usesApiKey ? "api-key" : "browser",
+        ).pipe(
+          Effect.flatMap((snapshot) =>
+            effectiveConfig.enabled &&
+            snapshot.installed &&
+            snapshot.auth.status === "authenticated"
+              ? host.settings.get.pipe(
+                  Effect.flatMap((settings) =>
+                    // Each instance reads its own account's limits with its own key; only the
+                    // default instance may fall back to the host's shared CLI login.
+                    readCursorUsageLimits(effectiveConfig, processEnv, {
+                      allowKeychain: settings.cursorKeychainUsageEnabled,
+                      sdkCredential: credential,
+                      sharedLogin: instanceId === defaultInstanceIdForDriver(DRIVER_KIND),
+                    }),
                   ),
+                  Effect.map((usageLimits) => ({ ...snapshot, usageLimits })),
+                )
+              : Effect.succeed(snapshot),
+          ),
+        ),
+      ),
+      Effect.provideService(HttpClient.HttpClient, httpClient),
+      Effect.provideService(FileSystem.FileSystem, fileSystem),
+      Effect.provideService(Path.Path, path),
+      Effect.provideService(CursorKeychain.CursorKeychain, keychain),
+      Effect.map(stampSnapshot),
+      Effect.tap((provider) =>
+        Effect.sync(() => {
+          // A failed check lists only custom models, so keep the last loaded catalog.
+          if (provider.models.some((model) => !model.isCustom)) {
+            catalogModels = provider.models;
+          }
+        }),
+      ),
+      Effect.provide(CursorSdkCatalog.layer),
+    );
+
+    const snapshotSettings = yield* makeProviderSnapshotSettingsSource(effectiveConfig);
+    const snapshot = yield* makeManagedServerProvider<ProviderSnapshotSettings<CursorSettings>>({
+      resolveMaintenance: () => Effect.succeed(MAINTENANCE_CAPABILITIES),
+      getSettings: snapshotSettings.getSettings,
+      streamSettings: snapshotSettings.streamSettings,
+      haveSettingsChanged: haveProviderSnapshotSettingsChanged,
+      initialSnapshot: (settings) =>
+        buildInitialCursorProviderSnapshot(settings.provider).pipe(Effect.map(stampSnapshot)),
+      checkProvider,
+    }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new ProviderDriverError({
+            driver: DRIVER_KIND,
+            instanceId,
+            detail: "Failed to build Cursor snapshot.",
+            cause,
+          }),
+      ),
+    );
+
+    return {
+      instanceId,
+      driverKind: DRIVER_KIND,
+      continuationIdentity,
+      displayName,
+      accentColor,
+      enabled,
+      auth: auth.controller,
+      snapshot,
+      snapshotForCwd: (cwd) =>
+        !effectiveConfig.enabled
+          ? snapshot.getSnapshot
+          : Effect.all([
+              snapshot.getSnapshot,
+              probeCursorSkills(cwd, processEnv).pipe(
+                Effect.provideService(FileSystem.FileSystem, fileSystem),
+                Effect.provideService(Path.Path, path),
+                Effect.mapError(
+                  (cause) =>
+                    new ProviderDriverError({
+                      driver: DRIVER_KIND,
+                      instanceId,
+                      detail: `Failed to discover Cursor skills for '${cwd}'`,
+                      cause,
+                    }),
                 ),
-              ]).pipe(Effect.map(([machineSnapshot, skills]) => ({ ...machineSnapshot, skills }))),
-        orchestrationAdapter,
-        textGeneration,
-      } satisfies ProviderInstance;
-    }),
+              ),
+            ]).pipe(Effect.map(([machineSnapshot, skills]) => ({ ...machineSnapshot, skills }))),
+      orchestrationAdapter,
+      textGeneration,
+    } satisfies ProviderInstance;
+  }),
 };

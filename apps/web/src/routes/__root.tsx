@@ -27,6 +27,7 @@ import { GranolaNotePickerHost } from "../components/chat/GranolaNotePicker";
 import { SlackMessagePickerHost } from "../components/chat/SlackMessagePicker";
 import { GitHubIssuePickerHost } from "../components/chat/GitHubIssuePicker";
 import { ImportConversationDialogHost } from "../components/ImportConversationDialog";
+import { AddProjectToMachineDialogHost } from "../components/AddProjectToMachineDialog";
 import { ConfirmDialogHost } from "../components/ConfirmDialogHost";
 import { KeybindingsConfigWarning } from "../components/KeybindingsConfigWarning";
 import { FirstRunGate } from "../components/onboarding/FirstRunGate";
@@ -264,6 +265,7 @@ function RootRouteView() {
           <PermissionUpdateNotice />
           {primaryEnvironmentAuthenticated ? <LegacyThreadMigrationToast /> : null}
           <ProjectCloneToastCoordinator />
+          <AddProjectToMachineDialogHost />
           <PullRequestGuideRunCoordinator />
           <HostedStaticEnvironmentBootstrap />
           {primaryEnvironmentAuthenticated ? (

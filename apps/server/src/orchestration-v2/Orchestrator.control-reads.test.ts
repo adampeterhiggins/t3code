@@ -23,11 +23,13 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Result from "effect/Result";
+import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
 import * as DelegatedTaskQuestionReactor from "./DelegatedTaskQuestionReactor.ts";
+import * as EffectOutbox from "./EffectOutbox.ts";
 import * as EventSink from "./EventSink.ts";
 import * as Orchestrator from "./Orchestrator.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
@@ -48,6 +50,7 @@ const layerDatabase = SqlitePersistence.layerMemory;
 const layerTest = Layer.mergeAll(
   layerDatabase,
   ProjectionStore.layer.pipe(Layer.provide(layerDatabase)),
+  EffectOutbox.layer.pipe(Layer.provide(layerDatabase)),
   ProviderReplayHarness.layerWithRegistry(
     { name: "control-reads" },
     ProviderAdapterRegistry.layerFromAdapters([adapter]),
@@ -55,17 +58,17 @@ const layerTest = Layer.mergeAll(
   ),
 );
 
-it.effect("moves a thread into a sidebar group and back out", () =>
+it.effect("marks a never-visited thread's first completion unread", () =>
   Effect.gen(function* () {
     const orchestrator = yield* Orchestrator.OrchestratorV2;
     const projections = yield* ProjectionStore.ProjectionStoreV2;
-    const threadId = ThreadId.make("thread:group");
+    const threadId = ThreadId.make("thread:completion-watermark");
     yield* orchestrator.dispatch({
       type: "thread.create",
-      commandId: CommandId.make("create-group"),
+      commandId: CommandId.make("create-completion-watermark"),
       threadId,
-      projectId: ProjectId.make("project:group"),
-      title: "Group me",
+      projectId: ProjectId.make("project:completion-watermark"),
+      title: "Background task",
       modelSelection,
       runtimeMode: "full-access",
       interactionMode: "default",
@@ -74,67 +77,46 @@ it.effect("moves a thread into a sidebar group and back out", () =>
       createdBy: "user",
       creationSource: "web",
     });
-    const groupName = Effect.map(projections.getThreadShell(threadId), (shell) => shell?.groupName);
-    for (const [id, name] of [
-      ["group-research", "Research"],
-      ["group-later", "Later"],
-      ["group-none", null],
-    ] as const) {
-      yield* orchestrator.dispatch({
-        type: "thread.group.set",
-        commandId: CommandId.make(id),
-        threadId,
-        groupName: name === null ? null : TrimmedNonEmptyString.make(name),
-      });
-      assert.equal(yield* groupName, name);
-    }
-  }).pipe(Effect.provide(layerTest)),
-);
-
-it.effect("hides a thread until it is unhidden, and leaves archived threads alone", () =>
-  Effect.gen(function* () {
-    const orchestrator = yield* Orchestrator.OrchestratorV2;
-    const projections = yield* ProjectionStore.ProjectionStoreV2;
-    const threadId = ThreadId.make("thread:hide");
-    yield* orchestrator.dispatch({
-      type: "thread.create",
-      commandId: CommandId.make("create-hide"),
-      threadId,
-      projectId: ProjectId.make("project:hide"),
-      title: "Hide me",
-      modelSelection,
-      runtimeMode: "full-access",
-      interactionMode: "default",
-      branch: null,
-      worktreePath: null,
-      createdBy: "user",
-      creationSource: "web",
-    });
-    const setHidden = (hidden: boolean, id: string) =>
+    assert.isNull((yield* projections.getThreadShell(threadId))?.lastVisitedAt);
+    const dispatch = (id: string) =>
       orchestrator.dispatch({
-        type: "thread.hidden.set",
+        type: "message.dispatch",
         commandId: CommandId.make(id),
         threadId,
-        hidden,
+        messageId: MessageId.make(id),
+        text: "Run in the background",
+        attachments: [],
+        dispatchMode: { type: "defer_start" },
+        createdBy: "agent",
+        creationSource: "mcp",
       });
-    const hiddenAt = Effect.map(projections.getThreadShell(threadId), (shell) => shell?.hiddenAt);
-
-    yield* setHidden(true, "hide-1");
-    const firstHiddenAt = yield* hiddenAt;
-    assert.ok(firstHiddenAt);
-    // Hiding again keeps the original timestamp.
-    yield* setHidden(true, "hide-2");
-    assert.deepStrictEqual(yield* hiddenAt, firstHiddenAt);
-
-    yield* setHidden(false, "unhide");
-    assert.equal(yield* hiddenAt, null);
-
+    yield* TestClock.adjust("1 second");
+    const dispatchedAt = yield* DateTime.now;
+    yield* dispatch("first-completion-watermark");
     yield* orchestrator.dispatch({
-      type: "thread.archive",
-      commandId: CommandId.make("archive-hide"),
+      type: "run.interrupt",
+      commandId: CommandId.make("interrupt-completion-watermark"),
       threadId,
+      runId: (yield* projections.getThreadProjection(threadId)).runs[0]!.id,
     });
-    assert.equal((yield* Effect.exit(setHidden(true, "hide-archived")))._tag, "Failure");
+    // The run ends in the dispatch's millisecond and must still be unread.
+    const ended = yield* projections.getThreadShell(threadId);
+    assert.ok(ended?.lastVisitedAt && ended.latestRunCompletedAt);
+    assert.equal(
+      DateTime.toEpochMillis(ended.lastVisitedAt),
+      DateTime.toEpochMillis(dispatchedAt) - 1,
+    );
+    assert.isAbove(
+      DateTime.toEpochMillis(ended.latestRunCompletedAt),
+      DateTime.toEpochMillis(ended.lastVisitedAt),
+    );
+
+    yield* TestClock.adjust("1 second");
+    yield* dispatch("second-completion-watermark");
+    assert.deepEqual(
+      (yield* projections.getThreadShell(threadId))?.lastVisitedAt,
+      ended.lastVisitedAt,
+    );
   }).pipe(Effect.provide(layerTest)),
 );
 
@@ -145,6 +127,7 @@ it.effect(
       const orchestrator = yield* Orchestrator.OrchestratorV2;
       const projections = yield* ProjectionStore.ProjectionStoreV2;
       const sql = yield* SqlClient.SqlClient;
+      const outbox = yield* EffectOutbox.EffectOutboxV2;
       const threadId = ThreadId.make("thread:control-dispatch");
       const now = yield* DateTime.now;
       yield* orchestrator.dispatch({
@@ -291,6 +274,37 @@ it.effect(
             questions: [],
           },
         });
+        const answers = { text: "Blue", list: ["Red"], codex: { answers: ["Green"] } };
+        const normalizedAnswers = { ...answers, codex: ["Green"] };
+        if (mode === "live") {
+          const pending = yield* projections.getRuntimeResponseContext(threadId, requestId);
+          const sequence = yield* orchestrator.getThreadEventSequence(threadId);
+          for (const [index, value] of [
+            null,
+            42,
+            { choice: "Blue" },
+            ["Blue", 42],
+            { answers: [42] },
+          ].entries()) {
+            const commandId = CommandId.make(`invalid-answer:${index}`);
+            const result = yield* orchestrator
+              .dispatch({
+                type: "runtime-request.respond",
+                commandId,
+                threadId,
+                requestId,
+                answers: { ...answers, invalid: value },
+              })
+              .pipe(Effect.result);
+            assert.isTrue(Result.isFailure(result));
+            assert.deepEqual(
+              yield* projections.getRuntimeResponseContext(threadId, requestId),
+              pending,
+            );
+            assert.equal(yield* orchestrator.getThreadEventSequence(threadId), sequence);
+            assert.deepEqual(yield* outbox.listByCommandId(commandId), []);
+          }
+        }
         yield* orchestrator.dispatch(
           mode === "live"
             ? {
@@ -298,7 +312,7 @@ it.effect(
                 commandId: CommandId.make(`respond:${mode}`),
                 threadId,
                 requestId,
-                decision: "accept",
+                answers,
               }
             : {
                 type: "thread.user-input.dismiss",
@@ -314,6 +328,25 @@ it.effect(
         const response = yield* projections.getRuntimeResponseContext(threadId, requestId);
         assert.equal(response.node?.status, mode === "live" ? "completed" : "cancelled");
         assert.equal(response.item?.status, mode === "live" ? "completed" : "cancelled");
+        if (mode === "live") {
+          assert.deepEqual(response.request?.answers, normalizedAnswers);
+          assert.equal(response.item?.type, "user_input_request");
+          if (response.item?.type === "user_input_request") {
+            assert.deepEqual(response.item.questionAnswer?.answers, normalizedAnswers);
+          }
+          const effects = yield* outbox.listByCommandId(CommandId.make(`respond:${mode}`));
+          assert.deepEqual(
+            effects.map((effect) => effect.request),
+            [
+              {
+                type: "runtime-request.respond",
+                providerSessionId: sessionId,
+                requestId,
+                answers: normalizedAnswers,
+              },
+            ],
+          );
+        }
       }
       yield* orchestrator.dispatch({
         type: "thread.metadata.update",
@@ -1120,5 +1153,165 @@ it.effect("replays a thread.create receipt without changing the thread", () =>
     assert.deepEqual(replayed, original);
     assert.deepEqual(yield* projections.getThread(threadId), before);
     assert.equal(yield* orchestrator.getThreadEventSequence(threadId), original.sequence);
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("explicit settle clears snooze atomically and stays idempotent after re-snoozing", () =>
+  Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const events = yield* EventSink.EventSinkV2;
+    const threadId = ThreadId.make("thread:settle-snoozed");
+    yield* orchestrator.dispatch({
+      type: "thread.create",
+      commandId: CommandId.make("create-settle-snoozed"),
+      threadId,
+      projectId: ProjectId.make("project:settle-snoozed"),
+      title: "Snoozed thread",
+      modelSelection,
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      createdBy: "user",
+      creationSource: "web",
+    });
+    const now = yield* DateTime.now;
+    const settledAt = DateTime.add(now, { seconds: 1 });
+    const snoozedUntil = DateTime.add(now, { hours: 1 });
+    for (const round of [1, 2]) {
+      yield* orchestrator.dispatch({
+        type: "thread.snooze",
+        commandId: CommandId.make(`snooze-before-settle-${round}`),
+        threadId,
+        snoozedUntil: DateTime.formatIso(snoozedUntil),
+      });
+      assert.deepInclude(yield* projections.getThread(threadId), {
+        snoozedUntil,
+        snoozedAt: yield* DateTime.now,
+      });
+      yield* TestClock.adjust("1 second");
+      const commandId = CommandId.make(`settle-snoozed-${round}`);
+      yield* orchestrator.dispatch({ type: "thread.settle", commandId, threadId });
+      const expected = {
+        settledOverride: "settled",
+        settledAt,
+        snoozedUntil: null,
+        snoozedAt: null,
+        updatedAt: yield* DateTime.now,
+      } as const;
+      const committed = yield* events.readByCommandId({ commandId }).pipe(Stream.runCollect);
+      assert.lengthOf(committed, 1);
+      assert.equal(committed[0]?.event.type, "thread.settled");
+      assert.deepInclude(committed[0]?.event.payload, expected);
+      const settled = yield* projections.getThreadShell(threadId);
+      assert.deepInclude(settled, expected);
+      assert.deepInclude((yield* projections.getThreadProjection(threadId)).thread, expected);
+
+      yield* TestClock.adjust("1 second");
+      yield* orchestrator.dispatch({
+        type: "thread.settle",
+        commandId: CommandId.make(`settle-again-${round}`),
+        threadId,
+      });
+      assert.deepEqual(yield* projections.getThreadShell(threadId), settled);
+    }
+    yield* orchestrator.dispatch({
+      type: "thread.unsettle",
+      commandId: CommandId.make("unsettle-after-snooze"),
+      threadId,
+      reason: "user",
+    });
+    const active = {
+      settledOverride: "active",
+      settledAt: null,
+      snoozedUntil: null,
+      snoozedAt: null,
+    } as const;
+    assert.deepInclude(yield* projections.getThreadShell(threadId), active);
+    assert.deepInclude((yield* projections.getThreadProjection(threadId)).thread, active);
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("moves a thread into a sidebar group and back out", () =>
+  Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const threadId = ThreadId.make("thread:group");
+    yield* orchestrator.dispatch({
+      type: "thread.create",
+      commandId: CommandId.make("create-group"),
+      threadId,
+      projectId: ProjectId.make("project:group"),
+      title: "Group me",
+      modelSelection,
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      createdBy: "user",
+      creationSource: "web",
+    });
+    const groupName = Effect.map(projections.getThreadShell(threadId), (shell) => shell?.groupName);
+    for (const [id, name] of [
+      ["group-research", "Research"],
+      ["group-later", "Later"],
+      ["group-none", null],
+    ] as const) {
+      yield* orchestrator.dispatch({
+        type: "thread.group.set",
+        commandId: CommandId.make(id),
+        threadId,
+        groupName: name === null ? null : TrimmedNonEmptyString.make(name),
+      });
+      assert.equal(yield* groupName, name);
+    }
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("hides a thread until it is unhidden, and leaves archived threads alone", () =>
+  Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const threadId = ThreadId.make("thread:hide");
+    yield* orchestrator.dispatch({
+      type: "thread.create",
+      commandId: CommandId.make("create-hide"),
+      threadId,
+      projectId: ProjectId.make("project:hide"),
+      title: "Hide me",
+      modelSelection,
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      createdBy: "user",
+      creationSource: "web",
+    });
+    const setHidden = (hidden: boolean, id: string) =>
+      orchestrator.dispatch({
+        type: "thread.hidden.set",
+        commandId: CommandId.make(id),
+        threadId,
+        hidden,
+      });
+    const hiddenAt = Effect.map(projections.getThreadShell(threadId), (shell) => shell?.hiddenAt);
+
+    yield* setHidden(true, "hide-1");
+    const firstHiddenAt = yield* hiddenAt;
+    assert.ok(firstHiddenAt);
+    // Hiding again keeps the original timestamp.
+    yield* setHidden(true, "hide-2");
+    assert.deepStrictEqual(yield* hiddenAt, firstHiddenAt);
+
+    yield* setHidden(false, "unhide");
+    assert.equal(yield* hiddenAt, null);
+
+    yield* orchestrator.dispatch({
+      type: "thread.archive",
+      commandId: CommandId.make("archive-hide"),
+      threadId,
+    });
+    assert.equal((yield* Effect.exit(setHidden(true, "hide-archived")))._tag, "Failure");
   }).pipe(Effect.provide(layerTest)),
 );

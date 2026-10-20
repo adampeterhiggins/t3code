@@ -14,7 +14,10 @@ import { useNativeMailSearchToolbar } from "../../native/use-native-mail-search-
 import { isDefaultThreadListPages, threadListPageLabel } from "../threads/threadListV2";
 import { buildHomeListFilterMenu, filterChoiceTitle } from "./home-list-filter-menu";
 import { useDeviceType } from "../../native/native-layout-metrics";
-import { createSidebarHeaderItems } from "../threads/sidebar-native-header-items";
+import {
+  createSidebarFilterHeaderItem,
+  createSidebarHeaderItems,
+} from "../threads/sidebar-native-header-items";
 import type { HomeHeaderProps } from "./HomeHeader.types";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 
@@ -62,7 +65,19 @@ export function HomeHeader(props: HomeHeaderProps) {
   const filterMenu = buildHomeListFilterMenu(props);
 
   if (props.usesWorkspaceToolbar) {
-    return null;
+    return deviceType === "duo-unfolded" ? (
+      <NativeStackScreenOptions
+        optionsVersion={filterMenu.items}
+        options={{
+          nativeSidebarFilter: createSidebarFilterHeaderItem({
+            filterIcon: hasCustomListOptions
+              ? "line.3.horizontal.decrease.circle.fill"
+              : "line.3.horizontal.decrease.circle",
+            filterMenu,
+          }),
+        }}
+      />
+    ) : null;
   }
 
   return (

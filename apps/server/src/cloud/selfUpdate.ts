@@ -158,35 +158,34 @@ export const withRunningThreadContinuation = Effect.fn(
 
   return ServerSelfUpdate.of({
     update,
-    commitDesktopUpdate: (requestId) =>
-      Effect.gen(function* () {
-        const shouldContinue = yield* Ref.modify(desktopContinuationTokens, (tokens) => [
-          HashSet.has(tokens, requestId),
-          HashSet.remove(tokens, requestId),
-        ]);
-        let handoffAccepted = false;
-        let continuationThreadIds: ReadonlyArray<ThreadId> = [];
-        return yield* clearOnError(
-          Effect.gen(function* () {
-            yield* input.pause ?? Effect.void;
-            continuationThreadIds = shouldContinue ? yield* input.prepare : [];
-            return yield* input.selfUpdate.commitDesktopUpdate(requestId, () =>
-              Effect.sync(() => {
-                handoffAccepted = true;
-              }),
-            );
-          }),
-          () => continuationThreadIds,
-          () => handoffAccepted,
-        ).pipe(
-          Effect.catchCause((cause) =>
-            (shouldContinue && !handoffAccepted
-              ? Ref.update(desktopContinuationTokens, HashSet.add(requestId))
-              : Effect.void
-            ).pipe(Effect.andThen(Effect.failCause(cause))),
-          ),
-        );
-      }),
+    commitDesktopUpdate: Effect.fn("selfUpdate.commitDesktopUpdate")(function* (requestId) {
+      const shouldContinue = yield* Ref.modify(desktopContinuationTokens, (tokens) => [
+        HashSet.has(tokens, requestId),
+        HashSet.remove(tokens, requestId),
+      ]);
+      let handoffAccepted = false;
+      let continuationThreadIds: ReadonlyArray<ThreadId> = [];
+      return yield* clearOnError(
+        Effect.gen(function* () {
+          yield* input.pause ?? Effect.void;
+          continuationThreadIds = shouldContinue ? yield* input.prepare : [];
+          return yield* input.selfUpdate.commitDesktopUpdate(requestId, () =>
+            Effect.sync(() => {
+              handoffAccepted = true;
+            }),
+          );
+        }),
+        () => continuationThreadIds,
+        () => handoffAccepted,
+      ).pipe(
+        Effect.catchCause((cause) =>
+          (shouldContinue && !handoffAccepted
+            ? Ref.update(desktopContinuationTokens, HashSet.add(requestId))
+            : Effect.void
+          ).pipe(Effect.andThen(Effect.failCause(cause))),
+        ),
+      );
+    }),
   });
 });
 

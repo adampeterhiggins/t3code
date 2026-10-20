@@ -283,7 +283,7 @@ export function isXAiMonitorTool(toolCall: AcpToolCallState): boolean {
  * while the process still runs. Like a monitor, it ends only with
  * `x.ai/task_completed` for that task id.
  */
-function xAiBackgroundShellTaskId(toolCall: AcpToolCallState): string | undefined {
+export function xAiBackgroundShellTaskId(toolCall: AcpToolCallState): string | undefined {
   const rawOutput = unknownRecord(toolCall.data.rawOutput);
   return nonEmptyString(rawOutput?.type) === "BackgroundTaskStarted"
     ? nonEmptyString(rawOutput?.task_id)
@@ -1346,26 +1346,27 @@ function xAiPromptFailure(
  */
 export class XAiPromptFailureText extends Error {}
 
-const registerXAiPromptCompletionFallback = (
+const registerXAiPromptCompletionFallback = Effect.fn(
+  "xaiAcpExtension.registerXAiPromptCompletionFallback",
+)(function* (
   pendingRef: Ref.Ref<ReadonlyArray<PendingXAiPromptCompletion>>,
   sessionId: string,
   promptId: string,
-) =>
-  Effect.gen(function* () {
-    const deferred = yield* Deferred.make<
-      EffectAcpSchema.PromptResponse,
-      EffectAcpErrors.AcpRequestError
-    >();
-    const usageCompletion = yield* Deferred.make<
-      EffectAcpSchema.PromptResponse,
-      EffectAcpErrors.AcpRequestError
-    >();
-    yield* Ref.update(pendingRef, (pending) => [
-      ...pending,
-      { sessionId, promptId, deferred, usageCompletion },
-    ]);
-    return { deferred, usageCompletion, promptId };
-  });
+) {
+  const deferred = yield* Deferred.make<
+    EffectAcpSchema.PromptResponse,
+    EffectAcpErrors.AcpRequestError
+  >();
+  const usageCompletion = yield* Deferred.make<
+    EffectAcpSchema.PromptResponse,
+    EffectAcpErrors.AcpRequestError
+  >();
+  yield* Ref.update(pendingRef, (pending) => [
+    ...pending,
+    { sessionId, promptId, deferred, usageCompletion },
+  ]);
+  return { deferred, usageCompletion, promptId };
+});
 
 const unregisterXAiPromptCompletionFallback = (
   pendingRef: Ref.Ref<ReadonlyArray<PendingXAiPromptCompletion>>,
@@ -1567,74 +1568,73 @@ export const makeXAiPromptCompletionRuntime = Effect.fn("makeXAiPromptCompletion
               );
             })
           : runtime.handleExtNotification(method, payload, handler),
-      prompt: (payload, promptOptions?) =>
-        Effect.gen(function* () {
-          const started = yield* runtime.start();
-          const promptId = yield* allocatePromptFallbackId;
-          const fallback = yield* registerXAiPromptCompletionFallback(
-            pendingXAiPromptCompletionsRef,
-            started.sessionId,
-            promptId,
-          );
-          const cancelledResponse = promptResponseFromXAi({
-            sessionId: started.sessionId,
-            promptId: fallback.promptId,
-            stopReason: "cancelled",
-            agentResult: null,
-          });
-          const promptRpcFiber = yield* runtime
-            .prompt(
-              {
-                ...payload,
-                _meta: {
-                  ...payload._meta,
-                  promptId: fallback.promptId,
-                  requestId: fallback.promptId,
-                },
+      prompt: Effect.fn("xaiAcpExtension.prompt")(function* (payload, promptOptions?) {
+        const started = yield* runtime.start();
+        const promptId = yield* allocatePromptFallbackId;
+        const fallback = yield* registerXAiPromptCompletionFallback(
+          pendingXAiPromptCompletionsRef,
+          started.sessionId,
+          promptId,
+        );
+        const cancelledResponse = promptResponseFromXAi({
+          sessionId: started.sessionId,
+          promptId: fallback.promptId,
+          stopReason: "cancelled",
+          agentResult: null,
+        });
+        const promptRpcFiber = yield* runtime
+          .prompt(
+            {
+              ...payload,
+              _meta: {
+                ...payload._meta,
+                promptId: fallback.promptId,
+                requestId: fallback.promptId,
               },
-              promptOptions,
-            )
-            .pipe(Effect.forkChild);
-          return yield* Effect.raceFirst(
-            Fiber.join(promptRpcFiber).pipe(
-              Effect.catchCause((cause) =>
-                Cause.hasInterruptsOnly(cause)
-                  ? Effect.succeed(cancelledResponse)
-                  : Effect.failCause(cause),
-              ),
+            },
+            promptOptions,
+          )
+          .pipe(Effect.forkChild);
+        return yield* Effect.raceFirst(
+          Fiber.join(promptRpcFiber).pipe(
+            Effect.catchCause((cause) =>
+              Cause.hasInterruptsOnly(cause)
+                ? Effect.succeed(cancelledResponse)
+                : Effect.failCause(cause),
             ),
-            Deferred.await(fallback.deferred).pipe(
-              Effect.flatMap((response) => {
-                if (response.stopReason === "cancelled" || response._meta?.usage !== undefined) {
-                  return Effect.succeed(response);
-                }
-                // Grok 1.0.41 sends an empty prompt_complete before turn_completed
-                // and the RPC response, both of which carry prompt-wide usage.
-                // Keep the legacy hung-RPC fallback, but let either measured
-                // terminal payload win without adding latency to normal replies.
-                return Deferred.await(fallback.usageCompletion).pipe(
-                  Effect.timeoutOrElse({
-                    duration: Duration.millis(250),
-                    orElse: () => Effect.succeed(response),
-                  }),
-                );
-              }),
-            ),
-          ).pipe(
-            Effect.tap((response) =>
-              rememberCompletedXAiPromptId(completedXAiPromptIdsRef, response, fallback.promptId),
-            ),
-            Effect.ensuring(
-              Effect.gen(function* () {
-                yield* Fiber.interrupt(promptRpcFiber).pipe(Effect.ignore);
-                yield* unregisterXAiPromptCompletionFallback(
-                  pendingXAiPromptCompletionsRef,
-                  fallback.deferred,
-                );
-              }),
-            ),
-          );
-        }),
+          ),
+          Deferred.await(fallback.deferred).pipe(
+            Effect.flatMap((response) => {
+              if (response.stopReason === "cancelled" || response._meta?.usage !== undefined) {
+                return Effect.succeed(response);
+              }
+              // Grok 1.0.41 sends an empty prompt_complete before turn_completed
+              // and the RPC response, both of which carry prompt-wide usage.
+              // Keep the legacy hung-RPC fallback, but let either measured
+              // terminal payload win without adding latency to normal replies.
+              return Deferred.await(fallback.usageCompletion).pipe(
+                Effect.timeoutOrElse({
+                  duration: Duration.millis(250),
+                  orElse: () => Effect.succeed(response),
+                }),
+              );
+            }),
+          ),
+        ).pipe(
+          Effect.tap((response) =>
+            rememberCompletedXAiPromptId(completedXAiPromptIdsRef, response, fallback.promptId),
+          ),
+          Effect.ensuring(
+            Effect.gen(function* () {
+              yield* Fiber.interrupt(promptRpcFiber).pipe(Effect.ignore);
+              yield* unregisterXAiPromptCompletionFallback(
+                pendingXAiPromptCompletionsRef,
+                fallback.deferred,
+              );
+            }),
+          ),
+        );
+      }),
       cancel: Effect.gen(function* () {
         // Do not call start here: cancellation must be able to reach the
         // underlying runtime when startup is stalled.

@@ -4,7 +4,7 @@ import {
 } from "@t3tools/client-runtime/work-log/command-label";
 import { Suspense, use } from "react";
 
-import { useTheme } from "../../hooks/useTheme";
+import { useRenderedAppearance } from "../../hooks/useTheme";
 import type { CommandScriptPreview } from "../../lib/embeddedScripts";
 import { RenderErrorBoundary } from "../RenderErrorBoundary";
 import { HighlightedSnippet } from "./HighlightedSnippet";
@@ -90,7 +90,7 @@ export function ShellCommandBlock({
   command: string;
   highlightSyntax?: boolean | undefined;
 }) {
-  const { resolvedTheme } = useTheme();
+  const resolvedTheme = useRenderedAppearance();
   const code = withVisibleControlCharacters(command.trim());
   if (!code) return null;
   const plain = <PlainWords code={code} />;

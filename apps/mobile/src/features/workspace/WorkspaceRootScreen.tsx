@@ -109,6 +109,7 @@ function WorkspaceRootContent() {
               headerShown: true,
               unstable_headerLeftItems: () => [],
               headerTitle: renderHeaderTitle,
+              ...(state.selectedTab === "threads" ? {} : { nativeSidebarFilter: undefined }),
             }}
           />
         ) : (

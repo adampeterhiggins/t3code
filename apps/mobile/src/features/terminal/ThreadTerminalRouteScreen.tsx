@@ -12,7 +12,7 @@ import { SymbolView } from "../../components/ui/AppSymbol";
 import { AppBar } from "../../components/ui/AppBar";
 import { useNativeColumnLayoutMetrics } from "../../native/native-layout-metrics";
 import { StackActions, useNavigation, type StaticScreenProps } from "@react-navigation/native";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Platform, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppText as Text } from "../../components/ui/AppText";
@@ -70,7 +70,7 @@ import {
   TERMINAL_BUFFER_REPLAY_STABILITY_DELAY_MS,
 } from "./terminalBufferReplay";
 import {
-  resolveTerminalOpenLocation,
+  useInitialTerminalLaunchLocation,
   takePendingTerminalLaunch,
   type PendingTerminalLaunch,
 } from "./terminalLaunchContext";
@@ -388,50 +388,59 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
     requestedTerminalId === null &&
     runningSession !== null &&
     runningSession.target.terminalId !== terminalId;
-  const launchLocationCandidate = (() => {
-    if (!selectedThread || !selectedThreadProject?.workspaceRoot) {
-      return null;
-    }
-    if (pendingLaunch) {
-      return {
-        cwd: pendingLaunch.cwd,
-        worktreePath: pendingLaunch.worktreePath,
-      };
-    }
-    return resolveTerminalOpenLocation({
-      terminalLocation: activeKnownSession?.state.summary ?? null,
-      activeSessionLocation: activeKnownSession?.state.summary ?? null,
-      workspaceRoot: selectedThreadProject.workspaceRoot,
-      threadShellWorktreePath: selectedThread.worktreePath ?? null,
-      threadDetailWorktreePath: selectedThreadDetailWorktreePath,
-    });
-  })();
-  const [initialLaunchLocationEntry, setInitialLaunchLocationEntry] = useState(() => ({
-    key: launchTargetKey,
-    location: launchLocationCandidate,
-  }));
-  const launchLocation =
-    initialLaunchLocationEntry.key === launchTargetKey ? initialLaunchLocationEntry.location : null;
-  const terminalAttachInput = (() =>
-    selectedThread !== null &&
-    launchLocation !== null &&
-    hasResolvedPendingLaunch &&
-    initialAttachGridSize !== null &&
-    hasResolvedFontPreference &&
-    hasMeasuredSurface &&
-    isEnvironmentReady &&
-    !shouldRedirectToRunningTerminal
-      ? {
-          threadId: selectedThread.id,
-          terminalId,
-          cwd: launchLocation.cwd,
-          worktreePath: launchLocation.worktreePath,
-          cols: initialAttachGridSize.cols,
-          rows: initialAttachGridSize.rows,
-          ...(pendingLaunch?.env ? { env: pendingLaunch.env } : {}),
-          ...(pendingLaunch ? { restartIfNotRunning: true } : {}),
-        }
-      : null)();
+  const launchLocation = useInitialTerminalLaunchLocation({
+    targetKey: launchTargetKey,
+    pendingLaunch,
+    hasResolvedPendingLaunch,
+    isAuthenticated,
+    canRead: canReadTerminal,
+    canOperate: canOperateTerminal,
+    hasLoadedSessions: knownSessions !== null,
+    location:
+      selectedThread && selectedThreadProject?.workspaceRoot
+        ? {
+            terminalLocation: activeKnownSession?.state.summary ?? null,
+            activeSessionLocation: activeKnownSession?.state.summary ?? null,
+            workspaceRoot: selectedThreadProject.workspaceRoot,
+            threadShellWorktreePath: selectedThread.worktreePath ?? null,
+            threadDetailWorktreePath: selectedThreadDetailWorktreePath,
+          }
+        : null,
+  });
+  const terminalAttachInput = useMemo(
+    () =>
+      selectedThread !== null &&
+      launchLocation !== null &&
+      hasResolvedPendingLaunch &&
+      initialAttachGridSize !== null &&
+      hasResolvedFontPreference &&
+      hasMeasuredSurface &&
+      isEnvironmentReady &&
+      !shouldRedirectToRunningTerminal
+        ? {
+            threadId: selectedThread.id,
+            terminalId,
+            cwd: launchLocation.cwd,
+            worktreePath: launchLocation.worktreePath,
+            cols: initialAttachGridSize.cols,
+            rows: initialAttachGridSize.rows,
+            ...(pendingLaunch?.env ? { env: pendingLaunch.env } : {}),
+            ...(pendingLaunch ? { restartIfNotRunning: true } : {}),
+          }
+        : null,
+    [
+      hasMeasuredSurface,
+      hasResolvedFontPreference,
+      hasResolvedPendingLaunch,
+      initialAttachGridSize,
+      isEnvironmentReady,
+      launchLocation,
+      pendingLaunch,
+      selectedThread,
+      shouldRedirectToRunningTerminal,
+      terminalId,
+    ],
+  );
   const observingTerminal =
     !canOperateTerminal && canReadTerminal && selectedThread !== null && hasTerminalTarget;
   const terminal = useAttachedTerminalSession({
@@ -623,27 +632,6 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
       },
     });
   }, [cachedRouteGridSize, initialAttachGridEntry.key, launchTargetKey]);
-
-  useEffect(() => {
-    if (
-      initialLaunchLocationEntry.key === launchTargetKey &&
-      initialLaunchLocationEntry.location !== null
-    ) {
-      return;
-    }
-    if (initialLaunchLocationEntry.key === launchTargetKey && launchLocationCandidate === null) {
-      return;
-    }
-    setInitialLaunchLocationEntry({
-      key: launchTargetKey,
-      location: launchLocationCandidate,
-    });
-  }, [
-    initialLaunchLocationEntry.key,
-    initialLaunchLocationEntry.location,
-    launchLocationCandidate,
-    launchTargetKey,
-  ]);
 
   useEffect(() => {
     if (!shouldRedirectToRunningTerminal || !selectedThread || !runningSession) {
@@ -1169,6 +1157,12 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
                 "This connection does not have permission to view terminals."
               }
             />
+          ) : canOperateTerminal && launchLocation === null ? (
+            sessionsError !== null ? (
+              <EmptyState title="Could not load terminals" detail={sessionsError} />
+            ) : (
+              <EmptyState title="Loading terminals" detail="Reading existing terminal sessions." />
+            )
           ) : !canOperateTerminal && !hasTerminalTarget && sessionsPending ? (
             <EmptyState title="Loading terminals" detail="Reading existing terminal sessions." />
           ) : !canOperateTerminal && !hasTerminalTarget && sessionsError !== null ? (

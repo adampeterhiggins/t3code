@@ -1,5 +1,5 @@
 import { BookmarkIcon, FileIcon, FileTextIcon } from "lucide-react";
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState, type RefObject } from "react";
 import { assistantCitationsToLabels } from "@t3tools/shared/assistantCitations";
 import { composerFileMentionsToLabels } from "@t3tools/shared/composerInlineTokens";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
@@ -43,11 +43,12 @@ function stashEntrySnippet(entry: PromptStashEntry): string {
 export const ComposerStashMenu = memo(function ComposerStashMenu(props: {
   entries: ReadonlyArray<PromptStashEntry>;
   stashShortcutLabel: string | null;
+  composerFormRef: RefObject<HTMLFormElement | null>;
   onRestore: (entry: PromptStashEntry) => void;
   onDelete: (entry: PromptStashEntry) => void;
   onClose: () => void;
 }) {
-  const { entries, stashShortcutLabel, onRestore, onDelete, onClose } = props;
+  const { entries, stashShortcutLabel, composerFormRef, onRestore, onDelete, onClose } = props;
   const drawerRef = useRef<HTMLDivElement>(null);
   const [highlightedId, setHighlightedId] = useState<string | null>(entries[0]?.id ?? null);
 
@@ -71,6 +72,16 @@ export const ComposerStashMenu = memo(function ComposerStashMenu(props: {
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (
+        !(target instanceof Node) ||
+        (target !== document.body &&
+          !(target instanceof Element && target.closest('[data-prompt-stash-badge="true"]')) &&
+          !drawerRef.current?.contains(target) &&
+          !composerFormRef.current?.querySelector('textarea, [role="textbox"]')?.contains(target))
+      ) {
+        return;
+      }
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();
@@ -115,7 +126,7 @@ export const ComposerStashMenu = memo(function ComposerStashMenu(props: {
     };
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
-  }, [entries, highlightedEntry, onClose, onDelete, onRestore]);
+  }, [composerFormRef, entries, highlightedEntry, onClose, onDelete, onRestore]);
 
   return (
     <ComposerBanner.Root ref={drawerRef} data-composer-stash-drawer="true">
