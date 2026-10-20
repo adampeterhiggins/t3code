@@ -125,7 +125,11 @@ const submission: DesktopQuickMessageSubmission = {
   environmentId: EnvironmentId.make("environment-1"),
   projectId: ProjectId.make("project-1"),
   text: "Fix the flaky test",
+  files: [],
   modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.5" },
+  runtimeMode: "full-access",
+  interactionMode: "default",
+  action: "send",
 };
 
 const layerTest = (main: { webContents: FakeWebContents } | null, revealed: Array<unknown>) =>
@@ -265,7 +269,7 @@ it.effect("opens the main window for a submission when none is open", () => {
 it("places the panel a fifth of the way down the display", () => {
   assert.deepEqual(
     DesktopQuickMessage.quickMessagePanelBounds({ x: 100, y: 25, width: 1440, height: 875 }),
-    { x: 480, y: 200, width: 680, height: 520 },
+    { x: 410, y: 200, width: 820, height: 520 },
   );
   assert.deepEqual(
     DesktopQuickMessage.quickMessagePanelBounds({ x: 0, y: 0, width: 600, height: 500 }),

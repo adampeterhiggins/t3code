@@ -2073,8 +2073,9 @@ Code: `packages/client-runtime/src/work-log/webTool.ts`, rendered on web by
 A system-wide shortcut in the desktop app opens a floating composer over any app and starts a new
 thread from it, like the ChatGPT desktop app's companion window. Turn it on and record the shortcut
 in **Settings → General → Quick message**. The panel is a separate transparent window that follows
-the app's theme; it collects the message, project and model, and the main window then opens a
-draft and sends it through its own composer.
+the app's theme and has the in-app composer's controls. The panel collects the message, files,
+project, model and modes. The main window then opens a draft and sends it through its own
+composer, or opens the attach or start-from picker the panel asked for.
 
 See [the user guide](user/keybindings.md#quick-message).
 Code: [DesktopQuickMessage.ts](../apps/desktop/src/quickMessage/DesktopQuickMessage.ts),

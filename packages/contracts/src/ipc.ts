@@ -19,6 +19,7 @@ import {
   SnapShotShortcut,
 } from "./settings.ts";
 import { ModelSelection } from "./modelSelection.ts";
+import { ProviderInteractionMode, RuntimeMode } from "./providerPolicy.ts";
 import type { EditorId } from "./editor.ts";
 import type { PreviewForwardedShortcut } from "./keybindings.ts";
 
@@ -217,12 +218,43 @@ export const DesktopQuickMessageState = Schema.Struct({
 });
 export type DesktopQuickMessageState = typeof DesktopQuickMessageState.Type;
 
+export const DesktopQuickMessageFile = Schema.Struct({
+  name: Schema.String,
+  mimeType: Schema.String,
+  bytes: Schema.Uint8Array,
+});
+export type DesktopQuickMessageFile = typeof DesktopQuickMessageFile.Type;
+
+/**
+ * What the composer does once the main window holds the draft: send it, or open one of the
+ * composer's pickers there. The pickers attach to a draft, which only the main window owns.
+ */
+export const DesktopQuickMessageAction = Schema.Literals([
+  "send",
+  "start-from",
+  "thread",
+  "linear-issue",
+  "notion-page",
+  "granola-note",
+  "slack-message",
+  "discord-message",
+  "github-issue",
+  "pull-request",
+  "checkout",
+  "repository",
+]);
+export type DesktopQuickMessageAction = typeof DesktopQuickMessageAction.Type;
+
 /** What the quick message panel hands the main window to start as a new thread. */
 export const DesktopQuickMessageSubmission = Schema.Struct({
   environmentId: EnvironmentId,
   projectId: ProjectId,
-  text: TrimmedNonEmptyString,
+  text: Schema.String,
+  files: Schema.Array(DesktopQuickMessageFile),
   modelSelection: ModelSelection,
+  runtimeMode: RuntimeMode,
+  interactionMode: ProviderInteractionMode,
+  action: DesktopQuickMessageAction,
 });
 export type DesktopQuickMessageSubmission = typeof DesktopQuickMessageSubmission.Type;
 

@@ -14,6 +14,8 @@ export interface SidebarPendingFileDrop {
   id: string;
   threadRef: ScopedThreadRef;
   files: File[];
+  /** Send the draft once these files are attached, as the quick message panel asks. */
+  sendAfter?: boolean;
 }
 
 interface SidebarPendingFileDropStoreState {
@@ -22,6 +24,9 @@ interface SidebarPendingFileDropStoreState {
   clearPendingFileDrop: (id: string) => void;
   clearPendingFileDropsForThread: (threadRef: ScopedThreadRef) => void;
   consumePendingFileDrop: (threadRef: ScopedThreadRef) => File[] | null;
+  takePendingFileDrop: (
+    threadRef: ScopedThreadRef,
+  ) => { readonly files: File[]; readonly sendAfter: boolean } | null;
 }
 
 let nextPendingFileDropId = 0;
@@ -42,7 +47,8 @@ export const useSidebarPendingFileDropStore = create<SidebarPendingFileDropStore
         pending: state.pending.filter((drop) => !isSameSidebarThreadRef(drop.threadRef, threadRef)),
       }));
     },
-    consumePendingFileDrop: (threadRef) => {
+    consumePendingFileDrop: (threadRef) => get().takePendingFileDrop(threadRef)?.files ?? null,
+    takePendingFileDrop: (threadRef) => {
       const matches = get().pending.filter((drop) =>
         isSameSidebarThreadRef(drop.threadRef, threadRef),
       );
@@ -51,7 +57,10 @@ export const useSidebarPendingFileDropStore = create<SidebarPendingFileDropStore
       }
       const matchedIds = new Set(matches.map((drop) => drop.id));
       set((state) => ({ pending: state.pending.filter((drop) => !matchedIds.has(drop.id)) }));
-      return matches.flatMap((drop) => drop.files);
+      return {
+        files: matches.flatMap((drop) => drop.files),
+        sendAfter: matches.some((drop) => drop.sendAfter === true),
+      };
     },
   }),
 );

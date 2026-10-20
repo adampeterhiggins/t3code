@@ -1,15 +1,28 @@
+import { isGitHubProject } from "@t3tools/client-runtime/state/github-issues";
+import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import {
   DEFAULT_SERVER_SETTINGS,
+  type DesktopQuickMessageAction,
+  type EnvironmentId,
   type ModelSelection,
+  type ProviderInteractionMode,
   type ProviderInstanceId,
+  type RuntimeMode,
   type ServerSettings,
 } from "@t3tools/contracts";
 import { createModelSelection } from "@t3tools/shared/model";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/reactivity";
-import { FolderIcon } from "lucide-react";
-import { type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { EllipsisIcon, FileIcon, FolderIcon, XIcon } from "lucide-react";
+import {
+  type ClipboardEvent,
+  type DragEvent,
+  type KeyboardEvent,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { composerRequiresModifier } from "~/composer-logic";
 import {
@@ -18,6 +31,7 @@ import {
   useClientSettings,
 } from "~/hooks/useSettings";
 import { useTheme } from "~/hooks/useTheme";
+import { randomUUID } from "~/lib/utils";
 import { selectProjectGroupingSettings } from "~/logicalProject";
 import {
   getAppModelOptionsForInstance,
@@ -43,15 +57,20 @@ import {
 import { EMPTY_SERVER_PROVIDERS, serverEnvironment } from "~/state/server";
 import { allReachableShellsLiveAtom } from "~/state/shell";
 
+import { ComposerFooterModeControls, composerRuntimeModeOptions } from "../chat/ChatComposer";
+import { ComposerAttachMenu } from "../chat/ComposerAttachMenu";
 import {
   ComposerControl,
   ComposerControlChevron,
   ComposerControlIcon,
+  ComposerControlSeparator,
 } from "../chat/ComposerControl";
 import { ComposerPrimaryActions } from "../chat/ComposerPrimaryActions";
 import { ComposerSurface } from "../chat/ComposerSurface";
 import { DraftProjectName } from "../chat/DraftProjectName";
 import { ProviderModelPicker } from "../chat/ProviderModelPicker";
+import { shouldRenderTraitsControls, TraitsPicker } from "../chat/TraitsPicker";
+import { useComposerCheckoutItems } from "../chat/useComposerCheckoutItems";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { sortLogicalProjectsForSidebar } from "../Sidebar.logic";
 import {
@@ -64,6 +83,8 @@ import {
   ComboboxTrigger,
   useComboboxFilter,
 } from "../ui/combobox";
+import { Button } from "../ui/button";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 interface ProjectItem {
   readonly value: string;
@@ -72,6 +93,27 @@ interface ProjectItem {
 
 const noop = () => {};
 const noEnvironmentSettingsAtom = Atom.make<ServerSettings | null>(null);
+
+/** The composer's attach menu, gated the same way it is in a project's own draft. */
+function QuickMessageAttachMenu(props: {
+  readonly environmentId: EnvironmentId;
+  readonly project: EnvironmentProject;
+  readonly pullRequestsAvailable: boolean;
+  readonly onAttachFiles: () => void;
+  readonly onPick: (picker: Exclude<DesktopQuickMessageAction, "send" | "start-from">) => void;
+}) {
+  const checkouts = useComposerCheckoutItems(props.environmentId, { enabled: false, query: "" });
+  return (
+    <ComposerAttachMenu
+      environmentId={props.environmentId}
+      pullRequestsAvailable={props.pullRequestsAvailable}
+      githubIssuesAvailable={isGitHubProject(props.project)}
+      checkoutsAvailable={checkouts.hasLocalCandidates}
+      onAttachFiles={props.onAttachFiles}
+      onPick={props.onPick}
+    />
+  );
+}
 
 /** Dismisses when the click lands on the transparent window around the composer. */
 function dismissOnBackdrop(event: React.PointerEvent<HTMLElement>) {
@@ -124,13 +166,18 @@ export function QuickMessagePanel() {
   const [prompt, setPrompt] = useState("");
   const [chosenProjectKey, setChosenProjectKey] = useState<string | null>(null);
   const [chosenModel, setChosenModel] = useState<ModelSelection | null>(null);
+  const [chosenRuntimeMode, setChosenRuntimeMode] = useState<RuntimeMode | null>(null);
+  const [interactionMode, setInteractionMode] = useState<ProviderInteractionMode>("default");
+  const [files, setFiles] = useState<ReadonlyArray<{ readonly id: string; readonly file: File }>>(
+    [],
+  );
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [pickerQuery, setPickerQuery] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pickerFilter = useComboboxFilter();
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!bridge) return;
@@ -188,11 +235,11 @@ export function QuickMessagePanel() {
       project?.id ?? null,
     ),
   );
-  const storedDefault = project
-    ? resolveDefaultProviderModelSelection(
-        providers,
-        resolveProjectSettings(settings, project.id, project).settings.defaultModelSelection,
-      )
+  const projectSettings = project
+    ? resolveProjectSettings(settings, project.id, project).settings
+    : null;
+  const storedDefault = projectSettings
+    ? resolveDefaultProviderModelSelection(providers, projectSettings.defaultModelSelection)
     : null;
   const defaultModel = storedDefault
     ? resolveEffectiveDefaultModelSelection(settings, providers, storedDefault)
@@ -214,6 +261,32 @@ export function QuickMessagePanel() {
     );
   }
 
+  const providerEntry = instanceEntries.find(
+    (entry) => entry.instanceId === modelSelection?.instanceId,
+  );
+  const supportedRuntimeModes = providerEntry?.snapshot.supportedRuntimeModes;
+  const runtimeModeOptions =
+    supportedRuntimeModes && supportedRuntimeModes.length > 0
+      ? composerRuntimeModeOptions.filter((option) => supportedRuntimeModes.includes(option.mode))
+      : composerRuntimeModeOptions;
+  const requestedRuntimeMode =
+    chosenRuntimeMode ?? projectSettings?.defaultRuntimeMode ?? settings.defaultRuntimeMode;
+  const runtimeMode = runtimeModeOptions.some((option) => option.mode === requestedRuntimeMode)
+    ? requestedRuntimeMode
+    : (runtimeModeOptions[0]?.mode ?? requestedRuntimeMode);
+  const planModeEnabled = settings.planModeEnabled;
+  const showTraits =
+    modelSelection !== null &&
+    providerEntry !== undefined &&
+    shouldRenderTraitsControls({
+      provider: providerEntry.driverKind,
+      models: providerEntry.models,
+      model: modelSelection.model,
+      prompt,
+      modelOptions: modelSelection.options ?? [],
+      planModeEnabled,
+    });
+
   const environmentUnavailable =
     environment !== undefined && environment.connection.phase !== "connected";
   const sendDisabledReason =
@@ -225,21 +298,31 @@ export function QuickMessagePanel() {
         ? "Set up a provider in T3 Code to start a thread"
         : null;
   const hasText = prompt.trim().length > 0;
+  const hasContent = hasText || files.length > 0;
 
-  const submit = async () => {
-    const text = prompt.trim();
-    if (!bridge || sending || !text || !project || !modelSelection || environmentUnavailable)
-      return;
+  const submit = async (action: DesktopQuickMessageAction) => {
+    if (!bridge || sending || !project || !modelSelection || environmentUnavailable) return;
     setSending(true);
     setError(null);
     try {
       await bridge.submit({
         environmentId: project.environmentId,
         projectId: project.id,
-        text,
+        text: prompt.trim(),
+        files: await Promise.all(
+          files.map(async ({ file }) => ({
+            name: file.name,
+            mimeType: file.type,
+            bytes: new Uint8Array(await file.arrayBuffer()),
+          })),
+        ),
         modelSelection,
+        runtimeMode,
+        interactionMode: planModeEnabled ? interactionMode : "default",
+        action,
       });
       setPrompt("");
+      setFiles([]);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not start the thread.");
     } finally {
@@ -247,10 +330,28 @@ export function QuickMessagePanel() {
     }
   };
 
+  const addFiles = (added: ReadonlyArray<File>) => {
+    if (added.length === 0) return;
+    setFiles((current) => [...current, ...added.map((file) => ({ id: randomUUID(), file }))]);
+  };
+  const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+    const pasted = Array.from(event.clipboardData.files);
+    if (pasted.length === 0) return;
+    event.preventDefault();
+    addFiles(pasted);
+  };
+  const onDrop = (event: DragEvent<HTMLFormElement>) => {
+    const dropped = Array.from(event.dataTransfer.files);
+    if (dropped.length === 0) return;
+    event.preventDefault();
+    addFiles(dropped);
+    inputRef.current?.focus();
+  };
+
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Escape") {
       // A menu opened by mouse can leave focus here; its own Escape closes just the menu.
-      if (pickerOpen || modelPickerOpen) return;
+      if (event.currentTarget.form?.querySelector("[data-popup-open]")) return;
       event.preventDefault();
       void bridge?.dismiss().catch(noop);
       return;
@@ -260,7 +361,7 @@ export function QuickMessagePanel() {
     const needsModifier = composerRequiresModifier(clientSettings.sendShortcut, prompt);
     if (event.shiftKey || (needsModifier && !modifier)) return;
     event.preventDefault();
-    void submit();
+    if (hasContent) void submit("send");
   };
 
   const projectItems: ReadonlyArray<ProjectItem> = projectEntries.map(({ group }) => ({
@@ -281,30 +382,50 @@ export function QuickMessagePanel() {
         className="w-full"
         onSubmit={(event) => {
           event.preventDefault();
-          void submit();
+          void submit("send");
         }}
+        onDragOver={(event) => {
+          if (event.dataTransfer.types.includes("Files")) event.preventDefault();
+        }}
+        onDrop={onDrop}
       >
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={(event) => {
+            addFiles(Array.from(event.currentTarget.files ?? []));
+            event.currentTarget.value = "";
+            inputRef.current?.focus();
+          }}
+        />
         <ComposerSurface.Shell>
           <ComposerSurface.Host>
             <ComposerSurface.Main>
               <div data-chat-composer-surface="true" className="rounded-3xl">
                 <div className="relative px-4 pt-4 pb-2">
-                  <textarea
-                    ref={inputRef}
-                    autoFocus
-                    rows={1}
-                    value={prompt}
-                    aria-label="Message"
-                    placeholder="Ask anything..."
-                    onChange={(event) => setPrompt(event.target.value)}
-                    onKeyDown={onKeyDown}
-                    className="block max-h-52 min-h-6 w-full resize-none bg-transparent font-(family-name:--font-composer,var(--font-sans)) text-(length:--font-size-prompt,var(--text-sm)) text-foreground leading-relaxed [field-sizing:content] placeholder:text-placeholder/75 focus:outline-none"
-                  />
-                </div>
-                {error ? <p className="px-4 pb-2 text-destructive text-xs">{error}</p> : null}
-                <div className="flex min-w-0 flex-nowrap items-center justify-between gap-2 px-4 pb-4">
-                  <div className="relative -m-1 -ms-3.5 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto p-1 ps-3.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                    {projectItems.length > 0 ? (
+                  {project ? (
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            className="absolute end-2 top-2 z-10 sm:end-2.5 sm:top-2.5"
+                            aria-label="Start from a pull request, branch, or issue"
+                            onClick={() => void submit("start-from")}
+                          />
+                        }
+                      >
+                        <EllipsisIcon />
+                      </TooltipTrigger>
+                      <TooltipPopup>Start from a PR, branch, or issue in T3 Code</TooltipPopup>
+                    </Tooltip>
+                  ) : null}
+                  {projectItems.length > 0 ? (
+                    <div className="-mt-1.5 mb-1 flex pe-7">
                       <Combobox
                         items={projectItems}
                         filteredItems={filteredProjectItems}
@@ -327,7 +448,7 @@ export function QuickMessagePanel() {
                         }}
                       >
                         <ComboboxTrigger
-                          render={<ComposerControl className="-ms-2.5 min-w-0 max-w-56" />}
+                          render={<ComposerControl className="-ms-2.5 min-w-0 max-w-72" />}
                           aria-label="Project"
                         >
                           {activeEntry ? (
@@ -374,7 +495,48 @@ export function QuickMessagePanel() {
                           </ComboboxList>
                         </ComboboxPopup>
                       </Combobox>
-                    ) : null}
+                    </div>
+                  ) : null}
+                  {files.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5 pe-7 pb-2">
+                      {files.map(({ id, file }) => (
+                        <span
+                          key={id}
+                          className="inline-flex max-w-56 items-center gap-1.5 rounded-lg bg-muted py-0.5 ps-2 pe-0.5 text-muted-foreground text-xs"
+                        >
+                          <FileIcon className="size-3.5 shrink-0" aria-hidden="true" />
+                          <span className="min-w-0 truncate">{file.name}</span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-xs"
+                            aria-label={`Remove ${file.name}`}
+                            onClick={() =>
+                              setFiles((current) => current.filter((entry) => entry.id !== id))
+                            }
+                          >
+                            <XIcon />
+                          </Button>
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                  <textarea
+                    ref={inputRef}
+                    autoFocus
+                    rows={1}
+                    value={prompt}
+                    aria-label="Message"
+                    placeholder="Ask anything..."
+                    onChange={(event) => setPrompt(event.target.value)}
+                    onKeyDown={onKeyDown}
+                    onPaste={onPaste}
+                    className="block max-h-52 min-h-12 w-full pe-7 resize-none bg-transparent font-(family-name:--font-composer,var(--font-sans)) text-(length:--font-size-prompt,var(--text-sm)) text-foreground leading-relaxed [field-sizing:content] placeholder:text-placeholder/75 focus:outline-none"
+                  />
+                </div>
+                {error ? <p className="px-4 pb-2 text-destructive text-xs">{error}</p> : null}
+                <div className="flex min-w-0 flex-nowrap items-center justify-between gap-2 px-4 pb-4">
+                  <div className="relative -m-1 -ms-3.5 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto p-1 ps-3.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                     {modelSelection !== null ? (
                       <ProviderModelPicker
                         environmentId={environmentId}
@@ -383,17 +545,63 @@ export function QuickMessagePanel() {
                         lockedProvider={null}
                         instanceEntries={instanceEntries}
                         modelOptionsByInstance={modelOptionsByInstance}
-                        triggerClassName="min-w-13"
-                        open={modelPickerOpen}
-                        onOpenChange={setModelPickerOpen}
+                        triggerClassName="-ms-2.5 min-w-13"
                         onInstanceModelChange={(instanceId, model) => {
                           setChosenModel(createModelSelection(instanceId, model));
                           inputRef.current?.focus();
                         }}
                       />
                     ) : null}
+                    {showTraits && modelSelection !== null && providerEntry ? (
+                      <>
+                        <ComposerControlSeparator />
+                        <TraitsPicker
+                          provider={providerEntry.driverKind}
+                          instanceId={modelSelection.instanceId}
+                          models={providerEntry.models}
+                          model={modelSelection.model}
+                          prompt={prompt}
+                          onPromptChange={setPrompt}
+                          modelOptions={modelSelection.options ?? []}
+                          planModeEnabled={planModeEnabled}
+                          isComposerOwned
+                          onModelOptionsChange={(options) =>
+                            setChosenModel(
+                              createModelSelection(
+                                modelSelection.instanceId,
+                                modelSelection.model,
+                                options,
+                              ),
+                            )
+                          }
+                        />
+                      </>
+                    ) : null}
+                    {project ? (
+                      <ComposerFooterModeControls
+                        showInteractionModeToggle={planModeEnabled}
+                        interactionMode={interactionMode}
+                        runtimeMode={runtimeMode}
+                        runtimeModeOptions={runtimeModeOptions}
+                        onToggleInteractionMode={() =>
+                          setInteractionMode((mode) => (mode === "plan" ? "default" : "plan"))
+                        }
+                        onRuntimeModeChange={setChosenRuntimeMode}
+                      />
+                    ) : null}
                   </div>
                   <div className="flex shrink-0 flex-nowrap items-center justify-end gap-2">
+                    {project && environmentId ? (
+                      <QuickMessageAttachMenu
+                        environmentId={environmentId}
+                        project={project}
+                        pullRequestsAvailable={
+                          environment?.serverConfig?.environment.capabilities.pullRequests === true
+                        }
+                        onAttachFiles={() => fileInputRef.current?.click()}
+                        onPick={(picker) => void submit(picker)}
+                      />
+                    ) : null}
                     <ComposerPrimaryActions
                       compact={false}
                       canOperateThread
@@ -402,12 +610,15 @@ export function QuickMessagePanel() {
                       canInterrupt={false}
                       showPlanFollowUpPrompt={false}
                       promptHasText={hasText}
+                      createWithoutMessage={
+                        projectSettings?.defaultThreadEnvMode === "worktree" ? "worktree" : "thread"
+                      }
                       isSendBusy={sending}
                       sendDisabledReason={sendDisabledReason}
                       isConnecting={false}
                       isEnvironmentUnavailable={environmentUnavailable}
                       isPreparingWorktree={false}
-                      hasSendableContent={hasText}
+                      hasSendableContent={hasContent}
                       onPreviousPendingQuestion={noop}
                       onInterrupt={noop}
                       onImplementPlanInNewThread={noop}

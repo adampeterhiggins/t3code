@@ -1,9 +1,12 @@
-import { scopeProjectRef } from "@t3tools/client-runtime/environment";
+import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { DesktopQuickMessageSubmission } from "@t3tools/contracts";
 import { useEffect, useEffectEvent, useRef } from "react";
 
 import { composerDraftHasUserContent, useComposerDraftStore } from "../../composerDraftStore";
 import { useComposerSubmitRequestStore } from "../../composerSubmitRequestStore";
+import { useSidebarPendingFileDropStore } from "../../sidebarPendingFileDropStore";
+import { openComposerAttachPicker } from "../chat/ComposerAttachMenu";
+import { openStartFromPicker } from "../chat/StartFromPicker";
 import { useNewThreadHandler } from "../../hooks/useHandleNewThread";
 import { usePrimaryEnvironment } from "../../state/environments";
 import { stackedThreadToast, toastManager } from "../ui/toast";
@@ -37,24 +40,50 @@ export function QuickMessageCoordinator() {
       return;
     }
     const store = useComposerDraftStore.getState();
+    const draft = store.getDraftSession(opened.draftId);
     const existing = store.getComposerDraft(opened.draftId);
     store.setModelSelection(opened.draftId, submission.modelSelection, {
       explicit: true,
       replaceOptions: true,
     });
+    store.setRuntimeMode(opened.draftId, submission.runtimeMode);
+    store.setInteractionMode(opened.draftId, submission.interactionMode);
+    store.setDraftThreadContext(opened.draftId, {
+      runtimeMode: submission.runtimeMode,
+      interactionMode: submission.interactionMode,
+    });
     // A draft can only come back holding text when another new thread raced this one to it.
     // Sending would take that text along, so the message joins it for the reader to send.
-    if (composerDraftHasUserContent(existing)) {
-      store.setPrompt(opened.draftId, `${existing?.prompt ?? ""}\n\n${submission.text}`);
+    const held = composerDraftHasUserContent(existing);
+    const prompt = held
+      ? [existing?.prompt ?? "", submission.text].filter((text) => text.length > 0).join("\n\n")
+      : submission.text;
+    store.setPrompt(opened.draftId, prompt);
+    const send = submission.action === "send" && !held;
+    if (held) {
       toastManager.add({
         type: "info",
         title: "Added to your draft",
         description: "This project already had a draft, so your message was added to it.",
       });
-      return;
     }
-    store.setPrompt(opened.draftId, submission.text);
-    useComposerSubmitRequestStore.getState().request(opened.draftId, "send");
+    const threadRef = draft ? scopeThreadRef(draft.environmentId, draft.threadId) : null;
+    if (submission.files.length > 0 && threadRef !== null) {
+      // The composer prepares files itself (compression, limits, uploads), and only then sends.
+      useSidebarPendingFileDropStore.getState().queuePendingFileDrop({
+        threadRef,
+        files: submission.files.map(
+          (file) => new File([new Uint8Array(file.bytes)], file.name, { type: file.mimeType }),
+        ),
+        sendAfter: send,
+      });
+    } else if (send) {
+      useComposerSubmitRequestStore.getState().request(opened.draftId, "send");
+    }
+    if (submission.action === "start-from") openStartFromPicker();
+    else if (submission.action !== "send" && threadRef !== null) {
+      openComposerAttachPicker(submission.action, threadRef);
+    }
   });
 
   const receive = useEffectEvent((submission: DesktopQuickMessageSubmission) => {

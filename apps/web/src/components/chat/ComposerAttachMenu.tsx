@@ -1,4 +1,4 @@
-import type { ScopedThreadRef } from "@t3tools/contracts";
+import type { DesktopQuickMessageAction, EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import { FolderGit2Icon, LaptopIcon, MessageSquareIcon, PaperclipIcon } from "lucide-react";
 import { GitHubIcon, GranolaIcon, DiscordIcon, LinearIcon, NotionIcon, SlackIcon } from "../Icons";
 import { memo } from "react";
@@ -19,12 +19,43 @@ import { openDiscordMessagePicker } from "./DiscordMessagePicker";
 import { openSlackMessagePicker } from "./SlackMessagePicker";
 import { openThreadAttachPicker } from "./ThreadAttachPicker";
 
+/** Every attach source other than files, each opened as a picker against a thread's draft. */
+export type ComposerAttachPicker = Exclude<DesktopQuickMessageAction, "send" | "start-from">;
+
+export function openComposerAttachPicker(
+  picker: ComposerAttachPicker,
+  threadRef: ScopedThreadRef,
+): void {
+  switch (picker) {
+    case "thread":
+      return openThreadAttachPicker(threadRef);
+    case "linear-issue":
+      return openLinearIssuePicker(threadRef);
+    case "notion-page":
+      return openNotionPagePicker(threadRef);
+    case "granola-note":
+      return openGranolaNotePicker(threadRef);
+    case "slack-message":
+      return openSlackMessagePicker(threadRef);
+    case "discord-message":
+      return openDiscordMessagePicker(threadRef);
+    case "github-issue":
+      return openGitHubIssuePicker(threadRef);
+    case "pull-request":
+      return openPullRequestAttachPicker(threadRef);
+    case "checkout":
+      return openCheckoutAttachPicker(threadRef);
+    case "repository":
+      return openRepositoryAttachPicker(threadRef);
+  }
+}
+
 /**
  * The composer's attach button: files, thread summaries, issues, Notion pages, Granola notes, Slack
  * and Discord messages, pull requests, and repositories.
  */
 export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
-  threadRef: ScopedThreadRef;
+  environmentId: EnvironmentId;
   /** Whether the thread's project can list pull requests to attach. */
   pullRequestsAvailable: boolean;
   /** Whether the thread's project is a GitHub repository whose issues can be attached. */
@@ -32,22 +63,20 @@ export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
   /** Whether this environment has a project root or worktree to attach. */
   checkoutsAvailable: boolean;
   onAttachFiles: () => void;
+  onPick: (picker: ComposerAttachPicker) => void;
 }) {
   const composerMenuProps = useComposerMenuProps();
-  const slackEnabled = useEnvironmentSettings(
-    props.threadRef.environmentId,
-    (s) => s.enableSlackIntegration,
-  );
+  const slackEnabled = useEnvironmentSettings(props.environmentId, (s) => s.enableSlackIntegration);
   const discordEnabled = useEnvironmentSettings(
-    props.threadRef.environmentId,
+    props.environmentId,
     (s) => s.enableDiscordIntegration,
   );
   const notionEnabled = useEnvironmentSettings(
-    props.threadRef.environmentId,
+    props.environmentId,
     (s) => s.enableNotionIntegration,
   );
   const granolaEnabled = useEnvironmentSettings(
-    props.threadRef.environmentId,
+    props.environmentId,
     (s) => s.enableGranolaIntegration,
   );
   return (
@@ -62,57 +91,57 @@ export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
           <PaperclipIcon />
           Files and images
         </MenuItem>
-        <MenuItem onClick={() => openThreadAttachPicker(props.threadRef)}>
+        <MenuItem onClick={() => props.onPick("thread")}>
           <MessageSquareIcon />
           Thread
         </MenuItem>
-        <MenuItem onClick={() => openLinearIssuePicker(props.threadRef)}>
+        <MenuItem onClick={() => props.onPick("linear-issue")}>
           <LinearIcon />
           Linear issue
         </MenuItem>
         {notionEnabled ? (
-          <MenuItem onClick={() => openNotionPagePicker(props.threadRef)}>
+          <MenuItem onClick={() => props.onPick("notion-page")}>
             <NotionIcon />
             Notion page
           </MenuItem>
         ) : null}
         {granolaEnabled ? (
-          <MenuItem onClick={() => openGranolaNotePicker(props.threadRef)}>
+          <MenuItem onClick={() => props.onPick("granola-note")}>
             <GranolaIcon />
             Granola note
           </MenuItem>
         ) : null}
         {slackEnabled ? (
-          <MenuItem onClick={() => openSlackMessagePicker(props.threadRef)}>
+          <MenuItem onClick={() => props.onPick("slack-message")}>
             <SlackIcon />
             Slack message
           </MenuItem>
         ) : null}
         {discordEnabled ? (
-          <MenuItem onClick={() => openDiscordMessagePicker(props.threadRef)}>
+          <MenuItem onClick={() => props.onPick("discord-message")}>
             <DiscordIcon />
             Discord message
           </MenuItem>
         ) : null}
         {props.githubIssuesAvailable ? (
-          <MenuItem onClick={() => openGitHubIssuePicker(props.threadRef)}>
+          <MenuItem onClick={() => props.onPick("github-issue")}>
             <GitHubIcon />
             GitHub issue
           </MenuItem>
         ) : null}
         {props.pullRequestsAvailable ? (
-          <MenuItem onClick={() => openPullRequestAttachPicker(props.threadRef)}>
+          <MenuItem onClick={() => props.onPick("pull-request")}>
             <PullRequestGlyph.pullRequest />
             Pull request
           </MenuItem>
         ) : null}
         {props.checkoutsAvailable ? (
-          <MenuItem onClick={() => openCheckoutAttachPicker(props.threadRef)}>
+          <MenuItem onClick={() => props.onPick("checkout")}>
             <LaptopIcon />
             Checkout
           </MenuItem>
         ) : null}
-        <MenuItem onClick={() => openRepositoryAttachPicker(props.threadRef)}>
+        <MenuItem onClick={() => props.onPick("repository")}>
           <FolderGit2Icon />
           Repository
         </MenuItem>

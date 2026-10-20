@@ -52,6 +52,24 @@ describe("sidebarPendingFileDropStore", () => {
     expect(useSidebarPendingFileDropStore.getState().pending).toEqual([]);
   });
 
+  it("reports a drop that asks for the draft to be sent once attached", () => {
+    const store = useSidebarPendingFileDropStore.getState();
+    store.queuePendingFileDrop(makeEntry("env-1", "thread-1", makeFiles("a.png")));
+    store.queuePendingFileDrop({
+      ...makeEntry("env-1", "thread-1", makeFiles("b.png")),
+      sendAfter: true,
+    });
+
+    const taken = useSidebarPendingFileDropStore
+      .getState()
+      .takePendingFileDrop(refOf("env-1", "thread-1"));
+    expect(taken?.sendAfter).toBe(true);
+    expect(fileNames(taken?.files ?? [])).toEqual(["a.png", "b.png"]);
+    expect(
+      useSidebarPendingFileDropStore.getState().takePendingFileDrop(refOf("env-1", "thread-1")),
+    ).toBeNull();
+  });
+
   it("accumulates repeat drops onto the same thread instead of replacing", () => {
     const store = useSidebarPendingFileDropStore.getState();
     store.queuePendingFileDrop(makeEntry("env-1", "thread-1", makeFiles("a.png")));

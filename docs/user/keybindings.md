@@ -204,9 +204,11 @@ another) and a floating composer opens over whatever you are doing. Pick a proje
 model, type, and press Enter: the thread starts in T3 Code, which comes to the front with it open.
 Press Escape or click away to close the composer; what you typed is still there next time.
 
-The composer opens on the project you used most recently and that project's default model. It
-takes text only; attach files once the thread is open. On Linux the shortcut does not work in a
-Wayland session.
+The composer opens on the project you used most recently, with that project's default model,
+effort and access mode. Paste, drop or attach files there. The other attach options (a thread,
+an issue, a pull request and so on) and **⋯** (start from a PR, branch or issue) open the new
+thread in T3 Code with that picker, keeping what you typed. On Linux the shortcut does not work in
+a Wayland session.
 
 ## Desktop quit shortcut
 

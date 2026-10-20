@@ -22,7 +22,7 @@ import * as DesktopClientSettings from "../settings/DesktopClientSettings.ts";
 import { isWaylandSession, toElectronAccelerator } from "../snapShot/snapShot.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
 
-const PANEL_WIDTH = 680;
+const PANEL_WIDTH = 820;
 // Taller than the composer so its project and model menus can open below it.
 const PANEL_HEIGHT = 520;
 
