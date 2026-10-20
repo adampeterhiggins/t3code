@@ -48,8 +48,9 @@ export function usageLimitRecoveryBannerItem(props: RecoveryProps): ComposerBann
     priority: "urgent",
     icon: <GaugeIcon />,
     title: "Usage limit reached",
-    // Inline, the reset time truncates against the action buttons.
-    descriptionPlacement: "below",
+    // The action buttons take the rest of the row. Stacking the reset time
+    // under the title wraps it inside that leftover column.
+    descriptionPlacement: "details",
     description: resetAt
       ? scheduled
         ? `Resumes automatically about a minute after ${new Date(resetAt).toLocaleString()}`
