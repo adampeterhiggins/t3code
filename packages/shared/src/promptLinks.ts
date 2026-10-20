@@ -186,6 +186,20 @@ export function buildNewThreadLink(input: {
 
 const APP_SCHEME = /^t3code(?:-[a-z]+)?:$/;
 const THREAD_PATH = /^\/([^/]+)\/([^/]+)\/?$/;
+const GITHUB_PULL_REQUEST_PATH =
+  /^\/?github\.com\/([^/?#]+)\/([^/?#]+)\/pull\/(\d+)(?:\/[^?#]*)?(\?[^#]*)?(?:#.*)?$/i;
+
+// `t3code://github.com/owner/name/pull/123` mirrors the pull request's GitHub URL, so swapping
+// the scheme of any pull request page opens it as a `pr` link. Only `prompt` carries over; the
+// rest of GitHub's query (`?diff=split`, …) means nothing here.
+export function githubPullRequestAppPath(path: string): string | null {
+  const match = GITHUB_PULL_REQUEST_PATH.exec(path);
+  if (!match) return null;
+  const params = new URLSearchParams({ pr: `${match[1]}/${match[2]}/${match[3]}` });
+  const prompt = new URLSearchParams(match[4] ?? "").get("prompt");
+  if (prompt !== null) params.set("prompt", prompt);
+  return `/new?${params.toString()}`;
+}
 
 export function promptLinkAppPath(
   value: string,
@@ -196,6 +210,9 @@ export function promptLinkAppPath(
   if (APP_SCHEME.test(url.protocol)) {
     if (url.host === "new" && (url.pathname === "" || url.pathname === "/")) {
       return `/new${url.search}`;
+    }
+    if (url.host.toLowerCase() === "github.com") {
+      return githubPullRequestAppPath(`${url.host}${url.pathname}${url.search}`);
     }
     const thread = url.host === "threads" ? THREAD_PATH.exec(url.pathname) : null;
     return thread ? `/${thread[1]}/${thread[2]}${url.search}` : null;
