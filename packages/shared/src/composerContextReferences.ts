@@ -328,6 +328,11 @@ function formatComposerContextProviderPayload(record: KnownComposerContextRecord
       if (record.prompt !== null) lines.push("prompt:", indent(record.prompt));
       return lines.join("\n");
     }
+    case "unread-link":
+      return [
+        `link: ${record.url}`,
+        "T3 Code could not read what this link points at when the user attached it.",
+      ].join("\n");
   }
 }
 

@@ -58,7 +58,7 @@ import {
 import { toastManager } from "../ui/toast";
 
 // Slack is the integration people are least likely to have connected, so the first Slack link
-// that cannot be read says why, once per session; the rest stay links quietly.
+// that cannot be read says why, once per session; the rest only show their broken chip.
 let toldSlackIsUnavailable = false;
 
 function reportUnreadableSlackLink(failure: unknown) {
@@ -74,7 +74,7 @@ function reportUnreadableSlackLink(failure: unknown) {
     type: unavailable ? "info" : "error",
     title: unavailable ? "Connect Slack to attach messages" : "Could not read that Slack message",
     description: unavailable
-      ? "The link was kept as a link. Connect Slack in Settings → Integrations."
+      ? "The agent gets the link instead. Connect Slack in Settings → Integrations."
       : failure instanceof Error
         ? failure.message
         : undefined,
@@ -99,14 +99,14 @@ function reportUnreadableDiscordLink(failure: unknown) {
       ? "Connect Discord to attach messages"
       : "Could not read that Discord message",
     description: unavailable
-      ? "The link was kept as a link. Connect Discord in Settings → Integrations."
+      ? "The agent gets the link instead. Connect Discord in Settings → Integrations."
       : failure instanceof Error
         ? failure.message
         : undefined,
   });
 }
 
-// Like Slack, an unconnected Granola says so once per session; later links stay links quietly.
+// Like Slack, an unconnected Granola says so once per session; later links only show their chip.
 let toldGranolaIsUnavailable = false;
 
 function reportUnreadableGranolaLink(failure: unknown) {
@@ -125,10 +125,10 @@ function reportUnreadableGranolaLink(failure: unknown) {
       ? "Connect Granola to attach meeting notes"
       : "Could not attach that Granola note",
     description: unavailable
-      ? "The link was kept as a link. Connect Granola in Settings → Integrations."
+      ? "The agent gets the link instead. Connect Granola in Settings → Integrations."
       : failure instanceof Error
-        ? `The link was kept. ${failure.message}`
-        : "The link was kept.",
+        ? `The agent gets the link instead. ${failure.message}`
+        : "The agent gets the link instead.",
   });
 }
 
@@ -151,8 +151,8 @@ function reportUnreadableNotionLink(
       title: "Could not attach that Notion page",
       description:
         failure instanceof Error
-          ? `The link was kept. ${failure.message}`
-          : "The link was kept. Check the Notion connection in Settings → Integrations.",
+          ? `The agent gets the link instead. ${failure.message}`
+          : "The agent gets the link instead. Check the Notion connection in Settings → Integrations.",
     });
     return;
   }
@@ -192,9 +192,11 @@ export interface ResolvedComposerObjectLink {
 
 /**
  * Turns a link into the chip its attach picker would have made: the issue or pull request is
- * fetched and snapshotted the same way. Null when it cannot be read (Linear, Slack, Discord, Notion, or Granola
- * not connected or turned off, `gh` signed out, a host no project here is checked out from), so the caller
- * keeps the link.
+ * fetched and snapshotted the same way.
+ * - `skipped`: it was never tried (its integration is turned off, or a pull request on a host no
+ *   project here is checked out from), so the link stays a plain link.
+ * - `unreadable`: it was tried and could not be read (not connected, `gh` signed out, not found,
+ *   a comment or lines the host did not return), so the caller shows that it failed.
  */
 export function useResolveComposerObjectLink(input: {
   threadRef: ScopedThreadRef;
@@ -236,15 +238,15 @@ export function useResolveComposerObjectLink(input: {
       /** Tries the same link again, offered where the user can fix what stopped it. */
       readonly retry?: () => void;
     },
-  ): Promise<ResolvedComposerObjectLink | null> => {
+  ): Promise<ResolvedComposerObjectLink | "skipped" | "unreadable"> => {
     switch (link.kind) {
       case "notion-page": {
-        if (!notionEnabled) return null;
+        if (!notionEnabled) return "skipped";
         const result = await getNotionPage({ environmentId, input: { id: link.pageId } });
         if (result._tag === "Failure") {
           if (!isAtomCommandInterrupted(result))
             reportUnreadableNotionLink(squashAtomCommandFailure(result), link.url, options?.retry);
-          return null;
+          return "unreadable";
         }
         const record = notionPageContextRecord(result.value);
         return {
@@ -253,12 +255,12 @@ export function useResolveComposerObjectLink(input: {
         };
       }
       case "granola-note": {
-        if (!granolaEnabled) return null;
+        if (!granolaEnabled) return "skipped";
         const result = await getGranolaNote({ environmentId, input: { id: link.noteId } });
         if (result._tag === "Failure") {
           if (!isAtomCommandInterrupted(result))
             reportUnreadableGranolaLink(squashAtomCommandFailure(result));
-          return null;
+          return "unreadable";
         }
         const record = granolaNoteContextRecord(result.value);
         return {
@@ -268,7 +270,7 @@ export function useResolveComposerObjectLink(input: {
       }
       case "linear-issue": {
         const result = await getLinearIssue({ environmentId, input: { id: link.identifier } });
-        if (result._tag === "Failure") return null;
+        if (result._tag === "Failure") return "unreadable";
         const record = linearIssueContextRecord(result.value);
         return {
           reference: { kind: "linear-issue", contextId: record.contextId, label: record.label },
@@ -276,7 +278,7 @@ export function useResolveComposerObjectLink(input: {
         };
       }
       case "slack-message": {
-        if (!slackEnabled) return null;
+        if (!slackEnabled) return "skipped";
         const result = await getSlackThread({
           environmentId,
           input: {
@@ -291,7 +293,7 @@ export function useResolveComposerObjectLink(input: {
           if (!isAtomCommandInterrupted(result)) {
             reportUnreadableSlackLink(squashAtomCommandFailure(result));
           }
-          return null;
+          return "unreadable";
         }
         const record = slackThreadContextRecord(result.value);
         return {
@@ -300,7 +302,7 @@ export function useResolveComposerObjectLink(input: {
         };
       }
       case "discord-message": {
-        if (!discordEnabled) return null;
+        if (!discordEnabled) return "skipped";
         const result = await getDiscordThread({
           environmentId,
           input: {
@@ -315,7 +317,7 @@ export function useResolveComposerObjectLink(input: {
           if (!isAtomCommandInterrupted(result)) {
             reportUnreadableDiscordLink(squashAtomCommandFailure(result));
           }
-          return null;
+          return "unreadable";
         }
         const record = discordThreadContextRecord(result.value);
         return {
@@ -325,7 +327,7 @@ export function useResolveComposerObjectLink(input: {
       }
       case "github-issue": {
         const result = await getGitHubIssue({ environmentId, input: { url: link.url } });
-        if (result._tag === "Failure") return null;
+        if (result._tag === "Failure") return "unreadable";
         const record = gitHubIssueContextRecord(result.value);
         return {
           reference: { kind: "github-issue", contextId: record.contextId, label: record.label },
@@ -334,7 +336,7 @@ export function useResolveComposerObjectLink(input: {
       }
       case "github-ref": {
         const result = await getGitHubRef({ environmentId, input: { url: link.url } });
-        if (result._tag === "Failure") return null;
+        if (result._tag === "Failure") return "unreadable";
         const record = gitHubRefContextRecord(result.value);
         return {
           reference: { kind: "github-ref", contextId: record.contextId, label: record.label },
@@ -348,7 +350,7 @@ export function useResolveComposerObjectLink(input: {
           capabilities,
           url: link.url,
         });
-        if (target === null) return null;
+        if (target === null) return "skipped";
         const linesAnchor = pullRequestDiffLinesAnchor(link.url);
         // A link to lines of a file (`#diff-…L4-L14`) attaches those lines, read from the diff
         // a slice at a time until the file turns up. One the diff cannot show stays a link,
@@ -390,17 +392,17 @@ export function useResolveComposerObjectLink(input: {
           getPullRequest(target),
           commentLink ? findComment() : null,
         ]);
-        if (result._tag === "Failure") return null;
+        if (result._tag === "Failure") return "unreadable";
         // A remark that cannot be found stays a link, like lines the diff cannot show: the whole
         // change would drop exactly what the link pointed at.
-        if (commentLink && linked === null) return null;
+        if (commentLink && linked === null) return "unreadable";
         const comment =
           linesAnchor !== null
             ? await findLines(result.value)
             : linked === null
               ? buildPullRequestReferenceContext(result.value)
               : buildPullRequestCommentReferenceContext(result.value, linked);
-        if (comment === null) return null;
+        if (comment === null) return "unreadable";
         return {
           reference: reviewCommentContextReference(comment),
           commit: () =>

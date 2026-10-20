@@ -1316,17 +1316,23 @@ Pasting a Linear issue, GitHub issue, pull request, GitHub repository root, Slac
 page, or Granola note link into the web or desktop composer, or typing one followed by whitespace, turns it into the chip its attach picker
 makes. A pull request link to one comment (`#issuecomment-…`, `#discussion_r…`, `#r…`) becomes a
 chip for that comment instead, anchored to its line with the earlier replies when it is in a review
-thread; a comment the read did not return falls back to the pull request chip. A link to lines of
-one file (`#diff-<hash>L4-L14`) becomes a chip for those lines of the diff, and stays a link when
-the diff does not show them. A T3 Code prompt link (`https://app.t3.codes/new?prompt=…`, or a
+thread. A link to lines of one file (`#diff-<hash>L4-L14`) becomes a chip for those lines of the
+diff. A T3 Code prompt link (`https://app.t3.codes/new?prompt=…`, or a
 thread link carrying `?prompt=`) becomes a chip labelled with the start of its prompt; hovering it
 shows the decoded prompt, and the agent receives the link with the prompt and any repository or pull
 request it names. A github.com release (`/releases/tag/<tag>`), branch or tag (`/tree/<ref>`), or
 commit (`/commit/<sha>`) link becomes a chip labelled `repo@<ref>` (`repo@<sha7>` for a commit),
 with an icon for its kind; hovering it shows, and the agent receives, the release notes or the
 commit message. A `/tree/` link to a folder is not a ref and stays a link. The text goes in as
-usual, then each link becomes a chip once its object loads. A link that
-cannot be read, or that was edited away meanwhile, stays as text. Paste-as-text (`Cmd+Shift+V`)
+usual, then each link becomes a chip once its object loads; sending, saving a draft, stashing, and
+rewinding wait for it, and a link pasted before switching threads still converts in the draft it
+was pasted into. A link that was tried and could not be read (not connected, not found, a comment
+or lines the host did not return), or that took longer than 20 seconds
+([`composerObjectLinkChip.ts`](../apps/web/src/components/chat/composerObjectLinkChip.ts)),
+becomes a red broken-link chip (an `unread-link` record) whose hover card says why and offers
+**Retry** and **Keep as text**; the agent receives the link. A link that was never tried (its
+integration turned off, a pull request host no project is checked out from) or that was edited
+away meanwhile stays as text. Paste-as-text (`Cmd+Shift+V`)
 skips it, and typing never retries a link the draft already converted or tried, so undo and a
 deleted chip stick. Mobile does not convert links.
 
@@ -1859,7 +1865,7 @@ Code: `cursorRunFailure` in
 
 ## Notion page context
 
-Web and desktop support Notion OAuth sign-in in Integrations settings, where the user enters their own Notion connection's client ID and secret (kept on the server, with `T3CODE_NOTION_CLIENT_ID` and `T3CODE_NOTION_CLIENT_SECRET` as a fallback), page attachments from the paperclip picker and command palette, a Notion tab in the `#` menu, and conversion of pasted `notion.so`, `notion.com`, and `notion.site` page links to context chips. A pasted link to a page the connection cannot read stays as text, with a notice that opens the page in Notion and retries the conversion once the user shares it. Turning off **Enable Notion integration** in those settings keeps pasted Notion links as links without setup prompts and hides Notion attachment actions on web, desktop, and mobile for the environment, keeping the connected account. Mobile can pick pages using the environment's connection and inspect captured page contents. Pages are captured as bounded Markdown snapshots and sent through the shared context projection to every provider. Remote sign-in can use a registered HTTPS callback through `T3CODE_NOTION_REDIRECT_URI`, or paste the OAuth redirect URL back into settings.
+Web and desktop support Notion OAuth sign-in in Integrations settings, where the user enters their own Notion connection's client ID and secret (kept on the server, with `T3CODE_NOTION_CLIENT_ID` and `T3CODE_NOTION_CLIENT_SECRET` as a fallback), page attachments from the paperclip picker and command palette, a Notion tab in the `#` menu, and conversion of pasted `notion.so`, `notion.com`, and `notion.site` page links to context chips. A pasted link to a page the connection cannot read becomes a broken-link chip, with a notice that opens the page in Notion and retries the conversion once the user shares it. Turning off **Enable Notion integration** in those settings keeps pasted Notion links as links without setup prompts and hides Notion attachment actions on web, desktop, and mobile for the environment, keeping the connected account. Mobile can pick pages using the environment's connection and inspect captured page contents. Pages are captured as bounded Markdown snapshots and sent through the shared context projection to every provider. Remote sign-in can use a registered HTTPS callback through `T3CODE_NOTION_REDIRECT_URI`, or paste the OAuth redirect URL back into settings.
 
 A thread's chat-tab group can also be linked to one Notion page, from the thread menu, the web command palette, or the mobile tab menu, which open the page picker in link mode. The link lives in the fork-owned `fork_notion_thread_links` table, keyed by tab group, and streams over `notion.subscribeThreadLinks`; the page's title and URL are copied when linked. The web chat header chip shows the title and offers open, change, and unlink; mobile shows the same chip beside the tab switcher. Linking and unlinking are client-guarded RPCs that need the orchestration-operate grant. Unlinking stays available with the integration turned off.
 

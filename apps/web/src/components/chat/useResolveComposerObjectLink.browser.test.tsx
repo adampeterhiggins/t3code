@@ -6,6 +6,7 @@ import {
   type NotionPageContext,
   type SlackThreadContext,
 } from "@t3tools/contracts";
+import { Cause } from "effect";
 import { act, useLayoutEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -44,6 +45,7 @@ vi.mock("@effect/atom-react", () => ({ useAtomValue: () => null }));
 vi.mock("~/state/entities", () => ({ useProjects: () => [] }));
 vi.mock("~/state/server", () => ({ serverEnvironment: { configValueAtom: () => null } }));
 vi.mock("~/state/slack", () => ({ slackEnvironment: { getThread: "slack" } }));
+vi.mock("~/state/discord", () => ({ discordEnvironment: { getThread: "discord" } }));
 vi.mock("~/state/linear", () => ({ linearEnvironment: { getIssue: "linear" } }));
 vi.mock("~/state/githubIssues", () => ({ githubIssueEnvironment: { getIssue: "github" } }));
 vi.mock("~/state/notion", () => ({ notionEnvironment: { getPage: "notion" } }));
@@ -130,6 +132,8 @@ const granolaNote: GranolaNoteContext = {
 
 let renderer: Root;
 let resolveLink: ReturnType<typeof useResolveComposerObjectLink>;
+const resolvedChip = (result: Awaited<ReturnType<typeof resolveLink>>) =>
+  typeof result === "string" ? null : result;
 
 function Probe() {
   const resolve = useResolveComposerObjectLink({ threadRef, draftTarget: threadRef });
@@ -163,8 +167,8 @@ describe("Slack link attachments", () => {
     mocks.slackEnabled = false;
     await act(() => renderer.render(<Probe />));
 
-    expect(await resolveLink(link)).toBeNull();
-    expect(await resolveLink(link)).toBeNull();
+    expect(await resolveLink(link)).toBe("skipped");
+    expect(await resolveLink(link)).toBe("skipped");
     expect(mocks.getSlackThread).not.toHaveBeenCalled();
     expect(mocks.toast).not.toHaveBeenCalled();
     expect(mocks.upsert).not.toHaveBeenCalled();
@@ -173,11 +177,11 @@ describe("Slack link attachments", () => {
   it("can attach a Slack thread after re-enabling without reconnecting", async () => {
     mocks.slackEnabled = false;
     await act(() => renderer.render(<Probe />));
-    expect(await resolveLink(link)).toBeNull();
+    expect(await resolveLink(link)).toBe("skipped");
 
     mocks.slackEnabled = true;
     await act(() => renderer.render(<Probe />));
-    const attached = await resolveLink(link);
+    const attached = resolvedChip(await resolveLink(link));
     expect(attached?.reference.kind).toBe("slack-thread");
     expect(mocks.getSlackThread).toHaveBeenCalledWith({
       environmentId: threadRef.environmentId,
@@ -190,11 +194,21 @@ describe("Slack link attachments", () => {
     );
   });
 
+  it("reports a Slack thread it tried and could not read", async () => {
+    mocks.getSlackThread.mockResolvedValue({
+      _tag: "Failure",
+      cause: Cause.fail(new Error("nope")),
+    });
+
+    expect(await resolveLink(link)).toBe("unreadable");
+    expect(mocks.upsert).not.toHaveBeenCalled();
+  });
+
   it("continues resolving other links when Slack is disabled", async () => {
     mocks.slackEnabled = false;
     await act(() => renderer.render(<Probe />));
     const repository = parseComposerObjectLink("https://github.com/acme/project")!;
-    const attached = await resolveLink(repository);
+    const attached = resolvedChip(await resolveLink(repository));
     expect(attached?.reference.kind).toBe("repository");
     expect(mocks.getSlackThread).not.toHaveBeenCalled();
   });
@@ -202,7 +216,7 @@ describe("Slack link attachments", () => {
 
 describe("Notion link attachments", () => {
   it("attaches a pasted app.notion.com page link", async () => {
-    const attached = await resolveLink(notionLink);
+    const attached = resolvedChip(await resolveLink(notionLink));
     expect(attached?.reference.kind).toBe("notion-page");
     expect(mocks.getNotionPage).toHaveBeenCalledWith({
       environmentId: threadRef.environmentId,
@@ -214,7 +228,7 @@ describe("Notion link attachments", () => {
     mocks.notionEnabled = false;
     await act(() => renderer.render(<Probe />));
 
-    expect(await resolveLink(notionLink)).toBeNull();
+    expect(await resolveLink(notionLink)).toBe("skipped");
     expect(mocks.getNotionPage).not.toHaveBeenCalled();
     expect(mocks.toast).not.toHaveBeenCalled();
   });
@@ -222,7 +236,7 @@ describe("Notion link attachments", () => {
 
 describe("Granola link attachments", () => {
   it("attaches a pasted Granola note link", async () => {
-    const attached = await resolveLink(granolaLink);
+    const attached = resolvedChip(await resolveLink(granolaLink));
     expect(attached?.reference).toEqual({
       kind: "granola-note",
       contextId: `granola-note_${granolaNote.id}`,
@@ -243,7 +257,7 @@ describe("Granola link attachments", () => {
     mocks.granolaEnabled = false;
     await act(() => renderer.render(<Probe />));
 
-    expect(await resolveLink(granolaLink)).toBeNull();
+    expect(await resolveLink(granolaLink)).toBe("skipped");
     expect(mocks.getGranolaNote).not.toHaveBeenCalled();
     expect(mocks.toast).not.toHaveBeenCalled();
   });
@@ -301,7 +315,7 @@ describe("pull request comment links", () => {
     mocks.getPullRequestActivity.mockResolvedValue(activity(false));
     mocks.getFreshPullRequestActivity.mockResolvedValue(activity(true));
 
-    const attached = await resolveLink(parseComposerObjectLink(commentUrl)!);
+    const attached = resolvedChip(await resolveLink(parseComposerObjectLink(commentUrl)!));
 
     expect(mocks.getFreshPullRequestActivity).toHaveBeenCalledWith({
       ...target,
@@ -314,6 +328,6 @@ describe("pull request comment links", () => {
     mocks.getPullRequestActivity.mockResolvedValue(activity(false));
     mocks.getFreshPullRequestActivity.mockResolvedValue(activity(false));
 
-    expect(await resolveLink(parseComposerObjectLink(commentUrl)!)).toBe(null);
+    expect(await resolveLink(parseComposerObjectLink(commentUrl)!)).toBe("unreadable");
   });
 });

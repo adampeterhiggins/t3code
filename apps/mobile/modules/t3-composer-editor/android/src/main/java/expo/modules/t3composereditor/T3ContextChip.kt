@@ -168,6 +168,17 @@ class T3ContextChip(
           line(3f, 12f, 9f, 12f)
           line(15f, 12f, 21f, 12f)
         }
+        // lucide `link-2` without its bar: a link that could not be read.
+        "link" -> {
+          moveTo(15f, 7f)
+          lineTo(17f, 7f)
+          arcTo(12f, 7f, 22f, 17f, -90f, 180f, false)
+          lineTo(15f, 17f)
+          moveTo(9f, 17f)
+          lineTo(7f, 17f)
+          arcTo(2f, 7f, 12f, 17f, 90f, 180f, false)
+          lineTo(9f, 7f)
+        }
         "cursorarrow.click" -> {
           line(4f, 3f, 19f, 12f, 12f, 14f, 9f, 21f, 4f, 3f)
           line(13f, 15f, 18f, 21f)

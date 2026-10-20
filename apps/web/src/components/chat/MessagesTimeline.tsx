@@ -7,6 +7,7 @@ import type {
   GranolaNoteContextRecord,
   NotionPageContextRecord,
   PromptLinkContextRecord,
+  UnreadLinkContextRecord,
 } from "@t3tools/contracts";
 import { ToolPathText } from "./ToolPathText";
 import { GitHubRefIcon, gitHubRefKindLabel } from "../gitHubRefPresentation";
@@ -296,6 +297,7 @@ import {
   NotionPageDetails,
   GranolaNoteDetails,
   PromptLinkDetails,
+  UnreadLinkChip,
   UnresolvedChip,
 } from "../contextChipParts";
 import {
@@ -4859,6 +4861,16 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
         ),
     },
     {
+      kind: "unread-link",
+      canRender: (record) => record.kind === "unread-link",
+      render: (record, context) =>
+        record.kind === "unread-link" ? (
+          <UserMessageUnreadLinkChip record={record} copyMarkdown={context.copyMarkdown} />
+        ) : (
+          <UnavailableUserMessageContextChip {...context} />
+        ),
+    },
+    {
       kind: "checkout",
       canRender: (record) => record.kind === "checkout",
       render: (record, context) =>
@@ -6236,6 +6248,20 @@ function QuestionAnswerHistory({
         </div>
       ))}
     </div>
+  );
+}
+
+function UserMessageUnreadLinkChip(props: {
+  record: UnreadLinkContextRecord;
+  copyMarkdown: string;
+}) {
+  const { threadRef } = use(TimelineRowCtx);
+  return (
+    <UnreadLinkChip
+      record={props.record}
+      copyMarkdown={props.copyMarkdown}
+      onOpenLink={useLinkClickHandler(threadRef)}
+    />
   );
 }
 

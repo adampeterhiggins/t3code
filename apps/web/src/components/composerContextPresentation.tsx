@@ -3,6 +3,7 @@ import type {
   GranolaNoteContextRecord,
   NotionPageContextRecord,
   PromptLinkContextRecord,
+  UnreadLinkContextRecord,
 } from "@t3tools/contracts";
 import ChatMarkdown from "./ChatMarkdown";
 import { GitHubRefIcon, gitHubRefKindLabel } from "./gitHubRefPresentation";
@@ -89,6 +90,7 @@ import {
   PULL_REQUEST_CHIP_KINDS,
   PullRequestChip,
   ThreadTabSummaryDetails,
+  UnreadLinkChip,
   UnresolvedChip,
 } from "./contextChipParts";
 
@@ -114,7 +116,8 @@ export type ComposerDraftContextRecord =
   | { kind: "thread"; record: ThreadContextRecord }
   | { kind: "subagent"; record: SubagentContextRecord }
   | { kind: "prompt-link"; record: PromptLinkContextRecord }
-  | { kind: "github-ref"; record: GitHubRefContextRecord };
+  | { kind: "github-ref"; record: GitHubRefContextRecord }
+  | { kind: "unread-link"; record: UnreadLinkContextRecord };
 
 export interface ComposerContextActions {
   environmentId: EnvironmentId | null;
@@ -125,6 +128,8 @@ export interface ComposerContextActions {
   openMention: (path: string) => void;
   openPullRequest: (event: MouseEvent<HTMLElement>, url: string) => void;
   openLink: (event: MouseEvent<HTMLElement>, url: string) => void;
+  retryUnreadLink: (record: UnreadLinkContextRecord) => void;
+  keepUnreadLinkAsText: (record: UnreadLinkContextRecord) => void;
 }
 
 export const ComposerContextActionsContext = createContext<ComposerContextActions>({
@@ -135,6 +140,8 @@ export const ComposerContextActionsContext = createContext<ComposerContextAction
   openMention: () => {},
   openPullRequest: () => {},
   openLink: () => {},
+  retryUnreadLink: () => {},
+  keepUnreadLinkAsText: () => {},
 });
 
 export type ComposerDraftContextRecords = ReadonlyMap<string, ComposerDraftContextRecord>;
@@ -230,6 +237,8 @@ function issueDraftContextRecord(record: IssueContextRecord): ComposerDraftConte
       return { kind: "prompt-link", record };
     case "github-ref":
       return { kind: "github-ref", record };
+    case "unread-link":
+      return { kind: "unread-link", record };
   }
 }
 
@@ -760,9 +769,31 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
           <UnresolvedContextChip label={context.label} />
         ),
     },
+    {
+      kind: "unread-link",
+      canRender: (entry) => entry.kind === "unread-link",
+      render: (entry, context) =>
+        entry.kind === "unread-link" ? (
+          <ComposerUnreadLinkChip record={entry.record} />
+        ) : (
+          <UnresolvedContextChip label={context.label} />
+        ),
+    },
   ],
   fallback: (_kind, _entry, context) => <UnresolvedContextChip label={context.label} />,
 });
+
+function ComposerUnreadLinkChip({ record }: { record: UnreadLinkContextRecord }) {
+  const actions = use(ComposerContextActionsContext);
+  return (
+    <UnreadLinkChip
+      record={record}
+      onOpenLink={actions.openLink}
+      onRetry={() => actions.retryUnreadLink(record)}
+      onKeepAsText={() => actions.keepUnreadLinkAsText(record)}
+    />
+  );
+}
 
 function ComposerPromptLinkDetails({ record }: { record: PromptLinkContextRecord }) {
   const actions = use(ComposerContextActionsContext);

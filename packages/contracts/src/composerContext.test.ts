@@ -273,6 +273,14 @@ const knownRecords: Record<(typeof COMPOSER_CONTEXT_KINDS)[number], Record<strin
     sha: "0123456789abcdef0123456789abcdef01234567",
     markdown: "# acme/api release v1.2.0\n\nFixes the retry.",
   },
+  "unread-link": {
+    ...base,
+    kind: "unread-link",
+    label: "ENG-1",
+    url: "https://linear.app/acme/issue/ENG-1/fix-it",
+    linkKind: "linear-issue",
+    reason: "timed-out",
+  },
 };
 
 describe("ComposerContextRecord", () => {

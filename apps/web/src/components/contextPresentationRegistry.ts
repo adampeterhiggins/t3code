@@ -96,6 +96,10 @@ const DEFINITIONS = [
     kind: "github-ref",
     capabilities: { details: "popover", expanded: "none", defaultDraftView: "compact" },
   },
+  {
+    kind: "unread-link",
+    capabilities: { details: "popover", expanded: "none", defaultDraftView: "compact" },
+  },
 ] as const satisfies ReadonlyArray<ContextPresentationDefinition>;
 
 function buildDefinitionRegistry(
