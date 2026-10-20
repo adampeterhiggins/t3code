@@ -64,7 +64,7 @@ export function ThreadsInUse(props: {
 /** Hover card for a pull request row: its description and who opened it, read on open. */
 export function PullRequestHoverPreview(props: {
   entry: EnvironmentPullRequestEntry;
-  threadRef: ScopedThreadRef;
+  threadRef: ScopedThreadRef | null;
   threads: ReadonlyArray<EnvironmentThreadShell>;
   trigger: ReactElement;
 }) {
@@ -77,7 +77,7 @@ export function PullRequestHoverPreview(props: {
 
 function PullRequestPreviewBody(props: {
   entry: EnvironmentPullRequestEntry;
-  threadRef: ScopedThreadRef;
+  threadRef: ScopedThreadRef | null;
   threads: ReadonlyArray<EnvironmentThreadShell>;
 }) {
   const { entry } = props;

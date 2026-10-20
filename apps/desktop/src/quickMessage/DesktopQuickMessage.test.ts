@@ -122,6 +122,7 @@ const ACCELERATOR = "Alt+/";
 const enabled: ClientSettings = { ...DEFAULT_CLIENT_SETTINGS, quickMessageEnabled: true };
 
 const submission: DesktopQuickMessageSubmission = {
+  type: "draft",
   environmentId: EnvironmentId.make("environment-1"),
   projectId: ProjectId.make("project-1"),
   text: "Fix the flaky test",
