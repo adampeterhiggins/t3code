@@ -371,6 +371,9 @@ export function buildTraitsTriggerDisplay(input: {
       fastModeFallbackLabel = speedLabel ?? "Normal";
       continue;
     }
+    // A thread guard, not a thinking trait. Its On/Off text is long enough to
+    // push the effort label out of the composer.
+    if (descriptor.id === "stopAtSubscriptionLimit") continue;
     if (
       input.provider === "codex" &&
       descriptor.id === "serviceTier" &&

@@ -209,6 +209,24 @@ describe("buildTraitsTriggerDisplay", () => {
     expect(display([serviceTierDescriptor("ultrafast")])).toEqual({ label: "Ultrafast" });
   });
 
+  it("keeps the subscription limit guard out of the trigger so thinking still shows", () => {
+    const guard = {
+      id: "stopAtSubscriptionLimit",
+      label: "Stop at subscription limit",
+      type: "boolean" as const,
+      currentValue: false,
+    };
+    const thinking = {
+      id: "thinking",
+      label: "Thinking",
+      type: "boolean" as const,
+      currentValue: true,
+    };
+    expect(display([EFFORT, guard])).toEqual({ label: "High" });
+    expect(display([thinking, guard])).toEqual({ label: "Thinking On" });
+    expect(display([{ ...guard, currentValue: true }])).toEqual({ label: "" });
+  });
+
   it("keeps non-fastMode booleans as text labels", () => {
     const thinking: Extract<ProviderOptionDescriptor, { type: "boolean" }> = {
       id: "thinking",
