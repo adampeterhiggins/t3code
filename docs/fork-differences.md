@@ -367,7 +367,8 @@ file as raw contents and an update as bare hunks; the fork stores every change i
 unified patch with line counts (`codexFileChangeDiff`), where upstream kept the first change's raw
 text. A file read shows the file itself, syntax-highlighted on web and desktop and numbered from
 the line the read started at, instead of the JSON, wrapper tags or line-number prefixes each
-provider reports it in (`turnItemReadFile`, [`ReadFileView.tsx`](../apps/web/src/components/chat/ReadFileView.tsx));
+provider reports it in (`turnItemReadFile`, [`ReadFileView.tsx`](../apps/web/src/components/chat/ReadFileView.tsx)),
+and an image read shows the image in its hover card as well as its expanded row;
 the agent views fetch a read's stored output when its call is hovered or expanded. In the agent views a tool's preview also
 carries what it reported back, such as an `Error:` line, when its output came with the timeline;
 v2 command items record no working directory, so none is shown. On web and desktop, collapsed tool calls in
