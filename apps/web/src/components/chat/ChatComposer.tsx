@@ -1719,6 +1719,8 @@ export interface ChatComposerProps {
     dispatchMode?: ComposerDispatchMode,
     submissionIntent?: ComposerSubmissionIntent,
   ) => void;
+  /** Sends one citation as its own message, leaving the rest of the composer untouched. */
+  onSendCitation: (text: string, dispatchMode: ComposerDispatchMode) => Promise<boolean>;
   onResume: () => void;
   onInterrupt: () => void;
   onImplementPlanInNewThread: () => void;
@@ -2080,6 +2082,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     onPageScrollRelease,
     onCompactContext,
     onSend,
+    onSendCitation,
     onResume,
     onInterrupt,
     onImplementPlanInNewThread,
@@ -4674,8 +4677,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     activeTurnDefault: settings.followUpBehavior,
     canSteer: !isCompacting,
   });
-  const submitCitationAndSend = () => {
-    submitComposer(undefined, citationSendDispatchMode);
+  const submitCitationAndSend = async (citationText: string): Promise<boolean> => {
+    if (
+      noProviderAvailable ||
+      !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)
+    ) {
+      return false;
+    }
+    return onSendCitation(citationText, citationSendDispatchMode);
   };
   const submitCitationAndSendStable = useStableCallback(submitCitationAndSend);
   // A question or approval took the editor while a citation comment was

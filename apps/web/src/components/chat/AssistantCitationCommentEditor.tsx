@@ -16,7 +16,7 @@ type SubmitChoice = typeof SubmitChoiceSchema.Type;
 const SUBMIT_CHOICE_STORAGE_KEY = "t3code:citation-comment-submit:v1";
 
 const SUBMIT_CHOICES = {
-  send: { label: "Send", description: "Save and send the message now" },
+  send: { label: "Send", description: "Send this quote now, apart from the composer" },
   save: { label: "Save", description: "Keep writing in the composer" },
 } as const satisfies Record<SubmitChoice, { label: string; description: string }>;
 
@@ -28,7 +28,7 @@ const SAVE_DRAFT_CHOICE = {
 // While a turn runs, sending follows the composer's follow-up setting, which may queue.
 const QUEUE_SUBMIT_CHOICE = {
   label: "Add to queue",
-  description: "Save and queue the message for after this turn",
+  description: "Queue this quote for after this turn, apart from the composer",
 } as const;
 
 export function AssistantCitationCommentEditor({
