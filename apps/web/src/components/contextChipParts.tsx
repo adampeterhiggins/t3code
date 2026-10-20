@@ -51,7 +51,6 @@ import { PreviewCornerAction } from "./chat/PreviewCornerAction";
 import { ContextChip, ContextChipLabel, type ContextChipKind } from "./ContextChip";
 import { Button } from "./ui/button";
 import { Popover, PopoverPopup, PopoverTitle, PopoverTrigger } from "./ui/popover";
-import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "./ui/preview-card";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { Truncatable } from "./ui/truncatable";
 import { PullRequestLinkPreview } from "./pullRequest/PullRequestLinkPreview";
@@ -96,6 +95,27 @@ export function ContextChipShell({
   );
 }
 
+/** A chip drawn as a button, the trigger most context previews open from. */
+export function ContextChipButton({
+  icon,
+  label,
+  copyMarkdown,
+  ...props
+}: Omit<ComponentProps<typeof ContextChip>, "className" | "render" | "children"> & {
+  icon: ReactNode;
+  label: string;
+  copyMarkdown?: string | undefined;
+}) {
+  return (
+    <ContextChip render={<button type="button" />} data-markdown-copy={copyMarkdown} {...props}>
+      {icon}
+      <ContextChipLabel>
+        <Truncatable>{label}</Truncatable>
+      </ContextChipLabel>
+    </ContextChip>
+  );
+}
+
 /**
  * A chip that previews its details on hover, matching pull request link previews; a click
  * pins the popover open for keyboard and touch users.
@@ -107,14 +127,43 @@ export function ContextChipPopover(props: {
   label: string;
   copyMarkdown?: string;
   accessibleLabel: string;
-  /** Hover or focus on the chip, ahead of the open delay: time to start loading the details. */
   onIntent?: () => void;
+  stayOpenAfterPress?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <HoverPopover
+      trigger={
+        <ContextChipButton
+          kind={props.kind}
+          {...(props.state ? { state: props.state } : {})}
+          icon={props.icon}
+          label={props.label}
+          aria-label={`${props.accessibleLabel}. Show details`}
+          copyMarkdown={props.copyMarkdown}
+        />
+      }
+      accessibleLabel={props.accessibleLabel}
+      {...(props.onIntent ? { onIntent: props.onIntent } : {})}
+      {...(props.stayOpenAfterPress ? { stayOpenAfterPress: true } : {})}
+    >
+      {props.children}
+    </HoverPopover>
+  );
+}
+
+/** Opens on hover over `trigger`, which should be a button so a click can pin it open. */
+export function HoverPopover(props: {
+  trigger: ReactElement;
+  accessibleLabel: string;
+  /** Hover or focus on the trigger, ahead of the open delay: time to start loading the details. */
+  onIntent?: (() => void) | undefined;
   /**
    * Once pressed inside, hovering away no longer closes it, so a selection made inside it,
    * which can end with the pointer outside, survives long enough to copy. Closing then hands
    * focus back to wherever it was before the press, such as the composer.
    */
-  stayOpenAfterPress?: boolean;
+  stayOpenAfterPress?: boolean | undefined;
   children: ReactNode;
 }) {
   const pressedInsideRef = useRef(false);
@@ -150,21 +199,8 @@ export function ContextChipPopover(props: {
         closeDelay={120}
         onPointerEnter={props.onIntent}
         onFocus={props.onIntent}
-        render={
-          <ContextChip
-            kind={props.kind}
-            {...(props.state ? { state: props.state } : {})}
-            render={<button type="button" />}
-            aria-label={`${props.accessibleLabel}. Show details`}
-            data-markdown-copy={props.copyMarkdown}
-          />
-        }
-      >
-        {props.icon}
-        <ContextChipLabel>
-          <Truncatable>{props.label}</Truncatable>
-        </ContextChipLabel>
-      </PopoverTrigger>
+        render={props.trigger}
+      />
       <PopoverPopup
         ref={popupRef}
         side="top"
@@ -189,36 +225,55 @@ export function ContextChipPopover(props: {
   );
 }
 
-export function PullRequestChip(props: {
+/** A pull request summary's chip; the review-comment preview supplies its hover. */
+export function PullRequestChipTrigger({
+  metadata,
+  label,
+  kindLabel,
+  kind,
+  copyMarkdown,
+  onOpen,
+  ...props
+}: Omit<ComponentProps<typeof ContextChip>, "kind" | "render" | "children" | "onClick"> & {
   metadata: PullRequestContextMetadata;
-  environmentId: EnvironmentId | null;
   label: string;
   kindLabel: string;
   kind: ContextChipKind;
-  copyMarkdown?: string;
+  copyMarkdown?: string | undefined;
   onOpen: (event: MouseEvent<HTMLElement>, url: string) => void;
 }) {
-  const previewTarget = usePullRequestPreviewTarget(props.environmentId, props.metadata.url);
-  const displayState =
-    props.metadata.state === "open" && props.metadata.isDraft ? "draft" : props.metadata.state;
+  const displayState = metadata.state === "open" && metadata.isDraft ? "draft" : metadata.state;
   const StateIcon = PULL_REQUEST_STATE_PRESENTATION[displayState].Icon;
-  const button = (
+  return (
     <ContextChip
-      kind={props.kind}
+      kind={kind}
       render={<button type="button" />}
-      aria-label={`Open ${props.kindLabel} ${props.label}: ${props.metadata.title}`}
-      data-markdown-copy={props.copyMarkdown}
-      onClick={(event) => props.onOpen(event, props.metadata.url)}
-      onAuxClick={(event) => props.onOpen(event, props.metadata.url)}
+      aria-label={`Open ${kindLabel} ${label}: ${metadata.title}`}
+      data-markdown-copy={copyMarkdown}
+      onClick={(event) => onOpen(event, metadata.url)}
+      onAuxClick={(event) => onOpen(event, metadata.url)}
+      {...props}
     >
       <StateIcon />
-      <ContextChipLabel>{props.label}</ContextChipLabel>
+      <ContextChipLabel>{label}</ContextChipLabel>
     </ContextChip>
   );
+}
+
+/**
+ * The hover for a pull request summary: the live pull request preview where the environment can
+ * read it, else the metadata captured with the chip.
+ */
+export function PullRequestSummaryHover(props: {
+  trigger: ReactElement<ComponentProps<"button">>;
+  metadata: PullRequestContextMetadata;
+  environmentId: EnvironmentId | null;
+}) {
+  const previewTarget = usePullRequestPreviewTarget(props.environmentId, props.metadata.url);
   if (previewTarget !== null) {
     return (
       <PullRequestLinkPreview
-        link={button}
+        link={props.trigger}
         originalUrl={props.metadata.url}
         target={previewTarget}
         confirmBeforeOpen={false}
@@ -228,7 +283,7 @@ export function PullRequestChip(props: {
   }
   return (
     <Tooltip>
-      <TooltipTrigger render={button} />
+      <TooltipTrigger render={props.trigger} />
       <TooltipPopup side="top">
         <PullRequestContextDetails metadata={props.metadata} />
       </TooltipPopup>
@@ -310,39 +365,48 @@ export function ImageChipButton({
   );
 }
 
-export function FileChip(props: {
+export function FileChip({
+  name,
+  size,
+  isVideo,
+  theme,
+  accessibleLabel,
+  suffix,
+  copyMarkdown,
+  disabled,
+  error,
+  unresolved,
+  onOpen,
+  ...rest
+}: Omit<ComponentProps<typeof ContextChip>, "kind" | "render" | "children" | "onClick"> & {
   name: string;
   size: string;
   isVideo: boolean;
   theme: "light" | "dark";
   accessibleLabel: string;
-  tooltip: string;
   suffix?: string | null;
   copyMarkdown?: string;
   disabled?: boolean;
   error?: boolean;
   unresolved?: boolean;
   onOpen?: (() => void) | undefined;
-  /** Shown above the tooltip text in a hover card instead of a plain tooltip. */
-  preview?: ReactNode;
 }) {
-  const content = <FileChipContent {...props} />;
-  const state = props.unresolved
-    ? ("unresolved" as const)
-    : props.error
-      ? ("invalid" as const)
-      : null;
+  const content = (
+    <FileChipContent name={name} size={size} isVideo={isVideo} theme={theme} suffix={suffix} />
+  );
+  const state = unresolved ? ("unresolved" as const) : error ? ("invalid" as const) : null;
   const attributes = {
-    kind: props.isVideo ? "video" : "file",
+    kind: isVideo ? "video" : "file",
     ...(state ? { state } : {}),
-    "aria-label": [props.accessibleLabel, props.suffix].filter(Boolean).join(", "),
-    "data-markdown-copy": props.copyMarkdown,
-    "data-context-unresolved": props.unresolved ? "true" : undefined,
+    "aria-label": [accessibleLabel, suffix].filter(Boolean).join(", "),
+    "data-markdown-copy": copyMarkdown,
+    "data-context-unresolved": unresolved ? "true" : undefined,
+    ...rest,
   } as const;
-  const chip = props.onOpen ? (
+  return onOpen ? (
     <ContextChip
-      render={<button type="button" disabled={props.disabled} />}
-      onClick={props.onOpen}
+      render={<button type="button" disabled={disabled} />}
+      onClick={onOpen}
       {...attributes}
     >
       {content}
@@ -351,38 +415,6 @@ export function FileChip(props: {
     <ContextChip tabIndex={0} {...attributes}>
       {content}
     </ContextChip>
-  );
-  if (props.preview) {
-    return <AttachmentPreviewCard trigger={chip} preview={props.preview} details={props.tooltip} />;
-  }
-  return (
-    <Tooltip>
-      <TooltipTrigger render={chip} />
-      <TooltipPopup side="top" className="whitespace-pre-wrap">
-        {props.tooltip}
-      </TooltipPopup>
-    </Tooltip>
-  );
-}
-
-/**
- * An attachment chip that previews the attachment on hover, above its details. Clicking the chip
- * still runs its own action; the card mounts only while open.
- */
-export function AttachmentPreviewCard(props: {
-  trigger: ReactElement;
-  preview: ReactNode;
-  /** Newlines are kept. */
-  details: string;
-}) {
-  return (
-    <PreviewCard>
-      <PreviewCardTrigger delay={350} closeDelay={120} render={props.trigger} />
-      <PreviewCardPopup side="top" align="start" className="w-96 max-w-[calc(100vw-2rem)]">
-        {props.preview}
-        <p className="whitespace-pre-wrap wrap-break-word px-3 py-2 text-xs">{props.details}</p>
-      </PreviewCardPopup>
-    </PreviewCard>
   );
 }
 
@@ -400,7 +432,7 @@ function FileChipContent(props: {
   size: string;
   isVideo: boolean;
   theme: "light" | "dark";
-  suffix?: string | null;
+  suffix?: string | null | undefined;
 }) {
   return (
     <>
@@ -805,58 +837,73 @@ export function RepositoryDetails(props: {
 }
 
 /**
- * A link T3 Code tried to attach and could not read. The chip is drawn as failed so it reads
+ * A link T3 Code tried to attach and could not read. Its chip is drawn as failed so it reads
  * differently from a plain link nobody tried; the agent receives the link itself.
  */
-export function UnreadLinkChip(props: {
-  record: Pick<UnreadLinkContextRecord, "label" | "url" | "linkKind" | "reason">;
+export function UnreadLinkDetails(props: {
+  record: Pick<UnreadLinkContextRecord, "url" | "linkKind" | "reason">;
   onOpenLink: (event: MouseEvent<HTMLElement>, url: string) => void;
   /** Composer only: a sent message keeps what was sent. */
-  onRetry?: () => void;
-  onKeepAsText?: () => void;
-  copyMarkdown?: string;
+  onRetry?: (() => void) | undefined;
+  onKeepAsText?: (() => void) | undefined;
 }) {
   const noun = composerObjectLinkNoun(props.record.linkKind);
   return (
-    <ContextChipPopover
+    <div className="flex flex-col gap-2">
+      <IssueDetailsHeader
+        summary={
+          props.record.reason === "timed-out"
+            ? `Loading this ${noun} timed out`
+            : `Could not read this ${noun}`
+        }
+        url={props.record.url}
+        linkLabel="Open link"
+        onOpenLink={props.onOpenLink}
+      />
+      <p className="text-xs text-muted-foreground">
+        The agent receives the link, not its contents.
+      </p>
+      {props.onRetry || props.onKeepAsText ? (
+        <div className="flex gap-2">
+          {props.onRetry ? (
+            <Button size="xs" variant="outline" onClick={props.onRetry}>
+              Retry
+            </Button>
+          ) : null}
+          {props.onKeepAsText ? (
+            <Button size="xs" variant="ghost" onClick={props.onKeepAsText}>
+              Keep as text
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** The failed chip an unread link is drawn as. */
+export function UnreadLinkChipTrigger({
+  record,
+  ...props
+}: Omit<ComponentProps<typeof ContextChipButton>, "kind" | "icon" | "label"> & {
+  record: Pick<UnreadLinkContextRecord, "label" | "linkKind">;
+}) {
+  return (
+    <ContextChipButton
       kind="neutral"
       state="invalid"
       icon={<UnlinkIcon />}
-      label={props.record.label}
-      {...(props.copyMarkdown === undefined ? {} : { copyMarkdown: props.copyMarkdown })}
-      accessibleLabel={`Could not attach ${noun}, ${props.record.label}`}
-    >
-      <div className="flex flex-col gap-2">
-        <IssueDetailsHeader
-          summary={
-            props.record.reason === "timed-out"
-              ? `Loading this ${noun} timed out`
-              : `Could not read this ${noun}`
-          }
-          url={props.record.url}
-          linkLabel="Open link"
-          onOpenLink={props.onOpenLink}
-        />
-        <p className="text-xs text-muted-foreground">
-          The agent receives the link, not its contents.
-        </p>
-        {props.onRetry || props.onKeepAsText ? (
-          <div className="flex gap-2">
-            {props.onRetry ? (
-              <Button size="xs" variant="outline" onClick={props.onRetry}>
-                Retry
-              </Button>
-            ) : null}
-            {props.onKeepAsText ? (
-              <Button size="xs" variant="ghost" onClick={props.onKeepAsText}>
-                Keep as text
-              </Button>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
-    </ContextChipPopover>
+      label={record.label}
+      aria-label={`${unreadLinkAccessibleLabel(record)}. Show details`}
+      {...props}
+    />
   );
+}
+
+export function unreadLinkAccessibleLabel(
+  record: Pick<UnreadLinkContextRecord, "label" | "linkKind">,
+): string {
+  return `Could not attach ${composerObjectLinkNoun(record.linkKind)}, ${record.label}`;
 }
 
 export function UnresolvedChip(props: { label: string; tooltip: string; copyMarkdown?: string }) {

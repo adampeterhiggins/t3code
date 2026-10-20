@@ -25,7 +25,7 @@ import { basenameOfPath } from "../../pierre-icons";
 import { ContextChip, ContextChipLabel, type ContextChipKind } from "../ContextChip";
 import { GitHubIcon, DiscordIcon, GranolaIcon, LinearIcon, NotionIcon, SlackIcon } from "../Icons";
 import { FileTagChipContent } from "./FileTagChip";
-import { SkillChipIcon } from "./SkillInlineText";
+import { SkillChipIcon } from "./SkillChipIcon";
 
 const CHIP_ICONS: Partial<Record<ContextChipKind, ReactNode>> = {
   image: <ImageIcon />,
@@ -66,6 +66,10 @@ type Segment = {
  * chips, for previews that have no records to open (queued messages). `hideImages` drops
  * image references a surface already shows as thumbnails. `expandCitations` spells out each
  * quote and its comment, since a commented quote's chip label is only the comment.
+ *
+ * Chips here are labels only, with no hover previews: every caller makes the whole line a tooltip
+ * trigger and shows the expanded line inside that tooltip, where a chip's own preview can neither
+ * open nor be reached. The line holds text, not records, so there is nothing to preview either.
  */
 export function InlineChipText({
   text,

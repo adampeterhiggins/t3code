@@ -135,10 +135,12 @@ removing a preview screenshot thumbnail removes its annotation and chip.
 The transcript resolves a message with `resolveUserMessageContext`: structured context is used as
 is, older messages are upgraded in memory. `ChatMarkdown` renders `t3-context://` links through
 `renderContextReference`, which the timeline maps to chips through the web context-presentation
-registry. The registry declares compact, details, and expanded capabilities for every known kind,
-rejects duplicate surface handlers, and provides the unresolved fallback. Terminal excerpts,
-elements, review comments, and preview annotations open structured details popovers; images and
-videos use the shared media modal. Mobile renders context links as their labels.
+registry. Each kind's registry entry owns its hover preview: the container (tooltip, popover, or
+card) and the body component. A surface (composer, sent message, `$skill` typed in message text,
+a link in markdown) supplies only the chip and the preview's input, and must handle every known
+kind; the registry wraps the chip in the kind's preview, so two surfaces cannot drift into showing
+different previews for the same thing, which is how a typed `$skill` once lost its preview. Images
+and videos use the shared media modal on click. Mobile renders context links as their labels.
 
 Pull-request summaries currently travel as review-comment records with optional typed
 `pullRequest` metadata. The metadata is a snapshot of the number, title, URL, branches, state, and

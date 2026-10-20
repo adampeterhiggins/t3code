@@ -1382,9 +1382,11 @@ through the same read and record a pasted copy of it would become, so an agent's
 chip for the same thing look alike. A link whose integration is turned off, or that can't be read,
 shows its URL. Pull request and thread links keep their own previews. Mobile has no hover.
 
-The composer, sent-message chips, and these links take each kind's icon, label, and card from one
-place: [`linkedObjectPresentation.tsx`](../apps/web/src/components/linkedObjectPresentation.tsx).
-Links are read by
+The composer, sent-message chips, and these links take each kind's card from the context
+presentation registry ([`contextPresentationRegistry.tsx`](../apps/web/src/components/contextPresentationRegistry.tsx))
+and its icon and label from
+[`linkedObjectPresentation.tsx`](../apps/web/src/components/linkedObjectPresentation.tsx). Links
+are read by
 [`LinkedObjectLinkPreview.tsx`](../apps/web/src/components/chat/LinkedObjectLinkPreview.tsx).
 
 ## Numeric pull request references include linked repositories
@@ -1446,9 +1448,8 @@ history; it previews the latest message only when that summary carries one. Unav
 references have explicit fallback text. Clicking still opens the referenced thread. Mobile has no
 hover.
 
-Code: [`ThreadPreviewHoverCard`](../apps/web/src/components/ThreadHoverCard.tsx), used by
-[`ThreadContextChip`](../apps/web/src/components/ThreadContextChip.tsx) and
-[`MarkdownThreadLink`](../apps/web/src/components/chat/MarkdownThreadLink.tsx).
+Code: [`ThreadPreviewHoverCard`](../apps/web/src/components/ThreadHoverCard.tsx), the `thread`
+preview in [`contextPresentationRegistry.tsx`](../apps/web/src/components/contextPresentationRegistry.tsx).
 
 On web and desktop, hovering an image attachment chip in the composer or a sent message shows the
 image above its name and size. Hovering a text file's chip in the composer previews its opening
@@ -1459,15 +1460,24 @@ files whose uploads were interrupted. Restored files can upload again when a ser
 the draft moves to another environment. If local storage is unavailable or full, the draft keeps
 its metadata and asks for reattachment when there is no server copy. Only the opening bytes the
 draft holds are read. A file whose local contents are unavailable and any file in a sent message
-keep the plain name-and-size tooltip, so hovering never fetches anything. Clicking a chip still opens the full preview. Mobile
-has no hover.
+show only their name and size, so hovering never fetches anything. Clicking a chip still opens the
+full preview. Mobile has no hover.
 
-Code: `AttachmentPreviewCard` in `apps/web/src/components/contextChipParts.tsx` and
-`AttachmentQuickLookPreview` in `apps/web/src/components/files/AttachmentQuickLook.tsx`, used by
-`apps/web/src/components/composerContextPresentation.tsx` and
-`apps/web/src/components/chat/MessagesTimeline.tsx`.
+Code: the `image` and `file` previews in `apps/web/src/components/contextPreviews.tsx` and
+`AttachmentQuickLookPreview` in `apps/web/src/components/files/AttachmentQuickLook.tsx`.
 Draft file persistence: `apps/web/src/composerDraftFilePersistence.ts` and
 `apps/web/src/composerAttachmentBytes.ts`.
+
+## Context chips preview the same everywhere
+
+On web and desktop, a context chip shows the same hover preview wherever it appears: in the
+composer, in a sent message, and, for skills, files, and threads, where the message text names
+them. A `$skill` typed into a message, such as a scheduled task's prompt, previews the skill's
+description and its instructions link exactly as the composer's skill chip does. Mobile has no
+hover.
+
+Code: [`contextPresentationRegistry.tsx`](../apps/web/src/components/contextPresentationRegistry.tsx)
+and the preview bodies in [`contextPreviews.tsx`](../apps/web/src/components/contextPreviews.tsx).
 
 ## Terminal excerpts keep their colors
 
@@ -1481,7 +1491,7 @@ show plain text. Mobile has no hover preview.
 Code: `styledText` on `TerminalContextRecord` in
 [composerContext.ts](../packages/contracts/src/composerContext.ts), captured in
 [ThreadTerminalDrawer.tsx](../apps/web/src/components/ThreadTerminalDrawer.tsx) and shown by
-[TerminalContextInlineChip.tsx](../apps/web/src/components/chat/TerminalContextInlineChip.tsx).
+[TerminalContextPreview.tsx](../apps/web/src/components/chat/TerminalContextPreview.tsx).
 
 ## Citations keep their formatting
 

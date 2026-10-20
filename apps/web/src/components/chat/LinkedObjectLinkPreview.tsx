@@ -26,7 +26,8 @@ import { notionEnvironment } from "~/state/notion";
 import { useEnvironmentQuery } from "~/state/query";
 import { slackEnvironment } from "~/state/slack";
 
-import { LinkedObjectDetails, type LinkedObjectContextRecord } from "../linkedObjectPresentation";
+import { ContextPreviewBody } from "../contextPresentationRegistry";
+import type { LinkedObjectContextRecord } from "../linkedObjectPresentation";
 import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useCursorAnchor } from "./CursorPreviewCard";
@@ -222,7 +223,8 @@ export function LinkedObjectLinkPreview(props: {
       {record === null ? null : (
         <PreviewCardPopup {...cursorAnchor.popupProps} className="w-96 max-w-[calc(100vw-2rem)]">
           <div className="px-3 py-2">
-            <LinkedObjectDetails record={record} onOpenLink={openLink} />
+            {/* The chip's own preview, so the link reads exactly as its chip would. */}
+            <ContextPreviewBody kind={record.kind} preview={{ record, onOpenLink: openLink }} />
           </div>
         </PreviewCardPopup>
       )}
