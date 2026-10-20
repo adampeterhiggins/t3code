@@ -4094,15 +4094,13 @@ function LiveWorkEntryTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "
               targets={toolPathTargets(row.entry)}
               environmentId={ctx.activeThreadEnvironmentId}
               workspaceRoot={ctx.workspaceRoot}
+              singleLine
             />
           ) : (
             label
           )
         }
-        wrapLabel={
-          showsPaths ||
-          Boolean(row.entry.questionAnswer && hasQuestionAnswer(row.entry.questionAnswer))
-        }
+        wrapLabel={Boolean(row.entry.questionAnswer && hasQuestionAnswer(row.entry.questionAnswer))}
         iconName={workEntryIconName(row.entry)}
         toolIcon={row.entry.toolIcon ?? row.entry.toolSource?.icon}
         failed={failed}
@@ -5592,7 +5590,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
     <WorkLogRow
       data-v2-item-type={workEntry.projectedItem?.item.type}
       data-v2-item-visibility={workEntry.projectedItem?.visibility}
-      wrapLabel={showsPaths || answerPreview !== null}
+      wrapLabel={answerPreview !== null}
       {...rowToggleProps}
       icon={
         <span
@@ -5622,7 +5620,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
               <span
                 className={cn(
                   "min-w-0 flex-1",
-                  showsPaths ? "break-words" : "truncate",
+                  showsPaths ? "overflow-hidden" : "truncate",
                   headingClass,
                 )}
               >
@@ -5651,6 +5649,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
                     text={previewText}
                     environmentId={ctx.activeThreadEnvironmentId}
                     workspaceRoot={workspaceRoot}
+                    singleLine
                   />
                 ) : (
                   previewText

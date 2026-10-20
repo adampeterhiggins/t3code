@@ -1180,7 +1180,7 @@ const ThreadWorkLogRow = function ThreadWorkLogRow(
             ) : (
               <WorkLogLabel
                 tone={isUsageLimit ? "warning" : iconIsDestructive ? "danger" : "default"}
-                wrap={showsPaths}
+                ellipsizeMode={showsPaths ? "middle" : "tail"}
               >
                 {isSystemNotice ? (
                   row.summary

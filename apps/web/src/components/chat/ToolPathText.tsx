@@ -9,14 +9,29 @@ import { toolPathRootsAtom } from "~/state/toolPaths";
 import { Button } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 
-/** A hoverable copy tooltip, also opened by click, keyboard, and touch. */
-function ToolPathBreadcrumb({ path }: { path: NonNullable<ReturnType<typeof resolveToolPath>> }) {
+const pathRootClassName =
+  "underline decoration-muted-foreground/60 decoration-dotted underline-offset-2";
+
+/**
+ * Activity rows are one line. The filename stays outside the truncating span so a long
+ * directory collapses in the middle (`repo/src/…/File.ts`) instead of wrapping after the verb.
+ */
+function ToolPathBreadcrumb({
+  path,
+  singleLine = false,
+}: {
+  path: NonNullable<ReturnType<typeof resolveToolPath>>;
+  singleLine?: boolean;
+}) {
   const [error, setError] = useState<string | null>(null);
   const { copyToClipboard, isCopied } = useCopyToClipboard({
     target: "full file path",
     onCopy: () => setError(null),
     onError: () => setError("Could not copy path. Select it to copy manually."),
   });
+  const filename = path.segments.at(-1);
+  const directories = filename === undefined ? [] : path.segments.slice(0, -1);
+  const root = <span className={pathRootClassName}>{path.rootLabel}</span>;
   return (
     <Popover>
       <PopoverTrigger
@@ -29,14 +44,32 @@ function ToolPathBreadcrumb({ path }: { path: NonNullable<ReturnType<typeof reso
         render={
           <button
             type="button"
-            className="inline max-w-full cursor-pointer rounded-sm text-left font-mono text-2xs leading-relaxed wrap-anywhere focus-visible:outline-2 focus-visible:outline-ring"
+            className={
+              singleLine
+                ? "inline-flex min-w-0 max-w-full cursor-pointer items-baseline overflow-hidden whitespace-nowrap rounded-sm text-left font-mono text-2xs leading-relaxed focus-visible:outline-2 focus-visible:outline-ring"
+                : "inline max-w-full cursor-pointer rounded-sm text-left font-mono text-2xs leading-relaxed wrap-anywhere focus-visible:outline-2 focus-visible:outline-ring"
+            }
           />
         }
       >
-        <span className="underline decoration-muted-foreground/60 decoration-dotted underline-offset-2">
-          {path.rootLabel}
-        </span>
-        {path.segments.map((segment) => `/${segment}`).join("")}
+        {singleLine ? (
+          filename === undefined ? (
+            <span className="min-w-0 truncate">{root}</span>
+          ) : (
+            <>
+              <span className="min-w-0 truncate">
+                {root}
+                {directories.length > 0 ? `/${directories.join("/")}` : null}
+              </span>
+              <span className="shrink-0">/{filename}</span>
+            </>
+          )
+        ) : (
+          <>
+            {root}
+            {path.segments.map((segment) => `/${segment}`).join("")}
+          </>
+        )}
       </PopoverTrigger>
       <PopoverPopup width="lg" padding="compact" tooltipStyle align="start">
         <div
@@ -74,15 +107,38 @@ export function ToolPathText(props: {
   workspaceRoot: string | null | undefined;
   pathOnly?: boolean;
   targets?: ReadonlyArray<string>;
+  /** One line, keeping each file name. Detail and preview views leave this off and wrap. */
+  singleLine?: boolean;
 }) {
   const roots = useAtomValue(toolPathRootsAtom(props.environmentId));
   const path = props.pathOnly ? resolveToolPath(props.text, props.workspaceRoot, roots) : null;
-  if (path) return <ToolPathBreadcrumb path={path} />;
+  if (path) {
+    const breadcrumb = <ToolPathBreadcrumb path={path} singleLine={props.singleLine ?? false} />;
+    if (!props.singleLine) return breadcrumb;
+    return <span className="flex w-full min-w-0 items-baseline">{breadcrumb}</span>;
+  }
   const occurrences = new Map<string, number>();
-  return toolPathTextParts(props.text, props.workspaceRoot, roots, props.targets).map((part) => {
-    if ("text" in part) return part.text;
-    const occurrence = (occurrences.get(part.path.absolutePath) ?? 0) + 1;
-    occurrences.set(part.path.absolutePath, occurrence);
-    return <ToolPathBreadcrumb key={`${part.path.absolutePath}:${occurrence}`} path={part.path} />;
-  });
+  const nodes = toolPathTextParts(props.text, props.workspaceRoot, roots, props.targets).map(
+    (part, index) => {
+      if ("text" in part) {
+        if (!props.singleLine) return part.text;
+        return (
+          <span key={`text:${index}`} className="shrink-0 whitespace-pre">
+            {part.text}
+          </span>
+        );
+      }
+      const occurrence = (occurrences.get(part.path.absolutePath) ?? 0) + 1;
+      occurrences.set(part.path.absolutePath, occurrence);
+      return (
+        <ToolPathBreadcrumb
+          key={`${part.path.absolutePath}:${occurrence}`}
+          path={part.path}
+          singleLine={props.singleLine ?? false}
+        />
+      );
+    },
+  );
+  if (!props.singleLine) return nodes;
+  return <span className="flex w-full min-w-0 items-baseline">{nodes}</span>;
 }
