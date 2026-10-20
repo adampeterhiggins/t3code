@@ -1145,34 +1145,57 @@ const ThreadWorkLogRow = function ThreadWorkLogRow(
                 />
               )}
             </WorkLogIconSlot>
-            <WorkLogLabel
-              tone={isUsageLimit ? "warning" : iconIsDestructive ? "danger" : "default"}
-              wrap={showsPaths}
-            >
-              {isSystemNotice ? (
-                row.summary
-              ) : showsPaths ? (
-                <ToolPathText
-                  targets={toolPathTargets(row.workEntry)}
-                  text={displayText}
-                  environmentId={props.environmentId}
-                  workspaceRoot={props.workspaceRoot}
-                />
-              ) : (
-                displayText
-              )}
-              {answerPreview ? (
+            {answerPreview && !isSystemNotice ? (
+              <View className="min-w-0 flex-1">
                 <Text
-                  className={
-                    !expanded &&
-                    row.workEntry.questionAnswer &&
-                    hasQuestionAnswer(row.workEntry.questionAnswer)
-                      ? "text-foreground"
-                      : "text-foreground-subtle"
-                  }
-                >{`  ${answerPreview}`}</Text>
-              ) : null}
-            </WorkLogLabel>
+                  selectable={false}
+                  numberOfLines={2}
+                  className="text-sm text-foreground-muted"
+                >
+                  {displayText}
+                </Text>
+                <View className="flex-row items-center gap-1.5">
+                  <SymbolView
+                    name="arrow.turn.down.right"
+                    size={12}
+                    tintColor={props.iconSubtleColor}
+                    type="monochrome"
+                  />
+                  <Text
+                    selectable={false}
+                    numberOfLines={1}
+                    className={cn(
+                      "min-w-0 flex-1 text-sm",
+                      !expanded &&
+                        row.workEntry.questionAnswer &&
+                        hasQuestionAnswer(row.workEntry.questionAnswer)
+                        ? "text-foreground"
+                        : "text-foreground-subtle",
+                    )}
+                  >
+                    {answerPreview}
+                  </Text>
+                </View>
+              </View>
+            ) : (
+              <WorkLogLabel
+                tone={isUsageLimit ? "warning" : iconIsDestructive ? "danger" : "default"}
+                wrap={showsPaths}
+              >
+                {isSystemNotice ? (
+                  row.summary
+                ) : showsPaths ? (
+                  <ToolPathText
+                    targets={toolPathTargets(row.workEntry)}
+                    text={displayText}
+                    environmentId={props.environmentId}
+                    workspaceRoot={props.workspaceRoot}
+                  />
+                ) : (
+                  displayText
+                )}
+              </WorkLogLabel>
+            )}
           </>
         )}
 
