@@ -13,7 +13,6 @@ import { writeTerminalOutputUpdate } from "../../components/ThreadTerminalDrawer
 import { GHOSTTY_CELL_WIDE, GhosttyTerminalCore, ghosttyCellText } from "./core";
 import { loadGhosttyRuntime } from "./runtime";
 import { keepTerminalContextStyledText } from "../../lib/terminalContext";
-import { parseTerminalStyledText } from "../../lib/terminalStyledText";
 import {
   DEFAULT_TERMINAL_ANSI_COLORS,
   TERMINAL_ANSI_ROLES,
@@ -189,13 +188,23 @@ describe("GhosttyTerminalCore snapshots", () => {
     expect(core.selectionText()).toBe("error: done\nnext");
     const styled = keepTerminalContextStyledText(core.selectionStyledText());
     expect(styled).toBeDefined();
-    expect(parseTerminalStyledText(styled!)).toEqual([
-      {
-        text: "error:",
-        style: expect.objectContaining({ bold: true, foreground: { kind: "palette", index: 1 } }),
-      },
-      { text: " done\nnext", style: expect.objectContaining({ bold: false, foreground: null }) },
-    ]);
+    // The hover preview replays the styled selection into a fresh terminal.
+    const replay = await createCore();
+    replay.write(styled!.split("\n").join("\r\n"));
+    const cells = (target: GhosttyTerminalCore) =>
+      target
+        .snapshot()
+        .rowData.slice(0, 2)
+        .map((row) =>
+          row.cells.map(({ text, foreground, background, bold }) => ({
+            text,
+            foreground,
+            background,
+            bold,
+          })),
+        );
+    expect(cells(replay)).toEqual(cells(core));
+    expect(cells(replay)[0]![0]).toMatchObject({ text: "e", bold: true });
   });
 
   it("resolves foreground and background independently without retaining prior cell colors", async () => {

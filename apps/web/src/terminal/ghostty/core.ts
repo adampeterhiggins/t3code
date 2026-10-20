@@ -501,11 +501,20 @@ export class GhosttyTerminalCore {
     this.runtime.free(scroll, layout.size);
   }
 
+  scrollToTop(): void {
+    this.scrollViewportTo(0);
+  }
+
   scrollToBottom(): void {
+    this.scrollViewportTo(1);
+  }
+
+  /** `tag` is `GhosttyTerminalScrollViewport`'s TOP (0) or BOTTOM (1). */
+  private scrollViewportTo(tag: 0 | 1): void {
     this.ensureActive();
     const layout = this.runtime.layout("GhosttyTerminalScrollViewport");
     const scroll = this.runtime.alloc(layout.size);
-    this.runtime.setField(scroll, "GhosttyTerminalScrollViewport", "tag", 1);
+    this.runtime.setField(scroll, "GhosttyTerminalScrollViewport", "tag", tag);
     this.runtime.call("ghostty_terminal_scroll_viewport", this.terminal, scroll);
     this.runtime.free(scroll, layout.size);
   }

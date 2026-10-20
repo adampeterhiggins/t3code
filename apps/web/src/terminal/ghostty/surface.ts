@@ -854,6 +854,15 @@ export class GhosttyTerminalSurface {
     this.applyFontMetrics();
   };
 
+  /** Size the mount to exactly `cols` by `rows` cells, for hosts that size to their content. */
+  sizeToGrid(cols: number, rows: number): void {
+    if (this.disposed) return;
+    // Half a cell of slack keeps a fractional cell width from flooring to one column short.
+    this.mount.style.width = `${CONTENT_PADDING * 2 + (cols + 0.5) * this.metrics.width}px`;
+    this.mount.style.height = `${CONTENT_PADDING * 2 + rows * this.metrics.height}px`;
+    this.fit();
+  }
+
   resendSize(): void {
     this.resizeNotified = false;
     this.fit();
@@ -1046,6 +1055,13 @@ export class GhosttyTerminalSurface {
     this.options.onSelectionChange();
     // Selection highlights span rows Ghostty may not mark dirty for this change.
     this.forceFullRender = true;
+    this.requestRender();
+  }
+
+  scrollToTop(): void {
+    this.core.scrollToTop();
+    this.forceFullRender = true;
+    this.scrollbarDirty = true;
     this.requestRender();
   }
 
