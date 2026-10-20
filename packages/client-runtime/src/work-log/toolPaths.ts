@@ -27,6 +27,11 @@ function containsPath(path: string, root: string) {
   return target === directory || target.startsWith(`${directory}/`);
 }
 
+function sameDirectory(left: string, right: string) {
+  const fold = isWindowsAbsolutePath(left) || isWindowsAbsolutePath(right);
+  return fold ? left.toLowerCase() === right.toLowerCase() : left === right;
+}
+
 /** Environment-local roots, stable across shell updates that only change a thread's status. */
 export function createToolPathRootsAtoms(input: {
   readonly threadsAtom: (id: EnvironmentId) => Atom.Atom<ReadonlyArray<OrchestrationV2ThreadShell>>;
@@ -122,6 +127,9 @@ export function resolveToolPath(
     rootLabel: root?.label ?? "External",
     project: root?.project ?? null,
     segments: relative.split("/").filter(Boolean),
+    // The thread's own checkout. A list of its files can skip repeating the name.
+    inWorkspace:
+      workspace !== null && root !== undefined && sameDirectory(normalize(root.path), workspace),
   };
 }
 
