@@ -1,6 +1,6 @@
 import * as Schema from "effect/Schema";
 import { ChevronDownIcon, MessageCircle, Trash2 } from "lucide-react";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 
 import { Button } from "~/components/ui/button";
 import { Group, GroupSeparator } from "~/components/ui/group";
@@ -8,13 +8,19 @@ import { Menu, MenuItem, MenuItemLabel, MenuPopup, MenuTrigger } from "~/compone
 import { Textarea } from "~/components/ui/textarea";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
+import { readLocalApi } from "~/localApi";
 
 import { isCommentSubmitShortcut } from "./commentSubmitShortcut";
 
-/** Hands the comment to the agent instead of the review: sent now, or left in its composer. */
+/**
+ * Hands the comment to the agent instead of the review: sent now, left in its composer, or kept
+ * as a draft on its thread to send later.
+ */
 interface DiffCommentAgentAction {
   readonly send: (text: string) => void;
   readonly addToComposer: (text: string) => void;
+  /** Absent where the comment would land in a new thread, which has nowhere to keep drafts. */
+  readonly saveDraft?: ((text: string) => void) | undefined;
 }
 
 const AgentActionChoiceSchema = Schema.Literals(["send", "composer"]);
@@ -25,6 +31,12 @@ const AGENT_ACTION_CHOICES = {
   send: { label: "Send to agent", description: "Starts a turn now" },
   composer: { label: "Add to composer", description: "Insert as a chip and keep writing" },
 } as const satisfies Record<AgentActionChoice, { label: string; description: string }>;
+
+// Not a remembered choice: a draft is a one-off detour, not how the reader usually hands over.
+const SAVE_DRAFT_ACTION = {
+  label: "Save as draft",
+  description: "Keep it in the thread to send later",
+} as const;
 
 interface DiffCommentAnnotationProps {
   kind: "draft" | "comment";
@@ -199,8 +211,24 @@ function AgentActionButton(props: {
     props.onChoose(choice);
     props.action[AGENT_ACTION_HANDLERS[choice]](props.text);
   };
+  const saveDraft = props.action.saveDraft;
+  const openContextMenu = async (event: MouseEvent) => {
+    event.preventDefault();
+    const api = readLocalApi();
+    if (!api || props.disabled) return;
+    const selected = await api.contextMenu.show(
+      [
+        { id: "send", label: AGENT_ACTION_CHOICES.send.label, icon: "arrow-up" },
+        { id: "composer", label: AGENT_ACTION_CHOICES.composer.label, icon: "message-square-plus" },
+        ...(saveDraft ? [{ id: "draft", label: SAVE_DRAFT_ACTION.label, icon: "file-text" }] : []),
+      ],
+      { x: event.clientX, y: event.clientY },
+    );
+    if (selected === "send" || selected === "composer") run(selected);
+    else if (selected === "draft") saveDraft?.(props.text);
+  };
   return (
-    <Group>
+    <Group onContextMenu={(event) => void openContextMenu(event)}>
       <Button
         size="xs"
         variant={variant}
@@ -230,6 +258,16 @@ function AgentActionButton(props: {
               </span>
             </MenuItem>
           ))}
+          {saveDraft ? (
+            <MenuItem onClick={() => saveDraft(props.text)}>
+              <span className="flex min-w-0 flex-col py-0.5">
+                <MenuItemLabel>{SAVE_DRAFT_ACTION.label}</MenuItemLabel>
+                <span className="truncate text-xs text-muted-foreground">
+                  {SAVE_DRAFT_ACTION.description}
+                </span>
+              </span>
+            </MenuItem>
+          ) : null}
         </MenuPopup>
       </Menu>
     </Group>

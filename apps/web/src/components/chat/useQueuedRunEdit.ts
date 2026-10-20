@@ -28,23 +28,17 @@ import {
   type ComposerThreadTarget,
 } from "../../composerDraftStore";
 import { useStableCallback } from "../../hooks/useStableCallback";
-import {
-  awaitAttachmentUploads,
-  getUploadedAttachments,
-  releaseDraftAttachments,
-  startAttachmentUpload,
-} from "../../lib/attachmentUploadQueue";
+import { releaseDraftAttachments } from "../../lib/attachmentUploadQueue";
 import { buildMessageContext } from "../../lib/composerContextRecords";
 import { readFileAsDataUrl } from "../../lib/imageCompression";
 import type { TerminalContextDraft } from "../../lib/terminalContext";
 import type { ReviewCommentContext } from "../../reviewCommentContext";
-import { appAtomRegistry } from "../../rpc/atomRegistry";
-import { environmentServerConfigsAtom } from "../../state/server";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import type { ChatComposerHandle } from "./ChatComposer";
-import { fileAttachmentCapabilityBlockReason } from "./composerAttachmentFiles";
+import type { MessageDraftContent } from "./useMessageDraftActions";
+import { uploadComposerAttachments } from "./composerAttachmentUploads";
 import { prepareQueuedEditAttachments, recoverQueuedMessageEdit } from "./queuedMessageEdit";
 import type { EditQueuedRunRequest } from "./QueuedRunsControl";
 
@@ -73,6 +67,51 @@ function queuedEditDraftTarget(routeThreadRef: ScopedThreadRef, runId: RunId) {
   return DraftId.make(`queued-edit:${scopedThreadKey(routeThreadRef)}:${runId}`);
 }
 
+/** The edit's context: kept records of the queued message, plus records for what it adds. */
+function queuedRunEditContext(input: {
+  readonly editing: EditingQueuedRun;
+  readonly content: QueuedRunEditContent;
+  /** Wire ids of the new attachments, in composer order (images, then files). */
+  readonly newAttachmentIds: ReadonlyArray<string | undefined>;
+}): OrchestrationMessageContext {
+  const { editing, content } = input;
+  const editText = content.prompt.trim();
+  // Kept records for removed attachments would point at nothing.
+  const keptRecords = (editing.context?.records ?? []).filter(
+    (record) =>
+      !("attachmentId" in record) ||
+      editing.existingAttachments.some((attachment) => attachment.id === record.attachmentId),
+  );
+  const ids = new Set(collectInlineContextIds(editText));
+  const referenced = <T extends { readonly contextId: string }>(records: ReadonlyArray<T>) =>
+    records.filter((record) => ids.has(record.contextId));
+  const newRecords =
+    buildMessageContext({
+      terminalContexts: content.terminalContexts.filter(
+        (context) => context.text.trim().length > 0,
+      ),
+      reviewComments: content.reviewComments,
+      previewAnnotations: content.previewAnnotations,
+      threadContexts: content.threadContexts,
+      threadTabs: referenced(readThreadTabContextRecords(editing.threadId)),
+      issues: referenced(readIssueContextRecords(editing.threadId)),
+      repositories: referenced(readRepositoryContextRecords(editing.threadId)),
+      checkouts: referenced(readCheckoutContextRecords(editing.threadId)),
+      attachments: [...content.images, ...content.files].map((attachment, index) => ({
+        attachment,
+        attachmentId: input.newAttachmentIds[index] ?? attachment.id,
+      })),
+    })?.records ?? [];
+  return {
+    version: 1,
+    records: [
+      ...new Map(
+        [...keptRecords, ...newRecords].map((record) => [record.contextId, record] as const),
+      ).values(),
+    ],
+  };
+}
+
 /** Uploads the edit's new attachments and saves it. Returns the error to show, or null. */
 async function submitQueuedRunEdit(input: {
   readonly environmentId: EnvironmentId;
@@ -83,66 +122,20 @@ async function submitQueuedRunEdit(input: {
 }): Promise<string | null> {
   const { environmentId, draftTarget, editing, content } = input;
   const editText = content.prompt.trim();
-  const newAttachments = [...content.images, ...content.files];
-  const uploadFiles = async (files: ReadonlyArray<ComposerFileAttachment>) => {
-    const validateFiles = () => {
-      const config = appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId) ?? null;
-      const reason = fileAttachmentCapabilityBlockReason({
-        files,
-        attachmentUploadsCapabilityKnown: config !== null,
-        supportsAttachmentUploads: config?.environment.capabilities.attachmentUploads === true,
-        maxFileAttachmentBytes:
-          config?.environment.capabilities.fileAttachments?.maxUploadBytes ?? null,
-      });
-      if (reason !== null) throw new Error(reason);
-    };
-    validateFiles();
-    for (const file of files) startAttachmentUpload({ environmentId, image: file, draftTarget });
-    await awaitAttachmentUploads(files.map((file) => file.id));
-    validateFiles();
-    const uploaded = getUploadedAttachments({ environmentId, images: files });
-    if (uploaded === null) throw new Error("Retry or remove failed uploads before saving.");
-    return uploaded;
-  };
   try {
     const uploads = await prepareQueuedEditAttachments({
       existingAttachments: editing.existingAttachments,
       images: content.images,
       files: content.files,
       readImage: readFileAsDataUrl,
-      uploadFiles,
+      uploadFiles: (files) =>
+        uploadComposerAttachments({
+          environmentId,
+          attachments: files,
+          draftTarget,
+          failedUploadMessage: "Retry or remove failed uploads before saving.",
+        }),
     });
-    // Kept records for removed attachments would point at nothing.
-    const keptRecords = (editing.context?.records ?? []).filter(
-      (record) =>
-        !("attachmentId" in record) ||
-        editing.existingAttachments.some((attachment) => attachment.id === record.attachmentId),
-    );
-    const newRecords =
-      buildMessageContext({
-        terminalContexts: content.terminalContexts.filter(
-          (context) => context.text.trim().length > 0,
-        ),
-        reviewComments: content.reviewComments,
-        previewAnnotations: content.previewAnnotations,
-        threadContexts: content.threadContexts,
-        ...(() => {
-          const ids = new Set(collectInlineContextIds(editText));
-          const referenced = <T extends { readonly contextId: string }>(
-            records: ReadonlyArray<T>,
-          ) => records.filter((record) => ids.has(record.contextId));
-          return {
-            threadTabs: referenced(readThreadTabContextRecords(editing.threadId)),
-            issues: referenced(readIssueContextRecords(editing.threadId)),
-            repositories: referenced(readRepositoryContextRecords(editing.threadId)),
-            checkouts: referenced(readCheckoutContextRecords(editing.threadId)),
-          };
-        })(),
-        attachments: newAttachments.map((attachment, index) => ({
-          attachment,
-          attachmentId: uploads[editing.existingAttachments.length + index]?.id ?? attachment.id,
-        })),
-      })?.records ?? [];
     const result = await input.editQueuedRun({
       environmentId,
       input: {
@@ -152,16 +145,13 @@ async function submitQueuedRunEdit(input: {
         edit: {
           messageId: editing.messageId,
           attachments: uploads,
-          context: {
-            version: 1,
-            records: [
-              ...new Map(
-                [...keptRecords, ...newRecords].map(
-                  (record) => [record.contextId, record] as const,
-                ),
-              ).values(),
-            ],
-          },
+          context: queuedRunEditContext({
+            editing,
+            content,
+            newAttachmentIds: uploads
+              .slice(editing.existingAttachments.length)
+              .map((attachment) => attachment.id),
+          }),
         },
       },
     });
@@ -201,6 +191,7 @@ export function useQueuedRunEdit(input: {
     composerRef,
   } = input;
   const editQueuedRunCommand = useEditQueuedRunCommand();
+  const cancelQueuedRun = useAtomCommand(threadEnvironment.cancelQueuedRun);
   const [editing, setEditing] = useState<EditingQueuedRun | null>(null);
   const saveInFlightRef = useRef(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -349,6 +340,63 @@ export function useQueuedRunEdit(input: {
     focusComposerSoon();
   };
 
+  /**
+   * Saves the composer content as a thread draft, then takes the queued message out of the
+   * queue. Edit mode ends before the cancel so the queue watcher above does not treat the
+   * cancel as the run leaving under an unsaved edit.
+   */
+  const moveToDrafts = async (
+    content: QueuedRunEditContent,
+    saveDraft: (draft: MessageDraftContent) => Promise<boolean>,
+  ) => {
+    if (editing === null || saveInFlightRef.current) return;
+    const newAttachments = [...content.images, ...content.files];
+    saveInFlightRef.current = true;
+    setIsSaving(true);
+    const saved = await (async () => {
+      try {
+        const uploads = await uploadComposerAttachments({
+          environmentId,
+          attachments: newAttachments,
+          draftTarget,
+          failedUploadMessage: "Retry or remove failed uploads before saving a draft.",
+        });
+        return await saveDraft({
+          threadId: editing.threadId,
+          text: content.prompt.trim(),
+          attachments: [...editing.existingAttachments, ...uploads],
+          context: queuedRunEditContext({
+            editing,
+            content,
+            newAttachmentIds: uploads.map((attachment) => attachment.id),
+          }),
+        });
+      } catch (error) {
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Could not save the draft",
+            description: error instanceof Error ? error.message : undefined,
+          }),
+        );
+        return false;
+      }
+    })();
+    saveInFlightRef.current = false;
+    setIsSaving(false);
+    if (!saved) return;
+    releaseDraftAttachments(newAttachments);
+    promptRef.current = "";
+    clearEditDraft(editing.runId);
+    composerRef.current?.resetCursorState();
+    setEditing(null);
+    await cancelQueuedRun({
+      environmentId,
+      input: { threadId: editing.threadId, runId: editing.runId },
+    });
+    focusComposerSoon();
+  };
+
   return {
     editingRunId: editing?.runId ?? null,
     isEditing: editing !== null,
@@ -359,5 +407,6 @@ export function useQueuedRunEdit(input: {
     cancelEdit,
     removeEditingAttachment,
     saveEdit,
+    moveToDrafts,
   };
 }

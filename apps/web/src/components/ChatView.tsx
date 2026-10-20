@@ -23,6 +23,9 @@ import {
 import * as DateTime from "effect/DateTime";
 import { restorePlanFollowUpComposer, threadHasStarted } from "./ChatView.logic";
 import { useQueuedRunEdit } from "./chat/useQueuedRunEdit";
+import { ThreadDraftsTray } from "./chat/ThreadDraftsTray";
+import { uploadComposerAttachments } from "./chat/composerAttachmentUploads";
+import { useMessageDraftActions } from "./chat/useMessageDraftActions";
 import {
   isPaintOnlyThreadTimeline,
   peekHeldThreadTimeline,
@@ -76,6 +79,7 @@ import {
   DEFAULT_MODEL,
   isProviderNativeSubagentThread,
   type EnvironmentId,
+  type MessageDraftId,
   type MessageId,
   type ModelSelection,
   type OrchestrationV2ProjectedTurnItem,
@@ -1611,6 +1615,8 @@ export default function ChatView(props: ChatViewProps) {
   const readMultipleModelSelections = () => appAtomRegistry.get(fanoutSelectionsAtom);
   const environmentUnavailableSendToastSlotRef = useRef(0);
   const feedbackUploadsInFlightRef = useRef(new Set<string>());
+  const draftSaveInFlightRef = useRef(false);
+  const messageDraftActions = useMessageDraftActions();
   const terminalUiOpenByThreadRef = useRef<Record<string, boolean>>({});
   const terminalUiState = useTerminalUiStateStore((state) =>
     selectThreadTerminalUiState(state.terminalUiStateByThreadKey, routeThreadRef),
@@ -6982,6 +6988,108 @@ export default function ChatView(props: ChatViewProps) {
     }
     finalizePromotedDraftThreadByRef(threadRef);
   };
+  /**
+   * Keeps what the composer holds as a draft on the thread, prepared as a send would be (uploads,
+   * context records) but without a turn. Editing a queued message moves it to drafts instead.
+   * Resolves whether the composer was emptied.
+   */
+  const saveComposerAsMessageDraft = async (): Promise<boolean> => {
+    if (
+      !activeThread ||
+      !isServerThread ||
+      !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope) ||
+      sendInFlightRef.current ||
+      draftSaveInFlightRef.current
+    ) {
+      return false;
+    }
+    const sendCtx = composerRef.current?.getSendContext();
+    if (!sendCtx) return false;
+    const content = {
+      prompt: promptRef.current,
+      images: sendCtx.images,
+      files: sendCtx.files,
+      terminalContexts: sendCtx.terminalContexts,
+      reviewComments: sendCtx.reviewComments,
+      previewAnnotations: sendCtx.previewAnnotations,
+      threadContexts: sendCtx.threadContexts,
+    };
+    if (queuedRunEdit.isEditing) {
+      await queuedRunEdit.moveToDrafts(content, (draft) =>
+        messageDraftActions.save(environmentId, draft).then((saved) => saved !== null),
+      );
+      return true;
+    }
+    const { sendableTerminalContexts, hasSendableContent } = deriveComposerSendState({
+      prompt: content.prompt,
+      imageCount: content.images.length + content.files.length,
+      terminalContexts: content.terminalContexts,
+      elementContextCount:
+        content.previewAnnotations.length +
+        content.reviewComments.length +
+        content.threadContexts.length,
+    });
+    if (!hasSendableContent) return false;
+    const threadIdForDraft = activeThread.id;
+    const attachments = [...content.images, ...content.files];
+    // Chips for terminal output that has since gone would point at nothing in the draft.
+    const text = content.terminalContexts
+      .filter((context) => !sendableTerminalContexts.includes(context))
+      .reduce(
+        (prompt, context) =>
+          removeInlineContextReference(prompt, terminalContextReference(context).contextId).prompt,
+        content.prompt,
+      )
+      .trim();
+    draftSaveInFlightRef.current = true;
+    const saved = await (async () => {
+      try {
+        const uploads = await uploadComposerAttachments({
+          environmentId,
+          attachments,
+          draftTarget: composerDraftTarget,
+          failedUploadMessage: "Retry or remove failed uploads before saving a draft.",
+        });
+        return await messageDraftActions.save(environmentId, {
+          threadId: threadIdForDraft,
+          text,
+          attachments: uploads,
+          context: buildMessageContext({
+            terminalContexts: sendableTerminalContexts,
+            reviewComments: content.reviewComments,
+            previewAnnotations: content.previewAnnotations,
+            threadContexts: content.threadContexts,
+            ...readReferencedForkContexts(threadIdForDraft, text),
+            attachments: attachments.map((attachment, index) => ({
+              attachment,
+              attachmentId: uploads[index]?.id ?? attachment.id,
+            })),
+          }),
+        });
+      } catch (error) {
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Could not save the draft",
+            description: error instanceof Error ? error.message : undefined,
+          }),
+        );
+        return null;
+      }
+    })();
+    draftSaveInFlightRef.current = false;
+    if (saved === null) return false;
+    // Anything typed while the save was in flight belongs to a new message; keep it.
+    if (promptRef.current !== content.prompt) return true;
+    releaseDraftAttachments(attachments);
+    useThreadTabContextStore.getState().clear(threadIdForDraft);
+    useIssueContextStore.getState().clear(threadIdForDraft);
+    useRepositoryContextStore.getState().clear(threadIdForDraft);
+    promptRef.current = "";
+    clearComposerDraftContent(composerDraftTarget);
+    composerRef.current?.resetCursorState();
+    return true;
+  };
   const onSend = async (
     e?: {
       preventDefault: () => void;
@@ -8571,23 +8679,36 @@ export default function ChatView(props: ChatViewProps) {
   const sendPreviewAnnotationStable = useStableCallback(sendPreviewAnnotation);
   const onComposerResumeStable = useStableCallback(onResume);
   const onComposerCompactContextStable = useStableCallback(onCompactContext);
+  const saveComposerAsMessageDraftStable = useStableCallback(saveComposerAsMessageDraft);
+  const openMessageDraftStable = useStableCallback((draftId: MessageDraftId) => {
+    void composerRef.current?.openMessageDraft(draftId);
+  });
   const queuedRunsControl =
     isServerThread && activeThread ? (
-      <QueuedRunsControl
-        ref={queuedRunsControlRef}
-        steerShortcutLabel={shortcutLabelForCommand(keybindings, "thread.steerQueuedMessage", {
-          context: { terminalFocus: false },
-        })}
-        editShortcutLabel={shortcutLabelForCommand(keybindings, "thread.editQueuedMessage", {
-          context: { composerFocus: true },
-        })}
-        environmentId={activeThread.environmentId}
-        threadId={activeThread.id}
-        optimisticMessages={optimisticUserMessages}
-        editingRunId={queuedRunEdit.editingRunId}
-        onEditQueuedRun={queuedRunEdit.beginEdit}
-        onCancelEdit={queuedRunEdit.cancelEdit}
-      />
+      <>
+        <ThreadDraftsTray
+          threadRef={scopeThreadRef(activeThread.environmentId, activeThread.id)}
+          running={phase === "running"}
+          canSteer={!isCompacting}
+          followUpBehavior={settings.followUpBehavior}
+          onOpen={openMessageDraftStable}
+        />
+        <QueuedRunsControl
+          ref={queuedRunsControlRef}
+          steerShortcutLabel={shortcutLabelForCommand(keybindings, "thread.steerQueuedMessage", {
+            context: { terminalFocus: false },
+          })}
+          editShortcutLabel={shortcutLabelForCommand(keybindings, "thread.editQueuedMessage", {
+            context: { composerFocus: true },
+          })}
+          environmentId={activeThread.environmentId}
+          threadId={activeThread.id}
+          optimisticMessages={optimisticUserMessages}
+          editingRunId={queuedRunEdit.editingRunId}
+          onEditQueuedRun={queuedRunEdit.beginEdit}
+          onCancelEdit={queuedRunEdit.cancelEdit}
+        />
+      </>
     ) : null;
   // One-shot: the resend "Work locally" queued fires once, then the marker clears.
   const resendAfterWorkLocally = () => {
@@ -9442,6 +9563,10 @@ export default function ChatView(props: ChatViewProps) {
                               editingQueuedAttachments={queuedRunEdit.editingAttachments}
                               onRemoveEditingQueuedAttachment={
                                 queuedRunEdit.removeEditingAttachment
+                              }
+                              onCancelQueuedEdit={queuedRunEdit.cancelEdit}
+                              onSaveMessageDraft={
+                                isServerThread ? saveComposerAsMessageDraftStable : null
                               }
                             />
                           )}

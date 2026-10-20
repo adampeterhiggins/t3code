@@ -9,6 +9,27 @@ const ICON_PATHS: Record<string, ReadonlyArray<{ tag: string; attrs: Record<stri
     { tag: "path", attrs: { d: "M10 12h4" } },
   ],
   check: [{ tag: "path", attrs: { d: "M20 6 9 17l-5-5" } }],
+  "arrow-up": [
+    { tag: "path", attrs: { d: "m5 12 7-7 7 7" } },
+    { tag: "path", attrs: { d: "M12 19V5" } },
+  ],
+  "corner-up-right": [
+    { tag: "path", attrs: { d: "m15 14 5-5-5-5" } },
+    { tag: "path", attrs: { d: "M4 20v-7a4 4 0 0 1 4-4h12" } },
+  ],
+  "list-plus": [
+    { tag: "path", attrs: { d: "M11 12H3" } },
+    { tag: "path", attrs: { d: "M16 6H3" } },
+    { tag: "path", attrs: { d: "M16 18H3" } },
+    { tag: "path", attrs: { d: "M18 9v6" } },
+    { tag: "path", attrs: { d: "M21 12h-6" } },
+  ],
+  "file-text": [
+    { tag: "path", attrs: { d: "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" } },
+    { tag: "path", attrs: { d: "M14 2v4a2 2 0 0 0 2 2h4" } },
+    { tag: "path", attrs: { d: "M16 13H8" } },
+    { tag: "path", attrs: { d: "M16 17H8" } },
+  ],
   download: [
     { tag: "path", attrs: { d: "M12 15V3" } },
     { tag: "path", attrs: { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" } },

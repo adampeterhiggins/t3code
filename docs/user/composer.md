@@ -180,6 +180,28 @@ Stashes containing uploaded files must be restored in their original environment
 Those files are retained for 24 hours. After an upload expires, restore the prompt
 and use **Attach again** or remove the missing file before sending.
 
+## Message drafts
+
+Save a message in a thread to send later. Right-click the send button (long-press on
+mobile) and choose **Save as draft**. The message, its attachments, and its context chips
+are kept with the thread on the server, so a draft saved on desktop also shows on your phone
+and in any browser connected to the same environment.
+
+A thread's drafts sit above its composer. **Open** moves a draft into the composer for
+editing; if the composer already has text, that text is saved as a draft first. **Send**
+sends it straight away, queueing or steering the same way the send button would. Threads with
+drafts show a count in the sidebar.
+
+The same menu appears on every send button: citation comments, pull request and diff comments,
+plan follow-ups, and a queued message you are editing, which can be moved back to drafts. It
+also offers the button's other actions, such as **Steer now** while a turn runs. On web and
+desktop, the command palette has **Save message as draft**, and you can bind
+`composer.saveDraft` to a key in Settings → Keybindings. A new thread's
+composer has no **Save as draft**, because an unsent new thread is already kept as a draft.
+
+Agents can create, send, and delete drafts through the `t3_draft_*` MCP tools, for example to
+leave a follow-up for you to review.
+
 ## Voice input on iPhone
 
 On supported iPhones with iOS 26 or later, use the composer's microphone to record,

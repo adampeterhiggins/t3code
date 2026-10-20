@@ -80,6 +80,7 @@ export type EnvironmentSubscriptionRpcTag =
   | typeof WS_METHODS.slackSubscribeState
   | typeof WS_METHODS.slackSubscribeThreadLinks
   | typeof WS_METHODS.githubIssuesSubscribeThreadLinks
+  | typeof WS_METHODS.messageDraftsSubscribe
   | typeof WS_METHODS.terminalAttach
   | typeof WS_METHODS.terminalObserve;
 

@@ -140,7 +140,10 @@ import { PullRequestCopyableCode } from "./PullRequestCopyableCode";
 import { PullRequestActivityUnavailableState } from "./PullRequestActivityUnavailableState";
 import { DiffPanelLoadingState } from "../DiffPanelShell";
 import { PullRequestsUnavailableState } from "./PullRequestsUnavailableState";
-import type { PullRequestAgentSelectionInput } from "./PullRequestCodeTab";
+import type {
+  PullRequestAgentDelivery,
+  PullRequestAgentSelectionInput,
+} from "./PullRequestCodeTab";
 import { openOnHostLabel, showPullRequestLinkContextMenu } from "./pullRequestLinkContextMenu";
 import { PullRequestMarkdownContext } from "./PullRequestMarkdownContext";
 import { PullRequestComposer } from "./PullRequestComposer";
@@ -267,9 +270,12 @@ const lastHandoffPromptByDraft = new Map<string, string>();
  * question is in it would send the reader looking for something that is not there, unless a chip
  * carries their remark. A send that found a draft already there stops short of sending that too.
  */
-function askLandedDescription(asked: boolean, sendRequested: boolean): string {
-  if (sendRequested) {
+function askLandedDescription(asked: boolean, delivery: PullRequestAgentDelivery): string {
+  if (delivery === "send") {
     return "The composer already held a draft, so nothing was sent. Read it over, then send.";
+  }
+  if (delivery === "draft") {
+    return "The composer already held a draft, so nothing was saved. Read it over, then save or send.";
   }
   return asked
     ? "The question is in the composer — read it over, then send."
@@ -1079,6 +1085,8 @@ export function PullRequestDetailPanel({
   };
 
   const attachTarget = composerDraftTarget ?? null;
+  // Drafts live on server threads; a new thread's composer already keeps its text locally.
+  const canSaveAgentDraft = typeof attachTarget === "object" && attachTarget !== null;
   const canPrepareWorktree = prepareThread.isAllowed && canOperateThread;
   const canFixFindings = attachTarget !== null || canPrepareWorktree;
   const handoffLabels = pullRequestHandoffLabels(attachTarget !== null);
@@ -1154,28 +1162,34 @@ export function PullRequestDetailPanel({
     task: ThreadTask,
     options?: {
       readonly keepGuide?: boolean;
-      /** Send it as well, unless the composer holds a draft that would go out with it. */
-      readonly send?: boolean;
+      /**
+       * Send it, or keep it as a thread draft, unless the composer holds a draft that would go
+       * along with it. Left in the composer by default.
+       */
+      readonly delivery?: PullRequestAgentDelivery;
       /** A chip carries the reader's own question, so the empty prompt is not theirs to fill. */
       readonly questionInChip?: boolean;
     },
   ) => {
     if (!detail || handoff !== null) return;
     const asked = task.prompt.length > 0 || options?.questionInChip === true;
+    const delivery = options?.delivery ?? "composer";
     if (attachTarget !== null) {
       const heldDraft = composerDraftHasUserContent(
         useComposerDraftStore.getState().getComposerDraft(attachTarget),
       );
       writeTaskToComposer(attachTarget, task);
-      // The message lands in the thread beside the panel, which says it was sent.
-      if (options?.send === true && !heldDraft) {
-        useComposerSubmitRequestStore.getState().request(attachTarget);
+      // The message lands in the thread beside the panel, which says it was sent or saved.
+      if (delivery !== "composer" && !heldDraft) {
+        useComposerSubmitRequestStore
+          .getState()
+          .request(attachTarget, delivery === "draft" ? "save-draft" : "send");
         return;
       }
       toastManager.add({
         type: "success",
         title: "Added to the composer",
-        description: askLandedDescription(asked, options?.send === true),
+        description: askLandedDescription(asked, delivery),
       });
       return;
     }
@@ -1207,14 +1221,14 @@ export function PullRequestDetailPanel({
       });
       return;
     }
-    if (options?.send === true && !opened.heldDraft) {
+    if (delivery === "send" && !opened.heldDraft) {
       useComposerSubmitRequestStore.getState().request(opened.draftId);
       return;
     }
     toastManager.add({
       type: "success",
       title: "Asked in a thread",
-      description: askLandedDescription(asked, options?.send === true),
+      description: askLandedDescription(asked, delivery === "send" ? "send" : "composer"),
     });
   };
 
@@ -1410,7 +1424,7 @@ export function PullRequestDetailPanel({
         comment: selection.comment,
         request: selection.request,
       }),
-      { ...options, send: selection.send, questionInChip: true },
+      { ...options, delivery: selection.delivery, questionInChip: true },
     );
   };
 
@@ -1455,6 +1469,34 @@ export function PullRequestDetailPanel({
         finding,
       }),
     );
+  };
+
+  /** The fix lands in the thread's composer, then waits there as a draft instead of a send. */
+  const saveFixFindingAsDraft = (finding: PullRequestFinding) => {
+    if (!detail || typeof attachTarget !== "object" || attachTarget === null) return;
+    const heldDraft = composerDraftHasUserContent(
+      useComposerDraftStore.getState().getComposerDraft(attachTarget),
+    );
+    writeTaskToComposer(
+      attachTarget,
+      buildFixFindingHandoff({
+        number: detail.number,
+        title: detail.title,
+        url: detail.url,
+        headBranch: detail.headBranch,
+        baseBranch: detail.baseBranch,
+        finding,
+      }),
+    );
+    if (!heldDraft) {
+      useComposerSubmitRequestStore.getState().request(attachTarget, "save-draft");
+      return;
+    }
+    toastManager.add({
+      type: "success",
+      title: "Added to the composer",
+      description: askLandedDescription(true, "draft"),
+    });
   };
 
   const startFixFindings = () => {
@@ -2899,6 +2941,9 @@ export function PullRequestDetailPanel({
                   fixFindingLabel={handoffLabels.fixFinding}
                   fixCheckLabel={handoffLabels.fixCheck}
                   {...(canFixFindings ? { onFixFinding: startFixFinding } : {})}
+                  {...(canFixFindings && canSaveAgentDraft
+                    ? { onSaveFixAsDraft: saveFixFindingAsDraft }
+                    : {})}
                   onRefresh={refreshDetail}
                   onRefreshChecks={refreshFromHost}
                 />
@@ -2915,9 +2960,10 @@ export function PullRequestDetailPanel({
                   canComment={
                     detail.capabilities.review.inlineComment && detail.viewerPermissions.comment
                   }
-                  onAskAboutLines={(comment, request, send) =>
-                    addSelectionToAgent({ comment, request, send }, { keepGuide: true })
+                  onAskAboutLines={(comment, request, delivery) =>
+                    addSelectionToAgent({ comment, request, delivery }, { keepGuide: true })
                   }
+                  canSaveAgentDraft={canSaveAgentDraft}
                   onAskAboutStop={askAboutGuideStop}
                   onFinishReview={
                     detail.capabilities.review.verdicts.some((verdict) =>
@@ -2960,6 +3006,7 @@ export function PullRequestDetailPanel({
                   <PullRequestCodeTab
                     scrollerRef={scrollerRefs.code}
                     onAddToAgentSelection={addSelectionToAgent}
+                    canSaveAgentDraft={canSaveAgentDraft}
                     environmentId={environmentId}
                     reference={reference}
                     detail={detail}

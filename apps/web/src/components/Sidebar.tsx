@@ -10,6 +10,7 @@ import {
   moveThreadContextDrag as moveThreadContextDragGhost,
 } from "./chat/threadContextDrag";
 import { discardComposerDraft } from "../lib/discardComposerDraft";
+import { useThreadMessageDrafts } from "../state/messageDrafts";
 import { requestCustomSnooze } from "./CustomSnoozeDialog";
 import { useSupportsMultiplePullRequests } from "~/hooks/useSupportsMultiplePullRequests";
 import { resolveThreadCurrentPullRequestLink } from "@t3tools/shared/threadPullRequests";
@@ -100,6 +101,7 @@ import {
   CircleCheckIcon,
   ClockIcon,
   Columns2Icon,
+  FileTextIcon,
   GitBranchIcon,
   LayersIcon,
   PinIcon,
@@ -1457,6 +1459,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   const terminalStatus = terminalStatusFromRunningIds(runningTerminalIds);
   const terminalProcessCount = runningTerminalIds.length;
   const hasUnsentDraft = useThreadHasUnsentDraft(threadRef) && !props.isRouteThread;
+  const savedDraftCount = useThreadMessageDrafts(threadRef).length;
   const handleDiscardDraftClick = (event: ReactMouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
@@ -1889,6 +1892,25 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       <TooltipPopup side="top">Unsent draft</TooltipPopup>
     </Tooltip>
   ) : null;
+  const savedDraftsLabel = `${savedDraftCount} draft${savedDraftCount === 1 ? "" : "s"}`;
+  const savedDraftsIndicator =
+    savedDraftCount > 0 ? (
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <span
+              role="img"
+              aria-label={savedDraftsLabel}
+              className="inline-flex shrink-0 items-center gap-0.5 text-muted-foreground/60 tabular-nums"
+            />
+          }
+        >
+          <FileTextIcon aria-hidden className="size-3" />
+          {savedDraftCount}
+        </TooltipTrigger>
+        <TooltipPopup side="top">{savedDraftsLabel}</TooltipPopup>
+      </Tooltip>
+    ) : null;
   const onToggleTabs = props.onToggleTabs;
   const handleToggleTabsClick = (event: ReactMouseEvent) => {
     event.preventDefault();
@@ -2013,6 +2035,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             {pinIndicator}
             {props.inSplit ? <SidebarSplitIndicator /> : null}
             {terminalStatusIcon}
+            {savedDraftsIndicator}
             {isRegeneratingTitle ? (
               <span role="status" className="sr-only">
                 Regenerating title
@@ -2436,6 +2459,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               {tabCountBadge}
               {props.inSplit && !unifyTabs ? <SidebarSplitIndicator /> : null}
               {unifyTabs ? null : terminalStatusIcon}
+              {savedDraftsIndicator}
               {prBadge}
               {diff ? (
                 <span className="shrink-0 font-mono">

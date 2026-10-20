@@ -3,6 +3,7 @@ import { SparklesIcon, TriangleAlertIcon } from "lucide-react";
 import { useEffect, useEffectEvent } from "react";
 
 import type { ReviewCommentContext } from "~/reviewCommentContext";
+import type { PullRequestAgentDelivery } from "./PullRequestCodeTab";
 
 import { Alert, AlertAction, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
@@ -27,6 +28,7 @@ export function PullRequestGuideTab({
   active,
   canComment,
   onAskAboutLines,
+  canSaveAgentDraft,
   onAskAboutStop,
   onFinishReview,
   onOpenFile,
@@ -39,7 +41,11 @@ export function PullRequestGuideTab({
   active: boolean;
   canComment: boolean;
   /** Opens an agent thread about lines of the change. Null where no thread can be opened. */
-  onAskAboutLines: ((comment: ReviewCommentContext, request: string, send: boolean) => void) | null;
+  onAskAboutLines:
+    | ((comment: ReviewCommentContext, request: string, delivery: PullRequestAgentDelivery) => void)
+    | null;
+  /** The agent's composer is an existing thread's, so a request can wait there as a draft. */
+  canSaveAgentDraft: boolean;
   onAskAboutStop:
     | ((stop: PullRequestReviewGuideStop, index: number, question: string) => void)
     | null;
@@ -73,6 +79,7 @@ export function PullRequestGuideTab({
             }),
           onRemove: (commentId) => removeComment(reviewKey, commentId),
           onAskAgent: onAskAboutLines,
+          canSaveAgentDraft,
         };
   useEffect(() => {
     if (!active) return;

@@ -19,7 +19,8 @@ import {
   UsersIcon,
 } from "lucide-react";
 import * as Schema from "effect/Schema";
-import { useRef, useState, type ReactNode } from "react";
+import { useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { readLocalApi } from "~/localApi";
 
 import { pullRequestEnvironment } from "~/state/pullRequests";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
@@ -591,6 +592,7 @@ export function PullRequestSummaryTab({
   fixFindingLabel = "Fix in a thread",
   fixCheckLabel = "Fix",
   onFixFinding,
+  onSaveFixAsDraft,
   onRefresh,
   onRefreshChecks = onRefresh,
 }: {
@@ -606,9 +608,27 @@ export function PullRequestSummaryTab({
   fixFindingLabel?: string;
   fixCheckLabel?: string;
   onFixFinding?: (finding: PullRequestFinding) => void;
+  /** Writes the fix into the thread's composer and keeps it there as a draft. */
+  onSaveFixAsDraft?: ((finding: PullRequestFinding) => void) | undefined;
   onRefresh: () => void;
   onRefreshChecks?: () => void;
 }) {
+  const openFixMenu = async (event: ReactMouseEvent, finding: PullRequestFinding) => {
+    event.preventDefault();
+    const api = readLocalApi();
+    if (!api || !onFixFinding || !onSaveFixAsDraft) return;
+    const selected = await api.contextMenu.show(
+      [
+        { id: "fix", label: "Add fix to composer", icon: "message-square-plus" },
+        { id: "draft", label: "Save fix as draft", icon: "file-text" },
+      ],
+      { x: event.clientX, y: event.clientY },
+    );
+    if (selected === "fix") onFixFinding(finding);
+    else if (selected === "draft") onSaveFixAsDraft(finding);
+  };
+  const fixContextMenu = (finding: PullRequestFinding) =>
+    onSaveFixAsDraft ? (event: ReactMouseEvent) => void openFixMenu(event, finding) : undefined;
   const [shown, setShown] = useState({ url: detail.url, count: COMMENT_PAGE });
   const shownConversations = shown.url === detail.url ? shown.count : COMMENT_PAGE;
   const [commentFilter, setCommentFilter] = useLocalStorage(
@@ -826,6 +846,7 @@ export function PullRequestSummaryTab({
               className="shrink-0"
               disabled={pendingFinding !== null && pendingFinding !== undefined}
               onClick={() => onFixFinding(finding)}
+              onContextMenu={fixContextMenu(finding)}
             >
               {/* Export the text baseline rather than the hammer icon's bottom edge. */}
               <span className="inline-flex items-baseline gap-1">
@@ -880,6 +901,7 @@ export function PullRequestSummaryTab({
                 variant="ghost"
                 disabled={pendingFinding != null}
                 onClick={() => onFixFinding(finding)}
+                onContextMenu={fixContextMenu(finding)}
               >
                 <HammerIcon className="size-3" />
                 {pendingFinding === pullRequestFindingKey(finding)
@@ -1116,6 +1138,7 @@ export function PullRequestSummaryTab({
                     className="shrink-0"
                     disabled={pendingFinding !== null && pendingFinding !== undefined}
                     onClick={() => onFixFinding(finding)}
+                    onContextMenu={fixContextMenu(finding)}
                   >
                     <HammerIcon className="size-3" />
                     {pendingFinding === pullRequestFindingKey(finding)

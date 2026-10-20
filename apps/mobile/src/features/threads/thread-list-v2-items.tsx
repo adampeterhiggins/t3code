@@ -53,9 +53,10 @@ import {
   resolveThreadListV2Status,
   resolveThreadListV2ProviderDrivers,
   resolveThreadListV2SwipeActions,
+  threadListV2RowAccessibilityLabel,
   type ThreadListV2Status,
 } from "./threadListV2";
-import { QueuedMessageIcon } from "./queued-message-icon";
+import { DraftCountIcon, QueuedMessageIcon } from "./queued-message-icon";
 import { shouldRecedeThreadRow } from "./thread-row-emphasis";
 import { ThreadSearchMatchExcerpt } from "./thread-search-match";
 import { ThreadGroupIcon } from "./ThreadGroupIcon";
@@ -518,6 +519,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   readonly thread: EnvironmentThreadShell;
   readonly variant: "card" | "slim";
   readonly hasQueuedMessages?: boolean;
+  readonly draftCount?: number;
   readonly snoozed?: boolean;
   readonly pinned?: boolean;
   /** Hidden-page row: offers Unhide in place of the lifecycle actions. */
@@ -985,6 +987,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
           {props.projectTitle ?? props.project?.title ?? ""}
         </Text>
         {props.hasQueuedMessages ? <QueuedMessageIcon selected={selected} /> : null}
+        {props.draftCount ? <DraftCountIcon count={props.draftCount} selected={selected} /> : null}
         {pinnedRow ? (
           <SymbolView
             name="pin"
@@ -1193,11 +1196,12 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         interactionOpacity={rowAppearance.interactionOpacity}
         className={rowAppearance.className}
         accessibilityHint={swipeAccessibilityHint}
-        accessibilityLabel={
-          props.hasQueuedMessages
-            ? `${thread.tabGroupName ?? thread.title}, messages queued to send`
-            : thread.title
-        }
+        accessibilityLabel={threadListV2RowAccessibilityLabel({
+          title: thread.title,
+          tabGroupName: thread.tabGroupName,
+          hasQueuedMessages: props.hasQueuedMessages === true,
+          draftCount: props.draftCount ?? 0,
+        })}
         accessibilityRole="button"
         accessibilityState={{ selected }}
         accessibilityActions={rowAccessibilityActions}
@@ -1227,11 +1231,12 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         interactionClassName={rowAppearance.interactionClassName}
         interactionOpacity={rowAppearance.interactionOpacity}
         accessibilityHint={swipeAccessibilityHint}
-        accessibilityLabel={
-          props.hasQueuedMessages
-            ? `${thread.tabGroupName ?? thread.title}, messages queued to send`
-            : thread.title
-        }
+        accessibilityLabel={threadListV2RowAccessibilityLabel({
+          title: thread.title,
+          tabGroupName: thread.tabGroupName,
+          hasQueuedMessages: props.hasQueuedMessages === true,
+          draftCount: props.draftCount ?? 0,
+        })}
         accessibilityRole="button"
         accessibilityState={{ selected }}
         className={rowAppearance.className}
@@ -1281,6 +1286,9 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
             ) : null}
           </View>
           {props.hasQueuedMessages ? <QueuedMessageIcon selected={selected} /> : null}
+          {props.draftCount ? (
+            <DraftCountIcon count={props.draftCount} selected={selected} />
+          ) : null}
           <Text
             className={cn(
               "text-sm tabular-nums",

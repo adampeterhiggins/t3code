@@ -25,6 +25,7 @@ import type { LegendListRef } from "@legendapp/list/react-native";
 import { HeaderHeightContext } from "@react-navigation/elements";
 import { NativeLayoutObserver } from "../../native/NativeLayoutObserver";
 import { deriveBottomControlInsets, type NativeLayoutMetrics } from "../../lib/reserved-regions";
+import { MessageDraftId } from "@t3tools/contracts";
 import type {
   EnvironmentId,
   MessageId,
@@ -153,6 +154,9 @@ import { ComposerPopoverHost } from "./ComposerPopoverHost";
 import { ThreadFeed, type ThreadFeedHistoryControls } from "./ThreadFeed";
 import { useThreadTurnSubagents } from "./ThreadAgentsSheet";
 import { ComposerQueuedEditBanner } from "./ComposerQueuedEdit";
+import { ThreadDraftsTray } from "./ThreadDraftsTray";
+import { defaultMessageDraftSendMode } from "./messageDraftPresentation";
+import { useThreadMessageDrafts } from "./useThreadMessageDrafts";
 import { useThreadQueuedCount } from "./ThreadQueueControl";
 import type { ThreadContentPresentation } from "./threadContentPresentation";
 import { resolveThreadFeedSubmissionAnchor } from "./thread-feed-live-follow";
@@ -479,6 +483,13 @@ export const ThreadDetailScreen = function ThreadDetailScreen(props: ThreadDetai
   const composerEditorRef = useRef<ComposerEditorHandle>(null);
   const isProviderSubagent = isProviderNativeSubagentThread(props.selectedThread.source);
   const editingRunId = props.queuedRunEdit?.runId ?? null;
+  const messageDrafts = useThreadMessageDrafts({
+    environmentId: props.environmentId,
+    threadId: props.selectedThread.id,
+    serverConfig: props.serverConfig,
+    onOpened: () => composerEditorRef.current?.focus(),
+  });
+  const draftsEnabled = messageDrafts.canEdit && props.canOperateThread && !isProviderSubagent;
   useEffect(() => {
     if (editingRunId === null) return;
     const frame = requestAnimationFrame(() => composerEditorRef.current?.focus());
@@ -1268,6 +1279,21 @@ export const ThreadDetailScreen = function ThreadDetailScreen(props: ThreadDetai
                       />
                     </Animated.View>
                   ) : null}
+                  {draftsEnabled && props.queuedRunEdit === null ? (
+                    <ThreadDraftsTray
+                      drafts={messageDrafts.drafts}
+                      disabled={messageDrafts.busy}
+                      sendMode={defaultMessageDraftSendMode({
+                        running: props.activeThreadBusy,
+                        canSteer: props.canSteerActiveTurn,
+                        followUpBehavior: props.followUpBehavior,
+                      })}
+                      canSteer={props.activeThreadBusy && props.canSteerActiveTurn}
+                      onOpen={(draft) => void messageDrafts.open(draft.id)}
+                      onSend={(draft, mode) => void messageDrafts.send(draft.id, mode)}
+                      onDelete={(draft) => void messageDrafts.remove(draft.id)}
+                    />
+                  ) : null}
                   <UsageLimitRecoveryCard
                     key={props.selectedThread.latestRun?.runId}
                     thread={props.selectedThread}
@@ -1466,7 +1492,23 @@ export const ThreadDetailScreen = function ThreadDetailScreen(props: ThreadDetai
                                 existingAttachments: props.queuedRunEdit.existingAttachments,
                                 saving: props.isSavingQueuedEdit,
                                 onRemoveExistingAttachment: props.onRemoveQueuedEditAttachment,
+                                onCancel: () => {
+                                  voiceInputSession.cancel(props.composerDraftKey);
+                                  props.onCancelQueuedRunEdit();
+                                },
                               }
+                        }
+                        messageDrafts={
+                          draftsEnabled
+                            ? {
+                                drafts: messageDrafts.drafts,
+                                busy: messageDrafts.busy,
+                                onSaveDraft: () => void messageDrafts.saveComposer(),
+                                onMoveQueuedEditToDrafts: () => void messageDrafts.moveQueuedEdit(),
+                                onOpenDraft: (draftId) =>
+                                  void messageDrafts.open(MessageDraftId.make(draftId)),
+                              }
+                            : null
                         }
                         bottomInset={composerBottomInset}
                         onChangeDraftMessage={props.onChangeDraftMessage}

@@ -1421,6 +1421,30 @@ Cmd/Ctrl+Enter does the other one.
 Code: `SubmitChoiceButton` in
 [AssistantCitationCommentEditor.tsx](../apps/web/src/components/chat/AssistantCitationCommentEditor.tsx).
 
+## Message drafts and send button menus
+
+A message can be saved in a thread as a draft and sent later. Drafts are stored by the server per
+thread and streamed to every client, so they follow the user across web, desktop, and mobile;
+agents reach them through `t3_draft_list`, `t3_draft_create`, `t3_draft_send`, and
+`t3_draft_delete`. Saving claims the draft's uploads into the thread so the pending-upload sweep
+does not delete them. Opening a draft takes it off the server atomically, so two devices cannot
+both open it.
+
+Every send button gets a right-click menu (long-press on mobile) built from one resolver: the
+composer, the collapsed mobile-web composer, plan follow-ups, citation comments, diff and pull
+request comments, and queued messages. It lists the button's existing actions (queue, steer, send and
+start a new thread) plus **Save as draft** and the thread's drafts. The pull request summary's Fix
+buttons get **Save fix as draft** on right-click, and a `composer.saveDraft` keybinding (unbound by
+default) and command palette action save the composer as a draft. Upstream has no drafts and no send
+menus; its prompt stash (`Cmd/Ctrl+S`) is unchanged.
+
+Code: [`messageDrafts/`](../apps/server/src/messageDrafts/),
+[`messageDrafts.ts`](../packages/contracts/src/messageDrafts.ts),
+[`sendMenu.ts`](../packages/client-runtime/src/state/sendMenu.ts),
+[`ThreadDraftsTray.tsx`](../apps/web/src/components/chat/ThreadDraftsTray.tsx) on web and
+[its mobile counterpart](../apps/mobile/src/features/threads/ThreadDraftsTray.tsx).
+User guide: [composer.md](user/composer.md#message-drafts).
+
 ## Desktop mock-update loop
 
 A `Makefile` at the repository root drives a local auto-update test loop for the desktop app:

@@ -8,6 +8,7 @@ import {
   prepareThreadTabHandoff,
 } from "@t3tools/client-runtime/thread-tabs";
 import { runtime } from "../../lib/runtime";
+import type { ActiveTurnComposerAction } from "@t3tools/client-runtime/state/composer-dispatch";
 import { usePreparedConnection } from "../../state/session";
 import { ThreadTabs, selectedThreadTabSources, clearSelectedThreadTabSources } from "./ThreadTabs";
 import { buildProjectThreadStartTurnInput } from "../../lib/projectThreadStartTurn";
@@ -317,7 +318,7 @@ function ThreadRouteContent(
     selectedThread.latestRun === null &&
     selectedThread.latestUserMessageAt === null &&
     selectedThread.runtime === null;
-  const sendWithTabContext = async () => {
+  const sendWithTabContext = async (followUp?: ActiveTurnComposerAction) => {
     if (tabHandoffInFlightRef.current) return null;
     if (selectedThread && selectedThreadIsEmptyTab) {
       const sources = selectedThreadTabSources(selectedThread.id);
@@ -353,7 +354,7 @@ function ThreadRouteContent(
         }
       }
     }
-    return composer.onSendMessage();
+    return composer.onSendMessage(followUp);
   };
   const gitState = useSelectedThreadGitState();
   const gitActions = useSelectedThreadGitActions();

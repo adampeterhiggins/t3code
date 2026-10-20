@@ -1,9 +1,10 @@
 import { ASSISTANT_CITATION_MAX_COMMENT_LENGTH, type AssistantCitation } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { ChevronDownIcon } from "lucide-react";
-import { useState, type Ref } from "react";
+import { useState, type MouseEvent, type Ref } from "react";
 
 import { useLocalStorage } from "~/hooks/useLocalStorage";
+import { readLocalApi } from "~/localApi";
 
 import { Button } from "../ui/button";
 import { Group, GroupSeparator } from "../ui/group";
@@ -19,6 +20,11 @@ const SUBMIT_CHOICES = {
   save: { label: "Save", description: "Keep writing in the composer" },
 } as const satisfies Record<SubmitChoice, { label: string; description: string }>;
 
+const SAVE_DRAFT_CHOICE = {
+  label: "Save as draft",
+  description: "Keep the message in this thread to send later",
+} as const;
+
 // While a turn runs, sending follows the composer's follow-up setting, which may queue.
 const QUEUE_SUBMIT_CHOICE = {
   label: "Add to queue",
@@ -30,6 +36,7 @@ export function AssistantCitationCommentEditor({
   inputRef,
   onSubmit,
   onSubmitAndSend,
+  onSubmitAndSaveDraft,
   submitAndSendQueues = false,
   onCancel,
   onDraftChange,
@@ -38,6 +45,8 @@ export function AssistantCitationCommentEditor({
   inputRef?: Ref<HTMLTextAreaElement>;
   onSubmit: (comment: string) => boolean;
   onSubmitAndSend?: (comment: string) => boolean;
+  /** Saves the comment into the prompt, then keeps the whole message as a thread draft. */
+  onSubmitAndSaveDraft?: (comment: string) => boolean;
   submitAndSendQueues?: boolean;
   onCancel: () => void;
   onDraftChange?: (comment: string) => void;
@@ -132,6 +141,13 @@ export function AssistantCitationCommentEditor({
               setChoice(next);
               runChoice(next);
             }}
+            {...(onSubmitAndSaveDraft
+              ? {
+                  onSaveDraft: () => {
+                    if (!commentTooLong) onSubmitAndSaveDraft(comment);
+                  },
+                }
+              : {})}
           />
         ) : (
           <Button
@@ -157,10 +173,29 @@ function SubmitChoiceButton(props: {
   queues: boolean;
   choice: SubmitChoice;
   onRun: (choice: SubmitChoice) => void;
+  /** A one-off: saving as a draft is never remembered as the button's default. */
+  onSaveDraft?: () => void;
 }) {
   const choices = props.queues ? { ...SUBMIT_CHOICES, send: QUEUE_SUBMIT_CHOICE } : SUBMIT_CHOICES;
+  const openContextMenu = async (event: MouseEvent) => {
+    event.preventDefault();
+    const api = readLocalApi();
+    if (!api || props.disabled) return;
+    const selected = await api.contextMenu.show(
+      [
+        { id: "send", label: choices.send.label, icon: props.queues ? "list-plus" : "arrow-up" },
+        { id: "save", label: "Save to composer", icon: "check" },
+        ...(props.onSaveDraft
+          ? [{ id: "draft", label: SAVE_DRAFT_CHOICE.label, icon: "file-text" }]
+          : []),
+      ],
+      { x: event.clientX, y: event.clientY },
+    );
+    if (selected === "send" || selected === "save") props.onRun(selected);
+    else if (selected === "draft") props.onSaveDraft?.();
+  };
   return (
-    <Group>
+    <Group onContextMenu={(event) => void openContextMenu(event)}>
       <Button
         size="xs"
         disabled={props.disabled}
@@ -188,6 +223,16 @@ function SubmitChoiceButton(props: {
               </span>
             </MenuItem>
           ))}
+          {props.onSaveDraft ? (
+            <MenuItem onClick={props.onSaveDraft}>
+              <span className="flex min-w-0 flex-col py-0.5">
+                <MenuItemLabel>{SAVE_DRAFT_CHOICE.label}</MenuItemLabel>
+                <span className="truncate text-xs text-muted-foreground">
+                  {SAVE_DRAFT_CHOICE.description}
+                </span>
+              </span>
+            </MenuItem>
+          ) : null}
         </MenuPopup>
       </Menu>
     </Group>
