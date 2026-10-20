@@ -95,6 +95,9 @@ export const make = Effect.gen(function* () {
     window.setBounds(
       quickMessagePanelBounds(Electron.screen.getDisplayNearestPoint(cursor).workArea),
     );
+    // Chromium can count a transparent floating window as occluded, which pauses its frames
+    // and leaves menus stuck mid-animation. Hidden, it goes back to being throttled.
+    window.webContents.setBackgroundThrottling(false);
     window.show();
     window.focus();
     const event: DesktopQuickMessageShowEvent = { clientSettings: settings };
@@ -133,6 +136,9 @@ export const make = Effect.gen(function* () {
     if (isMac) window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     window.on("blur", () => {
       if (!window.isDestroyed()) window.hide();
+    });
+    window.on("hide", () => {
+      if (!window.isDestroyed()) window.webContents.setBackgroundThrottling(true);
     });
     window.once("closed", () => {
       if (panel === window) {

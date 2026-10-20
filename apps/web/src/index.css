@@ -1742,7 +1742,8 @@ body {
 }
 
 /* The desktop quick message panel is a transparent window around a floating composer. Its
-   backdrop blur only sees this page, not the apps behind the window, so the glass stays opaque. */
+   backdrop blur only sees this page, not the apps behind the window, so the glass stays opaque.
+   The theme writes the chrome colour inline on html and body, hence the !important. */
 html[data-quick-message] {
   --glass-opacity: 100%;
   --glass-blur: 0px;
@@ -1750,7 +1751,7 @@ html[data-quick-message] {
 
 html[data-quick-message],
 html[data-quick-message] body {
-  background: transparent;
+  background: transparent !important;
 }
 
 pre,

@@ -30,6 +30,7 @@ interface FakeWebContents {
   on(): void;
   once(): void;
   removeListener(): void;
+  setBackgroundThrottling(): void;
   isDestroyed(): boolean;
 }
 
@@ -42,6 +43,7 @@ const fakeWebContents = (id: number): FakeWebContents => ({
   on() {},
   once() {},
   removeListener() {},
+  setBackgroundThrottling() {},
   isDestroyed: () => false,
 });
 

@@ -125,6 +125,7 @@ export function QuickMessagePanel() {
   const [chosenProjectKey, setChosenProjectKey] = useState<string | null>(null);
   const [chosenModel, setChosenModel] = useState<ModelSelection | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [pickerQuery, setPickerQuery] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -248,6 +249,8 @@ export function QuickMessagePanel() {
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Escape") {
+      // A menu opened by mouse can leave focus here; its own Escape closes just the menu.
+      if (pickerOpen || modelPickerOpen) return;
       event.preventDefault();
       void bridge?.dismiss().catch(noop);
       return;
@@ -381,6 +384,8 @@ export function QuickMessagePanel() {
                         instanceEntries={instanceEntries}
                         modelOptionsByInstance={modelOptionsByInstance}
                         triggerClassName="min-w-13"
+                        open={modelPickerOpen}
+                        onOpenChange={setModelPickerOpen}
                         onInstanceModelChange={(instanceId, model) => {
                           setChosenModel(createModelSelection(instanceId, model));
                           inputRef.current?.focus();
