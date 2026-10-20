@@ -2514,6 +2514,145 @@ describe("ClaudeAdapterV2 native session identity", () => {
       assert.equal(openedQueries[0]?.options.resume, undefined);
     }),
   );
+
+  // Each open gets its own frame queue; `offers` reports which query took a prompt.
+  const runScriptedTurn = (input: {
+    readonly providerTurnOrdinal: number;
+    readonly script: (harness: {
+      readonly openedQueries: ReadonlyArray<ClaudeAdapterV2.ClaudeAgentSdkQueryOpenInput>;
+      readonly frames: ReadonlyArray<Queue.Queue<SDKMessage>>;
+      readonly offers: Queue.Queue<{ readonly query: number; readonly message: SDKUserMessage }>;
+      readonly terminals: Queue.Queue<
+        Extract<ProviderAdapter.ProviderAdapterV2Event, { type: "turn.terminal" }>
+      >;
+    }) => Effect.Effect<void>;
+  }) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const attachmentsDir = yield* fileSystem.makeTempDirectoryScoped({
+          prefix: "t3-claude-v2-missing-transcript-",
+        });
+        const openedQueries: Array<ClaudeAdapterV2.ClaudeAgentSdkQueryOpenInput> = [];
+        const frames: Array<Queue.Queue<SDKMessage>> = [];
+        const offers = yield* Queue.unbounded<{
+          readonly query: number;
+          readonly message: SDKUserMessage;
+        }>();
+        const terminals =
+          yield* Queue.unbounded<
+            Extract<ProviderAdapter.ProviderAdapterV2Event, { type: "turn.terminal" }>
+          >();
+        const adapter = yield* ClaudeAdapterV2.makeClaudeAdapterV2({
+          instanceId: ClaudeAdapterV2.CLAUDE_DEFAULT_INSTANCE_ID,
+          settings: DEFAULT_CLAUDE_SETTINGS,
+          environment: {},
+          attachmentsDir,
+          fileSystem,
+          path: yield* Path.Path,
+          crypto: yield* Crypto.Crypto,
+          idAllocator: yield* IdAllocator.IdAllocatorV2,
+          queryRunner: {
+            allocateSessionId: Effect.succeed("native-session-identity"),
+            open: (openInput) =>
+              Effect.gen(function* () {
+                const query = openedQueries.push(openInput) - 1;
+                const queue = yield* Queue.unbounded<SDKMessage>();
+                frames.push(queue);
+                return {
+                  messages: Stream.fromQueue(queue),
+                  offer: (message: SDKUserMessage) => Queue.offer(offers, { query, message }),
+                  setModel: () => Effect.void,
+                  applyFlagSettings: () => Effect.void,
+                  setPermissionMode: () => Effect.void,
+                  backgroundTasks: () => Effect.succeed(false),
+                  stopTask: () => Effect.void,
+                  interrupt: Effect.void,
+                  close: Queue.shutdown(queue),
+                };
+              }),
+            forkSession: () => Effect.die("unused forkSession"),
+            subagentLaunchToolUseId: () => Effect.succeed(null),
+            assertComplete: Effect.void,
+          },
+        });
+        const threadId = ThreadId.make("thread-claude-missing-transcript");
+        const runtime = yield* adapter.openSession({
+          threadId,
+          providerSessionId: ProviderSessionId.make("provider-session-claude-missing-transcript"),
+          modelSelection: CLAUDE_TEST_MODEL_SELECTION,
+          runtimePolicy: CLAUDE_TEST_RUNTIME_POLICY,
+        });
+        const providerThread = yield* runtime.ensureThread({
+          threadId,
+          modelSelection: CLAUDE_TEST_MODEL_SELECTION,
+          runtimePolicy: CLAUDE_TEST_RUNTIME_POLICY,
+        });
+        yield* runtime.events.pipe(
+          Stream.runForEach((event) =>
+            event.type === "turn.terminal" ? Queue.offer(terminals, event) : Effect.void,
+          ),
+          Effect.forkScoped,
+        );
+        yield* runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId,
+            providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("run-attempt-claude-missing-transcript"),
+            text: "Continue where you left off.",
+            attachments: [],
+            providerTurnOrdinal: input.providerTurnOrdinal,
+          }),
+        );
+        yield* input.script({ openedQueries, frames, offers, terminals });
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+    );
+
+  it.effect("starts the session fresh when its resume finds no transcript", () =>
+    runScriptedTurn({
+      providerTurnOrdinal: 2,
+      script: ({ openedQueries, frames, offers, terminals }) =>
+        Effect.gen(function* () {
+          const first = yield* Queue.take(offers);
+          assert.equal(first.query, 0);
+          assert.equal(openedQueries[0]?.options.resume, "native-session-identity");
+
+          yield* Queue.offer(frames[0]!, {
+            type: "result",
+            subtype: "error_during_execution",
+            duration_ms: 0,
+            duration_api_ms: 0,
+            is_error: true,
+            num_turns: 0,
+            stop_reason: null,
+            total_cost_usd: 0,
+            usage: {
+              input_tokens: 0,
+              output_tokens: 0,
+              cache_creation_input_tokens: 0,
+              cache_read_input_tokens: 0,
+            },
+            modelUsage: {},
+            permission_denials: [],
+            errors: ["No conversation found with session ID: native-session-identity"],
+            uuid: "00000000-0000-4000-8000-000000000901",
+            session_id: "native-session-identity",
+          } as unknown as SDKMessage);
+
+          const retried = yield* Queue.take(offers);
+          assert.equal(retried.query, 1);
+          assert.equal(retried.message.uuid, first.message.uuid);
+          assert.equal(openedQueries[1]?.options.sessionId, "native-session-identity");
+          assert.isUndefined(openedQueries[1]?.options.resume);
+          assert.isTrue(Option.isNone(yield* Queue.poll(terminals)));
+        }),
+    }),
+  );
 });
 
 const encodeJsonString = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
@@ -4341,6 +4480,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       assert.equal(terminal.failure?.class, "usage_limit");
       assert.equal(terminal.failure?.resetAt, resetAt);
       assert.lengthOf(harness.offeredMessages, 0);
+      // An opened session would be recorded as used but never saved by Claude Code.
+      assert.isUndefined(harness.getOpenedOptions());
     }).pipe(
       Effect.provide(
         Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
@@ -4694,7 +4835,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         }),
       );
       assert.equal((yield* Queue.take(harness.terminalReceipts)).status, "completed");
-      assert.lengthOf(harness.processQueues, 2);
+      // The stopped turn never opened a process.
+      assert.lengthOf(harness.processQueues, 1);
       assert.lengthOf(harness.offeredMessages, 1);
       assert.lengthOf(harness.terminalEvents(), 2);
     }).pipe(
