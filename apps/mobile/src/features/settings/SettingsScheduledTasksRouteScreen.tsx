@@ -27,7 +27,12 @@ import {
   parseMaxDeliveryAge,
 } from "@t3tools/client-runtime/scheduled-task-webhook";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { useFocusEffect, useNavigation, usePreventRemove } from "@react-navigation/native";
+import {
+  type StaticScreenProps,
+  useFocusEffect,
+  useNavigation,
+  usePreventRemove,
+} from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { AppState, Platform, Pressable, TextInput as RNTextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -75,8 +80,11 @@ import { useScheduledTaskEditor } from "./scheduled-task-editor";
 import { scheduledTaskEditorSessionAtom } from "./scheduled-task-editor-state";
 import { appAtomRegistry } from "../../state/atom-registry";
 import {
+  describeSchedule,
   formatNextScheduledTaskRun,
-  formatScheduledTaskInterval,
+  formatTime,
+  repeatLabel,
+  SCHEDULE_DAYS,
 } from "./scheduledTaskPresentation";
 
 type ScheduledTaskRoutes = {
@@ -85,31 +93,6 @@ type ScheduledTaskRoutes = {
   SettingsScheduledTaskModel: undefined;
   SettingsScheduledTaskBranch: undefined;
 };
-
-const DAYS = [
-  { index: 1, label: "Mon" },
-  { index: 2, label: "Tue" },
-  { index: 3, label: "Wed" },
-  { index: 4, label: "Thu" },
-  { index: 5, label: "Fri" },
-  { index: 6, label: "Sat" },
-  { index: 0, label: "Sun" },
-] as const;
-
-function describeSchedule(task: ScheduledTask): string {
-  if (task.schedule.type === "webhook") return "On webhook";
-  if (task.schedule.type === "interval") return formatScheduledTaskInterval(task.schedule.everyMs);
-  const days = task.schedule.weekdays?.length ? repeatLabel(task.schedule.weekdays) : "Every day";
-  return `${days} at ${formatTime(task.schedule.timeOfDay)}`;
-}
-
-function formatTime(value: string): string {
-  const [hours, minutes] = value.split(":").map(Number);
-  if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return value;
-  const time = new Date();
-  time.setHours(hours ?? 9, minutes ?? 0, 0, 0);
-  return time.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-}
 
 function timePickerValue(value: string): Date {
   const [hours, minutes] = value.split(":").map(Number);
@@ -121,17 +104,6 @@ function timePickerValue(value: string): Date {
     0,
   );
   return time;
-}
-
-function repeatLabel(weekdays: ReadonlyArray<number>): string {
-  const days = new Set(weekdays);
-  if (days.size === 7) return "Every day";
-  if (days.size === 5 && [1, 2, 3, 4, 5].every((day) => days.has(day))) return "Weekdays";
-  return (
-    DAYS.filter((day) => days.has(day.index))
-      .map((day) => day.label)
-      .join(", ") || "Choose days"
-  );
 }
 
 function FormField(props: {
@@ -365,10 +337,13 @@ export function SettingsScheduledTasksRouteScreen() {
   );
 }
 
-export function SettingsScheduledTaskNewRouteScreen() {
+/** `prefilled` keeps the editor session a caller has already started, such as from a draft. */
+export function SettingsScheduledTaskNewRouteScreen({
+  route,
+}: StaticScreenProps<{ readonly prefilled?: boolean } | undefined>) {
   const { resetEditor } = useScheduledTaskEditor();
   const { availableTargets } = useSettingsEnvironmentFilter();
-  const initialized = useRef(false);
+  const initialized = useRef(route.params?.prefilled === true);
   useLayoutEffect(() => {
     if (initialized.current || availableTargets.length === 0) return;
     initialized.current = true;
@@ -511,6 +486,7 @@ function SettingsScheduledTaskEditorScreen({ title }: { readonly title: string }
                 onChangeSelection={setSelection}
                 disabled={saving}
                 voiceInput={voiceInput}
+                note={editor.note}
               />
             }
             setDraft={(draft) => {
@@ -913,7 +889,7 @@ function TaskForm({
                     title: "Weekdays",
                     state: repeatLabel(draft.schedule.weekdays) === "Weekdays" ? "on" : undefined,
                   },
-                  ...DAYS.map((day) => ({
+                  ...SCHEDULE_DAYS.map((day) => ({
                     id: String(day.index),
                     title: day.label,
                     attributes: { keepsMenuPresented: true },
@@ -925,11 +901,11 @@ function TaskForm({
                 onSelect={(id) => {
                   const weekdays =
                     id === "every_day"
-                      ? DAYS.map((day) => day.index)
+                      ? SCHEDULE_DAYS.map((day) => day.index)
                       : id === "weekdays"
                         ? [1, 2, 3, 4, 5]
                         : (() => {
-                            const day = DAYS.find((item) => String(item.index) === id);
+                            const day = SCHEDULE_DAYS.find((item) => String(item.index) === id);
                             if (!day) return draft.schedule.weekdays;
                             return draft.schedule.weekdays.includes(day.index)
                               ? draft.schedule.weekdays.filter((index) => index !== day.index)

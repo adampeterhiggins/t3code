@@ -306,6 +306,7 @@ import { CheckoutAttachPickerHost } from "./chat/CheckoutAttachPicker";
 import { RepositoryAttachPickerHost } from "./chat/RepositoryAttachPicker";
 import { PullRequestAttachPickerHost } from "./chat/PullRequestAttachPicker";
 import { openStartFromPicker, StartFromPickerHost } from "./chat/StartFromPicker";
+import type { ComposerAutomationSource } from "./settings/scheduledTasksSettings.logic";
 import { useDeviceState } from "~/state/device";
 import { isGitHubProject } from "@t3tools/client-runtime/state/github-issues";
 import { BranchToolbar, type BranchToolbarHandle } from "./BranchToolbar";
@@ -5093,6 +5094,27 @@ export default function ChatView(props: ChatViewProps) {
   const sendEnvMode = resolveSendEnvMode({
     requestedEnvMode: envMode,
     isGitRepo,
+  });
+  const readAutomationSource = useStableCallback((): ComposerAutomationSource | null => {
+    const context = composerRef.current?.getSendContext();
+    if (!context || !activeProject) return null;
+    return {
+      projectId: activeProject.id,
+      prompt: context.prompt,
+      sideContextCount:
+        context.images.length +
+        context.files.length +
+        context.terminalContexts.length +
+        context.previewAnnotations.length +
+        context.reviewComments.length,
+      modelSelection: context.selectedModelSelection,
+      runtimeMode,
+      interactionMode: context.interactionMode,
+      envMode: sendEnvMode,
+      branch: activeThreadBranch ?? draftThread?.branch ?? null,
+      worktreePath: activeWorktreePath ?? draftThread?.worktreePath ?? null,
+      startFromOrigin,
+    };
   });
   // A new thread's empty draft sends as "create the thread (and worktree) now, write later".
   // Tabs are server threads from the start, so they never qualify.
@@ -9897,6 +9919,7 @@ export default function ChatView(props: ChatViewProps) {
           githubIssuesAvailable={isGitHubProject(activeProject)}
           threadRef={routeThreadRef}
           onCheckout={pointDraftAtCheckout}
+          readAutomationSource={readAutomationSource}
         />
       ) : null}
       <ThreadVisitWatermark threadRef={routeThreadRef} />

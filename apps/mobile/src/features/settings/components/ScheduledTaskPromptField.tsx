@@ -19,6 +19,8 @@ export function ScheduledTaskPromptField(props: {
   readonly onChangeSelection: (selection: ComposerEditorSelection) => void;
   readonly disabled: boolean;
   readonly voiceInput: ReturnType<typeof useVoiceInputController>;
+  /** Says what a prefilled prompt could not keep from where it came from. */
+  readonly note?: string | null | undefined;
 }) {
   const voice = props.voiceInput;
   const presentation = resolveVoiceComposerPresentation(voice.state, voice.elapsedSeconds);
@@ -78,6 +80,7 @@ export function ScheduledTaskPromptField(props: {
           </View>
         </ComposerDictationToolbar>
       ) : null}
+      {props.note ? <Text className="text-sm text-foreground-muted">{props.note}</Text> : null}
     </View>
   );
 }

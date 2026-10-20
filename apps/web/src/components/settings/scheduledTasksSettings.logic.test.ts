@@ -17,7 +17,9 @@ import { resolveSettingsScope, type SettingsScopeSearch } from "./settingsScope"
 
 import { deriveProviderInstanceEntries } from "../../providerInstances";
 import {
+  type ComposerAutomationSource,
   scheduledTaskDefaultModel,
+  scheduledTaskSeedFromComposer,
   matchesScheduledTaskScope,
   scheduleFromDraft,
   taskToDraft,
@@ -337,5 +339,51 @@ describe("scheduled task model defaults", () => {
         null,
       ),
     ).toBeNull();
+  });
+});
+
+describe("starting a scheduled task from a composer draft", () => {
+  const source = {
+    projectId: ProjectId.make("project-a"),
+    prompt: "Summarise yesterday's errors",
+    sideContextCount: 0,
+    modelSelection: { instanceId: ProviderInstanceId.make("claude"), model: "claude-opus-5-5" },
+    runtimeMode: "full-access",
+    interactionMode: "default",
+    envMode: "local",
+    branch: "main",
+    worktreePath: null,
+    startFromOrigin: false,
+  } satisfies ComposerAutomationSource;
+
+  it("carries the prompt, project, model and project checkout", () => {
+    const seed = scheduledTaskSeedFromComposer(source);
+    expect(seed.note).toBeNull();
+    expect(seed.draft).toMatchObject({
+      prompt: "Summarise yesterday's errors",
+      projectId: "project-a",
+      workspaceMode: "root",
+      modelKey: "claude:claude-opus-5-5",
+      baseModelSelection: source.modelSelection,
+    });
+  });
+
+  it("maps a new worktree to its base branch and an existing checkout to its path", () => {
+    expect(
+      scheduledTaskSeedFromComposer({
+        ...source,
+        envMode: "worktree",
+        branch: "develop",
+        startFromOrigin: true,
+      }).draft,
+    ).toMatchObject({ workspaceMode: "worktree", baseRef: "develop", startFromOrigin: true });
+    expect(
+      scheduledTaskSeedFromComposer({ ...source, envMode: "worktree", worktreePath: "/wt/pr-12" })
+        .draft,
+    ).toMatchObject({ workspaceMode: "existing_worktree", existingWorktreePath: "/wt/pr-12" });
+  });
+
+  it("passes the note on when the draft held more than text", () => {
+    expect(scheduledTaskSeedFromComposer({ ...source, sideContextCount: 1 }).note).not.toBeNull();
   });
 });

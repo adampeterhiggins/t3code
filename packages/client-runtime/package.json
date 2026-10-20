@@ -67,6 +67,10 @@
       "types": "./src/secretRequest.ts",
       "default": "./src/secretRequest.ts"
     },
+    "./scheduled-task-picker": {
+      "types": "./src/scheduledTaskPicker.ts",
+      "default": "./src/scheduledTaskPicker.ts"
+    },
     "./scheduled-task-webhook": {
       "types": "./src/scheduledTaskWebhook.ts",
       "default": "./src/scheduledTaskWebhook.ts"

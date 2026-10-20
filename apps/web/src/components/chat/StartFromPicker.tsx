@@ -4,6 +4,10 @@ import { threadsForGitHubIssue } from "@t3tools/client-runtime/state/github-issu
 import { threadsForLinearIssue } from "@t3tools/client-runtime/state/linear";
 import { threadsForPullRequest } from "@t3tools/client-runtime/state/pull-requests";
 import {
+  automationRunBlocker,
+  automationsForPicker,
+} from "@t3tools/client-runtime/scheduled-task-picker";
+import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
@@ -13,6 +17,7 @@ import type {
   GitHubIssueSummary,
   LinearIssueSummary,
   ProjectId,
+  ScheduledTask,
   ScopedProjectRef,
   ScopedThreadRef,
   VcsRef,
@@ -20,22 +25,29 @@ import type {
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import { useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
-import { GitBranchIcon } from "lucide-react";
+import { CalendarClockIcon, CalendarPlusIcon, GitBranchIcon } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useState } from "react";
 
+import { useRunScheduledTask } from "~/hooks/useRunThreadScheduledTask";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { usePreparePullRequestThreadAction } from "~/lib/sourceControlActions";
-import { cn } from "~/lib/utils";
+import { cn, isMacPlatform } from "~/lib/utils";
 import { useThreadShellsForProjectRefs } from "~/state/entities";
 import { linearEnvironment } from "~/state/linear";
 import { usePullRequestList } from "~/state/pullRequests";
 import { useDebouncedValue, usePaginatedBranches } from "~/state/queries";
 import { useEnvironmentQuery } from "~/state/query";
+import { serverEnvironment } from "~/state/server";
 import { buildThreadRouteParams } from "~/threadRoutes";
 import { CommandPaletteContent } from "../CommandPaletteContent";
 import { LinearIcon } from "../Icons";
 import type { EnvironmentPullRequestEntry } from "../pullRequest/pullRequestList.logic";
 import { PULL_REQUEST_STATE_PRESENTATION } from "../pullRequest/pullRequestIcons";
+import { setPendingScheduledTaskDraft } from "../settings/scheduledTaskDraftSeed";
+import {
+  type ComposerAutomationSource,
+  scheduledTaskSeedFromComposer,
+} from "../settings/scheduledTasksSettings.logic";
 import {
   AlertDialog,
   AlertDialogClose,
@@ -55,7 +67,9 @@ import {
   CommandItem,
   CommandList,
 } from "../ui/command";
+import { Kbd, KbdGroup } from "../ui/kbd";
 import { toastManager } from "../ui/toast";
+import { scheduleLabel } from "../settings/ScheduledTasksSettings";
 import { GitHubIssueHoverPreview } from "./GitHubIssueHoverPreview";
 import {
   GitHubIssueRow,
@@ -80,14 +94,19 @@ import {
   narrowPickerPullRequests,
   PullRequestPickerFilterBar,
 } from "./StartFromPullRequestFilters";
-import { BranchHoverPreview, PullRequestHoverPreview } from "./StartFromPreviews";
+import {
+  AutomationHoverPreview,
+  BranchHoverPreview,
+  PullRequestHoverPreview,
+} from "./StartFromPreviews";
 
-type StartFromTab = "pull-requests" | "branches" | "issues" | "linear";
+type StartFromTab = "pull-requests" | "branches" | "issues" | "linear" | "automations";
 const ALL_TABS: ReadonlyArray<{ id: StartFromTab; label: string }> = [
   { id: "pull-requests", label: "PRs" },
   { id: "branches", label: "Branches" },
   { id: "issues", label: "Issues" },
   { id: "linear", label: "Linear" },
+  { id: "automations", label: "Automations" },
 ];
 // Without GitHub, the project has no issues tab of its own.
 const TABS_WITHOUT_GITHUB_ISSUES = ALL_TABS.filter((entry) => entry.id !== "issues");
@@ -96,7 +115,11 @@ const PLACEHOLDERS: Record<StartFromTab, string> = {
   branches: "Search branches",
   issues: "Search GitHub issues, or paste #123 or an issue link",
   linear: "Search Linear issues, or paste ENG-123 or an issue link",
+  automations: "Search automations by name or prompt",
 };
+const NEW_AUTOMATION_VALUE = "automation:new";
+const NEW_AUTOMATION_ITEMS = [NEW_AUTOMATION_VALUE];
+const EMPTY_TASKS: ReadonlyArray<ScheduledTask> = [];
 const SEARCH_DEBOUNCE_MS = 300;
 const PULL_REQUEST_LIMIT = 50;
 const EMPTY_ISSUES: ReadonlyArray<LinearIssueSummary> = [];
@@ -130,6 +153,8 @@ interface StartFromPickerProps {
   readonly threadRef: ScopedThreadRef;
   /** Point the draft at a checkout: a picked branch's, or a picked pull request's. */
   readonly onCheckout: (checkout: ReturnType<typeof resolveBranchStart>) => void;
+  /** What the draft's composer holds, read when a new automation is started from it. */
+  readonly readAutomationSource: () => ComposerAutomationSource | null;
 }
 
 /** Mounted by a local draft's chat view; shows the picker while it is open. */
@@ -234,6 +259,22 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
   const issues = latestIssues ?? shownIssues;
   const linearLinks = useLinearThreadLinks(tab === "linear" ? environmentId : null);
 
+  const tasksQuery = useEnvironmentQuery(
+    tab === "automations"
+      ? serverEnvironment.scheduledTasksLive({ environmentId, input: {} })
+      : null,
+  );
+  // Filtered at once rather than debounced: the whole list is already here.
+  const automations = automationsForPicker(tasksQuery.data?.tasks ?? EMPTY_TASKS, projectId, query);
+  const canRunTasks = useAtomValue(
+    serverEnvironment.runScheduledTaskNow.permissionAtom(environmentId),
+  );
+  const canCreateTasks = useAtomValue(
+    serverEnvironment.upsertScheduledTask.permissionAtom(environmentId),
+  );
+  const runScheduledTask = useRunScheduledTask();
+  const [highlighted, setHighlighted] = useState<string | null>(null);
+
   const close = () => {
     if (!busy) closeStartFromPicker();
   };
@@ -331,6 +372,53 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
       to: "/$environmentId/$threadId",
       params: buildThreadRouteParams(scopeThreadRef(thread.environmentId, thread.id)),
     });
+  };
+
+  /** Runs the task as Run now does, then opens the thread the run went to. */
+  const runAutomation = async (task: ScheduledTask) => {
+    setBusy(true);
+    const started = await runScheduledTask(environmentId, task);
+    setBusy(false);
+    if (started === null) return;
+    closeStartFromPicker();
+    if (started.threadId !== null) {
+      void navigate({
+        to: "/$environmentId/$threadId",
+        params: buildThreadRouteParams(scopeThreadRef(environmentId, started.threadId)),
+      });
+    }
+  };
+
+  const editAutomation = (task: ScheduledTask) => {
+    closeStartFromPicker();
+    void navigate({
+      to: "/settings/scheduled-tasks",
+      search: { environmentId, taskId: task.id },
+    });
+  };
+
+  const newAutomationFromDraft = () => {
+    const source = props.readAutomationSource();
+    if (source === null) return;
+    setPendingScheduledTaskDraft({ environmentId, seed: scheduledTaskSeedFromComposer(source) });
+    closeStartFromPicker();
+    void navigate({ to: "/settings/scheduled-tasks", search: { environmentId } });
+  };
+
+  const modKey = isMacPlatform(navigator.platform) ? "⌘" : "Ctrl";
+  const highlightedTask =
+    tab === "automations" ? automations.find((task) => task.id === highlighted) : undefined;
+
+  const onInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    const modPressed = modKey === "⌘" ? event.metaKey : event.ctrlKey;
+    if (event.key === "Enter" && modPressed && highlightedTask && canCreateTasks) {
+      // Base UI would otherwise also click the highlighted row, running the task.
+      (event as typeof event & { preventBaseUIHandler?: () => void }).preventBaseUIHandler?.();
+      event.preventDefault();
+      editAutomation(highlightedTask);
+      return;
+    }
+    cycleTab(event);
   };
 
   const cycleTab = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -481,6 +569,86 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
         </CommandCollection>
       </CommandGroup>,
     );
+  } else if (tab === "automations") {
+    const timeZone = tasksQuery.data?.timeZone;
+    const status =
+      automations.length > 0
+        ? null
+        : tasksQuery.error !== null
+          ? `Could not load automations: ${tasksQuery.error}`
+          : tasksQuery.data === null
+            ? "Loading automations…"
+            : trimmedQuery.length > 0
+              ? "No automations match."
+              : "No automations in this project yet.";
+    content = (
+      <CommandList>
+        <CommandGroup items={NEW_AUTOMATION_ITEMS}>
+          <CommandCollection>
+            {(value: string) => (
+              <CommandItem
+                key={value}
+                value={value}
+                disabled={busy || !canCreateTasks}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={newAutomationFromDraft}
+              >
+                <CalendarPlusIcon className="size-4 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1 truncate text-sm">New automation from draft</span>
+              </CommandItem>
+            )}
+          </CommandCollection>
+        </CommandGroup>
+        {status !== null ? (
+          <div className="py-6 text-center text-muted-foreground text-sm">{status}</div>
+        ) : (
+          <CommandGroup items={automations}>
+            <CommandCollection>
+              {(task: ScheduledTask) => {
+                const blocker = automationRunBlocker(task);
+                return (
+                  <CommandItem
+                    key={task.id}
+                    value={task.id}
+                    disabled={busy || !canRunTasks || blocker !== null}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => void runAutomation(task)}
+                  >
+                    <AutomationHoverPreview
+                      task={task}
+                      timeZone={timeZone}
+                      trigger={
+                        <span className="flex min-w-0 flex-1 items-center gap-2">
+                          <CalendarClockIcon className="size-4 shrink-0 text-muted-foreground" />
+                          <span className="min-w-0 flex-1 truncate text-sm">{task.title}</span>
+                          {!task.enabled ? (
+                            <Badge variant="outline" size="sm">
+                              Paused
+                            </Badge>
+                          ) : null}
+                          {task.lastRunStatus === "failed" ? (
+                            <Badge variant="error" size="sm">
+                              Last run failed
+                            </Badge>
+                          ) : task.lastRunStatus === "running" ? (
+                            <Badge variant="info" size="sm">
+                              Running
+                            </Badge>
+                          ) : null}
+                          <span className="w-40 shrink-0 truncate text-end text-muted-foreground/70 text-xs">
+                            {blocker ?? scheduleLabel(task.schedule, timeZone)}
+                          </span>
+                        </span>
+                      }
+                    />
+                  </CommandItem>
+                );
+              }}
+            </CommandCollection>
+          </CommandGroup>
+        )}
+      </CommandList>
+    );
   } else if (linearConnection.data !== null && !linearConnected) {
     content = (
       <div className="flex flex-col items-center gap-3 px-6 py-10 text-center text-sm">
@@ -558,7 +726,7 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
       >
         <CommandDialogPopup aria-label="Start from" className="overflow-hidden">
           <CommandPaletteContent
-            inputProps={{ placeholder: PLACEHOLDERS[tab], onKeyDown: cycleTab }}
+            inputProps={{ placeholder: PLACEHOLDERS[tab], onKeyDown: onInputKeyDown }}
             inputAccessory={
               <>
                 <SourceTabs
@@ -594,16 +762,33 @@ function StartFromPickerDialog(props: StartFromPickerProps) {
               </>
             }
             footerActionLabel={
-              tab === "issues" || tab === "linear"
-                ? busy
-                  ? "Attaching…"
-                  : "Attach"
-                : busy
-                  ? "Checking out…"
-                  : "Start thread"
+              tab === "automations"
+                ? highlighted === NEW_AUTOMATION_VALUE
+                  ? "New automation"
+                  : busy
+                    ? "Starting…"
+                    : "Run now"
+                : tab === "issues" || tab === "linear"
+                  ? busy
+                    ? "Attaching…"
+                    : "Attach"
+                  : busy
+                    ? "Checking out…"
+                    : "Start thread"
             }
-            footerTrailing={<span className="text-xs">Tab switches source</span>}
+            footerTrailing={
+              <span className="flex items-center gap-3">
+                {highlightedTask && canCreateTasks ? (
+                  <KbdGroup>
+                    <Kbd>{modKey} Enter</Kbd>
+                    <span>Edit</span>
+                  </KbdGroup>
+                ) : null}
+                <span className="text-xs">Tab switches source</span>
+              </span>
+            }
             mode="none"
+            onItemHighlighted={(value) => setHighlighted(typeof value === "string" ? value : null)}
             value={query}
             onValueChange={setQuery}
           >

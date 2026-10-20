@@ -7658,7 +7658,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                         variant="ghost"
                         size="icon-sm"
                         className="absolute end-2 top-2 z-10 sm:end-2.5 sm:top-2.5"
-                        aria-label="Start from a pull request, branch, or issue"
+                        aria-label="Start from a pull request, branch, issue, or automation"
                         onClick={onStartFrom}
                       />
                     }
@@ -7666,7 +7666,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     <EllipsisIcon />
                   </TooltipTrigger>
                   <TooltipPopup>
-                    Start from a PR, branch, or issue
+                    Start from a PR, branch, issue, or automation
                     {startFromShortcutLabel ? ` (${startFromShortcutLabel})` : null}
                   </TooltipPopup>
                 </Tooltip>

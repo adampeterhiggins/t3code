@@ -10,6 +10,7 @@ import {
   type ServerSettings,
 } from "@t3tools/contracts";
 import { parseMaxDeliveryAge } from "@t3tools/client-runtime/scheduled-task-webhook";
+import { scheduledTaskPromptFromComposer } from "@t3tools/client-runtime/scheduled-task-picker";
 
 import {
   resolveProjectSettings,
@@ -164,6 +165,62 @@ export function taskToDraft(task: ScheduledTask): DraftState {
       schedule.type === "webhook" && schedule.maxDeliveryAgeMinutes != null
         ? String(schedule.maxDeliveryAgeMinutes)
         : "",
+  };
+}
+
+/** What a new thread's composer holds, to start a scheduled task from. */
+export interface ComposerAutomationSource {
+  readonly projectId: ProjectId;
+  /** Raw composer text, with inline context chips still in it. */
+  readonly prompt: string;
+  /** Attachments and context held beside the text, which a task's prompt cannot carry. */
+  readonly sideContextCount: number;
+  readonly modelSelection: ModelSelection | null;
+  readonly runtimeMode: RuntimeMode;
+  readonly interactionMode: ProviderInteractionMode;
+  readonly envMode: "local" | "worktree";
+  readonly branch: string | null;
+  readonly worktreePath: string | null;
+  readonly startFromOrigin: boolean;
+}
+
+export interface ScheduledTaskDraftSeed {
+  readonly draft: Partial<DraftState>;
+  /** Says what the draft held that a task's prompt could not keep. */
+  readonly note: string | null;
+}
+
+/** Prefills the new-task form from a composer draft. */
+export function scheduledTaskSeedFromComposer(
+  source: ComposerAutomationSource,
+): ScheduledTaskDraftSeed {
+  const { prompt, note } = scheduledTaskPromptFromComposer(source.prompt, source.sideContextCount);
+  const workspace: Partial<DraftState> =
+    source.worktreePath !== null
+      ? { workspaceMode: "existing_worktree", existingWorktreePath: source.worktreePath }
+      : source.envMode === "worktree"
+        ? {
+            workspaceMode: "worktree",
+            ...(source.branch ? { baseRef: source.branch } : {}),
+            startFromOrigin: source.startFromOrigin,
+          }
+        : { workspaceMode: "root" };
+  const model: Partial<DraftState> = source.modelSelection
+    ? {
+        modelKey: `${source.modelSelection.instanceId}:${source.modelSelection.model}`,
+        baseModelSelection: source.modelSelection,
+      }
+    : {};
+  return {
+    draft: {
+      prompt,
+      projectId: source.projectId,
+      runtimeMode: source.runtimeMode,
+      interactionMode: source.interactionMode,
+      ...workspace,
+      ...model,
+    },
+    note,
   };
 }
 
