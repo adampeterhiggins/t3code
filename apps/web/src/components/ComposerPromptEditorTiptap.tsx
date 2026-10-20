@@ -175,7 +175,8 @@ export interface ComposerPromptEditorProps {
   onPageScrollKeyDown?: (key: "PageUp" | "PageDown") => void;
   onPageScrollKeyUp?: (key: string) => void;
   onPageScrollRelease?: () => void;
-  onCitationSubmitAndSend?: () => void;
+  /** Sends one citation as its own message; resolves true once it was sent. */
+  onCitationSubmitAndSend?: (citationText: string) => Promise<boolean>;
   /** Saves the message, comment included, as a draft on the thread; absent where it cannot. */
   onCitationSubmitAndSaveDraft?: (() => void) | undefined;
   /** Sending from a citation comment adds the message to the queue instead of sending it now. */
@@ -210,14 +211,14 @@ const ComposerCitationCommentContext = createContext<{
   openComment: OpenCitationComment | null;
   onOpenChange: (citeKey: string, open: boolean) => void;
   onDraftChange: (citeKey: string, comment: string) => void;
-  onSubmitAndSend: () => void;
+  onSubmitAndSend: (citationText: string) => Promise<boolean>;
   onSubmitAndSaveDraft: (() => void) | null;
   sendQueues: boolean;
 }>({
   openComment: null,
   onOpenChange: () => {},
   onDraftChange: () => {},
-  onSubmitAndSend: () => {},
+  onSubmitAndSend: async () => false,
   onSubmitAndSaveDraft: null,
   sendQueues: false,
 });
@@ -461,6 +462,31 @@ function ComposerCitationNodeView({ node, editor, getPos }: NodeViewProps) {
     editor.chain().focus().deleteRange({ from, to }).run();
   };
 
+  // Runs after the send resolves, when this view may have moved or unmounted, so find the chip
+  // by key. One adjoining space goes with it so the surrounding text closes up.
+  const onRemoveSent = () => {
+    if (editor.isDestroyed) return;
+    const { doc } = editor.state;
+    let pos: number | null = null;
+    doc.descendants((child, childPos) => {
+      if (pos !== null) return false;
+      if (child.type.name === "composer-citation" && child.attrs.citeKey === citeKey) {
+        pos = childPos;
+        return false;
+      }
+      return true;
+    });
+    if (pos === null) return;
+    const current = doc.nodeAt(pos);
+    if (!current) return;
+    const end = pos + current.nodeSize;
+    const before = pos > 0 ? doc.textBetween(pos - 1, pos) : "";
+    const after = end < doc.content.size ? doc.textBetween(end, end + 1) : "";
+    const from = before === " " && after !== " " ? pos - 1 : pos;
+    const to = after === " " && (before === " " || before === "") ? end + 1 : end;
+    editor.commands.deleteRange({ from, to });
+  };
+
   const onRestoreFocus = () => {
     if (!editor.isEditable) return;
     const pos = nodePos();
@@ -508,8 +534,14 @@ function ComposerCitationNodeView({ node, editor, getPos }: NodeViewProps) {
           onSave: onSaveComment,
           onDraftChange: (comment) => commentContext.onDraftChange(citeKey, comment),
           onSaveAndSend: (comment) => {
+            // Saved first, so a send that fails leaves the comment in the composer.
             if (!onSaveComment(comment)) return false;
-            commentContext.onSubmitAndSend();
+            const sent = serializeAssistantCitation(
+              withAssistantCitationComment(citation, comment),
+            );
+            void commentContext.onSubmitAndSend(sent).then((ok) => {
+              if (ok) onRemoveSent();
+            });
             return true;
           },
           saveAndSendQueues: commentContext.sendQueues,
@@ -1084,7 +1116,7 @@ function ComposerPromptEditorTiptapInner(
     onDraftChange: (nodeKey: string, comment: string) => {
       citationDraftRef.current = { key: nodeKey, comment };
     },
-    onSubmitAndSend: onCitationSubmitAndSend ?? (() => {}),
+    onSubmitAndSend: onCitationSubmitAndSend ?? (async () => false),
     onSubmitAndSaveDraft: onCitationSubmitAndSaveDraft ?? null,
     sendQueues: citationSendQueues,
   };

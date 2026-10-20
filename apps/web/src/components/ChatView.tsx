@@ -5628,10 +5628,15 @@ export default function ChatView(props: ChatViewProps) {
   };
   const sendAppMessageStable = useStableCallback(sendAppMessage);
 
-  const sendStandaloneCommand = async (text: string, failureMessage: string) => {
-    if (!activeThread || !clientSettingsHydrated || sendInFlightRef.current) return;
+  const sendStandaloneCommand = async (
+    text: string,
+    failureMessage: string,
+    dispatchMode?: ComposerDispatchMode,
+  ): Promise<boolean> => {
+    if (!activeThread || !clientSettingsHydrated || sendInFlightRef.current) return false;
     const context = composerRef.current?.getSendContext();
-    if (!context?.providerAvailable) return;
+    if (!context?.providerAvailable) return false;
+    const queued = phase === "running" && dispatchMode === "queue";
     const threadId = activeThread.id;
     const messageId = newMessageId();
     const createdAt = new Date().toISOString();
@@ -5648,6 +5653,11 @@ export default function ChatView(props: ChatViewProps) {
         createdAt,
         updatedAt: createdAt,
         streaming: false,
+        ...(queued
+          ? { inputIntent: "queued_turn" as const }
+          : phase === "running" && dispatchMode === "steer"
+            ? { inputIntent: "steer" as const }
+            : {}),
       },
     ]);
     scrollToEnd();
@@ -5670,6 +5680,7 @@ export default function ChatView(props: ChatViewProps) {
               modelSelection: context.selectedModelSelection,
               runtimeMode,
               interactionMode: context.interactionMode,
+              ...(dispatchMode ? { dispatchMode } : {}),
               createdAt,
             },
           });
@@ -5686,8 +5697,13 @@ export default function ChatView(props: ChatViewProps) {
       clearUsageLimitsFor(routeThreadKey);
     }
     sendInFlightRef.current = false;
+    return result._tag !== "Failure";
   };
   const sendStandaloneCommandStable = useStableCallback(sendStandaloneCommand);
+  // A citation comment sends on its own, leaving the rest of the composer for later.
+  const sendCitationStable = useStableCallback((text: string, dispatchMode: ComposerDispatchMode) =>
+    sendStandaloneCommand(text, "Failed to send the citation.", dispatchMode),
+  );
   const activeGoal = activeThreadShell?.goal ?? null;
   const goalBannerItem = (() => {
     if (!activeThread || activeGoal === null) return null;
@@ -9529,6 +9545,7 @@ export default function ChatView(props: ChatViewProps) {
                               onPageScrollRelease={onComposerPageScrollReleaseStable}
                               onCompactContext={onComposerCompactContextStable}
                               onSend={onComposerSendStable}
+                              onSendCitation={sendCitationStable}
                               onResume={onComposerResumeStable}
                               onInterrupt={onInterruptStable}
                               onImplementPlanInNewThread={onImplementPlanInNewThreadStable}

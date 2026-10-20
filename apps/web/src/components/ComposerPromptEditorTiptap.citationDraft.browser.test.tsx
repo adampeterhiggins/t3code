@@ -50,9 +50,11 @@ afterEach(async () => {
 function Composer({
   question,
   editorRef,
+  onCitationSubmitAndSend,
 }: {
   question: boolean;
   editorRef: React.RefObject<ComposerPromptEditorHandle | null>;
+  onCitationSubmitAndSend?: (citationText: string) => Promise<boolean>;
 }) {
   const [prompt, setPrompt] = useState(promptBefore);
   const [answer, setAnswer] = useState("");
@@ -80,6 +82,7 @@ function Composer({
         onCitationDraftSave={(replacedValue, savedValue) => {
           if (replacedValue === prompt) setPrompt(savedValue);
         }}
+        {...(onCitationSubmitAndSend ? { onCitationSubmitAndSend } : {})}
         onPaste={() => {}}
       />
     </>
@@ -115,4 +118,56 @@ it("keeps an unsaved citation comment when a question takes the composer", async
     `See ${serializeAssistantCitation(withAssistantCitationComment(citation, "check this"))} `,
   );
   await expect.element(page.getByLabelText("Edit citation comment")).toBeInTheDocument();
+});
+
+async function openCitationComment(editorRef: React.RefObject<ComposerPromptEditorHandle | null>) {
+  const sourceAnchor = findAssistantCitationSourceAnchor(document, citation);
+  if (!sourceAnchor) throw new Error("Citation source did not resolve");
+  await act(async () =>
+    editorRef.current?.requestCitationComment({
+      previousValue: "See ",
+      value: promptBefore,
+      citationStart: "See ".length,
+      sourceAnchor,
+      insertedSpaces: { before: false, after: true },
+    }),
+  );
+  const comment = page.getByLabelText("Comment on selected text");
+  await expect.element(comment).toBeVisible();
+  await comment.click();
+  await userEvent.keyboard("check this");
+}
+
+it("sends only the citation and leaves the rest of the composer", async () => {
+  localStorage.removeItem("t3code:citation-comment-submit:v1");
+  const editorRef = createRef<ComposerPromptEditorHandle>();
+  const send = vi.fn(async (_citationText: string) => true);
+  await act(async () =>
+    root.render(<Composer question={false} editorRef={editorRef} onCitationSubmitAndSend={send} />),
+  );
+  await openCitationComment(editorRef);
+
+  await userEvent.keyboard("{Enter}");
+
+  expect(send).toHaveBeenCalledExactlyOnceWith(
+    serializeAssistantCitation(withAssistantCitationComment(citation, "check this")),
+  );
+  await expect.poll(() => container.querySelector("output")?.dataset.prompt).toBe("See ");
+});
+
+it("keeps the commented citation in the composer when its send fails", async () => {
+  localStorage.removeItem("t3code:citation-comment-submit:v1");
+  const editorRef = createRef<ComposerPromptEditorHandle>();
+  const send = vi.fn(async (_citationText: string) => false);
+  await act(async () =>
+    root.render(<Composer question={false} editorRef={editorRef} onCitationSubmitAndSend={send} />),
+  );
+  await openCitationComment(editorRef);
+
+  await act(async () => userEvent.keyboard("{Enter}"));
+
+  expect(send).toHaveBeenCalledOnce();
+  expect(container.querySelector("output")?.dataset.prompt).toBe(
+    `See ${serializeAssistantCitation(withAssistantCitationComment(citation, "check this"))} `,
+  );
 });

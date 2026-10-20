@@ -1458,8 +1458,10 @@ shown by [AssistantCitationChip.tsx](../apps/web/src/components/chat/AssistantCi
 
 Upstream's comment popover on an assistant-response citation only has **Save**, with Cmd/Ctrl+Enter
 as a hidden way to save and send. The fork replaces **Save** with the same split button as the pull
-request comment form: **Send** saves the comment and sends the composer in one step, following the
-usual follow-up behaviour when a turn is running, and **Save** keeps it in the composer. When that
+request comment form: **Send** sends that quote and its comment on their own, following the usual
+follow-up behaviour when a turn is running, and takes the quote out of the composer while leaving
+everything else there untouched. If the send fails, the commented quote stays in the composer.
+**Save** keeps it in the composer. When that
 behaviour would queue the message, **Send** reads **Add to queue**, as the composer's own button
 does. The button shows whichever the reader used last. Enter does what the button shows, and
 Cmd/Ctrl+Enter does the other one.
