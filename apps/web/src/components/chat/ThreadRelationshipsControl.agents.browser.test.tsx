@@ -35,14 +35,19 @@ vi.mock(import("@tanstack/react-router"), async (original) => ({
 vi.mock(import("../../state/entities"), async (original) => ({
   ...(await original()),
   useThreadShells: (() => state.shells) as never,
+  // A working agent's row also reads its child thread, which these tests leave unloaded.
   useThreadProjection: ((ref: ScopedThreadRef | null) =>
     ref === null
       ? undefined
-      : {
-          projection: state.projections
-            ? state.projections.get(scopedThreadKey(ref))
-            : state.projection,
-        }) as never,
+      : state.projections
+        ? { projection: state.projections.get(scopedThreadKey(ref)) }
+        : (
+              state.projection as {
+                subagents?: ReadonlyArray<{ childThreadId: string | null }>;
+              } | null
+            )?.subagents?.some((agent) => agent.childThreadId === ref.threadId)
+          ? null
+          : { projection: state.projection }) as never,
   useThreadRelationshipShells: ((ref: { readonly environmentId: string }) =>
     (state.shells as ReadonlyArray<{ readonly environmentId: string; readonly source: unknown }>)
       .filter((shell) => shell.environmentId === ref.environmentId)
@@ -763,6 +768,7 @@ it("keeps active supervisor status, progress, and task timing after its child tu
       source: {
         id: "child-1",
         title: "Supervisor",
+        createdAt: DateTime.makeUnsafe("2026-09-16T12:00:00Z"),
         status: "completed",
         activityRunStatus: null,
         latestRunId: "run-child-1",
@@ -817,7 +823,11 @@ it("keeps active supervisor status, progress, and task timing after its child tu
     expect(heading()).toBe(status === "running" ? "Lineage · 1 running" : "Lineage");
     expect(textNodes(" ")).not.toContain("Previous agents");
     expect(buttons().some((button) => button.textContent?.includes("Supervisor"))).toBe(true);
-    const tooltip = container.querySelector('[role="tooltip"]')?.textContent;
+    // The panel header's "Open in Agents panel" button has its own tooltip.
+    const tooltip = Array.from(
+      container.querySelectorAll('[role="tooltip"]'),
+      (node) => node.textContent,
+    ).find((content) => content?.includes("Supervisor"));
     expect.soft(tooltip).toContain(status);
     expect.soft(tooltip).toContain("Waiting for the worker to finish");
     expect.soft(tooltip).toContain("5m 15s");
