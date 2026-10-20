@@ -65,6 +65,7 @@ const render = () => act(async () => root.render(<Probe />));
 describe("restoring V2 settings", () => {
   it.each([
     ["persistComposerContextStrip", "Composer context"],
+    ["stopAtSubscriptionLimit", "Stop at subscription limit"],
     ["autoResumeLimitedThreads", "Auto-resume limited threads"],
     ["snoozeLimitedThreads", "Snooze limited threads"],
   ] as const)("restores %s when it is the only changed setting", async (key, label) => {

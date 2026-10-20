@@ -71,20 +71,30 @@ reset, even with no app open; **Cancel auto-resume** turns it off), **Resume
 now**, and, on web and desktop, **Continue in new tab** on another account or
 model. Automatic resume is only offered when Claude reported a reset time.
 
-For unattended work, enable **Stop at subscription limit** in the thread's Claude
-model options. T3 checks your subscription before each turn and stops the Claude
-session when it reports exhausted subscription usage, even with paid extra usage
-enabled. This also stops native background agents in that session. Other threads
-keep their own settings. Disable the option to allow extra usage again, or use
-**Resume at reset** to continue later with the guard still enabled.
+For unattended work, enable **Stop at subscription limit** in **Settings > General**
+(**Settings > Threads > Usage limits** on mobile). This applies to all Claude threads
+on the selected environments, including delegated threads and threads whose own
+option is Off. Enabling it also checks running Claude sessions immediately.
+Disabling it removes the application-wide restriction; individual thread options
+still apply. Other providers are not covered yet.
 
-The option is available on web, desktop, and mobile. Agents can set
+For selected threads only, leave the application setting off and enable **Stop at
+subscription limit** in that thread's Claude model options. Agents can set
 `stopAtSubscriptionLimit: true` through model options; delegated threads inherit
-it under the normal same-provider-and-model option inheritance rules. If usage
-cannot be checked, the guarded turn stops before sending its prompt. API-key and
-router accounts without subscription usage reporting cannot use this option.
-Provider reports can arrive late, so this is a guard against unattended spending,
-not a guarantee of zero extra charges.
+that option under the normal same-provider-and-model rules.
+
+T3 checks subscription usage before protected turns and closes a Claude session
+when it reports exhausted usage, even with paid extra usage enabled. Native
+background work in that session also stops. A stopped turn appears as **Limited**
+and offers the same **Resume now**, **Resume at reset**, and **Snooze until reset**
+controls as an ordinary provider limit. **Resume now** keeps the guard: use another
+provider or disable both the application and thread restrictions to allow paid
+extra usage. Automatic resume checks the allowance again after reset.
+
+If usage cannot be checked, the protected turn stops before sending its prompt.
+API-key and router accounts without subscription usage reporting cannot use this
+option. Provider reports can arrive late, so this is a guard against unattended
+spending, not a guarantee of zero extra charges.
 
 ## Skills
 

@@ -1899,18 +1899,24 @@ guide: [usage.md](./user/usage.md#track-subscription-limits).
 
 ## Stop Claude threads at subscription limits
 
-Claude's thread model options include **Stop at subscription limit**, off by default,
-on web, desktop, and mobile. The server checks subscription usage before each turn,
-refuses to send a prompt if usage is unavailable or the session/weekly allowance is
-exhausted, and closes the Claude session when streamed events report exhaustion or
-active paid overage. Closing also stops native background work in that session.
-The thread enters the existing usage-limit recovery flow, including optional resume
-at reset; the guard stays enabled. Other threads may keep using paid extra usage.
+**Settings > General > Stop at subscription limit** (mobile: **Settings > Threads >
+Usage limits**) protects all Claude threads on the selected environments, including
+delegated work. It overrides a thread's Off option and immediately checks running
+sessions when enabled. With the application setting off, threads can opt in through
+the same-named Claude model option. Both settings default to off. Settings remain
+on the server, so the guard also applies when clients disconnect overnight.
 
-Agents use `stopAtSubscriptionLimit` through the existing model-option tools.
-Delegated threads follow normal same-provider-and-model option inheritance. This
-initial implementation supports Claude; other providers do not advertise the option.
-Provider reports may lag, so it is not a hard billing cap.
+The server checks fresh subscription usage before protected turns, refuses to send
+a prompt if usage is unavailable or the session/weekly allowance is exhausted, and
+closes the Claude process when streamed events report exhaustion or active overage.
+Closing stops its native background work too. Active turns use the existing Limited
+status and usage-limit recovery controls, including optional resume after reset;
+resuming does not bypass the guard.
+
+Agents use `stopAtSubscriptionLimit` through model options. Without the application
+setting, delegated threads follow normal same-provider-and-model option inheritance.
+Other providers do not advertise or enforce this guard yet. Provider reports may
+lag, so it is not a hard billing cap.
 
 Code: [Claude model catalog](../apps/server/src/provider/ClaudeModelCatalog.ts),
 [Claude driver](../apps/server/src/provider/Drivers/ClaudeDriver.ts), and

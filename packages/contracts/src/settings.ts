@@ -1567,6 +1567,7 @@ export const ServerSettings = Schema.Struct({
   ),
   compactIdleThreads: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   snoozeLimitedThreads: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  stopAtSubscriptionLimit: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   autoResumeLimitedThreads: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   sidebarAutoSettleKeepPullRequests: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(false)),
@@ -1940,6 +1941,7 @@ export const ServerSettingsPatch = Schema.Struct({
   /** Replaces the whole map, so a cleared organisation style stays cleared. */
   organisations: Schema.optionalKey(Organisations),
   defaultThreadGroup: Schema.optionalKey(Schema.NullOr(TrimmedNonEmptyString)),
+  stopAtSubscriptionLimit: Schema.optionalKey(Schema.Boolean),
   autoResumeLimitedThreads: Schema.optionalKey(Schema.Boolean),
   snoozeLimitedThreads: Schema.optionalKey(Schema.Boolean),
   backgroundActivity: Schema.optionalKey(

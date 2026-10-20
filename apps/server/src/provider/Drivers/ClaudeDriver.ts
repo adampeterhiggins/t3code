@@ -23,6 +23,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
 import { HttpClient } from "effect/http";
 import { ChildProcessSpawner } from "effect/process";
 
@@ -204,6 +205,13 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
       },
       {
         scopedLimitNames,
+        subscriptionLimitGuardEnabled: host.settings.get.pipe(
+          Effect.map((settings) => settings.stopAtSubscriptionLimit),
+          Effect.orElseSucceed(() => true),
+        ),
+        subscriptionLimitGuardChanges: host.settings.changes.pipe(
+          Stream.map((settings) => settings.stopAtSubscriptionLimit),
+        ),
         onUsageLimits: (update) => snapshot.applyUsageLimits(update),
         // The UI cache lasts five minutes and preserves old bars on probe failure.
         // A spending guard needs a fresh read and must fail closed instead.

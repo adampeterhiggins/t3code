@@ -4137,6 +4137,8 @@ export interface ClaudeAdapterV2Options {
   readonly scopedLimitNames?: Ref.Ref<ClaudeScopedLimitNames>;
   readonly onUsageLimits?: ManagedServerProvider["applyUsageLimits"];
   readonly checkUsageLimits?: Effect.Effect<ServerProviderUsageLimits | undefined>;
+  readonly subscriptionLimitGuardEnabled?: Effect.Effect<boolean>;
+  readonly subscriptionLimitGuardChanges?: Stream.Stream<boolean>;
   readonly continuationRequests?: {
     readonly offer: (
       request: ProviderContinuationRequests.ProviderContinuationRequest,
@@ -4151,6 +4153,53 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
 ) {
   const mcpSessions = yield* McpProviderSessions.McpProviderSessions;
   const { attachmentsDir, fileSystem, path, crypto, idAllocator, queryRunner } = adapterOptions;
+  // This policy is also read on streamed rate-limit frames.
+  const subscriptionLimitGuardEnabled = Effect.fnUntraced(function* (selection?: ModelSelection) {
+    return (
+      (yield* adapterOptions.subscriptionLimitGuardEnabled ?? Effect.succeed(false)) ||
+      getModelSelectionBooleanOptionValue(selection, "stopAtSubscriptionLimit") === true
+    );
+  });
+  const subscriptionLimitFailure = Effect.fn("ClaudeAdapterV2.checkSubscriptionLimit")(
+    function* () {
+      const limits = yield* adapterOptions.checkUsageLimits ?? Effect.succeed(undefined);
+      const nowMs = DateTime.toEpochMillis(yield* DateTime.now);
+      const subscriptionWindows =
+        limits?.windows.filter(
+          (window) => window.id === "five_hour" || window.id === "seven_day",
+        ) ?? [];
+      const exhausted = subscriptionWindows.filter(
+        (window) =>
+          window.usedPercent >= 100 &&
+          (window.resetsAt === undefined || Date.parse(window.resetsAt) > nowMs),
+      );
+      if (
+        limits !== undefined &&
+        limits.unavailable === undefined &&
+        subscriptionWindows.length > 0 &&
+        exhausted.length === 0
+      )
+        return null;
+      const resetTimes = exhausted.map((window) => window.resetsAt);
+      const resetAt =
+        resetTimes.length > 0 && resetTimes.every((time) => time !== undefined)
+          ? resetTimes.reduce((latest, time) => (time! > latest ? time! : latest), "")
+          : null;
+      return {
+        ...makeProviderFailure({
+          class: exhausted.length > 0 ? "usage_limit" : "provider_error",
+          retryable: false,
+          code: "subscription_limit_guard",
+          message:
+            exhausted.length > 0
+              ? "Claude subscription limit reached. This thread stopped because Stop at subscription limit is enabled."
+              : "Claude subscription usage could not be checked. Retry the turn, or disable Stop at subscription limit in application and thread settings to continue without this check.",
+        }),
+        resetAt,
+      };
+    },
+  );
+
   const subagentModelCatalog = scopeClaudeModelCatalog(
     BUNDLED_CLAUDE_MODEL_CATALOG,
     adapterOptions.settings.customModels,
@@ -7315,6 +7364,40 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           }
         });
 
+        if (adapterOptions.subscriptionLimitGuardChanges !== undefined) {
+          yield* adapterOptions.subscriptionLimitGuardChanges.pipe(
+            Stream.changes,
+            Stream.filter((enabled) => enabled),
+            Stream.runForEach(() =>
+              Effect.gen(function* () {
+                const live = yield* Ref.get(queryContext);
+                if (live === null || live.stopping) return;
+                const failure = yield* subscriptionLimitFailure();
+                if (failure === null) return;
+                yield* sdkMessageLock.withPermits(1)(
+                  Effect.gen(function* () {
+                    if (
+                      (yield* Ref.get(queryContext)) !== live ||
+                      live.stopping ||
+                      !(yield* subscriptionLimitGuardEnabled())
+                    )
+                      return;
+                    const context = yield* Ref.get(activeTurn);
+                    if (context !== null) {
+                      yield* stopAtSubscriptionLimit(context, failure);
+                    } else {
+                      live.stopping = true;
+                      yield* clearWakeStateForNativeThread(live.nativeThreadId);
+                      yield* live.query.close.pipe(Effect.ignore);
+                    }
+                  }),
+                );
+              }),
+            ),
+            Effect.forkIn(sessionScope),
+          );
+        }
+
         const applyWorkflowProgressWithoutTurn = Effect.fnUntraced(function* (message: SDKMessage) {
           if (message.type !== "system" || message.subtype !== "task_progress") return;
           if (!hasClaudeWorkflowSnapshot(message)) return;
@@ -7751,10 +7834,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             const context = yield* Ref.get(activeTurn);
             if (context === null) {
               if (
-                getModelSelectionBooleanOptionValue(
-                  liveQuery.lastTurn?.input.modelSelection,
-                  "stopAtSubscriptionLimit",
-                ) === true &&
+                (yield* subscriptionLimitGuardEnabled(liveQuery.lastTurn?.input.modelSelection)) &&
                 claudeSubscriptionLimitReached(rateLimitInfo)
               ) {
                 // Native background agents can keep spending after the root turn has ended.
@@ -7771,10 +7851,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               return;
             }
             if (
-              getModelSelectionBooleanOptionValue(
-                context.input.modelSelection,
-                "stopAtSubscriptionLimit",
-              ) === true &&
+              (yield* subscriptionLimitGuardEnabled(context.input.modelSelection)) &&
               claudeSubscriptionLimitReached(rateLimitInfo)
             ) {
               yield* stopAtSubscriptionLimit(context, {
@@ -9951,47 +10028,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 }),
               });
             });
-            if (
-              getModelSelectionBooleanOptionValue(
-                turnInput.modelSelection,
-                "stopAtSubscriptionLimit",
-              ) === true
-            ) {
-              const limits = yield* adapterOptions.checkUsageLimits ?? Effect.succeed(undefined);
-              const nowMs = DateTime.toEpochMillis(yield* DateTime.now);
-              const subscriptionWindows =
-                limits?.windows.filter(
-                  (window) => window.id === "five_hour" || window.id === "seven_day",
-                ) ?? [];
-              const exhausted = subscriptionWindows.filter(
-                (window) =>
-                  window.usedPercent >= 100 &&
-                  (window.resetsAt === undefined || Date.parse(window.resetsAt) > nowMs),
-              );
-              if (
-                limits === undefined ||
-                limits.unavailable !== undefined ||
-                subscriptionWindows.length === 0 ||
-                exhausted.length > 0
-              ) {
+            if (yield* subscriptionLimitGuardEnabled(turnInput.modelSelection)) {
+              const failure = yield* subscriptionLimitFailure();
+              if (failure !== null) {
                 yield* attachTurn;
-                const resetTimes = exhausted.map((window) => window.resetsAt);
-                const resetAt =
-                  resetTimes.length > 0 && resetTimes.every((time) => time !== undefined)
-                    ? resetTimes.reduce((latest, time) => (time! > latest ? time! : latest), "")
-                    : null;
-                yield* stopAtSubscriptionLimit(context, {
-                  ...makeProviderFailure({
-                    class: exhausted.length > 0 ? "usage_limit" : "provider_error",
-                    retryable: false,
-                    code: "subscription_limit_guard",
-                    message:
-                      exhausted.length > 0
-                        ? "Claude subscription limit reached. This thread stopped because Stop at subscription limit is enabled."
-                        : "Claude subscription usage could not be checked. Disable Stop at subscription limit to continue without this check.",
-                  }),
-                  resetAt,
-                });
+                yield* stopAtSubscriptionLimit(context, failure);
                 return;
               }
             }
@@ -10878,7 +10919,11 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
     input: ProviderAdapterDriverCreateInput<ClaudeSettings>,
     hooks: Pick<
       ClaudeAdapterV2Options,
-      "scopedLimitNames" | "onUsageLimits" | "checkUsageLimits"
+      | "scopedLimitNames"
+      | "onUsageLimits"
+      | "checkUsageLimits"
+      | "subscriptionLimitGuardEnabled"
+      | "subscriptionLimitGuardChanges"
     > = {},
   ) {
     const { instanceId, environment, enabled, config } = input;

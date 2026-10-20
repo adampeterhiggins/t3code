@@ -88,6 +88,7 @@ function AutoSettleSettingsRows() {
 
   const writeToAll = (
     patch: Partial<AutoSettleSettings> & {
+      stopAtSubscriptionLimit?: boolean;
       autoResumeLimitedThreads?: boolean;
       snoozeLimitedThreads?: boolean;
     },
@@ -177,6 +178,14 @@ function AutoSettleSettingsRows() {
       ) : null}
       {!projectSelected ? (
         <SettingsSection title="Usage limits">
+          <SettingsSwitchRow
+            icon="clock"
+            label="Stop at subscription limit"
+            subtitle="Stop all Claude threads before paid extra usage, overriding thread options. Rechecks running sessions when enabled. Provider reports can lag; this is not a billing cap."
+            value={uniformMobileSetting(displayTargets, "stopAtSubscriptionLimit")}
+            disabled={disabled}
+            onValueChange={(value) => writeToAll({ stopAtSubscriptionLimit: value })}
+          />
           <SettingsSwitchRow
             icon="clock"
             label="Auto-resume limited threads"
