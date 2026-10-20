@@ -73,6 +73,7 @@ import {
   ComposerControlSeparator,
 } from "../chat/ComposerControl";
 import { ComposerPrimaryActions } from "../chat/ComposerPrimaryActions";
+import { ComposerImageThumbnail } from "../chat/ComposerImageThumbnail";
 import { ComposerSurface } from "../chat/ComposerSurface";
 import { DraftProjectName } from "../chat/DraftProjectName";
 import { ProviderModelPicker } from "../chat/ProviderModelPicker";
@@ -553,27 +554,57 @@ export function QuickMessagePanel() {
                     </div>
                   ) : null}
                   {files.length > 0 ? (
-                    <div className="flex flex-wrap gap-1.5 pe-7 pb-2">
-                      {files.map(({ id, file }) => (
-                        <span
-                          key={id}
-                          className="inline-flex max-w-56 items-center gap-1.5 rounded-lg bg-muted py-0.5 ps-2 pe-0.5 text-muted-foreground text-xs"
-                        >
-                          <FileIcon className="size-3.5 shrink-0" aria-hidden="true" />
-                          <span className="min-w-0 truncate">{file.name}</span>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-xs"
-                            aria-label={`Remove ${file.name}`}
-                            onClick={() =>
-                              setFiles((current) => current.filter((entry) => entry.id !== id))
-                            }
+                    <div className="flex flex-wrap items-center gap-1.5 pe-7 pb-2">
+                      {files.map(({ id, file }) =>
+                        file.type.startsWith("image/") ? (
+                          <div
+                            key={id}
+                            className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-border/80 bg-background"
                           >
-                            <XIcon />
-                          </Button>
-                        </span>
-                      ))}
+                            <ComposerImageThumbnail
+                              file={file}
+                              alt={file.name}
+                              className="h-full w-full"
+                              fallback={
+                                <span className="flex h-full items-center justify-center px-1 text-center text-3xs text-secondary-label">
+                                  {file.name}
+                                </span>
+                              }
+                            />
+                            <Button
+                              type="button"
+                              variant="media-close"
+                              size="icon-xs"
+                              className="absolute right-1 top-1"
+                              aria-label={`Remove ${file.name}`}
+                              onClick={() =>
+                                setFiles((current) => current.filter((entry) => entry.id !== id))
+                              }
+                            >
+                              <XIcon />
+                            </Button>
+                          </div>
+                        ) : (
+                          <span
+                            key={id}
+                            className="inline-flex max-w-56 items-center gap-1.5 rounded-lg bg-muted py-0.5 ps-2 pe-0.5 text-muted-foreground text-xs"
+                          >
+                            <FileIcon className="size-3.5 shrink-0" aria-hidden="true" />
+                            <span className="min-w-0 truncate">{file.name}</span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-xs"
+                              aria-label={`Remove ${file.name}`}
+                              onClick={() =>
+                                setFiles((current) => current.filter((entry) => entry.id !== id))
+                              }
+                            >
+                              <XIcon />
+                            </Button>
+                          </span>
+                        ),
+                      )}
                     </div>
                   ) : null}
                   <textarea
