@@ -408,6 +408,7 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
                   environmentId={props.environmentId}
                   workspaceRoot={props.workspaceRoot}
                   pathOnly
+                  omitWorkspaceRoot
                 />
                 {result.line === undefined ? "" : `:${result.line}`}
                 {result.column === undefined ? "" : `:${result.column}`}

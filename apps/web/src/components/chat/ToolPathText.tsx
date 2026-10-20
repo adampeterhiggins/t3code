@@ -19,9 +19,12 @@ const pathRootClassName =
 function ToolPathBreadcrumb({
   path,
   singleLine = false,
+  omitRoot = false,
 }: {
   path: NonNullable<ReturnType<typeof resolveToolPath>>;
   singleLine?: boolean;
+  /** Drop the checkout name when this file is already in the thread's workspace. */
+  omitRoot?: boolean;
 }) {
   const [error, setError] = useState<string | null>(null);
   const { copyToClipboard, isCopied } = useCopyToClipboard({
@@ -29,9 +32,11 @@ function ToolPathBreadcrumb({
     onCopy: () => setError(null),
     onError: () => setError("Could not copy path. Select it to copy manually."),
   });
+  const hideRoot = omitRoot && path.inWorkspace && path.segments.length > 0;
   const filename = path.segments.at(-1);
   const directories = filename === undefined ? [] : path.segments.slice(0, -1);
   const root = <span className={pathRootClassName}>{path.rootLabel}</span>;
+  const relativePath = path.segments.join("/");
   return (
     <Popover>
       <PopoverTrigger
@@ -55,6 +60,13 @@ function ToolPathBreadcrumb({
         {singleLine ? (
           filename === undefined ? (
             <span className="min-w-0 truncate">{root}</span>
+          ) : hideRoot ? (
+            <>
+              {directories.length > 0 ? (
+                <span className="min-w-0 truncate">{directories.join("/")}</span>
+              ) : null}
+              <span className="shrink-0">{directories.length > 0 ? `/${filename}` : filename}</span>
+            </>
           ) : (
             <>
               <span className="min-w-0 truncate">
@@ -64,6 +76,8 @@ function ToolPathBreadcrumb({
               <span className="shrink-0">/{filename}</span>
             </>
           )
+        ) : hideRoot ? (
+          relativePath
         ) : (
           <>
             {root}
@@ -106,6 +120,11 @@ export function ToolPathText(props: {
   environmentId: EnvironmentId;
   workspaceRoot: string | null | undefined;
   pathOnly?: boolean;
+  /**
+   * Search hits already belong to this checkout. Skip its name on each row;
+   * the full path stays on the tooltip. Files in another checkout keep their label.
+   */
+  omitWorkspaceRoot?: boolean;
   targets?: ReadonlyArray<string>;
   /** One line, keeping each file name. Detail and preview views leave this off and wrap. */
   singleLine?: boolean;
@@ -113,7 +132,13 @@ export function ToolPathText(props: {
   const roots = useAtomValue(toolPathRootsAtom(props.environmentId));
   const path = props.pathOnly ? resolveToolPath(props.text, props.workspaceRoot, roots) : null;
   if (path) {
-    const breadcrumb = <ToolPathBreadcrumb path={path} singleLine={props.singleLine ?? false} />;
+    const breadcrumb = (
+      <ToolPathBreadcrumb
+        path={path}
+        singleLine={props.singleLine ?? false}
+        omitRoot={props.omitWorkspaceRoot ?? false}
+      />
+    );
     if (!props.singleLine) return breadcrumb;
     return <span className="flex w-full min-w-0 items-baseline">{breadcrumb}</span>;
   }

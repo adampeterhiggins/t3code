@@ -11,6 +11,23 @@ describe("tool path breadcrumbs", () => {
       rootLabel: "style-all",
       project: "fd-questionnaire",
       segments: ["scripts", "parity", "compare_reads.py"],
+      inWorkspace: false,
+    });
+  });
+
+  it("marks a file in the current checkout, including when its branch contains a slash", () => {
+    const workspace = "/Users/adam/.t3/worktrees/t3code/t3-b935de08";
+    const roots = [{ path: workspace, label: "t3/b935de08", project: "t3code" }];
+    expect(resolveToolPath(`${workspace}/apps/web/src/a.tsx`, workspace, roots)).toMatchObject({
+      rootLabel: "t3/b935de08",
+      segments: ["apps", "web", "src", "a.tsx"],
+      inWorkspace: true,
+    });
+    expect(
+      resolveToolPath("/Users/adam/.t3/worktrees/t3code/other/a.tsx", workspace, roots),
+    ).toMatchObject({
+      rootLabel: "other",
+      inWorkspace: false,
     });
   });
 
