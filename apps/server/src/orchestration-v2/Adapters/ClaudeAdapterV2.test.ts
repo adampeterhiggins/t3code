@@ -6166,6 +6166,124 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     ),
   );
 
+  it.effect("projects WebFetch as a question and answer and WebSearch as hits and summary", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeWakeHarness;
+      const now = yield* DateTime.now;
+      yield* harness.runtime.startTurn(
+        makeClaudeTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now,
+          attemptId: RunAttemptId.make("attempt-web-tools"),
+          text: "Look it up",
+          attachments: [],
+        }),
+      );
+      const tools = [
+        {
+          id: "fetch",
+          name: "WebFetch",
+          input: { url: "https://docs.example.com/guide", prompt: "What does it say about OIDC?" },
+          output: {
+            bytes: 47943,
+            code: 200,
+            codeText: "OK",
+            result: "**OIDC** is supported.",
+            durationMs: 10597,
+            url: "https://docs.example.com/guide/",
+          },
+        },
+        {
+          id: "search",
+          name: "WebSearch",
+          input: { query: "dependabot oidc" },
+          output: {
+            query: "dependabot oidc",
+            results: [
+              {
+                tool_use_id: "srvtoolu_1",
+                content: [{ title: "Dependabot OIDC", url: "https://github.blog/oidc" }],
+              },
+              "GitHub added OIDC support in March.",
+            ],
+            durationSeconds: 1.2,
+          },
+        },
+      ];
+      let sequence = 700;
+      const nextUuid = () => `00000000-0000-4000-8000-${String(++sequence).padStart(12, "0")}`;
+      for (const tool of tools) {
+        yield* harness.offerAndWait(
+          claudeSdkFrame({
+            type: "assistant",
+            uuid: nextUuid(),
+            session_id: WAKE_NATIVE_SESSION,
+            parent_tool_use_id: null,
+            message: {
+              id: `msg_${tool.id}`,
+              model: "claude-sonnet-4-6",
+              type: "message",
+              role: "assistant",
+              content: [{ type: "tool_use", id: tool.id, name: tool.name, input: tool.input }],
+              stop_reason: "tool_use",
+              stop_sequence: null,
+              usage: {
+                input_tokens: 1,
+                output_tokens: 1,
+                cache_creation_input_tokens: 0,
+                cache_read_input_tokens: 0,
+              },
+            },
+          }),
+        );
+        yield* harness.offerAndWait(
+          claudeSdkFrame({
+            type: "user",
+            uuid: nextUuid(),
+            session_id: WAKE_NATIVE_SESSION,
+            parent_tool_use_id: null,
+            message: {
+              role: "user",
+              content: [{ type: "tool_result", tool_use_id: tool.id, content: "done" }],
+            },
+            tool_use_result: tool.output,
+          }),
+        );
+      }
+      yield* harness.offerAndWait(makeResultFrame({ uuid: nextUuid(), result: "Looked it up" }));
+      yield* Queue.take(harness.terminalReceipts);
+      const completed = (nativeId: string) =>
+        harness.events.flatMap((event) =>
+          event.type === "turn_item.updated" &&
+          event.turnItem.status === "completed" &&
+          event.turnItem.type === "web_search" &&
+          event.turnItem.nativeItemRef?.nativeId === nativeId
+            ? [event.turnItem]
+            : [],
+        )[0];
+      const fetch = completed("fetch");
+      assert.equal(fetch?.action, "fetch");
+      assert.equal(fetch?.url, "https://docs.example.com/guide/");
+      assert.equal(fetch?.prompt, "What does it say about OIDC?");
+      assert.equal(fetch?.answer, "**OIDC** is supported.");
+      assert.equal(fetch?.statusCode, 200);
+      assert.isUndefined(fetch?.results);
+      const search = completed("search");
+      assert.equal(search?.action, "search");
+      assert.deepEqual(search?.patterns, ["dependabot oidc"]);
+      assert.deepEqual(search?.results, [
+        { title: "Dependabot OIDC", url: "https://github.blog/oidc" },
+      ]);
+      assert.equal(search?.answer, "GitHub added OIDC support in March.");
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(NodeServices.layer, IdAllocator.layer, McpProviderSessions.layer),
+      ),
+    ),
+  );
+
   it.effect.each(["claude-haiku-4-5-20251001", "claude-sonnet-4-6"])(
     "renegotiates auto only when switching API models after fallback to default: %s",
     (nextModel) =>

@@ -955,12 +955,15 @@ function acpBackendWebSearch(
   const query = [action?.query, args?.query, argsText]
     .find((value): value is string => typeof value === "string" && value.trim().length > 0)
     ?.trim();
-  const urls = new Set<string>();
+  const results = new Map<string, OrchestrationV2WebSearchResult>();
   for (const source of Array.isArray(action?.sources) ? action.sources : []) {
-    const url = unknownRecord(source)?.url;
-    if (typeof url === "string" && url.trim().length > 0) urls.add(url.trim());
+    const record = unknownRecord(source);
+    const url = typeof record?.url === "string" ? record.url.trim() : "";
+    if (url.length === 0 || results.has(url)) continue;
+    const title = typeof record?.title === "string" ? record.title.trim() : "";
+    results.set(url, { url, ...(title.length === 0 ? {} : { title }) });
   }
-  return { query, results: [...urls].map((url) => ({ url })) };
+  return { query, results: [...results.values()] };
 }
 
 function providerRequestKind(kind: string | "unknown"): ProviderRequestKind {
@@ -3827,6 +3830,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                         ? label
                         : `${label}: ${backendSearch.query}`,
                     type: "web_search",
+                    action: "search",
                     ...(backendSearch.query === undefined
                       ? {}
                       : { patterns: [backendSearch.query] }),
@@ -3887,22 +3891,19 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               case "fetch": {
                 // Grok nests the page under rawOutput.Content, which textFromUnknown
                 // cannot read; the (bounded) content blocks carry the same text.
-                const snippet =
-                  textFromUnknown(toolCall.data.content) ?? textFromUnknown(rawOutput);
+                const answer = textFromUnknown(toolCall.data.content) ?? textFromUnknown(rawOutput);
+                const prompt =
+                  typeof rawInputRecord?.prompt === "string" && rawInputRecord.prompt.trim()
+                    ? rawInputRecord.prompt.trim()
+                    : undefined;
                 turnItem = {
                   ...base,
                   type: "web_search",
+                  action: "fetch",
                   ...(path === undefined ? {} : { patterns: [path] }),
-                  ...(path === undefined
-                    ? {}
-                    : {
-                        results: [
-                          {
-                            url: path,
-                            ...(snippet === undefined ? {} : { snippet }),
-                          },
-                        ],
-                      }),
+                  ...(path !== undefined && /^https?:\/\//i.test(path) ? { url: path } : {}),
+                  ...(prompt === undefined ? {} : { prompt }),
+                  ...(answer === undefined ? {} : { answer }),
                 };
                 break;
               }

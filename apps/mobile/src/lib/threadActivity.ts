@@ -6,6 +6,7 @@ import type {
 import { turnItemIsWorkspacePreparation } from "@t3tools/client-runtime/state/turn-item-presentation";
 import { formatSubagentDisplayTitle } from "@t3tools/client-runtime/state/subagent-display";
 import { isLiveSubagentTurnItem } from "@t3tools/client-runtime/state/subagentRuntime";
+import { webToolLabel, webToolView } from "@t3tools/client-runtime/work-log/web-tool";
 import { describeModelChange } from "@t3tools/shared/modelChangeMarker";
 import { isWorkspaceChangeNotice } from "@t3tools/shared/workspaceChangeNotice";
 import { extractToolActivityPresentation } from "@t3tools/client-runtime/work-log/tool-presentation";
@@ -649,6 +650,11 @@ function itemSummary(
       ? dynamicToolTitle(item.toolName, item.input, item.title)
       : undefined) ?? item.title?.trim();
   if (item.type === "subagent") return formatSubagentDisplayTitle(title || "Subagent");
+  if (item.type === "web_search") {
+    return (
+      webToolLabel(webToolView(item)) ?? (title ? capitalizePhrase(title) : "Searched the web")
+    );
+  }
   if (title) return toolPresentation?.displayName ?? capitalizePhrase(title);
   switch (item.type) {
     case "reasoning":
@@ -661,8 +667,6 @@ function itemSummary(
         : `Changed ${item.fileName}`;
     case "file_search":
       return item.title?.trim() || formatSearchToolLabel(item) || "Searched files";
-    case "web_search":
-      return "Searched the web";
     case "approval_request":
       return "Approval requested";
     case "user_input_request":
@@ -721,7 +725,7 @@ function itemPreview(item: OrchestrationV2TurnItem): string | null {
     case "file_search":
       return item.pattern ?? null;
     case "web_search":
-      return item.patterns?.join(", ") ?? null;
+      return webToolView(item).prompt ?? null;
     case "approval_request":
       return item.prompt ?? null;
     case "user_input_request":
@@ -811,8 +815,7 @@ function toWorkLogEntry(
     case "web_search":
       return {
         ...common,
-        ...(item.patterns?.length ? { detail: item.patterns.join(", ") } : {}),
-        toolTitle: title ?? "Web search",
+        toolTitle: webToolView(item).action === "fetch" ? "Web fetch" : "Web search",
         toolData: item,
       };
     case "checkpoint":

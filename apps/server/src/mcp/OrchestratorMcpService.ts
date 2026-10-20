@@ -964,7 +964,15 @@ function turnItemText(
     case "file_search":
       return jsonText({ pattern: item.pattern, results: item.results });
     case "web_search":
-      return jsonText({ patterns: item.patterns, results: item.results });
+      return jsonText({
+        action: item.action,
+        patterns: item.patterns,
+        url: item.url,
+        prompt: item.prompt,
+        statusCode: item.statusCode,
+        answer: item.answer,
+        results: item.results,
+      });
     case "approval_request":
       return item.prompt ?? item.requestKind;
     case "checkpoint":

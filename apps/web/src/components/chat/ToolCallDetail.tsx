@@ -217,9 +217,11 @@ function ToolCallPreviewContent(
           workspaceRoot,
         })
       : null;
+  // A web call's body already leads with its page or query.
   const headingText = readPreview
     ? readPreview.text
-    : toolCallPreviewRepeatsFilePath(heading.text, fileName, workspaceRoot)
+    : workEntry.itemType === "web_search" ||
+        toolCallPreviewRepeatsFilePath(heading.text, fileName, workspaceRoot)
       ? null
       : heading.text;
   const textBody = readPreview ? readPreview.body : rawTextBody;

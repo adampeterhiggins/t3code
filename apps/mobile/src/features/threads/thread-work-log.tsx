@@ -112,6 +112,13 @@ import Animated, {
 } from "react-native-reanimated";
 import { useAssetUrl } from "../../state/assets";
 import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
+import { webToolView, type WebToolView } from "@t3tools/client-runtime/work-log/web-tool";
+
+function webToolCallArgs(view: WebToolView): Record<string, string | number | undefined> {
+  return view.action === "fetch"
+    ? { url: view.url, status: view.statusCode, asked: view.prompt }
+    : { query: view.query };
+}
 
 const SHIMMER_WIDTH = 72;
 const SHIMMER_SWEEP_MS = 1_350;
@@ -986,7 +993,7 @@ const ThreadWorkLogRow = function ThreadWorkLogRow(
         : expanded && shownItem.type === "file_search"
           ? toolCallLines({ args: { pattern: shownItem.pattern } })
           : expanded && shownItem.type === "web_search"
-            ? toolCallLines({ args: { query: shownItem.patterns?.join(", ") } })
+            ? toolCallLines({ args: webToolCallArgs(webToolView(shownItem)) })
             : null;
   const exitCode =
     call && shownItem.type === "command_execution" && shownItem.exitCode !== undefined

@@ -61,6 +61,7 @@ import type {
   OrchestrationV2Subagent,
   OrchestrationV2SubagentUsage,
   OrchestrationV2TurnItem,
+  OrchestrationV2WebSearchResult,
   ProviderUserInputAnswers,
   ProviderApprovalDecision,
   ProviderApprovalOption,
@@ -710,6 +711,51 @@ function webSearchPatterns(item: CodexWebSearchItem): ReadonlyArray<string> {
   }
 }
 
+// Hits ride the timeline wire, so keep them a bounded preview.
+const CODEX_WEB_SEARCH_MAX_RESULTS = 20;
+const CODEX_WEB_SEARCH_SNIPPET_MAX_CHARS = 500;
+
+/** Codex's `results` is untyped JSON; `text_result` entries carry a title, url and snippet. */
+function webSearchResults(item: CodexWebSearchItem): ReadonlyArray<OrchestrationV2WebSearchResult> {
+  return (item.results ?? [])
+    .flatMap((result) => {
+      if (typeof result !== "object" || result === null) return [];
+      const field = (key: string) => {
+        const value: unknown = Reflect.get(result, key);
+        return typeof value === "string" ? trimText(value) : undefined;
+      };
+      const title = field("title");
+      const url = field("url");
+      const snippet = field("snippet");
+      if (title === undefined && url === undefined) return [];
+      return [
+        {
+          ...(title === undefined ? {} : { title }),
+          ...(url === undefined ? {} : { url }),
+          ...(snippet === undefined
+            ? {}
+            : { snippet: snippet.slice(0, CODEX_WEB_SEARCH_SNIPPET_MAX_CHARS) }),
+        },
+      ];
+    })
+    .slice(0, CODEX_WEB_SEARCH_MAX_RESULTS);
+}
+
+/** Opening or searching within a page reads that page; everything else is a search. */
+function webSearchFetchFields(
+  item: CodexWebSearchItem,
+): Pick<Extract<OrchestrationV2TurnItem, { type: "web_search" }>, "action" | "url" | "prompt"> {
+  const action = item.action;
+  if (action?.type !== "openPage" && action?.type !== "findInPage") return { action: "search" };
+  const url = trimText(action.url);
+  const pattern = action.type === "findInPage" ? trimText(action.pattern) : undefined;
+  return {
+    action: "fetch",
+    ...(url === undefined ? {} : { url }),
+    ...(pattern === undefined ? {} : { prompt: `Find “${pattern}”` }),
+  };
+}
+
 const decodeTurnApprovalPolicy = Schema.decodeUnknownEffect(
   Schema.Union([CodexSchema.V2TurnStartParams__AskForApproval, Schema.Null]),
 );
@@ -1339,6 +1385,7 @@ type CodexWebSearchItem = {
     | CodexSchema.V2ItemStartedNotification__WebSearchAction
     | CodexSchema.V2ItemCompletedNotification__WebSearchAction
     | null;
+  readonly results?: ReadonlyArray<unknown> | null;
 };
 
 export type CodexDynamicToolItem = Extract<
@@ -3738,7 +3785,8 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               nativeItemId: input.item.id,
             });
             const { ordinal, startedAt } = yield* resolveItemPosition(input.context, input.item.id);
-            const patterns = webSearchPatterns(input.item);
+            const patterns = [...new Set(webSearchPatterns(input.item))];
+            const results = webSearchResults(input.item);
             const status = input.completed ? "completed" : "running";
             const node: OrchestrationV2ExecutionNode = {
               id: nodeId,
@@ -3773,7 +3821,9 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               completedAt,
               updatedAt,
               type: "web_search",
+              ...webSearchFetchFields(input.item),
               ...(patterns.length === 0 ? {} : { patterns: [...patterns] }),
+              ...(results.length === 0 ? {} : { results: [...results] }),
             };
             return { node, turnItem };
           },

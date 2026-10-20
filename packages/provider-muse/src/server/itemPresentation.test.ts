@@ -89,6 +89,7 @@ describe("Muse item presentation", () => {
       status: "completed",
       title: "web_search",
       type: "web_search",
+      action: "search",
       patterns: ["node lts"],
       results: [
         { url: "https://nodejs.org/", title: "Node.js", snippet: "Node 24 is LTS" },
@@ -102,7 +103,9 @@ describe("Muse item presentation", () => {
     });
     expect(museToolPresentation(fetch)).toMatchObject({
       type: "web_search",
-      results: [{ url: "https://nodejs.org/en/about", snippet: "About Node.js" }],
+      action: "fetch",
+      url: "https://nodejs.org/en/about",
+      answer: "About Node.js",
     });
   });
 

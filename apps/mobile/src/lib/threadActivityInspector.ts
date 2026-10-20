@@ -1,6 +1,7 @@
 import type { V2ItemSupport } from "@t3tools/client-runtime/state/item-support";
 import { toolItemForDisplay } from "@t3tools/client-runtime/work-log/presentation";
 import { formatDiffCount } from "@t3tools/client-runtime/diff-count";
+import { webToolView } from "@t3tools/client-runtime/work-log/web-tool";
 import type { ThreadId } from "@t3tools/contracts";
 import { describeModelChange } from "@t3tools/shared/modelChangeMarker";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
@@ -176,9 +177,14 @@ export function buildThreadActivityInspector(
         });
       }
       break;
-    case "web_search":
-      addBlock(blocks, "Queries", item.patterns?.join("\n"));
-      for (const result of item.results ?? []) {
+    case "web_search": {
+      const view = webToolView(item);
+      if (view.url) webLinks.push({ label: view.url, url: view.url });
+      addBlock(blocks, "Query", view.query, false);
+      addBlock(blocks, "Status", view.statusCode);
+      addBlock(blocks, "Asked", view.prompt, false);
+      addBlock(blocks, view.action === "fetch" ? "Answer" : "Summary", view.answer, false);
+      for (const result of view.results) {
         if (result.url) {
           webLinks.push({
             label: result.title ?? result.url,
@@ -189,6 +195,7 @@ export function buildThreadActivityInspector(
           addBlock(blocks, result.title ?? "Search result", result.snippet, false);
       }
       break;
+    }
     case "dynamic_tool":
       addBlock(blocks, "Input", item.input);
       break;

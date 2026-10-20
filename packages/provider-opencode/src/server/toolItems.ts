@@ -139,20 +139,16 @@ export function openCodeToolTurnItem(
     case "web_search": {
       const pattern = recordString(input, "query", "url", "pattern");
       const url = recordString(input, "url")?.trim();
+      const prompt = recordString(input, "prompt");
+      // webfetch returns the page and websearch/codesearch return hits as one block of text.
       return {
         ...base,
         type: "web_search",
+        action: url === undefined ? "search" : "fetch",
         ...(pattern === undefined ? {} : { patterns: [pattern] }),
-        ...(!output?.trim()
-          ? {}
-          : {
-              results: [
-                {
-                  ...(url === undefined ? {} : { url }),
-                  snippet: output.slice(0, SEARCH_PREVIEW_MAX_CHARS),
-                },
-              ],
-            }),
+        ...(url === undefined ? {} : { url }),
+        ...(prompt === undefined ? {} : { prompt }),
+        ...(!output?.trim() ? {} : { answer: output.slice(0, SEARCH_PREVIEW_MAX_CHARS) }),
       };
     }
     case "dynamic_tool": {

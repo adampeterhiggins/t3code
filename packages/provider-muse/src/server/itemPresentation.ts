@@ -31,7 +31,7 @@ type MuseToolPresentation = {
 } & (
   | Fields<"command_execution", "type" | "input" | "output" | "exitCode">
   | Fields<"file_change", "type" | "fileName" | "oldStr" | "newStr" | "diffStr">
-  | Fields<"web_search", "type" | "patterns" | "results">
+  | Fields<"web_search", "type" | "action" | "patterns" | "url" | "prompt" | "answer" | "results">
   | Fields<"dynamic_tool", "type" | "toolName" | "input" | "output">
 );
 
@@ -124,13 +124,16 @@ export function museToolPresentation(
             }),
           )
         : undefined;
-    const results =
-      hits ?? (output ? [{ ...(pageUrl ? { url: pageUrl } : {}), snippet: output }] : []);
+    const prompt = stringArg("prompt")?.trim();
+    // Without structured hits, the output is the page that was read or the search's text.
     return {
       ...shared,
       type: "web_search",
+      action: pageUrl ? "fetch" : "search",
       ...(query ? { patterns: [query] } : {}),
-      ...(results.length ? { results } : {}),
+      ...(pageUrl ? { url: pageUrl } : {}),
+      ...(prompt ? { prompt } : {}),
+      ...(hits?.length ? { results: hits } : output && !hits ? { answer: output } : {}),
     };
   }
   return {

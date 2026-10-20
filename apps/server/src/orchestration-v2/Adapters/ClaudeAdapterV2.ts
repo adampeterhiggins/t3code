@@ -50,6 +50,7 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 import type {
   AskUserQuestionInput,
+  WebFetchOutput,
   WebSearchOutput,
 } from "@anthropic-ai/claude-agent-sdk/sdk-tools";
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- the SDK takes a Node ChildProcess for the CLI.
@@ -2815,6 +2816,46 @@ function webSearchPatternsFromClaudeTool(input: {
   return pattern === undefined || pattern.trim().length === 0 ? [] : [pattern];
 }
 
+function isClaudeWebFetchOutput(output: unknown): output is WebFetchOutput {
+  return (
+    typeof output === "object" &&
+    output !== null &&
+    typeof Reflect.get(output, "result") === "string" &&
+    typeof Reflect.get(output, "code") === "number"
+  );
+}
+
+/** Splits WebFetch's output into the page, its status, and the answer to the agent's prompt. */
+function webFetchFieldsFromClaudeTool(input: {
+  readonly toolInput: ClaudeNativeToolInput;
+  readonly output: ClaudeNativeToolOutput;
+}): Pick<
+  Extract<OrchestrationV2TurnItem, { type: "web_search" }>,
+  "url" | "prompt" | "answer" | "statusCode"
+> {
+  const value = claudeNativeToolOutputValue(input.output);
+  const fetched = isClaudeWebFetchOutput(value) ? value : undefined;
+  const url = (fetched?.url ?? firstStringInputField(input.toolInput, ["url"]))?.trim();
+  const prompt = firstStringInputField(input.toolInput, ["prompt"]);
+  const answer = (fetched?.result ?? claudeNativeToolOutputText(input.output)).trim();
+  return {
+    ...(url ? { url } : {}),
+    ...(prompt === undefined ? {} : { prompt }),
+    ...(answer.length === 0 ? {} : { answer: answer.slice(0, WEB_FETCH_SNIPPET_MAX_CHARS) }),
+    ...(fetched === undefined ? {} : { statusCode: fetched.code }),
+  };
+}
+
+/** WebSearch interleaves hits with the model's commentary on them. */
+function webSearchSummaryFromClaudeOutput(output: ClaudeNativeToolOutput): string | undefined {
+  const value = claudeNativeToolOutputValue(output);
+  if (!isClaudeWebSearchOutput(value)) return undefined;
+  const summary = value.results
+    .flatMap((result) => (typeof result === "string" && result.trim() ? [result.trim()] : []))
+    .join("\n\n");
+  return summary.length === 0 ? undefined : summary.slice(0, WEB_FETCH_SNIPPET_MAX_CHARS);
+}
+
 function webSearchResultsFromClaudeOutput(
   output: ClaudeNativeToolOutput,
 ): ReadonlyArray<OrchestrationV2WebSearchResult> {
@@ -5121,7 +5162,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             output: input.output,
           });
           const webSearchResults = webSearchResultsFromClaudeOutput(input.output);
-          const webFetchUrl = firstStringInputField(input.toolInput, ["url"])?.trim();
+          const webSearchSummary = webSearchSummaryFromClaudeOutput(input.output);
+          const isWebFetch = input.classification.normalizedName === "webfetch";
           const outputValue = claudeNativeToolOutputValue(input.output);
           const outputText =
             itemType === "command_execution"
@@ -5151,22 +5193,18 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                   ? {
                       ...itemBase,
                       type: "web_search",
+                      action: isWebFetch ? "fetch" : "search",
                       ...(webSearchPatterns.length === 0
                         ? {}
                         : { patterns: [...webSearchPatterns] }),
-                      ...(webSearchResults.length > 0
-                        ? { results: [...webSearchResults] }
-                        : input.classification.normalizedName === "webfetch" &&
-                            outputText.trim().length > 0
-                          ? {
-                              results: [
-                                {
-                                  ...(webFetchUrl === undefined ? {} : { url: webFetchUrl }),
-                                  snippet: outputText.slice(0, WEB_FETCH_SNIPPET_MAX_CHARS),
-                                },
-                              ],
-                            }
-                          : {}),
+                      ...(isWebFetch
+                        ? webFetchFieldsFromClaudeTool({
+                            toolInput: input.toolInput,
+                            output: input.output,
+                          })
+                        : {}),
+                      ...(webSearchSummary === undefined ? {} : { answer: webSearchSummary }),
+                      ...(webSearchResults.length > 0 ? { results: [...webSearchResults] } : {}),
                     }
                   : {
                       ...itemBase,
