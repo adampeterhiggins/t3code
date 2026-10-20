@@ -128,9 +128,9 @@ it("does not flash a wrapped action row when the details button appears", async 
   }
 });
 
-it("keeps the usage-limit reset time readable beside the actions", async () => {
-  await page.viewport(1040, 800);
-  container.style.width = "1000px";
+it("keeps the usage-limit reset time on the details hover", async () => {
+  await page.viewport(760, 800);
+  container.style.width = "720px";
   const runId = RunId.make("run");
   const resetAt = "2026-10-20T22:30:00.000Z";
   await act(async () =>
@@ -153,18 +153,43 @@ it("keeps the usage-limit reset time readable beside the actions", async () => {
   );
   await nextFrame();
 
-  const sentence = page.getByText(/Resumes automatically about a minute after/);
-  await expect.element(sentence).toBeVisible();
-  const sentenceBounds = sentence.element().getBoundingClientRect();
   const banner = container.querySelector<HTMLElement>('[data-slot="composer-banner"]')!;
-  expect(sentence.element().scrollWidth).toBeLessThanOrEqual(sentence.element().clientWidth + 1);
-  expect(sentenceBounds.right).toBeLessThanOrEqual(banner.getBoundingClientRect().right);
+  const title = page.getByText("Usage limit reached", { exact: true });
+  const resume = page.getByRole("button", { name: "Resume now", exact: true });
+  const details = page.getByRole("button", { name: "Show notice details", exact: true });
+  await expect.element(details).toBeVisible();
+  await expect
+    .element(page.getByText(/Resumes automatically about a minute after/))
+    .not.toBeInTheDocument();
+  expect(resume.element().getBoundingClientRect().top).toBe(
+    title.element().getBoundingClientRect().top,
+  );
+  expect(details.element().getBoundingClientRect().top).toBeGreaterThanOrEqual(
+    title.element().getBoundingClientRect().top - 1,
+  );
+  expect(details.element().getBoundingClientRect().bottom).toBeLessThanOrEqual(
+    title.element().getBoundingClientRect().bottom + 1,
+  );
+
   const height = banner.getBoundingClientRect().height;
   for (let frame = 0; frame < 6; frame += 1) {
     await nextFrame();
     expect(banner.getBoundingClientRect().height).toBe(height);
-    expect(sentence.element().scrollWidth).toBeLessThanOrEqual(sentence.element().clientWidth + 1);
   }
+
+  await userEvent.hover(details);
+  const popup = page.getByRole("dialog", { name: "Notice details", exact: true });
+  await expect.element(popup).toBeVisible();
+  expect(popup.element().textContent ?? "").toContain("Resumes automatically about a minute after");
+  const sentence = popup
+    .element()
+    .querySelector<HTMLElement>("[data-slot=scroll-area-viewport] > div");
+  expect(sentence).not.toBeNull();
+  const lineHeight = Number.parseFloat(getComputedStyle(sentence!).lineHeight);
+  expect(sentence!.getBoundingClientRect().height).toBeLessThanOrEqual(lineHeight * 2 + 1);
+  expect(sentence!.getBoundingClientRect().width).toBeGreaterThan(
+    title.element().getBoundingClientRect().width,
+  );
 });
 
 it.each([320, 800])(

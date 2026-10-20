@@ -17,7 +17,8 @@ export interface ComposerBannerStackItem {
   readonly icon: ReactNode;
   readonly title: ReactNode;
   readonly description?: ReactNode;
-  readonly descriptionPlacement?: "inline" | "below";
+  /** `details` keeps the description on the info hover instead of in the row. */
+  readonly descriptionPlacement?: "inline" | "below" | "details";
   readonly children?: ReactNode;
   readonly actions?: ReactNode;
   readonly dismissLabel?: string;
@@ -251,6 +252,35 @@ export function ComposerBannerStack({ className, items, attachedAbove }: Compose
   );
 }
 
+function NoticeDetails({
+  children,
+  label,
+}: {
+  readonly children: ReactNode;
+  readonly label: string;
+}) {
+  return (
+    <Popover>
+      <PopoverTrigger
+        openOnHover
+        render={<Button size="icon-xs" variant="ghost-muted" aria-label={label} />}
+      >
+        <InfoIcon />
+      </PopoverTrigger>
+      <PopoverPopup
+        aria-label="Notice details"
+        tooltipStyle
+        side="top"
+        className="max-w-[min(30rem,calc(100vw-2rem))] whitespace-normal wrap-anywhere [--inline-button-text-align:start] [--inline-button-white-space:normal] [&_[data-slot=inline-button]]:max-w-full"
+      >
+        <ComposerBanner.Scroll className="max-h-[min(var(--available-height),24rem,40dvh)]">
+          {children}
+        </ComposerBanner.Scroll>
+      </PopoverPopup>
+    </Popover>
+  );
+}
+
 function NoticeText({
   children,
   className,
@@ -305,26 +335,9 @@ function NoticeText({
         {children}
       </span>
       {showDetails ? (
-        <Popover>
-          <span className="absolute end-0 top-1/2 z-10 -translate-y-1/2">
-            <PopoverTrigger
-              openOnHover
-              render={<Button size="icon-xs" variant="ghost-muted" aria-label={detailsLabel} />}
-            >
-              <InfoIcon />
-            </PopoverTrigger>
-          </span>
-          <PopoverPopup
-            aria-label="Notice details"
-            tooltipStyle
-            side="top"
-            className="max-w-[min(30rem,calc(100vw-2rem))] whitespace-normal wrap-anywhere [--inline-button-text-align:start] [--inline-button-white-space:normal] [&_[data-slot=inline-button]]:max-w-full"
-          >
-            <ComposerBanner.Scroll className="max-h-[min(var(--available-height),24rem,40dvh)]">
-              {children}
-            </ComposerBanner.Scroll>
-          </PopoverPopup>
-        </Popover>
+        <span className="absolute end-0 top-1/2 z-10 -translate-y-1/2">
+          <NoticeDetails label={detailsLabel}>{children}</NoticeDetails>
+        </span>
       ) : null}
     </span>
   );
@@ -353,6 +366,7 @@ function ComposerBannerStackAlert({
     );
   }
   const descriptionBelow = item.descriptionPlacement === "below";
+  const descriptionDetails = item.descriptionPlacement === "details";
   return (
     <ComposerBanner.Root
       role="alert"
@@ -361,7 +375,11 @@ function ComposerBannerStackAlert({
       density="comfortable"
     >
       <ComposerBanner.Row
-        layout={descriptionBelow || item.priority === "activity" ? "inline" : "wrap-actions"}
+        layout={
+          descriptionBelow || descriptionDetails || item.priority === "activity"
+            ? "inline"
+            : "wrap-actions"
+        }
       >
         <ComposerBanner.Icon className="h-(--composer-banner-icon-column) self-start">
           {item.icon}
@@ -380,6 +398,10 @@ function ComposerBannerStackAlert({
               <ComposerBanner.Scroll className="text-muted-foreground whitespace-normal wrap-anywhere [--inline-button-text-align:start] [--inline-button-white-space:normal] [&_[data-slot=inline-button]]:max-w-full">
                 <span className="block pb-1">{item.description}</span>
               </ComposerBanner.Scroll>
+            ) : descriptionDetails ? (
+              <span className="flex-none">
+                <NoticeDetails label="Show notice details">{item.description}</NoticeDetails>
+              </span>
             ) : (
               <NoticeText
                 detailsLabel="Show notice details"
