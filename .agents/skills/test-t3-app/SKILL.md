@@ -10,6 +10,8 @@ the panel reports unavailable, explain the blocker and stop verification.
 Do not install or switch to another automation system. For native mobile
 testing, use [test-t3-mobile](../test-t3-mobile/SKILL.md).
 
+For desktop-only Electron behaviour, use [test-t3-desktop](../test-t3-desktop/SKILL.md).
+
 ## Start the app
 
 Reuse this task's healthy dev server. Otherwise run `vp run dev` from the
