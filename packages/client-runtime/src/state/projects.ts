@@ -203,5 +203,28 @@ export function canNavigateUp(currentPath: string): boolean {
   return hasTrailingPathSeparator(currentPath) && getBrowseParentPath(currentPath) !== null;
 }
 
+/**
+ * The projects a thread could move to: the other projects of its own environment, by title. Null
+ * when the server can't move threads or the thread is a subagent, which stays with its parent.
+ */
+export function threadMoveTargets<Project extends { readonly id: string; readonly title: string }>(
+  thread: {
+    readonly environmentId: string;
+    readonly projectId: string;
+    readonly lineage: { readonly relationshipToParent: string | null };
+  },
+  projects: Iterable<Project & { readonly environmentId: string }>,
+  supported: boolean,
+): Array<{ id: Project["id"]; label: string }> | null {
+  if (!supported || thread.lineage.relationshipToParent === "subagent") return null;
+  return [...projects]
+    .filter(
+      (project) =>
+        project.environmentId === thread.environmentId && project.id !== thread.projectId,
+    )
+    .map((project) => ({ id: project.id, label: project.title }))
+    .sort((left, right) => left.label.localeCompare(right.label));
+}
+
 export * from "./projectCommands.ts";
 export * from "./projectEntities.ts";

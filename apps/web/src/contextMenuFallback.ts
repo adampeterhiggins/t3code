@@ -103,6 +103,16 @@ const ICON_PATHS: Record<string, ReadonlyArray<{ tag: string; attrs: Record<stri
       },
     },
   ],
+  "folder-input": [
+    {
+      tag: "path",
+      attrs: {
+        d: "M2 9V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-1",
+      },
+    },
+    { tag: "path", attrs: { d: "M2 13h10" } },
+    { tag: "path", attrs: { d: "m9 16 3-3-3-3" } },
+  ],
   "git-branch": [
     { tag: "line", attrs: { x1: "6", x2: "6", y1: "3", y2: "15" } },
     { tag: "circle", attrs: { cx: "18", cy: "6", r: "3" } },

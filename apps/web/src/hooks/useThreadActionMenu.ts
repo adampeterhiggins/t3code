@@ -9,6 +9,7 @@ import {
 import { canSnooze, effectiveSnoozed } from "@t3tools/client-runtime/state/thread-settled";
 import {
   AuthOrchestrationOperateScope,
+  ProjectId,
   type ScopedThreadRef,
   type ThreadId,
 } from "@t3tools/contracts";
@@ -20,9 +21,11 @@ import {
   buildThreadActionMenuItems,
   collectThreadGroupNames,
   resolveThreadGroupMenuPick,
+  resolveThreadProjectMenuPick,
   threadActionRequiresOperate,
   type ThreadActionMenuId,
 } from "../components/threadActionMenu.logic";
+import { threadMoveTargets } from "@t3tools/client-runtime/state/projects";
 import { requestThreadGroup } from "../components/ThreadGroupDialog";
 import { useThreadGroups } from "./useThreadGroups";
 import { isGitHubProject } from "@t3tools/client-runtime/state/github-issues";
@@ -42,6 +45,7 @@ import {
   readEnvironmentLinkIntegrations,
   readEnvironmentSupportsHiding,
   readEnvironmentSupportsPinning,
+  readEnvironmentSupportsProjectMove,
   readEnvironmentSupportsSettlement,
   readEnvironmentSupportsSnooze,
   readEnvironmentSupportsTitleRegeneration,
@@ -103,6 +107,7 @@ export function useThreadActionMenu(input: {
     setThreadAutoSettle,
     setThreadHidden,
     setThreadGroup,
+    confirmAndMoveThreadToProject,
     archiveThread,
     deleteThread,
     markThreadUnread,
@@ -173,6 +178,11 @@ export function useThreadActionMenu(input: {
         isHidden: thread.hiddenAt != null,
         groupName: thread.groupName ?? null,
         groupNames: collectThreadGroupNames(readThreadShells(), Object.keys(groups)),
+        moveTargets: threadMoveTargets(
+          thread,
+          projects,
+          readEnvironmentSupportsProjectMove(threadRef.environmentId),
+        ),
         canSnoozeNow: canSnooze(thread, { now: now.toISOString() }),
         isRegeneratingTitle,
         isRunning: !threadRuntimeCanArchive(thread.runtime),
@@ -203,6 +213,14 @@ export function useThreadActionMenu(input: {
           saveGroup(draft);
         }
         const result = await setThreadGroup(threadRef, groupName);
+        if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+          failureToast("Failed to move thread", squashAtomCommandFailure(result));
+        }
+        return;
+      }
+      const projectPick = resolveThreadProjectMenuPick(action);
+      if (projectPick !== undefined) {
+        const result = await confirmAndMoveThreadToProject(threadRef, ProjectId.make(projectPick));
         if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
           failureToast("Failed to move thread", squashAtomCommandFailure(result));
         }

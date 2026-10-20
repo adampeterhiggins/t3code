@@ -12,6 +12,7 @@ import {
   AuthSourceControlWriteScope,
   EnvironmentAuthorizationError,
   EnvironmentId,
+  type ProjectId,
   type ScopedThreadRef,
   ThreadId,
   sessionGrantsScope,
@@ -274,6 +275,9 @@ export function useThreadActions() {
     reportFailure: false,
   });
   const setThreadGroupMutation = useOrchestrationCommand(threadEnvironment.setGroup, {
+    reportFailure: false,
+  });
+  const moveThreadToProjectMutation = useOrchestrationCommand(threadEnvironment.moveToProject, {
     reportFailure: false,
   });
   const reorderPinnedThreadMutation = useOrchestrationCommand(threadEnvironment.reorderPin, {
@@ -665,6 +669,35 @@ export function useThreadActions() {
       input: { threadId: target.threadId, groupName },
     });
 
+  /** Moves one thread into another project of its environment, after the user confirms. */
+  const confirmAndMoveThreadToProject = async (target: ScopedThreadRef, projectId: ProjectId) => {
+    const permissionFailure = threadOperationFailure(target);
+    if (permissionFailure) return permissionFailure;
+    const thread = readThreadShell(target);
+    const project = readProject(scopeProjectRef(target.environmentId, projectId));
+    if (!thread || !project) return AsyncResult.success(undefined);
+    const localApi = readLocalApi();
+    if (localApi) {
+      const confirmed = await settlePromise(() =>
+        localApi.dialogs.confirm(
+          [
+            `Move "${thread.title}" to ${project.title}?`,
+            `The agent continues in ${project.workspaceRoot}. Its current checkout stays on disk, and linked pull requests are cleared.`,
+          ].join("\n"),
+        ),
+      );
+      if (confirmed._tag === "Failure" || !confirmed.value) return AsyncResult.success(undefined);
+    }
+    const result = await moveThreadToProjectMutation({
+      environmentId: target.environmentId,
+      input: { threadId: target.threadId, projectId },
+    });
+    if (result._tag === "Success") {
+      toastManager.add(stackedThreadToast({ type: "success", title: `Moved to ${project.title}` }));
+    }
+    return result;
+  };
+
   const pinThread = async (target: ScopedThreadRef, opts: { orderKey?: string } = {}) => {
     if (!readEnvironmentSupportsPinning(target.environmentId)) {
       return AsyncResult.failure(
@@ -942,5 +975,6 @@ export function useThreadActions() {
     setThreadAutoSettle,
     setThreadHidden,
     setThreadGroup,
+    confirmAndMoveThreadToProject,
   };
 }

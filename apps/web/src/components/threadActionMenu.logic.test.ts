@@ -5,6 +5,7 @@ import {
   buildThreadActionMenuItems,
   collectThreadGroupNames,
   resolveThreadGroupMenuPick,
+  resolveThreadProjectMenuPick,
   type ThreadActionMenuState,
 } from "./threadActionMenu.logic";
 
@@ -380,5 +381,36 @@ describe("thread groups", () => {
     expect(resolveThreadGroupMenuPick("move-to-group:name:new")).toEqual({ groupName: "new" });
     expect(resolveThreadGroupMenuPick("move-to-group:remove")).toEqual({ groupName: null });
     expect(resolveThreadGroupMenuPick("rename")).toBeUndefined();
+  });
+});
+
+describe("move to project", () => {
+  const moveTargets = [
+    { id: "api", label: "API" },
+    { id: "web", label: "Web" },
+  ];
+
+  it("offers no move where the surface passes no destinations", () => {
+    expect(ids(baseState)).not.toContain("move-to-project");
+  });
+
+  it("offers each destination, disabled while the thread runs or has nowhere to go", () => {
+    const find = (state: ThreadActionMenuState) =>
+      buildThreadActionMenuItems(state).find((item) => item.id === "move-to-project");
+    const item = find({ ...baseState, moveTargets });
+    expect(item?.disabled).toBe(false);
+    expect(item?.children?.map((child) => child.id)).toEqual([
+      "move-to-project:api",
+      "move-to-project:web",
+    ]);
+    expect(find({ ...baseState, moveTargets, isRunning: true })?.disabled).toBe(true);
+    expect(find({ ...baseState, moveTargets: [] })?.disabled).toBe(true);
+    expect(find({ ...baseState, moveTargets, canOperate: false })?.disabled).toBe(true);
+  });
+
+  it("reads the destination project from a pick", () => {
+    expect(resolveThreadProjectMenuPick("move-to-project:api")).toBe("api");
+    expect(resolveThreadProjectMenuPick("move-to-project")).toBeUndefined();
+    expect(resolveThreadProjectMenuPick("move-to-group:name:api")).toBeUndefined();
   });
 });

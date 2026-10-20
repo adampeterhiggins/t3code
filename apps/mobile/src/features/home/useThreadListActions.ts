@@ -1,7 +1,7 @@
 import type { ThreadMoveDestination } from "../threads/threadOrder";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import { canSnooze, effectiveSnoozed } from "@t3tools/client-runtime/state/thread-settled";
-import { AuthOrchestrationOperateScope } from "@t3tools/contracts";
+import { AuthOrchestrationOperateScope, type ProjectId } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Haptics from "expo-haptics";
 import { useRef } from "react";
@@ -14,6 +14,7 @@ import { pinOrderKeyBetween } from "@t3tools/client-runtime/state/thread-sort";
 import { appAtomRegistry } from "../../state/atom-registry";
 import { environmentServerConfigsAtom } from "../../state/server";
 import { readEnvironmentScope } from "../../state/session";
+import { environmentProjects } from "../../state/projects";
 import { environmentThreadShells, threadEnvironment } from "../../state/threads";
 import { queuedThreadKeysAtom } from "../../state/use-thread-outbox";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -251,6 +252,8 @@ export function useThreadListActions(): {
   ) => Promise<boolean>;
   /** Asks for a new group's name and look, registers it, then moves the thread into it. */
   readonly moveThreadToNewGroup: (thread: EnvironmentThreadShell) => Promise<void>;
+  /** Confirms, then moves the thread into another project of its environment. */
+  readonly moveThreadToProject: (thread: EnvironmentThreadShell, projectId: ProjectId) => void;
   /** Asks for a new group and registers it without moving any thread. */
   readonly createThreadGroup: () => Promise<void>;
   /** Edits, renames or deletes a group; resolves the rename (`to` null on delete). */
@@ -276,6 +279,9 @@ export function useThreadListActions(): {
     reportFailure: false,
   });
   const setGroupMutation = useAtomCommand(threadEnvironment.setGroup, {
+    reportFailure: false,
+  });
+  const moveToProjectMutation = useAtomCommand(threadEnvironment.moveToProject, {
     reportFailure: false,
   });
   const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
@@ -526,6 +532,35 @@ export function useThreadListActions(): {
       return false;
     }
     return true;
+  };
+  const moveThreadToProject = (thread: EnvironmentThreadShell, projectId: ProjectId) => {
+    if (!checkThreadOperationPermission(thread, "Could not move thread")) return;
+    const project = appAtomRegistry.get(
+      environmentProjects.projectAtom({ environmentId: thread.environmentId, projectId }),
+    );
+    if (project === null) return;
+    Dialog.confirm({
+      title: `Move to ${project.title}?`,
+      message: `“${thread.title}” continues in ${project.workspaceRoot}. Its current checkout stays on disk, and linked pull requests are cleared.`,
+      confirmText: "Move",
+      onConfirm: async () => {
+        if (!checkThreadOperationPermission(thread, "Could not move thread")) return;
+        selectionHaptic();
+        const result = await moveToProjectMutation({
+          environmentId: thread.environmentId,
+          input: { threadId: thread.id, projectId },
+        });
+        if (result._tag === "Failure") {
+          const error = Cause.squash(result.cause);
+          Dialog.alert(
+            "Could not move thread",
+            error instanceof Error && error.message.trim().length > 0
+              ? error.message
+              : "The thread could not be moved.",
+          );
+        }
+      },
+    });
   };
   const { groups, setGroup } = useThreadGroups();
   // "New group…" always registers the group, even unstyled, then moves the thread.
@@ -819,6 +854,7 @@ export function useThreadListActions(): {
     setThreadHidden,
     setThreadGroup,
     moveThreadToNewGroup,
+    moveThreadToProject,
     createThreadGroup,
     editThreadGroup,
     moveThread,

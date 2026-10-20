@@ -130,10 +130,12 @@ folder, so the files the agent wrote stay until you delete them. Branch, worktre
 these folders are not Git repositories. This is unavailable when the data
 directory itself sits inside a Git checkout.
 
-To move an existing conversation into a project, ask its agent to move the thread there.
-The conversation stays intact and future work uses that project's main checkout. Files in
-the scratch folder stay there; ask the agent to copy them into the project first if needed.
-The agent needs full access to move the thread.
+To move an existing conversation into another project, choose **Move to project** from its
+menu in the sidebar or the chat header (on mobile, press and hold the thread), or ask its agent
+to move it. The conversation stays intact and future work uses that project's main checkout;
+linked pull requests are cleared. Files stay where they were; ask the agent to copy them into
+the project first if needed. Stop a running thread before moving it, and resolve any sibling
+tabs, scheduled tasks, or pending requests first. An agent needs full access to move a thread.
 
 ### Start in the background
 

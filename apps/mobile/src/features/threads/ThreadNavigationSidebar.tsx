@@ -174,6 +174,7 @@ function ThreadNavigationSidebarPane(
     setThreadHidden,
     setThreadGroup,
     moveThreadToNewGroup,
+    moveThreadToProject,
     createThreadGroup,
     editThreadGroup,
     moveThread,
@@ -807,6 +808,7 @@ function ThreadNavigationSidebarPane(
             onSetThreadHidden={setThreadHidden}
             onSetThreadGroup={setThreadGroup}
             onMoveThreadToNewGroup={moveThreadToNewGroup}
+            onMoveThreadToProject={moveThreadToProject}
             onMoveThread={moveThread}
             onSwipeableClose={handleSwipeableClose}
             onSwipeableWillOpen={handleSwipeableWillOpen}

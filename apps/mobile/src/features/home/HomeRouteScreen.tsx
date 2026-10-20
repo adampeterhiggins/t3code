@@ -105,6 +105,7 @@ export function HomeRouteScreen() {
     setThreadHidden,
     setThreadGroup,
     moveThreadToNewGroup,
+    moveThreadToProject,
     createThreadGroup,
     editThreadGroup,
     moveThread,
@@ -322,6 +323,7 @@ export function HomeRouteScreen() {
           onSetThreadHidden={setThreadHidden}
           onSetThreadGroup={setThreadGroup}
           onMoveThreadToNewGroup={moveThreadToNewGroup}
+          onMoveThreadToProject={moveThreadToProject}
           onMoveThread={moveThread}
           onRenameThread={renameThread}
           onRegenerateThreadTitle={regenerateThreadTitle}

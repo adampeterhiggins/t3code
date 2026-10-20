@@ -142,6 +142,8 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   threadHiding: Schema.optionalKey(Schema.Boolean),
   /** Server understands thread.group.set. */
   threadGroups: Schema.optionalKey(Schema.Boolean),
+  /** Server accepts thread.project.move from clients. */
+  threadProjectMove: Schema.optionalKey(Schema.Boolean),
   /** Server stores the `organisations` setting. */
   organisationStyles: Schema.optionalKey(Schema.Boolean),
   /** Server understands regenerateTitle on thread.meta.update. Absent on

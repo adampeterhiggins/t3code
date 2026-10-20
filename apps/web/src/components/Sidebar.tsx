@@ -78,6 +78,7 @@ import {
 import {
   AuthOrchestrationOperateScope,
   type EnvironmentMachineKind,
+  ProjectId,
   type ScopedThreadRef,
   type ThreadId,
 } from "@t3tools/contracts";
@@ -220,7 +221,7 @@ import {
   threadTimeLabel,
 } from "./sidebar/SidebarTabSummary";
 import type { SidebarThreadSummary } from "../types";
-import { isScratchProject } from "@t3tools/client-runtime/state/projects";
+import { isScratchProject, threadMoveTargets } from "@t3tools/client-runtime/state/projects";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { cn } from "~/lib/utils";
 import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
@@ -231,6 +232,7 @@ import {
   threadActionRequiresOperate,
   collectThreadGroupNames,
   resolveThreadGroupMenuPick,
+  resolveThreadProjectMenuPick,
 } from "./threadActionMenu.logic";
 import { isGitHubProject } from "@t3tools/client-runtime/state/github-issues";
 import { openGitHubIssuePicker } from "./chat/GitHubIssuePicker";
@@ -3659,6 +3661,7 @@ export default function Sidebar() {
     setThreadAutoSettle,
     setThreadHidden,
     setThreadGroup,
+    confirmAndMoveThreadToProject,
     reorderPinnedThread,
     reorderActiveThread,
     markThreadUnread,
@@ -4779,6 +4782,21 @@ export default function Sidebar() {
   const attemptSetGroup = (threadRef: ScopedThreadRef, groupName: string | null) => {
     void (async () => {
       const result = await setThreadGroup(threadRef, groupName);
+      if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+        const error = squashAtomCommandFailure(result);
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Failed to move thread",
+            description: error instanceof Error ? error.message : "An error occurred.",
+          }),
+        );
+      }
+    })();
+  };
+  const attemptMoveToProject = (threadRef: ScopedThreadRef, projectId: ProjectId) => {
+    void (async () => {
+      const result = await confirmAndMoveThreadToProject(threadRef, projectId);
       if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
         const error = squashAtomCommandFailure(result);
         toastManager.add(
@@ -5925,6 +5943,12 @@ export default function Sidebar() {
                 isHidden: supportsHiding && rowThread.hiddenAt != null,
                 groupName: thread.groupName ?? null,
                 groupNames: collectThreadGroupNames(threads, Object.keys(threadGroups)),
+                moveTargets: threadMoveTargets(
+                  thread,
+                  projects,
+                  serverConfigs.get(thread.environmentId)?.environment.capabilities
+                    .threadProjectMove === true,
+                ),
                 canSnoozeNow: canSnooze(thread, {
                   now: new Date().toISOString(),
                 }),
@@ -5966,6 +5990,11 @@ export default function Sidebar() {
           if (draft === null || draft === "delete") return;
           saveGroup(draft);
           attemptSetGroup(threadRef, draft.name);
+          return;
+        }
+        const projectPick = clicked.value ? resolveThreadProjectMenuPick(clicked.value) : undefined;
+        if (projectPick !== undefined) {
+          attemptMoveToProject(threadRef, ProjectId.make(projectPick));
           return;
         }
         switch (clicked.value) {
