@@ -6,7 +6,8 @@ import { StatusBar } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { createStaticNavigation } from "@react-navigation/native";
+import { createStaticNavigation, getStateFromPath } from "@react-navigation/native";
+import { githubPullRequestAppPath } from "@t3tools/shared/promptLinks";
 
 import { RegistryContext } from "@effect/atom-react";
 import { ThreadArrangementHost } from "./features/threads/ThreadArrangementSheet";
@@ -42,6 +43,8 @@ const appLinking = {
   prefixes: [Linking.createURL("/"), "t3code://", "t3code-dev://", "t3code-preview://"],
   config: { initialRouteName: "Home" },
   filter: shouldHandleAppLink,
+  getStateFromPath: (path: string, options?: Parameters<typeof getStateFromPath>[1]) =>
+    getStateFromPath(githubPullRequestAppPath(path) ?? path, options),
 };
 
 const Navigation = createStaticNavigation(RootStack);

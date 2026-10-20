@@ -47,6 +47,9 @@ this step next time.
   worktree. T3 Code checks the code out only after you confirm, because the checkout runs your
   setup script on it.
 
+In the desktop or mobile app, a GitHub pull request URL with `t3code://` in place of `https://`,
+such as `t3code://github.com/owner/name/pull/123`, opens like a `pr` link.
+
 A thread link with a prompt, such as `https://app.t3.codes/<environment>/<thread>?prompt=…`,
 puts the prompt in that thread's composer. If you already typed a draft there, T3 Code asks
 before it replaces it.

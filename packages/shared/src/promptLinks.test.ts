@@ -117,6 +117,28 @@ describe("link round trips", () => {
     expect(promptLinkAppPath("t3code://app/index.html")).toBeNull();
   });
 
+  it("opens a GitHub pull request URL with the app scheme as a pull request link", () => {
+    const path = promptLinkAppPath(
+      "t3code://github.com/pingdotgg/t3code/pull/2217/files?diff=split&prompt=Fix%20it#r1",
+    );
+    expect(path).toBe("/new?pr=pingdotgg%2Ft3code%2F2217&prompt=Fix+it");
+    const parsed = parseNewThreadLink(new URL(path!, "https://app.invalid").search);
+    expect(parsed).toEqual({
+      ok: true,
+      value: {
+        kind: "pull-request",
+        pullRequest: { owner: "pingdotgg", name: "t3code", number: 2217 },
+        prompt: { text: "Fix it", hiddenCharacters: 0 },
+      },
+    });
+    expect(promptLinkAppPath("t3code-dev://github.com/owner/name/pull/1")).toBe(
+      "/new?pr=owner%2Fname%2F1",
+    );
+    expect(promptLinkAppPath("t3code://github.com/owner/name")).toBeNull();
+    expect(promptLinkAppPath("t3code://github.com/owner/name/issues/1")).toBeNull();
+    expect(promptLinkAppPath("https://github.com/owner/name/pull/1")).toBeNull();
+  });
+
   it("hands an in-app path to the installed app", () => {
     expect(promptLinkDeepLink("/new?prompt=hi")).toBe("t3code://new?prompt=hi");
     expect(promptLinkDeepLink("/env-1/thread-1?prompt=hi")).toBe(

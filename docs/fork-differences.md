@@ -1050,6 +1050,17 @@ Code: `apps/web/src/components/chat/StartFromPicker.tsx`, `StartFromPicker.logic
 in `ChatComposer.tsx`, and `chat.startFrom` in `packages/contracts/src/keybindings.ts`. User guide:
 [source-control.md](./user/source-control.md#start-a-thread-from-a-pull-request-branch-or-issue).
 
+## Open a GitHub pull request URL with the app scheme
+
+Replacing `https://` with `t3code://` in a GitHub pull request URL
+(`t3code://github.com/owner/name/pull/123`) opens it in the desktop or mobile app as the
+upstream `pr` prompt link: the thread linked to that pull request, or a draft on its branch in a
+new worktree. Trailing pages such as `/files` and anchors are ignored, and a `prompt` parameter
+carries over.
+
+Code: `githubPullRequestAppPath` in `packages/shared/src/promptLinks.ts`, and `appLinking` in
+`apps/mobile/src/App.tsx`. User guide: [prompt-links.md](./user/prompt-links.md#open-a-link).
+
 ## Pull request filters count by the other filters
 
 Upstream's pull request filters list the authors and labels of whatever is loaded, already narrowed
