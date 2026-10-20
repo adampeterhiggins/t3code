@@ -52,6 +52,7 @@ import {
 } from "./claudeUsageLimits.ts";
 import {
   BUNDLED_CLAUDE_MODEL_CATALOG,
+  withClaudeSubscriptionLimitOption,
   type ClaudeModelCatalog,
   formatClaudeVersionUpgradeMessage,
   resolveClaudeModelsForVersion,
@@ -537,7 +538,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     modelCatalog.models.map((entry) => entry.model),
     claudeSettings.customModels,
     DEFAULT_CLAUDE_MODEL_CAPABILITIES,
-  );
+  ).map(withClaudeSubscriptionLimitOption);
 
   if (!claudeSettings.enabled) {
     return buildServerProvider({
@@ -628,7 +629,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     resolveClaudeModelsForVersion(modelCatalog, parsedVersion),
     claudeSettings.customModels,
     DEFAULT_CLAUDE_MODEL_CAPABILITIES,
-  );
+  ).map(withClaudeSubscriptionLimitOption);
   const updateRequiredModels = resolveClaudeUpdateRequiredModels(modelCatalog, parsedVersion);
   const versionUpgradeMessage = formatClaudeVersionUpgradeMessage(modelCatalog, parsedVersion);
 
@@ -778,7 +779,7 @@ export const makePendingClaudeProvider = Effect.fn("ClaudeProvider.makePendingCl
       modelCatalog.models.map((entry) => entry.model),
       claudeSettings.customModels,
       DEFAULT_CLAUDE_MODEL_CAPABILITIES,
-    );
+    ).map(withClaudeSubscriptionLimitOption);
 
     if (!claudeSettings.enabled) {
       return buildServerProvider({

@@ -25,7 +25,29 @@ import * as ModelCatalog from "@t3tools/provider-core/server/ModelCatalog";
 import { BUNDLED_MODEL_MANIFEST, resolveProviderCatalog } from "./ModelManifest.ts";
 
 const CLAUDE = ProviderDriverKind.make("claudeAgent");
-const EMPTY_CAPABILITIES: ModelCapabilities = { optionDescriptors: [] };
+const SUBSCRIPTION_LIMIT_OPTION = {
+  id: "stopAtSubscriptionLimit",
+  label: "Stop at subscription limit",
+  type: "boolean",
+  description:
+    "Stop when Claude reports exhausted subscription usage, even if paid extra usage is enabled. Reports can lag; this is not a billing cap.",
+} as const;
+const EMPTY_CAPABILITIES: ModelCapabilities = { optionDescriptors: [SUBSCRIPTION_LIMIT_OPTION] };
+
+export function withClaudeSubscriptionLimitOption(model: ServerProviderModel): ServerProviderModel {
+  return {
+    ...model,
+    capabilities: {
+      ...model.capabilities,
+      optionDescriptors: [
+        ...(model.capabilities?.optionDescriptors ?? []).filter(
+          (option) => option.id !== SUBSCRIPTION_LIMIT_OPTION.id,
+        ),
+        SUBSCRIPTION_LIMIT_OPTION,
+      ],
+    },
+  };
+}
 
 export interface ClaudeCatalogModel {
   readonly model: ServerProviderModel;
@@ -48,7 +70,7 @@ function tryResolveClaudeModelCatalog(
     const adapter = decodeClaudeModelAdapter(entry.adapter ?? {});
     if (Option.isNone(profile) || Option.isNone(adapter)) return null;
     models.push({
-      model: ModelCatalog.catalogServerModel(resolved, entry),
+      model: withClaudeSubscriptionLimitOption(ModelCatalog.catalogServerModel(resolved, entry)),
       runtime: profile.value.claudeCode ?? {},
       compatibility: adapter.value.claudeCode ?? {},
     });
@@ -102,12 +124,12 @@ export function scopeClaudeModelCatalog(
   for (const entry of customEntries) {
     if (!entry.capabilities || builtInSlugs.has(entry.slug)) continue;
     customCatalogModels.push({
-      model: {
+      model: withClaudeSubscriptionLimitOption({
         slug: entry.slug,
         name: entry.name,
         isCustom: true,
         capabilities: entry.capabilities,
-      },
+      }),
       runtime: {},
       compatibility: {},
     });

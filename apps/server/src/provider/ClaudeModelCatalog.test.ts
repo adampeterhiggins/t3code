@@ -5,6 +5,8 @@ import { hasValidClaudeManifestAdapters } from "./ClaudeModelManifest.ts";
 import { resolveProviderCatalog, type ModelManifestData } from "./ModelManifest.ts";
 import {
   formatClaudeVersionUpgradeMessage,
+  getClaudeCatalogModelCapabilities,
+  withClaudeSubscriptionLimitOption,
   normalizeClaudeCatalogEffort,
   resolveClaudeCatalogApiModelId,
   resolveClaudeCatalogContextWindowTokens,
@@ -70,6 +72,30 @@ const catalogFromManifest = (data: ModelManifestData) =>
   resolveClaudeModelCatalog(resolveProviderCatalog(data, CLAUDE) ?? undefined);
 
 describe("Claude model catalog", () => {
+  it("offers the subscription guard on catalog and custom models without enabling it by default", () => {
+    const catalog = catalogFromManifest(manifest());
+    const builtIn = resolveClaudeModelsForVersion(catalog, "3.2.0")[0]!;
+    const custom = withClaudeSubscriptionLimitOption({
+      slug: "custom",
+      name: "Custom",
+      isCustom: true,
+      capabilities: { optionDescriptors: [] },
+    });
+    for (const model of [builtIn, custom, withClaudeSubscriptionLimitOption(builtIn)]) {
+      const guards = model.capabilities?.optionDescriptors?.filter(
+        (option) => option.id === "stopAtSubscriptionLimit",
+      );
+      assert.lengthOf(guards ?? [], 1);
+      assert.equal(guards?.[0]?.type, "boolean");
+      assert.isUndefined(guards?.[0]?.currentValue);
+    }
+    assert.isTrue(
+      getClaudeCatalogModelCapabilities(catalog, "synthetic").optionDescriptors?.some(
+        (option) => option.id === "stopAtSubscriptionLimit",
+      ),
+    );
+  });
+
   it("resolves capacity from selected options and fixed catalog windows without guessing custom models", () => {
     const source = manifest();
     const profile = source.providers!.claudeAgent!.profiles.synthetic!;

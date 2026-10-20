@@ -1897,6 +1897,26 @@ Code: [`providerServiceStatus.ts`](../apps/server/src/provider/providerServiceSt
 `collectDegradedServices` in [`usageLimits.ts`](../packages/shared/src/usageLimits.ts). User
 guide: [usage.md](./user/usage.md#track-subscription-limits).
 
+## Stop Claude threads at subscription limits
+
+Claude's thread model options include **Stop at subscription limit**, off by default,
+on web, desktop, and mobile. The server checks subscription usage before each turn,
+refuses to send a prompt if usage is unavailable or the session/weekly allowance is
+exhausted, and closes the Claude session when streamed events report exhaustion or
+active paid overage. Closing also stops native background work in that session.
+The thread enters the existing usage-limit recovery flow, including optional resume
+at reset; the guard stays enabled. Other threads may keep using paid extra usage.
+
+Agents use `stopAtSubscriptionLimit` through the existing model-option tools.
+Delegated threads follow normal same-provider-and-model option inheritance. This
+initial implementation supports Claude; other providers do not advertise the option.
+Provider reports may lag, so it is not a hard billing cap.
+
+Code: [Claude model catalog](../apps/server/src/provider/ClaudeModelCatalog.ts),
+[Claude driver](../apps/server/src/provider/Drivers/ClaudeDriver.ts), and
+[Claude adapter](../apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts).
+User guide: [Claude usage limits](./user/providers-claude.md#usage-limits).
+
 ## Usage-limit recovery
 
 Upstream shows a recovery banner when Codex or Claude ends a turn on a usage limit, with **Resume at

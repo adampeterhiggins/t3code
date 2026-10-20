@@ -59,7 +59,10 @@ import { parseCliArgs } from "@t3tools/shared/cliArgs";
 import { fromLenientJson } from "@t3tools/shared/schemaJson";
 import { AgentScope } from "@t3tools/shared/AgentScope";
 import * as HostProcess from "@t3tools/shared/HostProcess";
-import { applyClaudePromptEffortPrefix } from "@t3tools/shared/model";
+import {
+  applyClaudePromptEffortPrefix,
+  getModelSelectionBooleanOptionValue,
+} from "@t3tools/shared/model";
 import {
   CLAUDE_RESUME_COMPACTION_NEVER_ANSWER,
   formatClaudeResumeCompactionQuestion,
@@ -94,6 +97,7 @@ import {
   type ProviderApprovalDecision,
   ProviderDriverKind,
   type ProviderInstanceId,
+  type ServerProviderUsageLimits,
   type ProviderRequestKind,
   type ProviderUserInputAnswers,
   type ProviderThreadId,
@@ -3584,6 +3588,15 @@ const CLAUDE_USAGE_LIMIT_WINDOWS = {
 
 const CLAUDE_USAGE_LIMIT_MAX_WAIT_MS = 30 * 24 * 60 * 60 * 1000;
 
+function claudeSubscriptionLimitReached(info: SDKRateLimitInfo): boolean {
+  return (
+    info.status === "rejected" ||
+    info.isUsingOverage === true ||
+    info.overageInUse === true ||
+    (info.utilization !== undefined && info.utilization >= 1)
+  );
+}
+
 function describeClaudeUsageLimit(
   info: SDKRateLimitInfo,
   nowMs: number,
@@ -4123,6 +4136,7 @@ export interface ClaudeAdapterV2Options {
   readonly queryRunner: ClaudeAgentSdkQueryRunnerShape;
   readonly scopedLimitNames?: Ref.Ref<ClaudeScopedLimitNames>;
   readonly onUsageLimits?: ManagedServerProvider["applyUsageLimits"];
+  readonly checkUsageLimits?: Effect.Effect<ServerProviderUsageLimits | undefined>;
   readonly continuationRequests?: {
     readonly offer: (
       request: ProviderContinuationRequests.ProviderContinuationRequest,
@@ -7282,6 +7296,25 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           }
         });
 
+        // Called on the SDK consumer too, so closing must not await that consumer's exit.
+        const stopAtSubscriptionLimit = Effect.fnUntraced(function* (
+          context: ActiveClaudeTurnContext,
+          failure: OrchestrationV2ProviderFailure,
+        ) {
+          const live = yield* Ref.get(queryContext);
+          if (live !== null) live.stopping = true;
+          yield* clearWakeStateForNativeThread(context.nativeThreadId);
+          yield* finalizeActiveTurn({
+            context,
+            status: "failed",
+            completedAt: yield* DateTime.now,
+            failure,
+          });
+          if (live !== null) {
+            yield* live.query.close.pipe(Effect.ignore);
+          }
+        });
+
         const applyWorkflowProgressWithoutTurn = Effect.fnUntraced(function* (message: SDKMessage) {
           if (message.type !== "system" || message.subtype !== "task_progress") return;
           if (!hasClaudeWorkflowSnapshot(message)) return;
@@ -7717,9 +7750,41 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             }
             const context = yield* Ref.get(activeTurn);
             if (context === null) {
+              if (
+                getModelSelectionBooleanOptionValue(
+                  liveQuery.lastTurn?.input.modelSelection,
+                  "stopAtSubscriptionLimit",
+                ) === true &&
+                claudeSubscriptionLimitReached(rateLimitInfo)
+              ) {
+                // Native background agents can keep spending after the root turn has ended.
+                // Close their process without terminalizing that completed turn a second time.
+                liveQuery.stopping = true;
+                yield* clearWakeStateForNativeThread(liveQuery.nativeThreadId);
+                yield* liveQuery.query.close.pipe(Effect.ignore);
+                return;
+              }
               yield* bufferWakeMessage({
                 nativeThreadId: liveQuery.nativeThreadId,
                 message,
+              });
+              return;
+            }
+            if (
+              getModelSelectionBooleanOptionValue(
+                context.input.modelSelection,
+                "stopAtSubscriptionLimit",
+              ) === true &&
+              claudeSubscriptionLimitReached(rateLimitInfo)
+            ) {
+              yield* stopAtSubscriptionLimit(context, {
+                ...makeProviderFailure({
+                  class: "usage_limit",
+                  code: "subscription_limit_guard",
+                  message:
+                    "Claude subscription limit reached. This thread stopped because Stop at subscription limit is enabled.",
+                }),
+                resetAt: claudeUsageLimitResetAt(rateLimitInfo.resetsAt),
               });
               return;
             }
@@ -9476,7 +9541,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           if (
             existing !== null &&
             existing.nativeThreadId === nativeThreadId &&
-            isClaudeProviderContinuationTurn(turnInput)
+            isClaudeProviderContinuationTurn(turnInput) &&
+            !existing.stopping
           ) {
             return existing;
           }
@@ -9507,7 +9573,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             existing !== null &&
             existing.nativeThreadId === nativeThreadId &&
             existing.queryPolicyKey === queryPolicyKey &&
-            existing.selection.queryIdentity === compiledSelection.queryIdentity
+            existing.selection.queryIdentity === compiledSelection.queryIdentity &&
+            !existing.stopping
           ) {
             // A denied ExitPlanMode leaves Claude in plan mode. Restore only from plan:
             // Auto/default may reflect a policy restriction that forbids restoring bypass.
@@ -9884,6 +9951,50 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 }),
               });
             });
+            if (
+              getModelSelectionBooleanOptionValue(
+                turnInput.modelSelection,
+                "stopAtSubscriptionLimit",
+              ) === true
+            ) {
+              const limits = yield* adapterOptions.checkUsageLimits ?? Effect.succeed(undefined);
+              const nowMs = DateTime.toEpochMillis(yield* DateTime.now);
+              const subscriptionWindows =
+                limits?.windows.filter(
+                  (window) => window.id === "five_hour" || window.id === "seven_day",
+                ) ?? [];
+              const exhausted = subscriptionWindows.filter(
+                (window) =>
+                  window.usedPercent >= 100 &&
+                  (window.resetsAt === undefined || Date.parse(window.resetsAt) > nowMs),
+              );
+              if (
+                limits === undefined ||
+                limits.unavailable !== undefined ||
+                subscriptionWindows.length === 0 ||
+                exhausted.length > 0
+              ) {
+                yield* attachTurn;
+                const resetTimes = exhausted.map((window) => window.resetsAt);
+                const resetAt =
+                  resetTimes.length > 0 && resetTimes.every((time) => time !== undefined)
+                    ? resetTimes.reduce((latest, time) => (time! > latest ? time! : latest), "")
+                    : null;
+                yield* stopAtSubscriptionLimit(context, {
+                  ...makeProviderFailure({
+                    class: exhausted.length > 0 ? "usage_limit" : "provider_error",
+                    retryable: false,
+                    code: "subscription_limit_guard",
+                    message:
+                      exhausted.length > 0
+                        ? "Claude subscription limit reached. This thread stopped because Stop at subscription limit is enabled."
+                        : "Claude subscription usage could not be checked. Disable Stop at subscription limit to continue without this check.",
+                  }),
+                  resetAt,
+                });
+                return;
+              }
+            }
             if (userMessage !== null) {
               yield* attachTurn;
               yield* startUserTurnForWakeReports(nativeThreadId);
@@ -10765,7 +10876,10 @@ export type ClaudeAdapterV2DriverEnv =
 export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
   function* (
     input: ProviderAdapterDriverCreateInput<ClaudeSettings>,
-    hooks: Pick<ClaudeAdapterV2Options, "scopedLimitNames" | "onUsageLimits"> = {},
+    hooks: Pick<
+      ClaudeAdapterV2Options,
+      "scopedLimitNames" | "onUsageLimits" | "checkUsageLimits"
+    > = {},
   ) {
     const { instanceId, environment, enabled, config } = input;
     const fileSystem = yield* FileSystem.FileSystem;
