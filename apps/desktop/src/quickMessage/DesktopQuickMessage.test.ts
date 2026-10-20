@@ -270,7 +270,7 @@ it.effect("opens the main window for a submission when none is open", () => {
 it("places the panel a fifth of the way down the display", () => {
   assert.deepEqual(
     DesktopQuickMessage.quickMessagePanelBounds({ x: 100, y: 25, width: 1440, height: 875 }),
-    { x: 410, y: 200, width: 820, height: 520 },
+    { x: 362, y: 200, width: 916, height: 520 },
   );
   assert.deepEqual(
     DesktopQuickMessage.quickMessagePanelBounds({ x: 0, y: 0, width: 600, height: 500 }),

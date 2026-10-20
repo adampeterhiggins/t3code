@@ -758,7 +758,7 @@ export function QuickMessagePanel() {
                   />
                 </div>
                 {error ? <p className="px-4 pb-2 text-destructive text-xs">{error}</p> : null}
-                <div className="flex min-w-0 flex-nowrap items-center justify-between gap-2 px-4 pb-4">
+                <div className="flex min-w-0 flex-nowrap items-center justify-between gap-2 px-4 pb-4 sm:gap-0">
                   <div className="relative -m-1 -ms-3.5 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto p-1 ps-3.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                     {modelSelection !== null ? (
                       <ProviderModelPicker
@@ -768,6 +768,7 @@ export function QuickMessagePanel() {
                         lockedProvider={null}
                         instanceEntries={instanceEntries}
                         modelOptionsByInstance={modelOptionsByInstance}
+                        isComposerOwned
                         triggerClassName="-ms-2.5 min-w-13"
                         onInstanceModelChange={(instanceId, model) => {
                           setChosenModel(createModelSelection(instanceId, model));
