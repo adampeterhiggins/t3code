@@ -1,4 +1,4 @@
-import type { DesktopQuickMessageAction, EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
+import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import { FolderGit2Icon, LaptopIcon, MessageSquareIcon, PaperclipIcon } from "lucide-react";
 import { GitHubIcon, GranolaIcon, DiscordIcon, LinearIcon, NotionIcon, SlackIcon } from "../Icons";
 import { memo } from "react";
@@ -20,7 +20,17 @@ import { openSlackMessagePicker } from "./SlackMessagePicker";
 import { openThreadAttachPicker } from "./ThreadAttachPicker";
 
 /** Every attach source other than files, each opened as a picker against a thread's draft. */
-export type ComposerAttachPicker = Exclude<DesktopQuickMessageAction, "send">;
+export type ComposerAttachPicker =
+  | "thread"
+  | "linear-issue"
+  | "notion-page"
+  | "granola-note"
+  | "slack-message"
+  | "discord-message"
+  | "github-issue"
+  | "pull-request"
+  | "checkout"
+  | "repository";
 
 export function openComposerAttachPicker(
   picker: ComposerAttachPicker,

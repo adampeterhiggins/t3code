@@ -1,4 +1,4 @@
-import { scopeProjectRef } from "@t3tools/client-runtime/environment";
+import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { availableScratchWorkspaceRoot } from "@t3tools/client-runtime/operations/projects";
 import {
   isAtomCommandInterrupted,
@@ -9,7 +9,7 @@ import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import {
   AuthSourceControlWriteScope,
   DEFAULT_SERVER_SETTINGS,
-  type DesktopQuickMessageAction,
+  type DesktopQuickMessageAttachment,
   type DesktopQuickMessageStartFrom,
   type EnvironmentId,
   type ModelSelection,
@@ -17,6 +17,7 @@ import {
   type ProviderInstanceId,
   type RuntimeMode,
   type ServerSettings,
+  ThreadId,
 } from "@t3tools/contracts";
 import { createModelSelection } from "@t3tools/shared/model";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
@@ -26,8 +27,11 @@ import {
   CircleDotIcon,
   EllipsisIcon,
   FileIcon,
+  FolderGit2Icon,
   FolderIcon,
   GitBranchIcon,
+  LaptopIcon,
+  MessageSquareIcon,
   XIcon,
 } from "lucide-react";
 import {
@@ -76,7 +80,22 @@ import { useEnvironmentScope } from "~/state/session";
 import { allReachableShellsLiveAtom } from "~/state/shell";
 
 import { ComposerFooterModeControls, composerRuntimeModeOptions } from "../chat/ChatComposer";
-import { ComposerAttachMenu } from "../chat/ComposerAttachMenu";
+import {
+  ComposerAttachMenu,
+  type ComposerAttachPicker,
+  openComposerAttachPicker,
+} from "../chat/ComposerAttachMenu";
+import { ComposerAttachRedirect } from "../chat/composerAttachRedirect";
+import { CheckoutAttachPickerHost } from "../chat/CheckoutAttachPicker";
+import { DiscordMessagePickerHost } from "../chat/DiscordMessagePicker";
+import { GitHubIssuePickerHost } from "../chat/GitHubIssuePicker";
+import { GranolaNotePickerHost } from "../chat/GranolaNotePicker";
+import { LinearIssuePickerHost } from "../chat/LinearIssuePicker";
+import { NotionPagePickerHost } from "../chat/NotionPagePicker";
+import { PullRequestAttachPickerHost } from "../chat/PullRequestAttachPicker";
+import { RepositoryAttachPickerHost } from "../chat/RepositoryAttachPicker";
+import { SlackMessagePickerHost } from "../chat/SlackMessagePicker";
+import { ThreadAttachPickerHost } from "../chat/ThreadAttachPicker";
 import {
   ComposerControl,
   ComposerControlChevron,
@@ -88,7 +107,7 @@ import { ComposerImageThumbnail } from "../chat/ComposerImageThumbnail";
 import { ComposerSurface } from "../chat/ComposerSurface";
 import { DraftProjectName } from "../chat/DraftProjectName";
 import { StartFromPickerDialog } from "../chat/StartFromPicker";
-import { LinearIcon } from "../Icons";
+import { DiscordIcon, GitHubIcon, GranolaIcon, LinearIcon, NotionIcon, SlackIcon } from "../Icons";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { ProviderAccountPicker } from "../chat/ProviderAccountPicker";
 import {
@@ -129,7 +148,7 @@ function QuickMessageAttachMenu(props: {
   readonly project: EnvironmentProject;
   readonly pullRequestsAvailable: boolean;
   readonly onAttachFiles: () => void;
-  readonly onPick: (picker: Exclude<DesktopQuickMessageAction, "send">) => void;
+  readonly onPick: (picker: ComposerAttachPicker) => void;
 }) {
   const checkouts = useComposerCheckoutItems(props.environmentId, { enabled: false, query: "" });
   return (
@@ -144,28 +163,57 @@ function QuickMessageAttachMenu(props: {
   );
 }
 
-function StartFromChip(props: {
-  readonly startFrom: DesktopQuickMessageStartFrom;
+/**
+ * The thread the panel's attach pickers are opened for. It never reaches a draft: the pickers hand
+ * their picks back through `ComposerAttachRedirect`, and the main window attaches them on send.
+ */
+const PICKER_THREAD_ID = ThreadId.make("quick-message-panel");
+
+const ATTACHMENT_ICONS = {
+  thread: MessageSquareIcon,
+  "linear-issue": LinearIcon,
+  "notion-page": NotionIcon,
+  "granola-note": GranolaIcon,
+  "slack-message": SlackIcon,
+  "discord-message": DiscordIcon,
+  "github-issue": GitHubIcon,
+  "pull-request": PullRequestGlyph.pullRequest,
+  checkout: LaptopIcon,
+  repository: FolderGit2Icon,
+} satisfies Record<DesktopQuickMessageAttachment["type"], unknown>;
+
+function startFromChip(startFrom: DesktopQuickMessageStartFrom) {
+  switch (startFrom.type) {
+    case "pull-request":
+      return {
+        icon: PullRequestGlyph.pullRequest,
+        label: `#${startFrom.number} ${startFrom.title}`,
+      };
+    case "branch":
+      return { icon: GitBranchIcon, label: startFrom.branch };
+    case "github-issue":
+      return { icon: CircleDotIcon, label: `#${startFrom.number} ${startFrom.title}` };
+    case "linear-issue":
+      return { icon: LinearIcon, label: `${startFrom.identifier} ${startFrom.title}` };
+  }
+}
+
+function PickChip(props: {
+  readonly icon: React.ComponentType<{ className?: string; "aria-hidden"?: boolean | "true" }>;
+  readonly label: string;
+  readonly removeLabel: string;
   readonly onRemove: () => void;
 }) {
-  const { startFrom } = props;
-  const [Icon, label] =
-    startFrom.type === "pull-request"
-      ? [PullRequestGlyph.pullRequest, `#${startFrom.number} ${startFrom.title}`]
-      : startFrom.type === "branch"
-        ? [GitBranchIcon, startFrom.branch]
-        : startFrom.type === "github-issue"
-          ? [CircleDotIcon, `#${startFrom.number} ${startFrom.title}`]
-          : [LinearIcon, `${startFrom.identifier} ${startFrom.title}`];
+  const Icon = props.icon;
   return (
     <span className="inline-flex max-w-72 items-center gap-1.5 rounded-lg bg-muted py-0.5 ps-2 pe-0.5 text-muted-foreground text-xs">
       <Icon className="size-3.5 shrink-0" aria-hidden="true" />
-      <span className="min-w-0 truncate">{label}</span>
+      <span className="min-w-0 truncate">{props.label}</span>
       <Button
         type="button"
         variant="ghost"
         size="icon-xs"
-        aria-label={`Don't start from ${label}`}
+        aria-label={props.removeLabel}
         onClick={props.onRemove}
       >
         <XIcon />
@@ -234,6 +282,9 @@ export function QuickMessagePanel() {
     [],
   );
   const [startFrom, setStartFrom] = useState<DesktopQuickMessageStartFrom | null>(null);
+  const [attachments, setAttachments] = useState<
+    ReadonlyArray<{ readonly id: string; readonly attachment: DesktopQuickMessageAttachment }>
+  >([]);
   const [startFromOpen, setStartFromOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerQuery, setPickerQuery] = useState("");
@@ -378,9 +429,9 @@ export function QuickMessagePanel() {
         ? "Set up a provider in T3 Code to start a thread"
         : null;
   const hasText = prompt.trim().length > 0;
-  const hasContent = hasText || files.length > 0;
+  const hasContent = hasText || files.length > 0 || attachments.length > 0;
 
-  const submit = async (action: DesktopQuickMessageAction) => {
+  const submit = async () => {
     if (!bridge || sending || !project || !modelSelection || environmentUnavailable) return;
     setSending(true);
     setError(null);
@@ -401,11 +452,12 @@ export function QuickMessagePanel() {
         runtimeMode,
         interactionMode: planModeEnabled ? interactionMode : "default",
         ...(startFrom !== null ? { startFrom } : {}),
-        action,
+        attachments: attachments.map((entry) => entry.attachment),
       });
       setPrompt("");
       setFiles([]);
       setStartFrom(null);
+      setAttachments([]);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not start the thread.");
     } finally {
@@ -444,7 +496,7 @@ export function QuickMessagePanel() {
     const needsModifier = composerRequiresModifier(clientSettings.sendShortcut, prompt);
     if (event.shiftKey || (needsModifier && !modifier)) return;
     event.preventDefault();
-    if (hasContent) void submit("send");
+    if (hasContent) void submit();
   };
 
   const projectItems: ReadonlyArray<ProjectItem> = [
@@ -474,7 +526,7 @@ export function QuickMessagePanel() {
         className="w-full"
         onSubmit={(event) => {
           event.preventDefault();
-          void submit("send");
+          void submit();
         }}
         onDragOver={(event) => {
           if (event.dataTransfer.types.includes("Files")) event.preventDefault();
@@ -558,6 +610,7 @@ export function QuickMessagePanel() {
                           setChosenProjectKey(item.value);
                           setChosenModel(null);
                           setStartFrom(null);
+                          setAttachments([]);
                           inputRef.current?.focus();
                         }}
                       >
@@ -615,17 +668,30 @@ export function QuickMessagePanel() {
                       </Combobox>
                     </div>
                   ) : null}
-                  {files.length > 0 || startFrom !== null ? (
+                  {files.length > 0 || startFrom !== null || attachments.length > 0 ? (
                     <div className="flex flex-wrap items-center gap-1.5 pe-7 pb-2">
                       {startFrom !== null ? (
-                        <StartFromChip
-                          startFrom={startFrom}
+                        <PickChip
+                          {...startFromChip(startFrom)}
+                          removeLabel="Don't start from this"
                           onRemove={() => {
                             setStartFrom(null);
                             inputRef.current?.focus();
                           }}
                         />
                       ) : null}
+                      {attachments.map(({ id, attachment }) => (
+                        <PickChip
+                          key={id}
+                          icon={ATTACHMENT_ICONS[attachment.type]}
+                          label={attachment.label}
+                          removeLabel={`Remove ${attachment.label}`}
+                          onRemove={() => {
+                            setAttachments((current) => current.filter((entry) => entry.id !== id));
+                            inputRef.current?.focus();
+                          }}
+                        />
+                      ))}
                       {files.map(({ id, file }) =>
                         file.type.startsWith("image/") ? (
                           <div
@@ -779,7 +845,12 @@ export function QuickMessagePanel() {
                           environment?.serverConfig?.environment.capabilities.pullRequests === true
                         }
                         onAttachFiles={() => fileInputRef.current?.click()}
-                        onPick={(picker) => void submit(picker)}
+                        onPick={(picker) =>
+                          openComposerAttachPicker(
+                            picker,
+                            scopeThreadRef(environmentId, PICKER_THREAD_ID),
+                          )
+                        }
                       />
                     ) : null}
                     <ComposerPrimaryActions
@@ -830,6 +901,33 @@ export function QuickMessagePanel() {
             inputRef.current?.focus();
           }}
         />
+      ) : null}
+      {project ? (
+        <ComposerAttachRedirect.Provider
+          value={(attachment) => {
+            setAttachments((current) => [...current, { id: randomUUID(), attachment }]);
+            inputRef.current?.focus();
+          }}
+        >
+          <ThreadAttachPickerHost />
+          <LinearIssuePickerHost />
+          <NotionPagePickerHost />
+          <GranolaNotePickerHost />
+          <SlackMessagePickerHost />
+          <DiscordMessagePickerHost />
+          <GitHubIssuePickerHost
+            checkout={{
+              projectRef: scopeProjectRef(project.environmentId, project.id),
+              cwd: project.workspaceRoot,
+            }}
+          />
+          <PullRequestAttachPickerHost
+            environmentId={project.environmentId}
+            projectId={project.id}
+          />
+          <CheckoutAttachPickerHost />
+          <RepositoryAttachPickerHost workspaceCwd={null} />
+        </ComposerAttachRedirect.Provider>
       ) : null}
     </QuickMessageFrame>
   );

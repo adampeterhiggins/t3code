@@ -217,6 +217,32 @@ export const ReviewCommentThreadContext = Schema.Struct({
 });
 export type ReviewCommentThreadContext = typeof ReviewCommentThreadContext.Type;
 
+/** A review chip as a draft holds it, before it is sent as a `ReviewCommentContextRecord`. */
+export const ReviewCommentDraft = Schema.Struct({
+  id: Schema.String,
+  sectionId: Schema.String,
+  sectionTitle: Schema.String,
+  filePath: Schema.String,
+  startIndex: Schema.Number,
+  endIndex: Schema.Number,
+  rangeLabel: Schema.String,
+  text: Schema.String,
+  instructions: Schema.optional(Schema.String),
+  diff: Schema.String,
+  fenceLanguage: Schema.optional(Schema.String),
+  selection: Schema.optional(
+    Schema.Struct({
+      start: Schema.Number,
+      side: Schema.Literals(["additions", "deletions"]),
+      end: Schema.Number,
+      endSide: Schema.Literals(["additions", "deletions"]),
+    }),
+  ),
+  pullRequest: Schema.optional(PullRequestContextMetadata),
+  thread: Schema.optional(ReviewCommentThreadContext),
+});
+export type ReviewCommentDraft = typeof ReviewCommentDraft.Type;
+
 export const ReviewCommentContextRecord = Schema.Struct({
   ...recordBase,
   kind: Schema.Literal("review-comment"),

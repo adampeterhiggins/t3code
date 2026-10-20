@@ -29,6 +29,7 @@ import {
   CommandItem,
   CommandList,
 } from "../ui/command";
+import { useComposerAttachRedirect } from "./composerAttachRedirect";
 type NotionPagePickerMode = "attach" | "link";
 /** The thread the picker acts on, and whether picking attaches the page or links it. */
 const pickerThread = Atom.make<{
@@ -98,6 +99,7 @@ function NotionPagePickerDialog({
   );
   const navigate = useNavigate();
   const attachPage = useAttachNotionPage();
+  const redirect = useComposerAttachRedirect();
   const linkPage = useLinkNotionPage();
   const [query, setQuery] = useState("");
   const [attaching, setAttaching] = useState(false);
@@ -172,6 +174,11 @@ function NotionPagePickerDialog({
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={async () => {
                           if (attaching) return;
+                          if (redirect) {
+                            redirect({ type: "notion-page", pageId: page.id, label: page.title });
+                            closePicker();
+                            return;
+                          }
                           setAttaching(true);
                           const pick = mode === "link" ? linkPage : attachPage;
                           const picked = await settlePromise(() => pick(threadRef, page.id));

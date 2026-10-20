@@ -2,7 +2,10 @@ import * as Schema from "effect/Schema";
 import type { PreviewCaptureFailureEncoded } from "./previewCapture.ts";
 
 import { SnapShotSource } from "./chatAttachment.ts";
-import { EnvironmentId, ProjectId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { EnvironmentId, ProjectId, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { ReviewCommentDraft } from "./composerContext.ts";
+import { DiscordGetThreadInput } from "./discord.ts";
+import { SlackGetThreadInput } from "./slack.ts";
 import { BrowserProfileId } from "./browserProfile.ts";
 import type {
   BrowserImportResult,
@@ -226,25 +229,6 @@ export const DesktopQuickMessageFile = Schema.Struct({
 export type DesktopQuickMessageFile = typeof DesktopQuickMessageFile.Type;
 
 /**
- * What the composer does once the main window holds the draft: send it, or open one of the
- * composer's attach pickers there. Those pickers attach to a draft, which only the main window owns.
- */
-export const DesktopQuickMessageAction = Schema.Literals([
-  "send",
-  "thread",
-  "linear-issue",
-  "notion-page",
-  "granola-note",
-  "slack-message",
-  "discord-message",
-  "github-issue",
-  "pull-request",
-  "checkout",
-  "repository",
-]);
-export type DesktopQuickMessageAction = typeof DesktopQuickMessageAction.Type;
-
-/**
  * Where a new thread starts, picked in a start-from picker. The labels are only for showing the
  * pick; the main window checks out or attaches from the reference.
  */
@@ -277,6 +261,63 @@ export const DesktopQuickMessageStartFrom = Schema.Union([
 export type DesktopQuickMessageStartFrom = typeof DesktopQuickMessageStartFrom.Type;
 
 /**
+ * Context picked in the panel's attach pickers. The main window fetches and attaches each one to
+ * the new draft as its own picker would; `label` only names the pick in the panel.
+ */
+export const DesktopQuickMessageAttachment = Schema.Union([
+  Schema.Struct({ type: Schema.Literal("thread"), threadId: ThreadId, label: Schema.String }),
+  Schema.Struct({
+    type: Schema.Literal("linear-issue"),
+    issueId: Schema.String,
+    label: Schema.String,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("notion-page"),
+    pageId: Schema.String,
+    label: Schema.String,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("granola-note"),
+    noteId: Schema.String,
+    label: Schema.String,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("slack-message"),
+    input: SlackGetThreadInput,
+    label: Schema.String,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("discord-message"),
+    input: DiscordGetThreadInput,
+    label: Schema.String,
+  }),
+  Schema.Struct({ type: Schema.Literal("github-issue"), url: Schema.String, label: Schema.String }),
+  Schema.Struct({
+    type: Schema.Literal("pull-request"),
+    comment: ReviewCommentDraft,
+    label: Schema.String,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("checkout"),
+    environmentId: EnvironmentId,
+    path: Schema.String,
+    branch: Schema.NullOr(Schema.String),
+    headSha: Schema.NullOr(Schema.String),
+    changedFiles: Schema.NullOr(Schema.Number),
+    ahead: Schema.Number,
+    link: Schema.Boolean,
+    label: Schema.String,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("repository"),
+    nameWithOwner: Schema.String,
+    remoteUrl: Schema.String,
+    label: Schema.String,
+  }),
+]);
+export type DesktopQuickMessageAttachment = typeof DesktopQuickMessageAttachment.Type;
+
+/**
  * What the quick message panel hands the main window: a new thread to start, or an app path to
  * open there, such as an existing thread picked instead of starting a second one.
  */
@@ -291,7 +332,7 @@ export const DesktopQuickMessageSubmission = Schema.Union([
     runtimeMode: RuntimeMode,
     interactionMode: ProviderInteractionMode,
     startFrom: Schema.optional(DesktopQuickMessageStartFrom),
-    action: DesktopQuickMessageAction,
+    attachments: Schema.Array(DesktopQuickMessageAttachment),
   }),
   Schema.Struct({
     type: Schema.Literal("open"),

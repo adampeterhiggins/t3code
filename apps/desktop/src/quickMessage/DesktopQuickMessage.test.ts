@@ -130,7 +130,7 @@ const submission: DesktopQuickMessageSubmission = {
   modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.5" },
   runtimeMode: "full-access",
   interactionMode: "default",
-  action: "send",
+  attachments: [],
 };
 
 const layerTest = (main: { webContents: FakeWebContents } | null, revealed: Array<unknown>) =>

@@ -6,8 +6,7 @@ import { useEffect, useEffectEvent, useRef } from "react";
 import { composerDraftHasUserContent, useComposerDraftStore } from "../../composerDraftStore";
 import { useComposerSubmitRequestStore } from "../../composerSubmitRequestStore";
 import { useSidebarPendingFileDropStore } from "../../sidebarPendingFileDropStore";
-import { openComposerAttachPicker } from "../chat/ComposerAttachMenu";
-import { applyStartFromToDraft } from "../chat/StartFromPicker";
+import { applyQuickMessageToDraft } from "./QuickMessageDraftApplier";
 import { useNewThreadHandler } from "../../hooks/useHandleNewThread";
 import { usePrimaryEnvironment } from "../../state/environments";
 import { stackedThreadToast, toastManager } from "../ui/toast";
@@ -84,16 +83,13 @@ export function QuickMessageCoordinator() {
       } else if (send) {
         useComposerSubmitRequestStore.getState().request(opened.draftId, "send");
       }
-      if (submission.action !== "send" && threadRef !== null) {
-        openComposerAttachPicker(submission.action, threadRef);
-      }
     };
-    const send = submission.action === "send" && !held;
-    // A pull request is checked out before anything sends, so nothing runs in the old checkout.
-    if (submission.startFrom !== undefined && threadRef !== null) {
-      applyStartFromToDraft({
+    const send = !held;
+    if ((submission.startFrom !== undefined || submission.attachments.length > 0) && threadRef) {
+      applyQuickMessageToDraft({
         threadRef,
-        pick: submission.startFrom,
+        startFrom: submission.startFrom,
+        attachments: submission.attachments,
         onApplied: (applied) => finish(send && applied),
       });
     } else {

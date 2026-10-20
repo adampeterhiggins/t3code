@@ -27,7 +27,7 @@ import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/model
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
 import { CalendarClockIcon, CalendarPlusIcon, GitBranchIcon } from "lucide-react";
-import { type KeyboardEvent, type ReactNode, useEffect, useEffectEvent, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useState } from "react";
 
 import { useRunScheduledTask } from "~/hooks/useRunThreadScheduledTask";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
@@ -143,23 +143,6 @@ function closeStartFromPicker(): void {
   appAtomRegistry.set(startFromPickerOpenAtom, false);
 }
 
-interface PendingStartFrom {
-  readonly threadRef: ScopedThreadRef;
-  readonly pick: DesktopQuickMessageStartFrom;
-  readonly onApplied: (applied: boolean) => void;
-}
-
-/** A pick made outside the draft's chat view, such as in the quick message panel. */
-const pendingStartFromAtom = Atom.make<PendingStartFrom | null>(null).pipe(
-  Atom.keepAlive,
-  Atom.withLabel("chat:pending-start-from"),
-);
-
-/** Applies a pick to a new draft once its chat view mounts, as if picked there. */
-export function applyStartFromToDraft(pending: PendingStartFrom): void {
-  appAtomRegistry.set(pendingStartFromAtom, pending);
-}
-
 interface StartFromPickerHostProps {
   readonly environmentId: EnvironmentId;
   readonly projectRef: ScopedProjectRef;
@@ -179,23 +162,8 @@ interface StartFromPickerHostProps {
 export function StartFromPickerHost(props: StartFromPickerHostProps) {
   const { environmentId, threadRef } = props;
   const open = useAtomValue(startFromPickerOpenAtom);
-  const pending = useAtomValue(pendingStartFromAtom);
   const navigate = useNavigate();
   const applyPick = useApplyStartFrom(props);
-
-  const applyPending = useEffectEvent((next: PendingStartFrom) => {
-    appAtomRegistry.set(pendingStartFromAtom, null);
-    void applyPick(next.pick).then(next.onApplied);
-  });
-  useEffect(() => {
-    if (
-      pending !== null &&
-      pending.threadRef.environmentId === threadRef.environmentId &&
-      pending.threadRef.threadId === threadRef.threadId
-    ) {
-      applyPending(pending);
-    }
-  }, [pending, threadRef.environmentId, threadRef.threadId]);
 
   if (!open) return null;
   return (
@@ -228,7 +196,12 @@ export function StartFromPickerHost(props: StartFromPickerHostProps) {
  * is already checked out in; works on a branch where `resolveBranchStart` says; attaches and
  * links an issue. Resolves whether the pick took.
  */
-function useApplyStartFrom(props: StartFromPickerHostProps) {
+export function useApplyStartFrom(props: {
+  readonly environmentId: EnvironmentId;
+  readonly workspaceRoot: string;
+  readonly threadRef: ScopedThreadRef;
+  readonly onCheckout: (checkout: ReturnType<typeof resolveBranchStart>) => void;
+}) {
   const { environmentId, workspaceRoot, threadRef, onCheckout } = props;
   const preparePullRequestCheckout = usePreparePullRequestThreadAction({
     environmentId,

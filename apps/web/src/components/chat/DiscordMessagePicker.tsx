@@ -36,6 +36,7 @@ import {
 } from "../ui/command";
 import { MenuItem, MenuPopup } from "../ui/menu";
 import { toastManager } from "../ui/toast";
+import { useComposerAttachRedirect } from "./composerAttachRedirect";
 
 // Each search reads every server the bot is in, so typing settles before a search goes out.
 const SEARCH_DEBOUNCE_MS = 400;
@@ -173,6 +174,7 @@ function DiscordMessagePickerDialog(props: {
   const discordEnabled = useEnvironmentSettings(environmentId, (s) => s.enableDiscordIntegration);
   const navigate = useNavigate();
   const attachMessage = useAttachDiscordMessage();
+  const redirect = useComposerAttachRedirect();
   const linkThread = useLinkDiscordThread();
   const [query, setQuery] = useState("");
   const [attaching, setAttaching] = useState(false);
@@ -199,6 +201,15 @@ function DiscordMessagePickerDialog(props: {
   async function select(message: DiscordMessageSummary, scope: DiscordGetThreadInput["scope"]) {
     if (!discordEnabled) return;
     if (attaching) return;
+    if (redirect) {
+      redirect({
+        type: "discord-message",
+        input: discordGetThreadInput(message, scope),
+        label: `${message.channelLabel} · ${message.authorName}`,
+      });
+      closeDiscordMessagePicker();
+      return;
+    }
     setAttaching(true);
     const done =
       mode === "link"
