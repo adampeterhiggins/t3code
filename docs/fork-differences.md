@@ -1903,7 +1903,9 @@ guide: [usage.md](./user/usage.md#track-subscription-limits).
 Usage limits**) protects all Claude threads on the selected environments, including
 delegated work. It overrides a thread's Off option and immediately checks running
 sessions when enabled. With the application setting off, threads can opt in through
-the same-named Claude model option. Both settings default to off. Settings remain
+the same-named Claude model option, also offered in the thread's context menu on web,
+desktop, and mobile; it applies from the thread's next turn. Both settings default
+to off. Settings remain
 on the server, so the guard also applies when clients disconnect overnight.
 
 The server checks fresh subscription usage before protected turns, refuses to send
@@ -1920,7 +1922,8 @@ lag, so it is not a hard billing cap.
 
 Code: [Claude model catalog](../apps/server/src/provider/ClaudeModelCatalog.ts),
 [Claude driver](../apps/server/src/provider/Drivers/ClaudeDriver.ts), and
-[Claude adapter](../apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts).
+[Claude adapter](../apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts),
+and [thread menu toggle](../packages/client-runtime/src/state/subscriptionLimitGuard.ts).
 User guide: [Claude usage limits](./user/providers-claude.md#usage-limits).
 
 ## Usage-limit recovery

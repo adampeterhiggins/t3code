@@ -79,9 +79,11 @@ Disabling it removes the application-wide restriction; individual thread options
 still apply. Other providers are not covered yet.
 
 For selected threads only, leave the application setting off and enable **Stop at
-subscription limit** in that thread's Claude model options. Agents can set
-`stopAtSubscriptionLimit: true` through model options; delegated threads inherit
-that option under the normal same-provider-and-model rules.
+subscription limit** in that thread's Claude model options, or from the thread's
+right-click menu (long-press on mobile). A thread's own option applies from its next
+turn; to stop a turn that is already running, use the application setting. Agents
+can set `stopAtSubscriptionLimit: true` through model options; delegated threads
+inherit that option under the normal same-provider-and-model rules.
 
 T3 checks subscription usage before protected turns and closes a Claude session
 when it reports exhausted usage, even with paid extra usage enabled. Native

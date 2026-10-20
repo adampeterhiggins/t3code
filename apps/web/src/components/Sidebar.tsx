@@ -165,7 +165,11 @@ import {
   getThreadKeysToDeselectAfterDelete,
   useThreadSelectionStore,
 } from "../threadSelectionStore";
-import { useAcknowledgeThreadWoke, useThreadActions } from "../hooks/useThreadActions";
+import {
+  readThreadSubscriptionLimitGuard,
+  useAcknowledgeThreadWoke,
+  useThreadActions,
+} from "../hooks/useThreadActions";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { useRestartAgentSessionWithToast } from "../hooks/useRestartAgentSession";
 import { useSidebarProjectGroups } from "../hooks/useSidebarProjectGroups";
@@ -3662,6 +3666,7 @@ export default function Sidebar() {
     unpinThread,
     confirmAndUnpinThread,
     setThreadAutoSettle,
+    setThreadSubscriptionLimitGuard,
     setThreadHidden,
     setThreadGroup,
     confirmAndMoveThreadToProject,
@@ -5956,6 +5961,7 @@ export default function Sidebar() {
                 isPinned,
                 isSettled,
                 autoSettleEnabled: thread.autoSettleDisabledAt == null,
+                subscriptionLimit: readThreadSubscriptionLimitGuard(thread),
                 isSnoozed,
                 isHidden: supportsHiding && rowThread.hiddenAt != null,
                 groupName: thread.groupName ?? null,
@@ -6104,6 +6110,24 @@ export default function Sidebar() {
                 stackedThreadToast({
                   type: "error",
                   title: "Failed to update auto-settle",
+                  description: error instanceof Error ? error.message : "An error occurred.",
+                }),
+              );
+            }
+            return;
+          }
+          case "subscription-limit:on":
+          case "subscription-limit:off": {
+            const result = await setThreadSubscriptionLimitGuard(
+              thread,
+              clicked.value === "subscription-limit:on",
+            );
+            if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+              const error = squashAtomCommandFailure(result);
+              toastManager.add(
+                stackedThreadToast({
+                  type: "error",
+                  title: "Failed to update subscription limit",
                   description: error instanceof Error ? error.message : "An error occurred.",
                 }),
               );

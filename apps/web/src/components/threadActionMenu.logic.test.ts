@@ -289,6 +289,35 @@ describe("buildThreadActionMenuItems", () => {
     ).not.toContain("auto-settle");
   });
 
+  it("offers Stop at subscription limit only where the provider supports it", () => {
+    const find = (state: ThreadActionMenuState) =>
+      buildThreadActionMenuItems(state).find((item) => item.id === "subscription-limit");
+    expect(find(baseState)).toBeUndefined();
+    const off = find({
+      ...baseState,
+      subscriptionLimit: { enabled: false, enforcedByApp: false },
+    });
+    expect(off?.children?.map((child) => [child.id, child.checked])).toEqual([
+      ["subscription-limit:on", false],
+      ["subscription-limit:off", true],
+    ]);
+    const enforced = find({
+      ...baseState,
+      subscriptionLimit: { enabled: false, enforcedByApp: true },
+    });
+    expect(enforced?.children?.[0]).toMatchObject({
+      label: "On for all threads in Settings",
+      header: true,
+    });
+    expect(enforced?.children?.slice(1).map((child) => child.checked)).toEqual([false, true]);
+    const readOnly = find({
+      ...baseState,
+      canOperate: false,
+      subscriptionLimit: { enabled: true, enforcedByApp: false },
+    });
+    expect(readOnly?.disabled).toBe(true);
+  });
+
   it("disables snooze when the thread cannot snooze, keeping presets visible", () => {
     const snooze = buildThreadActionMenuItems({ ...baseState, canSnoozeNow: false }).find(
       (item) => item.id === "snooze",

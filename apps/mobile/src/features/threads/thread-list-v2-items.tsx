@@ -25,6 +25,7 @@ import {
 } from "@t3tools/contracts";
 import { threadRuntimeCanArchive } from "@t3tools/client-runtime/state/models";
 import { threadMoveTargets } from "@t3tools/client-runtime/state/projects";
+import { resolveThreadSubscriptionLimitGuard } from "@t3tools/client-runtime/state/subscription-limit-guard";
 import { useProjects, useServerConfigs } from "../../state/entities";
 import { canSnooze, resolveSnoozePresets } from "@t3tools/client-runtime/state/thread-settled";
 import type { MenuAction } from "@react-native-menu/menu";
@@ -563,6 +564,10 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   readonly onPinThread: (thread: EnvironmentThreadShell) => void;
   readonly onUnpinThread: (thread: EnvironmentThreadShell) => void;
   readonly onSetThreadAutoSettle: (thread: EnvironmentThreadShell, enabled: boolean) => void;
+  readonly onSetThreadSubscriptionLimitGuard: (
+    thread: EnvironmentThreadShell,
+    enabled: boolean,
+  ) => void;
   readonly onSetThreadHidden: (thread: EnvironmentThreadShell, hidden: boolean) => void;
   readonly onSetThreadGroup: (thread: EnvironmentThreadShell, groupName: string | null) => void;
   readonly onMoveThreadToNewGroup: (thread: EnvironmentThreadShell) => void;
@@ -613,6 +618,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     onPinThread,
     onUnpinThread,
     onSetThreadAutoSettle,
+    onSetThreadSubscriptionLimitGuard,
     onSetThreadHidden,
     onSetThreadGroup,
     onMoveThreadToNewGroup,
@@ -778,6 +784,39 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
           } satisfies MenuAction,
         ]
       : [])() as MenuAction[];
+  const threadServerConfig = serverConfigs.get(thread.environmentId);
+  const subscriptionLimit = resolveThreadSubscriptionLimitGuard({
+    provider: threadServerConfig?.providers.find(
+      (candidate) => candidate.instanceId === thread.modelSelection.instanceId,
+    ),
+    selection: thread.modelSelection,
+    appSettingEnabled: threadServerConfig?.settings.stopAtSubscriptionLimit === true,
+  });
+  const subscriptionLimitMenuItems = (() =>
+    subscriptionLimit
+      ? [
+          {
+            id: "subscription-limit",
+            title: "Stop at subscription limit",
+            ...(subscriptionLimit.enforcedByApp
+              ? { subtitle: "On for all threads in Settings" }
+              : {}),
+            image: "speedometer",
+            subactions: [
+              {
+                id: "subscription-limit:on",
+                title: "On",
+                state: subscriptionLimit.enabled ? "on" : "off",
+              },
+              {
+                id: "subscription-limit:off",
+                title: "Off",
+                state: subscriptionLimit.enabled ? "off" : "on",
+              },
+            ],
+          } satisfies MenuAction,
+        ]
+      : [])() as MenuAction[];
   const hideMenuItems = (() =>
     props.hidingSupported
       ? [{ id: "hide", title: "Hide thread", image: "eye.slash" }]
@@ -846,6 +885,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     ...arrangementMenuItems,
     ...titleMenuItems,
     ...autoSettleMenuItems,
+    ...subscriptionLimitMenuItems,
     ...groupMenuItems,
     ...projectMenuItems,
     ...hideMenuItems,
@@ -856,6 +896,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     ...arrangementMenuItems,
     ...titleMenuItems,
     ...autoSettleMenuItems,
+    ...subscriptionLimitMenuItems,
     ...groupMenuItems,
     ...projectMenuItems,
     ...hideMenuItems,
@@ -868,6 +909,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     ),
     ...titleMenuItems,
     ...autoSettleMenuItems,
+    ...subscriptionLimitMenuItems,
     ...groupMenuItems,
     ...projectMenuItems,
     ...hideMenuItems,
@@ -877,6 +919,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     SNOOZED_MENU_ACTIONS[0]!,
     ...titleMenuItems,
     ...autoSettleMenuItems,
+    ...subscriptionLimitMenuItems,
     ...groupMenuItems,
     ...projectMenuItems,
     ...hideMenuItems,
@@ -888,6 +931,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     HIDDEN_MENU_ACTIONS[0]!,
     ...titleMenuItems,
     ...autoSettleMenuItems,
+    ...subscriptionLimitMenuItems,
     ...groupMenuItems,
     ...projectMenuItems,
     HIDDEN_MENU_ACTIONS[1]!,
@@ -911,6 +955,11 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     if (nativeEvent.event === "unpin") handleUnpin();
     if (nativeEvent.event === "auto-settle:enabled") handleSetAutoSettle(true);
     if (nativeEvent.event === "auto-settle:disabled") handleSetAutoSettle(false);
+    if (nativeEvent.event === "subscription-limit:on")
+      onSetThreadSubscriptionLimitGuard(thread, true);
+    if (nativeEvent.event === "subscription-limit:off") {
+      onSetThreadSubscriptionLimitGuard(thread, false);
+    }
     if (nativeEvent.event === "hide") handleHide();
     if (nativeEvent.event === "unhide") handleUnhide();
     if (nativeEvent.event === "group:new") handleNewGroup();

@@ -46,6 +46,10 @@ const ICON_PATHS: Record<string, ReadonlyArray<{ tag: string; attrs: Record<stri
     { tag: "line", attrs: { x1: "12", x2: "15", y1: "14", y2: "11" } },
     { tag: "circle", attrs: { cx: "12", cy: "14", r: "8" } },
   ],
+  gauge: [
+    { tag: "path", attrs: { d: "m12 14 4-4" } },
+    { tag: "path", attrs: { d: "M3.34 19a10 10 0 1 1 17.32 0" } },
+  ],
   "chevron-right": [{ tag: "path", attrs: { d: "m9 19 7-7-7-7" } }],
   eye: [
     {

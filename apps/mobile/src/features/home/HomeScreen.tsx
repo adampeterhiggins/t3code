@@ -158,6 +158,10 @@ interface HomeScreenProps {
     thread: EnvironmentThreadShell,
     enabled: boolean,
   ) => Promise<boolean>;
+  readonly onSetThreadSubscriptionLimitGuard: (
+    thread: EnvironmentThreadShell,
+    enabled: boolean,
+  ) => Promise<boolean>;
   readonly onSetThreadHidden: (thread: EnvironmentThreadShell, hidden: boolean) => Promise<boolean>;
   readonly onSetThreadGroup: (
     thread: EnvironmentThreadShell,
@@ -486,6 +490,12 @@ export function HomeScreen(props: HomeScreenProps) {
   const handleSetThreadAutoSettle = (thread: EnvironmentThreadShell, enabled: boolean) => {
     void props.onSetThreadAutoSettle(thread, enabled);
   };
+  const handleSetThreadSubscriptionLimitGuard = (
+    thread: EnvironmentThreadShell,
+    enabled: boolean,
+  ) => {
+    void props.onSetThreadSubscriptionLimitGuard(thread, enabled);
+  };
   const handleSetThreadHidden = (thread: EnvironmentThreadShell, hidden: boolean) => {
     void props.onSetThreadHidden(thread, hidden);
   };
@@ -783,6 +793,7 @@ export function HomeScreen(props: HomeScreenProps) {
         onPinThread={handlePinThread}
         onUnpinThread={handleUnpinThread}
         onSetThreadAutoSettle={handleSetThreadAutoSettle}
+        onSetThreadSubscriptionLimitGuard={handleSetThreadSubscriptionLimitGuard}
         onSetThreadHidden={handleSetThreadHidden}
         onSetThreadGroup={handleSetThreadGroup}
         onMoveThreadToNewGroup={props.onMoveThreadToNewGroup}

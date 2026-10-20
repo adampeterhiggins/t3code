@@ -1,5 +1,6 @@
 import type { ThreadMoveDestination } from "../threads/threadOrder";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
+import { withSubscriptionLimitOption } from "@t3tools/client-runtime/state/subscription-limit-guard";
 import { canSnooze, effectiveSnoozed } from "@t3tools/client-runtime/state/thread-settled";
 import { AuthOrchestrationOperateScope, type ProjectId } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
@@ -243,6 +244,10 @@ export function useThreadListActions(): {
     thread: EnvironmentThreadShell,
     enabled: boolean,
   ) => Promise<boolean>;
+  readonly setThreadSubscriptionLimitGuard: (
+    thread: EnvironmentThreadShell,
+    enabled: boolean,
+  ) => Promise<boolean>;
   /** Hides the thread from the main sections, or brings it back. */
   readonly setThreadHidden: (thread: EnvironmentThreadShell, hidden: boolean) => Promise<boolean>;
   /** Moves the thread into a named group, or out of its group with null. */
@@ -477,6 +482,30 @@ export function useThreadListActions(): {
         error instanceof Error && error.message.trim().length > 0
           ? error.message
           : "The auto-settle setting could not be changed.",
+      );
+      return false;
+    }
+    return true;
+  };
+  const setThreadSubscriptionLimitGuard = async (
+    thread: EnvironmentThreadShell,
+    enabled: boolean,
+  ) => {
+    selectionHaptic();
+    const result = await updateThreadMetadata({
+      environmentId: thread.environmentId,
+      input: {
+        threadId: thread.id,
+        modelSelection: withSubscriptionLimitOption(thread.modelSelection, enabled),
+      },
+    });
+    if (result._tag === "Failure") {
+      const error = Cause.squash(result.cause);
+      Dialog.alert(
+        "Could not update subscription limit",
+        error instanceof Error && error.message.trim().length > 0
+          ? error.message
+          : "The subscription limit setting could not be changed.",
       );
       return false;
     }
@@ -851,6 +880,7 @@ export function useThreadListActions(): {
     pinThread,
     unpinThread,
     setThreadAutoSettle,
+    setThreadSubscriptionLimitGuard,
     setThreadHidden,
     setThreadGroup,
     moveThreadToNewGroup,

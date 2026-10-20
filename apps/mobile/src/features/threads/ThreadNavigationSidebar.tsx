@@ -171,6 +171,7 @@ function ThreadNavigationSidebarPane(
     pinThread,
     unpinThread,
     setThreadAutoSettle,
+    setThreadSubscriptionLimitGuard,
     setThreadHidden,
     setThreadGroup,
     moveThreadToNewGroup,
@@ -806,6 +807,7 @@ function ThreadNavigationSidebarPane(
             onPinThread={pinThread}
             onUnpinThread={unpinThread}
             onSetThreadAutoSettle={setThreadAutoSettle}
+            onSetThreadSubscriptionLimitGuard={setThreadSubscriptionLimitGuard}
             onSetThreadHidden={setThreadHidden}
             onSetThreadGroup={setThreadGroup}
             onMoveThreadToNewGroup={moveThreadToNewGroup}
