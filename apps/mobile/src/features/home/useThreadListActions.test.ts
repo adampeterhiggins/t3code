@@ -21,7 +21,7 @@ const state = vi.hoisted(() => ({
     environmentId: string;
     input: { threadId: string; orderKey?: string };
   }[],
-  dialogs: [] as { onConfirm: () => void }[],
+  dialogs: [] as { onConfirm: () => void | Promise<void> }[],
   alerts: [] as {
     title: string;
     buttons?: { text: string; onPress?: () => void }[];
@@ -70,26 +70,33 @@ vi.mock("../../state/atom-registry", () => ({
     get: (atom: string) =>
       atom === "thread-drop-busy"
         ? state.dropBusy
-        : atom === "thread-shells"
-          ? state.shells
-          : atom === "queued-thread-keys"
-            ? new Set<string>()
-            : new Map(
-                [...state.scopes.keys()].map((environmentId) => [
-                  environmentId,
-                  {
-                    environment: {
-                      capabilities: {
-                        threadSettlement: true,
-                        threadSnooze: true,
-                        threadPinning: true,
-                        threadPinReorder: true,
-                        threadTitleRegeneration: true,
+        : atom === "project:web"
+          ? { id: "web", title: "Web", workspaceRoot: "/repos/web" }
+          : atom === "thread-shells"
+            ? state.shells
+            : atom === "queued-thread-keys"
+              ? new Set<string>()
+              : new Map(
+                  [...state.scopes.keys()].map((environmentId) => [
+                    environmentId,
+                    {
+                      environment: {
+                        capabilities: {
+                          threadSettlement: true,
+                          threadSnooze: true,
+                          threadPinning: true,
+                          threadPinReorder: true,
+                          threadTitleRegeneration: true,
+                        },
                       },
                     },
-                  },
-                ]),
-              ),
+                  ]),
+                ),
+  },
+}));
+vi.mock("../../state/projects", () => ({
+  environmentProjects: {
+    projectAtom: (ref: { projectId: string }) => `project:${ref.projectId}`,
   },
 }));
 vi.mock("../../state/use-atom-command", () => ({
@@ -127,6 +134,7 @@ vi.mock("../../state/threads", () => ({
       "unpin",
       "reorderPin",
       "updateMetadata",
+      "moveToProject",
     ].map((action) => [
       action,
       async (request: {
@@ -242,6 +250,28 @@ describe("thread list operation permissions", () => {
     state.scopes.get(primaryEnvironmentId)!.clear();
 
     await confirm!();
+
+    expect(state.requests).toEqual([]);
+  });
+
+  it("moves a thread to another project only once the user confirms", async () => {
+    useThreadListActions().moveThreadToProject(makeThread(), ProjectId.make("web"));
+    expect(state.requests).toEqual([]);
+
+    await state.dialogs[0]!.onConfirm();
+    expect(state.requests).toEqual([
+      expect.objectContaining({
+        action: "moveToProject",
+        input: { threadId: "thread", projectId: "web" },
+      }),
+    ]);
+  });
+
+  it("rechecks permission after a retained move confirmation", async () => {
+    useThreadListActions().moveThreadToProject(makeThread(), ProjectId.make("web"));
+    state.scopes.get(primaryEnvironmentId)!.clear();
+
+    await state.dialogs[0]!.onConfirm();
 
     expect(state.requests).toEqual([]);
   });

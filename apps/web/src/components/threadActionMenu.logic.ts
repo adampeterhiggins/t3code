@@ -26,6 +26,8 @@ export type ThreadActionMenuId =
   | "move-to-group:new"
   | "move-to-group:remove"
   | `move-to-group:name:${string}`
+  | "move-to-project"
+  | `move-to-project:${string}`
   | "rename"
   | "regenerate-title"
   | "mark-unread"
@@ -113,6 +115,11 @@ export interface ThreadActionMenuState {
   /** The thread's sidebar group, and every group name it could move to. */
   readonly groupName: string | null;
   readonly groupNames: readonly string[];
+  /**
+   * Projects in the thread's environment it could move to. Null where the server can't move
+   * threads, or the thread can't leave its project (a subagent).
+   */
+  readonly moveTargets?: ReadonlyArray<{ readonly id: string; readonly label: string }> | null;
   readonly canSnoozeNow: boolean;
   readonly isRegeneratingTitle: boolean;
   /** Archive rejects a thread with an attached provider, so disable it here rather than let the action fail. */
@@ -233,6 +240,21 @@ export function buildThreadActionMenuItems(
                 ? []
                 : [{ id: "move-to-group:remove" as const, label: "Remove from group" }]),
             ],
+          },
+        ]
+      : []),
+    ...(state.moveTargets
+      ? [
+          {
+            id: "move-to-project" as const,
+            label: "Move to project",
+            icon: "folder-input",
+            // Moving detaches the agent, which would end a running turn.
+            disabled: state.isRunning || state.moveTargets.length === 0,
+            children: state.moveTargets.map((project) => ({
+              id: `move-to-project:${project.id}` as const,
+              label: project.label,
+            })),
           },
         ]
       : []),
@@ -375,4 +397,10 @@ export function resolveThreadGroupMenuPick(
   if (id === "move-to-group:remove") return { groupName: null };
   const prefix = "move-to-group:name:";
   return id.startsWith(prefix) ? { groupName: id.slice(prefix.length) } : undefined;
+}
+
+/** The destination project id of a Move to project pick, or undefined for any other menu id. */
+export function resolveThreadProjectMenuPick(id: ThreadActionMenuId): string | undefined {
+  const prefix = "move-to-project:";
+  return id.startsWith(prefix) ? id.slice(prefix.length) : undefined;
 }

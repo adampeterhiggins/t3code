@@ -18,7 +18,14 @@ import type {
   EnvironmentThreadShell,
 } from "@t3tools/client-runtime/state/shell";
 import type { EnvironmentThreadSearchMatch } from "@t3tools/client-runtime/state/thread-search";
-import { AuthOrchestrationOperateScope, type EnvironmentMachineKind } from "@t3tools/contracts";
+import {
+  AuthOrchestrationOperateScope,
+  type EnvironmentMachineKind,
+  ProjectId,
+} from "@t3tools/contracts";
+import { threadRuntimeCanArchive } from "@t3tools/client-runtime/state/models";
+import { threadMoveTargets } from "@t3tools/client-runtime/state/projects";
+import { useProjects, useServerConfigs } from "../../state/entities";
 import { canSnooze, resolveSnoozePresets } from "@t3tools/client-runtime/state/thread-settled";
 import type { MenuAction } from "@react-native-menu/menu";
 import { memo, useEffect, useState, type ComponentProps } from "react";
@@ -559,6 +566,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   readonly onSetThreadHidden: (thread: EnvironmentThreadShell, hidden: boolean) => void;
   readonly onSetThreadGroup: (thread: EnvironmentThreadShell, groupName: string | null) => void;
   readonly onMoveThreadToNewGroup: (thread: EnvironmentThreadShell) => void;
+  readonly onMoveThreadToProject: (thread: EnvironmentThreadShell, projectId: ProjectId) => void;
   /** False on environments whose server predates thread.settle/unsettle:
       swipe + menu fall back to Archive instead of failing on use. */
   readonly settlementSupported: boolean;
@@ -608,8 +616,11 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     onSetThreadHidden,
     onSetThreadGroup,
     onMoveThreadToNewGroup,
+    onMoveThreadToProject,
     onMoveThread,
   } = props;
+  const projects = useProjects();
+  const serverConfigs = useServerConfigs();
   const snoozedRow = props.snoozed === true;
   const hiddenRow = props.hidden === true;
   const pinnedRow = props.pinned === true;
@@ -793,6 +804,30 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
           } satisfies MenuAction,
         ]
       : [])() as MenuAction[];
+  const projectMenuItems = (() => {
+    const targets = threadMoveTargets(
+      thread,
+      projects,
+      serverConfigs.get(thread.environmentId)?.environment.capabilities.threadProjectMove === true,
+    );
+    if (targets === null) return [];
+    return [
+      {
+        id: "project",
+        title: "Move to project",
+        image: "folder.badge.plus",
+        // Moving detaches the agent, which would end a running turn.
+        attributes: {
+          disabled:
+            !canOperateThread || targets.length === 0 || !threadRuntimeCanArchive(thread.runtime),
+        },
+        subactions: targets.map((target) => ({
+          id: `project:${target.id}`,
+          title: target.label,
+        })),
+      } satisfies MenuAction,
+    ];
+  })() as MenuAction[];
   const titleMenuItems = (() => [
     { id: "rename", title: "Rename", image: "square.and.pencil" },
     ...buildThreadTitleRegenerationMenuItems({
@@ -812,6 +847,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     ...titleMenuItems,
     ...autoSettleMenuItems,
     ...groupMenuItems,
+    ...projectMenuItems,
     ...hideMenuItems,
     { id: "delete", title: "Delete", image: "trash", attributes: { destructive: true } },
   ])() as MenuAction[];
@@ -821,6 +857,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     ...titleMenuItems,
     ...autoSettleMenuItems,
     ...groupMenuItems,
+    ...projectMenuItems,
     ...hideMenuItems,
     ...CARD_MENU_ACTIONS.slice(1),
   ])() as MenuAction[];
@@ -832,6 +869,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     ...titleMenuItems,
     ...autoSettleMenuItems,
     ...groupMenuItems,
+    ...projectMenuItems,
     ...hideMenuItems,
     SLIM_MENU_ACTIONS[1]!,
   ])() as MenuAction[];
@@ -840,6 +878,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     ...titleMenuItems,
     ...autoSettleMenuItems,
     ...groupMenuItems,
+    ...projectMenuItems,
     ...hideMenuItems,
     SNOOZED_MENU_ACTIONS[1]!,
   ])() as MenuAction[];
@@ -850,6 +889,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     ...titleMenuItems,
     ...autoSettleMenuItems,
     ...groupMenuItems,
+    ...projectMenuItems,
     HIDDEN_MENU_ACTIONS[1]!,
   ])() as MenuAction[];
   const legacyMenuActions = (() => [
@@ -877,6 +917,9 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     if (nativeEvent.event === "group:remove") handleSetGroup(null);
     if (nativeEvent.event.startsWith("group:set:")) {
       handleSetGroup(nativeEvent.event.slice("group:set:".length));
+    }
+    if (nativeEvent.event.startsWith("project:")) {
+      onMoveThreadToProject(thread, ProjectId.make(nativeEvent.event.slice("project:".length)));
     }
     if (nativeEvent.event === "arrange") appAtomRegistry.set(threadArrangementOpenAtom, true);
     if (nativeEvent.event === "move-up") handleMoveUp();

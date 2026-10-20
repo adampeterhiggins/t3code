@@ -1639,20 +1639,25 @@ Code: `keepBackgroundWork` on `run.interrupt` in
 and the Stop handlers in [`ChatView.tsx`](../apps/web/src/components/ChatView.tsx) and
 [`ThreadRouteScreen.tsx`](../apps/mobile/src/features/threads/ThreadRouteScreen.tsx).
 
-## Agents move threads between projects
+## Threads move between projects
 
-Agents can use `t3_thread_move` to move an existing conversation into a registered project
-on the same environment. It keeps the thread and its history, switches to the destination's
-main checkout, and clears the old project's branch, sidebar group, and pull request links.
-Files stay where they are. An optional continuation resumes work after the provider session
-closes; a request ID makes retries idempotent. The same tool can move the thread back.
+An existing conversation can move into another registered project on the same environment. Users
+pick **Move to project** from a thread's menu in the sidebar, the chat header, or a mobile thread
+row, and confirm; agents use `t3_thread_move`. The move keeps the thread and its history, switches
+to the destination's main checkout, and clears the old project's branch, sidebar group, and pull
+request links. Files stay where they are. The tool's optional continuation resumes work after the
+provider session closes, and a request ID makes retries idempotent.
 
-Moving needs full-access/default permissions. Threads with sibling chat tabs, bound schedules,
-pending requests, queued messages, or active delegated work must resolve those first; archived
-threads and subagents cannot move. The destination must allow the thread's provider.
+Agents need full-access/default permissions to move a thread. Clients offer the menu only on
+servers with the `threadProjectMove` capability, and disable it while the thread runs, since a move
+ends the running turn. Threads with sibling chat tabs, bound schedules, pending requests, queued
+messages, or active delegated work must resolve those first; archived threads and subagents cannot
+move. The destination must allow the thread's provider.
 
 Code: [thread tools](../apps/server/src/mcp/toolkits/thread/tools.ts),
-[Orchestrator.ts](../apps/server/src/orchestration-v2/Orchestrator.ts).
+[Orchestrator.ts](../apps/server/src/orchestration-v2/Orchestrator.ts),
+[threadActionMenu.logic.ts](../apps/web/src/components/threadActionMenu.logic.ts),
+[thread-list-v2-items.tsx](../apps/mobile/src/features/threads/thread-list-v2-items.tsx).
 User guide: [Start without a project](user/thread-sidebar.md#start-without-a-project).
 
 ## Agents move their thread between worktrees

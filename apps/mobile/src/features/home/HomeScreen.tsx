@@ -12,7 +12,11 @@ import {
   threadSearchMatchKey,
   type EnvironmentThreadSearchMatch,
 } from "@t3tools/client-runtime/state/thread-search";
-import { type EnvironmentId, type SidebarProjectGroupingMode } from "@t3tools/contracts";
+import {
+  type EnvironmentId,
+  type ProjectId,
+  type SidebarProjectGroupingMode,
+} from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { useFocusEffect } from "@react-navigation/native";
 import { use, useEffect, useRef, useState, type ComponentProps } from "react";
@@ -160,6 +164,7 @@ interface HomeScreenProps {
     groupName: string | null,
   ) => Promise<boolean>;
   readonly onMoveThreadToNewGroup: (thread: EnvironmentThreadShell) => void;
+  readonly onMoveThreadToProject: (thread: EnvironmentThreadShell, projectId: ProjectId) => void;
   readonly onMoveThread: (
     thread: EnvironmentThreadShell,
     direction: ThreadMoveDestination,
@@ -777,6 +782,7 @@ export function HomeScreen(props: HomeScreenProps) {
         onSetThreadHidden={handleSetThreadHidden}
         onSetThreadGroup={handleSetThreadGroup}
         onMoveThreadToNewGroup={props.onMoveThreadToNewGroup}
+        onMoveThreadToProject={props.onMoveThreadToProject}
         onMoveThread={handleMoveThread}
         onSwipeableClose={handleSwipeableClose}
         onSwipeableWillOpen={handleSwipeableWillOpen}

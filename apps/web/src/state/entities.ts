@@ -364,6 +364,14 @@ export function readEnvironmentSupportsGroups(environmentId: EnvironmentId): boo
   );
 }
 
+/** Whether the environment's server accepts thread.project.move from clients. */
+export function readEnvironmentSupportsProjectMove(environmentId: EnvironmentId): boolean {
+  return (
+    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
+      .threadProjectMove === true
+  );
+}
+
 export function readEnvironmentSupportsActiveReorder(environmentId: EnvironmentId): boolean {
   return (
     appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
