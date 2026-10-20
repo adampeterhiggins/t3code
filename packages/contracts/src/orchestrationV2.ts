@@ -3194,6 +3194,9 @@ export const OrchestrationV2Command = Schema.Union([
     // the child's run waits in preparing until ThreadLaunchService prepares
     // and binds this workspace, then releases it.
     workspaceStrategy: Schema.optional(OrchestrationV2DelegatedTaskWorkspaceStrategy),
+    // The project that owns an existing_worktree in another repository, so the
+    // child is filed under it and runs its setup script. Omitted is the parent's.
+    projectId: Schema.optional(ProjectId),
     createdAt: Schema.optional(Schema.DateTimeUtc),
   }),
   Schema.Struct({

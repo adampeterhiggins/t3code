@@ -206,7 +206,7 @@ export const OrchestratorMcpDelegateTaskInput = Schema.Struct({
   workspaceStrategy: Schema.optional(
     OrchestrationV2DelegatedTaskWorkspaceStrategy.annotate({
       description:
-        'Omit to share this thread\'s checkout. {type:"worktree",baseRef:"parent-branch",branch?:"new-branch",startFromOrigin?:false} creates and binds a new worktree for the child; existing_worktree binds worktreePath. The child starts after the worktree, Files to copy, and setup script are ready. Uncommitted changes are not copied. Requires a full-access/default calling thread.',
+        'Omit to share this thread\'s checkout. {type:"worktree",baseRef:"parent-branch",branch?:"new-branch",startFromOrigin?:false} creates and binds a new worktree for the child; existing_worktree binds worktreePath, a worktree of any T3 project, in any repository. The child starts after the worktree, Files to copy, and setup script are ready. Uncommitted changes are not copied. Requires a full-access/default calling thread.',
     }),
   ),
 });

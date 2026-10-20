@@ -85,6 +85,7 @@ import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
@@ -1104,6 +1105,7 @@ const make = Effect.gen(function* () {
   const threadLaunch = yield* ThreadLaunchService.ThreadLaunchService;
   const gitDriver = yield* GitVcsDriver.GitVcsDriver;
   const serverSettings = yield* ServerSettings.ServerSettingsService;
+  const fileSystem = yield* FileSystem.FileSystem;
 
   const requireProject = (projectId: ProjectId) =>
     projects.getById(projectId).pipe(
@@ -1118,6 +1120,41 @@ const make = Effect.gen(function* () {
         }),
       ),
     );
+
+  // An existing worktree can belong to any project, not only the caller's:
+  // one thread can fan work out across repositories. The child is filed under
+  // the owning project so its setup script, not the caller's, prepares it.
+  const worktreeProjectId = Effect.fn("OrchestratorMcpService.worktreeProjectId")(function* (
+    callerProjectId: ProjectId,
+    worktreePath: string,
+  ) {
+    const realPath = (candidate: string) =>
+      fileSystem.realPath(candidate).pipe(Effect.orElseSucceed(() => candidate));
+    const target = yield* realPath(worktreePath);
+    const shells = yield* projects
+      .listShells()
+      .pipe(
+        Effect.mapError((error) =>
+          failure("orchestration_error", `Unable to list projects: ${error.message}`),
+        ),
+      );
+    // The caller's project goes first so a checkout it lists stays with it.
+    const ordered = [
+      ...shells.filter((project) => project.id === callerProjectId),
+      ...shells.filter((project) => project.id !== callerProjectId),
+    ];
+    for (const project of ordered) {
+      const worktrees = yield* gitDriver.listWorktreePaths(project.workspaceRoot).pipe(
+        Effect.flatMap((paths) => Effect.forEach(paths, realPath)),
+        Effect.orElseSucceed((): ReadonlyArray<string> => []),
+      );
+      if (worktrees.includes(target)) return project.id;
+    }
+    return yield* failure(
+      "invalid_request",
+      "worktreePath must be a git worktree of a T3 project. t3_worktree_list shows a project's worktrees.",
+    );
+  });
 
   const projectDefaultModelSelection = (
     project: Effect.Success<ReturnType<typeof requireProject>>,
@@ -2221,6 +2258,10 @@ const make = Effect.gen(function* () {
         parent.thread.interactionMode,
         input.interactionMode,
       );
+      const childProjectId =
+        input.workspaceStrategy?.type === "existing_worktree"
+          ? yield* worktreeProjectId(parent.thread.projectId, input.workspaceStrategy.worktreePath)
+          : parent.thread.projectId;
       let workspaceStrategy: OrchestrationV2DelegatedTaskWorkspaceStrategy | undefined;
       if (input.isolation === "worktree" && !isRetryOfAcceptedDelegation) {
         const project = yield* requireProject(parent.thread.projectId);
@@ -2276,6 +2317,7 @@ const make = Effect.gen(function* () {
           ...(input.workspaceStrategy === undefined
             ? {}
             : { workspaceStrategy: input.workspaceStrategy }),
+          ...(childProjectId === parent.thread.projectId ? {} : { projectId: childProjectId }),
         })
         .pipe(
           Effect.mapError((error) =>
@@ -3138,6 +3180,7 @@ export const layer: Layer.Layer<
   | ThreadManagementService.ThreadManagementService
   | ThreadLaunchService.ThreadLaunchService
   | GitVcsDriver.GitVcsDriver
+  | FileSystem.FileSystem
   | ProviderRegistry.ProviderRegistry
   | ProviderAdapterRegistry.ProviderAdapterRegistryV2
   | ScheduledTaskService.ScheduledTaskService

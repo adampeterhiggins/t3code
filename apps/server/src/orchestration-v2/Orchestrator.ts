@@ -7422,6 +7422,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         }),
         runtimeMode: command.runtimeMode,
         interactionMode: command.interactionMode,
+        ...(command.projectId === undefined ? {} : { projectId: command.projectId }),
         // A child with a workspace of its own starts unbound, as a launch does;
         // preparation binds the worktree before the child's agent starts.
         ...(command.workspaceStrategy === undefined
