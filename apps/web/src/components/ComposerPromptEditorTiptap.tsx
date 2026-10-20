@@ -175,6 +175,8 @@ export interface ComposerPromptEditorProps {
   onPageScrollKeyUp?: (key: string) => void;
   onPageScrollRelease?: () => void;
   onCitationSubmitAndSend?: () => void;
+  /** Sending from a citation comment adds the message to the queue instead of sending it now. */
+  citationSendQueues?: boolean;
   /**
    * Called when a new controlled value replaces the document while a citation
    * comment is unsaved. The comment is saved into `replacedValue`, giving
@@ -206,11 +208,13 @@ const ComposerCitationCommentContext = createContext<{
   onOpenChange: (citeKey: string, open: boolean) => void;
   onDraftChange: (citeKey: string, comment: string) => void;
   onSubmitAndSend: () => void;
+  sendQueues: boolean;
 }>({
   openComment: null,
   onOpenChange: () => {},
   onDraftChange: () => {},
   onSubmitAndSend: () => {},
+  sendQueues: false,
 });
 
 const RichComposerSkillsContext = createContext<ReadonlyArray<ServerProviderSkill>>([]);
@@ -497,6 +501,7 @@ function ComposerCitationNodeView({ node, editor, getPos }: NodeViewProps) {
             commentContext.onSubmitAndSend();
             return true;
           },
+          saveAndSendQueues: commentContext.sendQueues,
           onRestoreFocus,
         }}
       />
@@ -976,6 +981,7 @@ function ComposerPromptEditorTiptapInner(
     onPageScrollKeyUp,
     onPageScrollRelease,
     onCitationSubmitAndSend,
+    citationSendQueues = false,
     onCitationDraftSave,
     onPaste,
     editorRef,
@@ -1058,6 +1064,7 @@ function ComposerPromptEditorTiptapInner(
       citationDraftRef.current = { key: nodeKey, comment };
     },
     onSubmitAndSend: onCitationSubmitAndSend ?? (() => {}),
+    sendQueues: citationSendQueues,
   };
 
   const handleEditorChange = (updated: TiptapEditor) => {
