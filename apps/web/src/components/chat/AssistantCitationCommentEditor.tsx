@@ -43,6 +43,13 @@ export function AssistantCitationCommentEditor({
   onDraftChange?: (comment: string) => void;
 }) {
   const [comment, setComment] = useState(citation.comment ?? "");
+  const [choice, setChoice] = useLocalStorage(
+    SUBMIT_CHOICE_STORAGE_KEY,
+    "send",
+    SubmitChoiceSchema,
+  );
+  // Without a send path the button only saves, so Enter must too.
+  const enterChoice: SubmitChoice = onSubmitAndSend ? choice : "save";
   const commentTooLong = comment.length > ASSISTANT_CITATION_MAX_COMMENT_LENGTH;
   const submit = () => {
     if (!commentTooLong) onSubmit(comment);
@@ -55,6 +62,8 @@ export function AssistantCitationCommentEditor({
       onSubmit(comment);
     }
   };
+  const runChoice = (next: SubmitChoice) => (next === "send" ? submitAndSend() : submit());
+  const sendVerb = submitAndSendQueues ? "queue" : "send";
 
   return (
     <div
@@ -71,7 +80,11 @@ export function AssistantCitationCommentEditor({
       <textarea
         ref={inputRef}
         aria-label="Comment on selected text"
-        aria-description={`Enter to save the citation comment; Command/Ctrl+Enter to save and ${submitAndSendQueues ? "queue" : "send"}; Shift+Enter for a new line.`}
+        aria-description={
+          enterChoice === "send"
+            ? `Enter to save and ${sendVerb}; Command/Ctrl+Enter to save the citation comment; Shift+Enter for a new line.`
+            : `Enter to save the citation comment; Command/Ctrl+Enter to save and ${sendVerb}; Shift+Enter for a new line.`
+        }
         aria-invalid={commentTooLong || undefined}
         placeholder="Add an optional comment..."
         rows={2}
@@ -89,11 +102,9 @@ export function AssistantCitationCommentEditor({
             event.keyCode !== 229
           ) {
             event.preventDefault();
-            if (event.metaKey || event.ctrlKey) {
-              submitAndSend();
-            } else {
-              submit();
-            }
+            // Enter does what the button shows; the modifier does the other choice.
+            const alternate = event.metaKey || event.ctrlKey;
+            runChoice(alternate ? (enterChoice === "send" ? "save" : "send") : enterChoice);
           }
         }}
       />
@@ -116,7 +127,11 @@ export function AssistantCitationCommentEditor({
           <SubmitChoiceButton
             disabled={commentTooLong}
             queues={submitAndSendQueues}
-            onRun={(choice) => (choice === "send" ? submitAndSend() : submit())}
+            choice={choice}
+            onRun={(next) => {
+              setChoice(next);
+              runChoice(next);
+            }}
           />
         ) : (
           <Button
@@ -140,27 +155,19 @@ export function AssistantCitationCommentEditor({
 function SubmitChoiceButton(props: {
   disabled: boolean;
   queues: boolean;
+  choice: SubmitChoice;
   onRun: (choice: SubmitChoice) => void;
 }) {
-  const [choice, setChoice] = useLocalStorage(
-    SUBMIT_CHOICE_STORAGE_KEY,
-    "send",
-    SubmitChoiceSchema,
-  );
   const choices = props.queues ? { ...SUBMIT_CHOICES, send: QUEUE_SUBMIT_CHOICE } : SUBMIT_CHOICES;
-  const run = (next: SubmitChoice) => {
-    setChoice(next);
-    props.onRun(next);
-  };
   return (
     <Group>
       <Button
         size="xs"
         disabled={props.disabled}
         onPointerDown={(event) => event.preventDefault()}
-        onClick={() => run(choice)}
+        onClick={() => props.onRun(props.choice)}
       >
-        {props.disabled ? "Shorten comment" : choices[choice].label}
+        {props.disabled ? "Shorten comment" : choices[props.choice].label}
       </Button>
       <GroupSeparator />
       <Menu>
@@ -172,7 +179,7 @@ function SubmitChoiceButton(props: {
         </MenuTrigger>
         <MenuPopup {...composerFloatingLayerProps} align="end">
           {(["send", "save"] as const).map((option) => (
-            <MenuItem key={option} onClick={() => run(option)}>
+            <MenuItem key={option} onClick={() => props.onRun(option)}>
               <span className="flex min-w-0 flex-col py-0.5">
                 <MenuItemLabel>{choices[option].label}</MenuItemLabel>
                 <span className="truncate text-xs text-muted-foreground">

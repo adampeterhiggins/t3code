@@ -39,14 +39,23 @@ let root: Root;
 let container: HTMLDivElement;
 let sourceAnchor: AssistantCitationSourceAnchor;
 
-async function mount(onSave = vi.fn(() => true)) {
+async function mount(
+  onSave = vi.fn((_comment: string) => true),
+  onSaveAndSend?: (comment: string) => boolean,
+) {
   function Composer() {
     const [open, setOpen] = useState(true);
     return (
       <AssistantCitationChip
         citation={citation}
         composer
-        commentEditor={{ open, sourceAnchor, onOpenChange: setOpen, onSave }}
+        commentEditor={{
+          open,
+          sourceAnchor,
+          onOpenChange: setOpen,
+          onSave,
+          ...(onSaveAndSend ? { onSaveAndSend } : {}),
+        }}
       />
     );
   }
@@ -81,7 +90,16 @@ async function clickButton(label: string) {
   await act(async () => button!.click());
 }
 
+async function pressEnter(modifier = false) {
+  await act(async () =>
+    textarea()!.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Enter", metaKey: modifier, bubbles: true }),
+    ),
+  );
+}
+
 beforeEach(() => {
+  localStorage.clear();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   mocks.observeSource.mockReset().mockReturnValue(mocks.dispose);
   mocks.dispose.mockClear();
@@ -150,5 +168,39 @@ describe("citation comment source disappearance", () => {
     await removeSource();
     expect(onSave).toHaveBeenCalledWith("saved comment");
     expect(textarea()).toBeNull();
+  });
+});
+
+describe("citation comment Enter", () => {
+  async function mountWithChoice(storedChoice: "send" | "save" | null) {
+    if (storedChoice) {
+      localStorage.setItem("t3code:citation-comment-submit:v1", JSON.stringify(storedChoice));
+    }
+    const onSave = vi.fn((_comment: string) => true);
+    const onSaveAndSend = vi.fn((_comment: string) => true);
+    await mount(onSave, onSaveAndSend);
+    await typeComment("comment");
+    return { onSave, onSaveAndSend };
+  }
+
+  it("sends when the split button shows Send", async () => {
+    const { onSave, onSaveAndSend } = await mountWithChoice(null);
+    await pressEnter();
+    expect(onSaveAndSend).toHaveBeenCalledWith("comment");
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("saves when the split button shows Save", async () => {
+    const { onSave, onSaveAndSend } = await mountWithChoice("save");
+    await pressEnter();
+    expect(onSave).toHaveBeenCalledWith("comment");
+    expect(onSaveAndSend).not.toHaveBeenCalled();
+  });
+
+  it("does the other choice with Command/Ctrl", async () => {
+    const { onSave, onSaveAndSend } = await mountWithChoice("save");
+    await pressEnter(true);
+    expect(onSaveAndSend).toHaveBeenCalledWith("comment");
+    expect(onSave).not.toHaveBeenCalled();
   });
 });

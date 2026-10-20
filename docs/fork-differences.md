@@ -1415,7 +1415,8 @@ as a hidden way to save and send. The fork replaces **Save** with the same split
 request comment form: **Send** saves the comment and sends the composer in one step, following the
 usual follow-up behaviour when a turn is running, and **Save** keeps it in the composer. When that
 behaviour would queue the message, **Send** reads **Add to queue**, as the composer's own button
-does. The button shows whichever the reader used last. Enter still saves and Cmd/Ctrl+Enter still sends.
+does. The button shows whichever the reader used last. Enter does what the button shows, and
+Cmd/Ctrl+Enter does the other one.
 
 Code: `SubmitChoiceButton` in
 [AssistantCitationCommentEditor.tsx](../apps/web/src/components/chat/AssistantCitationCommentEditor.tsx).
