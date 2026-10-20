@@ -35,19 +35,37 @@ vi.mock(import("@tanstack/react-router"), async (original) => ({
 vi.mock(import("../../state/entities"), async (original) => ({
   ...(await original()),
   useThreadShells: (() => state.shells) as never,
+  // Only the viewed thread is loaded; agent rows and previews that read a child thread find it
+  // unloaded, as before its subscription delivers.
   useThreadProjection: ((ref: ScopedThreadRef | null) =>
     ref === null
       ? undefined
-      : {
-          projection: state.projections
-            ? state.projections.get(scopedThreadKey(ref))
-            : state.projection,
-        }) as never,
+      : state.projections
+        ? { projection: state.projections.get(scopedThreadKey(ref)) }
+        : (state.projection as { thread?: { id?: string } } | null)?.thread?.id === ref.threadId
+          ? { projection: state.projection }
+          : null) as never,
   useThreadRelationshipShells: ((ref: { readonly environmentId: string }) =>
     (state.shells as ReadonlyArray<{ readonly environmentId: string; readonly source: unknown }>)
       .filter((shell) => shell.environmentId === ref.environmentId)
       .map((shell) => shell.source)) as never,
   useProjects: (() => state.projects) as never,
+  // Agent previews compare an agent's workspace with its owner's.
+  useThreadShell: ((ref: ScopedThreadRef | null) => {
+    if (ref === null) return null;
+    const viewed = (state.projection as { thread?: { id?: string } } | null)?.thread;
+    const source =
+      (state.shells as ReadonlyArray<{ readonly source: { readonly id?: string } }>).find(
+        (shell) => shell.source.id === ref.threadId,
+      )?.source ?? (viewed?.id === ref.threadId ? viewed : null);
+    return source === null ? null : { ...source, environmentId: ref.environmentId, source };
+  }) as never,
+  useProject: ((ref: { readonly environmentId: string; readonly projectId: string } | null) =>
+    ref === null
+      ? null
+      : ((state.projects as ReadonlyArray<{ id: string; environmentId: string }>).find(
+          (project) => project.id === ref.projectId && project.environmentId === ref.environmentId,
+        ) ?? null)) as never,
 }));
 vi.mock(import("../../state/environments"), async (original) => ({
   ...(await original()),
@@ -106,6 +124,7 @@ vi.mock(import("../ui/preview-card"), async (original) => ({
     state.showTooltips ? <div role="tooltip">{children}</div> : null) as never,
 }));
 
+import { STATUS_VISUALS } from "../AgentStatus";
 import { ThreadRelationshipsPanel } from "./ThreadRelationshipsControl";
 
 let root: Root;
@@ -357,6 +376,7 @@ it("opens the correct chat for every workflow phase and unphased member", async 
         providerInstanceId: "claude-work",
         childThreadId: "workflow-chat",
         title: "Checkout review",
+        prompt: "Review the checkout flow",
         status: "running",
         startedAt: null,
         completedAt: null,
@@ -372,6 +392,9 @@ it("opens the correct chat for every workflow phase and unphased member", async 
     lineage: { parentThreadId: "workflow-chat", relationshipToParent: "subagent" },
     status: "completed",
     activityRunStatus: null,
+    createdAt: DateTime.makeUnsafe("2026-09-21T12:00:00Z"),
+    providerInstanceId: "claude-work",
+    modelSelection: { instanceId: "claude-work", model: "claude-sonnet-4-6" },
   }));
   state.shells = memberShells.map((source) => ({ environmentId: "other", source }));
   const panel = (
@@ -410,7 +433,8 @@ it("opens the correct chat for every workflow phase and unphased member", async 
     });
   }
   const rendered = textNodes("|");
-  expect(rendered.match(/Sonnet · Work account/g)).toHaveLength(7);
+  // Each member's preview names its account, then its model as the account's catalog does.
+  expect(rendered.match(/Work account\| · \|Sonnet\|/g)).toHaveLength(7);
   expect(rendered).not.toContain("Personal account");
   for (const phase of phases) expect(rendered).toContain(phase.title);
   expect(rendered).not.toContain(" phases");
@@ -451,6 +475,7 @@ it("groups and counts a workflow by its run status instead of its coordinator ch
     providerInstanceId: "claudeAgent",
     childThreadId: "workflow-chat",
     title: "Checkout review",
+    prompt: "Review the checkout flow",
     status: "running",
     startedAt: DateTime.makeUnsafe("2026-09-21T12:00:00Z"),
     progress: "Inspecting the checkout workflow",
@@ -475,6 +500,7 @@ it("groups and counts a workflow by its run status instead of its coordinator ch
     id: "workflow-chat",
     title: "Coordinator chat",
     createdAt: DateTime.makeUnsafe("2026-09-16T12:00:00Z"),
+    modelSelection: { instanceId: "claudeAgent", model: "claude-opus-5-5" },
     lineage: { parentThreadId: "parent", relationshipToParent: "subagent" },
     status: "completed",
     activityRunStatus: null,
@@ -506,6 +532,8 @@ it("groups and counts a workflow by its run status instead of its coordinator ch
       },
     ],
   };
+  // A finished workflow's chat is no longer waiting on a follow-up.
+  state.shells = [{ environmentId: "test", source: child }];
   await update();
   expect(heading()).toBe("Lineage");
   expect(text()).toContain("Previous agents");
@@ -763,6 +791,8 @@ it("keeps active supervisor status, progress, and task timing after its child tu
       source: {
         id: "child-1",
         title: "Supervisor",
+        modelSelection: { instanceId: "claudeAgent", model: "claude-opus-5-5" },
+        createdAt: DateTime.makeUnsafe("2026-09-16T12:00:00Z"),
         status: "completed",
         activityRunStatus: null,
         latestRunId: "run-child-1",
@@ -802,7 +832,7 @@ it("keeps active supervisor status, progress, and task timing after its child tu
       },
     ],
   };
-  for (const status of ["pending", "running", "waiting"]) {
+  for (const status of ["pending", "running", "waiting"] as const) {
     state.projection = {
       ...projection,
       subagents: [{ ...projection.subagents[0], status }],
@@ -817,8 +847,12 @@ it("keeps active supervisor status, progress, and task timing after its child tu
     expect(heading()).toBe(status === "running" ? "Lineage · 1 running" : "Lineage");
     expect(textNodes(" ")).not.toContain("Previous agents");
     expect(buttons().some((button) => button.textContent?.includes("Supervisor"))).toBe(true);
-    const tooltip = container.querySelector('[role="tooltip"]')?.textContent;
-    expect.soft(tooltip).toContain(status);
+    // The panel header's "Open in Agents panel" button has its own tooltip.
+    const tooltip = Array.from(
+      container.querySelectorAll('[role="tooltip"]'),
+      (node) => node.textContent,
+    ).find((content) => content?.includes("Supervisor"));
+    expect.soft(tooltip).toContain(STATUS_VISUALS[status].label);
     expect.soft(tooltip).toContain("Waiting for the worker to finish");
     expect.soft(tooltip).toContain("5m 15s");
   }
@@ -931,27 +965,24 @@ it("shows readable models and only differing workspace details in agent tooltips
   expect(text()).not.toContain("Worktree");
   expect(text()).not.toContain("Workspace");
 
-  for (const [model, expected] of [
-    [null, "Not reported"],
-    ["", "Not reported"],
-    ["   ", "Not reported"],
-    ["model-alias", "My GPT"],
-    ["gpt-5.5", "GPT-5.5"],
-    ["custom/model-v1", "custom/model-v1"],
+  // An agent that reports no model is named by its own thread's model, which carries its effort.
+  for (const [model, expected, effort] of [
+    [null, "My GPT", true],
+    ["", "My GPT", true],
+    ["   ", "My GPT", true],
+    ["model-alias", "My GPT", true],
+    ["gpt-5.5", "GPT-5.5", false],
+    ["custom/model-v1", "custom/model-v1", false],
   ] as const) {
     state.projection = {
       ...projection,
       subagents: [{ ...projection.subagents[0], model }],
     };
     await update();
-    expect(text()).toContain(expected);
-    if (!model?.trim() || model === "gpt-5.5" || model === "custom/model-v1") {
-      expect(text()).not.toContain(" · high");
-    } else {
-      expect(text()).toContain(`${expected} · high`);
-    }
+    expect(text()).toContain(effort ? `${expected} · high` : expected);
+    if (!effort) expect(text()).not.toContain(" · high");
     expect(text()).not.toContain("Unknown");
-    if (!model?.trim()) expect(text()).not.toContain("My GPT");
+    expect(text()).not.toContain("Not reported");
   }
 
   for (const driver of [
@@ -969,8 +1000,8 @@ it("shows readable models and only differing workspace details in agent tooltips
       subagents: [{ ...projection.subagents[0], driver, model: null }],
     };
     await update();
-    expect(text()).toContain("Not reported");
-    expect(text()).not.toContain("My GPT");
+    expect(text()).toContain("My GPT");
+    expect(text()).not.toContain("Not reported");
   }
 
   state.projection = projection;
@@ -1093,8 +1124,8 @@ it("shows readable models and only differing workspace details in agent tooltips
     { id: "serviceTier", value: "priority" },
   ];
   await rerender();
-  expect(text(true)).toContain("My GPT · Work account · high");
-  expect(text()).toContain("My GPT · Work account · Fast mode onhigh");
+  expect(text(true)).toContain("Work account · My GPT · high");
+  expect(text()).toContain("Work account · My GPT · Fast mode onhigh");
   expect(text()).not.toContain("Personal account");
   state.projection = nativeProjection;
   await update();
@@ -1131,7 +1162,7 @@ it("shows readable models and only differing workspace details in agent tooltips
     if (status === "completed") {
       await click(sectionToggle(false));
     }
-    expect(text()).toContain("My GPT · Work account · Ultrafast mode onlow");
+    expect(text()).toContain("Work account · My GPT · Ultrafast mode onlow");
     expect(text()).not.toContain(" · high");
   }
   await click(sectionToggle(true));
@@ -1184,8 +1215,11 @@ it("shows readable models and only differing workspace details in agent tooltips
   await click(sectionToggle(false));
   expect(text()).toContain("Final checks passed.");
   expect(text()).not.toContain("Stale progress");
-  expect(text()).not.toContain("Hidden tail");
-  expect(text()).not.toContain(result);
+  // The preview clamps a long outcome to a few lines rather than cutting its text.
+  const outcome = [...container.querySelectorAll("p")].find((node) =>
+    node.textContent?.startsWith("Final checks passed."),
+  );
+  expect(outcome?.classList.contains("line-clamp-3")).toBe(true);
   state.projection = projection;
 
   child.worktreePath = "/main/worktrees/checker";
