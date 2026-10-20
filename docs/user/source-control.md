@@ -166,12 +166,19 @@ run **New thread from PR, branch, or issue** from the command palette.
   to the thread (see [Attach a GitHub issue](#attach-a-github-issue)).
 - **Linear** does the same for a Linear issue. This needs a connected Linear account (see
   [Linear](./linear.md#link-an-issue-to-a-thread)).
+- **Automations** lists the project's scheduled tasks. Picking one runs it now with its own saved
+  project, model, and workspace, then opens the thread it ran in. `Cmd/Ctrl+Enter` opens the task
+  to edit instead. Webhook tasks only run when their URL is called, so they can't be picked.
+  **New automation from draft** opens a new scheduled task filled in with what you've written,
+  the project, model, and workspace. A task's prompt is plain text, so context chips are kept as
+  their labels and attachments are left out.
 
 If a pull request, branch, or linked issue already has a thread, T3 Code asks whether to open it or start a
 second thread.
 
 On mobile, tap **⋯** beside the branch control of a new thread and choose **Pull request**,
-**Linear issue**, or **GitHub issue**. They work as on web and desktop; pick a branch with the branch control.
+**Linear issue**, **GitHub issue**, or **Automation**. They work as on web and desktop, with a pencil
+button to edit an automation; pick a branch with the branch control.
 
 ## Attach a GitHub issue
 

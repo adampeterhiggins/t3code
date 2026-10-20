@@ -9,6 +9,8 @@ import {
   type ScheduledTask,
 } from "@t3tools/contracts";
 import {
+  type ComposerTaskSource,
+  draftFromComposer,
   scheduledTaskDefaultModel,
   createDraft,
   editDraft,
@@ -368,5 +370,52 @@ describe("scheduled task model defaults", () => {
         null,
       ),
     ).toBeNull();
+  });
+});
+
+describe("draftFromComposer", () => {
+  const source = {
+    projectId: ProjectId.make("project-a"),
+    prompt: "Summarise yesterday's errors ",
+    sideContextCount: 0,
+    modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },
+    runtimeMode: "approval-required",
+    workspaceMode: "local",
+    branch: "main",
+    worktreePath: null,
+    startFromOrigin: false,
+  } satisfies ComposerTaskSource;
+
+  it("carries the prompt, project, model, runtime and project checkout", () => {
+    const { draft, note } = draftFromComposer(source);
+    expect(note).toBeNull();
+    expect(draft).toMatchObject({
+      task: null,
+      prompt: "Summarise yesterday's errors",
+      projectId: "project-a",
+      modelSelection: source.modelSelection,
+      modelSelectionIsExplicit: true,
+      runtimeMode: "approval-required",
+      workspace: "root",
+    });
+  });
+
+  it("maps a new worktree to its base branch and a checked-out worktree to its path", () => {
+    expect(
+      draftFromComposer({
+        ...source,
+        workspaceMode: "worktree",
+        branch: "develop",
+        startFromOrigin: true,
+      }).draft,
+    ).toMatchObject({ workspace: "worktree", baseRef: "develop", startFromOrigin: true });
+    expect(draftFromComposer({ ...source, worktreePath: "/wt/pr-12" }).draft).toMatchObject({
+      workspace: "existing_worktree",
+      checkoutPath: "/wt/pr-12",
+    });
+  });
+
+  it("notes attachments a text prompt cannot carry", () => {
+    expect(draftFromComposer({ ...source, sideContextCount: 1 }).note).not.toBeNull();
   });
 });

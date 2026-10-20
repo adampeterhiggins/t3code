@@ -68,6 +68,10 @@ import { ConnectionStatusDot, connectionPhaseDotClassName } from "../ConnectionS
 import { AuthOrchestrationOperateScope } from "@t3tools/contracts";
 import { readEnvironmentScope } from "~/state/session";
 import { useSettingsScope } from "./SettingsScopeContext";
+import {
+  pendingScheduledTaskDraftAtom,
+  setPendingScheduledTaskDraft,
+} from "./scheduledTaskDraftSeed";
 import { EnvironmentRow, environmentTransportLabel } from "./EnvironmentRow";
 import { SettingsGroup } from "./SettingsGroup";
 import { settingsScopeEnvironmentLabel, settingsScopeEnvironmentLabels } from "./settingsScopeAxis";
@@ -78,6 +82,7 @@ import {
   scheduledTaskDefaultModel,
   taskToDraft,
   type DraftState,
+  type ScheduledTaskDraftSeed,
   type ScheduleMode,
   type WorkspaceMode,
 } from "./scheduledTasksSettings.logic";
@@ -260,10 +265,20 @@ export function ScheduledTasksSettings(target: {
   readonly taskId?: ScheduledTaskId | undefined;
 }) {
   const { scope, environments, connectedEnvironments, environment } = useSettingsScope();
+  const pendingDraft = useAtomValue(pendingScheduledTaskDraftAtom);
   const [editor, setEditor] = useState<{
     environmentId: EnvironmentId;
     task: ScheduledTask | null;
-  } | null>(null);
+    seed?: ScheduledTaskDraftSeed;
+  } | null>(() =>
+    pendingDraft
+      ? { environmentId: pendingDraft.environmentId, task: null, seed: pendingDraft.seed }
+      : null,
+  );
+  // The form owns the prefill once open; clearing it keeps a later visit from reopening it.
+  useEffect(() => {
+    if (pendingDraft) setPendingScheduledTaskDraft(null);
+  }, [pendingDraft]);
   const openForEdit = (environmentId: EnvironmentId, task: ScheduledTask) => {
     setEditor({ environmentId, task });
   };
@@ -336,6 +351,7 @@ export function ScheduledTasksSettings(target: {
           key={`${editor.environmentId}:${editor.task?.id ?? "new"}`}
           initialEnvironmentId={editor.environmentId}
           task={editor.task}
+          seed={editor.seed}
           onClose={() => setEditor(null)}
         />
       ) : null}
@@ -937,10 +953,12 @@ function WebhookDeliveryMode({ environmentId }: { readonly environmentId: Enviro
 function ScheduledTaskEditorDialog({
   initialEnvironmentId,
   task,
+  seed,
   onClose,
 }: {
   readonly initialEnvironmentId: EnvironmentId;
   readonly task: ScheduledTask | null;
+  readonly seed: ScheduledTaskDraftSeed | undefined;
   readonly onClose: () => void;
 }) {
   const [saving, setSaving] = useState(false);
@@ -956,6 +974,7 @@ function ScheduledTaskEditorDialog({
         <ScheduledTaskEditorForm
           initialEnvironmentId={initialEnvironmentId}
           task={task}
+          seed={seed}
           saving={saving}
           onSavingChange={setSaving}
           onClose={onClose}
@@ -968,12 +987,14 @@ function ScheduledTaskEditorDialog({
 function ScheduledTaskEditorForm({
   initialEnvironmentId,
   task,
+  seed,
   saving,
   onSavingChange: setSaving,
   onClose,
 }: {
   readonly initialEnvironmentId: EnvironmentId;
   readonly task: ScheduledTask | null;
+  readonly seed: ScheduledTaskDraftSeed | undefined;
   readonly saving: boolean;
   readonly onSavingChange: (saving: boolean) => void;
   readonly onClose: () => void;
@@ -1002,7 +1023,7 @@ function ScheduledTaskEditorForm({
     label: "scheduled task upsert",
   });
   const [draft, setDraft] = useState<DraftState>(() =>
-    task ? taskToDraft(task) : { ...EMPTY_DRAFT, projectId: projects[0]?.id ?? "" },
+    task ? taskToDraft(task) : { ...EMPTY_DRAFT, projectId: projects[0]?.id ?? "", ...seed?.draft },
   );
   const submissionPending = useRef(false);
   const editingTaskMissing =
@@ -1334,6 +1355,7 @@ function ScheduledTaskEditorForm({
                 setDraft((current) => ({ ...current, prompt: event.target.value }))
               }
             />
+            {seed?.note ? <p className="text-xs text-muted-foreground">{seed.note}</p> : null}
           </Field>
 
           <Field label="Model">

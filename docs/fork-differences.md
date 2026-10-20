@@ -1071,10 +1071,10 @@ Code: `apps/server/src/githubIssues/`, `packages/contracts/src/githubIssues.ts`,
 `apps/mobile/src/features/threads/ThreadGitHubIssueLink.tsx`. User guide:
 [source-control.md](./user/source-control.md#attach-a-github-issue).
 
-## Start a thread from a pull request, branch, or issue
+## Start a thread from a pull request, branch, issue, or automation
 
 On web and desktop, a new thread's composer has a **⋯** button in its top-right corner. It opens a
-picker with PRs, Branches, Issues, and Linear tabs. The same picker opens from the command palette and from
+picker with PRs, Branches, Issues, Linear, and Automations tabs. The same picker opens from the command palette and from
 `chat.startFrom` (`mod+alt+o`); both of those start a new thread first. The PRs tab filters and
 sorts with the pull requests page's filter menu, the Issues tab lists the project's GitHub issues
 by state, and the Linear tab uses the Linear attach picker's filter bar, whose view it shares.
@@ -1086,21 +1086,33 @@ by state, and the Linear tab uses the Linear attach picker's filter bar, whose v
   worktree.
 - A GitHub or Linear issue is attached as a context chip and linked to the new thread (see
   [GitHub issues](#github-issues) and [Linear integration](#linear-integration)).
+- A scheduled task in the project runs as **Run now** does, with its saved project, model,
+  workspace, and runtime, and the thread it ran in opens. The run-now result carries that
+  `threadId`. Tasks are ordered most recently run (or edited) first, webhook tasks last and
+  unpickable. `mod+Enter` opens the task's edit form in **Settings → Scheduled tasks**. A pinned
+  **New automation from draft** row opens the new-task form prefilled with the composer's text,
+  project, model, runtime, and workspace (a new worktree keeps its base branch, a checked-out
+  worktree becomes a specific checkout); context chips become their labels and the form notes
+  anything left out.
 
 A pull request or branch that a live thread is already on, or an issue linked to a live thread,
 is marked **In use**. Picking it asks whether to open that thread or start a second one. The
 default branch never counts as in use. Hovering a row previews it: a pull request's description,
-a branch's full name and where it would run (both listing threads already on it), or the issue
-snapshot an attached chip would carry.
+a branch's full name and where it would run (both listing threads already on it), the issue
+snapshot an attached chip would carry, or a task's prompt, schedule, model, workspace, and last
+run.
 
-On mobile, a new thread's **⋯** button offers **Pull request**, **Linear issue**, and
-**GitHub issue**, with the same
-checkout, linking, and **In use** rules; the existing branch picker covers branches. The pull
+On mobile, a new thread's **⋯** button offers **Pull request**, **Linear issue**,
+**GitHub issue**, and **Automation**, with the same
+checkout, linking, **In use**, run-now, and new-from-draft rules; an automation's pencil button
+edits it, and the existing branch picker covers branches. The pull
 request's worktree is checked out before the thread exists, so mobile does not run the project's
 setup script in it. The issue is linked once the draft sends.
 
 Code: `apps/web/src/components/chat/StartFromPicker.tsx`, `StartFromPicker.logic.ts` and
-`StartFromPreviews.tsx`, `apps/mobile/src/features/threads/StartFromPullRequestSheet.tsx`, the
+`StartFromPreviews.tsx`, `packages/client-runtime/src/scheduledTaskPicker.ts`,
+`apps/mobile/src/features/threads/StartFromPullRequestSheet.tsx` and
+`StartFromAutomationSheet.tsx`, the
 `startFrom` targets in `apps/mobile/src/components/LinearIssuePickerSheet.tsx` and
 `GitHubIssuePickerSheet.tsx`, the button
 in `ChatComposer.tsx`, and `chat.startFrom` in `packages/contracts/src/keybindings.ts`. User guide:

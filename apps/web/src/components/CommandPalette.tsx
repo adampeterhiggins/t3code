@@ -1772,7 +1772,17 @@ function OpenCommandPaletteDialog(props: {
       actionItems.push({
         kind: "action",
         value: "action:start-thread-from",
-        searchTerms: ["pull request", "pr", "branch", "issue", "linear", "checkout", "start from"],
+        searchTerms: [
+          "pull request",
+          "pr",
+          "branch",
+          "issue",
+          "linear",
+          "checkout",
+          "start from",
+          "automation",
+          "scheduled task",
+        ],
         title: (
           <>
             New thread from PR, branch, or issue in{" "}
@@ -1944,7 +1954,9 @@ function OpenCommandPaletteDialog(props: {
           title: task.title,
           searchTerms: [task.title, "scheduled task", "automation", "run now"],
           icon: <CalendarClockIcon className={ITEM_ICON_CLASS} />,
-          run: () => runScheduledTask(scheduledTaskThreadRef.environmentId, task),
+          run: async () => {
+            await runScheduledTask(scheduledTaskThreadRef.environmentId, task);
+          },
         }));
   const singleScheduledTask = runScheduledTaskItems.length === 1 ? runScheduledTaskItems[0] : null;
   if (singleScheduledTask) {

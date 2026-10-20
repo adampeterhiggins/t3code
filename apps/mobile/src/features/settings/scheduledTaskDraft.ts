@@ -9,6 +9,7 @@ import type {
 } from "@t3tools/contracts";
 
 import { DEFAULT_SERVER_SETTINGS } from "@t3tools/contracts";
+import { scheduledTaskPromptFromComposer } from "@t3tools/client-runtime/scheduled-task-picker";
 import { parseMaxDeliveryAge } from "@t3tools/client-runtime/scheduled-task-webhook";
 import {
   resolveProjectSettings,
@@ -223,5 +224,48 @@ export function editDraft(task: ScheduledTask): ScheduledTaskDraft {
         ? (task.workspaceStrategy.startFromOrigin ?? false)
         : true,
     runtimeMode: task.runtimeMode,
+  };
+}
+
+/** What a new thread's composer holds, to start a scheduled task from. */
+export interface ComposerTaskSource {
+  readonly projectId: ProjectId;
+  readonly prompt: string;
+  /** Attachments and context held beside the text, which a task's prompt cannot carry. */
+  readonly sideContextCount: number;
+  readonly modelSelection: ModelSelection | null;
+  readonly runtimeMode: RuntimeMode;
+  readonly workspaceMode: "local" | "worktree";
+  readonly branch: string | null;
+  readonly worktreePath: string | null;
+  readonly startFromOrigin: boolean;
+}
+
+/** A new-task form prefilled from a composer draft, with a note on what text could not keep. */
+export function draftFromComposer(source: ComposerTaskSource): {
+  readonly draft: ScheduledTaskDraft;
+  readonly note: string | null;
+} {
+  const { prompt, note } = scheduledTaskPromptFromComposer(source.prompt, source.sideContextCount);
+  const base = createDraft(source.projectId, source.modelSelection);
+  const workspace: Partial<ScheduledTaskDraft> =
+    source.worktreePath !== null
+      ? { workspace: "existing_worktree", checkoutPath: source.worktreePath }
+      : source.workspaceMode === "worktree"
+        ? {
+            workspace: "worktree",
+            ...(source.branch ? { baseRef: source.branch } : {}),
+            startFromOrigin: source.startFromOrigin,
+          }
+        : { workspace: "root" };
+  return {
+    draft: {
+      ...base,
+      ...workspace,
+      prompt,
+      modelSelectionIsExplicit: source.modelSelection !== null,
+      runtimeMode: source.runtimeMode,
+    },
+    note,
   };
 }

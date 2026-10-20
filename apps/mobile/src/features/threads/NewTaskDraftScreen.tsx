@@ -75,6 +75,7 @@ import { Menu } from "../../components/ui/Menu";
 import { gitHubIssueEnvironment } from "../../state/githubIssues";
 import { linearEnvironment } from "../../state/linear";
 import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
+import { useStartFromAutomationPicker } from "./StartFromAutomationSheet";
 import { useStartFromPullRequestPicker } from "./StartFromPullRequestSheet";
 import { ComposerAttachmentStrip } from "../../components/ComposerAttachmentStrip";
 import { composerStripAttachments } from "../../lib/composerImages";
@@ -1059,6 +1060,29 @@ export function NewTaskDraftScreen(props: {
         }
       : null,
   );
+  const startFromAutomationPicker = useStartFromAutomationPicker(
+    selectedProject
+      ? {
+          environmentId: selectedProject.environmentId,
+          environmentLabel:
+            flow.environments.find(
+              (environment) => environment.environmentId === selectedProject.environmentId,
+            )?.environmentLabel ?? "Environment",
+          projectId: selectedProject.id,
+          readSource: () => ({
+            projectId: selectedProject.id,
+            prompt: flow.prompt,
+            sideContextCount: flow.attachments.length,
+            modelSelection: flow.selectedModel,
+            runtimeMode: flow.runtimeMode,
+            workspaceMode: flow.workspaceMode,
+            branch: flow.selectedBranchName,
+            worktreePath: flow.selectedWorktreePath,
+            startFromOrigin: flow.startFromOrigin,
+          }),
+        }
+      : null,
+  );
   const checkoutPicker = useCheckoutPicker(
     flow.draftKey && selectedProject
       ? {
@@ -1721,15 +1745,17 @@ export function NewTaskDraftScreen(props: {
           { id: "pull-request", title: "Pull request", image: PullRequestGlyph.pullRequest },
           { id: "issue", title: "Linear issue", image: "ticket" },
           { id: "github-issue", title: "GitHub issue", image: "smallcircle.filled.circle" },
+          { id: "automation", title: "Automation", image: "calendar.badge.clock" },
         ]}
         onPressAction={({ nativeEvent }) => {
           if (nativeEvent.event === "pull-request") startFromPullRequestPicker.open();
           else if (nativeEvent.event === "issue") startFromIssuePicker.open();
           else if (nativeEvent.event === "github-issue") startFromGitHubIssuePicker.open();
+          else if (nativeEvent.event === "automation") startFromAutomationPicker.open();
         }}
       >
         <Pressable
-          accessibilityLabel="Start from a pull request or issue"
+          accessibilityLabel="Start from a pull request, issue, or automation"
           accessibilityRole="button"
           className="size-11 items-center justify-center rounded-xl active:bg-subtle disabled:opacity-45"
           disabled={isComposerInteractionLocked}
@@ -1999,6 +2025,7 @@ export function NewTaskDraftScreen(props: {
       {notionPagePicker.sheet}
       {granolaNotePicker.sheet}
       {startFromPullRequestPicker.sheet}
+      {startFromAutomationPicker.sheet}
       {checkoutPicker.sheet}
       {repositoryPicker.sheet}
     </View>

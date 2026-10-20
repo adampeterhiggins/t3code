@@ -8,6 +8,8 @@ export type ScheduledTaskEditor = {
   readonly environmentId: EnvironmentId;
   readonly environmentLabel: string;
   readonly draft: ScheduledTaskDraft;
+  /** Set when the form was prefilled from a composer draft that held more than text. */
+  readonly note?: string | null;
 };
 
 type ScheduledTaskEditorSession = {

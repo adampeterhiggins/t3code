@@ -1,5 +1,11 @@
+import { automationRunBlocker } from "@t3tools/client-runtime/scheduled-task-picker";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
-import type { ScopedThreadRef, VcsRef } from "@t3tools/contracts";
+import type {
+  OrchestrationV2ThreadLaunchWorkspaceStrategy,
+  ScheduledTask,
+  ScopedThreadRef,
+  VcsRef,
+} from "@t3tools/contracts";
 import { GitBranchIcon } from "lucide-react";
 import type { ReactElement } from "react";
 
@@ -9,6 +15,7 @@ import { useEnvironmentQuery } from "~/state/query";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import type { EnvironmentPullRequestEntry } from "../pullRequest/pullRequestList.logic";
 import { PullRequestMarkdown } from "../pullRequest/PullRequestMarkdown";
+import { ScheduledRelativeLabel, scheduleLabel } from "../settings/ScheduledTasksSettings";
 import {
   PullRequestActorAvatar,
   PullRequestDiffStat,
@@ -183,6 +190,67 @@ export function BranchHoverPreview(props: {
           <span className="break-all">{branchCheckoutLabel(branch, props.workspaceRoot)}</span>
         </div>
         <ThreadsInUse threads={props.threads} />
+      </div>
+    </CursorPreviewCard>
+  );
+}
+
+function workspaceLabel(strategy: OrchestrationV2ThreadLaunchWorkspaceStrategy): string {
+  if (strategy.type === "root") return "Runs in the project checkout";
+  if (strategy.type === "existing_worktree") return `Runs in ${strategy.worktreePath}`;
+  return `Runs in a new worktree from ${strategy.startFromOrigin ? "origin/" : ""}${strategy.baseRef}`;
+}
+
+const RUN_STATUS_LABELS: Record<ScheduledTask["lastRunStatus"], string> = {
+  never: "Never run",
+  running: "Running now",
+  succeeded: "Last run succeeded",
+  failed: "Last run failed",
+};
+
+/** Hover card for an automation row: what running it would do, and how it last went. */
+export function AutomationHoverPreview(props: {
+  task: ScheduledTask;
+  timeZone: string | undefined;
+  trigger: ReactElement;
+}) {
+  const { task } = props;
+  const blocker = automationRunBlocker(task);
+  return (
+    <CursorPreviewCard trigger={props.trigger} className="w-[28rem] max-w-[calc(100vw-2rem)]">
+      <div className="flex flex-col gap-2">
+        <p className="font-medium text-foreground text-sm leading-snug text-pretty">{task.title}</p>
+        <div className="flex flex-col gap-0.5 text-muted-foreground">
+          <span>
+            {scheduleLabel(task.schedule, props.timeZone)}
+            {!task.enabled ? (
+              " · paused"
+            ) : task.nextRunAt !== null ? (
+              <>
+                {" · next "}
+                <ScheduledRelativeLabel value={task.nextRunAt} />
+              </>
+            ) : null}
+          </span>
+          <span className="truncate font-mono">
+            {task.modelSelection.instanceId} · {task.modelSelection.model}
+          </span>
+          <span className="break-all">{workspaceLabel(task.workspaceStrategy)}</span>
+          <span>
+            {task.threadId === null
+              ? "Starts a new thread each run"
+              : "Sends each run to the same thread"}
+          </span>
+          <span>
+            {RUN_STATUS_LABELS[task.lastRunStatus]}
+            {task.lastRunAt !== null ? ` ${formatRelativeTimeLabel(task.lastRunAt)}` : null}
+          </span>
+          {task.lastRunError ? <span className="text-destructive">{task.lastRunError}</span> : null}
+          {blocker ? <span>{blocker}</span> : null}
+        </div>
+        <div className="max-h-80 overflow-y-auto whitespace-pre-wrap rounded-lg border border-border/70 bg-background/70 px-3 py-2.5 text-xs text-foreground">
+          {task.prompt}
+        </div>
       </div>
     </CursorPreviewCard>
   );

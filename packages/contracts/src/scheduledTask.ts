@@ -324,6 +324,8 @@ export type ScheduledTaskDeleteResult = typeof ScheduledTaskDeleteResult.Type;
 
 export const ScheduledTaskRunNowResult = Schema.Struct({
   task: ScheduledTask,
+  /** The thread the run was sent to, or null if dispatch failed. Absent from older servers. */
+  threadId: Schema.optional(Schema.NullOr(ThreadId)),
 });
 export type ScheduledTaskRunNowResult = typeof ScheduledTaskRunNowResult.Type;
 
