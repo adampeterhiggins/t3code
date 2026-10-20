@@ -327,21 +327,21 @@ export function buildThreadActionMenuItems(
       label: "Link",
       icon: "link",
       children: [
-        { id: "link-linear-issue", label: "Linear issue…", icon: "link" },
+        { id: "link-linear-issue", label: "Linear issue…", icon: "linear" },
         ...(state.canLinkGitHubIssue
-          ? [{ id: "link-github-issue" as const, label: "GitHub issue…", icon: "link" }]
+          ? [{ id: "link-github-issue" as const, label: "GitHub issue…", icon: "github" }]
           : []),
         ...(state.integrations?.slack
-          ? [{ id: "link-slack-thread" as const, label: "Slack thread…", icon: "link" }]
+          ? [{ id: "link-slack-thread" as const, label: "Slack thread…", icon: "slack" }]
           : []),
         ...(state.integrations?.discord
-          ? [{ id: "link-discord-thread" as const, label: "Discord thread…", icon: "link" }]
+          ? [{ id: "link-discord-thread" as const, label: "Discord thread…", icon: "discord" }]
           : []),
         ...(state.integrations?.notion
-          ? [{ id: "link-notion-page" as const, label: "Notion page…", icon: "link" }]
+          ? [{ id: "link-notion-page" as const, label: "Notion page…", icon: "notion" }]
           : []),
         ...(state.integrations?.granola
-          ? [{ id: "link-granola-note" as const, label: "Granola note…", icon: "link" }]
+          ? [{ id: "link-granola-note" as const, label: "Granola note…", icon: "granola" }]
           : []),
       ],
     },

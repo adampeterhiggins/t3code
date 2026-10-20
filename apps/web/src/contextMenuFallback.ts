@@ -1,5 +1,7 @@
 import type { ContextMenuItem } from "@t3tools/contracts";
 
+import { INTEGRATION_ICONS } from "./components/integrationIcons";
+
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 const ICON_PATHS: Record<string, ReadonlyArray<{ tag: string; attrs: Record<string, string> }>> = {
@@ -217,15 +219,18 @@ const ICON_PATHS: Record<string, ReadonlyArray<{ tag: string; attrs: Record<stri
 };
 
 function createIconElement(name: string, tone: "neutral" | "destructive"): SVGSVGElement | null {
-  const paths = ICON_PATHS[name];
+  const integration = Object.hasOwn(INTEGRATION_ICONS, name)
+    ? INTEGRATION_ICONS[name as keyof typeof INTEGRATION_ICONS]
+    : undefined;
+  const paths = integration ? [{ tag: "path", attrs: { d: integration.path } }] : ICON_PATHS[name];
   if (!paths || typeof document.createElementNS !== "function") {
     return null;
   }
   const svg = document.createElementNS(SVG_NS, "svg");
   svg.setAttribute("xmlns", SVG_NS);
-  svg.setAttribute("viewBox", "0 0 24 24");
-  svg.setAttribute("fill", "none");
-  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("viewBox", integration?.viewBox ?? "0 0 24 24");
+  svg.setAttribute("fill", integration ? "currentColor" : "none");
+  svg.setAttribute("stroke", integration ? "none" : "currentColor");
   svg.setAttribute("stroke-width", "2");
   svg.setAttribute("stroke-linecap", "round");
   svg.setAttribute("stroke-linejoin", "round");
@@ -239,6 +244,11 @@ function createIconElement(name: string, tone: "neutral" | "destructive"): SVGSV
     const child = document.createElementNS(SVG_NS, node.tag);
     for (const [key, value] of Object.entries(node.attrs)) {
       child.setAttribute(key, value);
+    }
+    if (integration && "transform" in integration && typeof integration.transform === "string") {
+      child.setAttribute("transform", integration.transform);
+      child.setAttribute("fill-rule", "evenodd");
+      child.setAttribute("clip-rule", "evenodd");
     }
     svg.appendChild(child);
   }

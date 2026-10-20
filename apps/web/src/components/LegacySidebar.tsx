@@ -2237,12 +2237,13 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
             label: "Link",
             disabled: !canOperateThread,
             children: [
-              { id: "link-linear-issue", label: "Linear issue…" },
+              { id: "link-linear-issue", label: "Linear issue…", icon: "linear" },
               ...(isGitHubProject(threadProject)
                 ? [
                     {
                       id: "link-github-issue",
                       label: "GitHub issue…",
+                      icon: "github",
                       disabled: !canOperateThread,
                     },
                   ]
@@ -2252,6 +2253,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
                     {
                       id: "link-slack-thread",
                       label: "Slack thread…",
+                      icon: "slack",
                       disabled: !canOperateThread,
                     },
                   ]
@@ -2261,6 +2263,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
                     {
                       id: "link-discord-thread",
                       label: "Discord thread…",
+                      icon: "discord",
                       disabled: !canOperateThread,
                     },
                   ]
@@ -2270,6 +2273,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
                     {
                       id: "link-notion-page",
                       label: "Notion page…",
+                      icon: "notion",
                       disabled: !canOperateThread,
                     },
                   ]
@@ -2279,6 +2283,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
                     {
                       id: "link-granola-note",
                       label: "Granola note…",
+                      icon: "granola",
                       disabled: !canOperateThread,
                     },
                   ]
