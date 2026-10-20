@@ -202,7 +202,7 @@ function makeHarness(options: HarnessOptions = {}) {
       getByWorkspaceRoot: () => Effect.succeed(Option.some(project)),
       snapshot: Effect.die("unused"),
       getShell: () => Effect.die("unused"),
-      listShells: () => Effect.die("unused"),
+      listShells: () => Effect.succeed([project, otherProject] as never),
     }),
     Layer.mock(GitWorkflow.GitWorkflowService)({
       createWorktree,
@@ -3509,8 +3509,17 @@ describe("delegated tasks with a workspace of their own", () => {
   /** The launch harness plus the MCP service an agent's delegate_task call reaches. */
   function delegationHarness(options: HarnessOptions = {}) {
     const harness = makeHarness({ ...options, providers: [codexProvider] });
+    const worktreesByRoot: Record<string, ReadonlyArray<string>> = {
+      "/repo": ["/repo", "/repo-worktrees/parent", "/repo-worktrees/existing"],
+      "/other-repo": ["/other-repo", "/other-repo-worktrees/feature"],
+    };
     const service = OrchestratorMcpService.layer.pipe(
-      Layer.provide(Layer.mock(GitVcsDriver.GitVcsDriver)({})),
+      Layer.provide(
+        Layer.mock(GitVcsDriver.GitVcsDriver)({
+          listWorktreePaths: (cwd) => Effect.succeed([...(worktreesByRoot[cwd] ?? [])]),
+        }),
+      ),
+      Layer.provide(NodeServices.layer),
       Layer.provide(
         Layer.mergeAll(
           harness.layer,
@@ -3644,7 +3653,25 @@ describe("delegated tasks with a workspace of their own", () => {
       const child = yield* threads.getThreadProjection(result.childThreadId);
       assert.equal(child.thread.worktreePath, "/repo-worktrees/existing");
       assert.equal(child.thread.branch, "feature/existing");
+      assert.equal(child.thread.projectId, projectId);
       assert.equal(harness.createWorktree.mock.calls.length, 0);
+    }).pipe(Effect.provide(harness.layer));
+  });
+
+  it.effect("binds another project's worktree and prepares it with that project's setup", () => {
+    const harness = delegationHarness();
+    return Effect.gen(function* () {
+      const threads = yield* ThreadManagement.ThreadManagementService;
+      const { result } = yield* delegate("cross-project", {
+        type: "existing_worktree",
+        worktreePath: "/other-repo-worktrees/feature",
+        branch: "feature",
+      });
+      yield* awaitEvent(result.childThreadId, "run.updated", (run) => run.status === "starting");
+      const child = yield* threads.getThreadProjection(result.childThreadId);
+      assert.equal(child.thread.projectId, otherProjectId);
+      assert.equal(child.thread.worktreePath, "/other-repo-worktrees/feature");
+      assert.equal(harness.runSetup.mock.calls[0]?.[0].projectCwd, "/other-repo");
     }).pipe(Effect.provide(harness.layer));
   });
 
@@ -4175,6 +4202,7 @@ it.effect.each(
         Layer.provide(NodeCrypto.layer),
         Layer.provide(harness.layer),
         Layer.provide(Layer.mock(GitVcsDriver.GitVcsDriver)({ resolveCommit })),
+        Layer.provide(NodeServices.layer),
         Layer.provide(Layer.mock(ScheduledTasks.ScheduledTaskService)({})),
         Layer.provide(Layer.mock(SecretRequests.SecretRequests)({})),
       );

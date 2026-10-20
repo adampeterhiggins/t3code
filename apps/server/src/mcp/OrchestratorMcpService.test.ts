@@ -23,6 +23,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
+import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 
 import { CodexProviderCapabilitiesV2 } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
@@ -1595,6 +1596,132 @@ describe("OrchestratorMcpService provider resolution", () => {
         };
         assert.equal(request.modelSelection.instanceId, altInstanceId);
       }).pipe(Effect.provide(layerOrchestratorService.pipe(Layer.provide(layerDependencies))));
+    }),
+  );
+
+  const delegateIntoWorktree = (worktreePath: string) =>
+    Effect.gen(function* () {
+      const otherProjectId = ProjectId.make("project:mcp-providers-other");
+      const dispatched = yield* Ref.make<ReadonlyArray<{ readonly projectId?: ProjectId }>>([]);
+      const record = (command: unknown) =>
+        Ref.update(dispatched, (commands) => [
+          ...commands,
+          command as { readonly projectId?: ProjectId },
+        ]);
+      const task = {
+        id: taskId,
+        threadId: parentThreadId,
+        runId: parentRunId,
+        parentNodeId,
+        origin: "app_owned",
+        createdBy: "agent",
+        driver: ProviderDriverKind.make("codex"),
+        providerInstanceId: codexInstanceId,
+        providerThreadId: null,
+        childThreadId,
+        nativeTaskRef: null,
+        prompt: "Migrate the registry.",
+        title: null,
+        model: "gpt-5.4",
+        status: "running",
+        result: null,
+        startedAt: null,
+        completedAt: null,
+      };
+      const layerDependencies = Layer.mergeAll(
+        NodeServices.layer,
+        Layer.mock(ThreadManagementService.ThreadManagementService)({
+          ...spawnPolicyReads,
+          hasReceipt: () => Effect.succeed(false),
+          getThreadRecords: (threadId) =>
+            Ref.get(dispatched).pipe(
+              Effect.map((commands) =>
+                threadId === parentThreadId
+                  ? parentProjection(commands.length > 0 ? [task] : [])
+                  : childProjection,
+              ),
+            ),
+          dispatch: (command) =>
+            record(command).pipe(
+              Effect.as({
+                sequence: 1,
+                storedEvents: [
+                  {
+                    sequence: 1,
+                    commandId: null,
+                    event: { type: "subagent.updated", payload: task },
+                  },
+                ],
+              } as never),
+            ),
+        }),
+        providerRegistryLayer([
+          providerSnapshot({
+            instanceId: codexInstanceId,
+            driver: ProviderDriverKind.make("codex"),
+            model: "gpt-5.4",
+          }),
+        ]),
+        adapterRegistryLayer([codexInstanceId]),
+        Layer.mock(ProjectService.ProjectService)({
+          listShells: () =>
+            Effect.succeed([
+              { id: projectId, workspaceRoot: "/repos/parent" },
+              { id: otherProjectId, workspaceRoot: "/repos/other" },
+            ] as never),
+        }),
+        Layer.mock(SecretRequests.SecretRequests)({}),
+        Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
+        ServerSettings.layerTest(),
+      );
+      const worktreesByRoot: Record<string, ReadonlyArray<string>> = {
+        "/repos/parent": ["/repos/parent", "/worktrees/parent/feature"],
+        "/repos/other": ["/repos/other", "/worktrees/other/feature"],
+      };
+      const outcome = yield* Effect.gen(function* () {
+        const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+        return yield* service.delegateTask(scope, {
+          task: "Migrate the registry.",
+          target: { providerInstanceId: codexInstanceId },
+          mode: "async",
+          clientRequestId: `delegate-worktree-${worktreePath}`,
+          workspaceStrategy: { type: "existing_worktree", worktreePath, branch: "feature" },
+        });
+      }).pipe(
+        Effect.result,
+        Effect.provide(
+          OrchestratorMcpService.layer.pipe(
+            Layer.provide(
+              Layer.mock(GitVcsDriver.GitVcsDriver)({
+                listWorktreePaths: (cwd) => Effect.succeed([...(worktreesByRoot[cwd] ?? [])]),
+              }),
+            ),
+            Layer.provide(Layer.mock(ThreadLaunchService.ThreadLaunchService)({})),
+            Layer.provide(layerDependencies),
+          ),
+        ),
+      );
+      return { outcome, dispatched: yield* Ref.get(dispatched), otherProjectId };
+    });
+
+  it.effect("files a child bound to another project's worktree under that project", () =>
+    Effect.gen(function* () {
+      const other = yield* delegateIntoWorktree("/worktrees/other/feature");
+      assert.isTrue(Result.isSuccess(other.outcome));
+      assert.equal(other.dispatched[0]?.projectId, other.otherProjectId);
+
+      const own = yield* delegateIntoWorktree("/worktrees/parent/feature");
+      assert.isTrue(Result.isSuccess(own.outcome));
+      assert.isUndefined(own.dispatched[0]?.projectId);
+    }),
+  );
+
+  it.effect("refuses an existing worktree no project owns", () =>
+    Effect.gen(function* () {
+      const { outcome, dispatched } = yield* delegateIntoWorktree("/tmp/elsewhere");
+      assert.isTrue(Result.isFailure(outcome));
+      if (Result.isFailure(outcome)) assert.equal(outcome.failure.code, "invalid_request");
+      assert.equal(dispatched.length, 0);
     }),
   );
 

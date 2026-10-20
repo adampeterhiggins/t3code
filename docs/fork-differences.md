@@ -1674,7 +1674,10 @@ Upstream's `delegate_task` supports `isolation: "worktree"` to give a child a ch
 parent's local commit. The fork also supports an optional `workspaceStrategy` to choose
 `t3_thread_launch`'s `worktree` (from
 `baseRef`, optional `branch` and `startFromOrigin`) and `existing_worktree` shapes; there is no
-`root` option, and omitting it still shares the caller's checkout. The child stays the caller's
+`root` option, and omitting it still shares the caller's checkout. `existing_worktree` accepts a
+git worktree of any T3 project, so one thread can fan work out across repositories; the child is
+filed under the project that owns the worktree and prepared with that project's setup, and a path no
+project owns is refused. The child stays the caller's
 subagent (Lineage, the Agents panel, completion delivery, spawn limits, and usage are unchanged),
 but its first run waits in preparing while the server prepares the workspace the way a launch does:
 worktree creation, the branch named before setup, Files to copy and the setup script, and setup
