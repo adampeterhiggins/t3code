@@ -2,7 +2,6 @@ import {
   toolEntryShowsPathBreadcrumbs,
   toolPathTargets,
 } from "@t3tools/client-runtime/work-log/tool-paths";
-import type { UnreadLinkContextRecord } from "@t3tools/contracts";
 import { ToolPathText } from "./ToolPathText";
 import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
 import { useCursorAnchor } from "./CursorPreviewCard";
@@ -17,7 +16,6 @@ import { useChatCanvas } from "./ChatCanvasContext";
 import { WorkLogBlock, WorkLogButton, WorkLogDetails, WorkLogList, WorkLogRow } from "./WorkLog";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import type { WorktreeSetupSnapshot } from "@t3tools/contracts";
-import { ReadOnlySourcePreview } from "../files/AttachmentFilePreview";
 import { useRightPanelStore } from "~/rightPanelStore";
 import {
   getQuestionAnswerPreview,
@@ -31,7 +29,6 @@ import {
   type TimelineMinimapItem,
 } from "./timelineMinimapItems";
 import {
-  COMPOSER_CONTEXT_KINDS,
   ORCHESTRATION_V2_WORKSPACE_PREPARATION_FAILURE_CODE,
   type AssistantCitation,
   type EnvironmentId,
@@ -39,7 +36,6 @@ import {
   type OrchestrationV2TurnItem,
   type RunAttemptId,
   type ScopedThreadRef,
-  type ServerProviderSkill,
   type RunId,
   ThreadId,
   type ToolActivityIcon,
@@ -118,9 +114,9 @@ import {
 } from "../../types";
 import ChatMarkdown, { ChatMarkdownAssetImage } from "../ChatMarkdown";
 import { T3Wordmark } from "../T3Wordmark";
-import { SubagentContextChip } from "./SubagentContextChip";
+import { SubagentChipTrigger, subagentChipAccessibleLabel } from "./SubagentContextChip";
 import { AgentHandle } from "./AgentHandle";
-import { ThreadContextChip } from "../ThreadContextChip";
+import { ThreadChipTrigger } from "../ThreadContextChip";
 import {
   AtSignIcon,
   ArrowRightIcon,
@@ -141,7 +137,6 @@ import {
   MessageCircleIcon,
   MessagesSquareIcon,
   MousePointerClickIcon,
-  PaintbrushIcon,
   MinusIcon,
   Redo2Icon,
   Minimize2Icon,
@@ -166,6 +161,7 @@ import { ChevronDown, ChevronRight, Link as LinkIconNode } from "lucide";
 import type {
   ComposerContextId,
   ComposerContextRecord,
+  KnownComposerContextKind,
   KnownComposerContextRecord,
 } from "@t3tools/contracts";
 import { Button, InlineButton } from "../ui/button";
@@ -201,7 +197,7 @@ import {
 import { MessageCopyButton } from "./MessageCopyButton";
 import { promptLinkFor } from "../promptLinks/copyPromptLink";
 import { PierreEntryIcon } from "./PierreEntryIcon";
-import { WorkspaceEntryIcon, WorkspaceEntryTooltip } from "./WorkspaceEntryIcon";
+import { WorkspaceEntryIcon } from "./WorkspaceEntryIcon";
 import { AssistantSelectionToolbar } from "./AssistantSelectionToolbar";
 import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
 import {
@@ -252,23 +248,19 @@ import { useOpenInPreferredEditor } from "~/editorPreferences";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { primaryServerAvailableEditorsAtom } from "~/state/server";
 import { threadEnvironment } from "~/state/threads";
-import { TerminalContextInlineChip } from "./TerminalContextInlineChip";
+import { TerminalChipTrigger } from "./TerminalContextPreview";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger, TooltipScrollDismissArea } from "../ui/tooltip";
 import { WorktreeSetupCard } from "./WorktreeSetupCard";
 import {
-  ContextChipPopover as UserMessageContextPopover,
-  ContextChipShell,
-  AttachmentPreviewCard,
+  ContextChipButton,
   FileChip,
-  ImageAttachmentPreview,
   ImageChipButton,
   PULL_REQUEST_CHIP_KINDS,
-  PullRequestChip,
-  ThreadTabSummaryDetails,
-  CheckoutDetails,
-  UnreadLinkChip,
+  PullRequestChipTrigger,
+  UnreadLinkChipTrigger,
+  unreadLinkAccessibleLabel,
   UnresolvedChip,
 } from "../contextChipParts";
 import {
@@ -290,18 +282,17 @@ import {
   encodeComposerContextFragment,
 } from "@t3tools/shared/composerContextClipboard";
 import { chatMarkdownClipboardPayload } from "../../markdown-clipboard";
-import { ContextChip, ContextChipLabel, type ContextChipKind } from "../ContextChip";
+import { ContextChip, ContextChipLabel } from "../ContextChip";
 import {
+  buttonContextChip,
   createContextPresentationRegistry,
   type ContextPresentationHandler,
 } from "../contextPresentationRegistry";
 import {
   isLinkedObjectContextRecord,
-  LINKED_OBJECT_CONTEXT_KINDS,
-  LinkedObjectDetails,
   linkedObjectIcon,
   linkedObjectKindLabel,
-  type LinkedObjectContextRecord,
+  type LinkedObjectContextKind,
 } from "../linkedObjectPresentation";
 import { useOpenPrLink } from "~/lib/openPullRequestLink";
 import { useLinkClickHandler } from "~/browser/useOpenLink";
@@ -339,12 +330,10 @@ import { SecretRequestCard } from "./SecretRequestCard";
 import { TimelineSystemDivider } from "./TimelineSystemDivider";
 import { WorkflowOpeningBlock } from "./WorkflowOpeningBlock";
 
-import { SkillChipIcon } from "./SkillInlineText";
+import { messageSkillByName, messageSkillChip, type MessageSkill } from "./SkillInlineText";
 import * as DateTime from "effect/DateTime";
-import { formatWorkspaceRelativePath } from "../../filePathDisplay";
 import { forwardWheelToTimeline } from "./timelineMinimapWheel";
 import { type ReviewCommentContext } from "../../reviewCommentContext";
-import { ReviewCommentCard } from "../ReviewCommentCard";
 
 interface TimelineRowSharedState {
   citationRequest: AssistantCitationTarget | null;
@@ -355,7 +344,7 @@ interface TimelineRowSharedState {
   markdownCwd: string | undefined;
   resolvedTheme: "light" | "dark";
   workspaceRoot: string | undefined;
-  skills: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
+  skills: ReadonlyArray<MessageSkill>;
   runs: ReadonlyArray<HandoffTimelineRun>;
   activeThreadEnvironmentId: EnvironmentId;
   onRevertToTurnCount: (targetTurnCount: number, messageId: MessageId) => void;
@@ -452,7 +441,7 @@ function TimelineListFooter({
   );
 }
 
-const EMPTY_TIMELINE_SKILLS: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">> = [];
+const EMPTY_TIMELINE_SKILLS: ReadonlyArray<MessageSkill> = [];
 const TIMELINE_MAINTAIN_SCROLL_AT_END = {
   animated: false,
   on: {
@@ -544,7 +533,7 @@ interface MessagesTimelineProps {
   resolvedTheme: "light" | "dark";
   timestampFormat: TimestampFormat;
   workspaceRoot: string | undefined;
-  skills?: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
+  skills?: ReadonlyArray<MessageSkill>;
   runs: ReadonlyArray<HandoffTimelineRun>;
   anchorMessageId: MessageId | null;
   onAnchorReady: (messageId: MessageId, anchorIndex: number) => void;
@@ -4307,227 +4296,18 @@ function AssistantChangedFilesSectionInner({
   );
 }
 
-function UserMessageMentionChip(props: {
-  record: Extract<KnownComposerContextRecord, { kind: "mention" }>;
-  copyMarkdown: string;
-}) {
-  const ctx = use(TimelineRowCtx);
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <ContextChip
-            kind="mention"
-            render={<button type="button" />}
-            aria-label={`Preview ${props.record.path}`}
-            data-markdown-copy={props.copyMarkdown}
-            onClick={() => {
-              if (ctx.threadRef)
-                useRightPanelStore.getState().openFile(ctx.threadRef, props.record.path);
-            }}
-          >
-            <WorkspaceEntryIcon
-              path={props.record.path}
-              environmentId={ctx.activeThreadEnvironmentId}
-              cwd={ctx.workspaceRoot}
-              theme={ctx.resolvedTheme}
-            />
-            <ContextChipLabel>{props.record.label}</ContextChipLabel>
-          </ContextChip>
-        }
-      />
-      <TooltipPopup>
-        <WorkspaceEntryTooltip
-          path={props.record.path}
-          environmentId={ctx.activeThreadEnvironmentId}
-          cwd={ctx.workspaceRoot}
-        />
-      </TooltipPopup>
-    </Tooltip>
-  );
-}
-
-function UserMessageContextChip(props: {
-  icon: ReactNode;
-  label: string;
-  kindLabel?: string;
-  copyMarkdown: string;
-  tooltip?: string;
-  kind: ContextChipKind;
-}) {
-  return (
-    <ContextChipShell
-      kind={props.kind}
-      icon={props.icon}
-      label={props.label}
-      aria-label={props.kindLabel ? `${props.kindLabel}, ${props.label}` : undefined}
-      data-markdown-copy={props.copyMarkdown}
-      tooltip={props.tooltip}
-    />
-  );
-}
-
-function UserMessagePullRequestContextChip(props: {
-  record: Extract<KnownComposerContextRecord, { kind: "review-comment" }>;
-  copyMarkdown: string;
-  kind: ContextChipKind;
-}) {
-  const { activeThreadEnvironmentId, openPullRequest } = use(TimelineRowCtx);
-  const metadata = props.record.pullRequest;
-  if (metadata === undefined) return null;
-  return (
-    <PullRequestChip
-      metadata={metadata}
-      environmentId={activeThreadEnvironmentId}
-      label={reviewCommentContextLabel(props.record)}
-      kindLabel={pullRequestContextKindLabel(props.record)}
-      kind={props.kind}
-      copyMarkdown={props.copyMarkdown}
-      onOpen={openPullRequest}
-    />
-  );
-}
-
-function UserMessagePreviewAnnotationDetails(props: {
-  record: Extract<KnownComposerContextRecord, { kind: "preview-annotation" }>;
-  image: ChatImageAttachment | null;
-}) {
-  const ctx = use(TimelineRowCtx);
-  const visibleElements = props.record.elements ?? [];
-  return (
-    <div className="max-w-full overflow-hidden rounded-lg border border-border/70 bg-background/70">
-      {props.image?.previewUrl ? (
-        <button
-          type="button"
-          className="block max-h-64 w-full cursor-zoom-in overflow-hidden border-b border-border/70 bg-muted"
-          aria-label={`Preview ${props.image.name}`}
-          onClick={() => {
-            if (!props.image) return;
-            const preview = buildExpandedImagePreview([props.image], props.image.id);
-            if (preview) ctx.onImageExpand(preview);
-          }}
-        >
-          <img
-            src={props.image.previewUrl}
-            alt="Annotated preview crop"
-            className="max-h-64 w-full object-contain"
-          />
-        </button>
-      ) : (
-        <div className="border-b border-border/70 bg-muted/40 px-3 py-2 text-secondary-label text-xs">
-          Screenshot unavailable
-        </div>
-      )}
-      <div className="min-w-0 px-3 py-2.5">
-        <div className="text-message-foreground text-xs font-medium">
-          {props.record.pageTitle?.trim() || props.record.pageUrl || "Preview annotation"}
-        </div>
-        {props.record.comment ? (
-          <div className="mt-1 whitespace-pre-wrap wrap-break-word text-sm">
-            {props.record.comment}
-          </div>
-        ) : null}
-        <div className="mt-1 flex items-center gap-2 text-secondary-label text-3xs">
-          {props.record.targetSummary ? (
-            <span className="truncate">{props.record.targetSummary}</span>
-          ) : null}
-          {(props.record.styleChanges?.length ?? 0) > 0 ? (
-            <span className="inline-flex shrink-0 items-center gap-1">
-              <PaintbrushIcon className="size-3" />
-              {props.record.styleChanges?.length ?? 0}
-            </span>
-          ) : null}
-        </div>
-        {visibleElements.length > 0 ? (
-          <div className="mt-2 space-y-2 border-t border-border/60 pt-2">
-            {visibleElements.map((element) => {
-              const source = element.source;
-              const sourceLabel = source?.fileName
-                ? `${source.fileName}${source.lineNumber === null ? "" : `:${source.lineNumber}`}`
-                : null;
-              return (
-                <div
-                  key={`${element.selector}\u0000${element.tagName}\u0000${sourceLabel ?? ""}\u0000${element.htmlPreview}`}
-                  className="min-w-0"
-                >
-                  <div className="flex min-w-0 items-center gap-2 text-xs">
-                    <code className="truncate text-message-foreground">
-                      {element.selector || `<${element.tagName}>`}
-                    </code>
-                    {sourceLabel ? (
-                      <span className="ml-auto shrink-0 text-secondary-label">{sourceLabel}</span>
-                    ) : null}
-                  </div>
-                  {element.htmlPreview?.trim() ? (
-                    <pre className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap rounded bg-muted/60 px-2 py-1.5 text-3xs leading-relaxed">
-                      {element.htmlPreview.trim()}
-                    </pre>
-                  ) : null}
-                </div>
-              );
-            })}
-            {(props.record.elements?.length ?? 0) > visibleElements.length ? (
-              <div className="text-secondary-label text-3xs">
-                {(props.record.elements?.length ?? 0) - visibleElements.length} more selected
-                elements
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function UserMessageElementDetails({
-  record,
-}: {
-  record: Extract<KnownComposerContextRecord, { kind: "element" }>;
-}) {
-  const sourceLabel = record.source?.fileName
-    ? `${record.source.fileName}${record.source.lineNumber === null ? "" : `:${record.source.lineNumber}`}`
-    : null;
-  return (
-    <div className="max-w-full overflow-hidden rounded-lg border border-border/70 bg-background/70">
-      <div className="border-b border-border/70 px-3 py-2.5">
-        <div className="truncate text-message-foreground text-xs font-medium">
-          {record.pageTitle?.trim() || record.pageUrl}
-        </div>
-        <div className="mt-0.5 truncate text-secondary-label text-3xs">{record.pageUrl}</div>
-      </div>
-      <div className="space-y-2 px-3 py-2.5">
-        <div className="flex min-w-0 items-center gap-2 text-xs">
-          <code className="truncate text-message-foreground">
-            {record.selector || `<${record.tagName}>`}
-          </code>
-          {sourceLabel ? (
-            <span className="ml-auto shrink-0 text-secondary-label">{sourceLabel}</span>
-          ) : null}
-        </div>
-        {record.htmlPreview?.trim() ? (
-          <div className="flex h-40 flex-col overflow-hidden rounded border border-border">
-            <ReadOnlySourcePreview name="element.html" text={record.htmlPreview} />
-          </div>
-        ) : null}
-        {record.styles?.trim() ? (
-          <div className="flex h-32 flex-col overflow-hidden rounded border border-border">
-            <ReadOnlySourcePreview name="styles.css" text={record.styles} />
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
 interface UserMessageContextRenderContext {
   reference: ChatMarkdownContextReference;
   annotationImage: ChatImageAttachment | null;
   attachment: ChatImageAttachment | ChatFileAttachment | null;
-  resolvedTheme: "light" | "dark";
   copyMarkdown: string;
+  row: TimelineRowSharedState;
   onExpandImage: (image: ChatImageAttachment) => void;
   onExpandVideo: (file: ChatFileAttachment) => void;
   onOpenFile: (file: ChatFileAttachment) => void;
+  onOpenLink: (event: MouseEvent<HTMLElement>, url: string) => void;
+  /** Only a checkout's chip has these. */
+  checkoutActions?: { onOpen: () => void; onLink?: () => void };
 }
 
 function UnavailableUserMessageContextChip(props: UserMessageContextRenderContext) {
@@ -4540,350 +4320,336 @@ function UnavailableUserMessageContextChip(props: UserMessageContextRenderContex
   );
 }
 
+type UserMessageHandler<K extends KnownComposerContextKind> = ContextPresentationHandler<
+  K,
+  KnownComposerContextRecord,
+  UserMessageContextRenderContext
+>;
+
+function linkedObjectHandler<K extends LinkedObjectContextKind>(kind: K): UserMessageHandler<K> {
+  return {
+    chip: (record, context) =>
+      record.kind === kind && isLinkedObjectContextRecord(record)
+        ? buttonContextChip({
+            kind,
+            icon: linkedObjectIcon(record),
+            label: record.label,
+            kindLabel: linkedObjectKindLabel(record),
+            copyMarkdown: context.copyMarkdown,
+            preview: { record, onOpenLink: context.onOpenLink },
+          })
+        : null,
+  };
+}
+
+function reviewCommentFromRecord(
+  record: Extract<KnownComposerContextRecord, { kind: "review-comment" }>,
+): ReviewCommentContext {
+  return {
+    id: record.contextId,
+    sectionId: record.sectionId,
+    sectionTitle: record.sectionTitle,
+    filePath: record.filePath,
+    startIndex: record.startIndex,
+    endIndex: record.endIndex,
+    rangeLabel: record.rangeLabel,
+    text: record.text,
+    diff: record.diff,
+    ...(record.fenceLanguage !== undefined ? { fenceLanguage: record.fenceLanguage } : {}),
+    ...(record.pullRequest !== undefined ? { pullRequest: record.pullRequest } : {}),
+    ...(record.thread !== undefined ? { thread: record.thread } : {}),
+  };
+}
+
 const userMessageContextPresentationRegistry = createContextPresentationRegistry<
   KnownComposerContextRecord,
-  UserMessageContextRenderContext,
-  ReactNode
+  UserMessageContextRenderContext
 >({
-  requiredKinds: COMPOSER_CONTEXT_KINDS,
-  handlers: [
-    {
-      kind: "mention",
-      canRender: (record) => record.kind === "mention",
-      render: (record, context) =>
-        record.kind === "mention" ? (
-          <UserMessageMentionChip record={record} copyMarkdown={context.copyMarkdown} />
-        ) : (
-          <UnavailableUserMessageContextChip {...context} />
-        ),
-    },
-    {
-      kind: "skill",
-      canRender: (record) => record.kind === "skill",
-      render: (record, context) =>
-        record.kind === "skill" ? (
-          <UserMessageContextChip
-            icon={<SkillChipIcon />}
-            label={record.label || record.name}
-            kindLabel="Skill"
-            tooltip={`$${record.name}`}
-            copyMarkdown={context.copyMarkdown}
-            kind="skill"
-          />
-        ) : (
-          <UnavailableUserMessageContextChip {...context} />
-        ),
-    },
-    {
-      kind: "thread",
-      canRender: (record) => record.kind === "thread",
-      render: (record, context) =>
-        record.kind === "thread" ? (
-          <ThreadContextChip record={record} copyMarkdown={context.copyMarkdown} />
-        ) : (
-          <UnavailableUserMessageContextChip {...context} />
-        ),
-    },
-    {
-      kind: "subagent",
-      canRender: (record) => record.kind === "subagent",
-      render: (record, context) =>
-        record.kind === "subagent" ? (
-          <SubagentContextChip record={record} copyMarkdown={context.copyMarkdown} />
-        ) : (
-          <UnavailableUserMessageContextChip {...context} />
-        ),
-    },
-    {
-      kind: "image",
-      canRender: (record, context) =>
-        record.kind === "image" &&
-        context.attachment !== null &&
-        isImageAttachment(context.attachment),
-      render: (record, context) => {
-        if (
-          record.kind !== "image" ||
-          context.attachment === null ||
-          !isImageAttachment(context.attachment)
-        ) {
-          return <UnavailableUserMessageContextChip {...context} />;
-        }
+  handlers: {
+    image: {
+      chip: (record, context) => {
         const attachment = context.attachment;
-        const size = formatAttachmentSize(record.sizeBytes);
-        const chip = (
-          <ImageChipButton
-            name={record.name}
-            previewUrl={attachment.previewUrl}
-            size={size}
-            data-markdown-copy={context.copyMarkdown}
-            onClick={() => context.onExpandImage(attachment)}
-          />
-        );
-        if (!attachment.previewUrl) return chip;
-        return (
-          <AttachmentPreviewCard
-            trigger={chip}
-            preview={<ImageAttachmentPreview url={attachment.previewUrl} />}
-            details={`${record.name}\n${size}`}
-          />
-        );
-      },
-    },
-    {
-      kind: "file",
-      canRender: (record, context) =>
-        record.kind === "file" && context.attachment !== null && context.attachment.type === "file",
-      render: (record, context) => {
-        if (
-          record.kind !== "file" ||
-          context.attachment === null ||
-          context.attachment.type !== "file"
-        ) {
-          return <UnavailableUserMessageContextChip {...context} />;
+        if (record.kind !== "image" || attachment === null || !isImageAttachment(attachment)) {
+          return null;
         }
-        const attachment = context.attachment;
-        const isVideo = isVideoAttachment(attachment);
-        const disabled =
-          attachment.downloadable === false && (!isVideo || attachment.previewUrl === undefined);
-        const size = formatAttachmentSize(record.sizeBytes);
-        return (
-          <FileChip
-            name={record.name}
-            size={size}
-            isVideo={isVideo}
-            theme={context.resolvedTheme}
-            disabled={disabled}
-            accessibleLabel={`${isVideo ? "Video" : "File"} attachment, ${record.name}, ${size}`}
-            copyMarkdown={context.copyMarkdown}
-            onOpen={() =>
-              isVideo ? context.onExpandVideo(attachment) : context.onOpenFile(attachment)
-            }
-            tooltip={`${record.name}\n${size}`}
-          />
-        );
-      },
-    },
-    {
-      kind: "terminal",
-      canRender: (record) => record.kind === "terminal",
-      render: (record, context, definition) =>
-        record.kind === "terminal" ? (
-          <span data-markdown-copy={context.copyMarkdown}>
-            <TerminalContextInlineChip
-              label={record.label}
-              terminalLabel={record.terminalLabel}
-              lineStart={record.lineStart}
-              lineEnd={record.lineEnd}
-              text={record.text}
-              styledText={record.styledText}
-              detailsMode={definition.capabilities.details}
+        return {
+          trigger: (
+            <ImageChipButton
+              name={record.name}
+              previewUrl={attachment.previewUrl}
+              size={formatAttachmentSize(record.sizeBytes)}
+              data-markdown-copy={context.copyMarkdown}
+              onClick={() => context.onExpandImage(attachment)}
             />
-          </span>
-        ) : (
-          <UnavailableUserMessageContextChip {...context} />
-        ),
+          ),
+          accessibleLabel: `Image attachment, ${record.name}`,
+          preview: {
+            name: record.name,
+            sizeBytes: record.sizeBytes,
+            previewUrl: attachment.previewUrl,
+          },
+        };
+      },
     },
-    {
-      kind: "element",
-      canRender: (record) => record.kind === "element",
-      render: (record, context) =>
-        record.kind === "element" ? (
-          <UserMessageContextPopover
-            copyMarkdown={context.copyMarkdown}
-            accessibleLabel={`Browser element, ${record.label}`}
-            kind="element"
-            icon={<MousePointerClickIcon />}
-            label={record.label}
-          >
-            <UserMessageElementDetails record={record} />
-          </UserMessageContextPopover>
-        ) : (
-          <UnavailableUserMessageContextChip {...context} />
-        ),
-    },
-    {
-      kind: "review-comment",
-      canRender: (record) => record.kind === "review-comment",
-      render: (record, context) => {
-        if (record.kind !== "review-comment") {
-          return <UnavailableUserMessageContextChip {...context} />;
+    file: {
+      chip: (record, context) => {
+        const attachment = context.attachment;
+        if (record.kind !== "file" || attachment === null || attachment.type !== "file") {
+          return null;
         }
+        const isVideo = isVideoAttachment(attachment);
+        const size = formatAttachmentSize(record.sizeBytes);
+        return {
+          trigger: (
+            <FileChip
+              name={record.name}
+              size={size}
+              isVideo={isVideo}
+              theme={context.row.resolvedTheme}
+              disabled={
+                attachment.downloadable === false &&
+                (!isVideo || attachment.previewUrl === undefined)
+              }
+              accessibleLabel={`${isVideo ? "Video" : "File"} attachment, ${record.name}, ${size}`}
+              copyMarkdown={context.copyMarkdown}
+              onOpen={() =>
+                isVideo ? context.onExpandVideo(attachment) : context.onOpenFile(attachment)
+              }
+            />
+          ),
+          accessibleLabel: `File attachment, ${record.name}`,
+          preview: { name: record.name, sizeBytes: record.sizeBytes, mimeType: record.mimeType },
+        };
+      },
+    },
+    terminal: {
+      chip: (record, context) =>
+        record.kind === "terminal"
+          ? {
+              trigger: (
+                <TerminalChipTrigger
+                  label={record.label}
+                  expired={false}
+                  copyMarkdown={context.copyMarkdown}
+                />
+              ),
+              accessibleLabel: `Terminal excerpt, ${record.label}`,
+              preview: {
+                label: record.label,
+                terminalLabel: record.terminalLabel,
+                lineStart: record.lineStart,
+                lineEnd: record.lineEnd,
+                text: record.text,
+                styledText: record.styledText,
+                expired: false,
+              },
+            }
+          : null,
+    },
+    element: {
+      chip: (record, context) =>
+        record.kind === "element"
+          ? buttonContextChip({
+              kind: "element",
+              icon: <MousePointerClickIcon />,
+              label: record.label,
+              kindLabel: "Browser element",
+              copyMarkdown: context.copyMarkdown,
+              preview: { record },
+            })
+          : null,
+    },
+    "preview-annotation": {
+      chip: (record, context) => {
+        if (record.kind !== "preview-annotation") return null;
+        const image = context.annotationImage;
+        const screenshotUrl = image?.previewUrl ?? null;
+        return buttonContextChip({
+          kind: "preview-annotation",
+          icon: <MousePointerClickIcon />,
+          label: record.label,
+          kindLabel: "Preview annotation",
+          copyMarkdown: context.copyMarkdown,
+          preview: {
+            record,
+            screenshotUrl,
+            onExpandScreenshot:
+              image && screenshotUrl
+                ? () => {
+                    const preview = buildExpandedImagePreview([image], image.id);
+                    if (preview) context.row.onImageExpand(preview);
+                  }
+                : undefined,
+          },
+        });
+      },
+    },
+    "review-comment": {
+      chip: (record, context) => {
+        if (record.kind !== "review-comment") return null;
         const isPullRequest = isPullRequestSummaryContext(record);
         const label = reviewCommentContextLabel(record);
         const kindLabel = isPullRequest ? pullRequestContextKindLabel(record) : "Review comment";
-        const pullRequestState = pullRequestContextDisplayState(record) ?? "unknown";
+        const kind = isPullRequest
+          ? PULL_REQUEST_CHIP_KINDS[pullRequestContextDisplayState(record) ?? "unknown"]
+          : "review-comment";
+        const preview = {
+          comment: reviewCommentFromRecord(record),
+          environmentId: context.row.activeThreadEnvironmentId,
+          workspaceRoot: context.row.workspaceRoot,
+          markdownCwd: context.row.markdownCwd,
+          threadRef: context.row.threadRef ?? undefined,
+        };
+        const accessibleLabel = `${kindLabel}, ${label}${record.pullRequest ? `, ${record.pullRequest.title}` : ""}`;
         if (isPullRequest && record.pullRequest !== undefined) {
-          return (
-            <UserMessagePullRequestContextChip
-              record={record}
-              copyMarkdown={context.copyMarkdown}
-              kind={PULL_REQUEST_CHIP_KINDS[pullRequestState]}
-            />
-          );
+          return {
+            trigger: (
+              <PullRequestChipTrigger
+                metadata={record.pullRequest}
+                label={label}
+                kindLabel={kindLabel}
+                kind={kind}
+                copyMarkdown={context.copyMarkdown}
+                onOpen={context.row.openPullRequest}
+              />
+            ),
+            accessibleLabel,
+            preview,
+          };
         }
-        return (
-          <UserMessageContextPopover
-            copyMarkdown={context.copyMarkdown}
-            accessibleLabel={`${kindLabel}, ${label}${record.pullRequest ? `, ${record.pullRequest.title}` : ""}`}
-            kind={isPullRequest ? PULL_REQUEST_CHIP_KINDS[pullRequestState] : "review-comment"}
-            icon={isPullRequest ? <PullRequestGlyph.pullRequest /> : <MessageCircleIcon />}
-            label={label}
-          >
-            <UserMessageReviewCommentCard
-              comment={{
-                id: record.contextId,
-                sectionId: record.sectionId,
-                sectionTitle: record.sectionTitle,
-                filePath: record.filePath,
-                startIndex: record.startIndex,
-                endIndex: record.endIndex,
-                rangeLabel: record.rangeLabel,
-                text: record.text,
-                diff: record.diff,
-                ...(record.fenceLanguage !== undefined
-                  ? { fenceLanguage: record.fenceLanguage }
-                  : {}),
-                ...(record.pullRequest !== undefined ? { pullRequest: record.pullRequest } : {}),
-                ...(record.thread !== undefined ? { thread: record.thread } : {}),
-              }}
+        return {
+          trigger: (
+            <ContextChipButton
+              kind={kind}
+              icon={isPullRequest ? <PullRequestGlyph.pullRequest /> : <MessageCircleIcon />}
+              label={label}
+              aria-label={`${accessibleLabel}. Show details`}
+              copyMarkdown={context.copyMarkdown}
             />
-          </UserMessageContextPopover>
-        );
+          ),
+          accessibleLabel,
+          preview,
+        };
       },
     },
-    {
-      kind: "preview-annotation",
-      canRender: (record) => record.kind === "preview-annotation",
-      render: (record, context) =>
-        record.kind === "preview-annotation" ? (
-          <UserMessageContextPopover
-            copyMarkdown={context.copyMarkdown}
-            accessibleLabel={`Preview annotation, ${record.label}`}
-            kind="preview-annotation"
-            icon={<MousePointerClickIcon />}
-            label={record.label}
-          >
-            <UserMessagePreviewAnnotationDetails record={record} image={context.annotationImage} />
-          </UserMessageContextPopover>
-        ) : (
-          <UnavailableUserMessageContextChip {...context} />
-        ),
-    },
-    {
-      kind: "thread-tab",
-      canRender: (record) => record.kind === "thread-tab",
-      render: (record, context) =>
-        record.kind === "thread-tab" ? (
-          <UserMessageContextPopover
-            copyMarkdown={context.copyMarkdown}
-            accessibleLabel={`Chat summary, ${record.label}`}
-            kind="thread-tab"
-            icon={<MessagesSquareIcon />}
-            label={record.label}
-          >
-            <ThreadTabSummaryDetails summary={record.summary} />
-          </UserMessageContextPopover>
-        ) : (
-          <UnavailableUserMessageContextChip {...context} />
-        ),
-    },
-    ...LINKED_OBJECT_CONTEXT_KINDS.map(
-      (
-        kind,
-      ): ContextPresentationHandler<
-        KnownComposerContextRecord,
-        UserMessageContextRenderContext,
-        ReactNode
-      > => ({
-        kind,
-        canRender: (record) => record.kind === kind,
-        render: (record, context) =>
-          isLinkedObjectContextRecord(record) ? (
-            <UserMessageContextPopover
-              copyMarkdown={context.copyMarkdown}
-              accessibleLabel={`${linkedObjectKindLabel(record)}, ${record.label}`}
-              kind={kind}
-              icon={linkedObjectIcon(record)}
-              label={record.label}
+    mention: {
+      chip: (record, context) => {
+        if (record.kind !== "mention") return null;
+        const { row } = context;
+        return {
+          trigger: (
+            <ContextChip
+              kind="mention"
+              render={<button type="button" />}
+              aria-label={`Preview ${record.path}`}
+              data-markdown-copy={context.copyMarkdown}
+              onClick={() => {
+                if (row.threadRef)
+                  useRightPanelStore.getState().openFile(row.threadRef, record.path);
+              }}
             >
-              <UserMessageLinkedObjectDetails record={record} />
-            </UserMessageContextPopover>
-          ) : (
-            <UnavailableUserMessageContextChip {...context} />
+              <WorkspaceEntryIcon
+                path={record.path}
+                environmentId={row.activeThreadEnvironmentId}
+                cwd={row.workspaceRoot}
+                theme={row.resolvedTheme}
+              />
+              <ContextChipLabel>{record.label}</ContextChipLabel>
+            </ContextChip>
           ),
-      }),
-    ),
-    {
-      kind: "unread-link",
-      canRender: (record) => record.kind === "unread-link",
-      render: (record, context) =>
-        record.kind === "unread-link" ? (
-          <UserMessageUnreadLinkChip record={record} copyMarkdown={context.copyMarkdown} />
-        ) : (
-          <UnavailableUserMessageContextChip {...context} />
-        ),
+          accessibleLabel: record.path,
+          preview: {
+            path: record.path,
+            environmentId: row.activeThreadEnvironmentId,
+            cwd: row.workspaceRoot,
+          },
+        };
+      },
     },
-    {
-      kind: "checkout",
-      canRender: (record) => record.kind === "checkout",
-      render: (record, context) =>
-        record.kind === "checkout" ? (
-          <UserMessageCheckoutChip record={record} copyMarkdown={context.copyMarkdown} />
-        ) : (
-          <UnavailableUserMessageContextChip {...context} />
-        ),
+    skill: {
+      chip: (record, context) =>
+        record.kind === "skill"
+          ? messageSkillChip({
+              name: record.name,
+              label: record.label,
+              skill: messageSkillByName(context.row.skills, record.name),
+              copyMarkdown: context.copyMarkdown,
+              threadRef: context.row.threadRef,
+            })
+          : null,
     },
-  ],
+    "thread-tab": {
+      chip: (record, context) =>
+        record.kind === "thread-tab"
+          ? buttonContextChip({
+              kind: "thread-tab",
+              icon: <MessagesSquareIcon />,
+              label: record.label,
+              kindLabel: "Chat summary",
+              copyMarkdown: context.copyMarkdown,
+              preview: { summary: record.summary },
+            })
+          : null,
+    },
+    "linear-issue": linkedObjectHandler("linear-issue"),
+    "github-issue": linkedObjectHandler("github-issue"),
+    repository: linkedObjectHandler("repository"),
+    checkout: {
+      chip: (record, context) =>
+        record.kind === "checkout"
+          ? buttonContextChip({
+              kind: "checkout",
+              icon: <FolderIcon />,
+              label: record.label,
+              kindLabel: "Checkout",
+              copyMarkdown: context.copyMarkdown,
+              preview: { record, ...context.checkoutActions },
+            })
+          : null,
+    },
+    "slack-thread": linkedObjectHandler("slack-thread"),
+    "discord-thread": linkedObjectHandler("discord-thread"),
+    "notion-page": linkedObjectHandler("notion-page"),
+    "granola-note": linkedObjectHandler("granola-note"),
+    thread: {
+      chip: (record, context) =>
+        record.kind === "thread"
+          ? {
+              trigger: <ThreadChipTrigger record={record} copyMarkdown={context.copyMarkdown} />,
+              accessibleLabel: `Thread, ${record.title}`,
+              preview: { record },
+            }
+          : null,
+    },
+    subagent: {
+      chip: (record, context) =>
+        record.kind === "subagent"
+          ? {
+              trigger: <SubagentChipTrigger record={record} copyMarkdown={context.copyMarkdown} />,
+              accessibleLabel: subagentChipAccessibleLabel(record),
+              preview: { record },
+            }
+          : null,
+    },
+    "prompt-link": linkedObjectHandler("prompt-link"),
+    "github-ref": linkedObjectHandler("github-ref"),
+    "unread-link": {
+      chip: (record, context) =>
+        record.kind === "unread-link"
+          ? {
+              trigger: (
+                <UnreadLinkChipTrigger record={record} copyMarkdown={context.copyMarkdown} />
+              ),
+              accessibleLabel: unreadLinkAccessibleLabel(record),
+              preview: { record, onOpenLink: context.onOpenLink },
+            }
+          : null,
+    },
+  },
   fallback: (_kind, _record, context) => <UnavailableUserMessageContextChip {...context} />,
 });
 
-function UserMessageCheckoutChip(props: {
-  record: Extract<KnownComposerContextRecord, { kind: "checkout" }>;
-  copyMarkdown: string;
-}) {
-  const { threadRef } = use(TimelineRowCtx);
-  const editors = useAtomValue(primaryServerAvailableEditorsAtom);
-  const openInEditor = useOpenInPreferredEditor(props.record.environmentId, editors);
-  const link = useAtomCommand(threadEnvironment.linkCheckout, { reportFailure: true });
-  return (
-    <UserMessageContextPopover
-      copyMarkdown={props.copyMarkdown}
-      accessibleLabel={`Checkout, ${props.record.label}`}
-      kind="checkout"
-      icon={<FolderIcon />}
-      label={props.record.label}
-    >
-      <CheckoutDetails
-        record={props.record}
-        onOpen={() => {
-          void openInEditor(props.record.path);
-        }}
-        {...(threadRef === null
-          ? {}
-          : {
-              onLink: () => {
-                void link({
-                  environmentId: threadRef.environmentId,
-                  input: {
-                    threadId: threadRef.threadId,
-                    path: props.record.path,
-                    name: props.record.label,
-                  },
-                });
-              },
-            })}
-      />
-    </UserMessageContextPopover>
-  );
-}
-
-function UserMessageLinkedObjectDetails({ record }: { record: LinkedObjectContextRecord }) {
-  const { threadRef } = use(TimelineRowCtx);
-  return <LinkedObjectDetails record={record} onOpenLink={useLinkClickHandler(threadRef)} />;
-}
-
-/** One inline context chip in a sent message, dispatched by the shared presentation registry. */
-function UserMessageContextReferenceChip(props: {
+type UserMessageContextReferenceChipProps = {
   reference: ChatMarkdownContextReference;
   record: KnownComposerContextRecord | undefined;
   annotationImage: ChatImageAttachment | null;
@@ -4891,8 +4657,61 @@ function UserMessageContextReferenceChip(props: {
   onExpandImage: (image: ChatImageAttachment) => void;
   onExpandVideo: (file: ChatFileAttachment) => void;
   onOpenFile: (file: ChatFileAttachment) => void;
-}) {
-  const { resolvedTheme } = use(TimelineRowCtx);
+};
+
+/** One inline context chip in a sent message, dispatched by the shared presentation registry. */
+function UserMessageContextReferenceChip(props: UserMessageContextReferenceChipProps) {
+  return props.record?.kind === "checkout" ? (
+    <UserMessageCheckoutReferenceChip {...props} checkout={props.record} />
+  ) : (
+    <UserMessageRegistryChip {...props} />
+  );
+}
+
+/** A checkout's preview can open it in the editor and link it to this thread. */
+function UserMessageCheckoutReferenceChip(
+  props: UserMessageContextReferenceChipProps & {
+    checkout: Extract<KnownComposerContextRecord, { kind: "checkout" }>;
+  },
+) {
+  const { threadRef } = use(TimelineRowCtx);
+  const { checkout } = props;
+  const editors = useAtomValue(primaryServerAvailableEditorsAtom);
+  const openInEditor = useOpenInPreferredEditor(checkout.environmentId, editors);
+  const link = useAtomCommand(threadEnvironment.linkCheckout, { reportFailure: true });
+  return (
+    <UserMessageRegistryChip
+      {...props}
+      checkoutActions={{
+        onOpen: () => {
+          void openInEditor(checkout.path);
+        },
+        ...(threadRef === null
+          ? {}
+          : {
+              onLink: () => {
+                void link({
+                  environmentId: threadRef.environmentId,
+                  input: {
+                    threadId: threadRef.threadId,
+                    path: checkout.path,
+                    name: checkout.label,
+                  },
+                });
+              },
+            }),
+      }}
+    />
+  );
+}
+
+function UserMessageRegistryChip(
+  props: UserMessageContextReferenceChipProps & {
+    checkoutActions?: UserMessageContextRenderContext["checkoutActions"];
+  },
+) {
+  const row = use(TimelineRowCtx);
+  const onOpenLink = useLinkClickHandler(row.threadRef);
   const copyMarkdown = formatComposerContextReference({
     kind: props.reference.kind,
     contextId: props.reference.contextId as ComposerContextId,
@@ -4902,11 +4721,13 @@ function UserMessageContextReferenceChip(props: {
     reference: props.reference,
     annotationImage: props.annotationImage,
     attachment: props.attachment,
-    resolvedTheme,
     copyMarkdown,
+    row,
     onExpandImage: props.onExpandImage,
     onExpandVideo: props.onExpandVideo,
     onOpenFile: props.onOpenFile,
+    onOpenLink,
+    ...(props.checkoutActions ? { checkoutActions: props.checkoutActions } : {}),
   });
 }
 
@@ -4916,7 +4737,7 @@ const COLLAPSED_USER_MESSAGE_FADE_MASK = `linear-gradient(to bottom, black calc(
 const CollapsibleUserMessageBody = memo(function CollapsibleUserMessageBody(props: {
   text: string;
   renderContextReference: (reference: ChatMarkdownContextReference) => ReactNode;
-  skills: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
+  skills: ReadonlyArray<MessageSkill>;
   markdownCwd: string | undefined;
   footer?: ReactNode;
 }) {
@@ -4990,7 +4811,7 @@ const CollapsibleUserMessageBody = memo(function CollapsibleUserMessageBody(prop
 const UserMessageBody = memo(function UserMessageBody(props: {
   text: string;
   renderContextReference?: (reference: ChatMarkdownContextReference) => ReactNode;
-  skills: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
+  skills: ReadonlyArray<MessageSkill>;
   markdownCwd: string | undefined;
 }) {
   const ctx = use(TimelineRowCtx);
@@ -5011,32 +4832,6 @@ const UserMessageBody = memo(function UserMessageBody(props: {
     />
   );
 });
-
-function UserMessageReviewCommentCard({ comment }: { comment: ReviewCommentContext }) {
-  const ctx = use(TimelineRowCtx);
-  const renderRemark = (body: string) => (
-    <ChatMarkdown
-      text={body}
-      cwd={ctx.markdownCwd}
-      threadRef={ctx.threadRef ?? undefined}
-      skills={ctx.skills}
-      className="text-foreground"
-    />
-  );
-  return (
-    <ReviewCommentCard
-      comment={comment}
-      displayPath={formatWorkspaceRelativePath(comment.filePath, ctx.workspaceRoot)}
-      renderRemark={renderRemark}
-      note={
-        comment.text.length > 0 ? (
-          <div className="whitespace-pre-wrap wrap-break-word">{renderRemark(comment.text)}</div>
-        ) : null
-      }
-      threadRef={ctx.threadRef}
-    />
-  );
-}
 
 function handoffRunsSignature(runs: ReadonlyArray<HandoffTimelineRun>): string {
   return runs
@@ -6059,19 +5854,5 @@ function QuestionAnswerHistory({
         </div>
       ))}
     </div>
-  );
-}
-
-function UserMessageUnreadLinkChip(props: {
-  record: UnreadLinkContextRecord;
-  copyMarkdown: string;
-}) {
-  const { threadRef } = use(TimelineRowCtx);
-  return (
-    <UnreadLinkChip
-      record={props.record}
-      copyMarkdown={props.copyMarkdown}
-      onOpenLink={useLinkClickHandler(threadRef)}
-    />
   );
 }

@@ -61,7 +61,6 @@ import {
   type EnvironmentId,
   type ServerConfig,
   type ScopedThreadRef,
-  type ServerProviderSkill,
   type ThreadPullRequestKey,
 } from "@t3tools/contracts";
 import { faviconUrlForOrigin } from "@t3tools/shared/favicon";
@@ -124,7 +123,7 @@ import {
   artifactTemplateFromHastProperties,
   renderCodexInlineDirectivesAsMarkdown,
 } from "@t3tools/shared/codexMarkdownDirectives";
-import { renderSkillInlineMarkdownChildren } from "./chat/SkillInlineText";
+import { renderSkillInlineMarkdownChildren, type MessageSkill } from "./chat/SkillInlineText";
 import { MarkdownMath } from "./chat/MarkdownMath";
 import {
   resolveMarkdownMediaPreview,
@@ -135,7 +134,7 @@ import { markdownImageGallery, markdownImageItems } from "./chat/markdownImageGa
 import { MediaVideoPlayer } from "./media/MediaVideoPlayer";
 import { MediaActions, type MediaActionSource } from "./media/MediaActions";
 import { resolveProtocolRelativeMediaUrl } from "./media/mediaContent";
-import { WorkspaceEntryTooltip } from "./chat/WorkspaceEntryIcon";
+import { ContextPreviewHover } from "./contextPresentationRegistry";
 import { FileTagChipContent } from "./chat/FileTagChip";
 import { PierreEntryIcon } from "./chat/PierreEntryIcon";
 import {
@@ -264,7 +263,7 @@ interface ChatMarkdownProps {
   environmentId?: EnvironmentId | undefined;
   onTaskListChange?: ((input: { markerOffset: number; checked: boolean }) => void) | undefined;
   isStreaming?: boolean;
-  skills?: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
+  skills?: ReadonlyArray<MessageSkill>;
   className?: string;
   lineBreaks?: boolean;
   parseRawHtml?: boolean;
@@ -341,7 +340,7 @@ export function shouldUseMarkdownFileBrowserPrimaryAction(input: {
   );
 }
 
-const EMPTY_MARKDOWN_SKILLS: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">> = [];
+const EMPTY_MARKDOWN_SKILLS: ReadonlyArray<MessageSkill> = [];
 const EMPTY_REMARK_PLUGINS: NonNullable<ReactMarkdownOptions["remarkPlugins"]> = [];
 
 const ARTIFACT_TEMPLATE_ICON_BY_KIND = {
@@ -2467,64 +2466,60 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
   });
 
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          hasPrimaryAction ? (
-            <ContextChip
-              kind="mention"
-              render={<a href={href} />}
-              className={MARKDOWN_FILE_LINK_CLASS_NAME}
-              data-markdown-copy={copyMarkdown}
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                if (onOpen && shouldOpenMarkdownFileLinkInEditor(event)) {
-                  handleOpenInEditor();
-                  return;
-                }
-                if (useBrowserPrimaryAction && !openExternally) {
-                  handleOpenInBrowser();
-                  return;
-                }
-                handleOpenInFilePreview();
-              }}
-              onContextMenu={handleContextMenu}
-            >
-              <FileTagChipContent
-                path={iconPath}
-                environmentId={environmentId}
-                label={label}
-                theme={theme}
-              />
-            </ContextChip>
-          ) : (
-            <ContextChip
-              kind="mention"
-              render={<button type="button" />}
-              aria-label={`File options for ${label}`}
-              aria-haspopup="menu"
-              className={cn(MARKDOWN_FILE_LINK_CLASS_NAME, "select-text")}
-              data-markdown-copy={copyMarkdown}
-              onClick={handleContextMenu}
-              onContextMenu={handleContextMenu}
-            >
-              <FileTagChipContent
-                path={iconPath}
-                environmentId={environmentId}
-                label={label}
-                theme={theme}
-              />
-            </ContextChip>
-          )
-        }
-      />
-      <TooltipPopup side="top" variant="code">
-        <div className="overflow-x-auto whitespace-nowrap scrollbar-thumb-border/78 scrollbar-track-transparent [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/78 [&::-webkit-scrollbar-track]:bg-transparent">
-          <WorkspaceEntryTooltip path={iconPath} label={targetPath} environmentId={environmentId} />
-        </div>
-      </TooltipPopup>
-    </Tooltip>
+    <ContextPreviewHover
+      kind="mention"
+      accessibleLabel={label}
+      preview={{ path: iconPath, label: targetPath, environmentId: environmentId ?? null }}
+      trigger={
+        hasPrimaryAction ? (
+          <ContextChip
+            kind="mention"
+            render={<a href={href} />}
+            className={MARKDOWN_FILE_LINK_CLASS_NAME}
+            data-markdown-copy={copyMarkdown}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              if (onOpen && shouldOpenMarkdownFileLinkInEditor(event)) {
+                handleOpenInEditor();
+                return;
+              }
+              if (useBrowserPrimaryAction && !openExternally) {
+                handleOpenInBrowser();
+                return;
+              }
+              handleOpenInFilePreview();
+            }}
+            onContextMenu={handleContextMenu}
+          >
+            <FileTagChipContent
+              path={iconPath}
+              environmentId={environmentId}
+              label={label}
+              theme={theme}
+            />
+          </ContextChip>
+        ) : (
+          <ContextChip
+            kind="mention"
+            render={<button type="button" />}
+            aria-label={`File options for ${label}`}
+            aria-haspopup="menu"
+            className={cn(MARKDOWN_FILE_LINK_CLASS_NAME, "select-text")}
+            data-markdown-copy={copyMarkdown}
+            onClick={handleContextMenu}
+            onContextMenu={handleContextMenu}
+          >
+            <FileTagChipContent
+              path={iconPath}
+              environmentId={environmentId}
+              label={label}
+              theme={theme}
+            />
+          </ContextChip>
+        )
+      }
+    />
   );
 }, areMarkdownFileLinkPropsEqual);
 
@@ -3170,8 +3165,10 @@ const CHAT_MARKDOWN_COMPONENTS = {
     return <div {...props}>{children}</div>;
   },
   p: function MarkdownParagraph({ node: _node, children, ...props }) {
-    const { skills } = use(ChatMarkdownRendererContext);
-    return <p {...props}>{renderSkillInlineMarkdownChildren(children, skills)}</p>;
+    const { skills, threadRef } = use(ChatMarkdownRendererContext);
+    return (
+      <p {...props}>{renderSkillInlineMarkdownChildren(children, skills, threadRef ?? null)}</p>
+    );
   },
   blockquote: function MarkdownBlockquote({ node: _node, children, ...props }) {
     const alert =
@@ -3202,14 +3199,14 @@ const CHAT_MARKDOWN_COMPONENTS = {
     );
   },
   li: function MarkdownListItem({ node, children, ...props }) {
-    const { skills } = use(ChatMarkdownRendererContext);
+    const { skills, threadRef } = use(ChatMarkdownRendererContext);
     // The checkbox finds its marker from this offset when toggled, so list items
     // don't read the source text and re-render on every streamed token.
     // remark-gfm marks task items with this class; plain items carry no offset.
     const isTaskItem = String(props.className ?? "").includes("task-list-item");
     return (
       <li {...props} data-list-item-offset={isTaskItem ? node?.position?.start.offset : undefined}>
-        {renderSkillInlineMarkdownChildren(children, skills)}
+        {renderSkillInlineMarkdownChildren(children, skills, threadRef ?? null)}
       </li>
     );
   },

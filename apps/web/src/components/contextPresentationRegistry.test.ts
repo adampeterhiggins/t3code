@@ -1,59 +1,91 @@
-import { COMPOSER_CONTEXT_KINDS } from "@t3tools/contracts";
-import { describe, expect, it } from "vite-plus/test";
+import { COMPOSER_CONTEXT_KINDS, type KnownComposerContextKind } from "@t3tools/contracts";
+import { createElement, isValidElement } from "react";
+import { describe, expect, it, vi } from "vite-plus/test";
+
+// Preview bodies pull in the diff worker through the file previews.
+vi.mock("@pierre/diffs/worker/worker.js?worker", () => ({ default: function Worker() {} }));
 
 import {
   CONTEXT_PRESENTATION_DEFINITIONS,
-  contextPresentationDefinition,
+  ContextPreviewHover,
   createContextPresentationRegistry,
+  type ContextPresentationHandlers,
 } from "./contextPresentationRegistry";
 
+const fallback = (kind: string) => createElement("span", { "data-fallback": kind });
+
+/** A surface that draws every kind the same way, unless a kind is left out. */
+function surfaceHandlers(options: {
+  omit?: KnownComposerContextKind;
+  draws?: (record: string) => boolean;
+}) {
+  const handlers = Object.fromEntries(
+    COMPOSER_CONTEXT_KINDS.filter((kind) => kind !== options.omit).map((kind) => [
+      kind,
+      {
+        chip: (record: string) =>
+          options.draws?.(record) === false
+            ? null
+            : {
+                trigger: createElement("button", { type: "button" }, record),
+                accessibleLabel: record,
+                preview: { record },
+              },
+      },
+    ]),
+  );
+  // Built from the kind list, so the compile-time completeness check can't see it.
+  return handlers as unknown as ContextPresentationHandlers<string, undefined>;
+}
+
 describe("contextPresentationRegistry", () => {
-  it("defines presentation capabilities for every known context kind", () => {
-    expect([...CONTEXT_PRESENTATION_DEFINITIONS.keys()]).toEqual(COMPOSER_CONTEXT_KINDS);
-    expect(contextPresentationDefinition("terminal").capabilities).toEqual({
-      details: "popover",
-      expanded: "none",
-      defaultDraftView: "compact",
+  it("decides a preview for every known context kind", () => {
+    expect(Object.keys(CONTEXT_PRESENTATION_DEFINITIONS)).toEqual(COMPOSER_CONTEXT_KINDS);
+    for (const kind of COMPOSER_CONTEXT_KINDS) {
+      const preview = CONTEXT_PRESENTATION_DEFINITIONS[kind].preview;
+      if (preview.details !== "none") expect(preview.Body, kind).toBeTypeOf("function");
+    }
+  });
+
+  it("draws every surface's chip inside its kind's registered preview", () => {
+    const registry = createContextPresentationRegistry({
+      handlers: surfaceHandlers({}),
+      fallback,
     });
+    for (const kind of COMPOSER_CONTEXT_KINDS) {
+      const rendered = registry.render(kind, `${kind} record`, undefined);
+      expect(isValidElement(rendered), kind).toBe(true);
+      expect(rendered.type, kind).toBe(ContextPreviewHover);
+      expect(rendered.props, kind).toMatchObject({
+        kind,
+        preview: { record: `${kind} record` },
+      });
+    }
   });
 
-  it("rejects duplicate handlers for one surface", () => {
+  it("rejects a surface that leaves a kind out", () => {
     expect(() =>
-      createContextPresentationRegistry<string, undefined, string>({
-        handlers: [
-          { kind: "terminal", render: () => "first" },
-          { kind: "terminal", render: () => "second" },
-        ],
-        fallback: () => "fallback",
-      }),
-    ).toThrowError("Duplicate context presentation handler: terminal");
-  });
-
-  it("rejects a missing handler required by a surface", () => {
-    expect(() =>
-      createContextPresentationRegistry<string, undefined, string>({
-        handlers: [{ kind: "terminal", render: () => "terminal" }],
-        requiredKinds: ["terminal", "review-comment"],
-        fallback: () => "fallback",
+      createContextPresentationRegistry({
+        handlers: surfaceHandlers({ omit: "review-comment" }),
+        fallback,
       }),
     ).toThrowError("Missing context presentation handler: review-comment");
   });
 
-  it("uses the explicit fallback for unknown, missing, and mismatched records", () => {
-    const registry = createContextPresentationRegistry<string, undefined, string>({
-      handlers: [
-        {
-          kind: "terminal",
-          canRender: (record) => record === "terminal",
-          render: () => "rendered",
-        },
-      ],
-      fallback: (kind) => `fallback:${kind}`,
+  it("uses the fallback for unknown kinds, missing records, and records a surface can't draw", () => {
+    const registry = createContextPresentationRegistry({
+      handlers: surfaceHandlers({ draws: (record) => record !== "stale" }),
+      fallback,
     });
 
-    expect(registry.render("terminal", "terminal", undefined)).toBe("rendered");
-    expect(registry.render("terminal", "file", undefined)).toBe("fallback:terminal");
-    expect(registry.render("terminal", undefined, undefined)).toBe("fallback:terminal");
-    expect(registry.render("future-kind", "payload", undefined)).toBe("fallback:future-kind");
+    expect(registry.render("terminal", "stale", undefined).props).toEqual({
+      "data-fallback": "terminal",
+    });
+    expect(registry.render("terminal", undefined, undefined).props).toEqual({
+      "data-fallback": "terminal",
+    });
+    expect(registry.render("future-kind", "payload", undefined).props).toEqual({
+      "data-fallback": "future-kind",
+    });
   });
 });

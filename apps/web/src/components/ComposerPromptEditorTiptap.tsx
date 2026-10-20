@@ -101,23 +101,15 @@ import {
 import { collectInlineContextIds } from "~/lib/composerContextReferences";
 import { resolveDiffThemeName } from "~/lib/diffRendering";
 import { cn, isMacPlatform } from "~/lib/utils";
-import { basenameOfPath } from "~/pierre-icons";
-import { WorkspaceEntryTooltip } from "./chat/WorkspaceEntryIcon";
-import { FileTagChipContent } from "./chat/FileTagChip";
-import { SkillChipIcon } from "./chat/SkillInlineText";
 import { AssistantCitationChip } from "./chat/AssistantCitationChip";
-import { PreviewCornerAction } from "./chat/PreviewCornerAction";
-import ChatMarkdown from "./ChatMarkdown";
 import { getTimelinePageScrollKey } from "./chat/pageScrollController";
-import { ContextChipPopover } from "./contextChipParts";
-import { ContextChip } from "./ContextChip";
 import {
-  ComposerContextActionsContext,
+  ComposerContextRecordChip,
   ComposerContextReferenceChip,
   ComposerContextRecordsContext,
 } from "./composerContextPresentation";
+import { skillPreviewDescription } from "./contextPreviews";
 import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { ComposerCodeBlockNodeView } from "./chat/ComposerCodeBlockNodeView";
 import { resolveAssistantCitationCommentDismissal } from "./chat/assistantCitationCommentDismissal";
 import { composerCodeBlockHighlight } from "./composerCodeBlockHighlight";
@@ -239,10 +231,6 @@ const SURROUND_CLOSE: Record<string, string> = {
   _: "_",
 };
 
-function resolvedThemeFromDocument(): "light" | "dark" {
-  return document.documentElement.classList.contains("dark") ? "dark" : "light";
-}
-
 /**
  * Wraps an inline chip node view: keeps the caret and text selection out of the chip and
  * paints the editor's node selection over it. Keep the wrapper inline so a truncated chip
@@ -275,39 +263,10 @@ const ComposerMentionExtension = Node.create({
 });
 
 function ComposerMentionNodeView({ node }: NodeViewProps) {
-  const actions = use(ComposerContextActionsContext);
   const path = (node.attrs.path as string) ?? "";
-  const chip = (
-    <ContextChip
-      kind="mention"
-      render={<button type="button" />}
-      onClick={() => actions.openMention(path)}
-      aria-label={`Preview ${path}`}
-      contentEditable={false}
-      spellCheck={false}
-      data-composer-mention-chip="true"
-    >
-      <FileTagChipContent
-        path={path}
-        environmentId={actions.environmentId}
-        cwd={actions.cwd}
-        label={basenameOfPath(path)}
-        theme={resolvedThemeFromDocument()}
-      />
-    </ContextChip>
-  );
   return (
     <NodeViewWrapper as="span" className={CHIP_NODE_SELECTION_CLASS_NAME}>
-      <Tooltip>
-        <TooltipTrigger render={chip} />
-        <TooltipPopup side="top">
-          <WorkspaceEntryTooltip
-            path={path}
-            environmentId={actions.environmentId}
-            cwd={actions.cwd}
-          />
-        </TooltipPopup>
-      </Tooltip>
+      <ComposerContextRecordChip entry={{ kind: "mention", record: { path } }} label={path} />
     </NodeViewWrapper>
   );
 }
@@ -353,44 +312,28 @@ function composerSkillMeta(
 }
 
 function ComposerSkillNodeView({ node }: NodeViewProps) {
-  const actions = use(ComposerContextActionsContext);
   const skills = use(RichComposerSkillsContext);
   const skillName = (node.attrs.skillName as string) ?? "";
-  const skillDescription = (node.attrs.skillDescription as string | null) ?? null;
   const skill = skills.find(
     (candidate) => candidate.name === skillName && isProviderSkillUserInvocable(candidate),
   );
-  const description = skill
-    ? skill.description?.trim() || skill.shortDescription?.trim()
-    : skillDescription;
-  // The node outlives a provider switch, so its stored label can be another provider's.
-  const skillLabel = skill
+  // The node outlives a provider switch, so its stored label and description can be another
+  // provider's; the current provider's skill wins.
+  const label = skill
     ? formatProviderSkillDisplayName(skill)
     : (node.attrs.skillLabel as string) || skillName;
+  const description = skill
+    ? skillPreviewDescription(skill)
+    : ((node.attrs.skillDescription as string | null) ?? null);
   return (
     <NodeViewWrapper as="span" className={CHIP_NODE_SELECTION_CLASS_NAME}>
-      <ContextChipPopover
-        kind="skill"
-        icon={<SkillChipIcon />}
-        label={skillLabel}
-        accessibleLabel={`Skill ${skillLabel}`}
-      >
-        <div className="space-y-3 p-2 text-sm">
-          <div className="flex items-baseline justify-between gap-3">
-            <p className="min-w-0 truncate font-medium">{skillLabel}</p>
-            {skill?.path && actions.environmentId ? (
-              <PreviewCornerAction onClick={() => actions.openMention(skill.path)}>
-                View instructions
-              </PreviewCornerAction>
-            ) : null}
-          </div>
-          {description ? (
-            <ChatMarkdown text={description} cwd={undefined} />
-          ) : (
-            <p>No description is available for this skill.</p>
-          )}
-        </div>
-      </ContextChipPopover>
+      <ComposerContextRecordChip
+        entry={{
+          kind: "skill",
+          record: { name: skillName, label, description, path: skill?.path ?? null },
+        }}
+        label={label}
+      />
     </NodeViewWrapper>
   );
 }

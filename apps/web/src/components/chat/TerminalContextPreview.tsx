@@ -1,42 +1,25 @@
 import * as Schema from "effect/Schema";
 import { Check, Copy } from "lucide";
 import { TerminalIcon } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ComponentProps } from "react";
 
 import {
   resolveTerminalFontPreference,
   resolveTerminalFontSizePreference,
   TYPOGRAPHY_ADVANCED_STORAGE_KEY,
 } from "../../appearanceFonts";
-import type { ContextPresentationCapability } from "../contextPresentationRegistry";
-import { ContextChipPopover, ContextChipShell } from "../contextChipParts";
+import { ContextChipButton } from "../contextChipParts";
 import { MorphIcon } from "../MorphIcon";
 import { Button } from "../ui/button";
 import { useClientSettings } from "../../hooks/useSettings";
 import { useCopyToClipboard, writeTextToClipboard } from "../../hooks/useCopyToClipboard";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { readLocalApi } from "~/localApi";
-import {
-  GhosttyTerminalSurface,
-  preloadGhosttyTerminal,
-  terminalFontFamily,
-} from "~/terminal/ghostty/surface";
+import { GhosttyTerminalSurface, terminalFontFamily } from "~/terminal/ghostty/surface";
 import type { GhosttyColor } from "~/terminal/ghostty/core";
 import { useTheme } from "../../hooks/useTheme";
 import { terminalTextColumns } from "../../lib/terminalContext";
 import { terminalThemeFromApp } from "../ThreadTerminalDrawer";
-
-interface TerminalContextInlineChipProps {
-  label: string;
-  terminalLabel: string;
-  lineStart: number;
-  lineEnd: number;
-  text: string;
-  /** `text` with its terminal colors; the preview falls back to `text` without it. */
-  styledText?: string | undefined;
-  detailsMode: ContextPresentationCapability["details"];
-  expired?: boolean;
-}
 
 /**
  * Past this many columns the excerpt wraps instead: the canvas is as wide as the grid, and a
@@ -314,54 +297,59 @@ function TerminalExcerptPreview({
   );
 }
 
-export function TerminalContextInlineChip(props: TerminalContextInlineChipProps) {
-  const {
-    label,
-    terminalLabel,
-    lineStart,
-    lineEnd,
-    text,
-    styledText,
-    detailsMode,
-    expired = false,
-  } = props;
-
-  if (!expired && text.length > 0 && detailsMode === "popover") {
-    return (
-      <ContextChipPopover
-        kind="terminal"
-        icon={<TerminalIcon />}
-        label={label}
-        accessibleLabel={`Terminal excerpt, ${label}`}
-        onIntent={preloadGhosttyTerminal}
-        stayOpenAfterPress
-      >
-        <TerminalExcerptPreview
-          terminalLabel={terminalLabel}
-          lineStart={lineStart}
-          lineEnd={lineEnd}
-          text={text}
-          styledText={styledText}
-        />
-      </ContextChipPopover>
-    );
-  }
-
+/** A terminal excerpt chip; the terminal preview supplies its hover. */
+export function TerminalChipTrigger({
+  label,
+  expired,
+  copyMarkdown,
+  ...props
+}: Omit<ComponentProps<typeof ContextChipButton>, "kind" | "icon" | "label"> & {
+  label: string;
+  expired: boolean;
+}) {
   return (
-    <ContextChipShell
+    <ContextChipButton
       kind="terminal"
       {...(expired ? { state: "invalid" as const } : {})}
       icon={<TerminalIcon />}
       label={label}
-      aria-label={`Terminal excerpt, ${label}${expired ? ", expired" : ""}`}
+      aria-label={`Terminal excerpt, ${label}${expired ? ", expired" : ""}. Show details`}
       data-terminal-context-expired={expired ? "true" : undefined}
-      tooltip={
-        expired
-          ? `Terminal context expired. Remove and re-add ${label} to include it in your message.`
-          : detailsMode === "none"
-            ? undefined
-            : text
-      }
+      copyMarkdown={copyMarkdown}
+      {...props}
+    />
+  );
+}
+
+export interface TerminalPreviewProps {
+  label: string;
+  terminalLabel: string;
+  lineStart: number;
+  lineEnd: number;
+  text: string;
+  /** `text` with its terminal colors; the preview falls back to `text` without it. */
+  styledText?: string | undefined;
+  expired: boolean;
+}
+
+export function TerminalPreview(props: TerminalPreviewProps) {
+  if (props.expired) {
+    return (
+      <p className="px-1 py-0.5 text-sm">
+        Terminal context expired. Remove and re-add {props.label} to include it in your message.
+      </p>
+    );
+  }
+  if (props.text.length === 0) {
+    return <p className="px-1 py-0.5 text-sm text-muted-foreground">No output was captured.</p>;
+  }
+  return (
+    <TerminalExcerptPreview
+      terminalLabel={props.terminalLabel}
+      lineStart={props.lineStart}
+      lineEnd={props.lineEnd}
+      text={props.text}
+      styledText={props.styledText}
     />
   );
 }

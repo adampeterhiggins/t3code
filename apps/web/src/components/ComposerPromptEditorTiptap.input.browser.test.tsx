@@ -342,7 +342,7 @@ it("reconciles provider skills and metadata without losing formatting, caret, or
   await mountEditor(value, true, [{ ...babysit, description: "Previous provider description" }]);
   await act(async () => {
     container
-      .querySelector<HTMLButtonElement>('[aria-label="Skill Babysit. Show details"]')!
+      .querySelector<HTMLButtonElement>('[aria-label="Skill, Babysit. Show details"]')!
       .click();
   });
   expect(document.body.textContent).toContain("Previous provider description");

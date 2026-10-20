@@ -652,6 +652,41 @@ describe("ChatMarkdown skill chips", () => {
     await rerender(<ChatMarkdown cwd="/tmp/project" text={text} skills={[]} />);
     expect(container.textContent).not.toContain("2Spec");
   });
+
+  // A scheduled task's prompt reaches the timeline as text, not a skill record.
+  it("previews a typed $skill the way the composer's skill chip does", async () => {
+    const threadRef = {
+      environmentId: EnvironmentId.make("workspace"),
+      threadId: ThreadId.make("thread"),
+    };
+    const openFile = vi
+      .spyOn(useRightPanelStore.getState(), "openFile")
+      .mockImplementation(() => {});
+    const container = await renderText("$eod-brief Run today's brief, not `$eod-brief`.", {
+      threadRef,
+      skills: [
+        {
+          name: "eod-brief",
+          displayName: "Eod Brief",
+          shortDescription: "Short",
+          description: "Drafts the **end of day** brief.",
+          path: "/skills/eod-brief/SKILL.md",
+        },
+      ],
+    });
+
+    const chips = buttonsLabelled(container, "Skill, Eod Brief. Show details");
+    expect(chips).toHaveLength(1);
+    expect(chips[0]!.dataset.markdownCopy).toBe("$eod-brief");
+    expect(container.querySelector("code")?.textContent).toBe("$eod-brief");
+
+    await userEvent.hover(chips[0]!);
+    await expect
+      .element(page.getByRole("dialog").getByText("end of day"))
+      .toHaveProperty("tagName", "STRONG");
+    await page.getByRole("button", { name: "View instructions" }).click();
+    expect(openFile).toHaveBeenCalledExactlyOnceWith(threadRef, "/skills/eod-brief/SKILL.md");
+  });
 });
 
 describe("ChatMarkdown workspace file opens", () => {
