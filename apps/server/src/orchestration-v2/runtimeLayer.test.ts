@@ -7467,7 +7467,11 @@ it.layer(layerTest)("usage-limit recovery", (it) => {
           (row) => row.id === threadId,
         )!;
         assert.isDefined(rearmed);
-        const freshResume = limitRecoveryCommand(rearmed, true, DateTime.toEpochMillis(sweep.now));
+        const freshResume = limitRecoveryCommand(
+          rearmed,
+          true,
+          DateTime.toEpochMillis(sweep.now) + USAGE_LIMIT_RESUME_GRACE_MS,
+        );
         assert.isNotNull(freshResume);
         yield* orchestrator.dispatch(freshResume!);
         assert.lengthOf((yield* orchestrator.getThreadProjection(threadId)).runs, 2);

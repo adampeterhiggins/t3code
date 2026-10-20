@@ -2623,6 +2623,10 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
         }
         yield* git(cwd, ["add", "."]);
         yield* git(cwd, ["update-index", "--chmod=+x", "mode-only.sh"]);
+        // Branch-range diffs against the working tree, so the file on disk must agree with the
+        // committed mode; macOS's git otherwise reports no change.
+        const fileSystem = yield* FileSystem.FileSystem;
+        yield* fileSystem.chmod((yield* Path.Path).join(cwd, "mode-only.sh"), 0o755);
         yield* git(cwd, ["commit", "-m", "rename and add files"]);
         const preview = yield* driver.getReviewDiffPreview({
           cwd,

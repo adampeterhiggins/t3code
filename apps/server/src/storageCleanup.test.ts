@@ -321,9 +321,7 @@ const cleanupFixture = (
 ) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
-    const rawConfig = yield* ServerConfig.ServerConfig;
-    yield* fs.makeDirectory(rawConfig.worktreesDir, { recursive: true });
-    const config = { ...rawConfig, worktreesDir: yield* fs.realPath(rawConfig.worktreesDir) };
+    const config = yield* ServerConfig.ServerConfig;
     const git = yield* GitVcsDriver.GitVcsDriver;
     const repo = yield* fs
       .makeTempDirectoryScoped({ prefix: "cleanup-repo-" })
@@ -337,6 +335,7 @@ const cleanupFixture = (
     yield* fs.writeFileString(`${repo}/.gitignore`, ".env\ndist/\nnode_modules/\n");
     yield* command(repo, ["add", "."]);
     yield* command(repo, ["commit", "-m", "initial"]);
+    yield* fs.makeDirectory(config.worktreesDir, { recursive: true });
     const worktree = `${config.worktreesDir}/feature`;
     yield* command(repo, ["worktree", "add", "-b", "feature", worktree]);
     let settings: import("@t3tools/contracts").ServerSettings = {
@@ -560,7 +559,18 @@ const sessionUpdated = (
   },
 });
 const cleanupTestLayer = GitVcsDriver.layer.pipe(
-  Layer.provideMerge(ServerConfig.layerTest(process.cwd(), { prefix: "storage-cleanup-" })),
+  Layer.provideMerge(
+    Layer.unwrap(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        // Cleanup skips a root whose real path differs, and macOS's tmpdir is behind a symlink.
+        const baseDir = yield* fs
+          .makeTempDirectoryScoped({ prefix: "storage-cleanup-" })
+          .pipe(Effect.flatMap(fs.realPath));
+        return ServerConfig.layerTest(process.cwd(), baseDir);
+      }),
+    ),
+  ),
   Layer.provideMerge(NodeServices.layer),
 );
 const runCleanupTest = <A, E>(
